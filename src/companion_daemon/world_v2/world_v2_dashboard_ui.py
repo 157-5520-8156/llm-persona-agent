@@ -1,11 +1,9 @@
-"""Local-first, read-only browser shell for the World v2 Dashboard.
+"""Authenticated, read-only browser shell for the owner World v2 Dashboard.
 
-The module contains no World/Engine reader and no deployment registry.  It
-renders static HTML/JavaScript that can consume only the already-redacted
-Dashboard and Room DTO endpoints.  Authentication and host availability stay
-in the ASGI composition.  The loopback daemon panel opens directly; the
-legacy session helper remains available for non-loopback compatibility and
-privileged DTO routes.
+The browser reads one versioned owner snapshot and renders only fields already
+authorized by that contract.  It never reads process health, raw World domain
+refs, or a second World host, and it does not infer a room scene when the owner
+reports stale or unavailable state.
 """
 
 from __future__ import annotations
@@ -71,7 +69,7 @@ LOGIN_HTML = """<!doctype html>
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:#d9cdbc;color:#3f342d;font-family:"PingFang SC",system-ui,sans-serif}
 main{width:min(420px,calc(100% - 32px));padding:28px;background:#f7eedf;border:3px solid #684f42;box-shadow:6px 6px 0 #b79c84}
 h1{font-size:20px}label,input,button{display:block;width:100%}input,button{margin-top:10px;padding:11px;font:inherit;box-sizing:border-box}button{background:#557f78;color:white;border:0}p{line-height:1.6;font-size:13px}
-</style></head><body><main><h1>知栀的小屋 · World v2</h1>
+</style></head><body><main><h1>World v2 Dashboard</h1>
 <p>请输入本机配置的 operator token。凭证只通过本次 POST 提交，不会写入 URL、页面脚本或浏览器存储。</p>
 <form method="post" action="/world-v2/dashboard/session" autocomplete="off">
 <label for="operator-token">Operator token</label><input id="operator-token" name="operator_token" type="password" required autocomplete="current-password">
@@ -87,234 +85,368 @@ UNAVAILABLE_HTML = """<!doctype html>
 
 DASHBOARD_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>知栀的小屋 · World v2</title><style>
-:root{font-family:"PingFang SC",system-ui,sans-serif;color:#3f342d;background:#d9cdbc}*{box-sizing:border-box}body{margin:0}.bar{padding:16px 24px;background:#4d3b34;color:#fff8ea;display:flex;justify-content:space-between;align-items:center}.bar h1{font-size:18px;margin:0}.bar form{margin:0}.bar button{background:#6f8e84;color:white;border:1px solid #d6c7a5;padding:7px 10px}.wrap{max-width:1180px;margin:auto;padding:22px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.7fr);align-items:start;gap:18px}.room,.panel{background:#f7eedf;border:3px solid #684f42;box-shadow:5px 5px 0 #b79c84}.room{position:relative;overflow:hidden;aspect-ratio:3/2}.room iframe{display:block;width:100%;height:100%;border:0;background:#211b1a;image-rendering:pixelated;pointer-events:none}.room-edit{position:absolute;z-index:1;top:10px;right:10px;padding:7px 10px;border:1px solid #fff3d5;border-radius:6px;background:rgba(77,59,52,.88);color:#fff8ea;font-size:12px;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.28)}.room-edit:focus-visible{outline:3px solid #e8c568;outline-offset:2px}.panel{padding:16px}.value{font-size:20px;color:#557f78}.muted{color:#80685b;font-size:12px}.agenda{padding:0;list-style:none}.agenda li{padding:9px 0;border-bottom:1px solid #decfbd}.error{color:#9c4545}@media(max-width:760px){.wrap{grid-template-columns:1fr}}
-.room iframe{position:absolute;top:0;left:0;width:1120px;height:640px;transform-origin:top left}
-</style></head><body><header class="bar"><h1>知栀的小屋 · World v2</h1></header>
-<main class="wrap"><section class="room"><iframe id="roomVisual" src="/pixel-home/index.html?embed=1" title="知栀的小屋日常画面" aria-label="知栀的小屋日常画面" scrolling="no"></iframe><a class="room-edit" href="/pixel-home/index.html?edit=1" target="_blank" rel="noopener" aria-label="在独立页面编辑小屋">✎ 编辑小屋</a></section>
-<aside><section class="panel"><h2>她现在在做什么</h2><div id="lifeNow" class="value">读取中</div><p id="lifeDetail" class="muted"></p><p id="lifeNext" class="muted"></p><p id="lifeLast" class="muted"></p><p id="lifeMood" class="muted"></p></section><section class="panel"><h2>日历 · 未来几天</h2><ul id="calendar" class="agenda"></ul><p id="calendarEmpty" class="muted"></p></section><section class="panel"><h2>今天的生活</h2><ul id="today" class="agenda"></ul><p id="todayEmpty" class="muted"></p></section><section class="panel"><h2>今天的经历</h2><ul id="experiences" class="agenda"></ul><p id="experiencesEmpty" class="muted"></p></section><section class="panel"><h2>情绪 · 逐条</h2><ul id="affectEpisodes" class="agenda"></ul><p id="affectEpisodesEmpty" class="muted"></p></section><section class="panel"><h2>情绪变化阶段</h2><ul id="changePhases" class="agenda"></ul><p id="changePhasesEmpty" class="muted"></p></section><section class="panel"><h2>她记住的你 · 用户事实</h2><ul id="userFacts" class="agenda"></ul><p id="userFactsEmpty" class="muted"></p></section><section class="panel"><h2>记忆</h2><ul id="memories" class="agenda"></ul><p id="memoriesEmpty" class="muted"></p></section><section class="panel"><h2>私下印象</h2><ul id="impressions" class="agenda"></ul><p id="impressionsEmpty" class="muted"></p></section><section class="panel"><h2>憧憬</h2><ul id="aspirations" class="agenda"></ul><p id="aspirationsEmpty" class="muted"></p></section><section class="panel"><h2>和你的关系</h2><ul id="userRelationship" class="agenda"></ul><p id="userRelationshipEmpty" class="muted"></p></section><section class="panel"><h2>她与身边人</h2><ul id="npcRelationships" class="agenda"></ul><p id="npcRelationshipsEmpty" class="muted"></p></section><section class="panel"><h2>内在机制</h2><ul id="mechanisms" class="agenda"></ul><p id="status" class="muted">只读 · QQ 世界</p></section></aside></main>
-<script src="/world-v2/dashboard/app.js" defer></script></body></html>"""
+<title>World v2 Dashboard</title><style>
+:root{font-family:"PingFang SC",system-ui,sans-serif;color:#3f342d;background:#d9cdbc}*{box-sizing:border-box}body{margin:0;min-height:100vh}.bar{padding:14px 24px;background:#4d3b34;color:#fff8ea;display:flex;justify-content:space-between;align-items:center;gap:16px}.bar h1{font-size:18px;margin:0}.bar-actions{display:flex;align-items:center;gap:14px}.capture-state{font:12px ui-monospace,SFMono-Regular,monospace}.logout{margin:0}.logout button{border:1px solid #d9cdbc;border-radius:5px;background:transparent;color:#fff8ea;padding:5px 9px;font:12px inherit;cursor:pointer}.wrap{max-width:1440px;margin:auto;padding:22px;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(330px,.72fr);align-items:start;gap:18px}.room,.panel,.section-card{background:#f7eedf;border:3px solid #684f42;box-shadow:5px 5px 0 #b79c84}.room{position:relative;overflow:hidden;aspect-ratio:7/4}.room iframe{display:block;border:0;background:#211b1a;image-rendering:pixelated;pointer-events:none;position:absolute;top:0;left:0;width:1120px;height:640px;transform-origin:top left}.room-overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(33,27,26,.58);color:#fff8ea;font:14px ui-monospace,SFMono-Regular,monospace;z-index:1}.room-overlay[hidden]{display:none}.room-edit{position:absolute;z-index:2;top:10px;right:10px;padding:7px 10px;border:1px solid #fff3d5;border-radius:6px;background:rgba(77,59,52,.88);color:#fff8ea;font-size:12px;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.28)}.room-edit:focus-visible,.logout button:focus-visible{outline:3px solid #e8c568;outline-offset:2px}.side{display:grid;gap:18px}.panel,.section-card{padding:16px}.panel h2,.section-card h2{margin:0;font-size:16px}.meta,.tree{margin:0;display:grid;grid-template-columns:minmax(110px,.42fr) minmax(0,1fr);gap:7px 10px}.meta dt,.tree dt{font:11px ui-monospace,SFMono-Regular,monospace;color:#80685b;overflow-wrap:anywhere}.meta dd,.tree dd{margin:0;min-width:0;overflow-wrap:anywhere}.tree ul{margin:0;padding-left:20px}.tree code,.meta code{font:11px ui-monospace,SFMono-Regular,monospace}.section-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:18px}.section-card[data-section="runtime_operations"]{grid-column:1/-1}.section-head{display:flex;justify-content:space-between;gap:12px;align-items:start;padding-bottom:12px;border-bottom:1px solid #d7c7b7}.section-key{display:block;margin-top:3px;color:#80685b;font:10px ui-monospace,SFMono-Regular,monospace}.section-state{border-radius:999px;padding:3px 8px;background:#d8e4dc;color:#3d6d63;font:11px ui-monospace,SFMono-Regular,monospace}.section-state[data-state="unavailable"],.section-state[data-state="degraded"]{background:#edd6d2;color:#90483f}.section-state[data-state="empty"],.section-state[data-state="disabled"]{background:#e8e0d2;color:#766455}.section-body{display:grid;gap:14px;padding-top:14px}.section-subtitle{margin:0 0 7px;font-size:12px;color:#6f584d}.metric-grid,.signal-grid,.notice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px}.metric,.signal,.notice{min-width:0;border:1px solid #d5c3b1;background:#fff8eb;padding:8px 10px}.metric span,.signal span,.notice span{display:block;color:#725e53;font-size:11px;overflow-wrap:anywhere}.metric strong,.signal strong,.notice strong{display:block;margin-top:3px;font-size:16px}.signal strong,.notice strong{font-size:12px;color:#3d6d63}.notice code{display:block;margin-top:4px;color:#80685b;font:10px ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere}.zero-metrics,.section-contract,.section-items{border-top:1px dashed #cbb6a3;padding-top:10px}.zero-metrics summary,.section-contract summary,.section-items summary{cursor:pointer;color:#735d50;font-size:12px}.zero-metrics .metric-grid,.section-contract .tree,.section-items .tree{margin-top:10px}.error{color:#c87b73}@media(max-width:900px){.wrap{grid-template-columns:1fr}.section-grid{grid-template-columns:1fr}.section-card[data-section="runtime_operations"]{grid-column:auto}}@media(max-width:520px){.bar{padding:12px 14px}.wrap{padding:14px}.capture-state{display:none}.metric-grid,.signal-grid,.notice-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style></head><body><header class="bar"><h1>World v2 Dashboard</h1><div class="bar-actions"><span id="captureState" class="capture-state">unavailable</span><form class="logout" method="post" action="/world-v2/dashboard/logout"><button type="submit">退出</button></form></div></header>
+<main class="wrap"><section class="room"><iframe id="roomVisual" src="/pixel-home/index.html?embed=1" title="World v2 room renderer" aria-label="World v2 room renderer" scrolling="no"></iframe><div id="roomOverlay" class="room-overlay">unavailable</div><a class="room-edit" href="/pixel-home/index.html?edit=1" target="_blank" rel="noopener" aria-label="在独立页面编辑渲染房间">✎ 编辑房间</a></section>
+<aside class="side"><section class="panel"><h2>Snapshot</h2><dl id="snapshotMeta" class="meta"></dl></section></aside><div id="sectionGrid" class="section-grid" aria-live="polite"></div></main>
+<script src="/world-v2/dashboard/app.js?v=world-v2-dashboard-home.1-ui2" defer></script></body></html>"""
 
 
 DASHBOARD_APP_JS = """'use strict';
-const text=(id,value)=>{document.getElementById(id).textContent=value;};
-const ACTIVITY_LABELS={
-  'routine.morning_settle':'早上收拾洗漱',
-  'sleep.prepare_for_bed':'睡前收拾，准备休息',
-  'sleep.late_wind_down':'深夜收心，准备睡了',
-  'sleep.early_morning_wake':'清晨早醒，还没起',
-  'study.focused_reading':'专注读书',
-  'meal.make_drink':'弄点吃的喝的',
-  'creative.edit_photo_notes':'整理照片和随手笔记',
-  'commute.short_walk':'出门走一小段',
-  'household.tidy_small_things':'收拾屋里的小东西',
-  'recovery.quiet_rest':'安静歇一会儿',
-  'leisure.digital_browse':'窝着刷手机',
-  'social.literature_reading_list':'忙文学社书单的事',
-  'social.literature_club_meetup':'和范予安约了文学社碰头',
-  'commute.lakeside_walk':'去丽娃河边走一段',
-  'creative.photo_batch_organize':'集中整理一批照片',
-  'study.reading_notes':'写读书笔记',
-  'study.attend_class':'去教学楼上课',
-  'study.essay_writing':'赶论文',
-  'study.evening_self_study':'晚上在图书馆自习',
-  'study.seminar_room_session':'预约了研讨间整理思路',
-  'creative.write_essay':'写随笔',
-  'creative.film_scan_sort':'翻扫整理胶片',
-  'creative.write_diary':'写日记',
-  'creative.bund_night_shoot':'去外滩拍夜景',
-  'household.do_laundry':'洗衣服',
-  'errand.pick_up_parcel':'去驿站取快递',
-  'errand.buy_fruit':'买水果和零嘴',
-  'errand.print_shop':'去打印店',
-  'meal.canteen_meal':'去食堂吃饭',
-  'meal.dorm_cooking':'在宿舍煮饭试新菜',
-  'recovery.evening_stretch':'睡前拉伸',
-  'recovery.window_daydream':'靠窗发呆',
-  'sleep.afternoon_nap':'午睡',
-  'leisure.podcast_listen':'听播客',
-  'leisure.browse_book_stall':'逛旧书摊',
-  'leisure.book_market_hunt':'去二手书市淘书',
-  'social.family_call':'给家里打电话',
-  'social.roommate_chat':'和林晚闲聊',
-  'social.literature_club_admin':'处理文学社事务',
-  'social.exhibition_outing':'和范予安去看展',
-  'family.bookstore_help':'回嘉兴帮家里看店',
-  'shared.movie_call':'和你连麦一起看电影',
-};
-const activityLabel=kind=>ACTIVITY_LABELS[kind]||kind||'未知活动';
-const STATUS_LABELS={planned:'已计划',active:'进行中',paused:'暂停',completed:'完成',abandoned:'放弃'};
-const statusLabel=value=>STATUS_LABELS[value]||value||'';
-const fmtClock=value=>{try{return new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit'}).format(new Date(value));}catch{return '';}};
-const fmtDay=value=>{try{return new Intl.DateTimeFormat('zh-CN',{weekday:'short',month:'numeric',day:'numeric'}).format(new Date(value));}catch{return '';}};
-const pct=bp=>typeof bp==='number'?`${Math.round(bp/100)}%`:'';
-const byOpensAt=(a,b)=>new Date(a.window_opens_at||0)-new Date(b.window_opens_at||0);
-const PHASE_LABELS={departing:'刚陷入',holding:'持续中',returning:'正在走出',recovering:'刚平复'};
-const EPISODE_STATUS_LABELS={active:'活跃',resolved:'已平复',superseded:'已被替代'};
-const MEANING_LABELS={ordinary:'普通往来',care:'被关心',support:'被支持',shared_joy:'共同的开心',goal_progress:'事情有进展',uncertainty:'不确定',misunderstanding:'误会',disappointment:'失望',dismissal:'被敷衍',boundary_violation:'越界',dehumanization:'不被当人',coercion:'被强迫',control_pressure:'被控制',betrayal:'被辜负',loss:'失去',user_withdrawing:'对方在退开',user_confused:'对方困惑',repair_attempt:'想修复',npc_conflict:'与人摩擦'};
-const CUE_LABELS={identity:'身份',relationship:'关系',boundary:'边界',unfinished_business:'未完成的事',repeated_pattern:'重复的模式',future_utility:'以后有用',emotional_residue:'情绪残留',world_continuity:'生活连续性'};
-const SALIENCE_LABELS={autobiographical_relevance:'自传相关',relationship_relevance:'关系相关',emotional_residue:'情绪残留',unfinished_business:'未完成',recurrence:'反复出现',novelty:'新鲜',future_utility:'以后有用',world_continuity:'生活连续'};
-const SOURCE_KIND_LABELS={fact:'来自事实',experience:'来自经历'};
-const ASPIRATION_STATUS_LABELS={active:'还惦记着',crystallized:'已经写进计划',faded:'慢慢淡了'};
-const STAGE_LABELS={stranger:'陌生',acquaintance:'认识了',friend:'朋友',close_friend:'很熟的朋友',ambiguous:'有点暧昧',lover:'恋人'};
-const REL_VAR_LABELS={trust_bp:'信任',closeness_bp:'亲近',respect_bp:'尊重',reliability_bp:'可靠',mutuality_bp:'相互',repair_confidence_bp:'修复信心'};
-const NPC_NAMES={'literature-fan':'范予安','roommate-lin':'林晚','roommate-qiao':'乔宁','mother-shen':'沈岚','father-shen':'陈远','photography-zhou':'周栩','hometown-xu':'徐青禾'};
-// --- pixel-home room bridge -------------------------------------------------
-// The embedded /pixel-home iframe renders her room; every life-state poll is
-// relayed to it as a versioned postMessage.  bridge.js inside the prototype
-// maps the message onto the engine; the room stays fully usable standalone.
-const ROOM_SCENE_STATE_TYPE='zhizhi-scene-state';
-// Her own dorm room is the only life-state location that maps onto the home
-// diorama; every other location_ref means she is out.
-const HOME_LOCATION_REF='location:ecnu-dorm-room';
-const activityIsAtHome=active=>!active||!active.location_ref||active.location_ref===HOME_LOCATION_REF;
-const localHourOf=value=>{const when=value?new Date(value):null;return when&&!Number.isNaN(when.getTime())?when.getHours()+when.getMinutes()/60:null;};
-const buildRoomSceneState=(active,logicalTime)=>({
-  type:ROOM_SCENE_STATE_TYPE,v:1,
-  active:active?{activity_kind:active.activity_kind||null,location_ref:active.location_ref||null}:null,
-  at_home:activityIsAtHome(active),
-  local_hour:localHourOf(logicalTime),
-});
-const roomFrame=document.getElementById('roomVisual');
-const roomHost=roomFrame?roomFrame.closest('.room'):null;
-const ROOM_FRAME_WIDTH=1120;
-const ROOM_FRAME_HEIGHT=640;
-const ROOM_FRAME_INSET=8;
-let roomSceneState=null;
-let roomClockInitialized=false;
-function fitRoomFrame(){
-  if(!roomFrame||!roomHost)return;
-  const scale=Math.max(0,Math.min(
-    (roomHost.clientWidth-ROOM_FRAME_INSET*2)/ROOM_FRAME_WIDTH,
-    (roomHost.clientHeight-ROOM_FRAME_INSET*2)/ROOM_FRAME_HEIGHT,
-  ));
-  const x=(roomHost.clientWidth-ROOM_FRAME_WIDTH*scale)/2;
-  const y=(roomHost.clientHeight-ROOM_FRAME_HEIGHT*scale)/2;
-  roomFrame.style.transform=`translate(${x}px,${y}px) scale(${scale})`;
-}
-function pushRoomSceneState(){
-  if(roomSceneState&&roomFrame&&roomFrame.contentWindow)roomFrame.contentWindow.postMessage(roomSceneState,window.location.origin);
-}
-function syncRoomClock(){
-  // The engine only accepts a start-of-day hour via its ?hour= URL parameter,
-  // so the world clock is applied once by reloading the iframe with it.
-  if(roomClockInitialized||!roomFrame||!roomSceneState||roomSceneState.local_hour===null)return;
-  roomClockInitialized=true;
-  roomFrame.src='/pixel-home/index.html?embed=1&hour='+roomSceneState.local_hour.toFixed(2);
-}
-if(roomFrame){
-  roomFrame.addEventListener('load',()=>{fitRoomFrame();pushRoomSceneState();});
-  fitRoomFrame();
-  if(typeof ResizeObserver==='function')new ResizeObserver(fitRoomFrame).observe(roomHost);
-  else window.addEventListener('resize',fitRoomFrame);
-}
-function fillList(listId,emptyId,rows,emptyText){
-  const list=document.getElementById(listId);list.replaceChildren();
-  for(const row of rows){const li=document.createElement('li');li.textContent=row;list.appendChild(li);}
-  text(emptyId,rows.length?'':emptyText);
-}
-async function loadLifeState(){
-  try{
-    const response=await fetch('/world-v2/life-state',{credentials:'same-origin',headers:{Accept:'application/json'}});
-    if(!response.ok)throw new Error('life state unavailable');
-    const life=await response.json();
-    const mech=life.mechanisms||{};
-    const situation=mech.current_situation||{};
-    const affect=mech.affect||{};
-    const active=(situation.active_activities||[])[0];
-    roomSceneState=buildRoomSceneState(active||null,situation.logical_time);
-    syncRoomClock();
-    pushRoomSceneState();
-    if(active){
-      text('lifeNow',activityLabel(active.activity_kind));
-      const since=active.last_transitioned_at?`从 ${fmtClock(active.last_transitioned_at)} 开始`:'';
-      const until=active.window_closes_at?`，预计到 ${fmtClock(active.window_closes_at)}`:'';
-      text('lifeDetail',`${since}${until}`);
-    }else{
-      text('lifeNow','这会儿没有安排具体的事');
-      text('lifeDetail','空档期：可能在歇着或随便待着。');
-    }
-    const next=situation.next_planned_activity;
-    text('lifeNext',next?`接下来：${activityLabel(next.activity_kind)}（${fmtClock(next.window_opens_at)} 起）`:'接下来暂时没有已确定的安排。');
-    const last=situation.last_completed_activity;
-    text('lifeLast',last?`刚做完：${activityLabel(last.activity_kind)}（${fmtClock(last.last_transitioned_at)}）`:'');
-    const upcoming=(situation.upcoming_activities||[]).slice().sort(byOpensAt);
-    fillList('calendar','calendarEmpty',upcoming.map(item=>
-      `${fmtDay(item.window_opens_at)} ${fmtClock(item.window_opens_at)} · ${activityLabel(item.activity_kind)} · ${statusLabel(item.status)}`
-    ),'接下来几天还没有写进日历的安排。');
-    const episodeCount=affect.active_episode_count;
-    text('lifeMood',typeof episodeCount==='number'?`情绪线索：${episodeCount} 条进行中 · 世界时间 ${fmtClock(situation.logical_time)}`:'');
-    const dayItems=(situation.today_activities||[]).slice().sort(byOpensAt);
-    fillList('today','todayEmpty',dayItems.map(item=>
-      `${fmtClock(item.window_opens_at)} · ${activityLabel(item.activity_kind)} · ${statusLabel(item.status)}`
-    ),'过去一天还没有留下活动记录。');
-    const eco2=mech.life_ecology||{};
-    fillList('experiences','experiencesEmpty',(eco2.recent_experiences||[]).map(item=>
-      `${fmtClock(item.occurred_to)} · ${item.summary_excerpt||'（正文暂不可读）'}`
-    ),'最近还没有落定的经历。');
-    fillList('affectEpisodes','affectEpisodesEmpty',(affect.episodes||[]).map(item=>{
-      const parts=(item.components||[]).map(c=>`${c.label||c.dimension} ${pct(c.intensity_bp)}${c.decaying?'（在消退）':''}`).join('、');
-      return `${fmtClock(item.opened_at)} 起 · ${EPISODE_STATUS_LABELS[item.status]||item.status} · ${parts}`;
-    }),'现在没有记录在案的情绪片段。');
-    fillList('changePhases','changePhasesEmpty',(affect.change_phases||[]).map(item=>
-      `${item.prose||`${item.label||item.dimension} · ${PHASE_LABELS[item.phase]||item.phase}`} · ${pct(item.intensity_bp)}`
-    ),'情绪都在基线附近，没有明显起落。');
-    const memory2=mech.memory||{};
-    fillList('userFacts','userFactsEmpty',(memory2.facts||[]).map(item=>
-      `${item.value_excerpt||item.predicate_code}（${item.predicate_code} · 置信 ${pct(item.confidence_bp)} · ${fmtDay(item.committed_at)} ${fmtClock(item.committed_at)} 记下）`
-    ),'她还没有确认记下关于你的事实。');
-    fillList('memories','memoriesEmpty',(memory2.candidates||[]).map(item=>{
-      const cue=CUE_LABELS[item.cue_kind]||item.cue_kind;
-      const source=(item.source_kinds||[]).map(k=>SOURCE_KIND_LABELS[k]||k).join('/');
-      const salience=(item.salience_highlights||[]).map(s=>`${SALIENCE_LABELS[s.dimension]||s.dimension} ${pct(s.bp)}`).join('、');
-      return `${item.summary_excerpt||`（${cue}线索）`} · ${cue} · ${source}${salience?` · ${salience}`:''}`;
-    }),'还没有留下的记忆候选。');
-    const inner=mech.inner||{};
-    fillList('impressions','impressionsEmpty',(inner.impressions||[]).map(item=>{
-      const meanings=(item.meanings||[]).map(m=>MEANING_LABELS[m]||m).join('、')||'（原始假设不可读）';
-      return `她觉得：${meanings} · 把握 ${pct(item.confidence_bp)} · ${fmtDay(item.first_seen)}起`;
-    }),'她心里暂时没有挂着的猜测。');
-    fillList('aspirations','aspirationsEmpty',(inner.aspirations||[]).map(item=>
-      `${item.text} · ${ASPIRATION_STATUS_LABELS[item.status]||item.status} · ${fmtDay(item.planted_at)}种下${item.reinforcement_count?` · 被想起 ${item.reinforcement_count} 次`:''}`
-    ),'还没有生根的憧憬。');
-    const relationship2=mech.relationship||{};
-    const userRows=[];
-    if(relationship2.user_state){
-      const state=relationship2.user_state;
-      userRows.push(`阶段：${STAGE_LABELS[state.stage]||state.stage}${state.last_adjusted_at?`（${fmtDay(state.last_adjusted_at)} 最近调整）`:''}`);
-      for(const [k,v] of Object.entries(state.variables||{})){
-        userRows.push(`${REL_VAR_LABELS[k]||k}：${pct(v)}`);
-      }
-    }
-    fillList('userRelationship','userRelationshipEmpty',userRows,'和你的关系还没有落进账本的状态。');
-    fillList('npcRelationships','npcRelationshipsEmpty',(relationship2.npc_states||[]).map(npc=>
-      `${NPC_NAMES[npc.npc_id]||npc.npc_id}：亲近 ${pct(npc.closeness_bp)} · 熟悉 ${pct(npc.familiarity_bp)} · 一起经历 ${npc.settled_shared_count} 件事${npc.last_shared_at?` · 上次 ${fmtDay(npc.last_shared_at)}`:''}`
-    ),'她身边还没有留下相处痕迹的人。');
-    const rows=[];
-    const eco=mech.life_ecology||{};
-    if(eco.plans_by_status){const parts=Object.entries(eco.plans_by_status).map(([k,v])=>`${statusLabel(k)} ${v}`).join(' · ');rows.push(`生活计划：${parts||'无'}`);}
-    rows.push(`情绪：${affect.active_episode_count||0} 条进行中 / 共 ${affect.episode_count||0} 条 · 评估 ${affect.appraisal_count||0} 次`);
-    const memory=mech.memory||{};
-    rows.push(`记忆：事实 ${memory.fact_count||0} · 候选 ${memory.active_candidate_count||0}/${memory.candidate_count||0}`);
-    const relationship=mech.relationship||{};
-    rows.push(`关系：状态 ${relationship.state_count||0} · 信号 ${relationship.signal_count||0} · 调整 ${relationship.adjustment_count||0}`);
-    const npc=mech.npc||{};
-    rows.push(`NPC：${npc.registered_count||0} 位注册 · 世界评估 ${npc.world_appraisal_count||0} 次`);
-    const activity=life.world_activity||{};
-    rows.push(`世界事件：${activity.life_event_count||0} · 发生 ${activity.occurrence_count||0} · 经历 ${activity.experience_count||0}`);
-    const mechanisms=document.getElementById('mechanisms');mechanisms.replaceChildren();
-    for(const row of rows){const li=document.createElement('li');li.textContent=row;mechanisms.appendChild(li);}
-    text('status',`只读 · QQ 世界 · 适配器 ${life.adapter_status||'unknown'}`);
-    document.getElementById('status').classList.remove('error');
-  }catch(error){
-    text('lifeNow','QQ 世界暂时读不到');
-    text('lifeDetail','适配器可能正在重启，稍后会自动重试。');
-    text('status','QQ 世界适配器暂时不可达 · 稍后自动重试');
-    document.getElementById('status').classList.add('error');
+const DashboardHomeClient=(()=>{
+  const DATA_URL='/world-v2/dashboard/home';
+  const SCHEMA_VERSION='world-v2-dashboard-home.1';
+  const ROOM_MESSAGE_TYPE='pixel-home-state';
+  const ROOM_MESSAGE_VERSION=2;
+  const record=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+  function validateSnapshot(payload){
+    if(!record(payload)||payload.schema_version!==SCHEMA_VERSION)throw new Error('unsupported dashboard snapshot');
+    if(typeof payload.snapshot_hash!=='string'||!/^[0-9a-f]{64}$/.test(payload.snapshot_hash))throw new Error('invalid dashboard snapshot hash');
+    if(!record(payload.cursor)||!record(payload.sections)||!record(payload.sections.room))throw new Error('dashboard room section unavailable');
+    return payload;
   }
+  async function capture(fetchSnapshot,etag=null){
+    const headers={Accept:'application/json'};
+    if(etag)headers['If-None-Match']=etag;
+    const response=await fetchSnapshot(DATA_URL,{credentials:'same-origin',headers});
+    if(response.status===304)return{kind:'not_modified',etag,snapshot:null};
+    if(!response.ok)throw new Error('dashboard snapshot unavailable ('+response.status+')');
+    const snapshot=validateSnapshot(await response.json());
+    return{kind:'snapshot',etag:response.headers.get('etag'),snapshot};
+  }
+  function snapshotFromCapture(result,previousSnapshot=null){
+    if(result&&result.kind==='snapshot')return validateSnapshot(result.snapshot);
+    if(result&&result.kind==='not_modified'&&previousSnapshot)return validateSnapshot(previousSnapshot);
+    throw new Error('dashboard snapshot cache unavailable');
+  }
+  function roomState(value){
+    if(value==='ready'||value==='stale')return value;
+    return'unavailable';
+  }
+  function unavailableRoomMessage(state='unavailable',logicalTime=null){
+    return{
+      type:ROOM_MESSAGE_TYPE,
+      v:ROOM_MESSAGE_VERSION,
+      state:roomState(state),
+      route:null,
+      logical_time:typeof logicalTime==='string'?logicalTime:null,
+    };
+  }
+  function roomMessageFrom(payload,overrideState=null){
+    const snapshot=validateSnapshot(payload);
+    const room=snapshot.sections.room;
+    const state=roomState(overrideState||room.state);
+    const logicalTime=typeof snapshot.logical_time==='string'?snapshot.logical_time:null;
+    if(state!=='ready')return unavailableRoomMessage(state,logicalTime);
+    const route=record(room.render_state)&&record(room.render_state.route)?room.render_state.route:null;
+    if(!route||typeof route.scene_id!=='string'||!route.scene_id||typeof route.action_id!=='string'||!route.action_id||typeof route.availability!=='string'||!route.availability||route.availability==='unavailable')return unavailableRoomMessage('unavailable',logicalTime);
+    return{
+      type:ROOM_MESSAGE_TYPE,
+      v:ROOM_MESSAGE_VERSION,
+      state:'ready',
+      route:{
+        scene_id:route.scene_id,
+        action_id:route.action_id,
+        availability:route.availability,
+      },
+      logical_time:logicalTime,
+    };
+  }
+  function sectionLabel(sectionId,section){
+    if(record(section)&&typeof section.label==='string'&&section.label.trim())return section.label;
+    return sectionId;
+  }
+  function metricGroups(metrics){
+    const grouped={active:[],zero:[]};
+    if(!Array.isArray(metrics))return grouped;
+    for(const metric of metrics){
+      if(!record(metric))continue;
+      (metric.count===0?grouped.zero:grouped.active).push(metric);
+    }
+    return grouped;
+  }
+  return{
+    DATA_URL,
+    ROOM_MESSAGE_TYPE,
+    ROOM_MESSAGE_VERSION,
+    SCHEMA_VERSION,
+    capture,
+    roomMessageFrom,
+    sectionLabel,
+    metricGroups,
+    snapshotFromCapture,
+    unavailableRoomMessage,
+    validateSnapshot,
+  };
+})();
+if(typeof module!=='undefined'&&module.exports)module.exports=DashboardHomeClient;
+if(typeof window!=='undefined')window.DashboardHomeClient=DashboardHomeClient;
+if(typeof document!=='undefined'){
+  const byId=id=>document.getElementById(id);
+  const isRecord=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+  const captureState=byId('captureState');
+  const snapshotMeta=byId('snapshotMeta');
+  const sectionGrid=byId('sectionGrid');
+  const roomFrame=byId('roomVisual');
+  const roomHost=roomFrame?roomFrame.closest('.room'):null;
+  const roomOverlay=byId('roomOverlay');
+  const ROOM_FRAME_WIDTH=1120;
+  const ROOM_FRAME_HEIGHT=640;
+  const ROOM_FRAME_INSET=8;
+  let roomMessage=DashboardHomeClient.unavailableRoomMessage();
+  let lastSnapshot=null;
+  let snapshotEtag=null;
+
+  function fitRoomFrame(){
+    if(!roomFrame||!roomHost)return;
+    const scale=Math.max(0,Math.min(
+      (roomHost.clientWidth-ROOM_FRAME_INSET*2)/ROOM_FRAME_WIDTH,
+      (roomHost.clientHeight-ROOM_FRAME_INSET*2)/ROOM_FRAME_HEIGHT,
+    ));
+    const x=(roomHost.clientWidth-ROOM_FRAME_WIDTH*scale)/2;
+    const y=(roomHost.clientHeight-ROOM_FRAME_HEIGHT*scale)/2;
+    roomFrame.style.transform='translate('+x+'px,'+y+'px) scale('+scale+')';
+  }
+  function pushRoomMessage(){
+    if(roomFrame&&roomFrame.contentWindow)roomFrame.contentWindow.postMessage(roomMessage,window.location.origin);
+  }
+  function showRoomMessage(message){
+    roomMessage=message;
+    const ready=message.state==='ready';
+    roomOverlay.hidden=ready;
+    roomOverlay.textContent=message.state;
+    pushRoomMessage();
+  }
+  function appendScalar(parent,value){
+    const code=document.createElement('code');
+    code.textContent=value===null?'null':String(value);
+    parent.appendChild(code);
+  }
+  function appendTree(parent,value){
+    if(Array.isArray(value)){
+      if(!value.length){appendScalar(parent,'[]');return;}
+      const list=document.createElement('ul');
+      for(const item of value){
+        const row=document.createElement('li');
+        appendTree(row,item);
+        list.appendChild(row);
+      }
+      parent.appendChild(list);
+      return;
+    }
+    if(value!==null&&typeof value==='object'){
+      const list=document.createElement('dl');
+      list.className='tree';
+      for(const [key,item] of Object.entries(value)){
+        const term=document.createElement('dt');
+        term.textContent=key;
+        const detail=document.createElement('dd');
+        appendTree(detail,item);
+        list.append(term,detail);
+      }
+      parent.appendChild(list);
+      return;
+    }
+    appendScalar(parent,value);
+  }
+  function renderMeta(snapshot){
+    snapshotMeta.replaceChildren();
+    const fields=['schema_version','policy_version','snapshot_hash','owner','cursor','logical_time','generated_at'];
+    for(const key of fields){
+      if(!(key in snapshot))continue;
+      const term=document.createElement('dt');
+      term.textContent=key;
+      const detail=document.createElement('dd');
+      appendTree(detail,snapshot[key]);
+      snapshotMeta.append(term,detail);
+    }
+  }
+  function appendMetricGrid(parent,metrics){
+    const groups=DashboardHomeClient.metricGroups(metrics);
+    function buildGrid(items){
+      const grid=document.createElement('div');
+      grid.className='metric-grid';
+      for(const metric of items){
+        const tile=document.createElement('div');
+        tile.className='metric';
+        const label=document.createElement('span');
+        label.textContent=typeof metric.label==='string'?metric.label:String(metric.key||'metric');
+        const value=document.createElement('strong');
+        value.textContent=String(metric.count??0);
+        tile.append(label,value);
+        grid.appendChild(tile);
+      }
+      return grid;
+    }
+    if(groups.active.length){
+      const title=document.createElement('h3');
+      title.className='section-subtitle';
+      title.textContent='当前计数';
+      parent.append(title,buildGrid(groups.active));
+    }
+    if(groups.zero.length){
+      const details=document.createElement('details');
+      details.className='zero-metrics';
+      const summary=document.createElement('summary');
+      summary.textContent='零值字段 ('+groups.zero.length+')';
+      details.append(summary,buildGrid(groups.zero));
+      parent.appendChild(details);
+    }
+  }
+  function appendSignalGrid(parent,signals){
+    if(!Array.isArray(signals)||!signals.length)return;
+    const title=document.createElement('h3');
+    title.className='section-subtitle';
+    title.textContent='运行态信号';
+    const grid=document.createElement('div');
+    grid.className='signal-grid';
+    for(const signal of signals){
+      if(!isRecord(signal))continue;
+      const tile=document.createElement('div');
+      tile.className='signal';
+      const label=document.createElement('span');
+      label.textContent=typeof signal.label==='string'?signal.label:String(signal.key||'signal');
+      const value=document.createElement('strong');
+      value.textContent=typeof signal.state_label==='string'?signal.state_label:String(signal.state||'unavailable');
+      tile.append(label,value);
+      grid.appendChild(tile);
+    }
+    parent.append(title,grid);
+  }
+  function appendNoticeGrid(parent,notices){
+    if(!Array.isArray(notices)||!notices.length)return;
+    const title=document.createElement('h3');
+    title.className='section-subtitle';
+    title.textContent='提示';
+    const grid=document.createElement('div');
+    grid.className='notice-grid';
+    for(const notice of notices){
+      if(!isRecord(notice))continue;
+      const tile=document.createElement('div');
+      tile.className='notice';
+      const label=document.createElement('span');
+      label.textContent=String(notice.signal_label||notice.label||notice.signal||notice.kind||'notice');
+      const reason=document.createElement('strong');
+      reason.textContent=String(notice.reason_label||'');
+      const code=document.createElement('code');
+      code.textContent=String(notice.reason_code||'');
+      tile.append(label,reason,code);
+      grid.appendChild(tile);
+    }
+    parent.append(title,grid);
+  }
+  function appendSectionContract(parent,section){
+    const contract={};
+    for(const [key,value] of Object.entries(section||{})){
+      if(key==='label'||key==='data')continue;
+      contract[key]=value;
+    }
+    const details=document.createElement('details');
+    details.className='section-contract';
+    const summary=document.createElement('summary');
+    summary.textContent='契约、cursor 与 coverage';
+    details.appendChild(summary);
+    appendTree(details,contract);
+    parent.appendChild(details);
+  }
+  function appendSectionData(parent,section){
+    const data=isRecord(section&&section.data)?section.data:null;
+    if(!data)return;
+    appendMetricGrid(parent,data.metrics);
+    appendSignalGrid(parent,data.signals);
+    appendNoticeGrid(parent,data.notices);
+    const remaining={};
+    for(const [key,value] of Object.entries(data)){
+      if(key==='metrics'||key==='signals'||key==='notices'||key==='highlights')continue;
+      remaining[key]=value;
+    }
+    if(Object.keys(remaining).length){
+      const container=document.createElement('div');
+      appendTree(container,remaining);
+      parent.appendChild(container);
+    }
+    if(Array.isArray(data.highlights)&&data.highlights.length){
+      const details=document.createElement('details');
+      details.className='section-items';
+      const summary=document.createElement('summary');
+      summary.textContent='条目 ('+data.highlights.length+')';
+      details.appendChild(summary);
+      appendTree(details,data.highlights);
+      parent.appendChild(details);
+    }
+  }
+  function renderSections(snapshot){
+    sectionGrid.replaceChildren();
+    for(const [sectionId,section] of Object.entries(snapshot.sections)){
+      const card=document.createElement('section');
+      card.className='section-card';
+      card.dataset.section=sectionId;
+      const head=document.createElement('div');
+      head.className='section-head';
+      const titleWrap=document.createElement('div');
+      const title=document.createElement('h2');
+      title.textContent=DashboardHomeClient.sectionLabel(sectionId,section);
+      const key=document.createElement('small');
+      key.className='section-key';
+      key.textContent=sectionId;
+      titleWrap.append(title,key);
+      const state=document.createElement('span');
+      state.className='section-state';
+      state.textContent=section&&typeof section.state==='string'?section.state:'unavailable';
+      state.dataset.state=state.textContent;
+      head.append(titleWrap,state);
+      card.appendChild(head);
+      const body=document.createElement('div');
+      body.className='section-body';
+      appendSectionData(body,section);
+      appendSectionContract(body,section);
+      card.appendChild(body);
+      sectionGrid.appendChild(card);
+    }
+  }
+  function renderSnapshot(snapshot){
+    renderMeta(snapshot);
+    renderSections(snapshot);
+    captureState.textContent='ready';
+    captureState.classList.remove('error');
+    showRoomMessage(DashboardHomeClient.roomMessageFrom(snapshot));
+  }
+  async function loadDashboardHome(){
+    try{
+      const result=await DashboardHomeClient.capture(window.fetch.bind(window),snapshotEtag);
+      const snapshot=DashboardHomeClient.snapshotFromCapture(result,lastSnapshot);
+      if(result.kind==='not_modified'){
+        lastSnapshot=snapshot;
+        captureState.textContent='ready';
+        captureState.classList.remove('error');
+        showRoomMessage(DashboardHomeClient.roomMessageFrom(snapshot));
+        return;
+      }
+      snapshotEtag=result.etag;
+      lastSnapshot=snapshot;
+      renderSnapshot(snapshot);
+    }catch(error){
+      console.error('Dashboard refresh failed',error instanceof Error?error.message:'unknown');
+      const state=lastSnapshot?'stale':'unavailable';
+      captureState.textContent=state;
+      captureState.classList.add('error');
+      showRoomMessage(
+        lastSnapshot
+          ? DashboardHomeClient.roomMessageFrom(lastSnapshot,state)
+          : DashboardHomeClient.unavailableRoomMessage(state),
+      );
+    }
+  }
+  if(roomFrame){
+    roomFrame.addEventListener('load',()=>{fitRoomFrame();pushRoomMessage();});
+    fitRoomFrame();
+    if(typeof ResizeObserver==='function')new ResizeObserver(fitRoomFrame).observe(roomHost);
+    else window.addEventListener('resize',fitRoomFrame);
+  }
+  loadDashboardHome();
+  setInterval(loadDashboardHome,15000);
 }
-loadLifeState();
-setInterval(loadLifeState,30000);
 """
 
 

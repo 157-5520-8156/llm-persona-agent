@@ -300,11 +300,18 @@ class Settings(BaseSettings):
                 )
         return self
 
-    # Where the daemon's dashboard reads the QQ world's read-only life state.
-    # The adapter process owns that world's ledger; the daemon only relays.
+    # Origin of the QQ process that owns the private Dashboard snapshot.  The
+    # typed daemon Adapter constrains this to loopback HTTP or HTTPS before it
+    # sends the dedicated read-only credential.
     qq_c2c_adapter_url: str = Field(
         default="http://127.0.0.1:8787",
         alias="QQ_C2C_ADAPTER_URL",
+    )
+    # Least-privilege credential shared only by the daemon and the QQ owning
+    # process for the read-only private Dashboard snapshot.
+    world_v2_dashboard_operator_token: str | None = Field(
+        default=None,
+        alias="WORLD_V2_DASHBOARD_OPERATOR_TOKEN",
     )
     onebot_api_url: str = Field(
         default="http://127.0.0.1:5700",

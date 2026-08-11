@@ -54,6 +54,23 @@ Run the daemon:
 uv run companion-daemon
 ```
 
+The private World v2 Dashboard reads its typed snapshot from the QQ owner
+process; it does not proxy `/health` or open a second ledger. Configure the
+same dedicated read-only credential for both processes (the launch scripts
+both source the repository `.env`), then open the local page and sign in:
+
+```dotenv
+WORLD_V2_DASHBOARD_OPERATOR_TOKEN=replace-with-a-random-local-secret
+```
+
+```bash
+open http://127.0.0.1:8765/dashboard
+```
+
+This credential is separate from `DELIVERY_RECONCILIATION_TOKEN`: it grants
+only the authenticated Dashboard read path and cannot tick, drain, reconcile,
+or dispatch World work.
+
 Simulate a QQ message:
 
 ```bash

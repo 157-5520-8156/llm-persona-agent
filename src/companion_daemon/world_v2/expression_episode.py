@@ -128,7 +128,7 @@ class ExpressionEpisodeDiagnostics:
 
         active_reply_interface = {
             "stream": "fast_stream",
-            "off": "delayed_attention_complete",
+            "off": None,
             "shadow": "complete_response_shadow",
         }[self._mode]
         return {
@@ -136,7 +136,7 @@ class ExpressionEpisodeDiagnostics:
             "active_reply_interface": active_reply_interface,
             "reserved_reply_interface": {
                 "name": "delayed_attention_complete",
-                "status": "active" if self._mode == "off" else "disabled",
+                "status": "disabled",
                 "reserved_for": "character_unavailable_or_delayed_attention",
             },
             **counts,

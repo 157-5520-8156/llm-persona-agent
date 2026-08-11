@@ -125,13 +125,16 @@ replaced that policy with sourced Current Self, model-owned private turn state, 
 Local dashboard:
 
 ```bash
-uv run companion-daemon
+WORLD_V2_DASHBOARD_OPERATOR_TOKEN=replace-with-the-shared-read-token uv run companion-daemon
+# Start the QQ owner process with the same token in its environment.
 open http://127.0.0.1:8765/dashboard
 ```
 
-The dashboard can inspect the daemon context, preview the prompt, tune mood/relationship numbers,
-add or delete selected memories, and run one proactive tick. It is intentionally daemon-native rather
-than SillyTavern-native, so the canonical state stays in SQLite.
+The page is an authenticated, read-only World v2 owner view. The browser reads one typed snapshot
+through the daemon; the QQ process owns the ledger and compiles the snapshot. The page cannot tune
+mood or relationship values, edit memories, tick the scheduler, dispatch a proactive action, read
+`/health`, or fall back to an archived runtime. `DELIVERY_RECONCILIATION_TOKEN` is intentionally not
+accepted as the Dashboard credential.
 
 ### HTTP Daemon
 

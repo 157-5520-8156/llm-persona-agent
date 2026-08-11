@@ -1468,10 +1468,14 @@ def test_http_dashboard_public_route_is_operator_gated_cacheable_and_never_reads
     monkeypatch.setattr(
         app_module,
         "get_settings",
-        lambda: Settings(DELIVERY_RECONCILIATION_TOKEN="dashboard-public-secret"),
+        lambda: Settings(WORLD_V2_DASHBOARD_OPERATOR_TOKEN="dashboard-public-secret"),
     )
     try:
-        client = TestClient(app_module.app)
+        client = TestClient(
+            app_module.app,
+            base_url="http://localhost",
+            client=("127.0.0.1", 50000),
+        )
         denied = client.get("/world-v2/dashboard")
         response = client.get(
             "/world-v2/dashboard",
@@ -1543,10 +1547,14 @@ def test_http_dashboard_public_route_never_bootstraps_or_falls_back_to_legacy(
     monkeypatch.setattr(
         app_module,
         "get_settings",
-        lambda: Settings(DELIVERY_RECONCILIATION_TOKEN="dashboard-public-secret"),
+        lambda: Settings(WORLD_V2_DASHBOARD_OPERATOR_TOKEN="dashboard-public-secret"),
     )
 
-    response = TestClient(app_module.app).get(
+    response = TestClient(
+        app_module.app,
+        base_url="http://localhost",
+        client=("127.0.0.1", 50000),
+    ).get(
         "/world-v2/dashboard",
         headers={"X-World-V2-Internal-Token": "dashboard-public-secret"},
     )

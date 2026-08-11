@@ -5,53 +5,46 @@ global.window = globalThis;
 require('../../prototypes/pixel-home/js/bridge.js');
 const bridge = window.PixelHomeBridge;
 
-const message = (overrides = {}) => ({
-  type: 'zhizhi-scene-state', v: 1,
-  active: { activity_kind: 'study.essay_writing', location_ref: 'location:ecnu-dorm-room' },
-  at_home: true, local_hour: 20.5,
-  ...overrides,
-});
-
-function fakeEngine({ interactions = [], entry = [1, 2], pos = [5, 5] } = {}) {
-  const calls = { dispatch: [], walkTo: [], ended: 0 };
+function fakeEngine(interactions = []) {
+  const calls = { dispatch: [], ended: 0 };
   return {
     calls,
     mode: 'live',
     autoLife: true,
-    layout: { entry },
-    actor: { pos: [...pos], activity: null, pendingAct: null },
+    timeScale: 60,
+    clock: 0,
+    actor: { activity: null, pendingAct: null },
     availableInteractions: () => interactions,
-    dist: tile => Math.abs(tile[0] - pos[0]) + Math.abs(tile[1] - pos[1]),
-    dispatch: (name, opts) => { calls.dispatch.push([name, opts]); return true; },
-    walkTo: (tile, opts) => { calls.walkTo.push([tile, opts]); return true; },
+    dist: tile => tile[0] + tile[1],
+    dispatch: (name, options) => { calls.dispatch.push([name, options]); },
     endActivity: () => { calls.ended += 1; },
   };
 }
 
-test('prefix rules map daemon activity kinds onto engine interaction keys', () => {
-  assert.equal(bridge.activityKeys('study.essay_writing')[0], 'study');
-  assert.equal(bridge.activityKeys('sleep.prepare_for_bed')[0], 'sleep');
-  assert.deepEqual(bridge.activityKeys('meal.dorm_cooking').slice(0, 2), ['cook', 'eat']);
-  assert.equal(bridge.activityKeys('meal.canteen_meal')[0], 'eat');
-  assert.equal(bridge.activityKeys('household.tidy_small_things')[0], 'tidy');
-  assert.deepEqual(bridge.activityKeys('social.family_call').slice(0, 2), ['phone', 'relax']);
+test('pixel home accepts one explicit renderer route without domain inference', () => {
+  const directive = bridge.directiveFor({
+    type: 'pixel-home-state',
+    v: 2,
+    state: 'ready',
+    route: { scene_id: 'zhizhi-home', action_id: 'study', availability: 'busy' },
+    logical_time: '2026-08-12T20:30:00+08:00',
+  });
+
+  assert.deepEqual(directive, {
+    goal: 'interaction',
+    action_id: 'study',
+    logical_time: '2026-08-12T20:30:00+08:00',
+  });
 });
 
-test('unknown kinds and empty gaps fall back to the sofa defaults', () => {
-  assert.deepEqual(bridge.activityKeys('errand.pick_up_parcel'), bridge.DEFAULT_KEYS);
-  assert.deepEqual(bridge.activityKeys(null), bridge.DEFAULT_KEYS);
-  const directive = bridge.directiveFor(message({ active: null }));
-  assert.deepEqual(directive, { goal: 'interaction', keys: bridge.DEFAULT_KEYS });
-});
-
-test('foreign or future messages are ignored entirely', () => {
+test('foreign and future scene messages are ignored entirely', () => {
   assert.equal(bridge.directiveFor(null), null);
-  assert.equal(bridge.directiveFor({ type: 'other', v: 1 }), null);
-  assert.equal(bridge.directiveFor(message({ v: 2 })), null);
+  assert.equal(bridge.directiveFor({ type: 'other', v: 2 }), null);
+  assert.equal(bridge.directiveFor({ type: 'pixel-home-state', v: 3 }), null);
 });
 
-test('query modes distinguish read-only embeds from the editor page', () => {
-  assert.deepEqual(bridge.queryModes('?embed=1&hour=20.5'), { embed: true, edit: false });
+test('query modes keep factual embeds separate from the standalone editor', () => {
+  assert.deepEqual(bridge.queryModes('?embed=1'), { embed: true, edit: false });
   assert.deepEqual(bridge.queryModes('?edit=1'), { embed: false, edit: true });
   assert.deepEqual(bridge.queryModes('?embed=0&edit=yes'), { embed: false, edit: false });
 });
@@ -61,8 +54,11 @@ test('embed mode applies only the dedicated body class', () => {
   const documentRef = {
     body: { classList: { toggle: (...args) => toggles.push(args) } },
   };
-  const modes = bridge.applyQueryMode('?embed=1', documentRef);
-  assert.deepEqual(modes, { embed: true, edit: false });
+
+  assert.deepEqual(
+    bridge.applyQueryMode('?embed=1', documentRef),
+    { embed: true, edit: false },
+  );
   assert.deepEqual(toggles, [['embed', true]]);
 });
 
@@ -75,54 +71,140 @@ test('edit startup reuses the existing mode control', () => {
       engine.mode = 'edit';
     },
   };
+
   assert.equal(bridge.enterEditMode(engine, editControl), true);
   assert.equal(bridge.enterEditMode(engine, editControl), true);
   assert.equal(clicks, 1);
 });
 
-test('away from home walks her to the entry and suspends the schedule', () => {
+test('stale scene freezes external control and never resumes a fallback schedule', () => {
   const engine = fakeEngine();
-  bridge.apply(engine, bridge.directiveFor(message({ at_home: false })));
+  const directive = bridge.directiveFor({
+    type: 'pixel-home-state',
+    v: 2,
+    state: 'stale',
+    route: null,
+    logical_time: null,
+  });
+
+  bridge.apply(engine, directive);
+
   assert.equal(engine.autoLife, false);
-  assert.deepEqual(engine.calls.walkTo, [[[1, 2], { manual: true }]]);
+  assert.equal(engine.timeScale, 0);
   assert.deepEqual(engine.calls.dispatch, []);
+  assert.equal(engine.calls.ended, 0);
 });
 
-test('already waiting at the entry stays put instead of re-walking', () => {
-  const engine = fakeEngine({ pos: [1, 2] });
-  bridge.apply(engine, bridge.directiveFor(message({ at_home: false })));
-  assert.deepEqual(engine.calls.walkTo, []);
-});
+test('embedded renderer disables its autonomous schedule before the first snapshot', () => {
+  const engine = fakeEngine();
 
-test('at home dispatches the nearest interaction matching the activity', () => {
-  const study = { name: 'study', key: 'study', approach: [1, 6] };
-  const relax = { name: 'relax', key: 'relax', approach: [6, 4] };
-  const engine = fakeEngine({ interactions: [relax, study] });
-  bridge.apply(engine, bridge.directiveFor(message()));
+  assert.equal(bridge.enterEmbedMode(engine), true);
   assert.equal(engine.autoLife, false);
-  assert.deepEqual(engine.calls.dispatch, [['study', { manual: true }]]);
+  assert.equal(engine.timeScale, 0);
 });
 
-test('same-activity messages do not re-dispatch while she is already there', () => {
-  const study = { name: 'study', key: 'study', approach: [1, 6] };
-  const engine = fakeEngine({ interactions: [study] });
+test('embed hook freezes an asynchronously installed engine before its first frame', () => {
+  const hostWindow = {};
+  const engine = fakeEngine();
+
+  assert.equal(bridge.armEmbedMode(hostWindow), true);
+  hostWindow.engine = engine;
+
+  assert.equal(engine.autoLife, false);
+  assert.equal(engine.timeScale, 0);
+});
+
+test('explicit action dispatches the nearest matching renderer interaction at observed time', () => {
+  const engine = fakeEngine([
+    { name: 'desk-far', key: 'study', approach: [6, 6] },
+    { name: 'desk-near', key: 'study', approach: [1, 2] },
+    { name: 'sofa', key: 'relax', approach: [0, 1] },
+  ]);
+  const directive = bridge.directiveFor({
+    type: 'pixel-home-state',
+    v: 2,
+    state: 'ready',
+    route: { scene_id: 'zhizhi-home', action_id: 'study', availability: 'busy' },
+    logical_time: '2026-08-12T20:30:00',
+  });
+
+  bridge.apply(engine, directive);
+
+  assert.deepEqual(engine.calls.dispatch, [['desk-near', { manual: true }]]);
+  assert.equal(engine.clock, 20.5 * 60 * 60);
+});
+
+test('an unavailable renderer action holds the prior frame without guessing or ending it', () => {
+  const engine = fakeEngine([]);
+  engine.actor.activity = { name: 'verified-prior-action' };
+  const directive = bridge.directiveFor({
+    type: 'pixel-home-state',
+    v: 2,
+    state: 'ready',
+    route: { scene_id: 'zhizhi-home', action_id: 'not-installed', availability: 'busy' },
+    logical_time: null,
+  });
+
+  bridge.apply(engine, directive);
+
+  assert.deepEqual(engine.calls.dispatch, []);
+  assert.equal(engine.calls.ended, 0);
+  assert.equal(engine.actor.activity.name, 'verified-prior-action');
+});
+
+test('same renderer action is not re-dispatched while already active', () => {
+  const study = { name: 'desk', key: 'study', approach: [1, 2] };
+  const engine = fakeEngine([study]);
   engine.actor.activity = study;
-  bridge.apply(engine, bridge.directiveFor(message()));
+  const directive = bridge.directiveFor({
+    type: 'pixel-home-state',
+    v: 2,
+    state: 'ready',
+    route: { scene_id: 'zhizhi-home', action_id: 'study', availability: 'busy' },
+    logical_time: null,
+  });
+
+  bridge.apply(engine, directive);
+
   assert.deepEqual(engine.calls.dispatch, []);
 });
 
-test('no matching interaction leaves her idle instead of guessing a spot', () => {
-  const engine = fakeEngine({ interactions: [] });
-  engine.actor.activity = { name: 'relax' };
-  bridge.apply(engine, bridge.directiveFor(message()));
-  assert.deepEqual(engine.calls.dispatch, []);
-  assert.equal(engine.calls.ended, 1);
-});
-
-test('edit mode is never fought over', () => {
-  const engine = fakeEngine();
+test('edit mode is never overridden by dashboard state', () => {
+  const engine = fakeEngine([
+    { name: 'desk', key: 'study', approach: [1, 2] },
+  ]);
   engine.mode = 'edit';
-  bridge.apply(engine, bridge.directiveFor(message({ at_home: false })));
+
+  bridge.apply(engine, {
+    goal: 'interaction',
+    action_id: 'study',
+    logical_time: null,
+  });
+
   assert.equal(engine.autoLife, true);
-  assert.deepEqual(engine.calls.walkTo, []);
+  assert.equal(engine.timeScale, 60);
+  assert.deepEqual(engine.calls.dispatch, []);
+});
+
+test('same-origin messages from outside the dashboard parent are ignored', () => {
+  const engine = fakeEngine([
+    { name: 'desk', key: 'study', approach: [1, 2] },
+  ]);
+  window.location = { origin: 'http://127.0.0.1:8767' };
+  window.parent = { name: 'dashboard-parent' };
+  window.engine = engine;
+
+  bridge.onMessage({
+    origin: window.location.origin,
+    source: { name: 'other-window' },
+    data: {
+      type: 'pixel-home-state',
+      v: 2,
+      state: 'ready',
+      route: { scene_id: 'zhizhi-home', action_id: 'study', availability: 'busy' },
+      logical_time: null,
+    },
+  });
+
+  assert.deepEqual(engine.calls.dispatch, []);
 });

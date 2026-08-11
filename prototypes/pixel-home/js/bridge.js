@@ -1,27 +1,22 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// Dashboard bridge: maps daemon scene-state messages (posted by the World v2
-// dashboard host page into this iframe) onto the pixel-home engine.
+// Dashboard bridge: applies renderer-ready owner snapshot routes posted by the
+// World v2 Dashboard host page to the pixel-home engine.
 //
 // Standalone opens (file:// or direct /pixel-home/index.html) receive no
-// messages, so the built-in SCHEDULE keeps running. Query modes only alter
-// page chrome (?embed=1) or enter the existing editor (?edit=1). While daemon
-// messages keep arriving the daemon owns the actor (schedule suspended); when
-// they stop for TAKEOVER_MS the room hands control back to its own schedule.
+// messages, so the prototype may keep its own demo schedule. Embed mode is a
+// factual renderer: it disables that schedule before the engine starts and
+// never resumes it when owner snapshots become stale or unavailable.
 //
 // Message contract (host -> iframe, same origin):
-//   {type:'zhizhi-scene-state', v:1,
-//    active:{activity_kind, location_ref}|null,
-//    at_home:boolean, local_hour:number|null}
+//   {type:'pixel-home-state', v:2, state:'ready'|'stale'|'unavailable',
+//    route:{scene_id,action_id,availability}|null, logical_time:string|null}
 // ---------------------------------------------------------------------------
 
 const PixelHomeBridge = (() => {
-  const MESSAGE_TYPE = 'zhizhi-scene-state';
-  const MESSAGE_VERSION = 1;
-  // Hand control back to the autonomous schedule after three missed daemon
-  // polls (the dashboard posts every ~30s).
-  const TAKEOVER_MS = 90000;
+  const MESSAGE_TYPE = 'pixel-home-state';
+  const MESSAGE_VERSION = 2;
 
   function queryModes(search) {
     const params = new URLSearchParams(search || '');
@@ -47,88 +42,74 @@ const PixelHomeBridge = (() => {
     return engine.mode === 'edit';
   }
 
-  // daemon activity_kind -> engine interaction keys, tried in order.  Rules
-  // match by prefix, first hit wins, so specific ids sit above their
-  // category prefix.  Keys resolve against the live CATALOG interactions at
-  // dispatch time, which keeps the mapping valid across layout edits.
-  const ACTIVITY_KEY_RULES = [
-    ['meal.dorm_cooking', ['cook', 'eat']],
-    ['meal.make_drink', ['cook', 'eat']],
-    ['social.family_call', ['phone', 'relax']],
-    ['leisure.digital_browse', ['phone', 'relax']],
-    ['shared.', ['phone', 'relax']],
-    ['sleep.', ['sleep']],
-    ['study.', ['study']],
-    ['creative.', ['study']],
-    ['meal.', ['eat']],
-    ['household.', ['tidy']],
-    ['routine.', ['dress', 'tidy']],
-    ['recovery.', ['relax', 'sit']],
-    ['leisure.', ['relax', 'sit']],
-    ['social.', ['relax', 'sit']],
-  ];
-  // Unmatched kinds (and empty gaps between activities) settle on the sofa.
-  const DEFAULT_KEYS = ['relax', 'sit'];
-
-  function activityKeys(activityKind) {
-    const kind = String(activityKind || '');
-    for (const [prefix, keys] of ACTIVITY_KEY_RULES) {
-      if (kind.startsWith(prefix)) {
-        return [...keys, ...DEFAULT_KEYS.filter(key => !keys.includes(key))];
-      }
-    }
-    return [...DEFAULT_KEYS];
+  function enterEmbedMode(engine) {
+    if (!engine) return false;
+    engine.autoLife = false;
+    engine.timeScale = 0;
+    return true;
   }
 
-  // Pure decision step (unit-tested):
-  //   null                        -> not a scene-state message, ignore
-  //   {goal:'entry'}              -> she is out: wait by the door
-  //   {goal:'interaction', keys}  -> she is home: try these interactions
+  function armEmbedMode(windowRef) {
+    if (!windowRef) return false;
+    if (enterEmbedMode(windowRef.engine)) return true;
+    let engine = null;
+    Object.defineProperty(windowRef, 'engine', {
+      configurable: true,
+      enumerable: true,
+      get: () => engine,
+      set: value => {
+        engine = value;
+        enterEmbedMode(value);
+      },
+    });
+    return true;
+  }
+
+  // Pure decision step: only one explicit renderer action may become an
+  // interaction. Missing, unknown, stale, and unavailable routes hold the
+  // last verified frame.
   function directiveFor(message) {
     if (!message || message.type !== MESSAGE_TYPE || message.v !== MESSAGE_VERSION) return null;
-    if (message.at_home === false) return { goal: 'entry' };
+    if (message.state !== 'ready') return { goal: 'hold', state: message.state === 'stale' ? 'stale' : 'unavailable' };
+    const route = message.route;
+    if (!route || route.scene_id !== 'zhizhi-home' || route.availability === 'unavailable') {
+      return { goal: 'hold', state: 'unavailable' };
+    }
+    if (typeof route.action_id !== 'string' || !route.action_id) {
+      return { goal: 'hold', state: 'unavailable' };
+    }
     return {
       goal: 'interaction',
-      keys: activityKeys(message.active && message.active.activity_kind),
+      action_id: route.action_id,
+      logical_time: typeof message.logical_time === 'string' ? message.logical_time : null,
     };
   }
 
-  function pickInteraction(engine, keys) {
-    for (const key of keys) {
-      const candidates = engine.availableInteractions()
-        .filter(it => it.key === key)
-        .sort((a, b) => engine.dist(a.approach) - engine.dist(b.approach));
-      if (candidates.length) return candidates[0];
-    }
-    return null;
+  function pickInteraction(engine, actionId) {
+    const candidates = engine.availableInteractions()
+      .filter(it => it.key === actionId)
+      .sort((a, b) => engine.dist(a.approach) - engine.dist(b.approach));
+    return candidates[0] || null;
   }
 
-  let scheduleTimer = null;
+  function observedClockSeconds(value) {
+    if (typeof value !== 'string') return null;
+    const observed = new Date(value);
+    if (Number.isNaN(observed.getTime())) return null;
+    return observed.getHours() * 3600 + observed.getMinutes() * 60 + observed.getSeconds();
+  }
+
   let editModeWaiter = null;
 
   function apply(engine, directive) {
     if (!directive || engine.mode !== 'live') return;
-    // Continuous takeover: every message re-suspends the schedule and re-arms
-    // the hand-back timer.
     engine.autoLife = false;
-    if (scheduleTimer) clearTimeout(scheduleTimer);
-    scheduleTimer = setTimeout(() => { engine.autoLife = true; }, TAKEOVER_MS);
-    if (scheduleTimer.unref) scheduleTimer.unref(); // never keeps node tests alive
-    if (directive.goal === 'entry') {
-      // No hide/remove-actor capability in the engine: she waits by the door
-      // (layout entry tile) while the daemon says she is out.
-      const [ex, ey] = engine.layout.entry;
-      const ax = Math.round(engine.actor.pos[0]);
-      const ay = Math.round(engine.actor.pos[1]);
-      if (engine.actor.activity) engine.endActivity();
-      if (ax !== ex || ay !== ey) engine.walkTo([ex, ey], { manual: true });
-      return;
-    }
-    const it = pickInteraction(engine, directive.keys);
-    if (!it) {
-      if (engine.actor.activity) engine.endActivity();
-      return;
-    }
+    engine.timeScale = 0;
+    if (directive.goal === 'hold') return;
+    const observedClock = observedClockSeconds(directive.logical_time);
+    if (observedClock !== null) engine.clock = observedClock;
+    const it = pickInteraction(engine, directive.action_id);
+    if (!it) return;
     const current = engine.actor.activity || engine.actor.pendingAct;
     if (current && current.name === it.name) return; // already doing/heading there
     engine.dispatch(it.name, { manual: true });
@@ -141,6 +122,7 @@ const PixelHomeBridge = (() => {
 
   function onMessage(event) {
     if (event.origin !== window.location.origin) return;
+    if (event.source !== window.parent) return;
     const directive = directiveFor(event.data);
     if (!directive) return;
     if (window.engine) { apply(window.engine, directive); return; }
@@ -165,6 +147,10 @@ const PixelHomeBridge = (() => {
   function initializeQueryMode() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
     const modes = applyQueryMode(window.location.search, document);
+    if (modes.embed) {
+      armEmbedMode(window);
+      return;
+    }
     if (!modes.edit) return;
     const tryEnterEdit = () => enterEditMode(
       window.engine,
@@ -190,9 +176,6 @@ const PixelHomeBridge = (() => {
   return {
     MESSAGE_TYPE,
     MESSAGE_VERSION,
-    ACTIVITY_KEY_RULES,
-    DEFAULT_KEYS,
-    activityKeys,
     directiveFor,
     pickInteraction,
     apply,
@@ -200,6 +183,8 @@ const PixelHomeBridge = (() => {
     queryModes,
     applyQueryMode,
     enterEditMode,
+    enterEmbedMode,
+    armEmbedMode,
   };
 })();
 

@@ -1,8 +1,8 @@
-"""Contract tests for the dashboard's embedded pixel-home room.
+"""Contract tests for the dashboard's embedded pixel-home renderer.
 
-The World v2 panel hosts the pixel-home prototype in an iframe and relays
-life-state to it via a versioned postMessage.  These tests pin the two sides
-of that seam (host page and prototype bridge) plus the static mount, without
+The World v2 panel hosts the pixel-home prototype in an iframe and relays only
+the owner snapshot's renderer-ready route via a versioned postMessage.  These
+tests pin both sides of that fail-closed seam plus the static mount, without
 rendering anything.
 """
 
@@ -33,46 +33,73 @@ def test_dashboard_html_embeds_pixel_home_instead_of_static_render() -> None:
     assert "zhizhi-room-isometric" not in DASHBOARD_HTML
     assert "zhizhi-room-isometric" not in DASHBOARD_APP_JS
     assert 'href="/pixel-home/index.html?edit=1"' in DASHBOARD_HTML
-    assert 'aria-label="在独立页面编辑小屋"' in DASHBOARD_HTML
-    assert 'title="知栀的小屋日常画面"' in DASHBOARD_HTML
+    assert 'aria-label="在独立页面编辑渲染房间"' in DASHBOARD_HTML
+    assert 'title="World v2 room renderer"' in DASHBOARD_HTML
+    assert '<div id="roomOverlay" class="room-overlay">unavailable</div>' in DASHBOARD_HTML
     assert "align-items:start" in DASHBOARD_HTML
-    assert ".room{position:relative;overflow:hidden;aspect-ratio:3/2}" in DASHBOARD_HTML
-    assert ".room iframe{position:absolute;top:0;left:0;width:1120px;height:640px" in DASHBOARD_HTML
+    assert ".room{position:relative;overflow:hidden;aspect-ratio:7/4}" in DASHBOARD_HTML
+    assert "position:absolute;top:0;left:0;width:1120px;height:640px" in DASHBOARD_HTML
     assert 'aspect-ratio:4/3' not in DASHBOARD_HTML
     assert "pointer-events:none" in DASHBOARD_HTML
     assert 'id="roomRoute"' not in DASHBOARD_HTML
 
 
-def test_dashboard_script_posts_versioned_scene_state_to_the_iframe() -> None:
+def test_dashboard_script_posts_only_renderer_ready_snapshot_routes() -> None:
+    assert "const DATA_URL='/world-v2/dashboard/home'" in DASHBOARD_APP_JS
+    assert "credentials:'same-origin'" in DASHBOARD_APP_JS
+    assert "headers['If-None-Match']=etag" in DASHBOARD_APP_JS
     assert "postMessage" in DASHBOARD_APP_JS
     assert "window.location.origin" in DASHBOARD_APP_JS
-    assert "at_home:" in DASHBOARD_APP_JS
+    assert "room.render_state.route" in DASHBOARD_APP_JS
+    assert "scene_id:route.scene_id" in DASHBOARD_APP_JS
+    assert "action_id:route.action_id" in DASHBOARD_APP_JS
+    assert "availability:route.availability" in DASHBOARD_APP_JS
+    assert "return unavailableRoomMessage('unavailable',logicalTime)" in DASHBOARD_APP_JS
     assert "ROOM_FRAME_WIDTH=1120" in DASHBOARD_APP_JS
     assert "ROOM_FRAME_HEIGHT=640" in DASHBOARD_APP_JS
     assert "ROOM_FRAME_INSET=8" in DASHBOARD_APP_JS
     assert "new ResizeObserver(fitRoomFrame)" in DASHBOARD_APP_JS
-    # Home is her dorm room; anything else means she is out.
-    assert "'location:ecnu-dorm-room'" in DASHBOARD_APP_JS
-    assert "'/pixel-home/index.html?embed=1&hour='" in DASHBOARD_APP_JS
+    for forbidden in (
+        "/health",
+        "/world-v2/life-state",
+        "at_home",
+        "activity_kind",
+        "location_ref",
+    ):
+        assert forbidden not in DASHBOARD_APP_JS
 
 
 def test_host_and_bridge_agree_on_message_type_and_version() -> None:
-    host_type = re.search(r"ROOM_SCENE_STATE_TYPE='([^']+)'", DASHBOARD_APP_JS)
+    host_type = re.search(r"ROOM_MESSAGE_TYPE='([^']+)'", DASHBOARD_APP_JS)
     bridge_type = re.search(r"MESSAGE_TYPE = '([^']+)'", BRIDGE_SOURCE)
     assert host_type is not None and bridge_type is not None
-    assert host_type.group(1) == bridge_type.group(1) == "zhizhi-scene-state"
+    assert host_type.group(1) == bridge_type.group(1) == "pixel-home-state"
 
-    host_version = re.search(r"type:ROOM_SCENE_STATE_TYPE,v:(\d+)", DASHBOARD_APP_JS)
+    host_version = re.search(r"ROOM_MESSAGE_VERSION=(\d+)", DASHBOARD_APP_JS)
     bridge_version = re.search(r"MESSAGE_VERSION = (\d+)", BRIDGE_SOURCE)
     assert host_version is not None and bridge_version is not None
-    assert host_version.group(1) == bridge_version.group(1) == "1"
+    assert host_version.group(1) == bridge_version.group(1) == "2"
 
 
-def test_bridge_maps_daemon_activities_without_touching_engine_sources() -> None:
-    assert "ACTIVITY_KEY_RULES" in BRIDGE_SOURCE
-    # The bridge drives the engine only through its public actor commands.
-    for public_call in ("dispatch(", "walkTo(", "endActivity(", "availableInteractions("):
+def test_bridge_applies_explicit_routes_and_disables_embed_scheduling() -> None:
+    assert "route.scene_id !== 'zhizhi-home'" in BRIDGE_SOURCE
+    assert "route.availability === 'unavailable'" in BRIDGE_SOURCE
+    assert "route.action_id" in BRIDGE_SOURCE
+    assert "event.source !== window.parent" in BRIDGE_SOURCE
+    assert "engine.autoLife = false" in BRIDGE_SOURCE
+    assert "engine.timeScale = 0" in BRIDGE_SOURCE
+    # The bridge resolves the explicit action against live interactions and
+    # drives the engine only through its public dispatch command.
+    for public_call in ("pickInteraction(", "dispatch(", "availableInteractions("):
         assert public_call in BRIDGE_SOURCE
+    for forbidden in (
+        "ACTIVITY_KEY_RULES",
+        "DEFAULT_KEYS",
+        "TAKEOVER_MS",
+        "activity_kind",
+        "location_ref",
+    ):
+        assert forbidden not in BRIDGE_SOURCE
     # index.html gains exactly one bridge script tag after main.js.
     assert PROTOTYPE_INDEX.index("js/main.js") < PROTOTYPE_INDEX.index("js/bridge.js")
     assert PROTOTYPE_INDEX.count("bridge.js") == 1
@@ -94,4 +121,6 @@ def test_pixel_home_prototype_is_mounted_read_only(tmp_path: Path) -> None:
     assert index.status_code == 200
     assert "js/bridge.js" in index.text
     assert bridge.status_code == 200
-    assert "zhizhi-scene-state" in bridge.text
+    assert "pixel-home-state" in bridge.text
+    assert "MESSAGE_VERSION = 2" in bridge.text
+    assert "zhizhi-scene-state" not in bridge.text
