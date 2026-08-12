@@ -19,7 +19,12 @@ from .schemas import ProjectionCursor, TriggerProcess, WorldEvent
 
 # An appraisal strong enough to be revisited.  The model's own confidence is
 # the intensity signal; low-confidence appraisals are small enough to let go.
-REFLECTION_CONFIDENCE_THRESHOLD_BP = 6_000
+# Raised from 6_000: a reflection run emits its own appraisal transition,
+# which can itself cross a low threshold and re-open another reflection
+# (observed as a ~24/h reflection feedback loop on a production ledger).
+# 8_500 keeps the loop from self-perpetuating while still revisiting the
+# appraisals that matter most to the character.
+REFLECTION_CONFIDENCE_THRESHOLD_BP = 8_500
 # Hard bound: no more than two reflections per source appraisal.
 MAX_REFLECTIONS_PER_APPRAISAL = 2
 

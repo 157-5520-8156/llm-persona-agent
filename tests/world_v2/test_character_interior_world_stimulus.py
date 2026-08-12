@@ -1971,7 +1971,7 @@ async def test_terminal_recovery_failure_defers_only_this_runtime_and_allows_ano
 
     from companion_daemon.world_v2.reflection_scheduler import ReflectionScheduler
 
-    assert ReflectionScheduler(ledger=ledger, actor="worker:reflection").open_once(
+    assert ReflectionScheduler(ledger=ledger, actor="worker:reflection", threshold_bp=6_000).open_once(
         trace_id="trace:terminal-recovery-isolation",
         correlation_id="correlation:terminal-recovery-isolation",
     ).opened == 1
@@ -2601,7 +2601,7 @@ def test_reflection_scheduler_opens_trigger_for_strong_appraisal() -> None:
         "appraisal:strong", 7_500, "event:appraisal-accepted:strong"
     )
     ledger = _StubLedger([appraisal], [])
-    scheduler = ReflectionScheduler(ledger=ledger, actor="worker:reflection")
+    scheduler = ReflectionScheduler(ledger=ledger, actor="worker:reflection", threshold_bp=6_000)
     result = scheduler.open_once(trace_id="t", correlation_id="c")
     assert result.opened == 1
     assert len(ledger.commits) == 1
@@ -2619,7 +2619,7 @@ def test_reflection_scheduler_skips_weak_appraisal() -> None:
 
     appraisal = _StubAppraisal("appraisal:weak", 3_000, "event:appraisal-accepted:weak")
     ledger = _StubLedger([appraisal], [])
-    scheduler = ReflectionScheduler(ledger=ledger, actor="worker:reflection")
+    scheduler = ReflectionScheduler(ledger=ledger, actor="worker:reflection", threshold_bp=6_000)
     result = scheduler.open_once(trace_id="t", correlation_id="c")
     assert result.opened == 0
     assert ledger.commits == []
@@ -2633,7 +2633,7 @@ def test_reflection_scheduler_skips_already_reflected_appraisal() -> None:
     )
     process = _StubProcess("life_reflection", "event:appraisal-accepted:done")
     ledger = _StubLedger([appraisal], [process])
-    scheduler = ReflectionScheduler(ledger=ledger, actor="worker:reflection")
+    scheduler = ReflectionScheduler(ledger=ledger, actor="worker:reflection", threshold_bp=6_000)
     result = scheduler.open_once(trace_id="t", correlation_id="c")
     assert result.opened == 0
     assert ledger.commits == []
@@ -2661,7 +2661,7 @@ async def test_life_reflection_reuses_accepted_appraisal_as_source_bound_stimulu
 
     from companion_daemon.world_v2.reflection_scheduler import ReflectionScheduler
 
-    opened = ReflectionScheduler(ledger=ledger, actor="worker:reflection").open_once(
+    opened = ReflectionScheduler(ledger=ledger, actor="worker:reflection", threshold_bp=6_000).open_once(
         trace_id="trace:reflection-test",
         correlation_id="correlation:reflection-test",
     )
