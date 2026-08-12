@@ -81,11 +81,17 @@ class ReflectionScheduler:
             for process in projection.trigger_processes
             if process.process_kind == _PROCESS_KIND
         }
+        # A halted clock never marks appraisals expired, so a long outage can
+        # leave hundreds of stale ``active`` appraisals queued.  Reflection is
+        # a *revisit* of something still worth thinking about: skip appraisals
+        # whose expiry has already passed in logical time instead of draining
+        # the whole stale backlog through the model one by one after restart.
         eligible = sorted(
             (
                 item
                 for item in projection.appraisals
                 if item.status == "active"
+                and item.expires_at > logical_time
                 and item.confidence_bp >= self._threshold
                 and item.origin.accepted_event_ref not in existing_reflections
             ),

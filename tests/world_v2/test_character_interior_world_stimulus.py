@@ -2557,6 +2557,7 @@ class _StubAppraisal:
         self.appraisal_id = appraisal_id
         self.confidence_bp = confidence_bp
         self.status = "active"
+        self.expires_at = datetime(2099, 1, 1, tzinfo=UTC)
         self.origin = type("O", (), {"accepted_event_ref": event_ref})()
 
 
