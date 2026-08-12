@@ -24,6 +24,7 @@ from companion_daemon.config import Settings
 from companion_daemon.qq_delivery import QQDelivery
 
 from .action_due_wake import ActionDueWake
+from .dashboard_home_snapshot import DashboardHomeSnapshot, DashboardRuntimeObservation
 from .errors import ConcurrencyConflict
 from .model_completion import ChatCompletionModel
 from .model_usage_budget import WorldV2UsageStore
@@ -2472,6 +2473,29 @@ class QQC2CHost:
         """Expose the platform-neutral projection-only health read."""
 
         return await self._host.world_health_diagnostics()
+
+    def dashboard_character_interior_health(self) -> dict[str, object]:
+        """Read process-local CharacterInterior composition state."""
+
+        return self._host.dashboard_character_interior_health()
+
+    def dashboard_expression_episode_health(self) -> dict[str, object]:
+        """Read process-local expression diagnostics."""
+
+        return self._host.dashboard_expression_episode_health()
+
+    def dashboard_semantic_recall_health(self) -> dict[str, object]:
+        """Read current recall coordinator/sidecar state."""
+
+        return self._host.dashboard_semantic_recall_health()
+
+    async def dashboard_home_snapshot(
+        self,
+        runtime_observation: DashboardRuntimeObservation | None = None,
+    ) -> DashboardHomeSnapshot:
+        """Read the fixed owner Dashboard DTO without advancing World work."""
+
+        return await self._host.dashboard_home_snapshot(runtime_observation)
 
     def external_world_perception_health(self) -> dict[str, object]:
         """Read the optional Hub health projection without advancing it."""

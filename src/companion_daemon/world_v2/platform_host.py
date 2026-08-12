@@ -15,6 +15,7 @@ import json
 import logging
 from typing import Awaitable, Callable, Literal, Mapping, Protocol
 
+from .dashboard_home_snapshot import DashboardHomeSnapshot, DashboardRuntimeObservation
 from .dashboard_projection_adapter import DashboardPublicProjectionDTO, DashboardRoomProjectionDTO
 from .production_turn_application import WorldV2TurnApplication
 from .production_latency_trace import ProductionLatencySample
@@ -257,6 +258,29 @@ class WorldV2PlatformHost:
         """Return text length only after the adapter observed delivery."""
 
         return await self._application.delivered_text_character_count(action_id)
+
+    def dashboard_character_interior_health(self) -> dict[str, object]:
+        """Read process-local CharacterInterior composition state."""
+
+        return self._application.dashboard_character_interior_health()
+
+    def dashboard_expression_episode_health(self) -> dict[str, object]:
+        """Read process-local expression diagnostics."""
+
+        return self._application.dashboard_expression_episode_health()
+
+    def dashboard_semantic_recall_health(self) -> dict[str, object]:
+        """Read current recall coordinator/sidecar state."""
+
+        return self._application.dashboard_semantic_recall_health()
+
+    async def dashboard_home_snapshot(
+        self,
+        runtime_observation: DashboardRuntimeObservation | None = None,
+    ) -> DashboardHomeSnapshot:
+        """Expose the owning application's fixed private Dashboard capture."""
+
+        return await self._application.dashboard_home_snapshot(runtime_observation)
 
     async def media_request_for_actions(self, action_ids: tuple[str, ...]) -> bool:
         """Return only the accepted role-owned media wake for these Actions."""

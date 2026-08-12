@@ -55,9 +55,10 @@ HTTP / 兼容 QQ C2C 文本 / 离线 harness
   content hash，provider 结果经过后续 trigger 后成为下一轮 source-bound Context。HTTP/QQ
   已允许纯附件 ingress，但默认部署仍不注入 provider/授权，且当前 result deliberation 只
   支持 no-visible-action。
-- Dashboard 的 `/dashboard` 主页面与 `/world-v2/dashboard` 公共 DTO 都读取 v2 viewer
-  projection，受 session/capability gate、ETag/no-store 与 public whitelist 约束；读取不会
-  bootstrap 世界或回退 legacy projection。
+- Dashboard 的 `/dashboard` 主页面通过 session 读取 QQ owner 编译的固定 typed snapshot，
+  使用独立只读 token、ETag/no-store 和显式字段策略；daemon 不再代理 QQ `/health`，读取也不
+  bootstrap 第二个世界或回退 legacy projection。原 `/world-v2/dashboard` public DTO 仍保留
+  为较小的 redacted tooling seam，但不再是 owner 页面补数据的第二权威。
 
 ## 阶段状态
 
@@ -116,9 +117,12 @@ WorldKernel：
   会作为 `provider_observation_not_world_fact` 进入后续 Context。缺 provider、授权或 hash
   不匹配均 fail closed，不能把 attachment ref 冒充已看见的内容。这不代表默认对话已启用
   provider，也不保证模型一定会把感知结果自然地说出来。
-- 公共 Dashboard 后端 DTO 仅从固定 `dashboard_public` viewer projection 编译，未知/私密
-  路由降级或省略，HTTP 读取不 bootstrap 或回退 legacy；当前 `/dashboard` 浏览器主页面已
-  使用该 v2 DTO。
+- `/dashboard` owner DTO 从一次完整 cursor 的 pinned `LedgerProjection` 编译，所有 ledger
+  字段都必须在静态 policy 中明确标记为 typed summary、count-only 或 intentionally withheld；
+  Private Impression 内容、withhold 自由内容、内部 identity/hash 与开放诊断文本不进入浏览器；
+  房间只消费 renderer-safe route，未知位置/活动保持 unavailable。HTTP 读取不 bootstrap 或
+  回退 legacy，浏览器不再请求 public DTO 或 `/health` 拼接状态。Audience 与字段策略见
+  `docs/adr/0018-authenticated-owner-dashboard-projection.md`。
 - 固定 corpus 的 deterministic replay、测试经济 trace 与机制 baseline 已在 CI 侧可运行。
 
 具体 mechanism-to-evidence 映射在
@@ -149,8 +153,9 @@ WorldKernel：
    机制和离线场景，不是长期真人校准、讽刺/权力差异理解或语言自然度的外部证明。
 6. **热启动、冷启动和首 Action P95 达标。** test-economy 和 trace schema 已存在；真实部署的
    queue/provider 数据、SLO 分位数和回归基线尚未采集。
-7. **所有展示端只读消费 v2 projection。** Godot 已迁到 v2 room DTO；Web Dashboard 默认读
-   路径仍需迁移并做 privacy/redaction 回归。
+7. **所有展示端只读消费 v2 projection。** Godot 使用最小 public room DTO；Web Dashboard
+   使用独立鉴权的 owner snapshot，browser/Pixel Home contract 与 privacy guard 已迁移。真实
+   长期数据、生产进程部署和人工视觉验收仍须单独证明，不能由内部回归代替。
 
 ## 验收与后续工作顺序
 
@@ -162,8 +167,9 @@ WorldKernel：
 2. 对每个仍标为 `partial` 的 production lane，补齐可执行的 source、consumer、Action、
    receipt/recovery 和 next-turn trace，或者把它明确保留为 archive/adapter-only。感知 vertical
    只有在默认 grammar、provider composition 和可见结果决策均有证据后才能升格。
-3. 迁移 Web Dashboard 与剩余平台 adapter 到 `project()` / `WorldRuntime`；迁移期间不允许
-   同一 observation 同时写旧账本和 v2 账本。
+3. 迁移剩余平台 adapter 到 `project()` / `WorldRuntime`，并对已切换的 Web Dashboard 做真实
+   QQ owner、长期数据和人工视觉资格验证；迁移期间不允许同一 observation 同时写旧账本和
+   v2 账本。
 4. 在有 durable provider 与 operator approval 后，做真实媒体 preview 样本和恢复演练；此前
    不默认开启自动 delivery。
 5. 收集与版本绑定的真实模型评审、真人长期会话和线上 latency/cost trace。只有这些证据满足

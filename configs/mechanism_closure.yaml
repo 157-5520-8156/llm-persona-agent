@@ -28,6 +28,9 @@ world_only_scopes:
   - src/companion_daemon/world_v2/media_execution_runtime.py
   - src/companion_daemon/world_v2/room_projection.py
   - src/companion_daemon/world_v2/dashboard_projection_adapter.py
+  - src/companion_daemon/world_v2/dashboard_home_snapshot.py
+  - src/companion_daemon/world_v2/dashboard_operator_http.py
+  - src/companion_daemon/world_v2/dashboard_runtime_observation.py
 legacy_behavior_writers:
   - CompanionStore.save_incoming
   - CompanionStore.queue_outgoing
@@ -506,7 +509,7 @@ mechanisms:
       - tests/world_v2/test_room_projection_materialization.py::test_room_redacts_private_situation_and_preview_media
       - tests/world_v2/test_dashboard_projection_adapter.py::test_dashboard_adapter_is_a_read_only_projection_consumer
       - tests/world_v2/test_http_v2_host_migration.py::test_http_dashboard_room_route_is_operator_gated_and_returns_only_the_v2_public_dto
-      - tests/world_v2/test_display_architecture_guard.py::test_selected_v2_display_consumers_remain_public_projection_readers
+      - tests/world_v2/test_display_architecture_guard.py::test_selected_v2_display_consumers_remain_terminal_projection_readers
 
   - id: public-dashboard-projection
     phase: 7
@@ -526,6 +529,28 @@ mechanisms:
       - tests/world_v2/test_dashboard_public_projection_adapter.py::test_public_adapter_omits_unknown_agenda_and_never_forwards_private_route_values
       - tests/world_v2/test_http_v2_host_migration.py::test_http_dashboard_public_route_is_operator_gated_cacheable_and_never_reads_legacy
       - tests/world_v2/test_http_v2_host_migration.py::test_http_dashboard_public_route_never_bootstraps_or_falls_back_to_legacy
+
+  - id: owner-dashboard-home-snapshot
+    phase: 7
+    status: closed
+    runtime_activation: limited-production
+    limitations: [requires-dedicated-local-operator-token, no-real-QQ-or-human-visual-qualification]
+    sources: [qq-owner-pinned-ledger-projection, typed-process-observation]
+    events: [WorldStarted, AdvisoryAcceptanceRejected]
+    reducers: [src/companion_daemon/world_v2/reducers.py]
+    projections: [LedgerProjection, world-v2-dashboard-home.1, pixel-home-state.2]
+    decision_consumers: [DashboardHomeSnapshotModule, DashboardHomeClient, PixelHomeBridge]
+    actions: []
+    terminal_states: []
+    adapters: [qq-dashboard-owner-endpoint, daemon-dashboard-home-source]
+    tests:
+      - tests/world_v2/test_dashboard_home_snapshot.py::test_dashboard_field_policy_requires_an_explicit_decision_for_every_projection_field
+      - tests/world_v2/test_dashboard_home_snapshot.py::test_owner_snapshot_exposes_effect_free_terminal_without_closing_sibling_lanes
+      - tests/world_v2/test_qq_dashboard_operator_endpoint.py::test_qq_owner_dashboard_endpoint_is_fixed_authenticated_and_cacheable
+      - tests/world_v2/test_dashboard_operator_http_adapter.py::test_daemon_adapter_reads_only_the_fixed_typed_owner_snapshot
+      - tests/world_v2/test_dashboard_runtime_observation.py::test_runtime_sampler_normalizes_the_fixed_twelve_process_signals
+      - tests/world_v2/test_world_v2_dashboard_ui.py::test_dashboard_home_requires_dedicated_access_and_preserves_owner_etag
+      - tests/world_v2/test_dashboard_home_browser_runtime.py::test_dashboard_home_browser_javascript_contract
 
   - id: offline-mechanism-evaluation
     phase: 8
