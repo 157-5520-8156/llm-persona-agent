@@ -502,13 +502,20 @@ def source_envelopes_from_capsule(capsule: object) -> dict[str, dict[str, object
     return result
 
 
+# The provider view only needs enough source tokens to ground its attended
+# refs (the role contract caps attended_source_refs at eight); the durable
+# snapshot keeps the full ref list for replay/audit authority.  Capping the
+# visible slice avoids paying thousands of hash-id tokens on every turn.
+_MAX_VISIBLE_SOURCE_REFS_PER_VIEW = 64
+
+
 def _view(
     materials: Mapping[str, object], keys: tuple[str, ...]
 ) -> _InteriorContextView:
     selected = {key: materials[key] for key in keys if key in materials}
     refs = tuple(
         dict.fromkeys(ref for value in selected.values() for ref in _material_refs(value))
-    )
+    )[:_MAX_VISIBLE_SOURCE_REFS_PER_VIEW]
     if not refs:
         return _InteriorContextView.from_material(
             availability="unavailable", content={}, source_refs=()
@@ -678,6 +685,9 @@ def compile_inner_life_snapshot(
     # particular, proactive and background turns must see what the counterpart
     # actually said through this canonical material instead of receiving a
     # consumer-specific context side channel.
+    # delivery_state/sequence are transport bookkeeping the character cannot
+    # perceive; dropping them trims every dialogue turn without losing what
+    # was said, by whom, or when.
     recent_dialogue = [
         entry
         for item in _slice_items(slices, "recent_dialogue")
@@ -690,8 +700,6 @@ def compile_inner_life_snapshot(
                     "speaker_ref",
                     "text",
                     "occurred_at",
-                    "delivery_state",
-                    "sequence",
                     "acknowledges_observation_event_refs",
                     "continuity_reasons",
                 ),
