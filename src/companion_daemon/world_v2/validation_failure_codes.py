@@ -124,6 +124,10 @@ _LEGACY_PROVIDER_EXCEPTION_TYPES = frozenset(
         "ReadTimeout",
         "RemoteProtocolError",
         "RuntimeError",
+        # Project subclass of RuntimeError written by pre-.56 source review
+        # authorities (legacy provider-subcall audits serialize the class
+        # name, not the base type).
+        "InventoryAvailabilityExhausted",
         "TimeoutError",
         "TypeError",
         "ValidationError",

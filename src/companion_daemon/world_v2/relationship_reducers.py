@@ -333,6 +333,7 @@ def adjust_relationship_slow_variables(
     *,
     logical_time: datetime,
     accepted_event_ref: str | None = None,
+    allow_legacy_relationship_policy_digest: bool = False,
 ) -> tuple[
     tuple[RelationshipStateProjection, ...],
     tuple[RelationshipAdjustmentProjection, ...],
@@ -342,7 +343,9 @@ def adjust_relationship_slow_variables(
         raise ValueError("relationship adjustment must use authoritative logical time")
     if payload.policy_version != "relationship-policy.1":
         raise ValueError("uninstalled relationship policy")
-    if payload.policy_digest != RELATIONSHIP_POLICY_DIGEST:
+    if not allow_legacy_relationship_policy_digest and (
+        payload.policy_digest != RELATIONSHIP_POLICY_DIGEST
+    ):
         raise ValueError("relationship policy digest is not installed")
     if any(item.adjustment_id == payload.adjustment_id for item in history):
         raise ValueError("relationship adjustment already exists")
@@ -395,7 +398,7 @@ def adjust_relationship_slow_variables(
         hysteresis = current.hysteresis
         commitment_refs = current.commitment_refs
         temperature = current.temperature
-        if (
+        if not allow_legacy_relationship_policy_digest and (
             current.policy_version != _POLICY["policy_version"]
             or current.policy_digest != RELATIONSHIP_POLICY_DIGEST
         ):

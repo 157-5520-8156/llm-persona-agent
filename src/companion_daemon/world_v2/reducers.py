@@ -3769,7 +3769,12 @@ def _validate_one_life_development_deliberation(
     return binding
 
 
-def _proposal_recorded(state: ReducerState, event: WorldEvent) -> ReducerState:
+def _proposal_recorded(
+    state: ReducerState,
+    event: WorldEvent,
+    *,
+    allow_legacy_relationship_policy_digest: bool = False,
+) -> ReducerState:
     raw = event.payload()
     if raw.get("audit_contract") == "proposal-envelope-audit.1":
         payload = ProposalRecordedV2Payload.model_validate(raw)
@@ -3824,6 +3829,19 @@ def _proposal_recorded(state: ReducerState, event: WorldEvent) -> ReducerState:
     registration = _TYPED_PROPOSAL_REGISTRY.registration_for_record(event.event_type, raw)
     if registration is not None:
         proposal = registration.codec.decode_record(event_type=event.event_type, payload=raw)
+        if isinstance(proposal, RelationshipProposalProjection):
+            # The relationship store only forwards to
+            # ``_relationship_proposal_recorded``; call it directly so cold
+            # replay can pass the legacy policy-digest allowance without
+            # widening every store's interface.
+            return _relationship_proposal_recorded(
+                state,
+                event,
+                proposal=proposal,
+                allow_legacy_relationship_policy_digest=(
+                    allow_legacy_relationship_policy_digest
+                ),
+            )
         return registration.store.validate_and_store(state, event, proposal)
     if raw.get("proposal_kind") not in {
         "appraisal_transition",
@@ -3964,6 +3982,7 @@ def _relationship_proposal_recorded(
     event: WorldEvent,
     *,
     proposal: RelationshipProposalProjection | None = None,
+    allow_legacy_relationship_policy_digest: bool = False,
 ) -> ReducerState:
     proposal = proposal or RelationshipProposalProjection.model_validate_json(event.payload_json)
     if proposal.evaluated_world_revision != len(state.committed_world_event_refs):
@@ -4019,6 +4038,9 @@ def _relationship_proposal_recorded(
             state.relationship_signals,
             proposed_payload,
             logical_time=logical_time,
+            allow_legacy_relationship_policy_digest=(
+                allow_legacy_relationship_policy_digest
+            ),
         )
     elif isinstance(proposed_payload, BoundaryChangedPayload):
         change_boundary(state.boundaries, proposed_payload, logical_time=logical_time)
@@ -13745,7 +13767,12 @@ def _private_impression_accepted(state: ReducerState, event: WorldEvent) -> Redu
     )
 
 
-def _relationship_slow_variable_adjusted(state: ReducerState, event: WorldEvent) -> ReducerState:
+def _relationship_slow_variable_adjusted(
+    state: ReducerState,
+    event: WorldEvent,
+    *,
+    allow_legacy_relationship_policy_digest: bool = False,
+) -> ReducerState:
     logical_time = _require_life_time(state, event)
     payload = RelationshipSlowVariableAdjustedPayload.model_validate_json(event.payload_json)
     if payload.policy_refs != INSTALLED_RELATIONSHIP_POLICY_REFS:
@@ -13759,6 +13786,9 @@ def _relationship_slow_variable_adjusted(state: ReducerState, event: WorldEvent)
         payload,
         logical_time=logical_time,
         accepted_event_ref=event.event_id,
+        allow_legacy_relationship_policy_digest=(
+            allow_legacy_relationship_policy_digest
+        ),
     )
     return state.model_copy(
         update={
@@ -15332,6 +15362,7 @@ def reduce_event(
     allow_legacy_plan_owner: bool = False,
     allow_legacy_clock_drift: bool = False,
     allow_legacy_activity_opening: bool = False,
+    allow_legacy_relationship_policy_digest: bool = False,
 ) -> ReducerState:
     event_contract(event.event_type).validate_payload(event.payload())
     definition = event_definition(event.event_type)
@@ -15358,6 +15389,17 @@ def reduce_event(
             state,
             event,
             allow_legacy_opening=True,
+        )
+    elif event.event_type == "ProposalRecorded" and allow_legacy_relationship_policy_digest:
+        reduced = _proposal_recorded(
+            state, event, allow_legacy_relationship_policy_digest=True
+        )
+    elif (
+        event.event_type == "RelationshipSlowVariableAdjusted"
+        and allow_legacy_relationship_policy_digest
+    ):
+        reduced = _relationship_slow_variable_adjusted(
+            state, event, allow_legacy_relationship_policy_digest=True
         )
     else:
         reduced = definition.reducer(state, event)

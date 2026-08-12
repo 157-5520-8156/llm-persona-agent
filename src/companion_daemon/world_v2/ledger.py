@@ -701,7 +701,11 @@ class WorldLedger:
         for stored in self._events:
             if stored.ledger_sequence > cursor.ledger_sequence:
                 break
-            state = reduce_event(state, stored.event)
+            state = reduce_event(
+                state,
+                stored.event,
+                allow_legacy_relationship_policy_digest=True,
+            )
             reached_world_revision = stored.world_revision
             reached_deliberation_revision = stored.deliberation_revision
             ledger_sequence = stored.ledger_sequence
@@ -1054,7 +1058,11 @@ class WorldLedger:
                 world_revision += 1
             else:
                 deliberation_revision += 1
-            state = reduce_event(state, stored.event)
+            state = reduce_event(
+                state,
+                stored.event,
+                allow_legacy_relationship_policy_digest=True,
+            )
         return make_projection(
             world_id=self._world_id,
             world_revision=world_revision,

@@ -16,6 +16,7 @@ from pydantic import Field
 
 from .context_resolver import query_from_projection
 from .character_interior import CharacterInterior, InnerDecision, InteriorOpportunity
+from ..llm import model_call_scope
 from .character_interior.contracts import _InteriorCapabilityManifest
 from .character_interior.purpose_context import InteriorPurposeContext
 from .aspiration_view import active_aspiration_advisories
@@ -3967,11 +3968,15 @@ class LifeDevelopmentRuntime:
         for ordinal in range(2):
             request_hash = _messages_hash(messages)
             try:
-                review_raw = await complete_json_object(
-                    completion_critic,
-                    messages,
-                    temperature=0.0,
-                )
+                with model_call_scope(
+                    "life_development_novel_origin_review",
+                    action_id=f"life-development-critic:{ordinal}",
+                ):
+                    review_raw = await complete_json_object(
+                        completion_critic,
+                        messages,
+                        temperature=0.0,
+                    )
             except Exception as exc:
                 if not _is_expected_model_transport_failure(exc):
                     raise
@@ -4085,11 +4090,15 @@ class LifeDevelopmentRuntime:
         for ordinal in range(2):
             request_hash = _messages_hash(messages)
             try:
-                review_raw = await complete_json_object(
-                    completion_reviewer,
-                    messages,
-                    temperature=0.0,
-                )
+                with model_call_scope(
+                    "life_development_source_closure_review",
+                    action_id=f"life-development-review:{ordinal}",
+                ):
+                    review_raw = await complete_json_object(
+                        completion_reviewer,
+                        messages,
+                        temperature=0.0,
+                    )
             except Exception as exc:
                 if not _is_expected_model_transport_failure(exc):
                     raise
@@ -4515,14 +4524,19 @@ class LifeDevelopmentRuntime:
         for ordinal in range(2):
             request_hash = _messages_hash(messages)
             try:
-                raw = await complete_json_object(
-                    self._world_author,
-                    messages,
-                    # The corrective attempt names an exact violation; a lower
-                    # temperature makes the repair deterministic instead of
-                    # resampling the same unstable high-temperature output.
-                    temperature=(0.3 if ordinal else 0.6),
-                )
+                with model_call_scope(
+                    "life_development_draft",
+                    action_id=f"life-development:{logical_time.isoformat()}:{ordinal}",
+                ):
+                    raw = await complete_json_object(
+                        self._world_author,
+                        messages,
+                        # The corrective attempt names an exact violation; a
+                        # lower temperature makes the repair deterministic
+                        # instead of resampling the same unstable
+                        # high-temperature output.
+                        temperature=(0.3 if ordinal else 0.6),
+                    )
             except (
                 TimeoutError,
                 ConnectionError,

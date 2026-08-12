@@ -6197,6 +6197,11 @@ class SQLiteWorldLedger:
                     # time-sensitive "is current" catalogue check is skipped.
                     # Live commits never enable this compatibility path.
                     allow_legacy_activity_opening=True,
+                    # Pre-.56 events persist the then-installed relationship
+                    # policy digest; replay accepts them without re-asserting
+                    # the current digest. Live commits always use the current
+                    # digest.
+                    allow_legacy_relationship_policy_digest=True,
                 )
             except Exception as exc:
                 raise LedgerIntegrityError("persisted event cannot be reduced") from exc
