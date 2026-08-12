@@ -18,3 +18,14 @@ def test_expression_episode_diagnostics_rejects_retired_on_mode() -> None:
         match="expression episode mode must be off, shadow, or stream",
     ):
         expression_episode.ExpressionEpisodeDiagnostics(mode="on")  # type: ignore[arg-type]
+
+
+def test_off_mode_keeps_delayed_attention_reserved_and_unselected() -> None:
+    diagnostics = expression_episode.ExpressionEpisodeDiagnostics(mode="off").snapshot()
+
+    assert diagnostics["active_reply_interface"] is None
+    assert diagnostics["reserved_reply_interface"] == {
+        "name": "delayed_attention_complete",
+        "status": "disabled",
+        "reserved_for": "character_unavailable_or_delayed_attention",
+    }

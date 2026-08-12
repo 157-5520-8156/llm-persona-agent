@@ -1,19 +1,35 @@
 # ADR-0007: Dashboard 默认迁移为 World v2 公共只读投影
 
-- 状态：部分实施；后端 public projection/route 已完成，默认浏览器切换未完成
+> ADR-0018 已取代本 ADR 对默认 `/dashboard` audience 的选择：默认页面现在是本机认证的
+> owner/operator projection；本 ADR 的 public/redacted DTO 仍作为独立 tooling seam 保留，
+> 两者不得拼接。其余单一 World authority、只读、renderer-safe route 与无 legacy fallback
+> 决策继续有效。
+>
+> 2026-08-12 实施补充：`/world-v2/dashboard` 的 public/redacted DTO 继续保留为较小的
+> tooling seam；默认 `/dashboard` 已升级为本机 operator 页面，使用独立
+> `WORLD_V2_DASHBOARD_OPERATOR_TOKEN` 和 QQ owner 编译的
+> `world-v2-dashboard-home.1` typed snapshot。浏览器仍是 terminal renderer，不能选择
+> viewer/permission/cursor，也不读 `/health`；私有 owner 信息因此只存在于新的鉴权契约，
+> 不会扩张 public DTO。本补充收紧了 transport/auth 边界，不改变本 ADR 的单一 World
+> authority、只读、无 legacy fallback 决策。下文 2026-07-16 的 public DTO 方案保留为历史
+> 设计记录；owner 页面已由本补充的私有 snapshot 契约取代，不应再把历史 cutover 清单当作
+> 当前实现状态。
+
+- 状态：已实施（代码与隔离假数据验证）；真实 QQ owner 部署、长期数据和人工视觉资格待证据
 - 日期：2026-07-16
 - 范围：`/dashboard` 的默认浏览体验、其浏览器数据契约及 HTTP read seam；不改像素房间素材、room runtime 或 Dashboard 的视觉布局
 
-## 实施检查点（2026-07-16）
+## 实施检查点（2026-08-12）
 
-已落地的部分仅为后端读 seam：`dashboard_public` 的固定 capability、
-`DashboardPublicProjectionAdapter`、`GET /world-v2/dashboard`、public DTO whitelist、ETag/
-`Cache-Control: no-store` 和 cold-host fail-closed 行为。合同测试同时证明该路由不读取
-legacy Engine，也不 bootstrap 可写 host。
+默认页面现只读取同源 `GET /world-v2/dashboard/home`。daemon 通过 typed HTTP source 从 QQ
+owner 的固定 operator endpoint 取得一次 cursor-pinned 的 `world-v2-dashboard-home.1` 快照；
+独立 operator token 只换取 HttpOnly、SameSite session。响应使用 ETag/no-store，所有 transport、
+schema、auth 和 owner 不可用错误均 fail closed，不读取 `/health`，也不 bootstrap 第二个 world。
 
-尚未落地本 ADR 的关键 cutover：`dashboard_ui.py` 默认浏览器读路径仍使用 legacy data；因此
-不得据此声称 `/dashboard` 已迁移、旧 endpoint 已移除，或默认 Dashboard 已只读 World v2。
-`notices` 也仍为空，直到具备独立、typed 的公开 authority；不能用旧 social task 补齐。
+浏览器与 Pixel Home 只消费服务端给出的 renderer route 和 typed section；旧 raw
+activity/location 推断、legacy endpoint、scheduler fallback 与 `/world-v2/life-state` relay 已
+移除。`/world-v2/dashboard` 的 public/redacted DTO 继续作为独立 tooling seam；它不是 owner
+页面的补充来源。当前证据仍不包括真实 QQ/provider、生产 DB migration 或人工长期视觉验收。
 
 ## 决策
 

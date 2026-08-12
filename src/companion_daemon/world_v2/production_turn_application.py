@@ -17,6 +17,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
+import secrets
 import time
 from typing import Awaitable, Literal, Mapping, Protocol
 
@@ -102,6 +103,11 @@ from .ledger_context_resolver import (
     fact_recall_items,
 )
 from .change_phase_view import change_phase_reading_prose, change_phase_readings
+from .dashboard_home_snapshot import (
+    DashboardHomeSnapshot,
+    DashboardHomeSnapshotModule,
+    DashboardRuntimeObservation,
+)
 from .mood_view import MOOD_LABELS
 from .npc_relationship_view import npc_relationship_readings
 from .npc_ecology_health import npc_ecology_health_snapshot
@@ -975,6 +981,12 @@ class WorldV2TurnApplication:
         self._close_task: asyncio.Task[None] | None = None
         self._deferred_store_close_task: asyncio.Task[None] | None = None
         self._last_character_outcome: str | None = None
+        deployment_digest = hashlib.sha256(ledger.world_id.encode("utf-8")).hexdigest()[:24]
+        self._dashboard_home = DashboardHomeSnapshotModule(
+            ledger=ledger,
+            deployment_id=f"deployment:{deployment_digest}",
+            boot_id=f"boot:{secrets.token_hex(16)}",
+        )
 
     async def respond(self, inbound: InboundTurn) -> RuntimeOutcome:
         outcome = await self._turns.respond(inbound)
@@ -2831,6 +2843,31 @@ class WorldV2TurnApplication:
             "recall_semantic": recall_semantic,
             "mechanisms": mechanisms,
         }
+
+    def dashboard_character_interior_health(self) -> dict[str, object]:
+        """Read only the process-local CharacterInterior composition state."""
+
+        return dict(self._character_interior.runtime_health())
+
+    def dashboard_expression_episode_health(self) -> dict[str, object]:
+        """Read process-local expression mode and diagnostics without ledger IO."""
+
+        return dict(self._turns.expression_episode_diagnostics())
+
+    def dashboard_semantic_recall_health(self) -> dict[str, object]:
+        """Read the current recall coordinator/sidecar state, when composed."""
+
+        if self._recall_coordinator is None:
+            return {"enabled": False}
+        return dict(self._recall_coordinator.semantic_health())
+
+    async def dashboard_home_snapshot(
+        self,
+        runtime_observation: DashboardRuntimeObservation | None = None,
+    ) -> DashboardHomeSnapshot:
+        """Return the fixed private Dashboard contract from the owning ledger."""
+
+        return await self._dashboard_home.capture(runtime_observation)
 
     def _mechanism_detail_sections(self, projection) -> dict[str, dict[str, object]]:
         """Compile bounded per-item mechanism detail for the viewer dashboard.

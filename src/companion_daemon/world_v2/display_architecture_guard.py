@@ -1,11 +1,9 @@
 """Static contract for selected World v2 display consumers.
 
-The archived dashboard remains in the repository during staged migration, so
-this guard deliberately does not inspect that user-interface implementation.
-Instead it protects the consumer seam that has actually selected World v2:
-the public DTO adapter and the two Godot polling scenes.  Those consumers may
-only read a public projection route; they must not grow a ledger/reducer or
-archive-dashboard dependency in order to render a room.
+The public room renderers and the authenticated owner Dashboard have different
+DTOs, but both are terminal read consumers.  They may render versioned
+projection contracts; they must not reconstruct domain state, call a health
+relay, or grow a ledger/reducer dependency.
 """
 
 from __future__ import annotations
@@ -21,6 +19,10 @@ _GODOT_CONSUMER_RELATIVE_PATHS = (
     Path("godot/scripts/main.gd"),
     Path("godot/topdown/scripts/topdown_home.gd"),
 )
+_DASHBOARD_UI_RELATIVE_PATH = Path(
+    "src/companion_daemon/world_v2/world_v2_dashboard_ui.py"
+)
+_PIXEL_HOME_BRIDGE_RELATIVE_PATH = Path("prototypes/pixel-home/js/bridge.js")
 _FORBIDDEN_ADAPTER_TOKENS = (
     "companion_daemon.engine",
     "companion_daemon.dashboard_ui",
@@ -38,6 +40,27 @@ _FORBIDDEN_GODOT_TOKENS = (
     "ledger",
     "reducer",
     "CompanionEngine",
+)
+_FORBIDDEN_DASHBOARD_TOKENS = (
+    "/health",
+    "/world-v2/life-state",
+    "activity_kind",
+    "location_ref",
+    "ACTIVITY_LABELS",
+    "NPC_NAMES",
+    "HOME_LOCATION_REF",
+    "DEFAULT_KEYS",
+    "TAKEOVER_MS",
+    "CompanionEngine",
+    "WorldLedger",
+    "SQLiteWorldLedger",
+    "life_reducers",
+)
+_FORBIDDEN_PIXEL_HOME_TOKENS = (
+    "activity_kind",
+    "location_ref",
+    "DEFAULT_KEYS",
+    "TAKEOVER_MS",
 )
 
 
@@ -123,6 +146,38 @@ def scan_v2_display_architecture(
                 violations.append(
                     DisplayArchitectureViolation(path, "forbidden_display_dependency", token)
                 )
+
+    dashboard_path = repository_root / _DASHBOARD_UI_RELATIVE_PATH
+    dashboard_source = dashboard_path.read_text(encoding="utf-8")
+    if "/world-v2/dashboard/home" not in dashboard_source:
+        violations.append(
+            DisplayArchitectureViolation(
+                dashboard_path,
+                "missing_owner_dashboard_endpoint",
+                "/world-v2/dashboard/home",
+            )
+        )
+    for token in _FORBIDDEN_DASHBOARD_TOKENS:
+        if token in dashboard_source:
+            violations.append(
+                DisplayArchitectureViolation(
+                    dashboard_path,
+                    "forbidden_dashboard_dependency",
+                    token,
+                )
+            )
+
+    bridge_path = repository_root / _PIXEL_HOME_BRIDGE_RELATIVE_PATH
+    bridge_source = bridge_path.read_text(encoding="utf-8")
+    for token in _FORBIDDEN_PIXEL_HOME_TOKENS:
+        if token in bridge_source:
+            violations.append(
+                DisplayArchitectureViolation(
+                    bridge_path,
+                    "forbidden_dashboard_dependency",
+                    token,
+                )
+            )
     return tuple(violations)
 
 

@@ -7,6 +7,7 @@ does not import the legacy engine, conversation turn, or coalescer modules.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -15,7 +16,7 @@ import secrets
 import time
 
 from fastapi import FastAPI, Header, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from companion_daemon.config import Settings
 from companion_daemon.llm import FakeCompanionModel
@@ -26,6 +27,7 @@ from companion_daemon.onebot_adapter import (
 )
 
 from .platform_action_executor import MediaProviderTransport
+from .dashboard_runtime_observation import DashboardRuntimeObservationSampler
 from .model_completion import ChatCompletionModel
 from .production_latency_health import production_latency_health_snapshot
 from .production_reliability_metrics import reliability_snapshot
@@ -43,6 +45,31 @@ from .qq_ingress_policy import normalize_onebot_qq_ingress
 
 
 logger = logging.getLogger(__name__)
+
+
+def _dashboard_host_probe(
+    host: object,
+    method_name: str,
+) -> Callable[[], Mapping[str, object]]:
+    """Adapt optional test/host diagnostics without weakening production capture."""
+
+    def capture() -> Mapping[str, object]:
+        method = getattr(host, method_name, None)
+        if not callable(method):
+            raise RuntimeError("dashboard runtime probe is not installed")
+        payload = method()
+        if not isinstance(payload, Mapping):
+            raise RuntimeError("dashboard runtime probe returned an invalid payload")
+        return payload
+
+    return capture
+
+
+def _dashboard_latency_probe(host: object) -> dict[str, object]:
+    method = getattr(host, "latency_samples", None)
+    if not callable(method):
+        raise RuntimeError("dashboard latency probe is not installed")
+    return production_latency_health_snapshot(method())
 
 
 @dataclass
@@ -350,6 +377,34 @@ def create_qq_c2c_onebot_app(
         scheduler_interval_seconds=scheduler_interval_seconds,
     )
     scheduler = QQC2CSchedulerDiagnostics(interval_seconds=scheduler_interval_seconds)
+    dashboard_runtime_sampler = DashboardRuntimeObservationSampler(
+        scheduler=lambda: scheduler.snapshot(now=datetime.now(UTC)),
+        character_interior=_dashboard_host_probe(
+            host, "dashboard_character_interior_health"
+        ),
+        local_provider_capacity=_dashboard_host_probe(
+            host, "local_provider_capacity_health"
+        ),
+        text_endpoint=_dashboard_host_probe(host, "text_endpoint_health"),
+        proactive_source_authority=_dashboard_host_probe(
+            host, "proactive_source_authority_health"
+        ),
+        life_source_authority=_dashboard_host_probe(
+            host, "life_source_authority_health"
+        ),
+        external_perception_upstream=_dashboard_host_probe(
+            host, "external_world_perception_health"
+        ),
+        model_usage_budget=_dashboard_host_probe(host, "usage_budget_health"),
+        process_latency=lambda: _dashboard_latency_probe(host),
+        storage=lambda: ledger_storage_snapshot(settings.database_path),
+        expression_episode=_dashboard_host_probe(
+            host, "dashboard_expression_episode_health"
+        ),
+        semantic_recall=_dashboard_host_probe(
+            host, "dashboard_semantic_recall_health"
+        ),
+    )
 
     api_url = settings.napcat_api_url if adapter == "napcat" else settings.onebot_api_url
 
@@ -428,6 +483,7 @@ def create_qq_c2c_onebot_app(
 
     app = FastAPI(title=f"Girl-Agent {adapter.title()} World v2 C2C", lifespan=lifespan)
     app.state.qq_c2c_host = host
+    app.state.dashboard_runtime_sampler = dashboard_runtime_sampler
 
     @app.post("/onebot/event")
     async def onebot_event(
@@ -508,33 +564,69 @@ def create_qq_c2c_onebot_app(
             "scheduler": scheduler_view,
         }
 
-    def _media_observer_access(token: str | None) -> JSONResponse | None:
-        """Gate the read-only media observation surface behind the operator secret.
+    def _read_only_operator_access(
+        *,
+        token: str | None,
+        configured: str | None,
+        disabled_error: str,
+    ) -> JSONResponse | None:
+        """Gate one read-only operator surface behind its composition secret.
 
-        This mirrors the daemon's ``/internal/world-v2/*`` discipline: the
-        surface stays disabled until ``DELIVERY_RECONCILIATION_TOKEN`` exists,
-        and a wrong token is rejected without leaking media contents.  The
+        Each surface stays disabled until its composition-specific credential
+        exists, and a wrong token is rejected without leaking owner state.  The
         surface is deliberately observation-only — delivery is decided by the
         world's own selection/acceptance chain and its composed guardrails.
         """
 
-        configured = (settings.delivery_reconciliation_token or "").strip()
-        if not configured:
+        expected = (configured or "").strip()
+        if not expected:
             return JSONResponse(
-                {
-                    "error": "media observation surface is disabled until an operator token is configured"
-                },
+                {"error": disabled_error},
                 status_code=503,
             )
-        if not token or not secrets.compare_digest(token, configured):
+        if not token or not secrets.compare_digest(token, expected):
             return JSONResponse({"error": "invalid operator token"}, status_code=403)
         return None
+
+    @app.get("/internal/world-v2/dashboard/operator-snapshot")
+    async def dashboard_operator_snapshot(
+        request: Request,
+        if_none_match: str | None = Header(None),
+        x_world_v2_internal_token: str | None = Header(None),
+    ):
+        denied = _read_only_operator_access(
+            token=x_world_v2_internal_token,
+            configured=settings.world_v2_dashboard_operator_token,
+            disabled_error=(
+                "dashboard snapshot is disabled until its read-only operator token is configured"
+            ),
+        )
+        if denied is not None:
+            return denied
+        if request.query_params:
+            return JSONResponse(
+                {"error": "dashboard snapshot does not accept query parameters"},
+                status_code=400,
+            )
+        runtime_observation = await dashboard_runtime_sampler.capture()
+        snapshot = await host.dashboard_home_snapshot(runtime_observation)
+        etag = f'"{snapshot.snapshot_hash}"'
+        headers = {"Cache-Control": "private, no-store", "ETag": etag}
+        if if_none_match == etag:
+            return Response(status_code=304, headers=headers)
+        return JSONResponse(content=snapshot.to_payload(), headers=headers)
 
     @app.get("/internal/world-v2/media/previews")
     async def media_previews(
         x_world_v2_internal_token: str | None = Header(None),
     ):
-        denied = _media_observer_access(x_world_v2_internal_token)
+        denied = _read_only_operator_access(
+            token=x_world_v2_internal_token,
+            configured=settings.delivery_reconciliation_token,
+            disabled_error=(
+                "media observation surface is disabled until an operator token is configured"
+            ),
+        )
         if denied is not None:
             return denied
         observer = host.media_preview_operator()
@@ -545,7 +637,13 @@ def create_qq_c2c_onebot_app(
         preview_id: str,
         x_world_v2_internal_token: str | None = Header(None),
     ):
-        denied = _media_observer_access(x_world_v2_internal_token)
+        denied = _read_only_operator_access(
+            token=x_world_v2_internal_token,
+            configured=settings.delivery_reconciliation_token,
+            disabled_error=(
+                "media observation surface is disabled until an operator token is configured"
+            ),
+        )
         if denied is not None:
             return denied
         observer = host.media_preview_operator()

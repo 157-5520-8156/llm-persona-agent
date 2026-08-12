@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 import secrets
 import time
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -22,6 +22,11 @@ from companion_daemon.world_v2.http_capture_host import (
     build_http_v2_capture_host,
 )
 from companion_daemon.world_v2.errors import IdempotencyConflict, LedgerIntegrityError
+from companion_daemon.world_v2.dashboard_operator_http import (
+    DashboardHomeSource,
+    DashboardHomeSourceError,
+    QQDashboardHomeHttpAdapter,
+)
 from companion_daemon.world_v2.platform_action_executor import MediaProviderTransport
 from companion_daemon.world_v2.production_turn_application import MediaPreviewDeployment
 from companion_daemon.world_v2.semantic_chat_composition import (
@@ -48,6 +53,7 @@ class HttpV2ASGIDeployment:
     settings: Settings
     media_preview: MediaPreviewDeployment | None = None
     media_transport: MediaProviderTransport | None = None
+    dashboard_home_source: DashboardHomeSource | None = None
 
     def __post_init__(self) -> None:
         if (self.media_preview is None) != (self.media_transport is None):
@@ -114,6 +120,7 @@ async def _shutdown_http_v2_capture(asgi_app: FastAPI) -> None:
 # the catalog itself never escapes as a supported server entry point.
 app = FastAPI(title="Girl Agent Companion Daemon route catalog", lifespan=lifespan)
 app.state.dashboard_session_secret = secrets.token_bytes(32)
+app.state.dashboard_home_source = None
 app.mount(
     "/assets", StaticFiles(directory=Path(__file__).resolve().parents[2] / "assets"), name="assets"
 )
@@ -348,11 +355,22 @@ async def _http_v2_capture_async(
     )
 
 
+def _build_dashboard_home_source(settings: Settings) -> DashboardHomeSource | None:
+    token = (settings.world_v2_dashboard_operator_token or "").strip()
+    if not token:
+        return None
+    return QQDashboardHomeHttpAdapter(
+        base_url=settings.qq_c2c_adapter_url,
+        operator_token=token,
+    )
+
+
 def create_http_asgi_app(
     *,
     settings: Settings,
     media_preview: MediaPreviewDeployment | None = None,
     media_transport: MediaProviderTransport | None = None,
+    dashboard_home_source: DashboardHomeSource | None = None,
 ) -> FastAPI:
     """Create an isolated HTTP ASGI composition with explicit media authority.
 
@@ -360,10 +378,16 @@ def create_http_asgi_app(
     supplying a partial pair is rejected before the server can start.
     """
 
+    resolved_dashboard_home_source = (
+        dashboard_home_source
+        if dashboard_home_source is not None
+        else _build_dashboard_home_source(settings)
+    )
     deployment = HttpV2ASGIDeployment(
         settings=settings,
         media_preview=media_preview,
         media_transport=media_transport,
+        dashboard_home_source=resolved_dashboard_home_source,
     )
     configured = FastAPI(
         title="Girl Agent Companion Daemon (World v2)",
@@ -381,6 +405,7 @@ def create_http_asgi_app(
     configured.state.http_v2_warmup_task = None
     configured.state.http_v2_shutdown_task = None
     configured.state.dashboard_session_secret = secrets.token_bytes(32)
+    configured.state.dashboard_home_source = resolved_dashboard_home_source
     return configured
 
 
@@ -439,8 +464,28 @@ def _http_v2_settings(asgi_app: FastAPI) -> Settings:
     return deployment.settings if isinstance(deployment, HttpV2ASGIDeployment) else get_settings()
 
 
+def _dashboard_home_source(asgi_app: FastAPI) -> DashboardHomeSource | None:
+    deployment = getattr(asgi_app.state, "http_v2_deployment", None)
+    if isinstance(deployment, HttpV2ASGIDeployment):
+        return deployment.dashboard_home_source
+    source = getattr(asgi_app.state, "dashboard_home_source", None)
+    if source is not None:
+        return source
+    try:
+        source = _build_dashboard_home_source(_http_v2_settings(asgi_app))
+    except ValueError:
+        # The factory composition fails fast, but the module-level uvicorn app
+        # is imported before its environment is bound to a deployment object.
+        # Keep that lazy path fail-closed and avoid reflecting the configured
+        # owner URL through a request-time traceback.
+        _LOG.error("World v2 Dashboard owner source configuration is invalid")
+        return None
+    asgi_app.state.dashboard_home_source = source
+    return source
+
+
 def _dashboard_session_codec(asgi_app: FastAPI) -> DashboardSessionCodec | None:
-    token = (_http_v2_settings(asgi_app).delivery_reconciliation_token or "").strip()
+    token = (_http_v2_settings(asgi_app).world_v2_dashboard_operator_token or "").strip()
     secret = getattr(asgi_app.state, "dashboard_session_secret", None)
     if not token or not isinstance(secret, bytes):
         return None
@@ -461,6 +506,42 @@ def _is_local_dashboard_request(request: Request) -> bool:
     return host in _LOCAL_DASHBOARD_HOSTS
 
 
+def _require_safe_dashboard_host(request: Request) -> None:
+    if not _is_local_dashboard_request(request):
+        raise HTTPException(status_code=403, detail="Dashboard is loopback-only")
+    host = (request.url.hostname or "").strip().lower()
+    if host not in _LOCAL_DASHBOARD_HOSTS:
+        raise HTTPException(status_code=403, detail="invalid Dashboard host")
+
+
+def _http_origin_coordinate(value: str) -> tuple[str, str, int] | None:
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return None
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower()
+    if (
+        scheme not in {"http", "https"}
+        or not host
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+    ):
+        return None
+    return scheme, host, port or (443 if scheme == "https" else 80)
+
+
+def _require_same_dashboard_origin(request: Request) -> None:
+    supplied = _http_origin_coordinate(request.headers.get("origin", ""))
+    expected = _http_origin_coordinate(str(request.base_url))
+    if supplied is None or supplied != expected:
+        raise HTTPException(status_code=403, detail="invalid Dashboard origin")
+
+
 def _require_world_v2_internal_access(token: str | None, *, asgi_app: FastAPI = app) -> None:
     """Gate scheduler/recovery controls behind the existing operator secret.
 
@@ -479,10 +560,28 @@ def _require_world_v2_internal_access(token: str | None, *, asgi_app: FastAPI = 
         raise HTTPException(status_code=403, detail="invalid World v2 internal scheduler token")
 
 
+def _require_world_v2_dashboard_operator_access(
+    token: str | None,
+    *,
+    asgi_app: FastAPI,
+) -> None:
+    configured = (
+        _http_v2_settings(asgi_app).world_v2_dashboard_operator_token or ""
+    ).strip()
+    if not configured:
+        raise HTTPException(
+            status_code=503,
+            detail="World v2 Dashboard is disabled until its read-only token is configured",
+        )
+    if not token or not secrets.compare_digest(token, configured):
+        raise HTTPException(status_code=403, detail="invalid World v2 Dashboard operator token")
+
+
 def _require_world_v2_dashboard_access(request: Request, token: str | None) -> None:
+    _require_safe_dashboard_host(request)
     if _dashboard_session_is_valid(request):
         return
-    _require_world_v2_internal_access(token, asgi_app=request.app)
+    _require_world_v2_dashboard_operator_access(token, asgi_app=request.app)
 
 
 class WorldV2ClockTickRequest(BaseModel):
@@ -547,22 +646,26 @@ async def health(request: Request) -> dict[str, object]:
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request) -> HTMLResponse:
-    # The daemon panel is a local operator surface.  Keep the legacy session
-    # gate for non-loopback deployments so the page cannot expose live memory,
-    # mood, and life-state data when the daemon is bound beyond localhost.
-    if not _is_local_dashboard_request(request) and not _dashboard_session_is_valid(request):
-        return HTMLResponse(LOGIN_HTML, headers={"Cache-Control": "no-store"})
-    if _existing_http_v2_capture(request.app) is None:
+    # The owner Dashboard contains private memory and relationship state even
+    # when both processes bind to loopback.  A loopback peer is therefore not
+    # an authentication credential; every browser receives only a signed,
+    # instance-bound session after presenting the dedicated read token.
+    _require_safe_dashboard_host(request)
+    if _dashboard_session_codec(request.app) is None or _dashboard_home_source(request.app) is None:
         return HTMLResponse(
             UNAVAILABLE_HTML,
             status_code=503,
             headers={"Cache-Control": "no-store"},
         )
+    if not _dashboard_session_is_valid(request):
+        return HTMLResponse(LOGIN_HTML, headers={"Cache-Control": "no-store"})
     return HTMLResponse(DASHBOARD_HTML, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/world-v2/dashboard/session")
 async def world_v2_dashboard_login(request: Request) -> Response:
+    _require_safe_dashboard_host(request)
+    _require_same_dashboard_origin(request)
     codec = _dashboard_session_codec(request.app)
     if codec is None:
         return HTMLResponse(
@@ -585,7 +688,9 @@ async def world_v2_dashboard_login(request: Request) -> Response:
         ).get("operator_token", [""])[0]
     except (UnicodeDecodeError, ValueError):
         submitted = ""
-    configured = (_http_v2_settings(request.app).delivery_reconciliation_token or "").strip()
+    configured = (
+        _http_v2_settings(request.app).world_v2_dashboard_operator_token or ""
+    ).strip()
     if not submitted or not secrets.compare_digest(submitted, configured):
         return HTMLResponse(LOGIN_HTML, status_code=401, headers={"Cache-Control": "no-store"})
     response = Response(
@@ -604,7 +709,9 @@ async def world_v2_dashboard_login(request: Request) -> Response:
 
 
 @app.post("/world-v2/dashboard/logout")
-def world_v2_dashboard_logout() -> Response:
+def world_v2_dashboard_logout(request: Request) -> Response:
+    _require_safe_dashboard_host(request)
+    _require_same_dashboard_origin(request)
     response = Response(
         status_code=303, headers={"Location": "/dashboard", "Cache-Control": "no-store"}
     )
@@ -617,8 +724,48 @@ def world_v2_dashboard_script() -> Response:
     return Response(
         DASHBOARD_APP_JS,
         media_type="application/javascript",
-        headers={"Cache-Control": "public, max-age=300"},
+        headers={"Cache-Control": "no-store"},
     )
+
+
+@app.get("/world-v2/dashboard/home")
+async def world_v2_dashboard_home(
+    request: Request,
+    if_none_match: str | None = Header(default=None),
+    x_world_v2_internal_token: str | None = Header(default=None),
+) -> Response:
+    """Relay the fixed typed snapshot from the process that owns the QQ World."""
+
+    _require_world_v2_dashboard_access(request, x_world_v2_internal_token)
+    if request.query_params:
+        raise HTTPException(
+            status_code=400,
+            detail="World v2 Dashboard home does not accept query parameters",
+        )
+    source = _dashboard_home_source(request.app)
+    if source is None:
+        raise HTTPException(status_code=503, detail="World v2 Dashboard owner is unavailable")
+    try:
+        result = await source.fetch(if_none_match=if_none_match)
+    except DashboardHomeSourceError as exc:
+        if exc.code in {"owner_unreachable", "owner_unavailable"}:
+            raise HTTPException(
+                status_code=503,
+                detail="World v2 Dashboard owner is unavailable",
+            ) from exc
+        raise HTTPException(
+            status_code=502,
+            detail="World v2 Dashboard owner returned an invalid response",
+        ) from exc
+    headers = {"Cache-Control": "private, no-store", "ETag": result.etag}
+    if result.not_modified:
+        return Response(status_code=304, headers=headers)
+    if result.snapshot is None:  # defensive Protocol boundary
+        raise HTTPException(
+            status_code=502,
+            detail="World v2 Dashboard owner returned an invalid response",
+        )
+    return JSONResponse(content=result.snapshot.to_payload(), headers=headers)
 
 
 @app.post("/messages", response_model=None)
@@ -797,45 +944,6 @@ def world_v2_public_room(request: Request) -> dict[str, object]:
         raise HTTPException(status_code=403, detail="World v2 room projection denied") from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@app.get("/world-v2/life-state")
-async def world_v2_life_state() -> dict[str, object]:
-    """Read the QQ world's factual life state through its owning adapter.
-
-    The QQ C2C world ledger is owned by the adapter process, so the dashboard
-    must not open a second writable ledger handle here.  This endpoint only
-    relays the adapter's already-redacted read-only health projection; when
-    the adapter is down the panel honestly reports that instead of inventing
-    a life state from the archived engine.
-    """
-
-    import httpx
-
-    settings = get_settings()
-    url = settings.qq_c2c_adapter_url.rstrip("/") + "/health"
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            payload = response.json()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503, detail=f"QQ world adapter is unreachable: {type(exc).__name__}"
-        ) from exc
-    scheduler = payload.get("scheduler") if isinstance(payload, dict) else None
-    if not isinstance(scheduler, dict):
-        raise HTTPException(status_code=502, detail="QQ world adapter returned no scheduler state")
-    return {
-        "adapter_status": scheduler.get("status"),
-        "world_activity": scheduler.get("world_activity", {}),
-        "mechanisms": scheduler.get("mechanisms", {}),
-        "initiative": scheduler.get("initiative", {}),
-        "recall_semantic": scheduler.get(
-            "recall_semantic",
-            {"enabled": False},
-        ),
-    }
 
 
 @app.get("/world-v2/dashboard")

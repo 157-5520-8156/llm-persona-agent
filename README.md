@@ -73,6 +73,27 @@ export OPENAI_PROXY_URL=http://127.0.0.1:7897
 
 ### 本地模拟
 
+日常开发不需要每次都跑完整回归。完整套件包含大量 SQLite 冷重放、公开宿主和延迟触发场景，当前约 5,000 条测试，适合作为提交前门禁；开发时使用分层入口：
+
+```bash
+# 默认：CharacterInterior/LLM 主链，几十秒级
+uv run python scripts/test_fast.py
+
+# 调度、QQ host、延迟触发和 Matrix
+uv run python scripts/test_fast.py --tier host
+
+# 上一次失败的测试
+uv run python scripts/test_fast.py --last-failed
+
+# 提交前唯一完整门禁
+uv run python scripts/test_fast.py --tier full
+```
+
+`pytest-xdist` 在本项目的 SQLite/进程 fixture 上未必更快；先用分层和
+`--last-failed`，不要盲目并行化导致启动开销和共享状态竞争。
+
+Simulate a QQ message:
+
 ```bash
 uv run companion-sim "我刚刚在忙，现在回来了"
 ```
@@ -82,6 +103,25 @@ uv run companion-sim "我刚刚在忙，现在回来了"
 ```bash
 uv run companion-daemon
 ```
+
+### World V2 Dashboard
+
+The private World v2 Dashboard reads its typed snapshot from the QQ owner
+process; it does not proxy `/health` or open a second ledger. Configure the
+same dedicated read-only credential for both processes (the launch scripts
+both source the repository `.env`), then open the local page and sign in:
+
+```dotenv
+WORLD_V2_DASHBOARD_OPERATOR_TOKEN=replace-with-a-random-local-secret
+```
+
+```bash
+open http://127.0.0.1:8765/dashboard
+```
+
+This credential is separate from `DELIVERY_RECONCILIATION_TOKEN`: it grants
+only the authenticated Dashboard read path and cannot tick, drain, reconcile,
+or dispatch World work.
 
 ### NapCat / OneBot 私聊入口
 

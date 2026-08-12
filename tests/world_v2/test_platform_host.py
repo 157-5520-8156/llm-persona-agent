@@ -656,6 +656,7 @@ def test_platform_host_is_clean_application_adapter_without_legacy_or_ledger_imp
     assert imports == {
         "__future__",
         "dataclasses",
+        "dashboard_home_snapshot",
         "dashboard_projection_adapter",
         "datetime",
         "schemas",
