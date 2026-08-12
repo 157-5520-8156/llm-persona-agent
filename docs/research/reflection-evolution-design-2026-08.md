@@ -51,3 +51,39 @@
 - `world_stimulus.py`:`InteriorAffectOpenTransition` 等 affect 目标结构(设计 1 复用)
 - `appraisal_proposal_compiler.py`:反思 trigger 的评价提案编译(设计 1 的 affect 产出入口)
 - 成本基线:8/12 半天 4 元(反思积压 166 次为主因),修复后预期 1.5-2 元/天
+
+---
+
+# 附:账本膨胀与启动慢的优化方向(2026-08-13 追加)
+
+## 现状(账本数据)
+
+- 账本 **33,864 事件 / 16,576 commit**(3 周),用户消息只占零头——90% 是机制记账
+- **一条消息 ≈ 9 次模型调用(0.14 元)+ 39 个流程事件**(8/12 实测;反思修复后预期降)
+- 触发源:通用 trigger 5 + appraisal-mutation 4(消息链 + 评价/情绪链)
+- 启动慢:33,864 事件**从 genesis 全量重放验证** = 15-20 分钟(冷验证是防篡改设计)
+- 停机恢复:停机多久,恢复期就补多久的积压(8/12 停机 4 天 → 166 反思;8/13 停机 20h → 少量)
+
+## P0:增量启动验证(启动 15 分钟 → 秒级)
+
+- 原理:head 哈希 = 全历史指纹。启动时校验 head 哈希一致 + 只重放 head 之后的新事件
+- 放弃"从 genesis 全量重放"(防的是本机攻击者同时篡改 head 哈希与事件——单用户场景威胁低)
+- 风险:**高**(账本验证是安全根基)。需设计:head 哈希校验 + 增量重放边界 + 回退(哈希不一致时全量验证)
+- 涉及:`sqlite_ledger.py _verify_cold_ledger_history / _replay_locked`
+
+## P1:消息调用瘦身(每消息 9 → 3-4 次)
+
+- 目标:主链(回复)+ 评价处理,砍掉重试/冗余内心处理
+- 9 次构成:trigger 5(主链链)+ appraisal-mutation 4(评价/反思链)
+- 需要先诊断:哪些是必须的内心处理(真人感),哪些是重试浪费(技术失败 2 次/消息)
+- 涉及:`world_stimulus.py`(刺激 eligibility)、`proactive_action.py`(重试)、`immediate_emotion_proposal_worker`
+
+## P2:流程事件瘦身(账本膨胀减 60%)
+
+- TriggerProcess 三件套(Opened/Claimed/Completed)每个流程 3-4 个事件
+- 可合并:Claimed+Completed 批量?或流程记账压缩
+- 收益:间接(账本膨胀减缓 → P0 更快)
+
+## 优先级
+
+P1(省钱,中风险)→ P0(启动快,高价值高风险)→ P2(膨胀减缓)
