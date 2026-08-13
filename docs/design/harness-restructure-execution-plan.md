@@ -834,4 +834,4 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：本包不改 prompt。部署后 cooldown 空转不应再写 TriggerProcess 四件套；无 due 的 scheduler pass 不应再写 `ClockAdvanced`。
 - **成本与延迟**：去掉生活空转的账本写入与无事心跳；不增加模型调用。
 - **剩余缺口**：技术失败 backoff 仍走账本 TriggerProcess；Affect 衰减仍靠 logical time，idle 时钟变少后衰减会拖到下一次 due/inbound（H10 改纯函数）；H5 Occasion 队列尚未上。
-- **commit**：见本包提交。
+- **commit**：`193d07d5`
