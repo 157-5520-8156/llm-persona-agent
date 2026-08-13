@@ -864,4 +864,4 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：部署后停机超过 `spontaneous_expiry_seconds` 不应再发出对着旧消息的主动联系；私人印象不应再对历史 appraisal 积压逐条调模型。
 - **成本与延迟**：去掉过期补做与印象积压是后台成本的主项；不新增 model-bearing purpose。
 - **剩余缺口**：五种 Occasion 尚未完全合并进单一队列对象（worker drain 仍按旧顺序跑）；G2 目前只拦 `inbound_turn`（quiet_gap 的 cadence epoch 仍走独立 trigger）；私人印象独立 faculty 未删除，只是不再扫表；H6 原始伤与次数上限、H8 日程骨架、H9 打分尚未做。
-- **commit**：
+- **commit**：`04940f64`
