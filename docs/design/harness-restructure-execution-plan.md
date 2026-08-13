@@ -824,4 +824,4 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：本包不改 prompt。部署后 `world_v2_model_usage` 不应再出现 `life_development_source_closure_review` / `life_development_novel_origin_review` / `visible_source_closure_proof_v1` / `candidate_external_proposition_inventory` 新行；历史账本仍可 replay。
 - **成本与延迟**：每个可见回合与每次 life beat 少 1–2 次审查/清单模型调用；确定性核对在角色之后、不另开 provider。
 - **剩余缺口**：inbound_wire 里仍有无生产调用方的旧 inventory/coverage 辅助函数（H4 契约瘦身时可清）；isolated daemon / host 资格测试若仍断言旧 reviewer health，需随宿主包跟；H4 可见文本来源闭包尚未上；OpenAIMediaInspector 待用户批准。
-- **commit**：见本包提交。
+- **commit**：`e694bfdb`
