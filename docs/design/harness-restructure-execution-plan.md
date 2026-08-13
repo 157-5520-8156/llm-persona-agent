@@ -904,6 +904,5 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：本 worktree 没有 `data/companion.sqlite`，脚本不会偷偷改生产库。真正切 epoch 需要停 daemon 后跑 `scripts/start_world_v2_epoch.py`，并把运行配置指到新库；归档可回滚。
 - **成本与延迟**：去掉 clock tick 上的 `AffectEpisodeDecayed` 写入（生产曾占事件约 25%）。冷启动不再 reduce 全历史，仍要扫信封哈希；新纪元 head 从编译快照起步，不继承 9.3MB 流程表。
 - **剩余缺口**：`committed_world_event_refs` 前进仍 1:1 增长；衰减仍跟 logical_time，idle 不写时钟时要等到下一次 due/inbound；thread/commitment/memory 的 `accepted_event_ref` 未 rebound；`assertion_binding.source_ref` 仍可能指向归档事件；未单独重放 `BiographicalTimelineConfigured`；旧 `world_snapshots` 131MB 清理未做；切生产库与启动 ≤10s 需真实账本验证。
-- **commit**：
-
+- **commit**：`c6cde1bc`
 
