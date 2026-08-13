@@ -875,3 +875,14 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **成本与延迟**：一场争执大约多 2–4 次调用（≈¥0.05）是允许开销；用间隔而不是固定次数封顶。
 - **剩余缺口**：首次开伤仍会看 `appraisals` 投影（G7 未把 first-visit 收成 head/due overlay）；五种 Occasion 仍未合成单一队列；衰减纯函数是 H10。
 - **commit**：`7a3a98f4`
+
+### 2026-08-13 H8 生活密度：日程骨架与每天一次 day_open
+
+- **红测**：`tests/world_v2/test_life_density_h8.py`、`test_activity_lifecycle_runtime.py` — `world_seed.yaml` 的 `daily_schedule` 无消费者；同一当地日第二次活动 start 仍调模型。
+- **改动**：新增 `day_skeleton.py`，把课表/作息/当日主题编成可读 `day_sheet` 进 Present（0 模型，不是 activity）。`day_open` 用 sidecar 记当地日；当天第一次活动 `consider()` 之后，同日再醒只对唯一 `complete` 走 timing 闭包，其余 no_op 不再问模型。npc/life world-author 未删；双审查已在 H1d 删除。
+- **测试**：H8 红测绿；activity lifecycle 相关绿；character-tier 498 passed；ruff 绿。
+- **生产证据**：本包把作息编进 Present。部署后她应能读到当天窗口；同日本地第二次活动 start 不应再打 provider。
+- **成本与延迟**：活动车道从「每醒一次模型」降到「每天一次 day_open + 窗口结束的确定性 complete」。
+- **剩余缺口**：0–3 条意图没有新事件落账，只是把当天第一次活动选择当作 day_open；天气/店铺开闭不在 seed 里所以没进 sheet；感知未并入 Present 候选池（默认仍 off）；NPC 作者未改（§12.9 第 8 条待批）；日记聚合仍靠 world_life recency，day_sheet 是新增的当日可读层。
+- **commit**：
+

@@ -6,9 +6,16 @@ import hashlib
 import json
 from datetime import datetime
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from .activity_lifecycle_draft import (
     ActivityLifecycleModelDraft,
+)
+from .daily_occasion import (
+    DEFAULT_LOCAL_TIMEZONE,
+    DailyOccasionStore,
+    daily_occasion_store_for_ledger,
+    local_day_key,
 )
 from .activity_lifecycle_proposal import ActivityLifecycleProposalCompiler
 from .activity_lifecycle_runtime import (
@@ -23,6 +30,23 @@ from .life_ecology_activity import ActivityOpeningCatalog
 from .schema_core import FrozenModel
 from .proposal_audit_schemas import ModelResultRecordedPayload
 from .schemas import ProjectionCursor
+
+_TIMING_MODEL = "world-v2:activity-timing"
+
+
+def _timing_closure_draft(opening_token: str) -> ActivityLifecycleModelDraft:
+    payload = {"decision": "select", "opening_token": opening_token}
+    normalized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    digest = "sha256:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return ActivityLifecycleModelDraft(
+        decision="opening_token",
+        opening_token=opening_token,
+        model=_TIMING_MODEL,
+        raw_output=normalized,
+        raw_output_hash=digest,
+        normalized_json=normalized,
+        normalized_output_hash=digest,
+    )
 
 
 class ActivityLifecycleFollowupResult(FrozenModel):
@@ -52,6 +76,8 @@ class ActivityLifecycleWorker:
         acceptance_runtime: ActivityLifecycleAcceptanceRuntime,
         ecology_catalog_version: str,
         source: str = "world-v2:activity-lifecycle",
+        daily_occasions: DailyOccasionStore | None = None,
+        local_timezone_name: str = DEFAULT_LOCAL_TIMEZONE,
     ) -> None:
         if not ecology_catalog_version or not source or not owner_actor_ref:
             raise ValueError(
@@ -67,6 +93,8 @@ class ActivityLifecycleWorker:
             catalog=catalog, ecology_catalog_version=ecology_catalog_version
         )
         self._source = source
+        self._daily_occasions = daily_occasions or daily_occasion_store_for_ledger(ledger)
+        self._local_timezone = ZoneInfo(local_timezone_name)
 
     async def advance_once(
         self,
@@ -88,9 +116,7 @@ class ActivityLifecycleWorker:
             deliberation_revision=projection.deliberation_revision,
             ledger_sequence=projection.ledger_sequence,
         )
-        catalog = self._catalog.openings_for(
-            projection=projection, wake_event_ref=wake_event_ref
-        )
+        catalog = self._catalog.openings_for(projection=projection, wake_event_ref=wake_event_ref)
         if catalog.status != "openings_available":
             return ActivityLifecycleFollowupResult(
                 status="blocked" if catalog.status == "blocked_by_missing_capability" else "no_op",
@@ -114,9 +140,14 @@ class ActivityLifecycleWorker:
             draft=draft,
         )
         if proposal is None:
+            reason = (
+                "activity_lifecycle.day_open_already_spent"
+                if draft.model is None
+                else "activity_lifecycle.model_declined"
+            )
             return ActivityLifecycleFollowupResult(
                 status="no_op",
-                reason_code="activity_lifecycle.model_declined",
+                reason_code=reason,
                 character_interior_model_result=draft.character_interior_model_result,
             )
         recorded = self._proposal_recorder.record(
@@ -163,17 +194,28 @@ class ActivityLifecycleWorker:
         ``CharacterInterior`` used by Chat, Proactive and open Life.
         """
 
+        openings = catalog.openings
+        day_key = local_day_key(projection.logical_time, self._local_timezone)
+        if self._daily_occasions.spent("day_open", day_key):
+            completes = tuple(item for item in openings if item.operation == "complete")
+            if len(completes) == 1:
+                return _timing_closure_draft(completes[0].opening_token), None
+            return ActivityLifecycleModelDraft(decision="no_op"), None
+        if not openings:
+            return ActivityLifecycleModelDraft(decision="no_op"), None
+        if all(item.operation == "complete" for item in openings) and len(openings) == 1:
+            return _timing_closure_draft(openings[0].opening_token), None
         capability = {
             "contract": "character-interior-activity-lifecycle-capability.2",
             "catalog_version": catalog.catalog_version,
             "catalog_hash": catalog.catalog_hash,
-            "offered_tokens": [item.opening_token for item in catalog.openings],
+            "offered_tokens": [item.opening_token for item in openings],
             "openings": [
                 {
                     "opening_token": item.opening_token,
                     "safe_summary": item.safe_summary,
                 }
-                for item in catalog.openings
+                for item in openings
             ],
         }
         payload_json = json.dumps(
@@ -186,9 +228,7 @@ class ActivityLifecycleWorker:
         manifest = _InteriorCapabilityManifest(
             capability_ref=(
                 "capability:activity-lifecycle:"
-                + hashlib.sha256(
-                    (trigger_id + ":" + capability_hash).encode("utf-8")
-                ).hexdigest()
+                + hashlib.sha256((trigger_id + ":" + capability_hash).encode("utf-8")).hexdigest()
             ),
             capability_kind="activity_lifecycle_choice",
             payload_json=payload_json,
@@ -227,6 +267,8 @@ class ActivityLifecycleWorker:
             return None, result.failure_code or "character_interior_technical_failure"
         if result.status != "decided" or not isinstance(result.decision, dict):
             return None, "character_interior_decision_missing"
+        if any(item.operation == "start" for item in openings):
+            self._daily_occasions.mark("day_open", day_key)
         decision = result.decision
         if (
             decision.get("contract") != "character-interior-purpose-decision.1"

@@ -35,6 +35,7 @@ _SNAPSHOT_VOLATILE_LAST = (
 _MATERIAL_ORDER = (
     "stable_self",
     "biographical_context",
+    "day_sheet",
     "situation",
     "relationship",
     "protagonist_npc_relationships",

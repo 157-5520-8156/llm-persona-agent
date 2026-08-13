@@ -12,6 +12,7 @@ import json
 from datetime import datetime
 from typing import Mapping
 
+from ..day_skeleton import compile_day_sheet, load_world_day_skeleton
 from ..present_prompt import (
     PRESENT_EXPERIENCE_ITEM_LIMIT,
     PRESENT_FACT_ITEM_LIMIT,
@@ -541,6 +542,39 @@ def _datetime(value: object) -> datetime | None:
         return None
 
 
+_DAY_SKELETON = None
+
+
+def _day_sheet_from_biography(
+    biography: list[dict[str, object]],
+    logical_time: datetime | None,
+) -> str | None:
+    global _DAY_SKELETON
+    head = biography[0] if biography else None
+    instant = logical_time
+    if instant is None and isinstance(head, dict):
+        instant = _datetime(head.get("logical_at"))
+    if instant is None:
+        return None
+    if _DAY_SKELETON is None:
+        try:
+            _DAY_SKELETON = load_world_day_skeleton()
+        except (OSError, ValueError, TypeError):
+            return None
+    phase = head.get("academic_phase") if isinstance(head, dict) else None
+    year = head.get("academic_year") if isinstance(head, dict) else None
+    age = head.get("age") if isinstance(head, dict) else None
+    season = head.get("season") if isinstance(head, dict) else None
+    return compile_day_sheet(
+        logical_at=instant,
+        skeleton=_DAY_SKELETON,
+        academic_phase=phase if isinstance(phase, str) else None,
+        academic_year=year if isinstance(year, int) else None,
+        age=age if isinstance(age, int) else None,
+        season=season if isinstance(season, str) else None,
+    )
+
+
 def _cursor(context: Mapping[str, object]) -> ProjectionCursor | None:
     values = tuple(context.get(key) for key in (
         "world_revision", "deliberation_revision", "ledger_sequence"
@@ -590,6 +624,9 @@ def compile_inner_life_snapshot(
     ]
     if biography:
         materials["biographical_context"] = biography
+        day_sheet = _day_sheet_from_biography(biography, logical_time)
+        if day_sheet:
+            materials["day_sheet"] = day_sheet
 
     lanes = (
         ("situation", "current_situation", (
@@ -738,7 +775,7 @@ def compile_inner_life_snapshot(
     )
 
     facet_keys = {
-        "private_self": ("stable_self", "biographical_context", "situation", "private_impressions", "recent_self_experiences"),
+        "private_self": ("stable_self", "biographical_context", "day_sheet", "situation", "private_impressions", "recent_self_experiences"),
         "selective_memory": (
             "recent_dialogue",
             "relevant_facts",

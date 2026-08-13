@@ -519,3 +519,43 @@ async def test_worker_replays_a_real_ledger_from_claimed_clock_to_accepted_activ
     assert len(replayed.proposal_ids) == 1
     assert len(replayed.acceptance_decisions) == 1
     assert replayed.acceptance_decisions[0].proposal_id == replayed.proposal_ids[0]
+
+
+@pytest.mark.asyncio
+async def test_second_start_on_the_same_local_day_does_not_call_the_model() -> None:
+    from companion_daemon.world_v2.daily_occasion import (
+        InMemoryDailyOccasionStore,
+        local_day_key,
+    )
+
+    projection, trigger_id = _claimed_projection()
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    store = InMemoryDailyOccasionStore()
+    store.mark("day_open", local_day_key(NOW))
+    interior = _Interior()
+    worker = ActivityLifecycleWorker(
+        ledger=ledger,
+        catalog=_catalog(),
+        character_interior=interior,
+        owner_actor_ref="actor:companion",
+        proposal_recorder=ActivityLifecycleProposalRecorder(ledger=ledger),
+        acceptance_runtime=ActivityLifecycleAcceptanceRuntime(
+            ledger=ledger, batch_issuer=ledger.issuer
+        ),
+        ecology_catalog_version=ECOLOGY_CATALOG_VERSION,
+        daily_occasions=store,
+    )
+
+    result = await worker.advance_once(
+        wake_event_ref="event:clock:opening",
+        trigger_id=trigger_id,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:worker",
+        correlation_id="correlation:worker",
+    )
+
+    assert result.status == "no_op"
+    assert result.reason_code == "activity_lifecycle.day_open_already_spent"
+    assert interior.opportunities == []
