@@ -924,4 +924,5 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：本 worktree 没有 `data/companion.sqlite`，未跑 grant provisioning、未改生产库。真正出图需要：密钥齐全、停/启 daemon 读新默认（或 `.env` 未把开关写成 false）、对运行库执行 `scripts/provision_world_v2_media_authority.py`。隔离验收脚本仍显式关两个开关。
 - **成本与延迟**：每张图少一次 gpt-4o 审查调用；规划仍走 DeepSeek `MediaPlanner`，渲染仍走 OpenAI Image。失败即放弃该张，无来源计划不再为审查去生成。
 - **剩余缺口**：月内 ≥10 张有来源生活照片是生产验收，不是单测能声称的；缺 grant 时车道仍静默 disable（需 operator 跑 provisioning）；`world_v2_media_inspection_model` 配置闲置；inspection Action/grant 仍在（确定性检查也走同一 effect-once）；像素质量不再由视觉模型把关；规划仍是一次模型调用；H10 生产换库仍需人工。
+- **commit**：`5dd68f94`
 
