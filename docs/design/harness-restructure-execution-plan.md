@@ -845,3 +845,13 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **成本与延迟**：加厚输入、稳态后靠前缀缓存降未命中价；不增加模型调用次数。
 - **剩余缺口**：工具 schema 仍按 `recall_allowed` 分叉（可能打穿 tools 前缀）；`expression_hard_boundaries` 仍整表进 prompt（H4）；H9 打分与每日压缩尚未改；H5 Occasion 队列尚未上。
 - **commit**：`058ac343`
+
+### 2026-08-13 H4 契约瘦身：Present 边界 stub、G4、宽进 beats
+
+- **红测**：`tests/world_v2/test_contract_area_g4.py` — compact gate 必填/总字段/深度超 G4；user 段仍塞 6.5k `expression-hard-boundaries.8` 机制论文；字符串 `beats` 与 slim `messages/felt/stuck_with_me/wants/photo` 首次非法。
+- **改动**：prompt 里的 hard boundaries 改成 `expression-hard-boundaries.present.1`（只留可复制 tokens，`authority=checked_after_expression`）；完整 manifest 仍给表达后确定性校验。compact gate 外层 schema 已满足必填 ≤3 / 总字段 ≤8 / 深度 ≤2。Postel 接受字符串 beats、`messages` 字符串数组，以及五字段 slim 对象并编译成双草稿/事件信封；旧 dual envelope 仍合法。不要求她在输出里自证 `world_claims`。§12.10 冻结模块未改。
+- **测试**：G4/slim 红测绿；character-tier 498 passed；ruff 绿。
+- **生产证据**：本包改 prompt 面积。部署后 user 段不应再出现 `single_report_epistemic_scope` 等机制论文；来源闭包失败应仍走表达后确定性检查。首次合法率需真实流量。
+- **成本与延迟**：每次调用少约 6.5k 机制字符（未命中输入）；不增加模型调用。slim 形状降低结构失败，目标是少掉 H1b 之后的技术失败丢弃。
+- **剩余缺口**：工具 schema 仍按 `recall_allowed` 分叉；appraisal/expression 双契约拼接仍在 system 段（compact gate 外层已瘦）；G2 第二次 `consider()` 拒绝与 Occasion 过期是 H5；H8 不停 world-author；H9 打分与每日压缩尚未改。
+- **commit**：

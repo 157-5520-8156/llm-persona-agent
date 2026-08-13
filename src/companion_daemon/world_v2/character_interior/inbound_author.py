@@ -32,6 +32,7 @@ from ..model_completion import ChatCompletionModel
 from ..present_prompt import (
     combined_turn_system_lead,
     compact_gate_recall_instruction,
+    compile_slim_consider_payload,
     forced_tool_recall_instruction,
 )
 from ..source_closure_lane import SourceClosureReselectionLane
@@ -221,14 +222,10 @@ def _compact_full_turn_transport_grammar(
                         "stance": "<role:text>",
                         "brief_rationale": "<role:text>",
                         "confidence": "<role:confidence_bp>",
-                        "response_expectation": (
-                            "<role:response_expectation_or_null>"
-                        ),
+                        "response_expectation": ("<role:response_expectation_or_null>"),
                         "response_expectation_assessment": (
                             {
-                                "status": (
-                                    "<role:choose:response_expectation_assessment_status>"
-                                ),
+                                "status": ("<role:choose:response_expectation_assessment_status>"),
                                 "reason": "<role:text>",
                             }
                             if response_expectation_assessment_required
@@ -278,9 +275,7 @@ def _compact_full_turn_transport_grammar(
                 else []
             ),
         },
-        "response_expectation_assessment_required": (
-            response_expectation_assessment_required
-        ),
+        "response_expectation_assessment_required": (response_expectation_assessment_required),
         "marker_rule": (
             "Every <role:...> marker is a type/domain placeholder only. Replace every marker "
             "with your own chosen value; never copy marker text. Add lifecycle, claim, media, "
@@ -337,9 +332,7 @@ def _compact_reply_only_transport_grammar(
                         "response_expectation": "<role:response_expectation_or_null>",
                         "response_expectation_assessment": (
                             {
-                                "status": (
-                                    "<role:choose:response_expectation_assessment_status>"
-                                ),
+                                "status": ("<role:choose:response_expectation_assessment_status>"),
                                 "reason": "<role:text>",
                             }
                             if response_expectation_assessment_required
@@ -691,17 +684,15 @@ class _CombinedInteriorStreamProvider:
         )
         self._provider_identity = identity
         self._messages = messages
-        raw, _usage, returned_identity, _complete = (
-            await self._stream_adapter._unit_stream_result(  # noqa: SLF001
-                request=self._request,
-                messages=messages,
-                temperature=temperature,
-                part="head",
-                provider_identity=identity,
-                stream_generation=self._generation,
-                tools=tools,
-                tool_choice=tool_choice,
-            )
+        raw, _usage, returned_identity, _complete = await self._stream_adapter._unit_stream_result(  # noqa: SLF001
+            request=self._request,
+            messages=messages,
+            temperature=temperature,
+            part="head",
+            provider_identity=identity,
+            stream_generation=self._generation,
+            tools=tools,
+            tool_choice=tool_choice,
         )
         if returned_identity != identity:
             raise RuntimeError("character interior stream changed provider identity")
@@ -766,23 +757,17 @@ class _CombinedInteriorStreamProvider:
         messages = self._messages
         if messages is None:
             raise RuntimeError("character interior stream tail preceded its head")
-        raw, usage_raw, identity, complete_raw = (
-            await self._stream_adapter._unit_stream_result(  # noqa: SLF001
-                request=request,
-                messages=messages,
-                temperature=self._temperature,
-                part="tail",
-                provider_identity=self.provider_identity,
-                stream_generation=self._generation,
-            )
+        raw, usage_raw, identity, complete_raw = await self._stream_adapter._unit_stream_result(  # noqa: SLF001
+            request=request,
+            messages=messages,
+            temperature=self._temperature,
+            part="tail",
+            provider_identity=self.provider_identity,
+            stream_generation=self._generation,
         )
         if identity != self.provider_identity or complete_raw is None:
             raise RuntimeError("character interior stream tail lost physical identity")
-        usage = (
-            ModelUsageProvenance.model_validate(usage_raw)
-            if usage_raw is not None
-            else None
-        )
+        usage = ModelUsageProvenance.model_validate(usage_raw) if usage_raw is not None else None
         return raw, usage, complete_raw
 
     async def consume_control_transfer(
@@ -790,18 +775,15 @@ class _CombinedInteriorStreamProvider:
     ) -> tuple[ModelUsageProvenance | None, str]:
         """Settle a completed gate without inventing semantic stream units."""
 
-        usage_raw, complete_raw = (
-            await self._stream_adapter._consume_completed_unit_stream_control_transfer(  # noqa: SLF001
-                request=self._request,
-                provider_identity=self.provider_identity,
-                stream_generation=self._generation,
-            )
+        (
+            usage_raw,
+            complete_raw,
+        ) = await self._stream_adapter._consume_completed_unit_stream_control_transfer(  # noqa: SLF001
+            request=self._request,
+            provider_identity=self.provider_identity,
+            stream_generation=self._generation,
         )
-        usage = (
-            ModelUsageProvenance.model_validate(usage_raw)
-            if usage_raw is not None
-            else None
-        )
+        usage = ModelUsageProvenance.model_validate(usage_raw) if usage_raw is not None else None
         return usage, complete_raw
 
     def cancel(self) -> None:
@@ -826,9 +808,7 @@ class _CombinedInteriorStreamProvider:
         session = self._stream_adapter._unit_stream_sessions.get(key)  # noqa: SLF001
         complete_raw: str | None = None
         usage: ModelUsageProvenance | None = None
-        cancellation_confirmed = bool(
-            session is not None and session.completed.cancelled()
-        )
+        cancellation_confirmed = bool(session is not None and session.completed.cancelled())
         if session is not None and session.completed.done() and not session.completed.cancelled():
             try:
                 _head, _tail, usage_raw, complete_raw = session.completed.result()
@@ -843,11 +823,7 @@ class _CombinedInteriorStreamProvider:
         self.cancel()
         completed = complete_raw is not None
         outcome = (
-            "completed"
-            if completed
-            else "cancelled"
-            if cancellation_confirmed
-            else "unresolved"
+            "completed" if completed else "cancelled" if cancellation_confirmed else "unresolved"
         )
         return PhysicalProviderInvocationAudit(
             model_call_id=provider_identity.model_call_id,
@@ -889,11 +865,7 @@ class _CombinedInteriorStreamProvider:
         tools: list[dict[str, object]] | None = None,
         tool_choice: object | None = None,
     ) -> str:
-        operation = (
-            getattr(self._provider, "complete_json", None)
-            if tools is not None
-            else None
-        )
+        operation = getattr(self._provider, "complete_json", None) if tools is not None else None
         if not callable(operation):
             operation = getattr(self._provider, "complete", None)
         if not callable(operation):
@@ -901,11 +873,7 @@ class _CombinedInteriorStreamProvider:
         return await operation(
             messages,
             temperature=temperature,
-            **(
-                {"tools": tools, "tool_choice": tool_choice}
-                if tools is not None
-                else {}
-            ),
+            **({"tools": tools, "tool_choice": tool_choice} if tools is not None else {}),
         )
 
     async def _delegate_metered_completion(
@@ -929,17 +897,9 @@ class _CombinedInteriorStreamProvider:
         result = await operation(
             messages,
             temperature=temperature,
-            **(
-                {"tools": tools, "tool_choice": tool_choice}
-                if tools is not None
-                else {}
-            ),
+            **({"tools": tools, "tool_choice": tool_choice} if tools is not None else {}),
         )
-        if (
-            not isinstance(result, tuple)
-            or len(result) != 2
-            or not isinstance(result[0], str)
-        ):
+        if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], str):
             raise ValueError("metered character correction must return (text, usage)")
         return result
 
@@ -1121,9 +1081,7 @@ def _merge_cognition_outputs(
                 and expression_proposal.action_intents[0].kind == "followup"
                 else "now"
             ),
-            response_expectation_assessment=(
-                expression_proposal.response_expectation_assessment
-            ),
+            response_expectation_assessment=(expression_proposal.response_expectation_assessment),
         )
     else:
         raise ValueError("inbound expression returned an unsupported proposal kind")
@@ -1166,13 +1124,17 @@ def _validate_cognition_visible_spans(
         for span in spans:
             if span is None:
                 continue
-            if not isinstance(span, str) or sum(
-                interaction_act_overlapping_occurrence_count(
-                    source_text=text,
-                    selected_text=span,
+            if (
+                not isinstance(span, str)
+                or sum(
+                    interaction_act_overlapping_occurrence_count(
+                        source_text=text,
+                        selected_text=span,
+                    )
+                    for text in visible_texts
                 )
-                for text in visible_texts
-            ) != 1:
+                != 1
+            ):
                 raise ValueError(
                     f"{change.kind} visible span must occur exactly once in the expression"
                 )
@@ -1302,10 +1264,7 @@ class _PairedExpressionMaterializer:
         self._owner.delegate_recall_to_character_interior()
 
     def character_interior_owns_recall(self) -> bool:
-        return (
-            self._owner._character_interior_recall_delegate
-            and self._owner._recall is None
-        )
+        return self._owner._character_interior_recall_delegate and self._owner._recall is None
 
     async def propose_stream_head(self, request: ModelInput) -> ModelOutput:
         return await self._owner._routed_expression.propose_stream_head(request)
@@ -1355,12 +1314,8 @@ class _PairedExpressionMaterializer:
         # therefore carry only the already-pinned provider Context here; no
         # second recall trace is appended by the expression materializer.
         if pending.recall_trace is not None or pending.prefetch_trace is not None:
-            raise RuntimeError(
-                "paired inbound recall must be owned by CharacterInterior"
-            )
-        return request.model_copy(
-            update={"model_content_json": pending.private_state_context_json}
-        )
+            raise RuntimeError("paired inbound recall must be owned by CharacterInterior")
+        return request.model_copy(update={"model_content_json": pending.private_state_context_json})
 
     async def propose(self, request: ModelInput) -> ModelOutput:
         key = _cache_key(request)
@@ -1583,9 +1538,7 @@ class _PairedExpressionMaterializer:
                         raise ValueError("paired source correction route was not retained")
                     corrected_reviewer = reselection_lane.reviewer
                     corrected_inventory = None
-                    corrected_report_relative_reviewer = (
-                        reselection_lane.report_relative_reviewer
-                    )
+                    corrected_report_relative_reviewer = reselection_lane.report_relative_reviewer
                 corrected_review_result = await review_expression_with_candidate_external_coverage(
                     reviewer=corrected_reviewer,
                     inventory_model=corrected_inventory,
@@ -1621,9 +1574,7 @@ class _PairedExpressionMaterializer:
                         "authored_expression_reselection_invalid",
                         model_call_id=repaired_result.winning_model_call_id,
                         request_hash=repaired_result.winning_request_hash,
-                        attempted_model_id=(
-                            repaired_result.winning_model_id or pending.model_id
-                        ),
+                        attempted_model_id=(repaired_result.winning_model_id or pending.model_id),
                         attempted_model_version=self._owner.VERSION,
                         usage=usage,
                     ) from ValueError(source_closure_violation(corrected_review))
@@ -1667,7 +1618,6 @@ class _PairedExpressionMaterializer:
             prefetch_trace=carried_prefetch_trace,
             presented_prefetch_traces=carried_presented_prefetch_traces,
         )
-
 
 
 class _InboundCharacterAuthor:
@@ -1891,12 +1841,10 @@ class _InboundCharacterAuthor:
         self._terminal_failed_combined = _BoundedKeySet(_MAX_PENDING_DRAFTS)
         self._terminal_authored_expression_combined = _BoundedKeySet(_MAX_PENDING_DRAFTS)
         self._failed_details: OrderedDict[tuple[str, ...], _FailedExpressionDetail] = OrderedDict()
-        self._interior_streams: OrderedDict[
-            tuple[str, ...], _CombinedInteriorStreamProvider
-        ] = OrderedDict()
-        self._compact_gate_audits: OrderedDict[str, _CompactGateInvocationAudit] = (
+        self._interior_streams: OrderedDict[tuple[str, ...], _CombinedInteriorStreamProvider] = (
             OrderedDict()
         )
+        self._compact_gate_audits: OrderedDict[str, _CompactGateInvocationAudit] = OrderedDict()
         # These are wire materializers, not independently composable semantic
         # authors.  Production never receives either reference; direct access
         # remains private for the parser/source-closure contract corpus only.
@@ -2144,6 +2092,7 @@ class _InboundCharacterAuthor:
             raise RuntimeError("character interior stream continuation is unavailable")
         current_task = asyncio.current_task()
         if current_task is not None:
+
             def retire_stream(_task: asyncio.Task[object]) -> None:
                 if self._interior_streams.get(key) is stream:
                     self._interior_streams.pop(key, None)
@@ -2156,9 +2105,7 @@ class _InboundCharacterAuthor:
         if combined["appraisal_draft"] != head["appraisal_draft"]:
             raise ValueError("character interior stream changed its frozen appraisal")
 
-        private_state_context_json = compact_chat_model_facing_context(
-            request.model_content_json
-        )
+        private_state_context_json = compact_chat_model_facing_context(request.model_content_json)
         source_ref_aliases = build_source_ref_alias_table(
             request=request,
             stable_identity_source_refs=self._stable_identity_source_refs,
@@ -2199,18 +2146,16 @@ class _InboundCharacterAuthor:
                 purpose="expression_stream_tail",
             ) as review_capture:
                 try:
-                    review_result = (
-                        await review_expression_with_candidate_external_coverage(
-                            reviewer=self._source_closure_reviewer,
-                            inventory_model=None,
-                            report_relative_reviewer=self._report_relative_reviewer,
-                            request=request,
-                            raw=expression_raw,
-                            identity_frame=self._identity_frame,
-                            model_visible_context_json=private_state_context_json,
-                            source_ref_aliases=source_ref_aliases,
-                            review_claim_free_candidates=self._review_claim_free_candidates,
-                        )
+                    review_result = await review_expression_with_candidate_external_coverage(
+                        reviewer=self._source_closure_reviewer,
+                        inventory_model=None,
+                        report_relative_reviewer=self._report_relative_reviewer,
+                        request=request,
+                        raw=expression_raw,
+                        identity_frame=self._identity_frame,
+                        model_visible_context_json=private_state_context_json,
+                        source_ref_aliases=source_ref_aliases,
+                        review_claim_free_candidates=self._review_claim_free_candidates,
                     )
                 except ValidationTechnicalFailure as exc:
                     provider_subcall_audits = review_capture.finalize(
@@ -2572,13 +2517,9 @@ class _InboundCharacterAuthor:
         if canonical_appraisal is not None:
             reselection_messages.append({"role": "assistant", "content": canonical_appraisal})
         reselection_lane = (
-            self._source_closure_reselection_lane
-            if source_closure_review is not None
-            else None
+            self._source_closure_reselection_lane if source_closure_review is not None else None
         )
-        reselection_provider = (
-            reselection_lane.author if reselection_lane is not None else provider
-        )
+        reselection_provider = reselection_lane.author if reselection_lane is not None else provider
         reselection_model_id = (
             reselection_lane.model_id
             if reselection_lane is not None
@@ -3088,9 +3029,7 @@ class _InboundCharacterAuthor:
             prefetch_trace = await self._recall.await_scheduled_prefetch(
                 expected_cursor=expected_cursor,
                 trigger_ref=request.trigger_ref,
-                timeout_seconds=fit_pre_provider_wait_timeout(
-                    PREFETCH_FIRST_PASS_JOIN_SECONDS
-                ),
+                timeout_seconds=fit_pre_provider_wait_timeout(PREFETCH_FIRST_PASS_JOIN_SECONDS),
                 job_token=prefetch_job_token,
             )
             if prefetch_trace is not None:
@@ -3180,9 +3119,7 @@ class _InboundCharacterAuthor:
             },
             expression_messages[1],
         ]
-        inner_snapshot = json.loads(provider_request.model_content_json).get(
-            "inner_life_snapshot"
-        )
+        inner_snapshot = json.loads(provider_request.model_content_json).get("inner_life_snapshot")
         correction = (
             inner_snapshot.get("role_result_correction")
             if isinstance(inner_snapshot, dict)
@@ -3210,18 +3147,12 @@ class _InboundCharacterAuthor:
                 request_requires_response_expectation_assessment(provider_request)
             )
             reply_only_grammar = _compact_reply_only_transport_grammar(
-                response_expectation_assessment_required=(
-                    response_expectation_assessment_required
-                ),
+                response_expectation_assessment_required=(response_expectation_assessment_required),
             )
-            reply_only_decoded_payload_json = reply_only_grammar[
-                "decoded_payload_json"
-            ]
+            reply_only_decoded_payload_json = reply_only_grammar["decoded_payload_json"]
             if not isinstance(reply_only_decoded_payload_json, dict):
                 raise TypeError("compact reply-only decoded payload grammar is malformed")
-            reply_only_specimen = reply_only_decoded_payload_json[
-                "shape_only_nonsemantic_specimen"
-            ]
+            reply_only_specimen = reply_only_decoded_payload_json["shape_only_nonsemantic_specimen"]
             if not isinstance(reply_only_specimen, dict):
                 raise TypeError("compact reply-only payload specimen is malformed")
             reply_only_rules = {
@@ -3231,16 +3162,12 @@ class _InboundCharacterAuthor:
             }
             full_turn_grammar = _compact_full_turn_transport_grammar(
                 capabilities=self._capabilities,
-                response_expectation_assessment_required=(
-                    response_expectation_assessment_required
-                ),
+                response_expectation_assessment_required=(response_expectation_assessment_required),
             )
             decoded_payload_json = full_turn_grammar["decoded_payload_json"]
             if not isinstance(decoded_payload_json, dict):
                 raise TypeError("compact full-turn decoded payload grammar is malformed")
-            full_turn_specimen = decoded_payload_json[
-                "shape_only_nonsemantic_specimen"
-            ]
+            full_turn_specimen = decoded_payload_json["shape_only_nonsemantic_specimen"]
             if not isinstance(full_turn_specimen, dict):
                 raise TypeError("compact full-turn payload specimen is malformed")
             full_turn_rules = {
@@ -3346,7 +3273,7 @@ class _InboundCharacterAuthor:
                 "irrelevant. protocol must equal character-interior-events.1. appraisal_draft "
                 "is the complete AppraisalDraft object chosen in this same cognition pass. "
                 "events is an append-only expression array: first one head event, then zero "
-                "or more beat events, then exactly {\"type\":\"end\"}. A head event has "
+                'or more beat events, then exactly {"type":"end"}. A head event has '
                 "type=head, all complete ExpressionDraft fields except beats and "
                 "episode_disposition, and either one visible beat field or a beats array. "
                 "Each continuation is exactly type=beat, beat=<one authored beat>, "
@@ -3447,38 +3374,38 @@ class _InboundCharacterAuthor:
             tools=(cognition_tools if use_forced_tool else None),
             tool_choice=(cognition_tool_choice if use_forced_tool else None),
             tool_contract_identity=(
-                cognition_contract.identity.request_identity_material()
-                if use_forced_tool
-                else None
+                cognition_contract.identity.request_identity_material() if use_forced_tool else None
             ),
         )
         usage: ModelUsageProvenance | None = None
         forced_transport_error: ValueError | None = None
-        exact_request_emission = bool(
-            getattr(provider, "reports_exact_request_emission", False)
-        )
+        exact_request_emission = bool(getattr(provider, "reports_exact_request_emission", False))
         if not exact_request_emission:
             # Offline/fake providers have no HTTP boundary. Production
             # providers emit from immediately before their ``client.post``.
             mark_first_role_provider_entry(winning_provider_identity.model_call_id)
         try:
-            with model_call_scope(
-                "inbound_turn",
-                actor="agent:companion",
-            ), model_request_emission_scope(
-                provider_call_id=winning_provider_identity.model_call_id,
-                entry_marker=mark_first_role_provider_entry,
-                completion_marker=mark_first_role_provider_completion,
-            ), model_provider_request_identity_scope(
-                request_hash=winning_provider_identity.request_hash,
-                identity_extras=(
-                    {
-                        "tool_contract_identity": (
-                            cognition_contract.identity.request_identity_material()
-                        )
-                    }
-                    if use_forced_tool
-                    else None
+            with (
+                model_call_scope(
+                    "inbound_turn",
+                    actor="agent:companion",
+                ),
+                model_request_emission_scope(
+                    provider_call_id=winning_provider_identity.model_call_id,
+                    entry_marker=mark_first_role_provider_entry,
+                    completion_marker=mark_first_role_provider_completion,
+                ),
+                model_provider_request_identity_scope(
+                    request_hash=winning_provider_identity.request_hash,
+                    identity_extras=(
+                        {
+                            "tool_contract_identity": (
+                                cognition_contract.identity.request_identity_material()
+                            )
+                        }
+                        if use_forced_tool
+                        else None
+                    ),
                 ),
             ):
                 if transport_provider is not None:
@@ -3520,9 +3447,7 @@ class _InboundCharacterAuthor:
                         or len(result) != 2
                         or not isinstance(result[0], str)
                     ):
-                        raise ValueError(
-                            "metered combined provider result must be (text, usage)"
-                        )
+                        raise ValueError("metered combined provider result must be (text, usage)")
                     raw, usage_raw = result
                     usage = ModelUsageProvenance.model_validate(usage_raw)
                 else:
@@ -3541,9 +3466,7 @@ class _InboundCharacterAuthor:
                     # must not become an immediate visible-turn failure.
                     forced_transport_error = exc
             if not exact_request_emission:
-                mark_first_role_provider_completion(
-                    winning_provider_identity.model_call_id
-                )
+                mark_first_role_provider_completion(winning_provider_identity.model_call_id)
         except asyncio.CancelledError:
             # Deliberation cancels the paired provider task when its deadline
             # expires.  Preserve the same-trigger marker so the later
@@ -4264,6 +4187,9 @@ def _parse_combined(raw: str) -> dict[str, dict[str, Any]]:
             aliases[canonical] = item
         if set(aliases) == {"appraisal_draft", "expression_draft"}:
             value = aliases
+    slim = compile_slim_consider_payload(value)
+    if slim is not None:
+        value = slim
     if set(value) != {"appraisal_draft", "expression_draft"}:
         raise ValueError(
             "combined cognition must contain exactly appraisal_draft and expression_draft"

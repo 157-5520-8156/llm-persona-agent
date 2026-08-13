@@ -198,10 +198,8 @@ TEXT_ONLY_EXPRESSION_CAPABILITIES = ExpressionDraftCapabilities(
 # Every live conversation entry requires the final model-owned private state.
 # ``TEXT_ONLY_EXPRESSION_CAPABILITIES`` remains byte-compatible for historical
 # replay and explicitly scoped parser tests only.
-PRODUCTION_TEXT_ONLY_EXPRESSION_CAPABILITIES = (
-    TEXT_ONLY_EXPRESSION_CAPABILITIES.model_copy(
-        update={"private_turn_state_mode": "required"}
-    )
+PRODUCTION_TEXT_ONLY_EXPRESSION_CAPABILITIES = TEXT_ONLY_EXPRESSION_CAPABILITIES.model_copy(
+    update={"private_turn_state_mode": "required"}
 )
 
 QQ_NAPCAT_EXPRESSION_CAPABILITIES = ExpressionDraftCapabilities(
@@ -237,9 +235,7 @@ def qq_expression_capabilities(
         update={
             "recorded_cadence_mode": recorded_cadence_mode,
             "private_turn_state_mode": "required",
-            "media_request_mode": (
-                "candidate_only" if media_request_available else "unavailable"
-            ),
+            "media_request_mode": ("candidate_only" if media_request_available else "unavailable"),
         }
     )
 
@@ -322,9 +318,7 @@ class ExpressionDraft(FrozenModel):
     # A role-owned conversational posture.  It is an advisory protocol
     # coordinate for the current turn, not a host rule: the model may choose
     # to yield, continue, interject, or supersede a pending expression.
-    turn_posture: TurnPosture | None = Field(
-        default=None, exclude_if=lambda value: value is None
-    )
+    turn_posture: TurnPosture | None = Field(default=None, exclude_if=lambda value: value is None)
     cadence: CadenceProfile = "conversational"
     beats: tuple[ExpressionBeatDraftChoice, ...] = Field(default=(), max_length=16)
     delay_seconds: int | None = Field(default=None, ge=1, le=EXPRESSION_DELAY_MAX_SECONDS)
@@ -1567,16 +1561,18 @@ def strip_unpinned_world_claims(
     if not invalid_indexes:
         return draft
     remaining = [
-        claim
-        for index, claim in enumerate(draft.world_claims)
-        if index not in invalid_indexes
+        claim for index, claim in enumerate(draft.world_claims) if index not in invalid_indexes
     ]
     import logging
 
     logging.getLogger("world_v2.claim_strip").warning(
         "stripped %d unpinned world claim(s) (fabricated refs): %s",
         len(draft.world_claims) - len(remaining),
-        [claim.claim_text[:60] for claim in draft.world_claims if draft.world_claims.index(claim) in invalid_indexes][:5],
+        [
+            claim.claim_text[:60]
+            for claim in draft.world_claims
+            if draft.world_claims.index(claim) in invalid_indexes
+        ][:5],
     )
     return draft.model_copy(update={"world_claims": tuple(remaining)})
 
@@ -1880,13 +1876,25 @@ def normalize_expression_draft_wire(value: dict[str, object]) -> dict[str, objec
     value = _normalize_later_envelope(value)
     value = _normalize_world_claim_aliases(value)
     value = _normalize_cadence_alias(value)
+    if "beats" not in value:
+        messages = value.get("messages")
+        if (
+            isinstance(messages, list)
+            and messages
+            and all(isinstance(item, str) and item.strip() for item in messages)
+        ):
+            value = {key: item for key, item in value.items() if key != "messages"}
+            value["beats"] = [{"modality": "text", "text": item.strip()} for item in messages]
     beats = value.get("beats")
     if not isinstance(beats, (list, tuple)):
         return value
     normalized_beats: list[object] = []
     changed = False
     for item in beats:
-        if (
+        if isinstance(item, str) and item.strip():
+            normalized_beats.append({"modality": "text", "text": item})
+            changed = True
+        elif (
             isinstance(item, dict)
             and "role" in item
             and item["role"] in _LEGACY_EXPRESSION_BEAT_ROLES
@@ -2115,20 +2123,19 @@ def materialize_expression_draft(
     )
     proposal_id = f"proposal:expression:{identity}"
     trigger_evidence = ProposalEvidenceRef(
-            ref_id=trigger.observation_ref,
-            evidence_kind="observed_message",
-            source_world_revision=trigger.source_world_revision,
-            immutable_hash=trigger.event_payload_hash,
-        )
+        ref_id=trigger.observation_ref,
+        evidence_kind="observed_message",
+        source_world_revision=trigger.source_world_revision,
+        immutable_hash=trigger.event_payload_hash,
+    )
     world_evidence = _world_claim_evidence(
-            draft=draft,
-            request=request,
-            # The current Observation is already the mandatory first evidence
-            # item above.  A counterpart-history claim may cite it to mean
-            # "the counterpart just reported X", but it must not be looked up
-            # again as a Context-slice ledger binding.
-            non_ledger_source_refs=stable_identity_source_refs
-            | frozenset((trigger.observation_ref,)),
+        draft=draft,
+        request=request,
+        # The current Observation is already the mandatory first evidence
+        # item above.  A counterpart-history claim may cite it to mean
+        # "the counterpart just reported X", but it must not be looked up
+        # again as a Context-slice ledger binding.
+        non_ledger_source_refs=stable_identity_source_refs | frozenset((trigger.observation_ref,)),
     )
     media_evidence = _bound_context_event_evidence(
         cited=set(draft.media_source_refs),
@@ -2136,9 +2143,7 @@ def materialize_expression_draft(
     )
     if set(draft.media_source_refs) != {item.ref_id for item in media_evidence}:
         raise ValueError("media request source lacks immutable event authority")
-    evidence_by_ref = {
-        item.ref_id: item for item in (*world_evidence, *media_evidence)
-    }
+    evidence_by_ref = {item.ref_id: item for item in (*world_evidence, *media_evidence)}
     evidence = (trigger_evidence, *evidence_by_ref.values())
     if draft.timing_choice == "silent":
         return DecisionProposal(
@@ -2158,9 +2163,7 @@ def materialize_expression_draft(
             timing_choice="silent",
             turn_posture=draft.turn_posture,
             episode_disposition=(
-                "supersede_pending"
-                if draft.turn_posture == "supersede"
-                else None
+                "supersede_pending" if draft.turn_posture == "supersede" else None
             ),
         )
 

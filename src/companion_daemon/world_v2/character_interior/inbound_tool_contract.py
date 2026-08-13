@@ -22,7 +22,10 @@ from ..expression_draft import (
 from ..private_turn_state import PrivateTurnState
 from ..recall_audit import CharacterRecallRequest
 from .inbound_appraisal_wire import AppraisalDraftWire
-from ..present_prompt import compact_gate_recall_instruction
+from ..present_prompt import (
+    compact_gate_recall_instruction,
+    compile_slim_interior_envelope,
+)
 
 
 InboundToolPhase = Literal["gate", "initial", "after_recall", "final"]
@@ -76,9 +79,7 @@ _DEEPSEEK_STRICT_UNSUPPORTED_KEYS = frozenset(
         "uniqueItems",
     }
 )
-_DEEPSEEK_STRICT_FORMATS = frozenset(
-    {"email", "hostname", "ipv4", "ipv6", "uuid"}
-)
+_DEEPSEEK_STRICT_FORMATS = frozenset({"email", "hostname", "ipv4", "ipv6", "uuid"})
 
 
 def _nullable_strict_schema(schema: object) -> object:
@@ -135,9 +136,7 @@ def _deepseek_strict_schema(value: object) -> object:
         return projected
 
     original_required = set(projected.get("required", ()))
-    properties = {
-        key: _deepseek_strict_schema(item) for key, item in properties.items()
-    }
+    properties = {key: _deepseek_strict_schema(item) for key, item in properties.items()}
     projected["properties"] = properties
 
     # Branches such as affect lifecycle, timing, and the outer recall/decision
@@ -157,8 +156,7 @@ def _deepseek_strict_schema(value: object) -> object:
             if not isinstance(branch_properties, dict):
                 branch_properties = {}
             branch_properties = {
-                key: _deepseek_strict_schema(item)
-                for key, item in branch_properties.items()
+                key: _deepseek_strict_schema(item) for key, item in branch_properties.items()
             }
             for key, schema in properties.items():
                 if key not in branch_properties:
@@ -202,8 +200,7 @@ def _deepseek_documented_schema_subset(value: object) -> object:
             else:
                 projected.pop("enum", None)
                 projected["anyOf"] = [
-                    {"type": item_type, "enum": items}
-                    for item_type, items in typed_values.items()
+                    {"type": item_type, "enum": items} for item_type, items in typed_values.items()
                 ]
     return projected
 
@@ -259,8 +256,7 @@ def _expand_compact_gate_payload(value: dict[str, object]) -> dict[str, object]:
     """Expand the compact provider carrier into the existing typed branches."""
 
     if "payload_json" not in value or (
-        value.get("payload_json") is None
-        and set(value) != {"result_kind", "payload_json"}
+        value.get("payload_json") is None and set(value) != {"result_kind", "payload_json"}
     ):
         return value
     if set(value) != {"result_kind", "payload_json"}:
@@ -317,6 +313,10 @@ def _expand_compact_gate_payload(value: dict[str, object]) -> dict[str, object]:
     validate_bounds(payload, depth=0)
     if "result_kind" in payload or "payload_json" in payload:
         raise ValueError("compact gate inner payload cannot own transport authority")
+    slim_envelope = compile_slim_interior_envelope(payload, reply_only=(kind == "reply_only"))
+    if slim_envelope is not None:
+        payload = slim_envelope
+        payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     if kind in {"reply_only", "full_turn"}:
         if (
             set(payload) != {"protocol", "appraisal_draft", "events"}
@@ -384,9 +384,7 @@ def _non_null_schema(schema: object, *, field_name: str) -> dict[str, object]:
             raise ValueError(f"{field_name} canonical schema has no non-null branch")
         return deepcopy(schema)
     non_null = [
-        deepcopy(item)
-        for item in variants
-        if isinstance(item, dict) and item.get("type") != "null"
+        deepcopy(item) for item in variants if isinstance(item, dict) and item.get("type") != "null"
     ]
     if len(non_null) != 1:
         raise ValueError(f"{field_name} canonical schema has an ambiguous non-null branch")
@@ -436,17 +434,13 @@ def _reply_only_appraisal_schema() -> dict[str, object]:
     if isinstance(meaning_properties, dict):
         meaning_properties["confidence"] = {"type": "number"}
     attribution = properties.get("attribution")
-    attribution_variants = (
-        attribution.get("anyOf") if isinstance(attribution, dict) else None
-    )
+    attribution_variants = attribution.get("anyOf") if isinstance(attribution, dict) else None
     if isinstance(attribution_variants, list):
         for item in attribution_variants:
             if isinstance(item, dict) and item.get("type") == "string":
                 item.pop("enum", None)
     components = properties.get("components")
-    component_variants = (
-        components.get("anyOf") if isinstance(components, dict) else None
-    )
+    component_variants = components.get("anyOf") if isinstance(components, dict) else None
     component_array = (
         next(
             (
@@ -459,9 +453,7 @@ def _reply_only_appraisal_schema() -> dict[str, object]:
         if isinstance(component_variants, list)
         else None
     )
-    component_items = (
-        component_array.get("items") if isinstance(component_array, dict) else None
-    )
+    component_items = component_array.get("items") if isinstance(component_array, dict) else None
     component_properties = (
         component_items.get("properties") if isinstance(component_items, dict) else None
     )
@@ -521,9 +513,7 @@ def _reply_only_stream_events_schema(
         )
     beats_schema = expression_properties.get("beats")
     beat_items = beats_schema.get("items") if isinstance(beats_schema, dict) else None
-    beat_properties = (
-        beat_items.get("properties") if isinstance(beat_items, dict) else None
-    )
+    beat_properties = beat_items.get("properties") if isinstance(beat_items, dict) else None
     beat_text = beat_properties.get("text") if isinstance(beat_properties, dict) else None
 
     media_source_refs = expression_field("media_source_refs")
@@ -611,6 +601,7 @@ def _capability_expression_schema(
         if capabilities.media_request_mode == "candidate_only"
         else ["none"]
     )
+
     def constrain_option_ids(field: object, option_ids: list[str]) -> None:
         if not isinstance(field, dict) or not option_ids:
             return
@@ -665,9 +656,7 @@ def _capability_expression_schema(
             "properties": {
                 "timing_choice": {"enum": ["now"]},
                 "beats": beats,
-                "turn_posture": {
-                    "enum": [None, "continue", "interject", "supersede"]
-                },
+                "turn_posture": {"enum": [None, "continue", "interject", "supersede"]},
                 **no_due_window,
             }
         },
@@ -675,18 +664,14 @@ def _capability_expression_schema(
             "properties": {
                 "timing_choice": {"enum": ["later"]},
                 "beats": later_beats,
-                "turn_posture": {
-                    "enum": [None, "yield", "continue", "supersede"]
-                },
+                "turn_posture": {"enum": [None, "yield", "continue", "supersede"]},
             }
         },
         {
             "properties": {
                 "timing_choice": {"enum": ["silent"]},
                 "beats": {**deepcopy(beats), "maxItems": 0},
-                "turn_posture": {
-                    "enum": [None, "yield", "continue", "supersede"]
-                },
+                "turn_posture": {"enum": [None, "yield", "continue", "supersede"]},
                 "response_expectation": {"type": "null"},
                 **no_due_window,
             }
@@ -758,8 +743,7 @@ class InboundToolContract:
             value = {
                 key: item
                 for key, item in value.items()
-                if key == "result_kind"
-                or not _deepseek_strict_union_padding_is_empty(key, item)
+                if key == "result_kind" or not _deepseek_strict_union_padding_is_empty(key, item)
             }
         if kind in {"decision", "reply_only"}:
             if kind == "reply_only" and self.transport != "stream":
@@ -779,9 +763,7 @@ class InboundToolContract:
                 frozenset({"result_kind", "private_turn_state", "recall_request"}),
             }
             if self.capabilities.private_turn_state_mode == "required":
-                allowed = {
-                    frozenset({"result_kind", "private_turn_state", "recall_request"})
-                }
+                allowed = {frozenset({"result_kind", "private_turn_state", "recall_request"})}
             if frozenset(value) not in allowed:
                 raise ValueError("forced recall transport envelope is ambiguous")
         else:
@@ -875,9 +857,7 @@ class InboundToolContracts:
             "additionalProperties": False,
         }
 
-        tool_name = (
-            f"character_inbound_compact_gate_v{_COMPACT_GATE_CONTRACT_VERSION}"
-        )
+        tool_name = f"character_inbound_compact_gate_v{_COMPACT_GATE_CONTRACT_VERSION}"
         function: dict[str, object] = {
             "name": tool_name,
             "description": (
@@ -904,28 +884,32 @@ class InboundToolContracts:
         if schema_dialect == "deepseek-strict":
             function["strict"] = True
         provider_tools = ({"type": "function", "function": function},)
-        schema_digest = "sha256:" + sha256(
-            _canonical_json(parameters).encode("utf-8")
-        ).hexdigest()
-        capabilities_digest = "sha256:" + sha256(
-            _canonical_json(capabilities.model_dump(mode="json")).encode("utf-8")
-        ).hexdigest()
-        contract_digest = "sha256:" + sha256(
-            _canonical_json(
-                {
-                    "phase": "gate",
-                    "transport": "stream",
-                    "schema_dialect": schema_dialect,
-                    "recall_allowed": recall_allowed,
-                    "response_expectation_assessment_required": (
-                        response_expectation_assessment_required
-                    ),
-                    "schema_sha256": schema_digest,
-                    "capabilities_sha256": capabilities_digest,
-                    "tool_name": tool_name,
-                }
-            ).encode("utf-8")
-        ).hexdigest()
+        schema_digest = "sha256:" + sha256(_canonical_json(parameters).encode("utf-8")).hexdigest()
+        capabilities_digest = (
+            "sha256:"
+            + sha256(
+                _canonical_json(capabilities.model_dump(mode="json")).encode("utf-8")
+            ).hexdigest()
+        )
+        contract_digest = (
+            "sha256:"
+            + sha256(
+                _canonical_json(
+                    {
+                        "phase": "gate",
+                        "transport": "stream",
+                        "schema_dialect": schema_dialect,
+                        "recall_allowed": recall_allowed,
+                        "response_expectation_assessment_required": (
+                            response_expectation_assessment_required
+                        ),
+                        "schema_sha256": schema_digest,
+                        "capabilities_sha256": capabilities_digest,
+                        "tool_name": tool_name,
+                    }
+                ).encode("utf-8")
+            ).hexdigest()
+        )
         identity = InboundToolContractIdentity(
             contract_id="character-inbound-compact-gate",
             phase="gate",
@@ -996,15 +980,11 @@ class InboundToolContracts:
             ):
                 raise ValueError("ExpressionDraft stream schema is incomplete")
             beat_array = expression_properties.get("beats")
-            if not isinstance(beat_array, dict) or not isinstance(
-                beat_array.get("items"), dict
-            ):
+            if not isinstance(beat_array, dict) or not isinstance(beat_array.get("items"), dict):
                 raise ValueError("ExpressionDraft stream beat schema is incomplete")
             deferred_beats = deepcopy(beat_array)
             deferred_beats["maxItems"] = capabilities.max_later_beats
-            deferred_modality = deferred_beats["items"].get("properties", {}).get(
-                "modality"
-            )
+            deferred_modality = deferred_beats["items"].get("properties", {}).get("modality")
             if not isinstance(deferred_modality, dict):
                 raise ValueError("ExpressionDraft deferred beat modality is incomplete")
             deferred_modality["enum"] = ["text"]
@@ -1021,16 +1001,14 @@ class InboundToolContracts:
                     "leading_typing_beat": deepcopy(beat_array["items"]),
                 }
             )
-            beat_modality = head_properties["beat"].get("properties", {}).get(
-                "modality"
-            )
+            beat_modality = head_properties["beat"].get("properties", {}).get("modality")
             if isinstance(beat_modality, dict):
                 beat_modality["enum"] = [
                     modality for modality in capabilities.modalities if modality != "typing"
                 ]
-            typing_modality = head_properties["leading_typing_beat"].get(
-                "properties", {}
-            ).get("modality")
+            typing_modality = (
+                head_properties["leading_typing_beat"].get("properties", {}).get("modality")
+            )
             if isinstance(typing_modality, dict):
                 typing_modality["enum"] = ["typing"]
             head_required = [
@@ -1054,9 +1032,7 @@ class InboundToolContracts:
             now_head_branch = {
                 "properties": {
                     "timing_choice": {"enum": ["now"]},
-                    "turn_posture": {
-                        "enum": [None, "continue", "interject", "supersede"]
-                    },
+                    "turn_posture": {"enum": [None, "continue", "interject", "supersede"]},
                     "beat": deepcopy(beat_array["items"]),
                     "beats": null_transport,
                 },
@@ -1065,9 +1041,7 @@ class InboundToolContracts:
             later_head_branch = {
                 "properties": {
                     "timing_choice": {"enum": ["later"]},
-                    "turn_posture": {
-                        "enum": [None, "yield", "continue", "supersede"]
-                    },
+                    "turn_posture": {"enum": [None, "yield", "continue", "supersede"]},
                     "beat": null_transport,
                     "beats": deferred_beats,
                     "leading_typing_beat": null_transport,
@@ -1077,9 +1051,7 @@ class InboundToolContracts:
             silent_head_branch = {
                 "properties": {
                     "timing_choice": {"enum": ["silent"]},
-                    "turn_posture": {
-                        "enum": [None, "yield", "continue", "supersede"]
-                    },
+                    "turn_posture": {"enum": [None, "yield", "continue", "supersede"]},
                     "beat": null_transport,
                     "beats": null_transport,
                     "leading_typing_beat": null_transport,
@@ -1310,26 +1282,32 @@ class InboundToolContracts:
             function["strict"] = True
         provider_tools = ({"type": "function", "function": function},)
         digest = "sha256:" + sha256(_canonical_json(parameters).encode("utf-8")).hexdigest()
-        capabilities_digest = "sha256:" + sha256(
-            _canonical_json(capabilities.model_dump(mode="json")).encode("utf-8")
-        ).hexdigest()
-        contract_digest = "sha256:" + sha256(
-            _canonical_json(
-                {
-                    "phase": phase,
-                    "transport": transport,
-                    "schema_dialect": schema_dialect,
-                    "recall_allowed": recall_allowed,
-                    "require_turn_posture": require_turn_posture,
-                    "response_expectation_assessment_required": (
-                        response_expectation_assessment_required
-                    ),
-                    "schema_sha256": digest,
-                    "capabilities_sha256": capabilities_digest,
-                    "tool_name": tool_name,
-                }
-            ).encode("utf-8")
-        ).hexdigest()
+        capabilities_digest = (
+            "sha256:"
+            + sha256(
+                _canonical_json(capabilities.model_dump(mode="json")).encode("utf-8")
+            ).hexdigest()
+        )
+        contract_digest = (
+            "sha256:"
+            + sha256(
+                _canonical_json(
+                    {
+                        "phase": phase,
+                        "transport": transport,
+                        "schema_dialect": schema_dialect,
+                        "recall_allowed": recall_allowed,
+                        "require_turn_posture": require_turn_posture,
+                        "response_expectation_assessment_required": (
+                            response_expectation_assessment_required
+                        ),
+                        "schema_sha256": digest,
+                        "capabilities_sha256": capabilities_digest,
+                        "tool_name": tool_name,
+                    }
+                ).encode("utf-8")
+            ).hexdigest()
+        )
         identity = InboundToolContractIdentity(
             contract_id="character-inbound-forced-tool",
             phase=phase,

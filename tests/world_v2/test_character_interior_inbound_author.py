@@ -401,9 +401,7 @@ class _OverlappingDeliveredSpanThenExactProvider(_CombinedProvider):
                     "beats": [
                         {
                             "modality": "text",
-                            "text": (
-                                "aaa" if first_attempt else "aa，之后继续聊。"
-                            ),
+                            "text": ("aaa" if first_attempt else "aa，之后继续聊。"),
                         }
                     ],
                     "stance": "认真",
@@ -1761,9 +1759,7 @@ class _ReplyOnlyStreamingProvider(_ForcedStreamingCombinedProvider):
         start = system.index(marker) + len(marker)
         specimen, end = json.JSONDecoder().raw_decode(system, start)
         assert isinstance(specimen, dict)
-        assert system[end:].startswith(
-            "\nEND REPLY_ONLY PAYLOAD_JSON CANONICAL SPECIMEN JSON."
-        )
+        assert system[end:].startswith("\nEND REPLY_ONLY PAYLOAD_JSON CANONICAL SPECIMEN JSON.")
         return specimen
 
     @staticmethod
@@ -1775,9 +1771,7 @@ class _ReplyOnlyStreamingProvider(_ForcedStreamingCombinedProvider):
         start = system.index(marker) + len(marker)
         metadata, end = json.JSONDecoder().raw_decode(system, start)
         assert isinstance(metadata, dict)
-        assert system[end:].startswith(
-            "\nEND REPLY_ONLY PAYLOAD_JSON INSTRUCTION METADATA JSON."
-        )
+        assert system[end:].startswith("\nEND REPLY_ONLY PAYLOAD_JSON INSTRUCTION METADATA JSON.")
         return metadata
 
     @classmethod
@@ -1788,9 +1782,7 @@ class _ReplyOnlyStreamingProvider(_ForcedStreamingCombinedProvider):
         domains: dict[str, object],
     ) -> object:
         if isinstance(value, list):
-            return [
-                cls._follow_prompt_specimen(item, domains=domains) for item in value
-            ]
+            return [cls._follow_prompt_specimen(item, domains=domains) for item in value]
         if isinstance(value, dict):
             return {
                 key: cls._follow_prompt_specimen(item, domains=domains)
@@ -1912,9 +1904,7 @@ class _FullTurnGateStreamingProvider(_ForcedStreamingCombinedProvider):
         start = system.index(marker) + len(marker)
         grammar, end = json.JSONDecoder().raw_decode(system, start)
         assert isinstance(grammar, dict)
-        assert system[end:].startswith(
-            "\nEND FULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON."
-        )
+        assert system[end:].startswith("\nEND FULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON.")
         return grammar
 
     @staticmethod
@@ -1926,9 +1916,7 @@ class _FullTurnGateStreamingProvider(_ForcedStreamingCombinedProvider):
         start = system.index(marker) + len(marker)
         metadata, end = json.JSONDecoder().raw_decode(system, start)
         assert isinstance(metadata, dict)
-        assert system[end:].startswith(
-            "\nEND FULL_TURN PAYLOAD_JSON INSTRUCTION METADATA JSON."
-        )
+        assert system[end:].startswith("\nEND FULL_TURN PAYLOAD_JSON INSTRUCTION METADATA JSON.")
         return metadata
 
     @classmethod
@@ -2020,9 +2008,7 @@ class _RecallGateStreamingProvider(_FullTurnGateStreamingProvider):
     ) -> tuple[str, ModelUsageProvenance]:
         assert tools is not None
         name = str(tools[0]["function"]["name"])
-        result_kinds = tools[0]["function"]["parameters"]["properties"][
-            "result_kind"
-        ]["enum"]
+        result_kinds = tools[0]["function"]["parameters"]["properties"]["result_kind"]["enum"]
         if name == "character_inbound_compact_gate_v2" and "recall" not in result_kinds:
             return await super().complete_json_stream_with_usage(
                 messages,
@@ -2194,13 +2180,16 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert tools is not None
     assert tools[0]["function"]["name"] == "character_inbound_compact_gate_v2"
     assert tools[0]["function"]["strict"] is True
-    assert len(
-        json.dumps(
-            tools[0]["function"]["parameters"],
-            ensure_ascii=False,
-            separators=(",", ":"),
-        ).encode()
-    ) <= 12_000
+    assert (
+        len(
+            json.dumps(
+                tools[0]["function"]["parameters"],
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode()
+        )
+        <= 12_000
+    )
     assert tool_choice == {
         "type": "function",
         "function": {"name": "character_inbound_compact_gate_v2"},
@@ -2226,10 +2215,7 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "with no appraisal, affect" not in compact_system
     assert "complete chosen inner object in payload_json" in compact_system
     assert "REPLY_ONLY PAYLOAD_JSON CANONICAL SPECIMEN JSON" in compact_system
-    assert (
-        "reply-only instruction metadata block is not part of payload_json"
-        in compact_system
-    )
+    assert "reply-only instruction metadata block is not part of payload_json" in compact_system
     assert "host never substitutes null as a semantic default" in compact_system
     assert "full_turn_json" not in compact_system
     assert (
@@ -2333,11 +2319,7 @@ async def test_compact_gate_stays_enabled_when_recall_is_unavailable() -> None:
     )
     request = _request(revision=3, call="call:compact-without-recall")
     request = request.model_copy(
-        update={
-            "model_content_json": mark_recall_budget_consumed(
-                request.model_content_json
-            )
-        }
+        update={"model_content_json": mark_recall_budget_consumed(request.model_content_json)}
     )
 
     await author.propose_stream_head(request)
@@ -2393,9 +2375,10 @@ async def test_compact_recall_reuses_gate_without_reopening_recall_after_transfe
     assert len(provider.calls) == 2
     second_tools, _ = provider.calls[1]
     assert second_tools is not None
-    assert second_tools[0]["function"]["parameters"]["properties"]["result_kind"][
-        "enum"
-    ] == ["reply_only", "full_turn"]
+    assert second_tools[0]["function"]["parameters"]["properties"]["result_kind"]["enum"] == [
+        "reply_only",
+        "full_turn",
+    ]
     assert "这次我选择完整地回应。" in json.dumps(
         head.raw_proposal,
         ensure_ascii=False,
@@ -2473,12 +2456,8 @@ async def test_reply_only_atomically_installs_appraisal_affect_and_one_public_ac
     assert event_types.count("ExecutionReceiptRecorded") == 1
     assert event_types.count("AppraisalAccepted") == 1
     assert event_types.count("AffectEpisodeOpened") == 1
-    assert event_types.index("ExpressionPlanAccepted") < event_types.index(
-        "AppraisalAccepted"
-    )
-    assert event_types.index("ActionAuthorized") < event_types.index(
-        "AffectEpisodeOpened"
-    )
+    assert event_types.index("ExpressionPlanAccepted") < event_types.index("AppraisalAccepted")
+    assert event_types.index("ActionAuthorized") < event_types.index("AffectEpisodeOpened")
 
     reopened_author = InboundCharacterAuthor(
         flash_model=provider,
@@ -2753,9 +2732,7 @@ async def test_extra_tool_before_closed_head_never_authorizes_a_stream_unit() ->
 
     with pytest.raises(ValueError, match="exactly one tool call"):
         await asyncio.wait_for(
-            author.propose_stream_head(
-                _request(revision=3, call="call:extra-tool-before-head")
-            ),
+            author.propose_stream_head(_request(revision=3, call="call:extra-tool-before-head")),
             timeout=0.5,
         )
 
@@ -2937,9 +2914,7 @@ async def test_failed_stream_correction_preserves_physical_retirement_audit() ->
 
     with pytest.raises(ValidationTechnicalFailure, match="appraisal_reselection_invalid"):
         await asyncio.wait_for(
-            author.propose_stream_head(
-                _request(revision=3, call="call:failed-stream-correction")
-            ),
+            author.propose_stream_head(_request(revision=3, call="call:failed-stream-correction")),
             timeout=0.5,
         )
 
@@ -2998,9 +2973,7 @@ async def test_streamed_correction_retires_old_physical_session_before_reselecti
 
     provider.complete_json_stream_with_usage = invalid_stream  # type: ignore[method-assign]
     try:
-        with pytest.raises(
-            ValidationTechnicalFailure, match="appraisal_reselection_invalid"
-        ):
+        with pytest.raises(ValidationTechnicalFailure, match="appraisal_reselection_invalid"):
             await asyncio.wait_for(author.propose_stream_head(request), timeout=0.5)
     finally:
         provider.release_tail.set()
@@ -4621,7 +4594,6 @@ async def test_public_invalid_recall_final_does_not_open_a_second_author_lane(
     assert top_level_audits[-1]["failure_code"]
 
 
-
 @pytest.mark.asyncio
 async def test_combined_inbound_role_receives_exact_active_affect_head_capability() -> None:
     provider = _CombinedProvider()
@@ -5107,9 +5079,7 @@ async def test_overlapping_delivered_span_is_reselected_before_a_worker_can_obse
 
 @pytest.mark.asyncio
 async def test_delivered_span_correction_replaces_the_paired_interaction_choice() -> None:
-    provider = _OverlappingDeliveredSpanThenExactProvider(
-        drop_interaction_on_correction=True
-    )
+    provider = _OverlappingDeliveredSpanThenExactProvider(drop_interaction_on_correction=True)
     cognition = InboundCharacterAuthor(flash_model=provider)
     request = _request(revision=3, call="call:delivered-span-drops-interaction")
     request = request.model_copy(
@@ -5134,9 +5104,7 @@ async def test_delivered_span_correction_replaces_the_paired_interaction_choice(
 async def test_deferred_paired_correction_fails_closed_if_the_appraisal_changes(
     monkeypatch,
 ) -> None:
-    provider = _OverlappingDeliveredSpanThenExactProvider(
-        drop_interaction_on_correction=True
-    )
+    provider = _OverlappingDeliveredSpanThenExactProvider(drop_interaction_on_correction=True)
     cognition = InboundCharacterAuthor(flash_model=provider)
     request = _request(revision=3, call="call:deferred-span-drops-interaction")
     request = request.model_copy(
@@ -5398,7 +5366,8 @@ async def test_paired_cognition_honors_character_recall_and_replays_trace(
     recall_audits = tuple(
         item
         for item in evidence.projection.model_result_audits
-        if item.audit_contract in {
+        if item.audit_contract
+        in {
             "model-result-audit.4",
             "model-result-audit.5",
             "model-result-audit.7",
@@ -5429,9 +5398,7 @@ async def test_paired_cognition_honors_character_recall_and_replays_trace(
     assert recall_control_results[0]["status"] == "candidate_returned"
     assert recall_control_results[0]["outcome"] == "returned"
     assert recall_control_results[0].get("parent_model_call_id") is None
-    assert recall_control_results[0]["usage"]["provider_usage_ref"] == (
-        "usage:tool-recall:1"
-    )
+    assert recall_control_results[0]["usage"]["provider_usage_ref"] == ("usage:tool-recall:1")
 
 
 @pytest.mark.asyncio
@@ -6102,10 +6069,7 @@ async def test_inbound_expression_uses_one_generation_call_per_turn(
             source_refs=(payload["trigger_ref"],),
             epoch=payload["trigger_ref"],
         ).opportunity_ref
-        assert (
-            audit["character_interior_lineage"]["opportunity_ref"]
-            == expected_opportunity_ref
-        )
+        assert audit["character_interior_lineage"]["opportunity_ref"] == expected_opportunity_ref
 
 
 @pytest.mark.asyncio
@@ -6270,17 +6234,25 @@ async def test_loose_combined_messages_are_reselected_with_two_visible_beats() -
     provider = _LooseMultiMessageCombinedProvider()
     cognition = InboundCharacterAuthor(flash_model=provider)
 
-    with pytest.raises(ValidationTechnicalFailure, match="paired_expression_reselection_invalid"):
-        await cognition.propose(_request(revision=3, call="call:loose-messages"))
+    output = await cognition.propose(_request(revision=3, call="call:loose-messages"))
 
     assert provider.model == "combined-flash"
     assert len(provider.calls) == 1
+    proposal = DecisionProposal.model_validate_json(
+        json.dumps(output.raw_proposal, ensure_ascii=False)
+    )
+    visible = [
+        beat["inline_text"]
+        for change in proposal.proposed_changes
+        if change.kind == "expression_plan_transition"
+        for beat in change.payload.value()["beat_drafts"]
+    ]
+    assert visible == ["先说第一件事。", "还有第二件事。"]
 
 
 @pytest.mark.parametrize(
     "visible_shape",
     (
-        {"beats": ["先说第一件事。", "还有第二件事。"]},
         {
             "responses": [
                 {"text": "先说第一件事。"},
@@ -6306,6 +6278,30 @@ async def test_common_explicit_text_arrays_preserve_all_visible_beats(
     with pytest.raises(ValidationTechnicalFailure, match="paired_expression_reselection_invalid"):
         await cognition.propose(_request(revision=3, call="call:text-array"))
     assert len(provider.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_string_beats_on_expression_draft_are_accepted() -> None:
+    provider = _LooseExpressionShapeProvider(
+        {
+            "beats": ["先说第一件事。", "还有第二件事。"],
+            "stance": "continue_in_two_beats",
+            "brief_rationale": "Two short messages fit the conversational rhythm.",
+        }
+    )
+    cognition = InboundCharacterAuthor(flash_model=provider)
+    output = await cognition.propose(_request(revision=3, call="call:string-beats"))
+    assert len(provider.calls) == 1
+    proposal = DecisionProposal.model_validate_json(
+        json.dumps(output.raw_proposal, ensure_ascii=False)
+    )
+    visible = [
+        beat["inline_text"]
+        for change in proposal.proposed_changes
+        if change.kind == "expression_plan_transition"
+        for beat in change.payload.value()["beat_drafts"]
+    ]
+    assert visible == ["先说第一件事。", "还有第二件事。"]
 
 
 @pytest.mark.parametrize(

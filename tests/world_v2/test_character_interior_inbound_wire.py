@@ -8517,86 +8517,12 @@ def test_expression_prompt_exposes_machine_readable_hard_boundary_manifest() -> 
     user = json.loads(messages[1]["content"])
     boundary = user["expression_hard_boundaries"]
 
-    assert boundary["contract"] == "expression-hard-boundaries.8"
-    assert boundary["single_report_epistemic_scope"] == {
-        "boundary_kind": "fact_scope_only",
-        "behavior_advice": False,
-        "evidence_cardinality": "one_report_of_one_occurrence",
-        "cannot_authorize": [
-            "class_wide_assertion",
-            "habitual_assertion",
-            "generic_assertion",
-            "typical_assertion",
-            "frequency_assertion",
-        ],
-    }
-    assert boundary["response_expectation"] == {
-        "wait_seconds": {"minimum": 30, "maximum": 86_400},
-        "expires_after_seconds": {"minimum": 60, "maximum": 172_800},
-        "relation": "expires_after_seconds > wait_seconds",
-    }
-    assert boundary["private_turn_state"] == {
-        "attended_source_refs": {
-            "maximum_items": 8,
-            "unique": True,
-            "authority": "attention_provenance_only_not_world_fact_authority",
-            "attention_only_not_fact_authority": [
-                "T1",
-                "biography:summer-home",
-            ],
-        },
-        "epistemic_authority": {
-            "character_private_mental_state": {
-                "source_required": False,
-                "covers": ("present_and_immediate_retrospective_first_person_mental_continuity"),
-            },
-            "external_material_in_private_state": {
-                "world_authority": False,
-                "examples_are_non_exhaustive": [
-                    "place",
-                    "action_or_activity",
-                    "other_person_or_their_mental_state",
-                    "bodily_or_physical_status",
-                    "world_occurrence_or_settled_history",
-                ],
-                "effect": (
-                    "turn_local_audit_only; visible_or_durable_restatement_requires_"
-                    "matching_output_seam_authority"
-                ),
-            },
-        },
-    }
-    coordinate = boundary["biographical_coordinate_authority"]
-    assert coordinate == [
-        {
-            "source_ref": "S1",
-            "scope": "current_world",
-            "field_path": "/age",
-            "logical_at": "2026-07-30T06:00:00+00:00",
-            "value": 21,
-        }
-    ]
-    assert boundary["biographical_parent_attention_only"] == ["biography:summer-home"]
-    assert boundary["current_counterpart_report_authority"] == {
-        "discourse_scope": "current_counterpart_report",
-        "epistemic_status": ("report_only_not_objective_truth_or_companion_experience"),
-        "reported_text": "我今天终于把那件麻烦事做完了。",
-        "reporter_ref": "user:primary",
-        "source_refs": [
-            "event:observation:qq:1",
-            "observation:qq:1",
-            "trigger:1",
-        ],
-        "world_claim_required_for_direct_uptake": False,
-        "natural_uptake_without_attribution_phrase": True,
-        "does_not_authorize": [
-            "added_or_changed_subject_time_occurrence_or_status",
-            "added_detail_or_motive",
-            "objective_world_fact",
-            "companion_experience",
-            "durable_world_mutation",
-        ],
-    }
+    assert boundary["contract"] == "expression-hard-boundaries.present.1"
+    assert boundary["authority"] == "checked_after_expression"
+    assert "single_report_epistemic_scope" not in boundary
+    assert "private_turn_state" not in boundary
+    assert "biographical_coordinate_authority" not in boundary
+    assert "response_expectation" not in boundary
     assert boundary["world_claim_source_refs"]["current_world"] == [
         "S1",
         "occurrence:walk",

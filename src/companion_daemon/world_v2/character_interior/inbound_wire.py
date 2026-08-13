@@ -37,7 +37,13 @@ from ..companion_identity import (
     CompanionIdentityFrame,
     companion_identity_source_refs,
 )
-from ..present_prompt import identity_prose, order_user_present_payload
+from ..present_prompt import (
+    compile_slim_consider_payload,
+    identity_prose,
+    normalize_text_beats,
+    order_user_present_payload,
+    present_hard_boundary_prompt,
+)
 from ..deliberation import (
     AuthoredCandidateInvocationAudit,
     ModelInput,
@@ -745,9 +751,9 @@ def expression_draft_shape_contract(*, include_world_claims: bool = True) -> str
         "or silent; cadence is rapid, conversational, hesitant, or escalating and is required "
         "when expression_capabilities.recorded_cadence_mode is shadow or on, but may be omitted "
         "only when that mode is off; "
-        'beats is an array of objects and must be serialized as the final top-level JSON field, '
+        "beats is an array of objects and must be serialized as the final top-level JSON field, "
         "with timing_choice, turn_posture, world_claims, and every other chosen field emitted "
-        "before it. A text beat uses exactly modality=\"text\" and "
+        'before it. A text beat uses exactly modality="text" and '
         "text=<non-empty string>; never use content or put cadence inside a beat. "
         "Non-text beats must use only the installed expression_capabilities and their matching "
         "reaction_id or sticker_id field; typing has no value field. stance and "
@@ -1168,9 +1174,7 @@ def _normalize_source_review_attempt_failure_code(
     if outcome == "timeout":
         return "provider_timeout"
     installed = sanitize_validation_technical_failure_code(value)
-    if installed is not None and installed.startswith(
-        ("source_review_", "authored_subcall_")
-    ):
+    if installed is not None and installed.startswith(("source_review_", "authored_subcall_")):
         return installed
     if isinstance(value, str):
         normalized = value.strip()
@@ -2464,8 +2468,7 @@ def _source_closure_evidence(
                 raw_slice = slices.get(lane)
                 raw_items = (
                     raw_slice.get("items")
-                    if isinstance(raw_slice, dict)
-                    and raw_slice.get("availability") == "available"
+                    if isinstance(raw_slice, dict) and raw_slice.get("availability") == "available"
                     else None
                 )
                 if not isinstance(raw_items, list):
@@ -4427,7 +4430,6 @@ def _prepare_source_closure_review_material(
     )
 
 
-
 def _known_capsule_source_refs(source_evidence: dict[str, object]) -> frozenset[str]:
     known = {
         str(row["source_ref"])
@@ -5816,7 +5818,9 @@ async def _cancel_optional_inventory_task(task: asyncio.Task[object]) -> object:
     # every cancellation result as optional availability loss, while keeping
     # a raced successful result available to the caller for semantic review.
     result = _task_result_or_exception(task)
-    return result if not isinstance(result, BaseException) else _optional_inventory_budget_exhausted()
+    return (
+        result if not isinstance(result, BaseException) else _optional_inventory_budget_exhausted()
+    )
 
 
 async def _run_inventory_guard_and_initial_review(
@@ -5940,9 +5944,7 @@ def _retain_inventory_source_requirements_after_positive_v7(
         ),
         usage=result.usage,
         visible_authority_exhaustive=True,
-        visible_authority_terminal_rejection=(
-            "source_bearing_private_episode" in roles
-        ),
+        visible_authority_terminal_rejection=("source_bearing_private_episode" in roles),
     )
 
 
@@ -6574,9 +6576,7 @@ _FORCED_STREAM_UNION_KEYS = frozenset(
 )
 _FORCED_STREAM_BRANCH_KEYS = {
     "decision": frozenset({"result_kind", "protocol", "appraisal_draft", "events"}),
-    "reply_only": frozenset(
-        {"result_kind", "protocol", "appraisal_draft", "events"}
-    ),
+    "reply_only": frozenset({"result_kind", "protocol", "appraisal_draft", "events"}),
     "full_turn": frozenset({"result_kind", "full_turn_json"}),
     "recall": frozenset({"result_kind", "private_turn_state", "recall_request"}),
 }
@@ -6694,6 +6694,9 @@ def _stream_first_expression(raw: str) -> str:
         assert isinstance(events, list)
         return _expression_event_head(events[0], continuation=bool(events[1:-1]))
     if "protocol" not in parsed:
+        slim = compile_slim_consider_payload(parsed)
+        if slim is not None:
+            parsed = slim
         if (
             set(parsed) == {"appraisal_draft", "expression_draft"}
             and isinstance(parsed.get("appraisal_draft"), dict)
@@ -6802,6 +6805,9 @@ def _stream_tail_expression(raw: str) -> str:
             )
         return json.dumps(tail, ensure_ascii=False, separators=(",", ":"))
     if "protocol" not in parsed:
+        slim = compile_slim_consider_payload(parsed)
+        if slim is not None:
+            parsed = slim
         if (
             set(parsed) == {"appraisal_draft", "expression_draft"}
             and isinstance(parsed.get("appraisal_draft"), dict)
@@ -6939,9 +6945,7 @@ def _unique_stream_json_object(pairs: list[tuple[str, object]]) -> dict[str, obj
         if key in value:
             if value[key] == item:
                 continue
-            raise ValueError(
-                f"canonical expression stream conflicting duplicated field: {key}"
-            )
+            raise ValueError(f"canonical expression stream conflicting duplicated field: {key}")
         value[key] = item
     return value
 
@@ -7157,8 +7161,7 @@ def _validate_reply_only_appraisal(value: object) -> None:
     except ValidationError as exc:
         raise ValueError("reply-only appraisal is invalid") from exc
     if any(
-        getattr(draft, field) is not None
-        for field in _REPLY_ONLY_FORBIDDEN_APPRAISAL_EFFECT_FIELDS
+        getattr(draft, field) is not None for field in _REPLY_ONLY_FORBIDDEN_APPRAISAL_EFFECT_FIELDS
     ):
         raise ValueError("reply-only appraisal cannot authorize a cross-turn social effect")
 
@@ -7233,8 +7236,10 @@ def _expression_event_head(event: object, *, continuation: bool | None) -> str:
     # carries no authored beat and is equivalent to an omitted sibling when a
     # visible singular beat (or typing prelude) is present.  Remove only this
     # transport padding; a non-empty plural array remains an ambiguity.
-    if isinstance(plural_beats, list) and not plural_beats and (
-        isinstance(beat, dict) or isinstance(leading_typing, dict)
+    if (
+        isinstance(plural_beats, list)
+        and not plural_beats
+        and (isinstance(beat, dict) or isinstance(leading_typing, dict))
     ):
         plural_beats = None
     if plural_beats is not None and (beat is not None or leading_typing is not None):
@@ -7366,8 +7371,6 @@ def _incremental_combined_envelope_first_expression(
         ensure_ascii=False,
         separators=(",", ":"),
     )
-
-
 
 
 def _without_forced_stream_result_kind(buffer: str) -> str | None:
@@ -7917,8 +7920,7 @@ def _expression_tool_reselection_kwargs(
             request_requires_response_expectation_assessment(request)
         ),
         provider_message_bound=bool(
-            request.trigger_message is not None
-            and request.trigger_message.platform_message_id
+            request.trigger_message is not None and request.trigger_message.platform_message_id
         ),
         combined=False,
     )
@@ -8217,17 +8219,15 @@ class _ExpressionDraftWire:
                     old_session.completed.cancel()
             loop = asyncio.get_running_loop()
             head_future: asyncio.Future[str] = loop.create_future()
-            head_future.add_done_callback(
-                self._observe_expression_unit_stream_future
-            )
+            head_future.add_done_callback(self._observe_expression_unit_stream_future)
             chunks: list[str] = []
             compact_gate_tool = bool(
                 tools
                 and isinstance(tools[0], dict)
                 and isinstance(tools[0].get("function"), dict)
-                and tools[0]["function"].get("name")
-                == "character_inbound_compact_gate_v2"
+                and tools[0]["function"].get("name") == "character_inbound_compact_gate_v2"
             )
+
             async def run() -> tuple[str, str, object, str]:
                 operation = getattr(self._model, "complete_json_stream_with_usage")
                 current = asyncio.current_task()
@@ -8255,8 +8255,7 @@ class _ExpressionDraftWire:
                         # handed to the bounded same-role correction path.
                         incremental_parse_error = exc
                         logger.warning(
-                            "incremental character stream head rejected "
-                            "error_type=%s detail=%s",
+                            "incremental character stream head rejected error_type=%s detail=%s",
                             type(exc).__name__,
                             str(exc)[:300],
                         )
@@ -8303,11 +8302,7 @@ class _ExpressionDraftWire:
                         raise ValueError("streaming provider result must be (text, usage)")
                     complete_raw, usage_raw = result
                     if incremental_parse_error is not None:
-                        first_raw = (
-                            head_future.result()
-                            if head_future.done()
-                            else complete_raw
-                        )
+                        first_raw = head_future.result() if head_future.done() else complete_raw
                         # Preserve the completed physical response, but make
                         # a malformed tail fail through normal validation.
                         tail_raw = complete_raw
@@ -8316,13 +8311,9 @@ class _ExpressionDraftWire:
                             first_raw = _stream_first_expression(complete_raw)
                             tail_raw = _stream_tail_expression(complete_raw)
                             if compact_gate_tool:
-                                compact_branch = _parse_json_object(complete_raw).get(
-                                    "result_kind"
-                                )
+                                compact_branch = _parse_json_object(complete_raw).get("result_kind")
                                 if not isinstance(compact_branch, str):
-                                    raise ValueError(
-                                        "compact gate result kind is missing"
-                                    )
+                                    raise ValueError("compact gate result kind is missing")
                                 record_compact_inbound_branch(compact_branch)
                                 logger.info(
                                     "compact inbound role branch call=%s branch=%s",
@@ -8330,11 +8321,7 @@ class _ExpressionDraftWire:
                                     compact_branch,
                                 )
                         except ValueError:
-                            first_raw = (
-                                head_future.result()
-                                if head_future.done()
-                                else complete_raw
-                            )
+                            first_raw = head_future.result() if head_future.done() else complete_raw
                             tail_raw = complete_raw
                     if not head_future.done():
                         head_future.set_result(first_raw)
@@ -10033,8 +10020,8 @@ class _ExpressionDraftWire:
             "You may create response_expectation only when you genuinely expect a reply. If Context "
             "contains a pending response_expectation advisory, assess it in this same cognition with "
             "fulfilled, superseded, still_pending, or uncertain; do not extend its expiry. "
-            "The user payload's expression_hard_boundaries object is the exact machine-readable "
-            "shape/source authority contract; it constrains validity only and never suggests a "
+            "The user payload's expression_hard_boundaries object lists copyable source tokens; "
+            "the host checks hard boundaries after you speak and never suggests a "
             "motive, tone, timing, question, or reply. Its top-level source_ref_aliases are frozen "
             "lossless wire shorthands for this provider call, not independent authority. A ref "
             "is valid in a world_claim only under its exact world_claim_source_refs scope. Refs under "
@@ -10067,7 +10054,11 @@ class _ExpressionDraftWire:
                 "or supersede from the full pinned context; the advisory never selects that "
                 "posture for you."
             )
-        if not quick_recovery and not provisional and not expression_episode_provider_slots_active():
+        if (
+            not quick_recovery
+            and not provisional
+            and not expression_episode_provider_slots_active()
+        ):
             if self._expression_capabilities.private_turn_state_mode == "required":
                 system += (
                     " If the occasion (last user object) says recall is available and you decide "
@@ -10159,10 +10150,12 @@ class _ExpressionDraftWire:
         request_material["model_content_json"] = provider_context_json
         user_material: dict[str, object] = {
             "expression_capabilities": self._expression_capabilities.prompt_value(),
-            "expression_hard_boundaries": expression_hard_boundary_manifest(
-                request=provider_boundary_request,
-                stable_identity_source_refs=self._stable_identity_source_refs,
-                source_ref_aliases=aliases,
+            "expression_hard_boundaries": present_hard_boundary_prompt(
+                expression_hard_boundary_manifest(
+                    request=provider_boundary_request,
+                    stable_identity_source_refs=self._stable_identity_source_refs,
+                    source_ref_aliases=aliases,
+                )
             ),
             "request": request_material,
             "quick_recovery_failure": failure_code,
@@ -10874,6 +10867,7 @@ def _proposal_from_model_text(
         model_visible_context_json=private_state_context_json,
     )
     value = expand_expression_source_ref_aliases(value, aliases=aliases)
+    value = normalize_text_beats(value)
     beats = value.get("beats")
     if isinstance(beats, list):
         normalized_beats: list[object] = []
