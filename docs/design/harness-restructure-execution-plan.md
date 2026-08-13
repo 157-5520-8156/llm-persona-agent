@@ -894,6 +894,6 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：本包改检索排序与 health。部署后 Present 第 6 段应按强度×新近排序取 3–8 条；health 能看到最近一次 Fact/Memory 写入。
 - **成本与延迟**：读时打分是纯函数，不增加模型调用。
 - **剩余缺口**：写时仍是每个 fact 一次模型压缩，尚未改成每天一次批量（避免在没有 due overlay 时把后到的 fact 记成 no_change 永远丢掉）；relevance 还没有当前 trigger 的词法项。
-- **commit**：
+- **commit**：`1282f6db`
 
 
