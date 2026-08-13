@@ -865,3 +865,13 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **成本与延迟**：去掉过期补做与印象积压是后台成本的主项；不新增 model-bearing purpose。
 - **剩余缺口**：五种 Occasion 尚未完全合并进单一队列对象（worker drain 仍按旧顺序跑）；G2 目前只拦 `inbound_turn`（quiet_gap 的 cadence epoch 仍走独立 trigger）；私人印象独立 faculty 未删除，只是不再扫表；H6 原始伤与次数上限、H8 日程骨架、H9 打分尚未做。
 - **commit**：`04940f64`
+
+### 2026-08-13 H6 情绪连续性：原始伤与增长间隔
+
+- **红测**：`tests/world_v2/test_unsettled_feeling_original_wound.py` — 同一原始 `AppraisalAccepted` 在固定 2 次上限后不能再想；反思产物会作为新伤再开一轮；间隔未到仍立刻重开。
+- **改动**：删掉 `MAX_REFLECTIONS_PER_APPRAISAL=2`。`unsettled_feeling` 仍绑定原始 `AppraisalAccepted`（`trigger_ref=reflection:{source}`）。强度用当前 `confidence_bp`；她标成非 active 即结束。再访间隔 1h→3h→12h→24h。由反思 lane 产出的 appraisal（`trigger_id` 以 `reflection:` 开头）不再开新伤。消费点仍读原始事件，不读反思链。Affect 衰减未改（H10）。
+- **测试**：H6 红测绿；既有 reflection scheduler / source-bound stimulus / terminal recovery 绿；ruff 绿。
+- **生产证据**：本包不改 prompt。部署后同一原始伤可在强度仍高时按增长间隔再想，不应再出现反思产出自我放大的农场。
+- **成本与延迟**：一场争执大约多 2–4 次调用（≈¥0.05）是允许开销；用间隔而不是固定次数封顶。
+- **剩余缺口**：首次开伤仍会看 `appraisals` 投影（G7 未把 first-visit 收成 head/due overlay）；五种 Occasion 仍未合成单一队列；衰减纯函数是 H10。
+- **commit**：

@@ -441,6 +441,7 @@ class AppraisalProposalCompiler:
                     for item in projection.trigger_processes
                     if item.process_kind == "life_reflection"
                     and item.source_evidence_ref == source_event.event_id
+                    and item.state == "claimed"
                 ),
                 None,
             )
