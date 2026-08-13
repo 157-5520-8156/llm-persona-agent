@@ -24,7 +24,7 @@ _ALLOWED_TRANSITIONS: dict[ActionState, frozenset[ActionState]] = {
     "provider_accepted": frozenset({"delivered", "failed", "unknown"}),
     "delivered": frozenset(),
     "failed": frozenset(),
-    "unknown": frozenset(),
+    "unknown": frozenset({"delivered", "failed"}),
     "cancelled": frozenset(),
     "expired": frozenset(),
 }

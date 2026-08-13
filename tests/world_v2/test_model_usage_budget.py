@@ -252,6 +252,35 @@ def test_health_alerts_on_invalid_cost_rate_and_reports_cache_hit(tmp_path) -> N
     assert "cache_hit_rate" in state["warning_reasons"]
 
 
+def test_health_reports_cny_per_delivered_message(tmp_path) -> None:
+    path = tmp_path / "usage.sqlite"
+    store = WorldV2UsageStore(path=str(path))
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("CREATE TABLE world_v2_events (event_json TEXT NOT NULL)")
+        for index in range(2):
+            connection.execute(
+                "INSERT INTO world_v2_events (event_json) VALUES (?)",
+                (
+                    json.dumps(
+                        {
+                            "event_type": "ActionDelivered",
+                            "created_at": f"{today}T08:0{index}:00+00:00",
+                        }
+                    ),
+                ),
+            )
+        connection.commit()
+    finally:
+        connection.close()
+    store.record(
+        _Usage(model="deepseek-v4-flash", prompt_tokens=1_000_000, completion_tokens=0)
+    )
+    state = store.budget_state(monthly_budget_cny=100.0, daily_budget_cny=10.0)
+    assert state["cny_per_delivered_message"] == pytest.approx(0.504, abs=0.01)
+
+
 def test_http_health_exposes_model_usage_attribution(tmp_path) -> None:
     configured = app_module.create_http_asgi_app(
         settings=Settings(

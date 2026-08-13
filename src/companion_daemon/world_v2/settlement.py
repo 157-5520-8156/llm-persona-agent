@@ -304,21 +304,24 @@ class SettlementPlanner:
                 request=perception_request, accepted_event_ref=f"event:{trigger_id}:perception-result",
             ):
                 events.append(self._event(result, trigger_id=trigger_id, event_type=event_type, suffix=suffix, payload=payload))
-        expression_events = tuple(
-            self._event(
-                result,
-                trigger_id=trigger_id,
-                event_type=event.event_type,
-                suffix=event.suffix,
-                payload=event.payload,
+        if action.state != "unknown":
+            expression_events = tuple(
+                self._event(
+                    result,
+                    trigger_id=trigger_id,
+                    event_type=event.event_type,
+                    suffix=event.suffix,
+                    payload=event.payload,
+                )
+                for event in self._expression_lifecycle.events_for_terminal_receipt(
+                    projection=projection,
+                    action=action,
+                    receipt=receipt,
+                    receipt_event=receipt_event,
+                )
             )
-            for event in self._expression_lifecycle.events_for_terminal_receipt(
-                projection=projection,
-                action=action,
-                receipt=receipt,
-                receipt_event=receipt_event,
-            )
-        )
+        else:
+            expression_events = ()
         terminal_plan_event = next(
             (event for event in expression_events if event.event_type == "ExpressionPlanTerminated"),
             None,
@@ -417,44 +420,77 @@ class SettlementPlanner:
                     )
                 )
             events.append(terminal_plan_event)
-        media_events = tuple(
-            self._event(
-                result,
-                trigger_id=trigger_id,
-                event_type=event_type,
-                suffix=suffix,
-                payload=payload,
+        media_events = ()
+        if action.state != "unknown":
+            media_events = tuple(
+                self._event(
+                    result,
+                    trigger_id=trigger_id,
+                    event_type=event_type,
+                    suffix=suffix,
+                    payload=payload,
+                )
+                for event_type, suffix, payload in self._media_delivery_lifecycle.events_for_terminal_receipt(
+                    projection=projection, action=action, receipt=receipt,
+                )
             )
-            for event_type, suffix, payload in self._media_delivery_lifecycle.events_for_terminal_receipt(
-                projection=projection, action=action, receipt=receipt,
-            )
-        )
         events.extend(media_events)
         # The character's communicative intent is already part of the
         # accepted, source-bound media plan.  Settlement owns transport facts
         # only; it must not open the retired independent post-delivery author.
         if receipt.is_terminal:
-            budget = BudgetSettlement(
-                settlement_id=f"budget-settlement:{result.source}:{result.source_event_id}",
-                reservation_id=budget_reservation_id,
-                action_id=result.action_id,
-                result_id=result.result_id,
-                state=("released" if result.status in {"cancelled", "expired"} else "settled"),
-                previous_cost=0,
-                cost_actual=result.cost_actual,
-                cost_delta=result.cost_actual,
+            reservation = next(
+                (
+                    item
+                    for item in projection.budget_reservations
+                    if item.reservation_id == budget_reservation_id
+                ),
+                None,
             )
-            events.append(
-                self._event(
-                    result,
-                    trigger_id=trigger_id,
-                    event_type=(
-                        "BudgetReleased" if budget.state == "released" else "BudgetSettled"
-                    ),
-                    suffix="budget",
-                    payload={"settlement": budget.model_dump(mode="json")},
+            if reservation is not None and reservation.state != "reserved":
+                if reservation.settled_cost != result.cost_actual:
+                    adjustment = BudgetSettlement(
+                        settlement_id=f"budget-adjustment:{result.source}:{result.source_event_id}",
+                        reservation_id=budget_reservation_id,
+                        action_id=result.action_id,
+                        result_id=result.result_id,
+                        state="settled",
+                        settlement_kind="reconciliation_adjustment",
+                        previous_cost=reservation.settled_cost,
+                        cost_actual=result.cost_actual,
+                        cost_delta=result.cost_actual - reservation.settled_cost,
+                    )
+                    events.append(
+                        self._event(
+                            result,
+                            trigger_id=trigger_id,
+                            event_type="BudgetAdjusted",
+                            suffix="budget-adjustment",
+                            payload={"settlement": adjustment.model_dump(mode="json")},
+                        )
+                    )
+            else:
+                budget = BudgetSettlement(
+                    settlement_id=f"budget-settlement:{result.source}:{result.source_event_id}",
+                    reservation_id=budget_reservation_id,
+                    action_id=result.action_id,
+                    result_id=result.result_id,
+                    state=("released" if result.status in {"cancelled", "expired"} else "settled"),
+                    previous_cost=0,
+                    cost_actual=result.cost_actual,
+                    cost_delta=result.cost_actual,
                 )
-            )
+                events.append(
+                    self._event(
+                        result,
+                        trigger_id=trigger_id,
+                        event_type=(
+                            "BudgetReleased" if budget.state == "released" else "BudgetSettled"
+                        ),
+                        suffix="budget",
+                        payload={"settlement": budget.model_dump(mode="json")},
+                    )
+                )
         return tuple(events)
 
     def _reconciliation_events(

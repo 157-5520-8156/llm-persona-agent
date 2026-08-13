@@ -647,7 +647,7 @@ async def test_delivered_is_effect_once_and_cannot_be_overwritten() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unknown_is_terminal_and_a_later_delivery_cannot_reopen_the_action() -> None:
+async def test_unknown_action_converges_when_later_delivery_confirms_the_same_effect() -> None:
     ledger = dispatch_started_ledger()
     runtime = WorldRuntime(world_id=WORLD_ID, ledger=ledger)
 
@@ -660,7 +660,7 @@ async def test_unknown_is_terminal_and_a_later_delivery_cannot_reopen_the_action
     )
     assert ledger.project().actions[0].state == "unknown"
 
-    conflict = await runtime.settle(
+    confirmed = await runtime.settle(
         external_result(
             result_id="result-delivered-after-unknown",
             source_event_id="receipt-delivered-after-unknown",
@@ -668,12 +668,12 @@ async def test_unknown_is_terminal_and_a_later_delivery_cannot_reopen_the_action
             cost_actual=7,
         )
     )
-    assert conflict.status == "deferred"
-    assert ledger.project().actions[0].state == "unknown"
-    assert ledger.project().reconciliations[-1].reason == "terminal_conflict"
-    assert ledger.project().budget_settlements[-1].settlement_kind == ("reconciliation_adjustment")
-    assert [item.cost_delta for item in ledger.project().budget_settlements] == [0, 7]
-    assert ledger.project().budget_accounts[-1].spent == 7
+    projection = ledger.project()
+    assert confirmed.status == "action_executed"
+    assert projection.actions[0].state == "delivered"
+    assert projection.budget_settlements[-1].settlement_kind == "reconciliation_adjustment"
+    assert [item.cost_delta for item in projection.budget_settlements] == [0, 7]
+    assert projection.budget_accounts[-1].spent == 7
 
 
 @pytest.mark.asyncio

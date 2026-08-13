@@ -6,6 +6,7 @@ import pytest
 
 from companion_daemon.db import CompanionStore
 from companion_daemon.usage_metrics import (
+    UNPRICED_MODEL_CONSERVATIVE_PRICE,
     estimate_model_cost_usd,
     estimate_routed_model_reserve_cny,
 )
@@ -35,6 +36,59 @@ def test_unpriced_model_uses_a_conservative_cost_until_a_verified_price_is_added
 
     assert version == "unpriced-conservative-2026-07-13"
     assert cost > 0
+
+
+_PRODUCTION_MODEL_IDS = (
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
+    "deepseek-v4-flash->gpt-5.6-luna",
+    "gpt-4.1-mini",
+    "source-review-authority:gpt-4.1-mini|qwen/qwen-plus",
+    "qwen/qwen-plus",
+    "gpt-5.4-mini",
+    "openai/gpt-5.4-nano",
+    "openai/gpt-4o-mini",
+    "gpt-5.6-luna",
+)
+
+
+@pytest.mark.parametrize("model", _PRODUCTION_MODEL_IDS)
+def test_production_model_ids_have_verified_price_rows(model: str) -> None:
+    _cost, version = estimate_model_cost_usd(
+        model=model,
+        prompt_tokens=100,
+        completion_tokens=10,
+        cache_hit_tokens=0,
+        cache_miss_tokens=100,
+    )
+
+    assert version != UNPRICED_MODEL_CONSERVATIVE_PRICE.version
+
+
+def test_source_review_authority_composite_is_billed_as_both_lanes() -> None:
+    composite, _version = estimate_model_cost_usd(
+        model="source-review-authority:gpt-4.1-mini|qwen/qwen-plus",
+        prompt_tokens=1_000_000,
+        completion_tokens=0,
+        cache_hit_tokens=0,
+        cache_miss_tokens=1_000_000,
+    )
+    primary, _ = estimate_model_cost_usd(
+        model="gpt-4.1-mini",
+        prompt_tokens=1_000_000,
+        completion_tokens=0,
+        cache_hit_tokens=0,
+        cache_miss_tokens=1_000_000,
+    )
+    secondary, _ = estimate_model_cost_usd(
+        model="qwen/qwen-plus",
+        prompt_tokens=1_000_000,
+        completion_tokens=0,
+        cache_hit_tokens=0,
+        cache_miss_tokens=1_000_000,
+    )
+
+    assert composite == pytest.approx(primary + secondary)
 
 
 def test_model_reserve_uses_selected_route_prompt_size_and_observed_output() -> None:

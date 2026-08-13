@@ -327,6 +327,19 @@ class ActionPump:
                 action,
                 reconciliation_gate=provider_accepted_reconciliation_gate,
             )
+        action = next(
+            (
+                item
+                for item in projection.actions
+                if self._is_eligible(item, target_action_id) and item.state == "unknown"
+            ),
+            None,
+        )
+        if action is not None:
+            return await self._reconcile_unknown(
+                action,
+                reconciliation_gate=provider_accepted_reconciliation_gate,
+            )
         return ActionPumpResult(status="idle")
 
     async def _fast_start_and_dispatch(self, *, action: Action, projection) -> ActionPumpResult:
@@ -786,6 +799,54 @@ class ActionPump:
                 status="deferred_visible_turn",
             )
         return ActionPumpResult(action_id=action.action_id, status="marked_unknown")
+
+    async def _reconcile_unknown(
+        self,
+        action: Action,
+        *,
+        reconciliation_gate: ProviderAcceptedReconciliationGate | None = None,
+    ) -> ActionPumpResult:
+        """Query the provider for an already-unknown Action; never re-send."""
+
+        projection = await self._project()
+        persisted = await self._resume_persisted_result(
+            action=action,
+            projection=projection,
+            reconciliation_gate=reconciliation_gate,
+        )
+        if persisted is not None:
+            return persisted
+        verify = getattr(self._executor, "verify_delivery", None)
+        ack = next(
+            (
+                receipt
+                for receipt in projection.execution_receipts
+                if receipt.action_id == action.action_id
+                and receipt.observed_state == "provider_accepted"
+                and not receipt.is_terminal
+            ),
+            None,
+        )
+        if callable(verify) and ack is not None:
+            verified = await verify(action, provider_ref=ack.provider_ref)
+            if verified is not None and verified.status in {"delivered", "failed"}:
+                result = self._external_observation(action=action, receipt=verified)
+                if not await self._try_settle_provider_accepted_result(
+                    action=action,
+                    result=result,
+                    reconciliation_gate=reconciliation_gate,
+                ):
+                    return ActionPumpResult(
+                        action_id=action.action_id,
+                        status="deferred_visible_turn",
+                    )
+                return ActionPumpResult(
+                    action_id=action.action_id,
+                    action_kind=action.kind,
+                    status="settled",
+                    provider_status=verified.status,
+                )
+        return ActionPumpResult(status="idle")
 
     @staticmethod
     async def _try_acquire_provider_reconciliation(

@@ -1075,6 +1075,26 @@ async def test_provider_accepted_recovery_without_evidence_still_becomes_unknown
 
 
 @pytest.mark.asyncio
+async def test_unknown_action_reconciling_get_msg_converges_to_delivered() -> None:
+    executor = _AckThenVerifyExecutor(verified=False)
+    ledger, runtime = await _accepted_then_lease_elapsed(executor)
+    unknown = await runtime.drain_actions_once()
+    assert unknown is not None and unknown.status == "marked_unknown"
+    assert ledger.project().actions[0].state == "unknown"
+    still_unknown = await runtime.drain_actions_once()
+    assert still_unknown is not None and still_unknown.status == "idle"
+    assert ledger.project().actions[0].state == "unknown"
+    executor._verified = True
+
+    recovered = await runtime.drain_actions_once()
+
+    assert recovered is not None and recovered.status == "settled"
+    assert recovered.provider_status == "delivered"
+    assert executor.verify_calls >= 2
+    assert ledger.project().actions[0].state == "delivered"
+
+
+@pytest.mark.asyncio
 async def test_pending_lookup_rejects_a_receipt_from_another_provider_reference() -> None:
     ledger = _ready_ledger()
     executor = _MismatchedPendingLookupExecutor()

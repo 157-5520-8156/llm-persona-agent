@@ -35,6 +35,59 @@ DEEPSEEK_V4_PRO_PRICE = ModelPrice(
     output_usd_per_million=0.87,
 )
 
+# OpenAI public list prices observed 2026-08-13.
+# Sources: https://developers.openai.com/api/docs/models/gpt-4.1-mini
+#          https://developers.openai.com/api/docs/models/gpt-5.4-mini
+#          https://www.aipricing.guru/openai-pricing/ (GPT-5.6 Luna, 2026-08-12)
+GPT_4_1_MINI_PRICE = ModelPrice(
+    model="gpt-4.1-mini",
+    version="openai-2026-08-13",
+    cache_hit_usd_per_million=0.10,
+    cache_miss_usd_per_million=0.40,
+    output_usd_per_million=1.60,
+)
+
+GPT_4O_MINI_PRICE = ModelPrice(
+    model="gpt-4o-mini",
+    version="openai-2026-08-13",
+    cache_hit_usd_per_million=0.075,
+    cache_miss_usd_per_million=0.15,
+    output_usd_per_million=0.60,
+)
+
+GPT_5_4_MINI_PRICE = ModelPrice(
+    model="gpt-5.4-mini",
+    version="openai-2026-08-13",
+    cache_hit_usd_per_million=0.075,
+    cache_miss_usd_per_million=0.75,
+    output_usd_per_million=4.50,
+)
+
+GPT_5_4_NANO_PRICE = ModelPrice(
+    model="gpt-5.4-nano",
+    version="openai-2026-08-13",
+    cache_hit_usd_per_million=0.02,
+    cache_miss_usd_per_million=0.20,
+    output_usd_per_million=1.25,
+)
+
+GPT_5_6_LUNA_PRICE = ModelPrice(
+    model="gpt-5.6-luna",
+    version="openai-2026-08-13",
+    cache_hit_usd_per_million=0.02,
+    cache_miss_usd_per_million=0.20,
+    output_usd_per_million=1.20,
+)
+
+# Alibaba Model Studio international list, Qwen-Plus ≤256K, verified 2026-07-15.
+QWEN_PLUS_PRICE = ModelPrice(
+    model="qwen/qwen-plus",
+    version="qwen-2026-07-15",
+    cache_hit_usd_per_million=0.04,
+    cache_miss_usd_per_million=0.40,
+    output_usd_per_million=1.20,
+)
+
 # A new provider model must never silently become free just because its price
 # table has not reached this release yet.  This is intentionally above the
 # currently supported Pro rate, so routing remains bounded until an exact row
@@ -50,7 +103,51 @@ UNPRICED_MODEL_CONSERVATIVE_PRICE = ModelPrice(
 MODEL_PRICES: Mapping[str, ModelPrice] = {
     DEEPSEEK_V4_FLASH_PRICE.model: DEEPSEEK_V4_FLASH_PRICE,
     DEEPSEEK_V4_PRO_PRICE.model: DEEPSEEK_V4_PRO_PRICE,
+    GPT_4_1_MINI_PRICE.model: GPT_4_1_MINI_PRICE,
+    GPT_4O_MINI_PRICE.model: GPT_4O_MINI_PRICE,
+    "openai/gpt-4o-mini": GPT_4O_MINI_PRICE,
+    GPT_5_4_MINI_PRICE.model: GPT_5_4_MINI_PRICE,
+    "openai/gpt-5.4-mini": GPT_5_4_MINI_PRICE,
+    GPT_5_4_NANO_PRICE.model: GPT_5_4_NANO_PRICE,
+    "openai/gpt-5.4-nano": GPT_5_4_NANO_PRICE,
+    GPT_5_6_LUNA_PRICE.model: GPT_5_6_LUNA_PRICE,
+    QWEN_PLUS_PRICE.model: QWEN_PLUS_PRICE,
 }
+
+
+def _price_for(model: str) -> ModelPrice:
+    keyed = MODEL_PRICES.get(model)
+    if keyed is not None:
+        return keyed
+    if model.startswith("openai/"):
+        return MODEL_PRICES.get(model.removeprefix("openai/"), UNPRICED_MODEL_CONSERVATIVE_PRICE)
+    prefixed = MODEL_PRICES.get(f"openai/{model}")
+    if prefixed is not None:
+        return prefixed
+    return UNPRICED_MODEL_CONSERVATIVE_PRICE
+
+
+def billed_model_ids(model: str) -> tuple[str, ...]:
+    """Split composite provider ids into the models that actually ran."""
+
+    value = (model or "").strip()
+    if not value:
+        return (value,)
+    if value.startswith("source-review-authority:"):
+        parts = tuple(
+            part.strip()
+            for part in value.removeprefix("source-review-authority:").split("|")
+            if part.strip()
+        )
+        if len(parts) >= 2:
+            return parts
+    if "->" in value:
+        parts = tuple(part.strip() for part in value.split("->") if part.strip())
+        if parts:
+            return (
+                max(parts, key=lambda item: _price_for(item).cache_miss_usd_per_million),
+            )
+    return (value,)
 
 
 def estimate_routed_model_reserve_cny(
@@ -93,19 +190,23 @@ def estimate_model_cost_usd(
     cache_hit_tokens: int,
     cache_miss_tokens: int,
 ) -> tuple[float, str]:
-    price = MODEL_PRICES.get(model, UNPRICED_MODEL_CONSERVATIVE_PRICE)
     hit = max(0, cache_hit_tokens)
     miss = max(0, cache_miss_tokens)
     # Older/partial provider payloads may omit cache details. Conservatively
     # price all observed prompt tokens as cache misses.
     if hit + miss == 0:
         miss = max(0, prompt_tokens)
-    amount = (
-        hit * price.cache_hit_usd_per_million
-        + miss * price.cache_miss_usd_per_million
-        + max(0, completion_tokens) * price.output_usd_per_million
-    ) / 1_000_000
-    return amount, price.version
+    total = 0.0
+    versions: list[str] = []
+    for component in billed_model_ids(model):
+        price = _price_for(component)
+        total += (
+            hit * price.cache_hit_usd_per_million
+            + miss * price.cache_miss_usd_per_million
+            + max(0, completion_tokens) * price.output_usd_per_million
+        ) / 1_000_000
+        versions.append(price.version)
+    return total, "+".join(versions)
 
 
 def nearest_rank(values: Iterable[int], percentile: float) -> int:

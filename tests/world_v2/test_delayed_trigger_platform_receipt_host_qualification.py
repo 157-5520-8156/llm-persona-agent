@@ -582,9 +582,11 @@ async def test_public_host_receipt_preserves_unknown_and_records_late_terminal_r
         )
         assert unknown_action.state == "unknown"
         _assert_unknown_deferred_reply_closed(unknown, dispatched=dispatched)
-        assert harness.delivery.lookup_calls == [
-            ("10001", harness.delivery.message_ids[0])
-        ]
+        assert ("10001", harness.delivery.message_ids[0]) in harness.delivery.lookup_calls
+        assert all(
+            call == ("10001", harness.delivery.message_ids[0])
+            for call in harness.delivery.lookup_calls
+        )
         assert harness.delivery.texts == ["我忙完来找你。"]
 
         late_at = expires_at + timedelta(seconds=1)
@@ -616,15 +618,14 @@ async def test_public_host_receipt_preserves_unknown_and_records_late_terminal_r
             for item in reconciled.projection.actions
             if item.action_id == dispatched.action_id
         )
-        assert late.status == "deferred"
-        assert reconciled_action.state == "unknown"
+        assert late.status == "action_executed"
+        assert reconciled_action.state == "delivered"
         _assert_unknown_deferred_reply_closed(reconciled, dispatched=dispatched)
-        assert reconciled.projection.reconciliations[-1].reason == "terminal_conflict"
         assert harness.delivery.texts == ["我忙完来找你。"]
 
         duplicate_late = await restarted.receipt(late_receipt)
         after_duplicate = restarted.export_replay_evidence()
-        assert duplicate_late.status == "deferred"
+        assert duplicate_late.status == "action_executed"
         assert after_duplicate.cursor == reconciled.cursor
         assert after_duplicate.projection.semantic_hash == reconciled.projection.semantic_hash
         assert len(after_duplicate.events) == len(reconciled.events)
@@ -650,14 +651,8 @@ async def test_public_host_receipt_preserves_unknown_and_records_late_terminal_r
             for item in replayed.projection.actions
             if item.action_id == dispatched.action_id
         )
-        replayed_reconciliation = next(
-            item
-            for item in replayed.projection.reconciliations
-            if item.result_id == reconciled.projection.reconciliations[-1].result_id
-        )
-        assert replayed_action.state == "unknown"
+        assert replayed_action.state == "delivered"
         _assert_unknown_deferred_reply_closed(replayed, dispatched=dispatched)
-        assert replayed_reconciliation.reason == "terminal_conflict"
         assert replayed.cursor == final.cursor
         assert (
             final.projection.semantic_hash

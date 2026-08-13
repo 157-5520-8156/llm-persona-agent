@@ -804,4 +804,14 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：本包不改 prompt。对冲从 2.0s 提到 6.5s 后，backup 不应再在 p50 前开火；corrective purpose 新行应趋零。部署前数字仍是改动前基线。
 - **成本与延迟**：去掉 21–37% 的对冲重复计费和 32% 的 corrective 调用是目标；需部署后 §12.7 查询 6/7 验证。首 Beat 取消窗口随 hedge 后移，成功路径不再被 2s backup 抢跑。
 - **剩余缺口**：expression 侧常见松散形状（字符串数组 beats）不再靠重选救回，首次合法率要等 H4 契约瘦身/宽进；审查模型车道仍在（H1d）；价格表与 ActionUnknown 对账是 H1c；G2 第二次 consider 拒绝是 H5。
+- **commit**：`8d0917ed`
+
+### 2026-08-13 H1c 投递对账与价格表补全
+
+- **红测**：`ActionUnknown` 之后同幂等键的 `delivered` 回执被当成终态冲突丢掉；9 个投产 model_id 只有 flash/pro 有价格行，复合 `source-review-authority:A|B` 整行落到惩罚价；health 没有 ¥/条送达消息。
+- **改动**：`unknown → delivered/failed` 合法；ActionPump 在未知态只做 `verify_delivery`/`get_msg` 对账、不重发；已结算预算用 `BudgetAdjusted` 补差；`MODEL_PRICES` 补齐审计里的 OpenAI/Qwen 行，复合权威拆两次计费，`A->B` 对冲按更贵一侧计价；health 增加 `cny_per_delivered_message`。
+- **测试**：`test_usage_metrics.py` 生产 model_id 不再落到 UNPRICED；lifecycle/pump 对账转绿；资格测试改为晚到回执收敛到 delivered；character-tier 672 passed；ruff 绿。
+- **生产证据**：本包不改 prompt。14 条历史 `ActionUnknown` 需部署后由 scheduler drain 查 `get_msg` 才能收敛；新账单行不应再出现 UNPRICED version。
+- **成本与延迟**：对账是只读 `get_msg`，不增加模型调用。价格表让非 DeepSeek 行从惩罚估算改成真价，预算门不再被虚高提前打满。
+- **剩余缺口**：审查双模型车道仍在（H1d 删除）；未知态的 expression plan 仍按当时的 unknown 终止，不回写 completed；¥/张照片与 ¥/条被引用记忆未做。
 - **commit**：见本包提交。

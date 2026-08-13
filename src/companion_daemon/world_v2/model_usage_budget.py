@@ -315,6 +315,7 @@ class WorldV2UsageStore:
             "cache_hit_rate_alert": attribution["cache_hit_rate_alert"],
             "invalid_cost_rate": attribution["invalid_cost_rate"],
             "invalid_cost_rate_alert": attribution["invalid_cost_rate_alert"],
+            "cny_per_delivered_message": attribution["cny_per_delivered_message"],
             "warning": bool(warning_reasons),
             "warning_reasons": warning_reasons,
         }
@@ -334,7 +335,12 @@ class WorldV2UsageStore:
                     """,
                     (day_start.isoformat(),),
                 ).fetchall()
-                observation_count = self._today_observation_count(connection, day_key)
+                observation_count = self._today_event_count(
+                    connection, "ObservationRecorded", day_key
+                )
+                delivered_count = self._today_event_count(
+                    connection, "ActionDelivered", day_key
+                )
             finally:
                 connection.close()
         purpose_counts: dict[str, int] = {}
@@ -366,6 +372,9 @@ class WorldV2UsageStore:
         cache_alert = cache_hit_rate is not None and cache_hit_rate < 0.5
         invalid_cost_rate = invalid_cost / total_cost if total_cost > 0 else None
         invalid_alert = invalid_cost_rate is not None and invalid_cost_rate > 0.1
+        cny_per_delivered_message = (
+            total_cost / delivered_count if delivered_count > 0 else None
+        )
         warning_reasons: list[str] = []
         if calls_alert:
             warning_reasons.append("calls_per_user_message")
@@ -381,24 +390,30 @@ class WorldV2UsageStore:
             "cache_hit_rate_alert": cache_alert,
             "invalid_cost_rate": invalid_cost_rate,
             "invalid_cost_rate_alert": invalid_alert,
+            "cny_per_delivered_message": cny_per_delivered_message,
             "warning_reasons": warning_reasons,
         }
 
-    def _today_observation_count(
-        self, connection: sqlite3.Connection, day_key: str
+    def _today_event_count(
+        self, connection: sqlite3.Connection, event_type: str, day_key: str
     ) -> int:
         try:
             row = connection.execute(
                 """
                 SELECT COUNT(*) FROM world_v2_events
-                WHERE json_extract(event_json, '$.event_type') = 'ObservationRecorded'
+                WHERE json_extract(event_json, '$.event_type') = ?
                   AND substr(json_extract(event_json, '$.created_at'), 1, 10) = ?
                 """,
-                (day_key,),
+                (event_type, day_key),
             ).fetchone()
         except sqlite3.DatabaseError:
             return 0
         return int(row[0] if row is not None else 0)
+
+    def _today_observation_count(
+        self, connection: sqlite3.Connection, day_key: str
+    ) -> int:
+        return self._today_event_count(connection, "ObservationRecorded", day_key)
 
 
 __all__ = [

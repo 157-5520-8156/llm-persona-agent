@@ -335,7 +335,7 @@ mechanisms:
     terminal_states: [delivered, failed, cancelled, expired, unknown]
     adapters: [http-v2, qq-c2c-v2, fake-transport]
     tests:
-      - tests/world_v2/test_action_lifecycle.py::test_unknown_is_terminal_and_a_later_delivery_cannot_reopen_the_action
+      - tests/world_v2/test_action_lifecycle.py::test_unknown_action_converges_when_later_delivery_confirms_the_same_effect
       - tests/world_v2/test_action_lifecycle.py::test_atomic_settlement_survives_sqlite_restart
       - tests/world_v2/test_action_pump.py::test_non_idempotent_started_action_becomes_unknown_without_redispatch
 

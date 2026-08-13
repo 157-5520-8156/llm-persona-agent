@@ -893,13 +893,13 @@ FIXTURE_ACCEPTANCE_MANIFEST: tuple[FixtureAcceptance, ...] = (
     ),
     _fixture(
         "W2-ACT-002",
-        "unknown receipt is terminal and never automatically retried",
-        ("unknown terminal state", "reconciliation"),
+        "unknown receipt stays open until provider lookup converges",
+        ("unknown outbox reconciliation", "get_msg"),
         (_ACTION, _PUMP),
         ("ActionReceiptRecorded",),
         ("unknown Action",),
         (
-            "tests/world_v2/test_action_lifecycle.py::test_unknown_is_terminal_and_a_later_delivery_cannot_reopen_the_action",
+            "tests/world_v2/test_action_lifecycle.py::test_unknown_action_converges_when_later_delivery_confirms_the_same_effect",
         ),
     ),
     _fixture(
