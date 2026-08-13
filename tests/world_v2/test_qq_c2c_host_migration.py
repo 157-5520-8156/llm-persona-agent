@@ -843,7 +843,7 @@ async def test_qq_scheduler_does_not_hold_ingress_lock_during_slow_background_an
             scheduler.cancel()
         await host.aclose()
 
-    assert platform.ticks[0].logical_time_to == requested_boundary + timedelta(seconds=5)
+    assert platform.ticks == []
 
 
 @pytest.mark.asyncio
@@ -1093,8 +1093,7 @@ async def test_qq_scheduler_dispatches_retry_actions_before_more_background(
         await host.aclose()
 
     assert events[0] == "background:1"
-    assert events[1].startswith("tick:")
-    assert events[2:4] == [
+    assert events[1:3] == [
         "dispatch:action:retry:1",
         "dispatch:action:retry:2",
     ]
@@ -1435,6 +1434,9 @@ async def test_qq_scheduler_persists_only_one_idle_heartbeat_per_ten_minutes(
         async def current_logical_time(self):  # type: ignore[no-untyped-def]
             return self.logical_time
 
+        async def life_ecology_next_due(self):  # type: ignore[no-untyped-def]
+            return NOW + timedelta(hours=8)
+
         async def tick(self, tick):  # type: ignore[no-untyped-def]
             self.ticks.append(tick)
             self.logical_time = tick.logical_time_to
@@ -1459,29 +1461,16 @@ async def test_qq_scheduler_persists_only_one_idle_heartbeat_per_ten_minutes(
         idle_heartbeat_seconds=600,
     )
     try:
-        for seconds in (30, 60, 300, 599):
+        for seconds in (30, 60, 300, 599, 600, 630):
             await host.scheduler_once(
                 observed_at=NOW + timedelta(seconds=seconds),
                 max_action_units=0,
                 max_background_units=0,
             )
-        assert platform.ticks == []
-
-        await host.scheduler_once(
-            observed_at=NOW + timedelta(seconds=600),
-            max_action_units=0,
-            max_background_units=0,
-        )
-        await host.scheduler_once(
-            observed_at=NOW + timedelta(seconds=630),
-            max_action_units=0,
-            max_background_units=0,
-        )
     finally:
         await host.aclose()
 
-    assert len(platform.ticks) == 1
-    assert platform.ticks[0].logical_time_to == NOW + timedelta(seconds=600)
+    assert platform.ticks == []
 
 
 @pytest.mark.asyncio

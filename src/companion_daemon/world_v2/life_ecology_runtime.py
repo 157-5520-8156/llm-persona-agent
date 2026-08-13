@@ -240,7 +240,14 @@ class LifeEcologyRuntime:
         logical_time = validated
         projection = self._ledger.project()
         schedule = getattr(projection, "life_ecology_schedule", None)
-        development_due = schedule is None or logical_time >= schedule.next_consideration_at
+        overlay_due = None
+        next_due_reader = getattr(self._trigger_store, "next_consideration_at", None)
+        if callable(next_due_reader):
+            overlay_due = next_due_reader()
+        due_at = overlay_due
+        if due_at is None and schedule is not None:
+            due_at = schedule.next_consideration_at
+        development_due = due_at is None or logical_time >= due_at
         key = LifeEcologyRunKey(
             world_id=self._ledger.world_id,
             wake_event_ref=wake_event_ref,

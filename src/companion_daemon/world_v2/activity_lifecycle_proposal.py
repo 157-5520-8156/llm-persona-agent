@@ -211,18 +211,7 @@ class ActivityLifecycleProposalCompiler:
             wake_event_ref=wake_event_ref,
             catalog_version=self._ecology_catalog_version,
         )
-        trigger = next(
-            (item for item in projection.trigger_processes if item.trigger_id == ecology_trigger_id),
-            None,
-        )
-        if (
-            ecology_trigger_id != expected_id
-            or trigger is None
-            or trigger.process_kind != "life_ecology"
-            or trigger.state != "claimed"
-            or trigger.claim_lease is None
-            or trigger.source_evidence_ref != wake_event_ref
-        ):
+        if ecology_trigger_id != expected_id:
             raise ActivityLifecycleProposalError("ecology_trigger_not_claimed")
 
 

@@ -825,3 +825,13 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **成本与延迟**：每个可见回合与每次 life beat 少 1–2 次审查/清单模型调用；确定性核对在角色之后、不另开 provider。
 - **剩余缺口**：inbound_wire 里仍有无生产调用方的旧 inventory/coverage 辅助函数（H4 契约瘦身时可清）；isolated daemon / host 资格测试若仍断言旧 reviewer health，需随宿主包跟；H4 可见文本来源闭包尚未上；OpenAIMediaInspector 待用户批准。
 - **commit**：`e694bfdb`
+
+### 2026-08-13 H2 空转清零：due 唤醒与 sidecar claim
+
+- **红测**：`tests/world_v2/test_life_ecology_empty_loop_g1.py` — cooldown/idle 仍写 TriggerProcess 四件套；QQ 调度在生活未到期时仍 heartbeat `ClockAdvanced`。
+- **改动**：claim/lease/retry 进入可清理 sidecar（同库 SQLite 表 / 内存共享）。silent 结局（idle/cooldown/author_idle/author_no_opening/life_development_no_op）不再追加账本 TriggerProcess 或 RandomDraw；due 时刻写 overlay。语义结局仍一次提交 Opened+Claimed+Completed。QQ 调度把 `life_ecology_next_due` 当成 exact due，取消无事心跳。活动提案绑定改为 trigger 身份（sidecar 时代投影里可以没有 process）。`batch_invariants` 未改。
+- **测试**：G1 红测 5 passed；trigger store / life ecology / activity / life-development production / QQ host migration 相关 112 passed；ruff 绿。
+- **生产证据**：本包不改 prompt。部署后 cooldown 空转不应再写 TriggerProcess 四件套；无 due 的 scheduler pass 不应再写 `ClockAdvanced`。
+- **成本与延迟**：去掉生活空转的账本写入与无事心跳；不增加模型调用。
+- **剩余缺口**：技术失败 backoff 仍走账本 TriggerProcess；Affect 衰减仍靠 logical time，idle 时钟变少后衰减会拖到下一次 due/inbound（H10 改纯函数）；H5 Occasion 队列尚未上。
+- **commit**：见本包提交。

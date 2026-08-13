@@ -391,6 +391,14 @@ class WorldV2PlatformHost:
 
         return await self._application.action_due_projection()
 
+    async def life_ecology_next_due(self):
+        """Read the next Life due instant without exposing a writer."""
+
+        reader = getattr(self._application, "life_ecology_next_due", None)
+        if not callable(reader):
+            return None
+        return await reader()
+
     def export_replay_evidence(self) -> ReplayEvidence:
         """Expose one immutable, cursor-consistent snapshot to offline evaluators."""
 

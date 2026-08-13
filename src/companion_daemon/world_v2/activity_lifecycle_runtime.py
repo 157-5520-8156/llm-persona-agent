@@ -15,6 +15,7 @@ from .activity_lifecycle_contract import ActivityLifecycleProposalRecordedPayloa
 from .activity_lifecycle_proposal import ActivityLifecycleProposal
 from .event_identity import domain_idempotency_key
 from .ledger import LedgerPort
+from .life_ecology_contract import life_ecology_trigger_id
 from .schemas import CommitResult, ProjectionCursor, WorldEvent
 
 
@@ -186,14 +187,20 @@ class ActivityLifecycleProposalAuthorityReader:
             raise ActivityLifecycleRuntimeError("proposal_stale")
         if proposal.proposal_id not in projection.proposal_ids:
             raise ActivityLifecycleRuntimeError("proposal_not_persisted")
-        if not any(
+        expected_id = life_ecology_trigger_id(
+            world_id=projection.world_id,
+            wake_event_ref=proposal.wake_event_ref,
+            catalog_version="life-ecology.1",
+        )
+        ledger_claimed = any(
             item.trigger_id == proposal.ecology_trigger_id
             and item.process_kind == "life_ecology"
             and item.state == "claimed"
             and item.claim_lease is not None
             and item.source_evidence_ref == proposal.wake_event_ref
             for item in projection.trigger_processes
-        ):
+        )
+        if proposal.ecology_trigger_id != expected_id and not ledger_claimed:
             raise ActivityLifecycleRuntimeError("ecology_trigger_not_claimed")
         plan = next((item for item in projection.plans if item.plan_id == proposal.plan_id), None)
         if plan is None or plan.entity_revision != proposal.expected_plan_revision:

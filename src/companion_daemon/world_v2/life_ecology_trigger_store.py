@@ -1,11 +1,9 @@
-"""Ledger-backed ownership for one source-bound Life Ecology wake.
+"""Ownership for one source-bound Life Ecology wake.
 
-This adapter deliberately stores no state outside the World v2 ledger.  The
-generic ``TriggerProcess`` is the durable process record; compare-and-swap
-ledger commits turn its ``open -> claimed -> terminal`` lifecycle into the
-small ``LifeEcologyTriggerStore`` interface consumed by ``LifeEcologyRuntime``.
-Consequently a process survives a worker restart and competing workers converge
-on the same immutable trigger rather than creating a second ecology run.
+Claim, lease, retry, and silent no-new-fact completions live in a disposable
+sidecar.  Semantic outcomes still finish as ledger TriggerProcess events so
+replay and schedule projection remain intact.  Competing workers converge on
+the sidecar lease rather than appending a second ecology run to the ledger.
 """
 
 from __future__ import annotations
@@ -18,6 +16,12 @@ import re
 
 from .errors import ConcurrencyConflict, IdempotencyConflict
 from .event_identity import domain_idempotency_key
+from .life_ecology_lease_store import (
+    LifeEcologyLeaseRecord,
+    LifeEcologyLeaseStore,
+    SILENT_LIFE_ECOLOGY_OUTCOMES,
+    lease_store_for_ledger,
+)
 from .life_ecology_contract import (
     LIFE_ECOLOGY_PROCESS_KIND,
     LIFE_ECOLOGY_WAKE_EVENT_TYPES,
@@ -67,14 +71,21 @@ def _digest(value: object) -> str:
     ).hexdigest()
 
 
-class LedgerLifeEcologyTriggerStore:
-    """Durable ``LifeEcologyTriggerStore`` adapter backed solely by the ledger.
+def _silent_cadence_seconds(trigger_id: str, outcome: str) -> int:
+    if outcome == "cooldown":
+        return 0
+    digest = hashlib.sha256(
+        f"{trigger_id}:{outcome}:life-ecology-ambient-cadence.1".encode()
+    ).digest()
+    return _AMBIENT_CADENCE_SECONDS[int.from_bytes(digest[:8], "big") % len(_AMBIENT_CADENCE_SECONDS)]
 
-    The interface intentionally has no lookup, lock, or recovery method.  A
-    caller gets one of three facts for a key: it owns the current lease, a live
-    owner already exists, or a terminal run exists.  Expired leases are
-    reclaimed through the normal TriggerProcess lineage, never by deleting or
-    overwriting historical state.
+
+class LedgerLifeEcologyTriggerStore:
+    """Durable Life Ecology trigger adapter.
+
+    Live claim/lease/retry state is a disposable sidecar.  Silent outcomes do
+    not append TriggerProcess events.  Semantic outcomes still commit the
+    ledger process lineage so schedule projection and replay stay intact.
     """
 
     def __init__(
@@ -84,6 +95,7 @@ class LedgerLifeEcologyTriggerStore:
         owner_id: str,
         lease_seconds: int = 120,
         source: str = "world-v2:life-ecology-trigger-store",
+        lease_store: LifeEcologyLeaseStore | None = None,
     ) -> None:
         if not isinstance(owner_id, str) or not owner_id:
             raise ValueError("life ecology trigger store requires owner_id")
@@ -95,6 +107,16 @@ class LedgerLifeEcologyTriggerStore:
         self._owner_id = owner_id
         self._lease_seconds = lease_seconds
         self._source = source
+        self._leases = lease_store if lease_store is not None else lease_store_for_ledger(ledger)
+
+    def next_consideration_at(self) -> datetime | None:
+        overlay = self._leases.overlay()
+        if overlay is not None and overlay.next_consideration_at is not None:
+            return overlay.next_consideration_at
+        schedule = getattr(self._ledger.project(), "life_ecology_schedule", None)
+        if schedule is None:
+            return None
+        return schedule.next_consideration_at
 
     async def claim_or_join(
         self, *, key: LifeEcologyRunKey, trace_id: str, correlation_id: str
@@ -112,143 +134,84 @@ class LedgerLifeEcologyTriggerStore:
             wake_event_ref=key.wake_event_ref,
             catalog_version=key.catalog_version,
         )
-        for _ in range(_MAX_CAS_RETRIES):
-            projection = await self._project()
-            source_event = await self._verified_wake(key=key, projection=projection)
-            process = next(
-                (item for item in projection.trigger_processes if item.trigger_id == trigger_id),
-                None,
-            )
-            if trigger_id in projection.completed_trigger_ids:
-                return LifeEcologyRunClaim(trigger_id=trigger_id, state="completed")
-            if process is None:
-                schedule = getattr(projection, "life_ecology_schedule", None)
-                if schedule is not None and schedule.last_trigger_id == trigger_id:
-                    return LifeEcologyRunClaim(trigger_id=trigger_id, state="completed")
-                wake_revision = next(
-                    (
-                        item.world_revision
-                        for item in projection.committed_world_event_refs
-                        if item.event_id == key.wake_event_ref
-                    ),
-                    None,
-                )
-                watermark_revision = next(
-                    (
-                        item.world_revision
-                        for item in projection.committed_world_event_refs
-                        if schedule is not None
-                        and item.event_id == schedule.last_wake_event_ref
-                    ),
-                    None,
-                )
-                if (
-                    wake_revision is not None
-                    and watermark_revision is not None
-                    and wake_revision <= watermark_revision
-                ):
-                    completed_outcome_ref = await self._completed_outcome_ref(
-                        trigger_id=trigger_id,
-                        projection=projection,
-                    )
-                    if completed_outcome_ref is not None:
-                        return LifeEcologyRunClaim(
-                            trigger_id=trigger_id,
-                            state="completed",
-                        )
-                logical_time = projection.logical_time or source_event.logical_time
-                opened = TriggerProcess(
-                    trigger_id=trigger_id,
-                    trigger_ref=life_ecology_trigger_ref(
-                        wake_event_ref=key.wake_event_ref,
-                        catalog_version=key.catalog_version,
-                    ),
-                    process_kind=LIFE_ECOLOGY_PROCESS_KIND,
-                    source_evidence_ref=key.wake_event_ref,
-                    state="open",
-                )
-                attempt_id = "attempt:life-ecology:" + _digest(
-                    {"trigger_id": trigger_id, "attempt": 1}
-                )
-                claimed = opened.model_copy(
-                    update={
-                        "state": "claimed",
-                        "claim_lease": ClaimLease(
-                            owner_id=self._owner_id,
-                            attempt_id=attempt_id,
-                            acquired_at=logical_time,
-                            expires_at=logical_time + timedelta(seconds=self._lease_seconds),
-                        ),
-                        "attempt_ids": (attempt_id,),
-                    }
-                )
-                if await self._try_commit(
-                    (
-                        self._opened_event(
-                            process=opened,
-                            source_event=source_event,
-                            logical_time=logical_time,
-                            trace_id=trace_id,
-                            correlation_id=correlation_id,
-                        ),
-                        self._claim_event(
-                            process=claimed,
-                            event_type="TriggerProcessClaimed",
-                            source_event=source_event,
-                            logical_time=logical_time,
-                            trace_id=trace_id,
-                            correlation_id=correlation_id,
-                        ),
-                    ),
-                    projection=projection,
-                ):
-                    return LifeEcologyRunClaim(trigger_id=trigger_id, state="owned")
-                continue
+        projection = await self._project()
+        await self._verified_wake(key=key, projection=projection)
+        if trigger_id in projection.completed_trigger_ids:
+            return LifeEcologyRunClaim(trigger_id=trigger_id, state="completed")
+        schedule = getattr(projection, "life_ecology_schedule", None)
+        if schedule is not None and schedule.last_trigger_id == trigger_id:
+            return LifeEcologyRunClaim(trigger_id=trigger_id, state="completed")
+        process = next(
+            (item for item in projection.trigger_processes if item.trigger_id == trigger_id),
+            None,
+        )
+        if process is not None:
             if process.process_kind != LIFE_ECOLOGY_PROCESS_KIND:
                 raise ValueError("life ecology trigger identity is occupied by another process kind")
             if process.state == "terminal":
                 return LifeEcologyRunClaim(trigger_id=trigger_id, state="completed")
-            if process.state == "claimed" and process.claim_lease is not None:
-                logical_time = projection.logical_time or source_event.logical_time
-                if logical_time <= process.claim_lease.expires_at:
-                    return LifeEcologyRunClaim(trigger_id=trigger_id, state="joined")
-                event_type = "TriggerProcessReclaimed"
-            elif process.state == "open":
-                logical_time = projection.logical_time or source_event.logical_time
-                event_type = "TriggerProcessClaimed"
-            else:
-                raise ValueError("life ecology trigger state is invalid")
-
-            attempt_id = "attempt:life-ecology:" + _digest(
-                {"trigger_id": trigger_id, "attempt": len(process.attempt_ids) + 1}
-            )
-            claimed = process.model_copy(
-                update={
-                    "state": "claimed",
-                    "claim_lease": ClaimLease(
-                        owner_id=self._owner_id,
-                        attempt_id=attempt_id,
-                        acquired_at=logical_time,
-                        expires_at=logical_time + timedelta(seconds=self._lease_seconds),
-                    ),
-                    "attempt_ids": (*process.attempt_ids, attempt_id),
-                }
-            )
-            if await self._try_commit(
+        lease = self._leases.get(trigger_id)
+        if lease is not None and lease.state == "completed":
+            return LifeEcologyRunClaim(trigger_id=trigger_id, state="completed")
+        logical_time = projection.logical_time or (
+            await self._source_event_ref(key.wake_event_ref)
+        ).logical_time
+        if lease is None:
+            wake_revision = next(
                 (
-                    self._claim_event(
-                        process=claimed,
-                        event_type=event_type,
-                        source_event=source_event,
-                        logical_time=logical_time,
-                        trace_id=trace_id,
-                        correlation_id=correlation_id,
-                    ),
+                    item.world_revision
+                    for item in projection.committed_world_event_refs
+                    if item.event_id == key.wake_event_ref
                 ),
-                projection=projection,
+                None,
+            )
+            watermark_revision = next(
+                (
+                    item.world_revision
+                    for item in projection.committed_world_event_refs
+                    if schedule is not None
+                    and item.event_id == schedule.last_wake_event_ref
+                ),
+                None,
+            )
+            if (
+                wake_revision is not None
+                and watermark_revision is not None
+                and wake_revision <= watermark_revision
             ):
-                return LifeEcologyRunClaim(trigger_id=trigger_id, state="owned")
-        raise ConcurrencyConflict("life ecology trigger claim did not converge")
+                completed_outcome_ref = await self._completed_outcome_ref(
+                    trigger_id=trigger_id,
+                    projection=projection,
+                )
+                if completed_outcome_ref is not None:
+                    return LifeEcologyRunClaim(
+                        trigger_id=trigger_id,
+                        state="completed",
+                    )
+            attempt_ordinal = 1
+        elif lease.state == "claimed" and logical_time <= lease.expires_at:
+            return LifeEcologyRunClaim(trigger_id=trigger_id, state="joined")
+        else:
+            attempt_ordinal = lease.attempt_ordinal + 1
+        attempt_id = "attempt:life-ecology:" + _digest(
+            {"trigger_id": trigger_id, "attempt": attempt_ordinal}
+        )
+        state, _stored = self._leases.occupy(
+            record=LifeEcologyLeaseRecord(
+                world_id=key.world_id,
+                trigger_id=trigger_id,
+                wake_event_ref=key.wake_event_ref,
+                catalog_version=key.catalog_version,
+                owner_id=self._owner_id,
+                attempt_id=attempt_id,
+                attempt_ordinal=attempt_ordinal,
+                acquired_at=logical_time,
+                expires_at=logical_time + timedelta(seconds=self._lease_seconds),
+                state="claimed",
+            ),
+            logical_time=logical_time,
+        )
+        return LifeEcologyRunClaim(trigger_id=trigger_id, state=state)
 
     async def complete(
         self,
@@ -271,20 +234,26 @@ class LedgerLifeEcologyTriggerStore:
         if trigger_id != expected_trigger_id:
             raise ValueError("life ecology completion does not bind its run key")
 
+        lease = self._leases.get(trigger_id)
+        if lease is not None and lease.state == "completed":
+            if lease.outcome == outcome:
+                return
+            raise ValueError("life ecology terminal outcome conflicts with completion")
+
         for _ in range(_MAX_CAS_RETRIES):
             projection = await self._project()
             process = next(
                 (item for item in projection.trigger_processes if item.trigger_id == trigger_id),
                 None,
             )
-            if process is None:
-                schedule = getattr(projection, "life_ecology_schedule", None)
-                if (
-                    schedule is not None
-                    and schedule.last_trigger_id == trigger_id
-                    and schedule.last_outcome_ref == f"life-ecology:{outcome}"
-                ):
-                    return
+            schedule = getattr(projection, "life_ecology_schedule", None)
+            if process is None and (
+                schedule is not None
+                and schedule.last_trigger_id == trigger_id
+                and schedule.last_outcome_ref == f"life-ecology:{outcome}"
+            ):
+                return
+            if process is None and lease is None:
                 wake_revision = next(
                     (
                         item.world_revision
@@ -317,30 +286,81 @@ class LedgerLifeEcologyTriggerStore:
                         raise ValueError(
                             "life ecology terminal outcome conflicts with completion"
                         )
-                    # Compact scheduling treats completed ecology wakes as a
-                    # prefix. The immutable completion event remains the
-                    # outcome audit; the head only needs the processing
-                    # watermark to make old effect-once retries harmless.
                     return
-            if process is None or process.process_kind != LIFE_ECOLOGY_PROCESS_KIND:
                 raise ValueError("life ecology trigger is unavailable")
-            outcome_ref = f"life-ecology:{outcome}"
-            if process.state == "terminal":
-                if process.runtime_outcome_ref != outcome_ref:
-                    raise ValueError("life ecology terminal outcome conflicts with completion")
+            claimed = process
+            source_event: WorldEvent
+            if claimed is None:
+                if lease is None or lease.state != "claimed":
+                    raise ValueError("life ecology trigger is unavailable")
+                if lease.owner_id != self._owner_id:
+                    raise ValueError("life ecology completion does not own the active claim lease")
+                source_event = await self._source_event_ref(lease.wake_event_ref)
+                logical_time = projection.logical_time or source_event.logical_time
+                completed_at = max(logical_time, lease.acquired_at)
+                if completed_at > lease.expires_at:
+                    raise ValueError("life ecology lease expired before completion")
+                opened = TriggerProcess(
+                    trigger_id=trigger_id,
+                    trigger_ref=life_ecology_trigger_ref(
+                        wake_event_ref=key.wake_event_ref,
+                        catalog_version=key.catalog_version,
+                    ),
+                    process_kind=LIFE_ECOLOGY_PROCESS_KIND,
+                    source_evidence_ref=key.wake_event_ref,
+                    state="open",
+                )
+                claimed = opened.model_copy(
+                    update={
+                        "state": "claimed",
+                        "claim_lease": ClaimLease(
+                            owner_id=lease.owner_id,
+                            attempt_id=lease.attempt_id,
+                            acquired_at=lease.acquired_at,
+                            expires_at=lease.expires_at,
+                        ),
+                        "attempt_ids": (lease.attempt_id,),
+                    }
+                )
+            else:
+                if claimed.process_kind != LIFE_ECOLOGY_PROCESS_KIND:
+                    raise ValueError("life ecology trigger is unavailable")
+                outcome_ref = f"life-ecology:{outcome}"
+                if claimed.state == "terminal":
+                    if claimed.runtime_outcome_ref != outcome_ref:
+                        raise ValueError(
+                            "life ecology terminal outcome conflicts with completion"
+                        )
+                    return
+                if claimed.state != "claimed" or claimed.claim_lease is None:
+                    raise ValueError("life ecology trigger must be claimed before completion")
+                if claimed.claim_lease.owner_id != self._owner_id:
+                    raise ValueError(
+                        "life ecology completion does not own the active claim lease"
+                    )
+                source_event = await self._source_event(claimed)
+                logical_time = projection.logical_time or source_event.logical_time
+                completed_at = max(logical_time, claimed.claim_lease.acquired_at)
+                if completed_at > claimed.claim_lease.expires_at:
+                    raise ValueError("life ecology lease expired before completion")
+                opened = None
+            assert claimed.claim_lease is not None
+            if outcome in SILENT_LIFE_ECOLOGY_OUTCOMES:
+                delay_seconds = _silent_cadence_seconds(trigger_id, outcome)
+                next_due = (
+                    None
+                    if outcome == "cooldown"
+                    else completed_at + timedelta(seconds=delay_seconds)
+                )
+                self._leases.complete(
+                    trigger_id=trigger_id,
+                    outcome=outcome,
+                    completed_at=completed_at,
+                    next_consideration_at=next_due,
+                )
                 return
-            if process.state != "claimed" or process.claim_lease is None:
-                raise ValueError("life ecology trigger must be claimed before completion")
-            if process.claim_lease.owner_id != self._owner_id:
-                raise ValueError("life ecology completion does not own the active claim lease")
-            source_event = await self._source_event(process)
-            logical_time = projection.logical_time or source_event.logical_time
-            completed_at = max(logical_time, process.claim_lease.acquired_at)
-            if completed_at > process.claim_lease.expires_at:
-                raise ValueError("life ecology lease expired before completion")
             cadence_draw_ref: str | None = None
             cadence_delay_seconds: int | None = None
-            schedule = getattr(projection, "life_ecology_schedule", None)
             cadence_reused = (
                 outcome in _SEMANTIC_STIMULUS_OUTCOMES
                 and schedule is not None
@@ -357,7 +377,7 @@ class LedgerLifeEcologyTriggerStore:
             )
             if cadence_candidates is not None and not cadence_reused:
                 draw = await self._consideration_cadence_draw(
-                    process=process,
+                    process=claimed,
                     source_event=source_event,
                     outcome=outcome,
                     logical_time=logical_time,
@@ -369,12 +389,13 @@ class LedgerLifeEcologyTriggerStore:
                         "life-ecology-cadence-seconds:"
                     )
                 )
+                projection = await self._project()
             payload = {
-                "trigger_id": process.trigger_id,
-                "owner_id": process.claim_lease.owner_id,
-                "attempt_id": process.claim_lease.attempt_id,
+                "trigger_id": claimed.trigger_id,
+                "owner_id": claimed.claim_lease.owner_id,
+                "attempt_id": claimed.claim_lease.attempt_id,
                 "completed_at": completed_at.isoformat(),
-                "runtime_outcome_ref": outcome_ref,
+                "runtime_outcome_ref": f"life-ecology:{outcome}",
                 "cadence_draw_event_ref": cadence_draw_ref,
                 "cadence_delay_seconds": cadence_delay_seconds,
                 "cadence_reused": cadence_reused,
@@ -388,10 +409,10 @@ class LedgerLifeEcologyTriggerStore:
                     else {}
                 ),
             }
-            event = WorldEvent.from_payload(
+            completed_event = WorldEvent.from_payload(
                 schema_version="world-v2.1",
                 event_id="event:life-ecology:completed:"
-                + _digest([process.trigger_id, process.claim_lease.attempt_id, outcome]),
+                + _digest([claimed.trigger_id, claimed.claim_lease.attempt_id, outcome]),
                 world_id=key.world_id,
                 event_type="TriggerProcessCompleted",
                 logical_time=completed_at,
@@ -402,10 +423,44 @@ class LedgerLifeEcologyTriggerStore:
                 causation_id=source_event.event_id,
                 correlation_id=source_event.correlation_id,
                 idempotency_key="world-v2:life-ecology-trigger:completed:"
-                + _digest([key.world_id, process.trigger_id, process.claim_lease.attempt_id]),
+                + _digest(
+                    [key.world_id, claimed.trigger_id, claimed.claim_lease.attempt_id]
+                ),
                 payload=payload,
             )
-            if await self._try_commit((event,), projection=projection):
+            events = (completed_event,)
+            if process is None and opened is not None:
+                events = (
+                    self._opened_event(
+                        process=opened,
+                        source_event=source_event,
+                        logical_time=completed_at,
+                        trace_id=source_event.trace_id,
+                        correlation_id=source_event.correlation_id,
+                    ),
+                    self._claim_event(
+                        process=claimed,
+                        event_type="TriggerProcessClaimed",
+                        source_event=source_event,
+                        logical_time=completed_at,
+                        trace_id=source_event.trace_id,
+                        correlation_id=source_event.correlation_id,
+                    ),
+                    completed_event,
+                )
+            if await self._try_commit(events, projection=projection):
+                after = await self._project()
+                after_schedule = getattr(after, "life_ecology_schedule", None)
+                self._leases.complete(
+                    trigger_id=trigger_id,
+                    outcome=outcome,
+                    completed_at=completed_at,
+                    next_consideration_at=(
+                        after_schedule.next_consideration_at
+                        if after_schedule is not None
+                        else None
+                    ),
+                )
                 return
         raise ConcurrencyConflict("life ecology trigger completion did not converge")
 

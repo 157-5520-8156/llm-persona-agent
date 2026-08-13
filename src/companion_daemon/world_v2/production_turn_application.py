@@ -2120,6 +2120,27 @@ class WorldV2TurnApplication:
             else self._ledger.project()
         )
 
+    async def life_ecology_next_due(self):
+        """Return when the next Life consideration may run, if installed."""
+
+        if self._life_ecology is None:
+            return None
+        trigger_store = getattr(self._life_ecology, "_trigger_store", None)
+        reader = getattr(trigger_store, "next_consideration_at", None)
+        if callable(reader):
+            due = reader()
+            if due is not None:
+                return due
+        projection = (
+            await asyncio.to_thread(self._ledger.project)
+            if self._ledger.blocks_event_loop
+            else self._ledger.project()
+        )
+        schedule = getattr(projection, "life_ecology_schedule", None)
+        if schedule is not None:
+            return schedule.next_consideration_at
+        return projection.logical_time
+
     async def world_health_diagnostics(self) -> dict[str, object]:
         """Return deterministic read-only liveness evidence for health checks.
 

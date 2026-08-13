@@ -12446,22 +12446,30 @@ def _activity_lifecycle_proposal_recorded(
         None,
     )
     parsed_trigger = parse_life_ecology_trigger_ref(trigger.trigger_ref) if trigger else None
-    if (
-        wake is None
-        or wake.event_type != "ClockAdvanced"
-        or wake.payload_hash != payload.wake_event_payload_hash
-        or trigger is None
-        or trigger.process_kind != "life_ecology"
-        or trigger.state != "claimed"
-        or trigger.claim_lease is None
-        or trigger.source_evidence_ref != payload.wake_event_ref
-        or parsed_trigger is None
-        or trigger.trigger_id
-        != life_ecology_trigger_id(
+    ledger_claimed = (
+        trigger is not None
+        and trigger.process_kind == "life_ecology"
+        and trigger.state == "claimed"
+        and trigger.claim_lease is not None
+        and trigger.source_evidence_ref == payload.wake_event_ref
+        and parsed_trigger is not None
+        and trigger.trigger_id
+        == life_ecology_trigger_id(
             world_id=event.world_id,
             wake_event_ref=payload.wake_event_ref,
             catalog_version=parsed_trigger[0],
         )
+    )
+    sidecar_bound = payload.ecology_trigger_id == life_ecology_trigger_id(
+        world_id=event.world_id,
+        wake_event_ref=payload.wake_event_ref,
+        catalog_version="life-ecology.1",
+    )
+    if (
+        wake is None
+        or wake.event_type != "ClockAdvanced"
+        or wake.payload_hash != payload.wake_event_payload_hash
+        or not (ledger_claimed or sidecar_bound)
     ):
         raise ValueError("activity lifecycle proposal does not bind claimed ecology trigger")
     plan = next((item for item in state.plans if item.plan_id == payload.plan_id), None)

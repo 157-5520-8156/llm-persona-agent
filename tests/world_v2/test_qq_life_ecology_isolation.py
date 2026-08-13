@@ -35,6 +35,9 @@ class _BlockingLifePlatformHost:
     async def current_logical_time(self) -> datetime:
         return self.logical_time
 
+    async def life_ecology_next_due(self) -> datetime:
+        return NOW
+
     async def tick(self, tick):  # type: ignore[no-untyped-def]
         self.ticks.append(tick)
         self.logical_time = tick.logical_time_to

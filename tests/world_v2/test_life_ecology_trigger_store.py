@@ -95,16 +95,17 @@ async def test_ledger_store_survives_restart_and_completion_is_idempotent() -> N
 
     projection = ledger.project()
     assert projection.trigger_processes == ()
-    assert projection.life_ecology_schedule is not None
-    assert projection.life_ecology_schedule.last_outcome_ref == "life-ecology:idle"
-    cadence = projection.life_ecology_schedule.next_consideration_at - NOW
-    assert timedelta(minutes=45) <= cadence <= timedelta(hours=8)
-    assert sum(
-        item.event_type == "RandomDrawRecorded"
+    assert projection.life_ecology_schedule is None
+    assert all(
+        item.event_type not in {"TriggerProcessOpened", "TriggerProcessClaimed", "RandomDrawRecorded"}
         for item in projection.committed_world_event_refs
-    ) == 1
-    assert ledger.project().world_revision == 2
-    assert ledger.project().deliberation_revision == 3
+    )
+    due = first.next_consideration_at()
+    assert due is not None
+    cadence = due - NOW
+    assert timedelta(minutes=45) <= cadence <= timedelta(hours=8)
+    assert ledger.project().world_revision == 1
+    assert ledger.project().deliberation_revision == 0
 
 
 @pytest.mark.asyncio
@@ -265,8 +266,11 @@ async def test_sqlite_ledger_store_restart_reads_the_same_trigger_process(tmp_pa
     assert terminal == owned.model_copy(update={"state": "completed"})
     projection = verified.project()
     assert projection.trigger_processes == ()
-    assert projection.life_ecology_schedule is not None
-    assert projection.life_ecology_schedule.last_outcome_ref == "life-ecology:idle"
+    assert projection.life_ecology_schedule is None
+    due = LedgerLifeEcologyTriggerStore(
+        ledger=verified, owner_id="worker:later"
+    ).next_consideration_at()
+    assert due is not None
     verified.close()
 
 
@@ -284,7 +288,7 @@ async def test_sqlite_migrates_v33_terminal_ecology_head_to_current_bundle(
         trace_id="trace:migration",
         correlation_id="correlation:migration",
     )
-    await store.complete(key=key, trigger_id=claim.trigger_id, outcome="idle")
+    await store.complete(key=key, trigger_id=claim.trigger_id, outcome="author_planned")
     compact = ledger.project()
     assert compact.life_ecology_schedule is not None
     assert compact.completed_trigger_ids == ()
@@ -383,11 +387,12 @@ async def test_ledger_store_claim_or_join_is_atomic_across_competing_instances()
         catalog_version=key.catalog_version,
     )
     assert {claim.trigger_id for claim in claims} == {trigger_id}
-    process = ledger.project().trigger_processes
-    assert len(process) == 1
-    assert process[0].state == "claimed"
-    assert len(process[0].attempt_ids) == 1
-    assert ledger.project().deliberation_revision == 2
+    assert ledger.project().trigger_processes == ()
+    assert ledger.project().deliberation_revision == 0
+    lease = first._leases.get(trigger_id)  # noqa: SLF001
+    assert lease is not None
+    assert lease.state == "claimed"
+    assert lease.attempt_ordinal == 1
 
 
 @pytest.mark.asyncio
@@ -422,7 +427,7 @@ async def test_ledger_store_reclaims_only_an_expired_claim_with_preserved_lineag
             ),
         ),
         expected_world_revision=1,
-        expected_deliberation_revision=2,
+        expected_deliberation_revision=0,
     )
 
     recovered = LedgerLifeEcologyTriggerStore(ledger=ledger, owner_id="worker:recovery")
@@ -430,13 +435,14 @@ async def test_ledger_store_reclaims_only_an_expired_claim_with_preserved_lineag
         key=key, trace_id="trace:recovery", correlation_id="correlation:recovery"
     )
     assert claim == owned.model_copy(update={"state": "owned"})
-    process = ledger.project().trigger_processes[0]
-    assert process.state == "claimed"
-    assert process.claim_lease is not None
-    assert process.claim_lease.owner_id == "worker:recovery"
-    assert len(process.attempt_ids) == 2
+    lease = recovered._leases.get(owned.trigger_id)  # noqa: SLF001
+    assert lease is not None
+    assert lease.state == "claimed"
+    assert lease.owner_id == "worker:recovery"
+    assert lease.attempt_ordinal == 2
+    assert ledger.project().trigger_processes == ()
     assert ledger.project().world_revision == 2
-    assert ledger.project().deliberation_revision == 3
+    assert ledger.project().deliberation_revision == 0
 
 
 @pytest.mark.asyncio
@@ -541,7 +547,7 @@ async def test_deterministic_followup_probe_does_not_move_ambient_cadence() -> N
     await store.complete(
         key=first_key,
         trigger_id=first.trigger_id,
-        outcome="life_development_no_op",
+        outcome="author_planned",
     )
     original = ledger.project().life_ecology_schedule
     assert original is not None

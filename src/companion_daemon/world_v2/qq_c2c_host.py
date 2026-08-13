@@ -2184,6 +2184,7 @@ class QQC2CHost:
             return bool(candidates)
 
         due_projection_reader = getattr(self._host, "action_due_projection", None)
+        life_due_reader = getattr(self._host, "life_ecology_next_due", None)
         retry_due_before_tick = None
         retry_logical_from = None
         # Slow/model-backed work is serialized only with other scheduled work.
@@ -2271,7 +2272,6 @@ class QQC2CHost:
         # background work above was in flight.
         async with self._lock:
             logical_from = await self._host.current_logical_time()
-            advanced_exact_due = False
             reached_technical_retry = False
             for _ in range(_MAX_EXACT_DUE_ADVANCES):
                 if logical_from is None:
@@ -2308,12 +2308,22 @@ class QQC2CHost:
                     and logical_from < nearest_proactive_retry_due <= tick_boundary
                     else None
                 )
+                life_due_at = (
+                    await life_due_reader() if callable(life_due_reader) else None
+                )
+                life_due_target = None
+                if isinstance(life_due_at, datetime):
+                    if logical_from < life_due_at <= tick_boundary:
+                        life_due_target = life_due_at
+                    elif life_due_at <= logical_from < tick_boundary:
+                        life_due_target = tick_boundary
                 exact_due_targets = tuple(
                     value
                     for value in (
                         action_due_target,
                         expression_retry_target,
                         proactive_retry_target,
+                        life_due_target,
                     )
                     if value is not None
                 )
@@ -2324,8 +2334,10 @@ class QQC2CHost:
                     tick_reason = "qq_c2c_action_due_wake"
                 elif tick_target == expression_retry_target:
                     tick_reason = "qq_c2c_expression_retry_wake"
-                else:
+                elif tick_target == proactive_retry_target:
                     tick_reason = "qq_c2c_proactive_retry_wake"
+                else:
+                    tick_reason = "qq_c2c_life_ecology_due_wake"
                 tick_id = "tick:qq-c2c-v2:" + tick_target.isoformat()
                 outcome = await self._host.tick(
                     PlatformClockTick(
@@ -2344,48 +2356,18 @@ class QQC2CHost:
                     raise RuntimeError("QQ C2C scheduler clock was not accepted")
                 remember_priority_actions(outcome)
                 logical_from = tick_target
-                advanced_exact_due = True
+                if tick_target == life_due_target:
+                    heartbeat_life_wake = (
+                        tick_id,
+                        f"trace:qq-c2c-v2:{tick_id}",
+                        f"clock:qq-c2c-v2:{self._recipient_id}",
+                    )
                 if tick_target in {
                     expression_retry_target,
                     proactive_retry_target,
                 }:
                     reached_technical_retry = True
                     break
-
-            heartbeat_due = (
-                logical_from is not None
-                and not advanced_exact_due
-                and tick_boundary > logical_from
-                and (
-                    self._idle_heartbeat_seconds == 0
-                    or (tick_boundary - logical_from).total_seconds()
-                    >= self._idle_heartbeat_seconds
-                )
-            )
-            if heartbeat_due:
-                tick_id = "tick:qq-c2c-v2:" + tick_boundary.isoformat()
-                trace_id = f"trace:qq-c2c-v2:{tick_id}"
-                correlation_id = f"clock:qq-c2c-v2:{self._recipient_id}"
-                outcome = await self._host.tick(
-                    PlatformClockTick(
-                        tick_id=tick_id,
-                        logical_time_from=logical_from,
-                        logical_time_to=tick_boundary,
-                        observed_at=tick_boundary,
-                        trace_id=trace_id,
-                        causation_id=f"scheduler:qq-c2c-v2:{tick_id}",
-                        correlation_id=correlation_id,
-                        reason="qq_c2c_scheduler",
-                        # Commit the exact Clock wake while holding only the
-                        # short CAS mutex. The model-backed Life continuation
-                        # runs below after this mutex has been released.
-                        run_life_ecology=False,
-                    )
-                )
-                if outcome.status not in {"observed_only", "deferred"}:
-                    raise RuntimeError("QQ C2C scheduler clock was not accepted")
-                remember_priority_actions(outcome)
-                heartbeat_life_wake = (tick_id, trace_id, correlation_id)
         # Re-enter the scheduled-work lane only after releasing ``_lock``.
         # ``priority_action_ids`` are immutable hints from committed outcomes,
         # never cached Action state: each targeted and generic drain re-projects
