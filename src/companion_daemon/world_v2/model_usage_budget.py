@@ -105,8 +105,7 @@ class WorldV2UsageStore:
 
     def _migrate_usage_columns(self, connection: sqlite3.Connection) -> None:
         existing = {
-            str(row[1])
-            for row in connection.execute("PRAGMA table_info(world_v2_model_usage)")
+            str(row[1]) for row in connection.execute("PRAGMA table_info(world_v2_model_usage)")
         }
         for name, declaration in _USAGE_COLUMN_MIGRATIONS:
             if name not in existing:
@@ -300,14 +299,10 @@ class WorldV2UsageStore:
         return {
             "monthly_cost_cny": round(monthly, 2),
             "monthly_budget_cny": monthly_budget_cny,
-            "monthly_exhausted": (
-                monthly_budget_cny is not None and monthly >= monthly_budget_cny
-            ),
+            "monthly_exhausted": (monthly_budget_cny is not None and monthly >= monthly_budget_cny),
             "daily_cost_cny": round(daily, 2),
             "daily_budget_cny": daily_budget_cny,
-            "daily_exhausted": (
-                daily_budget_cny is not None and daily >= daily_budget_cny
-            ),
+            "daily_exhausted": (daily_budget_cny is not None and daily >= daily_budget_cny),
             "purpose_counts": attribution["purpose_counts"],
             "calls_per_user_message": attribution["calls_per_user_message"],
             "calls_per_user_message_alert": attribution["calls_per_user_message_alert"],
@@ -316,6 +311,8 @@ class WorldV2UsageStore:
             "invalid_cost_rate": attribution["invalid_cost_rate"],
             "invalid_cost_rate_alert": attribution["invalid_cost_rate_alert"],
             "cny_per_delivered_message": attribution["cny_per_delivered_message"],
+            "last_memory_write_at": attribution["last_memory_write_at"],
+            "chat_recall_authority": attribution["chat_recall_authority"],
             "warning": bool(warning_reasons),
             "warning_reasons": warning_reasons,
         }
@@ -338,9 +335,8 @@ class WorldV2UsageStore:
                 observation_count = self._today_event_count(
                     connection, "ObservationRecorded", day_key
                 )
-                delivered_count = self._today_event_count(
-                    connection, "ActionDelivered", day_key
-                )
+                delivered_count = self._today_event_count(connection, "ActionDelivered", day_key)
+                last_memory_write_at = self._latest_memory_write_at(connection)
             finally:
                 connection.close()
         purpose_counts: dict[str, int] = {}
@@ -366,15 +362,11 @@ class WorldV2UsageStore:
         else:
             calls_per_user_message = None
             calls_alert = call_count > 3
-        cache_hit_rate = (
-            cache_hit_tokens / prompt_tokens if prompt_tokens > 0 else None
-        )
+        cache_hit_rate = cache_hit_tokens / prompt_tokens if prompt_tokens > 0 else None
         cache_alert = cache_hit_rate is not None and cache_hit_rate < 0.5
         invalid_cost_rate = invalid_cost / total_cost if total_cost > 0 else None
         invalid_alert = invalid_cost_rate is not None and invalid_cost_rate > 0.1
-        cny_per_delivered_message = (
-            total_cost / delivered_count if delivered_count > 0 else None
-        )
+        cny_per_delivered_message = total_cost / delivered_count if delivered_count > 0 else None
         warning_reasons: list[str] = []
         if calls_alert:
             warning_reasons.append("calls_per_user_message")
@@ -391,6 +383,8 @@ class WorldV2UsageStore:
             "invalid_cost_rate": invalid_cost_rate,
             "invalid_cost_rate_alert": invalid_alert,
             "cny_per_delivered_message": cny_per_delivered_message,
+            "last_memory_write_at": last_memory_write_at,
+            "chat_recall_authority": "FactCommittedV2",
             "warning_reasons": warning_reasons,
         }
 
@@ -410,9 +404,22 @@ class WorldV2UsageStore:
             return 0
         return int(row[0] if row is not None else 0)
 
-    def _today_observation_count(
-        self, connection: sqlite3.Connection, day_key: str
-    ) -> int:
+    def _latest_memory_write_at(self, connection: sqlite3.Connection) -> str | None:
+        try:
+            row = connection.execute(
+                """
+                SELECT MAX(json_extract(event_json, '$.created_at'))
+                FROM world_v2_events
+                WHERE json_extract(event_json, '$.event_type') IN
+                    ('MemoryCandidateAccepted', 'FactCommittedV2')
+                """
+            ).fetchone()
+        except sqlite3.DatabaseError:
+            return None
+        value = row[0] if row is not None else None
+        return str(value) if value else None
+
+    def _today_observation_count(self, connection: sqlite3.Connection, day_key: str) -> int:
         return self._today_event_count(connection, "ObservationRecorded", day_key)
 
 

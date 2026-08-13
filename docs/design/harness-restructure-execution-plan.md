@@ -886,3 +886,14 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **剩余缺口**：0–3 条意图没有新事件落账，只是把当天第一次活动选择当作 day_open；天气/店铺开闭不在 seed 里所以没进 sheet；感知未并入 Present 候选池（默认仍 off）；NPC 作者未改（§12.9 第 8 条待批）；日记聚合仍靠 world_life recency，day_sheet 是新增的当日可读层。
 - **commit**：`023e713d`
 
+### 2026-08-13 H9 记忆配额与读时三因子打分
+
+- **红测**：`tests/world_v2/test_memory_quota_h9.py` — 召回侧没有 recency×importance×relevance 乘积；health 没有最近记忆写入时间；主记忆源口径未写明。
+- **改动**：`memory_read_score_bp` 按三因子乘积给 `active_memory_candidates` 与 `relevant_facts` 排序（relevance 暂固定 10000，query 文本未穿到 resolver）。Present 记忆配额维持 3–8（H3 已抬到 8）。health 增加 `last_memory_write_at` 与 `chat_recall_authority=FactCommittedV2`（MemoryCandidate 仍是检索控制，不是聊天事实权威）。embedding 默认仍关。
+- **测试**：H9 红测绿；ledger context 选择顺序随乘积更新；character-tier 498 passed；ruff 绿。
+- **生产证据**：本包改检索排序与 health。部署后 Present 第 6 段应按强度×新近排序取 3–8 条；health 能看到最近一次 Fact/Memory 写入。
+- **成本与延迟**：读时打分是纯函数，不增加模型调用。
+- **剩余缺口**：写时仍是每个 fact 一次模型压缩，尚未改成每天一次批量（避免在没有 due overlay 时把后到的 fact 记成 no_change 永远丢掉）；relevance 还没有当前 trigger 的词法项。
+- **commit**：
+
+

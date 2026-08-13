@@ -1018,10 +1018,9 @@ def test_selection_is_bounded_and_deterministic_before_authority_lookup() -> Non
 
     assert selected is not None
     assert len(selected) == 256
-    # Fixed-point rounding creates ties, resolved by ascending stable ID.
-    assert selected[0].fact_id == "fact:0298"
-    assert selected[1].fact_id == "fact:0299"
-    assert selected[-1].fact_id == "fact:0043"
+    assert selected[0].fact_id == "fact:0299"
+    assert selected[1].fact_id == "fact:0298"
+    assert selected[-1].fact_id == "fact:0044"
     assert _bounded_domain_items("relevant_facts", candidates * 14, NOW) is None
 
 

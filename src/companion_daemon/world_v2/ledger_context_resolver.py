@@ -633,7 +633,32 @@ def _signal_bp(slice_name: SliceName, item: BaseModel) -> int:
     return RANK_DOMAIN_IMPORTANCE_BP[slice_name]
 
 
+_READ_SCORE_SLICES = frozenset({"active_memory_candidates", "relevant_facts"})
+CHAT_RECALL_AUTHORITY = "FactCommittedV2"
+
+
+def memory_read_score_bp(
+    *,
+    recency_bp: int,
+    importance_bp: int,
+    relevance_bp: int = 10_000,
+) -> int:
+    """Park et al. recency × importance × relevance in basis points."""
+
+    return (
+        max(0, min(10_000, recency_bp))
+        * max(0, min(10_000, importance_bp))
+        * max(0, min(10_000, relevance_bp))
+        // 100_000_000
+    )
+
+
 def _rank(slice_name: SliceName, item: BaseModel, logical_time: datetime | None) -> int:
+    if slice_name in _READ_SCORE_SLICES:
+        return memory_read_score_bp(
+            recency_bp=_recency_bp(item, logical_time),
+            importance_bp=_signal_bp(slice_name, item),
+        )
     total_weight = sum(RANK_WEIGHT_BP.values())
     return (
         RANK_DOMAIN_IMPORTANCE_BP[slice_name] * RANK_WEIGHT_BP["domain_importance"]
@@ -1023,9 +1048,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             content_store=self._life_content_store,
             reviewed_identity_summaries=self._reviewed_npc_identity_summaries,
         )
-        committed = {
-            item.event_id: item for item in projection.committed_world_event_refs
-        }
+        committed = {item.event_id: item for item in projection.committed_world_event_refs}
         registrations: dict[str, list[CommittedWorldEventRef]] = {}
         for authority in projection.committed_world_event_refs:
             if authority.event_type != "NpcRegistered":
@@ -1104,7 +1127,11 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                                 *view.active_plan_refs,
                                 *view.organization_refs,
                                 *view.life_arc_refs,
-                                *((view.current_location_ref,) if view.current_location_ref else ()),
+                                *(
+                                    (view.current_location_ref,)
+                                    if view.current_location_ref
+                                    else ()
+                                ),
                             }
                         )
                     ),
@@ -1523,9 +1550,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         else:
             scoped_affect = tuple(
                 _compact_affect_episode_context_view(
-                    _normalize_observation_evidence(
-                        item, observation_aliases=observation_aliases
-                    )
+                    _normalize_observation_evidence(item, observation_aliases=observation_aliases)
                 )
                 for item in active_affect
                 if all(
@@ -1856,8 +1881,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             "character_core": (
                 (projection.character_core,)
                 if projection.character_core is not None
-                and projection.character_core.actor_ref
-                in (query.actor_ref, "actor:companion")
+                and projection.character_core.actor_ref in (query.actor_ref, "actor:companion")
                 else None
             ),
             "recent_dialogue": recent_dialogue,
