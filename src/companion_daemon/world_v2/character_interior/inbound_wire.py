@@ -47,7 +47,6 @@ from ..deliberation import (
     ValidationTechnicalFailure,
     begin_validation_reselection_recovery,
     claim_secondary_provider_slot,
-    claim_validation_corrective_provider_slot,
     expression_episode_provider_slots_active,
     fit_pre_provider_wait_timeout,
     fit_secondary_call_timeout,
@@ -1377,6 +1376,10 @@ def _required_reselection_identity(
     )
 
 
+class SameContractRetryForbidden(RuntimeError):
+    """Illegal output is a technical failure; the same contract is not asked again."""
+
+
 async def complete_bounded_validation_reselection(
     *,
     model: ChatCompletionModel,
@@ -1397,135 +1400,30 @@ async def complete_bounded_validation_reselection(
     unwrap_tool_result: Callable[[str], str] | None = None,
     tool_contract_payload: dict[str, object] | None = None,
 ) -> ValidationReselectionResult:
-    """Execute the one model-owned correction allowed by the call budget."""
+    """Same-contract correction is disabled; illegal output discards the opportunity."""
 
-    if not claim_validation_corrective_provider_slot(allow_after_backup=allow_after_backup):
-        raise TimeoutError("validation reselection has no available provider-call slot")
-    corrective = [*messages]
-    if include_invalid_raw:
-        corrective.append({"role": "assistant", "content": raw})
-    corrective.append({"role": "user", "content": instruction})
-    if tool_contract_payload is not None:
-        corrective.append(
-            {
-                "role": "user",
-                "content": json.dumps(
-                    tool_contract_payload,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-            }
-        )
-    identity = (
-        _provider_invocation_identity(
-            parent_call_id=parent_call_id,
-            purpose="validation_reselection",
-            messages=corrective,
-            temperature=temperature,
-            tools=tools,
-            tool_choice=tool_choice,
-            tool_contract_identity=tool_contract_identity,
-        )
-        if parent_call_id is not None
-        else None
+    del (
+        model,
+        messages,
+        raw,
+        instruction,
+        temperature,
+        timeout_seconds,
+        allow_after_backup,
+        parent_call_id,
+        include_invalid_raw,
+        model_id,
+        model_version,
+        source_closure_lane_used,
+        tools,
+        tool_choice,
+        tool_contract_identity,
+        unwrap_tool_result,
+        tool_contract_payload,
     )
-    request_identity_scope: AbstractContextManager[None] = (
-        model_provider_request_identity_scope(
-            request_hash=identity.request_hash,
-            identity_extras=(
-                {"tool_contract_identity": tool_contract_identity}
-                if tool_contract_identity is not None
-                else None
-            ),
-        )
-        if identity is not None
-        else nullcontext()
+    raise SameContractRetryForbidden(
+        "same-contract validation reselection is disabled; discard the opportunity"
     )
-    try:
-        async with asyncio.timeout(timeout_seconds):
-            with request_identity_scope:
-                metered = getattr(model, "complete_json_with_usage", None)
-                if not callable(metered):
-                    metered = getattr(model, "complete_with_usage", None)
-                if callable(metered):
-                    result = await metered(
-                        corrective,
-                        temperature=temperature,
-                        **(
-                            {"tools": tools, "tool_choice": tool_choice}
-                            if tools is not None
-                            else {}
-                        ),
-                    )
-                    if (
-                        not isinstance(result, tuple)
-                        or len(result) != 2
-                        or not isinstance(result[0], str)
-                    ):
-                        raise ValueError(
-                            "metered validation reselection result must be (text, usage)"
-                        )
-                    corrected, usage_raw = result
-                    if unwrap_tool_result is not None:
-                        corrected = unwrap_tool_result(corrected)
-                    return ValidationReselectionResult(
-                        raw=corrected,
-                        usage=ModelUsageProvenance.model_validate(usage_raw),
-                        corrective_used=True,
-                        winning_model_call_id=(
-                            identity.model_call_id if identity is not None else None
-                        ),
-                        winning_request_hash=(
-                            identity.request_hash if identity is not None else None
-                        ),
-                        winning_model_id=model_id,
-                        source_closure_lane_used=source_closure_lane_used,
-                    )
-                complete_json = getattr(model, "complete_json", None)
-                corrected = await (
-                    complete_json(
-                        corrective,
-                        temperature=temperature,
-                        **(
-                            {
-                                "tools": tools,
-                                "tool_choice": tool_choice,
-                            }
-                            if tools is not None
-                            else {}
-                        ),
-                    )
-                    if callable(complete_json)
-                    else model.complete(corrective, temperature=temperature)
-                )
-                if unwrap_tool_result is not None:
-                    corrected = unwrap_tool_result(corrected)
-                return ValidationReselectionResult(
-                    raw=corrected,
-                    usage=None,
-                    corrective_used=True,
-                    winning_model_call_id=(
-                        identity.model_call_id if identity is not None else None
-                    ),
-                    winning_request_hash=(identity.request_hash if identity is not None else None),
-                    winning_model_id=model_id,
-                    source_closure_lane_used=source_closure_lane_used,
-                )
-    except BaseException as exc:
-        _capture_failed_authored_subcall(
-            identity=identity,
-            purpose="validation_reselection",
-            model=model,
-            model_id=model_id,
-            model_version=(
-                (model_version or "").strip()
-                or str(getattr(model, "VERSION", "")).strip()
-                or type(model).__name__
-            ),
-            error=exc,
-        )
-        raise
 
 
 def _digest(value: object) -> str:
@@ -11391,6 +11289,11 @@ class _ExpressionDraftWire:
             stable_identity_source_refs=self._stable_identity_source_refs,
             source_ref_aliases=effective_source_ref_aliases,
         )
+        raise ValidationTechnicalFailure(
+            "authored_expression_reselection_invalid",
+            attempted_model_id=reselection_model_id,
+            attempted_model_version=self.VERSION,
+        )
         corrected = await complete_bounded_validation_reselection(
             model=reselection_model,
             messages=messages,
@@ -12616,6 +12519,7 @@ def _proposal_from_model_text(
 
 __all__ = [
     "RecallChoiceValidationError",
+    "SameContractRetryForbidden",
     "claim_repair_instruction",
     "complete_bounded_validation_reselection",
     "is_private_turn_state_violation",

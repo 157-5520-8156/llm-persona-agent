@@ -12,6 +12,7 @@ from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
     InboundToolContracts,
 )
 from companion_daemon.world_v2.character_interior.inbound_wire import (
+    SameContractRetryForbidden,
     _incremental_first_expression,
     _provider_invocation_identity,
     _stream_first_expression,
@@ -1151,24 +1152,23 @@ async def test_nonmetered_correction_keeps_local_contract_identity_off_provider_
                 ensure_ascii=False,
             )
 
-    result = await asyncio.wait_for(
-        complete_bounded_validation_reselection(
-            model=StrictProvider(),  # type: ignore[arg-type]
-            messages=[{"role": "user", "content": "choose"}],
-            raw="{}",
-            instruction="choose again",
-            temperature=0.8,
-            timeout_seconds=1.0,
-            parent_call_id="call:local-contract-only",
-            tools=list(contract.provider_tools),
-            tool_choice=contract.provider_tool_choice,
-            tool_contract_identity=contract.identity.request_identity_material(),
-            unwrap_tool_result=contract.unwrap,
-        ),
-        timeout=1.5,
-    )
-
-    assert json.loads(result.raw)["expression_draft"] == expression
+    with pytest.raises(SameContractRetryForbidden, match="same-contract"):
+        await asyncio.wait_for(
+            complete_bounded_validation_reselection(
+                model=StrictProvider(),  # type: ignore[arg-type]
+                messages=[{"role": "user", "content": "choose"}],
+                raw="{}",
+                instruction="choose again",
+                temperature=0.8,
+                timeout_seconds=1.0,
+                parent_call_id="call:local-contract-only",
+                tools=list(contract.provider_tools),
+                tool_choice=contract.provider_tool_choice,
+                tool_contract_identity=contract.identity.request_identity_material(),
+                unwrap_tool_result=contract.unwrap,
+            ),
+            timeout=1.5,
+        )
 
 
 @pytest.mark.asyncio
@@ -1236,23 +1236,23 @@ async def test_metered_correction_emits_the_exact_durable_request_identity() -> 
     )
     object.__setattr__(model, "_test_only_capture_exact_request_identity", True)
     try:
-        result = await complete_bounded_validation_reselection(
-            model=model,
-            messages=[{"role": "user", "content": "choose"}],
-            raw="{}",
-            instruction="choose again",
-            temperature=0.8,
-            timeout_seconds=1.0,
-            parent_call_id="call:metered-correction-identity",
-            tools=list(contract.provider_tools),
-            tool_choice=contract.provider_tool_choice,
-            tool_contract_identity=contract.identity.request_identity_material(),
-            unwrap_tool_result=contract.unwrap,
-        )
+        with pytest.raises(SameContractRetryForbidden, match="same-contract"):
+            await complete_bounded_validation_reselection(
+                model=model,
+                messages=[{"role": "user", "content": "choose"}],
+                raw="{}",
+                instruction="choose again",
+                temperature=0.8,
+                timeout_seconds=1.0,
+                parent_call_id="call:metered-correction-identity",
+                tools=list(contract.provider_tools),
+                tool_choice=contract.provider_tool_choice,
+                tool_contract_identity=contract.identity.request_identity_material(),
+                unwrap_tool_result=contract.unwrap,
+            )
     finally:
         await model.aclose()
-
-    assert captured_headers["x-girl-agent-request-identity"] == result.winning_request_hash
+    assert captured_headers == {}
 
 
 @pytest.mark.parametrize(
@@ -1388,56 +1388,23 @@ async def test_deepseek_strict_forced_tool_transports_generic_role_changes(
     parent_call_id = f"call:strict-role-changes:{select_role_changes}"
     messages = [{"role": "user", "content": "choose"}]
     try:
-        result = await complete_bounded_validation_reselection(
-            model=model,
-            messages=messages,
-            raw="{}",
-            instruction="choose again",
-            temperature=0.8,
-            timeout_seconds=1.0,
-            parent_call_id=parent_call_id,
-            tools=list(contract.provider_tools),
-            tool_choice=contract.provider_tool_choice,
-            tool_contract_identity=contract.identity.request_identity_material(),
-            unwrap_tool_result=contract.unwrap,
-        )
+        with pytest.raises(SameContractRetryForbidden, match="same-contract"):
+            await complete_bounded_validation_reselection(
+                model=model,
+                messages=messages,
+                raw="{}",
+                instruction="choose again",
+                temperature=0.8,
+                timeout_seconds=1.0,
+                parent_call_id=parent_call_id,
+                tools=list(contract.provider_tools),
+                tool_choice=contract.provider_tool_choice,
+                tool_contract_identity=contract.identity.request_identity_material(),
+                unwrap_tool_result=contract.unwrap,
+            )
     finally:
         await model.aclose()
-
-    expected_identity = _provider_invocation_identity(
-        parent_call_id=parent_call_id,
-        purpose="validation_reselection",
-        messages=[
-            *messages,
-            {"role": "assistant", "content": "{}"},
-            {"role": "user", "content": "choose again"},
-        ],
-        temperature=0.8,
-        tools=list(contract.provider_tools),
-        tool_choice=contract.provider_tool_choice,
-        tool_contract_identity=contract.identity.request_identity_material(),
-    )
-    assert captured_paths == ["/beta/chat/completions"]
-    assert "response_format" not in captured
-    assert (
-        captured_headers["x-girl-agent-request-identity"]
-        == result.winning_request_hash
-        == expected_identity.request_hash
-    )
-    selected_appraisal = json.loads(result.raw)["appraisal_draft"]
-    appraisal_wire = AppraisalDraftWire.model_validate_json(
-        json.dumps(selected_appraisal, ensure_ascii=False), strict=True
-    )
-    if not select_role_changes:
-        semantic_appraisal = appraisal_wire.model_dump(mode="json", exclude_none=True)
-        assert "relationship_commitment" not in semantic_appraisal
-        assert "interaction_act" not in semantic_appraisal
-    else:
-        assert appraisal_wire.relationship_commitment is not None
-        assert appraisal_wire.relationship_commitment.model_dump(mode="json") == commitment
-        assert appraisal_wire.interaction_act is not None
-        assert appraisal_wire.interaction_act.operation == "declare"
-        assert appraisal_wire.interaction_act.status_code == "等我下次带上"
+    assert captured_paths == []
 
 
 def test_later_branch_carries_the_stricter_capability_beat_limit() -> None:
@@ -1629,3 +1596,29 @@ def test_contract_preserves_later_and_silent_role_choices(
             )
         )
     )["expression_draft"]["timing_choice"] == timing_choice
+
+
+@pytest.mark.asyncio
+async def test_same_contract_reselection_does_not_call_the_provider() -> None:
+    requested: list[object] = []
+
+    class _Provider:
+        async def complete(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            temperature: float = 0.8,
+        ) -> str:
+            requested.append(messages)
+            return "should not run"
+
+    with pytest.raises((RuntimeError, TimeoutError, ValueError), match="same-contract"):
+        await complete_bounded_validation_reselection(
+            model=_Provider(),  # type: ignore[arg-type]
+            messages=[{"role": "user", "content": "choose"}],
+            raw="{}",
+            instruction="choose again",
+            temperature=0.8,
+            timeout_seconds=1.0,
+        )
+    assert requested == []

@@ -23,10 +23,7 @@ from companion_daemon.llm import (
     model_request_emission_scope,
 )
 
-from ..affect_target_bounds import (
-    AffectTargetBelowMinimumError,
-    target_reselection_instruction,
-)
+from ..affect_target_bounds import AffectTargetBelowMinimumError
 from ..companion_identity import (
     CompanionIdentityFrame,
     companion_identity_source_refs,
@@ -3932,38 +3929,13 @@ class _InboundCharacterAuthor:
                 source_ref_aliases=source_ref_aliases,
                 origin_request=expression_request,
             )
-            # Envelope repair (2026-08-08): a wrong outer shape (missing or
-            # extra top-level keys) used to fail closed with no recovery. Echo
-            # the exact violation back at low temperature so the model emits
-            # the canonical two-object envelope instead of going silent.
-            repair_timeout = fit_secondary_call_timeout(_CLAIM_REPAIR_TIMEOUT_SECONDS)
-            if repair_timeout is None:
-                raise
-            envelope_instruction = (
-                "Your previous response was not one combined cognition object. "
-                f"Exact violation: {str(exc)[:300]}. Return exactly one complete JSON "
-                "object with exactly the two keys appraisal_draft and expression_draft, "
-                "each an object. Re-decide both together from the same pinned context."
-            )
-            corrected = await complete_bounded_validation_reselection(
-                model=provider,
-                messages=messages,
-                raw=raw,
-                instruction=envelope_instruction,
-                temperature=0.2,
-                timeout_seconds=repair_timeout,
-                parent_call_id=provider_request.call_id,
-                **self._final_tool_reselection_kwargs(
-                    request=provider_request,
-                    provider=provider,
-                ),
-            )
-            usage = _combine_usage(usage, corrected.usage, request.call_id)
-            try:
-                value = _parse_combined(corrected.raw)
-            except (TypeError, ValueError):
-                raise
-            envelope_corrective_spent = True
+            # H1b: illegal envelope is a technical failure. Same-contract
+            # retry is disabled; the next Occasion may try again.
+            raise ValidationTechnicalFailure(
+                "authored_expression_reselection_invalid",
+                attempted_model_id=model_id,
+                attempted_model_version=self.VERSION,
+            ) from exc
         key = _cache_key(request)
 
         def materialize_live_appraisal(raw_value: dict[str, object]) -> dict[str, object]:
@@ -3983,133 +3955,23 @@ class _InboundCharacterAuthor:
         try:
             appraisal_proposal = materialize_live_appraisal(value["appraisal_draft"])
         except AffectTargetBelowMinimumError as target_error:
-            if corrective_spent:
-                raise ValidationTechnicalFailure(
-                    "affect_target_reselection_invalid",
-                    model_call_id=winning_provider_identity.model_call_id,
-                    request_hash=winning_provider_identity.request_hash,
-                    attempted_model_id=model_id,
-                    attempted_model_version=self.VERSION,
-                    usage=usage,
-                ) from target_error
-            repair_timeout = fit_secondary_call_timeout(_CLAIM_REPAIR_TIMEOUT_SECONDS)
-            if repair_timeout is None:
-                raise TimeoutError("paired Affect target reselection budget exhausted")
-            instruction = (
-                target_reselection_instruction(target_error)
-                + " For this simultaneous cognition call, return exactly one complete "
-                "replacement object with appraisal_draft and expression_draft. Re-decide "
-                "both drafts together from the original pinned context; the system does "
-                "not select an emotion, target, timing, stance, or expression for you."
-            )
-            corrected = await complete_bounded_validation_reselection(
-                model=provider,
-                messages=messages,
-                raw=raw,
-                instruction=instruction,
-                temperature=0.2,
-                timeout_seconds=repair_timeout,
-                parent_call_id=provider_request.call_id,
-                **self._final_tool_reselection_kwargs(
-                    request=provider_request,
-                    provider=provider,
-                ),
-            )
-            corrected_usage = _combine_usage(
-                usage,
-                corrected.usage,
-                request.call_id,
-            )
-            try:
-                value = _parse_combined(corrected.raw)
-                appraisal_proposal = materialize_live_appraisal(value["appraisal_draft"])
-            except (TypeError, ValueError) as second_error:
-                raise ValidationTechnicalFailure(
-                    "affect_target_reselection_invalid",
-                    model_call_id=corrected.winning_model_call_id,
-                    request_hash=corrected.winning_request_hash,
-                    attempted_model_id=model_id,
-                    attempted_model_version=self.VERSION,
-                    usage=corrected_usage,
-                ) from second_error
-            usage = corrected_usage
-            raw = corrected.raw
-            repair_messages = messages
-            corrective_spent = True
-            if corrected.winning_model_call_id is None or corrected.winning_request_hash is None:
-                raise ValueError("paired Affect target correction omitted provider identity")
-            winning_provider_identity = _ProviderInvocationIdentity(
-                model_call_id=corrected.winning_model_call_id,
-                request_hash=corrected.winning_request_hash,
-            )
+            raise ValidationTechnicalFailure(
+                "affect_target_reselection_invalid",
+                model_call_id=winning_provider_identity.model_call_id,
+                request_hash=winning_provider_identity.request_hash,
+                attempted_model_id=model_id,
+                attempted_model_version=self.VERSION,
+                usage=usage,
+            ) from target_error
         except (TypeError, ValueError) as appraisal_error:
-            if corrective_spent:
-                raise ValidationTechnicalFailure(
-                    "appraisal_reselection_invalid",
-                    model_call_id=winning_provider_identity.model_call_id,
-                    request_hash=winning_provider_identity.request_hash,
-                    attempted_model_id=model_id,
-                    attempted_model_version=self.VERSION,
-                    usage=usage,
-                ) from appraisal_error
-            repair_timeout = fit_secondary_call_timeout(_CLAIM_REPAIR_TIMEOUT_SECONDS)
-            if repair_timeout is None:
-                raise ValidationTechnicalFailure(
-                    "appraisal_reselection_unavailable",
-                    model_call_id=winning_provider_identity.model_call_id,
-                    request_hash=winning_provider_identity.request_hash,
-                    attempted_model_id=model_id,
-                    attempted_model_version=self.VERSION,
-                    usage=usage,
-                ) from appraisal_error
-            instruction = (
-                "The simultaneous result failed the AppraisalDraft hard contract: "
-                + f"{type(appraisal_error).__name__}: {str(appraisal_error)[:512]}. "
-                "Using only the original pinned Context and capabilities, return one "
-                "complete replacement object with appraisal_draft and expression_draft. "
-                "This is a structural correction, not an instruction to choose any "
-                "particular appraisal, affect, relationship meaning, timing, stance, "
-                "speech, or silence."
-            )
-            corrected = await complete_bounded_validation_reselection(
-                model=provider,
-                messages=messages,
-                raw=raw,
-                instruction=instruction,
-                temperature=0.2,
-                timeout_seconds=repair_timeout,
-                parent_call_id=provider_request.call_id,
-                **self._final_tool_reselection_kwargs(
-                    request=provider_request,
-                    provider=provider,
-                ),
-            )
-            corrected_usage = _combine_usage(usage, corrected.usage, request.call_id)
-            try:
-                value = _parse_combined(corrected.raw)
-                appraisal_proposal = materialize_live_appraisal(value["appraisal_draft"])
-            except (TypeError, ValueError) as second_error:
-                raise ValidationTechnicalFailure(
-                    "appraisal_reselection_invalid",
-                    model_call_id=corrected.winning_model_call_id,
-                    request_hash=corrected.winning_request_hash,
-                    attempted_model_id=model_id,
-                    attempted_model_version=self.VERSION,
-                    usage=corrected_usage,
-                ) from second_error
-            if (
-                corrected.winning_model_call_id is None
-                or corrected.winning_request_hash is None
-            ):
-                raise ValueError("paired appraisal correction omitted provider identity")
-            usage = corrected_usage
-            raw = corrected.raw
-            repair_messages = messages
-            corrective_spent = True
-            winning_provider_identity = _ProviderInvocationIdentity(
-                model_call_id=corrected.winning_model_call_id,
-                request_hash=corrected.winning_request_hash,
-            )
+            raise ValidationTechnicalFailure(
+                "appraisal_reselection_invalid",
+                model_call_id=winning_provider_identity.model_call_id,
+                request_hash=winning_provider_identity.request_hash,
+                attempted_model_id=model_id,
+                attempted_model_version=self.VERSION,
+                usage=usage,
+            ) from appraisal_error
         expression_value = dict(value["expression_draft"])
         expression_raw = json.dumps(expression_value, ensure_ascii=False, separators=(",", ":"))
         expression_raw, episode_disposition = _split_expression_episode_disposition(

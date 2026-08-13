@@ -794,4 +794,14 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
   - 真实 provider 探针（`.env` 的 `DEEPSEEK_API_KEY` → `api.deepseek.com`）：无 scope 的调用抛 `ModelUsageAdmissionError` 且 HTTP=0；`inbound_turn` 先写入 reservation（actor=`agent:companion`，estimated ¥0.0006）再发出 1 次 HTTP。当前密钥被 DeepSeek 返回 401，usage 记 `inbound_turn/failed/cost=0/latency=207ms`，reservation 已 settled。G3 在真实 HTTP 边界上成立；succeeded 账单要等有效密钥或生产 QQ 部署后的新行。
 - **成本与延迟**：本包不改 prompt，不减调用次数。准入是一次 SQLite INSERT；本次 live 探针在 401 前 207ms，其中含准入。分桶与告警从本包部署后的新行开始可证。
 - **剩余缺口**：HTTP capture 仍未挂 `usage_observer`，该路径 G3 不生效（生产在 QQ）；第二次 `consider()` 仍未拒绝（G2 拒绝是 H5）；无效成本率按 purpose 标记（reselection/corrective/recovery/retry）与 `attempt>1`，尚未对接 ModelResult 审计状态；现网 cache hit 23.1%，health 会立即 `cache_hit_rate` 告警，这是 G5 的可见性，修复在 H3。`.env` 里的 DeepSeek 密钥当前 401，不能当作生产 daemon 已部署。
+- **commit**：`966b0659`
+
+### 2026-08-13 H1b 形状宽进、禁止同契约重试、对冲改 p95
+
+- **红测**：`{"decision":"retain","predecessor_refs":[]}` 及带未知键的 `no_change` 被集合相等判非法；`complete_bounded_validation_reselection` 仍用原契约打 provider；默认 `hedge_after_seconds=2.0` 低于实测 p50 4.2s。
+- **改动**：私人印象 `_materialize_draft` 改为 Postel（忽略未知键，retain 允许空 `predecessor_refs`）；同契约重选调用直接 `SameContractRetryForbidden`，非法输出记技术失败、机会丢弃；`hedge_after_seconds=6.5`（依据 2026-08-13 character_interior succeeded n=695：p50 4242 / p90 6155 / p99 8508ms，取 p95）。
+- **测试**：私人印象 / hedge / inbound_tool_contract 红测转绿；`test_character_interior_inbound_author.py` 107 passed（原依赖二次纠正的用例改为一次调用 + `ValidationTechnicalFailure`）；ruff 绿。
+- **生产证据**：本包不改 prompt。对冲从 2.0s 提到 6.5s 后，backup 不应再在 p50 前开火；corrective purpose 新行应趋零。部署前数字仍是改动前基线。
+- **成本与延迟**：去掉 21–37% 的对冲重复计费和 32% 的 corrective 调用是目标；需部署后 §12.7 查询 6/7 验证。首 Beat 取消窗口随 hedge 后移，成功路径不再被 2s backup 抢跑。
+- **剩余缺口**：expression 侧常见松散形状（字符串数组 beats）不再靠重选救回，首次合法率要等 H4 契约瘦身/宽进；审查模型车道仍在（H1d）；价格表与 ActionUnknown 对账是 H1c；G2 第二次 consider 拒绝是 H5。
 - **commit**：见本包提交。

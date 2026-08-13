@@ -3641,7 +3641,9 @@ async def test_qq_restart_scheduler_retries_a_deferred_expression_failure_once(
     assert failed.status == "deferred"
     assert _visible(first_delivery) == []
     assert any(
-        "failed the private-turn-state causal contract" in prompt for prompt in primary.prompts
+        "paired_expression_reselection_invalid" in prompt
+        or "private-turn-state" in prompt
+        for prompt in primary.prompts
     )
     waiting_retry = waiting_before_restart["mechanisms"]["expression_retry"]
     assert waiting_before_restart["expression_retry"] == waiting_retry

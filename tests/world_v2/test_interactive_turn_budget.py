@@ -218,3 +218,14 @@ def test_later_real_author_failure_activates_technical_window_after_validation()
     assert technical_deadline == pytest.approx(108.5)
     assert budget.candidate_deadline == pytest.approx(technical_deadline)
     assert budget.remaining() == pytest.approx(8.0)
+
+
+def test_default_hedge_follows_measured_p95_not_the_old_target() -> None:
+    # 2026-08-13 production character_interior succeeded n=695:
+    # p50 4242ms, p90 6155ms, p99 8508ms. Hedge belongs at p95 (~6.5s),
+    # not the unmet 1-2s Fast Reply target that made backup 21-37% of primary.
+    policy = InteractiveTurnBudgetPolicy()
+    assert policy.hedge_after_seconds == pytest.approx(6.5)
+    assert policy.hedge_after_seconds < (
+        policy.total_seconds - policy.acceptance_dispatch_reserve_seconds
+    )

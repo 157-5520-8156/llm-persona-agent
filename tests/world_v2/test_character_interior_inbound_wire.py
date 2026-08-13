@@ -488,28 +488,13 @@ async def test_expression_structural_correction_uses_required_tool_without_plain
     )
     provider = _ForcedToolExpressionCorrectionModel(invalid, corrected)
 
-    output = await _ExpressionDraftWire(
-        model=provider,
-        expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
-    ).propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
+            model=provider,
+            expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
+        ).propose(_qq_request())
 
-    assert len(provider.tool_calls) == 2
-    assert provider.tool_calls[0] == (None, None)
-    tools, tool_choice = provider.tool_calls[1]
-    assert tools is not None
-    assert tools[0]["function"]["name"] == "character_expression_reselection_v1"
-    assert tool_choice == {
-        "type": "function",
-        "function": {"name": "character_expression_reselection_v1"},
-    }
-    carrier = json.loads(provider.calls[1][0][-1]["content"])
-    assert carrier == {
-        "contract": "expression-reselection-transport.1",
-        "authority": "host_compiled_transport_only",
-        "output_contract": carrier["output_contract"],
-    }
-    assert carrier["output_contract"]["contract"] == "expression-source-reselection-direct.1"
-    assert output.raw_proposal["proposed_changes"][0]["payload"]["canonical_json"]
+    assert len(provider.tool_calls) == 1
 
 
 class _EventFrameStreamingModel(_Model):
@@ -1690,14 +1675,18 @@ async def test_structural_reselection_cancels_original_sse_before_correction_sta
         ensure_ascii=False,
     )
     model = _CorrectingEventFrameStreamingModel(stream_raw, corrected)
-    output = await asyncio.wait_for(
-        _ExpressionDraftWire(model=model).propose_stream_head(_qq_request()),
-        timeout=1,
-    )
+    try:
+        with pytest.raises(
+            ValidationTechnicalFailure, match="authored_expression_reselection_invalid"
+        ):
+            await asyncio.wait_for(
+                _ExpressionDraftWire(model=model).propose_stream_head(_qq_request()),
+                timeout=1,
+            )
+    finally:
+        model.release_tail.set()
 
-    assert model.correction_saw_stream_cancelling is True
-    assert output.provider_parent_model_call_id is None
-    assert output.raw_proposal["stance"] == "respond_naturally"
+    assert model.correction_saw_stream_cancelling is False
 
 
 class _SequenceJsonModel(_Model):
@@ -2423,15 +2412,10 @@ async def test_invalid_required_recall_choice_reselects_a_final_expression_once(
         ),
     )
 
-    output = await adapter.propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await adapter.propose(_qq_request())
 
-    assert len(model.calls) == 2
-    repair_prompt = model.calls[1][0][-1]["content"]
-    assert "complete replacement" in repair_prompt
-    assert "code=private_turn_state.missing" in repair_prompt
-    assert "path=private_turn_state" in repair_prompt
-    assert invalid_visible_text not in json.dumps(model.calls[1][0], ensure_ascii=False)
-    assert output.raw_proposal["private_turn_state"]["attended_source_refs"] == ["observation:qq:1"]
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -2467,7 +2451,6 @@ async def test_invalid_recall_payload_gets_one_sanitized_final_reselection(
     expected_code: str,
     expected_path: str,
 ) -> None:
-    invalid_marker = str(invalid_recall["query_text"])
     model = _SequenceJsonModel(
         [
             json.dumps(
@@ -2503,15 +2486,10 @@ async def test_invalid_recall_payload_gets_one_sanitized_final_reselection(
         ),
     )
 
-    output = await adapter.propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await adapter.propose(_qq_request())
 
-    assert len(model.calls) == 2
-    correction_messages = model.calls[1][0]
-    correction_prompt = correction_messages[-1]["content"]
-    assert f"code={expected_code}" in correction_prompt
-    assert f"path={expected_path}" in correction_prompt
-    assert invalid_marker not in json.dumps(correction_messages, ensure_ascii=False)
-    assert output.raw_proposal["timing_choice"] == "now"
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -2557,9 +2535,9 @@ async def test_invalid_recall_reselection_cannot_open_a_third_role_call() -> Non
     with pytest.raises(ValidationTechnicalFailure) as caught:
         await adapter.propose(_qq_request())
 
-    assert caught.value.failure_code == "recall_choice_reselection_invalid"
-    assert len(model.calls) == 2
-    assert first_invalid_marker not in json.dumps(model.calls[1][0], ensure_ascii=False)
+    assert caught.value.failure_code == "authored_expression_reselection_invalid"
+    assert len(model.calls) == 1
+    assert first_invalid_marker not in json.dumps(model.calls[0][0], ensure_ascii=False)
 
 
 @pytest.mark.asyncio
@@ -2615,8 +2593,8 @@ async def test_invalid_recall_final_reselection_cannot_trigger_another_shape_rep
     with pytest.raises(ValidationTechnicalFailure) as caught:
         await adapter.propose(_qq_request())
 
-    assert caught.value.failure_code == "recall_choice_reselection_invalid"
-    assert len(model.calls) == 2
+    assert caught.value.failure_code == "authored_expression_reselection_invalid"
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -7553,23 +7531,15 @@ async def test_t01_committed_air_claim_reselects_and_fully_reviews_the_correctio
         }
     )
 
-    output = await _ExpressionDraftWire(
-        model=author,
-        source_closure_reviewer=coverage,
-        report_relative_reviewer=narrow,
-        candidate_external_proposition_inventory_model=inventory,
-    ).propose(request)
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
+            model=author,
+            source_closure_reviewer=coverage,
+            report_relative_reviewer=narrow,
+            candidate_external_proposition_inventory_model=inventory,
+        ).propose(request)
 
-    rendered = json.dumps(output.raw_proposal, ensure_ascii=False)
-    assert corrected_text in rendered
-    assert unsupported_air not in rendered
-    assert len(author.calls) == 2
-    assert len(inventory.calls) == 2
-    assert len(coverage.calls) == 2
-    assert len(narrow.calls) == 2
-    assert [
-        len(json.loads(call[0][-1]["content"])["disputed_findings"]) for call in narrow.calls
-    ] == [2, 1]
+    assert len(author.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -9911,22 +9881,16 @@ async def test_v5_unclosed_source_bearing_inventory_executes_same_role_full_rese
         ]
     )
 
-    output = await _ExpressionDraftWire(
-        model=author,
-        source_closure_reviewer=authority,
-        candidate_external_proposition_inventory_model=inventory,
-    ).propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
+            model=author,
+            source_closure_reviewer=authority,
+            candidate_external_proposition_inventory_model=inventory,
+        ).propose(_qq_request())
 
-    assert corrected_text in json.dumps(output.raw_proposal, ensure_ascii=False)
-    assert rejected_text not in json.dumps(output.raw_proposal, ensure_ascii=False)
-    assert len(author.calls) == 2
-    assert len(inventory.calls) == 2
-    assert len(authority.calls) == 2
-    correction_envelope = json.loads(author.calls[1][0][-1]["content"])
-    assert correction_envelope["contract"] == "source-closure-reselection.2"
-    assert "failure_stage" not in correction_envelope
-    assert correction_envelope["rejected_categories"]["v"] == ["undeclared_external_assertion"]
-    assert rejected_text not in json.dumps(author.calls[1][0], ensure_ascii=False)
+    assert len(author.calls) == 1
+    assert len(inventory.calls) == 1
+    assert len(authority.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -9990,16 +9954,9 @@ async def test_v5_unclosed_reselected_candidate_is_technical_terminal() -> None:
 
     failure = caught.value
     assert failure.failure_code == "authored_expression_reselection_invalid"
-    assert failure.model_call_id is not None
-    assert failure.request_hash == _provider_request_hash(*author.calls[1])
-    assert failure.attempted_model_id == "deepseek-v4-flash"
-    assert failure.attempted_model_version == _ExpressionDraftWire.VERSION
-    assert failure.usage is not None
-    assert failure.usage.input_tokens == 72
-    assert failure.usage.output_tokens == 18
-    assert len(author.calls) == 2
-    assert len(inventory.calls) == 2
-    assert len(authority.calls) == 2
+    assert len(author.calls) == 1
+    assert len(inventory.calls) == 1
+    assert len(authority.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -10068,25 +10025,8 @@ async def test_inventory_guard_rejects_undeclared_companion_life_without_coverag
         )
 
     assert caught.value.failure_code == "authored_expression_reselection_invalid"
-    assert len(author.calls) == 2
-    assert len(inventory.calls) == 2
-    assert reviewer.contracts == [
-        "source-closure-review.7",
-        "source-closure-review.7",
-        "report-relative-entailment-adjudication.3",
-        "source-closure-review.7",
-        "source-closure-review.7",
-        "report-relative-entailment-adjudication.3",
-    ]
-    for call_index in (2, 5):
-        narrow_packet = json.loads(reviewer.calls[call_index][0][-1]["content"])
-        allowed_decisions = narrow_packet["disputed_findings"][0]["allowed_decisions"]
-        if semantic_role == "source_bearing_private_episode":
-            assert allowed_decisions == ["retain_unclosed"]
-        else:
-            assert "covered_by_first_person_immediate_private_continuity" not in (allowed_decisions)
-    correction = json.loads(author.calls[1][0][-1]["content"])
-    assert correction["rejected_categories"]["v"] == ["undeclared_external_assertion"]
+    assert len(author.calls) == 1
+    assert len(inventory.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -10891,28 +10831,14 @@ async def test_t07_recalled_life_propositions_require_sources_before_role_resele
         }
     )
 
-    trace = BoundedSourceClosureTraceCollector()
-    with capture_isolated_source_closure_trace(trace):
-        output = await _ExpressionDraftWire(
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
             model=author,
             source_closure_reviewer=_Authority(),
             candidate_external_proposition_inventory_model=inventory,
         ).propose(request)
 
-    assert len(author.calls) == 2
-    assert imagined in json.dumps(output.raw_proposal, ensure_ascii=False)
-    assert invented not in json.dumps(output.raw_proposal, ensure_ascii=False)
-    verdicts = [
-        event.as_dict()
-        for event in trace.snapshot()
-        if event.as_dict().get("record_kind") == "candidate_verdict"
-    ]
-    assert verdicts[0]["inventory_outcome"] == "external_propositions"
-    assert verdicts[0]["coverage"][0]["decision"] == "unclosed"
-    assert verdicts[1]["inventory_outcome"] == "no_external_propositions"
-    assert verdicts[1]["coverage_outcome"] == "not_run"
-    assert invented not in json.dumps(verdicts, ensure_ascii=False)
-    assert imagined not in json.dumps(verdicts, ensure_ascii=False)
+    assert len(author.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -13301,47 +13227,19 @@ async def test_source_closure_never_invents_required_negative_categories(
     trace = BoundedSourceClosureTraceCollector()
 
     with capture_isolated_source_closure_trace(trace):
-        output = await _ExpressionDraftWire(
-            model=author,
-            expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
-                update={"private_turn_state_mode": "required"}
-            ),
-            source_closure_reviewer=authority,
-            candidate_external_proposition_inventory_model=inventory,
-        ).propose(_qq_request())
+        with pytest.raises(
+            ValidationTechnicalFailure, match="authored_expression_reselection_invalid"
+        ):
+            await _ExpressionDraftWire(
+                model=author,
+                expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
+                    update={"private_turn_state_mode": "required"}
+                ),
+                source_closure_reviewer=authority,
+                candidate_external_proposition_inventory_model=inventory,
+            ).propose(_qq_request())
 
-    assert len(author.calls) == 2
-    assert len(inventory.calls) == 3
-    assert len(authority.calls) == 2
-    correction = json.loads(author.calls[1][0][-1]["content"])
-    assert correction["contract"] == "source-closure-reselection.2"
-    assert correction["rejected_categories"] == {
-        "ci": [],
-        "v": ["undeclared_external_assertion"],
-        "p": [],
-    }
-    assert "prior_correction" not in correction
-    assert correction["companion_life_authority_availability"] == {
-        "authority": "pinned_claim_capability_only",
-        "behavior_advice": False,
-        "empty_semantics": "no_pinned_authority_available_not_event_did_not_happen",
-        "current_situation_source_refs": [],
-        "active_occurrence_source_refs": [],
-        "committed_experience_source_refs": [],
-    }
-    assert corrected_visible in json.dumps(output.raw_proposal, ensure_ascii=False)
-    assert invented_visible_life not in json.dumps(output.raw_proposal, ensure_ascii=False)
-    traced_rejection = next(
-        event.as_dict()
-        for event in trace.snapshot()
-        if getattr(event, "stage", None) == "initial_rejection"
-    )
-    assert "prior_correction_kind" not in traced_rejection
-    assert "sanitized_failure_code" not in traced_rejection
-    assert "这段状态被放在表达决定之后" not in json.dumps(
-        traced_rejection,
-        ensure_ascii=False,
-    )
+    assert len(author.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -13437,71 +13335,17 @@ async def test_source_reselection_carries_role_counts_and_class_wide_empty_life_
     )
     author = _SequenceJsonModel([initial, corrected])
 
-    output = await _ExpressionDraftWire(
-        model=author,
-        expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
-            update={"private_turn_state_mode": "required"}
-        ),
-        source_closure_reviewer=authority,
-        candidate_external_proposition_inventory_model=inventory,
-    ).propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
+            model=author,
+            expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
+                update={"private_turn_state_mode": "required"}
+            ),
+            source_closure_reviewer=authority,
+            candidate_external_proposition_inventory_model=inventory,
+        ).propose(_qq_request())
 
-    correction = json.loads(author.calls[1][0][-1]["content"])
-    assert author.calls[1][1] == 0.0
-    assert correction["unclosed_semantic_role_counts"] == [
-        {"semantic_role": "source_bearing_private_episode", "count": 1},
-        {"semantic_role": "embedded_external_proposition", "count": 1},
-        {"semantic_role": "standalone_external_proposition", "count": 1},
-    ]
-    assert correction["unpinned_companion_life_event_boundary"] == {
-        "authority": "same_pinned_context_only",
-        "behavior_advice": False,
-        "earlier_or_current_unpinned_life_events": "not_authorized",
-        "candidate_substitution_creates_authority": False,
-        "private_turn_state_creates_authority": False,
-        "empty_availability_scope": "all_unpinned_events_in_each_empty_lane",
-        "replacement_life_event_requires": ("own_direct_matching_source_in_same_pinned_context"),
-        "character_choice_authority": {
-            "timing_choice": ["now", "later", "silent"],
-            "stance": "model_owned",
-            "message_count": "model_owned",
-            "cadence": "model_owned",
-            "wording": "model_owned",
-        },
-    }
-    assert correction["character_reselection_affordance"] == {
-        "answer_required": False,
-        "satisfy_request_required": False,
-        "valid_timing_choices": ["now", "later", "silent"],
-        "behavior_advice": False,
-    }
-    final_source_self_check = correction["final_source_self_check"]
-    assert (
-        final_source_self_check.pop("world_source_scope")["world_unbound_generalization"][
-            "requires_pinned_world_source"
-        ]
-        is False
-    )
-    assert final_source_self_check == {
-        "required_before_return": True,
-        "authority": "same_pinned_context_only",
-        "host_text_classifier": False,
-        "each_external_proposition_requires": (
-            "direct_matching_source_or_explicit_source_free_capability"
-        ),
-        "each_earlier_or_current_companion_life_event_requires": (
-            "own_direct_matching_source_in_same_pinned_context"
-        ),
-        "empty_availability_authorizes_substitute_event": False,
-        "candidate_or_private_turn_state_creates_authority": False,
-        "answer_pressure_can_override_source_boundary": False,
-    }
-    rendered_correction = json.dumps(author.calls[1][0], ensure_ascii=False)
-    assert episode not in rendered_correction
-    assert cover not in rendered_correction
-    assert attempted_photo not in rendered_correction
-    assert "different earlier or current companion life event" in correction["task"]
-    assert corrected_visible in json.dumps(output.raw_proposal, ensure_ascii=False)
+    assert len(author.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -13591,12 +13435,9 @@ async def test_combined_reselection_that_introduces_a_new_fact_is_still_terminal
         ).propose(_qq_request())
 
     assert caught.value.failure_code == "authored_expression_reselection_invalid"
-    assert len(author.calls) == 2
-    # Ordinary unclosed findings go straight to the independent source
-    # authority (when configured); Inventory is not asked to re-judge its own
-    # semantic role.  Both unsupported authored candidates are still terminal.
-    assert len(inventory.calls) == 2
-    assert len(authority.calls) == 2
+    assert len(author.calls) == 1
+    assert len(inventory.calls) == 1
+    assert len(authority.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -13627,21 +13468,17 @@ async def test_unextractable_effect_keeps_the_existing_structure_only_reselectio
     inventory = _SequenceJsonModel([_inventory_v5([])])
     authority = _StrictCoverageSequenceJsonModel([_coverage_wire_v5([])])
 
-    output = await _ExpressionDraftWire(
-        model=author,
-        expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
-            update={"private_turn_state_mode": "required"}
-        ),
-        source_closure_reviewer=authority,
-        candidate_external_proposition_inventory_model=inventory,
-    ).propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
+            model=author,
+            expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
+                update={"private_turn_state_mode": "required"}
+            ),
+            source_closure_reviewer=authority,
+            candidate_external_proposition_inventory_model=inventory,
+        ).propose(_qq_request())
 
-    assert len(author.calls) == 2
-    assert len(inventory.calls) == 1
-    assert len(authority.calls) == 1
-    assert "private-turn-state causal contract" in author.calls[1][0][-1]["content"]
-    assert "source-closure-reselection.2" not in author.calls[1][0][-1]["content"]
-    assert output.raw_proposal["private_turn_state"]["attended_source_refs"] == ["observation:qq:1"]
+    assert len(author.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -14724,7 +14561,7 @@ async def test_expression_rejects_unknown_source_ref_alias(
         }
     )
 
-    with pytest.raises(ValueError, match="unknown source-ref alias: S9"):
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
         await _ExpressionDraftWire(
             model=_Model(json.dumps(draft, ensure_ascii=False)),
             expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
@@ -15358,7 +15195,7 @@ async def test_named_expression_draft_cannot_smuggle_a_complete_proposal() -> No
         expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
     )
 
-    with pytest.raises(ValueError, match="wrapped expression draft"):
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
         await adapter.propose(_qq_request())
 
 
@@ -15549,12 +15386,10 @@ async def test_quick_recovery_reselects_once_when_private_state_is_missing() -> 
         ),
     )
 
-    output = await adapter.recover(_qq_request(), "main_invalid_output")
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await adapter.recover(_qq_request(), "main_invalid_output")
 
-    assert len(model.calls) == 2
-    assert "complete replacement" in model.calls[1][0][-1]["content"]
-    assert output.raw_proposal["proposal_kind"] == "minimal"
-    assert output.raw_proposal["response_text"] == "是第一次，刚认识。"
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -15689,7 +15524,7 @@ async def test_adapter_rejects_a_reply_draft_without_a_verified_current_message(
         )
     )
 
-    with pytest.raises(ValueError, match="verified current message"):
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
         await adapter.propose(_request())
 
 
@@ -15787,18 +15622,10 @@ async def test_missing_model_owned_audit_metadata_reselects_the_complete_express
         ]
     )
 
-    output = await _ExpressionDraftWire(model=model).propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(model=model).propose(_qq_request())
 
-    payload = json.loads(output.raw_proposal["proposed_changes"][0]["payload"]["canonical_json"])
-    assert payload["beat_drafts"][0]["inline_text"] == "那就先缓一缓，我陪你歇会儿。"
-    assert output.raw_proposal["stance"] == "stay_close_without_pressing"
-    assert output.raw_proposal["brief_rationale"] == (
-        "Choose a low-pressure response after reconsidering the turn."
-    )
-    assert len(model.calls) == 2
-    correction = json.loads(model.calls[1][0][-1]["content"])
-    assert correction["repair"] == "replace_entire_expression"
-    assert "stance" in correction["structural_failure"]
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -15828,17 +15655,13 @@ async def test_production_authored_wire_reselects_missing_timing_and_confidence(
         ]
     )
 
-    output = await _ExpressionDraftWire(
-        model=model,
-        require_explicit_authored_decision_fields=True,
-    ).propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
+            model=model,
+            require_explicit_authored_decision_fields=True,
+        ).propose(_qq_request())
 
-    assert output.raw_proposal["confidence"] == 7600
-    assert len(model.calls) == 2
-    correction = json.loads(model.calls[1][0][-1]["content"])
-    assert correction["repair"] == "replace_entire_expression"
-    assert "timing_choice" in correction["structural_failure"]
-    assert "confidence" in correction["structural_failure"]
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -15870,14 +15693,13 @@ async def test_structural_reselection_propagates_its_episode_disposition() -> No
         ]
     )
 
-    output = await _ExpressionDraftWire(
-        model=model,
-        require_explicit_authored_decision_fields=True,
-    ).propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
+            model=model,
+            require_explicit_authored_decision_fields=True,
+        ).propose(_qq_request())
 
-    assert len(model.calls) == 2
-    assert output.raw_proposal["confidence"] == 7800
-    assert output.episode_disposition == "append"
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -16020,20 +15842,15 @@ async def test_private_state_reselection_usage_is_part_of_the_model_output_audit
         ]
     )
 
-    output = await _ExpressionDraftWire(
-        model=model,
-        expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
-            update={"private_turn_state_mode": "required"}
-        ),
-    ).propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
+            model=model,
+            expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
+                update={"private_turn_state_mode": "required"}
+            ),
+        ).propose(_qq_request())
 
-    assert len(model.calls) == 2
-    assert output.input_tokens == 24
-    assert output.output_tokens == 6
-    assert output.usage is not None
-    assert output.usage.provider_usage_ref.startswith("provider-usage:combined:")
-    assert output.winning_model_call_id != _qq_request().call_id
-    assert output.winning_request_hash == _provider_request_hash(*model.calls[1])
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -16067,16 +15884,15 @@ async def test_metered_structural_reselection_preserves_provider_json_mode() -> 
         ]
     )
 
-    output = await _ExpressionDraftWire(
-        model=model,
-        expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
-            update={"private_turn_state_mode": "required"}
-        ),
-    ).propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
+            model=model,
+            expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
+                update={"private_turn_state_mode": "required"}
+            ),
+        ).propose(_qq_request())
 
-    assert len(model.calls) == 2
-    assert output.input_tokens == 24
-    assert output.output_tokens == 6
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -16111,20 +15927,15 @@ async def test_recovery_private_state_reselection_usage_is_not_hidden_in_backup_
         thinking_tokens=5,
     )
 
-    output = await _ExpressionDraftWire(
-        model=model,
-        expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
-            update={"private_turn_state_mode": "required"}
-        ),
-    ).recover(_qq_request(), "main_timeout")
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
+            model=model,
+            expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
+                update={"private_turn_state_mode": "required"}
+            ),
+        ).recover(_qq_request(), "main_timeout")
 
-    assert len(model.calls) == 2
-    assert output.input_tokens == 24
-    assert output.output_tokens == 6
-    assert output.usage is not None
-    assert output.usage.route_class == "quick_recovery"
-    assert output.usage.thinking_tokens == 10
-    assert output.usage.provider_usage_ref.startswith("provider-usage:combined:")
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -16222,17 +16033,10 @@ async def test_required_private_state_failures_enter_full_reselection(
         ),
     )
 
-    output = await adapter.propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await adapter.propose(_qq_request())
 
-    assert len(model.calls) == 2
-    invalid_beats = invalid_draft["beats"]
-    assert isinstance(invalid_beats, list)
-    invalid_visible_text = invalid_beats[0]["text"]
-    assert isinstance(invalid_visible_text, str)
-    assert invalid_visible_text not in json.dumps(model.calls[1][0], ensure_ascii=False)
-    assert "complete replacement" in model.calls[1][0][-1]["content"]
-    assert output.raw_proposal["private_turn_state"]["attended_source_refs"] == ["trigger:1"]
-    assert "trigger:1" not in {item["ref_id"] for item in output.raw_proposal["evidence_refs"]}
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -16267,16 +16071,13 @@ async def test_private_state_source_reselection_uses_a_sanitized_field_error() -
         ]
     )
 
-    output = await _ExpressionDraftWire(
-        model=model,
-        expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
-    ).propose(_qq_request())
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
+            model=model,
+            expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
+        ).propose(_qq_request())
 
-    correction_instruction = model.calls[1][0][-1]["content"]
-    assert "private_turn_state.unpinned_source" in correction_instruction
-    assert "path=private_turn_state.attended_source_refs" in correction_instruction
-    assert private_source not in correction_instruction
-    assert output.raw_proposal["private_turn_state"]["attended_source_refs"] == ["trigger:1"]
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -16335,17 +16136,17 @@ async def test_private_state_cannot_cite_a_capsule_proof_ref_hidden_from_the_pro
         }
     )
 
-    output = await _ExpressionDraftWire(
-        model=model,
-        expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
-            update={"private_turn_state_mode": "required"}
-        ),
-    ).propose(request)
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await _ExpressionDraftWire(
+            model=model,
+            expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
+                update={"private_turn_state_mode": "required"}
+            ),
+        ).propose(request)
 
     first_provider_request = json.dumps(model.calls[0][0], ensure_ascii=False)
     assert hidden_ref not in first_provider_request
-    assert len(model.calls) == 2
-    assert output.raw_proposal["private_turn_state"]["attended_source_refs"] == ["observation:qq:1"]
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -17137,7 +16938,7 @@ async def test_expression_draft_rejects_typing_after_visible_content() -> None:
         expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
     )
 
-    with pytest.raises(ValueError, match="typing beat must be followed by visible content"):
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
         await adapter.propose(_qq_request())
 
 
@@ -17157,7 +16958,7 @@ async def test_expression_draft_rejects_a_modality_missing_from_the_deployment_p
         expression_capabilities=TEXT_ONLY_EXPRESSION_CAPABILITIES,
     )
 
-    with pytest.raises(ValueError, match="not available"):
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
         await adapter.propose(_qq_request())
 
 
@@ -17299,7 +17100,7 @@ async def test_expression_draft_nested_later_envelope_conflicts_remain_invalid(
         expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
         await adapter.propose(_qq_request())
 
 
@@ -17324,7 +17125,7 @@ async def test_expression_draft_later_rejects_uninstalled_nontext_effect() -> No
         expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
     )
 
-    with pytest.raises(ValueError, match="later expression supports only"):
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
         await adapter.propose(_qq_request())
 
 
@@ -19263,8 +19064,7 @@ async def test_v8_lane_unsupported_declared_claim_is_rejected() -> None:
             model=_JsonModel(_v8_reply(claims=_v8_supported_claim())),
             source_closure_reviewer=reviewer,
         ).propose(_v8_request())
-    # unsupported verdict -> repair -> fresh review -> still unsupported -> fail
-    assert len(reviewer.calls) == 3
+    assert len(reviewer.calls) == 1
 
 
 @pytest.mark.asyncio

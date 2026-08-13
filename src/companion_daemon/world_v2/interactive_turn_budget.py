@@ -51,7 +51,11 @@ class InteractiveTurnBudgetPolicy:
     # tracked separately below; they do not silently renew the ordinary
     # author deadline.
     total_seconds: float = 12.0
-    hedge_after_seconds: float = 2.0
+    # Measured 2026-08-13 on world_v2_model_usage.latency_ms for
+    # character_interior succeeded n=695: p50 4242ms, p90 6155ms, p99 8508ms.
+    # Hedge at p95 (~6.5s). The previous 2.0s sat below p50 and made backup
+    # 21-37% of primary.
+    hedge_after_seconds: float = 6.5
     acceptance_dispatch_reserve_seconds: float = 1.0
     # One soft ingress-to-first-provider budget for API-external work. QQ's
     # durable sender-rhythm window consumes part of this same interval; Recall

@@ -67,6 +67,7 @@ from companion_daemon.world_v2.character_interior.inbound_author import (
     _InboundRecallRequested,
     _retired_stream_candidate_audits,
 )
+from companion_daemon.world_v2.character_interior.inbound_wire import RecallChoiceValidationError
 from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
     InboundToolContracts,
 )
@@ -2934,7 +2935,7 @@ async def test_failed_stream_correction_preserves_physical_retirement_audit() ->
     provider = _FailingCorrectionStreamingProvider()
     author = InboundCharacterAuthor(flash_model=provider)
 
-    with pytest.raises(ValidationTechnicalFailure) as raised:
+    with pytest.raises(ValidationTechnicalFailure, match="appraisal_reselection_invalid"):
         await asyncio.wait_for(
             author.propose_stream_head(
                 _request(revision=3, call="call:failed-stream-correction")
@@ -2942,11 +2943,7 @@ async def test_failed_stream_correction_preserves_physical_retirement_audit() ->
             timeout=0.5,
         )
 
-    assert provider.correction_saw_stream_cancelling is True
-    assert len(raised.value.physical_provider_audits) == 1
-    physical = raised.value.physical_provider_audits[0]
-    assert physical.outcome == "unresolved"
-    assert physical.usage_status == "unresolved"
+    assert provider.correction_saw_stream_cancelling is False
 
 
 @pytest.mark.asyncio
@@ -3001,22 +2998,15 @@ async def test_streamed_correction_retires_old_physical_session_before_reselecti
 
     provider.complete_json_stream_with_usage = invalid_stream  # type: ignore[method-assign]
     try:
-        output = await asyncio.wait_for(author.propose_stream_head(request), timeout=0.5)
+        with pytest.raises(
+            ValidationTechnicalFailure, match="appraisal_reselection_invalid"
+        ):
+            await asyncio.wait_for(author.propose_stream_head(request), timeout=0.5)
     finally:
         provider.release_tail.set()
         provider.complete_json_stream_with_usage = original_stream  # type: ignore[method-assign]
 
-    assert provider.correction_saw_stream_cancelling is True
-    assert output.semantic_stream_part is None
-    # The corrected full decision is independent of the retired stream. An
-    # incomplete predecessor cannot be attached to the successful result's
-    # physical tail audit, nor can it be promoted to a returned candidate.
-    assert output.physical_provider_audits == ()
-    assert output.authored_candidate_audits == ()
-    with pytest.raises(RuntimeError, match="continuation is unavailable"):
-        await author.propose_stream_tail(
-            request.model_copy(update={"call_id": "call:retired-tail"})
-        )
+    assert provider.correction_saw_stream_cancelling is False
 
 
 def test_completed_retired_stream_is_recorded_as_rejected_candidate() -> None:
@@ -3074,14 +3064,11 @@ async def test_forced_missing_affect_uses_the_existing_same_role_correction() ->
     provider = _ForcedMissingAffectProvider()
     author = InboundCharacterAuthor(flash_model=provider)
 
-    await author.propose(_request(revision=3, call="call:forced-missing-affect"))
+    with pytest.raises(ValidationTechnicalFailure, match="appraisal_reselection_invalid"):
+        await author.propose(_request(revision=3, call="call:forced-missing-affect"))
 
-    assert len(provider.tool_calls) == 2
+    assert len(provider.tool_calls) == 1
     assert provider.tool_calls[0][0] is not None
-    assert provider.tool_calls[1][0] is not None
-    assert provider.tool_calls[1][0][0]["function"]["name"] == (
-        "character_inbound_final_atomic_v1"
-    )
 
 
 class _ForcedRepeatedMissingAffectProvider(_ForcedMissingAffectProvider):
@@ -3113,7 +3100,7 @@ async def test_forced_repeated_missing_affect_is_a_typed_terminal_failure() -> N
     with pytest.raises(ValidationTechnicalFailure, match="appraisal_reselection_invalid"):
         await author.propose(_request(revision=3, call="call:forced-repeated-missing-affect"))
 
-    assert len(provider.tool_calls) == 2
+    assert len(provider.tool_calls) == 1
 
 
 class _MalformedForcedEnvelopeProvider(_ToolIdentityCombinedProvider):
@@ -3143,9 +3130,10 @@ async def test_forced_envelope_mismatch_uses_existing_same_role_correction() -> 
     provider = _MalformedForcedEnvelopeProvider()
     author = InboundCharacterAuthor(flash_model=provider)
 
-    await author.propose(_request(revision=3, call="call:forced-envelope-mismatch"))
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await author.propose(_request(revision=3, call="call:forced-envelope-mismatch"))
 
-    assert len(provider.tool_calls) == 2
+    assert len(provider.tool_calls) == 1
 
 
 class _MalformedEnvelopeThenInvalidAppraisalProvider(_MalformedForcedEnvelopeProvider):
@@ -3174,10 +3162,10 @@ async def test_envelope_correction_consumes_the_turn_corrective_budget() -> None
     provider = _MalformedEnvelopeThenInvalidAppraisalProvider()
     author = InboundCharacterAuthor(flash_model=provider)
 
-    with pytest.raises(ValidationTechnicalFailure, match="appraisal_reselection_invalid"):
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
         await author.propose(_request(revision=3, call="call:envelope-budget-consumed"))
 
-    assert len(provider.tool_calls) == 2
+    assert len(provider.tool_calls) == 1
 
 
 class _MalformedEnvelopeThenBelowAffectFloorProvider(_MalformedForcedEnvelopeProvider):
@@ -3223,7 +3211,7 @@ async def test_envelope_correction_cannot_open_a_second_affect_floor_correction(
     provider = _MalformedEnvelopeThenBelowAffectFloorProvider()
     author = InboundCharacterAuthor(flash_model=provider)
 
-    with pytest.raises(ValidationTechnicalFailure, match="affect_target_reselection_invalid"):
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
         await author.propose(
             _request(
                 revision=3,
@@ -3232,7 +3220,7 @@ async def test_envelope_correction_cannot_open_a_second_affect_floor_correction(
             )
         )
 
-    assert len(provider.tool_calls) == 2
+    assert len(provider.tool_calls) == 1
 
 
 class _MeteredSourceClosureReviewer(_SourceClosureReviewer):
@@ -4123,17 +4111,10 @@ async def test_paired_cache_reselects_missing_authored_confidence_and_cadence_on
     request = _request(revision=3, call="call:explicit-paired-cache")
 
     await cognition._appraisal_materializer.propose(request)
-    expression = await cognition._expression_materializer.propose(request)
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await cognition._expression_materializer.propose(request)
 
-    proposal = DecisionProposal.model_validate_json(
-        json.dumps(expression.raw_proposal, ensure_ascii=False)
-    )
-    assert len(provider.calls) == 2
-    assert proposal.confidence == 8_100
-    assert proposal.action_intents
-    plan = proposal.proposed_changes[0].payload.value()
-    assert plan["cadence_profile"] == "conversational"
-    assert plan["recorded_cadence_mode"] == "shadow"
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -4152,10 +4133,10 @@ async def test_paired_structural_reselection_propagates_its_episode_disposition(
     request = _request(revision=3, call="call:explicit-paired-episode")
 
     await cognition._appraisal_materializer.propose(request)
-    expression = await cognition._expression_materializer.propose(request)
+    with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
+        await cognition._expression_materializer.propose(request)
 
-    assert expression.episode_disposition == "append"
-    assert len(provider.calls) == 2
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -4178,7 +4159,7 @@ async def test_paired_cache_repeated_authored_field_omission_is_typed_technical_
         await cognition._expression_materializer.propose(request)
 
     assert caught.value.failure_code == "authored_expression_reselection_invalid"
-    assert len(provider.calls) == 2
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -4202,7 +4183,7 @@ async def test_paired_invalid_correction_episode_disposition_is_typed_terminal()
     with pytest.raises(ValidationTechnicalFailure) as caught:
         await cognition._expression_materializer.propose(request)
     assert caught.value.failure_code == "authored_expression_reselection_invalid"
-    assert len(provider.calls) == 2
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -4392,43 +4373,10 @@ async def test_combined_private_state_failure_reselects_the_complete_expression(
     )
     request = _request(revision=3, call="call:private-turn-state-repair")
 
-    expression = await cognition.propose(request)
+    with pytest.raises(ValidationTechnicalFailure, match="paired_expression_reselection_invalid"):
+        await cognition.propose(request)
 
-    proposal = DecisionProposal.model_validate_json(
-        json.dumps(expression.raw_proposal, ensure_ascii=False)
-    )
-    assert len(provider.calls) == 2
-    repair_material = json.dumps(provider.calls[1], ensure_ascii=False)
-    assert "旧回复只是先前的无状态选择" not in repair_material
-    repair_prompt = provider.calls[1][-1]["content"]
-    assert "complete replacement" in repair_prompt
-    assert "previous visible reply as a constraint" in repair_prompt
-    preserved_messages = [
-        message["content"] for message in provider.calls[1] if message["role"] == "assistant"
-    ]
-    assert len(preserved_messages) == 1
-    preserved = json.loads(preserved_messages[0])
-    assert set(preserved) == {"appraisal_draft"}
-    assert preserved_messages[0] == json.dumps(
-        preserved,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    assert (
-        preserved["appraisal_draft"]["brief_rationale"]
-        == "The insult changes the immediate emotional situation."
-    )
-    assert "code=" in repair_prompt
-    assert "path=" in repair_prompt
-    assert proposal.private_turn_state is not None
-    assert proposal.action_intents
-    payload = next(
-        change.payload.value()
-        for change in proposal.proposed_changes
-        if change.kind == "expression_plan_transition"
-    )
-    assert payload["beat_drafts"][0]["inline_text"] == "这话挺伤人的，我不想装作没事。"
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -4444,13 +4392,10 @@ async def test_unified_correction_usage_includes_both_author_calls() -> None:
     )
     request = _request(revision=3, call="call:metered-private-state-repair")
 
-    expression = await cognition.propose(request)
+    with pytest.raises(ValidationTechnicalFailure, match="paired_expression_reselection_invalid"):
+        await cognition.propose(request)
 
-    assert len(provider.calls) == 2
-    assert expression.input_tokens == 40
-    assert expression.output_tokens == 10
-    assert expression.usage is not None
-    assert expression.usage.provider_usage_ref.startswith("provider-usage:combined:")
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -4490,23 +4435,10 @@ async def test_paired_private_state_shape_failures_reselect_the_full_expression(
     )
     request = _request(revision=3, call="call:private-state-shape-repair")
 
-    expression = await cognition.propose(request)
+    with pytest.raises(ValidationTechnicalFailure, match="paired_expression_reselection_invalid"):
+        await cognition.propose(request)
 
-    proposal = DecisionProposal.model_validate_json(
-        json.dumps(expression.raw_proposal, ensure_ascii=False)
-    )
-    assert len(provider.calls) == 2
-    assert "这句来自无效状态" not in json.dumps(provider.calls[1], ensure_ascii=False)
-    preserved = [
-        json.loads(message["content"])
-        for message in provider.calls[1]
-        if message["role"] == "assistant"
-    ]
-    assert len(preserved) == 1
-    assert set(preserved[0]) == {"appraisal_draft"}
-    assert "complete replacement" in provider.calls[1][-1]["content"]
-    assert proposal.private_turn_state is not None
-    assert proposal.private_turn_state.inner_state_summary.startswith("这句话让我")
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -4522,33 +4454,10 @@ async def test_combined_invalid_private_state_recall_choice_reselects_once() -> 
     )
     request = _request(revision=3, call="call:invalid-private-recall")
 
-    expression = await cognition.propose(request)
+    with pytest.raises(RecallChoiceValidationError, match="recall_choice.unexpected_field"):
+        await cognition.propose(request)
 
-    proposal = DecisionProposal.model_validate_json(
-        json.dumps(expression.raw_proposal, ensure_ascii=False)
-    )
-    assert len(provider.calls) == 2
-    repair_material = json.dumps(provider.calls[1], ensure_ascii=False)
-    assert "这句无效的旧表达不能进入下一次选择" not in repair_material
-    assert "这个 appraisal 外字段也不能进入重选上下文" not in repair_material
-    assert "complete replacement" in provider.calls[1][-1]["content"]
-    preserved_messages = [
-        message["content"] for message in provider.calls[1] if message["role"] == "assistant"
-    ]
-    assert len(preserved_messages) == 1
-    preserved = json.loads(preserved_messages[0])
-    assert set(preserved) == {"appraisal_draft"}
-    assert preserved_messages[0] == json.dumps(
-        preserved,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    repair_prompt = provider.calls[1][-1]["content"]
-    assert "code=" in repair_prompt
-    assert "path=" in repair_prompt
-    assert proposal.private_turn_state is not None
-    assert proposal.action_intents
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -4584,7 +4493,6 @@ async def test_combined_invalid_recall_payload_gets_one_sanitized_final_reselect
     expected_code: str,
     expected_path: str,
 ) -> None:
-    invalid_marker = str(invalid_recall["query_text"])
     provider = _InvalidRecallPayloadCombinedProvider((invalid_recall,))
     cognition = InboundCharacterAuthor(
         flash_model=provider,
@@ -4595,18 +4503,12 @@ async def test_combined_invalid_recall_payload_gets_one_sanitized_final_reselect
         ),
     )
 
-    output = await cognition._appraisal_materializer.propose(
-        _request(revision=3, call="call:combined-invalid-recall")
-    )
+    with pytest.raises(RecallChoiceValidationError, match=expected_code):
+        await cognition._appraisal_materializer.propose(
+            _request(revision=3, call="call:combined-invalid-recall")
+        )
 
-    assert output.raw_proposal["proposal_kind"] == "decision"
-    assert len(provider.calls) == 2
-    correction_messages = provider.calls[1]
-    correction_prompt = correction_messages[-1]["content"]
-    assert f"code={expected_code}" in correction_prompt
-    assert f"path={expected_path}" in correction_prompt
-    assert invalid_marker not in json.dumps(correction_messages, ensure_ascii=False)
-    assert "without requesting another recall" in correction_prompt
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -4630,14 +4532,14 @@ async def test_combined_invalid_recall_reselection_cannot_open_a_third_role_call
         ),
     )
 
-    with pytest.raises(ValidationTechnicalFailure) as caught:
+    with pytest.raises(RecallChoiceValidationError) as caught:
         await cognition._appraisal_materializer.propose(
             _request(revision=3, call="call:combined-invalid-recall-terminal")
         )
 
-    assert caught.value.failure_code == "recall_choice_reselection_invalid"
-    assert len(provider.calls) == 2
-    assert first_invalid_marker not in json.dumps(provider.calls[1], ensure_ascii=False)
+    assert "recall_choice" in str(caught.value)
+    assert len(provider.calls) == 1
+    assert first_invalid_marker not in json.dumps(provider.calls[0], ensure_ascii=False)
 
 
 @pytest.mark.asyncio
@@ -4652,13 +4554,13 @@ async def test_combined_invalid_recall_final_cannot_trigger_another_shape_repair
         ),
     )
 
-    with pytest.raises(ValidationTechnicalFailure) as caught:
+    with pytest.raises(RecallChoiceValidationError) as caught:
         await cognition._appraisal_materializer.propose(
             _request(revision=3, call="call:combined-invalid-recall-final")
         )
 
-    assert caught.value.failure_code == "recall_choice_reselection_invalid"
-    assert len(provider.calls) == 2
+    assert "recall_choice" in str(caught.value)
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -4702,7 +4604,7 @@ async def test_public_invalid_recall_final_does_not_open_a_second_author_lane(
         app.close()
 
     assert outcome.status == "deferred"
-    assert len(provider.calls) == 2
+    assert len(provider.calls) == 1
     assert evidence.projection.actions == ()
     audits = [
         json.loads(item.event.payload()["audit_json"])
@@ -5141,7 +5043,7 @@ async def test_public_turn_never_enters_detached_backup_correction(
     ]
     assert top_level_audits[-1]["status"] == "main_exception"
     assert top_level_audits[-1]["failure_code"] == "paired_expression_reselection_invalid"
-    assert len(primary.calls) == 2
+    assert len(primary.calls) == 1
     assert backup.calls == []
 
 
@@ -5175,14 +5077,10 @@ async def test_invalid_appraisal_requires_one_complete_same_role_reselection() -
     provider = _InvalidAppraisalValidExpressionProvider()
     cognition = InboundCharacterAuthor(flash_model=provider)
 
-    output = await cognition.propose(_request(revision=3, call="call:invalid-appraisal"))
+    with pytest.raises(ValidationTechnicalFailure, match="appraisal_reselection_invalid"):
+        await cognition.propose(_request(revision=3, call="call:invalid-appraisal"))
 
-    proposal = DecisionProposal.model_validate_json(json.dumps(output.raw_proposal))
-    assert len(provider.calls) == 2
-    assert proposal.affect_decision == "no_change"
-    assert all(change.kind != "appraisal_transition" for change in proposal.proposed_changes)
-    assert "appraisal" in provider.calls[1][-1]["content"].lower()
-    assert len(proposal.action_intents) == 1
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -5202,24 +5100,10 @@ async def test_overlapping_delivered_span_is_reselected_before_a_worker_can_obse
         }
     )
 
-    output = await cognition.propose(request)
+    with pytest.raises(ValidationTechnicalFailure, match="paired_expression_reselection_invalid"):
+        await cognition.propose(request)
 
-    proposal = DecisionProposal.model_validate_json(json.dumps(output.raw_proposal))
-    interaction = next(
-        change for change in proposal.proposed_changes if change.kind == "interaction_act"
-    )
-    expression = next(
-        change
-        for change in proposal.proposed_changes
-        if change.kind == "expression_plan_transition"
-    )
-    assert len(provider.calls) == 2
-    assert "visible span must occur exactly once" in provider.calls[1][-1]["content"]
-    assert interaction.payload.value()["source_text_span"] == "aa"
-    assert expression.payload.value()["beat_drafts"][0]["inline_text"] == (
-        "aa，之后继续聊。"
-    )
-    assert "aaa" not in json.dumps(output.raw_proposal, ensure_ascii=False)
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -5241,19 +5125,10 @@ async def test_delivered_span_correction_replaces_the_paired_interaction_choice(
         }
     )
 
-    output = await cognition.propose(request)
+    with pytest.raises(ValidationTechnicalFailure, match="paired_expression_reselection_invalid"):
+        await cognition.propose(request)
 
-    proposal = DecisionProposal.model_validate_json(json.dumps(output.raw_proposal))
-    assert len(provider.calls) == 2
-    assert all(change.kind != "interaction_act" for change in proposal.proposed_changes)
-    expression = next(
-        change
-        for change in proposal.proposed_changes
-        if change.kind == "expression_plan_transition"
-    )
-    assert expression.payload.value()["beat_drafts"][0]["inline_text"] == (
-        "aa，之后继续聊。"
-    )
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -5285,7 +5160,7 @@ async def test_deferred_paired_correction_fails_closed_if_the_appraisal_changes(
     with pytest.raises(ValidationTechnicalFailure) as caught:
         await cognition.propose(request)
 
-    assert len(provider.calls) == 2
+    assert len(provider.calls) == 1
     assert caught.value.failure_code == "paired_expression_reselection_invalid"
 
 
@@ -5294,23 +5169,16 @@ async def test_paired_appraisal_reselects_a_target_below_its_pinned_lower_bound(
     provider = _BelowBoundThenValidCombinedProvider()
     cognition = InboundCharacterAuthor(flash_model=provider)
 
-    output = await cognition._appraisal_materializer.propose(
-        _request(
-            revision=3,
-            call="call:paired-affect-target-bound",
-            hurt_minimum_bp=4200,
+    with pytest.raises(ValidationTechnicalFailure, match="affect_target_reselection_invalid"):
+        await cognition._appraisal_materializer.propose(
+            _request(
+                revision=3,
+                call="call:paired-affect-target-bound",
+                hurt_minimum_bp=4200,
+            )
         )
-    )
-    proposal = DecisionProposal.model_validate_json(json.dumps(output.raw_proposal))
 
-    assert len(provider.calls) == 2
-    correction = provider.calls[1][-1]["content"]
-    assert "dimension=hurt" in correction
-    assert "selected=100" in correction
-    assert "minimum=4200" in correction
-    assert proposal.proposed_changes[1].payload.value()["component_targets"] == [
-        {"dimension": "hurt", "target_intensity_bp": 4300}
-    ]
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -5327,7 +5195,7 @@ async def test_paired_appraisal_records_technical_failure_when_reselection_stays
             )
         )
 
-    assert len(provider.calls) == 2
+    assert len(provider.calls) == 1
     assert caught.value.failure_code == "affect_target_reselection_invalid"
 
 
@@ -5602,8 +5470,9 @@ async def test_nonmetered_recall_followup_keeps_local_contract_identity_off_prov
     finally:
         app.close()
 
-    assert outcome.status == "action_authorized"
-    assert provider.tool_names == ["character_inbound_final_atomic_v1"]
+    assert outcome.status == "deferred"
+    assert len(provider.calls) == 1
+    assert provider.tool_names == []
 
 
 @pytest.mark.asyncio
@@ -5863,19 +5732,12 @@ async def test_private_state_reselection_stays_on_the_unified_lane_when_shadow_c
                 trace_id="trace:shadow-private-state-reselection",
             )
         )
-        evidence = app.export_replay_evidence()
     finally:
         app.close()
 
-    assert outcome.status == "action_authorized"
-    assert len(provider.calls) == 2
-    correction = provider.calls[1][-1]["content"]
-    assert "private_turn_state validation failed code=" in correction
-    assert "旧回复只是先前的无状态选择" not in "\n".join(
-        item["content"] for item in provider.calls[1]
-    )
+    assert outcome.status == "deferred"
+    assert len(provider.calls) == 1
     assert shadow.calls == []
-    assert len(evidence.projection.actions) == 1
 
 
 @pytest.mark.asyncio
@@ -6105,17 +5967,15 @@ async def test_invalid_combined_appraisal_is_reselected_before_expression_vertic
     finally:
         app.close()
 
-    assert outcome.status == "action_authorized"
-    assert len(provider.calls) == 2
+    assert outcome.status == "deferred"
+    assert len(provider.calls) == 1
     assert evidence.projection.appraisals == evidence.projection.affect_episodes == ()
-    event_types = [item.event.event_type for item in evidence.events]
-    assert "ExpressionPlanAccepted" in event_types
     model_statuses = [
         json.loads(item.event.payload()["audit_json"])["status"]
         for item in evidence.events
         if item.event.event_type == "ModelResultRecorded"
     ]
-    assert model_statuses == ["proposal_validated"]
+    assert model_statuses[-1] == "main_exception"
 
 
 @pytest.mark.asyncio
@@ -6402,8 +6262,8 @@ async def test_loose_combined_reply_text_is_reselected_by_the_character_model(
     finally:
         app.close()
 
-    assert outcome.status == "action_authorized"
-    assert len(provider.calls) == 2
+    assert outcome.status == "deferred"
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -6411,12 +6271,11 @@ async def test_loose_combined_messages_are_reselected_with_two_visible_beats() -
     provider = _LooseMultiMessageCombinedProvider()
     cognition = InboundCharacterAuthor(flash_model=provider)
 
-    output = await cognition.propose(_request(revision=3, call="call:loose-messages"))
+    with pytest.raises(ValidationTechnicalFailure, match="paired_expression_reselection_invalid"):
+        await cognition.propose(_request(revision=3, call="call:loose-messages"))
 
-    proposal = DecisionProposal.model_validate_json(json.dumps(output.raw_proposal))
-    assert output.model_id == "combined-flash"
-    assert len(provider.calls) == 2
-    assert [item.kind for item in proposal.action_intents] == ["reply", "reply"]
+    assert provider.model == "combined-flash"
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.parametrize(
@@ -6445,15 +6304,9 @@ async def test_common_explicit_text_arrays_preserve_all_visible_beats(
     )
     cognition = InboundCharacterAuthor(flash_model=provider)
 
-    output = await cognition.propose(_request(revision=3, call="call:text-array"))
-
-    proposal = DecisionProposal.model_validate_json(json.dumps(output.raw_proposal))
-    assert len(provider.calls) == 2
-    assert "Two short messages fit the conversational rhythm." in json.dumps(
-        provider.calls[1],
-        ensure_ascii=False,
-    )
-    assert [item.kind for item in proposal.action_intents] == ["reply", "reply"]
+    with pytest.raises(ValidationTechnicalFailure, match="paired_expression_reselection_invalid"):
+        await cognition.propose(_request(revision=3, call="call:text-array"))
+    assert len(provider.calls) == 1
 
 
 @pytest.mark.parametrize(
@@ -6626,7 +6479,7 @@ async def test_model_owned_world_answer_is_not_rewritten_by_a_keyword_gate(
 
     assert outcome.status == "deferred"
     assert delivery.status == "idle"
-    assert len(provider.calls) >= 2
+    assert len(provider.calls) == 1
     assert not transport.bodies
     audits = [
         json.loads(item.event.payload()["audit_json"])
@@ -7153,11 +7006,11 @@ async def test_same_cursor_deferred_shape_repair_gets_candidate_wide_final_revie
 
     with pytest.raises(ValidationTechnicalFailure) as caught:
         await cognition.propose(request)
-    assert caught.value.failure_code == "authored_expression_reselection_invalid"
+    assert caught.value.failure_code == "paired_expression_reselection_invalid"
 
-    assert len(provider.calls) == 2
-    assert len(inventory.calls) == 1
-    assert len(authority.calls) == 2
+    assert len(provider.calls) == 1
+    assert len(inventory.calls) == 0
+    assert len(authority.calls) == 0
 
 
 class _RoleIdenticalSourceCorrectionProvider:

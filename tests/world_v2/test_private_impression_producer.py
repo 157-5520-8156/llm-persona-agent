@@ -28,11 +28,14 @@ from companion_daemon.world_v2.character_interior.structured_role import (
 )
 from companion_daemon.world_v2.ledger import WorldLedger
 from companion_daemon.world_v2.private_impression_producer import (
+    PrivateImpressionReflectionCapsule,
+    PrivateImpressionReflectionSource,
     PrivateImpressionTriggerOpener,
     PrivateImpressionTriggerRuntime,
     _PrivateImpressionInteriorAuthorityHandler,
     _PRIVATE_IMPRESSION_MAX_ATTEMPTS,
     _digest,
+    _materialize_draft,
     compile_private_impression_reflection_capsule,
 )
 from companion_daemon.world_v2.schemas import (
@@ -1021,3 +1024,62 @@ class _ProductionShortTokenModel:
             },
             ensure_ascii=False,
         )
+
+
+def _retain_capsule(*, source_ref: str = "src:appraisal:1", appraisal_id: str = "ap:1"):
+    source = PrivateImpressionReflectionSource(
+        source_ref=source_ref,
+        source_kind="appraisal",
+        authority_event_ref="evt:appraisal:1",
+        value_json=json.dumps({"appraisal_id": appraisal_id}, ensure_ascii=False),
+    )
+    return PrivateImpressionReflectionCapsule(
+        capsule_id="a" * 64,
+        world_id=WORLD_ID,
+        world_revision=1,
+        deliberation_revision=1,
+        ledger_sequence=1,
+        logical_time="2026-08-13T00:00:00+00:00",
+        subject_ref="agent:companion",
+        anchor_appraisal_id=appraisal_id,
+        identity_frame=CompanionIdentityFrame(
+            companion_name="枝枝", counterpart_name="对方"
+        ),
+        sources=(source,),
+    )
+
+
+def test_retain_with_empty_predecessor_refs_is_legal() -> None:
+    capsule = _retain_capsule()
+    draft = _materialize_draft(
+        json.dumps(
+            {
+                "decision": "retain",
+                "predecessor_refs": [],
+                "source_refs": ["src:appraisal:1"],
+                "reflection_summary": "我暂时觉得这更像是失望。",
+                "confidence": 6000,
+                "expiry_condition": "until_counter_evidence",
+                "note": "unknown keys must be ignored",
+            },
+            ensure_ascii=False,
+        ),
+        capsule=capsule,
+    )
+    assert draft is not None
+    assert draft.decision == "retain"
+    assert draft.predecessor_refs == ()
+
+
+def test_no_change_ignores_unknown_keys() -> None:
+    capsule = _retain_capsule()
+    assert (
+        _materialize_draft(
+            json.dumps(
+                {"decision": "no_change", "why": "nothing new"},
+                ensure_ascii=False,
+            ),
+            capsule=capsule,
+        )
+        is None
+    )

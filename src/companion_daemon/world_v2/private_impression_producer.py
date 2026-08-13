@@ -197,15 +197,9 @@ def _materialize_draft(
     legacy_retain = value.get("retain")
     if decision is None and isinstance(legacy_retain, bool):
         decision = "retain" if legacy_retain else "no_change"
-        legacy_shape = True
-    else:
-        legacy_shape = False
     if decision not in {"no_change", "retain", "consolidate", "supersede"}:
         raise ValueError("private impression decision is invalid")
     if decision == "no_change":
-        expected = {"retain"} if legacy_shape else {"decision"}
-        if set(value) != expected:
-            raise ValueError("private impression no-change may contain only its decision")
         return None
     predecessor_refs = value.get("predecessor_refs", [])
     source_refs = value.get("source_refs")
@@ -243,18 +237,8 @@ def _materialize_draft(
     existing_refs = {
         item.source_ref for item in capsule.sources if item.source_kind == "existing_impression"
     }
-    expected_fields = {
-        "source_refs",
-        "reflection_summary",
-        "confidence",
-        "expiry_condition",
-        "retain" if legacy_shape else "decision",
-    }
-    if decision in {"consolidate", "supersede"}:
-        expected_fields.add("predecessor_refs")
     if (
-        set(value) != expected_fields
-        or not isinstance(source_refs, list)
+        not isinstance(source_refs, list)
         or not source_refs
         or any(not isinstance(item, str) or item not in offered for item in source_refs)
         or len(source_refs) != len(set(source_refs))
