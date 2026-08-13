@@ -914,4 +914,5 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：生产 `NpcEcology(..., catalog=life_seed_catalog)` 与 `ProjectionLifeCapabilityManifestCompiler` 都会走表。NPC 例程密度由 `world_seed.yaml` 的 `base_chance_bp` 与 nothing 质量调节，加事件不加模型账单。
 - **成本与延迟**：生产 quiet wake 上 NPC actor + world author 与 life world-author 的 provider 调用归零；NPC 决定仍落账本以便 CAS/replay。
 - **剩余缺口**：life development 没有从 seed opening 编译 propose（随机环境事件若要写成 occurrence，还差确定性 draft 编译器）；host 资格里原先靠世界作者发明的 activity/aftermath 链改为断言 0 模型 + replay 稳定，角色拥有的 activity/aftermath 闭包仍由单元测试覆盖；天气是日哈希短句，不是店铺开闭；衰减/epoch 缺口仍见 H10。
+- **commit**：`b060d961`
 
