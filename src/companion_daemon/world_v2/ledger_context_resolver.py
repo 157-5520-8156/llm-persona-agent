@@ -1293,7 +1293,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             projection=projection,
             actor_ref=query.actor_ref,
             subject_refs=subject_refs,
-            max_user_items=64,
+            max_user_items=CHAT_RECENT_DIALOGUE_ITEM_LIMIT,
         )
         dialogue_candidates = recent_dialogue.dialogue
         recent_dialogue_ms = (time.perf_counter() - domain_phase_started) * 1000

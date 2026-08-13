@@ -600,7 +600,7 @@ class RecallCoordinator:
             occurred_to=occurred_to,
             link_refs=link_refs,
             memory_kinds=memory_kinds,
-            limit=min(limit, 6),
+            limit=min(limit, 8),
         )
         result = self._search(
             context=context,
@@ -647,7 +647,7 @@ class RecallCoordinator:
             occurred_to=occurred_to,
             link_refs=link_refs,
             memory_kinds=memory_kinds,
-            limit=min(limit, 6),
+            limit=min(limit, 8),
         )
         local_fallback = self._issue_trace(
             mode="prefetch",

@@ -768,7 +768,7 @@ class _InvalidRecallThenInvalidFinalCombinedProvider(_CombinedProvider):
                     },
                     "recall_request": {
                         "query_text": "非法 Recall 后不能再发起第三次角色调用",
-                        "limit": 7,
+                        "limit": 9,
                     },
                 },
                 ensure_ascii=False,
@@ -4465,7 +4465,7 @@ async def test_combined_invalid_private_state_recall_choice_reselects_once() -> 
     ("invalid_recall", "expected_code", "expected_path"),
     (
         (
-            {"query_text": "合并非法 Recall 原文 limit", "limit": 7},
+            {"query_text": "合并非法 Recall 原文 limit", "limit": 9},
             "recall_choice.out_of_range",
             "recall_request.limit",
         ),
@@ -4516,7 +4516,7 @@ async def test_combined_invalid_recall_reselection_cannot_open_a_third_role_call
     first_invalid_marker = "合并第一次非法 Recall 原文不能回灌"
     provider = _InvalidRecallPayloadCombinedProvider(
         (
-            {"query_text": first_invalid_marker, "limit": 7},
+            {"query_text": first_invalid_marker, "limit": 9},
             {
                 "query_text": "合并第二次非法 Recall",
                 "unknown_filter": "private-value",

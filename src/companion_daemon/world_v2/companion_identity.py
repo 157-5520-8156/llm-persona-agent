@@ -28,6 +28,11 @@ class CompanionIdentityFrame(FrozenModel):
     speech_frame: str | None = Field(default=None, max_length=2_048)
     style_rules: tuple[str, ...] = Field(default=(), max_length=16)
     boundaries: tuple[str, ...] = Field(default=(), max_length=16)
+    base_prompt: str | None = Field(default=None, max_length=8_192)
+    appearance: str | None = Field(default=None, max_length=4_096)
+    background: str | None = Field(default=None, max_length=8_192)
+    daily_life: tuple[str, ...] = Field(default=(), max_length=16)
+    first_message: str | None = Field(default=None, max_length=4_096)
     role: str = "virtual_companion"
     not_an_assistant: bool = True
 
@@ -61,6 +66,11 @@ def companion_identity_source_ref(
                     "counterpart_name",
                     "shared_history_facts",
                     "counterpart_history_facts",
+                    "base_prompt",
+                    "appearance",
+                    "background",
+                    "daily_life",
+                    "first_message",
                 },
                 exclude_none=True,
             )

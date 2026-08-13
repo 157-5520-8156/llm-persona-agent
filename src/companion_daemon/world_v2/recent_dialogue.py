@@ -9,6 +9,10 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from .expression_payload_store import ImmutableExpressionPayloadStore
+from .present_prompt import (
+    PRESENT_COMPANION_DIALOGUE_ITEM_LIMIT,
+    PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
+)
 from .ledger import LedgerPort
 from .schema_core import FrozenModel, PrivacyClass
 from .schemas import (
@@ -104,10 +108,13 @@ class RecentDialogueCompiler:
         *,
         ledger: LedgerPort,
         expression_payload_store: ImmutableExpressionPayloadStore | None = None,
-        max_user_items: int = 12,
-        max_companion_items: int = 4,
+        max_user_items: int = PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
+        max_companion_items: int = PRESENT_COMPANION_DIALOGUE_ITEM_LIMIT,
     ) -> None:
-        if not 8 <= max_user_items <= 12 or not 0 <= max_companion_items <= 4:
+        if (
+            not 8 <= max_user_items <= PRESENT_RECENT_DIALOGUE_ITEM_LIMIT
+            or not 0 <= max_companion_items <= PRESENT_COMPANION_DIALOGUE_ITEM_LIMIT
+        ):
             raise ValueError("recent dialogue history bounds are invalid")
         self._ledger = ledger
         self._payloads = expression_payload_store
@@ -138,7 +145,7 @@ class RecentDialogueCompiler:
         max_user_items: int | None = None,
     ) -> RecentDialogueCompilation:
         user_limit = self._max_user if max_user_items is None else max_user_items
-        if not self._max_user <= user_limit <= 64:
+        if not self._max_user <= user_limit <= PRESENT_RECENT_DIALOGUE_ITEM_LIMIT:
             raise ValueError("recent dialogue candidate window is invalid")
         refs = {item.event_id: item for item in projection.committed_world_event_refs}
         observation_event_refs = {

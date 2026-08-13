@@ -835,3 +835,13 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **成本与延迟**：去掉生活空转的账本写入与无事心跳；不增加模型调用。
 - **剩余缺口**：技术失败 backoff 仍走账本 TriggerProcess；Affect 衰减仍靠 logical time，idle 时钟变少后衰减会拖到下一次 due/inbound（H10 改纯函数）；H5 Occasion 队列尚未上。
 - **commit**：`193d07d5`
+
+### 2026-08-13 H3 Present 编译器：稳定前缀、散文人设、加厚现在
+
+- **红测**：`tests/world_v2/test_present_prefix_and_identity.py` — system 段随 `recall_available` 分叉；user JSON 以 `current_trigger_message` 开头；`character.yaml` 散文人设不进 prompt；对话史被快照裁到 4 条。
+- **改动**：`present_prompt.py` 固定 system 召回措辞并把「这轮能不能召回」放到 user 段末尾的 occasion。`character.yaml` 的 `base_prompt`/外貌/背景/日常/文风样例进入 identity 散文（不计入 `identity-frame:sha256`）。user payload 按稳定→易变排序，`current_trigger_message` 最后。对话/记忆/事实/印象配额抬到 Present 预算（对话 80、记忆 8）；`delivery_state` 回到对话材料（H7 根因）。Capsule `hard_max_characters` 100k。工具 schema 的 `recall` 枚举仍按本轮可用性分叉（未改 tools JSON）。
+- **测试**：Present 红测 6 passed；character-tier 498 passed；model-facing / capsule / continuity / production / recall 相关 235 passed；ruff 绿。
+- **生产证据**：部署后同一会话连续两轮的 system 段应字节相同；user 段公共前缀应覆盖人设/契约/稳定 materials；对话史应按最旧→最新追加。cache hit 目标 ≥50%，需真实流量。
+- **成本与延迟**：加厚输入、稳态后靠前缀缓存降未命中价；不增加模型调用次数。
+- **剩余缺口**：工具 schema 仍按 `recall_allowed` 分叉（可能打穿 tools 前缀）；`expression_hard_boundaries` 仍整表进 prompt（H4）；H9 打分与每日压缩尚未改；H5 Occasion 队列尚未上。
+- **commit**：

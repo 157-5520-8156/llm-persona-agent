@@ -37,6 +37,7 @@ from ..companion_identity import (
     CompanionIdentityFrame,
     companion_identity_source_refs,
 )
+from ..present_prompt import identity_prose, order_user_present_payload
 from ..deliberation import (
     AuthoredCandidateInvocationAudit,
     ModelInput,
@@ -10066,34 +10067,31 @@ class _ExpressionDraftWire:
                 "or supersede from the full pinned context; the advisory never selects that "
                 "posture for you."
             )
-        if (
-            self._recall_available(request)
-            and not quick_recovery
-            and not provisional
-            and not expression_episode_provider_slots_active()
-        ):
+        if not quick_recovery and not provisional and not expression_episode_provider_slots_active():
             if self._expression_capabilities.private_turn_state_mode == "required":
                 system += (
-                    " If you decide the bounded Context is insufficient and you want to remember "
-                    "more before choosing, you may return instead exactly one raw JSON object with "
+                    " If the occasion (last user object) says recall is available and you decide "
+                    "the bounded Context is insufficient, you may return instead exactly one raw JSON object with "
                     "exactly the keys private_turn_state and recall_request in either serialization "
                     "order. The private "
                     "state records what in the current pinned Context made you want to recall; its "
                     "attended_source_refs may cite only that current Context. recall_request contains "
                     "query_text and may contain occurred_from, occurred_to, sorted link_refs, sorted "
                     "memory_kinds (episodic/semantic/reflective), include_historical, and limit "
-                    "(1..6). This is your read-only choice, not a requirement; you may ignore it. "
-                    "Only one recall is available and it does not itself send or commit anything."
+                    "(1..8). This is your read-only choice, not a requirement; you may ignore it. "
+                    "Only one recall is available and it does not itself send or commit anything. "
+                    "If recall is unavailable, do not return a recall choice."
                 )
             else:
                 system += (
-                    " If you decide the bounded Context is insufficient and you want to remember "
-                    "more before choosing, you may return instead exactly one raw JSON object with "
+                    " If the occasion (last user object) says recall is available and you decide "
+                    "the bounded Context is insufficient, you may return instead exactly one raw JSON object with "
                     "the single key recall_request. Its value contains query_text and may contain "
                     "occurred_from, occurred_to, sorted link_refs, sorted memory_kinds "
-                    "(episodic/semantic/reflective), include_historical, and limit (1..6). "
+                    "(episodic/semantic/reflective), include_historical, and limit (1..8). "
                     "This is your read-only choice, not a requirement; you may ignore it. Only one "
-                    "recall is available and it does not itself send or commit anything."
+                    "recall is available and it does not itself send or commit anything. "
+                    "If recall is unavailable, do not return a recall choice."
                 )
         if quick_recovery and self._recovery_prompt_mode == "contextual_failure":
             system += (
@@ -10160,18 +10158,19 @@ class _ExpressionDraftWire:
             )
         request_material["model_content_json"] = provider_context_json
         user_material: dict[str, object] = {
-            "current_trigger_message": (
-                request.trigger_message.model_dump(mode="json")
-                if request.trigger_message is not None
-                else None
-            ),
-            "request": request_material,
-            "quick_recovery_failure": failure_code,
             "expression_capabilities": self._expression_capabilities.prompt_value(),
             "expression_hard_boundaries": expression_hard_boundary_manifest(
                 request=provider_boundary_request,
                 stable_identity_source_refs=self._stable_identity_source_refs,
                 source_ref_aliases=aliases,
+            ),
+            "request": request_material,
+            "quick_recovery_failure": failure_code,
+            "recall_available": self._recall_available(request),
+            "current_trigger_message": (
+                request.trigger_message.model_dump(mode="json")
+                if request.trigger_message is not None
+                else None
             ),
         }
         if inner_life_snapshot is not None:
@@ -10194,7 +10193,7 @@ class _ExpressionDraftWire:
                 ),
             }
         user = json.dumps(
-            user_material,
+            order_user_present_payload(user_material),
             ensure_ascii=False,
             separators=(",", ":"),
         )
@@ -10203,10 +10202,19 @@ class _ExpressionDraftWire:
     def _identity_instruction(self) -> str:
         if self._identity_frame is None:
             return ""
+        prose = identity_prose(self._identity_frame)
         identity = json.dumps(
             self._identity_frame.model_dump(
                 mode="json",
-                exclude={"role", "not_an_assistant"},
+                exclude={
+                    "role",
+                    "not_an_assistant",
+                    "base_prompt",
+                    "appearance",
+                    "background",
+                    "daily_life",
+                    "first_message",
+                },
                 exclude_none=True,
             ),
             ensure_ascii=False,
@@ -10231,7 +10239,8 @@ class _ExpressionDraftWire:
             for scope, source_ref in source_refs.items()
         ]
         return (
-            "Private identity frame (authoritative only within the exact source lanes below): "
+            (prose + "\n" if prose else "")
+            + "Private identity frame (authoritative only within the exact source lanes below): "
             + identity
             + ". Its exact scoped identity sources are "
             + json.dumps(

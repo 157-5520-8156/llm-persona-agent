@@ -22,6 +22,7 @@ from ..expression_draft import (
 from ..private_turn_state import PrivateTurnState
 from ..recall_audit import CharacterRecallRequest
 from .inbound_appraisal_wire import AppraisalDraftWire
+from ..present_prompt import compact_gate_recall_instruction
 
 
 InboundToolPhase = Literal["gate", "initial", "after_recall", "final"]
@@ -894,11 +895,7 @@ class InboundToolContracts:
                 "JSON string in payload_json: the compact character-interior-events.1 envelope "
                 "for reply_only, the full character-interior-events.1 envelope for full_turn, "
                 "or private_turn_state plus recall_request for recall. "
-                + (
-                    "Choose recall only for the bounded read. "
-                    if recall_allowed
-                    else "Recall is unavailable. "
-                )
+                + compact_gate_recall_instruction()
                 + "The host does not classify by topic, length, complexity, or keywords and "
                 "does not choose the branch."
             ),
@@ -1288,20 +1285,12 @@ class InboundToolContracts:
                     "confidence; appraise and affect remain your choices. Choose "
                     "result_kind=decision only when the external effect you choose actually "
                     "requires a capability reply_only does not expose. "
-                    + (
-                        "Choose result_kind=recall only when you want the available recall-first "
-                        "path. "
-                        if recall_allowed
-                        else "Recall is unavailable on this call. "
-                    )
+                    + compact_gate_recall_instruction()
                     if transport == "stream"
                     else (
-                        "Choose result_kind=recall only when requesting the available recall-first "
-                        "path; otherwise choose result_kind=decision with complete appraisal_draft "
+                        compact_gate_recall_instruction()
+                        + "Otherwise choose result_kind=decision with complete appraisal_draft "
                         "and expression_draft. "
-                        if recall_allowed
-                        else "Choose result_kind=decision with complete appraisal_draft and "
-                        "expression_draft; recall is unavailable on this call. "
                     )
                 )
                 + " The host does not classify by topic, length, complexity, or keywords and "

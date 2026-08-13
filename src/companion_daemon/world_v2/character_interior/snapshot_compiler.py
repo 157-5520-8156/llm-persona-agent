@@ -12,6 +12,13 @@ import json
 from datetime import datetime
 from typing import Mapping
 
+from ..present_prompt import (
+    PRESENT_EXPERIENCE_ITEM_LIMIT,
+    PRESENT_FACT_ITEM_LIMIT,
+    PRESENT_IMPRESSION_ITEM_LIMIT,
+    PRESENT_MEMORY_ITEM_LIMIT,
+    PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
+)
 from ..schemas import ProjectionCursor
 from .contracts import (
     FACET_NAMES,
@@ -24,7 +31,7 @@ from .contracts import (
 )
 
 
-SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.7"
+SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.8"
 
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
@@ -667,27 +674,22 @@ def compile_inner_life_snapshot(
     affect = [entry for item in _slice_items(slices, "affect_episodes") if (entry := _affect_entry(item))]
     if affect:
         materials["affect"] = affect
-    remembered = [entry for item in _slice_items(slices, "active_memory_candidates") if (entry := _state_entry(item))][:1]
+    remembered = [entry for item in _slice_items(slices, "active_memory_candidates") if (entry := _state_entry(item))][:PRESENT_MEMORY_ITEM_LIMIT]
     if remembered:
         materials["remembered_material"] = remembered
-    emotional = [entry for item in _slice_items(slices, "recalled_emotional_associations") if (entry := _recalled_entry(item, kinds=frozenset({"reflective"})))][:1]
+    emotional = [entry for item in _slice_items(slices, "recalled_emotional_associations") if (entry := _recalled_entry(item, kinds=frozenset({"reflective"})))][:PRESENT_MEMORY_ITEM_LIMIT]
     if emotional:
         materials["recalled_emotional_associations"] = emotional
     impressions = [entry for item in _slice_items(slices, "private_impressions") if (entry := _state_entry(item, fields=(
         "subject_ref", "reflection_summary", "confidence_bp", "first_seen",
         "last_supported", "expiry_condition", "contradiction_refs", "status",
-    )))][:2]
+    )))][:PRESENT_IMPRESSION_ITEM_LIMIT]
     if impressions:
         materials["private_impressions"] = impressions
 
-    # Short conversational continuity is not a second memory system.  It is
-    # the source-bound working-memory edge of the same Interior snapshot.  In
-    # particular, proactive and background turns must see what the counterpart
-    # actually said through this canonical material instead of receiving a
-    # consumer-specific context side channel.
-    # delivery_state/sequence are transport bookkeeping the character cannot
-    # perceive; dropping them trims every dialogue turn without losing what
-    # was said, by whom, or when.
+    # Conversational continuity is the source-bound working-memory edge of
+    # the same Interior snapshot.  Keep the chronological tail the Capsule
+    # already ranked; do not recut it to a handful of bubbles.
     recent_dialogue = [
         entry
         for item in _slice_items(slices, "recent_dialogue")
@@ -700,12 +702,13 @@ def compile_inner_life_snapshot(
                     "speaker_ref",
                     "text",
                     "occurred_at",
+                    "delivery_state",
                     "acknowledges_observation_event_refs",
                     "continuity_reasons",
                 ),
             )
         )
-    ][-4:]
+    ][-PRESENT_RECENT_DIALOGUE_ITEM_LIMIT:]
     if recent_dialogue:
         materials["recent_dialogue"] = recent_dialogue
 
@@ -717,7 +720,7 @@ def compile_inner_life_snapshot(
         entry
         for item in _slice_items(slices, "relevant_facts")
         if (entry := _state_entry(item))
-    ][:3]
+    ][:PRESENT_FACT_ITEM_LIMIT]
     if relevant_facts:
         materials["relevant_facts"] = relevant_facts
 
@@ -726,10 +729,10 @@ def compile_inner_life_snapshot(
         for lane in ("world_life", "recent_experiences")
     ]
     recent = [entries[0] for entries in experience_lanes if entries]
-    if len(recent) < 2:
+    if len(recent) < PRESENT_EXPERIENCE_ITEM_LIMIT:
         recent.extend(entry for entries in experience_lanes for entry in entries[1:])
     materials["recent_self_experiences"] = (
-        {"availability": "available", "items": recent[:2]}
+        {"availability": "available", "items": recent[:PRESENT_EXPERIENCE_ITEM_LIMIT]}
         if recent
         else {"availability": "unavailable"}
     )

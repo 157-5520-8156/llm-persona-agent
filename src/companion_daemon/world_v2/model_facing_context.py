@@ -11,8 +11,10 @@ import hashlib
 import json
 
 
+from .present_prompt import PRESENT_RECENT_DIALOGUE_ITEM_LIMIT
+
 _CHAT_OMITTED_SLICES = frozenset({"action_budget", "available_capabilities"})
-CHAT_RECENT_DIALOGUE_ITEM_LIMIT = 6
+CHAT_RECENT_DIALOGUE_ITEM_LIMIT = PRESENT_RECENT_DIALOGUE_ITEM_LIMIT
 _PINNED_TIME_CONTRACT = "pinned-time-context.1"
 _PINNED_TIME_SLICE = "pinned_time"
 _CHAT_ITEM_LIMITS = {
@@ -23,12 +25,12 @@ _CHAT_ITEM_LIMITS = {
     "character_core": 2,
     "affect_episodes": 4,
     "appraisals": 3,
-    "relevant_facts": 6,
-    "world_life": 3,
-    "recent_experiences": 3,
+    "relevant_facts": 8,
+    "world_life": 8,
+    "recent_experiences": 8,
     "open_threads": 4,
-    "private_impressions": 2,
-    "active_memory_candidates": 2,
+    "private_impressions": 8,
+    "active_memory_candidates": 8,
     # A same-turn semantic pass can legitimately return several orthogonal
     # coordinates (affect, thread, boundary, interruption).  Treating the
     # slice as one item here silently discarded all but the lexicographic tail
@@ -206,7 +208,7 @@ def _context_items_for_chat(name: str, items: list[object], limit: int) -> list[
         # it for the ordinary budget.  The previous shared cap meant a
         # successful retrieval evicted the capsule's own ranked items, so net
         # remembered material stayed flat even when the recall channel worked.
-        # Injection is already bounded upstream (prefetch/pull limit <= 6), so
+        # Injection is already bounded upstream (prefetch/pull limit <= 8), so
         # the provider view grows by at most that many verified items.
         injected_ids = {id(item) for item in injected}
         remainder = [item for item in items if id(item) not in injected_ids]

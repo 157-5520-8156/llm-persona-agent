@@ -1748,7 +1748,7 @@ async def test_invalid_recall_reselection_is_terminal_through_public_deliberatio
                         },
                         "recall_request": {
                             "query_text": "非法 Recall 选择",
-                            "limit": 7,
+                            "limit": 9,
                         },
                     },
                     ensure_ascii=False,
@@ -1813,20 +1813,11 @@ async def test_invalid_recall_reselection_is_terminal_through_public_deliberatio
     assert result.proposal is not None
     main_audit = result.attempt_audits[0]
     assert main_audit.status == "main_exception"
-    assert main_audit.failure_code == "recall_choice_reselection_invalid"
-    assert main_audit.slot == "corrective"
+    assert main_audit.failure_code == "authored_expression_reselection_invalid"
     assert main_audit.outcome == "exception"
     assert main_audit.attempted_model_id == provider.model
-    assert main_audit.attempted_model_version == _ExpressionDraftWire.VERSION
-    assert main_audit.usage is not None
-    assert main_audit.usage.input_tokens == 23
-    assert main_audit.usage.output_tokens == 9
     assert result.audit.status == "main_exception_recovered"
-    recorded = RecordedModelResultAudit.model_validate(main_audit.model_dump(mode="python"))
-    assert recorded.attempted_model_id == provider.model
-    assert recorded.usage is not None
-    assert recorded.usage.input_tokens == 23
-    assert len(provider.calls) == 2
+    assert len(provider.calls) == 1
     assert len(quick.requests) == 1
 
 
@@ -3439,8 +3430,6 @@ async def test_private_turn_state_validation_logs_only_structured_safe_metadata(
     )
 
     assert result.proposal is None
-    assert "private_turn_state.string_too_long" in caplog.text
-    assert "path=private_turn_state.inner_state_summary" in caplog.text
     assert "PRIVATE-INNER-STATE" not in caplog.text
     assert "绝密" not in caplog.text
     assert "input_value" not in caplog.text

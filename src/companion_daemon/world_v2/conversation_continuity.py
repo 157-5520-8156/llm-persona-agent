@@ -12,6 +12,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .associative_recall import AssociativeRecallCandidate, AssociativeRecallCompiler
+from .present_prompt import (
+    PRESENT_COMPANION_DIALOGUE_ITEM_LIMIT,
+    PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
+)
 from .recent_dialogue import RecentDialogueItem
 
 
@@ -30,18 +34,18 @@ class ConversationContinuityCompiler:
     def __init__(
         self,
         *,
-        max_items: int = 12,
+        max_items: int = PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
         max_pending_items: int = 2,
         max_reactivated_items: int = 4,
-        max_companion_items: int = 4,
+        max_companion_items: int = PRESENT_COMPANION_DIALOGUE_ITEM_LIMIT,
     ) -> None:
-        if not 4 <= max_items <= 16:
+        if not 4 <= max_items <= PRESENT_RECENT_DIALOGUE_ITEM_LIMIT:
             raise ValueError("conversation continuity item budget is invalid")
         if not 1 <= max_pending_items <= 4:
             raise ValueError("conversation continuity pending budget is invalid")
         if not 1 <= max_reactivated_items <= 6:
             raise ValueError("conversation continuity reactivation budget is invalid")
-        if not 0 <= max_companion_items <= 4:
+        if not 0 <= max_companion_items <= PRESENT_COMPANION_DIALOGUE_ITEM_LIMIT:
             raise ValueError("conversation continuity companion budget is invalid")
         self._max_items = max_items
         self._max_pending = max_pending_items

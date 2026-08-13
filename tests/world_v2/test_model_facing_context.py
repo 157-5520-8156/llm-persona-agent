@@ -355,7 +355,7 @@ def test_chat_view_keeps_semantics_but_omits_authority_and_accounting_noise() ->
     }
     assert [
         item["value"]["text"] for item in compact["slices"]["recent_dialogue"]["items"]
-    ] == [f"message {index}" for index in range(6, 12)]
+    ] == [f"message {index}" for index in range(12)]
     situation = compact["slices"]["current_situation"]["items"][0]["value"]
     assert situation == {"activity_slices": [], "time_segment": "late_night"}
     fact = compact["slices"]["relevant_facts"]["items"][0]
@@ -833,6 +833,7 @@ def test_world_life_cannot_starve_committed_experience_from_inner_life_snapshot(
     assert [item["source_ref"] for item in recent] == [
         "occurrence:breakfast",
         "experience:argument",
+        "occurrence:walk",
     ]
     assert (
         recent[1]["content"]["text"]
@@ -1095,6 +1096,8 @@ def test_recalled_dialogue_supplements_without_evicting_latest_working_turns() -
     ]
 
     assert texts == [
+        "current 0",
+        "current 1",
         "current 2",
         "current 3",
         "current 4",

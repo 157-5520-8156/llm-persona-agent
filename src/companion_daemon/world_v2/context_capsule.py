@@ -46,6 +46,11 @@ from .world_life_context import (
 )
 from .perception_result_context import PerceptionResultContextItem
 from .external_perception_events import ExternalPerceptionLifeInfluenceView
+from .present_prompt import (
+    PRESENT_CAPSULE_HARD_MAX_CHARACTERS,
+    PRESENT_DIALOGUE_SLICE_CHARACTERS,
+    PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
+)
 from .recent_dialogue import RecentDialogueItem
 
 
@@ -416,7 +421,7 @@ class SliceBudget(_FrozenModel):
 class ContextCapsuleBudgetPolicy(_FrozenModel):
     """Independent caps prevent one verbose domain from consuming every slice."""
 
-    hard_max_characters: int = Field(default=32_000, ge=0)
+    hard_max_characters: int = Field(default=PRESENT_CAPSULE_HARD_MAX_CHARACTERS, ge=0)
     character_core: SliceBudget = Field(
         default_factory=lambda: SliceBudget(max_items=1, max_fields=96, max_characters=6_000)
     )
@@ -424,11 +429,11 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
         default_factory=lambda: SliceBudget(max_items=1, max_fields=96, max_characters=12_000)
     )
     recent_dialogue: SliceBudget = Field(
-        # Short-horizon dialogue is deliberately smaller than durable Fact /
-        # Memory context. Eight verified utterances preserve local reference
-        # and tone without allowing duplicated delivery provenance to evict a
-        # two-part long-term recall under the global prompt cap.
-        default_factory=lambda: SliceBudget(max_items=8, max_fields=96, max_characters=10_000)
+        default_factory=lambda: SliceBudget(
+            max_items=PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
+            max_fields=96,
+            max_characters=PRESENT_DIALOGUE_SLICE_CHARACTERS,
+        )
     )
     relationship_slice: SliceBudget = Field(
         # A current relationship head includes hysteresis and exact accepted
@@ -2110,7 +2115,7 @@ def _compile_resolved_context(
     minimum_retained_items: dict[SliceName, int] = {
         "character_core": 1,
         "current_situation": 1,
-        "recent_dialogue": 8,
+        "recent_dialogue": PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
         "relationship_slice": 1,
         "appraisals": 1,
         "affect_episodes": 1,

@@ -2286,7 +2286,7 @@ async def test_invalid_required_recall_choice_reselects_a_final_expression_once(
     ("invalid_recall", "expected_code", "expected_path"),
     (
         (
-            {"query_text": "非法 Recall 原文不能回灌 limit", "limit": 7},
+            {"query_text": "非法 Recall 原文不能回灌 limit", "limit": 9},
             "recall_choice.out_of_range",
             "recall_request.limit",
         ),
@@ -2368,7 +2368,7 @@ async def test_invalid_recall_reselection_cannot_open_a_third_role_call() -> Non
                     },
                     "recall_request": {
                         "query_text": first_invalid_marker,
-                        "limit": 7,
+                        "limit": 9,
                     },
                 },
                 ensure_ascii=False,
@@ -2415,7 +2415,7 @@ async def test_invalid_recall_final_reselection_cannot_trigger_another_shape_rep
                     },
                     "recall_request": {
                         "query_text": "第一次 Recall 选择非法",
-                        "limit": 7,
+                        "limit": 9,
                     },
                 },
                 ensure_ascii=False,

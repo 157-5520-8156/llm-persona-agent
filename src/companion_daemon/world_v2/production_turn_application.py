@@ -113,6 +113,7 @@ from .npc_relationship_view import npc_relationship_readings
 from .npc_ecology_health import npc_ecology_health_snapshot
 from .npc_identity_view import npc_identity_views
 from .context_capsule import ContextCapsuleBudgetPolicy, SliceBudget
+from .present_prompt import PRESENT_CAPSULE_HARD_MAX_CHARACTERS
 from .ledger_payload_reader import LedgerAuthorizedPayloadReader
 from .local_chronology import LocalChronology
 from .life_content_store import (
@@ -3562,14 +3563,11 @@ def build_sqlite_world_v2_turn_application(
                 # complete proof envelopes coincide.  Chat still trims low-
                 # value capability and accounting slices below.
                 #
-                # 40k, not 32k: the global eviction loop removes the lowest-
-                # ranked items first and Facts rank below fresh dialogue, so
-                # at 32k the 30-turn recall eval pinned relevant_facts at its
-                # two-item deep-eviction floor every turn while six more
-                # committed facts stayed invisible.  The provider prompt is
-                # the compacted view (~12k), so this only grows the internal
-                # verified capsule.
-                hard_max_characters=40_000,
+                # 100k: Present keeps ~40 dialogue rounds plus memory and diary
+                # instead of evicting facts behind a thin 32k/40k envelope.
+                # The provider prompt is the compacted chat view; this bound
+                # is the internal verified capsule.
+                hard_max_characters=PRESENT_CAPSULE_HARD_MAX_CHARACTERS,
                 available_capabilities=SliceBudget(
                     max_items=4, max_fields=48, max_characters=1_200
                 ),

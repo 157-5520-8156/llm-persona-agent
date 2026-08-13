@@ -276,7 +276,7 @@ def build_automatic_recall_request(
         occurred_to=occurred_to,
         link_refs=canonical_links,
         memory_kinds=canonical_kinds,
-        limit=min(max(limit, 1), 6),
+        limit=min(max(limit, 1), 8),
     )
 
 

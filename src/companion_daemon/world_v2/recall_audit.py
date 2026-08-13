@@ -65,7 +65,7 @@ class CharacterRecallRequest(FrozenModel):
     link_refs: tuple[str, ...] = Field(default=(), max_length=16)
     memory_kinds: tuple[Literal["episodic", "semantic", "reflective"], ...] = ()
     include_historical: bool = False
-    limit: int = Field(default=6, ge=1, le=6)
+    limit: int = Field(default=8, ge=1, le=8)
 
     @model_validator(mode="after")
     def filters_are_canonical(self) -> Self:

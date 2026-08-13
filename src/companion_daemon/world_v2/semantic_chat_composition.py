@@ -932,6 +932,11 @@ def build_semantic_chat_composition(
         speech_frame=character.speech,
         style_rules=tuple(character.style_rules),
         boundaries=tuple(character.boundaries),
+        base_prompt=character.base_prompt,
+        appearance=character.appearance,
+        background=character.background,
+        daily_life=tuple(character.daily_life),
+        first_message=character.first_message,
     )
     del source_closure_model, life_source_closure_model, _unused
     background_model = world_support_model

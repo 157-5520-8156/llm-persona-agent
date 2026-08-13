@@ -29,6 +29,11 @@ from ..companion_identity import (
     companion_identity_source_refs,
 )
 from ..model_completion import ChatCompletionModel
+from ..present_prompt import (
+    combined_turn_system_lead,
+    compact_gate_recall_instruction,
+    forced_tool_recall_instruction,
+)
 from ..source_closure_lane import SourceClosureReselectionLane
 from .inbound_appraisal_wire import (
     _active_affect_heads,
@@ -3143,20 +3148,10 @@ class _InboundCharacterAuthor:
             {
                 "role": "system",
                 "content": (
-                    (
-                        (
-                            "Return either one JSON object with exactly two keys, appraisal_draft "
-                            "and expression_draft, or a recall choice with exactly the keys "
-                            "private_turn_state and recall_request in either serialization order "
-                            "when you choose to remember more first. "
-                            if self._capabilities.private_turn_state_mode == "required"
-                            else "Return either one JSON object with exactly two keys, "
-                            "appraisal_draft and expression_draft, or the single recall_request "
-                            "object described below when you choose to remember more first. "
+                    combined_turn_system_lead(
+                        private_turn_state_required=(
+                            self._capabilities.private_turn_state_mode == "required"
                         )
-                        if recall_available
-                        else "Return exactly one JSON object with exactly two keys: "
-                        "appraisal_draft and expression_draft. "
                     )
                     + "Both draft values must be JSON objects. This is one simultaneous "
                     "cognition pass. Treat appraisal, affect, attention, relationship, memory and "
@@ -3175,13 +3170,11 @@ class _InboundCharacterAuthor:
                         '{"appraisal_draft":{...},"expression_draft":{...}} when you can '
                         "decide now; alternatively return exactly "
                         + recall_choice_envelope
-                        + " when you choose to remember more before deciding. The recall-first "
+                        + " when the occasion says recall is available and you choose to remember "
+                        "more before deciding. If recall is unavailable, return only the two-draft "
+                        "envelope. The recall-first "
                         "envelope contains no appraisal_draft or expression_draft; after the "
                         "bounded result is supplied, return the final two-draft envelope. "
-                        if recall_available
-                        else "For this simultaneous call, return exactly "
-                        '{"appraisal_draft":{...},"expression_draft":{...}} and no standalone '
-                        "draft. "
                     )
                 ),
             },
@@ -3276,11 +3269,7 @@ class _InboundCharacterAuthor:
                         "the compact character-interior-events.1 envelope for reply_only, the "
                         "full character-interior-events.1 envelope for full_turn, or the exact "
                         "private_turn_state plus recall_request object for recall. "
-                        + (
-                            "Choose result_kind=recall only for the one bounded read. "
-                            if recall_available
-                            else "Recall is unavailable on this gate. "
-                        )
+                        + compact_gate_recall_instruction()
                         + "Only recall transfers control. A full_turn payload contains the complete "
                         "decision now. The host validates payload_json, does not classify by topic, length, "
                         "complexity, or keywords, does not choose the branch, and does not "
@@ -3440,20 +3429,9 @@ class _InboundCharacterAuthor:
                 "call the required function exactly once. Its arguments must include "
                 "result_kind. "
                 + decision_transport
-                + (
-                    "For result_kind=recall include recall_request"
-                    + (
-                        " and private_turn_state"
-                        if self._capabilities.private_turn_state_mode == "required"
-                        else " (private_turn_state may also be included)"
-                    )
-                    + "."
-                    if cognition_contract.recall_allowed
-                    else (
-                        "Recall is unavailable on this call; choose result_kind=reply_only "
-                        "or result_kind=decision within the installed stream capability."
-                        if transport_provider is not None
-                        else "Recall is unavailable on this call; use result_kind=decision."
+                + forced_tool_recall_instruction(
+                    private_turn_state_required=(
+                        self._capabilities.private_turn_state_mode == "required"
                     )
                 )
                 + " result_kind is your capability-branch choice inside this same role call; "
