@@ -63,17 +63,11 @@ from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
     InboundToolContracts,
 )
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
-from companion_daemon.world_v2.structured_source_review_model import (
-    StrictOutputCapabilityEvidence,
-    StructuredSourceReviewModel,
-)
 from companion_daemon.world_v2.structured_expression_reselection_model import (
     expression_reselection_tool_contract,
 )
 from companion_daemon.world_v2.visible_source_closure_protocol import (
     VISIBLE_SOURCE_CLOSURE_CONTRACT,
-)
-from companion_daemon.world_v2.visible_source_review_model import (
     visible_source_verdict_provider_request_contract,
     visible_source_verdict_schema_digest,
 )
@@ -1637,36 +1631,6 @@ class _IsolatedDeterministicLifeSourceReviewer:
         return None
 
 
-class _IsolatedLoopbackSourceReviewer(StructuredSourceReviewModel):
-    """Acceptance-only strict reviewer, distinct from the role authority."""
-
-    semantic_authority_id = _LOOPBACK_REVIEW_AUTHORITY
-
-    def fork_isolated_runtime(self) -> _IsolatedDeterministicLifeSourceReviewer:
-        """Provide Life with a dedicated deterministic acceptance authority."""
-
-        return _IsolatedDeterministicLifeSourceReviewer()
-
-    def request_payload(
-        self,
-        messages: list[dict[str, str]],
-        *,
-        temperature: float,
-        json_object: bool = False,
-    ) -> dict[str, object]:
-        payload = super().request_payload(
-            messages,
-            temperature=temperature,
-            json_object=json_object,
-        )
-        # The hash-only capture correlates the exact model invocation from
-        # messages + temperature. Official OpenAI review routes deliberately
-        # omit this knob, but the isolated fixture endpoint accepts it and
-        # records the same caller-visible value used by the audit ledger.
-        payload["temperature"] = temperature
-        return payload
-
-
 def _serve_isolated_loopback_daemon(*, port: int) -> None:
     """Run the real QQ app with explicit, test-only loopback model authorities.
 
@@ -1685,30 +1649,12 @@ def _serve_isolated_loopback_daemon(*, port: int) -> None:
         model=_LOOPBACK_ROLE_MODEL,
         thinking_enabled=False,
     )
-    review_evidence = StrictOutputCapabilityEvidence.verified(
-        evidence_source="isolated_acceptance_contract_fixture",
-        provider="openai",
-        model=_LOOPBACK_REVIEW_MODEL,
-        contracts=_LOOPBACK_REVIEW_CONTRACTS,
-        observed_at="2026-08-01",
-        evidence_revision="isolated-loopback-rra3-v7.1",
-        audit_sample_count=2,
-        audit_success_count=2,
-    )
-    reviewer = _IsolatedLoopbackSourceReviewer(
-        api_key="isolated-loopback-reviewer",
-        base_url=settings.deepseek_base_url,
-        model=_LOOPBACK_REVIEW_MODEL,
-        reasoning_effort="none",
-        max_completion_tokens=1_200,
-        strict_output_capability_evidence=review_evidence,
-    )
     app = create_qq_c2c_onebot_app(
         adapter="napcat",
         settings=settings,
         _test_only_model=role_model,
         _test_only_world_support_model=role_model,
-        _test_only_source_closure_model=reviewer,
+        _test_only_source_closure_model=None,
         scheduler_interval_seconds=settings.qq_c2c_scheduler_interval_seconds,
     )
     try:
@@ -1719,7 +1665,6 @@ def _serve_isolated_loopback_daemon(*, port: int) -> None:
             uvicorn.run(app, host="127.0.0.1", port=port)
     finally:
         async def close_models() -> None:
-            await reviewer.aclose()
             await role_model.aclose()
 
         asyncio.run(close_models())

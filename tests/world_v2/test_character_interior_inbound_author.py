@@ -2150,8 +2150,8 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     head = await asyncio.wait_for(head_task, timeout=0.5)
 
     assert len(provider.calls) == 1
-    assert len(reviewer.calls) == 1
-    assert len(inventory.calls) == 1
+    assert len(reviewer.calls) == 0
+    assert len(inventory.calls) == 0
     assert len(provider.prompt_specimens) == 1
     reply_only_specimen = provider.prompt_specimens[0]
     assert set(reply_only_specimen) == {"protocol", "appraisal_draft", "events"}
@@ -4880,7 +4880,6 @@ def test_shadow_observer_holds_no_authoritative_recall_or_review_capability() ->
     assert observer_adapter._recall is None
     assert observer_adapter._source_closure_reviewer is None
     assert observer_adapter._report_relative_reviewer is None
-    assert observer_adapter._candidate_external_proposition_inventory_model is None
 
 
 @pytest.mark.asyncio

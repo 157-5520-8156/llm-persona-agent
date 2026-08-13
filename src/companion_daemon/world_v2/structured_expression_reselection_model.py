@@ -16,12 +16,13 @@ import hashlib
 import json
 from typing import Final
 
+from companion_daemon.llm import OpenAICompatibleChatModel
+
 from .expression_draft import (
     EXPRESSION_DELAY_MAX_SECONDS,
     RESPONSE_EXPECTATION_WAIT_MAX_SECONDS,
     ExpressionDraftCapabilities,
 )
-from .structured_source_review_model import StructuredSourceReviewModel
 
 
 EXPRESSION_SOURCE_RESELECTION_DIRECT_CONTRACT: Final[str] = "expression-source-reselection-direct.1"
@@ -990,14 +991,11 @@ def normalize_realtime_expression_reselection_output(raw: str) -> str:
     )
 
 
-class StructuredExpressionReselectionModel(StructuredSourceReviewModel):
-    """Source reviewer plus one strict, capability-bound expression wire."""
+class StructuredExpressionReselectionModel(OpenAICompatibleChatModel):
+    """Provider-strict schema constructor for one role-authored expression."""
 
     def supports_strict_output_contract(self, contract: str) -> bool:
-        return (
-            contract == EXPRESSION_SOURCE_RESELECTION_DIRECT_CONTRACT
-            or super().supports_strict_output_contract(contract)
-        )
+        return contract == EXPRESSION_SOURCE_RESELECTION_DIRECT_CONTRACT
 
     def request_payload(
         self,

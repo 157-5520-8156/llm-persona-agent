@@ -7,7 +7,6 @@ from companion_daemon.config import get_settings
 from companion_daemon.llm import (
     DeepSeekChatModel,
     FakeCompanionModel,
-    OpenAICompatibleChatModel,
 )
 from companion_daemon.world_v2.model_completion import ChatCompletionModel
 from companion_daemon.world_v2.expression_draft import (
@@ -58,7 +57,6 @@ async def run_simulation(text: str, fake: bool, *, thinking: bool = False) -> No
     now = datetime.now(UTC)
     transport = CaptureSimulatorTransport(received_at=now)
     owned_models: list[ChatCompletionModel] = []
-    life_source_reviewer: ChatCompletionModel | None = None
     if fake:
         flash_model: ChatCompletionModel = FakeCompanionModel()
         thinking_model: ChatCompletionModel | None = FakeCompanionModel() if thinking else None
@@ -72,25 +70,6 @@ async def run_simulation(text: str, fake: bool, *, thinking: bool = False) -> No
             thinking_enabled=False,
         )
         owned_models.append(flash_model)
-        if settings.openai_api_key:
-            # The World Author may invent proposal-scoped life material, but
-            # it cannot review its own existing-world claims.  This independent
-            # lane is Life-only. Visible chat always receives the compact
-            # DeepSeek Flash guard from semantic composition and can never
-            # reactivate the historical paid full-review route.
-            reviewer_options = {
-                "api_key": settings.openai_api_key,
-                "base_url": settings.openai_base_url,
-                "model": settings.world_v2_source_review_fallback_model,
-                # GPT-4.1/4o Chat Completions reject this optional field.
-                # Empty means omit it at the transport boundary.
-                "reasoning_effort": "",
-                "max_completion_tokens": 1_200,
-                "proxy_url": settings.openai_proxy_url,
-            }
-            life_source_reviewer_client = OpenAICompatibleChatModel(**reviewer_options)
-            life_source_reviewer = life_source_reviewer_client
-            owned_models.append(life_source_reviewer_client)
         thinking_model = None
         if thinking:
             thinking_model = DeepSeekChatModel(
@@ -105,7 +84,6 @@ async def run_simulation(text: str, fake: bool, *, thinking: bool = False) -> No
         settings=settings,
         flash_model=flash_model,
         thinking_model=thinking_model,
-        life_source_closure_model=life_source_reviewer,
         model_id_prefix="world-v2-simulator",
     )
     app = build_sqlite_world_v2_turn_application(
@@ -132,14 +110,7 @@ async def run_simulation(text: str, fake: bool, *, thinking: bool = False) -> No
             model=flash_model,
             role="world_author",
         ),
-        life_source_closure_reviewer=(
-            RoleBoundLifeDevelopmentModelAdapter(
-                model=life_source_reviewer,
-                role="world_author_source_reviewer",
-            )
-            if life_source_reviewer is not None
-            else None
-        ),
+        life_source_closure_reviewer=None,
         now=now,
     )
     try:

@@ -1486,7 +1486,7 @@ class _PairedExpressionMaterializer:
             report_relative_adjudication_used = False
             review_result = await review_expression_with_candidate_external_coverage(
                 reviewer=reviewer,
-                inventory_model=self._owner._candidate_external_proposition_inventory_model,
+                inventory_model=None,
                 report_relative_reviewer=self._owner._report_relative_reviewer,
                 request=expression_request,
                 raw=pending.raw,
@@ -1571,15 +1571,13 @@ class _PairedExpressionMaterializer:
                 )
                 reselection_lane = self._owner._source_closure_reselection_lane
                 corrected_reviewer = reviewer
-                corrected_inventory = (
-                    self._owner._candidate_external_proposition_inventory_model
-                )
+                corrected_inventory = None
                 corrected_report_relative_reviewer = self._owner._report_relative_reviewer
                 if repaired_result.source_closure_lane_used:
                     if reselection_lane is None:
                         raise ValueError("paired source correction route was not retained")
                     corrected_reviewer = reselection_lane.reviewer
-                    corrected_inventory = reselection_lane.inventory_model
+                    corrected_inventory = None
                     corrected_report_relative_reviewer = (
                         reselection_lane.report_relative_reviewer
                     )
@@ -1694,7 +1692,6 @@ class _InboundCharacterAuthor:
         thinking_model: ChatCompletionModel | None = None,
         source_closure_model: ChatCompletionModel | None = None,
         report_relative_source_closure_model: ChatCompletionModel | None = None,
-        candidate_external_proposition_inventory_model: ChatCompletionModel | None = None,
         review_claim_free_candidates: bool = False,
         source_closure_reselection_lane: SourceClosureReselectionLane | None = None,
         expression_episode_observer_model: ChatCompletionModel | None = None,
@@ -1707,7 +1704,9 @@ class _InboundCharacterAuthor:
         expression_capabilities: ExpressionDraftCapabilities = TEXT_ONLY_EXPRESSION_CAPABILITIES,
         identity_frame: CompanionIdentityFrame | None = None,
         require_explicit_authored_decision_fields: bool = False,
+        **_unused: object,
     ) -> None:
+        del _unused
         self._flash_model = flash_model
         self._thinking_model = thinking_model
         self._source_closure_reselection_lane = source_closure_reselection_lane
@@ -1753,9 +1752,6 @@ class _InboundCharacterAuthor:
         resolved_source_closure_model = source_closure_model
         self._source_closure_reviewer = resolved_source_closure_model
         self._report_relative_reviewer = report_relative_source_closure_model
-        self._candidate_external_proposition_inventory_model = (
-            candidate_external_proposition_inventory_model
-        )
         self._review_claim_free_candidates = review_claim_free_candidates
         self._recall: RecallCoordinator | None = None
         self._character_interior_recall_delegate = False
@@ -1769,9 +1765,6 @@ class _InboundCharacterAuthor:
             semantic_boundary_reviewer=flash_model,
             source_closure_reviewer=resolved_source_closure_model,
             report_relative_reviewer=report_relative_source_closure_model,
-            candidate_external_proposition_inventory_model=(
-                candidate_external_proposition_inventory_model
-            ),
             review_claim_free_candidates=review_claim_free_candidates,
             source_closure_reselection_lane=source_closure_reselection_lane,
             recovery_context_store=recovery_contexts,
@@ -1787,9 +1780,6 @@ class _InboundCharacterAuthor:
                 semantic_boundary_reviewer=flash_model,
                 source_closure_reviewer=resolved_source_closure_model,
                 report_relative_reviewer=report_relative_source_closure_model,
-                candidate_external_proposition_inventory_model=(
-                    candidate_external_proposition_inventory_model
-                ),
                 review_claim_free_candidates=review_claim_free_candidates,
                 source_closure_reselection_lane=source_closure_reselection_lane,
                 recovery_context_store=recovery_contexts,
@@ -1810,9 +1800,6 @@ class _InboundCharacterAuthor:
             identity_frame=identity_frame,
             source_closure_reviewer=resolved_source_closure_model,
             report_relative_reviewer=report_relative_source_closure_model,
-            candidate_external_proposition_inventory_model=(
-                candidate_external_proposition_inventory_model
-            ),
             review_claim_free_candidates=review_claim_free_candidates,
             source_closure_reselection_lane=source_closure_reselection_lane,
             recovery_context_store=recovery_contexts,
@@ -1838,7 +1825,6 @@ class _InboundCharacterAuthor:
                 # provider-backed review capacity stays with the formal lane.
                 source_closure_reviewer=None,
                 report_relative_reviewer=None,
-                candidate_external_proposition_inventory_model=None,
                 # Observer failures and retries must never publish transient
                 # recovery material into the authoritative recovery lane.
                 recovery_context_store=_ExpressionRecoveryContextStore(),
@@ -2211,9 +2197,7 @@ class _InboundCharacterAuthor:
                     review_result = (
                         await review_expression_with_candidate_external_coverage(
                             reviewer=self._source_closure_reviewer,
-                            inventory_model=(
-                                self._candidate_external_proposition_inventory_model
-                            ),
+                            inventory_model=None,
                             report_relative_reviewer=self._report_relative_reviewer,
                             request=request,
                             raw=expression_raw,
@@ -2966,7 +2950,7 @@ class _InboundCharacterAuthor:
         if reviewer is not None:
             review_result = await review_expression_with_candidate_external_coverage(
                 reviewer=reviewer,
-                inventory_model=self._candidate_external_proposition_inventory_model,
+                inventory_model=None,
                 report_relative_reviewer=self._report_relative_reviewer,
                 request=request,
                 raw=repaired_result.raw,

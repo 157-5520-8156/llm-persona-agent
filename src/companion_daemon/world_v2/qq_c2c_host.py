@@ -2889,9 +2889,6 @@ def build_qq_c2c_host(
             world_support_model=world_support_model,
             source_closure_model=source_closure_model,
             life_source_closure_model=life_source_closure_model,
-            candidate_external_proposition_inventory_model=(
-                candidate_external_proposition_inventory_model
-            ),
             model_id_prefix="qq-c2c-v2",
             expression_capabilities=expression_capabilities,
             usage_observer=usage_store.record,
@@ -2975,9 +2972,7 @@ def build_qq_c2c_host(
         # Private impressions consolidate accepted appraisals on the same
         # background channel; they never touch the interactive reply path.
         proactive_source_closure_model=semantic_chat.proactive_source_closure_model,
-        proactive_candidate_external_proposition_inventory_model=(
-            semantic_chat.candidate_external_proposition_inventory_model
-        ),
+        proactive_candidate_external_proposition_inventory_model=None,
         npc_actor_model=background_model,
         life_world_author_model=life_world_author,
         life_world_author_source_rewriter=life_world_author_source_rewriter,

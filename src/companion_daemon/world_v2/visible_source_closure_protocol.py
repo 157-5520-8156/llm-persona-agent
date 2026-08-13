@@ -12,6 +12,7 @@ made the earlier proof slow and format-fragile.
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import json
 from typing import Literal
 
@@ -627,6 +628,43 @@ def _relation_for_source_kinds(kinds: tuple[str | None, ...]) -> VisibleSourceRe
     return "pinned_context_authority_coverage"
 
 
+def visible_source_verdict_schema_digest() -> str:
+    encoded = json.dumps(
+        visible_source_closure_schema(),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def visible_source_verdict_provider_request_contract() -> dict[str, object]:
+    """Compile the one canonical strict-tool request contract for this protocol."""
+
+    tool_name = "visible_beat_source_verdict_v1"
+    return {
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "description": (
+                        "Return exhaustive factual source verdicts for visible Beats."
+                    ),
+                    "strict": True,
+                    "parameters": visible_source_closure_schema(),
+                },
+            }
+        ],
+        "tool_choice": {
+            "type": "function",
+            "function": {"name": tool_name},
+        },
+        "contract": VISIBLE_SOURCE_CLOSURE_CONTRACT,
+        "schema_digest": visible_source_verdict_schema_digest(),
+    }
+
+
 __all__ = [
     "VISIBLE_SOURCE_CLOSURE_CONTRACT",
     "VisibleSourceClosureWire",
@@ -635,4 +673,6 @@ __all__ = [
     "parse_visible_source_closure",
     "visible_source_closure_messages",
     "visible_source_closure_schema",
+    "visible_source_verdict_provider_request_contract",
+    "visible_source_verdict_schema_digest",
 ]

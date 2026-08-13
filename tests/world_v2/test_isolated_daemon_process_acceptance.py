@@ -23,8 +23,6 @@ from companion_daemon.world_v2.structured_expression_reselection_model import (
 )
 from companion_daemon.world_v2.visible_source_closure_protocol import (
     visible_source_closure_messages,
-)
-from companion_daemon.world_v2.visible_source_review_model import (
     visible_source_verdict_provider_request_contract,
     visible_source_verdict_schema_digest,
 )

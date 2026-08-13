@@ -24,7 +24,6 @@ from .character_interior.audit import recorded_character_interior_lineage
 from .character_interior.run_result import CausalOpportunityRuntime
 from .character_interior.contracts import _InteriorCapabilityManifest
 from .character_interior.inbound_wire import (
-    review_candidate_external_proposition_coverage,
     review_expression_with_candidate_external_coverage,
 )
 from .character_interior.structured_role_tool_contract import StructuredRoleToolContracts
@@ -216,8 +215,9 @@ class _CharacterInteriorProactiveTransport:
         identity_frame: CompanionIdentityFrame | None = None,
         source_closure_reviewer=None,
         report_relative_reviewer=None,
-        candidate_external_proposition_inventory_model=None,
+        **_unused,
     ) -> None:
+        del _unused
         if not world_id or not actor_ref or not target:
             raise ValueError("Interior proactive transport binding is incomplete")
         self._interior = character_interior
@@ -228,7 +228,7 @@ class _CharacterInteriorProactiveTransport:
         self._identity_frame = identity_frame
         self._source_closure_reviewer = source_closure_reviewer
         self._report_relative_reviewer = report_relative_reviewer
-        self._inventory_model = candidate_external_proposition_inventory_model
+        self._inventory_model = None
         # The role contract is capability-specialized.  Warm both legal
         # proactive phases before any claimed opportunity starts its bounded
         # author budget; the live CharacterInterior call then only performs
@@ -495,28 +495,10 @@ class _CharacterInteriorProactiveTransport:
         if not draft.beats:
             return "not_required"
         if self._source_closure_reviewer is None:
-            if self._inventory_model is None:
-                return "not_required"
-            try:
-                inventory_only = await review_candidate_external_proposition_coverage(
-                    inventory_model=self._inventory_model,
-                    authority_reviewer=_UnavailableProactiveSourceAuthority(),
-                    request=request,
-                    raw=_proactive_source_review_raw(draft),
-                    identity_frame=self._identity_frame,
-                )
-            except ValidationTechnicalFailure as exc:
-                if _caused_by(exc, _ProactiveSourceAuthorityUnavailable):
-                    raise ValidationTechnicalFailure(
-                        "proactive_source_closure_reviewer_unavailable"
-                    ) from exc
-                raise
-            if inventory_only.review is None:
-                return "not_required"
-            raise ValidationTechnicalFailure("proactive_source_closure_reviewer_unavailable")
+            return "not_required"
         result = await review_expression_with_candidate_external_coverage(
             reviewer=self._source_closure_reviewer,
-            inventory_model=self._inventory_model,
+            inventory_model=None,
             report_relative_reviewer=self._report_relative_reviewer,
             request=request,
             raw=_proactive_source_review_raw(draft),
@@ -946,10 +928,11 @@ class ProactiveDeliberationTurn:
         identity_frame: CompanionIdentityFrame | None = None,
         source_closure_reviewer=None,
         report_relative_reviewer=None,
-        candidate_external_proposition_inventory_model=None,
         companion_actor_ref: str,
         budget_policy: InteractiveTurnBudgetPolicy | None = None,
+        **_unused,
     ) -> None:
+        del _unused
         transport = _CharacterInteriorProactiveTransport(
             character_interior=character_interior,
             world_id=ledger.world_id,
@@ -959,9 +942,6 @@ class ProactiveDeliberationTurn:
             identity_frame=identity_frame,
             source_closure_reviewer=source_closure_reviewer,
             report_relative_reviewer=report_relative_reviewer,
-            candidate_external_proposition_inventory_model=(
-                candidate_external_proposition_inventory_model
-            ),
         )
         self._transport = transport
         deliberation = compose_production_deliberation(

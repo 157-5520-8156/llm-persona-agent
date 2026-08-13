@@ -115,7 +115,7 @@ async def test_qq_composition_wires_compact_proactive_source_guard(
         adapter = runtime._turn._deliberation._main  # noqa: SLF001
 
         assert adapter._identity_frame is not None  # noqa: SLF001
-        assert adapter._source_closure_reviewer is reviewer  # noqa: SLF001
+        assert adapter._source_closure_reviewer is None  # noqa: SLF001
         assert adapter._inventory_model is None  # noqa: SLF001
         development = (  # noqa: SLF001
             host._host._application._life_ecology._life_development_followup
@@ -124,17 +124,12 @@ async def test_qq_composition_wires_compact_proactive_source_guard(
         assert (  # noqa: SLF001
             development._world_author_source_rewriter.authority_origin is author
         )
-        assert (  # noqa: SLF001
-            development._source_closure_reviewer.authority_origin is life_reviewer
-        )
-        assert development._source_closure_reviewer_is_independent is True  # noqa: SLF001
+        assert development._source_closure_reviewer is None  # noqa: SLF001
         source_health = host.proactive_source_authority_health()
-        assert source_health["status"] == "ready"
-        assert source_health["visible_review_strategy"] == "visible_beat_verdict"
-        assert source_health["active_source_review_protocol"] == (
-            "visible_beat_source_verdict.1"
-        )
-        assert host.life_source_authority_health()["status"] == ("operational_unqualified")
+        assert source_health["status"] == "fact_effects_fail_closed"
+        assert "one_shot.model_review_lanes_removed" in source_health["warning_reasons"]
+        assert source_health["reviewer_model"] is None
+        assert host.life_source_authority_health()["status"] == "unavailable"
     finally:
         await host.aclose()
 
@@ -4562,11 +4557,12 @@ def test_onebot_entry_accepts_explicit_distinct_test_authorities_without_provide
 
     try:
         health = app.state.qq_c2c_host.proactive_source_authority_health()
-        assert health["status"] == "ready"
+        assert health["status"] == "fact_effects_fail_closed"
         assert health["author_model"] == "isolated-explicit-author"
-        assert health["reviewer_model"] == "isolated-explicit-reviewer"
+        assert health["reviewer_model"] is None
+        assert "one_shot.model_review_lanes_removed" in health["warning_reasons"]
         assert app.state.qq_c2c_host.life_source_authority_health()["status"] == (
-            "operational_unqualified"
+            "unavailable"
         )
     finally:
         asyncio.run(app.state.qq_c2c_host.aclose())
@@ -4687,7 +4683,7 @@ def test_qq_health_reports_a_running_scheduler_even_when_the_world_is_starved(
         "status": "fact_effects_fail_closed",
         "warning": True,
         "warning_reasons": [
-            "proactive_source_authority.independent_reviewer_unavailable",
+            "one_shot.model_review_lanes_removed",
         ],
         "independent_reviewer": False,
         "fact_effects_available": False,

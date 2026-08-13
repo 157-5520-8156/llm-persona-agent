@@ -744,7 +744,6 @@ def _bind_production_character_interior(
     reply_target: str,
     expression_capabilities: ExpressionDraftCapabilities,
     proactive_source_closure_model: ChatCompletionModel | None,
-    proactive_candidate_external_proposition_inventory_model: ChatCompletionModel | None,
     interactive_turn_budget_policy: InteractiveTurnBudgetPolicy,
     proactive_account_id: str,
     proactive_amount_per_action: int,
@@ -759,8 +758,11 @@ def _bind_production_character_interior(
     silence_appraisal_idle_seconds: int | None,
     plan_disruption_appraisal_enabled: bool,
     perception_result_reader: PerceptionResultReader | None,
+    **_unused: object,
 ) -> None:
     """Bind ledger authorities and private background scheduling exactly once."""
+
+    del _unused
 
     projection = interior._projection  # noqa: SLF001 - same deep Module package
     if not isinstance(projection, _DeferredProjection):
@@ -807,11 +809,8 @@ def _bind_production_character_interior(
                 target=reply_target,
                 expression_capabilities=expression_capabilities,
                 identity_frame=identity_frame,
-                source_closure_reviewer=proactive_source_closure_model,
-                report_relative_reviewer=proactive_source_closure_model,
-                candidate_external_proposition_inventory_model=(
-                    proactive_candidate_external_proposition_inventory_model
-                ),
+                source_closure_reviewer=None,
+                report_relative_reviewer=None,
                 companion_actor_ref=companion_actor_ref,
                 budget_policy=interactive_turn_budget_policy,
             ),
@@ -943,7 +942,6 @@ def compose_production_character_interior(
     thinking_model: ChatCompletionModel | None,
     source_closure_model: ChatCompletionModel | None,
     report_relative_source_closure_model: ChatCompletionModel | None,
-    candidate_external_proposition_inventory_model: ChatCompletionModel | None,
     source_closure_reselection_lane: SourceClosureReselectionLane | None,
     expression_episode_observer_model: ChatCompletionModel | None,
     flash_model_id: str,
@@ -953,8 +951,11 @@ def compose_production_character_interior(
     review_claim_free_candidates: bool = True,
     turn_store: _CharacterInteriorTurnStore | None = None,
     turn_owner_id: str = "character-interior:production",
+    **_unused: object,
 ) -> CharacterInterior:
     """Build and freeze every protagonist author Faculty exactly once."""
+
+    del _unused
 
     if expression_capabilities.private_turn_state_mode != "required":
         raise ValueError(
@@ -967,9 +968,6 @@ def compose_production_character_interior(
         thinking_model=thinking_model,
         source_closure_model=source_closure_model,
         report_relative_source_closure_model=report_relative_source_closure_model,
-        candidate_external_proposition_inventory_model=(
-            candidate_external_proposition_inventory_model
-        ),
         source_closure_reselection_lane=source_closure_reselection_lane,
         expression_episode_observer_model=expression_episode_observer_model,
         contextual_failsafe_model=None,
@@ -1021,7 +1019,6 @@ def compose_fixture_character_interior(
         thinking_model=None,
         source_closure_model=None,
         report_relative_source_closure_model=None,
-        candidate_external_proposition_inventory_model=None,
         source_closure_reselection_lane=None,
         expression_episode_observer_model=None,
         flash_model_id=str(getattr(model, "model", "fixture-character-author")),

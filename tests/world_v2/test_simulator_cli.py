@@ -64,7 +64,7 @@ async def test_simulator_cli_can_exercise_the_configured_thinking_lane(
 
 
 @pytest.mark.asyncio
-async def test_simulator_cli_wires_an_independent_life_source_reviewer_when_configured(
+async def test_simulator_cli_does_not_construct_a_life_source_reviewer(
     tmp_path, monkeypatch
 ) -> None:
     author = SimpleNamespace(
@@ -72,8 +72,6 @@ async def test_simulator_cli_wires_an_independent_life_source_reviewer_when_conf
         semantic_authority_id="simulator:character-author",
     )
     built: dict[str, object] = {}
-    reviewer_kwargs: list[dict[str, object]] = []
-    reviewers: list[SimpleNamespace] = []
 
     class _Application:
         async def respond(self, _turn):  # type: ignore[no-untyped-def]
@@ -108,23 +106,9 @@ async def test_simulator_cli_wires_an_independent_life_source_reviewer_when_conf
             DEEPSEEK_MODEL="deepseek-v4-flash",
             OPENAI_API_KEY="openai-test-key",
             OPENAI_BASE_URL="https://openai.example.invalid",
-            WORLD_V2_SOURCE_REVIEW_FALLBACK_MODEL="gpt-test-source-reviewer",
         ),
     )
     monkeypatch.setattr(cli, "DeepSeekChatModel", lambda **_kwargs: author)
-
-    def _reviewer(**kwargs):  # type: ignore[no-untyped-def]
-        reviewer_kwargs.append(kwargs)
-        reviewer = SimpleNamespace(
-            model=f"openai-independent-source-reviewer-{len(reviewers) + 1}",
-            semantic_authority_id=f"simulator:source-reviewer:{len(reviewers) + 1}",
-            aclose=_close,
-            complete=_complete,
-        )
-        reviewers.append(reviewer)
-        return reviewer
-
-    monkeypatch.setattr(cli, "OpenAICompatibleChatModel", _reviewer)
 
     def _build(**kwargs):  # type: ignore[no-untyped-def]
         built.update(kwargs)
@@ -136,11 +120,6 @@ async def test_simulator_cli_wires_an_independent_life_source_reviewer_when_conf
 
     world_author = built["life_world_author_model"]
     source_rewriter = built["life_world_author_source_rewriter"]
-    source_reviewer = built["life_source_closure_reviewer"]
     assert world_author.authority_origin is author
     assert source_rewriter.authority_origin is author
-    # The independent provider is Life-only. Visible chat receives its compact
-    # Flash guard from semantic composition rather than a second paid reviewer.
-    assert len(reviewers) == 1
-    assert source_reviewer.authority_origin is reviewers[0]
-    assert all(options["reasoning_effort"] == "" for options in reviewer_kwargs)
+    assert built["life_source_closure_reviewer"] is None

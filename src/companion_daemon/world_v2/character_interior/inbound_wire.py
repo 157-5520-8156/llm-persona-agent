@@ -65,7 +65,6 @@ from ..expression_draft import (
     current_counterpart_report_source_refs,
     expand_expression_source_ref_aliases,
     expression_hard_boundary_manifest,
-    invalid_world_claim_source_indexes,
     is_world_claim_violation,
     materialize_expression_draft,
     normalize_expression_draft_wire,
@@ -81,9 +80,7 @@ from ..isolated_source_closure_trace import (
     SourceClosureTraceStage,
     emit_source_closure_candidate_materialization_failure_trace,
     emit_source_closure_trace,
-    emit_source_closure_verdict_trace,
     emit_source_closure_wire_failure_trace,
-    emit_source_closure_wire_normalization_trace,
 )
 from ..model_facing_context import (
     compact_model_facing_context,
@@ -96,11 +93,7 @@ from .inbound_tool_contract import (
     _expand_compact_gate_payload,
 )
 from ..visible_source_closure_protocol import (
-    VISIBLE_SOURCE_CLOSURE_CONTRACT,
-    VisibleSourceClosureWireFailure,
     compact_source_reference_table,
-    parse_visible_source_closure,
-    visible_source_closure_messages,
 )
 from ..validation_failure_codes import sanitize_validation_technical_failure_code
 from ..production_reliability_metrics import (
@@ -124,10 +117,6 @@ from ..source_closure_verdict import (
     SourceClosureVisibleFinding,
     adjudicate_visible_source_findings,
 )
-from ..source_review_authority import (
-    InventoryAvailabilityExhausted,
-    SOURCE_REVIEW_CALL_TIMEOUT_SECONDS,
-)
 from ..source_closure_lane import SourceClosureReselectionLane
 from ..structured_expression_reselection_model import (
     expression_reselection_output_contract,
@@ -150,6 +139,13 @@ from ..recall_runtime import (
     recall_followup_evidence_json,
     verify_trusted_recall_trace,
 )
+
+
+SOURCE_REVIEW_CALL_TIMEOUT_SECONDS = 22.0
+
+
+class InventoryAvailabilityExhausted(Exception):
+    """Historical inventory-timeout marker. Inventory is no longer a model call."""
 
 
 logger = logging.getLogger(__name__)
@@ -3454,7 +3450,7 @@ def _parse_report_relative_entailment(
     return wire
 
 
-def _parse_candidate_external_proposition_inventory(
+def _parse_known_source_span_catalog(
     raw: str,
     *,
     beat_texts: tuple[str | None, ...],
@@ -3935,7 +3931,7 @@ async def _inventory_candidate_external_propositions(
             previous_raw=completeness_previous_raw,
             exact_missing_findings=completeness_missing_findings,
         )
-    with model_call_scope("world_v2_candidate_external_proposition_inventory"):
+    with model_call_scope("world_v2_known_source_span_catalog"):
         inventory_call = _metered_review_call(
             inventory_model,
             attempt_messages,
@@ -3957,7 +3953,7 @@ async def _inventory_candidate_external_propositions(
     if captured_provider_result is not None:
         captured_provider_result.append((raw, usage))
     return (
-        _parse_candidate_external_proposition_inventory(
+        _parse_known_source_span_catalog(
             raw,
             beat_texts=tuple(beat.text for beat in draft.beats),
         ),
@@ -4430,6 +4426,58 @@ def _prepare_source_closure_review_material(
     )
 
 
+
+def _known_capsule_source_refs(source_evidence: dict[str, object]) -> frozenset[str]:
+    known = {
+        str(row["source_ref"])
+        for row in compact_source_reference_table(source_evidence)
+        if isinstance(row, dict) and row.get("source_ref")
+    }
+    required = source_evidence.get("required_source_refs", ())
+    if isinstance(required, (list, tuple)):
+        known.update(ref for ref in required if isinstance(ref, str) and ref)
+    return frozenset(known)
+
+
+async def _deterministic_declared_claim_review(
+    *,
+    request: ModelInput,
+    raw: str,
+    identity_frame: CompanionIdentityFrame | None,
+    model_visible_context_json: str | None = None,
+    source_ref_aliases: SourceRefAliasTable | None = None,
+    effect_bearing_only: bool = False,
+) -> SourceClosureReviewResult:
+    """Fail-closed on declared claims that cite unknown capsule refs. No model."""
+
+    material = _prepare_source_closure_review_material(
+        request=request,
+        raw=raw,
+        identity_frame=identity_frame,
+        model_visible_context_json=model_visible_context_json,
+        source_ref_aliases=source_ref_aliases,
+        effect_bearing_only=effect_bearing_only,
+    )
+    if material.source_evidence is None:
+        return SourceClosureReviewResult(review=None, usage=None)
+    known = _known_capsule_source_refs(material.source_evidence)
+    unsupported = tuple(
+        index
+        for index, claim in enumerate(material.draft.world_claims)
+        if claim.source_refs and not set(claim.source_refs) <= known
+    )
+    if not unsupported:
+        return SourceClosureReviewResult(review=None, usage=None)
+    return SourceClosureReviewResult(
+        review=_ContextualClaimSupportReview(
+            decision="unsupported",
+            unsupported_claim_indexes=unsupported,
+            brief_reason="declared world claims cite sources absent from known capsule refs",
+        ),
+        usage=None,
+    )
+
+
 async def review_expression_source_closure(
     *,
     reviewer: ChatCompletionModel,
@@ -4444,461 +4492,22 @@ async def review_expression_source_closure(
     effect_bearing_only: bool = False,
     candidate_inventory_decomposition: (_CandidateExternalPropositionInventory | None) = None,
 ) -> SourceClosureReviewResult:
-    """Semantically audit declared and omitted factual claims.
+    """Deterministic declared-claim check against known capsule refs. No model."""
 
-    Deterministic validation can prove that a declared source ref exists, but
-    it cannot detect a model silently omitting the declaration or swapping the
-    companion and counterpart subjects.  This bounded reviewer enforces only
-    that truth boundary; it does not judge tone, motive, questions, or whether
-    the character should speak.
-    """
-
-    material = _prepare_source_closure_review_material(
+    del (
+        reviewer,
+        report_relative_reviewer,
+        allow_report_relative_adjudication,
+        declared_claims_only,
+        candidate_inventory_decomposition,
+    )
+    return await _deterministic_declared_claim_review(
         request=request,
         raw=raw,
         identity_frame=identity_frame,
         model_visible_context_json=model_visible_context_json,
         source_ref_aliases=source_ref_aliases,
         effect_bearing_only=effect_bearing_only,
-    )
-    draft = material.draft
-    visible_text = material.visible_text
-    if declared_claims_only and not draft.world_claims:
-        return SourceClosureReviewResult(review=None, usage=None)
-    if material.source_evidence is None:
-        return SourceClosureReviewResult(review=None, usage=None)
-    stable_identity_source_refs = (
-        frozenset(companion_identity_source_refs(identity_frame).values())
-        if identity_frame is not None
-        else frozenset()
-    )
-    mechanically_invalid_claim_indexes = invalid_world_claim_source_indexes(
-        draft=draft,
-        request=request,
-        stable_identity_source_refs=stable_identity_source_refs,
-    )
-    exact_current_report_source_refs = (
-        frozenset()
-        if declared_claims_only
-        else frozenset(
-            source_ref
-            for entry in material.source_evidence.get("entries", ())
-            if isinstance(entry, dict) and entry.get("kind") == "current_counterpart_report"
-            for source_ref in entry.get("source_refs", ())
-            if isinstance(source_ref, str)
-        )
-    )
-    if not declared_claims_only:
-        # The V7 wire name predates typed dialogue proof. Extend its verified
-        # report-only authority set with exact dialogue identities so ordinary
-        # continuity does not require a second serial semantic adjudication.
-        # These remain counterpart reports, never objective World truth.
-        exact_current_report_source_refs = frozenset(
-            {
-                *exact_current_report_source_refs,
-                *(proof.dialogue_ref for proof in material.typed_recent_dialogue_proof),
-            }
-        )
-    exact_current_report = (
-        None
-        if declared_claims_only
-        else next(
-            (
-                entry
-                for entry in material.source_evidence.get("entries", ())
-                if isinstance(entry, dict) and entry.get("kind") == "current_counterpart_report"
-            ),
-            None,
-        )
-    )
-    if declared_claims_only:
-        review_payload: dict[str, object] = {
-            "declared_claim_review_contract": {
-                "review_dimensions": [
-                    "subject",
-                    "temporal_relation",
-                    "logical_modality",
-                    "occurrence",
-                    "status",
-                    "asserted_scope",
-                    "source_entailment",
-                ],
-                "visible_text_authority": "exclusive_candidate_coverage_completed",
-                "host_semantic_classifier": False,
-            },
-            "output_contract": {
-                "contract": "source-closure-review.8",
-                "ci": "unique_zero_based_unsupported_world_claim_indexes",
-                "v": "return_empty",
-                "p": "return_empty",
-                "visible_findings": "return_empty",
-                "r": "brief_non_authoritative_diagnostic",
-            },
-            "world_claims": tuple(
-                {
-                    "claim_index": index,
-                    **claim.model_dump(mode="json"),
-                }
-                for index, claim in enumerate(draft.world_claims)
-            ),
-            "source_evidence": material.source_evidence,
-        }
-    else:
-        review_payload = {
-            "visible_text": visible_text,
-            "epistemic_authority_contract": {
-                "visible_first_person_private_mental_state": {
-                    "source_required": False,
-                    "covers": [
-                        "present_first_person_feeling_thought_attention_desire_"
-                        "resistance_uncertainty_imagination_memory_accessibility_"
-                        "self_evaluation_conversational_intention",
-                        "immediate_retrospective_continuity_of_the_same_private_"
-                        "mental_states_within_this_conversation",
-                    ],
-                    "does_not_cover_embedded_external": [
-                        "place",
-                        "action_or_activity",
-                        "other_person_or_their_mental_state",
-                        "bodily_or_physical_status",
-                        "world_occurrence_or_settled_history",
-                    ],
-                },
-                "first_person_external_experience": {
-                    "source_required": True,
-                    "examples": [
-                        "I spent the afternoon in a bookstore.",
-                        "I brewed tea on the balcony today.",
-                    ],
-                    "not_private_mental_continuity": True,
-                    "empty_world_claims_result": "undeclared_external_assertion",
-                },
-                "current_counterpart_report": {
-                    "permits_natural_visible_uptake_without_world_claim": True,
-                    "natural_uptake_does_not_need_attribution_phrase": True,
-                    "epistemic_status": (
-                        "counterpart_report_only_not_objective_truth_or_companion_experience"
-                    ),
-                    "direct_uptake_requires": (
-                        "nonfactual_discourse_relation_or_semantic_entailment_"
-                        "by_the_exact_current_report"
-                    ),
-                    "does_not_authorize": [
-                        "added_or_changed_subject_time_occurrence_or_status",
-                        "added_detail_or_motive",
-                        "objective_world_fact",
-                        "companion_experience",
-                        "durable_world_mutation",
-                    ],
-                },
-                "world_source_scope": world_source_scope_boundary(),
-            },
-            "output_contract": {
-                "contract": "source-closure-review.7",
-                "ci": "unique_zero_based_unsupported_world_claim_indexes",
-                "v": ("unique_subset_of_boundary_failure_categories_for_visible_text"),
-                "p": (
-                    "reserved_legacy_alias; return_empty; any_category_is_"
-                    "conservatively_normalized_into_v"
-                ),
-                "boundary_failure_categories": [
-                    "undeclared_external_assertion",
-                    "subject_authority_mismatch",
-                    "temporal_authority_mismatch",
-                    "occurrence_or_status_authority_mismatch",
-                ],
-                "visible_findings": {
-                    "required_for_each_v": True,
-                    "maximum_items": 16,
-                    "fields": [
-                        "category",
-                        "visible_span",
-                        "claim_index",
-                        "source_relation",
-                        "source_refs",
-                    ],
-                    "visible_span": (
-                        "exact_non_empty_complete_epistemic_proposition_substring_"
-                        "including_governing_attribution_evidential_negation_modal_"
-                        "temporal_and_causal_operators"
-                    ),
-                    "host_keyword_classifier": False,
-                    "source_relations": [
-                        "unclosed",
-                        "exact_current_report_discourse_coverage",
-                        "declared_world_claim_source_mismatch",
-                    ],
-                    "exact_current_report_resolution": (
-                        "host_may_remove_only_an_undeclared_external_assertion_"
-                        "whose_claim_index_is_null_and_whose_nonempty_source_refs_"
-                        "all_belong_to_exact_verified_counterpart_reports_in_the_current_"
-                        "packet_or_typed_recent_dialogue_proof"
-                    ),
-                    "legacy_omission": (
-                        "invalid_wire_reselect_reviewer_once_then_technical_failure"
-                    ),
-                },
-                "r": "optional_non_authoritative_diagnostic",
-            },
-            "world_claims": tuple(
-                {
-                    "claim_index": index,
-                    **claim.model_dump(mode="json"),
-                }
-                for index, claim in enumerate(draft.world_claims)
-            ),
-            "source_evidence": material.source_evidence,
-        }
-        if candidate_inventory_decomposition is not None:
-            review_payload["candidate_inventory_decomposition"] = {
-                "contract": candidate_inventory_decomposition.wire_contract,
-                "authority": "semantic_decomposition_only_not_fact_or_source_verdict",
-                "host_text_classifier": False,
-                "propositions": tuple(
-                    {
-                        "locator": proposition.locator.model_dump(mode="json"),
-                        "semantic_role": proposition.semantic_role,
-                    }
-                    for proposition in candidate_inventory_decomposition.propositions
-                ),
-                "review_requirement": (
-                    "independently_close_each_source_relevant_locator_against_"
-                    "its_own_matching_world_claim_and_source_evidence"
-                ),
-                "unrelated_world_claim_cannot_cover_locator": True,
-            }
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                _DECLARED_WORLD_CLAIM_SOURCE_REVIEW_SYSTEM
-                if declared_claims_only
-                else _SOURCE_CLOSURE_REVIEW_SYSTEM
-            ),
-        },
-        {
-            "role": "user",
-            "content": json.dumps(
-                review_payload,
-                ensure_ascii=False,
-                separators=(",", ":"),
-            ),
-        },
-    ]
-
-    invalid_wire: _InvalidSourceClosureReviewerWire | None = None
-    primary_attempt_ordinal = 0
-    last_primary_identity: _ProviderInvocationIdentity | None = None
-    last_primary_model_id: str | None = None
-    last_primary_model_version: str | None = None
-    last_primary_usage: ModelUsageProvenance | None = None
-
-    async def primary_review_once() -> SourceClosureReviewResult:
-        nonlocal invalid_wire, primary_attempt_ordinal
-        nonlocal last_primary_identity, last_primary_model_id
-        nonlocal last_primary_model_version, last_primary_usage
-        attempt_messages = (
-            messages
-            if invalid_wire is None
-            else _source_closure_wire_reselection_messages(
-                messages,
-                invalid=invalid_wire,
-            )
-        )
-        selected_reviewer = _reviewer_for_wire_reselection(
-            reviewer,
-            invalid_wire=invalid_wire,
-        )
-        primary_attempt_ordinal += 1
-        last_primary_identity = _provider_invocation_identity(
-            parent_call_id=request.call_id,
-            purpose=f"source_closure_review_{primary_attempt_ordinal}",
-            messages=attempt_messages,
-            temperature=0.0,
-        )
-        last_primary_model_id = (
-            str(getattr(selected_reviewer, "model", "")).strip() or type(selected_reviewer).__name__
-        )
-        last_primary_model_version = (
-            str(getattr(selected_reviewer, "VERSION", "")).strip() or "source-review-wire.1"
-        )
-        last_primary_usage = None
-        captured: list[tuple[str, ModelUsageProvenance | None]] = []
-        previous_invalid = invalid_wire
-        try:
-            result = await _review_expression_source_closure_once(
-                reviewer=selected_reviewer,
-                messages=attempt_messages,
-                draft=draft,
-                visible_text="" if declared_claims_only else visible_text,
-                exact_current_report_source_refs=exact_current_report_source_refs,
-                mechanically_invalid_claim_indexes=mechanically_invalid_claim_indexes,
-                captured_provider_result=captured,
-                audit_purpose=(
-                    "source_closure_review_v8"
-                    if declared_claims_only
-                    else "source_closure_review_v7"
-                ),
-            )
-        except (TypeError, ValueError) as exc:
-            if captured:
-                reviewed_raw, reviewed_usage = captured[-1]
-                last_primary_usage = reviewed_usage
-                invalid_wire = _InvalidSourceClosureReviewerWire(
-                    raw=reviewed_raw,
-                    failure_reason=str(exc),
-                    usage=reviewed_usage,
-                )
-            raise
-        if captured:
-            last_primary_usage = captured[-1][1]
-        if previous_invalid is not None and previous_invalid.usage is not None:
-            result = SourceClosureReviewResult(
-                review=result.review,
-                usage=_combine_usage(
-                    previous_invalid.usage,
-                    result.usage,
-                    request.call_id,
-                ),
-            )
-        return result
-
-    try:
-        primary_result = await run_validation_review(
-            primary_review_once,
-            timeout_seconds=_SOURCE_CLOSURE_REVIEW_TIMEOUT_SECONDS,
-        )
-    except ValidationTechnicalFailure as exc:
-        if exc.model_call_id is not None or last_primary_identity is None:
-            raise
-        assert last_primary_model_id is not None
-        assert last_primary_model_version is not None
-        raise ValidationTechnicalFailure(
-            exc.failure_code,
-            model_call_id=last_primary_identity.model_call_id,
-            request_hash=last_primary_identity.request_hash,
-            attempted_model_id=last_primary_model_id,
-            attempted_model_version=last_primary_model_version,
-            usage=last_primary_usage,
-        ) from exc
-    if candidate_inventory_decomposition is not None:
-        retained_inventory_result = _retain_inventory_source_requirements_after_positive_v7(
-            result=primary_result,
-            inventory=candidate_inventory_decomposition,
-            draft=draft,
-        )
-        if retained_inventory_result is not None:
-            primary_result = retained_inventory_result
-            if retained_inventory_result.visible_authority_terminal_rejection:
-                return retained_inventory_result
-    if not (
-        allow_report_relative_adjudication
-        and not declared_claims_only
-        and report_relative_reviewer is not None
-        and primary_result.review is not None
-        and primary_result.review.decision == "unsupported"
-        and exact_current_report is not None
-    ):
-        return primary_result
-
-    report_relative_invalid_wire: _InvalidSourceClosureReviewerWire | None = None
-    report_relative_attempt_usages: list[ModelUsageProvenance | None] = []
-
-    def combined_report_relative_usage() -> ModelUsageProvenance | None:
-        if not report_relative_attempt_usages:
-            return None
-        combined = report_relative_attempt_usages[0]
-        for attempt_usage in report_relative_attempt_usages[1:]:
-            combined = _combine_usage(
-                combined,
-                attempt_usage,
-                request.call_id,
-            )
-        return combined
-
-    async def report_relative_review_once() -> SourceClosureReviewResult:
-        nonlocal report_relative_invalid_wire
-        captured: list[tuple[str, ModelUsageProvenance | None]] = []
-        try:
-            result = await _adjudicate_report_relative_findings(
-                reviewer=_reviewer_for_wire_reselection(
-                    report_relative_reviewer,
-                    invalid_wire=report_relative_invalid_wire,
-                ),
-                review=primary_result.review,
-                visible_text=visible_text,
-                exact_current_report=exact_current_report,
-                exact_current_report_source_refs=exact_current_report_source_refs,
-                typed_recent_dialogue_proof=material.typed_recent_dialogue_proof,
-                visible_finding_semantic_roles=(
-                    _inventory_roles_for_visible_findings(
-                        review=primary_result.review,
-                        inventory=candidate_inventory_decomposition,
-                    )
-                ),
-                allow_private_role_reclassification=(candidate_inventory_decomposition is None),
-                invalid_wire=report_relative_invalid_wire,
-                captured_provider_result=captured,
-            )
-        except (TypeError, ValueError) as exc:
-            if captured:
-                reviewed_raw, reviewed_usage = captured[-1]
-                report_relative_attempt_usages.append(reviewed_usage)
-                report_relative_invalid_wire = _InvalidSourceClosureReviewerWire(
-                    raw=reviewed_raw,
-                    failure_reason=str(exc),
-                    usage=reviewed_usage,
-                )
-            raise
-        if captured:
-            report_relative_attempt_usages.append(captured[-1][1])
-        return SourceClosureReviewResult(
-            review=result.review,
-            usage=combined_report_relative_usage(),
-            report_relative_adjudication_used=(result.report_relative_adjudication_used),
-        )
-
-    try:
-        report_relative_result = await run_validation_review(
-            report_relative_review_once,
-            timeout_seconds=_SOURCE_CLOSURE_REVIEW_TIMEOUT_SECONDS,
-        )
-    except ValidationTechnicalFailure as exc:
-        # The narrow stage may only remove a primary unsupported finding after
-        # a valid entailment verdict. Its own technical failure therefore has
-        # a safe monotonic result: retain the already-complete primary verdict
-        # and let the existing same-role full re-selection handle the draft.
-        logger.warning(
-            "report-relative source adjudication failed; preserving primary verdict",
-            extra={"failure_code": exc.failure_code},
-        )
-        failed_stage_usage = combined_report_relative_usage()
-        return SourceClosureReviewResult(
-            review=primary_result.review,
-            usage=(
-                primary_result.usage
-                if failed_stage_usage is None
-                else _combine_usage(
-                    primary_result.usage,
-                    failed_stage_usage,
-                    request.call_id,
-                )
-            ),
-            # "used" is attempt-scoped, not a claim that a valid narrow
-            # verdict existed. Do not recursively reopen this optional stage
-            # after the same role performs the one complete re-selection.
-            report_relative_adjudication_used=True,
-        )
-    return SourceClosureReviewResult(
-        review=report_relative_result.review,
-        usage=_combine_usage(
-            primary_result.usage,
-            report_relative_result.usage,
-            request.call_id,
-        ),
-        report_relative_adjudication_used=(
-            report_relative_result.report_relative_adjudication_used
-        ),
     )
 
 
@@ -6102,591 +5711,16 @@ async def review_candidate_external_proposition_coverage(
     source_ref_aliases: SourceRefAliasTable | None = None,
     effect_bearing_only: bool = False,
 ) -> SourceClosureReviewResult:
-    """Give one authority exclusive judgment over the visible proposition set."""
+    """Deterministic declared-claim check. Inventory is not a model call."""
 
-    material = _prepare_source_closure_review_material(
+    del inventory_model, authority_reviewer, report_relative_reviewer
+    return await _deterministic_declared_claim_review(
         request=request,
         raw=raw,
         identity_frame=identity_frame,
         model_visible_context_json=model_visible_context_json,
         source_ref_aliases=source_ref_aliases,
-        include_visible_authorities=True,
         effect_bearing_only=effect_bearing_only,
-    )
-    if material.source_evidence is None:
-        return SourceClosureReviewResult(review=None, usage=None)
-
-    diagnostic_provider_attempts: list[tuple[Literal["inventory", "coverage"], str]] = []
-    invalid_inventory_wire: _InvalidCandidateExternalInventoryWire | None = None
-    last_valid_inventory_raw: str | None = None
-    inventory_wire_invalid = False
-
-    async def inventory_once() -> tuple[
-        _CandidateExternalPropositionInventory, ModelUsageProvenance | None
-    ]:
-        nonlocal invalid_inventory_wire, inventory_wire_invalid, last_valid_inventory_raw
-        inventory_wire_invalid = False
-        previous_invalid = invalid_inventory_wire
-        captured: list[tuple[str, ModelUsageProvenance | None]] = []
-        try:
-            inventory_result, usage = await _inventory_candidate_external_propositions(
-                inventory_model=inventory_model,
-                request=request,
-                draft=material.draft,
-                typed_recent_dialogue_proof=material.typed_recent_dialogue_proof,
-                invalid_wire=invalid_inventory_wire,
-                captured_provider_result=captured,
-            )
-        except _CandidateExternalInventoryWireError as exc:
-            diagnostic_provider_attempts.extend(
-                ("inventory", reviewed_raw) for reviewed_raw, _usage in captured
-            )
-            inventory_wire_invalid = True
-            if captured:
-                reviewed_raw, reviewed_usage = captured[-1]
-                invalid_inventory_wire = _InvalidCandidateExternalInventoryWire(
-                    raw=reviewed_raw,
-                    error_code=exc.code,
-                    field=exc.field,
-                    usage=reviewed_usage,
-                )
-            raise
-        diagnostic_provider_attempts.extend(
-            ("inventory", reviewed_raw) for reviewed_raw, _usage in captured
-        )
-        if captured:
-            last_valid_inventory_raw = captured[-1][0]
-        if previous_invalid is not None and previous_invalid.usage is not None:
-            usage = _combine_usage(previous_invalid.usage, usage, request.call_id)
-        # A successful strict-wire replacement closes that structural
-        # failure. It must not consume the separate semantic budget that lets
-        # Coverage report an incomplete decomposition once.
-        invalid_inventory_wire = None
-        return inventory_result, usage
-
-    try:
-        inventory, inventory_usage = await run_validation_review(
-            inventory_once,
-            timeout_seconds=_SOURCE_CLOSURE_REVIEW_TIMEOUT_SECONDS,
-        )
-    except ValidationTechnicalFailure as exc:
-        if (
-            exc.failure_code == "source_review_exception"
-            and inventory_wire_invalid
-            and invalid_inventory_wire is not None
-        ):
-            _record_candidate_external_wire_failure(
-                raw_candidate=raw,
-                stage="inventory",
-                code=invalid_inventory_wire.error_code,
-                field=invalid_inventory_wire.field,
-                provider_attempts=tuple(diagnostic_provider_attempts),
-            )
-            raise ValidationTechnicalFailure("inventory_invalid") from exc
-        raise
-
-    exact_current_report_source_refs = frozenset(
-        source_ref
-        for entry in material.source_evidence.get("entries", ())
-        if isinstance(entry, dict) and entry.get("kind") == "current_counterpart_report"
-        for source_ref in entry.get("source_refs", ())
-        if isinstance(source_ref, str)
-    )
-    dialogue_source_refs = frozenset(
-        proof.dialogue_ref for proof in material.typed_recent_dialogue_proof
-    )
-    evidence_source_refs = frozenset(
-        source_ref
-        for entry in material.source_evidence.get("entries", ())
-        if isinstance(entry, dict)
-        for source_ref in entry.get("source_refs", ())
-        if isinstance(source_ref, str)
-    )
-    declared_world_claim_source_refs = (
-        frozenset(
-            source_ref
-            for source_ref in material.source_evidence.get("required_source_refs", ())
-            if isinstance(source_ref, str)
-        )
-        - dialogue_source_refs
-    )
-    pinned_context_authority_source_refs = frozenset(
-        source_ref
-        for entry in material.source_evidence.get("entries", ())
-        if isinstance(entry, dict)
-        and (
-            entry.get("kind") == "identity_source"
-            or (
-                entry.get("kind") == "pinned_context_item"
-                and any(
-                    entry.get("lane") == lane and entry.get("authority") == authority
-                    for lane, authority in _VISIBLE_PINNED_CONTEXT_AUTHORITIES
-                )
-            )
-        )
-        for source_ref in entry.get("source_refs", ())
-        if isinstance(source_ref, str)
-    )
-    # Dialogue records need candidate-local wire indexes so Coverage can cite
-    # them. The complete evidence table is visible so each dedicated relation
-    # can cite its own authority, but the parser separately restricts generic
-    # declared-world-claim coverage to refs the authored draft actually placed
-    # in ``world_claims``. A visible report, identity, relationship, or dialogue
-    # authority therefore cannot be laundered merely by changing the relation
-    # label.
-    source_ref_table = tuple(sorted(evidence_source_refs | dialogue_source_refs))
-
-    async def coverage_round(
-        current_inventory: _CandidateExternalPropositionInventory,
-    ) -> tuple[_CandidateExternalCoverageAssessment, ModelUsageProvenance | None]:
-        negotiated_coverage_contract = _negotiated_candidate_external_coverage_contract(
-            current_inventory,
-            authority_reviewer=authority_reviewer,
-        )
-        messages = _candidate_external_coverage_messages(
-            material=material,
-            inventory=current_inventory,
-            negotiated_contract=negotiated_coverage_contract,
-            source_ref_table=source_ref_table,
-            exact_current_report_source_refs=exact_current_report_source_refs,
-        )
-        invalid_coverage_wire: _InvalidCandidateExternalCoverageWire | None = None
-        coverage_wire_invalid = False
-
-        async def coverage_once() -> tuple[
-            _CandidateExternalCoverageAssessment, ModelUsageProvenance | None
-        ]:
-            nonlocal invalid_coverage_wire, coverage_wire_invalid
-            coverage_wire_invalid = False
-            previous_invalid = invalid_coverage_wire
-            captured: list[tuple[str, ModelUsageProvenance | None]] = []
-            attempt_messages = (
-                messages
-                if invalid_coverage_wire is None
-                else _candidate_external_coverage_wire_reselection_messages(
-                    messages,
-                    invalid=invalid_coverage_wire,
-                )
-            )
-            try:
-                with model_call_scope("world_v2_candidate_external_proposition_coverage"):
-                    reviewed_raw, reviewed_usage = await _metered_review_call(
-                        _reviewer_for_wire_reselection(
-                            authority_reviewer,
-                            invalid_wire=invalid_coverage_wire,
-                        ),
-                        attempt_messages,
-                        temperature=0.0,
-                        audit_purpose="source_coverage_v5",
-                    )
-                diagnostic_provider_attempts.append(("coverage", reviewed_raw))
-                captured.append((reviewed_raw, reviewed_usage))
-                normalized_raw, contract_normalized = (
-                    _canonicalize_missing_candidate_coverage_contract(
-                        reviewed_raw,
-                        negotiated_contract=negotiated_coverage_contract,
-                    )
-                )
-                if contract_normalized:
-                    assert negotiated_coverage_contract is not None
-                    emit_source_closure_wire_normalization_trace(
-                        raw_candidate=raw,
-                        raw_wire=reviewed_raw,
-                        normalized_contract=negotiated_coverage_contract,
-                    )
-                assessment = _parse_candidate_external_coverage(
-                    normalized_raw,
-                    review_propositions=current_inventory.review_propositions,
-                    inventory_propositions=current_inventory.propositions,
-                    visible_beat_texts=tuple(beat.text for beat in material.draft.beats),
-                    source_ref_table=source_ref_table,
-                    declared_world_claim_source_refs=(declared_world_claim_source_refs),
-                    pinned_context_authority_source_refs=(pinned_context_authority_source_refs),
-                    exact_current_report_source_refs=(exact_current_report_source_refs),
-                    typed_recent_dialogue_proof=(material.typed_recent_dialogue_proof),
-                    allow_private_continuity=current_inventory.legacy_wire,
-                )
-            except _CandidateExternalCoverageWireError as exc:
-                coverage_wire_invalid = True
-                if captured:
-                    reviewed_raw, reviewed_usage = captured[-1]
-                    invalid_coverage_wire = _InvalidCandidateExternalCoverageWire(
-                        raw=reviewed_raw,
-                        error_code=exc.code,
-                        field=exc.field,
-                        usage=reviewed_usage,
-                    )
-                raise
-            if previous_invalid is not None and previous_invalid.usage is not None:
-                reviewed_usage = _combine_usage(
-                    previous_invalid.usage,
-                    reviewed_usage,
-                    request.call_id,
-                )
-            return assessment, reviewed_usage
-
-        try:
-            return await run_validation_review(
-                coverage_once,
-                timeout_seconds=_SOURCE_CLOSURE_REVIEW_TIMEOUT_SECONDS,
-            )
-        except ValidationTechnicalFailure as exc:
-            if (
-                exc.failure_code == "source_review_exception"
-                and coverage_wire_invalid
-                and invalid_coverage_wire is not None
-            ):
-                _record_candidate_external_wire_failure(
-                    raw_candidate=raw,
-                    stage="coverage",
-                    code=invalid_coverage_wire.error_code,
-                    field=invalid_coverage_wire.field,
-                    provider_attempts=tuple(diagnostic_provider_attempts),
-                )
-                raise ValidationTechnicalFailure("coverage_invalid") from exc
-            raise
-
-    if not inventory.review_propositions and not inventory.visible_authority_exhaustive:
-        emit_source_closure_verdict_trace(
-            raw_candidate=raw,
-            propositions=inventory.propositions,
-            coverage_findings=(),
-        )
-        return SourceClosureReviewResult(review=None, usage=inventory_usage)
-
-    assessment, coverage_usage = await coverage_round(inventory)
-    combined_usage = _combine_usage(inventory_usage, coverage_usage, request.call_id)
-    assessment, conflict_usage = await _resolve_candidate_semantic_authority_conflicts(
-        inventory_model=inventory_model,
-        material=material,
-        inventory=inventory,
-        assessment=assessment,
-        request=request,
-    )
-    if conflict_usage is not None:
-        combined_usage = _combine_usage(combined_usage, conflict_usage, request.call_id)
-
-    if (
-        not assessment.inventory_complete
-        and assessment.missing_findings
-        and assessment.missing_already_in_inventory
-    ):
-        emit_source_closure_verdict_trace(
-            raw_candidate=raw,
-            propositions=inventory.propositions,
-            coverage_findings=assessment.missing_findings,
-            coverage_outcome="incomplete",
-        )
-        return SourceClosureReviewResult(
-            review=_ContextualClaimSupportReview(
-                decision="unsupported",
-                visible_text_failures=("undeclared_external_assertion",),
-                visible_findings=tuple(
-                    SourceClosureVisibleFinding(
-                        category="undeclared_external_assertion",
-                        visible_span=finding.locator.text,
-                        claim_index=None,
-                        source_relation="unclosed",
-                        source_refs=(),
-                    )
-                    for finding in assessment.missing_findings
-                ),
-                unclosed_semantic_role_counts=_count_unclosed_semantic_roles(
-                    tuple(assessment.missing_semantic_roles)
-                ),
-                brief_reason=(
-                    "inventory and coverage independently retained the exact "
-                    "source-relevant coordinate without support"
-                ),
-            ),
-            usage=combined_usage,
-            visible_authority_exhaustive=True,
-            visible_authority_terminal_rejection=True,
-        )
-
-    if inventory.visible_authority_exhaustive and not assessment.inventory_complete:
-        if last_valid_inventory_raw is None:
-            raise ValidationTechnicalFailure("inventory_invalid")
-        completeness_missing_findings = tuple(
-            (finding.locator, semantic_role)
-            for finding, semantic_role in zip(
-                assessment.missing_findings,
-                assessment.missing_semantic_roles,
-                strict=True,
-            )
-        )
-        # The authority has made a valid semantic completeness rejection. Open
-        # the candidate's existing one-shot re-selection phase before asking
-        # for the replacement inventory, so that replacement, its second
-        # Coverage verdict, and any resulting same-role expression
-        # re-selection/final review all share one absolute deadline. A later
-        # call to ``begin_validation_reselection_recovery`` only observes this
-        # same phase; it cannot renew it.
-        if not begin_validation_reselection_recovery():
-            raise ValidationTechnicalFailure("source_review_timeout")
-        completeness_timeout = fit_secondary_call_timeout(_SOURCE_CLOSURE_REVIEW_TIMEOUT_SECONDS)
-        if completeness_timeout is None:
-            raise ValidationTechnicalFailure("source_review_timeout")
-        captured_reselection: list[tuple[str, ModelUsageProvenance | None]] = []
-        try:
-            # This outer bound is the remaining shared validation-phase
-            # deadline, so its cancellation is caller/phase cancellation. The
-            # nested Inventory call still applies its own configured
-            # ``provider_timeout`` through ``complete_with_timeout``.
-            inventory, reselection_usage = await asyncio.wait_for(
-                _inventory_candidate_external_propositions(
-                    inventory_model=inventory_model,
-                    request=request,
-                    draft=material.draft,
-                    typed_recent_dialogue_proof=material.typed_recent_dialogue_proof,
-                    completeness_reselection=True,
-                    completeness_previous_raw=last_valid_inventory_raw,
-                    completeness_missing_findings=completeness_missing_findings,
-                    captured_provider_result=captured_reselection,
-                ),
-                timeout=completeness_timeout,
-            )
-            diagnostic_provider_attempts.extend(
-                ("inventory", reviewed_raw) for reviewed_raw, _usage in captured_reselection
-            )
-        except asyncio.CancelledError:
-            raise
-        except TimeoutError as exc:
-            raise ValidationTechnicalFailure("source_review_timeout") from exc
-        except _CandidateExternalInventoryWireError as exc:
-            diagnostic_provider_attempts.extend(
-                ("inventory", reviewed_raw) for reviewed_raw, _usage in captured_reselection
-            )
-            _record_candidate_external_wire_failure(
-                raw_candidate=raw,
-                stage="inventory",
-                code=exc.code,
-                field=exc.field,
-                provider_attempts=tuple(diagnostic_provider_attempts),
-            )
-            raise ValidationTechnicalFailure("inventory_invalid") from exc
-        except Exception as exc:
-            raise ValidationTechnicalFailure("source_review_exception") from exc
-        combined_usage = _combine_usage(
-            combined_usage,
-            reselection_usage,
-            request.call_id,
-        )
-        assessment, second_coverage_usage = await coverage_round(inventory)
-        combined_usage = _combine_usage(
-            combined_usage,
-            second_coverage_usage,
-            request.call_id,
-        )
-        if not assessment.inventory_complete:
-            if inventory.wire_contract == "candidate-external-proposition-inventory.5":
-                emit_source_closure_verdict_trace(
-                    raw_candidate=raw,
-                    propositions=inventory.propositions,
-                    coverage_findings=assessment.missing_findings,
-                    coverage_outcome="incomplete",
-                )
-                logger.warning(
-                    "candidate source inventory remained semantically incomplete",
-                    extra={
-                        "candidate_sha256": hashlib.sha256(raw.encode("utf-8")).hexdigest(),
-                    },
-                )
-                return SourceClosureReviewResult(
-                    review=_ContextualClaimSupportReview(
-                        decision="unsupported",
-                        visible_text_failures=("undeclared_external_assertion",),
-                        visible_findings=tuple(
-                            SourceClosureVisibleFinding(
-                                category="undeclared_external_assertion",
-                                visible_span=finding.locator.text,
-                                claim_index=None,
-                                source_relation="unclosed",
-                                source_refs=(),
-                            )
-                            for finding in assessment.missing_findings
-                        ),
-                        unclosed_semantic_role_counts=_count_unclosed_semantic_roles(
-                            tuple(assessment.missing_semantic_roles)
-                        ),
-                        brief_reason=(
-                            "source authority retained an incomplete candidate inventory"
-                        ),
-                    ),
-                    usage=combined_usage,
-                    visible_authority_exhaustive=False,
-                    visible_authority_terminal_rejection=True,
-                )
-            _record_candidate_external_wire_failure(
-                raw_candidate=raw,
-                stage="inventory",
-                code="decomposition_incomplete",
-                field="propositions",
-                provider_attempts=tuple(diagnostic_provider_attempts),
-            )
-            raise ValidationTechnicalFailure("inventory_invalid")
-        assessment, second_conflict_usage = await _resolve_candidate_semantic_authority_conflicts(
-            inventory_model=inventory_model,
-            material=material,
-            inventory=inventory,
-            assessment=assessment,
-            request=request,
-        )
-        if second_conflict_usage is not None:
-            combined_usage = _combine_usage(
-                combined_usage,
-                second_conflict_usage,
-                request.call_id,
-            )
-
-    coverage_findings = assessment.findings
-    emit_source_closure_verdict_trace(
-        raw_candidate=raw,
-        propositions=inventory.propositions,
-        coverage_findings=coverage_findings,
-    )
-    unclosed = tuple(finding for finding in coverage_findings if finding.decision == "unclosed")
-    role_by_locator = {
-        proposition.locator.identity(): proposition.semantic_role
-        for proposition in inventory.review_propositions
-    }
-    unclosed_roles = tuple(role_by_locator.get(finding.locator.identity()) for finding in unclosed)
-    review = (
-        None
-        if not unclosed
-        else _ContextualClaimSupportReview(
-            decision="unsupported",
-            visible_text_failures=("undeclared_external_assertion",),
-            visible_findings=tuple(
-                SourceClosureVisibleFinding(
-                    category="undeclared_external_assertion",
-                    visible_span=finding.locator.text,
-                    claim_index=None,
-                    source_relation="unclosed",
-                    source_refs=(),
-                )
-                for finding in unclosed
-            ),
-            unclosed_semantic_role_counts=_count_unclosed_semantic_roles(unclosed_roles),
-            brief_reason=("candidate external-proposition coverage retained unclosed locator"),
-        )
-    )
-    exact_current_report = next(
-        (
-            entry
-            for entry in material.source_evidence.get("entries", ())
-            if isinstance(entry, dict) and entry.get("kind") == "current_counterpart_report"
-        ),
-        None,
-    )
-    narrow_report_relative_eligible = (
-        review is not None
-        and report_relative_reviewer is not None
-        and inventory.wire_contract == "candidate-external-proposition-inventory.5"
-        and exact_current_report is not None
-        and bool(exact_current_report_source_refs)
-        and bool(unclosed_roles)
-        and all(
-            role
-            in {
-                "immediate_private_state",
-                "source_bearing_private_episode",
-                "embedded_external_proposition",
-                "standalone_external_proposition",
-            }
-            for role in unclosed_roles
-        )
-    )
-    if narrow_report_relative_eligible:
-        report_relative_invalid_wire: _InvalidSourceClosureReviewerWire | None = None
-        report_relative_attempt_usages: list[ModelUsageProvenance | None] = []
-
-        def combined_report_relative_usage() -> ModelUsageProvenance | None:
-            if not report_relative_attempt_usages:
-                return None
-            narrow_usage = report_relative_attempt_usages[0]
-            for attempt_usage in report_relative_attempt_usages[1:]:
-                narrow_usage = _combine_usage(
-                    narrow_usage,
-                    attempt_usage,
-                    request.call_id,
-                )
-            return narrow_usage
-
-        async def report_relative_review_once() -> SourceClosureReviewResult:
-            nonlocal report_relative_invalid_wire
-            captured: list[tuple[str, ModelUsageProvenance | None]] = []
-            try:
-                result = await _adjudicate_report_relative_findings(
-                    reviewer=_reviewer_for_wire_reselection(
-                        report_relative_reviewer,
-                        invalid_wire=report_relative_invalid_wire,
-                    ),
-                    review=review,
-                    visible_text=material.visible_text,
-                    exact_current_report=exact_current_report,
-                    exact_current_report_source_refs=exact_current_report_source_refs,
-                    typed_recent_dialogue_proof=material.typed_recent_dialogue_proof,
-                    visible_finding_semantic_roles=unclosed_roles,
-                    invalid_wire=report_relative_invalid_wire,
-                    captured_provider_result=captured,
-                )
-            except (TypeError, ValueError) as exc:
-                if captured:
-                    reviewed_raw, reviewed_usage = captured[-1]
-                    report_relative_attempt_usages.append(reviewed_usage)
-                    report_relative_invalid_wire = _InvalidSourceClosureReviewerWire(
-                        raw=reviewed_raw,
-                        failure_reason=str(exc),
-                        usage=reviewed_usage,
-                    )
-                raise
-            if captured:
-                report_relative_attempt_usages.append(captured[-1][1])
-            return SourceClosureReviewResult(
-                review=result.review,
-                usage=combined_report_relative_usage(),
-                report_relative_adjudication_used=True,
-                visible_authority_exhaustive=True,
-            )
-
-        try:
-            report_relative_result = await run_validation_review(
-                report_relative_review_once,
-                timeout_seconds=_SOURCE_CLOSURE_REVIEW_TIMEOUT_SECONDS,
-            )
-        except ValidationTechnicalFailure as exc:
-            logger.warning(
-                "candidate report-relative adjudication failed; preserving coverage verdict",
-                extra={"failure_code": exc.failure_code},
-            )
-            narrow_usage = combined_report_relative_usage()
-            return SourceClosureReviewResult(
-                review=review,
-                usage=(
-                    combined_usage
-                    if narrow_usage is None
-                    else _combine_usage(combined_usage, narrow_usage, request.call_id)
-                ),
-                report_relative_adjudication_used=True,
-                visible_authority_exhaustive=True,
-            )
-        return SourceClosureReviewResult(
-            review=report_relative_result.review,
-            usage=_combine_usage(
-                combined_usage,
-                report_relative_result.usage,
-                request.call_id,
-            ),
-            report_relative_adjudication_used=True,
-            visible_authority_exhaustive=True,
-        )
-    return SourceClosureReviewResult(
-        review=review,
-        usage=combined_usage,
-        visible_authority_exhaustive=(
-            inventory.visible_authority_exhaustive and assessment.inventory_complete
-        ),
     )
 
 
@@ -7043,9 +6077,10 @@ async def _review_expression_with_visible_source_proof(
     source_ref_aliases: SourceRefAliasTable | None,
     effect_bearing_only: bool,
 ) -> SourceClosureReviewResult:
-    """Run one exhaustive compact authority over the complete visible surface."""
+    """Deterministic declared-claim check. No second model."""
 
-    material = _prepare_source_closure_review_material(
+    del reviewer
+    return await _deterministic_declared_claim_review(
         request=request,
         raw=raw,
         identity_frame=identity_frame,
@@ -7053,161 +6088,6 @@ async def _review_expression_with_visible_source_proof(
         source_ref_aliases=source_ref_aliases,
         effect_bearing_only=effect_bearing_only,
     )
-    if material.source_evidence is None:
-        return SourceClosureReviewResult(
-            review=None,
-            usage=None,
-            visible_authority_exhaustive=True,
-        )
-    # Reaction, sticker, and typing transports carry only capability-pinned
-    # opaque tokens; they cannot contain an external proposition.  Review the
-    # complete ordered textual surfaces and leave those non-text transports to
-    # their existing deterministic capability validation.  A mixed text +
-    # reaction expression must never send ``None`` into the semantic protocol.
-    visible_beats = tuple(
-        beat.text for beat in material.draft.beats if beat.text is not None
-    )
-    source_references = compact_source_reference_table(material.source_evidence)
-    source_refs = tuple(str(row["source_ref"]) for row in source_references)
-    world_claims = tuple(
-        {
-            "claim_index": index,
-            **claim.model_dump(mode="json"),
-        }
-        for index, claim in enumerate(material.draft.world_claims)
-    )
-    invalid_reason: VisibleSourceClosureWireFailure | None = None
-    preceding_usage: ModelUsageProvenance | None = None
-    last_identity: _ProviderInvocationIdentity | None = None
-    last_model_id: str | None = None
-    last_model_version: str | None = None
-    last_usage: ModelUsageProvenance | None = None
-
-    async def proof_once() -> SourceClosureReviewResult:
-        nonlocal invalid_reason, preceding_usage
-        nonlocal last_identity, last_model_id, last_model_version, last_usage
-        messages = visible_source_closure_messages(
-            visible_beats=visible_beats,
-            world_claims=world_claims,
-            source_references=source_references,
-            invalid_reason=invalid_reason,
-        )
-        selected_reviewer = _reviewer_for_wire_reselection(
-            reviewer,
-            invalid_wire=invalid_reason,
-        )
-        request_contract = _reviewer_provider_request_contract(selected_reviewer)
-        last_identity = _provider_invocation_identity(
-            parent_call_id=request.call_id,
-            purpose="visible_source_closure_proof",
-            messages=messages,
-            temperature=0.0,
-            tools=request_contract[0],
-            tool_choice=request_contract[1],
-            tool_contract_identity=request_contract[2],
-        )
-        last_model_id = (
-            str(getattr(selected_reviewer, "model", "")).strip()
-            or type(selected_reviewer).__name__
-        )
-        last_model_version = (
-            str(getattr(selected_reviewer, "VERSION", "")).strip()
-            or VISIBLE_SOURCE_CLOSURE_CONTRACT
-        )
-        try:
-            reviewed_raw, usage = await _metered_review_call(
-                selected_reviewer,
-                messages,
-                temperature=0.0,
-                audit_purpose="visible_source_closure_proof_v1",
-            )
-            last_usage = usage
-            proof = parse_visible_source_closure(
-                reviewed_raw,
-                visible_beats=visible_beats,
-                source_ref_kinds=tuple(
-                    row.get("kind") if isinstance(row.get("kind"), str) else None
-                    for row in source_references
-                ),
-                source_ref_subject_roles=tuple(
-                    row.get("subject_role")
-                    if isinstance(row.get("subject_role"), str)
-                    else None
-                    for row in source_references
-                ),
-            )
-        except VisibleSourceClosureWireFailure as exc:
-            logger.warning(
-                "visible source closure wire retry code=%s beat_index=%s field=%s",
-                exc.code,
-                exc.beat_index,
-                exc.field,
-            )
-            if last_usage is not None:
-                preceding_usage = (
-                    last_usage
-                    if preceding_usage is None
-                    else _combine_usage(preceding_usage, last_usage, request.call_id)
-                )
-            invalid_reason = exc
-            raise
-        combined_usage = (
-            usage
-            if preceding_usage is None
-            else _combine_usage(preceding_usage, usage, request.call_id)
-        )
-        unclosed = tuple(segment for segment in proof.segments if segment.decision == "unclosed")
-        if not unclosed:
-            return SourceClosureReviewResult(
-                review=None,
-                usage=combined_usage,
-                visible_authority_exhaustive=True,
-            )
-        roles = tuple(segment.semantic_role for segment in unclosed)
-        return SourceClosureReviewResult(
-            review=_ContextualClaimSupportReview(
-                decision="unsupported",
-                visible_text_failures=("undeclared_external_assertion",),
-                visible_findings=tuple(
-                    SourceClosureVisibleFinding(
-                        category="undeclared_external_assertion",
-                        visible_span=segment.locator.text,
-                        claim_index=None,
-                        source_relation="unclosed",
-                        source_refs=tuple(
-                            source_refs[index] for index in segment.source_ref_indexes
-                        ),
-                    )
-                    for segment in unclosed
-                ),
-                unclosed_semantic_role_counts=_count_unclosed_semantic_roles(roles),
-                brief_reason="compact visible source proof retained unclosed segment",
-            ),
-            usage=combined_usage,
-            visible_authority_exhaustive=True,
-            visible_authority_terminal_rejection=(
-                "source_bearing_private_episode" in roles
-            ),
-        )
-
-    try:
-        return await run_validation_review(
-            proof_once,
-            timeout_seconds=_SOURCE_CLOSURE_REVIEW_TIMEOUT_SECONDS,
-        )
-    except ValidationTechnicalFailure as exc:
-        if exc.model_call_id is not None or last_identity is None:
-            raise
-        assert last_model_id is not None
-        assert last_model_version is not None
-        raise ValidationTechnicalFailure(
-            exc.failure_code,
-            model_call_id=last_identity.model_call_id,
-            request_hash=last_identity.request_hash,
-            attempted_model_id=last_model_id,
-            attempted_model_version=last_model_version,
-            usage=preceding_usage or last_usage,
-        ) from exc
 
 
 async def review_expression_with_candidate_external_coverage(
@@ -7224,257 +6104,22 @@ async def review_expression_with_candidate_external_coverage(
     effect_bearing_only: bool = False,
     review_claim_free_candidates: bool = False,
 ) -> SourceClosureReviewResult:
-    """Use one visible authority, optionally auditing claim-free visible text.
+    """Deterministic declared-claim check. One-shot: no second model."""
 
-    The compact visible-beat contract is terminal whenever the installed
-    reviewer supports it: its verdict covers both prose and declared claims,
-    and its typed transport/wire failure propagates to the same-character
-    correction lifecycle.  It can never reactivate the historical full-V7
-    chat route. Production composition rejects Inventory/full-V7 injection;
-    the remaining parsers exist only for historical replay and low-level
-    migration fixtures, not as an availability fallback.
-    """
-
-    if _strict_contract_supported(reviewer, VISIBLE_SOURCE_CLOSURE_CONTRACT):
-        return await _review_expression_with_visible_source_proof(
-            reviewer=reviewer,
-            request=request,
-            raw=raw,
-            identity_frame=identity_frame,
-            model_visible_context_json=model_visible_context_json,
-            source_ref_aliases=source_ref_aliases,
-            effect_bearing_only=effect_bearing_only,
-        )
-
-    if inventory_model is None:
-        # Inventory V5 is an optional semantic decomposition optimization.  A
-        # production chat lane must still be able to audit omitted factual
-        # clauses when that optimization is unavailable; otherwise a claim-free
-        # draft can smuggle an external first-person episode through a zero-call
-        # pass.  Historical fixtures keep the declared-claims-only behavior by
-        # leaving the explicit production switch off.
-        return await review_expression_source_closure(
-            reviewer=reviewer,
-            report_relative_reviewer=report_relative_reviewer,
-            request=request,
-            raw=raw,
-            identity_frame=identity_frame,
-            model_visible_context_json=model_visible_context_json,
-            source_ref_aliases=source_ref_aliases,
-            allow_report_relative_adjudication=allow_report_relative_adjudication,
-            declared_claims_only=not review_claim_free_candidates,
-            effect_bearing_only=effect_bearing_only,
-        )
-
-    inventory_v5_available = _strict_contract_supported(
-        inventory_model,
-        "candidate-external-proposition-inventory.5",
-    )
-    coverage_v5_available = _strict_contract_supported(
+    del (
         reviewer,
-        "candidate-external-proposition-coverage.5",
+        inventory_model,
+        report_relative_reviewer,
+        allow_report_relative_adjudication,
+        review_claim_free_candidates,
     )
-    if inventory_v5_available and not coverage_v5_available:
-        # Inventory is non-verdict semantic decomposition, while V7 is the
-        # source verdict. Start both independent roles together so the normal
-        # source-free path pays the slower RTT rather than their sum. No result
-        # is released from Inventory alone: if it locates a source-relevant
-        # proposition that the first verdict may have omitted, one enriched V7
-        # pass remains mandatory before acceptance.
-        guard_outcome, initial_outcome = await _run_inventory_guard_and_initial_review(
-            inventory_guard=_inventory_source_declaration_guard(
-                inventory_model=inventory_model,
-                request=request,
-                raw=raw,
-                identity_frame=identity_frame,
-                model_visible_context_json=model_visible_context_json,
-                source_ref_aliases=source_ref_aliases,
-                effect_bearing_only=effect_bearing_only,
-            ),
-            initial_review=review_expression_source_closure(
-                reviewer=reviewer,
-                report_relative_reviewer=report_relative_reviewer,
-                request=request,
-                raw=raw,
-                identity_frame=identity_frame,
-                model_visible_context_json=model_visible_context_json,
-                source_ref_aliases=source_ref_aliases,
-                allow_report_relative_adjudication=allow_report_relative_adjudication,
-                effect_bearing_only=effect_bearing_only,
-            ),
-        )
-        guard_failure = guard_outcome if isinstance(guard_outcome, BaseException) else None
-        initial_failure = initial_outcome if isinstance(initial_outcome, BaseException) else None
-        if guard_failure is not None and not isinstance(guard_failure, ValidationTechnicalFailure):
-            raise guard_failure
-        if initial_failure is not None:
-            if not isinstance(initial_failure, ValidationTechnicalFailure):
-                raise initial_failure
-            if guard_failure is not None and _caused_by_inventory_availability_exhaustion(
-                guard_failure
-            ):
-                _record_inventory_full_review_fallback(inventory_model, "started")
-                _record_inventory_full_review_fallback(inventory_model, "failed")
-            raise initial_failure
-
-        assert isinstance(initial_outcome, SourceClosureReviewResult)
-        initial_rejected = (
-            initial_outcome.review is not None and initial_outcome.review.decision == "unsupported"
-        )
-        if initial_rejected:
-            # A negative V7 verdict is monotonic and safe even when the
-            # optional Inventory role failed.  Never spend another provider
-            # RTT trying to weaken an already-complete rejection.
-            if guard_failure is not None and _caused_by_inventory_availability_exhaustion(
-                guard_failure
-            ):
-                _record_inventory_full_review_fallback(inventory_model, "started")
-                _record_inventory_full_review_fallback(inventory_model, "succeeded")
-            if isinstance(guard_outcome, _InventorySourceDeclarationGuardResult):
-                return _with_combined_source_review_usage(
-                    result=initial_outcome,
-                    preceding_usage=guard_outcome.usage,
-                    call_id=request.call_id,
-                )
-            return initial_outcome
-
-        if guard_failure is not None:
-            if not _caused_by_inventory_availability_exhaustion(guard_failure):
-                raise guard_failure
-            _record_inventory_full_review_fallback(inventory_model, "started")
-            # The full V7 result already completed in parallel against the
-            # same pinned candidate, so Inventory availability loss needs no
-            # second network call.
-            _record_inventory_full_review_fallback(inventory_model, "succeeded")
-            return initial_outcome
-
-        assert isinstance(guard_outcome, _InventorySourceDeclarationGuardResult)
-        initial_with_inventory_usage = _with_combined_source_review_usage(
-            result=initial_outcome,
-            preceding_usage=guard_outcome.usage,
-            call_id=request.call_id,
-        )
-        if not _inventory_requires_enriched_source_review(guard_outcome.inventory):
-            return initial_with_inventory_usage
-
-        enriched_result = await review_expression_source_closure(
-            reviewer=reviewer,
-            report_relative_reviewer=report_relative_reviewer,
-            request=request,
-            raw=raw,
-            identity_frame=identity_frame,
-            model_visible_context_json=model_visible_context_json,
-            source_ref_aliases=source_ref_aliases,
-            allow_report_relative_adjudication=allow_report_relative_adjudication,
-            effect_bearing_only=effect_bearing_only,
-            candidate_inventory_decomposition=guard_outcome.inventory,
-        )
-        return _with_combined_source_review_usage(
-            result=enriched_result,
-            preceding_usage=initial_with_inventory_usage.usage,
-            call_id=request.call_id,
-        )
-
-    try:
-        coverage_result = await review_candidate_external_proposition_coverage(
-            inventory_model=inventory_model,
-            authority_reviewer=reviewer,
-            report_relative_reviewer=(
-                report_relative_reviewer if allow_report_relative_adjudication else None
-            ),
-            request=request,
-            raw=raw,
-            identity_frame=identity_frame,
-            model_visible_context_json=model_visible_context_json,
-            source_ref_aliases=source_ref_aliases,
-            effect_bearing_only=effect_bearing_only,
-        )
-    except ValidationTechnicalFailure as exc:
-        if not _caused_by_inventory_availability_exhaustion(exc):
-            raise
-        # Inventory V5 is an optimization.  Availability failure carries no
-        # semantic verdict, so preserve the authored candidate and same pinned
-        # Context while using the existing strict full proposition review.
-        _record_inventory_full_review_fallback(inventory_model, "started")
-        try:
-            fallback_result = await review_expression_source_closure(
-                reviewer=reviewer,
-                report_relative_reviewer=report_relative_reviewer,
-                request=request,
-                raw=raw,
-                identity_frame=identity_frame,
-                model_visible_context_json=model_visible_context_json,
-                source_ref_aliases=source_ref_aliases,
-                allow_report_relative_adjudication=allow_report_relative_adjudication,
-                effect_bearing_only=effect_bearing_only,
-            )
-        except BaseException:
-            _record_inventory_full_review_fallback(inventory_model, "failed")
-            raise
-        _record_inventory_full_review_fallback(inventory_model, "succeeded")
-        return fallback_result
-    coverage_rejected = (
-        coverage_result.review is not None and coverage_result.review.decision == "unsupported"
-    )
-    if coverage_result.visible_authority_terminal_rejection and coverage_rejected:
-        return coverage_result
-    if coverage_result.visible_authority_exhaustive:
-        if coverage_rejected:
-            return coverage_result
-        claim_result = await review_expression_source_closure(
-            reviewer=reviewer,
-            request=request,
-            raw=raw,
-            identity_frame=identity_frame,
-            model_visible_context_json=model_visible_context_json,
-            source_ref_aliases=source_ref_aliases,
-            allow_report_relative_adjudication=False,
-            declared_claims_only=True,
-            effect_bearing_only=effect_bearing_only,
-        )
-        return SourceClosureReviewResult(
-            review=claim_result.review,
-            usage=(
-                coverage_result.usage
-                if claim_result.usage is None
-                else _combine_usage(
-                    coverage_result.usage,
-                    claim_result.usage,
-                    request.call_id,
-                )
-            ),
-            report_relative_adjudication_used=(coverage_result.report_relative_adjudication_used),
-            visible_authority_exhaustive=True,
-        )
-
-    # A historical Inventory V2/V3 wire cannot prove exhaustive visible
-    # authority. Preserve its replay behavior by retaining the former full
-    # source review; strict Inventory V4 remains readable, while production
-    # capability negotiation requests V5.
-    primary_result = await review_expression_source_closure(
-        reviewer=reviewer,
-        report_relative_reviewer=report_relative_reviewer,
+    return await _deterministic_declared_claim_review(
         request=request,
         raw=raw,
         identity_frame=identity_frame,
         model_visible_context_json=model_visible_context_json,
         source_ref_aliases=source_ref_aliases,
-        allow_report_relative_adjudication=allow_report_relative_adjudication,
         effect_bearing_only=effect_bearing_only,
-    )
-    primary_rejected = (
-        primary_result.review is not None and primary_result.review.decision == "unsupported"
-    )
-    return SourceClosureReviewResult(
-        review=(
-            primary_result.review
-            if primary_rejected
-            else coverage_result.review
-            if coverage_rejected
-            else primary_result.review
-        ),
-        usage=_combine_usage(primary_result.usage, coverage_result.usage, request.call_id),
-        report_relative_adjudication_used=primary_result.report_relative_adjudication_used,
     )
 
 
@@ -7536,133 +6181,15 @@ async def review_expression_source_closure_appeal(
     model_visible_context_json: str | None = None,
     source_ref_aliases: SourceRefAliasTable | None = None,
 ) -> SourceClosureReviewResult:
-    """Re-adjudicate only the negative categories from one authored draft."""
+    """Deterministic declared-claim check. Appeal is not a second model call."""
 
-    disputes = _source_closure_disputes(disputed_review)
-    if not disputes["ci"] and not disputes["v"] and not disputes["p"]:
-        raise ValueError("source-closure appeal requires disputed categories")
-    material = _prepare_source_closure_review_material(
+    del reviewer, disputed_review
+    return await _deterministic_declared_claim_review(
         request=request,
         raw=raw,
         identity_frame=identity_frame,
         model_visible_context_json=model_visible_context_json,
         source_ref_aliases=source_ref_aliases,
-    )
-    draft = material.draft
-    visible_text = material.visible_text
-    private_state = draft.private_turn_state
-    if material.source_evidence is None:
-        raise ValueError("source-closure appeal requires reviewable expression material")
-    messages = [
-        {"role": "system", "content": _SOURCE_CLOSURE_APPEAL_SYSTEM},
-        {
-            "role": "user",
-            "content": json.dumps(
-                {
-                    "rejected_categories": disputes,
-                    "output_contract": {
-                        "contract": "source-closure-appeal.4",
-                        "ci": ("copy_rejected_categories.ci_unchanged_non_appealable"),
-                        "v": (
-                            "copy_subject_temporal_occurrence_status_categories_"
-                            "unchanged_and_keep_undeclared_only_if_still_external"
-                        ),
-                        "p": (
-                            "copy_subject_temporal_occurrence_status_categories_"
-                            "unchanged_and_keep_undeclared_only_if_still_external"
-                        ),
-                        "r": "optional_non_authoritative_diagnostic",
-                    },
-                    "visible_text": visible_text,
-                    "private_turn_state": (
-                        private_state.model_dump(mode="json") if private_state is not None else None
-                    ),
-                    "world_claims": tuple(
-                        {
-                            "claim_index": index,
-                            **claim.model_dump(mode="json"),
-                        }
-                        for index, claim in enumerate(draft.world_claims)
-                    ),
-                    "source_evidence": material.source_evidence,
-                },
-                ensure_ascii=False,
-                separators=(",", ":"),
-            ),
-        },
-    ]
-    invalid_wire: _InvalidSourceClosureReviewerWire | None = None
-
-    async def review_once() -> tuple[
-        _ContextualClaimSupportReview,
-        ModelUsageProvenance | None,
-    ]:
-        nonlocal invalid_wire
-        attempt_messages = (
-            messages
-            if invalid_wire is None
-            else _source_closure_wire_reselection_messages(
-                messages,
-                invalid=invalid_wire,
-            )
-        )
-        previous_invalid = invalid_wire
-        with model_call_scope("world_v2_expression_source_closure_appeal"):
-            reviewed_raw, reviewed_usage = await _metered_review_call(
-                _reviewer_for_wire_reselection(
-                    reviewer,
-                    invalid_wire=invalid_wire,
-                ),
-                attempt_messages,
-                temperature=0.0,
-            )
-        try:
-            appeal = _parse_contextual_claim_support_review(reviewed_raw)
-        except (TypeError, ValueError) as exc:
-            invalid_wire = _InvalidSourceClosureReviewerWire(
-                raw=reviewed_raw,
-                failure_reason=str(exc),
-                usage=reviewed_usage,
-            )
-            raise
-        stable_identity_source_refs = (
-            frozenset(companion_identity_source_refs(identity_frame).values())
-            if identity_frame is not None
-            else frozenset()
-        )
-        mechanically_invalid_claim_indexes = invalid_world_claim_source_indexes(
-            draft=draft,
-            request=request,
-            stable_identity_source_refs=stable_identity_source_refs,
-        )
-        try:
-            resolved = _resolve_source_closure_appeal(
-                appeal=appeal,
-                disputed_review=disputed_review,
-                mechanically_invalid_claim_indexes=mechanically_invalid_claim_indexes,
-            )
-        except (TypeError, ValueError) as exc:
-            invalid_wire = _InvalidSourceClosureReviewerWire(
-                raw=reviewed_raw,
-                failure_reason=str(exc),
-                usage=reviewed_usage,
-            )
-            raise
-        if previous_invalid is not None and previous_invalid.usage is not None:
-            reviewed_usage = _combine_usage(
-                previous_invalid.usage,
-                reviewed_usage,
-                request.call_id,
-            )
-        return resolved, reviewed_usage
-
-    appeal_review, usage = await run_validation_review(
-        review_once,
-        timeout_seconds=_SOURCE_CLOSURE_REVIEW_TIMEOUT_SECONDS,
-    )
-    return SourceClosureReviewResult(
-        review=appeal_review,
-        usage=usage,
     )
 
 
@@ -9436,7 +7963,6 @@ class _ExpressionDraftWire:
         semantic_boundary_reviewer: ChatCompletionModel | None = None,
         source_closure_reviewer: ChatCompletionModel | None = None,
         report_relative_reviewer: ChatCompletionModel | None = None,
-        candidate_external_proposition_inventory_model: ChatCompletionModel | None = None,
         review_claim_free_candidates: bool = False,
         source_closure_reselection_lane: SourceClosureReselectionLane | None = None,
         recovery_prompt_mode: Literal["ordinary", "contextual_failure"] = "ordinary",
@@ -9445,7 +7971,9 @@ class _ExpressionDraftWire:
         recovery_context_store: _ExpressionRecoveryContextStore | None = None,
         require_explicit_authored_decision_fields: bool = False,
         stream_generation_coordinator: _ExpressionStreamGenerationCoordinator | None = None,
+        **_unused: object,
     ) -> None:
+        del _unused
         if not 0.0 <= temperature <= 2.0:
             raise ValueError("proposal adapter temperature must be between 0 and 2")
         if recovery_prompt_mode not in {"ordinary", "contextual_failure"}:
@@ -9461,9 +7989,6 @@ class _ExpressionDraftWire:
         self._semantic_boundary_reviewer = semantic_boundary_reviewer
         self._source_closure_reviewer = source_closure_reviewer
         self._report_relative_reviewer = report_relative_reviewer
-        self._candidate_external_proposition_inventory_model = (
-            candidate_external_proposition_inventory_model
-        )
         self._review_claim_free_candidates = review_claim_free_candidates
         self._source_closure_reselection_lane = source_closure_reselection_lane
         self._recovery_prompt_mode = recovery_prompt_mode
@@ -10282,12 +8807,12 @@ class _ExpressionDraftWire:
             ):
                 return (
                     lane.reviewer,
-                    lane.inventory_model,
+                    None,
                     lane.report_relative_reviewer,
                 )
             return (
                 self._source_closure_reviewer,
-                self._candidate_external_proposition_inventory_model,
+                None,
                 self._report_relative_reviewer,
             )
 
@@ -10304,14 +8829,13 @@ class _ExpressionDraftWire:
                 provisional
                 or expression_episode_provider_slots_active()
                 or self._source_closure_reviewer is None
-                or self._candidate_external_proposition_inventory_model is None
                 or _sanitized_prior_correction(structural_violation) is None
             ):
                 return None, None
             try:
                 review_result = await review_expression_with_candidate_external_coverage(
                     reviewer=self._source_closure_reviewer,
-                    inventory_model=self._candidate_external_proposition_inventory_model,
+                    inventory_model=None,
                     report_relative_reviewer=self._report_relative_reviewer,
                     request=request,
                     raw=raw,
@@ -11766,13 +10290,14 @@ class _RoutedExpressionDraftWire:
         identity_frame: CompanionIdentityFrame | None = None,
         source_closure_reviewer: ChatCompletionModel | None = None,
         report_relative_reviewer: ChatCompletionModel | None = None,
-        candidate_external_proposition_inventory_model: ChatCompletionModel | None = None,
         review_claim_free_candidates: bool = False,
         source_closure_reselection_lane: SourceClosureReselectionLane | None = None,
         recall_coordinator: RecallCoordinator | None = None,
         recovery_context_store: _ExpressionRecoveryContextStore | None = None,
         require_explicit_authored_decision_fields: bool = False,
+        **_unused: object,
     ) -> None:
+        del _unused
         shared_recovery_contexts = recovery_context_store or _ExpressionRecoveryContextStore()
         shared_stream_generations = _ExpressionStreamGenerationCoordinator()
         self._stream_generation_coordinator = shared_stream_generations
@@ -11785,9 +10310,6 @@ class _RoutedExpressionDraftWire:
             semantic_boundary_reviewer=flash_model,
             source_closure_reviewer=source_closure_reviewer,
             report_relative_reviewer=report_relative_reviewer,
-            candidate_external_proposition_inventory_model=(
-                candidate_external_proposition_inventory_model
-            ),
             review_claim_free_candidates=review_claim_free_candidates,
             source_closure_reselection_lane=source_closure_reselection_lane,
             recall_coordinator=recall_coordinator,
@@ -11805,9 +10327,6 @@ class _RoutedExpressionDraftWire:
                 semantic_boundary_reviewer=flash_model,
                 source_closure_reviewer=source_closure_reviewer,
                 report_relative_reviewer=report_relative_reviewer,
-                candidate_external_proposition_inventory_model=(
-                    candidate_external_proposition_inventory_model
-                ),
                 review_claim_free_candidates=review_claim_free_candidates,
                 source_closure_reselection_lane=source_closure_reselection_lane,
                 recall_coordinator=recall_coordinator,

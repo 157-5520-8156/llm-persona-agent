@@ -810,9 +810,6 @@ def build_http_v2_capture_host(
         world_support_model=world_support_model,
         source_closure_model=source_closure_model,
         life_source_closure_model=life_source_closure_model,
-        candidate_external_proposition_inventory_model=(
-            candidate_external_proposition_inventory_model
-        ),
         model_id_prefix="http-v2",
     )
     _LOG.warning(
@@ -926,9 +923,7 @@ def build_http_v2_capture_host(
         # turns to retrieve accepted user facts.
         fact_model=background_model,
         proactive_source_closure_model=semantic_chat.proactive_source_closure_model,
-        proactive_candidate_external_proposition_inventory_model=(
-            semantic_chat.candidate_external_proposition_inventory_model
-        ),
+        proactive_candidate_external_proposition_inventory_model=None,
         # A scheduler-only, bounded selection over already legal activities.
         # Invalid provider output terminates the ecology wake fail-safe.
         npc_actor_model=background_model,

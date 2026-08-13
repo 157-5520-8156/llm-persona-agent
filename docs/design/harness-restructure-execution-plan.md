@@ -814,4 +814,14 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：本包不改 prompt。14 条历史 `ActionUnknown` 需部署后由 scheduler drain 查 `get_msg` 才能收敛；新账单行不应再出现 UNPRICED version。
 - **成本与延迟**：对账是只读 `get_msg`，不增加模型调用。价格表让非 DeepSeek 行从惩罚估算改成真价，预算门不再被虚高提前打满。
 - **剩余缺口**：审查双模型车道仍在（H1d 删除）；未知态的 expression plan 仍按当时的 unknown 终止，不回写 completed；¥/张照片与 ¥/条被引用记忆未做。
+- **commit**：`0784738e`
+
+### 2026-08-13 H1d 删除模型审查车道（裁决 7 / §12.10）
+
+- **红测**：`tests/world_v2/test_one_shot_review_lanes_removed.py` 要求生产 haystack 不再出现 review purpose 子串、三个 LLM 审查模块 `ModuleNotFoundError`、`semantic_chat_composition` 不构造 `SourceReviewAuthority(`、`life_review_identity.py` 仍在。
+- **改动**：删除 `structured_source_review_model.py` / `source_review_authority.py` / `visible_source_review_model.py`。可见聊天与主动联系不再安装第二模型审查；来源清单改已知 capsule refs 的确定性枚举。Life Development 停掉 `complete_json_object` 的审查 purpose，改走 `life_development_deterministic_closure.py`（冻结解析器只用于历史 ModelResult replay）。`structured_expression_reselection_model.py` 解开对审查模块的继承，只留严格 schema 构造器。`config.py` 六项审查/清单模型 Field 删除，不再构造客户端。用户覆盖：`life_review_identity.py` **保留**（`batch_invariants` / `life_development_source_closure` 依赖）。OpenAIMediaInspector 未动。
+- **测试**：one-shot 4 passed；character-tier 498 passed；`test_life_development_runtime.py` + `test_qq_c2c_host_migration.py` + one-shot 共 178 passed（host 资格改为 fail-closed / `one_shot.model_review_lanes_removed`，不再断言独立 reviewer ready）；冻结模块测试 `test_isolated_source_closure_trace.py` / `test_private_self_expression_audit.py` / `test_proposal_audit.py` 全绿（生产模块一行未改）；ruff 绿。
+- **生产证据**：本包不改 prompt。部署后 `world_v2_model_usage` 不应再出现 `life_development_source_closure_review` / `life_development_novel_origin_review` / `visible_source_closure_proof_v1` / `candidate_external_proposition_inventory` 新行；历史账本仍可 replay。
+- **成本与延迟**：每个可见回合与每次 life beat 少 1–2 次审查/清单模型调用；确定性核对在角色之后、不另开 provider。
+- **剩余缺口**：inbound_wire 里仍有无生产调用方的旧 inventory/coverage 辅助函数（H4 契约瘦身时可清）；isolated daemon / host 资格测试若仍断言旧 reviewer health，需随宿主包跟；H4 可见文本来源闭包尚未上；OpenAIMediaInspector 待用户批准。
 - **commit**：见本包提交。

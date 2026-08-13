@@ -554,38 +554,11 @@ class Settings(BaseSettings):
         alias="WORLD_V2_SOURCE_INVENTORY_LOCAL_MODEL",
         description="Retired Inventory compatibility model; not a production chat route.",
     )
-    world_v2_source_review_secondary_model: str = Field(
-        default="qwen/qwen-plus",
-        alias="WORLD_V2_SOURCE_REVIEW_SECONDARY_MODEL",
-    )
-    world_v2_source_review_fallback_model: str = Field(
-        # This is an independent truth boundary, not a character author.
-        default="gpt-4.1-mini",
-        alias="WORLD_V2_SOURCE_REVIEW_FALLBACK_MODEL",
-    )
-    world_v2_source_review_recovery_model: str = Field(
-        default="qwen/qwen-plus",
-        alias="WORLD_V2_SOURCE_REVIEW_RECOVERY_MODEL",
-        description="Retired visible-chat recovery reviewer compatibility value.",
-    )
-    world_v2_source_review_recovery_fallback_model: str = Field(
-        default="gpt-4.1-mini",
-        alias="WORLD_V2_SOURCE_REVIEW_RECOVERY_FALLBACK_MODEL",
-        description="Retired visible-chat recovery reviewer compatibility value.",
-    )
     world_v2_source_inventory_enabled: bool = Field(
         # Retained only for configuration/replay compatibility. Production
         # semantic chat rejects Inventory and uses the compact exhaustive guard.
         default=True,
         alias="WORLD_V2_SOURCE_INVENTORY_ENABLED",
-    )
-    world_v2_source_inventory_model: str = Field(
-        default="openai/gpt-5.4-nano",
-        alias="WORLD_V2_SOURCE_INVENTORY_MODEL",
-    )
-    world_v2_source_inventory_fallback_model: str = Field(
-        default="openai/gpt-5.4-mini",
-        alias="WORLD_V2_SOURCE_INVENTORY_FALLBACK_MODEL",
     )
     world_v2_source_inventory_timeout_seconds: float = Field(
         # Compatibility ceiling for the primary Inventory probe. Production

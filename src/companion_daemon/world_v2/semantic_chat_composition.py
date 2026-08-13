@@ -22,7 +22,6 @@ from companion_daemon.llm import (
     DeepSeekChatModel,
     OpenAICompatibleChatModel,
     ProviderCapacityGate,
-    ProviderCircuitBreaker,
     text_endpoint_capacity_marker_path,
 )
 
@@ -39,31 +38,12 @@ from .model_authority_identity import (
     possible_provider_lanes,
     provider_lane_sets_are_independent,
     semantic_authority_id,
-    transport_route_ids,
 )
 from .semantic_compute_router import SemanticComputeRouter
-from .source_review_authority import (
-    SOURCE_REVIEW_CALL_TIMEOUT_SECONDS,
-    SourceReviewAuthority,
-)
 from .source_closure_lane import SourceClosureReselectionLane
-from .structured_expression_reselection_model import (
-    EXPRESSION_SOURCE_RESELECTION_DIRECT_CONTRACT,
-)
 from .text_turn_endpoint import (
     ChatSemanticEndpointModel,
     TextTurnEndpointController,
-)
-from .structured_source_review_model import (
-    direct_openai_model_id,
-    audited_source_review_capability_evidence,
-    StrictOutputCapabilityEvidence,
-    StructuredSourceReviewModel,
-    _STRICT_SCHEMAS,
-)
-from .visible_source_review_model import (
-    VisibleSourceReviewModel,
-    audited_visible_source_verdict_capability_evidence,
 )
 
 
@@ -104,39 +84,6 @@ def unavailable_life_source_authority_health() -> dict[str, object]:
         "route_suppression": {},
         "transport_runtime": None,
     }
-
-
-@dataclass(frozen=True, slots=True)
-class _ConfiguredProviderLane:
-    """Allocation-free provider identity used by the production preflight."""
-
-    provider: str
-    base_url: str
-    model: str
-    semantic_authority_id: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class _ConfiguredReviewAuthority:
-    primary: object
-    secondary: object
-
-    def supports_strict_output_contract(self, contract: str) -> bool:
-        return contract in {
-            _REPORT_RELATIVE_REVIEW_CONTRACT,
-            _FULL_SOURCE_REVIEW_CONTRACT,
-        }
-
-
-def _direct_source_review_reasoning_effort(model: str) -> str:
-    """Return only the reasoning knob qualified for the exact direct route.
-
-    GPT-4.1/4o Chat Completions reject the argument entirely, while the
-    release-qualified GPT-5 mini review route uses ``minimal``. Unknown model
-    overrides therefore take the portable fail-closed path and omit the knob.
-    """
-
-    return "minimal" if direct_openai_model_id(model).casefold() == "gpt-5-mini" else ""
 
 
 def _validated_test_only_provider_capture_authority(
@@ -392,78 +339,6 @@ def _candidate_review_capability(
     )
 
 
-def _preflight_production_source_review(
-    *,
-    settings: Settings,
-    thinking_model: object | None,
-    source_closure_model: object | None,
-    character_authority_id: str | None = None,
-) -> None:
-    """Reject an unusable hard-boundary topology before allocating clients."""
-
-    deepseek_author = _ConfiguredProviderLane(
-        provider="deepseek",
-        base_url=settings.deepseek_base_url,
-        model=settings.deepseek_model,
-        semantic_authority_id=character_authority_id,
-    )
-    if thinking_model is not None:
-        if semantic_authority_id(thinking_model) != semantic_authority_id(
-            deepseek_author
-        ):
-            raise ValueError(
-                "compact source guard requires every Character author to use "
-                "the configured Flash checkpoint"
-            )
-    elif (
-        settings.deepseek_character_thinking_enabled
-        and settings.deepseek_character_thinking_model != settings.deepseek_model
-    ):
-        raise ValueError(
-            "compact source guard requires every Character author to use "
-            "the configured Flash checkpoint"
-        )
-    if not settings.world_v2_selective_source_review_enabled:
-        raise ValueError(
-            "visible chat requires the Flash compact source guard; "
-            "the legacy full-source-review route is retired"
-        )
-    if source_closure_model is None:
-        if settings.world_v2_selective_source_review_model != settings.deepseek_model:
-            raise ValueError(
-                "Flash-only source review must use the configured Character checkpoint"
-            )
-        evidence = audited_visible_source_verdict_capability_evidence(
-            enabled=True,
-            # The only alternate endpoint accepted here is the exact loopback
-            # capture whose underlying official DeepSeek authority was already
-            # validated above.  This does not qualify an arbitrary local route.
-            base_url=(
-                "https://api.deepseek.com"
-                if character_authority_id is not None
-                else settings.deepseek_base_url
-            ),
-            model=settings.deepseek_model,
-        )
-        if not evidence.supports("visible-beat-source-verdict.1"):
-            raise ValueError(
-                "Flash-only source review requires the exact audited DeepSeek route"
-            )
-        # The operator explicitly chose one correlated checkpoint for the
-        # character and compact factual guard.  It is not independent and is
-        # reported as such; the host still retains its deterministic source,
-        # privacy, CAS, Action and replay boundaries.
-        return
-    if not _supports_strict_output_contract(
-        source_closure_model,
-        "visible-beat-source-verdict.1",
-    ):
-        raise ValueError(
-            "production visible chat rejects the retired full-source-review route"
-        )
-    return
-
-
 @dataclass(frozen=True, slots=True)
 class ProactiveSourceAuthorityDeployment:
     """Auditable deployment state for proactive visible-fact closure.
@@ -479,13 +354,13 @@ class ProactiveSourceAuthorityDeployment:
     reviewer_model: str | None
     candidate_inventory_model: str | None
     requested_candidate_inventory_model: str | None = None
-    inventory_capability_evidence: StrictOutputCapabilityEvidence | None = None
-    inventory_route_evidence: tuple[StrictOutputCapabilityEvidence, ...] = ()
+    inventory_capability_evidence: object | None = None
+    inventory_route_evidence: tuple[object, ...] = ()
     inventory_runtime_model: object | None = None
     visible_source_review_runtime_model: object | None = None
     inventory_call_timeout_seconds: float | None = None
     warning_reasons: tuple[str, ...] = ()
-    source_review_authority: SourceReviewAuthority | None = None
+    source_review_authority: object | None = None
     ordinary_candidate_review_capability: tuple[bool, bool, bool] = (
         False,
         False,
@@ -549,10 +424,6 @@ class ProactiveSourceAuthorityDeployment:
         selective_runtime = (
             selective_reader()
             if callable(selective_reader)
-            and isinstance(
-                self.visible_source_review_runtime_model,
-                VisibleSourceReviewModel,
-            )
             else None
         )
         warning_reasons = list(self.warning_reasons)
@@ -577,7 +448,11 @@ class ProactiveSourceAuthorityDeployment:
             else "unavailable"
         )
         inventory_provider_count = len(
-            {evidence.provider.casefold() for evidence in self.inventory_route_evidence}
+            {
+                str(getattr(evidence, "provider", "")).casefold()
+                for evidence in self.inventory_route_evidence
+                if getattr(evidence, "provider", None)
+            }
         )
         inventory_qualification_state = "unavailable"
         active_source_review_protocol = "unavailable"
@@ -627,6 +502,7 @@ class ProactiveSourceAuthorityDeployment:
             "inventory_capability_evidence": (
                 self.inventory_capability_evidence.health_snapshot()
                 if self.inventory_capability_evidence is not None
+                and hasattr(self.inventory_capability_evidence, "health_snapshot")
                 else None
             ),
             "inventory_runtime": inventory_runtime,
@@ -655,7 +531,9 @@ class ProactiveSourceAuthorityDeployment:
                     bool(self.inventory_route_evidence) and inventory_provider_count == 1
                 ),
                 "capability_evidence": [
-                    evidence.health_snapshot() for evidence in self.inventory_route_evidence
+                    evidence.health_snapshot()
+                    for evidence in self.inventory_route_evidence
+                    if hasattr(evidence, "health_snapshot")
                 ],
                 "attempt_timeout_seconds": getattr(
                     self.inventory_runtime_model,
@@ -672,6 +550,7 @@ class ProactiveSourceAuthorityDeployment:
             "source_review_authority": (
                 self.source_review_authority.health_snapshot()
                 if self.source_review_authority is not None
+                and hasattr(self.source_review_authority, "health_snapshot")
                 else None
             ),
         }
@@ -693,7 +572,7 @@ class SemanticChatComposition:
     proactive_source_closure_model: ChatCompletionModel | None
     life_source_closure_model: ChatCompletionModel | None
     life_source_runtime_isolation: str
-    candidate_external_proposition_inventory_model: ChatCompletionModel | None
+    known_source_inventory: ChatCompletionModel | None
     proactive_source_authority: ProactiveSourceAuthorityDeployment
     character_interior: CharacterInterior
     router: SemanticComputeRouter
@@ -904,7 +783,6 @@ def build_semantic_chat_composition(
     world_support_model: ChatCompletionModel | None = None,
     source_closure_model: ChatCompletionModel | None = None,
     life_source_closure_model: ChatCompletionModel | None = None,
-    candidate_external_proposition_inventory_model: ChatCompletionModel | None = None,
     expression_episode_observer_model: ChatCompletionModel | None = None,
     model_id_prefix: str,
     expression_capabilities: ExpressionDraftCapabilities = (
@@ -914,6 +792,7 @@ def build_semantic_chat_composition(
     character_interior_turn_store: _CharacterInteriorTurnStore | None = None,
     character_interior_turn_owner_id: str = "character-interior:production",
     test_only_provider_capture_authority_id: str | None = None,
+    **_unused: object,
 ) -> SemanticChatComposition:
     """Build one explicitly supplied or provider-backed Character author.
 
@@ -935,14 +814,6 @@ def build_semantic_chat_composition(
         raise ValueError(
             "production CharacterInterior requires an explicit character model "
             "or DEEPSEEK_API_KEY; fixture prose cannot be installed implicitly"
-        )
-    provider_backed_character = bool(settings.deepseek_api_key) and (
-        flash_model is None or isinstance(flash_model, DeepSeekChatModel)
-    )
-    if provider_backed_character and not settings.world_v2_chat_source_review_enabled:
-        raise ValueError(
-            "provider-backed visible chat requires the Flash compact source guard; "
-            "the author-only and legacy full-review routes are retired"
         )
     if any(_uses_implicit_character_failover(model) for model in (flash_model, thinking_model)):
         raise ValueError(
@@ -975,26 +846,6 @@ def build_semantic_chat_composition(
     # boundary for visible World-bound expression facts; the redundant-route
     # switch must not silently turn that boundary off. An explicitly injected
     # reviewer still must be independent of every author.
-    if source_closure_model is not None and any(
-        not _reviewer_is_independent(
-            author=author,
-            reviewer=source_closure_model,
-        )
-        for author in (flash_model, thinking_model)
-        if author is not None
-    ):
-        raise ValueError("every character author requires an independent source-closure reviewer")
-    if (
-        flash_model is None
-        and settings.deepseek_api_key
-        and settings.world_v2_chat_source_review_enabled
-    ):
-        _preflight_production_source_review(
-            settings=settings,
-            thinking_model=thinking_model,
-            source_closure_model=source_closure_model,
-            character_authority_id=test_only_provider_capture_authority_id,
-        )
     owned: list[object] = []
     owned_closeables: list[object] = []
     owned_task_owners: list[object] = []
@@ -1082,239 +933,7 @@ def build_semantic_chat_composition(
         style_rules=tuple(character.style_rules),
         boundaries=tuple(character.boundaries),
     )
-    source_closure_was_injected = source_closure_model is not None
-    if source_closure_was_injected and not _supports_strict_output_contract(
-        source_closure_model,
-        "visible-beat-source-verdict.1",
-    ):
-        raise ValueError(
-            "semantic chat accepts only the compact visible-source reviewer; "
-            "the injected full-review route is retired"
-        )
-    if candidate_external_proposition_inventory_model is not None:
-        raise ValueError(
-            "semantic chat no longer accepts an Inventory reviewer; "
-            "the compact visible-source verdict is exhaustive"
-        )
-    if (
-        provider_backed_character
-        and not settings.world_v2_selective_source_review_enabled
-    ):
-        raise ValueError(
-            "visible chat requires the Flash compact source guard; "
-            "the legacy full-source-review route is retired"
-        )
-    resolved_source_closure_model = source_closure_model
-    if auto_flash and settings.deepseek_api_key and resolved_source_closure_model is None:
-        resolved_source_closure_model = None
-    recovery_source_closure_model = resolved_source_closure_model
-    life_source_review_authority: SourceReviewAuthority | None = None
-    flash_visible_source_reviewer: VisibleSourceReviewModel | None = None
-    flash_recovery_source_reviewer: VisibleSourceReviewModel | None = None
-    if (
-        not source_closure_was_injected
-        and settings.world_v2_chat_source_review_enabled
-        and settings.deepseek_api_key
-        and isinstance(flash_model, DeepSeekChatModel)
-    ):
-        if settings.world_v2_selective_source_review_model != settings.deepseek_model:
-            raise ValueError(
-                "Flash-only source review must use the configured Character checkpoint"
-            )
-        flash_evidence = audited_visible_source_verdict_capability_evidence(
-            enabled=True,
-            base_url=(
-                "https://api.deepseek.com"
-                if test_only_provider_capture_authority_id is not None
-                else settings.deepseek_base_url
-            ),
-            model=settings.deepseek_model,
-        )
-        if not flash_evidence.supports("visible-beat-source-verdict.1"):
-            raise ValueError(
-                "Flash-only source review requires the exact audited DeepSeek route"
-            )
-
-        def flash_visible_reviewer() -> VisibleSourceReviewModel:
-            leaf = DeepSeekChatModel(
-                api_key=settings.deepseek_api_key or "",
-                base_url=settings.deepseek_base_url,
-                model=settings.deepseek_model,
-                thinking_enabled=False,
-                max_completion_tokens=256,
-                circuit_breaker=ProviderCircuitBreaker(
-                    failure_threshold=2,
-                    cooldown_seconds=60.0,
-                ),
-                usage_observer=usage_observer,
-            )
-            _apply_test_only_provider_capture_authority(
-                leaf,
-                test_only_provider_capture_authority_id,
-                settings=settings,
-            )
-            return VisibleSourceReviewModel(
-                transport_model=leaf,
-                strict_output_capability_evidence=flash_evidence,
-            )
-
-        # Separate clients keep cancellation/circuit state isolated while the
-        # health contract truthfully records that both use the same checkpoint.
-        flash_visible_source_reviewer = flash_visible_reviewer()
-        flash_recovery_source_reviewer = flash_visible_reviewer()
-        resolved_source_closure_model = flash_visible_source_reviewer
-        recovery_source_closure_model = flash_recovery_source_reviewer
-        owned.extend(
-            (flash_visible_source_reviewer, flash_recovery_source_reviewer)
-        )
-    if (
-        auto_flash
-        and not source_closure_was_injected
-        and settings.world_v2_life_source_review_enabled
-        and settings.openrouter_api_key
-        and settings.openai_api_key
-        and isinstance(flash_model, DeepSeekChatModel)
-    ):
-        # Source truth is a hard boundary, but provider availability is not a
-        # semantic vote. The structured OpenRouter lane and dedicated OpenAI
-        # lane are both independent of the DeepSeek character author. The
-        # bounded authority tries the primary transport first and creates the
-        # reserve call only after a terminal primary failure; only one verdict
-        # can return.
-        local_review_model = (
-            settings.world_v2_source_review_local_model or "qwen2.5-7b-instruct"
-        )
-        _local_review_contracts = tuple(_STRICT_SCHEMAS)
-
-        def _local_review_evidence(model: str) -> StrictOutputCapabilityEvidence:
-            # A local endpoint is operator-configured and OpenAI-compatible.
-            # Declare every installed strict schema so the V5 inventory
-            # coverage gate and all review lanes pass without the proxy lane.
-            return StrictOutputCapabilityEvidence.verified(
-                evidence_source="local_configuration",
-                provider="openai",
-                model=model,
-                contracts=_local_review_contracts,
-                observed_at="2026-08-06",
-            )
-
-        def _pin_local_authority(instance: object, checkpoint: str) -> None:
-            # Local checkpoints are not in the release-pinned registry, so
-            # semantic_authority_id would return None and fail independence
-            # checks. Declare a stable local authority instead; it is still
-            # distinct from every cloud checkpoint including DeepSeek.
-            try:
-                object.__setattr__(
-                    instance,
-                    "semantic_authority_id",
-                    f"local-mlx:{checkpoint}",
-                )
-            except (AttributeError, TypeError):
-                pass
-        openrouter_source_reviewer = StructuredSourceReviewModel(
-            api_key=settings.openrouter_api_key,
-            base_url=(
-                settings.world_v2_source_review_base_url
-                or settings.openrouter_base_url
-            ),
-            model=(
-                settings.world_v2_source_review_local_model
-                or settings.world_v2_source_review_secondary_model
-            ),
-            require_provider_parameters=(
-                settings.world_v2_source_review_base_url is None
-            ),
-            # qwen/qwen-plus exposes strict structured output through
-            # OpenRouter but does not accept OpenAI's reasoning knob.
-            reasoning_effort="",
-            max_completion_tokens=1_200,
-            proxy_url=(
-                None
-                if settings.world_v2_source_review_base_url
-                else settings.openai_proxy_url
-            ),
-            circuit_breaker=ProviderCircuitBreaker(
-                failure_threshold=2,
-                cooldown_seconds=60.0,
-            ),
-            strict_output_capability_evidence=(
-                _local_review_evidence(local_review_model)
-                if settings.world_v2_source_review_base_url
-                else audited_source_review_capability_evidence(
-                    base_url=settings.openrouter_base_url,
-                    model=settings.world_v2_source_review_secondary_model,
-                    provider="openrouter",
-                )
-            ),
-            usage_observer=usage_observer,
-        )
-        openai_source_reviewer = StructuredSourceReviewModel(
-            api_key=settings.openai_api_key,
-            base_url=(
-                settings.world_v2_source_review_base_url
-                or settings.openai_base_url
-            ),
-            model=(
-                settings.world_v2_source_review_local_model
-                or settings.world_v2_source_review_fallback_model
-            ),
-            reasoning_effort=_direct_source_review_reasoning_effort(
-                settings.world_v2_source_review_local_model
-                or settings.world_v2_source_review_fallback_model
-            ),
-            max_completion_tokens=1_200,
-            proxy_url=(
-                None
-                if settings.world_v2_source_review_base_url
-                else settings.openai_proxy_url
-            ),
-            circuit_breaker=ProviderCircuitBreaker(
-                failure_threshold=2,
-                cooldown_seconds=60.0,
-            ),
-            strict_output_capability_evidence=(
-                _local_review_evidence(local_review_model)
-                if settings.world_v2_source_review_base_url
-                else audited_source_review_capability_evidence(
-                    base_url=settings.openai_base_url,
-                    model=settings.world_v2_source_review_fallback_model,
-                    provider="openai",
-                )
-            ),
-            usage_observer=usage_observer,
-        )
-        if settings.world_v2_source_review_base_url:
-            for _reviewer in (
-                openrouter_source_reviewer,
-                openai_source_reviewer,
-            ):
-                _pin_local_authority(_reviewer, local_review_model)
-        owned.extend(
-            (
-                openrouter_source_reviewer,
-                openai_source_reviewer,
-            )
-        )
-        life_source_review_authority = SourceReviewAuthority(
-            # Prefer the independently qualified direct OpenAI route for the
-            # hard truth verdict.  A later natural-dialogue audit found the
-            # OpenRouter Qwen lane accepting unsupported companion life and
-            # counterpart-history details, so it remains availability reserve
-            # rather than the ordinary semantic winner.  This is transport
-            # ordering, never a second semantic vote.
-            primary=openai_source_reviewer,
-            secondary=openrouter_source_reviewer,
-            hedge_after_seconds=settings.world_v2_source_review_hedge_after_seconds,
-            deadline_seconds=settings.world_v2_source_review_deadline_seconds,
-            caller_timeout_seconds=SOURCE_REVIEW_CALL_TIMEOUT_SECONDS,
-        )
-        # This independent authority is constructed exclusively for Life
-        # Ecology. There is no dormant ordinary-chat authority to fork or
-        # accidentally reinstall as an availability fallback.
-        # Visible chat and its one same-character correction are permanently
-        # bound to the compact Flash guard above; missing compact capability is
-        # a startup/technical failure and can never reactivate this paid lane.
-        owned_task_owners.append(life_source_review_authority)
+    del source_closure_model, life_source_closure_model, _unused
     background_model = world_support_model
     if (
         background_model is None
@@ -1322,11 +941,6 @@ def build_semantic_chat_composition(
         and settings.deepseek_api_key
         and isinstance(flash_model, DeepSeekChatModel)
     ):
-        # Life Ecology authors long world drafts (premise + 2-4 outcomes +
-        # claims) that far exceed the chat reply budget.  The chat flash model
-        # caps completions at 900 tokens, which truncates those drafts into
-        # invalid JSON.  Give the background/life lane its own completion
-        # budget so life output is never cut off by a chat-side limit.
         background_model = DeepSeekChatModel(
             api_key=settings.deepseek_api_key,
             base_url=settings.deepseek_base_url,
@@ -1343,222 +957,19 @@ def build_semantic_chat_composition(
         owned.append(background_model)
     if background_model is None:
         background_model = flash_model
-    # The role declares source permission metadata in the same structured
-    # decision that contains its expression. Production deliberately exposes
-    # no claim-binder dependency: the retired second synchronous model was a
-    # single point of failure after the role had already chosen ``now``. Local
-    # closure plus the existing independent truth reviewer remain the boundary.
-    ordinary_expression_authors = tuple(
-        author for author in (flash_model, thinking_model) if author is not None
+    proactive_source_authority = ProactiveSourceAuthorityDeployment(
+        status="fact_effects_fail_closed",
+        author_model=_model_identity(getattr(flash_model, "primary", flash_model)) or "unknown",
+        reviewer_model=None,
+        candidate_inventory_model=None,
+        warning_reasons=("one_shot.model_review_lanes_removed",),
     )
-    correlated_flash_guard = (
-        isinstance(resolved_source_closure_model, VisibleSourceReviewModel)
-        and bool(ordinary_expression_authors)
-        and semantic_authority_id(resolved_source_closure_model) is not None
-        and all(
-            semantic_authority_id(author)
-            == semantic_authority_id(resolved_source_closure_model)
-            for author in ordinary_expression_authors
-        )
-    )
-    proactive_reviewer = (
-        resolved_source_closure_model
-        if correlated_flash_guard
-        or all(
-                _reviewer_is_independent(
-                    author=author,
-                    reviewer=resolved_source_closure_model,
-                )
-                for author in ordinary_expression_authors
-            )
-        else None
-    )
-    resolved_life_source_closure_model: ChatCompletionModel | None = None
-    life_source_runtime_isolation = "unavailable"
-    if life_source_closure_model is not None:
-        if life_source_closure_model is proactive_reviewer:
-            raise ValueError("Life source reviewer must use a distinct runtime instance")
-        if not _reviewer_is_independent(
-            author=background_model,
-            reviewer=life_source_closure_model,
-        ):
-            raise ValueError("Life source reviewer must be independent of the World Author")
-        if _shares_known_reviewer_runtime(
-            proactive_reviewer,
-            life_source_closure_model,
-        ):
-            raise ValueError("Life source reviewer must not share mutable reviewer runtime")
-        resolved_life_source_closure_model = life_source_closure_model
-        life_source_runtime_isolation = "caller_provided_distinct_unverified"
-    elif life_source_review_authority is not None:
-        resolved_life_source_closure_model = life_source_review_authority
-        life_source_runtime_isolation = "dedicated_life_only"
-    if provider_backed_character:
-        ordinary_review_ready = (
-            proactive_reviewer is not None
-            and correlated_flash_guard
-            and _supports_strict_output_contract(
-                proactive_reviewer,
-                "visible-beat-source-verdict.1",
-            )
-        )
-        recovery_review_ready = (
-            recovery_source_closure_model is not None
-            and correlated_flash_guard
-            and _supports_strict_output_contract(
-                recovery_source_closure_model,
-                "visible-beat-source-verdict.1",
-            )
-        )
-        if not ordinary_review_ready or not recovery_review_ready:
-            raise ValueError(
-                "production character routing requires the correlated Flash compact "
-                "source guard for ordinary and recovery candidates"
-            )
-    source_reselection_author = flash_model if recovery_source_closure_model is not None else None
-    # Inventory was a second semantic/provider role on the visible critical
-    # path. The public guard above rejects its injection, and the retained
-    # health fields remain explicitly empty for replay/report compatibility.
-    requested_inventory_model: ChatCompletionModel | None = None
-    requested_inventory_identity: str | None = None
-    requested_inventory_evidence: StrictOutputCapabilityEvidence | None = None
-    requested_inventory_route_evidence: tuple[StrictOutputCapabilityEvidence, ...] = ()
-    requested_inventory_timeout: float | None = None
-    inventory_model: ChatCompletionModel | None = None
-    reselection_inventory_model: ChatCompletionModel | None = None
-    source_closure_reselection_lane: SourceClosureReselectionLane | None = None
-    if (
-        source_reselection_author is not None
-        and _supports_strict_output_contract(
-            source_reselection_author,
-            EXPRESSION_SOURCE_RESELECTION_DIRECT_CONTRACT,
-        )
-        and _reviewer_is_independent(
-            author=source_reselection_author,
-            reviewer=recovery_source_closure_model,
-        )
-    ):
-        source_closure_reselection_lane = SourceClosureReselectionLane(
-            author=source_reselection_author,
-            reviewer=recovery_source_closure_model,
-            report_relative_reviewer=recovery_source_closure_model,
-            # Visible chat no longer installs an Inventory provider role.
-            inventory_model=reselection_inventory_model,
-        )
-    ordinary_candidate_review_capability = _candidate_review_capability(
-        authors=ordinary_expression_authors,
-        inventory=inventory_model,
-        reviewer=proactive_reviewer,
-    )
-    # Kept as a read-only health compatibility field. There is no recovery
-    # character author in the production topology; same-author source
-    # reselection is reported by the dedicated capability below.
-    recovery_candidate_review_capability = (False, False, False)
-    reselection_candidate_review_capability = _candidate_review_capability(
-        authors=(
-            (source_closure_reselection_lane.author,)
-            if source_closure_reselection_lane is not None
-            else ()
-        ),
-        inventory=(
-            source_closure_reselection_lane.inventory_model
-            if source_closure_reselection_lane is not None
-            else None
-        ),
-        reviewer=(
-            source_closure_reselection_lane.reviewer
-            if source_closure_reselection_lane is not None
-            else None
-        ),
-    )
-    inventory_transport_routes = transport_route_ids(inventory_model)
-    if proactive_reviewer is None:
-        warning_reason = (
-            "proactive_source_authority.independent_reviewer_unavailable"
-            if resolved_source_closure_model is None
-            else "proactive_source_authority.reviewer_not_independent"
-        )
-        proactive_source_authority = ProactiveSourceAuthorityDeployment(
-            status="fact_effects_fail_closed",
-            author_model=_model_identity(flash_model) or "unknown",
-            reviewer_model=_model_identity(resolved_source_closure_model),
-            candidate_inventory_model=_model_identity(inventory_model),
-            requested_candidate_inventory_model=requested_inventory_identity,
-            inventory_capability_evidence=requested_inventory_evidence,
-            inventory_route_evidence=requested_inventory_route_evidence,
-            inventory_runtime_model=requested_inventory_model,
-            visible_source_review_runtime_model=resolved_source_closure_model,
-            inventory_call_timeout_seconds=requested_inventory_timeout,
-            warning_reasons=(warning_reason,),
-            ordinary_candidate_review_capability=(ordinary_candidate_review_capability),
-            recovery_candidate_review_capability=(recovery_candidate_review_capability),
-            reselection_candidate_review_capability=(reselection_candidate_review_capability),
-            inventory_transport_routes=inventory_transport_routes,
-        )
-        _LOG.warning(
-            "proactive visible-fact source authority degraded status=%s reason=%s "
-            "author=%s reviewer=%s; subjective expression remains available",
-            proactive_source_authority.status,
-            warning_reason,
-            proactive_source_authority.author_model,
-            proactive_source_authority.reviewer_model,
-        )
-    else:
-        warning_reasons: list[str] = []
-        if correlated_flash_guard:
-            warning_reasons.append(
-                "source_review_authority.correlated_same_checkpoint"
-            )
-            if test_only_provider_capture_authority_id is not None:
-                warning_reasons.append(
-                    "source_review_authority.test_only_capture_transit"
-                )
-        else:
-            warning_reasons.append("source_review_authority.single_independent_lane")
-        if len(inventory_transport_routes) == 1:
-            warning_reasons.append("source_inventory.single_transport_route")
-        inventory_transport_providers = {
-            evidence.provider.casefold() for evidence in requested_inventory_route_evidence
-        }
-        if len(inventory_transport_routes) > 1 and len(inventory_transport_providers) == 1:
-            warning_reasons.append("source_inventory.single_transport_provider")
-        warning_reasons.extend(
-            evidence.reason_code
-            for evidence in requested_inventory_route_evidence
-            if evidence.status != "verified"
-        )
-        proactive_source_authority = ProactiveSourceAuthorityDeployment(
-            status="correlated_guard" if correlated_flash_guard else "ready",
-            author_model=_model_identity(getattr(flash_model, "primary", flash_model)) or "unknown",
-            reviewer_model=_model_identity(proactive_reviewer),
-            candidate_inventory_model=_model_identity(inventory_model),
-            requested_candidate_inventory_model=requested_inventory_identity,
-            inventory_capability_evidence=requested_inventory_evidence,
-            inventory_route_evidence=requested_inventory_route_evidence,
-            inventory_runtime_model=requested_inventory_model,
-            visible_source_review_runtime_model=proactive_reviewer,
-            inventory_call_timeout_seconds=requested_inventory_timeout,
-            warning_reasons=tuple(warning_reasons),
-            source_review_authority=None,
-            ordinary_candidate_review_capability=(ordinary_candidate_review_capability),
-            recovery_candidate_review_capability=(recovery_candidate_review_capability),
-            reselection_candidate_review_capability=(reselection_candidate_review_capability),
-            inventory_transport_routes=inventory_transport_routes,
-        )
     character_interior = compose_production_character_interior(
         flash_model=flash_model,
         thinking_model=thinking_model,
-        # The built-in route installs semantic truth closure.  In the explicit
-        # Flash-only topology the guard is a separate runtime of the same
-        # checkpoint and health reports that correlation; it is never described
-        # as independent. Any permitted correction remains the same Character
-        # author's bounded choice.
-        source_closure_model=proactive_reviewer,
-        report_relative_source_closure_model=proactive_reviewer,
-        # Visible chat has no separate Inventory/provider role. The exhaustive
-        # compact verdict is the only installed source-review transport.
-        candidate_external_proposition_inventory_model=inventory_model,
-        source_closure_reselection_lane=source_closure_reselection_lane,
+        source_closure_model=None,
+        report_relative_source_closure_model=None,
+        source_closure_reselection_lane=None,
         expression_episode_observer_model=expression_episode_observer_model,
         flash_model_id=str(getattr(flash_model, "model", f"{model_id_prefix}-flash")),
         thinking_model_id=(
@@ -1568,13 +979,9 @@ def build_semantic_chat_composition(
         ),
         expression_capabilities=expression_capabilities,
         identity_frame=identity_frame,
-        review_claim_free_candidates=settings.world_v2_chat_source_review_enabled,
+        review_claim_free_candidates=False,
         turn_store=character_interior_turn_store,
         turn_owner_id=character_interior_turn_owner_id,
-        # A provider object may expose a historical ``fallback`` attribute,
-        # but CharacterInterior has one semantic author. Structural repair is
-        # the bounded same-author correction in the inner turn; a later
-        # provider outage remains a technical failure for durable retry.
     )
     return SemanticChatComposition(
         world_support_model=background_model,
@@ -1582,13 +989,13 @@ def build_semantic_chat_composition(
             _model_identity(getattr(flash_model, "primary", flash_model)) or "unknown"
         ),
         expression_episode_observer_model=expression_episode_observer_model,
-        source_closure_model=proactive_reviewer,
-        recovery_source_closure_model=recovery_source_closure_model,
-        source_closure_reselection_lane=source_closure_reselection_lane,
-        proactive_source_closure_model=proactive_reviewer,
-        life_source_closure_model=resolved_life_source_closure_model,
-        life_source_runtime_isolation=life_source_runtime_isolation,
-        candidate_external_proposition_inventory_model=inventory_model,
+        source_closure_model=None,
+        recovery_source_closure_model=None,
+        source_closure_reselection_lane=None,
+        proactive_source_closure_model=None,
+        life_source_closure_model=None,
+        life_source_runtime_isolation="unavailable",
+        known_source_inventory=None,
         proactive_source_authority=proactive_source_authority,
         character_interior=character_interior,
         router=SemanticComputeRouter(thinking_available=thinking_model is not None),
@@ -1606,6 +1013,8 @@ def build_semantic_chat_composition(
         _owned_closeables=tuple(owned_closeables),
         _owned_task_owners=tuple(owned_task_owners),
     )
+
+
 
 
 __all__ = [
