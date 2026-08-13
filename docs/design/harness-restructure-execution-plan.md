@@ -884,5 +884,5 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：本包把作息编进 Present。部署后她应能读到当天窗口；同日本地第二次活动 start 不应再打 provider。
 - **成本与延迟**：活动车道从「每醒一次模型」降到「每天一次 day_open + 窗口结束的确定性 complete」。
 - **剩余缺口**：0–3 条意图没有新事件落账，只是把当天第一次活动选择当作 day_open；天气/店铺开闭不在 seed 里所以没进 sheet；感知未并入 Present 候选池（默认仍 off）；NPC 作者未改（§12.9 第 8 条待批）；日记聚合仍靠 world_life recency，day_sheet 是新增的当日可读层。
-- **commit**：
+- **commit**：`023e713d`
 
