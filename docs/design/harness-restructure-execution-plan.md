@@ -844,4 +844,4 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：部署后同一会话连续两轮的 system 段应字节相同；user 段公共前缀应覆盖人设/契约/稳定 materials；对话史应按最旧→最新追加。cache hit 目标 ≥50%，需真实流量。
 - **成本与延迟**：加厚输入、稳态后靠前缀缓存降未命中价；不增加模型调用次数。
 - **剩余缺口**：工具 schema 仍按 `recall_allowed` 分叉（可能打穿 tools 前缀）；`expression_hard_boundaries` 仍整表进 prompt（H4）；H9 打分与每日压缩尚未改；H5 Occasion 队列尚未上。
-- **commit**：
+- **commit**：`058ac343`
