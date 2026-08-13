@@ -1119,7 +1119,8 @@ class StructuredCharacterRoleFaculty:
         )
         identity_extras = self._provider_identity_extras(tool_contract=tool_contract)
         with model_call_scope(
-            "world_v2_character_interior"
+            request.purpose,
+            actor=request.subject_ref,
         ), model_provider_request_identity_scope(
             request_hash=request_hash,
             identity_extras=identity_extras,

@@ -62,6 +62,8 @@ def model_call_scope(
     action_id: str = "",
     attempt: int = 1,
     budget_reservation_id: str = "",
+    actor: str = "",
+    estimated_cny: float | None = None,
 ) -> Iterator["ModelCallScopeState"]:
     # Background helpers may add a more specific purpose scope around an
     # already-reserved provider boundary.  Preserve its evidence instead of
@@ -71,14 +73,16 @@ def model_call_scope(
     state = inherited_state or ModelCallScopeState()
     token = _MODEL_CALL_PURPOSE.set(purpose)
     state_token = None if inherited_state is not None else _MODEL_CALL_STATE.set(state)
-    meta_token = _MODEL_CALL_META.set(
-        {
-            **_MODEL_CALL_META.get(),
-            "action_id": action_id,
-            "attempt": max(1, int(attempt)),
-            "budget_reservation_id": budget_reservation_id,
-        }
-    )
+    meta: dict[str, object] = {
+        **_MODEL_CALL_META.get(),
+        "action_id": action_id,
+        "attempt": max(1, int(attempt)),
+        "budget_reservation_id": budget_reservation_id,
+        "actor": actor,
+    }
+    if estimated_cny is not None:
+        meta["estimated_cny"] = estimated_cny
+    meta_token = _MODEL_CALL_META.set(meta)
     try:
         yield state
     finally:
@@ -881,6 +885,32 @@ class DeepSeekChatModel:
             transport=transport,
         )
 
+    def _admit_world_v2_model_call(
+        self,
+        *,
+        purpose: str,
+        call_meta: Mapping[str, object],
+        prompt_characters: int,
+    ) -> str:
+        admit = getattr(getattr(self.usage_observer, "__self__", None), "admit_provider_call", None)
+        if not callable(admit):
+            return str(call_meta.get("budget_reservation_id") or "")
+        estimated = call_meta.get("estimated_cny")
+        estimated_cny = float(estimated) if isinstance(estimated, (int, float)) else None
+        return str(
+            admit(
+                purpose=purpose,
+                actor=str(call_meta.get("actor") or ""),
+                provider=self.provider,
+                model=self.model,
+                prompt_characters=prompt_characters,
+                estimated_cny=estimated_cny,
+                world_id=str(call_meta.get("world_id") or ""),
+                turn_id=str(call_meta.get("turn_id") or ""),
+                reservation_id=str(call_meta.get("budget_reservation_id") or ""),
+            )
+        )
+
     def _completion_base_url(self, tools: list[dict[str, object]] | None) -> str:
         strict_tools = bool(
             tools
@@ -1061,6 +1091,13 @@ class DeepSeekChatModel:
         started = monotonic()
         purpose = _MODEL_CALL_PURPOSE.get()
         call_meta = _MODEL_CALL_META.get()
+        reservation_id = self._admit_world_v2_model_call(
+            purpose=purpose,
+            call_meta=call_meta,
+            prompt_characters=len(json.dumps(messages, ensure_ascii=False, default=str)),
+        )
+        if reservation_id:
+            call_meta = {**call_meta, "budget_reservation_id": reservation_id}
         capacity_token: str | None = None
         request_payload = self.request_payload(
             messages,
@@ -1372,6 +1409,13 @@ class DeepSeekChatModel:
         started = monotonic()
         purpose = _MODEL_CALL_PURPOSE.get()
         call_meta = _MODEL_CALL_META.get()
+        reservation_id = self._admit_world_v2_model_call(
+            purpose=purpose,
+            call_meta=call_meta,
+            prompt_characters=len(json.dumps(messages, ensure_ascii=False, default=str)),
+        )
+        if reservation_id:
+            call_meta = {**call_meta, "budget_reservation_id": reservation_id}
         capacity_token: str | None = None
         try:
             if self.capacity_gate is not None:

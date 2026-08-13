@@ -18,6 +18,7 @@ import logging
 from typing import Any, NamedTuple
 
 from companion_daemon.llm import (
+    model_call_scope,
     model_provider_request_identity_scope,
     model_request_emission_scope,
 )
@@ -3502,7 +3503,10 @@ class _InboundCharacterAuthor:
             # providers emit from immediately before their ``client.post``.
             mark_first_role_provider_entry(winning_provider_identity.model_call_id)
         try:
-            with model_request_emission_scope(
+            with model_call_scope(
+                "inbound_turn",
+                actor="agent:companion",
+            ), model_request_emission_scope(
                 provider_call_id=winning_provider_identity.model_call_id,
                 entry_marker=mark_first_role_provider_entry,
                 completion_marker=mark_first_role_provider_completion,
@@ -3844,33 +3848,9 @@ class _InboundCharacterAuthor:
             if recall_timeout is None:
                 raise TimeoutError("paired character recall follow-up budget exhausted")
             async with asyncio.timeout(recall_timeout):
-                if callable(metered):
-                    result = await metered(
-                        followup,
-                        temperature=self._temperature,
-                        **(
-                            {
-                                "tools": followup_tools,
-                                "tool_choice": followup_tool_choice,
-                            }
-                            if isinstance(followup_tools, list)
-                            else {}
-                        ),
-                    )
-                    if (
-                        not isinstance(result, tuple)
-                        or len(result) != 2
-                        or not isinstance(result[0], str)
-                    ):
-                        raise ValueError("metered paired recall result must be (text, usage)")
-                    raw, usage_raw = result
-                    if callable(followup_unwrap):
-                        raw = followup_unwrap(raw)
-                    second_usage = ModelUsageProvenance.model_validate(usage_raw)
-                else:
-                    complete_json = getattr(provider, "complete_json", None)
-                    raw = await (
-                        complete_json(
+                with model_call_scope("recall_followup", actor="agent:companion"):
+                    if callable(metered):
+                        result = await metered(
                             followup,
                             temperature=self._temperature,
                             **(
@@ -3882,11 +3862,36 @@ class _InboundCharacterAuthor:
                                 else {}
                             ),
                         )
-                        if callable(complete_json)
-                        else provider.complete(followup, temperature=self._temperature)
-                    )
-                    if callable(followup_unwrap):
-                        raw = followup_unwrap(raw)
+                        if (
+                            not isinstance(result, tuple)
+                            or len(result) != 2
+                            or not isinstance(result[0], str)
+                        ):
+                            raise ValueError("metered paired recall result must be (text, usage)")
+                        raw, usage_raw = result
+                        if callable(followup_unwrap):
+                            raw = followup_unwrap(raw)
+                        second_usage = ModelUsageProvenance.model_validate(usage_raw)
+                    else:
+                        complete_json = getattr(provider, "complete_json", None)
+                        raw = await (
+                            complete_json(
+                                followup,
+                                temperature=self._temperature,
+                                **(
+                                    {
+                                        "tools": followup_tools,
+                                        "tool_choice": followup_tool_choice,
+                                    }
+                                    if isinstance(followup_tools, list)
+                                    else {}
+                                ),
+                            )
+                            if callable(complete_json)
+                            else provider.complete(followup, temperature=self._temperature)
+                        )
+                        if callable(followup_unwrap):
+                            raw = followup_unwrap(raw)
             usage = _combine_usage(usage, second_usage, request.call_id)
             prior_presentation_count = len(presented_prefetch_traces)
             presented_prefetch_traces = append_presented_prefetch(

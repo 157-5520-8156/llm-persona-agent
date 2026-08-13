@@ -32,6 +32,7 @@ from companion_daemon.world_v2.production_turn_application import MediaPreviewDe
 from companion_daemon.world_v2.semantic_chat_composition import (
     unavailable_life_source_authority_health,
 )
+from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
 from companion_daemon.world_v2.world_v2_dashboard_ui import (
     DASHBOARD_APP_JS,
     DASHBOARD_HTML,
@@ -464,6 +465,30 @@ def _http_v2_settings(asgi_app: FastAPI) -> Settings:
     return deployment.settings if isinstance(deployment, HttpV2ASGIDeployment) else get_settings()
 
 
+def _model_usage_health(asgi_app: FastAPI) -> dict[str, object]:
+    capture = _existing_http_v2_capture(asgi_app)
+    reader = getattr(capture, "usage_budget_health", None) if capture is not None else None
+    if callable(reader):
+        snapshot = reader()
+        if isinstance(snapshot, dict):
+            return snapshot
+    try:
+        settings = _http_v2_settings(asgi_app)
+        store = WorldV2UsageStore(path=str(settings.database_path))
+        return store.budget_state(
+            monthly_budget_cny=settings.monthly_budget_cny,
+            daily_budget_cny=settings.daily_budget_cny,
+        )
+    except Exception:
+        return {
+            "status": "disabled",
+            "calls_per_user_message": None,
+            "cache_hit_rate": None,
+            "invalid_cost_rate": None,
+            "purpose_counts": {},
+        }
+
+
 def _dashboard_home_source(asgi_app: FastAPI) -> DashboardHomeSource | None:
     deployment = getattr(asgi_app.state, "http_v2_deployment", None)
     if isinstance(deployment, HttpV2ASGIDeployment):
@@ -653,6 +678,7 @@ async def health(request: Request) -> dict[str, object]:
             if callable(life_health)
             else unavailable_life_source_authority_health()
         )
+    response["model_usage"] = _model_usage_health(request.app)
     return response
 
 
