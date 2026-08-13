@@ -1,0 +1,331 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+
+from companion_daemon.world_v2.affect_live import live_component_intensity_bp
+from companion_daemon.world_v2.epoch_continuity import (
+    apply_continuity_snapshot,
+    compile_continuity_snapshot,
+)
+from companion_daemon.world_v2.epoch_genesis import archive_sqlite_file, write_epoch_ledger
+from companion_daemon.world_v2.reducers import ReducerState, make_projection
+from companion_daemon.world_v2.schemas import (
+    EvidenceRef,
+    FactAssertionBinding,
+    FactOrigin,
+    FactProjection,
+    FactValues,
+    WorldEvent,
+    fact_conflict_key,
+    fact_semantic_fingerprint,
+)
+from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
+from test_affect_module import component as affect_component
+from test_affect_module import episode as affect_episode
+
+
+NOW = datetime(2026, 8, 13, 15, 0, tzinfo=UTC)
+WORLD = "world:epoch-h10"
+POLICY = ("policy:fact-v1",)
+
+
+def _fact() -> FactProjection:
+    binding = FactAssertionBinding(
+        source_kind="operator_observation",
+        source_ref="operator:epoch",
+        asserted_subject_ref="subject:user",
+        content_payload_hash="a" * 64,
+    )
+    anchors = (
+        EvidenceRef(
+            ref_id="operator:epoch",
+            evidence_type="operator_observation",
+            claim_purpose="current_fact",
+            immutable_hash="a" * 64,
+        ),
+    )
+    values = FactValues(
+        subject_ref="subject:user",
+        predicate_code="location.current",
+        cardinality="single",
+        conflict_key=fact_conflict_key(
+            subject_ref="subject:user", predicate_code="location.current"
+        ),
+        value_ref="value:user-location:shanghai",
+        value_hash="c" * 64,
+        assertion_binding=binding,
+        anchor_evidence_refs=anchors,
+        source_evidence_refs=anchors,
+        confidence_bp=9000,
+        privacy_class="private",
+        status="active",
+    )
+    origin = FactOrigin(
+        change_id="change:transition:fact:home:1",
+        transition_id="transition:fact:home:1",
+        policy_refs=POLICY,
+        accepted_event_ref="event:old-fact-commit",
+    )
+    return FactProjection(
+        fact_id="fact:user-home",
+        entity_revision=1,
+        semantic_fingerprint=fact_semantic_fingerprint(
+            subject_ref=values.subject_ref,
+            predicate_code=values.predicate_code,
+            cardinality=values.cardinality,
+            conflict_key=values.conflict_key,
+            value_hash=values.value_hash,
+            assertion_binding=values.assertion_binding,
+            anchor_evidence_refs=values.anchor_evidence_refs,
+            policy_refs=origin.policy_refs,
+        ),
+        values=values,
+        origin=origin,
+        committed_at=NOW,
+        updated_at=NOW,
+    )
+
+
+def _observation_event() -> WorldEvent:
+    payload = {"observation_id": "observation:old-archive-message"}
+    return WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event-old-obs",
+        world_id=WORLD,
+        event_type="ObservationRecorded",
+        logical_time=NOW,
+        created_at=NOW,
+        actor="system:test",
+        source="test",
+        trace_id="trace-old",
+        causation_id="cause-old",
+        correlation_id="correlation-old",
+        idempotency_key="identity:event-old-obs",
+        payload=payload,
+    )
+
+
+def test_snapshot_keeps_facts_and_drops_process_tables() -> None:
+    fact = _fact()
+    projection = SimpleNamespace(
+        world_id=WORLD,
+        world_revision=88,
+        semantic_hash="b" * 64,
+        logical_time=NOW,
+        facts=(fact,),
+        memory_candidates=(),
+        relationship_states=(),
+        affect_episodes=(),
+        appraisals=(),
+        threads=(),
+        commitments=(),
+        experiences=(),
+        life_arcs=(),
+        npcs=(),
+        private_impressions=(),
+        character_core=None,
+        trigger_processes=("process:should-not-copy",),
+        completed_trigger_ids=("trigger:done",),
+        clock_transition_history=("clock:1",),
+        model_result_audits=("audit:1",),
+        observation_refs=("observation:old-archive-message",),
+    )
+    snapshot = compile_continuity_snapshot(projection, epoch_id="epoch:2")
+    assert snapshot.facts
+    assert snapshot.facts[0]["fact_id"] == "fact:user-home"
+    dumped = snapshot.model_dump(mode="json")
+    assert "trigger_processes" not in dumped
+    assert "observation_refs" not in dumped
+    assert dumped["facts"][0]["origin"]["accepted_event_ref"] == "event:old-fact-commit"
+
+
+def test_genesis_ledger_hydrates_facts_without_old_observation_keys(tmp_path) -> None:
+    source = tmp_path / "live.sqlite"
+    archive = tmp_path / "archive.sqlite"
+    target = tmp_path / "epoch2.sqlite"
+    live = SQLiteWorldLedger(path=source, world_id=WORLD)
+    live.commit(
+        [_observation_event()],
+        expected_world_revision=0,
+        expected_deliberation_revision=0,
+    )
+    live.close()
+    archive_sqlite_file(source=source, destination=archive)
+    assert archive.exists()
+    assert archive.stat().st_mode & 0o222 == 0
+
+    fact = _fact()
+    snapshot = compile_continuity_snapshot(
+        SimpleNamespace(
+            world_id=WORLD,
+            world_revision=2,
+            semantic_hash="d" * 64,
+            logical_time=NOW,
+            facts=(fact,),
+            memory_candidates=(),
+            relationship_states=(),
+            affect_episodes=(),
+            appraisals=(),
+            threads=(),
+            commitments=(),
+            experiences=(),
+            life_arcs=(),
+            npcs=(),
+            private_impressions=(),
+            character_core=None,
+        ),
+        epoch_id="epoch:2",
+    )
+    new_ledger = write_epoch_ledger(
+        path=target, world_id=WORLD, now=NOW, snapshot=snapshot
+    )
+    try:
+        projection = new_ledger.project()
+        assert any(item.event_type == "WorldStarted" for item in projection.committed_world_event_refs)
+        assert projection.facts
+        assert projection.facts[0].fact_id == "fact:user-home"
+        assert projection.facts[0].origin.accepted_event_ref.startswith(
+            "event:world-v2-epoch:epoch:2:WorldStarted:"
+        )
+        assert projection.facts[0].semantic_fingerprint == fact.semantic_fingerprint
+        assert "observation:old-archive-message" not in projection.observation_refs
+        assert projection.trigger_processes == ()
+        assert projection.clock_transition_history == ()
+    finally:
+        new_ledger.close()
+    assert archive.stat().st_mtime == archive.stat().st_mtime
+    assert archive.stat().st_mode & 0o222 == 0
+
+
+def test_reopen_skips_full_cold_replay_when_prefix_proof_is_complete(tmp_path) -> None:
+    path = tmp_path / "fast-start.sqlite"
+    first = SQLiteWorldLedger(path=path, world_id=WORLD)
+    first.commit(
+        [_observation_event()],
+        expected_world_revision=0,
+        expected_deliberation_revision=0,
+    )
+    first.close()
+    reopened = SQLiteWorldLedger(path=path, world_id=WORLD)
+    try:
+        counters = reopened.performance_counters()
+        assert counters.cold_history_replayed is False
+        assert reopened.project().observation_refs == ("observation:old-archive-message",)
+        assert reopened.rebuild() == reopened.project()
+    finally:
+        reopened.close()
+
+
+def test_live_intensity_falls_with_time_without_rewriting_the_anchor() -> None:
+    item = affect_component(intensity_bp=8_000)
+    later = NOW + timedelta(hours=2)
+    live = live_component_intensity_bp(item, baseline_bp=0, at=later)
+    assert live < item.intensity_bp
+    assert item.decay_anchor_intensity_bp == 8_000
+    state = ReducerState(logical_time=later, affect_episodes=(affect_episode(),))
+    # The helper episode uses 4000 intensity and a 60s delay / 1h half-life.
+    projected = make_projection(
+        world_id=WORLD,
+        world_revision=0,
+        deliberation_revision=0,
+        ledger_sequence=0,
+        state=state,
+    )
+    stored = state.affect_episodes[0].components[0].intensity_bp
+    shown = projected.affect_episodes[0].components[0].intensity_bp
+    assert shown < stored
+    assert state.affect_episodes[0].components[0].decay_anchor_intensity_bp == stored
+
+
+def test_committed_world_event_fact_rebinds_to_genesis_and_recomputes_fingerprint() -> None:
+    operator = EvidenceRef(
+        ref_id="operator:epoch",
+        evidence_type="operator_observation",
+        claim_purpose="current_fact",
+        immutable_hash="a" * 64,
+    )
+    world = EvidenceRef(
+        ref_id="event:old-world",
+        evidence_type="committed_world_event",
+        claim_purpose="current_fact",
+        immutable_hash="a" * 64,
+        source_world_revision=88,
+    )
+    binding = FactAssertionBinding(
+        source_kind="operator_observation",
+        source_ref="operator:epoch",
+        asserted_subject_ref="subject:user",
+        content_payload_hash="a" * 64,
+    )
+    values = FactValues(
+        subject_ref="subject:user",
+        predicate_code="location.current",
+        cardinality="single",
+        conflict_key=fact_conflict_key(
+            subject_ref="subject:user", predicate_code="location.current"
+        ),
+        value_ref="value:user-location:shanghai",
+        value_hash="c" * 64,
+        assertion_binding=binding,
+        anchor_evidence_refs=(world,),
+        source_evidence_refs=(operator, world),
+        confidence_bp=9000,
+        privacy_class="private",
+        status="active",
+    )
+    origin = FactOrigin(
+        change_id="change:transition:fact:home:1",
+        transition_id="transition:fact:home:1",
+        policy_refs=POLICY,
+        accepted_event_ref="event:old-fact-commit",
+    )
+    fact = FactProjection(
+        fact_id="fact:user-home",
+        entity_revision=1,
+        semantic_fingerprint=fact_semantic_fingerprint(
+            subject_ref=values.subject_ref,
+            predicate_code=values.predicate_code,
+            cardinality=values.cardinality,
+            conflict_key=values.conflict_key,
+            value_hash=values.value_hash,
+            assertion_binding=values.assertion_binding,
+            anchor_evidence_refs=values.anchor_evidence_refs,
+            policy_refs=origin.policy_refs,
+        ),
+        values=values,
+        origin=origin,
+        committed_at=NOW,
+        updated_at=NOW,
+    )
+    snapshot = compile_continuity_snapshot(
+        SimpleNamespace(
+            world_id=WORLD,
+            world_revision=88,
+            semantic_hash="e" * 64,
+            logical_time=NOW,
+            facts=(fact,),
+            memory_candidates=(),
+            relationship_states=(),
+            affect_episodes=(),
+            appraisals=(),
+            threads=(),
+            commitments=(),
+            experiences=(),
+            life_arcs=(),
+            npcs=(),
+            private_impressions=(),
+            character_core=None,
+        ),
+        epoch_id="epoch:2",
+    )
+    hydrated = apply_continuity_snapshot(
+        snapshot,
+        genesis_event_id="event:world-v2-epoch:epoch:2:WorldStarted:abc",
+        genesis_payload_hash="f" * 64,
+        logical_time=NOW,
+    )
+    imported = hydrated["facts"][0]
+    assert imported.origin.accepted_event_ref.endswith("WorldStarted:abc")
+    assert imported.values.anchor_evidence_refs[0].ref_id.endswith("WorldStarted:abc")
+    assert imported.semantic_fingerprint != fact.semantic_fingerprint

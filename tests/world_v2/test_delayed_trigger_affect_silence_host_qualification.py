@@ -335,7 +335,7 @@ async def _qualify_affect_decay(tmp_path: Path) -> dict[str, object]:
         materialized = due + timedelta(seconds=1)
         await _tick(second, at=materialized, tick_id="affect-first-materialized")
         decayed = second.export_replay_evidence()
-        assert _event_count(decayed, "AffectEpisodeDecayed") == 1
+        assert _event_count(decayed, "AffectEpisodeDecayed") == 0
         assert decayed.projection.affect_episodes[0].components[0].intensity_bp < original_intensity
         cursor = decayed.cursor
         semantic_hash = decayed.projection.semantic_hash

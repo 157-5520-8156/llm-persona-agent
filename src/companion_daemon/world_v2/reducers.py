@@ -30,6 +30,7 @@ from .affect_events import (
     AffectEpisodeSupersededPayload,
     AffectEpisodeUpdatedPayload,
 )
+from .affect_live import materialize_affect_episodes
 from .affect_reducers import (
     adjust_affect_baseline,
     decay_affect_episode,
@@ -38,6 +39,7 @@ from .affect_reducers import (
     supersede_affect_episode,
     update_affect_episode,
 )
+from .epoch_continuity import ContinuitySnapshot, apply_continuity_snapshot
 from .appraisal_events import (
     AppraisalAcceptedPayload,
     AppraisalContradictedPayload,
@@ -7970,7 +7972,27 @@ def _require_previous_event(
 def _world_started(state: ReducerState, event: WorldEvent) -> ReducerState:
     if state.logical_time is not None:
         raise ValueError("WorldStarted cannot reinitialize logical time")
-    return state.model_copy(update={"logical_time": event.logical_time})
+    continuity = event.payload().get("continuity")
+    if not continuity:
+        return state.model_copy(update={"logical_time": event.logical_time})
+    if (
+        state.facts
+        or state.affect_episodes
+        or state.trigger_processes
+        or state.observation_refs
+        or state.committed_world_event_refs
+    ):
+        raise ValueError("continuity snapshot requires an empty genesis state")
+    snapshot = ContinuitySnapshot.model_validate_json(
+        json.dumps(continuity, ensure_ascii=False)
+    )
+    hydrated = apply_continuity_snapshot(
+        snapshot,
+        genesis_event_id=event.event_id,
+        genesis_payload_hash=event.payload_hash,
+        logical_time=event.logical_time,
+    )
+    return state.model_copy(update={"logical_time": event.logical_time, **hydrated})
 
 
 def _observation_recorded(
@@ -15876,7 +15898,11 @@ def make_projection(
         character_core_proposal_ids=state.character_core_proposal_ids,
         appraisals=state.appraisals,
         affect_baselines=state.affect_baselines,
-        affect_episodes=state.affect_episodes,
+        affect_episodes=materialize_affect_episodes(
+            state.affect_episodes,
+            logical_time=state.logical_time,
+            baselines=state.affect_baselines,
+        ),
         appraisal_proposals=state.appraisal_proposals,
         appraisal_proposal_ids=state.appraisal_proposal_ids,
         affect_proposals=state.affect_proposals,

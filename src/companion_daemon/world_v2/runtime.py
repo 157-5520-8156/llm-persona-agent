@@ -8,7 +8,6 @@ import time
 from uuid import uuid4
 from datetime import UTC, datetime, timedelta
 
-from .affect_math import DecayAnchor, DecayProfile, decay_intensity_bp
 from .errors import ConcurrencyConflict, IdempotencyConflict
 from .ledger import LedgerPort, WorldLedger
 from .event_identity import domain_idempotency_key
@@ -4399,85 +4398,10 @@ class WorldRuntime:
         )
 
     def _affect_decay_events(self, projection, clock: ClockObservation) -> list[WorldEvent]:
-        events: list[WorldEvent] = []
-        baselines = {item.dimension: item.baseline_bp for item in projection.affect_baselines}
-        for episode in projection.affect_episodes:
-            if episode.status != "active":
-                continue
-            results: list[dict[str, object]] = []
-            changed = False
-            for component in episode.components:
-                profile = component.decay_profile
-                after = decay_intensity_bp(
-                    DecayAnchor(
-                        intensity_bp=component.decay_anchor_intensity_bp,
-                        anchored_at=component.decay_anchor_at,
-                        baseline_bp=baselines.get(component.dimension, 0),
-                        residue_bp=component.residue_bp,
-                        decay_not_before=component.decay_not_before,
-                    ),
-                    DecayProfile(
-                        half_life_seconds=profile.half_life_seconds,
-                        floor_bp=profile.floor_bp,
-                        delay_seconds=profile.delay_seconds,
-                        config_version=profile.config_version,
-                        kind=profile.kind,
-                    ),
-                    clock.logical_time_to,
-                )
-                changed = changed or after != component.intensity_bp
-                results.append(
-                    {
-                        "component_id": component.component_id,
-                        "before_intensity_bp": component.intensity_bp,
-                        "after_intensity_bp": after,
-                        "config_version": profile.config_version,
-                        "table_digest": profile.table_digest,
-                        "config_digest": profile.config_digest,
-                    }
-                )
-            if not changed:
-                continue
-            payload = {
-                "change_id": f"change:affect-decay:{episode.episode_id}:{clock.tick_id}",
-                "transition_id": f"transition:affect-decay:{episode.episode_id}:{clock.tick_id}",
-                "expected_entity_revision": episode.entity_revision,
-                "evidence_refs": [
-                    {
-                        "ref_id": f"clock:{clock.logical_time_to.isoformat()}",
-                        "evidence_type": "clock_observation",
-                        "claim_purpose": "current_fact",
-                    }
-                ],
-                "appraisal_refs": [],
-                "policy_refs": ["policy:affect-v1"],
-                "episode_id": episode.episode_id,
-                "from_logical_time": episode.updated_at.isoformat(),
-                "to_logical_time": clock.logical_time_to.isoformat(),
-                "component_results": results,
-            }
-            event_type = "AffectEpisodeDecayed"
-            events.append(
-                WorldEvent.from_payload(
-                    schema_version=clock.schema_version,
-                    event_id=f"event:affect-decay:{episode.episode_id}:{clock.tick_id}",
-                    world_id=self._world_id,
-                    event_type=event_type,
-                    logical_time=clock.logical_time_to,
-                    created_at=clock.created_at,
-                    actor="system:affect-clock",
-                    source="scheduler",
-                    trace_id=clock.trace_id,
-                    causation_id=f"event:trigger:clock:{clock.tick_id}",
-                    correlation_id=clock.correlation_id,
-                    idempotency_key=domain_idempotency_key(
-                        event_type=event_type, world_id=self._world_id, payload=payload
-                    )
-                    or f"affect-decay:{episode.episode_id}:{clock.tick_id}",
-                    payload=payload,
-                )
-            )
-        return events
+        """H10: intensity is computed at read time; clock ticks do not write decay."""
+
+        del projection, clock
+        return []
 
     def _goal_expiry_events(
         self,

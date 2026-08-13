@@ -21,6 +21,7 @@ from .accepted_ledger_batch import (
     AcceptedLedgerBatchHandle,
     AcceptedLedgerBatchIssuer,
 )
+from .affect_live import materialize_affect_episodes
 from .batch_invariants import (
     reject_accepted_manifest_v3_without_recorder,
     validate_commit_batch,
@@ -525,6 +526,7 @@ class SQLiteProjectionPerformanceCounters:
     historical_projection_hits: int = 0
     historical_prefix_hits: int = 0
     replayed_events: int = 0
+    cold_history_replayed: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -589,6 +591,7 @@ class SQLiteWorldLedger:
         self._historical_projection_hits = 0
         self._historical_prefix_hits = 0
         self._replayed_events = 0
+        self._cold_history_replayed = True
         self._head_projection_cache: LedgerProjection | None = None
         self._head_projection_cache_row_identity: tuple[object, ...] | None = None
         # A same-turn advisory may authenticate a proposal at the immediately
@@ -843,6 +846,7 @@ class SQLiteWorldLedger:
                 historical_projection_hits=self._historical_projection_hits,
                 historical_prefix_hits=self._historical_prefix_hits,
                 replayed_events=self._replayed_events,
+                cold_history_replayed=self._cold_history_replayed,
             )
 
     def _sqlite_data_version_locked(self) -> int:
@@ -1724,6 +1728,11 @@ class SQLiteWorldLedger:
                 update["deliberation_revision"] = deliberation_revision
                 update["ledger_sequence"] = ledger_sequence
                 update["semantic_hash"] = semantic_hash_value
+                update["affect_episodes"] = materialize_affect_episodes(
+                    folded.affect_episodes,
+                    logical_time=folded.logical_time,
+                    baselines=folded.affect_baselines,
+                )
                 projection = base.model_copy(update=update)
                 # ``model_copy`` skips validation; replay the projection's own
                 # integrity validators so a reducer bug still fails the commit
@@ -1971,13 +1980,12 @@ class SQLiteWorldLedger:
         )
 
     def _verify_cold_ledger_history(self) -> None:
-        """Verify immutable history from genesis before trusting proof caches.
+        """Verify immutable history before trusting proof caches.
 
-        The event cursor is streamed in ledger order by ``_replay_locked``;
-        commit validation is then streamed in first-event order and bounded by
-        the shared commit contract.  No prefix-table row is an input to this
-        check, so mutually rewritten derived roots cannot create a verified
-        reader capability on process startup.
+        When the prefix proof is complete and matches the current reducer
+        bundle, cold start skips genesis reducer replay. Envelope hashes and
+        commit bindings are still checked. Missing or partial prefix tables
+        still take the full replay path.
         """
 
         with self._thread_lock:
@@ -1987,17 +1995,11 @@ class SQLiteWorldLedger:
                 if owns_transaction:
                     connection.execute("BEGIN")
                 head = self._project_locked()
-                rebuilt = self._replay_locked(
-                    target_cursor=None,
-                    target_schema_version=CURRENT_SCHEMA_VERSION,
-                    reducer_bundle_version=REDUCER_BUNDLE_VERSION,
-                )
-                if rebuilt != head:
-                    raise LedgerIntegrityError("cold replay does not match persisted head")
-                head_cursor = ProjectionCursor(
-                    world_revision=head.world_revision,
-                    deliberation_revision=head.deliberation_revision,
-                    ledger_sequence=head.ledger_sequence,
+                event_count = int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM world_v2_events WHERE world_id = ?",
+                        (self._world_id,),
+                    ).fetchone()[0]
                 )
                 commit_count = int(
                     connection.execute(
@@ -2005,78 +2007,31 @@ class SQLiteWorldLedger:
                         (self._world_id,),
                     ).fetchone()[0]
                 )
-                # Cold verification must remain fail-closed, but it does not
-                # need to issue a new SQLite query for every commit and every
-                # legacy-event membership check.  These rows are loaded inside
-                # the same read transaction as the replay, so the batch is
-                # still one immutable snapshot; only the query shape changes.
-                commit_rows = {
-                    str(row["commit_id"]): row
-                    for row in connection.execute(
-                        "SELECT commit_id, request_hash, result_json "
-                        "FROM world_v2_commits WHERE world_id = ?",
-                        (self._world_id,),
-                    )
-                }
-                event_rows_by_commit: dict[str, list[sqlite3.Row]] = {}
-                for event_row in connection.execute(
-                    "SELECT * FROM world_v2_events WHERE world_id = ? ORDER BY ledger_sequence",
+                prefix_head = connection.execute(
+                    "SELECT * FROM world_v2_prefix_heads WHERE world_id = ?",
                     (self._world_id,),
+                ).fetchone()
+                if self._prefix_proof_allows_incremental_cold_verify_locked(
+                    head=head,
+                    event_count=event_count,
+                    commit_count=commit_count,
+                    prefix_head=prefix_head,
                 ):
-                    event_rows_by_commit.setdefault(str(event_row["commit_id"]), []).append(
-                        event_row
-                    )
-                legacy_plan_event_ids = {
-                    str(row["event_id"])
-                    for row in connection.execute(
-                        "SELECT event_id FROM world_v2_legacy_plan_events WHERE world_id = ?",
-                        (self._world_id,),
-                    )
-                }
-                previous_last_sequence = 0
-                verified_commit_count = 0
-                for row in connection.execute(
-                    """SELECT commit_id, MIN(ledger_sequence) AS first_sequence,
-                              MAX(ledger_sequence) AS last_sequence,
-                              COUNT(*) AS event_count
-                       FROM world_v2_events WHERE world_id = ?
-                       GROUP BY commit_id ORDER BY MIN(ledger_sequence)""",
-                    (self._world_id,),
-                ):
-                    first_sequence = int(row["first_sequence"])
-                    last_sequence = int(row["last_sequence"])
-                    if (
-                        first_sequence != previous_last_sequence + 1
-                        or last_sequence - first_sequence + 1 != int(row["event_count"])
-                    ):
-                        raise LedgerIntegrityError("commit event rows are not contiguous")
-                    commit_id = str(row["commit_id"])
-                    self._verify_cold_commit_locked(
-                        commit_id,
-                        expected_cursor=head_cursor,
-                        commit_row=commit_rows.get(commit_id),
-                        event_rows=tuple(event_rows_by_commit.get(commit_id, ())),
-                        legacy_plan_event_ids=legacy_plan_event_ids,
-                    )
-                    self._cache_verified_commit_rows_locked(
-                        commit_id,
-                        commit_row=commit_rows.get(commit_id),
-                        event_rows=tuple(event_rows_by_commit.get(commit_id, ())),
-                        # Context's recent-dialogue and authority slices are
-                        # bounded by item count, but their source events are
-                        # not necessarily the last physical ledger rows (a
-                        # long action/settlement tail can sit between two
-                        # observations).  Keep a bounded, useful prefix of
-                        # verified envelopes so a hot Context build does not
-                        # re-verify one old commit per retained message.
-                        minimum_sequence=max(0, head_cursor.ledger_sequence - 4096),
-                    )
-                    previous_last_sequence = last_sequence
-                    verified_commit_count += 1
-                if verified_commit_count != commit_count:
-                    raise LedgerIntegrityError(
-                        "prefix proof rebuild found an empty or orphaned commit"
-                    )
+                    self._cold_history_replayed = False
+                    if event_count or commit_count:
+                        self._verify_cold_event_envelopes_locked(head)
+                    if owns_transaction:
+                        connection.commit()
+                    return
+                self._cold_history_replayed = True
+                rebuilt = self._replay_locked(
+                    target_cursor=None,
+                    target_schema_version=CURRENT_SCHEMA_VERSION,
+                    reducer_bundle_version=REDUCER_BUNDLE_VERSION,
+                )
+                if rebuilt != head:
+                    raise LedgerIntegrityError("cold replay does not match persisted head")
+                self._verify_cold_event_envelopes_locked(head)
                 if owns_transaction:
                     connection.commit()
             except sqlite3.DatabaseError as exc:
@@ -2093,6 +2048,109 @@ class SQLiteWorldLedger:
                     except sqlite3.DatabaseError:
                         pass
                 raise
+
+    def _verify_cold_event_envelopes_locked(self, head: LedgerProjection) -> None:
+        """Bind stored event bytes to commit records without reducing them."""
+
+        connection = self._connection
+        head_cursor = ProjectionCursor(
+            world_revision=head.world_revision,
+            deliberation_revision=head.deliberation_revision,
+            ledger_sequence=head.ledger_sequence,
+        )
+        commit_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM world_v2_commits WHERE world_id = ?",
+                (self._world_id,),
+            ).fetchone()[0]
+        )
+        commit_rows = {
+            str(row["commit_id"]): row
+            for row in connection.execute(
+                "SELECT commit_id, request_hash, result_json "
+                "FROM world_v2_commits WHERE world_id = ?",
+                (self._world_id,),
+            )
+        }
+        event_rows_by_commit: dict[str, list[sqlite3.Row]] = {}
+        for event_row in connection.execute(
+            "SELECT * FROM world_v2_events WHERE world_id = ? ORDER BY ledger_sequence",
+            (self._world_id,),
+        ):
+            event_rows_by_commit.setdefault(str(event_row["commit_id"]), []).append(
+                event_row
+            )
+        legacy_plan_event_ids = {
+            str(row["event_id"])
+            for row in connection.execute(
+                "SELECT event_id FROM world_v2_legacy_plan_events WHERE world_id = ?",
+                (self._world_id,),
+            )
+        }
+        previous_last_sequence = 0
+        verified_commit_count = 0
+        for row in connection.execute(
+            """SELECT commit_id, MIN(ledger_sequence) AS first_sequence,
+                      MAX(ledger_sequence) AS last_sequence,
+                      COUNT(*) AS event_count
+               FROM world_v2_events WHERE world_id = ?
+               GROUP BY commit_id ORDER BY MIN(ledger_sequence)""",
+            (self._world_id,),
+        ):
+            first_sequence = int(row["first_sequence"])
+            last_sequence = int(row["last_sequence"])
+            if (
+                first_sequence != previous_last_sequence + 1
+                or last_sequence - first_sequence + 1 != int(row["event_count"])
+            ):
+                raise LedgerIntegrityError("commit event rows are not contiguous")
+            commit_id = str(row["commit_id"])
+            self._verify_cold_commit_locked(
+                commit_id,
+                expected_cursor=head_cursor,
+                commit_row=commit_rows.get(commit_id),
+                event_rows=tuple(event_rows_by_commit.get(commit_id, ())),
+                legacy_plan_event_ids=legacy_plan_event_ids,
+            )
+            self._cache_verified_commit_rows_locked(
+                commit_id,
+                commit_row=commit_rows.get(commit_id),
+                event_rows=tuple(event_rows_by_commit.get(commit_id, ())),
+                minimum_sequence=max(0, head_cursor.ledger_sequence - 4096),
+            )
+            previous_last_sequence = last_sequence
+            verified_commit_count += 1
+        if verified_commit_count != commit_count:
+            raise LedgerIntegrityError(
+                "prefix proof rebuild found an empty or orphaned commit"
+            )
+
+    def _prefix_proof_allows_incremental_cold_verify_locked(
+        self,
+        *,
+        head: LedgerProjection,
+        event_count: int,
+        commit_count: int,
+        prefix_head: sqlite3.Row | None,
+    ) -> bool:
+        """Skip genesis replay when the prefix proof already binds this head.
+
+        Missing prefix tables still take the O(N) replay path. A present but
+        partial or mismatched proof remains fail-closed.
+        """
+
+        if event_count == 0 and commit_count == 0:
+            return True
+        if prefix_head is None:
+            return False
+        if str(head.reducer_bundle_version) != REDUCER_BUNDLE_VERSION:
+            return False
+        self._verify_prefix_proof_state_locked(
+            prefix_head=prefix_head,
+            event_count=event_count,
+            commit_count=commit_count,
+        )
+        return True
 
     def _cache_verified_commit_rows_locked(
         self,

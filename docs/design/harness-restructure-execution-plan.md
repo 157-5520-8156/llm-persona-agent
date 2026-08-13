@@ -896,4 +896,14 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **剩余缺口**：写时仍是每个 fact 一次模型压缩，尚未改成每天一次批量（避免在没有 due overlay 时把后到的 fact 记成 no_change 永远丢掉）；relevance 还没有当前 trigger 的词法项。
 - **commit**：`1282f6db`
 
+### 2026-08-13 H10 新纪元：归档、genesis、衰减纯函数、快启动
+
+- **红测**：`tests/world_v2/test_epoch_continuity_h10.py` — 冷启动对完整前缀仍走 genesis reducer 重放；时钟推进仍写 `AffectEpisodeDecayed`；连续性快照会带上 TriggerProcess / observation 命名空间。
+- **改动**：新增 `epoch_continuity.py` / `epoch_genesis.py` / `scripts/start_world_v2_epoch.py`。归档是 SQLite backup 后 chmod 0444，代码永不打开归档。新库第一条仍是 `WorldStarted`，连续性放在可选 `payload.continuity`（不新增事件类型）。导入的 fact/affect/appraisal 把 `committed_world_event` 证据和 `accepted_event_ref` 绑到新 genesis；operator 锚点不改所以指纹不变，ledger 锚点重算指纹。`AffectEpisodeDecayed` 不再由 clock tick 写出；`make_projection` 按 logical_time 读时物化强度，head 里的锚点不动。SQLite 在前缀证明完整且 bundle 一致时跳过 reducer 重放，但仍校验信封哈希与 commit 绑定；缺前缀走全量 replay，残缺前缀 `LedgerIntegrityError`。§10.1：`committed_world_event_refs` 本包不剪（太多 `len(refs)==world_revision` 调用点），新纪元从头变小；idempotency 靠新 sqlite 文件；TriggerProcess 已在 H2 sidecar，genesis 不拷进程表；vertical 组成不变；不 bump reducer bundle。
+- **测试**：H10 红测绿；prefix-proof / sqlite ledger 篡改仍 fail-closed；appraisal 时钟后强度下降且 `entity_revision` 不再 +1；goal expiry 与衰减不再同批写 decay 事件；character-tier 498 passed；ruff 绿。
+- **生产证据**：本 worktree 没有 `data/companion.sqlite`，脚本不会偷偷改生产库。真正切 epoch 需要停 daemon 后跑 `scripts/start_world_v2_epoch.py`，并把运行配置指到新库；归档可回滚。
+- **成本与延迟**：去掉 clock tick 上的 `AffectEpisodeDecayed` 写入（生产曾占事件约 25%）。冷启动不再 reduce 全历史，仍要扫信封哈希；新纪元 head 从编译快照起步，不继承 9.3MB 流程表。
+- **剩余缺口**：`committed_world_event_refs` 前进仍 1:1 增长；衰减仍跟 logical_time，idle 不写时钟时要等到下一次 due/inbound；thread/commitment/memory 的 `accepted_event_ref` 未 rebound；`assertion_binding.source_ref` 仍可能指向归档事件；未单独重放 `BiographicalTimelineConfigured`；旧 `world_snapshots` 131MB 清理未做；切生产库与启动 ≤10s 需真实账本验证。
+- **commit**：
+
 

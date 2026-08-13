@@ -953,7 +953,8 @@ def test_verified_lookup_accepts_cross_connection_append_only_after_revalidation
         committed,
     )
     after = left.performance_counters()
-    assert after.total_replay_calls == before.total_replay_calls + 1
+    assert after.total_replay_calls == before.total_replay_calls
+    assert after.cold_history_replayed is False
     left.close()
     right.close()
 
@@ -1038,7 +1039,10 @@ def test_lookup_event_commit_rejects_coordinated_predecessor_revision_tampering(
                WHERE commit_id = 'commit-2'"""
         )
 
-    with pytest.raises(LedgerIntegrityError, match="revisions are discontinuous"):
+    with pytest.raises(
+        LedgerIntegrityError,
+        match="event envelope does not match its ledger row|revisions are discontinuous",
+    ):
         SQLiteWorldLedger(path=path, world_id="world-sqlite-test")
 
 

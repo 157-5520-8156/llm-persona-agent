@@ -15,7 +15,7 @@ from companion_daemon.world_v2.clock_authority import (
 from companion_daemon.world_v2.errors import IdempotencyConflict
 from companion_daemon.world_v2.ledger import WorldLedger
 from companion_daemon.world_v2.goal_expiry_runtime import build_due_goal_expiry_events
-from companion_daemon.world_v2.reducers import ReducerState, reduce_event
+from companion_daemon.world_v2.reducers import ReducerState, make_projection, reduce_event
 from companion_daemon.world_v2.schemas import CommitResult
 from companion_daemon.world_v2.schemas import (
     AffectComponentProjection,
@@ -428,14 +428,11 @@ async def test_due_goal_expiry_and_affect_decay_share_one_clock_commit() -> None
     assert tuple(event.event_type for event in ledger.committed_events) == (
         "ClockAdvanced",
         "V2GoalExpired",
-        "AffectEpisodeDecayed",
     )
     expiry_payload = json.loads(ledger.committed_events[1].payload_json)
-    decay_payload = json.loads(ledger.committed_events[2].payload_json)
     assert expiry_payload["cause_authority"]["clock_event_ref"] == (
         "event:trigger:clock:goal-and-affect"
     )
-    assert datetime.fromisoformat(decay_payload["to_logical_time"]) == NOW
     seed_projection = seed.project()
     state = ReducerState(
         logical_time=seed_projection.logical_time,
@@ -448,8 +445,16 @@ async def test_due_goal_expiry_and_affect_decay_share_one_clock_commit() -> None
     for event in ledger.committed_events:
         state = reduce_event(state, event)
     assert state.goals[0].values.status == "expired"
-    assert state.affect_episodes[0].entity_revision == 2
-    assert state.affect_episodes[0].components[0].intensity_bp < 4_200
+    assert state.affect_episodes[0].entity_revision == 1
+    assert state.affect_episodes[0].components[0].intensity_bp == 4_200
+    live = make_projection(
+        world_id=WORLD_ID,
+        world_revision=len(state.committed_world_event_refs),
+        deliberation_revision=0,
+        ledger_sequence=0,
+        state=state,
+    )
+    assert live.affect_episodes[0].components[0].intensity_bp < 4_200
 
 
 @pytest.mark.asyncio

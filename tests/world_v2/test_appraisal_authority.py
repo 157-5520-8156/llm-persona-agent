@@ -503,7 +503,7 @@ async def test_typed_affect_acceptance_replays_and_decays(
     duplicate = await runtime.advance(clock)
     assert duplicate == first
     decayed = ledger.project()
-    assert decayed.affect_episodes[0].entity_revision == 2
+    assert decayed.affect_episodes[0].entity_revision == 1
     assert decayed.affect_episodes[0].components[0].intensity_bp < 4_200
     assert ledger.rebuild() == decayed
     projection = decayed

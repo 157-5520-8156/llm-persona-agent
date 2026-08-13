@@ -140,6 +140,7 @@ from .external_perception_acceptance_manifest import (
     EXTERNAL_PERCEPTION_ACCEPTANCE_MANIFEST_VERSION,
     ExternalPerceptionAcceptanceManifest,
 )
+from .epoch_continuity import ContinuitySnapshot
 from .schemas import (
     Action,
     ActionReconciliation,
@@ -389,7 +390,10 @@ def _action_settlement_payload(name: str) -> type[BaseModel]:
 _ID = (str, Field(min_length=1))
 _PAYLOAD_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType(
     {
-        "WorldStarted": _payload_model("WorldStartedPayload"),
+        "WorldStarted": _payload_model(
+            "WorldStartedPayload",
+            {"continuity": (ContinuitySnapshot | None, None)},
+        ),
         "ObservationRecorded": _optional_model_projection(
             "ObservationRecordedPayload",
             Observation,
