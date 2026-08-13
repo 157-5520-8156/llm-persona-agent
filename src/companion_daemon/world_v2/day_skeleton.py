@@ -4,10 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import hashlib
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import yaml
+
+_WEATHER = (
+    "偏热，空气有点闷",
+    "清爽，风不大",
+    "阴天，像要下雨",
+    "雨意很淡，路面还是干的",
+    "太阳很好，晒得人想躲一躲",
+)
 
 
 _DEFAULT_SEED = Path(__file__).resolve().parents[3] / "configs" / "world_seed.yaml"
@@ -103,6 +112,8 @@ def compile_day_sheet(
         identity.append(season)
     if identity:
         parts.append("，".join(identity))
+    weather_digest = hashlib.sha256(local.date().isoformat().encode("utf-8")).digest()
+    parts.append("天气：" + _WEATHER[int.from_bytes(weather_digest[:8], "big") % len(_WEATHER)])
     if skeleton.slots:
         lines = []
         current = None

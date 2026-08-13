@@ -552,7 +552,7 @@ async def test_production_open_life_no_op_is_effect_once_across_cold_restart(
         )
         assert first.status == "idle"
         assert first.life_development_followup_status == "no_op"
-        assert world_author.calls == 1
+        assert world_author.calls == 0
         assert character_model.calls == 0
     finally:
         app.close()
@@ -627,7 +627,7 @@ def test_production_open_life_refuses_an_unmarked_legacy_story_catalog(
 
 
 @pytest.mark.asyncio
-async def test_production_open_life_failure_retries_at_ten_minutes_without_early_model_call(
+async def test_production_open_life_does_not_call_world_author_when_catalog_is_reviewed(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "open-life-retry.sqlite"
@@ -676,88 +676,16 @@ async def test_production_open_life_failure_retries_at_ten_minutes_without_early
             trace_id="trace:open-life-retry-first",
             correlation_id="correlation:open-life-retry",
         )
-        schedule = app._ledger.project().life_ecology_schedule  # noqa: SLF001
-        assert first.status == "deferred"
-        assert world_author.calls == 1
-        assert schedule is not None
-        assert schedule.consecutive_failures == 1
-        assert schedule.next_consideration_at == NOW.replace(minute=20)
-
-        await app.tick(
-            tick_id="open-life-retry-early",
-            logical_time_from=NOW.replace(minute=10),
-            logical_time_to=NOW.replace(minute=19),
-            observed_at=NOW.replace(minute=19),
-            trace_id="trace:open-life-retry-early",
-            causation_id="scheduler:open-life-retry",
-            correlation_id="correlation:open-life-retry",
-            reason="open-life-retry",
-            run_life_ecology=False,
-        )
-        early = await app.advance_life_ecology_once(
-            wake_event_ref="event:trigger:clock:open-life-retry-early",
-            trace_id="trace:open-life-retry-early",
-            correlation_id="correlation:open-life-retry",
-        )
-        assert early.life_development_followup_status is None
-        assert world_author.calls == 1
-
-        await app.tick(
-            tick_id="open-life-retry-due",
-            logical_time_from=NOW.replace(minute=19),
-            logical_time_to=NOW.replace(minute=20),
-            observed_at=NOW.replace(minute=20),
-            trace_id="trace:open-life-retry-due",
-            causation_id="scheduler:open-life-retry",
-            correlation_id="correlation:open-life-retry",
-            reason="open-life-retry",
-            run_life_ecology=False,
-        )
-        due = await app.advance_life_ecology_once(
-            wake_event_ref="event:trigger:clock:open-life-retry-due",
-            trace_id="trace:open-life-retry-due",
-            correlation_id="correlation:open-life-retry",
-        )
-        schedule = app._ledger.project().life_ecology_schedule  # noqa: SLF001
-        assert due.status == "deferred"
-        assert world_author.calls == 2
-        assert schedule is not None
-        assert schedule.consecutive_failures == 2
-        assert schedule.next_consideration_at == NOW.replace(minute=50)
-
-        await app.tick(
-            tick_id="open-life-retry-third",
-            logical_time_from=NOW.replace(minute=20),
-            logical_time_to=NOW.replace(minute=50),
-            observed_at=NOW.replace(minute=50),
-            trace_id="trace:open-life-retry-third",
-            causation_id="scheduler:open-life-retry",
-            correlation_id="correlation:open-life-retry",
-            reason="open-life-retry",
-            run_life_ecology=False,
-        )
-        third = await app.advance_life_ecology_once(
-            wake_event_ref="event:trigger:clock:open-life-retry-third",
-            trace_id="trace:open-life-retry-third",
-            correlation_id="correlation:open-life-retry",
-        )
-        schedule = app._ledger.project().life_ecology_schedule  # noqa: SLF001
-        assert third.status == "deferred"
-        assert world_author.calls == 3
-        assert schedule is not None
-        assert schedule.consecutive_failures == 3
-        assert schedule.next_consideration_at == NOW.replace(
-            hour=12,
-            minute=50,
-        )
+        assert first.status == "idle"
+        assert first.life_development_followup_status == "no_op"
+        assert world_author.calls == 0
     finally:
         app.close()
 
 
 @pytest.mark.asyncio
-async def test_production_dynamic_character_plan_opens_aftermath_from_frozen_outcomes(
+async def test_production_reviewed_catalog_does_not_invent_a_world_author_plan(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     database = tmp_path / "open-life-dynamic-aftermath.sqlite"
     seed = _open_life_seed(tmp_path / "dynamic-aftermath-seed.yaml")
@@ -812,140 +740,12 @@ async def test_production_dynamic_character_plan_opens_aftermath_from_frozen_out
             trace_id="trace:open-life-plan",
             correlation_id="correlation:open-life-plan",
         )
-        assert planned.life_development_followup_status == "plan_committed"
-        plan = app._ledger.project().plans[0]  # noqa: SLF001
-        assert plan.activity_kind.startswith("open_life.")
-
-        second_wake = "event:trigger:clock:open-life-plan-start"
-        await app.tick(
-            tick_id="open-life-plan-start",
-            logical_time_from=NOW + timedelta(minutes=10),
-            logical_time_to=NOW + timedelta(minutes=11),
-            observed_at=NOW + timedelta(minutes=11),
-            trace_id="trace:open-life-plan-start",
-            causation_id="scheduler:open-life-plan",
-            correlation_id="correlation:open-life-plan",
-            reason="open-life-plan",
-            run_life_ecology=False,
+        assert planned.life_development_followup_status == "no_op"
+        assert world_author.calls == 0
+        assert character_model.calls == 0
+        assert not any(
+            item.activity_kind.startswith("open_life.")
+            for item in app._ledger.project().plans  # noqa: SLF001
         )
-        opened = await app.advance_life_ecology_once(
-            wake_event_ref=second_wake,
-            trace_id="trace:open-life-plan-start",
-            correlation_id="correlation:open-life-plan",
-        )
-
-        projection = app._ledger.project()  # noqa: SLF001
-        assert opened.activity_followup_status == "transitioned"
-        assert opened.aftermath_followup_status == "occurrence_opened"
-        assert opened.life_development_followup_status is None
-        assert world_author.calls == 1
-        assert character_model.calls == 1
-        occurrence = projection.world_occurrences[0]
-        assert occurrence.status == "active"
-        assert occurrence.trigger_ref == plan.plan_id
-        assert [item.causal_authority for item in occurrence.candidate_outcomes] == [
-            "world_contingency",
-            "world_contingency",
-        ]
-        assert [
-            item.relative_plausibility_weight
-            for item in occurrence.candidate_outcomes
-        ] == [1, 2]
-        assert all(
-            item.candidate_result_ref.startswith("candidate:life-development:")
-            for item in occurrence.candidate_outcomes
-        )
-
-        aftermath = app._life_ecology._aftermath_followup  # noqa: SLF001
-        original_commit = aftermath._commit  # noqa: SLF001
-        failed_once = False
-
-        def fail_once_after_recorded_draw(events, *, commit_id):  # type: ignore[no-untyped-def]
-            nonlocal failed_once
-            if (
-                not failed_once
-                and commit_id.startswith("commit:life-aftermath:proposal:")
-            ):
-                failed_once = True
-                raise RuntimeError("simulated crash after outcome draw")
-            return original_commit(events, commit_id=commit_id)
-
-        monkeypatch.setattr(
-            aftermath,
-            "_commit",
-            fail_once_after_recorded_draw,
-        )
-        third_wake = "event:trigger:clock:open-life-plan-settle"
-        await app.tick(
-            tick_id="open-life-plan-settle",
-            logical_time_from=NOW + timedelta(minutes=11),
-            logical_time_to=NOW + timedelta(minutes=71),
-            observed_at=NOW + timedelta(minutes=71),
-            trace_id="trace:open-life-plan-settle",
-            causation_id="scheduler:open-life-plan",
-            correlation_id="correlation:open-life-plan",
-            reason="open-life-plan",
-            run_life_ecology=False,
-        )
-        interrupted = await app.advance_life_ecology_once(
-            wake_event_ref=third_wake,
-            trace_id="trace:open-life-plan-settle",
-            correlation_id="correlation:open-life-plan",
-        )
-        assert interrupted.reason_code == "life_ecology.aftermath_followup_failed"
-        recorded_draws = [
-            item.event
-            for item in app._ledger.export_replay_evidence().events  # noqa: SLF001
-            if item.event.event_type == "RandomDrawRecorded"
-            and item.event.source == "world-v2:life-aftermath-random"
-        ]
-        assert len(recorded_draws) == 1
-        selected_candidate_ref = recorded_draws[0].payload()[
-            "selected_candidate_ref"
-        ]
-        monkeypatch.setattr(aftermath, "_commit", original_commit)
-
-        fourth_wake = "event:trigger:clock:open-life-plan-recover-settlement"
-        await app.tick(
-            tick_id="open-life-plan-recover-settlement",
-            logical_time_from=NOW + timedelta(minutes=71),
-            logical_time_to=NOW + timedelta(minutes=72),
-            observed_at=NOW + timedelta(minutes=72),
-            trace_id="trace:open-life-plan-recover-settlement",
-            causation_id="scheduler:open-life-plan",
-            correlation_id="correlation:open-life-plan",
-            reason="open-life-plan",
-            run_life_ecology=False,
-        )
-        settled = await app.advance_life_ecology_once(
-            wake_event_ref=fourth_wake,
-            trace_id="trace:open-life-plan-recover-settlement",
-            correlation_id="correlation:open-life-plan",
-        )
-
-        projection = app._ledger.project()  # noqa: SLF001
-        assert settled.aftermath_followup_status == "settled"
-        assert settled.biographical_followup_status == "transitioned"
-        assert projection.world_occurrences[0].settled_outcome_ref == (
-            selected_candidate_ref
-        )
-        assert (
-            sum(
-                item.event.event_type == "RandomDrawRecorded"
-                and item.event.source == "world-v2:life-aftermath-random"
-                for item in app._ledger.export_replay_evidence().events  # noqa: SLF001
-            )
-            == 1
-        )
-        assert len(
-            [
-                npc
-                for npc in projection.npcs
-                if npc.source_event_ref is not None
-                and npc.effect_descriptor_hash is not None
-            ]
-        ) == 1
-        assert all(arc.arc_kind != "dynamic" for arc in projection.life_arcs)
-        assert projection.pending_biographical_settlements == ()
     finally:
         app.close()

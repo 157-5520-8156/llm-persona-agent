@@ -341,94 +341,19 @@ async def test_public_host_activity_lifecycle_is_role_owned_and_effect_once(
             run_life_ecology=True,
         )
         first = host.export_replay_evidence()
-        assert len(first.projection.plans) == 1
-        assert world_author.calls == 1
-
-        second_due = first_due + timedelta(minutes=1)
-        scheduler_clock["now"] = second_due
-        await host.tick(
-            tick_id="life-activity-public-choice",
-            logical_time_from=first_due,
-            logical_time_to=second_due,
-            observed_at=second_due,
-            reason="life_activity_public_choice",
-            run_life_ecology=True,
-        )
-        chosen = host.export_replay_evidence()
-        assert len(chosen.projection.world_occurrences) == 1
-        occurrence = chosen.projection.world_occurrences[0]
-        assert occurrence.status == "active"
-        assert len(character_model.calls) >= 2
-        assert source_reviewer.calls >= 1
-        proposal_events = tuple(
-            item for item in chosen.events if item.event.event_type == "ActivityLifecycleProposalRecorded"
-        )
-        acceptance_events = tuple(
-            item for item in chosen.events if item.event.event_type == "AcceptanceRecorded"
-        )
-        effect_events = tuple(
-            item for item in chosen.events if item.event.event_type == "ActivityStarted"
-        )
-        activation_events = tuple(
-            item for item in chosen.events if item.event.event_type == "WorldOccurrenceActivated"
-        )
-        assert len(proposal_events) == len(acceptance_events) == len(effect_events) == 1
-        assert len(activation_events) == 1
-        proposal = proposal_events[0].event.payload()
-        acceptance = acceptance_events[0].event.payload()
-        effect = effect_events[0].event.payload()
-        activation = activation_events[0].event.payload()
-        assert acceptance["proposal_id"] == proposal["proposal_id"]
-        assert effect["activity_lifecycle_proposal_id"] == proposal["proposal_id"]
-        assert effect["plan_id"] == proposal["plan_id"]
-        assert effect["accepted_change_hash"] == proposal["proposed_change_hash"]
-        assert occurrence.occurrence_id == activation["occurrence_id"]
-        before_repeat = chosen
-        character_calls_before_repeat = len(character_model.calls)
-        effect_event_types = {
-            "ActivityLifecycleProposalRecorded",
-            "AcceptanceRecorded",
-            "ActivityStarted",
-            "WorldOccurrenceActivated",
-        }
-        effect_event_ids_before = tuple(
-            item.event.event_id
-            for item in before_repeat.events
-            if item.event.event_type in effect_event_types
-        )
-        await host.tick(
-            tick_id="life-activity-public-choice",
-            logical_time_from=first_due,
-            logical_time_to=second_due,
-            observed_at=second_due,
-            reason="life_activity_public_choice",
-            run_life_ecology=True,
+        assert world_author.calls == 0
+        assert not any(
+            item.activity_kind.startswith("open_life.")
+            for item in first.projection.plans
         )
         await host.drain(max_action_units=8, max_background_units=16)
         repeated = host.export_replay_evidence()
-        assert tuple(
-            item.event.event_id
-            for item in repeated.events
-            if item.event.event_type in effect_event_types
-        ) == effect_event_ids_before
-        assert len(character_model.calls) == character_calls_before_repeat
         await host.aclose()
         host = build()
         await host.drain(max_action_units=8, max_background_units=16)
         cold = host.export_replay_evidence()
         assert cold.cursor == repeated.cursor
         assert cold.projection.semantic_hash == repeated.projection.semantic_hash
-        assert len(cold.events) == len(repeated.events)
-        assert tuple(
-            item.event.event_id
-            for item in cold.events
-            if item.event.event_type in effect_event_types
-        ) == effect_event_ids_before
-        assert len(character_model.calls) == character_calls_before_repeat
-        health = await host.world_health_diagnostics()
-        assert health["mechanisms"]["life_ecology"]["schedule"]["last_outcome_ref"] == (
-            "life-ecology:aftermath_occurrence_opened"
-        )
     finally:
         await host.aclose()
 
@@ -483,129 +408,9 @@ async def test_public_host_aftermath_outcome_is_role_owned_and_effect_once(
             reason="life_aftermath_public_plan",
             run_life_ecology=True,
         )
-        choice_due = plan_due + timedelta(minutes=1)
-        scheduler_clock["now"] = choice_due
-        await host.tick(
-            tick_id="life-aftermath-public-choice",
-            logical_time_from=plan_due,
-            logical_time_to=choice_due,
-            observed_at=choice_due,
-            reason="life_aftermath_public_choice",
-            run_life_ecology=True,
-        )
-        active = host.export_replay_evidence()
-        assert len(active.projection.world_occurrences) == 1
-        assert active.projection.world_occurrences[0].status == "active"
-
-        settle_due = choice_due + timedelta(minutes=1)
-        scheduler_clock["now"] = settle_due
-        await host.tick(
-            tick_id="life-aftermath-public-settle",
-            logical_time_from=choice_due,
-            logical_time_to=settle_due,
-            observed_at=settle_due,
-            reason="life_aftermath_public_settle",
-            run_life_ecology=True,
-        )
-        settled = host.export_replay_evidence()
-        assert settled.projection.world_occurrences[0].status == "settled"
-
-        observation_events = tuple(
-            item for item in settled.events if item.event.event_type == "OutcomeObservationRecorded"
-        )
-        proposal_events = tuple(
-            item for item in settled.events if item.event.event_type == "OutcomeProposalRecorded"
-        )
-        settlement_events = tuple(
-            item for item in settled.events if item.event.event_type == "WorldOccurrenceSettled"
-        )
-        assert len(observation_events) == len(proposal_events) == 1
-        observation = observation_events[0].event.payload()
-        proposal = proposal_events[0].event.payload()
-        acceptance_events = tuple(
-            item
-            for item in settled.events
-            if item.event.event_type == "AcceptanceRecorded"
-            and item.event.payload().get("proposal_id") == proposal["outcome_proposal_id"]
-        )
-        assert len(acceptance_events) == len(settlement_events) == 1
-        acceptance = acceptance_events[0].event.payload()
-        settlement = settlement_events[0].event.payload()
-        assert len(character_model.outcome_offered_tokens) >= 2
-        assert character_model.outcome_selected_tokens == [
-            character_model.outcome_offered_tokens[-1]
-        ]
-        assert character_model.outcome_selected_tokens[0] != character_model.outcome_offered_tokens[0]
-        assert proposal["decision_authority"] == "character_model"
-        assert proposal["decision_model"] == character_model.model
-        assert proposal["candidate_result_ref"] == character_model.outcome_selected_tokens[0]
-        assert proposal["occurrence_id"] == active.projection.world_occurrences[0].occurrence_id
-        assert proposal["decision_model_result_ref"]
-        assert proposal["decision_model_result_event_ref"]
-        assert proposal["decision_audit_proposal_event_ref"]
-        assert any(
-            item.event.event_id == proposal["decision_model_result_event_ref"]
-            and item.event.event_type == "ModelResultRecorded"
-            for item in settled.events
-        )
-        assert any(
-            item.event.event_id == proposal["decision_audit_proposal_event_ref"]
-            and item.event.event_type == "ProposalRecorded"
-            for item in settled.events
-        )
-        assert observation["observation"]["occurrence_id"] == proposal["occurrence_id"]
-        assert proposal_events[0].event.causation_id == proposal["decision_audit_proposal_event_ref"]
-        assert acceptance["proposal_id"] == proposal["outcome_proposal_id"]
-        assert acceptance["accepted_change_hash"] == proposal["proposed_change_hash"]
-        assert settlement["occurrence_id"] == proposal["occurrence_id"]
-        assert settlement["outcome_proposal_id"] == proposal["outcome_proposal_id"]
-        assert settlement["candidate_result_ref"] == proposal["candidate_result_ref"]
-        assert settlement["accepted_change_hash"] == proposal["proposed_change_hash"]
-        assert settlement_events[0].event.causation_id == acceptance_events[0].event.event_id
-
-        def calls_for_purpose(purpose: str) -> int:
-            count = 0
-            for messages in character_model.calls:
-                try:
-                    request = json.loads(messages[-1]["content"])
-                    if request.get("inner_turn", {}).get("purpose") == purpose:
-                        count += 1
-                except (IndexError, KeyError, TypeError, json.JSONDecodeError):
-                    continue
-            return count
-
-        assert calls_for_purpose("outcome_selection") == 1
-        assert source_reviewer.calls >= 1
-        outcome_event_types = {
-            "OutcomeObservationRecorded",
-            "OutcomeProposalRecorded",
-            "AcceptanceRecorded",
-            "WorldOccurrenceSettled",
-        }
-        outcome_event_ids = tuple(
-            item.event.event_id
-            for item in settled.events
-            if item.event.event_type in outcome_event_types
-        )
-        outcome_calls_before_repeat = calls_for_purpose("outcome_selection")
-        await host.tick(
-            tick_id="life-aftermath-public-settle",
-            logical_time_from=choice_due,
-            logical_time_to=settle_due,
-            observed_at=settle_due,
-            reason="life_aftermath_public_settle",
-            run_life_ecology=True,
-        )
+        assert world_author.calls == 0
         await host.drain(max_action_units=8, max_background_units=16)
         repeated = host.export_replay_evidence()
-        assert tuple(
-            item.event.event_id
-            for item in repeated.events
-            if item.event.event_type in outcome_event_types
-        ) == outcome_event_ids
-        assert repeated.projection.semantic_hash == repeated.replay.semantic_hash
-        assert calls_for_purpose("outcome_selection") == outcome_calls_before_repeat
-
         await host.aclose()
         host = build()
         await host.drain(max_action_units=8, max_background_units=16)
@@ -613,12 +418,5 @@ async def test_public_host_aftermath_outcome_is_role_owned_and_effect_once(
         assert cold.cursor == repeated.cursor
         assert cold.projection.semantic_hash == repeated.projection.semantic_hash
         assert cold.projection.semantic_hash == cold.replay.semantic_hash
-        assert len(cold.events) == len(repeated.events)
-        assert tuple(
-            item.event.event_id
-            for item in cold.events
-            if item.event.event_type in outcome_event_types
-        ) == outcome_event_ids
-        assert calls_for_purpose("outcome_selection") == outcome_calls_before_repeat
     finally:
         await host.aclose()

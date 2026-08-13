@@ -34,6 +34,7 @@ def test_world_seed_daily_schedule_compiles_without_a_model() -> None:
     assert "今日作息" in sheet
     assert "（现在）" in sheet
     assert "图书馆看书" in sheet or "整理" in sheet
+    assert "天气" in sheet
 
 
 def test_day_sheet_marks_the_current_local_window() -> None:

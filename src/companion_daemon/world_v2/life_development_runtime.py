@@ -61,6 +61,7 @@ from .life_development_deterministic_closure import (
     evaluate_focused_origin,
     evaluate_general_source_closure,
 )
+from .life_author_seed import ReviewedLifeSeedCatalog
 from .life_development_source_closure import (
     LifeDevelopmentNovelOriginReview,
     LifeDevelopmentSourceClosureError,
@@ -1077,6 +1078,7 @@ class LifeDevelopmentRuntime:
                 context=world_context,
                 logical_time=wake.logical_time,
                 manifest=world_manifest,
+                wake_event_ref=wake.event_id,
             )
             try:
                 world_audit = self._record_model_run(
@@ -4290,7 +4292,33 @@ class LifeDevelopmentRuntime:
         context: dict[str, object],
         logical_time: datetime,
         manifest: LifeDevelopmentCapabilityManifest,
+        wake_event_ref: str,
     ) -> _LifeDevelopmentModelRun:
+        catalog = getattr(self._manifest_compiler, "catalog", None)
+        if isinstance(catalog, ReviewedLifeSeedCatalog):
+            raw = '{"decision":"no_op"}'
+            parsed = LifeDevelopmentNoOpDraft.model_validate_json(raw)
+            request_hash = _digest(
+                {
+                    "lane": "life_development_weighted_table",
+                    "wake_event_ref": wake_event_ref,
+                    "catalog_hash": catalog.catalog_hash,
+                    "logical_time": logical_time.isoformat(),
+                }
+            )
+            return _LifeDevelopmentModelRun(
+                model_id="deterministic:weighted-table",
+                parsed=parsed,
+                attempts=(
+                    _LifeDevelopmentAttempt(
+                        request_hash=request_hash,
+                        raw_output=raw,
+                        status="proposal_validated",
+                        slot="primary",
+                        outcome="winner",
+                    ),
+                ),
+            )
         hard_boundary_contract = _world_author_hard_boundary_contract(
             manifest=manifest,
             owner_actor_ref=self._owner,

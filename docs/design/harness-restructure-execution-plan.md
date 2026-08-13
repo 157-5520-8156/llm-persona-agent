@@ -906,3 +906,12 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **剩余缺口**：`committed_world_event_refs` 前进仍 1:1 增长；衰减仍跟 logical_time，idle 不写时钟时要等到下一次 due/inbound；thread/commitment/memory 的 `accepted_event_ref` 未 rebound；`assertion_binding.source_ref` 仍可能指向归档事件；未单独重放 `BiographicalTimelineConfigured`；旧 `world_snapshots` 131MB 清理未做；切生产库与启动 ≤10s 需真实账本验证。
 - **commit**：`c6cde1bc`
 
+### 2026-08-13 §12.9 第 8 条：世界用加权表模拟，模型只演角色
+
+- **红测**：`tests/world_v2/test_weighted_world_item8.py` — 有 `ReviewedLifeSeedCatalog` 时 NPC ecology 仍打 actor/world 模型；加权抽取不可复现；day_sheet 没有天气。
+- **改动**：新增 `weighted_table.py`（`sha256(seed)[:8] % total`，无 `RandomDraw` 事件）。`NpcEcology` 在 catalog 为 `ReviewedLifeSeedCatalog` 时用 `NpcInitiativeWeightPolicy` 抽 token：nothing 则 NPC no_op，命中则用已审 event 的 summary/location/duration/outcomes 编 actor+world 决定，0 次 `complete_json_object`。无 catalog / `SimpleNamespace` 仍走模型（现有 `test_npc_ecology.py` 不变）。Life development 在 compiler 暴露的 catalog 为已审目录时直接 `{"decision":"no_op"}`（开口已由 activity lifecycle 消费，本包不编 `LifeDevelopmentPossibilityDraft`）。`day_skeleton.compile_day_sheet` 按当地日哈希加一句天气。§12.10 冻结模块未改；不 bump reducer bundle；无新 model-bearing purpose。
+- **测试**：item8 红测绿；NPC 无 catalog 仍调模型；生产 open-life 与 public host 不再依赖世界作者发明情节；character-tier 498 passed；life_development_runtime 117 passed；ruff 绿。
+- **生产证据**：生产 `NpcEcology(..., catalog=life_seed_catalog)` 与 `ProjectionLifeCapabilityManifestCompiler` 都会走表。NPC 例程密度由 `world_seed.yaml` 的 `base_chance_bp` 与 nothing 质量调节，加事件不加模型账单。
+- **成本与延迟**：生产 quiet wake 上 NPC actor + world author 与 life world-author 的 provider 调用归零；NPC 决定仍落账本以便 CAS/replay。
+- **剩余缺口**：life development 没有从 seed opening 编译 propose（随机环境事件若要写成 occurrence，还差确定性 draft 编译器）；host 资格里原先靠世界作者发明的 activity/aftermath 链改为断言 0 模型 + replay 稳定，角色拥有的 activity/aftermath 闭包仍由单元测试覆盖；天气是日哈希短句，不是店铺开闭；衰减/epoch 缺口仍见 H10。
+

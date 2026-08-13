@@ -59,6 +59,10 @@ class ProjectionLifeCapabilityManifestCompiler:
         self._max_window_minutes = max_window_minutes
         self._content_store = content_store
 
+    @property
+    def catalog(self) -> ReviewedLifeSeedCatalog:
+        return self._catalog
+
     def compile(
         self,
         *,

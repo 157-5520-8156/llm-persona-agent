@@ -10,7 +10,7 @@ WorldOccurrence -> aftermath -> Appraisal -> Affect -> Experience/Memory path.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 import hashlib
 import json
 from typing import Literal, Protocol
@@ -32,6 +32,8 @@ from .life_events import (
 )
 from .life_content_events import LifeContentRecordedPayload
 from .life_author_seed import ReviewedLifeSeedCatalog
+from .npc_initiative_weight_policy import NOTHING_CANDIDATE_REF, NpcInitiativeWeightPolicy
+from .weighted_table import pick_weighted_token
 from .npc_identity_view import NpcIdentityView, npc_identity_views
 from .npc_relationship_view import (
     npc_relationship_readings,
@@ -378,6 +380,17 @@ class NpcEcology:
                 if focused_participant_refs.intersection(item.participant_refs)
                 and isinstance(getattr(item, "location_ref", None), str)
             )
+            if self._catalog is not None and isinstance(projection.logical_time, datetime):
+                biography_arcs = getattr(projection, "life_arcs", ())
+                locations.update(
+                    item.location_ref
+                    for item in self._catalog.npc_initiative_candidates_at(
+                        instant=projection.logical_time,
+                        npcs=projection.npcs,
+                        life_arcs=biography_arcs,
+                    )
+                    if item.npc_ref == focus_npc_ref
+                )
         occurrence_projection = projection.world_occurrences
         if focus_npc_ref is not None:
             occurrence_projection = tuple(
@@ -718,6 +731,9 @@ class NpcEcology:
     async def _actor_decide(
         self, *, stimulus: NpcEcologyStimulus, snapshot: NpcSocialWorldSnapshot
     ) -> tuple[NpcActorDecision, str, tuple[_ModelAttempt, ...]]:
+        table = self._weighted_actor_decision(stimulus=stimulus, snapshot=snapshot)
+        if table is not None:
+            return table
         prompt, payload = self._actor_request(stimulus=stimulus, snapshot=snapshot)
         return await self._run_model_with_one_reselect(
             model=self._actor_model,
@@ -798,6 +814,13 @@ class NpcEcology:
         snapshot: NpcSocialWorldSnapshot,
         actor_decision: NpcActorDecision,
     ) -> tuple[NpcWorldDecision, str, tuple[_ModelAttempt, ...]]:
+        table = self._weighted_world_decision(
+            stimulus=stimulus,
+            snapshot=snapshot,
+            actor_decision=actor_decision,
+        )
+        if table is not None:
+            return table
         prompt, payload = self._world_request(
             stimulus=stimulus,
             snapshot=snapshot,
@@ -958,6 +981,173 @@ class NpcEcology:
             failure_code="corrective_invalid",
         )
         raise _NpcModelRunFailed(tuple(attempts), failure_reason)
+
+    def _weighted_actor_decision(
+        self, *, stimulus: NpcEcologyStimulus, snapshot: NpcSocialWorldSnapshot
+    ) -> tuple[NpcActorDecision, str, tuple[_ModelAttempt, ...]] | None:
+        if not isinstance(self._catalog, ReviewedLifeSeedCatalog):
+            return None
+        npc_ref = self._selected_npc_ref(stimulus=stimulus, snapshot=snapshot)
+        identity = next(item for item in snapshot.identities if item.npc_ref == npc_ref)
+        source_refs = self._actor_context_event_refs(
+            stimulus=stimulus,
+            snapshot=snapshot,
+            npc_ref=npc_ref,
+        )
+        if not source_refs:
+            decision = self._table_actor_no_op(
+                npc_ref=npc_ref,
+                identity=identity,
+                source_refs=stimulus.source_event_refs,
+            )
+            return self._table_decision_result(decision)
+        projection = self._ledger.project_at(stimulus.cursor)
+        logical_time = snapshot.logical_time
+        candidates = ()
+        if isinstance(logical_time, datetime):
+            candidates = tuple(
+                item
+                for item in self._catalog.npc_initiative_candidates_at(
+                    instant=logical_time,
+                    npcs=projection.npcs,
+                    life_arcs=getattr(projection, "life_arcs", ()),
+                )
+                if item.npc_ref == npc_ref
+                and item.location_ref in snapshot.available_location_refs
+            )
+        weights = NpcInitiativeWeightPolicy().compile(
+            candidates=candidates,
+            npc_relationships=tuple(
+                item.protagonist_relationship
+                for item in snapshot.identities
+                if item.protagonist_relationship is not None
+            ),
+        )
+        picked = pick_weighted_token(
+            weights,
+            {
+                "lane": "npc_ecology_weighted_table",
+                "wake_event_ref": stimulus.wake_event_ref,
+                "npc_ref": npc_ref,
+                "catalog_hash": self._catalog.catalog_hash,
+                "weights": {key: weights[key] for key in sorted(weights)},
+            },
+        )
+        chosen = next((item for item in candidates if item.token == picked), None)
+        if chosen is None or picked == NOTHING_CANDIDATE_REF:
+            decision = self._table_actor_no_op(
+                npc_ref=npc_ref,
+                identity=identity,
+                source_refs=source_refs,
+            )
+        else:
+            decision = NpcActorDecision(
+                decision="propose",
+                npc_ref=npc_ref,
+                impulse_summary=chosen.event.summary,
+                inner_state_summary=(identity.inner_state or identity.descriptor),
+                source_refs=source_refs,
+                relationship_to_protagonist=(
+                    identity.npc_relationship_to_protagonist or NpcSocialVariables()
+                ),
+                current_goal_summaries=identity.goal_summaries[:4],
+                proposal=NpcActorProposal(
+                    timing="now",
+                    premise=chosen.event.summary,
+                    participant_refs=(npc_ref,),
+                    location_ref=chosen.location_ref,
+                    duration_minutes=chosen.event.duration_minutes,
+                    visibility=chosen.event.privacy,
+                ),
+            )
+        failure = self._validate_actor_decision(
+            decision, stimulus=stimulus, snapshot=snapshot
+        )
+        if failure is not None:
+            decision = self._table_actor_no_op(
+                npc_ref=npc_ref,
+                identity=identity,
+                source_refs=source_refs,
+            )
+        return self._table_decision_result(decision)
+
+    def _weighted_world_decision(
+        self,
+        *,
+        stimulus: NpcEcologyStimulus,
+        snapshot: NpcSocialWorldSnapshot,
+        actor_decision: NpcActorDecision,
+    ) -> tuple[NpcWorldDecision, str, tuple[_ModelAttempt, ...]] | None:
+        if not isinstance(self._catalog, ReviewedLifeSeedCatalog):
+            return None
+        if actor_decision.decision == "no_op" or actor_decision.proposal is None:
+            decision = NpcWorldDecision(decision="no_op")
+        elif actor_decision.proposal.timing == "later":
+            decision = NpcWorldDecision(decision="accept")
+        else:
+            candidate = self._matching_npc_candidate(
+                stimulus=stimulus,
+                snapshot=snapshot,
+                actor_decision=actor_decision,
+            )
+            if candidate is None:
+                decision = NpcWorldDecision(decision="no_op")
+            else:
+                decision = NpcWorldDecision(
+                    decision="accept",
+                    outcomes=tuple(
+                        NpcWorldOutcomeDraft(text=item.text, privacy=item.privacy)
+                        for item in candidate.event.outcomes
+                    ),
+                )
+        failure = self._validate_world_decision(
+            decision,
+            stimulus=stimulus,
+            snapshot=snapshot,
+            actor_decision=actor_decision,
+        )
+        if failure is not None:
+            decision = NpcWorldDecision(decision="no_op")
+        return self._table_decision_result(decision)
+
+    def _matching_npc_candidate(self, *, stimulus, snapshot, actor_decision):
+        proposal = actor_decision.proposal
+        if proposal is None or not isinstance(snapshot.logical_time, datetime):
+            return None
+        projection = self._ledger.project_at(stimulus.cursor)
+        matches = [
+            item
+            for item in self._catalog.npc_initiative_candidates_at(
+                instant=snapshot.logical_time,
+                npcs=projection.npcs,
+                life_arcs=getattr(projection, "life_arcs", ()),
+            )
+            if item.npc_ref == actor_decision.npc_ref
+            and item.location_ref == proposal.location_ref
+            and item.event.duration_minutes == proposal.duration_minutes
+            and item.event.summary == proposal.premise
+        ]
+        matches.sort(key=lambda item: item.token)
+        return matches[0] if matches else None
+
+    @staticmethod
+    def _table_actor_no_op(*, npc_ref: str, identity: NpcIdentityView, source_refs):
+        return NpcActorDecision(
+            decision="no_op",
+            npc_ref=npc_ref,
+            impulse_summary=identity.descriptor[:1_000],
+            inner_state_summary=(identity.inner_state or identity.descriptor),
+            source_refs=tuple(source_refs),
+            relationship_to_protagonist=(
+                identity.npc_relationship_to_protagonist or NpcSocialVariables()
+            ),
+            current_goal_summaries=identity.goal_summaries[:4],
+        )
+
+    @staticmethod
+    def _table_decision_result(decision):
+        raw = _canonical(decision.model_dump(mode="json"))
+        return decision, raw, ()
 
     def _validate_actor_decision(self, decision, *, stimulus, snapshot) -> str | None:
         if decision.npc_ref != self._selected_npc_ref(stimulus=stimulus, snapshot=snapshot):
