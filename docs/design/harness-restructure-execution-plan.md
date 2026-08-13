@@ -855,3 +855,13 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **成本与延迟**：每次调用少约 6.5k 机制字符（未命中输入）；不增加模型调用。slim 形状降低结构失败，目标是少掉 H1b 之后的技术失败丢弃。
 - **剩余缺口**：工具 schema 仍按 `recall_allowed` 分叉；appraisal/expression 双契约拼接仍在 system 段（compact gate 外层已瘦）；G2 第二次 `consider()` 拒绝与 Occasion 过期是 H5；H8 不停 world-author；H9 打分与每日压缩尚未改。
 - **commit**：`a6f16595`
+
+### 2026-08-13 H5 Occasion 队列：G2/G7、过期丢弃、禁止历史表扫描
+
+- **红测**：`tests/world_v2/test_occasion_queue_g2_g7.py` — 同一 Occasion 可二次 `consider()`；quiet_gap 过期后仍用旧观察补做 ambient；私人印象 opener 遍历全部 `appraisals` 派生机会。
+- **改动**：新增 `occasion.py`（五种 kind + consider-once gate）。inbound `consider()` 在成功后标记 Occasion，同一 `opportunity_ref` 的第二次 live 调用拒绝。私人印象只从账本 head 的 `AppraisalAccepted` 派生（G7），不再扫历史表。`spontaneous_expiry` 到期的 quiet_gap 直接丢弃，不再把过期观察改写成 `ambient_presence` 补做。私人印象独立模型链仍可在 head 新 appraisal 上跑一次；历史积压不再开。§12.10 冻结模块未改；npc/life world-author 未删。
+- **测试**：Occasion 红测绿；social / private-impression / proactive 相关转绿；character-tier 498 passed；ruff 绿。
+- **生产证据**：部署后停机超过 `spontaneous_expiry_seconds` 不应再发出对着旧消息的主动联系；私人印象不应再对历史 appraisal 积压逐条调模型。
+- **成本与延迟**：去掉过期补做与印象积压是后台成本的主项；不新增 model-bearing purpose。
+- **剩余缺口**：五种 Occasion 尚未完全合并进单一队列对象（worker drain 仍按旧顺序跑）；G2 目前只拦 `inbound_turn`（quiet_gap 的 cadence epoch 仍走独立 trigger）；私人印象独立 faculty 未删除，只是不再扫表；H6 原始伤与次数上限、H8 日程骨架、H9 打分尚未做。
+- **commit**：

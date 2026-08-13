@@ -21,6 +21,7 @@ from typing import Mapping
 
 from pydantic import ValidationError
 
+from ..occasion import OccasionAlreadyConsidered, OccasionConsiderGate
 from ..recall_audit import PrefetchPresentationAudit, RecallAuditTrace
 from ..schema_core import canonicalize_json_value
 from ..schemas import ProjectionCursor
@@ -378,8 +379,7 @@ def _recall_turn_json(
             "current_snapshot": _durable_snapshot_value(current_snapshot),
             "correction_attempted": entry.correction_attempted,
             "presented_prefetch_traces": [
-                item.model_dump(mode="json")
-                for item in (entry.presented_prefetch_traces or ())
+                item.model_dump(mode="json") for item in (entry.presented_prefetch_traces or ())
             ],
         },
         ensure_ascii=False,
@@ -390,7 +390,12 @@ def _recall_turn_json(
 
 def _restore_prepared_turn(
     raw: str,
-) -> tuple[_InteriorRoleResult, InnerLifeSnapshot, _PrivateSelfLineage, tuple[PrefetchPresentationAudit, ...]]:
+) -> tuple[
+    _InteriorRoleResult,
+    InnerLifeSnapshot,
+    _PrivateSelfLineage,
+    tuple[PrefetchPresentationAudit, ...],
+]:
     try:
         payload = json.loads(raw)
         if payload.get("contract") != "character-interior-prepared-turn.1":
@@ -447,9 +452,7 @@ def _restore_recall_turn(raw: str) -> _RecallTurnCheckpoint:
         if not isinstance(correction_attempted, bool):
             raise ValueError("Recall checkpoint correction state is invalid")
         traces = tuple(
-            PrefetchPresentationAudit.model_validate_json(
-                json.dumps(item, ensure_ascii=False)
-            )
+            PrefetchPresentationAudit.model_validate_json(json.dumps(item, ensure_ascii=False))
             for item in payload.get("presented_prefetch_traces", ())
         )
         return _RecallTurnCheckpoint(
@@ -512,7 +515,10 @@ class CharacterInterior:
                 "health",
                 "prune_terminal",
             )
-            if any(not callable(getattr(turn_store, name, None)) for name in required_turn_store_methods):
+            if any(
+                not callable(getattr(turn_store, name, None))
+                for name in required_turn_store_methods
+            ):
                 raise TypeError("CharacterInterior turn store is incomplete")
         if not turn_owner_id or turn_lease_seconds < 1:
             raise ValueError("CharacterInterior turn lease configuration is invalid")
@@ -527,12 +533,11 @@ class CharacterInterior:
         self._turn_lease_seconds = turn_lease_seconds
         self._turn_clock = turn_clock
         self._cache: OrderedDict[str, _TurnCacheEntry] = OrderedDict()
+        self._occasion_gate = OccasionConsiderGate()
         self._locks: dict[str, asyncio.Lock] = {}
         self._snapshot_cache: OrderedDict[str, InnerLifeSnapshot] = OrderedDict()
         self._snapshot_locks: dict[str, asyncio.Lock] = {}
-        self._role_failure_evidence: OrderedDict[
-            str, _RoleFacultyTechnicalEvidence
-        ] = OrderedDict()
+        self._role_failure_evidence: OrderedDict[str, _RoleFacultyTechnicalEvidence] = OrderedDict()
         self._background_driver: object | None = None
         self._metrics: Counter[str] = Counter()
         self._snapshot_compile_ms: deque[float] = deque(maxlen=512)
@@ -718,9 +723,13 @@ class CharacterInterior:
         except (TypeError, ValueError, ValidationError, json.JSONDecodeError) as exc:
             raise _InteriorTechnicalError("invalid_durable_turn_terminal") from exc
         expected_ref = (
-            subject.stimulus_ref if isinstance(subject, InteriorStimulus) else subject.opportunity_ref
+            subject.stimulus_ref
+            if isinstance(subject, InteriorStimulus)
+            else subject.opportunity_ref
         )
-        actual_ref = result.stimulus_ref if isinstance(result, InnerTransition) else result.opportunity_ref
+        actual_ref = (
+            result.stimulus_ref if isinstance(result, InnerTransition) else result.opportunity_ref
+        )
         if (
             result.inner_turn_id != turn_id
             or actual_ref != expected_ref
@@ -930,15 +939,15 @@ class CharacterInterior:
             }
         else:
             try:
-                metadata = self._last_turn_metadata if isinstance(self._last_turn_metadata, dict) else {}
+                metadata = (
+                    self._last_turn_metadata if isinstance(self._last_turn_metadata, dict) else {}
+                )
                 health_world_id = str(metadata.get("world_id") or "")
                 health_actor_ref = str(metadata.get("actor_ref") or "")
                 turn_store_health = {
                     "bound": True,
                     "status": (
-                        "ready"
-                        if health_world_id and health_actor_ref
-                        else "ready_unscoped"
+                        "ready" if health_world_id and health_actor_ref else "ready_unscoped"
                     ),
                     **self._turn_store.health(
                         world_id=health_world_id,
@@ -1148,8 +1157,8 @@ class CharacterInterior:
                         if _checkpoint_contract(checkpoint_raw) == (
                             "character-interior-prepared-turn.1"
                         ):
-                            result, snapshot, private_self_lineage, traces = (
-                                _restore_prepared_turn(checkpoint_raw)
+                            result, snapshot, private_self_lineage, traces = _restore_prepared_turn(
+                                checkpoint_raw
                             )
                             entry.snapshot = snapshot
                             entry.presented_prefetch_traces = list(traces)
@@ -1188,16 +1197,19 @@ class CharacterInterior:
                             ),
                             recall_completed=entry.recall_attempted,
                         )
-                        result, snapshot, private_self_lineage, durable = (
-                            await self._run_role_phase(
-                                method_name="experience",
-                                request=request,
-                                snapshot=snapshot,
-                                entry=entry,
-                                final_statuses={"transition", "no_change"},
-                                durable=durable,
-                                resume_recall=resume_recall,
-                            )
+                        (
+                            result,
+                            snapshot,
+                            private_self_lineage,
+                            durable,
+                        ) = await self._run_role_phase(
+                            method_name="experience",
+                            request=request,
+                            snapshot=snapshot,
+                            entry=entry,
+                            final_statuses={"transition", "no_change"},
+                            durable=durable,
+                            resume_recall=resume_recall,
                         )
                         durable_record = self._checkpoint_turn(
                             durable=durable,
@@ -1224,7 +1236,9 @@ class CharacterInterior:
                         cursor=stimulus.cursor,
                         snapshot_id=snapshot.snapshot_id,
                         snapshot_hash=snapshot.snapshot_hash,
-                        status=("transitioned" if result.status == "transition" else "model_no_change"),
+                        status=(
+                            "transitioned" if result.status == "transition" else "model_no_change"
+                        ),
                         summary=result.summary,
                         attended_source_refs=result.attended_source_refs,
                         instant_private_self=_InstantPrivateSelf(
@@ -1306,6 +1320,7 @@ class CharacterInterior:
                             snapshot=canonical_snapshot,
                         )
                     self._metrics["effect_once_join"] += 1
+                    self._occasion_gate.mark_spent(opportunity.opportunity_ref)
                     return entry.decision
                 durable = self._acquire_turn(
                     subject=opportunity,
@@ -1327,8 +1342,8 @@ class CharacterInterior:
                         if _checkpoint_contract(checkpoint_raw) == (
                             "character-interior-prepared-turn.1"
                         ):
-                            result, snapshot, private_self_lineage, traces = (
-                                _restore_prepared_turn(checkpoint_raw)
+                            result, snapshot, private_self_lineage, traces = _restore_prepared_turn(
+                                checkpoint_raw
                             )
                             entry.snapshot = snapshot
                             entry.presented_prefetch_traces = list(traces)
@@ -1351,6 +1366,14 @@ class CharacterInterior:
                             entry=entry,
                         )
                     if not prepared:
+                        if resume_recall is None and opportunity.purpose == "inbound_turn":
+                            try:
+                                self._occasion_gate.admit(opportunity.opportunity_ref)
+                            except OccasionAlreadyConsidered as exc:
+                                raise _InteriorTechnicalError(
+                                    "occasion_already_considered",
+                                    snapshot=canonical_snapshot,
+                                ) from exc
                         request = _InteriorRoleRequest(
                             inner_turn_id=turn_id,
                             phase="consider",
@@ -1367,16 +1390,19 @@ class CharacterInterior:
                             ),
                             recall_completed=entry.recall_attempted,
                         )
-                        result, snapshot, private_self_lineage, durable = (
-                            await self._run_role_phase(
-                                method_name="consider",
-                                request=request,
-                                snapshot=snapshot,
-                                entry=entry,
-                                final_statuses={"decision", "silent"},
-                                durable=durable,
-                                resume_recall=resume_recall,
-                            )
+                        (
+                            result,
+                            snapshot,
+                            private_self_lineage,
+                            durable,
+                        ) = await self._run_role_phase(
+                            method_name="consider",
+                            request=request,
+                            snapshot=snapshot,
+                            entry=entry,
+                            final_statuses={"decision", "silent"},
+                            durable=durable,
+                            resume_recall=resume_recall,
                         )
                         durable_record = self._checkpoint_turn(
                             durable=durable,
@@ -1418,6 +1444,7 @@ class CharacterInterior:
                         failure_code=None,
                     )
                     self._complete_turn(durable=durable, result=decision)
+                    self._occasion_gate.mark_spent(opportunity.opportunity_ref)
             except _InteriorTechnicalError as exc:
                 role_failure_evidence = exc.role_failure_evidence
                 turn_id = _inner_turn_id(
@@ -1442,6 +1469,8 @@ class CharacterInterior:
             # A model/provider/authority failure must remain retryable; only
             # a role-authored decision or silence is effect-once cached.
             entry.decision = None if decision.status == "technical_failure" else decision
+            if decision.status != "technical_failure":
+                self._occasion_gate.mark_spent(opportunity.opportunity_ref)
             self._cache.move_to_end(cache_key)
             self._trim_cache()
             self._record_terminal(
@@ -2086,9 +2115,7 @@ class CharacterInterior:
             entry.snapshot = snapshot
             entry.recall_attempted = True
             entry.correction_attempted = resume_recall.correction_attempted
-            entry.presented_prefetch_traces = list(
-                resume_recall.presented_prefetch_traces
-            )
+            entry.presented_prefetch_traces = list(resume_recall.presented_prefetch_traces)
         if result.status != "recall_request":
             private_self = _InstantPrivateSelf(
                 summary=result.summary,
@@ -2112,11 +2139,7 @@ class CharacterInterior:
             )
         if resume_recall is None and entry.recall_attempted:
             raise _InteriorTechnicalError("repeated_recall_request", snapshot=snapshot)
-        initial_snapshot = (
-            resume_recall.initial_snapshot
-            if resume_recall is not None
-            else snapshot
-        )
+        initial_snapshot = resume_recall.initial_snapshot if resume_recall is not None else snapshot
         initial_private_self = _InstantPrivateSelf(
             summary=result.summary,
             attended_source_refs=result.attended_source_refs,

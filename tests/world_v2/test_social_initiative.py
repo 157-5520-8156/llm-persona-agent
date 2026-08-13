@@ -348,7 +348,7 @@ async def test_completed_consideration_is_not_returned_again_in_the_same_epoch()
 
 
 @pytest.mark.asyncio
-async def test_expired_message_context_opens_ambient_model_consideration_from_clock() -> None:
+async def test_expired_message_context_is_dropped_instead_of_ambient_backfill() -> None:
     compiler, projection, _committed = _compiler_fixture(receptive=True)
     clock_at = NOW + timedelta(hours=13)
     clock = WorldEvent.from_payload(
@@ -393,10 +393,7 @@ async def test_expired_message_context_opens_ambient_model_consideration_from_cl
 
     opportunity = await compiler.next_opportunity(projection)
 
-    assert opportunity is not None
-    assert opportunity.source_kind == "ambient_presence"
-    assert opportunity.source_event_ref == clock.event_id
-    assert opportunity.consideration_epoch >= 1
+    assert opportunity is None
 
 
 @pytest.mark.asyncio

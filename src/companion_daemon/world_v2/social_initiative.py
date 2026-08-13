@@ -1122,6 +1122,8 @@ class SocialInitiativeCompiler:
         elapsed = (logical_time - source[0].logical_time).total_seconds()
         if elapsed < self._policy.spontaneous_idle_seconds:
             return None
+        if elapsed >= self._policy.spontaneous_expiry_seconds:
+            return None
         profile = self._context.compile(projection=projection, logical_time=logical_time)
         attempt_id = social_initiative_attempt_id(
             source_event_ref=source[0].event_id,

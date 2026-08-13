@@ -1496,9 +1496,7 @@ async def test_visible_proactive_expression_is_bound_to_its_semantic_opportunity
     assert user["capability_manifest"]["source_refs"] == [proposal["trigger_ref"]]
     assert set(user["inner_life_snapshot"]["faculties"]) == set(FACET_NAMES)
     model_audits = [json.loads(item.audit_json) for item in ledger.project().model_result_audits]
-    model_audit = next(
-        item for item in model_audits if "character_interior_lineage" in item
-    )
+    model_audit = next(item for item in model_audits if "character_interior_lineage" in item)
     assert model_audit["character_interior_lineage"]["opportunity_ref"] == (
         CausalOpportunityIdentity(
             world_id=WORLD,
@@ -1511,9 +1509,7 @@ async def test_visible_proactive_expression_is_bound_to_its_semantic_opportunity
     assert model_audit["character_interior_lineage"]["causal_source_refs"] == [
         proposal["trigger_ref"]
     ]
-    assert model_audit["character_interior_lineage"]["causal_actor_ref"] == (
-        "actor:companion"
-    )
+    assert model_audit["character_interior_lineage"]["causal_actor_ref"] == ("actor:companion")
 
 
 @pytest.mark.asyncio
@@ -2393,7 +2389,7 @@ async def test_model_silence_is_reconsidered_in_the_next_cadence_epoch(tmp_path)
 
 
 @pytest.mark.asyncio
-async def test_ambient_presence_clock_can_open_model_owned_contact_after_source_expiry(
+async def test_expired_quiet_gap_is_dropped_instead_of_ambient_backfill(
     tmp_path,
 ) -> None:  # type: ignore[no-untyped-def]
     proactive = _DraftModel("now")
@@ -2442,17 +2438,8 @@ async def test_ambient_presence_clock_can_open_model_owned_contact_after_source_
             correlation_id="conversation:ambient",
             reason="test_ambient",
         )
-        assert (await app.drain_background_once()).status == "opened"
-        assert (await app.drain_background_once()).status == "authorized"
-        proposal = json.loads(
-            app._ledger.project().proposal_audits[-1].proposal_json  # noqa: SLF001
-        )
-        assert proposal["proactive_opportunity_decision"]["source_kind"] == "ambient_presence"
-        assert proactive.calls == 1
-        prompt = json.dumps(proactive.messages[0], ensure_ascii=False)
-        assert "choose silen" not in prompt
-        assert "genuine contact" not in prompt
-        assert "timing authority only" in prompt
+        assert await app.drain_background_once() is None
+        assert proactive.calls == 0
     finally:
         app.close()
 

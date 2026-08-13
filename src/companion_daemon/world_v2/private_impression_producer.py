@@ -32,6 +32,7 @@ from pydantic import Field
 from pydantic_core import to_jsonable_python
 
 from .batch_invariants import private_impression_trigger_identity
+from .occasion import newly_accepted_head_refs
 from .companion_identity import CompanionIdentityFrame
 from .character_interior import CharacterInterior, InteriorStimulus
 from .character_interior.audit import (
@@ -495,15 +496,17 @@ def compile_private_impression_reflection_capsule(
 
 
 def private_impression_opportunity(projection) -> tuple[str, str] | None:
-    """Derive the newest open-able appraisal anchor from committed state.
-
-    Returns ``(trigger_id, appraisal_accepted_event_ref)`` or ``None``.  An
-    anchor is eligible while its appraisal is active, no trigger was ever
-    opened for it (in any state), and no impression already interprets it.
-    """
+    """Open at most one impression from the newly accepted head event (G7)."""
 
     if projection.logical_time is None:
         return None
+    new_refs = newly_accepted_head_refs(
+        projection.committed_world_event_refs,
+        event_type="AppraisalAccepted",
+    )
+    if not new_refs:
+        return None
+    source_ref = next(iter(new_refs))
     interpreted = {
         ref.split(":", 2)[1]
         for impression in projection.private_impressions
@@ -511,24 +514,23 @@ def private_impression_opportunity(projection) -> tuple[str, str] | None:
         if ref.startswith("appraisal:")
     }
     existing_triggers = {item.trigger_id for item in projection.trigger_processes}
-    candidates = []
-    for appraisal in projection.appraisals:
-        if appraisal.status != "active" or appraisal.appraisal_id in interpreted:
-            continue
-        source_ref = appraisal.origin.accepted_event_ref
-        committed = next(
-            (item for item in projection.committed_world_event_refs if item.event_id == source_ref),
-            None,
-        )
-        if committed is None or committed.event_type != "AppraisalAccepted":
-            continue
-        trigger_id = private_impression_trigger_identity(projection.world_id, source_ref)
-        if trigger_id in existing_triggers:
-            continue
-        candidates.append((committed.world_revision, trigger_id, source_ref))
-    if not candidates:
+    trigger_id = private_impression_trigger_identity(projection.world_id, source_ref)
+    if trigger_id in existing_triggers:
         return None
-    _, trigger_id, source_ref = max(candidates)
+    appraisal = next(
+        (
+            item
+            for item in projection.appraisals
+            if item.origin.accepted_event_ref == source_ref
+        ),
+        None,
+    )
+    if (
+        appraisal is None
+        or appraisal.status != "active"
+        or appraisal.appraisal_id in interpreted
+    ):
+        return None
     return trigger_id, source_ref
 
 

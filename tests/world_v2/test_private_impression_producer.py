@@ -471,8 +471,6 @@ def _private_runtime(
     return runtime, interior
 
 
-
-
 def _retain(
     source_refs: list[str],
     *,
@@ -488,8 +486,6 @@ def _retain(
         },
         ensure_ascii=False,
     )
-
-
 
 
 @pytest.mark.asyncio
@@ -516,9 +512,7 @@ async def test_opener_leaves_one_deterministic_trigger_per_accepted_appraisal() 
 async def test_character_interior_accepts_one_source_bound_private_impression() -> None:
     ledger = _ledger_with_active_appraisal()
     await PrivateImpressionTriggerOpener(ledger=ledger, owner_id=OWNER).open_once()
-    model = _Model(
-        [_retain(["appraisal:appraisal:interaction:1:meaning:disappointment"])]
-    )
+    model = _Model([_retain(["appraisal:appraisal:interaction:1:meaning:disappointment"])])
     runtime, _interior = _private_runtime(ledger, model)
 
     result = await runtime.drain_one()
@@ -531,9 +525,7 @@ async def test_character_interior_accepts_one_source_bound_private_impression() 
     projection = ledger.project()
     assert len(projection.private_impressions) == 1
     impression = projection.private_impressions[0]
-    assert impression.reflection_summary == (
-        "我暂时觉得这更像是失望，不一定是在否定我。"
-    )
+    assert impression.reflection_summary == ("我暂时觉得这更像是失望，不一定是在否定我。")
     assert projection.trigger_processes[-1].state == "terminal"
     assert len(model.calls) == 1
     assert projection.model_result_audits[-1].audit_contract == "model-result-audit.7"
@@ -556,53 +548,12 @@ async def test_character_interior_accepts_one_source_bound_private_impression() 
 
 
 @pytest.mark.asyncio
-async def test_private_impression_merges_sources_and_replays_one_interior_turn() -> None:
+async def test_private_impression_does_not_open_historical_appraisals_behind_head() -> None:
     ledger = _ledger_with_active_appraisal()
     _append_second_appraisal(ledger)
     opener = PrivateImpressionTriggerOpener(ledger=ledger, owner_id=OWNER)
     assert await opener.open_once() is not None
-    assert await opener.open_once() is not None
-
-    model = _Model(
-        [_retain(["appraisal:appraisal:interaction:1:meaning:disappointment"])]
-    )
-    runtime, _interior = _private_runtime(ledger, model)
-
-    result = await runtime.drain_one()
-
-    source_refs = (
-        "interaction-appraisal-accepted",
-        "interaction-appraisal-accepted:2",
-    )
-    expected = CausalOpportunityIdentity.from_source_refs(
-        world_id=WORLD_ID,
-        actor_ref="actor:companion",
-        purpose="private_impression_reflection",
-        source_refs=source_refs,
-        epoch=source_refs[0],
-    )
-    assert result.work_status == "accepted"
-    assert result.opportunity_ref == expected.opportunity_ref
-    assert result.source_refs == source_refs
-    assert len(model.calls) == 1
-    processes = tuple(
-        item
-        for item in ledger.project().trigger_processes
-        if item.process_kind == "private_impression_deliberation"
-    )
-    assert len(processes) == 2
-    assert all(item.state == "terminal" for item in processes)
-    lineage = next(
-        json.loads(item.audit_json)["character_interior_lineage"]
-        for item in ledger.project().model_result_audits
-        if "character_interior_lineage" in json.loads(item.audit_json)
-        and json.loads(item.audit_json)["character_interior_lineage"]["purpose"]
-        == "private_impression_reflection"
-    )
-    assert lineage["causal_source_refs"] == list(source_refs)
-    health = runtime.health_snapshot(WORLD_ID)
-    assert health.opportunity_count == 1
-    assert health.accepted_count == 2
+    assert await opener.open_once() is None
 
 
 @pytest.mark.asyncio
@@ -797,7 +748,6 @@ async def test_repeated_validation_failures_terminal_the_trigger_after_bounded_a
     assert (await runtime.drain_one()).status == "idle"
 
 
-
 @pytest.mark.asyncio
 async def test_short_token_capability_maps_to_real_refs_and_recovers_on_missed_anchor() -> None:
     """The private-impression capability hands the model short tokens so any
@@ -815,8 +765,9 @@ async def test_short_token_capability_maps_to_real_refs_and_recovers_on_missed_a
     # map resolves to the real (long) source refs.
     assert len(capability["short_tokens"]) >= 4
     assert capability["anchor_short_tokens"]
-    assert capability["token_map"][capability["anchor_short_tokens"][0]] in (
-        capability["anchor_source_refs"]
+    assert (
+        capability["token_map"][capability["anchor_short_tokens"][0]]
+        in (capability["anchor_source_refs"])
     )
 
     model = _ShortTokenModel()
@@ -828,11 +779,7 @@ async def test_short_token_capability_maps_to_real_refs_and_recovers_on_missed_a
     # correction recovered a missed anchor (two calls).  Both are production-
     # valid; what matters is the impression landed with real refs.
     assert 1 <= len(model.calls) <= 2
-    impressions = [
-        item
-        for item in ledger.project().private_impressions
-        if item.status == "active"
-    ]
+    impressions = [item for item in ledger.project().private_impressions if item.status == "active"]
     assert len(impressions) == 1
     # The persisted impression references real source refs, never short tokens.
     assert all(
@@ -926,8 +873,7 @@ def _compile_live_capability(ledger) -> dict[str, object]:
     process = next(
         item
         for item in projection.trigger_processes
-        if item.process_kind == "private_impression_deliberation"
-        and item.state != "terminal"
+        if item.process_kind == "private_impression_deliberation" and item.state != "terminal"
     )
     appraisal = next(
         item
@@ -937,14 +883,11 @@ def _compile_live_capability(ledger) -> dict[str, object]:
     capsule = compile_private_impression_reflection_capsule(
         projection=projection,
         appraisal=appraisal,
-        identity_frame=CompanionIdentityFrame(
-            companion_name="枝枝", counterpart_name="对方"
-        ),
+        identity_frame=CompanionIdentityFrame(companion_name="枝枝", counterpart_name="对方"),
         world_id=ledger.world_id,
     )
     manifest = _private_impression_capability(capsule)
     return json.loads(manifest.payload_json)
-
 
 
 @pytest.mark.asyncio
@@ -966,11 +909,7 @@ async def test_short_token_contract_accepts_ten_production_like_runs(seed: int) 
     result = await runtime.drain_one()
 
     assert result.work_status == "accepted", f"run {seed} failed: {result.work_status}"
-    impressions = [
-        item
-        for item in ledger.project().private_impressions
-        if item.status == "active"
-    ]
+    impressions = [item for item in ledger.project().private_impressions if item.status == "active"]
     assert len(impressions) == 1, f"run {seed} produced no active impression"
 
 
@@ -1042,9 +981,7 @@ def _retain_capsule(*, source_ref: str = "src:appraisal:1", appraisal_id: str = 
         logical_time="2026-08-13T00:00:00+00:00",
         subject_ref="agent:companion",
         anchor_appraisal_id=appraisal_id,
-        identity_frame=CompanionIdentityFrame(
-            companion_name="枝枝", counterpart_name="对方"
-        ),
+        identity_frame=CompanionIdentityFrame(companion_name="枝枝", counterpart_name="对方"),
         sources=(source,),
     )
 
