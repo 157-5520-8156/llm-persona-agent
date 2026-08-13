@@ -9,9 +9,10 @@ It composes only already-reviewed seams:
 - planning goes through ``EventMediaPlannerAdapter`` with a durable SQLite
   terminal-result store, wrapping the image machine's v5 ``MediaPlanner``
   with the module flags passed explicitly (no environment switches);
-- render/inspection wrap ``MediaRenderer``/``OpenAIMediaInspector`` behind
-  :class:`SQLiteDurableMediaProviderTransport` so restart recovery replays
-  the exact stored bytes;
+- render/inspection wrap ``MediaRenderer``/``SourcedLifeMediaInspector``
+  behind :class:`SQLiteDurableMediaProviderTransport` so restart recovery
+  replays the exact stored bytes.  Inspection is a sourced-life file check,
+  not a vision model;
 - grant bindings reference the identities written by
   :mod:`media_authority_provisioning`; this factory never manufactures
   enforcement authority;
@@ -59,6 +60,8 @@ from .production_turn_application import (
 )
 from .qq_c2c_host import qq_c2c_target
 from .schemas import ProviderMediaGrantBinding
+from .sourced_life_media import INSPECTOR_MODEL as SOURCED_LIFE_INSPECTOR_MODEL
+from .sourced_life_media import SourcedLifeMediaInspector, SourcedLifeMediaRenderer
 
 
 _LOG = logging.getLogger(__name__)
@@ -293,6 +296,8 @@ def build_qq_media_preview_deployment(
     missing: list[str] = []
     if not settings.world_v2_media_preview_enabled:
         missing.append("WORLD_V2_MEDIA_PREVIEW_ENABLED")
+    if not settings.allow_auto_image_generation:
+        missing.append("ALLOW_AUTO_IMAGE_GENERATION")
     if not settings.deepseek_api_key:
         missing.append("DEEPSEEK_API_KEY")
     if not settings.openai_api_key:
@@ -364,26 +369,19 @@ def build_qq_media_preview_deployment(
         api_key=settings.openai_api_key,
     )
     inspector = _DiagnosticMediaInspector(
-        event_media.OpenAIMediaInspector(
-            settings.openai_api_key,
-            base_url=settings.openai_base_url,
-            model=settings.world_v2_media_inspection_model,
-            # The hardening transport owns the proxy route, a proxy-sized read
-            # timeout, and normalization of malformed descriptive list fields.
-            transport=InspectorHardeningTransport(proxy_url=settings.openai_proxy_url),
-        ),
+        SourcedLifeMediaInspector(),
         recorder=diagnostic_recorder,
-        endpoint=settings.openai_base_url,
-        model=settings.world_v2_media_inspection_model,
-        proxy_configured=bool(settings.openai_proxy_url),
-        api_key=settings.openai_api_key,
+        endpoint="deterministic:sourced-life",
+        model=SOURCED_LIFE_INSPECTOR_MODEL,
+        proxy_configured=False,
+        api_key="",
     )
     # Composed directly rather than through the archived runtime module (the
     # platform reverse-architecture guard forbids that import).  No
     # specialized high-private generators and no private prompt author are
     # installed: this deployment serves the ordinary life lane, and frozen
     # high-lane plans fail closed exactly as the renderer contract requires.
-    renderer = event_media.MediaRenderer(
+    renderer = SourcedLifeMediaRenderer(
         generator=generator,
         inspector=inspector,
         output_dir=output_dir or Path("output/event-media"),

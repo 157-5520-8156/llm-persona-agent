@@ -92,6 +92,7 @@ def _settings(tmp_path: Path, **overrides: object) -> Settings:
     values: dict[str, object] = {
         "database_path": tmp_path / "qq-media-deployment.sqlite",
         "WORLD_V2_MEDIA_PREVIEW_ENABLED": "1",
+        "ALLOW_AUTO_IMAGE_GENERATION": "1",
         "DEEPSEEK_API_KEY": "test-deepseek",
         "OPENAI_API_KEY": "test-openai",
         "NAPCAT_ALLOWED_PRIVATE_USER_IDS": "10001",

@@ -916,3 +916,12 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **剩余缺口**：life development 没有从 seed opening 编译 propose（随机环境事件若要写成 occurrence，还差确定性 draft 编译器）；host 资格里原先靠世界作者发明的 activity/aftermath 链改为断言 0 模型 + replay 稳定，角色拥有的 activity/aftermath 闭包仍由单元测试覆盖；天气是日哈希短句，不是店铺开闭；衰减/epoch 缺口仍见 H10。
 - **commit**：`b060d961`
 
+### 2026-08-13 H11 接通有来源的生活照片
+
+- **红测**：`tests/world_v2/test_sourced_life_media_h11.py` — 两个媒体开关默认关；工厂仍装 `OpenAIMediaInspector`；`/legacy/action` 与缺文件仍能过审查。
+- **改动**：`ALLOW_AUTO_IMAGE_GENERATION` 与 `WORLD_V2_MEDIA_PREVIEW_ENABLED` 默认 True。`build_qq_media_preview_deployment` 仍在缺开关/密钥/恰好一个收件人/三个 grant 时整条车道 disable。生产审查换成 `SourcedLifeMediaInspector`（有 `event_id`、非 `/legacy/action` 的 `primary_evidence_ref`、证据值非空、文件存在才过）；`SourcedLifeMediaRenderer` 在无来源时 0 次出图。PhotoCandidate 仍只从已提交/已结算生活派生。`OpenAIMediaInspector` 模块保留给历史测试。不 bump reducer bundle；无新 model-bearing purpose。§12.10 冻结模块未改。
+- **测试**：H11 红测绿；qq media deployment 仍 fail-closed；event ecology / provisioning / provider transport / isolated daemon 绿；character-tier 498 passed；ruff 绿。
+- **生产证据**：本 worktree 没有 `data/companion.sqlite`，未跑 grant provisioning、未改生产库。真正出图需要：密钥齐全、停/启 daemon 读新默认（或 `.env` 未把开关写成 false）、对运行库执行 `scripts/provision_world_v2_media_authority.py`。隔离验收脚本仍显式关两个开关。
+- **成本与延迟**：每张图少一次 gpt-4o 审查调用；规划仍走 DeepSeek `MediaPlanner`，渲染仍走 OpenAI Image。失败即放弃该张，无来源计划不再为审查去生成。
+- **剩余缺口**：月内 ≥10 张有来源生活照片是生产验收，不是单测能声称的；缺 grant 时车道仍静默 disable（需 operator 跑 provisioning）；`world_v2_media_inspection_model` 配置闲置；inspection Action/grant 仍在（确定性检查也走同一 effect-once）；像素质量不再由视觉模型把关；规划仍是一次模型调用；H10 生产换库仍需人工。
+

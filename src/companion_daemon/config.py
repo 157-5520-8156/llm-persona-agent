@@ -693,16 +693,15 @@ class Settings(BaseSettings):
     monthly_image_limit: int = Field(default=20, alias="MONTHLY_IMAGE_LIMIT")
     monthly_vision_limit: int = Field(default=120, alias="MONTHLY_VISION_LIMIT")
     monthly_audio_limit: int = Field(default=60, alias="MONTHLY_AUDIO_LIMIT")
-    allow_auto_image_generation: bool = Field(default=False, alias="ALLOW_AUTO_IMAGE_GENERATION")
+    allow_auto_image_generation: bool = Field(default=True, alias="ALLOW_AUTO_IMAGE_GENERATION")
     allow_auto_vision: bool = Field(default=True, alias="ALLOW_AUTO_VISION")
     allow_auto_transcription: bool = Field(default=True, alias="ALLOW_AUTO_TRANSCRIPTION")
-    # World v2 media preview lane (preview-only + operator approval).  It is
-    # deliberately opt-in: the composition also requires DeepSeek + OpenAI
-    # credentials and a provisioned media enforcement grant chain before any
-    # provider Action can dispatch, and disables itself with one log line
-    # when a prerequisite is missing.
+    # World v2 media lane.  Defaults on so lived-world photos can dispatch;
+    # composition still requires DeepSeek + OpenAI credentials and a
+    # provisioned media enforcement grant chain, and disables itself with
+    # one log line when a prerequisite is missing.
     world_v2_media_preview_enabled: bool = Field(
-        default=False, alias="WORLD_V2_MEDIA_PREVIEW_ENABLED"
+        default=True, alias="WORLD_V2_MEDIA_PREVIEW_ENABLED"
     )
     # Planner model for the image machine's one bounded planning call.
     # Defaults to the flash chat model when unset.
