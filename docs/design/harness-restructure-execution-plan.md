@@ -874,4 +874,4 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：本包不改 prompt。部署后同一原始伤可在强度仍高时按增长间隔再想，不应再出现反思产出自我放大的农场。
 - **成本与延迟**：一场争执大约多 2–4 次调用（≈¥0.05）是允许开销；用间隔而不是固定次数封顶。
 - **剩余缺口**：首次开伤仍会看 `appraisals` 投影（G7 未把 first-visit 收成 head/due overlay）；五种 Occasion 仍未合成单一队列；衰减纯函数是 H10。
-- **commit**：
+- **commit**：`7a3a98f4`
