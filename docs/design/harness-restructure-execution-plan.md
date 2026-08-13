@@ -854,4 +854,4 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：本包改 prompt 面积。部署后 user 段不应再出现 `single_report_epistemic_scope` 等机制论文；来源闭包失败应仍走表达后确定性检查。首次合法率需真实流量。
 - **成本与延迟**：每次调用少约 6.5k 机制字符（未命中输入）；不增加模型调用。slim 形状降低结构失败，目标是少掉 H1b 之后的技术失败丢弃。
 - **剩余缺口**：工具 schema 仍按 `recall_allowed` 分叉；appraisal/expression 双契约拼接仍在 system 段（compact gate 外层已瘦）；G2 第二次 `consider()` 拒绝与 Occasion 过期是 H5；H8 不停 world-author；H9 打分与每日压缩尚未改。
-- **commit**：
+- **commit**：`a6f16595`
