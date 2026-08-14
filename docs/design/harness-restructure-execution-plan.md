@@ -1042,3 +1042,73 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **剩余缺口**：H13e（到期仍无回应的一次机会）按说明书排在 H16 之后。系统默认 wait≈12h / expiry=1d 不是她的判断。生产数字在重启前不会动。
 - **commit**：`2d8ec088`
 
+### 2026-08-14 H16 Occasion 队列做实（承重墙）
+
+- **红测**：`tests/world_v2/test_interior_continuity_h16.py`
+  - 五种 kind 没有 merge_key / expires_at
+  - 允许第六种 kind
+  - 进程内 gate 重启后失忆，同一 occasion_id 可再 admit
+  - 过期 quiet_gap 仍会打到角色模型
+  - 同一 Occasion 可 consider 两次
+- **改动**：
+  1. 五种 mint helper 一律带 `merge_key` + `expires_at`（TTL：user_message 7d、quiet_gap 43200s、unsettled_feeling/life_beat 24h、day_open 36h）。第六种 kind 抛 ValueError。
+  2. 耐久 sidecar `world_v2_occasion_spends`；`OccasionConsiderGate(store=...)` 跨重启拒绝同一 `occasion_id`。
+  3. `InteriorOpportunity.occasion`；consider 显式 occasion 优先，否则按 purpose mint（`merge_key=opportunity_ref`）。过期 → `occasion_expired`，不调模型、不 mark_spent。
+  4. 接线：inbound `mint_user_message`、proactive `mint_quiet_gap`、activity `mint_day_open(merge_key=day_key)`。生产 bind 装 SQLite store。
+- **测试**：H16 5 passed；character-tier 498 passed；ruff 绿。未 format 大文件。
+- **生产证据**：只读 `companion.epoch2.sqlite`。尚无 `world_v2_occasion_spends` 表（进程未重启，bind 后才会建）。usage 仍是 inbound 2 成功 / proactive 3 成功 3 失败 / stimulus 1，无新 purpose。改 `src/` 后未重启则数字不会变。
+- **成本与延迟**：0 新增模型调用。不新增 purpose / 第六种 Occasion。过期机会直接丢弃，少一次空转调用。
+- **剩余缺口**：`unsettled_feeling` / `life_beat` 工厂已有，但 `experience()` 仍不走 consider gate。quiet_gap 的 `created_at` 是 consider 时的 now（弱 G7）；真正过期仍靠 H5 `spontaneous_expiry_seconds`。day_open 仍同时写 daily store。`test_character_interior.py` 里同一 `opportunity_ref` 不同 `source_refs` 的碰撞测不在 character-tier，未为它放松 G2。
+- **commit**：`4f681b75`
+
+### 2026-08-14 H13e 期待过期仍无回应（挂已有 Occasion）
+
+- **红测**：`tests/world_v2/test_interior_continuity_h13e.py`
+  - 到期仍无回应时 `next_opportunity` 不给机会
+  - 超过 1h grace 仍 mint
+  - 终态 process 后重 mint
+  - 他已回话（更新 observation）仍当成未回应
+- **改动**：
+  1. `expired_unanswered_expectation`：到期且 `now < expires_at + 1h`、无终态评估、无更新用户 observation，才给出一条。
+  2. `SocialInitiativeCompiler.next_opportunity` 在 retry 之后、cooldown 之前 mint；`source_kind="spontaneous_contact"`（不新增 kind），挂已有 quiet_gap。
+  3. 已有 terminal 同 trigger 不再 mint；open/claimed 仍走 `_from_source` 恢复。
+- **测试**：H13e 4 passed；H13 + social_initiative / G4 / expectation_feelings 108 相关测绿；character-tier 498 passed；ruff 绿。
+- **生产证据**：只读。epoch2 `ExpressionPlanAccepted` **0/2** 带期待，`ResponseExpectationAssessed` **0**。她还没声明过 `waiting_for`，这条车道生产上仍无触发源。进程未重启。
+- **成本与延迟**：稀有情形下多一次已有 `proactive_contact` 机会，不新增 purpose。cooldown 不会吃掉这一次。
+- **剩余缺口**：系统默认 wait≈12h / expiry=1d 仍不是她的判断。生产要等重启且她真的填了 `waiting_for` 并到期。quiet_gap 的 consider 时钟仍是弱 G7（见 H16）。
+- **commit**：`66145c5e`
+
+### 2026-08-14 H14 删独立私人印象车道（负成本）
+
+- **红测**：`tests/world_v2/test_interior_continuity_h14.py`
+  - slim `stuck_with_me` 编不成私人印象 draft
+  - 空/无来源仍开印象
+  - 生产 drain 仍调 opener / advance（独立模型农场）
+- **改动**：
+  1. `compile_paid_private_impression_draft`：retain、confidence 5000、`until_counter_evidence`、sources 去重截到 8。
+  2. 生产 `drain_private_impression_once` 直接 `return None`。独立农场停在生产 drain 上。
+  3. `PrivateImpressionTriggerRuntime.drain_one` 未改，既有单测仍可跑。未动 `batch_invariants.py`。
+- **测试**：H14 3 passed；`test_private_impression_producer.py` 绿；character-tier 498 passed；ruff 绿。
+- **生产证据**：只读。epoch2 `world_v2_model_usage` **0** 条 private-impression purpose（切纪元后本就没有）。`PrivateImpressionAccepted` **0**。进程未重启前 drain 切断不生效。
+- **成本与延迟**：负成本。该 purpose 生产调用归零。不新增模型调用。
+- **剩余缺口**：slim `stuck_with_me` **没有**接到 `PrivateImpressionAccepted`。§12.10 冻结的 `_reject_new_private_impression_without_role_reflection` 要求 `source_model_result` + reflection 审计；inbound `consider` 的 `proposals: ()`，且不能把 `private_impression_transition` 混进 inbound 接受链。slim 仍 `appraise: False`。`wants` 已是 `impulse_summary`，未新开 `ThreadOpened`。验收「PrivateImpressionAccepted 显著上升」目前闭不上。
+- **commit**：`d3ea2116`
+
+### 2026-08-14 §7 探针 + H15 生活开门
+
+- **红测**：`tests/world_v2/test_interior_continuity_h15_probe.py`、`tests/world_v2/test_interior_continuity_h15.py`
+  - `WorldLifeContextItem(content=None)` 不可构造（探针：可选 excerpt 已成立）
+  - 改 summary 不改指纹 / 经历可修订（探针：两者都不成立）
+  - 生产 seed 0 条 `life_arc_effect`
+- **探针结论**：懒求值质地**不可行**。`ExperienceValues.summary_ref` / `summary_payload_hash` 必填，指纹由 values+policy_refs 计算，事后改 summary 即改指纹；`ExperienceProjection.entity_revision` 是 `Literal[1]`，经历不可修订。按说明书 §12：**不改 aftermath 提交路径**。H15b 退到只在已付费的 day_open 与 inbound 产出质地。
+- **改动**：
+  1. H15a：`day_skeleton.py` / `weighted_table.py` 写明「表决定机会，她决定内容与意义」。日程骨架与加权逻辑未改。
+  2. H15b：slim 说明允许把当日注意到的写进 `felt`/`stuck_with_me`；day_open context_note 同步。不新增字段（G4）。不改 activity 操作、不为微事件单开 provider。
+  3. H15c：`world_seed.yaml` → `reviewed-life.14`，present opening `publishing-intern-interview` 的 offer outcome 带 `life_arc_effect`（employment / 30 天 / `role:intern`+`workplace:publishing`）。未 revert `b060d961`，未重开 world-author。
+- **测试**：探针 3 + H15c 1 passed；life_author_production / biographical 28 passed；character-tier 498 passed；ruff 绿。
+- **生产证据**：只读。epoch2 无 `LifeArcChanged` / `WorldOccurrenceSettled` / `ActivityStarted`。SQL D 全空。进程未重启；seed 变更要等进程拉起且她真的走完该 activity_kind 的结算。
+- **成本与延迟**：0 新增模型调用。NPC/世界作者调用数不回到 `b060d961` 之前。
+- **剩余缺口**：质地目前只在已付费开口的说明里，**不会**作为独立经历写进下一轮 Present（除非她自己在 `stuck_with_me` 里写下，且 H14 接受链仍未通）。`ReviewedLifeSeedCatalog.candidates_at` 没有生产调用方，单靠 seed 行不会自动开始实习面试；要等已有 activity 计划以该 `activity_kind` 完成，aftermath 才会冻 effect。generative LD 仍恒 `no_op`。`story_candidate_role` 仍是 `legacy_replay_and_fixture`。
+- **commit**：`a0ae464c`
+
+
