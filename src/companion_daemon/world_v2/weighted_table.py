@@ -1,4 +1,7 @@
-"""Replayable weighted draws. The seed is the function input; no RandomDraw event."""
+"""Replayable weighted draws. The seed is the function input; no RandomDraw event.
+
+The table decides whether an opportunity exists. She decides the content and meaning.
+"""
 
 from __future__ import annotations
 

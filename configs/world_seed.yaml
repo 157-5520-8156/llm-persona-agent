@@ -82,9 +82,10 @@ life_author_catalog:
   # self-authored front-camera/mirror facts P3 needs.  Five thin shareable
   # openings also gain one more picture-worthy outcome each.  The annex is
   # configuration only: no photo, candidate or delivery is asserted here.
-  # reviewed-life.13 adds source-bound biography and phase-aware factual
-  # affordances. It does not add authored employment, travel or NPC plots.
-  version: reviewed-life.13
+  # reviewed-life.14 adds one reviewed employment outcome with life_arc_effect
+  # so a settled result can open a long arc. The weighted table still decides
+  # only whether the opportunity exists; she decides the content and meaning.
+  version: reviewed-life.14
   # Fixed openings, outcome prose, NPC-event variants and aspiration seeds
   # below remain readable only for immutable ledger recovery and fixtures.
   # Production life generation consumes facts, affordances and capability
@@ -750,6 +751,34 @@ life_author_catalog:
       outcomes:
         - {id: club-admin-done, text: 和范予安把读书会的通知、场地和名单一口气理完，效率高得两个人都意外。, privacy: personal}
         - {id: club-admin-pushback, text: 社团活动的分工她多领了一块，回头想想有点后悔，但话已经说出去了。, privacy: personal}
+    - id: publishing-intern-interview
+      activity_kind: career.publishing_intern_interview
+      source: environmental_opportunity
+      domain: work_career
+      social_shape: alone
+      deviation: persist
+      visual_potential: none
+      privacy: personal
+      location_id: campus-library
+      local_windows: ["10:00-12:00", "14:00-17:30"]
+      weekdays: [0, 1, 2, 3, 4]
+      duration_minutes: 50
+      importance_bp: 6100
+      requires_all_context_tags: [academic:enrolled, calendar:summer_break]
+      excludes_context_tags: [role:intern]
+      outcomes:
+        - id: publishing-interview-offer
+          text: 决定接下编辑助理工作。
+          privacy: personal
+          life_arc_effect:
+            arc_kind: employment
+            context_pack_ref: life-context:publishing-internship
+            context_tags: [role:intern, workplace:publishing]
+            duration_days: 30
+            privacy: personal
+        - id: publishing-interview-no-fit
+          text: 没有接下这份工作。
+          privacy: personal
     # ---- reviewed-life.11 out & about ----
     - id: campus-cycling
       activity_kind: commute.campus_cycling

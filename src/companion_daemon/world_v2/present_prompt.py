@@ -64,7 +64,9 @@ def slim_consider_instruction() -> str:
         "optional waiting_for, and optional how_it_landed is also complete. "
         "waiting_for is a short string only when you genuinely expect a reply; "
         "never infer it from punctuation. how_it_landed is fulfilled, superseded, "
-        "still_pending, or uncertain when Context has a pending response_expectation."
+        "still_pending, or uncertain when Context has a pending response_expectation. "
+        "felt and stuck_with_me may include what you actually noticed today; "
+        "the day sheet is environment, not a script."
     )
 
 

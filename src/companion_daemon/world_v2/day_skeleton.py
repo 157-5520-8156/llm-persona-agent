@@ -1,4 +1,8 @@
-"""Deterministic civil-day skeleton: environment, not her behavior."""
+"""Deterministic civil-day skeleton: environment, not her behavior.
+
+The schedule table decides when an opportunity exists. She decides what
+that day is like and what it means.
+"""
 
 from __future__ import annotations
 

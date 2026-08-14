@@ -545,6 +545,7 @@ def test_production_seed_does_not_contain_new_authored_job_travel_or_home_plots(
     raw = yaml.safe_load(Path("configs/world_seed.yaml").read_text(encoding="utf-8"))
     catalog = raw["life_author_catalog"]
     ids = {item["id"] for field in ("openings", "future_openings") for item in catalog[field]}
+    assert "publishing-intern-interview" in ids
     assert not ids & {
         "family-home-morning-settle",
         "family-home-prepare-for-bed",
@@ -553,7 +554,6 @@ def test_production_seed_does_not_contain_new_authored_job_travel_or_home_plots(
         "shanghai-home-evening-settle",
         "publishing-intern-shift",
         "publishing-editor-check-in",
-        "publishing-intern-interview",
         "graduate-job-search",
         "junior-editor-workday",
         "city-publisher-editor-workday",

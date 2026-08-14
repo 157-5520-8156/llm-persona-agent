@@ -134,8 +134,10 @@ def write_legacy_story_seed(path: Path) -> Path:
         for item in catalog["future_openings"]
         if item["id"] == "future-fanyuan-exhibition"
     )["location_id"] = "city-art-museum"
+    existing_opening_ids = {item["id"] for item in catalog["openings"]}
     catalog["openings"].extend(
-        [
+        item
+        for item in [
             _opening(
                 "family-home-morning-settle",
                 "routine.family_home_morning_settle",
@@ -296,9 +298,12 @@ def write_legacy_story_seed(path: Path) -> Path:
                 requires_all_context_tags=["role:editor", "workplace:city_publisher"],
             ),
         ]
+        if item["id"] not in existing_opening_ids
     )
+    existing_future_ids = {item["id"] for item in catalog["future_openings"]}
     catalog["future_openings"].extend(
-        [
+        item
+        for item in [
             _opening(
                 "future-contextual-destination-research",
                 "travel.destination_research",
@@ -343,6 +348,7 @@ def write_legacy_story_seed(path: Path) -> Path:
                 advance_days_max=7,
             ),
         ]
+        if item["id"] not in existing_future_ids
     )
     raw["life_author_catalog"] = catalog
     path.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8")
