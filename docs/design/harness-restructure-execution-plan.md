@@ -1019,5 +1019,5 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：只读打开 `data/companion.epoch1.sqlite` 的 `world_v2_head_state_items.experiences`（41 条）。用修复后的编译器、logical_time=2026-08-14T00:00Z 得到 **24** 条（上限 `_EXPERIENCE_LIMIT`），不再是 0。未写归档、未切 epoch2。超限 capsule：两条同 rank advisory 时保留 `response_expectation`、丢掉 `appraisal_candidate`。
 - **成本与延迟**：0 模型。不新增 purpose、不改账单形状。
 - **剩余缺口**：当前生产 `epoch2` 不会追溯拿到这 41 条（用户已裁定丢掉，不切库）。她要等到修复后新写的经历才会进连续性快照。H13 仍未让她能声明 `waiting_for`。`present_prompt._MATERIAL_ORDER` 仍留着死路键名，无消费者。
-- **commit**：`bd95e888`
+- **commit**：`839c8819`
 
