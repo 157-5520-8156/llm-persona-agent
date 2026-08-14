@@ -21,7 +21,14 @@ from typing import Mapping
 
 from pydantic import ValidationError
 
-from ..occasion import OccasionAlreadyConsidered, OccasionConsiderGate
+from ..occasion import (
+    OccasionAlreadyConsidered,
+    OccasionConsiderGate,
+    OccasionIdentity,
+    PURPOSE_OCCASION_KIND,
+    mint_occasion,
+    occasion_is_expired,
+)
 from ..recall_audit import PrefetchPresentationAudit, RecallAuditTrace
 from ..schema_core import canonicalize_json_value
 from ..schemas import ProjectionCursor
@@ -554,6 +561,54 @@ class CharacterInterior:
         if not callable(getattr(recall, "recall", None)):
             raise TypeError("CharacterInterior recall port must provide recall")
         self._recall = recall
+
+    def _install_occasion_gate(self, gate: OccasionConsiderGate) -> None:
+        if not isinstance(gate, OccasionConsiderGate):
+            raise TypeError("CharacterInterior occasion gate is invalid")
+        self._occasion_gate = gate
+
+    def _resolved_occasion(
+        self, opportunity: InteriorOpportunity
+    ) -> OccasionIdentity | None:
+        if opportunity.occasion is not None:
+            return opportunity.occasion
+        kind = PURPOSE_OCCASION_KIND.get(opportunity.purpose)
+        if kind is None:
+            return None
+        return mint_occasion(
+            kind=kind,
+            source_event_ref=opportunity.trigger_ref,
+            created_at=opportunity.logical_time,
+            merge_key=opportunity.opportunity_ref,
+        )
+
+    def _admit_consider_occasion(
+        self,
+        opportunity: InteriorOpportunity,
+        *,
+        snapshot: InnerLifeSnapshot,
+    ) -> None:
+        occasion = self._resolved_occasion(opportunity)
+        if occasion is None:
+            return
+        if occasion_is_expired(
+            now=opportunity.logical_time, expires_at=occasion.expires_at
+        ):
+            raise _InteriorTechnicalError("occasion_expired", snapshot=snapshot)
+        try:
+            self._occasion_gate.admit(occasion.occasion_id)
+        except OccasionAlreadyConsidered as exc:
+            raise _InteriorTechnicalError(
+                "occasion_already_considered",
+                snapshot=snapshot,
+            ) from exc
+
+    def _mark_consider_occasion(self, opportunity: InteriorOpportunity) -> None:
+        occasion = self._resolved_occasion(opportunity)
+        spent_id = (
+            occasion.occasion_id if occasion is not None else opportunity.opportunity_ref
+        )
+        self._occasion_gate.mark_spent(spent_id)
 
     def _install_background_driver(self, driver: object) -> None:
         """Install the sole scheduler bridge without exposing its authors."""
@@ -1320,7 +1375,7 @@ class CharacterInterior:
                             snapshot=canonical_snapshot,
                         )
                     self._metrics["effect_once_join"] += 1
-                    self._occasion_gate.mark_spent(opportunity.opportunity_ref)
+                    self._mark_consider_occasion(opportunity)
                     return entry.decision
                 durable = self._acquire_turn(
                     subject=opportunity,
@@ -1366,14 +1421,11 @@ class CharacterInterior:
                             entry=entry,
                         )
                     if not prepared:
-                        if resume_recall is None and opportunity.purpose == "inbound_turn":
-                            try:
-                                self._occasion_gate.admit(opportunity.opportunity_ref)
-                            except OccasionAlreadyConsidered as exc:
-                                raise _InteriorTechnicalError(
-                                    "occasion_already_considered",
-                                    snapshot=canonical_snapshot,
-                                ) from exc
+                        if resume_recall is None:
+                            self._admit_consider_occasion(
+                                opportunity,
+                                snapshot=canonical_snapshot,
+                            )
                         request = _InteriorRoleRequest(
                             inner_turn_id=turn_id,
                             phase="consider",
@@ -1444,7 +1496,7 @@ class CharacterInterior:
                         failure_code=None,
                     )
                     self._complete_turn(durable=durable, result=decision)
-                    self._occasion_gate.mark_spent(opportunity.opportunity_ref)
+                    self._mark_consider_occasion(opportunity)
             except _InteriorTechnicalError as exc:
                 role_failure_evidence = exc.role_failure_evidence
                 turn_id = _inner_turn_id(
@@ -1470,7 +1522,7 @@ class CharacterInterior:
             # a role-authored decision or silence is effect-once cached.
             entry.decision = None if decision.status == "technical_failure" else decision
             if decision.status != "technical_failure":
-                self._occasion_gate.mark_spent(opportunity.opportunity_ref)
+                self._mark_consider_occasion(opportunity)
             self._cache.move_to_end(cache_key)
             self._trim_cache()
             self._record_terminal(

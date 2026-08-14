@@ -15,6 +15,7 @@ from typing import Annotated, Any, Literal, Mapping
 
 from pydantic import Field, field_validator, model_validator
 
+from ..occasion import OccasionIdentity
 from ..schema_core import FrozenModel, PrivacyClass, canonicalize_json_value
 from ..schemas import ProjectionCursor
 from ..recall_audit import PrefetchPresentationAudit
@@ -491,6 +492,7 @@ class InteriorOpportunity(_InteriorSubject):
 
     contract: Literal["character-interior-opportunity.1"] = "character-interior-opportunity.1"
     opportunity_ref: str = Field(min_length=1, max_length=512)
+    occasion: OccasionIdentity | None = None
 
 
 class _InteriorAuthorLineage(FrozenModel):

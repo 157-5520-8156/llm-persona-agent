@@ -42,6 +42,7 @@ from ..recall_runtime import (
     mark_recall_budget_consumed,
     verify_trusted_recall_trace,
 )
+from ..occasion import mint_user_message
 from ..schema_core import canonicalize_json_value
 from ..schemas import ProjectionCursor
 from ..validation_failure_codes import (
@@ -964,6 +965,10 @@ class CharacterInteriorInboundDeliberationAdapter:
                 source_refs=(request.trigger_ref,),
                 capability_manifest=manifest,
                 opportunity_ref=opportunity_identity.opportunity_ref,
+                occasion=mint_user_message(
+                    source_event_ref=request.trigger_ref,
+                    created_at=_logical_time(request),
+                ),
             )
         )
         if decision.status == "technical_failure":

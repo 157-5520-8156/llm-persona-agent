@@ -70,6 +70,7 @@ from .proposal_envelope import (
     TypedChange,
     validate_proposal_envelope,
 )
+from .occasion import mint_quiet_gap
 from .schema_core import FrozenModel
 from .delayed_trigger_policies import TECHNICAL_RETRY_BACKOFF_SECONDS
 from .schemas import ClaimLease, ProjectionCursor, TriggerProcess, WorldEvent
@@ -441,6 +442,10 @@ class _CharacterInteriorProactiveTransport:
             context_note=(
                 "A source-bound proactive contact opportunity is due; the character "
                 "freely owns now, later, silent, wording and message count."
+            ),
+            occasion=mint_quiet_gap(
+                source_event_ref=trigger_ref,
+                created_at=logical_time,
             ),
         )
 

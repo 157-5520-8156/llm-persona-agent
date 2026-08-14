@@ -38,6 +38,7 @@ from ..interaction_act_context_builder import (
     InteractionActContextBuilder,
     install_interaction_act_context,
 )
+from ..occasion import OccasionConsiderGate, occasion_spend_store_for_ledger
 from ..response_expectation_view import attach_pending_expectation_advisory
 from ..private_impression_producer import (
     PrivateImpressionTriggerOpener,
@@ -782,6 +783,9 @@ def _bind_production_character_interior(
     )
     interior._install_recall_port(  # noqa: SLF001 - same deep Module package
         _CoordinatorRecallPort(recall_coordinator)
+    )
+    interior._install_occasion_gate(  # noqa: SLF001 - same deep Module package
+        OccasionConsiderGate(store=occasion_spend_store_for_ledger(ledger))
     )
     health = interior.runtime_health()
     topology_evidence = health["topology_evidence"]

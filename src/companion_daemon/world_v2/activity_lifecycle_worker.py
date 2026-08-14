@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from .activity_lifecycle_draft import (
     ActivityLifecycleModelDraft,
 )
+from .occasion import mint_day_open
 from .daily_occasion import (
     DEFAULT_LOCAL_TIMEZONE,
     DailyOccasionStore,
@@ -259,7 +260,14 @@ class ActivityLifecycleWorker:
                 capability_manifest=manifest,
                 context_note=(
                     "One exact clock wake offers already-authorized activity transitions. "
-                    "The character owns select or no-op; the system owns only token authority."
+                    "The table decides whether an opportunity exists; she decides what "
+                    "the day is like. The character owns select or no-op; the system owns "
+                    "only token authority."
+                ),
+                occasion=mint_day_open(
+                    source_event_ref=wake_event_ref,
+                    created_at=projection.logical_time,
+                    merge_key=day_key,
                 ),
             )
         )
