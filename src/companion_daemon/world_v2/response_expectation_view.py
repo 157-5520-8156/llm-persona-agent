@@ -290,9 +290,60 @@ def response_expectation_advisory(
     )
 
 
+def attach_pending_expectation_advisory(
+    context: dict[str, object],
+    projection,
+    *,
+    anchor_event_ref: str,
+) -> dict[str, object]:
+    """Fold the silence-anchored pending hope into Capsule materials, if any."""
+
+    try:
+        view = pending_response_expectation(
+            projection, anchor_event_ref=anchor_event_ref
+        )
+    except (TypeError, ValueError):
+        return context
+    if view is None:
+        return context
+    logical_time = getattr(projection, "logical_time", None)
+    if logical_time is None:
+        return context
+    advisory = response_expectation_advisory(
+        view, source_ref=anchor_event_ref, logical_time=logical_time
+    )
+    slices = context.get("slices")
+    if isinstance(slices, dict):
+        slices = dict(slices)
+        context = {**context, "slices": slices}
+    else:
+        slices = {}
+        context = {**context, "slices": slices}
+    lane = slices.get("advisories")
+    if isinstance(lane, dict):
+        lane = dict(lane)
+        items = list(lane.get("items") or [])
+    else:
+        lane = {}
+        items = []
+    dumped = advisory.model_dump(mode="json")
+    items.append(
+        {
+            "source_ref": advisory.advisory_id,
+            "item_ref": advisory.advisory_id,
+            "value": dumped,
+        }
+    )
+    lane["items"] = items
+    lane["availability"] = "available"
+    slices["advisories"] = lane
+    return context
+
+
 __all__ = [
     "RESPONSE_EXPECTATION_ADVISORY_VERSION",
     "PendingResponseExpectationView",
+    "attach_pending_expectation_advisory",
     "pending_response_expectation",
     "pending_response_expectation_manifest",
     "response_expectation_advisory",

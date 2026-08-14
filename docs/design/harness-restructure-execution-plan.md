@@ -1021,3 +1021,24 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **剩余缺口**：当前生产 `epoch2` 不会追溯拿到这 41 条（用户已裁定丢掉，不切库）。她要等到修复后新写的经历才会进连续性快照。H13 仍未让她能声明 `waiting_for`。`present_prompt._MATERIAL_ORDER` 仍留着死路键名，无消费者。
 - **commit**：`839c8819`
 
+### 2026-08-14 H13a–d 期待与沉默的语义（≈0 新增调用）
+
+- **红测**：`tests/world_v2/test_interior_continuity_h13.py`
+  - slim `waiting_for` 进不了 `response_expectation`（信封硬写 `None`）
+  - 问号不会被推断成期待（不变式）
+  - 超长 `waiting_for` 不得吃掉整回合
+  - 加键后 G4：slim schema 必填/总字段/深度
+  - silence consider 材料读不到她当时声明的希望
+  - slim `how_it_landed` 进不了同一次 inbound 的 assessment
+  - pending expectation 时 idle 仍开 `spontaneous_contact`
+- **改动**：
+  1. slim 增加可选 `waiting_for` / `how_it_landed`。`waiting_for` 编成 `ResponseExpectationDraft`（hoped 裁到 128；pressure/importance 系统中位 5000；wait/expiry 复用 reselection 中位：43214 / 86400）。不问号推断。空/非法键跳过，不失败回合。
+  2. `compile_slim_interior_envelope` 从 expression 拷贝这两项，不再硬写 `None`。compact gate 与 combined-turn 说明补上 slim 键。G4：slim `(1,7,2)`，compact `(2,2,2)`。
+  3. `_LedgerCapsuleInteriorProjection` 用沉默锚点回执调用 `attach_pending_expectation_advisory`，材料形状与 inbound advisory 相同。
+  4. `_spontaneous_contact` 在 cadence draw 前：有未过期 pending expectation 则不造 generic idle。idle 1800 / cooldown 900 未改。
+- **测试**：H13 8 passed；social_initiative / contract G4 / expectation_feelings / aspirations / silence / assessment 53 passed；character-tier 498 passed；ruff 绿。未 format 大文件。
+- **生产证据**：只读。归档 `companion.sqlite` 仍是 **0/106** `ExpressionPlanAccepted` 带期待、`ResponseExpectationAssessed` **1** 条。`epoch2` **0/2** 带期待、评估 **0**。UTC 今日 usage：`inbound_turn` 1 / `proactive_contact` 4。代码未重启，新声明要等进程拉起且她真的填 `waiting_for`。
+- **成本与延迟**：0 新增模型调用。评估搭在已付费 inbound 上。不新增 purpose / Occasion。
+- **剩余缺口**：H13e（到期仍无回应的一次机会）按说明书排在 H16 之后。系统默认 wait≈12h / expiry=1d 不是她的判断。生产数字在重启前不会动。
+- **commit**：待填
+

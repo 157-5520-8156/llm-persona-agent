@@ -34,6 +34,7 @@ from ..present_prompt import (
     compact_gate_recall_instruction,
     compile_slim_consider_payload,
     forced_tool_recall_instruction,
+    slim_consider_instruction,
 )
 from ..source_closure_lane import SourceClosureReselectionLane
 from .inbound_appraisal_wire import (
@@ -3197,6 +3198,7 @@ class _InboundCharacterAuthor:
                         "full character-interior-events.1 envelope for full_turn, or the exact "
                         "private_turn_state plus recall_request object for recall. "
                         + compact_gate_recall_instruction()
+                        + slim_consider_instruction()
                         + "Only recall transfers control. A full_turn payload contains the complete "
                         "decision now. The host validates payload_json, does not classify by topic, length, "
                         "complexity, or keywords, does not choose the branch, and does not "

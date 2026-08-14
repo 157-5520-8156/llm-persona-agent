@@ -18,6 +18,7 @@ from pydantic import Field, model_validator
 
 from .ledger import LedgerPort
 from .random_authority import RandomAuthority, RandomDrawRecordedPayload
+from .response_expectation_view import pending_response_expectation
 from .schema_core import FrozenModel
 from .schemas import CommittedWorldEventRef, WorldEvent
 
@@ -1124,6 +1125,12 @@ class SocialInitiativeCompiler:
             return None
         if elapsed >= self._policy.spontaneous_expiry_seconds:
             return None
+        try:
+            pending = pending_response_expectation(projection)
+        except (TypeError, ValueError, AttributeError):
+            pending = None
+        if pending is not None:
+            return None
         profile = self._context.compile(projection=projection, logical_time=logical_time)
         attempt_id = social_initiative_attempt_id(
             source_event_ref=source[0].event_id,
@@ -1165,8 +1172,6 @@ class SocialInitiativeCompiler:
             epoch=consideration_epoch,
             source_kind="ambient_presence" if ambient else "spontaneous_contact",
         )
-        # A response expectation is the stronger and more specific authority.
-        # Do not also manufacture a generic idle opportunity for that expression.
         source_kind = "ambient_presence" if ambient else "spontaneous_contact"
         source_id = latest.observation_id
         source_event_ref = source[0].event_id

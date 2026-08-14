@@ -58,6 +58,32 @@ _MATERIAL_ORDER = (
 )
 
 
+def slim_consider_instruction() -> str:
+    return (
+        "A slim object with messages, felt, stuck_with_me, wants, photo, "
+        "optional waiting_for, and optional how_it_landed is also complete. "
+        "waiting_for is a short string only when you genuinely expect a reply; "
+        "never infer it from punctuation. how_it_landed is fulfilled, superseded, "
+        "still_pending, or uncertain when Context has a pending response_expectation."
+    )
+
+
+def slim_consider_json_schema() -> dict[str, object]:
+    return {
+        "type": "object",
+        "properties": {
+            "messages": {"type": "array"},
+            "felt": {"type": "string"},
+            "stuck_with_me": {"type": "string"},
+            "wants": {"type": "string"},
+            "photo": {"type": "boolean"},
+            "waiting_for": {"type": "string"},
+            "how_it_landed": {"type": "string"},
+        },
+        "required": ["messages"],
+    }
+
+
 def combined_turn_system_lead(*, private_turn_state_required: bool) -> str:
     if private_turn_state_required:
         return (
@@ -66,14 +92,14 @@ def combined_turn_system_lead(*, private_turn_state_required: bool) -> str:
             "private_turn_state and recall_request in either serialization order "
             "when the occasion (last user object) says recall is available. "
             "If recall is unavailable, return only the two-draft envelope. "
-            "A slim object with messages, felt, stuck_with_me, wants, and photo is also complete. "
+            + slim_consider_instruction()
         )
     return (
         "Return either one JSON object with exactly two keys, "
         "appraisal_draft and expression_draft, or the single recall_request "
         "object described below when the occasion says recall is available. "
         "If recall is unavailable, return only the two-draft envelope. "
-        "A slim object with messages, felt, stuck_with_me, wants, and photo is also complete. "
+        + slim_consider_instruction()
     )
 
 
@@ -231,7 +257,25 @@ def identity_prose(frame: CompanionIdentityFrame) -> str:
     return "\n".join(parts)
 
 
-_SLIM_CONSIDER_KEYS = frozenset({"messages", "felt", "stuck_with_me", "wants", "photo"})
+_SLIM_CONSIDER_KEYS = frozenset(
+    {
+        "messages",
+        "felt",
+        "stuck_with_me",
+        "wants",
+        "photo",
+        "waiting_for",
+        "how_it_landed",
+    }
+)
+_SLIM_ASSESSMENT_STATUSES = frozenset(
+    {"fulfilled", "superseded", "still_pending", "uncertain"}
+)
+_SLIM_EXPECTATION_DEFAULT_BP = 5_000
+_SLIM_EXPECTATION_EXPIRES_AFTER_SECONDS = 86_400
+_SLIM_EXPECTATION_WAIT_SECONDS = 30 + (
+    (min(86_400, 86_400 - 1) - 30) * _SLIM_EXPECTATION_DEFAULT_BP // 10_000
+)
 _SLIM_FORBIDDEN_KEYS = frozenset(
     {
         "appraisal_draft",
@@ -283,10 +327,37 @@ def is_slim_consider_payload(value: Mapping[str, object]) -> bool:
     return bool(known) and "messages" in value
 
 
+def _slim_response_expectation(value: Mapping[str, object]) -> dict[str, object] | None:
+    hoped = _clip_text(value.get("waiting_for"), 128)
+    if not hoped:
+        return None
+    return {
+        "hoped_response": hoped,
+        "pressure_bp": _SLIM_EXPECTATION_DEFAULT_BP,
+        "importance_bp": _SLIM_EXPECTATION_DEFAULT_BP,
+        "wait_seconds": _SLIM_EXPECTATION_WAIT_SECONDS,
+        "expires_after_seconds": _SLIM_EXPECTATION_EXPIRES_AFTER_SECONDS,
+    }
+
+
+def _slim_response_expectation_assessment(
+    value: Mapping[str, object],
+    *,
+    reason: str,
+) -> dict[str, object] | None:
+    status = value.get("how_it_landed")
+    if not isinstance(status, str) or status not in _SLIM_ASSESSMENT_STATUSES:
+        return None
+    clipped = reason.strip()[:240]
+    if not clipped:
+        return None
+    return {"status": status, "reason": clipped}
+
+
 def compile_slim_consider_payload(
     value: Mapping[str, object],
 ) -> dict[str, object] | None:
-    """Compile the five-field consider shape into dual drafts. Old drafts stay as-is."""
+    """Compile the slim consider shape into dual drafts. Old drafts stay as-is."""
 
     if not is_slim_consider_payload(value):
         return None
@@ -335,6 +406,13 @@ def compile_slim_consider_payload(
     }
     if wants:
         expression["impulse_summary"] = wants
+    if messages:
+        expectation = _slim_response_expectation(value)
+        if expectation is not None:
+            expression["response_expectation"] = expectation
+    assessment = _slim_response_expectation_assessment(value, reason=felt)
+    if assessment is not None:
+        expression["response_expectation_assessment"] = assessment
     return {
         "appraisal_draft": {
             "appraise": False,
@@ -382,8 +460,10 @@ def compile_slim_interior_envelope(
             "stance": expression["stance"],
             "brief_rationale": expression["brief_rationale"],
             "confidence": expression["confidence"],
-            "response_expectation": None,
-            "response_expectation_assessment": None,
+            "response_expectation": expression.get("response_expectation"),
+            "response_expectation_assessment": expression.get(
+                "response_expectation_assessment"
+            ),
             "world_claims": [],
             "media_request": "none",
             "media_source_refs": [],
@@ -399,8 +479,10 @@ def compile_slim_interior_envelope(
             "stance": expression["stance"],
             "brief_rationale": expression["brief_rationale"],
             "confidence": expression["confidence"],
-            "response_expectation": None,
-            "response_expectation_assessment": None,
+            "response_expectation": expression.get("response_expectation"),
+            "response_expectation_assessment": expression.get(
+                "response_expectation_assessment"
+            ),
             "world_claims": [],
             "media_request": expression.get("media_request", "none"),
             "media_source_refs": list(expression.get("media_source_refs") or []),

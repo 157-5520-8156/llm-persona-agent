@@ -38,6 +38,7 @@ from ..interaction_act_context_builder import (
     InteractionActContextBuilder,
     install_interaction_act_context,
 )
+from ..response_expectation_view import attach_pending_expectation_advisory
 from ..private_impression_producer import (
     PrivateImpressionTriggerOpener,
     PrivateImpressionTriggerRuntime,
@@ -152,6 +153,11 @@ class _LedgerCapsuleInteriorProjection:
         context = json.loads(capsule.model_content_json)
         if not isinstance(context, dict):
             raise ValueError("character interior Capsule is not an object")
+        context = attach_pending_expectation_advisory(
+            context,
+            projection,
+            anchor_event_ref=subject.trigger_ref,
+        )
         relationship_join = await build_relationship_context_join(
             ledger=self.ledger,
             projection=projection,
