@@ -143,6 +143,25 @@ def _reflection_draft_digest(draft: PrivateImpressionDraft) -> str:
     )
 
 
+def compile_paid_private_impression_draft(
+    *,
+    reflection_summary: str,
+    offered_source_refs: tuple[str, ...],
+) -> PrivateImpressionDraft | None:
+    summary = reflection_summary.strip()[:1_200]
+    sources = tuple(dict.fromkeys(item for item in offered_source_refs if item))
+    if not summary or not sources:
+        return None
+    return PrivateImpressionDraft(
+        decision="retain",
+        predecessor_refs=(),
+        source_refs=sources[:8],
+        reflection_summary=summary,
+        confidence_bp=5_000,
+        expiry_condition="until_counter_evidence",
+    )
+
+
 class PrivateImpressionReflectionSource(FrozenModel):
     """One source-bound item in the pinned private reflection capsule."""
 
@@ -2249,6 +2268,7 @@ __all__ = [
     "PrivateImpressionRunResult",
     "PrivateImpressionTriggerOpener",
     "PrivateImpressionTriggerRuntime",
+    "compile_paid_private_impression_draft",
     "compile_private_impression_reflection_capsule",
     "private_impression_opportunity",
 ]

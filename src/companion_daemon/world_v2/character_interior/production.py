@@ -725,18 +725,7 @@ class _CharacterInteriorBackgroundDriver:
         return None if result.status in {"idle", "retry_wait"} else result
 
     async def drain_private_impression_once(self) -> object | None:
-        if self._private_impression is None:
-            return None
-        assert self._private_impression_opener is not None
-        try:
-            await self._private_impression_opener.open_once()
-        except (ConcurrencyConflict, IdempotencyConflict):
-            # The next pass derives the same trigger from the accepted
-            # appraisal. Losing this cursor race is ordinary effect-once
-            # scheduling, not a new character decision.
-            pass
-        result = await self._private_impression.advance_due_once()
-        return None if result.status in {"idle", "owned_elsewhere"} else result
+        return None
 
 
 def _bind_production_character_interior(
