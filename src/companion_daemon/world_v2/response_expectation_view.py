@@ -183,6 +183,91 @@ def pending_response_expectation(
     )
 
 
+EXPIRED_EXPECTATION_GRACE = timedelta(hours=1)
+
+
+class ExpiredUnansweredExpectation(FrozenModel):
+    plan_id: str = Field(min_length=1)
+    hoped_response: str = Field(min_length=1, max_length=128)
+    expires_at: datetime
+    receipt_event_id: str = Field(min_length=1)
+    receipt_world_revision: int = Field(ge=1)
+    receipt_logical_time: datetime
+
+
+def expired_expectation_consideration_id(plan_id: str) -> str:
+    return "consideration:social-initiative:expectation-expiry:" + _digest(plan_id)
+
+
+def expired_unanswered_expectation(projection) -> ExpiredUnansweredExpectation | None:
+    """One declared hope whose wait ran out and he still has not spoken."""
+
+    try:
+        logical_time = projection.logical_time
+        if logical_time is None:
+            return None
+        receipt_refs = tuple(
+            item
+            for item in projection.committed_world_event_refs
+            if item.event_type == "ExecutionReceiptRecorded"
+        )
+        if len(receipt_refs) != len(projection.execution_receipts):
+            return None
+        latest_message_revision = (
+            projection.message_observations[-1].world_revision
+            if projection.message_observations
+            else 0
+        )
+        terminal_plan_ids = {
+            item.source_plan_id
+            for item in getattr(projection, "response_expectation_assessments", ())
+            if item.status in _TERMINAL_ASSESSMENT_STATES
+        }
+        delivered_by_action: dict[str, object] = {}
+        for ref, receipt in zip(receipt_refs, projection.execution_receipts, strict=True):
+            if receipt.observed_state not in _ANSWERABLE_RECEIPT_STATES:
+                continue
+            existing = delivered_by_action.get(receipt.action_id)
+            if existing is None or ref.world_revision > existing.world_revision:
+                delivered_by_action[receipt.action_id] = ref
+        candidates: list[ExpiredUnansweredExpectation] = []
+        for manifest in projection.expression_plan_manifests:
+            expectation = manifest.response_expectation
+            if (
+                expectation is None
+                or manifest.plan_id in terminal_plan_ids
+                or logical_time < expectation.expires_at
+                or logical_time >= expectation.expires_at + EXPIRED_EXPECTATION_GRACE
+            ):
+                continue
+            beat = next(
+                (item for item in manifest.beats if item.beat_id == expectation.source_beat_id),
+                None,
+            )
+            if beat is None:
+                continue
+            delivered_ref = delivered_by_action.get(beat.action.action_id)
+            if delivered_ref is None:
+                continue
+            if latest_message_revision > delivered_ref.world_revision:
+                continue
+            candidates.append(
+                ExpiredUnansweredExpectation(
+                    plan_id=manifest.plan_id,
+                    hoped_response=expectation.hoped_response,
+                    expires_at=expectation.expires_at,
+                    receipt_event_id=delivered_ref.event_id,
+                    receipt_world_revision=delivered_ref.world_revision,
+                    receipt_logical_time=delivered_ref.logical_time,
+                )
+            )
+        if not candidates:
+            return None
+        return max(candidates, key=lambda item: (item.receipt_world_revision, item.plan_id))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
 def pending_response_expectation_manifest(
     projection,
     *,

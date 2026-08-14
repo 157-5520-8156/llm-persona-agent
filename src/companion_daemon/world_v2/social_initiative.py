@@ -18,7 +18,11 @@ from pydantic import Field, model_validator
 
 from .ledger import LedgerPort
 from .random_authority import RandomAuthority, RandomDrawRecordedPayload
-from .response_expectation_view import pending_response_expectation
+from .response_expectation_view import (
+    expired_expectation_consideration_id,
+    expired_unanswered_expectation,
+    pending_response_expectation,
+)
 from .schema_core import FrozenModel
 from .schemas import CommittedWorldEventRef, WorldEvent
 
@@ -465,6 +469,13 @@ class SocialInitiativeCompiler:
             and retry.consideration_id not in excluded_consideration_ids
         ):
             return retry
+        expired = await self._expired_expectation_contact(
+            projection,
+            logical_time,
+            excluded_consideration_ids=excluded_consideration_ids,
+        )
+        if expired is not None:
+            return expired
         if recent_contact is not None and (
             logical_time - recent_contact
         ).total_seconds() < self._policy.contact_cooldown_seconds:
@@ -1098,6 +1109,41 @@ class SocialInitiativeCompiler:
             scheduled_for=source_ref.logical_time,
             cadence_reason_codes=("technical_failure:retry",),
             stimulus_event_refs=stimulus_event_refs,
+        )
+
+    async def _expired_expectation_contact(
+        self,
+        projection,
+        logical_time: datetime,
+        *,
+        excluded_consideration_ids: frozenset[str],
+    ):
+        expired = expired_unanswered_expectation(projection)
+        if expired is None:
+            return None
+        consideration_id = expired_expectation_consideration_id(expired.plan_id)
+        if consideration_id in excluded_consideration_ids:
+            return None
+        prefix = "proactive-consideration:" + consideration_id
+        existing = next(
+            (
+                item
+                for item in getattr(projection, "trigger_processes", ())
+                if item.process_kind == "proactive_action_deliberation"
+                and item.trigger_ref == prefix
+            ),
+            None,
+        )
+        if existing is not None and existing.state == "terminal":
+            return None
+        return await self._from_source(
+            source_kind="spontaneous_contact",
+            source_id=expired.plan_id,
+            source_event_ref=expired.receipt_event_id,
+            source_world_revision=expired.receipt_world_revision,
+            consideration_id=consideration_id,
+            scheduled_for=expired.expires_at,
+            cadence_reason_codes=("expectation:expired_unanswered",),
         )
 
     async def _spontaneous_contact(self, projection, logical_time: datetime):
