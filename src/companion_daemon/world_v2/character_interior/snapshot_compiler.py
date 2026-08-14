@@ -714,9 +714,6 @@ def compile_inner_life_snapshot(
     remembered = [entry for item in _slice_items(slices, "active_memory_candidates") if (entry := _state_entry(item))][:PRESENT_MEMORY_ITEM_LIMIT]
     if remembered:
         materials["remembered_material"] = remembered
-    emotional = [entry for item in _slice_items(slices, "recalled_emotional_associations") if (entry := _recalled_entry(item, kinds=frozenset({"reflective"})))][:PRESENT_MEMORY_ITEM_LIMIT]
-    if emotional:
-        materials["recalled_emotional_associations"] = emotional
     impressions = [entry for item in _slice_items(slices, "private_impressions") if (entry := _state_entry(item, fields=(
         "subject_ref", "reflection_summary", "confidence_bp", "first_seen",
         "last_supported", "expiry_condition", "contradiction_refs", "status",
@@ -780,7 +777,6 @@ def compile_inner_life_snapshot(
             "recent_dialogue",
             "relevant_facts",
             "remembered_material",
-            "recalled_emotional_associations",
         ),
         "appraisal_affect": ("appraisals", "affect"),
         "emotional_continuity": (

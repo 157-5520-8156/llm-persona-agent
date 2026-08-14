@@ -1001,3 +1001,23 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **运维前提**：修好 H12a 也不会让当前生产库追溯拿回 41 条历史经历（`rebuild()` fail-closed），
   要么再切一次纪元（需用户批准），要么从修复后开始累积。**实施者不得自行切库。**
 - **commit**：无（仅文档）
+
+### 2026-08-14 H12 补上已付费但没送到的连续性（0 模型）
+
+- **红测**：`tests/world_v2/test_interior_continuity_h12.py`
+  - 窗内经历被 `_updated_at=datetime.min` 滤光
+  - 超限时 `response_expectation` advisory 先于 optional advisory 被逐出
+  - `recent_experiences` domain rank 低于记忆候选
+  - Action 停在 unknown 时对话史没有她的气泡
+  - 死路 slice `recalled_emotional_associations` 仍被编进快照
+- **改动**：
+  1. `_updated_at` 回退读 `occurred_to` / `occurred_from`；facts/memories 仍优先 `updated_at`/`committed_at`，排序锁测未变。
+  2. `RANK_DOMAIN_IMPORTANCE_BP["recent_experiences"]=7750`（高于记忆 7500，低于开环 8000）。`response_expectation` 与 `proactive_opportunity` 一样排到 advisory 头、last-tier 保底。未新增 SliceName。
+  3. `RecentDialogueItem.delivery_state` 增加 `unknown`；unknown 回执进入对话材料，状态如实。`_typed_recent_dialogue_proof` 仍只认 `delivered`。
+  4. 删除 snapshot compiler 对 `recalled_emotional_associations` 的读取及该 facet key。recall corpus 内部同名 source_slice 未动。
+- **测试**：H12 红测绿；context capsule / recent dialogue watermark / model-facing / epoch continuity h10 共 71 passed；character-tier 498 passed；ruff 绿。
+- **生产证据**：只读打开 `data/companion.epoch1.sqlite` 的 `world_v2_head_state_items.experiences`（41 条）。用修复后的编译器、logical_time=2026-08-14T00:00Z 得到 **24** 条（上限 `_EXPERIENCE_LIMIT`），不再是 0。未写归档、未切 epoch2。超限 capsule：两条同 rank advisory 时保留 `response_expectation`、丢掉 `appraisal_candidate`。
+- **成本与延迟**：0 模型。不新增 purpose、不改账单形状。
+- **剩余缺口**：当前生产 `epoch2` 不会追溯拿到这 41 条（用户已裁定丢掉，不切库）。她要等到修复后新写的经历才会进连续性快照。H13 仍未让她能声明 `waiting_for`。`present_prompt._MATERIAL_ORDER` 仍留着死路键名，无消费者。
+- **commit**：`bd95e888`
+

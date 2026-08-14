@@ -994,7 +994,7 @@ def test_inner_life_snapshot_exposes_source_bound_memory_and_private_impression(
     ]
 
 
-def test_recalled_emotional_association_enters_current_self_without_becoming_fact() -> None:
+def test_recalled_emotional_association_slice_is_not_compiled_into_snapshot() -> None:
     raw = json.dumps(
         {
             "logical_time": "2026-07-28T08:00:00+08:00",
@@ -1034,24 +1034,8 @@ def test_recalled_emotional_association_enters_current_self_without_becoming_fac
 
     _compact, current = _inner_life_view(raw)
 
-    assert current["materials"]["recalled_emotional_associations"] == [
-        {
-            "memory_kind": "reflective",
-            "authority": "defeasible_interpretation",
-            "epistemic_scope": "private_interpretation",
-            "actor_ref": "actor:companion",
-            "subject_refs": ["actor:companion", "npc:vendor"],
-            "text": (
-                "Emotional episode at opening — "
-                "anger=4200bp | resentment=3600bp"
-            ),
-            "occurred_from": "2026-07-20T18:00:00+08:00",
-            "occurred_to": "2026-07-20T19:00:00+08:00",
-            "status": "historical",
-            "source_ref": "affect-opening:vendor-frustration",
-        }
-    ]
-    assert current["source_refs"] == ["affect-opening:vendor-frustration"]
+    assert "recalled_emotional_associations" not in current["materials"]
+    assert current["source_refs"] == []
 
 
 def test_recalled_dialogue_supplements_without_evicting_latest_working_turns() -> None:

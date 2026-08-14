@@ -118,7 +118,14 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def _updated_at(item: object) -> datetime:
-    for name in ("updated_at", "committed_at", "accepted_at", "opened_at"):
+    for name in (
+        "updated_at",
+        "committed_at",
+        "accepted_at",
+        "opened_at",
+        "occurred_to",
+        "occurred_from",
+    ):
         value = getattr(item, name, None)
         if isinstance(value, datetime):
             return _as_utc(value)

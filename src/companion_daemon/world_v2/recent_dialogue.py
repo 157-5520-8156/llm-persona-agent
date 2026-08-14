@@ -57,7 +57,7 @@ class RecentDialogueItem(FrozenModel):
     )
     text: str = Field(min_length=1, max_length=4_096)
     occurred_at: datetime
-    delivery_state: Literal["observed", "provider_accepted", "delivered"]
+    delivery_state: Literal["observed", "provider_accepted", "delivered", "unknown"]
     sequence: int = Field(ge=1)
     privacy_class: PrivacyClass = "private"
     source_claims: tuple[DialogueSourceClaim, ...] = Field(min_length=1, max_length=6)
@@ -215,7 +215,7 @@ class RecentDialogueCompiler:
         historically_visible_action_ids = frozenset(
             item.action_id
             for item in projection.execution_receipts
-            if item.observed_state in {"provider_accepted", "delivered"}
+            if item.observed_state in {"provider_accepted", "delivered", "unknown"}
         )
         historically_delivered_action_ids = frozenset(
             item.action_id
@@ -334,6 +334,7 @@ class RecentDialogueCompiler:
             if recorded_receipt.observed_state not in {
                 "provider_accepted",
                 "delivered",
+                "unknown",
             }:
                 continue
             previous_visible = first_visible_receipts.get(recorded_receipt.action_id)

@@ -179,7 +179,7 @@ RANK_DOMAIN_IMPORTANCE_BP: dict[SliceName, int] = {
     # dialogue/appraisal envelopes.  A real two-part recall probe otherwise
     # retained the name Fact but dropped the equally active preference Fact.
     "relevant_facts": 9_000,
-    "recent_experiences": 7_000,
+    "recent_experiences": 7_750,
     "world_life": 7_250,
     "perception_results": 8_000,
     "active_memory_candidates": 7_500,
@@ -1426,7 +1426,7 @@ def _compile_slice(
             0
             if slice_name == "advisories"
             and isinstance(pair[0], InnerAdvisoryProjection)
-            and pair[0].kind == "proactive_opportunity"
+            and pair[0].kind in {"proactive_opportunity", "response_expectation"}
             else 1,
             -pair[1].rank_score_bp,
             pair[1].item_ref,
@@ -2140,8 +2140,9 @@ def _compile_resolved_context(
         # global envelope remains the final safety bound.
         "advisories": len(slices["advisories"].items),
     }
-    proactive_advisory_present = any(
-        json.loads(item.payload_json).get("kind") == "proactive_opportunity"
+    protected_advisory_present = any(
+        json.loads(item.payload_json).get("kind")
+        in {"proactive_opportunity", "response_expectation"}
         for item in slices["advisories"].items
     )
     required_dialogue_ids = {
@@ -2213,10 +2214,10 @@ def _compile_resolved_context(
         Tier 4 takes every protected non-head, non-advisory slice down to its
         bounded semantic floor (normally one; current + pending dialogue may
         require two). Tier 5 then degrades advisories item-by-item by rank; the
-        per-slice sort keeps a proactive_opportunity advisory at the head, so
-        it is the last advisory standing. Tier 6 allows zero items everywhere
-        except the mandatory heads; a remaining
-        proactive_opportunity advisory is the semantic subject of its lane,
+        per-slice sort keeps a proactive_opportunity or response_expectation
+        advisory at the head, so it is the last advisory standing. Tier 6 allows
+        zero items everywhere except the mandatory heads; a remaining
+        protected advisory is the semantic subject of its lane,
         so it outlasts every other optional single item.
         """
 
@@ -2239,7 +2240,7 @@ def _compile_resolved_context(
             return "advisories"
         last_candidates = [
             (
-                1 if name == "advisories" and proactive_advisory_present else 0,
+                1 if name == "advisories" and protected_advisory_present else 0,
                 slice_.items[-1].rank_score_bp,
                 name,
             )

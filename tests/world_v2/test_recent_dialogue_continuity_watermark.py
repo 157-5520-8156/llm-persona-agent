@@ -387,10 +387,11 @@ def test_answered_observation_outside_companion_tail_does_not_take_pending_slot(
     )
     assert (
         "event:observation:1"
-        not in cold_replayed_never_accepted.acknowledged_observation_event_refs
+        in cold_replayed_never_accepted.acknowledged_observation_event_refs
     )
-    assert all(
-        item.dialogue_id != "dialogue:expression:plan:1:beat:1"
+    assert any(
+        item.dialogue_id == "dialogue:expression:plan:1:beat:1"
+        and item.delivery_state == "unknown"
         for item in cold_replayed_never_accepted.dialogue
     )
 
