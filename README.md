@@ -191,7 +191,8 @@ release gate，不是 README 对当前版本的性能承诺。
 - [`CONTEXT.md`](CONTEXT.md)：领域词汇和当前权威模型。
 - [`ADR-0010`](docs/adr/0010-controlled-high-variance-character-agency.md)：受控高随机，角色决定行为。
 - [`设计总纲`](docs/design/girl-agent-design-intent.md)：目标体验与能力边界。
-- [`长期耦合与执行计划`](docs/design/root-causes-and-long-coupling-luna-plan.md)：阶段、证据门与未完成项。
+- [`执行计划`](docs/design/harness-restructure-execution-plan.md)：当前工作包、强制门与代码坐标。
+- [`历史施工记录`](docs/design/root-causes-and-long-coupling-luna-plan.md)：L0–L3 期的阶段与证据，仅供查证。
 - [`成本控制`](docs/cost-control.md) 与 [`视觉身份`](docs/visual-identity.md)。
 
 并行开发应使用独立分支/worktree、临时 SQLite 和独立端口；同一文件同时只能有一个写

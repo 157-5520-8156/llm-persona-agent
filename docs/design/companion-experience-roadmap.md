@@ -5,7 +5,7 @@
 >
 > **2026-08-08 后续深化**：本文件继续保存生产排障、真实采样、成本与阶段性修复记录；
 > 当前业务与长链架构规范已并入 [`girl-agent-design-intent.md` §11](./girl-agent-design-intent.md)，
-> 施工顺序见 [`root-causes-and-long-coupling-luna-plan.md`](./root-causes-and-long-coupling-luna-plan.md)。
+> 施工顺序见 [`harness-restructure-execution-plan.md`](./harness-restructure-execution-plan.md)。
 > 当本路线图中的阶段性可用性补丁与 AGENTS.md、ADR 0010 或上述深化设计冲突时，以后者为准；
 > 历史实验结论仍作为实现证据保留，不回写成从未发生。
 

@@ -1,6 +1,6 @@
 # Girl-Agent 代码库索引
 
-本地优先的"赛博伴侣"项目：LLM 驱动的虚拟角色（沈知栀 Celia Shen）住在事件溯源的 World V2 里，通过 QQ 聊天与用户互动。设计宗旨见 `AGENTS.md`（受控高随机：模型有行为决定权，确定性代码只守硬边界）；领域词汇表见 `CONTEXT.md`（World Event / Projection / Pinned Turn / Inner Life Snapshot 等全部术语）。当前业务和架构意图只有 `docs/design/girl-agent-design-intent.md`，实施顺序只有 `docs/design/root-causes-and-long-coupling-luna-plan.md`。改 World V2 前先完整阅读这两份权威文档、`CONTEXT.md` 和 ADR 0010；其他设计文档仅作为历史证据，发生冲突时不得覆盖这两份权威文档。
+本地优先的"赛博伴侣"项目：LLM 驱动的虚拟角色（沈知栀 Celia Shen）住在事件溯源的 World V2 里，通过 QQ 聊天与用户互动。设计宗旨见 `AGENTS.md`（受控高随机：模型有行为决定权，确定性代码只守硬边界）；领域词汇表见 `CONTEXT.md`（World Event / Projection / Pinned Turn / Inner Life Snapshot 等全部术语）。当前业务和架构意图只有 `docs/design/girl-agent-design-intent.md`，实施顺序只有 `docs/design/harness-restructure-execution-plan.md`（2026-08-13 起取代 `root-causes-and-long-coupling-luna-plan.md`，后者降级为 L0–L3 期历史施工记录）。改 World V2 前先完整阅读这两份权威文档、`CONTEXT.md` 和 ADR 0010；其他设计文档仅作为历史证据，发生冲突时不得覆盖这两份权威文档。
 
 ## 架构全景：两个世界
 
@@ -24,7 +24,7 @@
 - `POST /messages` — 聊天入口（幂等 message_id，World V2 冷启动返回 503 可重试）
 - `POST /internal/world-v2/tick` — 调度器时钟推进（需 operator token）
 - `POST /internal/world-v2/drain` — Action/后台恢复
-- `GET /world-v2/room` / `/world-v2/dashboard` / `/world-v2/life-state` — 只读投影 DTO
+- `GET /world-v2/room` / `/world-v2/dashboard` — 只读投影 DTO（`/world-v2/life-state` 已按 ADR-0007 移除）
 - `/health` — capture 就绪 + Character Interior 健康检查（fail-closed）
 
 ## 消息管线（核心流程）
@@ -39,7 +39,7 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 6. Action：`action_pump.py` claim → `platform_action_executor.py` 发送
 7. 回执：`runtime.settle` → `settlement.py` `SettlementPlanner`
 
-**Fast reply**：`character_interior/inbound_wire.py` 的 `_is_lossless_minimal_reply_draft` 分流——能无损压缩成单文本走 MinimalReply（生产主要路径），否则走完整 ExpressionPlan 多 beat（`expression_episode.py` 的旧双作者协调器已删，只留验证函数）。
+**表达**：生产走 `ExpressionDraft.beats` 多 beat（`timing_choice` now/later/silent、`cadence`、`turn_posture`、`delay_seconds` 控制节奏与已读不回；`max_beats` 默认 8）。`inbound_wire.py` 的 `_is_lossless_minimal_reply_draft` **只用于 quick recovery，不是生产分流路径**（2026-08-13 核实）。`expression_episode.py` 的旧双作者协调器已删，只留验证函数。
 
 ## 子系统地图
 
@@ -101,6 +101,7 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 ## 文档指引
 
 - 当前权威业务与架构意图：`docs/design/girl-agent-design-intent.md`
-- 当前唯一执行计划：`docs/design/root-causes-and-long-coupling-luna-plan.md`
+- 当前唯一执行计划：`docs/design/harness-restructure-execution-plan.md`
+- 历史施工记录（L0–L3 期，可查证但不产生任务）：`docs/design/root-causes-and-long-coupling-luna-plan.md`
 - ADR：`docs/adr/0010-controlled-high-variance-character-agency.md` 必读
 - 其余 `docs/design/` 文件、成本与形象文档均是可追溯的历史或专项证据，只能由上述两份权威文档按需引用，不能成为并列路线图。

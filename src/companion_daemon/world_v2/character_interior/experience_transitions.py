@@ -18,6 +18,9 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
+import logging
+
+_LOG = logging.getLogger(__name__)
 import json
 from typing import Annotated, Literal
 
@@ -1062,11 +1065,25 @@ class ExperienceTransitionSettlement:
         source_event: WorldEvent,
     ) -> bool:
         del current_cursor
-        audit, proposal, change = self._authored_change(
-            audit_cursor=audit_cursor,
-            proposal_id=proposal_id,
-            source_event=source_event,
-        )
+        try:
+            audit, proposal, change = self._authored_change(
+                audit_cursor=audit_cursor,
+                proposal_id=proposal_id,
+                source_event=source_event,
+            )
+        except ValueError:
+            # A proposal whose authored audit is absent from the pinned
+            # cursor cannot be proven pending.  Treating it as not-pending
+            # lets the stimulus lane move on instead of re-raising on the
+            # same stale process every scheduler pass (observed as an
+            # unbounded error loop after bundle migration).  The immutable
+            # _process path still fails closed on the same condition.
+            _LOG.warning(
+                "experience settlement source audit is unavailable; "
+                "treating proposal %s as not pending",
+                proposal_id,
+            )
+            return False
         del audit, proposal
         if change is None:
             return False
