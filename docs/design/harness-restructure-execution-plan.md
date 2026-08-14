@@ -721,6 +721,11 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 | H9 | 记忆配额与口径：召回 3–8 条进 Present；按 §12.9 第 7 条改 recency×importance×relevance 打分（recency 已有，补 importance）；写时压缩改每天一次批量；定主记忆源；health 暴露最近写入时间 | 召回被裁到 1 条；写时每 appraisal 一次模型调用 | 召回稳定进 Present 第 6 段；写时模型调用降到每天 1 次 |
 | H10 | 新纪元迁移 + 启动秒级 + 归档只读 + 衰减改纯函数 | 冷启动全量重放 | 启动 ≤10s；快照可重建；归档完整 |
 | H11 | 媒体接通（依赖 H8） | 开关关闭、grant 未 provision | 月内真实发出 ≥10 张有来源的生活照片 |
+| H12 | 补上已付费但没送到的连续性（0 模型）：修 `epoch_continuity` 经历日期过滤、逐出权重、`delivery_state=unknown`、删死路 slice | genesis `experiences=0`；期待 advisory 最先被逐出；unknown 的气泡她看不见 | 快照 experiences 非空；超限时期待仍在；调用数与账单不变 |
+| H13 | 期待与沉默的语义（≈0 新增调用）：slim 加可选 `waiting_for`、沉默带上期待、回话时评估一次、实现只在注释里的抑制 | `response_expectation` 0/106；`ResponseExpectationAssessed` 全库 1 条；pending 期间双车道同时开火 | 期待非空的计划出现；评估事件出现；每条用户消息调用数不上升 |
+| H14 | 残留改副产品，删私人印象独立车道（**负成本**）：`stuck_with_me`/`wants` 直接编成印象与开环 | 3,034 次 attempt / 7 条接受的独立车道仍在 | 该 purpose 调用归零；`PrivateImpressionAccepted` 显著上升 |
+| H15 | 生活开门：节奏层保持 0 模型，内容由她在已付费调用里产出，补 `life_arc_effect` 生产者 | 目录是 `legacy_replay_and_fixture`；`life_arc_effect` 0 条；generative LD 恒 `no_op` | 出现非目录来源的生活细节且下轮可读；出现 ≥1 条已结算结果开出的 Life Arc |
+| H16 | Occasion 队列做实（承重墙，H13e/H15 的前置）：五种 kind 都成为真的 `OccasionIdentity`，带 expiry | 只有 `user_message` 是真的；`life_beat` 只有枚举；gate 是进程内 set | G2/G7 在五种上全部成立 |
 
 ### 13.1 代码坐标（行号以 2026-08-13 的 HEAD 为准，改动前必须先确认）
 
@@ -739,6 +744,7 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 | H8 | lane 顺序 `world_v2/life_ecology_runtime.py:223-559`、`development_due` `:242-243`、各 lane `:289-559`；`opening_token` 校验 `reducers.py:12478-12495`；`activity_timing.py`；`configs/world_seed.yaml`；双审查 purpose `life_development_source_closure_review` / `life_development_novel_origin_review`；外部感知 `config.py:354-356` + `qq_c2c_host.py:2195-2215`；NPC `world_v2/npc_ecology.py`；日记聚合 `world_life_context.py:314-326` 与 `production_turn_application.py:2585-2671` |
 | H9 | `config.py:408-411`；`world_v2/recall_embedding.py:36-42,829-835`；默认 index `production_turn_application.py:3392`；recall limit `inbound_wire.py:11657`；快照裁剪 `snapshot_compiler.py:670-673`；编译 `ledger_context_resolver.py:1373-1386`；写入 `interaction_fact_trigger_runtime.py:1733`、`fact_v2_acceptance_runtime.py`、`reducers.py:13977`；非 embedding 关联 `conversation_continuity.py:49-50` |
 | H10 | `world_v2/sqlite_ledger.py:680-713`（启动序）、`:1973-2076`（冷校验）、`:6060-6207`（replay）、`:3121-3160`（bundle migration）、`:6045-6057`（rebuild）、`:2139-2243`（identity/idempotency）、`:2346-2347`（prefix partial）；ref 累积 `reducers.py:15407-15426`；启动门 `production_turn_application.py:3364`；bootstrap `:4453-4495`；清理入口 `ledger_maintenance.py:1454`；运行时依赖 `memory_retrieval.py:170` |
+| H12–H16 | 坐标全部写在 [`interior-continuity-implementation-spec.md`](./interior-continuity-implementation-spec.md) 各包内（含核实日期 2026-08-14）。主要落点：`world_v2/epoch_continuity.py:120-128,164-168`；`world_v2/context_capsule.py:170-190,2119-2134,2174-2187`；`world_v2/recent_dialogue.py:60,372-374`；`character_interior/snapshot_compiler.py:717-719,730-748`；`world_v2/present_prompt.py:234-244,286-349,352-412`（`:385/402` 硬写 `None`）；`world_v2/expression_draft.py:264-277`；`world_v2/response_expectation_view.py:71-183,240-290`；`world_v2/runtime.py:802-878`；`world_v2/social_initiative.py:1102-1216`（`:1168-1170` 空注释）；`world_v2/silence_appraisal_trigger.py:54-117`；`world_v2/private_impression_producer.py:203-284,513-548`；`world_v2/biographical_lifecycle_runtime.py:190-233`；`world_v2/world_life_context.py:266-308`；`world_v2/occasion.py:15-28,50-68,79-80` |
 | H11 | 开关 `config.py:723`（`ALLOW_AUTO_IMAGE_GENERATION`）、`:731-732`（`WORLD_V2_MEDIA_PREVIEW_ENABLED`）；部署检查 `world_v2/qq_media_deployment.py:293-311`、auto delivery `:433-438`；选片 `media_selection_worker.py:75-79`；provisioning `scripts/provision_world_v2_media_authority.py`；链路 `event_ecology_media.py` → `media_selection_acceptance_runtime.py` → `event_media.MediaPlanner` → `image_generation.OpenAIImageGenerator` → `OpenAIMediaInspector` → `media_auto_delivery.py` |
 
 ## 14. 每个工作包的交付模板
@@ -765,11 +771,9 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - 成本预测显著超出 ¥100/月信封。
 - 连续两轮同类补丁没有改善。
 - 准备做生产替换或真实 QQ 上线。
-- **§12.9 第 8 条（世界改确定性模拟、模型只演角色）需要用户单独批准后才能动。** 它会把 `npc_ecology.py`
-  与 life_development 的世界作者从模型改成加权事件表，是本文档里唯一一处改变"谁在写世界"的提案。
-  它不违反 ADR-0010（宗旨约束的是**角色的行为决定权**，不是世界事实的生成方式），而且能让生活密度
-  提高一个量级且成本为零；但它推翻了 npc_ecology 的现有设计，属于大改。**在用户批准前，H8 仍按
-  §8 的"日程骨架 0 模型 + `day_open` 一次调用"执行，不要顺手把世界作者删掉。**
+- **§12.9 第 8 条已于 `b060d961` 落地。** 2026-08-14 用户要求把 NPC actor+world 模型路径与
+  life-development 世界作者**两边都撤回来**，但**先记下来、先别改代码**。详见 §17 同日暂存条。
+  在用户再说一次动手之前，禁止 revert `b060d961`、禁止把加权表改厚当替代方案。
 
 ## 16. 明确不允许
 
@@ -913,7 +917,7 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **测试**：item8 红测绿；NPC 无 catalog 仍调模型；生产 open-life 与 public host 不再依赖世界作者发明情节；character-tier 498 passed；life_development_runtime 117 passed；ruff 绿。
 - **生产证据**：生产 `NpcEcology(..., catalog=life_seed_catalog)` 与 `ProjectionLifeCapabilityManifestCompiler` 都会走表。NPC 例程密度由 `world_seed.yaml` 的 `base_chance_bp` 与 nothing 质量调节，加事件不加模型账单。
 - **成本与延迟**：生产 quiet wake 上 NPC actor + world author 与 life world-author 的 provider 调用归零；NPC 决定仍落账本以便 CAS/replay。
-- **剩余缺口**：life development 没有从 seed opening 编译 propose（随机环境事件若要写成 occurrence，还差确定性 draft 编译器）；host 资格里原先靠世界作者发明的 activity/aftermath 链改为断言 0 模型 + replay 稳定，角色拥有的 activity/aftermath 闭包仍由单元测试覆盖；天气是日哈希短句，不是店铺开闭；衰减/epoch 缺口仍见 H10。
+- **剩余缺口**：life development 没有从 seed opening 编译 propose（随机环境事件若要写成 occurrence，还差确定性 draft 编译器）；host 资格里原先靠世界作者发明的 activity/aftermath 链改为断言 0 模型 + replay 稳定，角色拥有的 activity/aftermath 闭包仍由单元测试覆盖；天气是日哈希短句，不是店铺开闭；衰减/epoch 缺口仍见 H10。**2026-08-14 用户要求撤回本条两边（NPC 模型路径 + 世界作者），代码暂不改，见 §17 同日暂存。**
 - **commit**：`b060d961`
 
 ### 2026-08-13 H11 接通有来源的生活照片
@@ -926,3 +930,74 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **剩余缺口**：月内 ≥10 张有来源生活照片是生产验收，不是单测能声称的；缺 grant 时车道仍静默 disable（需 operator 跑 provisioning）；`world_v2_media_inspection_model` 配置闲置；inspection Action/grant 仍在（确定性检查也走同一 effect-once）；像素质量不再由视觉模型把关；规划仍是一次模型调用；H10 生产换库仍需人工。
 - **commit**：`5dd68f94`
 
+### 2026-08-14 暂存：撤回 §12.9 第 8 条（两边都回来，代码先不动）
+
+- **用户原话**：两边都想回来，但是先记下来先别动。
+- **要回来的两边**：
+  1. NPC ecology 的 **actor + world 模型路径**（现在有 `ReviewedLifeSeedCatalog` 时走加权表，0 次 `complete_json_object`）。
+  2. Life development 的 **世界作者**（现在 catalog 在时恒 `{"decision":"no_op"}`，`model_id="deterministic:weighted-table"`）。
+- **现状仍在生产跑**：`b060d961`。NPC 表实际是 `configs/world_seed.yaml` 的 `npc_initiated_events` 8 行（范远 6、林晚 2），`nothing` 补到 10000 bp；父母沈岚/陈远不在这张表上。`inject_nothing_mass` 未接线。天气仍是 `day_skeleton.py` 日哈希五句之一。活动开口仍由她从 catalog 里选，不是加权世界模拟器。
+- **为什么要撤（已对齐、未施工）**：加权表当世界模拟器内容不够厚；世界几乎不再长出新事件；NPC 变成道具表。设计意图与 ADR 0010 仍是 NPC 作为有模型决定权的 actor。Sims/CK3 类比假设了一张厚表，落地的是架构没有内容。
+- **成本约束（2026-08-14 补记，撤回不得整包 revert）**：第 8 条就是因为成本改的。归档账本里 NPC ecology 61 次模型、**0 次 validated**（`main_invalid_output` 33 + `corrective_invalid` 27）；life-development 340 次里审查占 143。撤回时：
+  - 例行世界（天气、课表、NPC 日常表）**保持 0 模型**。
+  - NPC actor / 世界作者若回来，必须是 **Occasion 门控 + one-shot**：无审查、无同契约纠正；契约 Postel。禁止每个 ecology wake 打模型。
+  - 月桶不变：NPC+社会 ¥8，人生节拍 ¥8。超了只减机会频率，不削她的上下文、不让她失声。
+  - 旧 NPC 车道的失败形态证明：没有宽进形状就回来 = 再买一遍非法输出。
+- **明确不做**：不改代码、不改测试、不改生产、不 revert `b060d961`、不把表加厚当成撤回。动手需要用户再说一次。
+- **commit**：无
+
+### 2026-08-14 暂存：连续存在的内心 — 贵的是计算，薄的是状态
+
+- **用户原话**：还是要考虑成本；连续存在的角色内心成本似乎较高也不够连续。
+- **判据（已有、未做完）**：§12.3 A0 — 连续存在是**状态连续**，不是**计算连续**。钱只能花在会进入下次 Present 的一次 `consider()` 上。
+- **归档账本（`companion.sqlite`，用量 8/7–8/13）**：账单 ¥13.94。私人印象 3,034 次 attempt / 7 条接受；主动联系 897 次；NPC 61 次 / 0 合法。8/12 重启日 ¥6.68、5 条用户消息。缓存命中 22.9%。
+- **新纪元（`companion.epoch2.sqlite`，切库后约 9 小时）**：账单 ¥0.072。`inbound_turn` 2 成功 ¥0.026（真回复）；`proactive_contact` 3 成功计费 ¥0.029、**0 条送达**（审计 `primary_timeout` / `budget_exhausted`，provider 仍出账）；`world_stimulus_appraisal` 1 次 24,547 token ¥0.017。缓存命中仍 **23.1%**（H3 未在稀疏流量上兑现）。对冲 6.5s 后 backup 的 `caller_cancelled` 行为 0 token，但主调用已计费的超时仍丢表达。
+- **为什么觉得不连续（状态侧，不是调用次数）**：genesis 快照 `experiences=0`（归档有 41 条 `ExperienceCommitted`；`_updated_at` 读不到 experience 的日期时会被 30 日窗滤掉）。连续性快照没有对话史。新纪元 0 次活动 / 0 次 occurrence / 0 条新事实 / 0 条新印象。她下次开口主要看见评价和记忆候选，看不见经历和聊过的话。
+- **该花 / 不该花（暂不施工）**：
+  - 该花：入站一次 consider；H6 间隔上的未平情绪（写出她能重读的残留）；到期且真发出或留下残留的安静窗口；每天一次 `day_open`。
+  - 不该花：扫历史 appraisal 的私人印象农场；每个 wake 的 NPC/世界作者；计费成功但预算耗尽所以没送达的主动联系；入站之后再付一次 24k token 的 stimulus（应并入同一次 consider，或懒求值进 Present）。
+  - 连续性补丁优先于加调用：把经历和对话编进 Present；修 genesis 日期过滤；缓存前缀仍受 tools 分叉与跨小时 TTL 限制。
+- **明确不做**：本条不改代码。与上条撤回约束一起等用户动手。
+- **commit**：无
+
+### 2026-08-14 立项：H12–H16 施工说明书（交接给他人实施）
+
+- **用户决定**：不由本会话施工，出一份详细 md 交给别的实施者做。
+- **产物**：[`docs/design/interior-continuity-implementation-spec.md`](./interior-continuity-implementation-spec.md)。
+  它是**本文的下级工单，不是第三份并列路线图**；冲突时以本文与设计总纲为准。
+- **总方向**：不再为「想」单独付钱，改成在她已经付费的每一次开口上多收一样东西；世界只决定机会，
+  内容由她顺手产出，偶尔硬化成一条改写规则表的弧。**总账是减少调用**（H14 为负成本）。
+- **包**：H12 补泄漏（0 模型）；H13 期待与沉默语义（≈0 新增调用）；H14 删私人印象独立车道（负成本）；
+  H15 生活开门（含未验风险）；H16 Occasion 队列做实（承重墙）。顺序与依赖见说明书 §9。
+- **新查明的四处**（都在说明书里给了坐标）：
+  1. `epoch_continuity._updated_at` 找不到 `ExperienceProjection` 的日期 → `datetime.min` → 30 日窗滤光。
+  2. `context_capsule.RANK_DOMAIN_IMPORTANCE_BP` 里 advisories 5,000 最低，期待走 advisory 载体，
+     全局超限时第一个被逐出；`recent_experiences` 7,000 还低于 `active_memory_candidates` 7,500。
+  3. `present_prompt.compile_slim_interior_envelope:385/402` 把 `response_expectation` 与
+     `response_expectation_assessment` 硬写成 `None` —— 整条期待机制齐备但从未被喂过（0/106）。
+  4. `social_initiative.py:1168-1170` 那句抑制只存在于注释，代码没做。
+- **必须先验的风险**：懒求值的 outcome 质地 vs replay 确定性（`ExperienceProjection.semantic_fingerprint`
+  由 values 计算，summary 事后才有时指纹怎么算）。探针结论出来前不得动 aftermath 提交路径。
+- **ADR 时效性审计（用户质疑后补做，2026-08-14）**：`docs/adr/` 整个目录 **2026-08-12 之后未再改动**，
+  而 H1–H11 全在之后。逐条对代码核实：
+  - **ADR 0017「携带证明的选择性来源审查」自称是「唯一生产可见聊天路线」，但它依赖的三个模块
+    （`structured_source_review_model.py` / `source_review_authority.py` / `visible_source_review_model.py`）
+    已被裁决 7 全部删除 —— 该 ADR 完全作废，且是最容易误导后续实施者的一条。**
+  - ADR 0012「模型撰写的开放式人生发展」被 `b060d961` 改成恒 `no_op`，事实上推翻但无 supersede 记录。
+  - ADR 0001 状态是 `proposed`，从未 accepted，不得当决定引用。
+  - ADR 0008 的「唤醒方式」一节已被 H2 的 due 驱动取代；模块边界仍有效。
+  - 仍有效：0010（宗旨）、0004、0011（机制在但 0 生产者）、0014、0016。0015 未复核。
+  - **结论：除 0010 外，ADR 一律当历史证据读。现行事实以代码 > `configs/mechanism_closure.yaml`
+    （仍在维护的机器可读证据索引）> 本文与设计总纲 > ADR 为序。**
+  - 顺带查明：H1d 说要删的 `world_v2/life_review_identity.py` **实际保留了**（仍被
+    `life_development_runtime.py` / `life_development_source_closure.py` / `batch_invariants.py` 引用）。
+    这是计划文本与落地的偏差，不是待办。
+- **顺带查明（改小了 H13 的工作量）**：`conversation.expectation_expiry` **已经注册**
+  （`vertical_registry.py:585`、`delayed_trigger_owner_registry.py:294-310`），
+  `trigger_mode="derived_formula"`、`runtime_owner=SituationCompiler.compile`、
+  due 字段就是 `ResponseExpectationAuthority.not_before` / `expires_at`。
+  到期判定是每次 inbound/tick 顺带算出来的，**0 成本**。整套期待设施都为这个场景造好了，
+  唯一缺的就是她从来没有机会声明期待（`present_prompt.py:385/402` 硬写 `None`）。
+- **运维前提**：修好 H12a 也不会让当前生产库追溯拿回 41 条历史经历（`rebuild()` fail-closed），
+  要么再切一次纪元（需用户批准），要么从修复后开始累积。**实施者不得自行切库。**
+- **commit**：无（仅文档）
