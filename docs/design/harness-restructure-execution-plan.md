@@ -1040,5 +1040,5 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **生产证据**：只读。归档 `companion.sqlite` 仍是 **0/106** `ExpressionPlanAccepted` 带期待、`ResponseExpectationAssessed` **1** 条。`epoch2` **0/2** 带期待、评估 **0**。UTC 今日 usage：`inbound_turn` 1 / `proactive_contact` 4。代码未重启，新声明要等进程拉起且她真的填 `waiting_for`。
 - **成本与延迟**：0 新增模型调用。评估搭在已付费 inbound 上。不新增 purpose / Occasion。
 - **剩余缺口**：H13e（到期仍无回应的一次机会）按说明书排在 H16 之后。系统默认 wait≈12h / expiry=1d 不是她的判断。生产数字在重启前不会动。
-- **commit**：待填
+- **commit**：`2d8ec088`
 
