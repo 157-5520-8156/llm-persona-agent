@@ -10,16 +10,30 @@ from companion_daemon.world_v2.epoch_continuity import (
 )
 from companion_daemon.world_v2.epoch_genesis import archive_sqlite_file, write_epoch_ledger
 from companion_daemon.world_v2.reducers import ReducerState, make_projection
+from companion_daemon.world_v2.ledger_context_resolver import _typed_refs
+from companion_daemon.world_v2.relationship_reducers import RELATIONSHIP_POLICY_DIGEST
 from companion_daemon.world_v2.schemas import (
     EvidenceRef,
     FactAssertionBinding,
     FactOrigin,
     FactProjection,
     FactValues,
+    PrivateImpressionOrigin,
+    PrivateImpressionProjection,
+    RelationshipStateOrigin,
+    RelationshipStateProjection,
+    ThreadOrigin,
+    ThreadProjection,
+    ThreadValues,
     WorldEvent,
     fact_conflict_key,
     fact_semantic_fingerprint,
+    thread_semantic_fingerprint,
 )
+from test_affect_module import appraisal as make_appraisal
+from test_affect_module import episode as make_affect
+from test_memory_candidate_authority import candidate as make_memory
+from test_memory_candidate_authority import hardened_experience_authority
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
 from test_affect_module import component as affect_component
 from test_affect_module import episode as affect_episode
@@ -177,12 +191,12 @@ def test_genesis_ledger_hydrates_facts_without_old_observation_keys(tmp_path) ->
         ),
         epoch_id="epoch:2",
     )
-    new_ledger = write_epoch_ledger(
-        path=target, world_id=WORLD, now=NOW, snapshot=snapshot
-    )
+    new_ledger = write_epoch_ledger(path=target, world_id=WORLD, now=NOW, snapshot=snapshot)
     try:
         projection = new_ledger.project()
-        assert any(item.event_type == "WorldStarted" for item in projection.committed_world_event_refs)
+        assert any(
+            item.event_type == "WorldStarted" for item in projection.committed_world_event_refs
+        )
         assert projection.facts
         assert projection.facts[0].fact_id == "fact:user-home"
         assert projection.facts[0].origin.accepted_event_ref.startswith(
@@ -329,3 +343,170 @@ def test_committed_world_event_fact_rebinds_to_genesis_and_recomputes_fingerprin
     assert imported.origin.accepted_event_ref.endswith("WorldStarted:abc")
     assert imported.values.anchor_evidence_refs[0].ref_id.endswith("WorldStarted:abc")
     assert imported.semantic_fingerprint != fact.semantic_fingerprint
+
+
+def _thread_with_archive_event() -> ThreadProjection:
+    archive = EvidenceRef(
+        ref_id="event:appraisal-mutation:old-thread",
+        evidence_type="committed_world_event",
+        claim_purpose="conversation_continuity",
+        source_world_revision=88,
+        immutable_hash="a" * 64,
+    )
+    values = ThreadValues(
+        kind="topic_open",
+        subject_ref="subject:user-day",
+        conversation_ref="conversation:1",
+        anchor_evidence_refs=(archive,),
+        source_evidence_refs=(archive,),
+        importance_bp=6500,
+        resolution_contract_ref="resolution-contract:topic-understood",
+        privacy_class="private",
+        status="open",
+    )
+    origin = ThreadOrigin(
+        change_id="change:thread:archive",
+        transition_id="transition:thread:archive",
+        policy_refs=POLICY,
+        accepted_event_ref="event:thread:archive",
+    )
+    return ThreadProjection(
+        thread_id="thread:archive",
+        entity_revision=1,
+        semantic_fingerprint=thread_semantic_fingerprint(
+            kind=values.kind,
+            subject_ref=values.subject_ref,
+            conversation_ref=values.conversation_ref,
+            anchor_evidence_refs=values.anchor_evidence_refs,
+            resolution_contract_ref=values.resolution_contract_ref,
+            policy_refs=origin.policy_refs,
+        ),
+        values=values,
+        origin=origin,
+        opened_at=NOW,
+        updated_at=NOW,
+    )
+
+
+def _impression_with_archive_event() -> PrivateImpressionProjection:
+    return PrivateImpressionProjection(
+        impression_id="impression:archive",
+        entity_revision=1,
+        subject_ref="subject:user",
+        interpretation_refs=("appraisal:compiled:old:meaning:hurt",),
+        source_refs=("event:appraisal-mutation:old-impression",),
+        confidence_bp=6500,
+        first_seen=NOW,
+        last_supported=NOW,
+        expiry_condition="until_appraisal_contradicted",
+        status="active",
+        origin=PrivateImpressionOrigin(
+            change_id="change:impression:archive",
+            transition_id="transition:impression:archive",
+            policy_refs=("policy:private-impression.1",),
+            accepted_event_ref="event:private-impression:accepted:old",
+        ),
+    )
+
+
+def _relationship_with_archive_event() -> RelationshipStateProjection:
+    return RelationshipStateProjection(
+        relationship_id="relationship:user",
+        subject_ref="user:geoff",
+        policy_digest=RELATIONSHIP_POLICY_DIGEST,
+        origin=RelationshipStateOrigin(
+            change_id="change:relationship:archive",
+            transition_id="transition:relationship:archive",
+            policy_refs=("policy:relationship-v1",),
+            accepted_event_ref="event:relationship-adjustment-mutation:old",
+        ),
+    )
+
+
+def _continuity_projection(**updates) -> SimpleNamespace:
+    fields = dict(
+        world_id=WORLD,
+        world_revision=88,
+        semantic_hash="e" * 64,
+        logical_time=NOW,
+        facts=(),
+        memory_candidates=(),
+        relationship_states=(),
+        affect_episodes=(),
+        appraisals=(),
+        threads=(),
+        commitments=(),
+        experiences=(),
+        life_arcs=(),
+        npcs=(),
+        private_impressions=(),
+        character_core=None,
+    )
+    fields.update(updates)
+    return SimpleNamespace(**fields)
+
+
+def test_genesis_rebinds_capsule_sources_and_survives_reopen(tmp_path) -> None:
+    genesis_id = "event:world-v2-epoch:epoch:2:WorldStarted:abc"
+    _, _, _, memory_source = hardened_experience_authority()
+    snapshot = compile_continuity_snapshot(
+        _continuity_projection(
+            facts=(_fact(),),
+            memory_candidates=(
+                make_memory(
+                    memory_source,
+                    status="active",
+                    reviewed_at=NOW,
+                    opened_at=NOW,
+                    updated_at=NOW,
+                ),
+            ),
+            relationship_states=(_relationship_with_archive_event(),),
+            affect_episodes=(make_affect(),),
+            appraisals=(make_appraisal(),),
+            threads=(_thread_with_archive_event(),),
+            private_impressions=(_impression_with_archive_event(),),
+        ),
+        epoch_id="epoch:2",
+    )
+    hydrated = apply_continuity_snapshot(
+        snapshot,
+        genesis_event_id=genesis_id,
+        genesis_payload_hash="f" * 64,
+        logical_time=NOW,
+    )
+    for item in (
+        *hydrated["affect_episodes"],
+        *hydrated["appraisals"],
+        *hydrated["threads"],
+        *hydrated["memory_candidates"],
+        *hydrated["private_impressions"],
+        *hydrated["relationship_states"],
+    ):
+        refs = _typed_refs(item, observation_aliases={}) or ()
+        assert refs
+        assert set(refs) == {genesis_id}
+
+    target = tmp_path / "epoch2.sqlite"
+    ledger = write_epoch_ledger(path=target, world_id=WORLD, now=NOW, snapshot=snapshot)
+    ledger.close()
+    reopened = SQLiteWorldLedger(path=target, world_id=WORLD)
+    try:
+        projection = reopened.project()
+        present = {item.event_id for item in projection.committed_world_event_refs}
+        assert projection.world_revision == 1
+        for group in (
+            projection.affect_episodes,
+            projection.appraisals,
+            projection.threads,
+            projection.memory_candidates,
+            projection.private_impressions,
+            projection.relationship_states,
+        ):
+            assert group
+            for item in group:
+                refs = _typed_refs(item, observation_aliases={}) or ()
+                assert refs
+                assert set(refs) <= present
+    finally:
+        reopened.close()

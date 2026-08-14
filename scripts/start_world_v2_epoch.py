@@ -35,12 +35,13 @@ def main() -> int:
     args = parser.parse_args()
     if args.target.exists():
         raise SystemExit(f"target already exists: {args.target}")
-    archive_sqlite_file(source=args.source, destination=args.archive)
+    if args.archive.exists():
+        print(f"archive exists, skipping copy: {args.archive}")
+    else:
+        archive_sqlite_file(source=args.source, destination=args.archive)
     source = SQLiteWorldLedger(path=args.source, world_id=args.world_id)
     try:
-        snapshot = compile_continuity_snapshot(
-            source.project(), epoch_id=args.epoch_id
-        )
+        snapshot = compile_continuity_snapshot(source.project(), epoch_id=args.epoch_id)
     finally:
         source.close()
     ledger = write_epoch_ledger(
