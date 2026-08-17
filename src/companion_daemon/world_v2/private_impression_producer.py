@@ -129,12 +129,19 @@ def _paid_inbound_impression_lineage(
     model_id = "paid-turn:inbound"
     model_version = "paid-turn:inbound"
     if inbound_audit is not None:
-        model_id = str(
-            inbound_audit.model_id or inbound_audit.attempted_model_id or model_id
-        ).strip() or model_id
-        model_version = str(
-            inbound_audit.model_version or inbound_audit.model_id or model_id
-        ).strip() or model_id
+        try:
+            nested = json.loads(inbound_audit.audit_json)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            nested = {}
+        if isinstance(nested, dict):
+            model_id = str(
+                nested.get("model_id")
+                or nested.get("attempted_model_id")
+                or model_id
+            ).strip() or model_id
+            model_version = str(
+                nested.get("model_version") or model_id
+            ).strip() or model_id
     lineage = _InteriorAuthorLineage(
         model_id=model_id,
         model_version=model_version,
