@@ -211,10 +211,11 @@ def _compact_gate_system_content(
         "reply_only may still carry appraisal and affect fields you choose: "
         "brief_rationale, behavior_tendency, stance, display_strategy, and "
         "confidence; appraise and affect remain your choices. On the slim object, "
-        "optional mood is how you open a lasting Affect component without leaving "
-        "reply_only. It excludes relationship/interaction updates, media, typing/"
-        "reaction, turn supersession, continuation, and more text beats than the "
-        "installed beat limit. If appraisal or affect is incomplete, keep a legal "
+        "optional mood is how you open a lasting Affect component, and optional "
+        "about_us/why_us/us_deltas are how the relationship itself moves, both "
+        "without leaving reply_only. It excludes interaction protocol updates, "
+        "media, typing/reaction, turn supersession, continuation, and more text "
+        "beats than the installed beat limit. If appraisal or affect is incomplete, keep a legal "
         "now, later, or silent head; the host records affect no_change only for that "
         "broken appraisal rather than inventing later or discarding silence. Choose "
         "result_kind=full_turn only when the external effect you choose actually "
@@ -4284,6 +4285,7 @@ def _parse_combined(raw: str) -> dict[str, dict[str, Any]]:
     compiled = _compile_combined_cognition_envelope(value)
     if compiled is not None:
         value = compiled
+    authored = value
     slim = compile_slim_consider_payload(value)
     if slim is not None:
         value = slim
@@ -4293,7 +4295,7 @@ def _parse_combined(raw: str) -> dict[str, dict[str, Any]]:
         )
     if not all(isinstance(value[key], dict) for key in value):
         raise ValueError("combined cognition drafts must be objects")
-    value = attach_hitchhiked_relationship_residue(value)
+    value = attach_hitchhiked_relationship_residue(value, authored=authored)
     return value  # type: ignore[return-value]
 
 

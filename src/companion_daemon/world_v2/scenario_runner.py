@@ -295,7 +295,7 @@ class ScenarioVerificationError(AssertionError):
 # source-review, acceptance, Action, and receipt boundaries; the frozen suite
 # keeps every existing per-case predicate enabled while request, audit,
 # scheduler, snapshot, and replay identities intentionally move together.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.70"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.72"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -417,8 +417,16 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.70"
 # fields, deterministic declared-claim source closure, and the ambient
 # proactive expiry switch. Per-case predicates remain enforced; the aggregate
 # prompt/snapshot identities intentionally move.
+# ``.72`` unfreezes the two things the production ledger showed were stuck: the
+# slim object now carries her own us_deltas (relationship movement was pinned
+# to zero on the only path production uses) and her own matters_bp (every
+# reading was pinned to 5000, below the reflection threshold, so nothing ever
+# came back to her). Prompt wording drops the stage discouragement and the
+# persona stops softening conflict. Per-case predicates remain enforced; the
+# aggregate prompt/appraisal identities intentionally move. Two independent
+# complete 120-case processes produced this hash before installation.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "fa7aa48552319a179f4b24ff94fd4992a0c4b8278e265a4fe5a41d8e32cfbf33"
+    "fa3908f37a0c0ebbe744de16bb46e232d210de2bf1aeea4b8d580db8198a8603"
 )
 
 

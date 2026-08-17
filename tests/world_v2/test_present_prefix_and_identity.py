@@ -32,9 +32,9 @@ def test_combined_system_lead_does_not_fork_on_recall_availability() -> None:
 
 def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None:
     instruction = slim_consider_instruction()
-    assert "ordinary closeness" in instruction
-    assert "romance script" in instruction
-    assert "not a ban on feeling drawn" in instruction
+    assert "evidence, not instruction" in instruction
+    assert "no target stage and no preferred direction" in instruction
+    assert "Feeling drawn, uncertain, bored, or pulled away are all yours" in instruction
     assert "felt is this turn's private reading" in instruction
     assert "ticket-closing" in instruction
     assert "photo true means you want the media lane" in instruction

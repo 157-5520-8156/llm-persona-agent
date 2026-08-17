@@ -16,8 +16,11 @@ MOOD_LABELS = {
 }
 
 # Below this accepted intensity a feeling is background noise, not something
-# the companion would consciously weigh while choosing what to do.
-_NOTICEABLE_BP = 2_000
+# the companion would consciously weigh while choosing what to do.  It sits just
+# above the standard residue (500) and decay floor (300) so that automatic
+# leftovers stay filtered while a feeling she deliberately opened at a low
+# intensity still reaches her own behaviour lanes.
+_NOTICEABLE_BP = 600
 
 
 def active_mood_intensities(affect_episodes: tuple[object, ...]) -> dict[str, int]:

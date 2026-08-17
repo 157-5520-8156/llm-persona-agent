@@ -399,10 +399,14 @@ async def test_production_identity_leaves_current_relationship_to_the_world_proj
     )
 
     assert "relationship_frame" not in type(composition.identity_frame).model_fields
-    assert composition.identity_frame.style_rules == (
+    assert composition.identity_frame.style_rules[:2] == (
         "像手机私聊；消息长度、条数和间隔由她当下真正想怎样表达决定，不固定成一两句。",
         "大多数消息是普通私聊文字；想发生活照、表情或偶尔皮一下都可以，但都按她当时真实的想法来。",
     )
+    # Voice rules may grow, but none of them may pin a relationship stage.
+    for rule in composition.identity_frame.style_rules:
+        assert "阶段" not in rule
+        assert "关系" not in rule
     assert "刚认识" not in json.dumps(
         composition.identity_frame.model_dump(mode="json"),
         ensure_ascii=False,

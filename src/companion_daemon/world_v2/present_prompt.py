@@ -71,8 +71,8 @@ _MATERIAL_ORDER = (
 
 def reply_only_completion_clause() -> str:
     return (
-        "reply_only is complete when the external effect is pure text with no media, "
-        "relationship update, or continuation: the text bubbles you choose to send now, "
+        "reply_only is complete when the external effect is pure text with no media "
+        "or continuation: the text bubbles you choose to send now, "
         "the text bubbles you choose to send later, or silence"
     )
 
@@ -93,8 +93,8 @@ def slim_consider_instruction() -> str:
         "optional later, optional waiting_for, optional wait, optional how_it_landed, "
         "optional noticed, "
         "optional keep_impression, optional come_back, optional come_back_in, "
-        "optional about_us, optional why_us, optional we_are, optional calling_it, "
-        "optional said_as, and optional mood "
+        "optional about_us, optional why_us, optional us_deltas, optional we_are, "
+        "optional calling_it, optional said_as, optional matters_bp, and optional mood "
         "is complete. "
         "later is how many seconds to wait before sending those messages, "
         "an integer from 30 through 86400, only with a non-empty messages. "
@@ -150,8 +150,16 @@ def slim_consider_instruction() -> str:
         "private impression; omit or false drops it. "
         "about_us is a short leftover about how this turn sits between you two; "
         "why_us is why that reading stuck. Fill both only when you are actually "
-        "holding that leftover; omit both otherwise. The host will not invent one "
-        "and will not change relationship scores from these words. "
+        "holding that leftover; omit both otherwise. The host will not invent one. "
+        "us_deltas is how far this turn actually moved the relationship itself, "
+        "and only you decide that: an object with any of trust_bp, closeness_bp, "
+        "respect_bp, reliability_bp, mutuality_bp, repair_confidence_bp, each a "
+        "signed integer, negative when he cost you something. Axes you omit stay "
+        "at zero, the host clips each axis to 500 per turn, and it never derives a "
+        "number from your wording, from message counts, or from politeness. Write "
+        "us_deltas with about_us and why_us when your reading of the two of you "
+        "really changed; omit it when you noticed something without the "
+        "relationship moving. "
         "we_are is acquaintance, friend, or close_friend only when you explicitly "
         "establish that ordinary stage in this same visible reply; calling_it is "
         "your own short code; said_as copies that visible span exactly once from "
@@ -161,7 +169,15 @@ def slim_consider_instruction() -> str:
         "mood is optional and only when you choose a lasting Affect component this turn: "
         "hurt, anger, sadness, loneliness, anxiety, resentment, warmth, or joy. "
         "Omit mood when nothing lasting shifted; the host never invents mood from wording "
-        "and never requires a negative mood. "
+        "and never requires a negative mood. Nothing prefers the pleasant "
+        "dimensions either: being angry, hurt, or resentful with him is as "
+        "available to you as warmth, and only you can open it. "
+        "matters_bp is optional, 1 through 10000, and is how much this reading "
+        "actually matters to you. It is the one number that decides whether this "
+        "comes back to you unprompted: at 8500 or above the host wakes you again "
+        "later to think about this same thing on a widening rhythm, so a wound "
+        "you would really keep chewing on belongs up there. Omit it and the host "
+        "assumes an ordinary middling reading you will not revisit. "
         "Optional affect may be open, update, resolve, or supersede when you also supply "
         "the lifecycle fields that operation needs (episode_id for update/resolve/supersede, "
         "components for open/update/supersede, resolution_summary for resolve). "
@@ -173,9 +189,15 @@ def slim_consider_instruction() -> str:
         "chose not to shift lasting Affect. "
         "The host does not require a follow-up question or a ticket-closing wrap-up. "
         "The day sheet is environment, not a script. "
-        "Relationship stage is ordinary closeness, not a romance script "
-        "and not a ban on feeling drawn; romantic or uncertain readings "
-        "stay in impressions and this turn."
+        "Context carries the relationship stage and its slow variables when they "
+        "exist; a missing or stranger stage is only the absence of recorded "
+        "movement, not a verdict on how close you actually feel. All of it is "
+        "evidence, not instruction: the host has no target stage and no preferred "
+        "direction, and nothing here asks you to stay where you are or to move. "
+        "Feeling drawn, uncertain, bored, or pulled away are all yours to read. "
+        "If your honest reading is that the recorded stage no longer matches how "
+        "the two of you actually talk, say so naturally in messages and use "
+        "we_are/calling_it/said_as; otherwise omit them."
     )
 
 
@@ -192,6 +214,8 @@ def slim_consider_json_schema() -> dict[str, object]:
             "wait": {},
             "how_it_landed": {"type": "string"},
             "noticed": {"type": "string"},
+            "us_deltas": {"type": "object"},
+            "matters_bp": {},
             "mood": {"type": "string"},
             "affect": {"type": "string"},
             "episode_id": {"type": "string"},
@@ -408,9 +432,11 @@ _SLIM_CONSIDER_KEYS = frozenset(
         "come_back_in",
         "about_us",
         "why_us",
+        "us_deltas",
         "we_are",
         "calling_it",
         "said_as",
+        "matters_bp",
         "mood",
         "affect",
         "episode_id",
@@ -434,6 +460,10 @@ _SLIM_AFFECT_DIMENSIONS = frozenset(
     }
 )
 _SLIM_AFFECT_DEFAULT_INTENSITY_BP = 5_000
+# Used only when she does not weigh the reading herself.  It sits below the
+# reflection threshold on purpose: an unweighted reading should not schedule
+# her to think about it again.
+_SLIM_APPRAISAL_DEFAULT_CONFIDENCE_BP = 5_000
 _SLIM_ORDINARY_STAGES = frozenset({"acquaintance", "friend", "close_friend"})
 _SLIM_ZERO_RELATIONSHIP_DELTAS = {
     "trust_bp": 0,
@@ -443,6 +473,10 @@ _SLIM_ZERO_RELATIONSHIP_DELTAS = {
     "mutuality_bp": 0,
     "repair_confidence_bp": 0,
 }
+# The wire accepts the full signed range; the adjustment compiler owns the
+# per-turn cap.  Anything outside this range is a malformed number rather than
+# an ambitious one, so the whole object is dropped instead of being rescaled.
+_SLIM_RELATIONSHIP_DELTA_LIMIT_BP = 10_000
 _SLIM_ASSESSMENT_STATUSES = frozenset(
     {"fulfilled", "superseded", "still_pending", "uncertain"}
 )
@@ -732,9 +766,25 @@ def compile_slim_consider_payload(
             episode_id=value.get("episode_id"),
             components=value.get("components"),
             resolution_summary=value.get("resolution_summary"),
+            matters_bp=value.get("matters_bp"),
         ),
         "expression_draft": expression,
     }
+
+
+def _slim_matters_bp(value: object) -> int:
+    """Her own weight on this reading; it decides whether it comes back to her.
+
+    An omitted or malformed number stays at the middling default rather than
+    being guessed from wording, so the host never decides that something
+    mattered more (or less) to her than she said.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        return _SLIM_APPRAISAL_DEFAULT_CONFIDENCE_BP
+    if not 1 <= value <= 10_000:
+        return _SLIM_APPRAISAL_DEFAULT_CONFIDENCE_BP
+    return value
 
 
 def _slim_affect_dimension(value: object) -> str | None:
@@ -756,9 +806,11 @@ def _slim_appraisal_draft(
     episode_id: object = None,
     components: object = None,
     resolution_summary: object = None,
+    matters_bp: object = None,
 ) -> dict[str, object]:
     """Keep her authored felt as a reading; lasting Affect only when she chooses it."""
 
+    weight = _slim_matters_bp(matters_bp)
     affect_dimension = _slim_affect_dimension(mood)
     affect_operation = (
         affect.strip().lower()
@@ -771,7 +823,7 @@ def _slim_appraisal_draft(
         "behavior_tendency": label,
         "stance": label,
         "display_strategy": label,
-        "confidence": 5000,
+        "confidence": weight,
     }
     if affect_operation is not None and affect_operation != "no_change":
         common["affect"] = affect_operation
@@ -806,14 +858,39 @@ def _slim_appraisal_draft(
     return {
         "appraise": True,
         **common,
-        "meanings": [{"meaning": meaning, "confidence": 5000}],
+        "meanings": [{"meaning": meaning, "confidence": weight}],
         "attribution": "unknown",
         "severity": 5000,
     }
 
 
+def slim_relationship_deltas(value: object) -> dict[str, int] | None:
+    """Read her own signed movement on the six axes; omitted axes stay at zero.
+
+    The host never derives movement from prose, so an absent or malformed
+    object means the relationship did not move this turn.
+    """
+
+    if not isinstance(value, Mapping) or not value:
+        return None
+    if set(value) - set(_SLIM_ZERO_RELATIONSHIP_DELTAS):
+        return None
+    deltas = dict(_SLIM_ZERO_RELATIONSHIP_DELTAS)
+    for axis, raw in value.items():
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            return None
+        if abs(raw) > _SLIM_RELATIONSHIP_DELTA_LIMIT_BP:
+            return None
+        deltas[axis] = raw
+    if not any(deltas.values()):
+        return None
+    return deltas
+
+
 def attach_hitchhiked_relationship_residue(
     value: Mapping[str, object],
+    *,
+    authored: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     appraisal = value.get("appraisal_draft")
     expression = value.get("expression_draft")
@@ -828,12 +905,18 @@ def attach_hitchhiked_relationship_residue(
         about_us = _clip_text(state.get("about_us"), 128)
         why_us = _clip_text(state.get("why_us"), 128)
         if about_us and why_us:
+            authored_deltas = (
+                slim_relationship_deltas(authored.get("us_deltas"))
+                if authored is not None
+                else None
+            )
             next_appraisal["relationship_signal"] = {
                 "signal_code": about_us,
                 "rationale_code": why_us,
                 "confidence_bp": 5_000,
                 "persistence": "durable",
-                "suggested_deltas": dict(_SLIM_ZERO_RELATIONSHIP_DELTAS),
+                "suggested_deltas": authored_deltas
+                or dict(_SLIM_ZERO_RELATIONSHIP_DELTAS),
             }
             changed = True
     if next_appraisal.get("relationship_commitment") is None:
@@ -861,6 +944,9 @@ def compile_slim_interior_envelope(
     compiled = compile_slim_consider_payload(value)
     if compiled is None:
         return None
+    # Attach before transport expansion so the compact gate actually carries the
+    # relationship reading she authored instead of dropping it on the cheap path.
+    compiled = attach_hitchhiked_relationship_residue(compiled, authored=value)
     expression = compiled["expression_draft"]
     if not isinstance(expression, dict):
         return None

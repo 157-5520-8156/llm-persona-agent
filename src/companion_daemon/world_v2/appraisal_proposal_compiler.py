@@ -34,6 +34,11 @@ from .schemas import (
 
 
 _CONTRACT = "appraisal-proposal-compiler.1"
+# How long an unexpired reading stays available when she names no expiry.  The
+# reflection scheduler revisits a live wound on a 1h/3h/12h/24h rhythm, so a
+# shorter default would kill every wound before its second visit and make
+# "it keeps coming back to me" unreachable no matter what she chose.
+DEFAULT_APPRAISAL_WINDOW = timedelta(hours=48)
 _POLICY_REFS = ("policy:appraisal-v1",)
 _MATRIX_VERSION = "appraisal-matrix.2"
 _CLUSTERING_POLICY_VERSION = "source-clustering.1"
@@ -610,7 +615,7 @@ class AppraisalProposalCompiler:
     def _expiry(*, raw: dict[str, object], at):
         expiry = raw["expiry"]
         if expiry is None:
-            return at + timedelta(hours=2)
+            return at + DEFAULT_APPRAISAL_WINDOW
         if isinstance(expiry, str):
             try:
                 expiry = datetime.fromisoformat(expiry)
@@ -621,7 +626,7 @@ class AppraisalProposalCompiler:
             # future-only contract; treat it as the default window instead of
             # failing the whole appraisal (a technical failure is never a
             # character no-change).
-            return at + timedelta(hours=2)
+            return at + DEFAULT_APPRAISAL_WINDOW
         return expiry
 
     @staticmethod
@@ -738,6 +743,7 @@ class AppraisalProposalCompiler:
 
 
 __all__ = [
+    "DEFAULT_APPRAISAL_WINDOW",
     "AppraisalProposalCompilation",
     "AppraisalProposalCompiler",
     "AppraisalProposalCompilerError",

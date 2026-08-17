@@ -402,7 +402,14 @@ def _non_null_schema(schema: object, *, field_name: str) -> dict[str, object]:
 
 
 def _reply_only_appraisal_schema() -> dict[str, object]:
-    """Project canonical appraisal/affect without cross-turn social effects."""
+    """Project canonical appraisal/affect without cross-turn social effects.
+
+    Relationship movement reaches production through the slim object's
+    about_us/why_us/us_deltas instead of these strict properties: a strict
+    provider schema must mark every property required, so listing the
+    relationship objects here would force a null envelope onto every pure-text
+    reply and grow the contract area the compact gate exists to shrink.
+    """
 
     canonical = _provider_schema(AppraisalDraftWire)
     canonical_properties = canonical.get("properties")
@@ -881,8 +888,9 @@ class InboundToolContracts:
                 "appraisal and affect lifecycle: "
                 "brief_rationale, behavior_tendency, stance, display_strategy, and confidence; "
                 "appraise and affect are your choices. On the slim object, optional mood opens a "
-                "lasting Affect component without leaving reply_only. It excludes relationship/"
-                "interaction updates, media, typing/reaction, turn supersession, "
+                "lasting Affect component and optional about_us/why_us/us_deltas record how the "
+                "relationship itself moved, both without leaving reply_only. It excludes "
+                "interaction protocol updates, media, typing/reaction, turn supersession, "
                 "continuation, and more text beats than the installed beat limit. "
                 "If appraisal or affect is incomplete, keep a legal now, later, or silent "
                 "head; the host records affect no_change only for that broken appraisal rather "

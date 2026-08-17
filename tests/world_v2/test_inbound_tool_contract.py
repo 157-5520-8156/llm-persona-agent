@@ -745,6 +745,8 @@ def test_reply_only_stream_parser_closes_strict_schema_capability_gaps() -> None
         json.dumps(appraisal_effect, ensure_ascii=False)
     )
 
+    # A relationship reading is her own inner state on a turn already paid for,
+    # so reply_only carries it instead of freezing relationship movement.
     relationship_effect = json.loads(json.dumps(good, ensure_ascii=False))
     relationship_effect["appraisal_draft"]["relationship_signal"] = {
         "signal_code": "closer_after_open_talk",
@@ -760,8 +762,18 @@ def test_reply_only_stream_parser_closes_strict_schema_capability_gaps() -> None
             "repair_confidence_bp": 0,
         },
     }
+    assert "嗯，我在听。" in _stream_first_expression(
+        json.dumps(relationship_effect, ensure_ascii=False)
+    )
+
+    # The external interaction protocol stays out of the cheap path.
+    interaction_effect = json.loads(json.dumps(good, ensure_ascii=False))
+    interaction_effect["appraisal_draft"]["interaction_act"] = {
+        "act_code": "asked_him_out",
+        "persistence": "durable",
+    }
     with pytest.raises(ValueError, match="reply-only appraisal"):
-        _stream_first_expression(json.dumps(relationship_effect, ensure_ascii=False))
+        _stream_first_expression(json.dumps(interaction_effect, ensure_ascii=False))
 
     extra_beat = json.loads(json.dumps(good, ensure_ascii=False))
     extra_beat["events"].insert(

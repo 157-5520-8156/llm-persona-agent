@@ -4,6 +4,10 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 import json
 
+from companion_daemon.world_v2.appraisal_proposal_compiler import (
+    DEFAULT_APPRAISAL_WINDOW,
+)
+from companion_daemon.world_v2.present_prompt import compile_slim_consider_payload
 from companion_daemon.world_v2.reflection_scheduler import (
     REFLECTION_CONFIDENCE_THRESHOLD_BP,
     ReflectionScheduler,
@@ -186,3 +190,37 @@ def test_revisit_interval_grows_with_each_thought() -> None:
     assert reflection_revisit_gap(1) < reflection_revisit_gap(2)
     assert reflection_revisit_gap(2) < reflection_revisit_gap(3)
     assert reflection_revisit_gap(4) == reflection_revisit_gap(8)
+
+
+def test_her_own_weight_is_what_makes_a_wound_revisitable() -> None:
+    """The cheap production path used to pin every reading below the threshold."""
+
+    weighed = compile_slim_consider_payload(
+        {
+            "messages": ["行吧。"],
+            "felt": "他这么说我心里堵着",
+            "matters_bp": REFLECTION_CONFIDENCE_THRESHOLD_BP + 500,
+            "mood": "resentment",
+        }
+    )
+    assert weighed is not None
+    assert (
+        weighed["appraisal_draft"]["confidence"] >= REFLECTION_CONFIDENCE_THRESHOLD_BP
+    )
+
+    unweighed = compile_slim_consider_payload(
+        {"messages": ["嗯。"], "felt": "没什么特别的"}
+    )
+    assert unweighed is not None
+    assert unweighed["appraisal_draft"]["confidence"] < (
+        REFLECTION_CONFIDENCE_THRESHOLD_BP
+    )
+
+
+def test_default_appraisal_window_outlives_the_whole_revisit_ladder() -> None:
+    """A 2h window killed every wound before its second thought."""
+
+    ladder = sum(
+        (reflection_revisit_gap(visit) for visit in range(1, 5)), timedelta()
+    )
+    assert DEFAULT_APPRAISAL_WINDOW > ladder

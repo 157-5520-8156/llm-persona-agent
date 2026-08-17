@@ -6729,7 +6729,7 @@ def _stream_first_expression(raw: str) -> str:
     if "protocol" not in parsed:
         slim = compile_slim_consider_payload(parsed)
         if slim is not None:
-            parsed = attach_hitchhiked_relationship_residue(slim)
+            parsed = attach_hitchhiked_relationship_residue(slim, authored=parsed)
         if (
             set(parsed) == {"appraisal_draft", "expression_draft"}
             and isinstance(parsed.get("appraisal_draft"), dict)
@@ -6841,7 +6841,7 @@ def _stream_tail_expression(raw: str) -> str:
     if "protocol" not in parsed:
         slim = compile_slim_consider_payload(parsed)
         if slim is not None:
-            parsed = attach_hitchhiked_relationship_residue(slim)
+            parsed = attach_hitchhiked_relationship_residue(slim, authored=parsed)
         if (
             set(parsed) == {"appraisal_draft", "expression_draft"}
             and isinstance(parsed.get("appraisal_draft"), dict)
@@ -7159,11 +7159,11 @@ def _character_interior_event_envelope(
     return value
 
 
-_REPLY_ONLY_FORBIDDEN_APPRAISAL_EFFECT_FIELDS = (
-    "relationship_signal",
-    "relationship_commitment",
-    "interaction_act",
-)
+# reply_only still excludes external/social protocol effects, but a
+# relationship signal or explicit ordinary stage commitment is authored inner
+# relationship state on the same paid turn.  Dropping it here would freeze
+# relationship progression on the production compact path.
+_REPLY_ONLY_FORBIDDEN_APPRAISAL_EFFECT_FIELDS = ("interaction_act",)
 _REPLY_ONLY_HEAD_FIELDS = frozenset(
     {
         "type",

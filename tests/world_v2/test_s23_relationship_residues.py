@@ -185,11 +185,24 @@ def test_snapshot_drops_uninstalled_romantic_commitment_prose() -> None:
 
 def test_present_stage_note_does_not_ask_her_to_overthink() -> None:
     instruction = slim_consider_instruction()
-    assert "ordinary closeness, not a romance script" in instruction
     assert "please overthink" not in instruction.lower()
     assert "relationship_signal" not in instruction
     assert "about_us" in instruction
-    assert "will not change relationship scores" in instruction
+
+
+def test_present_stage_note_steers_neither_toward_nor_away_from_closeness() -> None:
+    """The stage is evidence; the host must not lobby for or against movement."""
+
+    instruction = slim_consider_instruction()
+    assert "no target stage and no preferred direction" in instruction
+    assert "us_deltas" in instruction
+    assert "only you decide that" in instruction
+    for discouragement in (
+        "will not change relationship scores",
+        "do not have to move the stage",
+        "not a romance script",
+    ):
+        assert discouragement not in instruction
 
 
 def test_join_folds_projection_residues_onto_the_relationship_slice() -> None:
@@ -449,19 +462,85 @@ def test_keep_impression_false_does_not_keep_the_impression_flag() -> None:
     assert dropped["expression_draft"]["private_turn_state"]["keep_impression"] is False
 
 
-def test_reply_only_envelope_keeps_residue_off_appraisal() -> None:
+def test_reply_only_envelope_carries_residue_into_appraisal() -> None:
     envelope = compile_slim_interior_envelope(
         _slim_payload(about_us="他说那句话我心里一动", why_us="不像随口敷衍"),
         reply_only=True,
     )
     assert envelope is not None
-    assert "relationship_signal" not in envelope["appraisal_draft"]
+    assert envelope["appraisal_draft"]["relationship_signal"]["signal_code"] == (
+        "他说那句话我心里一动"
+    )
+    assert envelope["appraisal_draft"]["relationship_signal"]["suggested_deltas"] == {
+        "trust_bp": 0,
+        "closeness_bp": 0,
+        "respect_bp": 0,
+        "reliability_bp": 0,
+        "mutuality_bp": 0,
+        "repair_confidence_bp": 0,
+    }
     head = envelope["events"][0]
     assert isinstance(head, dict)
     state = head["private_turn_state"]
     assert isinstance(state, dict)
     assert state["about_us"] == "他说那句话我心里一动"
     assert state["why_us"] == "不像随口敷衍"
+
+
+def test_authored_us_deltas_reach_the_signal_on_the_production_cheap_path() -> None:
+    """Prose alone never moves scores; her own numbers do, on reply_only."""
+
+    envelope = compile_slim_interior_envelope(
+        _slim_payload(
+            about_us="今晚这段话让我们不太一样了",
+            why_us="他记住了我随口说的事",
+            us_deltas={"closeness_bp": 400, "trust_bp": 250},
+        ),
+        reply_only=True,
+    )
+    assert envelope is not None
+    assert envelope["appraisal_draft"]["relationship_signal"]["suggested_deltas"] == {
+        "trust_bp": 250,
+        "closeness_bp": 400,
+        "respect_bp": 0,
+        "reliability_bp": 0,
+        "mutuality_bp": 0,
+        "repair_confidence_bp": 0,
+    }
+
+
+def test_authored_us_deltas_can_be_negative_when_he_cost_her_something() -> None:
+    combined = _parse_combined(
+        json.dumps(
+            _slim_payload(
+                about_us="他这么说让我往后退了一点",
+                why_us="像是根本没在听",
+                us_deltas={"trust_bp": -300, "closeness_bp": -150},
+            ),
+            ensure_ascii=False,
+        )
+    )
+    deltas = combined["appraisal_draft"]["relationship_signal"]["suggested_deltas"]
+    assert deltas["trust_bp"] == -300
+    assert deltas["closeness_bp"] == -150
+
+
+def test_malformed_us_deltas_move_nothing_rather_than_guessing() -> None:
+    for broken in ({"closeness_bp": "400"}, {"unknown_bp": 300}, {}, {"trust_bp": True}):
+        envelope = compile_slim_interior_envelope(
+            _slim_payload(
+                about_us="他说那句话我心里一动",
+                why_us="不像随口敷衍",
+                us_deltas=broken,
+            ),
+            reply_only=True,
+        )
+        assert envelope is not None
+        assert not any(
+            envelope["appraisal_draft"]["relationship_signal"][
+                "suggested_deltas"
+            ].values()
+        )
 
 
 def test_production_slim_author_lifts_prose_residue_without_score_deltas() -> None:
@@ -488,7 +567,7 @@ def test_production_slim_author_lifts_prose_residue_without_score_deltas() -> No
     }
 
 
-def test_compact_gate_reply_only_still_lifts_after_the_envelope() -> None:
+def test_compact_gate_reply_only_carries_relationship_residue() -> None:
     expanded = _expand_compact_gate_payload(
         {
             "result_kind": "reply_only",
@@ -499,7 +578,9 @@ def test_compact_gate_reply_only_still_lifts_after_the_envelope() -> None:
         }
     )
     assert expanded["result_kind"] == "reply_only"
-    assert "relationship_signal" not in expanded["appraisal_draft"]
+    assert expanded["appraisal_draft"]["relationship_signal"]["signal_code"] == (
+        "他说那句话我心里一动"
+    )
     head = expanded["events"][0]
     assert isinstance(head, dict)
     combined = _parse_combined(

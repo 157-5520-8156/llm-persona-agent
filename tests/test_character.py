@@ -46,9 +46,8 @@ def test_character_persona_has_her_own_attention_instead_of_a_question_seeking_r
 
     assert character.personality is not None
     assert "有自己的想法、日子和情绪" in character.personality
-    assert "不会为了把天聊下去一直盯着对方" in character.personality
-    assert "俏皮一点" in character.personality
-    assert "说话软，有分寸" in character.personality
+    assert "不会为了把天聊下去" in character.personality
+    assert "俏皮" in character.personality
     assert "不会把对方的话拆开分析" in character.personality
     assert "整活" not in character.personality
     assert "抽象" not in character.personality
@@ -56,7 +55,7 @@ def test_character_persona_has_her_own_attention_instead_of_a_question_seeking_r
     assert all("语气平实" not in rule for rule in character.style_rules)
     assert character.speech is not None
     assert "怎么说看当时心情和关系" in character.speech
-    assert "像随手回的 QQ" in character.speech
+    assert "QQ 私聊" in character.speech
     assert "填对话的材料" in character.speech
     assert "我与地坛" not in "\n".join(character.daily_life)
     assert "汪曾祺" not in "\n".join(character.daily_life)
@@ -67,3 +66,34 @@ def test_character_persona_has_her_own_attention_instead_of_a_question_seeking_r
     assert any("World context" in boundary for boundary in character.boundaries)
     assert any("不会自动变成 World 硬事实" in boundary for boundary in character.boundaries)
     assert any("可核对命题" in boundary for boundary in character.boundaries)
+
+
+def test_persona_leaves_the_full_emotional_range_open() -> None:
+    """A systematically softened persona reads as a service, not a person."""
+
+    character = load_character("configs/character.yaml")
+
+    assert character.personality is not None
+    assert "有脾气" in character.personality
+    assert "不舒服" in character.personality
+    for suppression in ("说话软", "语气温一点", "过度暧昧"):
+        assert suppression not in character.personality
+        assert suppression not in (character.speech or "")
+
+
+def test_voice_material_carries_real_chat_habits() -> None:
+    """Her ledger voice was 68% full stops, zero emoji, and one tic in five."""
+
+    character = load_character("configs/character.yaml")
+
+    assert character.speech is not None
+    assert "不打句号" in character.speech
+    assert "emoji" in character.speech or "颜文字" in character.speech
+    assert len(character.speech_examples) >= 12
+    unpunctuated = [
+        example
+        for example in character.speech_examples
+        if not example.rstrip().endswith("。")
+    ]
+    assert len(unpunctuated) >= len(character.speech_examples) - 2
+    assert any(len(example) <= 4 for example in character.speech_examples)

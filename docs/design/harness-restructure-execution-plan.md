@@ -1176,4 +1176,35 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
   3. 完整契约补一句：wake 在 wait 之后一次，expiry 只结束盼头。问、换话题、沉默仍由她选。
 - **剩余缺口**：生产要重启才吃到。已落账的旧盼头仍带着当时编进去的 wait/expiry（例如 1h/2h）；新回合才会按秒声明。
 
+### 2026-08-17 H22 用生产账本反证：她的选择被清零在哪
+
+先读 epoch2（08-13 → 08-17，3838 事件），不看文档结论。四个数字定了案：
+
+| 现象 | 账本实测 | 结构原因 |
+|---|---|---|
+| 「仍把用户当陌生人」 | 关系类事件 **0**：0 次慢变量调整、0 次承诺、`relationship_states` 空 | `_SLIM_ZERO_RELATIONSHIP_DELTAS` 把六轴写死为 0，`relationship_adjustment_compiler` 对全零判 `no_change` |
+| 「丝毫没有坏情绪」 | 8 个情绪成分：warmth×6、joy、sadness@3500、loneliness@1500；anger/hurt/resentment **0** | 人设三处系统性软化 + 提示词无对称许可 |
+| 「越想越气」从未发生 | 44 次评价，**36 次恰好 5000**，最高 8200；reflection 门槛 8500 → 复燃 **0** 次 | slim 把 `confidence` 硬编码 5000；且默认 2h 过期短于 1h/3h/12h/24h 复燃阶梯，wound 在第二次想起前就死了 |
+| 「文风不像真人」 | 95 条气泡：**66% 以句号结尾**、**0 表情**、**19% 以「不过」开头** | 系统提示 ~21k 字符里英文填表契约约 19k，她的中文口语语料约 190 字（<1%） |
+
+- **红测**：她写的 `us_deltas` 落进 `relationship_signal.suggested_deltas`（含负数）；畸形/空/越界的 `us_deltas` 一律不动分（不猜）；reply_only 携带非零增量被接受、`interaction_act` 仍被拒；`matters_bp` ≥ 8500 时评价可复燃、省略时低于门槛；默认评价窗口长于整条复燃阶梯；人设不再含「说话软」「语气温一点」「过度暧昧」，语料 ≥12 条且几乎不打句号。
+- **改动**：
+  1. slim 新增 `us_deltas`：她自己写六轴的带符号移动，省略的轴为 0，全零/畸形不动分；compiler 的 ±500 上限仍是硬边界。`attach_hitchhiked_relationship_residue` 增加 `authored=` 入参，三处调用点（compact gate、两处 stream 解析、combined 解析）都传原始 slim 对象。
+  2. slim 新增 `matters_bp`：她自己给这次阅读的分量，直接成为 appraisal 的 `confidence`。指令明确告诉她 8500 是「会被再叫醒想同一件事」的门槛——这是关于她自己官能的证据，不是剧本。
+  3. `DEFAULT_APPRAISAL_WINDOW` 2h → 48h：修掉「复燃阶梯设计成 1h/3h/12h/24h，但 wound 2h 就过期」的内部矛盾。
+  4. 删掉三处确定性劝阻：「about_us 不会改变 relationship scores」「几次礼貌交谈不必移动 stage」「ordinary closeness, not a romance script」。改为中立表述：宿主没有目标阶段也没有偏好方向，被吸引/困惑/厌倦/想远离都由她读。
+  5. reply_only 能力描述从「排除 relationship 更新」改为「排除 interaction 协议更新」，与 `_REPLY_ONLY_FORBIDDEN_APPRAISAL_EFFECT_FIELDS` 实际行为一致（此前文案与代码互相矛盾）。
+  6. `character.yaml`：人设去掉系统性软化，写明被敷衍/被冒犯会真的不舒服、可能冷一阵也可能过几天还记着；语料 5 条 → 16 条，`speech` 写明标点习惯（大部分不打句号）、碎句、可只回一个字、不必每条反问、偶尔用表情；`style_rules` 加三条反「每条都圆满」「隔一条就用不过其实往回收」。
+  7. `mood_view._NOTICEABLE_BP` 2000 → 600（刚高于 residue 500 / 衰减地板 300）：她自己刻意开的低强度情绪不再对自己的生活车道隐形。
+  8. 新增 `scripts/audit_lived_experience.py`：只读账本，直接报关系是否在动、有没有负面情绪、有没有复燃、有没有生活、以及文风四项指标。这是本项目第一条把验收闭合到「生产上真的发生了」的工具。
+  9. 运维：`launchd` 两个 plist 与两个启动脚本此前指向 `.claude/worktrees/fix-cost-optimization`（该 worktree 已合并回主仓库并移除），`KeepAlive` 会在进程退出后永久起不来。全部改为单一根目录 `/Users/geoff/Projects/Girl-Agent`，已 bootout/bootstrap 重启并确认 health 正常。
+- **基线**：冻结机制基线 `.70` → `.72`，manifest `fa3908f3…`，两个独立 120 例进程复核一致。逐例断言不变，移动的是 prompt/appraisal 身份。
+- **剩余缺口**（下一波，按感知收益排序）：
+  1. **英文契约压缩/中文化**：系统提示仍是 ~19k 英文填表说明对 ~1k 中文人设。这是文风的最大结构性负担，也是本轮唯一没动的根因。`slim_consider_instruction`（6.3k）与 `expression_draft_shape_contract`（5k）被大量测试逐字断言，需单独一包。
+  2. **对话按真实气泡呈现**：历史仍是单条 user JSON 里的 `materials.recent_dialogue`，英文键名。改成真正的多轮或气泡文本块会动 replay 身份与 32k 预算，需单独评估。
+  3. **`ambiguous`/`lover` 承诺协议未安装**：`relationship_reducers` 对这两个阶段 fail-closed，`_POLICY` 无 enter/exit，schema 只允许三档。她可以在聊天里暧昧，但账本永远升不到暧昧/恋人。改 `_POLICY` 会动 `RELATIONSHIP_POLICY_DIGEST`，属迁移级改动。
+  4. **私人印象仍是 0**：`drain_private_impression_once` 恒 `return None`（成本决策），paid-inbound hitch 受冻结批次不变量阻挡。她在他不在时仍不会想起他。
+  5. **生活生态仍近乎静止**：4 天 0 个活动开始/完成、1 个已结算事件。她没有生活可讲，这独立于本轮改动。
+  6. **`_reply_only_fallback_appraisal` 仍在 wire 破损时替她写 `no_change`**：违反 AGENTS.md「不得由确定性代码替角色决定」，正解是受约束重选，需一次额外调用的成本裁决。
+
 
