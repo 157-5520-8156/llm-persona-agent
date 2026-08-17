@@ -9,7 +9,7 @@ from companion_daemon.world_v2.appraisal_proposal_compiler import (
 )
 from companion_daemon.world_v2.present_prompt import compile_slim_consider_payload
 from companion_daemon.world_v2.reflection_scheduler import (
-    REFLECTION_CONFIDENCE_THRESHOLD_BP,
+    REFLECTION_UNWEIGHTED_BP,
     ReflectionScheduler,
     reflection_revisit_gap,
 )
@@ -175,15 +175,38 @@ def test_resolved_wound_is_not_revisited() -> None:
     assert ledger.commits == []
 
 
-def test_weak_wound_stays_below_intensity_threshold() -> None:
-    wound = _StubAppraisal(SOURCE, confidence_bp=REFLECTION_CONFIDENCE_THRESHOLD_BP - 1)
+def test_a_reading_she_never_weighed_does_not_come_back() -> None:
+    """The unweighted default must never schedule her to think again."""
+
+    wound = _StubAppraisal(SOURCE, confidence_bp=REFLECTION_UNWEIGHTED_BP)
     ledger = _StubLedger([wound], [])
     result = ReflectionScheduler(ledger=ledger, actor="worker:reflection").open_once(
         trace_id="t",
         correlation_id="c",
     )
     assert result.opened == 0
+    assert result.reason == "nothing_weighed"
     assert ledger.commits == []
+
+
+def test_only_the_heaviest_thing_she_carries_comes_back() -> None:
+    """The bar is her own live maximum, not a constant she never reaches.
+
+    Four recorded conversations produced weights of 4_500 through 7_000 against
+    a fixed 8_500 bar, so nothing was ever revisited.
+    """
+
+    lighter = _StubAppraisal("event:appraisal-accepted:lighter", confidence_bp=5_600)
+    heaviest = _StubAppraisal("event:appraisal-accepted:heaviest", confidence_bp=7_000)
+    ledger = _StubLedger([lighter, heaviest], [])
+    result = ReflectionScheduler(ledger=ledger, actor="worker:reflection").open_once(
+        trace_id="t",
+        correlation_id="c",
+    )
+    assert result.opened == 1
+    opened = json.dumps(ledger.commits, default=str)
+    assert "heaviest" in opened
+    assert "lighter" not in opened
 
 
 def test_revisit_interval_grows_with_each_thought() -> None:
@@ -193,28 +216,25 @@ def test_revisit_interval_grows_with_each_thought() -> None:
 
 
 def test_her_own_weight_is_what_makes_a_wound_revisitable() -> None:
-    """The cheap production path used to pin every reading below the threshold."""
+    """The production path carries the weight she wrote, or the neutral default."""
 
     weighed = compile_slim_consider_payload(
         {
             "messages": ["行吧。"],
             "felt": "他这么说我心里堵着",
-            "matters_bp": REFLECTION_CONFIDENCE_THRESHOLD_BP + 500,
+            "matters_bp": 7_000,
             "mood": "resentment",
         }
     )
     assert weighed is not None
-    assert (
-        weighed["appraisal_draft"]["confidence"] >= REFLECTION_CONFIDENCE_THRESHOLD_BP
-    )
+    assert weighed["appraisal_draft"]["confidence"] == 7_000
+    assert weighed["appraisal_draft"]["confidence"] > REFLECTION_UNWEIGHTED_BP
 
     unweighed = compile_slim_consider_payload(
         {"messages": ["嗯。"], "felt": "没什么特别的"}
     )
     assert unweighed is not None
-    assert unweighed["appraisal_draft"]["confidence"] < (
-        REFLECTION_CONFIDENCE_THRESHOLD_BP
-    )
+    assert unweighed["appraisal_draft"]["confidence"] == REFLECTION_UNWEIGHTED_BP
 
 
 def test_default_appraisal_window_outlives_the_whole_revisit_ladder() -> None:

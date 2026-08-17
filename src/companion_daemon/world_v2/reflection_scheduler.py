@@ -19,14 +19,20 @@ from .schema_core import FrozenModel
 from .schemas import ProjectionCursor, TriggerProcess, WorldEvent
 
 
-# An appraisal strong enough to be revisited.  The model's own confidence is
-# the intensity signal; low-confidence appraisals are small enough to let go.
-# Raised from 6_000: a reflection run emits its own appraisal transition,
-# which can itself cross a low threshold and re-open another reflection
-# (observed as a ~24/h reflection feedback loop on a production ledger).
-# 8_500 keeps the loop from self-perpetuating while still revisiting the
-# appraisals that matter most to the character.
-REFLECTION_CONFIDENCE_THRESHOLD_BP = 8_500
+# What comes back to her is the heaviest thing she is currently carrying, on her
+# own scale.  A fixed 8_500 bar sat above the whole range she actually uses: four
+# recorded conversations produced weights of 4_500 through 7_000 and never once
+# crossed it, so nothing was ever revisited and "it keeps coming back to me" was
+# unreachable no matter what she chose.  The bar that replaced it is her own live
+# maximum, which invents no significance she did not assign and stays naturally
+# bounded to one wound.
+#
+# The absolute floor is the weight the host assumes when she does not weigh a
+# reading at all: a turn she never marked must never schedule her to think about
+# it again.  The self-perpetuating loop that once justified a high constant is
+# closed structurally instead, by `_is_reflection_residue` (a reflection's own
+# appraisal cannot open a new wound), one opening per pass, and widening gaps.
+REFLECTION_UNWEIGHTED_BP = 5_000
 # Growing gaps between thoughts about the same original wound.  Timing is a
 # system Occasion rhythm, not a cap on how she may feel or act.
 _REVISIT_GAPS = (
@@ -81,16 +87,16 @@ class ReflectionScheduler:
         *,
         ledger,
         actor: str,
-        threshold_bp: int = REFLECTION_CONFIDENCE_THRESHOLD_BP,
+        unweighted_bp: int = REFLECTION_UNWEIGHTED_BP,
         source: str = "world-v2:reflection-scheduler",
     ) -> None:
         if not actor:
             raise ValueError("reflection scheduler requires an actor")
-        if not 0 <= threshold_bp <= 10_000:
+        if not 0 <= unweighted_bp <= 10_000:
             raise ValueError("reflection scheduler bounds are invalid")
         self._ledger = ledger
         self._actor = actor
-        self._threshold = threshold_bp
+        self._unweighted = unweighted_bp
         self._source = source
 
     def open_once(
@@ -118,9 +124,12 @@ class ReflectionScheduler:
                 continue
             processes_by_source.setdefault(source_ref, []).append(process)
 
+        bar = self._revisit_bar(projection, logical_time)
+        if bar is None:
+            return ReflectionSchedulerResult(skipped=0, reason="nothing_weighed")
         candidates: list[tuple[int, str, int]] = []
         for appraisal in projection.appraisals:
-            if not self._is_live_wound(appraisal, logical_time):
+            if not self._is_live_wound(appraisal, logical_time, bar):
                 continue
             source_ref = appraisal.origin.accepted_event_ref
             if source_ref in processes_by_source:
@@ -140,7 +149,9 @@ class ReflectionScheduler:
             ):
                 continue
             appraisal = self._appraisal_for_source(projection, source_ref)
-            if appraisal is None or not self._is_live_wound(appraisal, logical_time):
+            if appraisal is None or not self._is_live_wound(
+                appraisal, logical_time, bar
+            ):
                 continue
             candidates.append((appraisal.confidence_bp, source_ref, visit_count + 1))
 
@@ -157,11 +168,28 @@ class ReflectionScheduler:
                 return ReflectionSchedulerResult(opened=1)
         return ReflectionSchedulerResult(skipped=len(candidates))
 
-    def _is_live_wound(self, appraisal, logical_time: datetime) -> bool:
+    def _revisit_bar(self, projection, logical_time: datetime) -> int | None:
+        """The heaviest weight she is currently carrying, or None if she carried none.
+
+        Reflection residue is excluded so a reflection's own appraisal cannot
+        raise the bar it would then be measured against.
+        """
+
+        weights = [
+            appraisal.confidence_bp
+            for appraisal in projection.appraisals
+            if getattr(appraisal, "status", None) == "active"
+            and appraisal.expires_at > logical_time
+            and appraisal.confidence_bp > self._unweighted
+            and not self._is_reflection_residue(appraisal.origin.accepted_event_ref)
+        ]
+        return max(weights) if weights else None
+
+    def _is_live_wound(self, appraisal, logical_time: datetime, bar: int) -> bool:
         return (
             getattr(appraisal, "status", None) == "active"
             and appraisal.expires_at > logical_time
-            and appraisal.confidence_bp >= self._threshold
+            and appraisal.confidence_bp >= bar
         )
 
     def _appraisal_for_source(self, projection, source_ref: str):
@@ -254,7 +282,7 @@ class ReflectionScheduler:
 
 
 __all__ = [
-    "REFLECTION_CONFIDENCE_THRESHOLD_BP",
+    "REFLECTION_UNWEIGHTED_BP",
     "ReflectionScheduler",
     "ReflectionSchedulerResult",
     "reflection_opened_event_id",

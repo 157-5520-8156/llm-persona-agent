@@ -295,7 +295,7 @@ class ScenarioVerificationError(AssertionError):
 # source-review, acceptance, Action, and receipt boundaries; the frozen suite
 # keeps every existing per-case predicate enabled while request, audit,
 # scheduler, snapshot, and replay identities intentionally move together.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.74"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.75"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -441,8 +441,14 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.74"
 # weights that survived. Per-case predicates remain enforced; the aggregate
 # prompt identity intentionally moves. Two independent complete 120-case
 # processes produced this hash before installation.
+# ``.75`` retires the fixed reflection bar. What comes back to her is now the
+# heaviest reading she is still carrying on her own scale, with the unweighted
+# default as the floor, because four recorded conversations produced weights of
+# 4_500 through 7_000 against a constant 8_500 and revisited nothing. Per-case
+# predicates remain enforced; the aggregate prompt identity intentionally moves.
+# Two independent complete 120-case processes produced this hash.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "5c03009ec9ec2408e35524749f3e209f9f19876ca3091097d67aa08fcb219a18"
+    "eb7bf56c2ab2dc76ce742ac3145151fbc4706039c4c2fa0d502f61587a15d0c7"
 )
 
 
