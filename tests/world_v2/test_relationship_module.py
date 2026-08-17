@@ -14,9 +14,11 @@ from companion_daemon.world_v2.relationship_events import (
 from companion_daemon.world_v2.relationship_reducers import (
     RELATIONSHIP_COMMITMENT_STAGE_TRANSITIONS,
     RELATIONSHIP_POLICY_DIGEST,
+    RETIRED_RELATIONSHIP_POLICY_DIGESTS,
     accept_relationship_signal,
     adjust_relationship_slow_variables,
     change_boundary,
+    preview_relationship_slow_variable_adjustment,
 )
 from companion_daemon.world_v2.schemas import (
     BoundaryProjection,
@@ -138,6 +140,87 @@ def adjustment_payload(
         policy_digest=RELATIONSHIP_POLICY_DIGEST,
         adjusted_at=adjusted_at,
     )
+
+
+def test_state_carried_across_an_epoch_can_still_be_adjusted() -> None:
+    """An epoch genesis carries state, not events, so its stamp can be retired.
+
+    Production held closeness 180 / trust 100 from epoch 1 under a numerically
+    identical policy, and every live adjustment fail-closed on the old digest.
+    """
+
+    retired = next(iter(RETIRED_RELATIONSHIP_POLICY_DIGESTS))
+    before = RelationshipVariablesProjection(trust_bp=100, closeness_bp=180)
+    after = before.model_copy(update={"trust_bp": 350})
+    source = signal(
+        "signal:carried-across-epoch",
+        code="carried",
+        contradiction_group_ref="group:carried",
+    )
+    carried = RelationshipStateProjection(
+        relationship_id="relationship:user:geoff",
+        subject_ref="user:geoff",
+        entity_revision=1,
+        variables=before,
+        policy_digest=retired,
+    )
+
+    preview = preview_relationship_slow_variable_adjustment(
+        states=(carried,),
+        history=(),
+        signals=(source,),
+        subject_ref="user:geoff",
+        signal_refs=(source.signal_id,),
+        proposed_deltas=RelationshipVariableDeltas(trust_bp=250),
+        accepted_deltas=RelationshipVariableDeltas(trust_bp=250),
+        logical_time=NOW,
+    )
+    assert preview.variables_after.trust_bp == 350
+    # The mutation being written re-stamps the state onto the installed policy.
+    assert preview.policy_digest == RELATIONSHIP_POLICY_DIGEST
+
+    states, _history = adjust_relationship_slow_variables(
+        (carried,),
+        (),
+        (source,),
+        adjustment_payload(
+            source,
+            adjustment_id="adjustment:carried-across-epoch",
+            expected_revision=1,
+            before=before,
+            after=after,
+            accepted=RelationshipVariableDeltas(trust_bp=250),
+        ),
+        logical_time=NOW,
+    )
+    assert states[0].variables.trust_bp == 350
+    assert states[0].policy_digest == RELATIONSHIP_POLICY_DIGEST
+
+
+def test_a_foreign_policy_stamp_is_still_refused() -> None:
+    carried = RelationshipStateProjection(
+        relationship_id="relationship:user:geoff",
+        subject_ref="user:geoff",
+        entity_revision=1,
+        variables=RelationshipVariablesProjection(trust_bp=100),
+        policy_digest="0" * 64,
+    )
+    source = signal(
+        "signal:foreign-policy",
+        code="foreign",
+        contradiction_group_ref="group:foreign",
+    )
+    with pytest.raises(ValueError, match="uninstalled policy"):
+        preview_relationship_slow_variable_adjustment(
+            states=(carried,),
+            history=(),
+            signals=(source,),
+            subject_ref="user:geoff",
+            signal_refs=(source.signal_id,),
+            proposed_deltas=RelationshipVariableDeltas(trust_bp=250),
+            accepted_deltas=RelationshipVariableDeltas(trust_bp=250),
+            logical_time=NOW,
+        )
 
 
 def test_relationship_policy_digest_binds_commitment_transition_graph(

@@ -70,6 +70,34 @@ def relationship_policy_digest() -> str:
 
 
 RELATIONSHIP_POLICY_DIGEST = relationship_policy_digest()
+# Digests this codebase itself installed before the digest input was widened,
+# for relationship state that is still carried in a projection.  The only entry
+# is the pre-2026-08-11 stamp: ``_POLICY`` was byte-identical (same version,
+# caps, thresholds, dwell and aggregation) and the digest changed solely because
+# ``RELATIONSHIP_COMMITMENT_STAGE_TRANSITIONS`` joined the hashed payload.  So
+# the accumulated variables were produced under numerically identical rules.
+#
+# Replay already tolerated these on stored events, but an epoch genesis carries
+# relationship *state* rather than the original events, and every live
+# adjustment re-asserted the current digest against that state.  The effect was
+# a permanent fail-closed: production held closeness 180 / trust 100 from
+# epoch 1 and could never adjust again.  Reading a retired stamp is therefore
+# allowed; the mutation being written always carries the installed digest, so
+# the first successful adjustment migrates the state forward.
+RETIRED_RELATIONSHIP_POLICY_DIGESTS = frozenset(
+    {"64d8b7ffc6f38f79d31bb8a83212c5668ff908ab3f6d7c924dd75ad71fb94e95"}
+)
+
+
+def relationship_state_policy_is_readable(state: object) -> bool:
+    """Whether existing state was written by an installed or retired policy."""
+
+    if getattr(state, "policy_version", None) != _POLICY["policy_version"]:
+        return False
+    digest = getattr(state, "policy_digest", None)
+    return digest == RELATIONSHIP_POLICY_DIGEST or digest in (
+        RETIRED_RELATIONSHIP_POLICY_DIGESTS
+    )
 
 
 class RelationshipAdjustmentPreview(FrozenModel):
@@ -154,10 +182,7 @@ def preview_relationship_slow_variable_adjustment(
         raise ValueError("duplicate relationship state authority for subject")
     if subject_matches:
         current = subject_matches[0]
-        if (
-            current.policy_version != _POLICY["policy_version"]
-            or current.policy_digest != RELATIONSHIP_POLICY_DIGEST
-        ):
+        if not relationship_state_policy_is_readable(current):
             raise ValueError("relationship state references an uninstalled policy")
         if current.last_adjusted_at is not None and logical_time < current.last_adjusted_at:
             raise ValueError("relationship adjustment precedes current state")
@@ -274,10 +299,7 @@ def accept_relationship_commitment(
         variables = current.variables
         temperature = current.temperature
         last_adjusted_at = current.last_adjusted_at
-        if (
-            current.policy_version != _POLICY["policy_version"]
-            or current.policy_digest != RELATIONSHIP_POLICY_DIGEST
-        ):
+        if not relationship_state_policy_is_readable(current):
             raise ValueError("relationship state references an uninstalled policy")
     else:
         index = None
@@ -399,8 +421,7 @@ def adjust_relationship_slow_variables(
         commitment_refs = current.commitment_refs
         temperature = current.temperature
         if not allow_legacy_relationship_policy_digest and (
-            current.policy_version != _POLICY["policy_version"]
-            or current.policy_digest != RELATIONSHIP_POLICY_DIGEST
+            not relationship_state_policy_is_readable(current)
         ):
             raise ValueError("relationship state references an uninstalled policy")
         if current.last_adjusted_at is not None and logical_time < current.last_adjusted_at:
