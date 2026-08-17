@@ -185,6 +185,33 @@ def _redact_materials(
     return redacted
 
 
+_TRANSCRIPT_SPEAKERS = {"counterpart": "他", "companion": "我"}
+
+
+def _rendered_conversation(materials: Mapping[str, object]) -> list[str]:
+    """Render the already-redacted dialogue as the chat log it actually is.
+
+    The same lines reach her as `recent_dialogue` objects keyed in English, which
+    reads as a record to transcribe rather than a conversation to answer.  This
+    is presentation only: it is derived here, after redaction, so it can carry
+    no source she may not see and mints no new authority.
+    """
+
+    entries = materials.get("recent_dialogue")
+    if not isinstance(entries, list):
+        return []
+    lines: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        text = entry.get("text")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        speaker = _TRANSCRIPT_SPEAKERS.get(str(entry.get("speaker")), "?")
+        lines.append(f"{speaker}：{text.strip()}")
+    return lines
+
+
 class _InteriorContextView(FrozenModel):
     availability: Literal["available", "unavailable"]
     payload_json: str
@@ -727,6 +754,9 @@ class InnerLifeSnapshot(FrozenModel):
             else set(self.source_refs) & set(visible_source_refs)
         )
         materials = _redact_materials(dict(self.materials), visible)
+        transcript = _rendered_conversation(materials)
+        if transcript:
+            materials = {**materials, "conversation": transcript}
         faculties: dict[str, object] = {}
         for facet in self.facet_views:
             raw_keys = facet.content.get("material_keys")

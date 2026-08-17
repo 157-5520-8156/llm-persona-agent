@@ -807,12 +807,20 @@ class WorldRuntime:
         proposal: DecisionProposal | MinimalProposal,
         audited: ProposalAuditCommit,
         observation_event: WorldEvent,
+        external_effect_landed: bool = True,
     ) -> None:
         state = getattr(proposal, "private_turn_state", None)
         if state is None:
             return
         noticed = getattr(state, "noticed", None)
-        if isinstance(noticed, str) and noticed.strip() and self._open_world_event is not None:
+        # A lived moment is a world claim, so it stays tied to a turn that
+        # actually completed; a private impression is hers either way.
+        if (
+            external_effect_landed
+            and isinstance(noticed, str)
+            and noticed.strip()
+            and self._open_world_event is not None
+        ):
             try:
                 self._open_world_event.commit_from_paid_moment(
                     moment=noticed.strip(),
@@ -3746,16 +3754,17 @@ class WorldRuntime:
                 observation=observation,
                 observation_event=event,
             )
-        if (
-            assessment_proposal is not None
-            and audited is not None
-            and not technical_expression_failure
-            and not expression_superseded_by_inbound
-        ):
+        if assessment_proposal is not None and audited is not None:
+            # Inner state she already authored and paid for survives a failed or
+            # superseded send: losing the reply is a transport problem, and it
+            # must not also erase what this turn left with her.
             await self._hitch_paid_inbound_side_effects(
                 proposal=assessment_proposal,
                 audited=audited,
                 observation_event=event,
+                external_effect_landed=not (
+                    technical_expression_failure or expression_superseded_by_inbound
+                ),
             )
         episode_tail_pending = (
             reply_authorized

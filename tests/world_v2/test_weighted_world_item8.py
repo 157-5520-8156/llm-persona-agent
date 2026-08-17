@@ -89,9 +89,16 @@ def test_weighted_pick_with_only_nothing_mass_selects_nothing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reviewed_catalog_npc_ecology_does_not_call_the_model(tmp_path: Path) -> None:
+async def test_reviewed_catalog_still_asks_the_npc_itself(tmp_path: Path) -> None:
+    """The catalog is material for the NPC actor, never a decision for it.
+
+    Drawing an NPC's move from a weighted table turned the people around her
+    into props; the seed catalog stays available, but the actor model is what
+    decides whether anything happens.
+    """
+
     catalog = _catalog(tmp_path / "seed.yaml")
-    ledger, _store, actor, world, runtime = _runtime(_actor("no_op"), _world())
+    _ledger, _store, actor, world, runtime = _runtime(_actor("no_op"), _world())
     runtime._catalog = catalog  # noqa: SLF001
 
     result = await runtime.advance_once(
@@ -100,29 +107,26 @@ async def test_reviewed_catalog_npc_ecology_does_not_call_the_model(tmp_path: Pa
         correlation_id="correlation",
     )
 
-    assert actor.calls == []
-    assert world.calls == []
+    assert len(actor.calls) == 1
     assert result.status in {"state_advanced", "occurrence_committed"}
 
 
 @pytest.mark.asyncio
-async def test_reviewed_catalog_npc_ecology_commits_the_certain_event(tmp_path: Path) -> None:
+async def test_an_npc_who_acts_reaches_world_adjudication(tmp_path: Path) -> None:
     catalog = _catalog(tmp_path / "seed.yaml")
-    ledger, _store, actor, world, runtime = _runtime(_actor("no_op"), {"decision": "no_op"})
+    _ledger, _store, actor, world, runtime = _runtime(
+        _actor("propose"), {"decision": "no_op"}
+    )
     runtime._catalog = catalog  # noqa: SLF001
 
-    result = await runtime.advance_once(
+    await runtime.advance_once(
         wake_event_ref="clock-life",
         trace_id="trace",
         correlation_id="correlation",
     )
 
-    assert actor.calls == []
-    assert world.calls == []
-    assert result.status == "occurrence_committed"
-    assert result.occurrence_id is not None
-    occurrences = ledger.project().world_occurrences
-    assert any("林忽然来借书" in str(item) or item.occurrence_id == result.occurrence_id for item in occurrences)
+    assert len(actor.calls) == 1
+    assert len(world.calls) == 1
 
 
 @pytest.mark.asyncio

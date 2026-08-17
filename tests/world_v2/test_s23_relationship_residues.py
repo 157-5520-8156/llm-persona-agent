@@ -267,58 +267,25 @@ def test_join_folds_projection_residues_onto_the_relationship_slice() -> None:
     assert "林那边另算" not in str(relationship)
 
 
-def test_relationship_commitment_schema_still_rejects_ambiguous_and_lover() -> None:
-    for stage in ("ambiguous", "lover"):
-        with pytest.raises(ValueError, match="ordinary installed stage"):
-            RelationshipCommitmentProjection.model_validate(
-                {
-                    "commitment_id": "commitment:forbidden",
-                    "relationship_id": "relationship:user:primary",
-                    "subject_ref": "user:primary",
-                    "stage_before": "close_friend",
-                    "committed_stage": stage,
-                    "commitment_code": "forbidden",
-                    "visible_text_span": "forbidden",
-                    "delivery_proof": {
-                        "expression_proposal_id": "proposal:x",
-                        "expression_acceptance_id": "acceptance:x",
-                        "expression_plan_id": "plan:x",
-                        "plan_event_ref": "event:plan",
-                        "plan_event_payload_hash": "1" * 64,
-                        "expression_beat_id": "beat:x",
-                        "beat_event_ref": "event:beat",
-                        "beat_event_payload_hash": "2" * 64,
-                        "message_payload_ref": "payload:x",
-                        "message_payload_hash": "sha256:" + "3" * 64,
-                        "stored_payload_event_ref": "event:payload",
-                        "stored_payload_event_hash": "4" * 64,
-                        "action_id": "action:x",
-                        "action_target_ref": "user:primary",
-                        "action_event_ref": "event:action",
-                        "action_event_payload_hash": "5" * 64,
-                        "receipt_id": "receipt:x",
-                        "receipt_event_ref": "event:receipt",
-                        "receipt_event_payload_hash": "6" * 64,
-                        "receipt_world_revision": 4,
-                    },
-                    "evidence_refs": [
-                        {
-                            "ref_id": "event:evidence",
-                            "evidence_type": "committed_world_event",
-                            "claim_purpose": "private_hypothesis",
-                            "source_world_revision": 1,
-                            "immutable_hash": "a" * 64,
-                        }
-                    ],
-                    "origin": {
-                        "change_id": "change:x",
-                        "transition_id": "transition:x",
-                        "policy_refs": ["policy:relationship-v1"],
-                        "accepted_event_ref": "event:commitment",
-                    },
-                    "committed_at": NOW.isoformat(),
-                }
+def test_relationship_commitment_schema_accepts_the_stages_she_declares() -> None:
+    """ambiguous and lover are hers to name; only she can put them on the ledger."""
+
+    accept = RelationshipCommitmentProjection.model_fields[
+        "committed_stage"
+    ].annotation
+    assert "ambiguous" in accept.__args__
+    assert "lover" in accept.__args__
+    for stage in ("ambiguous", "lover", "close_friend"):
+        assert (
+            RelationshipCommitmentProjection.stage_uses_installed_commitment_protocol(
+                stage
             )
+            == stage
+        )
+    with pytest.raises(ValueError, match="installed stage"):
+        RelationshipCommitmentProjection.stage_uses_installed_commitment_protocol(
+            "spouse"
+        )
 
 
 def _slim_payload(**extra: object) -> dict[str, object]:
@@ -429,28 +396,37 @@ def test_slim_compile_does_not_invent_residue_when_she_omits_it() -> None:
     assert "relationship_commitment" not in attached["appraisal_draft"]
 
 
-def test_slim_compile_drops_incomplete_or_uninstalled_commitment() -> None:
-    incomplete = compile_slim_consider_payload(_slim_payload(we_are="friend"))
-    forbidden = compile_slim_consider_payload(
-        _slim_payload(
-            we_are="lover",
-            calling_it="we_are_together",
-            said_as="那就当你是我很熟的朋友了",
-        )
-    )
-    ambiguous = compile_slim_consider_payload(
-        _slim_payload(
-            we_are="ambiguous",
-            calling_it="maybe_more",
-            said_as="那就当你是我很熟的朋友了",
-        )
-    )
-    for compiled in (incomplete, forbidden, ambiguous):
+def test_slim_compile_drops_an_incomplete_commitment() -> None:
+    """All three fields or nothing; the host never completes a commitment."""
+
+    for partial in (
+        _slim_payload(we_are="friend"),
+        _slim_payload(we_are="lover", calling_it="we_are_together"),
+        _slim_payload(we_are="ambiguous", said_as="那就当你是我很熟的朋友了"),
+    ):
+        compiled = compile_slim_consider_payload(partial)
         assert compiled is not None
         private_state = compiled["expression_draft"]["private_turn_state"]
         assert "we_are" not in private_state
         attached = attach_hitchhiked_relationship_residue(compiled)
         assert "relationship_commitment" not in attached["appraisal_draft"]
+
+
+def test_slim_compile_carries_the_stage_she_actually_declared() -> None:
+    for stage in ("ambiguous", "lover"):
+        compiled = compile_slim_consider_payload(
+            _slim_payload(
+                we_are=stage,
+                calling_it="maybe_more",
+                said_as="那我们现在算什么呢",
+            )
+        )
+        assert compiled is not None
+        assert compiled["expression_draft"]["private_turn_state"]["we_are"] == stage
+        attached = attach_hitchhiked_relationship_residue(compiled)
+        assert attached["appraisal_draft"]["relationship_commitment"][
+            "target_stage"
+        ] == stage
 
 
 def test_keep_impression_false_does_not_keep_the_impression_flag() -> None:

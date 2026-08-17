@@ -158,11 +158,22 @@ def test_typed_relationship_commitment_atomically_projects_commitment_and_stage(
     assert commitments[0].visible_text_span == "那说好了，你是我朋友了"
 
 
-def test_relationship_commitment_rejects_uninstalled_intimate_stage() -> None:
-    raw = _payload().commitment.model_dump()
-    raw["committed_stage"] = "lover"
+def test_relationship_commitment_accepts_the_stages_only_she_can_declare() -> None:
+    """Becoming more than friends is a commitment, never an accumulated score."""
 
-    with pytest.raises(ValueError, match="ordinary installed stage"):
+    for stage in ("ambiguous", "lover"):
+        raw = _payload().commitment.model_dump()
+        raw["committed_stage"] = stage
+        assert RelationshipCommitmentProjection.model_validate(raw).committed_stage == (
+            stage
+        )
+
+
+def test_relationship_commitment_still_rejects_a_stage_outside_the_protocol() -> None:
+    raw = _payload().commitment.model_dump()
+    raw["committed_stage"] = "spouse"
+
+    with pytest.raises(ValueError, match="installed stage"):
         RelationshipCommitmentProjection.model_validate(raw)
 
 

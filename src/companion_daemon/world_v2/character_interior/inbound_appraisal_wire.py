@@ -129,7 +129,9 @@ class RelationshipSignalWire(FrozenModel):
 class RelationshipCommitmentWire(FrozenModel):
     """Provider-visible choice; the trusted boundary binds the counterpart."""
 
-    target_stage: Literal["acquaintance", "friend", "close_friend"]
+    target_stage: Literal[
+        "acquaintance", "friend", "close_friend", "ambiguous", "lover"
+    ]
     commitment_code: str = Field(min_length=1, max_length=128)
     persistence: Literal["durable"]
     visible_text_span: str = Field(min_length=1, max_length=512)

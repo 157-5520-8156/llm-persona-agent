@@ -160,10 +160,14 @@ def slim_consider_instruction() -> str:
         "us_deltas with about_us and why_us when your reading of the two of you "
         "really changed; omit it when you noticed something without the "
         "relationship moving. "
-        "we_are is acquaintance, friend, or close_friend only when you explicitly "
-        "establish that ordinary stage in this same visible reply; calling_it is "
-        "your own short code; said_as copies that visible span exactly once from "
-        "messages. Omit all three if you do not make that commitment. "
+        "we_are is acquaintance, friend, close_friend, ambiguous, or lover, and "
+        "only when you explicitly establish that stage in this same visible "
+        "reply; calling_it is your own short code; said_as copies that visible "
+        "span exactly once from messages. Omit all three if you do not make that "
+        "commitment. ambiguous and lover are never reached by accumulating "
+        "closeness and the host will never derive them for you: they exist only "
+        "if you say so in words you actually send, and you can name your way back "
+        "down the same way. "
         "felt is this turn's private reading; visible text may carry it or leave it private. "
         "felt alone does not open lasting Affect. "
         "mood is optional and only when you choose a lasting Affect component this turn: "
@@ -464,7 +468,9 @@ _SLIM_AFFECT_DEFAULT_INTENSITY_BP = 5_000
 # reflection threshold on purpose: an unweighted reading should not schedule
 # her to think about it again.
 _SLIM_APPRAISAL_DEFAULT_CONFIDENCE_BP = 5_000
-_SLIM_ORDINARY_STAGES = frozenset({"acquaintance", "friend", "close_friend"})
+_SLIM_ORDINARY_STAGES = frozenset(
+    {"acquaintance", "friend", "close_friend", "ambiguous", "lover"}
+)
 _SLIM_ZERO_RELATIONSHIP_DELTAS = {
     "trust_bp": 0,
     "closeness_bp": 0,
@@ -767,6 +773,7 @@ def compile_slim_consider_payload(
             components=value.get("components"),
             resolution_summary=value.get("resolution_summary"),
             matters_bp=value.get("matters_bp"),
+            keep_impression=keep_impression is True,
         ),
         "expression_draft": expression,
     }
@@ -807,6 +814,7 @@ def _slim_appraisal_draft(
     components: object = None,
     resolution_summary: object = None,
     matters_bp: object = None,
+    keep_impression: bool = False,
 ) -> dict[str, object]:
     """Keep her authored felt as a reading; lasting Affect only when she chooses it."""
 
@@ -853,6 +861,11 @@ def _slim_appraisal_draft(
         meaning = _clip_text(felt, 128).rstrip() or (
             affect_dimension if isinstance(affect_dimension, str) else "affect"
         )
+    if not meaning and keep_impression:
+        # Asking to keep this as a private impression is itself a statement that
+        # the reading mattered.  Without an appraisal to hang it on, the paid
+        # impression lane finds no anchor and her keep decision is dropped.
+        meaning = _clip_text(felt, 128).rstrip()
     if not meaning:
         return {"appraise": False, **common}
     return {

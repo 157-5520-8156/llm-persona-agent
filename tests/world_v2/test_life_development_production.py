@@ -565,7 +565,9 @@ async def test_production_open_life_no_op_is_effect_once_across_cold_restart(
         )
         assert first.status == "idle"
         assert first.life_development_followup_status == "no_op"
-        assert world_author.calls == 0
+        # The World Author is asked and may answer no_op; what must not happen
+        # is a deterministic no_op that never asks.
+        assert world_author.calls == 1
         assert character_model.calls == 0
     finally:
         app.close()
@@ -640,15 +642,11 @@ def test_production_open_life_refuses_an_unmarked_legacy_story_catalog(
 
 
 @pytest.mark.asyncio
-async def test_production_open_life_does_not_call_world_author_when_catalog_is_reviewed(
+async def test_production_open_life_defers_when_the_world_author_is_unavailable(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from companion_daemon.world_v2.life_development_runtime import (
-        LIFE_DEVELOPMENT_NOTHING_REF,
-    )
+    """An unreachable author is a technical failure, not a quiet nothing."""
 
-    _force_life_development_draw(monkeypatch, LIFE_DEVELOPMENT_NOTHING_REF)
     database = tmp_path / "open-life-retry.sqlite"
     seed = _open_life_seed(tmp_path / "retry-seed.yaml")
     config = WorldV2TurnApplicationConfig(
@@ -695,9 +693,9 @@ async def test_production_open_life_does_not_call_world_author_when_catalog_is_r
             trace_id="trace:open-life-retry-first",
             correlation_id="correlation:open-life-retry",
         )
-        assert first.status == "idle"
-        assert first.life_development_followup_status == "no_op"
-        assert world_author.calls == 0
+        assert first.status == "deferred"
+        assert first.life_development_followup_status != "no_op"
+        assert world_author.calls >= 1
     finally:
         app.close()
 
@@ -765,15 +763,15 @@ async def test_production_open_life_opportunity_draw_calls_world_author(
 
 
 @pytest.mark.asyncio
-async def test_production_reviewed_catalog_does_not_invent_a_world_author_plan(
+async def test_production_open_life_plan_comes_from_the_world_author(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from companion_daemon.world_v2.life_development_runtime import (
-        LIFE_DEVELOPMENT_NOTHING_REF,
-    )
+    """A reviewed catalog is material for the author, not a plan generator.
 
-    _force_life_development_draw(monkeypatch, LIFE_DEVELOPMENT_NOTHING_REF)
+    The plan that lands must be the one the World Author actually wrote, and
+    she has to accept it; nothing may appear from the catalog alone.
+    """
+
     database = tmp_path / "open-life-dynamic-aftermath.sqlite"
     seed = _open_life_seed(tmp_path / "dynamic-aftermath-seed.yaml")
     config = WorldV2TurnApplicationConfig(
@@ -827,10 +825,10 @@ async def test_production_reviewed_catalog_does_not_invent_a_world_author_plan(
             trace_id="trace:open-life-plan",
             correlation_id="correlation:open-life-plan",
         )
-        assert planned.life_development_followup_status == "no_op"
-        assert world_author.calls == 0
-        assert character_model.calls == 0
-        assert not any(
+        assert planned.life_development_followup_status == "plan_committed"
+        assert world_author.calls >= 1
+        assert character_model.calls >= 1
+        assert any(
             item.activity_kind.startswith("open_life.")
             for item in app._ledger.project().plans  # noqa: SLF001
         )

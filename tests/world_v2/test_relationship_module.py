@@ -12,6 +12,7 @@ from companion_daemon.world_v2.relationship_events import (
     relationship_mutation_hash,
 )
 from companion_daemon.world_v2.relationship_reducers import (
+    COMMITMENT_ONLY_RELATIONSHIP_STAGES,
     RELATIONSHIP_COMMITMENT_STAGE_TRANSITIONS,
     RELATIONSHIP_POLICY_DIGEST,
     RETIRED_RELATIONSHIP_POLICY_DIGESTS,
@@ -876,7 +877,7 @@ def test_compensation_restores_hysteresis_without_counting_as_confirmation() -> 
     assert restored[0].hysteresis == RelationshipHysteresisProjection()
 
 
-def test_stage_gap_is_stable_and_uninstalled_commitment_stages_fail_closed() -> None:
+def test_stage_gap_is_stable_and_declared_stages_ignore_thresholds() -> None:
     source = signal("signal:gap", code="gap", contradiction_group_ref="group:gap")
     gap = RelationshipVariablesProjection(
         trust_bp=1_800,
@@ -911,15 +912,18 @@ def test_stage_gap_is_stable_and_uninstalled_commitment_stages_fail_closed() -> 
     assert states[0].stage == "acquaintance"
     assert states[0].hysteresis == RelationshipHysteresisProjection()
 
-    for unsupported_stage in ("ambiguous", "lover"):
-        unsupported = state.model_copy(update={"stage": unsupported_stage})
-        unsupported_payload = payload.model_copy(
-            update={"stage_before": unsupported_stage, "stage_after": unsupported_stage}
+    # A stage she declared keeps holding while the numbers move underneath it:
+    # the thresholds cannot quietly demote her out of what she said.
+    for declared_stage in COMMITMENT_ONLY_RELATIONSHIP_STAGES:
+        declared = state.model_copy(update={"stage": declared_stage})
+        declared_payload = payload.model_copy(
+            update={"stage_before": declared_stage, "stage_after": declared_stage}
         )
-        with pytest.raises(ValueError, match="commitment protocol"):
-            adjust_relationship_slow_variables(
-                (unsupported,), (), (source,), unsupported_payload, logical_time=NOW
-            )
+        held, _ = adjust_relationship_slow_variables(
+            (declared,), (), (source,), declared_payload, logical_time=NOW
+        )
+        assert held[0].stage == declared_stage
+        assert held[0].variables.trust_bp == 1_801
 
 
 def test_boundary_lifecycle_is_independent_of_relationship_stage() -> None:

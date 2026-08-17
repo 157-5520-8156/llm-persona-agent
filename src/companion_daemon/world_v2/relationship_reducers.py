@@ -35,10 +35,18 @@ _VARIABLE_NAMES = (
     "repair_confidence_bp",
 )
 _STAGES = ("stranger", "acquaintance", "friend", "close_friend")
+# Stages nobody can reach by accumulating closeness.  Becoming something more
+# than close friends is not a higher score on the same ladder: it is a reading
+# only she can declare, in words she actually sends, so these stages are
+# reachable through an explicit commitment and never derived from thresholds.
+COMMITMENT_ONLY_RELATIONSHIP_STAGES = frozenset({"ambiguous", "lover"})
 RELATIONSHIP_COMMITMENT_STAGE_TRANSITIONS = {
     "stranger": frozenset({"acquaintance", "friend"}),
     "acquaintance": frozenset({"friend"}),
     "friend": frozenset({"close_friend"}),
+    "close_friend": frozenset({"ambiguous"}),
+    "ambiguous": frozenset({"lover", "close_friend"}),
+    "lover": frozenset({"ambiguous"}),
 }
 _POLICY = {
     "policy_version": "relationship-policy.1",
@@ -85,7 +93,15 @@ RELATIONSHIP_POLICY_DIGEST = relationship_policy_digest()
 # allowed; the mutation being written always carries the installed digest, so
 # the first successful adjustment migrates the state forward.
 RETIRED_RELATIONSHIP_POLICY_DIGESTS = frozenset(
-    {"64d8b7ffc6f38f79d31bb8a83212c5668ff908ab3f6d7c924dd75ad71fb94e95"}
+    {
+        # Pre-2026-08-11: commitment transitions were not yet hashed.
+        "64d8b7ffc6f38f79d31bb8a83212c5668ff908ab3f6d7c924dd75ad71fb94e95",
+        # Pre-2026-08-17: the transition graph stopped at close_friend, so
+        # ambiguous and lover could not be declared.  The six numeric axes,
+        # caps, thresholds and dwell are unchanged, and no stage that existed
+        # under this digest changes meaning under the current one.
+        "13bfa71dd9f8377b968714eb3d4f9a927e587832c92d2381c6ecc772071deede",
+    }
 )
 
 
@@ -201,8 +217,6 @@ def preview_relationship_slow_variable_adjustment(
         commitment_refs = ()
     if hysteresis.candidate_since is not None and hysteresis.candidate_since > logical_time:
         raise ValueError("relationship hysteresis candidate starts in the future")
-    if stage in {"ambiguous", "lover"}:
-        raise ValueError("relationship stage requires an installed commitment protocol")
     after = _apply_deltas(before, accepted_deltas)
     stage_after, hysteresis_after = _derive_stage(stage, after, hysteresis, logical_time)
     if after == before and stage_after == stage and hysteresis_after == hysteresis:
@@ -441,8 +455,6 @@ def adjust_relationship_slow_variables(
         raise ValueError("relationship hysteresis candidate starts in the future")
     if commitment_refs != payload.commitment_refs:
         raise ValueError("relationship commitment lineage is stale")
-    if stage in {"ambiguous", "lover"}:
-        raise ValueError("relationship stage requires an installed commitment protocol")
     calculated = _apply_deltas(before, payload.accepted_deltas)
     if calculated != payload.variables_after:
         raise ValueError("relationship variables do not match accepted deltas")
@@ -619,6 +631,10 @@ def _derive_stage(
     hysteresis: RelationshipHysteresisProjection,
     logical_time: datetime,
 ) -> tuple[str, RelationshipHysteresisProjection]:
+    if current in COMMITMENT_ONLY_RELATIONSHIP_STAGES:
+        # Slow variables keep moving underneath her, but they cannot talk her
+        # out of what she declared; only another commitment changes this stage.
+        return current, RelationshipHysteresisProjection()
     if current not in _STAGES:
         raise ValueError("relationship stage requires an installed commitment protocol")
     score = sum(getattr(variables, name) for name in _VARIABLE_NAMES) // len(_VARIABLE_NAMES)

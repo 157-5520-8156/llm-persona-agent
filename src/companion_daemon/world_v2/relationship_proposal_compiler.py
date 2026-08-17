@@ -756,7 +756,8 @@ class RelationshipProposalCompiler:
         persistence = raw.get("persistence")
         visible_text_span = raw.get("visible_text_span")
         if (
-            target_stage not in {"acquaintance", "friend", "close_friend"}
+            target_stage
+            not in {"acquaintance", "friend", "close_friend", "ambiguous", "lover"}
             or not isinstance(commitment_code, str)
             or not 1 <= len(commitment_code) <= 128
             or commitment_code != commitment_code.strip()

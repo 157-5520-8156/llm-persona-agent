@@ -1208,4 +1208,24 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
   5. **生活生态仍近乎静止**：4 天 0 个活动开始/完成、1 个已结算事件。她没有生活可讲，这独立于本轮改动。
   6. **`_reply_only_fallback_appraisal` 仍在 wire 破损时替她写 `no_change`**：违反 AGENTS.md「不得由确定性代码替角色决定」，正解是受约束重选，需一次额外调用的成本裁决。
 
+### 2026-08-17 H23 把世界还给它的作者（H22 剩余缺口全清）
+
+H22 记录的六条剩余缺口本轮全部施工。核心判断：账本里"什么都没发生"的绝大部分不是模型不肯，而是**确定性代码在模型之前就替它答了**。
+
+- **红测**：世界作者在 catalog 存在时被真正问到（no_op 只能由它自己答）；世界作者不可达时是 `deferred` 技术失败而不是安静的 no_op；落地的 plan 必须是作者写的且她接受；NPC 有 catalog 时仍走 actor 模型、propose 后到达世界裁决；她声明的 `we_are=ambiguous/lover` 能落账、阈值既不能派生也不能把她降级出去、协议外的阶段仍拒；wire 破损但她写了合法 affect lifecycle 时那份情绪存活、完全读不懂时才 no_change；只写 `stuck_with_me`+`keep_impression` 能产生 appraisal 锚点、不要求留存则不替她留；`since_he_last_spoke` 只从她已有的对话算、没有他的消息时不报；跨纪元退役摘要可读、外来摘要仍拒。
+- **改动**：
+  1. **生活生态点火**：删除 `life_development_runtime.py` 的加权表短路（此前 80% 概率直接返回 `{"decision":"no_op"}`、`model_id="deterministic:weighted-table"`，连 provider 都不调）。删除 `npc_ecology.py` 的 `_weighted_actor_decision` / `_weighted_world_decision` 短路。两处都落回既有的 one-shot + 一次受约束重选路径，Occasion cadence 仍是唯一的频率闸门——符合 2026-08-14「撤回第 8 条」记录里的成本约束（Occasion 门控、无审查、超支只减机会频率）。
+  2. **安装 ambiguous / lover**：新增 `COMMITMENT_ONLY_RELATIONSHIP_STAGES`。这两个阶段**不在阈值梯子上**——`_derive_stage` 对它们原样返回，六轴继续在底下动但不能把她降级出她自己说过的话；只有另一次承诺能改。转移图加 `close_friend→ambiguous`、`ambiguous→{lover, close_friend}`、`lover→ambiguous`（她也能自己降回去）。放开 `schemas.py` / `inbound_appraisal_wire.py` / `proposal_envelope.py` / `relationship_proposal_compiler.py` / `_SLIM_ORDINARY_STAGES` 五处三档上限，并在 slim 指令里告诉她这两档只能靠她真正发出去的话建立。系统其余部分（媒体资格、视觉证据、embodiment）本来就认这两个阶段，缺的只是承诺协议这一段。
+  3. **打通私人印象**：`keep_impression=true` + 非空 `stuck_with_me` 现在会产生 appraisal 锚点（此前只写 `stuck_with_me` 不写 `felt` → `appraise=false` → 已付费 hitch 找不到 active appraisal，直接 `return None`，这是 epoch2 `PrivateImpressionAccepted=0` 的直接原因）。另外表达技术失败或被后续 inbound 取代时不再连带丢弃印象——送不出去是传输问题，不该抹掉这一回合留在她心里的东西；`noticed`（世界主张）仍然只在回合真正完成时提交。**未动冻结批次不变量**：`_accept` 本来就是分批 commit。
+  4. **不再替她决定"没有感觉"**：`_reply_only_fallback_appraisal` 收到破损 wire 时，若她写的 affect lifecycle（operation + 合法 components + rationale）本身可无损读出，就保留那份情绪；读不懂的部分仍然不猜。这是 H22 遗留的 AGENTS.md 违规，代价为零（无新增调用）。
+  5. **时间感**：`snapshot_compiler` 新增派生材料 `since_he_last_spoke`，从她已有的 pinned 对话算距他上次说话的秒数。纯投影算术、0 模型调用；折叠段没有时间戳所以宁缺不猜。没有时间感就无法思念。
+  6. **对话按聊天记录呈现**：`InnerLifeSnapshot.model_view()` 在**脱敏之后**渲染 `conversation`（`他：…` / `我：…`）。放在这一层是硬要求——编译期渲染会绕过 `visible_source_refs` 脱敏而泄露她不该看到的条目。派生呈现，不新增来源也不新增权威。
+  7. **契约压缩 + 中文收尾**：合并 compact gate 里重复的英文段落（"never copy marker text" / "not part of payload_json" / 三处"宿主不替你决定"各自重复）；系统提示最末尾新增一段中文收尾框——距她实际输出最近的位置、用她写作的语言说明"以上都是投递格式，不是说话方式"，并明确不用每条都圆满、不用每条都反问、可以只回一个字或不说。**未删** reply_only 信封样板：`test_reply_only_releases_reviewable_head_from_one_physical_character_call` 等测试保证"给模型看的样板必须与规范 wire 一致"，这是真实安全属性。
+  8. **摘要迁移**：安装新阶段改变了 `RELATIONSHIP_POLICY_DIGEST`，`13bfa71d…` 加入退役集。六轴数值、上限、阈值、dwell 全未变，旧摘要下存在过的阶段在新摘要下语义不变，因此读旧戳安全、写仍必须用已安装摘要。
+- **基线**：`.72` → `.73`，manifest `abf5608e…`，两个独立 120 例进程复核一致。全量 5344 通过。
+- **剩余缺口**：
+  1. `slim_consider_instruction`（7.5k）与 `expression_draft_shape_contract`（5k）仍是英文。整体中文化是文风的下一个杠杆，但要逐字改约 30 处测试断言，且翻译精确契约语义有漂移风险，值得单独一包并配 A/B 观察。
+  2. 后台独立私人印象车道（`drain_private_impression_once` 恒 `return None`）仍关闭。现在她只能在**已付费的回合里**留下印象；真正"他不在时想起他"需要一条 0 调用的替代路径（例如在已付费回合的印象上挂一次 quiet-gap 复访），未施工。
+  3. 生活生态点火后必须回采成本：`life_development` 与 NPC actor 现在会真的打模型。月桶 NPC+社会 ¥8 / 人生节拍 ¥8 未变，超了按记录只减机会频率，不削她的上下文。
+
 

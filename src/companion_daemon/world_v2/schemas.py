@@ -4527,7 +4527,9 @@ class RelationshipCommitmentProjection(FrozenModel):
     relationship_id: str = Field(min_length=1)
     subject_ref: str = Field(min_length=1)
     stage_before: RelationshipStage
-    committed_stage: Literal["acquaintance", "friend", "close_friend"]
+    committed_stage: Literal[
+        "acquaintance", "friend", "close_friend", "ambiguous", "lover"
+    ]
     status: Literal["active"] = "active"
     commitment_code: str = Field(min_length=1, max_length=128)
     persistence: Literal["durable"] = "durable"
@@ -4540,8 +4542,14 @@ class RelationshipCommitmentProjection(FrozenModel):
     @field_validator("committed_stage", mode="before")
     @classmethod
     def stage_uses_installed_commitment_protocol(cls, value: object) -> object:
-        if value not in {"acquaintance", "friend", "close_friend"}:
-            raise ValueError("relationship commitment requires an ordinary installed stage")
+        if value not in {
+            "acquaintance",
+            "friend",
+            "close_friend",
+            "ambiguous",
+            "lover",
+        }:
+            raise ValueError("relationship commitment requires an installed stage")
         return value
 
     @model_validator(mode="after")

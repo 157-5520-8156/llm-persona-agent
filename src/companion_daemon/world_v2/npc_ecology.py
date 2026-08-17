@@ -731,9 +731,10 @@ class NpcEcology:
     async def _actor_decide(
         self, *, stimulus: NpcEcologyStimulus, snapshot: NpcSocialWorldSnapshot
     ) -> tuple[NpcActorDecision, str, tuple[_ModelAttempt, ...]]:
-        table = self._weighted_actor_decision(stimulus=stimulus, snapshot=snapshot)
-        if table is not None:
-            return table
+        # An NPC with a weighted table instead of a model is a prop, not an
+        # actor with its own reading of her (ADR 0010).  The Occasion cadence
+        # still owns how often an NPC gets a turn at all, and the run below is
+        # one shot plus one constrained reselect.
         prompt, payload = self._actor_request(stimulus=stimulus, snapshot=snapshot)
         return await self._run_model_with_one_reselect(
             model=self._actor_model,
@@ -814,13 +815,6 @@ class NpcEcology:
         snapshot: NpcSocialWorldSnapshot,
         actor_decision: NpcActorDecision,
     ) -> tuple[NpcWorldDecision, str, tuple[_ModelAttempt, ...]]:
-        table = self._weighted_world_decision(
-            stimulus=stimulus,
-            snapshot=snapshot,
-            actor_decision=actor_decision,
-        )
-        if table is not None:
-            return table
         prompt, payload = self._world_request(
             stimulus=stimulus,
             snapshot=snapshot,

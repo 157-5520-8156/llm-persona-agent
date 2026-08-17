@@ -1320,7 +1320,9 @@ class RelationshipCommitmentPayload(FrozenModel):
     """One explicit role-authored relationship stage commitment candidate."""
 
     subject_ref: BoundedRef
-    target_stage: Literal["acquaintance", "friend", "close_friend"]
+    target_stage: Literal[
+        "acquaintance", "friend", "close_friend", "ambiguous", "lover"
+    ]
     commitment_code: BoundedLabel
     persistence: Literal["durable"]
     visible_text_span: str = Field(min_length=1, max_length=512)

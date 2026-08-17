@@ -230,19 +230,16 @@ def _compact_gate_system_content(
         "END REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON.\n"
         "For result_kind=reply_only, payload_json is usually this slim object. "
         "messages may be empty for silence or several strings for several bubbles. "
-        "Replace every marker; never copy marker text.\n"
-        "Only recall transfers control. A full_turn payload contains the complete "
-        "decision now. The host validates payload_json, does not classify by topic, "
-        "length, complexity, or keywords, does not choose the branch, and does not "
-        "generate role wording. Choose the minimum sufficient branch for the "
-        "external effect you actually want: slim reply_only for pure text, "
-        "full_turn when you also need media, relationship protocol fields, or "
-        "the full affect lifecycle surface. The host does not prefer reply_only "
-        "as a calm default and does not invent those branches from topic words. "
-        "Speak as this person in ordinary QQ chat; do not paste mechanism essays "
-        "into messages. When you author appraisal_draft or a "
-        "character-interior-events envelope, complete those fields yourself; the "
-        "host validates wire and hard boundaries and never invents wording.\n"
+        "Replace every marker with your own scalar, object, or null; never copy "
+        "marker text, and a literal null is absence you chose, never a default "
+        "the host substitutes for you.\n"
+        "Only recall transfers control; a full_turn payload contains the complete "
+        "decision now. Take the branch your own external effect needs: slim "
+        "reply_only for pure text, full_turn when you also need media, the "
+        "interaction protocol, or the full affect lifecycle surface. The host "
+        "validates payload_json and the hard boundaries; it never classifies by "
+        "topic, length or keywords, never chooses the branch, never prefers "
+        "reply_only as a calm default, and never writes your wording.\n"
         "\nREPLY_ONLY PAYLOAD_JSON CANONICAL SPECIMEN JSON:\n"
         + json.dumps(
             reply_only_specimen,
@@ -252,14 +249,10 @@ def _compact_gate_system_content(
         + "\nEND REPLY_ONLY PAYLOAD_JSON CANONICAL SPECIMEN JSON.\n"
         "For result_kind=reply_only, if you instead author the "
         "character-interior-events envelope, the decoded payload_json object copies "
-        "this specimen's exact root and events transport skeleton. Replace every "
-        "marker with your role-chosen scalar, object, or null. A literal null means "
-        "absence you chose or the contract requires; the host never substitutes null "
-        "as a semantic default. Its root has exactly protocol, appraisal_draft, and "
-        "events, and events has exactly one head followed by one exact end. The head "
-        "is the text beats you choose now or later, or silence with beat null. A "
-        "root field named contract is invalid; protocol is the required "
-        "character-interior-events.1 field.\n"
+        "this specimen's exact root and events transport skeleton. Its root has "
+        "exactly protocol, appraisal_draft, and events, and events has exactly one "
+        "head followed by one exact end. The head is the text beats you choose now "
+        "or later, or silence with beat null.\n"
         "\nREPLY_ONLY PAYLOAD_JSON INSTRUCTION METADATA JSON:\n"
         + json.dumps(
             reply_only_rules,
@@ -267,9 +260,6 @@ def _compact_gate_system_content(
             separators=(",", ":"),
         )
         + "\nEND REPLY_ONLY PAYLOAD_JSON INSTRUCTION METADATA JSON.\n"
-        "The reply-only instruction metadata block is not part of payload_json. "
-        "Do not copy grammar_id or any other instruction-metadata field into "
-        "payload_json.\n"
         + "\n\nFULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON:\n"
         + json.dumps(
             full_turn_specimen,
@@ -278,11 +268,9 @@ def _compact_gate_system_content(
         )
         + "\nEND FULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON.\n"
         "For result_kind=full_turn, the decoded payload_json object copies this "
-        "specimen's exact root and events transport skeleton. Replace every "
-        "marker with your role-chosen scalar, object, or null; the host never "
-        "substitutes null as a semantic default. Its root has exactly protocol, "
-        "appraisal_draft, and events; a root field named contract is invalid. "
-        "protocol is the required character-interior-events.1 field.\n"
+        "specimen's exact root and events transport skeleton. Its root has exactly "
+        "protocol, appraisal_draft, and events; a root field named contract is "
+        "invalid, and protocol is the required character-interior-events.1 field.\n"
         "\nFULL_TURN PAYLOAD_JSON INSTRUCTION METADATA JSON:\n"
         + json.dumps(
             full_turn_rules,
@@ -290,9 +278,30 @@ def _compact_gate_system_content(
             separators=(",", ":"),
         )
         + "\nEND FULL_TURN PAYLOAD_JSON INSTRUCTION METADATA JSON.\n"
-        "The instruction metadata block is not part of payload_json. Do not copy "
-        "grammar_id or any other instruction-metadata field into payload_json.\n"
-        "This required compact function is the sole outer return transport."
+        "Neither instruction metadata block is part of payload_json; do not copy "
+        "grammar_id or any other instruction-metadata field into it. "
+        "This required compact function is the sole outer return transport.\n"
+        + _compact_gate_voice_close()
+    )
+
+
+def _compact_gate_voice_close() -> str:
+    """Close in her language, immediately before she writes.
+
+    Everything above is English transport contract, and a wall of it reads as
+    an instruction to fill in a form: her production voice came out at 66% full
+    stops, no emoji, and one concessive opener in five.  This last block is the
+    nearest text to her own output and says, in the language she writes in, that
+    the format above is delivery and the way she talks comes from her identity.
+    """
+
+    return (
+        "\n以上都是投递格式，不是说话方式。\n"
+        "你现在是在 QQ 上回一个人的消息。怎么说、说几条、说多长、要不要说，"
+        "都按你此刻真实的想法；说话习惯以最前面的人设为准。\n"
+        "不用每条都完整、都圆满，也不用每条都反问；短一条、只回一个字、"
+        "或者干脆不说，都可以。\n"
+        "payload_json 里那些可见文字就是你要发出去的原话。"
     )
 
 

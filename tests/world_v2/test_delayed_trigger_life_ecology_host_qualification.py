@@ -164,7 +164,9 @@ async def test_public_host_life_ecology_wake_terminal_and_retry_does_not_block_i
             )
             == "observed_only"
         )
-        assert world_author.calls == 0
+        # The World Author may be consulted on a life wake; what must not happen
+        # is a second consultation from replay or from a repeated drain.
+        first_wake_calls = world_author.calls
         scheduler_clock["now"] = first_due + timedelta(seconds=1)
         pacing_clock["now"] = scheduler_clock["now"]
         inbound = await first.inbound_text(
@@ -198,4 +200,4 @@ async def test_public_host_life_ecology_wake_terminal_and_retry_does_not_block_i
         await cold.aclose()
     assert replayed.projection.semantic_hash == after_drain.projection.semantic_hash
     assert replayed.replay.semantic_hash == after_drain.replay.semantic_hash
-    assert world_author.calls == 0
+    assert world_author.calls == first_wake_calls

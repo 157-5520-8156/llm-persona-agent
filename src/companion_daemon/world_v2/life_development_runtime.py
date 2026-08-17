@@ -4438,36 +4438,13 @@ class LifeDevelopmentRuntime:
         manifest: LifeDevelopmentCapabilityManifest,
         wake_event_ref: str,
     ) -> _LifeDevelopmentModelRun:
-        catalog = getattr(self._manifest_compiler, "catalog", None)
-        if isinstance(catalog, ReviewedLifeSeedCatalog):
-            picked = draw_life_development_opportunity(
-                catalog_hash=catalog.catalog_hash,
-                wake_event_ref=wake_event_ref,
-            )
-            if picked != LIFE_DEVELOPMENT_OPPORTUNITY_REF:
-                raw = '{"decision":"no_op"}'
-                parsed = LifeDevelopmentNoOpDraft.model_validate_json(raw)
-                request_hash = _digest(
-                    {
-                        "lane": "life_development_weighted_table",
-                        "wake_event_ref": wake_event_ref,
-                        "catalog_hash": catalog.catalog_hash,
-                        "logical_time": logical_time.isoformat(),
-                    }
-                )
-                return _LifeDevelopmentModelRun(
-                    model_id="deterministic:weighted-table",
-                    parsed=parsed,
-                    attempts=(
-                        _LifeDevelopmentAttempt(
-                            request_hash=request_hash,
-                            raw_output=raw,
-                            status="proposal_validated",
-                            slot="primary",
-                            outcome="winner",
-                        ),
-                    ),
-                )
+        # The weighted table used to answer here with `{"decision":"no_op"}` on
+        # 80% of wakes without calling anyone, which is a deterministic answer
+        # to a semantic question and left the world with almost nothing to
+        # happen: four production days produced zero started activities.  The
+        # Occasion cadence already owns *when* she gets an opportunity; the
+        # World Author owns whether anything comes of it, and may still say
+        # no_op itself.
         hard_boundary_contract = _world_author_hard_boundary_contract(
             manifest=manifest,
             owner_actor_ref=self._owner,

@@ -295,7 +295,7 @@ class ScenarioVerificationError(AssertionError):
 # source-review, acceptance, Action, and receipt boundaries; the frozen suite
 # keeps every existing per-case predicate enabled while request, audit,
 # scheduler, snapshot, and replay identities intentionally move together.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.72"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.73"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -425,8 +425,18 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.72"
 # persona stops softening conflict. Per-case predicates remain enforced; the
 # aggregate prompt/appraisal identities intentionally move. Two independent
 # complete 120-case processes produced this hash before installation.
+# ``.73`` gives the world back its authors. The weighted tables that answered
+# "nothing happened" for the World Author on 80% of wakes and for NPCs on every
+# wake with a reviewed catalog are gone, so a life wake reaches a model that can
+# also legitimately say no_op. The commitment protocol installs ambiguous and
+# lover as stages she declares in sent words and that thresholds may never
+# derive or demote, an unreadable appraisal wire keeps the affect she named,
+# reply_only prose is trimmed and closes in Chinese, and the paid impression
+# lane finally has an anchor. Per-case predicates remain enforced; the aggregate
+# prompt/policy identities intentionally move. Two independent complete 120-case
+# processes produced this hash before installation.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "fa3908f37a0c0ebbe744de16bb46e232d210de2bf1aeea4b8d580db8198a8603"
+    "abf5608e010d8429bf5f6d4bd66c761ae36dd848744b575519af84e8223c391f"
 )
 
 

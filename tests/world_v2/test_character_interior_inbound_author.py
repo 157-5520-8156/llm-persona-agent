@@ -2212,16 +2212,20 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "Ordinary QQ private chat" in compact_system
     assert "not as a helpdesk ticket" in compact_system
     assert "CAPABILITY GATE" not in compact_system
-    assert "minimum sufficient branch" in compact_system
-    assert "does not prefer reply_only as a calm default" in compact_system
+    assert "Take the branch your own external effect needs" in compact_system
+    # The transport contract closes in her own language, nearest to what she
+    # writes, so a wall of English wire rules does not read as the voice.
+    assert compact_system.rstrip().endswith("就是你要发出去的原话。")
+    assert "以上都是投递格式，不是说话方式。" in compact_system
+    assert "never prefers reply_only as a calm default" in compact_system
     assert "Each messages item or text beat is one bubble" in compact_system
     assert "Silence is complete" in compact_system
     assert "unfinished bubble" not in compact_system
     assert "REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON" in compact_system
     assert "payload_json is usually this slim object" in compact_system
     assert "only when the external effect you choose actually requires" in compact_system
-    assert "does not classify by topic, length, complexity, or keywords" in compact_system
-    assert "does not choose the branch" in compact_system
+    assert "never classifies by topic, length or keywords" in compact_system
+    assert "never chooses the branch" in compact_system
     assert "result_kind=reply_only only when" not in compact_system
     assert "reply_only may still carry appraisal and affect fields you choose" in compact_system
     assert (
@@ -2232,8 +2236,8 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "with no appraisal, affect" not in compact_system
     assert "complete chosen inner object in payload_json" in compact_system
     assert "REPLY_ONLY PAYLOAD_JSON CANONICAL SPECIMEN JSON" in compact_system
-    assert "reply-only instruction metadata block is not part of payload_json" in compact_system
-    assert "host never substitutes null as a semantic default" in compact_system
+    assert "Neither instruction metadata block is part of payload_json" in compact_system
+    assert "never a default the host substitutes for you" in compact_system
     assert "full_turn_json" not in compact_system
     assert "Chat color is allowed" in compact_system
     assert "Fact, Relationship, Media, or lasting Affect events" in compact_system
@@ -2286,7 +2290,7 @@ async def test_compact_full_turn_keeps_full_stream_in_one_physical_character_cal
     system = provider.messages[0][0]["content"]
     assert "APPRAISAL DRAFT CONTRACT" not in system
     assert "EXPRESSION DRAFT CONTRACT" not in system
-    assert "Speak as this person in ordinary QQ chat" in system
+    assert "你现在是在 QQ 上回一个人的消息" in system
     assert "Ordinary QQ private chat" in system
     assert "REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON" in system
     assert "FULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON" in system

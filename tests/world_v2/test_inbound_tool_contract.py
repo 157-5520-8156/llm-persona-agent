@@ -610,18 +610,35 @@ def test_stream_reply_only_accepts_canonical_appraisal_affect_but_rejects_cross_
         assert list(validator.iter_errors(candidate))
 
 
-@pytest.mark.parametrize("missing", ("meanings", "components"))
-def test_stream_reply_only_incomplete_appraisal_keeps_legal_head(
-    missing: str,
-) -> None:
+def test_stream_reply_only_broken_appraisal_keeps_legal_head() -> None:
+    """A malformed wire must not cost her the visible reply."""
+
     candidate = _reply_only_appraisal_effect_arguments()
-    del candidate["appraisal_draft"][missing]
+    del candidate["appraisal_draft"]["components"]
 
     first = json.loads(_stream_first_expression(json.dumps(candidate, ensure_ascii=False)))
 
     assert first["expression_draft"]["beats"][0]["text"] == "嗯，我在听。"
     assert first["appraisal_draft"]["appraise"] is False
     assert first["appraisal_draft"]["affect"] == "no_change"
+
+
+def test_stream_reply_only_broken_wire_keeps_the_feeling_she_named() -> None:
+    """The host may not decide she felt nothing (AGENTS.md).
+
+    When the rest of the appraisal wire is unreadable but the affect lifecycle
+    she wrote is well formed, that lifecycle survives instead of being replaced
+    with a manufactured no_change.
+    """
+
+    candidate = _reply_only_appraisal_effect_arguments()
+    del candidate["appraisal_draft"]["meanings"]
+
+    first = json.loads(_stream_first_expression(json.dumps(candidate, ensure_ascii=False)))
+
+    assert first["expression_draft"]["beats"][0]["text"] == "嗯，我在听。"
+    assert first["appraisal_draft"]["affect"] != "no_change"
+    assert first["appraisal_draft"]["components"]
 
 
 def test_reply_only_silence_survives_broken_appraisal_and_compact_gate_unwrap() -> None:

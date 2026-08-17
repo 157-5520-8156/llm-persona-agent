@@ -685,6 +685,38 @@ def _day_sheet_from_biography(
     )
 
 
+def _seconds_since_last_counterpart_message(
+    recent_dialogue: list[dict[str, object]],
+    folded_dialogue: object,
+    *,
+    logical_time: object,
+) -> int | None:
+    """How long since he last said anything, from the same pinned dialogue.
+
+    Pure projection arithmetic over material she already has, so it costs no
+    model call and introduces no claim she could not have derived herself.
+    Folded history is deliberately ignored: a folded bucket has no timestamps,
+    so a long silence stays unreported rather than guessed.
+    """
+
+    del folded_dialogue
+    if not isinstance(logical_time, datetime):
+        return None
+    latest: datetime | None = None
+    for entry in recent_dialogue:
+        if entry.get("speaker") != "counterpart":
+            continue
+        occurred = _datetime(entry.get("occurred_at"))
+        if occurred is None:
+            continue
+        if latest is None or occurred > latest:
+            latest = occurred
+    if latest is None:
+        return None
+    elapsed = int((logical_time - latest).total_seconds())
+    return elapsed if elapsed >= 0 else None
+
+
 def _dialogue_stimulus_index(items: list[dict[str, object]]) -> dict[str, str]:
     index: dict[str, str] = {}
     for item in items:
@@ -1086,6 +1118,15 @@ def compile_inner_life_snapshot(
         materials["folded_dialogue"] = folded_dialogue
     if recent_dialogue:
         materials["recent_dialogue"] = recent_dialogue
+    elapsed = _seconds_since_last_counterpart_message(
+        recent_dialogue, folded_dialogue, logical_time=logical_time
+    )
+    if elapsed is not None:
+        # Without an elapsed reading she has to derive "how long has it been"
+        # from raw timestamps on every wake, which is exactly the perception a
+        # person has for free and the one missing thing that made missing him
+        # ungroundable.
+        materials["since_he_last_spoke"] = {"seconds": elapsed}
 
     # Verified facts are memory material, not host-authored conclusions about
     # what the character should do.  Keeping them in the same snapshot lets

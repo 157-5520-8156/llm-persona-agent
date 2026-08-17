@@ -95,7 +95,10 @@ from ..model_facing_context import (
     compact_recovery_model_facing_context,
 )
 from ..model_completion import ChatCompletionModel
-from .inbound_appraisal_wire import canonicalize_appraisal_draft_wire
+from .inbound_appraisal_wire import (
+    _AFFECT_DIMENSIONS,
+    canonicalize_appraisal_draft_wire,
+)
 from .inbound_tool_contract import (
     _deepseek_strict_union_padding_is_empty,
     _expand_compact_gate_payload,
@@ -7227,7 +7230,19 @@ def _reply_only_visible_text_beats(event: dict[str, object]) -> list[object]:
     raise ValueError("reply-only stream head exceeds its text-only capability")
 
 
-def _reply_only_fallback_appraisal(head: dict[str, object]) -> dict[str, object]:
+def _reply_only_fallback_appraisal(
+    head: dict[str, object],
+    *,
+    authored: object = None,
+) -> dict[str, object]:
+    """Keep a legal head when the appraisal wire is malformed.
+
+    The host must not decide that she felt nothing, so a lifecycle it can still
+    read losslessly is carried through: an affect operation she named with
+    well-formed components survives even though the rest of the wire did not.
+    Anything it cannot read stays out rather than being guessed.
+    """
+
     rationale = _clip_reply_only_appraisal_text(
         head.get("brief_rationale"),
         limit=_REPLY_ONLY_APPRAISAL_RATIONALE_MAX,
@@ -7248,7 +7263,7 @@ def _reply_only_fallback_appraisal(head: dict[str, object]) -> dict[str, object]
         or confidence > 10_000
     ):
         confidence = 5_000
-    return {
+    fallback: dict[str, object] = {
         "appraise": False,
         "affect": "no_change",
         "brief_rationale": rationale,
@@ -7256,6 +7271,50 @@ def _reply_only_fallback_appraisal(head: dict[str, object]) -> dict[str, object]
         "stance": label,
         "display_strategy": label,
         "confidence": confidence,
+    }
+    salvaged = _salvaged_authored_affect(authored)
+    if salvaged is not None:
+        fallback.update(salvaged)
+    return fallback
+
+
+def _salvaged_authored_affect(authored: object) -> dict[str, object] | None:
+    """Recover only an affect lifecycle the host can read without inventing."""
+
+    if not isinstance(authored, dict):
+        return None
+    operation = authored.get("affect")
+    if operation not in {"open", "update", "supersede"}:
+        return None
+    components = authored.get("components")
+    if not isinstance(components, list) or not components:
+        return None
+    recovered: list[dict[str, object]] = []
+    for item in components:
+        if not isinstance(item, dict):
+            return None
+        dimension = item.get("dimension")
+        intensity = item.get("target_intensity_bp")
+        if dimension not in _AFFECT_DIMENSIONS:
+            return None
+        if isinstance(intensity, bool) or not isinstance(intensity, int):
+            return None
+        if not 1 <= intensity <= 10_000:
+            return None
+        recovered.append({"dimension": dimension, "target_intensity_bp": intensity})
+    meaning = _clip_reply_only_appraisal_text(
+        authored.get("brief_rationale"),
+        limit=_REPLY_ONLY_APPRAISAL_RATIONALE_MAX,
+    )
+    if not meaning:
+        return None
+    return {
+        "appraise": True,
+        "affect": operation,
+        "components": recovered,
+        "meanings": [{"meaning": meaning, "confidence": 5_000}],
+        "attribution": "unknown",
+        "severity": 5_000,
     }
 
 
@@ -7373,7 +7432,11 @@ def _reply_only_character_interior_event_envelope(
         )
         head = events[0]
         assert isinstance(head, dict)
-        appraisal = _validate_reply_only_appraisal(_reply_only_fallback_appraisal(head))
+        appraisal = _validate_reply_only_appraisal(
+            _reply_only_fallback_appraisal(
+                head, authored=value.get("appraisal_draft")
+            )
+        )
     _expression_event_envelope(
         {
             "protocol": "expression-events.1",
