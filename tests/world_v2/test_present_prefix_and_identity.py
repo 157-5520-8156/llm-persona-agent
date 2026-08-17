@@ -15,6 +15,7 @@ from companion_daemon.world_v2.companion_identity import (
 from companion_daemon.world_v2.present_prompt import (
     combined_turn_system_lead,
     order_user_present_payload,
+    slim_consider_instruction,
 )
 
 
@@ -29,24 +30,121 @@ def test_combined_system_lead_does_not_fork_on_recall_availability() -> None:
     assert "occasion" in optional
 
 
+def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None:
+    instruction = slim_consider_instruction()
+    assert "ordinary closeness" in instruction
+    assert "romance script" in instruction
+    assert "not a ban on feeling drawn" in instruction
+    assert "felt is this turn's private reading" in instruction
+    assert "ticket-closing" in instruction
+    assert "photo true means you want the media lane" in instruction
+    assert "Saying you will send a picture inside text alone does not open that lane" in instruction
+    assert "photo true cannot ride reply_only" in instruction
+    assert "day_sheet and biographical habits are schedule texture" in instruction
+    assert "Chat color is allowed" in instruction
+    assert "Fact, Relationship, Media, or lasting Affect events" in instruction
+    assert "already sent a picture" in instruction
+    assert "candidate_only" in instruction
+    assert "even-tempered" not in instruction
+    assert "unfinished bubble" not in instruction
+    lowered = instruction.lower()
+    assert "please overthink" not in lowered
+    assert "must probe" not in lowered
+    assert "must flirt" not in lowered
+    assert "must be cute" not in lowered
+    assert "你在暧昧" not in instruction
+    assert "搞抽象" not in instruction
+    assert "relationship_signal" not in instruction
+
+
+def test_slim_photo_true_binds_media_request_and_cannot_ride_reply_only() -> None:
+    from companion_daemon.world_v2.present_prompt import (
+        compile_slim_consider_payload,
+        compile_slim_interior_envelope,
+    )
+
+    slim = {
+        "messages": ["想给你看一张。"],
+        "felt": "想分享",
+        "stuck_with_me": "想分享这一下",
+        "wants": "试试发图",
+        "photo": True,
+    }
+    compiled = compile_slim_consider_payload(slim)
+    assert compiled is not None
+    assert compiled["expression_draft"]["media_request"] == "consider_available_candidate"
+    try:
+        compile_slim_interior_envelope(slim, reply_only=True)
+        raise AssertionError("reply_only must reject photo")
+    except ValueError as exc:
+        assert "reply_only" in str(exc)
+    envelope = compile_slim_interior_envelope(slim, reply_only=False)
+    assert envelope is not None
+    assert "consider_available_candidate" in str(envelope)
+
+
+def test_identity_instruction_allows_color_without_silent_fact_upgrade() -> None:
+    frame = CompanionIdentityFrame(
+        companion_name="沈知栀",
+        counterpart_name="geoff",
+        base_prompt="你是沈知栀，英文名 Celia Shen。",
+        personality_frame="慢热，熟了以后会俏皮一点，偶尔轻轻调侃。说话软，有分寸。",
+        appearance="自然黑色中长发。",
+        background="父母在嘉兴经营一家小书店。",
+        daily_life=("早上如果没有安排会赖床。",),
+        speech_frame="句子偏短，像 QQ/微信私聊。",
+        values=("真诚比漂亮话重要。",),
+        first_message="你好呀，我是沈知栀。",
+        not_an_assistant=True,
+        boundaries=(
+            "主观印象、模糊回忆、未写入的色彩可以出现在聊天里，但不会自动变成 World 硬事实。",
+        ),
+    )
+    wire = _ExpressionDraftWire.__new__(_ExpressionDraftWire)
+    wire._identity_frame = frame
+    text = wire._identity_instruction()
+    assert text.startswith("你是沈知栀")
+    assert "color this chat" in text
+    assert "Chat prose does not silently become Fact" in text
+    assert "picture already went out" in text
+    assert "invent a scene" not in text
+    assert "tonight's report" in text
+    assert "不会自动变成 World 硬事实" in text
+
+
 def test_identity_instruction_leads_with_character_yaml_prose() -> None:
     frame = CompanionIdentityFrame(
         companion_name="沈知栀",
         counterpart_name="geoff",
         base_prompt="你是沈知栀，英文名 Celia Shen。",
+        personality_frame="慢热，熟了以后会俏皮一点，偶尔轻轻调侃。说话软，有分寸。",
         appearance="自然黑色中长发。",
         background="父母在嘉兴经营一家小书店。",
         daily_life=("早上如果没有安排会赖床。",),
         speech_frame="句子偏短，像 QQ/微信私聊。",
+        values=("真诚比漂亮话重要。",),
         first_message="你好呀，我是沈知栀。",
     )
     wire = _ExpressionDraftWire.__new__(_ExpressionDraftWire)
     wire._identity_frame = frame
     text = wire._identity_instruction()
     assert text.startswith("你是沈知栀")
+    assert "俏皮一点" in text
+    assert "说话软，有分寸" in text
+    assert "搞一点抽象" not in text
+    assert "都不是任务" not in text
+    assert "真诚比漂亮话重要" in text
     assert "自然黑色中长发" in text
     assert "小书店" in text
     assert "你好呀，我是沈知栀" in text
+    assert "文风样例" not in text
+    assert "初次开口" in text
+    assert "习惯（不是此刻正在做的事）" in text
+    assert "日常：" not in text
+    assert "tonight's report" in text
+    assert "color this chat" in text
+    assert "Chat prose does not silently become Fact" in text
+    assert "invent a scene" not in text
 
 
 def test_identity_source_ref_ignores_prose_fields() -> None:
@@ -180,6 +278,381 @@ def test_snapshot_keeps_chronological_dialogue_tail_and_delivery_state() -> None
     assert [item["text"] for item in dialogue] == [f"bubble {index}" for index in range(12)]
     assert dialogue[-1]["delivery_state"] == "delivered"
     assert dialogue[0]["delivery_state"] == "observed"
+
+
+def test_over_budget_dialogue_folds_without_dropping_ids() -> None:
+    items = [
+        {
+            "item_ref": f"dialogue:{index}",
+            "source_ref": f"dialogue:{index}",
+            "privacy_class": "private",
+            "value": {
+                "dialogue_id": f"dialogue:{index}",
+                "speaker": "counterpart" if index % 2 == 0 else "companion",
+                "text": f"bubble {index} " + ("雅思报名细节 " * 120),
+                "occurred_at": f"2026-08-13T12:{index:02d}:00+08:00",
+                "delivery_state": "observed",
+                "sequence": (index + 1) * 100,
+            },
+        }
+        for index in range(40)
+    ]
+    snapshot = compile_inner_life_snapshot(
+        {
+            "world_id": "world:present",
+            "actor_ref": "agent:companion",
+            "world_revision": 40,
+            "deliberation_revision": 1,
+            "ledger_sequence": 40,
+            "slices": {"recent_dialogue": {"availability": "available", "items": items}},
+        }
+    ).model_view()
+    folded = snapshot["materials"]["folded_dialogue"]
+    recent = snapshot["materials"]["recent_dialogue"]
+    ids = [dialogue_id for chunk in folded for dialogue_id in chunk["dialogue_ids"]]
+    ids.extend(item["dialogue_id"] for item in recent)
+    assert ids == [f"dialogue:{index}" for index in range(40)]
+    assert folded
+    first_fold = json.dumps(folded[0], ensure_ascii=False, separators=(",", ":"))
+    items.append(
+        {
+            "item_ref": "dialogue:40",
+            "source_ref": "dialogue:40",
+            "privacy_class": "private",
+            "value": {
+                "dialogue_id": "dialogue:40",
+                "speaker": "counterpart",
+                "text": "bubble 40 " + ("雅思报名细节 " * 120),
+                "occurred_at": "2026-08-13T13:00:00+08:00",
+                "delivery_state": "observed",
+                "sequence": 4100,
+            },
+        }
+    )
+    again = compile_inner_life_snapshot(
+        {
+            "world_id": "world:present",
+            "actor_ref": "agent:companion",
+            "world_revision": 41,
+            "deliberation_revision": 1,
+            "ledger_sequence": 41,
+            "slices": {"recent_dialogue": {"availability": "available", "items": items}},
+        }
+    ).model_view()
+    assert (
+        json.dumps(again["materials"]["folded_dialogue"][0], ensure_ascii=False, separators=(",", ":"))
+        == first_fold
+    )
+
+
+def test_week_diary_keeps_seven_local_days_and_caps_lines() -> None:
+    items = []
+    for day in range(8):
+        for line in range(4):
+            stamp = f"2026-08-{9 + day:02d}T12:0{line}:00+08:00"
+            items.append(
+                {
+                    "item_ref": f"experience:{day}:{line}",
+                    "source_ref": f"experience:{day}:{line}",
+                    "privacy_class": "private",
+                    "value": {
+                        "experience_id": f"experience:{day}:{line}",
+                        "values": {
+                            "occurred_from": stamp,
+                            "occurred_to": stamp,
+                            "participant_refs": ["agent:companion"],
+                            "privacy_class": "private",
+                        },
+                        "content": {"text": f"day{day}-line{line} 去了书店"},
+                    },
+                }
+            )
+    snapshot = compile_inner_life_snapshot(
+        {
+            "world_id": "world:present",
+            "actor_ref": "agent:companion",
+            "world_revision": 2,
+            "deliberation_revision": 1,
+            "ledger_sequence": 2,
+            "logical_time": "2026-08-16T16:00:00+08:00",
+            "slices": {
+                "recent_experiences": {"availability": "available", "items": items}
+            },
+        }
+    ).model_view()
+    diary = snapshot["materials"]["week_diary"]
+    assert [item["date"] for item in diary] == [
+        "2026-08-10",
+        "2026-08-11",
+        "2026-08-12",
+        "2026-08-13",
+        "2026-08-14",
+        "2026-08-15",
+        "2026-08-16",
+    ]
+    assert "2026-08-09" not in {item["date"] for item in diary}
+    assert all(len(item["lines"]) == 3 for item in diary)
+
+
+def test_lived_moment_is_a_short_sourced_situation_not_a_lookup_panel() -> None:
+    snapshot = compile_inner_life_snapshot(
+        {
+            "world_id": "world:present",
+            "actor_ref": "agent:companion",
+            "world_revision": 2,
+            "deliberation_revision": 1,
+            "ledger_sequence": 2,
+            "logical_time": "2026-08-16T16:00:00+08:00",
+            "slices": {
+                "world_life": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "item_ref": "bio:1",
+                            "source_ref": "bio:1",
+                            "privacy_class": "private",
+                            "value": {
+                                "context_kind": "biographical_context",
+                                "logical_at": "2026-08-16T16:00:00+08:00",
+                                "age": 21,
+                                "academic_phase": "term",
+                                "academic_year": 3,
+                                "season": "summer",
+                            },
+                        }
+                    ],
+                },
+                "recent_experiences": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "item_ref": "experience:today",
+                            "source_ref": "experience:today",
+                            "privacy_class": "private",
+                            "value": {
+                                "experience_id": "experience:today",
+                                "values": {
+                                    "occurred_from": "2026-08-16T12:00:00+08:00",
+                                    "occurred_to": "2026-08-16T12:00:00+08:00",
+                                    "participant_refs": ["agent:companion"],
+                                    "privacy_class": "private",
+                                },
+                                "content": {"text": "图书馆靠窗坐了一下午"},
+                            },
+                        }
+                    ],
+                },
+            },
+        }
+    ).model_view()
+    moment = snapshot["materials"]["lived_moment"]
+    assert moment.startswith("这会儿是")
+    assert "今天已经过的：图书馆靠窗坐了一下午" in moment
+    assert "source_ref" not in moment
+    assert "activity_kind" not in moment
+
+
+def test_appraisal_keeps_original_observed_stimulus() -> None:
+    snapshot = compile_inner_life_snapshot(
+        {
+            "world_id": "world:present",
+            "actor_ref": "agent:companion",
+            "world_revision": 2,
+            "deliberation_revision": 1,
+            "ledger_sequence": 2,
+            "slices": {
+                "recent_dialogue": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "item_ref": "dialogue:observation:obs-1",
+                            "source_ref": "dialogue:observation:obs-1",
+                            "privacy_class": "private",
+                            "value": {
+                                "dialogue_id": "dialogue:observation:obs-1",
+                                "speaker": "counterpart",
+                                "text": "今晚可能不去了",
+                                "occurred_at": "2026-08-16T12:00:00+08:00",
+                                "delivery_state": "observed",
+                                "sequence": 100,
+                                "source_claims": [
+                                    {"authority_event_ref": "event:obs-1"}
+                                ],
+                            },
+                        }
+                    ],
+                },
+                "appraisals": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "item_ref": "appraisal:1",
+                            "source_ref": "appraisal:1",
+                            "privacy_class": "private",
+                            "value": {
+                                "subject_ref": "user:geoff",
+                                "source_cluster_ref": "cluster:1",
+                                "hypotheses": [
+                                    {
+                                        "hypothesis_id": "h1",
+                                        "meaning": "他在往后推",
+                                        "attribution": "user",
+                                        "controllability": "uncontrollable",
+                                        "severity": "moderate",
+                                        "weight_bp": 10_000,
+                                    }
+                                ],
+                                "evidence_refs": [
+                                    {
+                                        "ref_id": "event:obs-1",
+                                        "evidence_type": "observed_message",
+                                        "claim_purpose": "private_hypothesis",
+                                    }
+                                ],
+                                "confidence_bp": 8_800,
+                                "accepted_at": "2026-08-16T12:01:00+08:00",
+                                "expires_at": "2026-08-17T12:01:00+08:00",
+                            },
+                        }
+                    ],
+                },
+            },
+        }
+    ).model_view()
+    appraisal = snapshot["materials"]["appraisals"][0]
+    assert appraisal["stimulus_excerpts"] == ["今晚可能不去了"]
+    assert appraisal["hypotheses"][0]["meaning"] == "他在往后推"
+
+
+def test_lived_moment_carries_today_and_an_unfinished_reading() -> None:
+    snapshot = compile_inner_life_snapshot(
+        {
+            "world_id": "world:present",
+            "actor_ref": "agent:companion",
+            "world_revision": 2,
+            "deliberation_revision": 1,
+            "ledger_sequence": 2,
+            "logical_time": "2026-08-16T16:00:00+08:00",
+            "slices": {
+                "recent_experiences": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "item_ref": "experience:today",
+                            "source_ref": "experience:today",
+                            "privacy_class": "private",
+                            "value": {
+                                "experience_id": "experience:today",
+                                "values": {
+                                    "occurred_from": "2026-08-16T12:00:00+08:00",
+                                    "occurred_to": "2026-08-16T12:30:00+08:00",
+                                    "participant_refs": ["agent:companion"],
+                                    "privacy_class": "private",
+                                },
+                                "content": {"text": "图书馆靠窗坐了一上午，天阴得厉害"},
+                            },
+                        }
+                    ],
+                },
+                "recent_dialogue": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "item_ref": "dialogue:observation:obs-1",
+                            "source_ref": "dialogue:observation:obs-1",
+                            "privacy_class": "private",
+                            "value": {
+                                "dialogue_id": "dialogue:observation:obs-1",
+                                "speaker": "counterpart",
+                                "text": "今晚可能不去了",
+                                "occurred_at": "2026-08-16T12:00:00+08:00",
+                                "delivery_state": "observed",
+                                "sequence": 100,
+                                "source_claims": [
+                                    {"authority_event_ref": "event:obs-1"}
+                                ],
+                            },
+                        }
+                    ],
+                },
+                "appraisals": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "item_ref": "appraisal:1",
+                            "source_ref": "appraisal:1",
+                            "privacy_class": "private",
+                            "value": {
+                                "subject_ref": "user:geoff",
+                                "source_cluster_ref": "cluster:1",
+                                "hypotheses": [
+                                    {
+                                        "hypothesis_id": "h1",
+                                        "meaning": "他在往后推",
+                                        "attribution": "user",
+                                        "controllability": "uncontrollable",
+                                        "severity": "moderate",
+                                        "weight_bp": 10_000,
+                                    }
+                                ],
+                                "evidence_refs": [
+                                    {
+                                        "ref_id": "event:obs-1",
+                                        "evidence_type": "observed_message",
+                                        "claim_purpose": "private_hypothesis",
+                                    }
+                                ],
+                                "confidence_bp": 8_800,
+                                "accepted_at": "2026-08-16T12:01:00+08:00",
+                                "expires_at": "2026-08-17T12:01:00+08:00",
+                            },
+                        }
+                    ],
+                },
+            },
+        }
+    ).model_view()
+    moment = snapshot["materials"]["lived_moment"]
+    assert "今天已经过的" in moment
+    assert "图书馆靠窗坐了一上午" in moment
+    assert "还挂着" in moment
+    assert "今晚可能不去了" in moment
+    assert "他在往后推" in moment
+    assert "warmth" not in moment
+
+
+def test_lived_moment_carries_an_active_private_impression() -> None:
+    snapshot = compile_inner_life_snapshot(
+        {
+            "world_id": "world:present",
+            "actor_ref": "agent:companion",
+            "world_revision": 2,
+            "deliberation_revision": 1,
+            "ledger_sequence": 2,
+            "logical_time": "2026-08-16T16:00:00+08:00",
+            "slices": {
+                "private_impressions": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "item_ref": "impression:1",
+                            "source_ref": "impression:1",
+                            "privacy_class": "private",
+                            "value": {
+                                "subject_ref": "user:geoff",
+                                "reflection_summary": "他说完我就一直在想他到底怎么看我",
+                                "confidence_bp": 6_000,
+                                "status": "active",
+                            },
+                        }
+                    ],
+                },
+            },
+        }
+    ).model_view()
+    moment = snapshot["materials"]["lived_moment"]
+    assert "心里还搁着：他说完我就一直在想他到底怎么看我" in moment
+    assert "warmth" not in moment
 
 
 def _common_prefix(left: str, right: str) -> str:

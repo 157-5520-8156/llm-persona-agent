@@ -246,6 +246,7 @@ class WorldRuntime:
         perception_owner: str | None = None,
         perception_trigger_runtime: PerceptionTriggerRuntime | None = None,
         latency_recorder: ProductionLatencyRecorder | None = None,
+        open_world_event=None,
     ) -> None:
         if not world_id:
             raise ValueError("world_id must not be empty")
@@ -364,6 +365,7 @@ class WorldRuntime:
         ):
             raise ValueError("CharacterInterior must own this exact ledger")
         self._character_interior = character_interior
+        self._open_world_event = open_world_event
         self._reflection_scheduler = reflection_scheduler
         if relationship_adjustment_owner is not None and not relationship_adjustment_owner:
             raise ValueError("relationship adjustment owner must not be empty")
@@ -798,6 +800,50 @@ class WorldRuntime:
         if self._ledger.blocks_event_loop:
             return await asyncio.to_thread(self._ledger.lookup_event_commit, event_id)
         return self._ledger.lookup_event_commit(event_id)
+
+    async def _hitch_paid_inbound_side_effects(
+        self,
+        *,
+        proposal: DecisionProposal | MinimalProposal,
+        audited: ProposalAuditCommit,
+        observation_event: WorldEvent,
+    ) -> None:
+        state = getattr(proposal, "private_turn_state", None)
+        if state is None:
+            return
+        noticed = getattr(state, "noticed", None)
+        if isinstance(noticed, str) and noticed.strip() and self._open_world_event is not None:
+            try:
+                self._open_world_event.commit_from_paid_moment(
+                    moment=noticed.strip(),
+                    wake_event_ref=observation_event.event_id,
+                    model="paid-turn:inbound",
+                    raw_output=noticed.strip(),
+                    trace_id=observation_event.trace_id,
+                    correlation_id=observation_event.correlation_id,
+                )
+            except Exception:
+                _LOG.warning(
+                    "paid inbound noticed hitch failed wake=%s",
+                    observation_event.event_id,
+                    exc_info=True,
+                )
+        keep = getattr(state, "keep_impression", None)
+        summary = getattr(state, "inner_state_summary", "") or ""
+        if keep is True and self._character_interior is not None:
+            try:
+                await self._character_interior._hitch_paid_inbound_impression(  # noqa: SLF001
+                    keep_impression=True,
+                    reflection_summary=summary,
+                    model_result_ref=audited.model_result_ref,
+                    source_event=observation_event,
+                )
+            except Exception:
+                _LOG.warning(
+                    "paid inbound impression hitch failed wake=%s",
+                    observation_event.event_id,
+                    exc_info=True,
+                )
 
     async def _record_response_expectation_assessment(
         self,
@@ -3698,6 +3744,17 @@ class WorldRuntime:
             await self._record_response_expectation_assessment(
                 proposal=assessment_proposal,
                 observation=observation,
+                observation_event=event,
+            )
+        if (
+            assessment_proposal is not None
+            and audited is not None
+            and not technical_expression_failure
+            and not expression_superseded_by_inbound
+        ):
+            await self._hitch_paid_inbound_side_effects(
+                proposal=assessment_proposal,
+                audited=audited,
                 observation_event=event,
             )
         episode_tail_pending = (

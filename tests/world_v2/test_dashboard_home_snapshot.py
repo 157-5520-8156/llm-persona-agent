@@ -75,7 +75,7 @@ def test_dashboard_field_policy_requires_an_explicit_decision_for_every_projecti
         "intentionally_withheld"
     )
     assert DASHBOARD_LEDGER_FIELD_POLICY["proposal_audits"].exposure == "count_only"
-    assert DASHBOARD_LEDGER_FIELD_POLICY["private_impressions"].exposure == "count_only"
+    assert DASHBOARD_LEDGER_FIELD_POLICY["private_impressions"].exposure == "typed_summary"
     assert DASHBOARD_LEDGER_FIELD_POLICY["facts"].exposure == "typed_summary"
 
 
@@ -280,65 +280,65 @@ async def test_runtime_operations_require_typed_observation_and_change_cache_key
     assert section["state"] == "ready"
     assert section["reason_code"] is None
     assert section["data"]["signals"] == [
-        {"key": "scheduler", "label": "调度器", "state": "ready", "state_label": "正常"},
+        {"key": "scheduler", "label": "时钟还在走", "state": "ready", "state_label": "正常"},
         {
             "key": "character_interior",
-            "label": "角色内在决策",
+            "label": "她自己的判断",
             "state": "ready",
             "state_label": "正常",
         },
         {
             "key": "local_provider_capacity",
-            "label": "本地模型容量",
+            "label": "本地小模型",
             "state": "degraded",
             "state_label": "降级",
         },
         {
             "key": "text_endpoint",
-            "label": "文本入口",
+            "label": "对话入口",
             "state": "unavailable",
             "state_label": "不可用",
         },
         {
             "key": "proactive_source_authority",
-            "label": "主动联系来源权限",
+            "label": "主动找你这条路",
             "state": "ready",
             "state_label": "正常",
         },
         {
             "key": "life_source_authority",
-            "label": "生活来源权限",
+            "label": "生活事件这条路",
             "state": "ready",
             "state_label": "正常",
         },
         {
             "key": "external_perception_upstream",
-            "label": "外部感知上游",
+            "label": "外面的新闻天气",
             "state": "warming",
             "state_label": "预热中",
         },
         {
             "key": "model_usage_budget",
-            "label": "模型用量预算",
+            "label": "模型预算",
             "state": "ready",
             "state_label": "正常",
         },
         {
             "key": "process_latency",
-            "label": "进程延迟",
+            "label": "这一下快不快",
             "state": "ready",
             "state_label": "正常",
         },
-        {"key": "storage", "label": "存储", "state": "ready", "state_label": "正常"},
+        {"key": "storage", "label": "账本存储", "state": "ready", "state_label": "正常"},
         {
             "key": "expression_episode",
-            "label": "表达 episode",
+            "label": "说话节奏",
             "state": "disabled",
             "state_label": "未启用",
         },
         {
             "key": "semantic_recall",
-            "label": "语义召回",
+            "label": "记得的事",
             "state": "ready",
             "state_label": "正常",
         },
@@ -347,14 +347,14 @@ async def test_runtime_operations_require_typed_observation_and_change_cache_key
     assert section["data"]["notices"] == [
         {
             "signal": "text_endpoint",
-            "signal_label": "文本入口",
+            "signal_label": "对话入口",
             "reason_code": "primary_timeout",
             "reason_label": "主文本请求超时",
         }
     ]
     assert section["data"]["expression_episode"] == {
         "mode": "off",
-        "mode_label": "episode 未启用",
+        "mode_label": "说话节奏未启用",
     }
     assert section["data"]["semantic_recall"] == {
         "semantic_embedding_enabled": True,
@@ -420,7 +420,7 @@ async def test_nonempty_projection_compiles_every_section_without_raw_sensitive_
         impression_id="impression:withheld",
         subject_ref="user:owner",
         status="active",
-        reflection_summary=secret,
+        reflection_summary="说话有点急，但不是故意的。",
         last_supported=CAPTURED_AT,
         confidence_bp=7400,
     )
@@ -638,9 +638,82 @@ async def test_nonempty_projection_compiles_every_section_without_raw_sensitive_
         for metric in relationship["metrics"]
         if metric["key"] == "private_impressions"
     ) == 1
-    assert "private_impression" not in {
-        item["kind"] for item in relationship["highlights"]
-    }
+    assert any(
+        item["kind"] == "private_impression"
+        and item["title"] == "说话有点急，但不是故意的。"
+        for item in relationship["highlights"]
+    )
+    overview = payload["sections"]["overview_life"]["data"]
+    plan_highlight = next(item for item in overview["highlights"] if item["kind"] == "plan")
+    location_highlight = next(
+        item for item in overview["highlights"] if item["kind"] == "location"
+    )
+    assert plan_highlight["title"] == "专注读书"
+    assert location_highlight["title"] == "华东师大宿舍"
+    assert location_highlight["status_label"] == "可以给人看"
+
+
+@pytest.mark.asyncio
+async def test_missed_plan_window_and_committed_experience_use_owner_labels() -> None:
+    base = WorldLedger.in_memory(world_id=WORLD_ID).project()
+    plan = SimpleNamespace(
+        plan_id="plan:missed",
+        owner_actor_ref="actor:companion",
+        activity_kind="open_life.bookstore",
+        status="planned",
+        privacy_class="private",
+        location_ref="location:jiaxing-family-bookstore",
+        importance_bp=5000,
+        last_transitioned_at=CAPTURED_AT - timedelta(hours=20),
+        scheduled_window=SimpleNamespace(
+            opens_at=CAPTURED_AT - timedelta(hours=8),
+            closes_at=CAPTURED_AT - timedelta(hours=1),
+        ),
+    )
+    experience = SimpleNamespace(
+        experience_id="experience:committed",
+        status="committed",
+        occurred_to=CAPTURED_AT,
+        privacy_class="private",
+        participant_refs=("actor:companion",),
+        values=None,
+    )
+    projection = base.model_copy(
+        update={
+            "logical_time": CAPTURED_AT,
+            "plans": (plan,),
+            "experiences": (experience,),
+        }
+    )
+
+    class _Ledger:
+        world_id = WORLD_ID
+        blocks_event_loop = False
+
+        def project(self):  # type: ignore[arg-type]
+            return projection
+
+        def lookup_event_commit(self, _event_id):  # type: ignore[arg-type]
+            return None
+
+    highlights = (
+        await DashboardHomeSnapshotModule(
+            ledger=_Ledger(),  # type: ignore[arg-type]
+            deployment_id="deployment:test",
+            boot_id="boot:test",
+            clock=lambda: CAPTURED_AT,
+        ).capture()
+    ).to_payload()["sections"]["overview_life"]["data"]["highlights"]
+    plan_highlight = next(item for item in highlights if item["kind"] == "plan")
+    experience_highlight = next(
+        item for item in highlights if item["kind"] == "experience"
+    )
+
+    assert plan_highlight["title"] == "她自己在过的一件事"
+    assert plan_highlight["status_code"] == "window_missed"
+    assert plan_highlight["status_label"] == "窗口过了还没开始"
+    assert experience_highlight["status_code"] == "committed"
+    assert experience_highlight["status_label"] == "已记下"
 
 
 @pytest.mark.asyncio

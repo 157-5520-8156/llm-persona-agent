@@ -432,8 +432,34 @@ async def test_private_turn_attention_alone_cannot_authorize_candidate_compilati
     )
 
     assert result.status == "completed"
-    assert supplier.calls == []
+    assert len(supplier.calls) == 1
+    assert supplier.calls[0][0] == ()
     assert conductor.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_empty_media_source_refs_still_asks_supplier_to_fill_starved_pool() -> None:
+    source = _accepted_plan_event()
+    ledger = _Ledger(source)
+    conductor = _Conductor(ledger=ledger)
+    supplier = _CandidateSupplier()
+    runtime = MediaRequestRuntime(
+        ledger=ledger,
+        conductor=conductor,  # type: ignore[arg-type]
+        candidate_supplier=supplier,
+    )
+
+    result = await runtime.advance_once(
+        logical_time=NOW,
+        trace_id="trace:starvation-fill",
+        correlation_id="correlation:starvation-fill",
+    )
+
+    assert result.status == "completed"
+    assert len(supplier.calls) == 1
+    assert supplier.calls[0][0] == ()
+    assert conductor.calls == 1
+
 
 @pytest.mark.asyncio
 async def test_restart_recovers_media_plan_without_a_second_selection() -> None:

@@ -393,7 +393,7 @@ def test_taxonomy_preserves_life_matrix_and_real_evidence_gates() -> None:
     assert by_source[replacement_event.event_id].category == "plan_change"
     assert by_source[replacement_event.event_id].media_readiness == "not_lived_event"
     assert by_source[settlement_event.event_id].category == "shared_private_outcome"
-    assert by_source[settlement_event.event_id].media_readiness == "privacy_blocked"
+    assert by_source[settlement_event.event_id].media_readiness == "visual_declaration_required"
     assert by_source[forged_user_event.event_id].category == "activity_result"
 
 

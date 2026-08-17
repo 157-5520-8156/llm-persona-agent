@@ -105,13 +105,75 @@ _NON_ATTEMPT_TECHNICAL_FAILURES = frozenset({"required_tool_choice_unsupported"}
 # unbounded tokens on a reflection that never succeeds; after this many
 # attempts the process is terminal. A fresh epoch requires new accepted
 # appraisal evidence; the opener does not re-derive the same source trigger.
-_PRIVATE_IMPRESSION_MAX_ATTEMPTS = 4
+_PRIVATE_IMPRESSION_MAX_ATTEMPTS = 1
 
 
 def _digest(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+def _paid_inbound_impression_lineage(
+    *,
+    inbound_model_result_ref: str,
+    appraisal_id: str,
+    inbound_audit,
+    draft: PrivateImpressionDraft,
+    attempt_id: str,
+) -> tuple[_InteriorAuthorLineage, RecordedCharacterInteriorTurnLineage, str]:
+    """Derive a 0-call reflection lineage parented to the paid inbound turn."""
+
+    digest = _reflection_draft_digest(draft)
+    parent = getattr(inbound_audit, "model_call_id", None) if inbound_audit is not None else None
+    model_id = "paid-turn:inbound"
+    model_version = "paid-turn:inbound"
+    if inbound_audit is not None:
+        model_id = str(
+            inbound_audit.model_id or inbound_audit.attempted_model_id or model_id
+        ).strip() or model_id
+        model_version = str(
+            inbound_audit.model_version or inbound_audit.model_id or model_id
+        ).strip() or model_id
+    lineage = _InteriorAuthorLineage(
+        model_id=model_id,
+        model_version=model_version,
+        model_call_id="paid-inbound-impression:"
+        + _digest(
+            {
+                "inbound_model_result": inbound_model_result_ref,
+                "appraisal_id": appraisal_id,
+            }
+        ),
+        request_hash="sha256:" + digest,
+        response_hash="sha256:" + digest,
+        attempt_ordinal=1 if parent else 0,
+        parent_model_call_id=parent,
+    )
+    interior = RecordedCharacterInteriorTurnLineage(
+        inner_turn_id=attempt_id,
+        purpose=PRIVATE_IMPRESSION_PURPOSE,
+        opportunity_ref="paid-inbound-impression:" + appraisal_id,
+        snapshot_id="inner-life-snapshot:sha256:" + digest,
+        snapshot_hash=digest,
+        capability_ref="capability:paid-inbound-impression",
+        author_model_id=lineage.model_id,
+        author_model_version=lineage.model_version,
+        author_model_call_id=lineage.model_call_id,
+        author_request_hash=lineage.request_hash,
+        author_response_hash=lineage.response_hash,
+        author_attempt_ordinal=lineage.attempt_ordinal,
+        author_parent_model_call_id=lineage.parent_model_call_id,
+        private_self_lineage_hash="sha256:" + digest,
+        decision_hash="sha256:" + digest,
+    )
+    derived_ref = "model-result:" + _digest(
+        {
+            "model_call_id": lineage.model_call_id,
+            "response_hash": lineage.response_hash.removeprefix("sha256:"),
+        }
+    )
+    return lineage, interior, derived_ref
 
 
 
@@ -147,7 +209,10 @@ def compile_paid_private_impression_draft(
     *,
     reflection_summary: str,
     offered_source_refs: tuple[str, ...],
+    keep_impression: bool | None = None,
 ) -> PrivateImpressionDraft | None:
+    if keep_impression is not True:
+        return None
     summary = reflection_summary.strip()[:1_200]
     sources = tuple(dict.fromkeys(item for item in offered_source_refs if item))
     if not summary or not sources:
@@ -821,6 +886,78 @@ class PrivateImpressionTriggerRuntime:
         )
         self._source = source
 
+    async def record_paid_inbound(
+        self,
+        *,
+        keep_impression: bool | None,
+        reflection_summary: str,
+        model_result_ref: str,
+        source_event: WorldEvent,
+    ) -> str | None:
+        """Keep a hitchhiked impression only when she explicitly asked to retain it.
+
+        This writes the existing reflection audit and typed acceptance. It does
+        not call a model: the paid inbound turn already produced the keep
+        decision, and the audit is a deterministic ledger attestation.
+        """
+
+        if keep_impression is not True or not model_result_ref:
+            return None
+        projection = await _project(self._ledger)
+        appraisal = next(
+            (item for item in reversed(projection.appraisals) if item.status == "active"),
+            None,
+        )
+        if appraisal is None or appraisal.origin is None:
+            return None
+        accepted = await _lookup(self._ledger, appraisal.origin.accepted_event_ref)
+        if accepted is None or accepted[0].event_type != "AppraisalAccepted":
+            return None
+        capsule = compile_private_impression_reflection_capsule(
+            projection=projection,
+            appraisal=appraisal,
+            identity_frame=self._identity_frame,
+            world_id=self._ledger.world_id,
+            content_reader=self._content_reader,
+        )
+        offered = tuple(
+            item.source_ref for item in capsule.sources if item.source_kind == "appraisal"
+        )
+        draft = compile_paid_private_impression_draft(
+            reflection_summary=reflection_summary,
+            offered_source_refs=offered,
+            keep_impression=True,
+        )
+        if draft is None:
+            return None
+        inbound = next(
+            (
+                item
+                for item in projection.model_result_audits
+                if item.model_result_ref == model_result_ref
+            ),
+            None,
+        )
+        attempt_id = "attempt:paid-inbound-impression:" + _digest(source_event.event_id)
+        lineage, interior_lineage, derived_ref = _paid_inbound_impression_lineage(
+            inbound_model_result_ref=model_result_ref,
+            appraisal_id=appraisal.appraisal_id,
+            inbound_audit=inbound,
+            draft=draft,
+            attempt_id=attempt_id,
+        )
+        return await self._accept(
+            appraisal=appraisal,
+            draft=draft,
+            capsule=capsule,
+            model_result_ref=derived_ref,
+            source_event=accepted[0],
+            before=projection,
+            attempt_id=attempt_id,
+            author_lineage=lineage,
+            character_interior_lineage=interior_lineage,
+        )
+
     def _route_groups(
         self,
         located_sources: tuple[_PrivateImpressionLocatedSource, ...],
@@ -1372,12 +1509,14 @@ class PrivateImpressionTriggerRuntime:
         source_event: WorldEvent,
         before,
         attempt_id: str,
-        author_lineage: _InteriorAuthorLineage,
-        character_interior_lineage: RecordedCharacterInteriorTurnLineage,
+        author_lineage: _InteriorAuthorLineage | None = None,
+        character_interior_lineage: RecordedCharacterInteriorTurnLineage | None = None,
         reflection_contract: str = "character-interior-private-impression-transition.1",
     ) -> str:
         """Record the typed proposal, then drive the existing acceptance seam."""
 
+        if author_lineage is None or character_interior_lineage is None:
+            raise ValueError("private impression acceptance requires author lineage")
         before = await self._record_character_interior_reflection_audit(
             draft=draft,
             capsule=capsule,

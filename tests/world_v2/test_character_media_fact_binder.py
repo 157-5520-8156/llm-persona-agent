@@ -163,6 +163,35 @@ def test_recipient_scoped_personal_never_opens_a_p3_candidate_but_private_still_
     assert personal.event_id not in candidates[0].source_event_refs
 
 
+def test_ordinary_private_home_declaration_opens_a_selfie_not_a_p3_candidate() -> None:
+    source = _event(event_id="event:home-activity", event_type="WorldOccurrenceSettled", payload={})
+    declaration = _event(
+        event_id="event:home-declaration", event_type="ImageEvidenceDeclared",
+        payload=ImageEvidenceDeclaredPayload(
+            source_event_ref=source.event_id, source_event_payload_hash=source.payload_hash,
+            source_event_type=source.event_type, source_privacy_ceiling="private", declared_at=NOW,
+            image_evidence=ImageEvidenceV1(
+                visibility="private",
+                location={"id": "location:jiaxing-family-home", "publicness": "private"},
+                activity={"id": "activity:home-reading", "kind": "home"},
+                character_media=CharacterMediaEvidenceV1(
+                    character_ref="agent:companion", present=True,
+                    capture_capabilities=("character_front_camera",),
+                ),
+            ),
+        ).model_dump(mode="json"),
+    )
+    ledger = _Ledger(source, declaration)
+
+    candidates = CharacterMediaFactBinder(ledger=ledger).discover(cursor=_cursor(ledger), logical_time=NOW)
+
+    assert len(candidates) == 1
+    assert candidates[0].family == "character_media"
+    assert candidates[0].privacy_ceiling == "private"
+    assert candidates[0].character_media_contract is not None
+    assert candidates[0].character_media_contract.kind == "selfie"
+
+
 def test_candidate_runtime_opens_only_the_binder_discovered_candidate_after_its_declaration_wake() -> None:
     source = _event(event_id="event:activity", event_type="ActivityCompleted", payload={})
     declaration = _event(

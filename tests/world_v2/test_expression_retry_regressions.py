@@ -73,6 +73,7 @@ def _is_expression_prompt(prompt: str) -> bool:
     return (
         "Return one raw JSON ExpressionDraft" in prompt
         or "raw JSON ExpressionDraft only" in prompt
+        or "Do not return ExpressionDraft alone" in prompt
         or "provisional first beat" in prompt
         or (
             "appraisal_draft and expression_draft" in prompt

@@ -829,12 +829,58 @@ def test_active_appraisal_hypotheses_are_source_bound_into_the_next_capsule() ->
         )
     )
 
+    accepted_ref = ledger.project().appraisals[0].origin.accepted_event_ref
     assert capsule.appraisals.availability == "available"
     assert len(capsule.appraisals.items) == 1
     assert '"meaning":"disappointment"' in capsule.appraisals.items[0].payload_json
-    assert "message-event:1" in {
+    assert accepted_ref in {
         binding.ref for binding in capsule.appraisals.items[0].source_bindings
     }
+
+
+def test_appraisal_stays_in_capsule_when_observation_evidence_is_unaliased() -> None:
+    """Regression: observation stimulus ids must not gate AppraisalAccepted Context."""
+
+    from companion_daemon.world_v2.appraisal_events import appraisal_mutation_hash
+    from companion_daemon.world_v2.ledger_context_resolver import _typed_refs
+    from companion_daemon.world_v2.schemas import AppraisalProjection
+    from test_appraisal_authority import WORLD_ID
+
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    ledger.commit(
+        [appraisal_event("event:appraisal-world-started", "WorldStarted", {})],
+        expected_world_revision=0,
+        expected_deliberation_revision=0,
+    )
+    ledger, trigger, evidence = prepare_claimed_interaction(ledger)
+    payload = accepted_payload(ledger, trigger, evidence)
+    appraisal = payload["appraisal"]
+    assert isinstance(appraisal, dict)
+    appraisal["subject_ref"] = "actor:companion"
+    payload["accepted_change_hash"] = appraisal_mutation_hash(payload)
+    record_proposal(ledger, trigger, evidence, payload)
+    commit_appraisal(ledger, authorized_batch(trigger, payload))
+
+    projected = ledger.project().appraisals[0]
+    assert isinstance(projected, AppraisalProjection)
+    assert evidence.ref_id == projected.evidence_refs[0].ref_id
+    assert _typed_refs(projected, observation_aliases={}) == (
+        projected.origin.accepted_event_ref,
+    )
+    assert evidence.ref_id not in (
+        _typed_refs(projected, observation_aliases={}) or ()
+    )
+
+    capsule = _compiler(ledger).compile(
+        query_from_projection(
+            ledger.project(), actor_ref="actor:companion", trigger_ref="event:next-turn"
+        )
+    )
+    assert capsule.appraisals.availability == "available"
+    assert len(capsule.appraisals.items) == 1
+    bindings = {binding.ref for binding in capsule.appraisals.items[0].source_bindings}
+    assert projected.origin.accepted_event_ref in bindings
+    assert evidence.ref_id not in bindings
 
 
 def test_query_snapshot_or_cursor_swap_is_rejected_before_resolution() -> None:

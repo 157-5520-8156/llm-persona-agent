@@ -128,8 +128,16 @@ class ProductionProposalGrammar:
         if self.lane_id == "chat_reply":
             self._validate_chat_reply(proposal)
             return
-        if self.lane_id == "interaction_appraisal":
+        if self.lane_id in {
+            "interaction_appraisal",
+            "settled_world_appraisal",
+            "silence_appraisal",
+            "plan_disruption_appraisal",
+        }:
             self._validate_interaction_appraisal(proposal)
+            return
+        if self.lane_id == "proactive":
+            self._validate_proactive(proposal)
             return
         if len(proposal.proposed_changes) != 1:
             raise ProductionProposalGrammarError("change_count_not_reachable")
@@ -197,7 +205,7 @@ class ProductionProposalGrammar:
 
     @staticmethod
     def _validate_interaction_appraisal(proposal: DecisionProposal) -> None:
-        """Close the only production composite to appraisal plus its derived affect."""
+        """Close appraisal lanes to appraisal plus optional exactly-bound affect."""
 
         appraisals = []
         affects = []
@@ -231,6 +239,41 @@ class ProductionProposalGrammar:
         appraisal_refs = affects[0].payload.value().get("appraisal_change_refs")
         if appraisal_refs != [appraisals[0].change_id]:
             raise ProductionProposalGrammarError("interaction_affect_appraisal_binding_invalid")
+
+    def _validate_proactive(self, proposal: DecisionProposal) -> None:
+        """Allow proactive expression with optional same-turn appraisal/affect."""
+
+        try:
+            shape = inspect_unified_inbound_decision(proposal)
+        except UnifiedInboundDecisionError as exc:
+            raise ProductionProposalGrammarError(f"proactive_{exc.code}") from exc
+        if shape.relationship is not None or shape.relationship_commitment is not None:
+            raise ProductionProposalGrammarError("proactive_relationship_not_reachable")
+        if shape.interaction_act is not None:
+            raise ProductionProposalGrammarError("proactive_interaction_act_not_reachable")
+        if shape.expression is None:
+            if proposal.action_intents:
+                raise ProductionProposalGrammarError("action_not_reachable")
+            return
+        expression_capability = next(
+            (
+                item
+                for item in self.capabilities
+                if item.change_kind == shape.expression.kind
+                and item.transition == shape.expression.transition
+            ),
+            None,
+        )
+        if expression_capability is None or not expression_capability.allows_actions:
+            raise ProductionProposalGrammarError("proactive_expression_not_reachable")
+        if not proposal.action_intents:
+            raise ProductionProposalGrammarError("action_required")
+        if any(
+            intent.kind not in expression_capability.action_kinds
+            or intent.causal_change_id != shape.expression.change_id
+            for intent in proposal.action_intents
+        ):
+            raise ProductionProposalGrammarError("action_not_reachable")
 
 
 _EXPRESSION = SpecializedProposalCapability(
@@ -386,21 +429,19 @@ _EXPECTED_PRODUCTION_PROPOSAL_GRAMMARS: Mapping[
         ),
         "settled_world_appraisal": ProductionProposalGrammar(
             lane_id="settled_world_appraisal",
-            capabilities=(_APPRAISAL,),
+            capabilities=(_APPRAISAL, _AFFECT),
             allows_no_change_decision=True,
         ),
-        # A silence appraisal shares the settled-world discipline: one typed
-        # appraisal at most, never an action or a direct affect authoring.
+        # Silence / disruption share settled-world discipline: appraisal plus
+        # optional character-chosen lasting Affect bound to that appraisal.
         "silence_appraisal": ProductionProposalGrammar(
             lane_id="silence_appraisal",
-            capabilities=(_APPRAISAL,),
+            capabilities=(_APPRAISAL, _AFFECT),
             allows_no_change_decision=True,
         ),
-        # A plan-disruption appraisal shares the same discipline: one typed
-        # appraisal at most, never an action or a direct affect authoring.
         "plan_disruption_appraisal": ProductionProposalGrammar(
             lane_id="plan_disruption_appraisal",
-            capabilities=(_APPRAISAL,),
+            capabilities=(_APPRAISAL, _AFFECT),
             allows_no_change_decision=True,
         ),
         "affect": ProductionProposalGrammar(
@@ -440,6 +481,8 @@ _EXPECTED_PRODUCTION_PROPOSAL_GRAMMARS: Mapping[
                     allows_actions=True,
                     action_kinds=frozenset({"proactive_message", "followup"}),
                 ),
+                _APPRAISAL,
+                _AFFECT,
             ),
             allows_no_change_decision=True,
         ),

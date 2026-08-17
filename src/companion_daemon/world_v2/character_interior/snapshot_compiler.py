@@ -9,16 +9,22 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Mapping
+from zoneinfo import ZoneInfo
 
 from ..day_skeleton import compile_day_sheet, load_world_day_skeleton
+from ..dialogue_fold import fold_dialogue_entries
 from ..present_prompt import (
+    PRESENT_ACCEPTED_RELATIONSHIP_COMMITMENT_LIMIT,
+    PRESENT_AUTHORED_RELATIONSHIP_SIGNAL_LIMIT,
+    PRESENT_DIALOGUE_SLICE_CHARACTERS,
     PRESENT_EXPERIENCE_ITEM_LIMIT,
     PRESENT_FACT_ITEM_LIMIT,
     PRESENT_IMPRESSION_ITEM_LIMIT,
     PRESENT_MEMORY_ITEM_LIMIT,
-    PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
+    PRESENT_WEEK_DIARY_DAYS,
+    PRESENT_WEEK_DIARY_LINES_PER_DAY,
 )
 from ..schemas import ProjectionCursor
 from .contracts import (
@@ -32,7 +38,7 @@ from .contracts import (
 )
 
 
-SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.8"
+SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.11"
 
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
@@ -120,6 +126,110 @@ def _state_entry(
     if not isinstance(semantic, dict) or not semantic:
         return None
     return {**semantic, "source_ref": source_ref}
+
+
+_ORDINARY_COMMITTED_STAGES = frozenset({"acquaintance", "friend", "close_friend"})
+_RELATIONSHIP_HEAD_FIELDS = (
+    "relationship_id",
+    "direction",
+    "subject_ref",
+    "stage",
+    "variables",
+    "temperature",
+    "hysteresis",
+    "commitment_refs",
+    "last_adjusted_at",
+    "recent_authored_signals",
+    "accepted_commitments",
+)
+_USER_RELATIONSHIP_HEAD_FIELDS = (
+    "subject_ref",
+    "stage",
+    "variables",
+    "temperature",
+    "hysteresis",
+    "commitment_refs",
+    "last_adjusted_at",
+    "recent_authored_signals",
+    "accepted_commitments",
+)
+
+
+def _authored_signal_view(item: object) -> dict[str, object] | None:
+    if not isinstance(item, dict):
+        return None
+    signal_code = item.get("signal_code")
+    rationale_code = item.get("rationale_code")
+    confidence_bp = item.get("confidence_bp")
+    if not isinstance(signal_code, str) or not signal_code.strip():
+        return None
+    if not isinstance(rationale_code, str) or not rationale_code.strip():
+        return None
+    if not isinstance(confidence_bp, int) or isinstance(confidence_bp, bool):
+        return None
+    if not 1 <= confidence_bp <= 10_000:
+        return None
+    return {
+        "signal_code": signal_code.strip(),
+        "rationale_code": rationale_code.strip(),
+        "confidence_bp": confidence_bp,
+    }
+
+
+def _accepted_commitment_view(item: object) -> dict[str, object] | None:
+    if not isinstance(item, dict):
+        return None
+    committed_stage = item.get("committed_stage")
+    commitment_code = item.get("commitment_code")
+    visible_text_span = item.get("visible_text_span")
+    if committed_stage not in _ORDINARY_COMMITTED_STAGES:
+        return None
+    if not isinstance(commitment_code, str) or not commitment_code.strip():
+        return None
+    if not isinstance(visible_text_span, str) or not visible_text_span.strip():
+        return None
+    return {
+        "committed_stage": committed_stage,
+        "commitment_code": commitment_code.strip(),
+        "visible_text_span": visible_text_span.strip(),
+    }
+
+
+def _relationship_entry(
+    item: dict[str, object], *, fields: tuple[str, ...]
+) -> dict[str, object] | None:
+    entry = _state_entry(item, fields=fields)
+    if entry is None:
+        return None
+    raw_signals = entry.get("recent_authored_signals")
+    signals: list[dict[str, object]] = []
+    if isinstance(raw_signals, (list, tuple)):
+        for candidate in raw_signals:
+            viewed = _authored_signal_view(candidate)
+            if viewed is None:
+                continue
+            signals.append(viewed)
+            if len(signals) >= PRESENT_AUTHORED_RELATIONSHIP_SIGNAL_LIMIT:
+                break
+    raw_commitments = entry.get("accepted_commitments")
+    commitments: list[dict[str, object]] = []
+    if isinstance(raw_commitments, (list, tuple)):
+        for candidate in raw_commitments:
+            viewed = _accepted_commitment_view(candidate)
+            if viewed is None:
+                continue
+            commitments.append(viewed)
+            if len(commitments) >= PRESENT_ACCEPTED_RELATIONSHIP_COMMITMENT_LIMIT:
+                break
+    if signals:
+        entry["recent_authored_signals"] = signals
+    else:
+        entry.pop("recent_authored_signals", None)
+    if commitments:
+        entry["accepted_commitments"] = commitments
+    else:
+        entry.pop("accepted_commitments", None)
+    return entry
 
 
 def _core_entry(item: dict[str, object]) -> dict[str, object] | None:
@@ -575,6 +685,218 @@ def _day_sheet_from_biography(
     )
 
 
+def _dialogue_stimulus_index(items: list[dict[str, object]]) -> dict[str, str]:
+    index: dict[str, str] = {}
+    for item in items:
+        value = item.get("value")
+        if not isinstance(value, dict):
+            continue
+        text = value.get("text")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        body = text.strip()
+        for key in (item.get("source_ref"), value.get("dialogue_id")):
+            if isinstance(key, str) and key:
+                index[key] = body
+        dialogue_id = value.get("dialogue_id")
+        if isinstance(dialogue_id, str) and dialogue_id.startswith("dialogue:observation:"):
+            index[dialogue_id.removeprefix("dialogue:observation:")] = body
+        claims = value.get("source_claims")
+        if isinstance(claims, list):
+            for claim in claims:
+                if isinstance(claim, dict):
+                    ref = claim.get("authority_event_ref")
+                    if isinstance(ref, str) and ref:
+                        index[ref] = body
+    return index
+
+
+def _stimulus_excerpts(
+    evidence_refs: object, dialogue_by_ref: Mapping[str, str]
+) -> list[str]:
+    if not isinstance(evidence_refs, list):
+        return []
+    excerpts: list[str] = []
+    seen: set[str] = set()
+    for ref in evidence_refs:
+        if not isinstance(ref, dict):
+            continue
+        if ref.get("evidence_type") not in {"observed_message", "committed_world_event"}:
+            continue
+        ref_id = ref.get("ref_id")
+        if not isinstance(ref_id, str):
+            continue
+        text = dialogue_by_ref.get(ref_id)
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        excerpts.append(text)
+    return excerpts
+
+
+def _experience_line(entry: dict[str, object]) -> str | None:
+    content = entry.get("content")
+    if isinstance(content, dict):
+        text = content.get("text")
+        if isinstance(text, str) and text.strip():
+            return text.strip()[:160]
+    if isinstance(content, str) and content.strip():
+        return content.strip()[:160]
+    premise = entry.get("premise")
+    if isinstance(premise, str) and premise.strip():
+        return premise.strip()[:160]
+    if isinstance(premise, dict):
+        summary = premise.get("summary") or premise.get("text")
+        if isinstance(summary, str) and summary.strip():
+            return summary.strip()[:160]
+    return None
+
+
+def _experience_day(
+    entry: dict[str, object], timezone_name: str = "Asia/Shanghai"
+) -> str | None:
+    for key in ("occurred_to", "occurred_from", "settled_at", "activated_at"):
+        instant = _datetime(entry.get(key))
+        if instant is None:
+            continue
+        return instant.astimezone(ZoneInfo(timezone_name)).date().isoformat()
+    window = entry.get("time_window")
+    if isinstance(window, dict):
+        for key in ("end", "start", "to", "from"):
+            instant = _datetime(window.get(key))
+            if instant is not None:
+                return instant.astimezone(ZoneInfo(timezone_name)).date().isoformat()
+    return None
+
+
+def _week_diary(
+    entries: list[dict[str, object]],
+    logical_time: datetime | None,
+) -> list[dict[str, object]]:
+    if logical_time is None:
+        return []
+    local = logical_time.astimezone(ZoneInfo("Asia/Shanghai")).date()
+    allowed = {
+        (local - timedelta(days=offset)).isoformat()
+        for offset in range(PRESENT_WEEK_DIARY_DAYS)
+    }
+    grouped: dict[str, list[str]] = {}
+    for entry in entries:
+        day = _experience_day(entry)
+        if day not in allowed:
+            continue
+        line = _experience_line(entry)
+        if line is None or line in grouped.get(day, ()):
+            continue
+        grouped.setdefault(day, []).append(line)
+    diary: list[dict[str, object]] = []
+    for offset in range(PRESENT_WEEK_DIARY_DAYS - 1, -1, -1):
+        day = (local - timedelta(days=offset)).isoformat()
+        lines = grouped.get(day, [])[:PRESENT_WEEK_DIARY_LINES_PER_DAY]
+        if lines:
+            diary.append({"date": day, "lines": lines})
+    return diary
+
+
+def _current_window_title(day_sheet: str) -> str | None:
+    marker = "此刻窗口是"
+    start = day_sheet.find(marker)
+    if start < 0:
+        return None
+    rest = day_sheet[start + len(marker) :]
+    end = rest.find("。")
+    title = (rest if end < 0 else rest[:end]).strip()
+    return title or None
+
+
+def _walking_in_residue(appraisals: object) -> str | None:
+    if not isinstance(appraisals, list):
+        return None
+    for entry in appraisals:
+        if not isinstance(entry, dict):
+            continue
+        meaning = None
+        hypotheses = entry.get("hypotheses")
+        if isinstance(hypotheses, list):
+            for hypo in hypotheses:
+                if (
+                    isinstance(hypo, dict)
+                    and isinstance(hypo.get("meaning"), str)
+                    and hypo["meaning"].strip()
+                ):
+                    meaning = hypo["meaning"].strip()[:80]
+                    break
+        excerpt = None
+        excerpts = entry.get("stimulus_excerpts")
+        if isinstance(excerpts, list):
+            for item in excerpts:
+                if isinstance(item, str) and item.strip():
+                    excerpt = item.strip()[:80]
+                    break
+        if meaning and excerpt:
+            return f"还挂着：{excerpt} → {meaning}"
+        if meaning:
+            return f"还挂着：{meaning}"
+        if excerpt:
+            return f"还挂着：{excerpt}"
+    return None
+
+
+def _walking_in_impression(impressions: object) -> str | None:
+    if not isinstance(impressions, list):
+        return None
+    for entry in impressions:
+        if not isinstance(entry, dict):
+            continue
+        status = entry.get("status")
+        if status not in {None, "active"}:
+            continue
+        summary = entry.get("reflection_summary")
+        if isinstance(summary, str) and summary.strip():
+            return f"心里还搁着：{summary.strip()[:80]}"
+    return None
+
+
+def _lived_moment(
+    *,
+    day_sheet: str | None,
+    week_diary: list[dict[str, object]],
+    logical_time: datetime | None,
+    appraisals: object = None,
+    impressions: object = None,
+) -> str | None:
+    parts: list[str] = []
+    if isinstance(day_sheet, str):
+        window = _current_window_title(day_sheet)
+        if window:
+            parts.append(f"这会儿是{window}")
+    if logical_time is not None:
+        today = logical_time.astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        for item in week_diary:
+            if item.get("date") != today:
+                continue
+            lines = item.get("lines")
+            if not isinstance(lines, list):
+                break
+            clipped = [
+                line.strip()
+                for line in lines
+                if isinstance(line, str) and line.strip()
+            ][:2]
+            if clipped:
+                parts.append("今天已经过的：" + "；".join(clipped))
+            break
+    residue = _walking_in_residue(appraisals)
+    if residue:
+        parts.append(residue)
+    impression = _walking_in_impression(impressions)
+    if impression:
+        parts.append(impression)
+    if not parts:
+        return None
+    return "。".join(parts) + "。"
+
+
 def _cursor(context: Mapping[str, object]) -> ProjectionCursor | None:
     values = tuple(context.get(key) for key in (
         "world_revision", "deliberation_revision", "ledger_sequence"
@@ -606,6 +928,8 @@ def compile_inner_life_snapshot(
     logical_time = _datetime(context.get("logical_time"))
     if logical_time is not None:
         materials["logical_time"] = logical_time.isoformat()
+    dialogue_items = _slice_items(slices, "recent_dialogue")
+    dialogue_by_ref = _dialogue_stimulus_index(dialogue_items)
 
     stable = [entry for item in _slice_items(slices, "character_core") if (entry := _core_entry(item))]
     if stable:
@@ -634,24 +958,11 @@ def compile_inner_life_snapshot(
             "resource_pressure", "attention_slice", "social_environment",
             "plan_relation", "commitment_slices",
         )),
-        ("relationship", "relationship_slice", (
-            "subject_ref", "stage", "variables", "temperature", "hysteresis",
-            "commitment_refs", "last_adjusted_at",
-        )),
+        ("relationship", "relationship_slice", _USER_RELATIONSHIP_HEAD_FIELDS),
         (
             "protagonist_npc_relationships",
             "protagonist_npc_relationships",
-            (
-                "relationship_id",
-                "direction",
-                "subject_ref",
-                "stage",
-                "variables",
-                "temperature",
-                "hysteresis",
-                "commitment_refs",
-                "last_adjusted_at",
-            ),
+            _RELATIONSHIP_HEAD_FIELDS,
         ),
         (
             "npc_observable_attitudes",
@@ -688,7 +999,16 @@ def compile_inner_life_snapshot(
         ("perception", "perception_results", None),
     )
     for output, lane, fields in lanes:
-        entries = [entry for item in _slice_items(slices, lane) if (entry := _state_entry(item, fields=fields))]
+        compile_entry = (
+            _relationship_entry
+            if output in {"relationship", "protagonist_npc_relationships"}
+            else _state_entry
+        )
+        entries = [
+            entry
+            for item in _slice_items(slices, lane)
+            if (entry := compile_entry(item, fields=fields))
+        ]
         if entries:
             materials[output] = entries
     advisories = materials.get("advisories")
@@ -708,6 +1028,23 @@ def compile_inner_life_snapshot(
         else:
             materials.pop("advisories")
 
+    compiled_appraisals = materials.get("appraisals")
+    if isinstance(compiled_appraisals, list):
+        raw_appraisals = {
+            item.get("source_ref"): item
+            for item in _slice_items(slices, "appraisals")
+            if isinstance(item.get("source_ref"), str)
+        }
+        for entry in compiled_appraisals:
+            raw = raw_appraisals.get(entry.get("source_ref"))
+            value = raw.get("value") if isinstance(raw, dict) else None
+            excerpts = _stimulus_excerpts(
+                value.get("evidence_refs") if isinstance(value, dict) else None,
+                dialogue_by_ref,
+            )
+            if excerpts:
+                entry["stimulus_excerpts"] = excerpts
+
     affect = [entry for item in _slice_items(slices, "affect_episodes") if (entry := _affect_entry(item))]
     if affect:
         materials["affect"] = affect
@@ -721,12 +1058,9 @@ def compile_inner_life_snapshot(
     if impressions:
         materials["private_impressions"] = impressions
 
-    # Conversational continuity is the source-bound working-memory edge of
-    # the same Interior snapshot.  Keep the chronological tail the Capsule
-    # already ranked; do not recut it to a handful of bubbles.
     recent_dialogue = [
         entry
-        for item in _slice_items(slices, "recent_dialogue")
+        for item in dialogue_items
         if (
             entry := _state_entry(
                 item,
@@ -739,10 +1073,17 @@ def compile_inner_life_snapshot(
                     "delivery_state",
                     "acknowledges_observation_event_refs",
                     "continuity_reasons",
+                    "sequence",
                 ),
             )
         )
-    ][-PRESENT_RECENT_DIALOGUE_ITEM_LIMIT:]
+    ]
+    folded_dialogue, recent_dialogue = fold_dialogue_entries(
+        recent_dialogue,
+        budget_characters=PRESENT_DIALOGUE_SLICE_CHARACTERS,
+    )
+    if folded_dialogue:
+        materials["folded_dialogue"] = folded_dialogue
     if recent_dialogue:
         materials["recent_dialogue"] = recent_dialogue
 
@@ -770,10 +1111,24 @@ def compile_inner_life_snapshot(
         if recent
         else {"availability": "unavailable"}
     )
+    diary_source = [entry for entries in experience_lanes for entry in entries]
+    week_diary = _week_diary(diary_source, logical_time)
+    if week_diary:
+        materials["week_diary"] = week_diary
+    lived = _lived_moment(
+        day_sheet=materials.get("day_sheet") if isinstance(materials.get("day_sheet"), str) else None,
+        week_diary=week_diary,
+        logical_time=logical_time,
+        appraisals=materials.get("appraisals"),
+        impressions=materials.get("private_impressions"),
+    )
+    if lived:
+        materials["lived_moment"] = lived
 
     facet_keys = {
-        "private_self": ("stable_self", "biographical_context", "day_sheet", "situation", "private_impressions", "recent_self_experiences"),
+        "private_self": ("stable_self", "biographical_context", "day_sheet", "week_diary", "lived_moment", "situation", "private_impressions", "recent_self_experiences"),
         "selective_memory": (
+            "folded_dialogue",
             "recent_dialogue",
             "relevant_facts",
             "remembered_material",
@@ -790,6 +1145,7 @@ def compile_inner_life_snapshot(
             "protagonist_npc_relationships",
             "npc_observable_attitudes",
             "private_impressions",
+            "folded_dialogue",
             "recent_dialogue",
             "interaction_acts",
         ),
@@ -804,12 +1160,14 @@ def compile_inner_life_snapshot(
             "unresolved",
             "perception",
             "recent_self_experiences",
+            "folded_dialogue",
             "recent_dialogue",
             "relevant_facts",
             "interaction_acts",
         ),
         "expression_stance": (
             "stable_self",
+            "lived_moment",
             "situation",
             "relationship",
             "protagonist_npc_relationships",
@@ -817,6 +1175,7 @@ def compile_inner_life_snapshot(
             "appraisals",
             "affect",
             "private_impressions",
+            "folded_dialogue",
             "recent_dialogue",
             "relevant_facts",
             "interaction_acts",

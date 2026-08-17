@@ -22,11 +22,9 @@ from .occurrence_content_coordinator import OutcomeCandidateContent
 from .open_world_event_draft import (
     OpenWorldEventModel,
     OpenWorldEventSituation,
-    parse_open_world_event_draft,
 )
 from .schema_core import FrozenModel
 from .schemas import DueWindow, EvidenceRef, ProjectionCursor, WorldEvent, WorldOccurrenceProjection
-from .structured_completion import complete_json_object
 
 
 _LOG = logging.getLogger(__name__)
@@ -116,7 +114,7 @@ class OpenWorldEventRuntime:
         *,
         ledger,
         content_store: ImmutableLifeContentStore,
-        model: OpenWorldEventModel,
+        model: OpenWorldEventModel | None = None,
         situation_source: OpenWorldSituationSource,
         owner_actor_ref: str,
         actor: str = "worker:world-v2:open-world-event",
@@ -133,7 +131,11 @@ class OpenWorldEventRuntime:
         self._owner = owner_actor_ref
         self._actor = actor
         self._min_consultation_interval = min_consultation_interval
-        self._model_id = str(getattr(model, "model", "")).strip() or type(model).__name__
+        self._model_id = (
+            (str(getattr(model, "model", "")).strip() or type(model).__name__)
+            if model is not None
+            else "paid-turn"
+        )
 
     async def advance_once(
         self, *, wake_event_ref: str, trace_id: str, correlation_id: str
@@ -158,101 +160,140 @@ class OpenWorldEventRuntime:
         )
         existing = self._proposal_event(proposal_id)
         if existing is None:
-            # Production wakes arrive every scheduler tick; without a floor
-            # the model would be consulted (and could author a fresh moment)
-            # every few seconds for the whole active window.  The last
-            # committed open-world proposal — select or decline — starts a
-            # deterministic cooldown, keeping this lane the intended rare
-            # texture.  Recovery of an already-recorded wake bypasses this.
-            last_consulted = max(
-                (
-                    item.logical_time
-                    for item in projection.committed_world_event_refs
-                    if item.event_id.startswith("event:open-world-event:proposal:")
-                ),
-                default=None,
+            return OpenWorldEventRunResult(
+                status="no_op",
+                reason_code="open_world_event.paid_moment_only",
             )
-            if (
-                last_consulted is not None
-                and wake.logical_time - last_consulted < self._min_consultation_interval
-            ):
-                return OpenWorldEventRunResult(
-                    status="no_op",
-                    reason_code="open_world_event.consultation_cooldown",
-                )
-            try:
-                draft = parse_open_world_event_draft(
-                    raw=await complete_json_object(
-                        self._model,
-                        self._messages(situations),
-                        temperature=0.4,
-                    ),
-                    offered=situations,
-                    model=self._model_id,
-                )
-            except (TimeoutError, ConnectionError, OSError, ValueError) as exc:
-                _LOG.warning("open-world event deliberation unavailable: %s", exc)
-                return OpenWorldEventRunResult(
-                    status="deferred", reason_code="open_world_event.model_unavailable"
-                )
-            if draft.decision == "no_op":
-                self._record_no_op(
-                    projection=projection,
-                    wake=wake,
-                    proposal_id=proposal_id,
-                    model=draft.model,
-                    raw_output=draft.raw_output,
-                    trace_id=trace_id,
-                    correlation_id=correlation_id,
-                )
-                return OpenWorldEventRunResult(
-                    status="no_op", reason_code="open_world_event.model_declined", proposal_id=proposal_id
-                )
-            selected = next(item for item in situations if item.token == draft.situation_token)
-            proposal_event = self._record_proposal(
-                projection=projection,
-                wake=wake,
+        if existing.payload().get("decision") == "no_op":
+            return OpenWorldEventRunResult(
+                status="no_op",
+                reason_code="open_world_event.model_declined_recovered",
                 proposal_id=proposal_id,
-                selected=selected,
-                moment=draft.moment or "",
-                model=draft.model,
-                raw_output=draft.raw_output,
-                trace_id=trace_id,
-                correlation_id=correlation_id,
             )
-        else:
-            proposal_event = existing
-            if proposal_event.payload().get("decision") == "no_op":
-                return OpenWorldEventRunResult(
-                    status="no_op", reason_code="open_world_event.model_declined_recovered",
-                    proposal_id=proposal_id,
-                )
-            selected = next(
-                (item for item in situations if item.token == proposal_event.payload().get("situation_token")),
-                None,
+        selected = next(
+            (item for item in situations if item.token == existing.payload().get("situation_token")),
+            None,
+        )
+        if selected is None:
+            return OpenWorldEventRunResult(
+                status="rejected",
+                reason_code="open_world_event.proposal_situation_stale",
+                proposal_id=proposal_id,
             )
-            if selected is None:
-                return OpenWorldEventRunResult(
-                    status="rejected", reason_code="open_world_event.proposal_situation_stale",
-                    proposal_id=proposal_id,
-                )
         occurrence_id = "occurrence:open-world:" + _digest(
             {"world": self._ledger.world_id, "proposal": proposal_id}
         )
         occurrence = self._existing_occurrence(occurrence_id)
         if occurrence is None:
-            moment = self._proposal_moment(proposal_event)
+            moment = self._proposal_moment(existing)
             occurrence = self._commit_occurrence(
-                projection=self._ledger.project(), wake=wake, proposal_event=proposal_event,
-                occurrence_id=occurrence_id, situation=selected, moment=moment,
-                trace_id=trace_id, correlation_id=correlation_id,
+                projection=self._ledger.project(),
+                wake=wake,
+                proposal_event=existing,
+                occurrence_id=occurrence_id,
+                situation=selected,
+                moment=moment,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
             )
         if occurrence.status == "committed":
             self._activate(
                 occurrence=occurrence, wake=wake, trace_id=trace_id, correlation_id=correlation_id
             )
         return OpenWorldEventRunResult(
-            status="recovered" if existing is not None else "committed",
+            status="recovered",
+            reason_code="open_world_event.accepted",
+            proposal_id=proposal_id,
+            occurrence_id=occurrence_id,
+        )
+
+    def commit_from_paid_moment(
+        self,
+        *,
+        moment: str,
+        wake_event_ref: str,
+        model: str,
+        raw_output: str,
+        trace_id: str,
+        correlation_id: str,
+    ) -> OpenWorldEventRunResult:
+        """Land one hitchhiked subjective moment without a new model call."""
+
+        clipped = moment.strip()
+        if not clipped or "\n" in clipped or "\r" in clipped:
+            return OpenWorldEventRunResult(
+                status="no_op", reason_code="open_world_event.noticed_unusable"
+            )
+        projection = self._ledger.project()
+        wake = self._paid_wake(projection, wake_event_ref)
+        if wake is None:
+            return OpenWorldEventRunResult(
+                status="rejected", reason_code="open_world_event.wake_unavailable"
+            )
+        situations = self._source.situations(projection=projection, wake_event_ref=wake_event_ref)
+        selected = next(
+            (item for item in situations if item.event_kind == "noticed_small_thing"),
+            situations[0] if situations else None,
+        )
+        if selected is None:
+            return OpenWorldEventRunResult(
+                status="no_op", reason_code="open_world_event.no_verified_situation"
+            )
+        proposal_id = "proposal:open-world-event:" + _digest(
+            {"world": self._ledger.world_id, "wake": wake_event_ref}
+        )
+        existing = self._proposal_event(proposal_id)
+        if existing is None:
+            existing = self._record_proposal(
+                projection=projection,
+                wake=wake,
+                proposal_id=proposal_id,
+                selected=selected,
+                moment=clipped[:720],
+                model=model or self._model_id,
+                raw_output=raw_output,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+            recovered = False
+        else:
+            if existing.payload().get("decision") == "no_op":
+                return OpenWorldEventRunResult(
+                    status="no_op",
+                    reason_code="open_world_event.model_declined_recovered",
+                    proposal_id=proposal_id,
+                )
+            selected = next(
+                (
+                    item
+                    for item in situations
+                    if item.token == existing.payload().get("situation_token")
+                ),
+                selected,
+            )
+            recovered = True
+        occurrence_id = "occurrence:open-world:" + _digest(
+            {"world": self._ledger.world_id, "proposal": proposal_id}
+        )
+        occurrence = self._existing_occurrence(occurrence_id)
+        if occurrence is None:
+            stored_moment = self._proposal_moment(existing)
+            occurrence = self._commit_occurrence(
+                projection=self._ledger.project(),
+                wake=wake,
+                proposal_event=existing,
+                occurrence_id=occurrence_id,
+                situation=selected,
+                moment=stored_moment,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+        if occurrence.status == "committed":
+            self._activate(
+                occurrence=occurrence, wake=wake, trace_id=trace_id, correlation_id=correlation_id
+            )
+        return OpenWorldEventRunResult(
+            status="recovered" if recovered else "committed",
             reason_code="open_world_event.accepted",
             proposal_id=proposal_id,
             occurrence_id=occurrence_id,
@@ -529,11 +570,35 @@ class OpenWorldEventRuntime:
         ]
 
     def _wake(self, projection, wake_event_ref: str) -> WorldEvent | None:
+        return self._locate_wake(
+            projection,
+            wake_event_ref,
+            allowed_types={"ClockAdvanced", "ActivityStarted", "ActivityResumed", "ActivityCompleted"},
+        )
+
+    def _paid_wake(self, projection, wake_event_ref: str) -> WorldEvent | None:
+        return self._locate_wake(
+            projection,
+            wake_event_ref,
+            allowed_types={
+                "ClockAdvanced",
+                "ActivityStarted",
+                "ActivityResumed",
+                "ActivityCompleted",
+                "ObservationRecorded",
+            },
+        )
+
+    def _locate_wake(
+        self,
+        projection,
+        wake_event_ref: str,
+        *,
+        allowed_types: set[str],
+    ) -> WorldEvent | None:
         located = projection.committed_world_event_refs
         ref = next((item for item in located if item.event_id == wake_event_ref), None)
-        if ref is None or ref.event_type not in {
-            "ClockAdvanced", "ActivityStarted", "ActivityResumed", "ActivityCompleted"
-        }:
+        if ref is None or ref.event_type not in allowed_types:
             return None
         event_commit = self._ledger.lookup_event_commit(wake_event_ref)
         if event_commit is None:

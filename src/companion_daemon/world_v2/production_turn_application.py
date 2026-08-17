@@ -216,7 +216,10 @@ from .minimal_reply_atomic_recorder import MinimalReplyAtomicRecorder
 from .expression_plan_acceptance import ExpressionPlanBudgetPolicy
 from .expression_plan_atomic_recorder import ExpressionPlanAtomicRecorder
 from .pinned_turn import PinnedTurnCompiler
-from .interactive_turn_budget import InteractiveTurnBudgetPolicy
+from .interactive_turn_budget import (
+    InteractiveTurnBudgetPolicy,
+    background_turn_budget_policy,
+)
 from .production_latency_trace import (
     ProductionLatencyRecorder,
     ProductionLatencySample,
@@ -725,6 +728,12 @@ class WorldV2TurnApplicationConfig:
     reply_budget_amount: int = 10
     reply_recovery_policy: str = "effect_once"
     interactive_turn_budget_policy: InteractiveTurnBudgetPolicy = InteractiveTurnBudgetPolicy()
+    # Lanes with no waiting human still owe one constrained reselection, and
+    # that leg is serial by construction.  Sharing the interactive ceiling
+    # cancelled every proactive contact for 24h on 2026-08-14.
+    background_turn_budget_policy: InteractiveTurnBudgetPolicy = (
+        background_turn_budget_policy()
+    )
     # ``on`` was the retired provisional/full two-author race.  Immutable
     # events from that contract remain replayable, but no live application may
     # create new work through it.
@@ -2306,31 +2315,7 @@ class WorldV2TurnApplication:
                         elif str(current.runtime_outcome_ref).startswith(
                             "proactive:deliberation-failed:"
                         ):
-                            failures = sum(
-                                item.state == "terminal"
-                                and str(item.runtime_outcome_ref).startswith(
-                                    "proactive:deliberation-failed:"
-                                )
-                                for item in current_processes
-                            )
-                            backoff = ProactiveActionRuntime.FAILURE_BACKOFF_SECONDS[
-                                min(
-                                    max(0, failures - 1),
-                                    len(ProactiveActionRuntime.FAILURE_BACKOFF_SECONDS) - 1,
-                                )
-                            ]
-                            failed_at = (
-                                current.claim_lease.acquired_at
-                                if current.claim_lease is not None
-                                else scheduled_for
-                            )
-                            next_consideration_at = failed_at + timedelta(seconds=backoff)
-                            initiative_state = (
-                                "retry_wait"
-                                if logical_time < next_consideration_at
-                                else "consideration_due"
-                            )
-                            spontaneous_pending = logical_time >= next_consideration_at
+                            initiative_state = "cooldown"
                         elif current.runtime_outcome_ref == "proactive:silent":
                             initiative_state = "model_silent"
                             next_consideration_at = source_ref.logical_time + timedelta(
@@ -3834,7 +3819,7 @@ def build_sqlite_world_v2_turn_application(
             proactive_candidate_external_proposition_inventory_model=(
                 proactive_candidate_external_proposition_inventory_model
             ),
-            interactive_turn_budget_policy=config.interactive_turn_budget_policy,
+            background_turn_budget_policy=config.background_turn_budget_policy,
             proactive_account_id=config.proactive_account_id,
             proactive_amount_per_action=config.proactive_amount_per_action,
             reply_recovery_policy=config.reply_recovery_policy,
@@ -3848,6 +3833,20 @@ def build_sqlite_world_v2_turn_application(
             silence_appraisal_idle_seconds=config.silence_appraisal_idle_seconds,
             plan_disruption_appraisal_enabled=config.plan_disruption_appraisal_enabled,
             perception_result_reader=perception_transport,
+        )
+        open_world_event = (
+            OpenWorldEventRuntime(
+                ledger=ledger,
+                content_store=life_content_store,
+                model=open_world_event_model,
+                situation_source=ActivePlanSituationSource(
+                    owner_actor_ref=config.companion_actor_ref
+                ),
+                owner_actor_ref=config.companion_actor_ref,
+                actor=config.life_ecology.worker_actor,
+            )
+            if config.life_ecology is not None
+            else None
         )
         runtime = WorldRuntime(
             world_id=config.world_id,
@@ -3943,6 +3942,7 @@ def build_sqlite_world_v2_turn_application(
                 config.perception_worker_owner if perception_trigger_runtime is not None else None
             ),
             perception_trigger_runtime=perception_trigger_runtime,
+            open_world_event=open_world_event,
         )
         media_execution = MediaExecutionRuntime(
             ledger=ledger,
@@ -4043,6 +4043,7 @@ def build_sqlite_world_v2_turn_application(
                     ledger=ledger, batch_issuer=issuer
                 ),
                 ecology_catalog_version=config.life_ecology.catalog_version,
+                open_world_event=open_world_event,
             )
             if config.life_ecology is not None
             else None
@@ -4103,24 +4104,6 @@ def build_sqlite_world_v2_turn_application(
             )
             else None
         )
-        open_world_event = (
-            OpenWorldEventRuntime(
-                ledger=ledger,
-                content_store=life_content_store,
-                model=open_world_event_model,
-                situation_source=ActivePlanSituationSource(
-                    owner_actor_ref=config.companion_actor_ref
-                ),
-                owner_actor_ref=config.companion_actor_ref,
-                actor=config.life_ecology.worker_actor,
-            )
-            if (
-                not open_life_requested
-                and config.life_ecology is not None
-                and open_world_event_model is not None
-            )
-            else None
-        )
         life_development = (
             LifeDevelopmentRuntime(
                 ledger=ledger,
@@ -4171,7 +4154,7 @@ def build_sqlite_world_v2_turn_application(
                 biographical_followup=biographical_lifecycle,
                 life_development_followup=life_development,
                 npc_initiative_followup=npc_initiative,
-                open_world_followup=open_world_event,
+                open_world_followup=open_world_event if life_development is None else None,
                 visual_evidence_followup=visual_evidence_author,
                 availability=LifeEcologyAvailability(
                     state="installed_and_active",

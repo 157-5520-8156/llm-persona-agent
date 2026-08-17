@@ -1264,6 +1264,10 @@ def choose_facial_contract(
     )
     if not compatible:
         compatible = micro_recipes[family]
+    if capture_mode == "character_front_camera" and engagement_tactic == "presence":
+        unheld = tuple(item for item in compatible if item.get("temporal_phase") != "held_beat")
+        if unheld:
+            compatible = unheld
     beat_id, visible_evidence, beat_recipes = _choose_expression_beat(
         stable_seed=stable_seed,
         family=family,

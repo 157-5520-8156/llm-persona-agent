@@ -579,7 +579,13 @@ class CharacterInterior:
             kind=kind,
             source_event_ref=opportunity.trigger_ref,
             created_at=opportunity.logical_time,
-            merge_key=opportunity.opportunity_ref,
+            # Callers that genuinely want several triggers to collapse into one
+            # Occasion mint it themselves above.  Without that explicit intent
+            # the only safe merge key is the same identity that decides whether
+            # this is a distinct inner turn: an opportunity_ref alone would let
+            # a changed source closure or a later cadence epoch silently spend
+            # an earlier Occasion and skip her consider entirely.
+            merge_key=_turn_cache_key(opportunity),
         )
 
     def _admit_consider_occasion(
@@ -817,6 +823,29 @@ class CharacterInterior:
         if driver is None:
             return None
         return await _resolve(getattr(driver, "drain_private_impression_once")())
+
+    async def _hitch_paid_inbound_impression(
+        self,
+        *,
+        keep_impression: bool | None,
+        reflection_summary: str,
+        model_result_ref: str,
+        source_event,
+    ):
+        driver = self._background_driver
+        if driver is None:
+            return None
+        operation = getattr(driver, "hitch_paid_inbound_impression", None)
+        if not callable(operation):
+            return None
+        return await _resolve(
+            operation(
+                keep_impression=keep_impression,
+                reflection_summary=reflection_summary,
+                model_result_ref=model_result_ref,
+                source_event=source_event,
+            )
+        )
 
     def _register_purpose_capability(
         self,
@@ -2062,6 +2091,11 @@ class CharacterInterior:
                     ) from exc
                 structural_failure_code = exc.code
                 structural_failure_detail = exc.detail
+            except TimeoutError as exc:
+                raise _InteriorTechnicalError(
+                    "authored_subcall_timeout",
+                    snapshot=current_request.snapshot,
+                ) from exc
             except Exception as exc:
                 import logging
 

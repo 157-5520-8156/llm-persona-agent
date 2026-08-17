@@ -49,7 +49,8 @@
    缓存前缀改造；换模型只能由真实自由对聊 A/B 证据决定。
 3. 主观残留应当简化落账，但**必须保留连续、多变、会升级的情绪**：允许"越想越气"并据此采取进一步行为。
    允许为此使用模型，但要按 §6 的办法压成本。
-4. 人生节拍的双模型审查**由"冻结"升级为"删除"**（见裁决 7 与 §12.10）；P3 私密媒体车道保持冻结。
+4. 人生节拍的双模型审查**由"冻结"升级为"删除"**（见裁决 7 与 §12.10）；P3 私密媒体车道当时保持冻结，
+   **已被 2026-08-15 裁决 12 覆盖为接通**。
    **外部感知与 NPC 不冻结**，按 §8 改成由主路径承载。
 5. 主动联系次数**由角色自己根据内心与心情决定**，不做表面去重或次数配额（要允许正常的"心心念念"），
    但必须从根因上消除"总在想同一件事"。
@@ -58,6 +59,16 @@
    （多轮审查会引入审查模型自己的错误）。现存的模型审查车道基本是当年技术做不到 structured output
    时留下的历史包袱，应当删除而不是优化。判定边界见 §12.10——**删的是"再问一次模型"，
    留的是"确定性地核对一次"**。
+
+### 2.1 用户裁决（2026-08-15，成本收缩，不得由实现者改写）
+
+8. **连续存在 ≠ 连续计算。** 情绪连续靠账本，不是心跳喊模型。分层仍是 §3：世界步进 0 次、机会 0 次、她每个机会恰好 1 次、后果 0 次。
+9. **本机小模型不得判「是否联系」。** 主模型本轮不换。
+10. **没有新材料就不 `consider()`。** 私人印象独立车道保持停用；同契约非法即丢，不再用原契约重问。
+11. **2026-08-15 用户关掉非紧急后台错峰。** 安静窗口、再访、生活节拍不因 DeepSeek 高峰价窗口推迟。
+12. **2026-08-15：接通 P3 成人媒体车道。** 覆盖裁决 4 的冻结。普通生活照仍走 OpenAI GPT Image；成人只走 Civitai Krea2，禁止静默降级。缺 `CIVITAI_API_KEY` 或模板则该车道 fail-closed，不得关掉普通车道。关系阶段仍不得授权亲密强度；Adult Eligibility / 内容级双方同意仍是资格缺口，本裁决接通的是已过现有资格门的渲染链。
+13. **2026-08-15：QQ 附件识图用阿里百炼 `qwen3-vl-flash`，思考关闭。** 像素不进 DeepSeek。缺 `QWEN_API_KEY` 或 perception grant 则整条感知车道 fail-closed，不得静默回到 OpenAI vision。
+14. **2026-08-15：等待时长由角色当轮声明秒数。** 不再用 soon=15 分钟 / later≈12 小时冒充她的耐心。系统只守硬下限 30 秒。没填 wait 不定时叫醒，允许她结束话题。填了短 wait 则按声明密度叫醒，急了可以连着发。没回话后的叫醒按她声明的 wait（`not_before`）；`expires_at` 只结束盼头窗口。到期后再给她一次 `consider()`，问、换话题或继续沉默仍由她选。
 
 ## 3. 唯一 seam：Occasion → Present → Consider → Consequence
 
@@ -726,6 +737,11 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 | H14 | 残留改副产品，删私人印象独立车道（**负成本**）：`stuck_with_me`/`wants` 直接编成印象与开环 | 3,034 次 attempt / 7 条接受的独立车道仍在 | 该 purpose 调用归零；`PrivateImpressionAccepted` 显著上升 |
 | H15 | 生活开门：节奏层保持 0 模型，内容由她在已付费调用里产出，补 `life_arc_effect` 生产者 | 目录是 `legacy_replay_and_fixture`；`life_arc_effect` 0 条；generative LD 恒 `no_op` | 出现非目录来源的生活细节且下轮可读；出现 ≥1 条已结算结果开出的 Life Arc |
 | H16 | Occasion 队列做实（承重墙，H13e/H15 的前置）：五种 kind 都成为真的 `OccasionIdentity`，带 expiry | 只有 `user_message` 是真的；`life_beat` 只有枚举；gate 是进程内 set | G2/G7 在五种上全部成立 |
+| H17 | 成本收缩（§2.1）：initial 工具 schema 召回分支不再按本轮可用性分叉；私人印象同契约一次即丢。错峰已按 2026-08-15 用户裁决关掉 | tools JSON 随 `recall_allowed` 变；印象车道 4 次同契约重试 | 两轮 tools 前缀相同；非法印象一次丢弃 |
+| H18 | 分享余波当场追问（0 新增 Occasion）：wait 由她声明；`still_pending` 同轮结案；入站 advisory 只给盼头 vs 是否已回话，不指令追问 | wait 系统中位 12h；`still_pending` 继续挡 quiet_gap；敷衍后只能等到期 | slim 可选 `wait`；still_pending 后可 mint quiet_gap；入站可 now 追问且不强制追 |
+| H19 | 接通 P3 成人媒体车道：部署安装 Civitai Krea2 + 第一人称私密 prompt 作者；缺凭证 fail-closed，不降级 OpenAI，不关普通车道 | 部署未安装专用生成器/作者；高档计划 `specialized_*_unavailable` | 凭证齐全时 `adult_suggestive`/`adult_explicit` 与 author 装上；缺 key/模板时普通车道仍开；无来源高档计划仍 `unsourced_event` |
+| H20 | QQ 附件识图改阿里百炼 `qwen3-vl-flash`（思考关闭）：工厂要 `QWEN_API_KEY`，不再要 OpenAI 才能开感知 | 感知工厂绑 `OPENAI_API_KEY` + `gpt-4o-mini` | 工厂 `dashscope:vision` + `qwen3-vl-flash`；请求带 `enable_thinking: false`；缺 Qwen key fail-closed |
+| H21 | 等待时长改角色声明秒数（0 新增 Occasion）：slim `wait` 编成秒；没填不定时叫醒；H13e 到 `not_before` 叫醒；expiry 只结盼头 | soon=15min / 未声明=12h；叫醒看 `expires_at` | 她写 45 就是 45 秒；没填 wait 不编译盼头；wait 已过、expiry 未到也会叫醒 |
 
 ### 13.1 代码坐标（行号以 2026-08-13 的 HEAD 为准，改动前必须先确认）
 
@@ -745,6 +761,10 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 | H9 | `config.py:408-411`；`world_v2/recall_embedding.py:36-42,829-835`；默认 index `production_turn_application.py:3392`；recall limit `inbound_wire.py:11657`；快照裁剪 `snapshot_compiler.py:670-673`；编译 `ledger_context_resolver.py:1373-1386`；写入 `interaction_fact_trigger_runtime.py:1733`、`fact_v2_acceptance_runtime.py`、`reducers.py:13977`；非 embedding 关联 `conversation_continuity.py:49-50` |
 | H10 | `world_v2/sqlite_ledger.py:680-713`（启动序）、`:1973-2076`（冷校验）、`:6060-6207`（replay）、`:3121-3160`（bundle migration）、`:6045-6057`（rebuild）、`:2139-2243`（identity/idempotency）、`:2346-2347`（prefix partial）；ref 累积 `reducers.py:15407-15426`；启动门 `production_turn_application.py:3364`；bootstrap `:4453-4495`；清理入口 `ledger_maintenance.py:1454`；运行时依赖 `memory_retrieval.py:170` |
 | H12–H16 | 坐标全部写在 [`interior-continuity-implementation-spec.md`](./interior-continuity-implementation-spec.md) 各包内（含核实日期 2026-08-14）。主要落点：`world_v2/epoch_continuity.py:120-128,164-168`；`world_v2/context_capsule.py:170-190,2119-2134,2174-2187`；`world_v2/recent_dialogue.py:60,372-374`；`character_interior/snapshot_compiler.py:717-719,730-748`；`world_v2/present_prompt.py:234-244,286-349,352-412`（`:385/402` 硬写 `None`）；`world_v2/expression_draft.py:264-277`；`world_v2/response_expectation_view.py:71-183,240-290`；`world_v2/runtime.py:802-878`；`world_v2/social_initiative.py:1102-1216`（`:1168-1170` 空注释）；`world_v2/silence_appraisal_trigger.py:54-117`；`world_v2/private_impression_producer.py:203-284,513-548`；`world_v2/biographical_lifecycle_runtime.py:190-233`；`world_v2/world_life_context.py:266-308`；`world_v2/occasion.py:15-28,50-68,79-80` |
+| H18 | `present_prompt.py` slim `wait`/`waiting_for`；`response_expectation_view.py` `_TERMINAL_ASSESSMENT_STATES` 含 `still_pending`、advisory `counterpart_replied`；`pinned_turn.py` 入站 advisory；`inbound_wire.py` 同轮追问说明 |
+| H19 | `qq_media_deployment.py` `_compose_high_private_lane`；`config.py` `CIVITAI_KREA2_ENABLED` 默认 True；普通仍 `OpenAIImageGenerator` |
+| H20 | `config.py` `VISION_MODEL` 默认 `qwen3-vl-flash`、`QWEN_BASE_URL`；`qq_perception_deployment.py` 凭证改 `QWEN_API_KEY`；`perception_vision_transport.py` `dashscope:vision` + `enable_thinking: false` |
+| H21 | `present_prompt.py` slim `wait` 解析秒；`response_expectation_view.py` 叫醒看 `not_before`；`social_initiative.py` `scheduled_for` 用 wait |
 | H11 | 开关 `config.py:723`（`ALLOW_AUTO_IMAGE_GENERATION`）、`:731-732`（`WORLD_V2_MEDIA_PREVIEW_ENABLED`）；部署检查 `world_v2/qq_media_deployment.py:293-311`、auto delivery `:433-438`；选片 `media_selection_worker.py:75-79`；provisioning `scripts/provision_world_v2_media_authority.py`；链路 `event_ecology_media.py` → `media_selection_acceptance_runtime.py` → `event_media.MediaPlanner` → `image_generation.OpenAIImageGenerator` → `OpenAIMediaInspector` → `media_auto_delivery.py` |
 
 ## 14. 每个工作包的交付模板
@@ -1110,5 +1130,50 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **成本与延迟**：0 新增模型调用。NPC/世界作者调用数不回到 `b060d961` 之前。
 - **剩余缺口**：质地目前只在已付费开口的说明里，**不会**作为独立经历写进下一轮 Present（除非她自己在 `stuck_with_me` 里写下，且 H14 接受链仍未通）。`ReviewedLifeSeedCatalog.candidates_at` 没有生产调用方，单靠 seed 行不会自动开始实习面试；要等已有 activity 计划以该 `activity_kind` 完成，aftermath 才会冻 effect。generative LD 仍恒 `no_op`。`story_candidate_role` 仍是 `legacy_replay_and_fixture`。
 - **commit**：`a0ae464c`
+
+### 2026-08-15 H17 成本收缩：前缀、非法即丢（错峰已关）
+
+- **红测**：initial tools JSON 随 `recall_allowed` 分叉；私人印象同契约最多 4 次。
+- **改动**：
+  1. `inbound_tool_contract.contract_for`：`phase=initial` 的 tools 始终带 recall 分支，运行时仍按 `recall_allowed` 拒绝。
+  2. 私人印象 `_PRIVATE_IMPRESSION_MAX_ATTEMPTS=1`（生产 drain 仍是 H14 的 `return None`）。
+  3. **同日用户关掉错峰**：删除 `consider_window.py` 及 social/proactive/reflection 的高峰推迟。安静窗口与再访按原 cadence 到期即给她。
+- **剩余缺口**：H16 五种 Occasion 仍未合成单一队列；`life_beat` 没有独立 consider，生活事件只挂到下一次 quiet_gap 上。
+
+### 2026-08-15 H18 分享余波：当场追问复用内心
+
+- **红测**：未声明 `waiting_for` 不得从问号推断；`wait=soon` 不是 12h 默认；`still_pending`+`now` 消息是同轮追问；`still_pending` 不再挡 quiet_gap，也不再走到期未答车道；入站 advisory 写明他已回话且不含 chase/should。
+- **改动**：
+  1. slim 增加可选 `wait`（soon/today/later，及 短/当天/长 或前缀），编成她的 wait/expiry；省略则 later。
+  2. `still_pending` 进入终态评估，同轮结掉旧盼头；还想等就另开 `waiting_for`。
+  3. 入站 expectation advisory 区分「他已回话 / 他还没说话」，并写明只是证据、仍由她决定。
+- **剩余缺口**：生产仍几乎没有 `waiting_for` 声明，H18 要等她真的填了才会在现网出现。未声明 wait 已由 H21 改成不定时叫醒。
+
+### 2026-08-15 H19 接通 P3 成人媒体车道
+
+- **红测**：无 Civitai key 时普通 bundle 仍在、`specialized_generators` 空、高档 `_generator_for` 为 None；模板缺失同样不关普通车道；凭证齐全时装上 `adult_suggestive`/`adult_explicit` 与 `FirstPersonPrivatePromptAuthor`，且不是 OpenAI 生成器；无来源高档计划仍 `unsourced_event`。
+- **改动**：
+  1. `build_qq_media_preview_deployment` 在 `CIVITAI_KREA2_ENABLED` + `CIVITAI_API_KEY` + 已审模板可加载时，给 `SourcedLifeMediaRenderer` 安装同一 Krea2 模板的两个 route，以及 `FirstPersonPrivatePromptAuthor`（有 OpenRouter 用 Hermes，否则用已要求的 DeepSeek）。
+  2. 缺任一件只让高档 fail-closed，普通 OpenAI 生活照继续；禁止静默降级 GPT Image。
+  3. `CIVITAI_KREA2_ENABLED` 默认 True。生产要出图仍需 `CIVITAI_API_KEY`。未新建关系阶段→强度规则，也未宣称 Adult Eligibility 已闭合。
+- **剩余缺口**：现网 `.env` 仍无 `CIVITAI_API_KEY`，重启后高档会继续 fail-closed 直到补 key。资格层仍缺用户成人资格证明与内容级双方同意；未发出过 P3 生产照片前不把状态升成 active。
+
+### 2026-08-15 H20 QQ 附件识图改阿里 `qwen3-vl-flash`
+
+- **红测**：无 `QWEN_API_KEY` 工厂返回 None；有 key + grant 时 provider 是 `dashscope:vision`、模型 `qwen3-vl-flash`、思考关闭；caption HTTP JSON 含 `enable_thinking: false` 且仍发 data URL。
+- **改动**：
+  1. `VISION_MODEL` 默认 `qwen3-vl-flash`；新增 `QWEN_BASE_URL` 默认华北兼容端点。
+  2. `build_qq_perception_deployment` 要 `QWEN_API_KEY`，不再要 OpenAI 才能开感知；不把 `openai_proxy_url` 传给百炼。
+  3. transport provider 改为 `dashscope:vision`；caption 调用关思考。像素仍不进 DeepSeek。
+- **剩余缺口**：生产 `.env` 当时无 `QWEN_API_KEY`；感知 grant 也尚未 provision。两件都补上并重启前，她仍然只能知道「他发来一张图」。未发出过真实识图前不把感知升成 fully active。
+
+### 2026-08-15 H21 等待时长由她声明秒数
+
+- **红测**：`wait=45` / `"2分钟"` 按她写的秒编译；未声明 / `soon` / 读不懂不编译盼头（不定时叫醒）；声明短于 30 秒仍垫到 30 秒；wait 已过、expiry 仍在未来也会 mint；wait 未到不 mint。
+- **改动**：
+  1. slim `wait` 解析整数或她写的时长（秒/分钟/小时）；`soon`/`today`/`later`/`短` 不再映射档位。没填或读不懂 wait 就不编译 `response_expectation`，允许结束话题。声明了才叫醒；短于 30 秒只垫下限。slim 未给 expiry 时，机会窗口是 wait+60 秒（调度硬边界，不是她的耐心）。
+  2. H13e 叫醒改为 `logical_time >= not_before`；`expires_at + 1h grace` 仍是太晚才丢。`scheduled_for` 用 wait 而不是 expiry。主动联系 15 分钟冷却不挡这条车道，急了可以连着发。
+  3. 完整契约补一句：wake 在 wait 之后一次，expiry 只结束盼头。问、换话题、沉默仍由她选。
+- **剩余缺口**：生产要重启才吃到。已落账的旧盼头仍带着当时编进去的 wait/expiry（例如 1h/2h）；新回合才会按秒声明。
 
 

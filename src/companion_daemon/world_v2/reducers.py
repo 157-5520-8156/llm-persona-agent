@@ -976,6 +976,10 @@ def _expression_plan_manifest_semantic_dump(
             beat.pop("storage_kind")
             beat.pop("sidecar_kind")
             beat.pop("privacy_class")
+    # ``revisit`` joined the projection inside .56.  Pre-existing heads omit
+    # the key entirely; dumping ``null`` would rewrite the durable hash.
+    if dumped.get("revisit") is None:
+        dumped.pop("revisit", None)
     return dumped
 
 
@@ -6415,6 +6419,26 @@ def _expression_plan_manifest_recorded(
             if manifest.response_expectation is not None
             else None
         )
+        or payload.get("revisit")
+        != (
+            {
+                "thought": manifest.revisit.thought,
+                "wait_seconds": int(
+                    (
+                        manifest.revisit.not_before
+                        - manifest.beats[0].action.logical_time
+                    ).total_seconds()
+                ),
+                "expires_after_seconds": int(
+                    (
+                        manifest.revisit.expires_at
+                        - manifest.beats[0].action.logical_time
+                    ).total_seconds()
+                ),
+            }
+            if manifest.revisit is not None
+            else None
+        )
         or not isinstance(drafts, list)
         or len(drafts) != len(manifest.beats)
     ):
@@ -6512,6 +6536,7 @@ def _expression_plan_manifest_recorded(
                     acceptance_event_payload_hash=event.payload_hash,
                     recorded_at_world_revision=current_world_revision + 1,
                     response_expectation=manifest.response_expectation,
+                    revisit=manifest.revisit,
                     social_source_observation_id=(
                         social_manifest.source_observation_id if social_manifest else None
                     ),
@@ -12756,13 +12781,15 @@ def _world_occurrence_settled(state: ReducerState, event: WorldEvent) -> Reducer
             )
         )
     pending = state.pending_biographical_settlements
+    adopted_dynamic = (
+        candidate.dynamic_life_arc_context
+        if candidate is not None and payload.adopt_proposed_life_direction is True
+        else None
+    )
     if candidate is not None and (
         candidate.life_arc_effect is not None
         or candidate.provisional_npc_introductions
-        or (
-            candidate.dynamic_life_arc_context is not None
-            and payload.adopt_proposed_life_direction is True
-        )
+        or adopted_dynamic is not None
     ):
         pending = (
             *pending,
@@ -12775,11 +12802,7 @@ def _world_occurrence_settled(state: ReducerState, event: WorldEvent) -> Reducer
                 settled_at=payload.settled_at,
                 life_arc_effect=candidate.life_arc_effect,
                 provisional_npc_introductions=(candidate.provisional_npc_introductions),
-                dynamic_life_arc_context=(
-                    candidate.dynamic_life_arc_context
-                    if payload.adopt_proposed_life_direction is True
-                    else None
-                ),
+                dynamic_life_arc_context=adopted_dynamic,
             ),
         )
     return state.model_copy(
@@ -12871,6 +12894,7 @@ def _outcome_proposal_recorded(state: ReducerState, event: WorldEvent) -> Reduce
             "life-aftermath-context.2",
             "life-aftermath-context.3",
             "life-aftermath-context.4",
+            "life-aftermath-context.5",
         }:
             matrix_hash = sha256(
                 canonical_json(

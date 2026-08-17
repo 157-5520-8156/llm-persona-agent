@@ -388,6 +388,8 @@ async def test_bridge_admits_only_the_outer_authorized_ordinary_character_previe
     assert result.plan is not None
     assert result.plan.family == "character_media"
     assert len(legacy.calls) == 1
+    assert legacy.calls[0].authorized_capture_modes == ("character_front_camera",)
+    assert legacy.calls[0].authorized_character_visibilities == ("identifiable",)
     planner_snapshot = legacy.calls[0].event_snapshot
     assert "character_media_authorization" not in planner_snapshot
     assert "capture_authorization" not in planner_snapshot["character"]
@@ -438,8 +440,7 @@ async def test_bridge_uses_durable_lookup_before_calling_legacy_planner() -> Non
     (
         ("family", "character_media"),
         ("delivery_mode", "automatic"),
-        ("privacy_ceiling", "personal"),
-        ("privacy_ceiling", "private"),
+        ("privacy_ceiling", "withhold"),
     ),
 )
 @pytest.mark.asyncio
@@ -455,6 +456,27 @@ async def test_bridge_rejects_non_p0_opportunity_before_legacy_planning(field: s
     assert result.not_renderable is not None
     assert result.not_renderable.reason_code == "p0_opportunity_not_authorized"
     assert legacy.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("privacy_ceiling", ("personal", "private"))
+async def test_bridge_admits_ordinary_home_life_preview(privacy_ceiling: str) -> None:
+    sidecar, opportunity = _sidecar()
+    legacy = _LegacyPlanner(
+        event_media.PlannedMedia(
+            _legacy_plan(opportunity=opportunity, snapshot=_image_snapshot())
+        )
+    )
+    adapter = EventMediaPlannerAdapter(
+        sidecar=sidecar, legacy_planner=legacy, result_store=_ResultStore()
+    )
+    result = await adapter.plan(
+        opportunity=opportunity.model_copy(update={"privacy_ceiling": privacy_ceiling}),
+        planning_request_id=planning_request_id(opportunity.opportunity_id),
+    )
+
+    assert result.plan is not None
+    assert len(legacy.calls) == 1
 
 
 @pytest.mark.asyncio

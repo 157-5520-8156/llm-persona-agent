@@ -4,9 +4,12 @@ The accepted expression is the only source of the request.  This runtime does
 not infer intent from text.  It opens a restart-safe ``TriggerProcess`` after a
 reply Action is provider accepted and delegates the bounded candidate choice
 to the existing CharacterInterior media conductor.  When the accepted role
-proposal also carries exact attended life evidence, an optional supplier may
-compile one source-closed candidate before selection; it never guesses a scene
-or treats the counterpart's request as visual proof.
+proposal carries exact attended life evidence, an optional supplier may
+compile one source-closed candidate before selection.  When the role chose
+``consider_available_candidate`` without naming a source and the pool is
+empty, the same supplier may starvation-fill from eligible settled life
+evidence; it never guesses a scene or treats the counterpart's request as
+visual proof.
 """
 
 from __future__ import annotations
@@ -210,21 +213,17 @@ class MediaRequestRuntime:
                     status="blocked",
                     reason_code="media_request.accepted_request_unavailable",
                 )
-            if self._candidate_supplier is not None and accepted_request.source_refs:
+            if self._candidate_supplier is not None:
                 supply = self._candidate_supplier.request_once
+                supply_kwargs = {
+                    "source_refs": accepted_request.source_refs,
+                    "trace_id": trace_id,
+                    "correlation_id": request_correlation,
+                }
                 if self._ledger.blocks_event_loop:
-                    await asyncio.to_thread(
-                        supply,
-                        source_refs=accepted_request.source_refs,
-                        trace_id=trace_id,
-                        correlation_id=request_correlation,
-                    )
+                    await asyncio.to_thread(supply, **supply_kwargs)
                 else:
-                    supply(
-                        source_refs=accepted_request.source_refs,
-                        trace_id=trace_id,
-                        correlation_id=request_correlation,
-                    )
+                    supply(**supply_kwargs)
 
             preview = await self._conductor.advance_once(
                 logical_time=logical_time,

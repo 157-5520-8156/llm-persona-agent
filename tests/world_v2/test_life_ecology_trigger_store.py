@@ -535,6 +535,76 @@ async def test_structured_technical_failure_uses_backoff_and_exposes_its_code() 
 
 
 @pytest.mark.asyncio
+async def test_silent_success_after_technical_failure_clears_the_failure_stamp() -> None:
+    ledger = _ledger()
+    store = LedgerLifeEcologyTriggerStore(
+        ledger=ledger, owner_id="worker:failure-then-quiet"
+    )
+    first_key = _key()
+    first = await store.claim_or_join(
+        key=first_key,
+        trace_id="trace:failure-then-quiet",
+        correlation_id="correlation:failure-then-quiet",
+    )
+    await store.complete(
+        key=first_key,
+        trigger_id=first.trigger_id,
+        outcome="technical_failure.activity_lifecycle.occasion_already_considered",
+    )
+    failed = ledger.project().life_ecology_schedule
+    assert failed is not None
+    assert failed.consecutive_failures == 1
+    assert failed.last_failure_code == "activity_lifecycle.occasion_already_considered"
+
+    later = failed.next_consideration_at
+    later_event = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:life-ecology:wake:after-failure",
+        world_id=WORLD_ID,
+        event_type="ClockAdvanced",
+        logical_time=later,
+        created_at=later,
+        actor="worker:clock",
+        source="test:life-ecology-trigger-store",
+        trace_id="trace:wake:after-failure",
+        causation_id=_clock_wake().event_id,
+        correlation_id="correlation:wake:after-failure",
+        idempotency_key="test:life-ecology:wake:after-failure",
+        payload={
+            "logical_time_from": NOW.isoformat(),
+            "logical_time_to": later.isoformat(),
+        },
+    )
+    projection = ledger.project()
+    ledger.commit(
+        (later_event,),
+        expected_world_revision=projection.world_revision,
+        expected_deliberation_revision=projection.deliberation_revision,
+    )
+    later_key = LifeEcologyRunKey(
+        world_id=WORLD_ID,
+        wake_event_ref=later_event.event_id,
+        catalog_version="life-ecology.1",
+    )
+    second = await store.claim_or_join(
+        key=later_key,
+        trace_id="trace:quiet-after-failure",
+        correlation_id="correlation:quiet-after-failure",
+    )
+    await store.complete(
+        key=later_key,
+        trigger_id=second.trigger_id,
+        outcome="life_development_no_op",
+    )
+
+    recovered = ledger.project().life_ecology_schedule
+    assert recovered is not None
+    assert recovered.consecutive_failures == 0
+    assert recovered.last_failure_code is None
+    assert recovered.last_outcome_ref == "life-ecology:life_development_no_op"
+
+
+@pytest.mark.asyncio
 async def test_deterministic_followup_probe_does_not_move_ambient_cadence() -> None:
     ledger = _ledger()
     store = LedgerLifeEcologyTriggerStore(ledger=ledger, owner_id="worker:cadence")

@@ -1256,6 +1256,7 @@ class PinnedTurnCompiler:
                 view,
                 source_ref=observation_event.event_id,
                 logical_time=projection.logical_time or observation_event.logical_time,
+                counterpart_replied=True,
             ),
         )
 

@@ -184,6 +184,7 @@ def _settings(tmp_path: Path, **overrides: object) -> Settings:
         "database_path": tmp_path / "qq-perception.sqlite",
         "DEEPSEEK_API_KEY": "test-deepseek",
         "OPENAI_API_KEY": "test-openai",
+        "QWEN_API_KEY": "test-qwen",
         "PERCEPTION_BUDGET_LIMIT": 12,
         "ATTACHMENT_CACHE_PATH": tmp_path / "attachments",
         "PRIMARY_USER_ID": "geoff",
@@ -195,7 +196,7 @@ def _settings(tmp_path: Path, **overrides: object) -> Settings:
 def test_factory_disables_without_prerequisites(tmp_path: Path) -> None:
     for overrides in (
         {"PERCEPTION_BUDGET_LIMIT": 0},
-        {"OPENAI_API_KEY": None},
+        {"QWEN_API_KEY": None},
         {},  # credentials fine, but no provisioned enforcement chain
     ):
         assert (
@@ -306,14 +307,17 @@ async def test_factory_composes_when_provisioned(
     )
     await _provisioned_world(Path(settings.database_path), config)
     bundle = build_qq_perception_deployment(
-        settings=_settings(tmp_path, DEEPSEEK_API_KEY=None),
+        settings=_settings(tmp_path, DEEPSEEK_API_KEY=None, OPENAI_API_KEY=None),
         world_id=WORLD_ID,
         api_url="http://127.0.0.1:3000",
     )
     assert bundle is not None
     try:
         assert bundle.budget_limit == 12
-        assert bundle.transport.provider == "openai:vision"
+        assert bundle.transport.provider == "dashscope:vision"
+        assert bundle.transport._model == "qwen3-vl-flash"
+        assert bundle.transport._thinking_disabled is True
+        assert bundle.transport._proxy_url is None
         assert bundle.archiver.archive is bundle.input_source
         assert bundle.input_source.root == Path(settings.attachment_cache_path) / "qq-c2c-v2"
     finally:
@@ -347,6 +351,8 @@ async def test_real_pieces_compose_into_next_turn_context_exactly_once(
         assert image_url == (
             "data:image/png;base64," + base64.b64encode(PNG_BYTES).decode()
         )
+        assert body["enable_thinking"] is False
+        assert body["model"] == "qwen3-vl-flash"
         return httpx.Response(
             200,
             json={"id": "chatcmpl-e2e", "choices": [{"message": {"content": VISION_TEXT}}]},
@@ -354,9 +360,9 @@ async def test_real_pieces_compose_into_next_turn_context_exactly_once(
 
     transport = SQLiteDurableVisionPerceptionTransport(
         path,
-        api_key="test-openai",
-        base_url="https://api.openai.example/v1",
-        model="gpt-4o-mini",
+        api_key="test-qwen",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        model="qwen3-vl-flash",
         transport=httpx.MockTransport(vision_handler),
     )
     decision = _PerceptionFaculty()

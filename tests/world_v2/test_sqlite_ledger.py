@@ -24,6 +24,8 @@ from companion_daemon.world_v2.schemas import (
     BudgetSettlement,
     ClockObservation,
     EvidenceRef,
+    ExpressionPlanManifestBeatRef,
+    ExpressionPlanManifestRef,
     ProjectionCursor,
     ResponseExpectationAssessmentProjection,
     WorldEvent,
@@ -31,9 +33,10 @@ from companion_daemon.world_v2.schemas import (
 from companion_daemon.world_v2.reducers import (
     REDUCER_BUNDLE_VERSION,
     ReducerState,
+    _expression_plan_manifest_semantic_dump,
     make_projection,
 )
-from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
+from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger, _json_ready_item
 
 
 NOW = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
@@ -1878,13 +1881,113 @@ def test_empty_aspirations_stay_out_of_durable_state_bytes_and_hash() -> None:
     entirely; the key may appear only once a world actually plants one.
     """
 
-    from companion_daemon.world_v2.reducers import ReducerState
-    from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
-
     dumped = SQLiteWorldLedger._state_dump(ReducerState())
 
     assert "aspirations" not in dumped
     assert '"aspirations"' not in SQLiteWorldLedger._encode_state(ReducerState())
+
+
+def _legacy_expression_plan_manifest_without_revisit() -> ExpressionPlanManifestRef:
+    digest = "a" * 64
+    hashed = "sha256:" + digest
+    action = Action(
+        schema_version="world-v2.1",
+        action_id="action:legacy-manifest",
+        world_id="world-sqlite-test",
+        logical_time=NOW,
+        created_at=NOW,
+        trace_id="trace-legacy-manifest",
+        causation_id="event:proposal:legacy",
+        correlation_id="conversation-legacy",
+        kind="reply",
+        layer="external_action",
+        intent_ref="proposal:legacy:intent:1",
+        actor="companion:test",
+        target="user:test",
+        payload_ref="payload:legacy:1",
+        payload_hash=hashed,
+        idempotency_key="world-sqlite-test:intent:1:reply",
+        budget_reservation_id="reservation:legacy",
+        state="authorized",
+        recovery_policy="effect_once",
+    )
+    reservation = BudgetReservation(
+        reservation_id="reservation:legacy",
+        account_id="budget-account-chat",
+        action_id=action.action_id,
+        category="chat",
+        amount_limit=10_000,
+    )
+    beat = ExpressionPlanManifestBeatRef(
+        beat_id="beat:legacy:1",
+        payload_ref="payload:legacy:1",
+        payload_hash=hashed,
+        text="先这样。",
+        content_type="text/plain",
+        cancel_policy="never",
+        reconsider_policy="never",
+        merge_policy="never",
+        intent_id="intent:1",
+        intent_hash=digest,
+        message_hash=digest,
+        beat_hash=digest,
+        reservation=reservation,
+        reservation_hash=digest,
+        action=action,
+        action_hash=digest,
+    )
+    return ExpressionPlanManifestRef(
+        acceptance_id="acceptance:legacy",
+        proposal_id="proposal:legacy",
+        proposal_event_ref="event:proposal:legacy",
+        proposal_event_payload_hash=digest,
+        proposal_hash=hashed,
+        evaluated_world_revision=1,
+        policy_digest=digest,
+        expression_change_id="change:legacy",
+        expression_change_hash=hashed,
+        plan_id="plan:legacy",
+        ordering_policy="in_order",
+        terminal_policy="complete",
+        beats=(beat,),
+        manifest_hash=digest,
+        acceptance_event_ref="event:acceptance:legacy",
+        acceptance_event_payload_hash=digest,
+        recorded_at_world_revision=2,
+    )
+
+
+def test_absent_manifest_revisit_stays_out_of_durable_dump_and_hash() -> None:
+    """A nested field added within one bundle must not invalidate old heads.
+
+    ``revisit`` joined ``ExpressionPlanManifestRef`` inside
+    ``world-v2-reducers.56``.  Legacy manifest JSON that never had the key
+    must round-trip to a dump that still omits it, so the current-bundle
+    state hash stays byte-identical.
+    """
+
+    manifest = _legacy_expression_plan_manifest_without_revisit()
+    assert manifest.revisit is None
+    assert "revisit" not in manifest.model_dump(mode="json")
+    assert "revisit" not in _json_ready_item(manifest)
+    assert "revisit" not in _expression_plan_manifest_semantic_dump(manifest)
+
+    legacy_json = manifest.model_dump(mode="json")
+    legacy_json.pop("revisit", None)
+    restored = ExpressionPlanManifestRef.model_validate_json(
+        json.dumps(legacy_json, ensure_ascii=False, separators=(",", ":"))
+    )
+    restored_dump = restored.model_dump(mode="json")
+    assert "revisit" not in restored_dump
+    assert restored_dump == legacy_json
+
+    state = ReducerState.model_construct(expression_plan_manifests=(restored,))
+    dumped = SQLiteWorldLedger._state_dump(state)
+    assert "revisit" not in dumped["expression_plan_manifests"][0]
+    encoded = SQLiteWorldLedger._encode_state(state)
+    round_tripped = ReducerState.model_validate_json(encoded)
+    assert SQLiteWorldLedger._state_dump(round_tripped) == dumped
+    assert SQLiteWorldLedger._encode_state(round_tripped) == encoded
 
 
 def test_fact_history_subject_query_uses_ordered_index_without_temp_sort(

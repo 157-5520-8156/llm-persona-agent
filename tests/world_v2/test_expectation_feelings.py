@@ -229,7 +229,55 @@ def test_advisory_carries_the_semantic_summary_without_expectation_authority() -
     assert advisory.kind == "response_expectation"
     assert HOPED in advisory.candidates[0].value
     assert "pressure low" in advisory.candidates[0].value
+    assert "he has not spoken" in advisory.candidates[0].value
+    assert "she still decides" in advisory.candidates[0].value
     assert len(advisory.candidates[0].value) <= 256
+
+
+def test_inbound_advisory_names_the_reply_without_telling_her_to_chase() -> None:
+    projection = _fake_projection(
+        logical_time=NOW + timedelta(minutes=10),
+        expectation=_expectation(expires_at=NOW + timedelta(hours=1)),
+    )
+    view = pending_response_expectation(projection, anchor_event_ref="event:receipt:invite")
+    assert view is not None
+
+    advisory = response_expectation_advisory(
+        view,
+        source_ref="event:receipt:invite",
+        logical_time=NOW + timedelta(minutes=10),
+        counterpart_replied=True,
+    )
+
+    assert "he has since spoken" in advisory.candidates[0].value
+    assert "chase" not in advisory.candidates[0].value.lower()
+    assert "should" not in advisory.candidates[0].value.lower()
+
+
+def test_still_pending_assessment_closes_the_old_hope() -> None:
+    projection = _fake_projection(
+        logical_time=NOW + timedelta(minutes=10),
+        expectation=_expectation(expires_at=NOW + timedelta(hours=1)),
+        assessments=(
+            SimpleNamespace(source_plan_id="plan:invite", status="still_pending"),
+        ),
+    )
+
+    assert pending_response_expectation(projection) is None
+
+
+def test_uncertain_assessment_keeps_the_hope_pending() -> None:
+    projection = _fake_projection(
+        logical_time=NOW + timedelta(minutes=10),
+        expectation=_expectation(expires_at=NOW + timedelta(hours=1)),
+        assessments=(
+            SimpleNamespace(source_plan_id="plan:invite", status="uncertain"),
+        ),
+    )
+
+    view = pending_response_expectation(projection)
+    assert view is not None
+    assert view.hoped_response == HOPED
 
 
 # --- production wiring --------------------------------------------------------

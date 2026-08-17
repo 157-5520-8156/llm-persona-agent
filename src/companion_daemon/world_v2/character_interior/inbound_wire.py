@@ -38,6 +38,7 @@ from ..companion_identity import (
     companion_identity_source_refs,
 )
 from ..present_prompt import (
+    attach_hitchhiked_relationship_residue,
     compile_slim_consider_payload,
     identity_prose,
     normalize_text_beats,
@@ -94,7 +95,7 @@ from ..model_facing_context import (
     compact_recovery_model_facing_context,
 )
 from ..model_completion import ChatCompletionModel
-from .inbound_appraisal_wire import AppraisalDraftWire
+from .inbound_appraisal_wire import canonicalize_appraisal_draft_wire
 from .inbound_tool_contract import (
     _deepseek_strict_union_padding_is_empty,
     _expand_compact_gate_payload,
@@ -770,9 +771,20 @@ def expression_draft_shape_contract(*, include_world_claims: bool = True) -> str
         "guessing a scene. An existing candidate can still be considered without adding a "
         "new source solely for media. "
         "response_expectation, when chosen, uses hoped_response, pressure_bp, "
-        "importance_bp, wait_seconds, and expires_after_seconds. "
+        "importance_bp, wait_seconds, and expires_after_seconds. wait_seconds is "
+        "how long you can wait without an answer; it is not a script to chase. "
+        "The host may wake you once after that wait if he has not spoken; "
+        "expires_after_seconds is when the hope dies, not when you are woken. "
+        "revisit, when chosen, uses thought, wait_seconds, and "
+        "expires_after_seconds for a leftover you still want to return to; it "
+        "is not a hope that he will reply. The host may wake you once after "
+        "that wait; it does not decide whether you speak. "
         "response_expectation_assessment, when required by Context, uses status "
-        "(fulfilled, superseded, still_pending, or uncertain) and reason. Do not add fields "
+        "(fulfilled, superseded, still_pending, or uncertain) and reason. "
+        "still_pending means this reply did not land and closes that hope; declare "
+        "a new response_expectation if you still want a reply. Visible beats in "
+        "this same cognition are your follow-up if you choose to speak now. "
+        "Do not add fields "
         "from a different chat or response schema. Visible beats may contain factual "
         "first-person life claims only when the same draft emits matching world_claims with "
         "pinned source_refs. If Context has no such source, do not state a concrete current or "
@@ -6696,7 +6708,7 @@ def _stream_first_expression(raw: str) -> str:
     if "protocol" not in parsed:
         slim = compile_slim_consider_payload(parsed)
         if slim is not None:
-            parsed = slim
+            parsed = attach_hitchhiked_relationship_residue(slim)
         if (
             set(parsed) == {"appraisal_draft", "expression_draft"}
             and isinstance(parsed.get("appraisal_draft"), dict)
@@ -6789,6 +6801,7 @@ def _stream_tail_expression(raw: str) -> str:
         tail.pop("expires_after_seconds", None)
         tail.pop("response_expectation", None)
         tail.pop("response_expectation_assessment", None)
+        tail.pop("revisit", None)
         if tail_beats:
             tail["timing_choice"] = "now"
             tail["beats"] = tail_beats
@@ -6807,7 +6820,7 @@ def _stream_tail_expression(raw: str) -> str:
     if "protocol" not in parsed:
         slim = compile_slim_consider_payload(parsed)
         if slim is not None:
-            parsed = slim
+            parsed = attach_hitchhiked_relationship_residue(slim)
         if (
             set(parsed) == {"appraisal_draft", "expression_draft"}
             and isinstance(parsed.get("appraisal_draft"), dict)
@@ -6901,6 +6914,7 @@ def _canonical_stream_partition(
             "expires_after_seconds",
             "response_expectation",
             "response_expectation_assessment",
+            "revisit",
             "turn_posture",
         ):
             tail.pop(field, None)
@@ -6920,6 +6934,7 @@ def _canonical_stream_partition(
         "expires_after_seconds",
         "response_expectation",
         "response_expectation_assessment",
+        "revisit",
         "turn_posture",
     ):
         tail.pop(field, None)
@@ -7141,51 +7156,166 @@ _REPLY_ONLY_HEAD_FIELDS = frozenset(
         "confidence",
         "response_expectation",
         "response_expectation_assessment",
+        "revisit",
         "world_claims",
         "media_request",
         "media_source_refs",
     }
 )
+_REPLY_ONLY_OPTIONAL_HEAD_FIELDS = frozenset(
+    {"delay_seconds", "expires_after_seconds", "beats"}
+)
+_REPLY_ONLY_APPRAISAL_RATIONALE_MAX = 240
+_REPLY_ONLY_APPRAISAL_LABEL_MAX = 128
 
 
-def _validate_reply_only_appraisal(value: object) -> None:
+def _clip_reply_only_appraisal_text(value: object, *, limit: int) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:limit]
+
+
+def _is_reply_only_text_beat(beat: object) -> bool:
+    return (
+        isinstance(beat, dict)
+        and set(beat) == {"modality", "text"}
+        and beat.get("modality") == "text"
+        and isinstance(beat.get("text"), str)
+        and bool(beat["text"])
+    )
+
+
+def _reply_only_visible_text_beats(event: dict[str, object]) -> list[object]:
+    beat = event.get("beat")
+    beats = event.get("beats")
+    if beats is not None:
+        if beat is not None:
+            raise ValueError("reply-only stream head beat transports are ambiguous")
+        if (
+            not isinstance(beats, list)
+            or not beats
+            or len(beats) > TEXT_ONLY_EXPRESSION_CAPABILITIES.max_beats
+            or not all(_is_reply_only_text_beat(item) for item in beats)
+        ):
+            raise ValueError("reply-only stream head exceeds its text-only capability")
+        return list(beats)
+    if _is_reply_only_text_beat(beat):
+        return [beat]
+    if beat is None:
+        return []
+    raise ValueError("reply-only stream head exceeds its text-only capability")
+
+
+def _reply_only_fallback_appraisal(head: dict[str, object]) -> dict[str, object]:
+    rationale = _clip_reply_only_appraisal_text(
+        head.get("brief_rationale"),
+        limit=_REPLY_ONLY_APPRAISAL_RATIONALE_MAX,
+    )
+    label = _clip_reply_only_appraisal_text(
+        head.get("stance"),
+        limit=_REPLY_ONLY_APPRAISAL_LABEL_MAX,
+    )
+    if not rationale:
+        rationale = label or "no_change"
+    if not label:
+        label = rationale[:_REPLY_ONLY_APPRAISAL_LABEL_MAX]
+    confidence = head.get("confidence")
+    if (
+        not isinstance(confidence, int)
+        or isinstance(confidence, bool)
+        or confidence < 0
+        or confidence > 10_000
+    ):
+        confidence = 5_000
+    return {
+        "appraise": False,
+        "affect": "no_change",
+        "brief_rationale": rationale,
+        "behavior_tendency": label,
+        "stance": label,
+        "display_strategy": label,
+        "confidence": confidence,
+    }
+
+
+def _validate_reply_only_appraisal(value: object) -> dict[str, object]:
     """Validate canonical appraisal/affect while excluding social effects."""
 
     if not isinstance(value, dict):
         raise ValueError("reply-only appraisal must be an object")
-    try:
-        draft = AppraisalDraftWire.model_validate_json(
-            json.dumps(value, ensure_ascii=False, separators=(",", ":")),
-            strict=True,
-        )
-    except ValidationError as exc:
-        raise ValueError("reply-only appraisal is invalid") from exc
     if any(
-        getattr(draft, field) is not None for field in _REPLY_ONLY_FORBIDDEN_APPRAISAL_EFFECT_FIELDS
+        value.get(field) is not None for field in _REPLY_ONLY_FORBIDDEN_APPRAISAL_EFFECT_FIELDS
     ):
         raise ValueError("reply-only appraisal cannot authorize a cross-turn social effect")
+    try:
+        canonical = canonicalize_appraisal_draft_wire(value)
+    except ValueError as exc:
+        raise ValueError("reply-only appraisal is invalid") from exc
+    if any(
+        canonical.get(field) is not None
+        for field in _REPLY_ONLY_FORBIDDEN_APPRAISAL_EFFECT_FIELDS
+    ):
+        raise ValueError("reply-only appraisal cannot authorize a cross-turn social effect")
+    return canonical
 
 
 def _validate_reply_only_head(event: object) -> None:
-    """Prove the early-releasable frame stays inside the compact capability."""
+    """Prove the compact reply-only head stays inside the text-only capability."""
 
-    if not isinstance(event, dict) or set(event) != _REPLY_ONLY_HEAD_FIELDS:
+    if not isinstance(event, dict):
         raise ValueError("reply-only stream head fields are invalid")
-    beat = event.get("beat")
+    keys = set(event)
+    extra = keys - _REPLY_ONLY_HEAD_FIELDS
+    if extra - _REPLY_ONLY_OPTIONAL_HEAD_FIELDS or _REPLY_ONLY_HEAD_FIELDS - keys:
+        raise ValueError("reply-only stream head fields are invalid")
+    delay = event.get("delay_seconds")
+    expires = event.get("expires_after_seconds")
+    timing = event.get("timing_choice")
     if (
         event.get("type") != "head"
-        or event.get("timing_choice") != "now"
-        or event.get("turn_posture") not in {None, "continue", "interject"}
-        or not isinstance(beat, dict)
-        or set(beat) != {"modality", "text"}
-        or beat.get("modality") != "text"
-        or not isinstance(beat.get("text"), str)
-        or not beat["text"]
         or event.get("media_request") != "none"
         or event.get("media_source_refs") != []
         or not isinstance(event.get("world_claims"), list)
     ):
         raise ValueError("reply-only stream head exceeds its text-only capability")
+    visible = _reply_only_visible_text_beats(event)
+    delay_window = (
+        isinstance(delay, int)
+        and not isinstance(delay, bool)
+        and isinstance(expires, int)
+        and not isinstance(expires, bool)
+        and delay >= 30
+        and expires > delay
+    )
+    if timing == "now":
+        if (
+            event.get("turn_posture") not in {None, "continue", "interject"}
+            or not visible
+            or len(visible) > TEXT_ONLY_EXPRESSION_CAPABILITIES.max_beats
+            or delay is not None
+            or expires is not None
+        ):
+            raise ValueError("reply-only stream head exceeds its text-only capability")
+        return
+    if timing == "later":
+        if (
+            event.get("turn_posture") not in {None, "continue"}
+            or not visible
+            or len(visible) > TEXT_ONLY_EXPRESSION_CAPABILITIES.max_later_beats
+            or not delay_window
+        ):
+            raise ValueError("reply-only stream head exceeds its text-only capability")
+        return
+    if timing == "silent":
+        if (
+            event.get("turn_posture") not in {None, "continue"}
+            or visible
+            or delay is not None
+            or expires is not None
+        ):
+            raise ValueError("reply-only stream head exceeds its text-only capability")
+        return
+    raise ValueError("reply-only stream head exceeds its text-only capability")
 
 
 def _reply_only_character_interior_event_envelope(
@@ -7205,20 +7335,72 @@ def _reply_only_character_interior_event_envelope(
         raise ValueError("reply-only stream envelope fields are invalid")
     if value.get("protocol") != "character-interior-events.1":
         raise ValueError("reply-only stream protocol is invalid")
-    _validate_reply_only_appraisal(value.get("appraisal_draft"))
     events = value.get("events")
     if not isinstance(events, list) or len(events) != 2:
         raise ValueError("reply-only stream requires exactly one head and one end")
     _validate_reply_only_head(events[0])
     if events[1] != {"type": "end"}:
         raise ValueError("reply-only stream must terminate after its single text head")
+    try:
+        appraisal = _validate_reply_only_appraisal(value.get("appraisal_draft"))
+    except ValueError as exc:
+        if "cross-turn social effect" in str(exc):
+            raise
+        logger.warning(
+            "reply-only appraisal dropped to no_change detail=%s",
+            str(exc)[:300],
+        )
+        head = events[0]
+        assert isinstance(head, dict)
+        appraisal = _validate_reply_only_appraisal(_reply_only_fallback_appraisal(head))
     _expression_event_envelope(
         {
             "protocol": "expression-events.1",
             "events": events,
         }
     )
-    return value
+    return {**value, "appraisal_draft": appraisal}
+
+
+def _compile_combined_cognition_envelope(
+    value: dict[str, object],
+) -> dict[str, object] | None:
+    """Compile compact-gate or event-envelope bytes into dual drafts."""
+
+    parsed = dict(value)
+    result_kind = parsed.get("result_kind")
+    if "payload_json" in parsed:
+        try:
+            expanded = _expand_compact_gate_payload(parsed)
+        except (TypeError, ValueError):
+            return None
+        result_kind = expanded.get("result_kind")
+        parsed = {key: item for key, item in expanded.items() if key != "result_kind"}
+    elif result_kind in {"decision", "reply_only", "full_turn"}:
+        parsed = {key: item for key, item in parsed.items() if key != "result_kind"}
+    if result_kind == "recall" or parsed.get("protocol") != "character-interior-events.1":
+        return None
+    try:
+        if result_kind == "reply_only":
+            envelope = _reply_only_character_interior_event_envelope(parsed)
+        elif result_kind in {"decision", "full_turn"}:
+            envelope = _character_interior_event_envelope(parsed)
+        else:
+            try:
+                envelope = _reply_only_character_interior_event_envelope(parsed)
+            except ValueError:
+                envelope = _character_interior_event_envelope(parsed)
+    except (TypeError, ValueError):
+        return None
+    events = envelope.get("events")
+    if not isinstance(events, list) or not events:
+        return None
+    return {
+        "appraisal_draft": envelope["appraisal_draft"],
+        "expression_draft": _parse_json_object(
+            _expression_event_head(events[0], continuation=bool(events[1:-1]))
+        ),
+    }
 
 
 def _expression_event_head(event: object, *, continuation: bool | None) -> str:
@@ -9016,13 +9198,17 @@ class _ExpressionDraftWire:
                     "content": (
                         "Here is the bounded read-only recall result you chose to request. "
                         "It is reference material, not a behavior instruction. Decide the final "
-                        "ExpressionDraft yourself; no further recall call remains in this turn. "
+                        "turn yourself; no further recall call remains in this turn. "
+                        "Return exactly one JSON object with appraisal_draft and "
+                        "expression_draft (or the slim consider object that compiles into them). "
+                        "Appraisal and lasting Affect remain your choices after recall—omit "
+                        "mood / choose affect no_change only when nothing lasting shifted. "
                         "Form the final private_turn_state again from the augmented Context and "
                         "include it in the complete final draft; the earlier state explained the "
                         "recall choice but cannot "
                         "serve as a post-hoc justification for this final expression. "
                         "Copy source_refs only when a factual clause is actually supported. "
-                        "Return the final raw JSON ExpressionDraft only.\n"
+                        "Do not return ExpressionDraft alone.\n"
                         "For this augmented final Context, use this frozen source_ref_aliases "
                         "mapping (it extends and supersedes the earlier displayed mapping):\n"
                         + json.dumps(
@@ -9982,6 +10168,16 @@ class _ExpressionDraftWire:
             "or will succeed; you may say only that you want to try or see whether a candidate is "
             "available. If you choose none, do not imply any new image attempt. You may still "
             "decline, defer, or discuss images without requesting one. "
+            "day_sheet and biographical habit lines are not current-world proof; an empty "
+            "current_situation / active occurrence means you do not have pinned authority for "
+            "a present-tense place, activity, weather, workshop, library session, or already-"
+            "sent photo. Subjective color, fuzzy memory, and private wish may appear in "
+            "visible text without a world_claim; they do not establish World facts and are "
+            "not upgraded into Fact, Relationship, or Media by the host. Declare checkable "
+            "present-tense life or delivery claims only with matching world_claims from "
+            "pinned Context, or keep them as private wish/feeling without asserting they "
+            "are happening. Saying you will send a picture inside text alone does not open "
+            "the media lane—use media_request / photo when you want a real attempt. "
             "Your present first-person feelings, thoughts, attention, desires, resistance, "
             "uncertainty, imagination, memory accessibility, self-evaluation, associations, "
             "conversational intention, and immediate retrospective continuity of those private "
@@ -10017,9 +10213,15 @@ class _ExpressionDraftWire:
             "complete wording genuinely leaves it unsettled rather than presenting it as actual "
             "or settled. Missing Context means unknown, not that nothing happened. This factual "
             "boundary never chooses your social response. "
-            "You may create response_expectation only when you genuinely expect a reply. If Context "
-            "contains a pending response_expectation advisory, assess it in this same cognition with "
-            "fulfilled, superseded, still_pending, or uncertain; do not extend its expiry. "
+            "You may create response_expectation only when you genuinely expect a reply. "
+            "wait_seconds is how long you can wait without an answer, not a prompt to chase. "
+            "The host may wake you once after that wait if he has not spoken; "
+            "expires_after_seconds is when the hope dies, not when you are woken. "
+            "If Context contains a pending response_expectation advisory, assess it in this "
+            "same cognition with fulfilled, superseded, still_pending, or uncertain; do not "
+            "extend its expiry. still_pending closes that hope because this reply did not "
+            "land; a new response_expectation is a new hope. Visible beats in this same "
+            "cognition are your follow-up if you choose to speak now. "
             "The user payload's expression_hard_boundaries object lists copyable source tokens; "
             "the host checks hard boundaries after you speak and never suggests a "
             "motive, tone, timing, question, or reply. Its top-level source_ref_aliases are frozen "
@@ -10258,6 +10460,12 @@ class _ExpressionDraftWire:
                 if self._identity_frame.not_an_assistant
                 else ""
             )
+            + "Habits and tastes in this identity are texture, not tonight's report. "
+            "You may color this chat with mood, attitude, and fuzzy private memory. "
+            "Asserting where you are now, what you are doing, what already happened, or "
+            "that a picture already went out needs pinned World context; without it, keep "
+            "that as wish, feeling, or guess—not a settled World fact. "
+            "Chat prose does not silently become Fact, Relationship, or Media. "
             + "Keep companion and counterpart identities distinct; unknown counterpart facts remain unknown. "
         )
 
@@ -10772,6 +10980,7 @@ _MINIMAL_REPLY_ACCOUNTED_EXPRESSION_FIELDS = frozenset(
         "variation_profile",
         "response_expectation",
         "response_expectation_assessment",
+        "revisit",
         "world_claims",
         "media_request",
         "media_source_refs",
@@ -10801,6 +11010,7 @@ def _is_lossless_minimal_reply_draft(draft: ExpressionDraft) -> bool:
         and draft.turn_posture is None
         and draft.variation_profile is None
         and draft.response_expectation is None
+        and draft.revisit is None
         and not draft.world_claims
         and draft.media_request == "none"
         and not draft.media_source_refs

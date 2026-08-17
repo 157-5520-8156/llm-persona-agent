@@ -100,7 +100,11 @@ class CharacterMediaFactBinder:
                 MediaEvidenceSource(event_ref=source_event.event_id, payload_hash=source_event.payload_hash),
                 MediaEvidenceSource(event_ref=declaration_event.event_id, payload_hash=declaration_event.payload_hash),
             ), key=lambda item: item.event_ref))
-            for kind, modes, visibility in self._contracts(evidence=declaration.image_evidence):
+            for kind, modes, visibility in self._contracts(
+                evidence=declaration.image_evidence,
+                recipient_scoped=declaration_event.event_type
+                == "RecipientScopedImageEvidenceDeclared",
+            ):
                 contract = CharacterMediaCandidateContract(
                     subject_ref=character.character_ref,
                     kind=kind,
@@ -149,26 +153,24 @@ class CharacterMediaFactBinder:
 
     @staticmethod
     def _contracts(
-        *, evidence,
+        *, evidence, recipient_scoped: bool,
     ) -> tuple[tuple[CharacterMediaKind, tuple[CharacterCaptureMode, ...], tuple[CharacterVisibility, ...]], ...]:
         character = evidence.character_media
         assert character is not None
         modes = set(character.capture_capabilities)
         values: list[tuple[CharacterMediaKind, tuple[CharacterCaptureMode, ...], tuple[CharacterVisibility, ...]]] = []
-        # P3 deliberately exposes only self-authored capture facts.  It does
-        # not inherit P2's public helper/companion and body-detail lanes.
-        if evidence.visibility == "private":
+        # P3 is the recipient-scoped wire, not "the life event happened at home".
+        # Ordinary ImageEvidenceDeclared, including private home life, stays on
+        # the OpenAI character-media lane.
+        if recipient_scoped:
+            if evidence.visibility != "private":
+                return ()
             if "character_front_camera" in modes:
                 values.append(("selfie", ("character_front_camera",), ("identifiable",)))
             if "mirror" in modes and isinstance(evidence.location, dict) and evidence.location.get("mirror_available") is True:
                 values.append(("mirror", ("mirror",), ("identifiable",)))
             return tuple(values)
-        # A recipient-scoped personal declaration may be useful to a future
-        # non-intimate product lane, but it is not evidence for P3.  Do not
-        # leave an unselectable candidate behind by treating it as private.
-        if evidence.visibility == "personal":
-            return ()
-        if evidence.visibility not in _PUBLIC_VISIBILITIES:
+        if evidence.visibility not in {"public", "shareable", "personal", "private"}:
             return ()
         if "character_front_camera" in modes:
             values.append(("selfie", ("character_front_camera",), ("identifiable",)))

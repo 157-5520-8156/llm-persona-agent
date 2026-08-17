@@ -380,7 +380,10 @@ class Settings(BaseSettings):
         alias="WORLD_V2_EXTERNAL_PERCEPTION_ATTEMPT_RETENTION_SECONDS",
     )
     world_seed_path: Path = Field(default=Path("configs/world_seed.yaml"), alias="WORLD_SEED_PATH")
-    character_path: Path = Path("configs/character.yaml")
+    character_path: Path = Field(
+        default=Path("configs/character.yaml"),
+        validation_alias=AliasChoices("CHARACTER_PATH", "character_path"),
+    )
     stickers_path: Path = Path("configs/stickers.yaml")
     primary_user_id: str = Field(default="geoff", alias="PRIMARY_USER_ID")
     local_timezone: str = Field(default="Asia/Shanghai", alias="LOCAL_TIMEZONE")
@@ -473,6 +476,10 @@ class Settings(BaseSettings):
         default_factory=lambda: _macos_launchctl_env("QWEN_API_KEY"),
         alias="QWEN_API_KEY",
     )
+    qwen_base_url: str = Field(
+        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        alias="QWEN_BASE_URL",
+    )
     openrouter_base_url: str = Field(
         default="https://openrouter.ai/api/v1", alias="OPENROUTER_BASE_URL"
     )
@@ -525,6 +532,14 @@ class Settings(BaseSettings):
     world_v2_life_source_review_enabled: bool = Field(
         default=True,
         alias="WORLD_V2_LIFE_SOURCE_REVIEW_ENABLED",
+    )
+    # Normally the Life reviewer must be a provider the World Author cannot be,
+    # so a draft is never audited by its own author.  Enabling this trades that
+    # boundary for cost and for keeping the event machine running at all; it is
+    # off by default and reported through life_source_authority_health.
+    world_v2_life_self_review_allowed: bool = Field(
+        default=False,
+        alias="WORLD_V2_LIFE_SELF_REVIEW_ALLOWED",
     )
     world_v2_source_review_base_url: str | None = Field(
         default=None,
@@ -608,12 +623,12 @@ class Settings(BaseSettings):
         default="shadow", alias="WORLD_V2_RECORDED_CADENCE_MODE"
     )
     multimodal_provider: str = Field(default="auto", alias="MULTIMODAL_PROVIDER")
-    vision_model: str = Field(default="gpt-4o-mini", alias="VISION_MODEL")
+    vision_model: str = Field(default="qwen3-vl-flash", alias="VISION_MODEL")
     # World v2 QQ perception lane: the deployment's restrained analysis cap.
     # The value is both the perception budget account limit (frozen ledger
     # semantics: one full-limit reservation serializes in-flight analyses)
     # and the decision adapter's durable per-local-day dispatch ceiling.
-    # ``0`` disables the lane; enabling additionally requires OPENAI_API_KEY
+    # ``0`` disables the lane; enabling additionally requires QWEN_API_KEY
     # and one run of scripts/provision_world_v2_perception_authority.py.
     # Once a world is bootstrapped, changing this value requires a matching
     # ledger budget account, so treat it as a deployment constant.
@@ -651,8 +666,11 @@ class Settings(BaseSettings):
     )
     # Generic Civitai imageGen profile used by Krea2 LoRAs.  The raw
     # safetensors file stays local/account-scoped; only resolved AIR resource
-    # identifiers are accepted by the cloud renderer.
-    civitai_krea2_enabled: bool = Field(default=False, alias="CIVITAI_KREA2_ENABLED")
+    # identifiers are accepted by the cloud renderer.  Defaults on so the
+    # adult P3 route can install; composition still requires CIVITAI_API_KEY
+    # and the reviewed template, never falls back to OpenAI, and leaves the
+    # ordinary life lane running if this route stays fail-closed.
+    civitai_krea2_enabled: bool = Field(default=True, alias="CIVITAI_KREA2_ENABLED")
     civitai_krea2_template_path: Path | None = Field(
         default=DEFAULT_CIVITAI_KREA2_TEMPLATE_PATH,
         alias="CIVITAI_KREA2_TEMPLATE_PATH",

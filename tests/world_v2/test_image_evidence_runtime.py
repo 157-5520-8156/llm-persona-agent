@@ -79,13 +79,37 @@ def test_runtime_derives_source_coordinates_and_never_accepts_them_from_the_comm
     assert payload["source_privacy_ceiling"] == "shareable"
 
 
-def test_runtime_refuses_a_private_source_before_writing_a_declaration() -> None:
+def test_runtime_refuses_to_widen_a_private_source_into_shareable_evidence() -> None:
     runtime, commits = _runtime(privacy="private")
 
-    with pytest.raises(ValueError, match="source must be public or shareable"):
+    with pytest.raises(ValueError, match="visibility exceeds its source privacy"):
         runtime.declare(
             _command(), logical_time=NOW, created_at=NOW, actor="worker:image-evidence",
             trace_id="trace:image-evidence", correlation_id="correlation:image-evidence",
         )
 
     assert commits == []
+
+
+def test_runtime_declares_ordinary_evidence_from_a_private_home_source() -> None:
+    runtime, commits = _runtime(privacy="private")
+    command = ImageEvidenceDeclarationCommand(
+        command_id="command:image-evidence:home",
+        source_event_ref="event:activity:complete",
+        image_evidence=ImageEvidenceV1(
+            visibility="private",
+            activity={
+                "evidence_visibility": "private", "id": "activity:home",
+                "kind": "home", "description": "在家里看书",
+            },
+        ),
+    )
+
+    runtime.declare(
+        command, logical_time=NOW, created_at=NOW, actor="worker:image-evidence",
+        trace_id="trace:image-evidence", correlation_id="correlation:image-evidence",
+    )
+
+    payload = commits[0][0][0].payload()
+    assert payload["source_privacy_ceiling"] == "private"
+    assert payload["image_evidence"]["visibility"] == "private"

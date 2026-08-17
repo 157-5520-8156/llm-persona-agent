@@ -412,6 +412,25 @@ def _expression_definitions(contract: dict[str, object]) -> dict[str, object]:
                 },
             }
         ),
+        "RevisitDraft": _closed_object(
+            {
+                "thought": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160,
+                },
+                "wait_seconds": {
+                    "type": "integer",
+                    "minimum": 30,
+                    "maximum": 86_400,
+                },
+                "expires_after_seconds": {
+                    "type": "integer",
+                    "minimum": 60,
+                    "maximum": 172_800,
+                },
+            }
+        ),
         "ResponseExpectationAssessmentDraft": _closed_object(
             {
                 "status": {
@@ -489,6 +508,7 @@ def _expression_properties(
         delay_position: dict[str, object] = {"type": "null"}
         expires: dict[str, object] = {"type": "null"}
         expectation = _ref_or_null("ResponseExpectationDraft")
+        leftover = _ref_or_null("RevisitDraft")
     elif timing_choice == "later":
         beats = {
             "type": "array",
@@ -507,6 +527,7 @@ def _expression_properties(
             "maximum": 172_800,
         }
         expectation = _ref_or_null("ResponseExpectationDraft")
+        leftover = {"type": "null"}
     else:
         beats = {
             "type": "array",
@@ -520,6 +541,7 @@ def _expression_properties(
         delay_position = {"type": "null"}
         expires = {"type": "null"}
         expectation = {"type": "null"}
+        leftover = {"type": "null"}
 
     # Keep a stable schema serialization for provider caches and audits. JSON
     # object member order is not a causal or validity boundary.
@@ -561,6 +583,7 @@ def _expression_properties(
         "variation_profile": _ref_or_null("VariationProfile"),
         "response_expectation": expectation,
         "response_expectation_assessment": assessment,
+        "revisit": leftover,
         "world_claims": {
             "type": "array",
             "items": {"$ref": "#/$defs/WorldClaimDraft"},

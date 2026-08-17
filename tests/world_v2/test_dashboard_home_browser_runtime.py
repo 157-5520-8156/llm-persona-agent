@@ -56,3 +56,5 @@ def test_dashboard_browser_has_no_health_or_domain_inference_fallbacks() -> None
 
     assert not [token for token in browser_forbidden if token in DASHBOARD_APP_JS]
     assert not [token for token in bridge_forbidden if token in BRIDGE_SOURCE]
+    assert "契约、cursor 与 coverage" not in DASHBOARD_APP_JS
+    assert "技术细节" in DASHBOARD_APP_JS

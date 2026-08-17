@@ -22,6 +22,43 @@ class PrivateTurnState(FrozenModel):
     contract: Literal["private-turn-state.1"] = "private-turn-state.1"
     inner_state_summary: str = Field(min_length=1, max_length=480)
     attended_source_refs: tuple[str, ...] = Field(default=(), max_length=8)
+    keep_impression: bool | None = Field(default=None, exclude_if=lambda value: value is None)
+    noticed: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=720,
+        exclude_if=lambda value: value is None,
+    )
+    about_us: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        exclude_if=lambda value: value is None,
+    )
+    why_us: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        exclude_if=lambda value: value is None,
+    )
+    we_are: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=32,
+        exclude_if=lambda value: value is None,
+    )
+    calling_it: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        exclude_if=lambda value: value is None,
+    )
+    said_as: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=512,
+        exclude_if=lambda value: value is None,
+    )
 
     @field_validator("inner_state_summary")
     @classmethod

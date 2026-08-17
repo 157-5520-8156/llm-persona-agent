@@ -64,7 +64,7 @@ _LOG = logging.getLogger(__name__)
 _DECLARATION_EVENT_TYPES = frozenset({
     "ImageEvidenceDeclared", "RecipientScopedImageEvidenceDeclared",
 })
-_PUBLIC_VISIBILITIES = frozenset({"public", "shareable"})
+_ORDINARY_LIFE_VISIBILITIES = frozenset({"public", "shareable", "personal", "private"})
 _PRIVACY_RANK = {
     "public": 0,
     "shareable": 1,
@@ -99,6 +99,10 @@ class VisualEvidenceAuthorPolicy:
 
     catalog_version: str = "life-visual-evidence.1"
     lookback: timedelta = timedelta(hours=12)
+    # When the photo-candidate pool is empty, ecology may still look farther
+    # back for one annex-backed settled moment so a role media_request is not
+    # doomed to no_candidate.  This never invents a scene.
+    starvation_lookback: timedelta = timedelta(days=7)
     min_gap: timedelta = timedelta(hours=2)
     max_declarations_per_day: int = 3
     max_private_declarations_per_day: int = 1
@@ -129,6 +133,8 @@ class VisualEvidenceAuthorPolicy:
             raise ValueError("visual evidence policy caps are invalid")
         if self.lookback <= timedelta(0) or self.min_gap < timedelta(0):
             raise ValueError("visual evidence policy windows are invalid")
+        if self.starvation_lookback < self.lookback:
+            raise ValueError("visual evidence starvation lookback must cover ordinary lookback")
 
 
 class VisualEvidenceAuthorResult(FrozenModel):
@@ -146,6 +152,7 @@ class _ProjectionLike(Protocol):
     plans: tuple[object, ...]
     world_occurrences: tuple[object, ...]
     affect_episodes: tuple[object, ...]
+    photo_candidates: tuple[object, ...]
 
 
 class LifeVisualEvidenceAuthor:
@@ -220,15 +227,40 @@ class LifeVisualEvidenceAuthor:
             if lane == "private" and logical_time - at <= timedelta(days=1)
         )
         mood_multiplier = self._mood_multiplier_bp(projection)
+        pool_empty = self._available_photo_candidate_count(projection) == 0
         eligible = self._eligible_occurrences(
-            projection=projection, logical_time=logical_time, declared_sources=declared_sources,
+            projection=projection,
+            logical_time=logical_time,
+            declared_sources=declared_sources,
+            lookback=self._policy.lookback,
         )
         open_life = self._eligible_open_life_occurrences(
             projection=projection,
             logical_time=logical_time,
             declared_sources=declared_sources,
+            lookback=self._policy.lookback,
         )
-        if not eligible and not open_life:
+        starvation_eligible: tuple[
+            tuple[object, ReviewedLifeSeedOpening, ReviewedOpeningVisualEvidence, str],
+            ...,
+        ] = ()
+        starvation_open: tuple[
+            tuple[object, str, LifeDevelopmentVisualEvidenceDraft], ...
+        ] = ()
+        if pool_empty:
+            starvation_eligible = self._eligible_occurrences(
+                projection=projection,
+                logical_time=logical_time,
+                declared_sources=declared_sources,
+                lookback=self._policy.starvation_lookback,
+            )
+            starvation_open = self._eligible_open_life_occurrences(
+                projection=projection,
+                logical_time=logical_time,
+                declared_sources=declared_sources,
+                lookback=self._policy.starvation_lookback,
+            )
+        if not eligible and not open_life and not starvation_eligible and not starvation_open:
             return VisualEvidenceAuthorResult(
                 status="idle", reason_code="visual_evidence.no_eligible_settled_occurrence"
             )
@@ -272,6 +304,32 @@ class LifeVisualEvidenceAuthor:
                 occurrence=occurrence, opening=opening, annex=annex, lane=lane,
                 trace_id=trace_id, correlation_id=correlation_id,
             )
+        if pool_empty:
+            ordinary_ids = {
+                getattr(row[0], "occurrence_id", None) for row in (*open_life, *eligible)
+            }
+            catchup_open = tuple(
+                row
+                for row in starvation_open
+                if getattr(row[0], "occurrence_id", None) not in ordinary_ids
+            )
+            catchup_eligible = tuple(
+                row
+                for row in starvation_eligible
+                if getattr(row[0], "occurrence_id", None) not in ordinary_ids
+            )
+            fill = self._declare_first_eligible(
+                open_life=catchup_open,
+                eligible=catchup_eligible,
+                private_today=private_today,
+                projection=projection,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+            if fill is not None:
+                return fill.model_copy(
+                    update={"reason_code": "visual_evidence.starvation_fill_declared"}
+                )
         return VisualEvidenceAuthorResult(
             status="idle", reason_code="visual_evidence.nothing_selected"
         )
@@ -297,8 +355,12 @@ class LifeVisualEvidenceAuthor:
 
         requested = tuple(dict.fromkeys(source_refs))
         if not requested:
-            return VisualEvidenceAuthorResult(
-                status="idle", reason_code="visual_evidence.request_source_missing"
+            # Role chose consider_available_candidate without naming a source.
+            # Compile at most one eligible settled moment so selection is not an
+            # empty-pool instant failure.  Still cannot invent a scene.
+            return self._starvation_fill_for_role_request(
+                trace_id=trace_id,
+                correlation_id=correlation_id,
             )
         projection: _ProjectionLike = self._ledger.project()
         logical_time = getattr(projection, "logical_time", None)
@@ -347,6 +409,33 @@ class LifeVisualEvidenceAuthor:
                 opening=opening,
                 annex=annex,
                 lane=lane,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+            if result.opened_candidate_ids:
+                return result.model_copy(
+                    update={"reason_code": "visual_evidence.role_requested_candidate_declared"}
+                )
+        open_life = self._eligible_open_life_occurrences(
+            projection=projection,
+            logical_time=logical_time,
+            declared_sources=declared_sources,
+        )
+        for occurrence, activity_kind, visual in open_life:
+            attended_aliases = self._requested_source_aliases(
+                projection=projection,
+                occurrence=occurrence,
+            )
+            if not requested_set.intersection(attended_aliases):
+                continue
+            if self._character_ref not in tuple(
+                getattr(occurrence, "participant_refs", ()) or ()
+            ):
+                continue
+            result = self._declare_open_life(
+                occurrence=occurrence,
+                activity_kind=activity_kind,
+                visual=visual,
                 trace_id=trace_id,
                 correlation_id=correlation_id,
             )
@@ -403,10 +492,126 @@ class LifeVisualEvidenceAuthor:
 
     # -- discovery -------------------------------------------------------
 
+    @staticmethod
+    def _available_photo_candidate_count(projection: _ProjectionLike) -> int:
+        logical_time = getattr(projection, "logical_time", None)
+        count = 0
+        for item in getattr(projection, "photo_candidates", ()) or ():
+            if getattr(item, "status", None) != "available":
+                continue
+            expires_at = getattr(item, "expires_at", None)
+            if (
+                isinstance(logical_time, datetime)
+                and isinstance(expires_at, datetime)
+                and expires_at <= logical_time
+            ):
+                continue
+            count += 1
+        return count
+
+    def _declare_first_eligible(
+        self,
+        *,
+        open_life: tuple[tuple[object, str, LifeDevelopmentVisualEvidenceDraft], ...],
+        eligible: tuple[
+            tuple[object, ReviewedLifeSeedOpening, ReviewedOpeningVisualEvidence, str],
+            ...,
+        ],
+        private_today: int,
+        projection: _ProjectionLike,
+        trace_id: str,
+        correlation_id: str,
+    ) -> VisualEvidenceAuthorResult | None:
+        for occurrence, activity_kind, visual in open_life:
+            return self._declare_open_life(
+                occurrence=occurrence,
+                activity_kind=activity_kind,
+                visual=visual,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+        for occurrence, opening, annex, lane in eligible:
+            if lane == "private":
+                if (
+                    private_today >= self._policy.max_private_declarations_per_day
+                    or not self._recipient_relationship_ready(projection)
+                ):
+                    continue
+            return self._declare(
+                occurrence=occurrence,
+                opening=opening,
+                annex=annex,
+                lane=lane,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+        return None
+
+    def _starvation_fill_for_role_request(
+        self,
+        *,
+        trace_id: str,
+        correlation_id: str,
+    ) -> VisualEvidenceAuthorResult:
+        projection: _ProjectionLike = self._ledger.project()
+        logical_time = getattr(projection, "logical_time", None)
+        if not isinstance(logical_time, datetime):
+            return VisualEvidenceAuthorResult(
+                status="unavailable", reason_code="visual_evidence.logical_time_unavailable"
+            )
+        if self._available_photo_candidate_count(projection) > 0:
+            return VisualEvidenceAuthorResult(
+                status="idle", reason_code="visual_evidence.candidates_already_available"
+            )
+        declared_sources, recent = self._declaration_ledger_view(
+            projection=projection,
+            logical_time=logical_time,
+        )
+        daily = sum(1 for _lane, at in recent if logical_time - at <= timedelta(days=1))
+        if daily >= self._policy.max_declarations_per_day:
+            return VisualEvidenceAuthorResult(
+                status="idle", reason_code="visual_evidence.daily_budget_exhausted"
+            )
+        private_today = sum(
+            1
+            for lane, at in recent
+            if lane == "private" and logical_time - at <= timedelta(days=1)
+        )
+        eligible = self._eligible_occurrences(
+            projection=projection,
+            logical_time=logical_time,
+            declared_sources=declared_sources,
+            lookback=self._policy.starvation_lookback,
+        )
+        open_life = self._eligible_open_life_occurrences(
+            projection=projection,
+            logical_time=logical_time,
+            declared_sources=declared_sources,
+            lookback=self._policy.starvation_lookback,
+        )
+        fill = self._declare_first_eligible(
+            open_life=open_life,
+            eligible=eligible,
+            private_today=private_today,
+            projection=projection,
+            trace_id=trace_id,
+            correlation_id=correlation_id,
+        )
+        if fill is None:
+            return VisualEvidenceAuthorResult(
+                status="idle",
+                reason_code="visual_evidence.no_requested_capture_source",
+            )
+        return fill.model_copy(
+            update={"reason_code": "visual_evidence.role_requested_starvation_fill"}
+        )
+
     def _eligible_occurrences(
         self, *, projection: _ProjectionLike, logical_time: datetime,
         declared_sources: frozenset[str],
+        lookback: timedelta | None = None,
     ) -> tuple[tuple[object, ReviewedLifeSeedOpening, ReviewedOpeningVisualEvidence, str], ...]:
+        window = self._policy.lookback if lookback is None else lookback
         plans = {
             plan_id: item
             for item in getattr(projection, "plans", ())
@@ -422,7 +627,7 @@ class LifeVisualEvidenceAuthor:
                 or settlement_ref is None
                 or settlement_ref in declared_sources
                 or settled_at > logical_time
-                or logical_time - settled_at > self._policy.lookback
+                or logical_time - settled_at > window
             ):
                 continue
             plan = plans.get(getattr(occurrence, "trigger_ref", None))
@@ -435,7 +640,7 @@ class LifeVisualEvidenceAuthor:
             annex = opening.visual_evidence
             visibility = getattr(occurrence, "visibility", None)
             if (
-                visibility in _PUBLIC_VISIBILITIES
+                visibility in _ORDINARY_LIFE_VISIBILITIES
                 and opening.visual_potential not in {"none", "private_transition"}
             ):
                 rows.append((occurrence, opening, annex, "public"))
@@ -455,7 +660,9 @@ class LifeVisualEvidenceAuthor:
         projection: _ProjectionLike,
         logical_time: datetime,
         declared_sources: frozenset[str],
+        lookback: timedelta | None = None,
     ) -> tuple[tuple[object, str, LifeDevelopmentVisualEvidenceDraft], ...]:
+        window = self._policy.lookback if lookback is None else lookback
         plans = {
             plan_id: item
             for item in getattr(projection, "plans", ())
@@ -467,33 +674,54 @@ class LifeVisualEvidenceAuthor:
             settlement_ref = getattr(occurrence, "settlement_event_ref", None)
             if (
                 getattr(occurrence, "status", None) != "settled"
-                or getattr(occurrence, "visibility", None) not in _PUBLIC_VISIBILITIES
+                or getattr(occurrence, "visibility", None) not in _ORDINARY_LIFE_VISIBILITIES
                 or not isinstance(settled_at, datetime)
                 or settlement_ref is None
                 or settlement_ref in declared_sources
                 or settled_at > logical_time
-                or logical_time - settled_at > self._policy.lookback
+                or logical_time - settled_at > window
             ):
                 continue
             plan = plans.get(getattr(occurrence, "trigger_ref", None))
             activity_kind = getattr(plan, "activity_kind", None)
             plan_id = getattr(plan, "plan_id", None)
+            material = None
             if (
-                not isinstance(activity_kind, str)
-                or not activity_kind.startswith("open_life.")
-                or not isinstance(plan_id, str)
+                isinstance(activity_kind, str)
+                and activity_kind.startswith("open_life.")
+                and isinstance(plan_id, str)
             ):
-                continue
-            try:
-                material = self._life_development_proposals.read_for_plan(
-                    plan_id=plan_id
+                try:
+                    material = self._life_development_proposals.read_for_plan(
+                        plan_id=plan_id
+                    )
+                except ValueError:
+                    _LOG.warning(
+                        "open Life visual evidence authority is unavailable plan=%s",
+                        plan_id,
+                    )
+                    material = None
+            if material is None:
+                read_occurrence = getattr(
+                    self._life_development_proposals, "read_for_occurrence", None
                 )
-            except ValueError:
-                _LOG.warning(
-                    "open Life visual evidence authority is unavailable plan=%s",
-                    plan_id,
-                )
-                continue
+                if not callable(read_occurrence):
+                    continue
+                try:
+                    material = read_occurrence(occurrence=occurrence)
+                except (TypeError, ValueError):
+                    _LOG.warning(
+                        "open Life visual evidence authority is unavailable occurrence=%s",
+                        getattr(occurrence, "occurrence_id", None),
+                    )
+                    continue
+                if material is None:
+                    continue
+                activity_kind = getattr(material, "activity_kind", None)
+                if not isinstance(activity_kind, str) or not activity_kind.startswith(
+                    "open_life."
+                ):
+                    activity_kind = "open_life.world_occurrence"
             if material is None:
                 continue
             selected_ref = getattr(occurrence, "settled_outcome_ref", None)
@@ -739,6 +967,7 @@ class LifeVisualEvidenceAuthor:
             }
             for item in visual.objects
         )
+        character_media = self._open_life_character_media(occurrence)
         evidence = ImageEvidenceV1(
             visibility=getattr(occurrence, "visibility"),
             summary=self._settled_summary(occurrence),
@@ -759,6 +988,7 @@ class LifeVisualEvidenceAuthor:
                 logical_time=getattr(occurrence, "settled_at"),
                 privacy_ceiling=getattr(occurrence, "visibility"),
             ),
+            character_media=character_media,
         )
         command_id = "visual-evidence:" + _digest(
             [self._ledger.world_id, settlement_ref, "open-life"]
@@ -776,12 +1006,35 @@ class LifeVisualEvidenceAuthor:
             correlation_id=correlation_id,
         )
         declared_ref = next(iter(getattr(commit, "event_ids", ())), None)
+        opened: tuple[str, ...] = ()
+        if declared_ref is not None and character_media is not None:
+            try:
+                opened = self._character_candidates.open_once(
+                    wake_event_ref=declared_ref,
+                    logical_time=logical_time,
+                    actor=self._actor,
+                    trace_id=trace_id,
+                    correlation_id=correlation_id,
+                )
+            except ValueError:
+                _LOG.warning("character media candidates could not open for %s", declared_ref)
         return VisualEvidenceAuthorResult(
             status="declared",
             reason_code="visual_evidence.declared",
             declared_event_ref=declared_ref,
             declared_source_ref=settlement_ref,
             lane="public",
+            opened_candidate_ids=opened,
+        )
+
+    def _open_life_character_media(self, occurrence) -> CharacterMediaEvidenceV1 | None:  # type: ignore[no-untyped-def]
+        participants = tuple(getattr(occurrence, "participant_refs", ()) or ())
+        if self._character_ref not in participants:
+            return None
+        return CharacterMediaEvidenceV1(
+            character_ref=self._character_ref,
+            present=True,
+            capture_capabilities=("character_front_camera",),
         )
 
     def _settled_summary(self, occurrence) -> str | None:  # type: ignore[no-untyped-def]

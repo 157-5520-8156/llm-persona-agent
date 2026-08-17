@@ -28,7 +28,7 @@ from .context_capsule import InnerAdvisoryCandidate, InnerAdvisoryProjection
 from .schema_core import FrozenModel
 
 
-RESPONSE_EXPECTATION_ADVISORY_VERSION = "response-expectation-view.1"
+RESPONSE_EXPECTATION_ADVISORY_VERSION = "response-expectation-view.2"
 
 # Mirrors the silence-anchor discipline: a receipt in these states means she
 # visibly said it from her own point of view.  Behavioural follow-up applies
@@ -37,7 +37,9 @@ RESPONSE_EXPECTATION_ADVISORY_VERSION = "response-expectation-view.1"
 _ANSWERABLE_RECEIPT_STATES = frozenset({"provider_accepted", "delivered"})
 
 ExpectationTier = Literal["low", "medium", "high"]
-_TERMINAL_ASSESSMENT_STATES = frozenset({"fulfilled", "superseded"})
+_TERMINAL_ASSESSMENT_STATES = frozenset(
+    {"fulfilled", "superseded", "still_pending"}
+)
 
 
 def _digest(value: object) -> str:
@@ -189,6 +191,7 @@ EXPIRED_EXPECTATION_GRACE = timedelta(hours=1)
 class ExpiredUnansweredExpectation(FrozenModel):
     plan_id: str = Field(min_length=1)
     hoped_response: str = Field(min_length=1, max_length=128)
+    not_before: datetime
     expires_at: datetime
     receipt_event_id: str = Field(min_length=1)
     receipt_world_revision: int = Field(ge=1)
@@ -223,20 +226,25 @@ def expired_unanswered_expectation(projection) -> ExpiredUnansweredExpectation |
             for item in getattr(projection, "response_expectation_assessments", ())
             if item.status in _TERMINAL_ASSESSMENT_STATES
         }
-        delivered_by_action: dict[str, object] = {}
+        latest_by_action: dict[str, tuple[object, object]] = {}
         for ref, receipt in zip(receipt_refs, projection.execution_receipts, strict=True):
-            if receipt.observed_state not in _ANSWERABLE_RECEIPT_STATES:
-                continue
-            existing = delivered_by_action.get(receipt.action_id)
-            if existing is None or ref.world_revision > existing.world_revision:
-                delivered_by_action[receipt.action_id] = ref
+            existing = latest_by_action.get(receipt.action_id)
+            if existing is None or ref.world_revision > existing[0].world_revision:
+                latest_by_action[receipt.action_id] = (ref, receipt)
+        delivered_by_action = {
+            action_id: ref
+            for action_id, (ref, receipt) in latest_by_action.items()
+            if receipt.observed_state in _ANSWERABLE_RECEIPT_STATES
+        }
         candidates: list[ExpiredUnansweredExpectation] = []
         for manifest in projection.expression_plan_manifests:
             expectation = manifest.response_expectation
+            not_before = getattr(expectation, "not_before", None)
             if (
                 expectation is None
+                or not_before is None
                 or manifest.plan_id in terminal_plan_ids
-                or logical_time < expectation.expires_at
+                or logical_time < not_before
                 or logical_time >= expectation.expires_at + EXPIRED_EXPECTATION_GRACE
             ):
                 continue
@@ -255,6 +263,7 @@ def expired_unanswered_expectation(projection) -> ExpiredUnansweredExpectation |
                 ExpiredUnansweredExpectation(
                     plan_id=manifest.plan_id,
                     hoped_response=expectation.hoped_response,
+                    not_before=not_before,
                     expires_at=expectation.expires_at,
                     receipt_event_id=delivered_ref.event_id,
                     receipt_world_revision=delivered_ref.world_revision,
@@ -331,7 +340,11 @@ def _view(expectation, *, declared_seconds_ago: int) -> PendingResponseExpectati
     )
 
 
-def _expectation_summary(view: PendingResponseExpectationView) -> str:
+def _expectation_summary(
+    view: PendingResponseExpectationView,
+    *,
+    counterpart_replied: bool,
+) -> str:
     """Compress the pending expectation into one bounded read-only hint.
 
     Every value is copied from the frozen authority; nothing is inferred.
@@ -340,9 +353,11 @@ def _expectation_summary(view: PendingResponseExpectationView) -> str:
 
     minutes = view.declared_seconds_ago // 60
     waited = f"declared about {minutes} minutes ago" if minutes else "declared moments ago"
+    reply = "he has since spoken" if counterpart_replied else "he has not spoken"
     return (
         f"When she last spoke she hoped for: {view.hoped_response}"
-        f"; pressure {view.pressure}; importance {view.importance}; {waited}"
+        f"; {reply}; pressure {view.pressure}; importance {view.importance}; {waited}"
+        ". This is evidence only; she still decides."
     )[:256]
 
 
@@ -351,6 +366,7 @@ def response_expectation_advisory(
     *,
     source_ref: str,
     logical_time: datetime,
+    counterpart_replied: bool = False,
 ) -> InnerAdvisoryProjection:
     """Wrap the view in the ordinary non-authoritative advisory envelope."""
 
@@ -362,7 +378,9 @@ def response_expectation_advisory(
         candidates=(
             InnerAdvisoryCandidate(
                 candidate_ref="response-expectation:" + _digest(source_ref),
-                value=_expectation_summary(view),
+                value=_expectation_summary(
+                    view, counterpart_replied=counterpart_replied
+                ),
                 weight_bp=10_000,
                 confidence_bp=10_000,
             ),

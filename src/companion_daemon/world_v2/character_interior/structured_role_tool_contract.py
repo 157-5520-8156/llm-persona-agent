@@ -232,6 +232,26 @@ def _proactive_payload_schema(
         properties.get("impulse_summary"),
         field_name="impulse_summary",
     )
+    # Optional lasting Affect self-select on the same proactive turn.  Omit
+    # both for character-chosen no_change; do not invent mood from wording.
+    properties["mood"] = {
+        "type": ["string", "null"],
+        "enum": [
+            None,
+            "hurt",
+            "anger",
+            "sadness",
+            "loneliness",
+            "anxiety",
+            "resentment",
+            "warmth",
+            "joy",
+        ],
+    }
+    properties["appraisal_draft"] = {
+        "type": ["object", "null"],
+        "additionalProperties": True,
+    }
     _close_world_claim_sources(properties.get("world_claims"))
 
     max_beats = expression_capabilities.get("max_beats")
@@ -350,6 +370,7 @@ def _proactive_payload_schema(
                     field_name="expires_after_seconds",
                 ),
                 "turn_posture": {"enum": [None, "yield", "continue", "supersede"]},
+                "revisit": {"type": "null"},
             },
             "required": ["delay_seconds", "expires_after_seconds"],
         },
@@ -359,6 +380,7 @@ def _proactive_payload_schema(
                 "beats": {**deepcopy(beats), "maxItems": 0},
                 "turn_posture": {"enum": [None, "yield", "continue", "supersede"]},
                 "response_expectation": {"type": "null"},
+                "revisit": {"type": "null"},
                 **no_due_window,
             }
         },
@@ -1116,6 +1138,9 @@ class StructuredRoleToolContracts:
                 "The function constrains transport shape only; whether to act now, "
                 "act later, stay silent, request recall, and every private or visible "
                 "semantic field remain the character's choice. "
+                "Optional mood opens one lasting Affect component this turn; optional "
+                "appraisal_draft authors the full appraisal/affect lifecycle instead. "
+                "Omit both when nothing lasting shifted—the host never invents affect. "
                 + (
                     "Return the complete role result under the transport-only result key. "
                     "Use JSON null, never the string 'null'."
@@ -1578,7 +1603,11 @@ class StructuredRoleToolContracts:
         }
         if not allow_direction:
             payload_properties["character_life_direction"] = {"type": "null"}
-        payload_schema["required"] = ["selected_token", "character_life_direction"]
+        payload_schema["required"] = [
+            "selected_token",
+            "adopt_proposed_life_direction",
+            "character_life_direction",
+        ]
         return _compile_generic_decision_contract(
             purpose="outcome_selection",
             tool_name=_OUTCOME_SELECTION_TOOL_NAME,
@@ -1588,9 +1617,12 @@ class StructuredRoleToolContracts:
             recall_allowed=recall_allowed,
             description=(
                 "Return the complete source-bound outcome_selection role result. "
-                "Select one offered candidate or request one bounded recall. The "
-                "function constrains transport and capability shape only; the "
-                "character owns which candidate, if any, matters."
+                "Select one offered candidate or request one bounded recall. "
+                "adopt_proposed_life_direction is true only when that candidate "
+                "carries proposed_objective_direction and that exact candidate's "
+                "objective life consequence becomes true. The function constrains "
+                "transport and capability shape only; the character owns which "
+                "candidate, if any, matters."
             ),
         )
 
@@ -1657,7 +1689,8 @@ class StructuredRoleToolContracts:
             description=(
                 "Return the complete source-bound activity lifecycle choice. The "
                 "character may select one offered opening or explicitly choose no_op; "
-                "the function constrains capability and transport shape only."
+                "optional noticed is a short subjective moment in a verified situation. "
+                "The function constrains capability and transport shape only."
             ),
         )
 

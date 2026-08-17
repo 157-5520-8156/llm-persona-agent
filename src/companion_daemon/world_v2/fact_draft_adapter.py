@@ -14,6 +14,8 @@ import hashlib
 import json
 from typing import Protocol
 
+from ..llm import model_call_scope
+
 from .fact_reducers import (
     INSTALLED_FACT_PREDICATE_CARDINALITY,
     INSTALLED_FACT_PREDICATE_GUIDE,
@@ -366,11 +368,12 @@ class FactObservationProposalAdapter:
 
     async def _complete(self, messages: list[dict[str, str]]) -> str:
         complete_json = getattr(self._model, "complete_json", None)
-        return await (
-            complete_json(messages, temperature=self._temperature)
-            if callable(complete_json)
-            else self._model.complete(messages, temperature=self._temperature)
-        )
+        with model_call_scope("interaction_fact_draft"):
+            return await (
+                complete_json(messages, temperature=self._temperature)
+                if callable(complete_json)
+                else self._model.complete(messages, temperature=self._temperature)
+            )
 
     @staticmethod
     def _validate_withdrawal_slot(

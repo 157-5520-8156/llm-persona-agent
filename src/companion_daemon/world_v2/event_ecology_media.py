@@ -38,6 +38,7 @@ from .media_evidence_snapshot import (
     MediaEvidenceSnapshotCompiler,
 )
 from .schemas import ProjectionCursor, WorldEvent
+from .schema_core import PrivacyClass
 
 
 EcologyCategory = Literal[
@@ -120,7 +121,7 @@ class EcologyCandidate:
     category: EcologyCategory
     source_event_refs: tuple[str, ...]
     source_payload_hashes: tuple[str, ...]
-    privacy_ceiling: Literal["public", "shareable"]
+    privacy_ceiling: PrivacyClass
     observed_at: datetime
     context: dict[str, object]
     expires_at: datetime
@@ -190,8 +191,8 @@ def _identity(*, event_type: str, world_id: str, payload: dict[str, object]) -> 
     return identity
 
 
-def _bounded_privacy(value: object) -> Literal["public", "shareable"] | None:
-    if value not in _PRIVACY_RANK or _PRIVACY_RANK[value] > _PRIVACY_RANK["shareable"]:
+def _bounded_privacy(value: object) -> PrivacyClass | None:
+    if value not in _PRIVACY_RANK or value == "withhold":
         return None
     return value  # type: ignore[return-value]
 
@@ -402,7 +403,7 @@ class EventEcologyMediaCandidateRuntime:
     @staticmethod
     def _media_readiness(
         *, source_refs: tuple[str, ...], privacy: object,
-        declarations: dict[str, tuple[str, str, Literal["public", "shareable"]]] | None,
+        declarations: dict[str, tuple[str, str, PrivacyClass]] | None,
     ) -> MediaReadiness:
         if _bounded_privacy(privacy) is None:
             return "privacy_blocked"
@@ -547,7 +548,7 @@ class EventEcologyMediaCandidateRuntime:
                     return
                 selected_refs.append((committed.event_id, committed.payload_hash))
             if declarations is not None:
-                declaration_visibilities: list[Literal["public", "shareable"]] = []
+                declaration_visibilities: list[PrivacyClass] = []
                 for source_ref in sources:
                     declaration = declarations.get(source_ref)
                     if declaration is None:
@@ -707,7 +708,7 @@ class EventEcologyMediaCandidateRuntime:
 
     def _declared_visual_sources(
         self, *, projection: _ProjectionLike, refs: dict[str, object],
-    ) -> dict[str, tuple[str, str, Literal["public", "shareable"]]] | None:
+    ) -> dict[str, tuple[str, str, PrivacyClass]] | None:
         """Return declarations by their exact source, or legacy ``None``.
 
         Real ledgers provide immutable event lookup; embedded historical test
@@ -719,7 +720,7 @@ class EventEcologyMediaCandidateRuntime:
         lookup = getattr(self._ledger, "lookup_event_commit", None)
         if not callable(lookup):
             return None
-        declared: dict[str, tuple[str, str, Literal["public", "shareable"]]] = {}
+        declared: dict[str, tuple[str, str, PrivacyClass]] = {}
         ambiguous: set[str] = set()
         for ref in projection.committed_world_event_refs:
             if getattr(ref, "event_type", None) == "VisualFactRecorded":

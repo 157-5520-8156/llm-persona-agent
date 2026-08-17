@@ -18,6 +18,7 @@ from test_qq_media_deployment import WORLD_ID, _provisioned_world, _settings
 def test_media_lane_defaults_are_on() -> None:
     assert Settings.model_fields["world_v2_media_preview_enabled"].default is True
     assert Settings.model_fields["allow_auto_image_generation"].default is True
+    assert Settings.model_fields["civitai_krea2_enabled"].default is True
 
 
 def test_factory_disables_without_auto_image_generation(tmp_path: Path) -> None:

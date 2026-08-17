@@ -689,7 +689,7 @@ async def test_decision_is_source_capability_and_author_lineage_bound() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bare_decision_payload_requires_explicit_decision_source_refs() -> None:
+async def test_bare_decision_payload_closes_over_pinned_attended_source_refs() -> None:
 
     manifest = _manifest("media-token:1", "media-token:2")
     model = _RequiredToolQueueModel(
@@ -703,8 +703,20 @@ async def test_bare_decision_payload_requires_explicit_decision_source_refs() ->
     )
     role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-chat-v4")
 
-    with pytest.raises(StructuredRoleResultError, match="role_result_schema_invalid"):
-        await role.consider(await _request(purpose="media_selection", capability_manifest=manifest))
+    result = await role.consider(await _request(purpose="media_selection", capability_manifest=manifest))
+
+    assert result["decision"] == {
+        "contract": "character-interior-purpose-decision.1",
+        "purpose": "media_selection",
+        "source_refs": ["source:private_self"],
+        "capability_ref": manifest.capability_ref,
+        "capability_payload_hash": manifest.payload_hash,
+        "payload": {
+            "contract": "character-interior-media-selection-decision.1",
+            "decision": "select",
+            "selected_token": "media-token:2",
+        },
+    }
 
 
 @pytest.mark.asyncio
@@ -1054,6 +1066,7 @@ async def test_outcome_selection_is_one_capability_bound_interior_decision() -> 
                 "source_refs": ["source:private_self"],
                 "payload": {
                     "selected_token": "candidate:unexpected-invitation",
+                    "adopt_proposed_life_direction": False,
                     "character_life_direction": None,
                 },
             },
@@ -1074,6 +1087,7 @@ async def test_outcome_selection_is_one_capability_bound_interior_decision() -> 
         "payload": {
             "contract": "character-interior-outcome-selection-decision.1",
             "selected_token": "candidate:unexpected-invitation",
+            "adopt_proposed_life_direction": False,
             "character_life_direction": None,
         },
     }
@@ -1089,6 +1103,7 @@ async def test_outcome_selection_rejects_a_candidate_outside_the_manifest() -> N
                     "source_refs": ["source:private_self"],
                     "payload": {
                         "selected_token": "candidate:not-offered",
+                        "adopt_proposed_life_direction": False,
                         "character_life_direction": None,
                     },
                 },
@@ -1112,6 +1127,94 @@ async def test_outcome_selection_rejects_a_candidate_outside_the_manifest() -> N
 
 
 @pytest.mark.asyncio
+async def test_outcome_selection_rejects_adopt_without_proposed_objective_direction() -> None:
+    role = StructuredCharacterRoleFaculty(
+        model=_RequiredToolQueueModel(
+            _result(
+                status="decision",
+                decision={
+                    "source_refs": ["source:private_self"],
+                    "payload": {
+                        "selected_token": "candidate:unexpected-invitation",
+                        "adopt_proposed_life_direction": True,
+                        "character_life_direction": None,
+                    },
+                },
+            )
+        ),
+        model_id="deepseek-chat-v4",
+    )
+
+    with pytest.raises(StructuredRoleResultError) as raised:
+        await role.consider(
+            await _request(
+                purpose="outcome_selection",
+                capability_manifest=_manifest(
+                    "candidate:unexpected-invitation",
+                    kind="outcome_selection",
+                ),
+            )
+        )
+
+    assert raised.value.code == "role_result_schema_invalid"
+    assert "proposed_objective_direction" in raised.value.detail
+
+
+@pytest.mark.asyncio
+async def test_outcome_selection_accepts_adopt_when_candidate_offers_objective_direction() -> None:
+    payload = {
+        "offered_tokens": ["candidate:unexpected-invitation"],
+        "allow_character_life_direction": True,
+        "candidates": [
+            {
+                "token": "candidate:unexpected-invitation",
+                "proposed_objective_direction": {
+                    "context_tags": ["role:intern"],
+                    "supersedes_context_tag_prefixes": ["role:"],
+                    "duration_days": 90,
+                    "summary": "接下来几个月都在出版社实习。",
+                },
+            }
+        ],
+    }
+    payload_json = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    manifest = _InteriorCapabilityManifest(
+        capability_ref="capability:outcome_selection:adopt",
+        capability_kind="outcome_selection",
+        payload_json=payload_json,
+        payload_hash="sha256:" + hashlib.sha256(payload_json.encode()).hexdigest(),
+        source_refs=("source:private_self",),
+    )
+    role = StructuredCharacterRoleFaculty(
+        model=_RequiredToolQueueModel(
+            _result(
+                status="decision",
+                decision={
+                    "source_refs": ["source:private_self"],
+                    "payload": {
+                        "selected_token": "candidate:unexpected-invitation",
+                        "adopt_proposed_life_direction": True,
+                        "character_life_direction": None,
+                    },
+                },
+            )
+        ),
+        model_id="deepseek-chat-v4",
+    )
+
+    result = await role.consider(
+        await _request(purpose="outcome_selection", capability_manifest=manifest)
+    )
+
+    assert result["decision"]["payload"]["adopt_proposed_life_direction"] is True
+
+
+@pytest.mark.asyncio
 async def test_outcome_selection_uses_one_versioned_forced_tool() -> None:
     manifest = _manifest(
         "candidate:quiet-afternoon",
@@ -1125,6 +1228,7 @@ async def test_outcome_selection_uses_one_versioned_forced_tool() -> None:
                 "source_refs": ["source:private_self"],
                 "payload": {
                     "selected_token": "candidate:unexpected-invitation",
+                    "adopt_proposed_life_direction": False,
                     "character_life_direction": None,
                 },
             },
@@ -1176,6 +1280,12 @@ def test_outcome_selection_tool_schema_closes_offered_tokens_and_direction() -> 
     assert decision_source_refs["maxItems"] == 1
     assert decision_source_refs["items"]["enum"] == ["source:private_self"]
     assert decision_source_refs["prefixItems"] == [{"const": "source:private_self"}]
+    assert payload["required"] == [
+        "selected_token",
+        "adopt_proposed_life_direction",
+        "character_life_direction",
+    ]
+    assert payload["properties"]["adopt_proposed_life_direction"]["type"] == "boolean"
     assert payload["properties"]["character_life_direction"] == {"type": "null"}
     assert set(parameters["anyOf"][1]["properties"]["status"]["enum"]) == {
         "recall_request"
@@ -1208,6 +1318,7 @@ def test_outcome_selection_tool_schema_closes_offered_tokens_and_direction() -> 
                 "source_refs": ["source:private_self"],
                 "payload": {
                     "selected_token": "candidate:unexpected-invitation",
+                    "adopt_proposed_life_direction": False,
                     "character_life_direction": {
                         "coordinate_ref": "biography:direction.new-project",
                         "summary": "keep making room for work that feels like mine",
@@ -1232,6 +1343,7 @@ async def test_outcome_selection_without_required_tool_support_fails_closed() ->
                 "source_refs": ["source:private_self"],
                 "payload": {
                     "selected_token": "candidate:offered",
+                    "adopt_proposed_life_direction": False,
                     "character_life_direction": None,
                 },
             },
@@ -1265,6 +1377,7 @@ async def test_outcome_selection_required_tool_reaches_deepseek_http_boundary() 
             "source_refs": ["source:private_self"],
             "payload": {
                 "selected_token": "candidate:unexpected-invitation",
+                "adopt_proposed_life_direction": False,
                 "character_life_direction": None,
             },
         },
@@ -1575,6 +1688,86 @@ async def test_proactive_contact_is_one_capability_bound_interior_decision() -> 
         "character-interior-proactive-contact-decision.1"
     )
     assert result["decision"]["payload"]["timing_choice"] == "silent"
+
+
+@pytest.mark.asyncio
+async def test_proactive_contact_closes_a_flattened_decision_envelope() -> None:
+    model = _RequiredToolQueueModel(
+        _result(
+            status="decision",
+            decision={
+                "timing_choice": "now",
+                "cadence": "conversational",
+                "beats": [
+                    {
+                        "modality": "text",
+                        "text": "早上好呀～今天在旧书市集淘到一本诗集。",
+                        "cadence": "hesitant",
+                        "reaction_option_id": None,
+                    }
+                ],
+                "stance": "warm and genuinely curious",
+                "brief_rationale": "A small piece of the day felt worth sharing.",
+                "impulse_summary": "I feel a pull to share the find and check in.",
+                "confidence": 7500,
+                "world_claims": [],
+                "delay_seconds": None,
+                "expires_after_seconds": None,
+            },
+        )
+    )
+
+    result = await StructuredCharacterRoleFaculty(
+        model=model,
+        model_id="deepseek-v4-flash",
+    ).consider(
+        await _request(
+            purpose="proactive_contact",
+            capability_manifest=_proactive_manifest(),
+        )
+    )
+
+    assert result["decision"]["source_refs"] == ["source:private_self"]
+    assert result["decision"]["payload"]["timing_choice"] == "now"
+    assert result["decision"]["payload"]["beats"][0]["text"] == (
+        "早上好呀～今天在旧书市集淘到一本诗集。"
+    )
+
+
+@pytest.mark.asyncio
+async def test_proactive_contact_closes_a_flattened_silent_decision() -> None:
+    model = _RequiredToolQueueModel(
+        _result(
+            status="decision",
+            decision={
+                "timing_choice": "silent",
+                "beats": [],
+                "confidence": 7500,
+                "impulse_summary": (
+                    "A slight pull to reach out again, but the morning "
+                    "message already sits unanswered."
+                ),
+                "stance": "Respectful, patient, a bit withdrawn.",
+                "world_claims": [],
+                "brief_rationale": "He hasn't responded to the morning check-in.",
+                "delay_seconds": None,
+                "expires_after_seconds": None,
+            },
+        )
+    )
+
+    result = await StructuredCharacterRoleFaculty(
+        model=model,
+        model_id="deepseek-v4-flash",
+    ).consider(
+        await _request(
+            purpose="proactive_contact",
+            capability_manifest=_proactive_manifest(),
+        )
+    )
+
+    assert result["decision"]["payload"]["timing_choice"] == "silent"
+    assert result["decision"]["payload"]["beats"] == []
 
 
 @pytest.mark.asyncio
@@ -2035,6 +2228,7 @@ async def test_proactive_contact_uses_one_versioned_forced_tool_at_http_boundary
                     "variation_profile": None,
                     "response_expectation": None,
                     "response_expectation_assessment": None,
+                    "revisit": None,
                     "world_claims": [],
                     "media_request": "none",
                     "media_source_refs": [],

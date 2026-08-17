@@ -986,7 +986,7 @@ async def test_valid_model_silence_is_not_confused_with_technical_failure() -> N
     assert silent_result.failure_code is None
     assert silent_result.summary == "She decided this was not a moment to speak."
     assert failed_result.status == "technical_failure"
-    assert failed_result.failure_code == "role_faculty_unavailable"
+    assert failed_result.failure_code == "authored_subcall_timeout"
     assert failed_result.summary is None
     assert failed_result.decision is None
 
@@ -1154,7 +1154,7 @@ async def test_runtime_health_separates_character_silence_correction_and_technic
     }
     assert health["correction_attempt_count"] == 0
     assert health["last_terminal_status"] == "technical_failure"
-    assert health["last_failure_code"] == "role_faculty_unavailable"
+    assert health["last_failure_code"] == "authored_subcall_timeout"
     assert health["primary_author_faculty"] == "character-role"
     assert health["semantic_author_count"] == 1
     assert health["primary_author_model"] == "unknown"

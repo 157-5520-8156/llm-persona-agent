@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from starlette.testclient import TestClient
@@ -95,6 +96,9 @@ def _settings(tmp_path: Path, **overrides: object) -> Settings:
         "ALLOW_AUTO_IMAGE_GENERATION": "1",
         "DEEPSEEK_API_KEY": "test-deepseek",
         "OPENAI_API_KEY": "test-openai",
+        "OPENROUTER_API_KEY": None,
+        "CIVITAI_API_KEY": None,
+        "CIVITAI_KREA2_ENABLED": "0",
         "NAPCAT_ALLOWED_PRIVATE_USER_IDS": "10001",
         "PRIMARY_USER_ID": "geoff",
     }
@@ -249,5 +253,161 @@ async def test_factory_composes_a_complete_preview_deployment_when_provisioned(
         assert deployment.auto_delivery.max_deliveries_per_day <= 2
         assert bundle.transport.provider == "provider:event-media"
         assert hasattr(bundle.transport, "lookup_execution_result")
+        renderer = bundle.transport._renderer
+        assert renderer.specialized_generators == {}
+        assert renderer.private_prompt_author is None
+        high_plan = SimpleNamespace(
+            private_render_contract=SimpleNamespace(render_route="adult_suggestive"),
+            suggestive_private_contract=None,
+        )
+        ordinary_plan = SimpleNamespace(
+            private_render_contract=None,
+            suggestive_private_contract=None,
+        )
+        assert renderer._generator_for(high_plan) is None
+        assert renderer._generator_for(ordinary_plan) is renderer.generator
+    finally:
+        bundle.transport.close()
+
+
+def _unwrap(obj: object) -> object:
+    while hasattr(obj, "_delegate"):
+        obj = obj._delegate
+    return obj
+
+
+def _high_plan(*, route: str = "adult_suggestive") -> SimpleNamespace:
+    return SimpleNamespace(
+        private_render_contract=SimpleNamespace(render_route=route),
+        suggestive_private_contract=None,
+    )
+
+
+def _ordinary_plan() -> SimpleNamespace:
+    return SimpleNamespace(
+        private_render_contract=None,
+        suggestive_private_contract=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_factory_keeps_ordinary_lane_when_civitai_key_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("WORLD_V2_ENABLE_INSECURE_TEST_ROOT", "1")
+    settings = _settings(tmp_path, CIVITAI_KREA2_ENABLED="1", CIVITAI_API_KEY=None)
+    await _provisioned_world(Path(settings.database_path))
+    bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
+    assert bundle is not None
+    try:
+        renderer = bundle.transport._renderer
+        assert renderer.specialized_generators == {}
+        assert renderer.private_prompt_author is None
+        assert renderer._generator_for(_high_plan()) is None
+        assert renderer._generator_for(_ordinary_plan()) is renderer.generator
+    finally:
+        bundle.transport.close()
+
+
+@pytest.mark.asyncio
+async def test_factory_keeps_ordinary_lane_when_krea2_template_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("WORLD_V2_ENABLE_INSECURE_TEST_ROOT", "1")
+    settings = _settings(
+        tmp_path,
+        CIVITAI_KREA2_ENABLED="1",
+        CIVITAI_API_KEY="test-civitai",
+        CIVITAI_KREA2_TEMPLATE_PATH=tmp_path / "missing-krea2-template.json",
+    )
+    await _provisioned_world(Path(settings.database_path))
+    bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
+    assert bundle is not None
+    try:
+        renderer = bundle.transport._renderer
+        assert renderer.specialized_generators == {}
+        assert renderer.private_prompt_author is None
+        assert renderer._generator_for(_ordinary_plan()) is renderer.generator
+    finally:
+        bundle.transport.close()
+
+
+@pytest.mark.asyncio
+async def test_factory_installs_krea2_high_private_when_credentials_are_complete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from companion_daemon.event_media import FirstPersonPrivatePromptAuthor, MediaRenderFailure
+    from companion_daemon.image_generation import (
+        CivitaiTemplateWorkflowImageGenerator,
+        OpenAIImageGenerator,
+    )
+    from companion_daemon.llm import DeepSeekChatModel
+    from companion_daemon.world_v2.sourced_life_media import SourcedLifeMediaRenderer
+
+    monkeypatch.setenv("WORLD_V2_ENABLE_INSECURE_TEST_ROOT", "1")
+    settings = _settings(
+        tmp_path,
+        CIVITAI_KREA2_ENABLED="1",
+        CIVITAI_API_KEY="test-civitai",
+    )
+    await _provisioned_world(Path(settings.database_path))
+    bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
+    assert bundle is not None
+    try:
+        renderer = bundle.transport._renderer
+        assert isinstance(renderer, SourcedLifeMediaRenderer)
+        assert set(renderer.specialized_generators) == {
+            "adult_suggestive",
+            "adult_explicit",
+        }
+        suggestive = renderer.specialized_generators["adult_suggestive"]
+        explicit = renderer.specialized_generators["adult_explicit"]
+        assert suggestive is explicit
+        assert isinstance(_unwrap(suggestive), CivitaiTemplateWorkflowImageGenerator)
+        assert isinstance(_unwrap(renderer.generator), OpenAIImageGenerator)
+        assert renderer._generator_for(_high_plan()) is suggestive
+        assert renderer._generator_for(_high_plan(route="adult_explicit")) is explicit
+        assert renderer._generator_for(_ordinary_plan()) is renderer.generator
+        assert renderer._generator_for(_ordinary_plan()) is not suggestive
+        assert isinstance(renderer.private_prompt_author, FirstPersonPrivatePromptAuthor)
+        assert isinstance(renderer.private_prompt_author.model, DeepSeekChatModel)
+        unsourced = await renderer.render(
+            SimpleNamespace(
+                plan_id="plan:unsourced-high",
+                event_id="",
+                primary_evidence_ref="/activity/description",
+                evidence_values={"/activity/description": "雨后校园小路"},
+                private_render_contract=SimpleNamespace(render_route="adult_suggestive"),
+            )
+        )
+        assert isinstance(unsourced, MediaRenderFailure)
+        assert unsourced.reason == "unsourced_event"
+        assert unsourced.attempts == 0
+    finally:
+        bundle.transport.close()
+
+
+@pytest.mark.asyncio
+async def test_factory_uses_hermes_private_prompt_author_when_openrouter_is_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from companion_daemon.event_media import FirstPersonPrivatePromptAuthor
+    from companion_daemon.llm import OpenAICompatibleChatModel
+
+    monkeypatch.setenv("WORLD_V2_ENABLE_INSECURE_TEST_ROOT", "1")
+    settings = _settings(
+        tmp_path,
+        CIVITAI_KREA2_ENABLED="1",
+        CIVITAI_API_KEY="test-civitai",
+        OPENROUTER_API_KEY="test-openrouter",
+    )
+    await _provisioned_world(Path(settings.database_path))
+    bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
+    assert bundle is not None
+    try:
+        author = bundle.transport._renderer.private_prompt_author
+        assert isinstance(author, FirstPersonPrivatePromptAuthor)
+        assert isinstance(author.model, OpenAICompatibleChatModel)
+        assert author.model.model == "nousresearch/hermes-4-70b"
     finally:
         bundle.transport.close()

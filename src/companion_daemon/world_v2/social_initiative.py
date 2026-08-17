@@ -23,6 +23,13 @@ from .response_expectation_view import (
     expired_unanswered_expectation,
     pending_response_expectation,
 )
+from .revisit_intention_view import (
+    due_commitment_consideration_id,
+    due_revisit_consideration_id,
+    due_thread_consideration_id,
+    due_unfinished_revisit,
+    revisit_source_plan_id,
+)
 from .schema_core import FrozenModel
 from .schemas import CommittedWorldEventRef, WorldEvent
 
@@ -54,7 +61,6 @@ _SITUATION_STIMULUS_EVENT_TYPES = frozenset(
 )
 SITUATION_STIMULUS_EVENT_TYPES = _SITUATION_STIMULUS_EVENT_TYPES
 _SITUATION_WINDOW = timedelta(minutes=10)
-_SITUATION_DELAY_CANDIDATES = (120, 900, 2_700)
 _ACTOR_SCOPED_SITUATION_EVENT_TYPES = frozenset(
     {
         "ActivityStarted",
@@ -174,6 +180,10 @@ class SocialInitiativeOpportunity(FrozenModel):
         "ambient_presence",
         "post_silent",
         "situation_change",
+        "expired_expectation",
+        "thread",
+        "commitment",
+        "revisit_intention",
     ]
     source_id: str
     source_event_ref: str
@@ -331,7 +341,14 @@ def social_initiative_consideration_id(
     delay_seconds: int,
     epoch: int,
     source_kind: Literal[
-        "spontaneous_contact", "ambient_presence", "post_silent", "situation_change"
+        "spontaneous_contact",
+        "ambient_presence",
+        "post_silent",
+        "situation_change",
+        "expired_expectation",
+        "thread",
+        "commitment",
+        "revisit_intention",
     ],
 ) -> str:
     return "consideration:social-initiative:" + hashlib.sha256(
@@ -475,18 +492,24 @@ class SocialInitiativeCompiler:
             excluded_consideration_ids=excluded_consideration_ids,
         )
         if expired is not None:
-            return expired
-        if recent_contact is not None and (
-            logical_time - recent_contact
-        ).total_seconds() < self._policy.contact_cooldown_seconds:
-            return None
-        situation = await self._situation_change(
+            return await self._hitch_situation_materials(
+                projection, logical_time, expired
+            )
+        leftover = await self._due_leftover_contact(
             projection,
             logical_time,
             excluded_consideration_ids=excluded_consideration_ids,
         )
-        if situation is not None:
-            return situation
+        if leftover is not None:
+            return await self._hitch_situation_materials(
+                projection, logical_time, leftover
+            )
+        if recent_contact is not None and (
+            logical_time - recent_contact
+        ).total_seconds() < self._policy.contact_cooldown_seconds:
+            return None
+        # Situation stimuli are materials for already-paid considers. Do not
+        # mint a dedicated model call on a delay table.
         # A pending message/ambient retry still owns that cadence context.
         # Once the runtime excludes the not-yet-due consideration, minting a
         # sibling cadence epoch would bypass its durable backoff. A failed
@@ -501,7 +524,9 @@ class SocialInitiativeCompiler:
             return None
         post_silent = await self._post_silent_consideration(projection, logical_time)
         if post_silent is not None:
-            return post_silent
+            return await self._hitch_situation_materials(
+                projection, logical_time, post_silent
+            )
         if await self._post_silent_chain_active(projection):
             return None
         spontaneous = await self._spontaneous_contact(projection, logical_time)
@@ -510,7 +535,11 @@ class SocialInitiativeCompiler:
             and spontaneous.consideration_id in excluded_consideration_ids
         ):
             return None
-        return spontaneous
+        if spontaneous is None:
+            return None
+        return await self._hitch_situation_materials(
+            projection, logical_time, spontaneous
+        )
 
     async def _pending_consideration(
         self,
@@ -546,12 +575,23 @@ class SocialInitiativeCompiler:
                 ),
                 None,
             )
-            if source_ref is None or latest_message_revision > source_ref.world_revision:
+            if source_ref is None:
                 continue
             located = await self._lookup(source_ref.event_id)
             if located is None:
                 continue
             event = located[0]
+            consideration_is_revisit = (
+                event.event_type == "ExecutionReceiptRecorded"
+                and consideration_id.startswith(
+                    "consideration:social-initiative:revisit:"
+                )
+            )
+            if (
+                not consideration_is_revisit
+                and latest_message_revision > source_ref.world_revision
+            ):
+                continue
             if event.event_type == "ClockAdvanced":
                 prior_trigger_id = post_silent_prior_trigger_id(consideration_id)
                 if prior_trigger_id is not None:
@@ -574,6 +614,55 @@ class SocialInitiativeCompiler:
                 if message is None:
                     continue
                 source_id = message.observation_id
+                stimulus_event_refs = ()
+            elif event.event_type in {"ThreadOpened", "ThreadUpdated"}:
+                source_kind = "thread"
+                source_id = next(
+                    (
+                        item.thread_id
+                        for item in getattr(projection, "threads", ())
+                        if any(
+                            transition.accepted_event_ref == source_ref.event_id
+                            for transition in getattr(projection, "thread_transitions", ())
+                            if transition.thread_id == item.thread_id
+                        )
+                    ),
+                    source_ref.event_id,
+                )
+                stimulus_event_refs = ()
+            elif event.event_type in {
+                "PrivateCommitmentOpened",
+                "PrivateCommitmentDue",
+            }:
+                source_kind = "commitment"
+                source_id = next(
+                    (
+                        item.commitment_id
+                        for item in getattr(projection, "commitments", ())
+                        if any(
+                            transition.accepted_event_ref == source_ref.event_id
+                            for transition in getattr(
+                                projection, "commitment_transitions", ()
+                            )
+                            if transition.commitment_id == item.commitment_id
+                        )
+                    ),
+                    source_ref.event_id,
+                )
+                stimulus_event_refs = ()
+            elif event.event_type == "ExecutionReceiptRecorded":
+                if consideration_is_revisit:
+                    leftover = due_unfinished_revisit(projection)
+                    if leftover is None:
+                        continue
+                    source_kind = "revisit_intention"
+                    source_id = leftover.plan_id
+                else:
+                    expired = expired_unanswered_expectation(projection)
+                    if expired is None:
+                        continue
+                    source_kind = "expired_expectation"
+                    source_id = expired.plan_id
                 stimulus_event_refs = ()
             elif event.event_type in _SITUATION_STIMULUS_EVENT_TYPES:
                 if not situation_stimulus_is_observable(
@@ -818,13 +907,9 @@ class SocialInitiativeCompiler:
                 observable.append(ref)
         return tuple(observable)
 
-    async def _situation_change(
-        self,
-        projection,
-        logical_time: datetime,
-        *,
-        excluded_consideration_ids: frozenset[str] = frozenset(),
-    ):
+    async def _recent_observable_situation_refs(
+        self, projection, logical_time: datetime
+    ) -> tuple[str, ...]:
         latest_message_revision = (
             projection.message_observations[-1].world_revision
             if projection.message_observations
@@ -844,142 +929,36 @@ class SocialInitiativeCompiler:
         )
         refs = await self._observable_stimulus_refs(projection, candidate_refs)
         if not refs:
-            return None
-        clusters: list[list[object]] = []
-        for ref in refs:
-            if (
-                not clusters
-                or ref.logical_time - clusters[-1][0].logical_time >= _SITUATION_WINDOW
-            ):
-                clusters.append([ref])
+            return ()
+        latest_cluster = [refs[0]]
+        for ref in refs[1:]:
+            if ref.logical_time - latest_cluster[0].logical_time >= _SITUATION_WINDOW:
+                latest_cluster = [ref]
             else:
-                clusters[-1].append(ref)
-        opportunities = [
-            opportunity
-            for cluster in clusters
-            if (
-                opportunity := await self._situation_cluster_opportunity(
-                    projection=projection,
-                    logical_time=logical_time,
-                    cluster=tuple(cluster),
-                )
-            )
-            is not None
-            and opportunity.consideration_id not in excluded_consideration_ids
-        ]
-        return (
-            min(
-                opportunities,
-                key=lambda item: (
-                    item.scheduled_for,
-                    item.source_world_revision,
-                    item.consideration_id,
-                ),
-            )
-            if opportunities
-            else None
-        )
+                latest_cluster.append(ref)
+        return tuple(item.event_id for item in latest_cluster)
 
-    async def _situation_cluster_opportunity(
+    async def _hitch_situation_materials(
         self,
-        *,
         projection,
         logical_time: datetime,
-        cluster: tuple[object, ...],
-    ) -> SocialInitiativeOpportunity | None:
-        anchor = cluster[0]
-        profile = self._context.compile(
-            projection=projection, logical_time=logical_time
-        )
-        early_bias = 0
-        if "affect:approach" in profile.reason_codes:
-            early_bias += 1_500
-        if "affect:guarded" in profile.reason_codes:
-            early_bias -= 1_500
-        if "activity:engaged" in profile.reason_codes:
-            early_bias -= 1_000
-        if "daypart:overnight" in profile.reason_codes:
-            early_bias -= 1_500
-        early_bias = min(2_000, max(-2_000, early_bias))
-        weights = (2_500 + early_bias, 5_000, 2_500 - early_bias)
-        attempt_id = "social-initiative-situation:" + hashlib.sha256(
-            json.dumps(
-                {
-                    "anchor_event_ref": anchor.event_id,
-                    "policy_version": self._context.version,
-                    "delay_candidates": _SITUATION_DELAY_CANDIDATES,
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode()
-        ).hexdigest()
-        draw_kwargs = dict(
-            attempt_id=attempt_id,
-            candidate_refs=tuple(
-                f"delay:{seconds}" for seconds in _SITUATION_DELAY_CANDIDATES
-            ),
-            candidate_weights={
-                f"delay:{seconds}": weight
-                for seconds, weight in zip(
-                    _SITUATION_DELAY_CANDIDATES, weights, strict=True
-                )
-            },
-            weight_policy_version=self._context.version,
-            catalog_version="social-initiative-situation-delay.1",
-            logical_time=logical_time,
-            seed_instant=anchor.logical_time,
-            actor="system:social-initiative",
-            trace_id="trace:social-initiative:situation:" + attempt_id[-24:],
-            correlation_id="correlation:social-initiative:situation:" + attempt_id[-24:],
-        )
-        draw = (
-            await asyncio.to_thread(self._random.draw, **draw_kwargs)
-            if self._ledger.blocks_event_loop
-            else self._random.draw(**draw_kwargs)
-        )
-        try:
-            delay_seconds = int(draw.selected_candidate_ref.removeprefix("delay:"))
-        except (AttributeError, ValueError):
-            raise ValueError("situation initiative draw did not select a delay")
-        if delay_seconds not in _SITUATION_DELAY_CANDIDATES:
-            raise ValueError("situation initiative draw selected an unknown delay")
-        scheduled_for = anchor.logical_time + timedelta(seconds=delay_seconds)
-        consideration_id = social_initiative_consideration_id(
-            attempt_id=attempt_id,
-            delay_seconds=delay_seconds,
-            # The draw stays anchored to the first event, while the effect
-            # identity advances when a genuinely new stimulus joins this
-            # still-open window after an earlier consideration settled.
-            epoch=cluster[-1].world_revision,
-            source_kind="situation_change",
-        )
-        current = next(
-            (
-                item
-                for item in reversed(getattr(projection, "trigger_processes", ()))
-                if item.process_kind == "proactive_action_deliberation"
-                and item.trigger_ref
-                == "proactive-consideration:" + consideration_id
-            ),
-            None,
-        )
-        if current is not None and current.state == "terminal":
-            return None
-        if logical_time < scheduled_for:
-            return None
-        return await self._from_source(
-            source_kind="situation_change",
-            source_id="situation-window:" + anchor.event_id,
-            source_event_ref=anchor.event_id,
-            source_world_revision=anchor.world_revision,
-            consideration_id=consideration_id,
-            consideration_epoch=cluster[-1].world_revision,
-            scheduled_for=scheduled_for,
-            cadence_reason_codes=(
-                "stimulus:situation_change",
-                *profile.reason_codes,
-            ),
-            stimulus_event_refs=tuple(item.event_id for item in cluster),
+        opportunity: SocialInitiativeOpportunity,
+    ) -> SocialInitiativeOpportunity:
+        if not isinstance(opportunity, SocialInitiativeOpportunity):
+            return opportunity
+        if opportunity.stimulus_event_refs:
+            return opportunity
+        refs = await self._recent_observable_situation_refs(projection, logical_time)
+        if not refs:
+            return opportunity
+        reason_codes = opportunity.cadence_reason_codes
+        if "stimulus:situation_change" not in reason_codes:
+            reason_codes = (*reason_codes, "stimulus:situation_change")
+        return opportunity.model_copy(
+            update={
+                "stimulus_event_refs": refs,
+                "cadence_reason_codes": reason_codes,
+            }
         )
 
     async def _failed_consideration_retry(
@@ -1040,8 +1019,6 @@ class SocialInitiativeCompiler:
             if projection.message_observations
             else 0
         )
-        if latest_message_revision > failed_audit.evaluated_world_revision:
-            return None
         located = await self._lookup(source_ref.event_id)
         if located is None:
             return None
@@ -1049,6 +1026,11 @@ class SocialInitiativeCompiler:
         consideration_id = process.trigger_ref.removeprefix(
             "proactive-consideration:"
         )
+        if latest_message_revision > failed_audit.evaluated_world_revision and not (
+            event.event_type == "ExecutionReceiptRecorded"
+            and consideration_id.startswith("consideration:social-initiative:revisit:")
+        ):
+            return None
         prior_trigger_id = post_silent_prior_trigger_id(consideration_id)
         source_kind = (
             "post_silent"
@@ -1059,6 +1041,11 @@ class SocialInitiativeCompiler:
             if event.event_type == "ObservationRecorded"
             else "situation_change"
             if event.event_type in _SITUATION_STIMULUS_EVENT_TYPES
+            else "revisit_intention"
+            if event.event_type == "ExecutionReceiptRecorded"
+            and consideration_id.startswith("consideration:social-initiative:revisit:")
+            else "expired_expectation"
+            if event.event_type == "ExecutionReceiptRecorded"
             else None
         )
         if source_kind is None:
@@ -1082,6 +1069,11 @@ class SocialInitiativeCompiler:
             if message is None:
                 return None
             source_id = message.observation_id
+        elif source_kind == "revisit_intention":
+            source_id = (
+                revisit_source_plan_id(projection, consideration_id)
+                or f"retry:{source_ref.event_id}"
+            )
         stimulus_event_refs = ()
         if source_kind == "situation_change":
             observable = await self._observable_stimulus_refs(
@@ -1137,14 +1129,178 @@ class SocialInitiativeCompiler:
         if existing is not None and existing.state == "terminal":
             return None
         return await self._from_source(
-            source_kind="spontaneous_contact",
+            source_kind="expired_expectation",
             source_id=expired.plan_id,
             source_event_ref=expired.receipt_event_id,
             source_world_revision=expired.receipt_world_revision,
             consideration_id=consideration_id,
-            scheduled_for=expired.expires_at,
+            scheduled_for=expired.not_before,
             cadence_reason_codes=("expectation:expired_unanswered",),
         )
+
+    def _leftover_already_materialized(self, projection, *, thread) -> bool:
+        values = thread.values
+        return any(
+            commitment.values.status in {"open", "due"}
+            and commitment.values.subject_ref == values.subject_ref
+            and commitment.values.due_window == values.due_window
+            and commitment.values.anchor_evidence_refs == values.anchor_evidence_refs
+            and any(
+                action.action_id == commitment.values.fulfillment_contract.expected_action_id
+                for action in projection.actions
+            )
+            for commitment in getattr(projection, "commitments", ())
+        )
+
+    async def _due_leftover_contact(
+        self,
+        projection,
+        logical_time: datetime,
+        *,
+        excluded_consideration_ids: frozenset[str],
+    ):
+        candidates: list[tuple[datetime, object]] = []
+        for thread in getattr(projection, "threads", ()):
+            values = getattr(thread, "values", None)
+            due = getattr(values, "due_window", None)
+            if (
+                getattr(values, "status", None) != "open"
+                or due is None
+                or logical_time < due.opens_at
+                or logical_time >= due.closes_at
+                or self._leftover_already_materialized(projection, thread=thread)
+            ):
+                continue
+            latest = next(
+                (
+                    item
+                    for item in reversed(getattr(projection, "thread_transitions", ()))
+                    if item.thread_id == thread.thread_id
+                    and item.entity_revision == thread.entity_revision
+                    and item.values_after == values
+                ),
+                None,
+            )
+            if latest is None:
+                continue
+            consideration_id = due_thread_consideration_id(thread.thread_id)
+            if consideration_id in excluded_consideration_ids:
+                continue
+            if self._terminal_consideration(projection, consideration_id):
+                continue
+            opportunity = await self._from_source(
+                source_kind="thread",
+                source_id=thread.thread_id,
+                source_event_ref=latest.accepted_event_ref,
+                source_world_revision=self._source_world_revision(
+                    projection, latest.accepted_event_ref
+                ),
+                consideration_id=consideration_id,
+                scheduled_for=due.opens_at,
+                cadence_reason_codes=("leftover:due_thread",),
+            )
+            if opportunity is not None:
+                candidates.append((due.opens_at, opportunity))
+        for commitment in getattr(projection, "commitments", ()):
+            values = getattr(commitment, "values", None)
+            due = getattr(values, "due_window", None)
+            bound_action = next(
+                (
+                    item
+                    for item in projection.actions
+                    if item.action_id
+                    == getattr(
+                        getattr(values, "fulfillment_contract", None),
+                        "expected_action_id",
+                        None,
+                    )
+                ),
+                None,
+            )
+            if (
+                getattr(values, "status", None) not in {"open", "due"}
+                or due is None
+                or logical_time < due.opens_at
+                or logical_time >= due.closes_at
+                or bound_action is not None
+            ):
+                continue
+            latest = next(
+                (
+                    item
+                    for item in reversed(getattr(projection, "commitment_transitions", ()))
+                    if item.commitment_id == commitment.commitment_id
+                    and item.entity_revision == commitment.entity_revision
+                    and item.values_after == values
+                ),
+                None,
+            )
+            if latest is None:
+                continue
+            consideration_id = due_commitment_consideration_id(commitment.commitment_id)
+            if consideration_id in excluded_consideration_ids:
+                continue
+            if self._terminal_consideration(projection, consideration_id):
+                continue
+            opportunity = await self._from_source(
+                source_kind="commitment",
+                source_id=commitment.commitment_id,
+                source_event_ref=latest.accepted_event_ref,
+                source_world_revision=self._source_world_revision(
+                    projection, latest.accepted_event_ref
+                ),
+                consideration_id=consideration_id,
+                scheduled_for=due.opens_at,
+                cadence_reason_codes=("leftover:due_commitment",),
+            )
+            if opportunity is not None:
+                candidates.append((due.opens_at, opportunity))
+        leftover = due_unfinished_revisit(projection)
+        if leftover is not None:
+            consideration_id = due_revisit_consideration_id(leftover.plan_id)
+            if (
+                consideration_id not in excluded_consideration_ids
+                and not self._terminal_consideration(projection, consideration_id)
+            ):
+                opportunity = await self._from_source(
+                    source_kind="revisit_intention",
+                    source_id=leftover.plan_id,
+                    source_event_ref=leftover.receipt_event_id,
+                    source_world_revision=leftover.receipt_world_revision,
+                    consideration_id=consideration_id,
+                    scheduled_for=leftover.not_before,
+                    cadence_reason_codes=("leftover:due_revisit",),
+                )
+                if opportunity is not None:
+                    candidates.append((leftover.not_before, opportunity))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: (item[0], item[1].source_id))
+        return candidates[0][1]
+
+    def _terminal_consideration(self, projection, consideration_id: str) -> bool:
+        prefix = "proactive-consideration:" + consideration_id
+        existing = next(
+            (
+                item
+                for item in getattr(projection, "trigger_processes", ())
+                if item.process_kind == "proactive_action_deliberation"
+                and item.trigger_ref == prefix
+            ),
+            None,
+        )
+        return existing is not None and existing.state == "terminal"
+
+    def _source_world_revision(self, projection, event_id: str) -> int:
+        ref = next(
+            (
+                item
+                for item in projection.committed_world_event_refs
+                if item.event_id == event_id
+            ),
+            None,
+        )
+        return getattr(ref, "world_revision", 1)
 
     async def _spontaneous_contact(self, projection, logical_time: datetime):
         if not projection.message_observations:

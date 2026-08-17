@@ -524,6 +524,7 @@ class _FixedCharacterInteriorScenarioModel(FakeCompanionModel):
                         "source_refs": [source_ref],
                         "payload": {
                             "selected_token": selected,
+                            "adopt_proposed_life_direction": False,
                             "character_life_direction": None,
                         },
                     },

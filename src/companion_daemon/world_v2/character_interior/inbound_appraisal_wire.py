@@ -685,14 +685,11 @@ def _proposal_from_draft(*, raw: str, request: ModelInput) -> dict[str, object]:
             interaction_act=interaction_act,
         )
     source_ref, _source_hash, evidence = _trigger_binding(request)
-    if request.trigger_message is None and affect != "no_change":
-        # Settled-world appraisal lanes (activity aftermath, NPC events,
-        # silence, disruption) accept exactly one appraisal change; the
-        # feeling itself is deliberated downstream by the dedicated affect
-        # trigger that opens from the *accepted* appraisal.  An inline affect
-        # here is therefore narrowed, not lost — meaning and severity survive
-        # in the appraisal that seeds that downstream episode.
-        affect = "no_change"
+    # Settled-world lanes may omit trigger_message; lasting Affect is still the
+    # character's choice when she authors open/update/resolve/supersede.  The
+    # host must not silently pin affect=no_change and pretend she chose it.
+    # Illegal episode refs still degrade below; relationship_* still require a
+    # verified message actor.
     meanings = draft.get("meanings")
     attribution = draft.get("attribution")
     severity = draft.get("severity")

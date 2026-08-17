@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import datetime
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -11,7 +12,7 @@ from zoneinfo import ZoneInfo
 from .activity_lifecycle_draft import (
     ActivityLifecycleModelDraft,
 )
-from .occasion import mint_day_open
+from .occasion import OccasionSpendStore, mint_day_open, occasion_spend_store_for_ledger
 from .daily_occasion import (
     DEFAULT_LOCAL_TIMEZONE,
     DailyOccasionStore,
@@ -33,6 +34,12 @@ from .proposal_audit_schemas import ModelResultRecordedPayload
 from .schemas import ProjectionCursor
 
 _TIMING_MODEL = "world-v2:activity-timing"
+_OCCASION_CONSUMED_FAILURES = frozenset(
+    {
+        "occasion_already_considered",
+        "occasion_expired",
+    }
+)
 
 
 def _timing_closure_draft(opening_token: str) -> ActivityLifecycleModelDraft:
@@ -78,7 +85,9 @@ class ActivityLifecycleWorker:
         ecology_catalog_version: str,
         source: str = "world-v2:activity-lifecycle",
         daily_occasions: DailyOccasionStore | None = None,
+        occasion_spends: OccasionSpendStore | None = None,
         local_timezone_name: str = DEFAULT_LOCAL_TIMEZONE,
+        open_world_event=None,
     ) -> None:
         if not ecology_catalog_version or not source or not owner_actor_ref:
             raise ValueError(
@@ -95,7 +104,9 @@ class ActivityLifecycleWorker:
         )
         self._source = source
         self._daily_occasions = daily_occasions or daily_occasion_store_for_ledger(ledger)
+        self._occasion_spends = occasion_spends or occasion_spend_store_for_ledger(ledger)
         self._local_timezone = ZoneInfo(local_timezone_name)
+        self._open_world_event = open_world_event
 
     async def advance_once(
         self,
@@ -146,6 +157,12 @@ class ActivityLifecycleWorker:
                 if draft.model is None
                 else "activity_lifecycle.model_declined"
             )
+            self._hitch_paid_noticed(
+                draft=draft,
+                wake_event_ref=wake_event_ref,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
             return ActivityLifecycleFollowupResult(
                 status="no_op",
                 reason_code=reason,
@@ -176,6 +193,12 @@ class ActivityLifecycleWorker:
             trace_id=trace_id,
             correlation_id=correlation_id,
         )
+        self._hitch_paid_noticed(
+            draft=draft,
+            wake_event_ref=wake_event_ref,
+            trace_id=trace_id,
+            correlation_id=correlation_id,
+        )
         return ActivityLifecycleFollowupResult(
             status="transitioned", proposal_event_ref=recorded.proposal_event_ref
         )
@@ -197,7 +220,11 @@ class ActivityLifecycleWorker:
 
         openings = catalog.openings
         day_key = local_day_key(projection.logical_time, self._local_timezone)
-        if self._daily_occasions.spent("day_open", day_key):
+        occasion_id = f"occasion:day_open:{day_key}"
+        if self._daily_occasions.spent("day_open", day_key) or self._occasion_spends.spent(
+            occasion_id
+        ):
+            self._daily_occasions.mark("day_open", day_key)
             completes = tuple(item for item in openings if item.operation == "complete")
             if len(completes) == 1:
                 return _timing_closure_draft(completes[0].opening_token), None
@@ -272,11 +299,14 @@ class ActivityLifecycleWorker:
             )
         )
         if result.status == "technical_failure":
-            return None, result.failure_code or "character_interior_technical_failure"
+            failure_code = result.failure_code or "character_interior_technical_failure"
+            if failure_code in _OCCASION_CONSUMED_FAILURES:
+                self._daily_occasions.mark("day_open", day_key)
+                return ActivityLifecycleModelDraft(decision="no_op"), None
+            return None, failure_code
         if result.status != "decided" or not isinstance(result.decision, dict):
             return None, "character_interior_decision_missing"
-        if any(item.operation == "start" for item in openings):
-            self._daily_occasions.mark("day_open", day_key)
+        self._daily_occasions.mark("day_open", day_key)
         decision = result.decision
         if (
             decision.get("contract") != "character-interior-purpose-decision.1"
@@ -291,11 +321,15 @@ class ActivityLifecycleWorker:
             return None, "character_interior_decision_payload_invalid"
         if payload.get("contract") != "character-interior-activity-lifecycle-choice.1":
             return None, "character_interior_decision_contract_invalid"
+        noticed = payload.get("noticed")
+        if noticed is not None and (not isinstance(noticed, str) or not noticed.strip()):
+            return None, "character_interior_decision_payload_invalid"
+        keys = {key for key in payload if key != "noticed"}
         choice = payload.get("decision")
-        if choice == "no_op" and set(payload) == {"contract", "decision"}:
+        if choice == "no_op" and keys == {"contract", "decision"}:
             token = None
             draft_decision = "no_op"
-        elif choice == "select" and set(payload) == {
+        elif choice == "select" and keys == {
             "contract",
             "decision",
             "selected_token",
@@ -341,6 +375,42 @@ class ActivityLifecycleWorker:
             ),
             None,
         )
+
+
+    def _hitch_paid_noticed(
+        self,
+        *,
+        draft: ActivityLifecycleModelDraft,
+        wake_event_ref: str,
+        trace_id: str,
+        correlation_id: str,
+    ) -> None:
+        runtime = self._open_world_event
+        raw = draft.normalized_json or draft.raw_output
+        if runtime is None or not raw:
+            return
+        try:
+            payload = json.loads(raw)
+        except (TypeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+        noticed = payload.get("noticed")
+        if not isinstance(noticed, str) or not noticed.strip():
+            return
+        try:
+            runtime.commit_from_paid_moment(
+                moment=noticed.strip(),
+                wake_event_ref=wake_event_ref,
+                model=draft.model or "paid-turn:day_open",
+                raw_output=raw,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "paid noticed hitch failed wake=%s", wake_event_ref, exc_info=True
+            )
 
 
 __all__ = ["ActivityLifecycleFollowupResult", "ActivityLifecycleWorker"]

@@ -153,3 +153,24 @@ def test_life_capability_compiler_exposes_the_reviewed_catalog(tmp_path: Path) -
     )
     assert compiler.catalog is catalog
     assert isinstance(compiler.catalog, ReviewedLifeSeedCatalog)
+
+
+def test_life_development_opportunity_draw_is_replay_stable() -> None:
+    from companion_daemon.world_v2.life_development_runtime import (
+        LIFE_DEVELOPMENT_NOTHING_REF,
+        LIFE_DEVELOPMENT_OPPORTUNITY_REF,
+        draw_life_development_opportunity,
+        life_development_opportunity_weights,
+    )
+
+    weights = life_development_opportunity_weights()
+    assert weights[LIFE_DEVELOPMENT_OPPORTUNITY_REF] == 2_000
+    assert weights[LIFE_DEVELOPMENT_NOTHING_REF] == 8_000
+    seed = {
+        "catalog_hash": "a" * 64,
+        "wake_event_ref": "event:clock:life",
+    }
+    first = draw_life_development_opportunity(**seed)
+    second = draw_life_development_opportunity(**seed)
+    assert first == second
+    assert first in {LIFE_DEVELOPMENT_NOTHING_REF, LIFE_DEVELOPMENT_OPPORTUNITY_REF}

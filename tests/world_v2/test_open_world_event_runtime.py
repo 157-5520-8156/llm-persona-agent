@@ -243,7 +243,7 @@ def _active_plan_ledger() -> WorldLedger:
 
 
 @pytest.mark.asyncio
-async def test_open_world_event_is_accepted_into_occurrence_and_replayed_without_recalling_model() -> None:
+async def test_open_world_scheduler_does_not_consult_the_model() -> None:
     ledger = _active_plan_ledger()
     from companion_daemon.world_v2.life_content_store import InMemoryImmutableLifeContentStore
 
@@ -259,8 +259,37 @@ async def test_open_world_event_is_accepted_into_occurrence_and_replayed_without
     first = await runtime.advance_once(
         wake_event_ref="open-world-start", trace_id="trace:open-world", correlation_id="corr:open-world"
     )
+
+    assert first.status == "no_op"
+    assert first.reason_code == "open_world_event.paid_moment_only"
+    assert model.calls == 0
+    assert len(ledger.project().world_occurrences) == 0
+
+
+@pytest.mark.asyncio
+async def test_open_world_event_is_accepted_into_occurrence_and_replayed_without_recalling_model() -> None:
+    ledger = _active_plan_ledger()
+    from companion_daemon.world_v2.life_content_store import InMemoryImmutableLifeContentStore
+
+    model = _ChoosingEventModel()
+    runtime = OpenWorldEventRuntime(
+        ledger=ledger,
+        content_store=InMemoryImmutableLifeContentStore(),
+        model=model,
+        situation_source=ActivePlanSituationSource(owner_actor_ref="actor:companion"),
+        owner_actor_ref="actor:companion",
+    )
+
+    first = runtime.commit_from_paid_moment(
+        moment="她在门口看见一只猫停了一会儿，顺手记下了这个小插曲。",
+        wake_event_ref="open-world-start",
+        model="paid-turn:test",
+        raw_output="她在门口看见一只猫停了一会儿，顺手记下了这个小插曲。",
+        trace_id="trace:open-world",
+        correlation_id="corr:open-world",
+    )
     assert first.status == "committed"
-    assert model.calls == 1
+    assert model.calls == 0
     occurrence = ledger.project().world_occurrences[-1]
     assert occurrence.status == "active"
     assert occurrence.location_ref == "location:cafe"
@@ -271,12 +300,53 @@ async def test_open_world_event_is_accepted_into_occurrence_and_replayed_without
         wake_event_ref="open-world-start", trace_id="trace:open-world", correlation_id="corr:open-world"
     )
     assert second.status == "recovered"
-    assert model.calls == 1
+    assert model.calls == 0
     assert len(ledger.project().world_occurrences) == 1
 
 
 @pytest.mark.asyncio
-async def test_open_world_no_op_is_durable_and_replayed_without_recalling_model() -> None:
+async def test_open_world_paid_moment_without_a_verified_situation_does_not_invent_one() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    from companion_daemon.world_v2.life_content_store import InMemoryImmutableLifeContentStore
+
+    at = NOW - timedelta(minutes=1)
+    commit(
+        ledger,
+        [
+            event(
+                "open-world-clock",
+                "ClockAdvanced",
+                {
+                    "logical_time_from": (at - timedelta(minutes=1)).isoformat(),
+                    "logical_time_to": at.isoformat(),
+                },
+                at=at,
+            )
+        ],
+    )
+    runtime = OpenWorldEventRuntime(
+        ledger=ledger,
+        content_store=InMemoryImmutableLifeContentStore(),
+        situation_source=ActivePlanSituationSource(owner_actor_ref="actor:companion"),
+        owner_actor_ref="actor:companion",
+    )
+
+    result = runtime.commit_from_paid_moment(
+        moment="她看见了一只并不存在的猫。",
+        wake_event_ref="open-world-clock",
+        model="paid-turn:test",
+        raw_output="她看见了一只并不存在的猫。",
+        trace_id="trace:open-world",
+        correlation_id="corr:open-world",
+    )
+
+    assert result.status == "no_op"
+    assert result.reason_code == "open_world_event.no_verified_situation"
+    assert len(ledger.project().world_occurrences) == 0
+
+
+@pytest.mark.asyncio
+async def test_open_world_scheduler_no_op_does_not_record_a_declined_proposal() -> None:
     ledger = _active_plan_ledger()
     from companion_daemon.world_v2.life_content_store import InMemoryImmutableLifeContentStore
 
@@ -297,7 +367,7 @@ async def test_open_world_no_op_is_durable_and_replayed_without_recalling_model(
     )
 
     assert first.status == "no_op"
-    assert second.reason_code == "open_world_event.model_declined_recovered"
-    assert model.calls == 1
+    assert first.reason_code == "open_world_event.paid_moment_only"
+    assert second.reason_code == "open_world_event.paid_moment_only"
+    assert model.calls == 0
     assert len(ledger.project().world_occurrences) == 0
-    assert second.proposal_id in ledger.project().proposal_ids

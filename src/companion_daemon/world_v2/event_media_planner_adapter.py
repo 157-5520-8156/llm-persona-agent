@@ -6,8 +6,9 @@ opportunity sidecar, validates the embedded ``world-image-event-snapshot-v1``
 contract, and asks the legacy image planner to interpret exactly those bytes.
 
 It does not compile snapshots, choose candidates, create prompts, or read a
-projection.  It admits public/shareable P0 ``life_share``, fact-bound P2
-``character_media``, and the narrow recipient-scoped P3 preview contract.
+projection.  It admits ordinary-life P0 ``life_share`` (including private
+home photos), fact-bound P2 ``character_media`` selfies on the same OpenAI
+lane, and the narrow recipient-scoped P3 preview contract.
 P2/P3 authorization remains outer-sidecar data and never reaches the legacy
 planner's snapshot as free-form authority.
 The result-store seam is deliberately required for live use: without a
@@ -51,8 +52,8 @@ _PLAN_CONTENT_TYPE = "application/vnd.world-v2.media-plan+json"
 _P0_IMAGE_EVENT_SCHEMA = "world-image-event-snapshot-v1"
 _P2_IMAGE_EVENT_SCHEMA = "world-image-event-snapshot-v2"
 _P3_IMAGE_EVENT_SCHEMA = "world-image-event-snapshot-v3"
-_PUBLIC_VISIBILITIES = frozenset({"public", "shareable"})
-_RECIPIENT_SCOPED_VISIBILITIES = frozenset({"personal", "private"})
+_ORDINARY_VISIBILITIES = frozenset({"public", "shareable", "personal", "private"})
+_P3_VISIBILITIES = frozenset({"personal", "private"})
 _STRUCTURAL_SNAPSHOT_KEYS = frozenset({"schema_version", "evidence_index"})
 
 
@@ -341,6 +342,7 @@ class EventMediaPlannerAdapter:
         p3_authorization = self._p3_authorization_from_sidecar(opportunity) if lane == "p3" else None
         if lane == "p3" and p3_authorization is None:
             return self._not_renderable(opportunity, planning_request_id, "p3_private_authorization_missing")
+        p2_authorization = self._p2_authorization_from_sidecar(opportunity) if lane == "p2" else None
         legacy_opportunity = event_media.MediaOpportunity(
             opportunity_id=opportunity.opportunity_id,
             family=opportunity.family,
@@ -352,6 +354,18 @@ class EventMediaPlannerAdapter:
             expression_charge_ceiling=(p3_authorization.expression_charge_ceiling if p3_authorization is not None else "none"),
             private_expression_basis=(self._p3_basis(snapshot) if lane == "p3" else None),
             allowed_evidence_refs=tuple(sorted(_snapshot_leaves(snapshot))),
+            authorized_capture_modes=(
+                tuple(p2_authorization.allowed_capture_modes)
+                if p2_authorization is not None
+                else tuple(p3_authorization.allowed_capture_modes)
+                if p3_authorization is not None
+                else ()
+            ),
+            authorized_character_visibilities=(
+                tuple(p2_authorization.allowed_character_visibility)
+                if p2_authorization is not None
+                else ()
+            ),
         )
         try:
             self._provider_call_count += 1
@@ -377,7 +391,7 @@ class EventMediaPlannerAdapter:
         if (
             opportunity.family == "life_share"
             and opportunity.delivery_mode == "preview"
-            and opportunity.privacy_ceiling in _PUBLIC_VISIBILITIES
+            and opportunity.privacy_ceiling in _ORDINARY_VISIBILITIES
             and opportunity.media_lane == "ordinary_life"
             and opportunity.recipient_ref is None
             and opportunity.private_expression_basis_ref is None
@@ -387,7 +401,7 @@ class EventMediaPlannerAdapter:
         if (
             opportunity.family == "character_media"
             and opportunity.delivery_mode == "preview"
-            and opportunity.privacy_ceiling in _PUBLIC_VISIBILITIES
+            and opportunity.privacy_ceiling in _ORDINARY_VISIBILITIES
             and opportunity.media_lane == "ordinary_life"
             and opportunity.recipient_ref is None
             and opportunity.private_expression_basis_ref is None
@@ -618,7 +632,7 @@ class EventMediaPlannerAdapter:
                 entry.get("visibility"),
             )
             allowed_visibilities = (
-                _RECIPIENT_SCOPED_VISIBILITIES if lane == "p3" else _PUBLIC_VISIBILITIES
+                _P3_VISIBILITIES if lane == "p3" else _ORDINARY_VISIBILITIES
             )
             if (
                 not isinstance(ref, str)

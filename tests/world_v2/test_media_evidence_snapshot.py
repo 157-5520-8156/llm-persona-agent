@@ -284,7 +284,7 @@ def test_compiler_never_resolves_value_refs_or_infers_a_visual_description() -> 
 @pytest.mark.parametrize(
     ("payload", "reason"),
     [
-        ({"image_evidence": {"visibility": "private", "activity": {"evidence_visibility": "private", "id": "activity:x"}}}, "image_evidence_not_public_or_shareable"),
+        ({"image_evidence": {"visibility": "withhold", "activity": {"evidence_visibility": "withhold", "id": "activity:x"}}}, "image_evidence_not_ordinary_life"),
         ({"image_evidence": {"visibility": "public", "requires_readable_text": True}}, "readable_text_requires_artifact"),
         ({"image_evidence": {"visibility": "public", "existing_media": [{"evidence_visibility": "public", "artifact_ref": "artifact:x", "artifact_hash": "sha256:" + "a" * 64, "accessible": False, "reuse_authorized": True}]}}, "existing_media_requires_accessible_artifact"),
     ],

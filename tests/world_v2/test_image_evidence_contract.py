@@ -79,9 +79,31 @@ def test_declaration_is_source_bound_and_reducer_accepts_no_new_world_state() ->
     assert reduced.committed_world_event_refs[-1].event_id == "event:image-evidence:walk"
 
 
-def test_declaration_rejects_private_source_or_empty_visual_evidence() -> None:
-    with pytest.raises(ValueError, match="source must be public or shareable"):
+def test_declaration_rejects_withheld_or_more_public_evidence() -> None:
+    with pytest.raises(ValueError, match="ordinary life privacy class"):
+        _payload(source_privacy_ceiling="withhold")
+    with pytest.raises(ValueError, match="visibility exceeds its source privacy"):
         _payload(source_privacy_ceiling="private")
+
+
+def test_private_home_life_may_declare_ordinary_private_evidence() -> None:
+    payload = _payload(
+        source_privacy_ceiling="private",
+        image_evidence=ImageEvidenceV1(
+            visibility="private",
+            activity={
+                "evidence_visibility": "private",
+                "id": "activity:home",
+                "kind": "home",
+                "description": "在家里看书",
+            },
+        ),
+    )
+    assert payload.source_privacy_ceiling == "private"
+    assert payload.image_evidence.visibility == "private"
+
+
+def test_declaration_rejects_empty_visual_evidence() -> None:
     with pytest.raises(ValueError, match="concrete visual slice"):
         ImageEvidenceV1(visibility="public")
 

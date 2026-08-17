@@ -249,6 +249,11 @@ class InteractionFactTriggerRuntime:
                 cursor = self._cursor(before)
                 acceptance_logical_time = before.logical_time or source_event.logical_time
         except FactDraftTechnicalFailure as failure:
+            logger.exception(
+                "interaction fact draft failed: trigger=%s code=%s",
+                active.trigger_id,
+                failure.failure_code,
+            )
             await self._record_technical_failure(
                 process=active,
                 source_event=source_event,
@@ -774,6 +779,11 @@ class InteractionFactTriggerRuntime:
                 current_single_fact_sources=current_single_fact_sources,
             )
         except FactDraftTechnicalFailure as failure:
+            logger.exception(
+                "interaction fact batch draft failed: triggers=%s code=%s",
+                [member.process.trigger_id for member in members],
+                failure.failure_code,
+            )
             await self._record_batch_technical_failures(
                 members=tuple(
                     _FactFailureMember(

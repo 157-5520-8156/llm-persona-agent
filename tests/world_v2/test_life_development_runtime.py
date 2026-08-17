@@ -38,6 +38,7 @@ from companion_daemon.world_v2.life_development_runtime import (
 )
 from companion_daemon.world_v2.life_development_source_closure import (
     LifeDevelopmentSourceClosureError,
+    LifeDevelopmentSourceClosureReview,
     life_development_novel_origin_messages,
     life_development_review_packet_identity,
     life_development_source_closure_messages,
@@ -459,16 +460,39 @@ def _location_capability(
     *,
     authority_refs: tuple[str, ...] = ("policy:test-location",),
     local_windows: tuple[str, ...] = ("00:00-00:00",),
+    privacy_class: str = "shareable",
+    location_ref: str = "location:campus-courtyard",
 ) -> LifeDevelopmentLocationCapability:
     return LifeDevelopmentLocationCapability(
-        location_ref="location:campus-courtyard",
-        privacy_class="shareable",
+        location_ref=location_ref,
+        privacy_class=privacy_class,
         availability_kind="reviewed_schedule",
         timezone_name="Asia/Shanghai",
         local_windows=local_windows,
         weekdays=(0, 1, 2, 3, 4, 5, 6),
         authority_refs=authority_refs,
     )
+
+
+def _ordinary_visual_evidence(
+    *,
+    capability: LifeDevelopmentLocationCapability,
+    privacy_class: str,
+    claim_id: str = "local:claim:location-change",
+) -> dict[str, object] | None:
+    if privacy_class not in {"public", "shareable", "personal", "private"}:
+        return None
+    publicness = "private" if privacy_class in {"personal", "private"} else "public"
+    return {
+        "claim_refs": [claim_id],
+        "activity_description": "在已授权地点经历这次变化",
+        "location": {
+            "location_ref": capability.location_ref,
+            "kind": "place",
+            "publicness": publicness,
+        },
+        "environment": {"structure": "authorized location"},
+    }
 
 
 def _location_bound_world_draft(
@@ -481,9 +505,16 @@ def _location_bound_world_draft(
     causal_authority: str = "world_contingency",
     outcome_resolution_authority: str = "world_contingency",
     visual_evidence: dict[str, object] | None = None,
+    include_default_visual: bool = True,
     provisional_places: tuple[dict[str, object], ...] = (),
     objective_transition: dict[str, object] | None = None,
 ) -> str:
+    default_visual = (
+        _ordinary_visual_evidence(capability=capability, privacy_class=privacy_class)
+        if include_default_visual
+        else None
+    )
+    first_visual = visual_evidence if visual_evidence is not None else default_visual
     return json.dumps(
         {
             "decision": "propose",
@@ -519,7 +550,7 @@ def _location_bound_world_draft(
                     "provisional_places": list(provisional_places),
                     "dynamic_life_direction": dynamic_direction,
                     "objective_biographical_transition": objective_transition,
-                    "visual_evidence": visual_evidence,
+                    "visual_evidence": first_visual,
                 },
                 {
                     "experienced_by_ref": OWNER,
@@ -531,7 +562,7 @@ def _location_bound_world_draft(
                     "provisional_places": [],
                     "dynamic_life_direction": None,
                     "objective_biographical_transition": None,
-                    "visual_evidence": None,
+                    "visual_evidence": default_visual,
                 },
             ],
         },
@@ -814,6 +845,214 @@ async def test_world_author_optional_visual_evidence_is_claim_closed_and_persist
     assert visual["claim_refs"] == ["local:claim:location-change"]
     assert visual["location"]["location_ref"] == capability.location_ref
     assert visual["environment"]["weather"] == "summer shower"
+    occurrence = next(iter(ledger.project().world_occurrences))
+    assert occurrence.trigger_ref == result.proposal_event_ref
+    assert ledger.project().plans == ()
+    material = LifeDevelopmentProposalReader(
+        ledger=ledger,
+        content_store=_store,
+    ).read_for_occurrence(occurrence=occurrence)
+    assert material is not None
+    assert material.proposal_event_ref == result.proposal_event_ref
+    assert material.activity_kind == "open_life.world_occurrence"
+    assert material.outcomes[0].visual_evidence is not None
+    assert material.outcomes[0].visual_evidence.location is not None
+    assert (
+        material.outcomes[0].visual_evidence.location.location_ref
+        == capability.location_ref
+    )
+
+
+def test_private_home_outcome_may_carry_ordinary_visual_evidence() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    home = _location_capability(
+        privacy_class="private",
+        location_ref="location:jiaxing-family-home",
+    )
+    raw = _location_bound_world_draft(
+        wake=wake,
+        capability=home,
+        timing={"mode": "now", "duration_minutes": 30},
+        privacy_class="private",
+        visual_evidence={
+            "claim_refs": ["local:claim:location-change"],
+            "activity_description": "在嘉兴家里看书",
+            "location": {
+                "location_ref": home.location_ref,
+                "kind": "home",
+                "city": "嘉兴",
+                "publicness": "private",
+            },
+            "environment": {
+                "light": "afternoon window light",
+                "structure": "family living room",
+            },
+            "objects": [],
+        },
+    )
+
+    draft = parse_world_author_draft(
+        raw=raw,
+        manifest=_manifest(
+            wake,
+            pinned_cursor=_projection_cursor(ledger),
+            location_capability=home,
+        ),
+        logical_time=NOW,
+    )
+
+    assert draft.privacy_class == "private"
+    assert draft.outcomes[0].visual_evidence is not None
+    assert draft.outcomes[0].visual_evidence.location is not None
+    assert draft.outcomes[0].visual_evidence.location.location_ref == home.location_ref
+
+
+def test_location_bound_ordinary_outcome_must_carry_visual_evidence() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    home = _location_capability(
+        privacy_class="private",
+        location_ref="location:jiaxing-family-home",
+    )
+    raw = _location_bound_world_draft(
+        wake=wake,
+        capability=home,
+        timing={"mode": "now", "duration_minutes": 30},
+        privacy_class="private",
+        include_default_visual=False,
+    )
+
+    with pytest.raises(
+        LifeDevelopmentDraftError,
+        match="location-bound ordinary-privacy outcomes must carry visual_evidence",
+    ):
+        parse_world_author_draft(
+            raw=raw,
+            manifest=_manifest(
+                wake,
+                pinned_cursor=_projection_cursor(ledger),
+                location_capability=home,
+            ),
+            logical_time=NOW,
+        )
+
+
+def test_withheld_outcome_cannot_carry_visual_evidence() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    capability = _location_capability()
+    raw = _location_bound_world_draft(
+        wake=wake,
+        capability=capability,
+        timing={"mode": "now", "duration_minutes": 30},
+        privacy_class="withhold",
+        visual_evidence={
+            "claim_refs": ["local:claim:location-change"],
+            "activity_description": "在院子里停了一会儿",
+            "location": {"location_ref": capability.location_ref, "kind": "courtyard"},
+            "objects": [],
+        },
+    )
+
+    with pytest.raises(LifeDevelopmentDraftError, match="ordinary life privacy, not withhold"):
+        parse_world_author_draft(
+            raw=raw,
+            manifest=_manifest(
+                wake,
+                pinned_cursor=_projection_cursor(ledger),
+                location_capability=capability,
+            ),
+            logical_time=NOW,
+        )
+
+
+def test_location_independent_ordinary_outcome_may_omit_visual_evidence() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    capability = _location_capability()
+    raw = json.loads(
+        _location_bound_world_draft(
+            wake=wake,
+            capability=capability,
+            timing={"mode": "now", "duration_minutes": 30},
+            privacy_class="shareable",
+            include_default_visual=False,
+        )
+    )
+    raw["location_ref"] = None
+    raw["location_capability_ref"] = None
+
+    draft = parse_world_author_draft(
+        raw=json.dumps(raw, ensure_ascii=False),
+        manifest=_manifest(
+            wake,
+            pinned_cursor=_projection_cursor(ledger),
+            location_capability=capability,
+        ),
+        logical_time=NOW,
+    )
+
+    assert draft.location_ref is None
+    assert all(outcome.visual_evidence is None for outcome in draft.outcomes)
+
+
+@pytest.mark.asyncio
+async def test_location_bound_missing_visual_triggers_reselection_coordinate() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    home = _location_capability(
+        privacy_class="private",
+        location_ref="location:jiaxing-family-home",
+    )
+    invalid = _location_bound_world_draft(
+        wake=wake,
+        capability=home,
+        timing={"mode": "now", "duration_minutes": 30},
+        privacy_class="private",
+        include_default_visual=False,
+    )
+    corrected = json.loads(
+        _location_bound_world_draft(
+            wake=wake,
+            capability=home,
+            timing={"mode": "now", "duration_minutes": 30},
+            privacy_class="private",
+            include_default_visual=True,
+        )
+    )
+    world_author = _SequenceModel(
+        model="test-world-author",
+        outputs=(invalid, json.dumps(corrected, ensure_ascii=False)),
+    )
+    runtime, _store = _runtime(
+        ledger=ledger,
+        wake=wake,
+        world_author=world_author,
+        character_interior=_SequenceModel(
+            model="test-character-model",
+            outputs=(AssertionError("corrected draft ends before character choice"),),
+        ),
+        location_capability=home,
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=wake.event_id,
+        trace_id="trace:located-visual-required",
+        correlation_id="correlation:life-development",
+    )
+
+    assert result.status in {"no_op", "occurrence_committed", "plan_committed"}
+    assert world_author.calls >= 2
+    repair = json.loads(world_author.messages[1][-1]["content"])
+    assert any(
+        item.get("rule") == "located_ordinary_visual_evidence_required"
+        for item in repair.get("repair_coordinates", [])
+    )
+    assert "supply_visual_evidence_for_each_located_ordinary_outcome" in json.dumps(
+        repair.get("repair_coordinates", []),
+        ensure_ascii=False,
+    )
 
 
 @pytest.mark.asyncio
@@ -1177,7 +1416,7 @@ def test_world_author_invalid_shape_exposes_machine_readable_authority_violation
             {
                 "experienced_by_ref": OWNER,
                 "text": "一种可能结果。",
-                "privacy_class": "private",
+                "privacy_class": "withhold",
                 "relative_plausibility_weight": 1,
                 "claim_refs": ["local:claim:a", "local:claim:b"],
                 "visual_evidence": {
@@ -1571,7 +1810,119 @@ def test_location_capability_enforces_privacy_and_complete_local_window() -> Non
         )
 
 
-def test_world_contingency_cannot_install_a_character_life_direction() -> None:
+def test_world_author_compliant_example_is_location_bound_not_weather() -> None:
+    example = life_runtime_module._WORLD_AUTHOR_COMPLIANT_PROPOSE_EXAMPLE
+    dumped = json.dumps(example)
+
+    assert "thunderstorm" not in dumped.casefold()
+    assert "storm" not in dumped.casefold()
+    assert example["causal_authority"] == "character_choice"
+    assert example["location_ref"]
+    assert str(example["location_capability_ref"]).startswith("location-capability:")
+    assert example["timing"]["mode"] == "later"
+
+
+def test_closed_hours_location_draft_repairs_window_instead_of_dropping_place() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    bookstore = LifeDevelopmentLocationCapability(
+        location_ref="location:jiaxing-family-bookstore",
+        privacy_class="shareable",
+        availability_kind="reviewed_schedule",
+        timezone_name="Asia/Shanghai",
+        local_windows=("09:00-20:00",),
+        weekdays=(0, 1, 2, 3, 4, 5, 6),
+        authority_refs=("policy:reviewed-bookstore",),
+    )
+    home = LifeDevelopmentLocationCapability(
+        location_ref="location:jiaxing-family-home",
+        privacy_class="private",
+        availability_kind="reviewed_schedule",
+        timezone_name="Asia/Shanghai",
+        local_windows=("00:00-23:59",),
+        weekdays=(0, 1, 2, 3, 4, 5, 6),
+        authority_refs=("policy:reviewed-home",),
+    )
+    closed_hours = datetime(2026, 8, 14, 20, 33, 48, tzinfo=UTC)
+    manifest = LifeDevelopmentCapabilityManifest(
+        version="life-development-capability.test.location",
+        owner_actor_ref=OWNER,
+        pinned_cursor=_projection_cursor(ledger),
+        anchor_refs=(wake.event_id,),
+        grounding_refs=(wake.event_id,),
+        location_capabilities=(bookstore, home),
+        max_future_days=30,
+        max_window_minutes=12 * 60,
+    )
+    now_draft = _location_bound_world_draft(
+        wake=wake,
+        capability=bookstore,
+        timing={"mode": "now", "duration_minutes": 60},
+        privacy_class="shareable",
+        causal_authority="character_choice",
+        outcome_resolution_authority="character_choice",
+    )
+
+    with pytest.raises(
+        LifeDevelopmentDraftError,
+        match="unsupported_location_window",
+    ) as raised:
+        parse_world_author_draft(
+            raw=now_draft,
+            manifest=manifest,
+            logical_time=closed_hours,
+        )
+
+    instruction = life_runtime_module._world_author_reselection_instruction(
+        failure_code=raised.value.code,
+    )
+    assert "omit both location fields and freely author a location-independent possibility" not in instruction
+    assert "Omit both location fields only when location_capabilities is empty" in instruction
+
+    coordinates = life_runtime_module._world_author_repair_coordinates(
+        raw=now_draft,
+        error=raised.value,
+        manifest=manifest,
+        hard_boundary_contract=life_runtime_module._world_author_hard_boundary_contract(
+            manifest=manifest,
+            owner_actor_ref=OWNER,
+        ),
+        logical_time=closed_hours,
+    )
+    assert coordinates
+    repair = coordinates[0]
+    assert repair["rule"] == "location_capability_covers_proposal_window"
+    assert repair["illegal_repair"] == (
+        "omit_both_location_fields_while_listed_capabilities_remain"
+    )
+    later = repair["selected_location_later_interval"]
+    assert isinstance(later, dict)
+    assert later["location_ref"] == bookstore.location_ref
+    covering_refs = {item["location_ref"] for item in repair["covering_now"]}
+    assert home.location_ref in covering_refs
+    assert bookstore.location_ref not in covering_refs
+
+    parsed = parse_world_author_draft(
+        raw=_location_bound_world_draft(
+            wake=wake,
+            capability=bookstore,
+            timing={
+                "mode": "later",
+                "opens_at": datetime(2026, 8, 15, 1, 0, tzinfo=UTC).isoformat(),
+                "closes_at": datetime(2026, 8, 15, 4, 0, tzinfo=UTC).isoformat(),
+            },
+            privacy_class="shareable",
+            causal_authority="character_choice",
+            outcome_resolution_authority="character_choice",
+        ),
+        manifest=manifest,
+        logical_time=closed_hours,
+    )
+    assert parsed.location_ref == bookstore.location_ref
+    assert parsed.timing.mode == "later"
+
+
+def test_world_author_cannot_install_a_subjective_character_direction() -> None:
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
     wake = _seed_clock(ledger)
     capability = _location_capability()
@@ -1587,6 +1938,8 @@ def test_world_contingency_cannot_install_a_character_life_direction() -> None:
                 dynamic_direction={
                     "summary": "她决定今后都围绕这件事生活。",
                     "narrative_tags": ["narrative:imposed-direction"],
+                    "context_tags": ["direction.work"],
+                    "supersedes_context_tag_prefixes": ["direction."],
                     "duration_days": 30,
                     "privacy_class": "personal",
                 },
@@ -1753,7 +2106,54 @@ async def test_world_author_no_op_remains_valid_without_source_reviewer() -> Non
 
 
 @pytest.mark.asyncio
+async def test_unsupported_source_closure_rejects_without_a_rewrite_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _unsupported(*, draft, cited_events):  # type: ignore[no-untyped-def]
+        del draft, cited_events
+        return LifeDevelopmentSourceClosureReview(
+            decision="unsupported",
+            unsupported_claim_ids=("local:claim:book-exchange",),
+            reason="fixture unsupported source closure",
+        )
 
+    monkeypatch.setattr(
+        life_runtime_module, "evaluate_general_source_closure", _unsupported
+    )
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    rewriter = _SequenceModel(
+        model="must-not-rewrite",
+        outputs=(AssertionError("source rewrite must not be called"),),
+    )
+    world_author = _SequenceModel(
+        model="world-author",
+        outputs=(json.dumps(_novel_book_exchange_draft(wake=wake), ensure_ascii=False),),
+    )
+    character = _SequenceModel(
+        model="character-must-not-see-unsupported-draft",
+        outputs=(AssertionError("unsupported draft must not reach the character"),),
+    )
+    runtime, _store = _runtime(
+        ledger=ledger,
+        wake=wake,
+        world_author=world_author,
+        world_author_source_rewriter=rewriter,
+        character_interior=character,
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=wake.event_id,
+        trace_id="trace:life-source-closure-rejected",
+        correlation_id="correlation:life-source-closure-rejected",
+    )
+
+    assert result.status == "technical_failure"
+    assert result.reason_code == "life_development.source_closure_rejected"
+    assert world_author.calls == 1
+    assert rewriter.calls == 0
+    assert character.calls == 0
+    assert character.consider_calls == 0
 
 
 def _novel_origin_review(
@@ -1875,7 +2275,16 @@ def _clock_only_old_friend_draft(*, wake: WorldEvent) -> dict[str, object]:
                 "claim_refs": list(claims),
                 "provisional_npcs": [],
                 "dynamic_life_direction": None,
-                "visual_evidence": None,
+                "visual_evidence": {
+                    "claim_refs": list(claims),
+                    "activity_description": "在老方面馆听陈伟讲云南旅行",
+                    "location": {
+                        "location_ref": capability.location_ref,
+                        "kind": "place",
+                        "publicness": "public",
+                    },
+                    "environment": {"structure": "authorized location"},
+                },
             },
             {
                 "experienced_by_ref": OWNER,
@@ -1885,7 +2294,16 @@ def _clock_only_old_friend_draft(*, wake: WorldEvent) -> dict[str, object]:
                 "claim_refs": list(claims),
                 "provisional_npcs": [],
                 "dynamic_life_direction": None,
-                "visual_evidence": None,
+                "visual_evidence": {
+                    "claim_refs": list(claims),
+                    "activity_description": "没有赴约，留在已授权地点",
+                    "location": {
+                        "location_ref": capability.location_ref,
+                        "kind": "place",
+                        "publicness": "public",
+                    },
+                    "environment": {"structure": "authorized location"},
+                },
             },
         ],
     }
@@ -1975,42 +2393,62 @@ def test_world_author_accepts_schema_conforming_provisional_npc_ref() -> None:
     assert parsed.outcomes[0].provisional_npcs[0].local_ref == ("local:npc:book-stall-volunteer")
 
 
-def test_world_author_cannot_author_a_biographical_coordinate_replacement() -> None:
+@pytest.mark.asyncio
+async def test_world_author_can_attach_dynamic_life_direction_to_one_outcome() -> None:
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
     wake = _seed_clock(ledger)
+    capability = _location_capability()
     raw = _location_bound_world_draft(
         wake=wake,
-        capability=_location_capability(),
+        capability=capability,
         timing={"mode": "now", "duration_minutes": 30},
         privacy_class="personal",
-        causal_authority="character_choice",
-        outcome_resolution_authority="character_choice",
+        causal_authority="world_contingency",
+        outcome_resolution_authority="world_contingency",
         dynamic_direction={
-            "summary": "她重新安排了现阶段生活的重心，但之后仍可以改变方向。",
-            "narrative_tags": ["narrative:self_directed_change"],
-            "context_tags": ["academic:personally_reoriented"],
-            "supersedes_context_tag_prefixes": ["academic:"],
-            "duration_days": None,
+            "summary": "接下来几个月她会在出版社实习，日常围着稿件和编辑部转。",
+            "narrative_tags": ["narrative:publishing_internship"],
+            "context_tags": ["role:intern", "workplace:publishing"],
+            "supersedes_context_tag_prefixes": ["role:"],
+            "duration_days": 90,
             "privacy_class": "personal",
         },
     )
+    draft = parse_world_author_draft(
+        raw=raw,
+        manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        logical_time=NOW,
+    )
+    direction = draft.outcomes[0].dynamic_life_direction
+    assert direction is not None
+    assert direction.context_tags == ("role:intern", "workplace:publishing")
+    runtime, store = _runtime(
+        ledger=ledger,
+        wake=wake,
+        world_author=_SequenceModel(model="world-author", outputs=(raw,)),
+        character_interior=_SequenceModel(model="character", outputs=()),
+        location_capability=capability,
+    )
 
-    with pytest.raises(
-        LifeDevelopmentDraftError,
-        match="invalid_shape",
-    ):
-        parse_world_author_draft(
-            raw=raw,
-            manifest=_manifest(
-                wake,
-                pinned_cursor=_projection_cursor(ledger),
-                biographical_context_tags=(
-                    "academic:enrolled",
-                    "calendar:summer_break",
-                ),
-            ),
-            logical_time=NOW,
-        )
+    result = await runtime.advance_once(
+        wake_event_ref=wake.event_id,
+        trace_id="trace:dynamic-life-direction",
+        correlation_id="correlation:dynamic-life-direction",
+    )
+
+    assert result.status == "occurrence_committed"
+    candidate = ledger.project().world_occurrences[0].candidate_outcomes[0]
+    assert candidate.dynamic_life_arc_context is not None
+    assert candidate.dynamic_life_arc_context.context_tags == (
+        "role:intern",
+        "workplace:publishing",
+    )
+    assert candidate.dynamic_life_arc_context.duration_days == 90
+    stored = store.read_exact(
+        content_ref=candidate.dynamic_life_arc_context.summary_content_ref
+    )
+    assert stored is not None
+    assert "出版社实习" in stored.text
 
 
 def test_world_author_still_rejects_unscoped_provisional_npc_ref() -> None:
@@ -3024,6 +3462,19 @@ async def test_world_author_can_commit_a_free_adverse_world_contingency() -> Non
                     }
                 ],
                 "dynamic_life_direction": None,
+                "visual_evidence": {
+                    "claim_refs": ["local:claim:hail"],
+                    "activity_description": "冰雹打湿了晾着的手账",
+                    "location": {
+                        "location_ref": "location:campus-courtyard",
+                        "kind": "open_courtyard",
+                        "publicness": "public",
+                    },
+                    "environment": {
+                        "weather": "sudden hail",
+                        "structure": "open courtyard",
+                    },
+                },
             },
             {
                 "experienced_by_ref": OWNER,
@@ -3033,6 +3484,19 @@ async def test_world_author_can_commit_a_free_adverse_world_contingency() -> Non
                 "claim_refs": ["local:claim:hail"],
                 "provisional_npcs": [],
                 "dynamic_life_direction": None,
+                "visual_evidence": {
+                    "claim_refs": ["local:claim:hail"],
+                    "activity_description": "及时收回手账，封面被冰雹打湿",
+                    "location": {
+                        "location_ref": "location:campus-courtyard",
+                        "kind": "open_courtyard",
+                        "publicness": "public",
+                    },
+                    "environment": {
+                        "weather": "sudden hail",
+                        "structure": "open courtyard",
+                    },
+                },
             },
         ],
     }
@@ -3416,7 +3880,20 @@ async def test_character_model_freely_accepts_an_external_opportunity_into_a_pla
                 "claim_refs": ["local:claim:screening"],
                 "provisional_npcs": [],
                 "dynamic_life_direction": None,
-                "visual_evidence": None,
+                "visual_evidence": {
+                    "claim_refs": ["local:claim:screening"],
+                    "activity_description": "中途下雨，露天放映提前结束",
+                    "location": {
+                        "location_ref": "location:campus-courtyard",
+                        "kind": "open_courtyard",
+                        "publicness": "public",
+                    },
+                    "environment": {
+                        "weather": "light rain",
+                        "structure": "temporary outdoor screen and folding chairs",
+                    },
+                    "objects": [],
+                },
             },
         ],
     }
@@ -3533,7 +4010,8 @@ async def test_character_model_freely_accepts_an_external_opportunity_into_a_pla
     ]
     assert material.outcomes[0].visual_evidence is not None
     assert material.outcomes[0].visual_evidence.activity_description == "在校外院子里看临时露天电影"
-    assert material.outcomes[1].visual_evidence is None
+    assert material.outcomes[1].visual_evidence is not None
+    assert material.outcomes[1].visual_evidence.activity_description == "中途下雨，露天放映提前结束"
     assert {item.descriptor.causal_authority for item in material.outcomes} == {"character_choice"}
     assert all(item.descriptor.dynamic_life_arc_context is None for item in material.outcomes)
 
@@ -3941,7 +4419,7 @@ async def test_world_author_reselection_does_not_anchor_invalid_dynamic_draft() 
         "provisional_npcs": "world_author",
         "provisional_places": "world_author",
         "objective_biographical_transition": ("world_author_objective_candidate_consequence"),
-        "dynamic_life_direction": "retired_character_model_at_settlement",
+        "dynamic_life_direction": "world_author_event_impact",
         "system_supplied_story_content": "none",
     }
     assert correction["replacement_contract"]["allowed_decisions"] == [
@@ -3986,6 +4464,16 @@ async def test_invalid_world_draft_gets_one_source_bound_reselection() -> None:
                 "claim_refs": ["local:claim:place"],
                 "provisional_npcs": [],
                 "dynamic_life_direction": None,
+                "visual_evidence": {
+                    "claim_refs": ["local:claim:place"],
+                    "activity_description": "在未授权地点经历这次变化",
+                    "location": {
+                        "location_ref": "location:not-in-capability-manifest",
+                        "kind": "place",
+                        "publicness": "private",
+                    },
+                    "environment": {"structure": "unauthorized location"},
+                },
             },
             {
                 "experienced_by_ref": OWNER,
@@ -3995,6 +4483,16 @@ async def test_invalid_world_draft_gets_one_source_bound_reselection() -> None:
                 "claim_refs": ["local:claim:place"],
                 "provisional_npcs": [],
                 "dynamic_life_direction": None,
+                "visual_evidence": {
+                    "claim_refs": ["local:claim:place"],
+                    "activity_description": "未授权地点的变化很快结束",
+                    "location": {
+                        "location_ref": "location:not-in-capability-manifest",
+                        "kind": "place",
+                        "publicness": "private",
+                    },
+                    "environment": {"structure": "unauthorized location"},
+                },
             },
         ],
     }
@@ -4092,7 +4590,7 @@ async def test_invalid_world_draft_gets_one_source_bound_reselection() -> None:
         == "propose"
     )
     assert primary_request["cross_field_authority"] == {
-        "contract_version": "life-development-world-author-authority.4",
+        "contract_version": "life-development-world-author-authority.6",
         "canonical_reference_arrays": {
             "duplicates": "discarded_as_set_equivalent",
             "normal_form": "lexicographic_ascending",
@@ -4185,7 +4683,15 @@ async def test_invalid_world_draft_gets_one_source_bound_reselection() -> None:
                 {
                     "when": "outcome.visual_evidence is present",
                     "field": "outcome.privacy_class",
-                    "allowed_values": ["public", "shareable"],
+                    "allowed_values": ["public", "shareable", "personal", "private"],
+                },
+                {
+                    "when": (
+                        "proposal.location_ref is present and outcome.privacy_class "
+                        "is ordinary life photo privacy"
+                    ),
+                    "field": "outcome.visual_evidence",
+                    "required": True,
                 },
             ],
             "allowed_outcome_privacy_by_proposal_privacy": {
@@ -4196,10 +4702,10 @@ async def test_invalid_world_draft_gets_one_source_bound_reselection() -> None:
                 "withhold": ["withhold"],
             },
             "allowed_visual_outcome_privacy_by_proposal_privacy": {
-                "public": ["public", "shareable"],
-                "shareable": ["shareable"],
-                "personal": [],
-                "private": [],
+                "public": ["public", "shareable", "personal", "private"],
+                "shareable": ["shareable", "personal", "private"],
+                "personal": ["personal", "private"],
+                "private": ["private"],
                 "withhold": [],
             },
             "location_capability_privacy_envelopes": [
@@ -4213,18 +4719,31 @@ async def test_invalid_world_draft_gets_one_source_bound_reselection() -> None:
                         "private",
                         "withhold",
                     ],
-                    "allowed_recipient_unbound_visual_proposal_privacy": ["shareable"],
+                    "allowed_recipient_unbound_visual_proposal_privacy": [
+                        "shareable",
+                        "personal",
+                        "private",
+                    ],
                 },
             ],
             "recipient_unbound_visual_compatibility": {
-                "compatible_proposal_privacy": ["public", "shareable"],
-                "compatible_location_capability_privacy": ["public", "shareable"],
+                "compatible_proposal_privacy": ["public", "shareable", "personal", "private"],
+                "compatible_location_capability_privacy": ["public", "shareable", "personal", "private"],
                 "when_incompatible": "omit_visual_evidence",
             },
         },
         "dynamic_life_direction": {
-            "status": "retired_must_be_null",
-            "authority": "character_model_at_outcome_settlement",
+            "status": "optional_per_outcome",
+            "authority": "world_author_event_impact",
+            "applied_when": "that_exact_candidate_is_accepted_and_settled",
+            "must_be": "durable_life_context_entailed_by_candidate_branch",
+            "must_not_be": [
+                "character_motive",
+                "desire",
+                "subjective_direction_namespace",
+                "predetermined_plot_type",
+            ],
+            "direction_namespace": "reserved_for_character_model",
         },
         "objective_biographical_transition": {
             "status": "optional_per_outcome",
@@ -4259,9 +4778,9 @@ async def test_invalid_world_draft_gets_one_source_bound_reselection() -> None:
             "must_not_author_user_choice_or_action": True,
         },
         "visual_evidence": {
-            "status": "optional",
+            "status": "required_when_proposal_is_location_bound_and_outcome_privacy_is_ordinary",
             "claim_refs": "subset_of_outcome.claim_refs",
-            "permitted_outcome_privacy": ["public", "shareable"],
+            "permitted_outcome_privacy": ["public", "shareable", "personal", "private"],
             "location_binding": {
                 "when_proposal_location_ref_is_null": (
                     "every_outcome.visual_evidence.location_must_be_null"
@@ -4274,7 +4793,12 @@ async def test_invalid_world_draft_gets_one_source_bound_reselection() -> None:
                     "must_describe_the_same_execution_coordinate_not_an_origin_or_background_place"
                 ),
             },
-            "when_absent": None,
+            "when_absent": {
+                "allowed_if": [
+                    "proposal.location_ref is null",
+                    "outcome.privacy_class is withhold",
+                ],
+            },
             "when_present": {
                 "concrete_fields": {
                     "at_least_one_of": [
@@ -4549,7 +5073,15 @@ async def test_world_author_reselection_receives_exact_optional_annex_capabiliti
             {
                 "when": "outcome.visual_evidence is present",
                 "field": "outcome.privacy_class",
-                "allowed_values": ["public", "shareable"],
+                "allowed_values": ["public", "shareable", "personal", "private"],
+            },
+            {
+                "when": (
+                    "proposal.location_ref is present and outcome.privacy_class "
+                    "is ordinary life photo privacy"
+                ),
+                "field": "outcome.visual_evidence",
+                "required": True,
             },
         ],
         "allowed_outcome_privacy_by_proposal_privacy": {
@@ -4560,10 +5092,10 @@ async def test_world_author_reselection_receives_exact_optional_annex_capabiliti
             "withhold": ["withhold"],
         },
         "allowed_visual_outcome_privacy_by_proposal_privacy": {
-            "public": ["public", "shareable"],
-            "shareable": ["shareable"],
-            "personal": [],
-            "private": [],
+            "public": ["public", "shareable", "personal", "private"],
+            "shareable": ["shareable", "personal", "private"],
+            "personal": ["personal", "private"],
+            "private": ["private"],
             "withhold": [],
         },
         "location_capability_privacy_envelopes": [
@@ -4577,23 +5109,36 @@ async def test_world_author_reselection_receives_exact_optional_annex_capabiliti
                     "private",
                     "withhold",
                 ],
-                "allowed_recipient_unbound_visual_proposal_privacy": ["shareable"],
+                "allowed_recipient_unbound_visual_proposal_privacy": [
+                    "shareable",
+                    "personal",
+                    "private",
+                ],
             },
         ],
         "recipient_unbound_visual_compatibility": {
-            "compatible_proposal_privacy": ["public", "shareable"],
-            "compatible_location_capability_privacy": ["public", "shareable"],
+            "compatible_proposal_privacy": ["public", "shareable", "personal", "private"],
+            "compatible_location_capability_privacy": ["public", "shareable", "personal", "private"],
             "when_incompatible": "omit_visual_evidence",
         },
     }
     assert boundaries["dynamic_life_direction"] == {
-        "status": "retired_must_be_null",
-        "authority": "character_model_at_outcome_settlement",
+        "status": "optional_per_outcome",
+        "authority": "world_author_event_impact",
+        "applied_when": "that_exact_candidate_is_accepted_and_settled",
+        "must_be": "durable_life_context_entailed_by_candidate_branch",
+        "must_not_be": [
+            "character_motive",
+            "desire",
+            "subjective_direction_namespace",
+            "predetermined_plot_type",
+        ],
+        "direction_namespace": "reserved_for_character_model",
     }
     assert boundaries["visual_evidence"] == {
-        "status": "optional",
+        "status": "required_when_proposal_is_location_bound_and_outcome_privacy_is_ordinary",
         "claim_refs": "subset_of_outcome.claim_refs",
-        "permitted_outcome_privacy": ["public", "shareable"],
+        "permitted_outcome_privacy": ["public", "shareable", "personal", "private"],
         "location_binding": {
             "when_proposal_location_ref_is_null": (
                 "every_outcome.visual_evidence.location_must_be_null"
@@ -4606,7 +5151,12 @@ async def test_world_author_reselection_receives_exact_optional_annex_capabiliti
                 "must_describe_the_same_execution_coordinate_not_an_origin_or_background_place"
             ),
         },
-        "when_absent": None,
+        "when_absent": {
+            "allowed_if": [
+                "proposal.location_ref is null",
+                "outcome.privacy_class is withhold",
+            ],
+        },
         "when_present": {
             "concrete_fields": {
                 "at_least_one_of": [
@@ -4621,7 +5171,7 @@ async def test_world_author_reselection_receives_exact_optional_annex_capabiliti
     }
     repair = json.loads(world_author.messages[1][-1]["content"])
     violation_paths = {item["path"] for item in repair["validation_failure"]["violations"]}
-    assert "outcomes.0.dynamic_life_direction" in violation_paths
+    assert "outcomes.0.dynamic_life_direction.context_tags" in violation_paths
     assert "outcomes.0.visual_evidence" in violation_paths
     assert "outcomes" not in violation_paths
     assert repair["hard_boundary_contract"] == boundaries
@@ -4632,9 +5182,11 @@ async def test_world_author_reselection_receives_exact_optional_annex_capabiliti
         "do not leave the failed field combination unchanged. Then revalidate the complete "
         "replacement. Treat privacy as one coupled choice across the selected location "
         "capability, proposal, every outcome, and optional visual_evidence; do not repair "
-        "one privacy field in isolation. If recipient-unbound visual evidence is "
-        "incompatible with the chosen privacy floor, omit visual_evidence. The system "
-        "will not supply narrative tags, privacy, visual facts, or event text."
+        "one privacy field in isolation. If the chosen privacy is withhold, omit "
+        "visual_evidence. If the proposal is location-bound and the outcome privacy is "
+        "public, shareable, personal, or private, supply visual_evidence for that "
+        "outcome, including ordinary home life. The system will not supply narrative "
+        "tags, privacy, visual facts, or event text."
     )
 
 
@@ -4649,7 +5201,7 @@ async def test_world_author_privacy_reselection_receives_the_coupled_lattice() -
         wake=wake,
         capability=capability,
         timing={"mode": "now", "duration_minutes": 30},
-        privacy_class="personal",
+        privacy_class="withhold",
         causal_authority="character_choice",
         outcome_resolution_authority="character_choice",
         visual_evidence={
@@ -4713,7 +5265,7 @@ async def test_world_author_visual_privacy_reselection_preserves_privacy_and_acc
         wake=wake,
         capability=capability,
         timing={"mode": "now", "duration_minutes": 30},
-        privacy_class="personal",
+        privacy_class="withhold",
         causal_authority="character_choice",
         outcome_resolution_authority="character_choice",
         visual_evidence={
@@ -4762,8 +5314,8 @@ async def test_world_author_visual_privacy_reselection_preserves_privacy_and_acc
     assert result.status == "plan_committed"
     assert world_author.calls == 2
     assert character.calls == 1
-    assert corrected["privacy_class"] == "personal"
-    assert corrected["outcomes"][0]["privacy_class"] == "personal"
+    assert corrected["privacy_class"] == "withhold"
+    assert corrected["outcomes"][0]["privacy_class"] == "withhold"
     repair = json.loads(world_author.messages[1][-1]["content"])
     assert repair["repair_coordinates"] == [
         {
@@ -4771,8 +5323,8 @@ async def test_world_author_visual_privacy_reselection_preserves_privacy_and_acc
             "outcome_path": "outcomes.0",
             "optional_field_path": "outcomes.0.visual_evidence",
             "if_privacy_is_retained": {
-                "proposal_privacy": "personal",
-                "outcome_privacy": "personal",
+                "proposal_privacy": "withhold",
+                "outcome_privacy": "withhold",
                 "required": "omit_optional_visual_evidence",
             },
         }

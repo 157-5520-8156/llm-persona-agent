@@ -1238,9 +1238,22 @@ class SQLiteWorldLedger:
         tuple stays out of the dump entirely so every pre-existing head's
         persisted state hash remains byte-identical; the key appears only
         once a world actually plants an aspiration.
+
+        Nested ``expression_plan_manifests[].revisit`` joined the same way
+        inside ``world-v2-reducers.56``: a missing or null leftover is omitted
+        so heads persisted before the field existed keep their state hash.
         """
 
         dumped = state.model_dump(mode="json")
+        if state.expression_plan_manifests:
+            dumped["expression_plan_manifests"] = [
+                {
+                    key: value
+                    for key, value in item.model_dump(mode="json").items()
+                    if key != "revisit" or item.revisit is not None
+                }
+                for item in state.expression_plan_manifests
+            ]
         if state.life_arcs:
             dumped["life_arcs"] = [
                 {

@@ -1298,7 +1298,7 @@ class RecallCoordinator:
                 return
             self._set_prefetch_health(
                 epoch=epoch,
-                status=("degraded" if trace.audit.embedding_status == "degraded" else "ready"),
+                status="ready",
                 failure_code=trace.audit.embedding_failure_code,
                 trace=trace,
             )
@@ -1569,13 +1569,13 @@ class RecallCoordinator:
             # not a prerequisite for speaking. A provider/contract failure
             # therefore falls back to the already-pinned local index while the
             # trace and health surface retain the exact degraded reason.
-            logger.warning("semantic recall degraded to local index", exc_info=True)
-            local = context.snapshot.search(query)
             failure_code = (
                 str(exc)[:128]
                 if isinstance(exc, RecallEmbeddingUnavailable)
                 else f"{type(exc).__name__}:{str(exc)}"[:128]
             )
+            logger.warning("semantic recall degraded to local index: %s", failure_code)
+            local = context.snapshot.search(query)
             return local.model_copy(
                 update={
                     "embedding_status": "degraded",

@@ -45,12 +45,25 @@ def test_character_persona_has_her_own_attention_instead_of_a_question_seeking_r
     character = load_character("configs/character.yaml")
 
     assert character.personality is not None
-    assert "始终有自己的思路、生活和情绪" in character.personality
-    assert "不会为了维持对话把注意力固定在对方身上" in character.personality
+    assert "有自己的想法、日子和情绪" in character.personality
+    assert "不会为了把天聊下去一直盯着对方" in character.personality
+    assert "俏皮一点" in character.personality
+    assert "说话软，有分寸" in character.personality
+    assert "不会把对方的话拆开分析" in character.personality
+    assert "整活" not in character.personality
+    assert "抽象" not in character.personality
+    assert all("像人" not in rule for rule in character.style_rules)
+    assert all("语气平实" not in rule for rule in character.style_rules)
     assert character.speech is not None
-    assert "取决于当下的注意、情绪和关系情境" in character.speech
+    assert "怎么说看当时心情和关系" in character.speech
+    assert "像随手回的 QQ" in character.speech
+    assert "填对话的材料" in character.speech
+    assert "我与地坛" not in "\n".join(character.daily_life)
+    assert "汪曾祺" not in "\n".join(character.daily_life)
     assert "刚认识时语气礼貌、轻松、带一点好奇" not in character.speech
     assert "对用户有好奇" not in character.base_prompt
     assert all("想知道的时候才问" not in rule for rule in character.style_rules)
     assert all("虚拟" not in boundary for boundary in character.boundaries)
     assert any("World context" in boundary for boundary in character.boundaries)
+    assert any("不会自动变成 World 硬事实" in boundary for boundary in character.boundaries)
+    assert any("可核对命题" in boundary for boundary in character.boundaries)

@@ -140,6 +140,10 @@ def test_local_dashboard_requires_signed_session_and_never_leaks_operator_token(
     assert OPERATOR_TOKEN not in cookie
     assert authenticated_page.status_code == 200
     assert "operator-token" not in authenticated_page.text
+    assert "沈知栀 · 现在" in authenticated_page.text
+    assert "这一刻" in authenticated_page.text
+    assert "Snapshot" not in authenticated_page.text
+    assert "world-v2-dashboard-home.1-ui4" in authenticated_page.text
 
 
 def test_authenticated_dashboard_uses_remote_source_without_bootstrapping_sandbox_host(

@@ -1179,6 +1179,22 @@ class ResponseExpectationAuthority(FrozenModel):
         return self
 
 
+class RevisitIntentionAuthority(FrozenModel):
+    """Accepted leftover she asked to return to, using a wait she declared."""
+
+    source_plan_id: str = Field(min_length=1)
+    source_beat_id: str = Field(min_length=1)
+    thought: str = Field(min_length=1, max_length=160)
+    not_before: datetime
+    expires_at: datetime
+
+    @model_validator(mode="after")
+    def window_is_bounded(self) -> "RevisitIntentionAuthority":
+        if self.expires_at <= self.not_before:
+            raise ValueError("revisit expiry must follow opening")
+        return self
+
+
 class ResponseExpectationAssessedPayload(FrozenModel):
     """One inbound cognition's source-bound interpretation of an open hope."""
 
@@ -1221,6 +1237,9 @@ class ExpressionPlanManifestRef(FrozenModel):
     acceptance_event_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     recorded_at_world_revision: int = Field(ge=1)
     response_expectation: ResponseExpectationAuthority | None = None
+    revisit: RevisitIntentionAuthority | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     social_source_observation_id: str | None = None
     social_source_observation_event_ref: str | None = None
     social_source_observation_event_hash: str | None = Field(
@@ -2816,6 +2835,7 @@ class OutcomeProposalProjection(FrozenModel):
             "life-aftermath-context.2",
             "life-aftermath-context.3",
             "life-aftermath-context.4",
+            "life-aftermath-context.5",
         ]
         | None
     ) = None

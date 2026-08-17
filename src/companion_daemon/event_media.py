@@ -437,6 +437,11 @@ class MediaOpportunity:
     # allow-list.  The empty default preserves legacy callers until they opt
     # into the frozen image-event-snapshot contract.
     allowed_evidence_refs: tuple[str, ...] = ()
+    # Adapter-installed capture/visibility allow-list.  Empty means unconstrained
+    # for legacy callers; a non-empty tuple hides complete candidates the
+    # frozen World contract cannot authorize.
+    authorized_capture_modes: tuple[str, ...] = ()
+    authorized_character_visibilities: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1231,7 +1236,12 @@ class MediaPlanner:
                 limit=256 if opportunity.family == "character_media" else 24,
             ):
                 payload = item.planner_payload()
-                if not _complete_candidate_world_legal(payload, opportunity):
+                if not _complete_candidate_is_first_pass_legal(
+                    payload,
+                    opportunity,
+                    bid_ids={str(bid["interaction_bid_id"]) for bid in interaction_bids},
+                    candidate_sources=candidate_sources,
+                ):
                     continue
                 legal_lanes = (
                     ["ordinary_life"]
@@ -2883,11 +2893,26 @@ def _freeze_proposal_v5(
     if selected is None:
         return NotRenderable(opportunity.opportunity_id, "illegal_complete_expression_candidate")
     # A complete candidate is the authority for the mutually dependent
-    # capture/form/intent fields.  The LLM chooses the candidate and its
-    # event evidence; if it echoes a stale or incompatible label, normalize
-    # only that label to an already disclosed legal value rather than turning
-    # a recoverable JSON-shape mistake into a new creative redraw.
-    proposal = _normalize_candidate_bound_labels(proposal, selected)
+    # capture/form/intent/domain fields.  The LLM chooses the candidate and
+    # its event evidence; mismatched classification labels are bound to that
+    # candidate instead of asking the provider to redraw a legal photo.
+    bound = _bind_v5_proposal_to_candidate(
+        opportunity,
+        proposal,
+        selected,
+        bid_catalog=_interaction_bid_values(
+            opportunity, config_path=interaction_config_path
+        ),
+        candidate_sources={
+            str(item.get("presentation_candidate_id") or ""): item
+            for item in presentation_candidates
+        },
+    )
+    if bound is None:
+        return NotRenderable(
+            opportunity.opportunity_id, "invalid_complete_expression_candidate"
+        )
+    proposal = bound
     required_enums = {
         "content_domain": CONTENT_DOMAINS,
         "visual_form": VISUAL_FORMS,
@@ -3072,7 +3097,11 @@ def _freeze_proposal_v5(
         legacy["presentation_candidate_id"] = source["presentation_candidate_id"]
         source_strategy = source["subject_presentation"].get("display_strategy") or {}
         source_goals = tuple(str(item) for item in source_strategy.get("communicative_goals", []))
-        if legacy["interaction_bid_id"] not in source_goals:
+        if (
+            legacy["interaction_bid_id"] not in source_goals
+            and legacy["interaction_bid_id"]
+            not in selected.get("legal_interaction_bids", [])
+        ):
             bid_catalog = _interaction_bid_values(
                 compatible_opportunity, config_path=interaction_config_path
             )
@@ -3082,6 +3111,7 @@ def _freeze_proposal_v5(
                     goal
                     for goal in source_goals
                     if goal in bid_catalog
+                    and address.bid_compatibility_error(goal) is None
                     and _embodiment_bid_error(
                         source_embodiment,
                         MediaInteractionBid.create(
@@ -3218,14 +3248,18 @@ def _freeze_proposal_v5(
         )
     interaction_bid = frozen.plan.interaction_bid
     if intimate_life_share or legacy.get("interaction_bid_id") != original_bid_id:
-        bid_values = _interaction_bid_values(
+        catalog = _interaction_bid_values(
             compatible_opportunity, config_path=interaction_config_path
-        ).get(original_bid_id)
+        )
+        lookup_id = original_bid_id if original_bid_id in catalog else str(
+            legacy.get("interaction_bid_id") or ""
+        )
+        bid_values = catalog.get(lookup_id)
         if bid_values is None:
             return NotRenderable(opportunity.opportunity_id, "illegal_interaction_bid")
         interaction_bid = MediaInteractionBid.create(
             bid_id=f"media-bid:{opportunity.opportunity_id}",
-            communicative_goal=original_bid_id,
+            communicative_goal=lookup_id,
             hoped_response=str(bid_values["hoped_response"]),
             response_pressure=str(bid_values["response_pressure"]),
             audience_ref=(
@@ -3451,6 +3485,14 @@ def _complete_candidate_world_legal(
     if not isinstance(modes, list) or len(modes) != 1:
         return False
     mode = str(modes[0])
+    if opportunity.authorized_capture_modes and mode not in opportunity.authorized_capture_modes:
+        return False
+    visibilities = candidate.get("legal_character_visibilities", [])
+    if opportunity.authorized_character_visibilities:
+        if not isinstance(visibilities, list) or not visibilities:
+            return False
+        if str(visibilities[0]) not in opportunity.authorized_character_visibilities:
+            return False
     snapshot = opportunity.event_snapshot
     if mode == "known_companion":
         return bool(_known_companions(snapshot))
@@ -3463,6 +3505,107 @@ def _complete_candidate_world_legal(
     if mode == "requested_helper":
         return str(_mapping(snapshot.get("location")).get("kind")) == "public"
     return True
+
+
+def _visibility_compatible_form(form: str, visibility: str) -> bool:
+    if form == "body_detail" and visibility != "body_detail":
+        return False
+    if visibility == "body_detail" and form not in {"body_detail", "subject_closeup"}:
+        return False
+    return True
+
+
+def _matrix_combo_for_candidate(
+    family: str,
+    forms: Sequence[str],
+    intents: Sequence[str],
+    *,
+    preferred_domain: str | None = None,
+    preferred_form: str | None = None,
+    preferred_intent: str | None = None,
+) -> tuple[str, str, str] | None:
+    matrix = _LIFE_MATRIX if family == "life_share" else _CHARACTER_MATRIX
+    combos: list[tuple[str, str, str]] = []
+    for domain, (allowed_forms, allowed_intents) in matrix.items():
+        for form in forms:
+            if form not in allowed_forms:
+                continue
+            for intent in intents:
+                if intent in allowed_intents:
+                    combos.append((domain, form, intent))
+    if not combos:
+        return None
+    return max(
+        combos,
+        key=lambda item: (
+            int(item[0] == preferred_domain),
+            int(item[1] == preferred_form),
+            int(item[2] == preferred_intent),
+        ),
+    )
+
+
+def _first_pass_interaction_bids(
+    candidate: Mapping[str, object],
+    *,
+    bid_ids: set[str],
+    candidate_sources: Mapping[str, Mapping[str, object]] | None = None,
+) -> list[str]:
+    try:
+        address = MediaAddressStrategy.from_payload(candidate["media_address_strategy"])
+    except (KeyError, TypeError, ValueError):
+        address = None
+    source_goals: set[str] | None = None
+    if candidate_sources:
+        source = candidate_sources.get(str(candidate.get("source_presentation_candidate_id") or ""))
+        if source is not None:
+            strategy = _mapping(_mapping(source.get("subject_presentation")).get("display_strategy"))
+            source_goals = {str(goal) for goal in strategy.get("communicative_goals", [])}
+    bids: list[str] = []
+    for item in candidate.get("legal_interaction_bids") or []:
+        bid = str(item)
+        if bid not in bid_ids:
+            continue
+        if source_goals is not None and bid not in source_goals:
+            continue
+        if address is not None and address.bid_compatibility_error(bid) is not None:
+            continue
+        bids.append(bid)
+    return bids
+
+
+def _complete_candidate_is_first_pass_legal(
+    candidate: Mapping[str, object],
+    opportunity: MediaOpportunity,
+    *,
+    bid_ids: set[str],
+    candidate_sources: Mapping[str, Mapping[str, object]] | None = None,
+) -> bool:
+    if not _complete_candidate_world_legal(dict(candidate), opportunity):
+        return False
+    forms = [str(item) for item in candidate.get("legal_visual_forms") or [] if isinstance(item, str)]
+    visibilities = [
+        str(item)
+        for item in candidate.get("legal_character_visibilities") or []
+        if isinstance(item, str)
+    ]
+    intents = [
+        str(item) for item in candidate.get("legal_share_intents") or [] if isinstance(item, str)
+    ]
+    bids = _first_pass_interaction_bids(
+        candidate, bid_ids=bid_ids, candidate_sources=candidate_sources
+    )
+    if not forms or not visibilities or not intents or not bids:
+        return False
+    if not any(
+        _visibility_compatible_form(form, visibility)
+        for form in forms
+        for visibility in visibilities
+    ):
+        return False
+    if opportunity.family == "life_share" and "intimate_signal" in intents:
+        return True
+    return _matrix_combo_for_candidate(opportunity.family, forms, intents) is not None
 
 
 def _private_candidate_interaction_bids(
@@ -3556,6 +3699,96 @@ def _requires_exclusive_private_lane(opportunity: MediaOpportunity, private_lane
     # policy decision.
     del opportunity, private_lane
     return False
+
+
+def _bind_v5_proposal_to_candidate(
+    opportunity: MediaOpportunity,
+    proposal: Mapping[str, object],
+    selected: Mapping[str, object],
+    *,
+    bid_catalog: Mapping[str, Mapping[str, object]],
+    candidate_sources: Mapping[str, Mapping[str, object]] | None = None,
+) -> dict[str, object] | None:
+    """Bind planner labels onto one disclosed complete candidate.
+
+    The model still chooses the candidate and evidence pointers.  Domain,
+    form, intent, capture, visibility, route, and bid are hard-boundary
+    fields of that candidate, not a second creative menu.
+    """
+
+    bound = _normalize_candidate_bound_labels(proposal, selected)
+    forms = [str(item) for item in selected.get("legal_visual_forms") or [] if isinstance(item, str)]
+    visibilities = [
+        str(item)
+        for item in selected.get("legal_character_visibilities") or []
+        if isinstance(item, str)
+    ]
+    intents = [
+        str(item) for item in selected.get("legal_share_intents") or [] if isinstance(item, str)
+    ]
+    visibility = str(bound.get("character_visibility") or (visibilities[0] if visibilities else ""))
+    if visibilities and visibility not in visibilities:
+        visibility = visibilities[0]
+        bound["character_visibility"] = visibility
+    compatible_forms = [
+        form for form in forms if _visibility_compatible_form(form, visibility)
+    ]
+    intimate_life_share = (
+        opportunity.family == "life_share"
+        and bound.get("share_intent") == "intimate_signal"
+        and bound.get("privacy") == "intimate"
+    )
+    if intimate_life_share:
+        if compatible_forms and bound.get("visual_form") not in compatible_forms:
+            bound["visual_form"] = compatible_forms[0]
+    else:
+        combo = _matrix_combo_for_candidate(
+            opportunity.family,
+            compatible_forms,
+            intents,
+            preferred_domain=str(bound.get("content_domain") or "") or None,
+            preferred_form=str(bound.get("visual_form") or "") or None,
+            preferred_intent=str(bound.get("share_intent") or "") or None,
+        )
+        if combo is None:
+            return None
+        domain, form, intent = combo
+        bound["content_domain"] = domain
+        bound["visual_form"] = form
+        bound["share_intent"] = intent
+    bids = _first_pass_interaction_bids(
+        selected,
+        bid_ids=set(bid_catalog),
+        candidate_sources=candidate_sources,
+    )
+    if not bids:
+        return None
+    if bound.get("interaction_bid_id") not in bids:
+        bound["interaction_bid_id"] = bids[0]
+    if bound.get("tone") not in TONES:
+        bound["tone"] = "warm"
+    if bound.get("polish") not in POLISH_LEVELS:
+        bound["polish"] = "casual"
+    if bound.get("other_people_visibility") not in OTHER_PEOPLE_VISIBILITIES:
+        bound["other_people_visibility"] = "none"
+    privacy = bound.get("privacy")
+    if isinstance(privacy, str) and privacy in PRIVACY_LEVELS:
+        if _PRIVACY_RANK[privacy] > _PRIVACY_RANK[opportunity.privacy_ceiling]:
+            bound["privacy"] = opportunity.privacy_ceiling
+    legal_lanes = [
+        str(item) for item in selected.get("legal_media_lanes") or [] if isinstance(item, str)
+    ]
+    if (
+        opportunity.family == "character_media"
+        and not _requires_exclusive_private_lane_from_opportunity(opportunity)
+        and legal_lanes
+        and MediaLaneRecommendation.from_proposal(bound).validate() is not None
+        and "ordinary_life" in legal_lanes
+    ):
+        bound["media_lane"] = "ordinary_life"
+        bound["recipient_access"] = "ambient"
+        bound["attraction_expression"] = "none"
+    return bound
 
 
 def _normalize_candidate_bound_labels(
@@ -3699,33 +3932,65 @@ def _balanced_media_lane_candidates(
     """Keep a small, deterministic candidate set without starving a legal lane."""
 
     limit = 24
-    if not bool(getattr(private_lane, "allowed", False)):
-        return tuple(candidates[:limit])
     selected: list[dict[str, object]] = []
     seen: set[str] = set()
-    for lane in (
-        "ordinary_life",
-        "alluring_life",
-        "exclusive_private",
-        SUGGESTIVE_PRIVATE_LANE,
-        EXPLICIT_PRIVATE_LANE,
-    ):
-        for candidate in candidates:
-            if lane not in candidate.get("legal_media_lanes", []):
-                continue
-            candidate_id = str(candidate.get("complete_candidate_id") or "")
-            if candidate_id and candidate_id not in seen:
-                selected.append(candidate)
-                seen.add(candidate_id)
-            if sum(lane in item.get("legal_media_lanes", []) for item in selected) >= 8:
-                break
-    for candidate in candidates:
-        candidate_id = str(candidate.get("complete_candidate_id") or "")
+
+    def take(candidate: dict[str, object]) -> bool:
         if len(selected) >= limit:
-            break
-        if candidate_id and candidate_id not in seen:
-            selected.append(candidate)
-            seen.add(candidate_id)
+            return False
+        candidate_id = str(candidate.get("complete_candidate_id") or "")
+        if not candidate_id or candidate_id in seen:
+            return False
+        selected.append(candidate)
+        seen.add(candidate_id)
+        return True
+
+    if bool(getattr(private_lane, "allowed", False)):
+        for lane in (
+            "ordinary_life",
+            "alluring_life",
+            "exclusive_private",
+            SUGGESTIVE_PRIVATE_LANE,
+            EXPLICIT_PRIVATE_LANE,
+        ):
+            count = 0
+            for candidate in candidates:
+                if lane not in candidate.get("legal_media_lanes", []):
+                    continue
+                if take(candidate):
+                    count += 1
+                if count >= 8:
+                    break
+    else:
+        modes: list[str] = []
+        bids: list[str] = []
+        for candidate in candidates:
+            for mode in candidate.get("legal_capture_modes") or []:
+                text = str(mode)
+                if text not in modes:
+                    modes.append(text)
+            for bid in candidate.get("legal_interaction_bids") or []:
+                text = str(bid)
+                if text not in bids:
+                    bids.append(text)
+        mode_quota = max(2, limit // max(len(modes), 1))
+        for mode in modes:
+            count = 0
+            for candidate in candidates:
+                if mode not in (candidate.get("legal_capture_modes") or []):
+                    continue
+                if take(candidate):
+                    count += 1
+                if count >= mode_quota:
+                    break
+        for bid in bids:
+            for candidate in candidates:
+                if bid in (candidate.get("legal_interaction_bids") or []) and take(candidate):
+                    break
+    for candidate in candidates:
+        if not take(candidate):
+            if len(selected) >= limit:
+                break
     return tuple(selected[:limit])
 
 
@@ -4573,15 +4838,16 @@ def _planning_messages_v5(
         {
             "role": "system",
             "content": (
-                "You are MediaPlanner v5. Return one JSON object only. Select event-grounded content "
-                "classification, RFC 6901 evidence pointers, one interaction bid, and one supplied "
-                "complete_candidate_id. The complete candidate is indivisible: do not return or rewrite "
-                "composition, camera geometry, action, expression, pose, embodied strategy, attraction "
-                "mechanism, or identity references. Never invent facts, people, readable text, body state, "
-                "private apparel, or a completed future event. Copy classification fields exactly from the "
-                "chosen complete candidate, and choose evidence pointers only from the supplied exact list. "
-                "Also recommend one semantic media lane; this is a suggestion that deterministic routing "
-                "will verify against the chosen candidate and frozen World evidence. Your JSON must have only "
+                "You are MediaPlanner v5. Return one JSON object only. Your creative choices are "
+                "exactly one supplied complete_candidate_id and RFC 6901 evidence pointers. The complete "
+                "candidate is indivisible: do not return or rewrite composition, camera geometry, action, "
+                "expression, pose, embodied strategy, attraction mechanism, or identity references. "
+                "Copy capture_mode, visual_form, share_intent, character_visibility, route, and "
+                "interaction_bid_id from that candidate's legal_* menus. If a classification label "
+                "disagrees with the chosen candidate, the compiler will bind it; never invent a domain, "
+                "form, intent, or bid the candidate does not list. Never invent facts, people, readable "
+                "text, body state, private apparel, or a completed future event. Also recommend one "
+                "semantic media lane from the chosen candidate's legal_media_lanes. Your JSON must have only "
                 "these top-level keys: content_domain, visual_form, share_intent, capture_mode, "
                 "character_visibility, other_people_visibility, polish, tone, privacy, primary_evidence_ref, "
                 "supporting_evidence_refs, constraints, route, interaction_bid_id, complete_candidate_id, "
@@ -5612,8 +5878,12 @@ def _planner_character_candidates(
         for item in combined
         for goal in item["subject_presentation"]["display_strategy"]["communicative_goals"]
     }
+    capture_goal_universe = set().union(
+        *(_candidate_capture_goal_axes(item) for item in combined)
+    )
     uncovered = set(universe)
     social_uncovered = set(social_universe)
+    capture_goal_uncovered = set(capture_goal_universe)
     remaining = sorted(combined, key=stable_key)
     selected: list[dict[str, object]] = []
     available_charges = sorted(
@@ -5673,6 +5943,7 @@ def _planner_character_candidates(
             remaining.remove(choice)
             charge_modes.update(str(mode) for mode in choice["legal_capture_modes"])
             uncovered -= _candidate_coverage_axes(choice)
+            capture_goal_uncovered -= _candidate_capture_goal_axes(choice)
             social_uncovered -= {
                 (str(choice["character_visibility"]), goal)
                 for goal in choice["subject_presentation"]["display_strategy"][
@@ -5684,6 +5955,7 @@ def _planner_character_candidates(
             remaining,
             key=lambda item: (
                 -len(_candidate_coverage_axes(item) & uncovered),
+                -len(_candidate_capture_goal_axes(item) & capture_goal_uncovered),
                 -(
                     _candidate_social_affinity(opportunity, item)
                     if any(
@@ -5706,11 +5978,12 @@ def _planner_character_candidates(
         selected.append(best)
         remaining.remove(best)
         uncovered -= _candidate_coverage_axes(best)
+        capture_goal_uncovered -= _candidate_capture_goal_axes(best)
         social_uncovered -= {
             (str(best["character_visibility"]), goal)
             for goal in best["subject_presentation"]["display_strategy"]["communicative_goals"]
         }
-        if not uncovered:
+        if not uncovered and not capture_goal_uncovered and not social_uncovered:
             break
     for item in remaining:
         if len(selected) >= limit:
@@ -5730,6 +6003,19 @@ def _camera_authorship(capture_mode: str) -> str:
         "external_sender": "external_sender_operates_camera",
         "existing_artifact": "frozen_existing_artifact",
     }.get(capture_mode, "unknown")
+
+
+def _candidate_capture_goal_axes(candidate: dict[str, object]) -> set[tuple[str, str]]:
+    """Cover capture-mode × communicative-goal pairs, not just visibility × goal."""
+
+    subject = candidate.get("subject_presentation")
+    display = subject.get("display_strategy") if isinstance(subject, dict) else None
+    goals = display.get("communicative_goals", []) if isinstance(display, dict) else []
+    return {
+        (str(mode), str(goal))
+        for mode in candidate.get("legal_capture_modes", [])
+        for goal in goals
+    }
 
 
 def _candidate_coverage_axes(candidate: dict[str, object]) -> set[tuple[str, str, str]]:

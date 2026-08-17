@@ -2821,6 +2821,7 @@ class _DurableExpressionRetryModel:
         is_expression = (
             "Return one raw JSON ExpressionDraft" in joined
             or "raw JSON ExpressionDraft only" in joined
+            or "Do not return ExpressionDraft alone" in joined
         )
         if not is_combined and not is_expression:
             return await self._fallback.complete(messages, temperature=temperature)
@@ -3909,6 +3910,7 @@ async def test_newer_qq_inbound_supersedes_older_technical_expression_retry_afte
         return sum(
             "Return one raw JSON ExpressionDraft" in prompt
             or "raw JSON ExpressionDraft only" in prompt
+            or "Do not return ExpressionDraft alone" in prompt
             or (
                 "appraisal_draft and expression_draft" in prompt
                 and "COMBINED OUTPUT ENVELOPE" in prompt
@@ -5222,6 +5224,7 @@ def test_qq_fake_composition_keeps_open_life_fact_effects_fail_closed(
             _env_file=None,
             DEEPSEEK_API_KEY=None,
             OPENAI_API_KEY=None,
+            WORLD_V2_LIFE_SELF_REVIEW_ALLOWED=False,
             database_path=tmp_path / "qq-open-life-wiring.sqlite",
         ),
         recipient_id="10001",

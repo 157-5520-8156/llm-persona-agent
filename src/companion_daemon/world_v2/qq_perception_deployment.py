@@ -11,7 +11,7 @@ explicit perception capability set for ``build_qq_c2c_host``:
 - the transport is :class:`SQLiteDurableVisionPerceptionTransport` against
   the world database file, so restart recovery replays exact stored text.
 
-Missing prerequisites (budget limit 0, absent vision credentials, or
+Missing prerequisites (budget limit 0, absent QWEN_API_KEY, or
 an unprovisioned perception enforcement chain) disable the whole lane with
 exactly one log line; ingress and replies are never affected.
 """
@@ -102,8 +102,8 @@ def build_qq_perception_deployment(
     missing: list[str] = []
     if settings.world_v2_perception_budget_limit <= 0:
         missing.append("PERCEPTION_BUDGET_LIMIT (0 disables the lane)")
-    if not settings.openai_api_key:
-        missing.append("OPENAI_API_KEY")
+    if not settings.qwen_api_key:
+        missing.append("QWEN_API_KEY")
     database_path = Path(settings.database_path)
     if not missing and not _provisioned_authority_present(
         database_path=database_path, world_id=world_id
@@ -123,10 +123,10 @@ def build_qq_perception_deployment(
     archive = QQAttachmentArchive(Path(settings.attachment_cache_path) / "qq-c2c-v2")
     transport = SQLiteDurableVisionPerceptionTransport(
         database_path,
-        api_key=settings.openai_api_key,
-        base_url=settings.openai_base_url,
+        api_key=settings.qwen_api_key,
+        base_url=settings.qwen_base_url,
         model=settings.vision_model,
-        proxy_url=settings.openai_proxy_url,
+        thinking_disabled=True,
     )
     archiver = QQOneBotAttachmentArchiver(
         archive=archive, api_url=api_url, access_token=access_token

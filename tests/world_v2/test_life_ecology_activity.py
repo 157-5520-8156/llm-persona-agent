@@ -13,6 +13,7 @@ from companion_daemon.world_v2.schemas import (
     DueWindow,
     LedgerProjection,
     MessageObservationRef,
+    NpcProjection,
     PlanStateProjection,
 )
 
@@ -34,12 +35,13 @@ def _plan(
     participant_refs: tuple[str, ...] = (),
     scheduled_window: DueWindow | None = None,
     owner_actor_ref: str = OWNER,
+    activity_kind: str = "quiet_reading",
 ) -> PlanStateProjection:
     return PlanStateProjection(
         plan_id=plan_id,
         activity_id=f"activity:{plan_id}",
         entity_revision=entity_revision,
-        activity_kind="quiet_reading",
+        activity_kind=activity_kind,
         evidence_refs=(
             EvidenceRef(
                 ref_id=f"observation:{plan_id}",
@@ -63,6 +65,7 @@ def _projection(
     wake_hash: str = WAKE_HASH,
     clock_payload_hash: str | None = None,
     wake_type: str = "ClockAdvanced",
+    npcs: tuple[object, ...] = (),
 ) -> LedgerProjection:
     # The catalog is a read-only projection consumer.  Production projections
     # have already passed the reducer's cross-entity Plan authority validator;
@@ -96,6 +99,7 @@ def _projection(
             ),
         ),
         plans=plans,
+        npcs=npcs,
     )
 
 
@@ -368,3 +372,57 @@ def test_catalog_is_pure_and_never_mutates_the_supplied_projection() -> None:
     _catalog().openings_for(projection=projection, wake_event_ref=WAKE_REF)
 
     assert projection.model_dump(mode="json") == before
+
+
+def _live_catalog() -> ActivityOpeningCatalog:
+    return ActivityOpeningCatalog(owner_actor_ref=OWNER)
+
+
+def test_current_catalog_still_blocks_catalog_era_location_plans_without_snapshot() -> None:
+    result = _live_catalog().openings_for(
+        projection=_projection(_plan("location", location_ref="location:library")),
+        wake_event_ref=WAKE_REF,
+    )
+
+    assert result.status == "blocked_by_missing_capability"
+    assert result.blocked_capabilities == ("location_authority_binding",)
+
+
+def test_open_life_location_plan_is_startable_without_availability_snapshot() -> None:
+    result = _live_catalog().openings_for(
+        projection=_projection(
+            _plan(
+                "campus",
+                location_ref="location:library",
+                activity_kind="open_life.internship-morning",
+            )
+        ),
+        wake_event_ref=WAKE_REF,
+    )
+
+    assert result.status == "openings_available"
+    assert any(item.operation == "start" for item in result.openings)
+
+
+def test_open_life_npc_plan_is_startable_when_the_npc_is_active() -> None:
+    npc = NpcProjection.model_construct(
+        npc_id="lin",
+        entity_revision=1,
+        stable_identity_ref="identity:lin",
+        privacy_class="shareable",
+        status="active",
+    )
+    result = _live_catalog().openings_for(
+        projection=_projection(
+            _plan(
+                "with-lin",
+                participant_refs=("npc:lin",),
+                activity_kind="open_life.lunch-with-lin",
+            ),
+            npcs=(npc,),
+        ),
+        wake_event_ref=WAKE_REF,
+    )
+
+    assert result.status == "openings_available"
+    assert any(item.operation == "start" for item in result.openings)

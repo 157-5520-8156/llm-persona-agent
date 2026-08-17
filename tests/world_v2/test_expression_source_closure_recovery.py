@@ -90,6 +90,7 @@ def _source_reselection(text: str) -> str:
                 "variation_profile": None,
                 "response_expectation": None,
                 "response_expectation_assessment": None,
+                "revisit": None,
                 "world_claims": [],
             },
             "episode_disposition": None,

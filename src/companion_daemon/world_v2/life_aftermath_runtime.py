@@ -175,6 +175,7 @@ class _CharacterOutcomeSelection(FrozenModel):
     """Validated material returned by the one CharacterInterior InnerTurn."""
 
     candidate_result_ref: str
+    adopt_proposed_life_direction: bool = False
     character_life_direction: CharacterLifeDirectionDraft | None = None
     inner_turn_id: str
     snapshot_id: str
@@ -757,6 +758,7 @@ class LifeAftermathRuntime:
                 for item in occurrence.candidate_outcomes
                 if item.candidate_result_ref == draw.selected_candidate_ref
             )
+            adopted = chosen.dynamic_life_arc_context is not None
             draw_event_ref = f"event:random-draw:{draw.draw_id}"
             draw_event = self._ledger.lookup_event_commit(draw_event_ref)
             if draw_event is None:
@@ -768,6 +770,7 @@ class LifeAftermathRuntime:
                     draw_event_payload_hash=draw_event[0].payload_hash,
                     draw_payload_json=draw_event[0].payload_json,
                 ),
+                "adopt_proposed_life_direction": adopted,
             }
             resolution_evidence = (
                 EvidenceRef(
@@ -827,6 +830,7 @@ class LifeAftermathRuntime:
             change_id = persisted.change_id
             change_hash = persisted.proposed_change_hash
         else:
+            adopted = decision_identity.get("adopt_proposed_life_direction")
             change_id = "change:life-aftermath:settle:" + suffix
             change_hash = outcome_mutation_hash(
                 change_id=change_id,
@@ -838,6 +842,9 @@ class LifeAftermathRuntime:
                 result_payload_ref=chosen.result_payload_ref,
                 result_payload_hash=chosen.result_payload_hash,
                 observation_refs=(observation_id,),
+                adopt_proposed_life_direction=(
+                    adopted if isinstance(adopted, bool) else None
+                ),
             )
             proposal_payload = OutcomeProposalRecordedPayload(
                 outcome_proposal_id=proposal_id,
@@ -1358,7 +1365,7 @@ class LifeAftermathRuntime:
         )
         audit_response_text = outcome_selection_audit_text(
             candidate_result_ref=selected.candidate_result_ref,
-            adopt_proposed_life_direction=False,
+            adopt_proposed_life_direction=selected.adopt_proposed_life_direction,
             character_life_direction=selected.character_life_direction,
             candidate_matrix_hash=matrix_hash,
             response_hash=selected.response_hash.removeprefix("sha256:"),
@@ -1475,6 +1482,7 @@ class LifeAftermathRuntime:
             result_payload_ref=chosen.result_payload_ref,
             result_payload_hash=chosen.result_payload_hash,
             observation_refs=(observation_id,),
+            adopt_proposed_life_direction=selected.adopt_proposed_life_direction,
             character_life_direction=character_direction,
         )
         outcome_proposal = OutcomeProposalRecordedPayload(
@@ -1511,8 +1519,9 @@ class LifeAftermathRuntime:
                 audit_proposal_event.payload_hash
             ),
             decision_candidate_matrix_hash=matrix_hash,
+            adopt_proposed_life_direction=selected.adopt_proposed_life_direction,
             character_life_direction=character_direction,
-            context_identity_version="life-aftermath-context.4",
+            context_identity_version="life-aftermath-context.5",
             context_capsule_id=selected.snapshot_hash,
             context_model_content_hash=context_material[
                 "context_model_content_hash"
@@ -1576,6 +1585,7 @@ class LifeAftermathRuntime:
             result_payload_hash=chosen.result_payload_hash,
             settled_at=logical_time,
             appraisal_trigger_ref=appraisal_trigger_ref,
+            adopt_proposed_life_direction=selected.adopt_proposed_life_direction,
             character_life_direction=character_direction,
         )
         settlement_event = self._event(
@@ -1853,6 +1863,9 @@ class LifeAftermathRuntime:
                     item.content_payload_hash,
                 ),
                 "privacy_class": item.privacy_class,
+                "proposed_objective_direction": (
+                    self._proposed_objective_direction(item)
+                ),
             }
             for item in occurrence.candidate_outcomes
         ]
@@ -1922,8 +1935,10 @@ class LifeAftermathRuntime:
             capability_manifest=manifest,
             context_note=(
                 "An observed occurrence has multiple already-authorized objective "
-                "consequences. The character owns which one becomes her lived result "
-                "and whether she freely forms a subjective long-term direction."
+                "consequences. The character owns which one becomes her lived result, "
+                "whether a candidate's proposed_objective_direction becomes a durable "
+                "life coordinate, and whether she freely forms a subjective long-term "
+                "direction."
             ),
         )
         decision = await self._character_interior.consider(opportunity)
@@ -1946,7 +1961,12 @@ class LifeAftermathRuntime:
             or payload.get("contract")
             != "character-interior-outcome-selection-decision.1"
             or set(payload)
-            != {"contract", "selected_token", "character_life_direction"}
+            != {
+                "contract",
+                "selected_token",
+                "adopt_proposed_life_direction",
+                "character_life_direction",
+            }
         ):
             return None, _technical_outcome_decision(
                 decision,
@@ -1965,6 +1985,17 @@ class LifeAftermathRuntime:
             return None, _technical_outcome_decision(
                 decision,
                 "character_interior_outcome_token_invalid",
+            )
+        adopt_value = payload.get("adopt_proposed_life_direction")
+        if not isinstance(adopt_value, bool):
+            return None, _technical_outcome_decision(
+                decision,
+                "character_interior_outcome_binding_invalid",
+            )
+        if adopt_value and chosen.dynamic_life_arc_context is None:
+            return None, _technical_outcome_decision(
+                decision,
+                "character_interior_outcome_direction_invalid",
             )
         try:
             direction_value = payload.get("character_life_direction")
@@ -2005,6 +2036,7 @@ class LifeAftermathRuntime:
             )
         return chosen, _CharacterOutcomeSelection(
             candidate_result_ref=chosen.candidate_result_ref,
+            adopt_proposed_life_direction=adopt_value,
             character_life_direction=direction,
             inner_turn_id=decision.inner_turn_id,
             snapshot_id=decision.snapshot_id,
@@ -2443,6 +2475,26 @@ class LifeAftermathRuntime:
         if record is None or record.content_payload_hash != content_hash:
             raise ValueError("aftermath candidate content is unavailable")
         return record.text
+
+    def _proposed_objective_direction(self, item) -> dict[str, object] | None:
+        context = getattr(item, "dynamic_life_arc_context", None)
+        if context is None:
+            return None
+        offered: dict[str, object] = {
+            "context_tags": list(context.context_tags),
+            "supersedes_context_tag_prefixes": list(
+                context.supersedes_context_tag_prefixes
+            ),
+            "duration_days": context.duration_days,
+        }
+        try:
+            offered["summary"] = self._candidate_text(
+                context.summary_content_ref,
+                context.summary_payload_hash,
+            )
+        except ValueError:
+            pass
+        return offered
 
     @staticmethod
     def _has_experience(projection, occurrence_id: str) -> bool:

@@ -101,6 +101,7 @@ class _OutcomeModel:
                     "source_refs": [source_ref],
                     "payload": {
                         "selected_token": selected_token,
+                        "adopt_proposed_life_direction": False,
                         "character_life_direction": None,
                     },
                 },
@@ -202,6 +203,16 @@ life_author_catalog:
             causation_id=planned.event_ids[-1],
             correlation_id="correlation:open-world",
         )
+        open_world = app._life_ecology._open_world_followup  # noqa: SLF001
+        hitch = open_world.commit_from_paid_moment(
+            moment="她在公园看见一只猫停了一会儿。",
+            wake_event_ref=started.event_ids[-1],
+            model="paid-turn:test",
+            raw_output="她在公园看见一只猫停了一会儿。",
+            trace_id="trace:open-world-hitch",
+            correlation_id="correlation:open-world",
+        )
+        assert hitch.status == "committed"
 
         result = await app.advance_life_ecology_once(
             wake_event_ref=started.event_ids[-1],
@@ -210,7 +221,7 @@ life_author_catalog:
         )
 
         assert result.status == "advanced"
-        assert result.open_world_followup_status == "committed"
+        assert result.open_world_followup_status == "recovered"
         projection = app._ledger.project()  # noqa: SLF001 - production replay evidence
         assert len(projection.world_occurrences) == 1
         occurrence = projection.world_occurrences[0]

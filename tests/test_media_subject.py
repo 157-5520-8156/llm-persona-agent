@@ -351,6 +351,20 @@ def test_facial_performance_respects_camera_authorship_and_face_visibility() -> 
     assert micro.performance_authorship == "not_visible"
 
 
+def test_presence_front_camera_does_not_freeze_a_held_polite_smile() -> None:
+    phases = {
+        choose_facial_contract(
+            stable_seed=f"presence-selfie:{index}",
+            engagement_tactic="presence",
+            attraction_mechanism=None,
+            capture_mode="character_front_camera",
+        )[1].temporal_phase
+        for index in range(24)
+    }
+    assert "held_beat" not in phases
+    assert phases
+
+
 def test_subject_candidate_matrix_exposes_every_social_strategy_without_flat_rules() -> None:
     strategies: set[str] = set()
     for capture_mode in (

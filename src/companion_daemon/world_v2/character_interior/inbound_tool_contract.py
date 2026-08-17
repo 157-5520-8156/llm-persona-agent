@@ -25,6 +25,8 @@ from .inbound_appraisal_wire import AppraisalDraftWire
 from ..present_prompt import (
     compact_gate_recall_instruction,
     compile_slim_interior_envelope,
+    reply_only_bubble_clause,
+    reply_only_completion_clause,
 )
 
 
@@ -54,6 +56,7 @@ _REPLY_ONLY_HEAD_FIELDS = (
     "confidence",
     "response_expectation",
     "response_expectation_assessment",
+    "revisit",
     "world_claims",
     "media_request",
     "media_source_refs",
@@ -265,34 +268,41 @@ def _expand_compact_gate_payload(value: dict[str, object]) -> dict[str, object]:
     payload_json = value.get("payload_json")
     if kind not in {"reply_only", "full_turn", "recall"}:
         raise ValueError("compact gate carrier result_kind is invalid")
-    if not isinstance(payload_json, str) or not payload_json:
+    payload: object
+    if isinstance(payload_json, dict):
+        payload = payload_json
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        if len(encoded.encode("utf-8")) > 131_072:
+            raise ValueError("compact gate carrier payload_json exceeds its byte limit")
+    elif isinstance(payload_json, str) and payload_json:
+        try:
+            payload_bytes = payload_json.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise ValueError("compact gate carrier payload_json is invalid") from exc
+        if len(payload_bytes) > 131_072:
+            raise ValueError("compact gate carrier payload_json exceeds its byte limit")
+
+        def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+            result: dict[str, object] = {}
+            for key, item in pairs:
+                if key in result:
+                    raise ValueError("compact gate carrier payload has a duplicate field")
+                result[key] = item
+            return result
+
+        def reject_constant(_value: str) -> object:
+            raise ValueError("compact gate carrier payload has a non-JSON constant")
+
+        try:
+            payload = json.loads(
+                payload_json,
+                object_pairs_hook=unique_object,
+                parse_constant=reject_constant,
+            )
+        except json.JSONDecodeError as exc:
+            raise ValueError("compact gate carrier payload_json is invalid") from exc
+    else:
         raise ValueError("compact gate carrier payload_json is invalid")
-    try:
-        payload_bytes = payload_json.encode("utf-8")
-    except UnicodeEncodeError as exc:
-        raise ValueError("compact gate carrier payload_json is invalid") from exc
-    if len(payload_bytes) > 131_072:
-        raise ValueError("compact gate carrier payload_json exceeds its byte limit")
-
-    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-        result: dict[str, object] = {}
-        for key, item in pairs:
-            if key in result:
-                raise ValueError("compact gate carrier payload has a duplicate field")
-            result[key] = item
-        return result
-
-    def reject_constant(_value: str) -> object:
-        raise ValueError("compact gate carrier payload has a non-JSON constant")
-
-    try:
-        payload = json.loads(
-            payload_json,
-            object_pairs_hook=unique_object,
-            parse_constant=reject_constant,
-        )
-    except json.JSONDecodeError as exc:
-        raise ValueError("compact gate carrier payload_json is invalid") from exc
     if not isinstance(payload, dict):
         raise ValueError("compact gate carrier payload must be one JSON object")
 
@@ -545,6 +555,7 @@ def _reply_only_stream_events_schema(
         "confidence": expression_field("confidence"),
         "response_expectation": expression_field("response_expectation"),
         "response_expectation_assessment": assessment,
+        "revisit": expression_field("revisit"),
         "world_claims": expression_field("world_claims"),
         "media_request": {"type": "string", "enum": ["none"]},
         "media_source_refs": media_source_refs,
@@ -665,6 +676,7 @@ def _capability_expression_schema(
                 "timing_choice": {"enum": ["later"]},
                 "beats": later_beats,
                 "turn_posture": {"enum": [None, "yield", "continue", "supersede"]},
+                "revisit": {"type": "null"},
             }
         },
         {
@@ -673,6 +685,7 @@ def _capability_expression_schema(
                 "beats": {**deepcopy(beats), "maxItems": 0},
                 "turn_posture": {"enum": [None, "yield", "continue", "supersede"]},
                 "response_expectation": {"type": "null"},
+                "revisit": {"type": "null"},
                 **no_due_window,
             }
         },
@@ -840,9 +853,7 @@ class InboundToolContracts:
         if "text" not in capabilities.modalities or capabilities.max_beats < 1:
             raise ValueError("compact inbound gate requires one available text beat")
 
-        result_kinds = ["reply_only", "full_turn"]
-        if recall_allowed:
-            result_kinds.append("recall")
+        result_kinds = ["reply_only", "full_turn", "recall"]
         parameters: dict[str, object] = {
             "type": "object",
             "properties": {
@@ -862,17 +873,23 @@ class InboundToolContracts:
             "name": tool_name,
             "description": (
                 "Choose the minimum sufficient branch that losslessly represents the external "
-                "effect you choose. reply_only is complete when your complete external effect is "
-                "one immediate text message; it may contain multiple sentences or paragraphs and "
-                "is not required to be terse or emotionally flat. It supports a canonical "
+                "effect you choose. "
+                + reply_only_completion_clause()
+                + ". "
+                + reply_only_bubble_clause()
+                + " It supports a canonical "
                 "appraisal and affect lifecycle: "
                 "brief_rationale, behavior_tendency, stance, display_strategy, and confidence; "
-                "appraise and affect are your choices. It excludes relationship/interaction "
-                "updates, media, delayed/silent delivery, typing/reaction, turn supersession, "
-                "multiple beats, and continuation. "
+                "appraise and affect are your choices. On the slim object, optional mood opens a "
+                "lasting Affect component without leaving reply_only. It excludes relationship/"
+                "interaction updates, media, typing/reaction, turn supersession, "
+                "continuation, and more text beats than the installed beat limit. "
+                "If appraisal or affect is incomplete, keep a legal now, later, or silent "
+                "head; the host records affect no_change only for that broken appraisal rather "
+                "than inventing later or discarding silence. "
                 "Choose full_turn only when the external effect you choose actually requires a "
                 "capability reply_only excludes. Put the complete chosen branch object as a "
-                "JSON string in payload_json: the compact character-interior-events.1 envelope "
+                "JSON string in payload_json: the slim object "
                 "for reply_only, the full character-interior-events.1 envelope for full_turn, "
                 "or private_turn_state plus recall_request for recall. "
                 + compact_gate_recall_instruction()
@@ -950,6 +967,7 @@ class InboundToolContracts:
         if schema_dialect not in {"standard", "deepseek-strict"}:
             raise ValueError("unsupported inbound tool schema dialect")
         recall_allowed = phase == "initial" and recall_allowed
+        schema_includes_recall = phase == "initial"
         tool_name = (
             f"character_inbound_{phase}_v{_CONTRACT_VERSION}"
             if transport == "atomic" and phase in {"initial", "after_recall"}
@@ -1147,7 +1165,7 @@ class InboundToolContracts:
                     "additionalProperties": False,
                 }
             )
-        if recall_allowed:
+        if schema_includes_recall:
             recall_required = ["result_kind", "recall_request"]
             if capabilities.private_turn_state_mode == "required":
                 recall_required.append("private_turn_state")
@@ -1247,11 +1265,13 @@ class InboundToolContracts:
                 "Return exactly one character-owned inbound result in this one call. "
                 + (
                     "Choose the minimum sufficient branch that losslessly represents the external "
-                    "effect you choose. result_kind=reply_only is complete when your external "
-                    "effect is one immediate text; that text may contain multiple sentences or "
-                    "paragraphs and is not required to be terse or emotionally flat. It permits "
+                    "effect you choose. result_kind="
+                    + reply_only_completion_clause()
+                    + ". "
+                    + reply_only_bubble_clause()
+                    + " It permits "
                     "the canonical appraisal and affect lifecycle, but not a relationship or "
-                    "interaction update, media, delay, silence, typing, reaction, or additional "
+                    "interaction update, media, typing, reaction, or additional "
                     "beat or stream continuation. Its compact appraisal carrier lets you choose "
                     "same-turn brief_rationale, behavior_tendency, stance, display_strategy, and "
                     "confidence; appraise and affect remain your choices. Choose "

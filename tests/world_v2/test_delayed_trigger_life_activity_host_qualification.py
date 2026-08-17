@@ -218,6 +218,7 @@ class _CharacterModel(FakeCompanionModel):
             self.outcome_selected_tokens.append(selected_token)
             payload = {
                 "selected_token": selected_token,
+                "adopt_proposed_life_direction": False,
                 "character_life_direction": None,
             }
         else:

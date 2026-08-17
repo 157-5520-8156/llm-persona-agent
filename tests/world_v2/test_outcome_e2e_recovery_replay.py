@@ -144,6 +144,7 @@ class _OutcomeModel:
                     "source_refs": [source_ref],
                     "payload": {
                         "selected_token": "candidate:e2e:tea-ready",
+                        "adopt_proposed_life_direction": False,
                         "character_life_direction": None,
                     },
                 },

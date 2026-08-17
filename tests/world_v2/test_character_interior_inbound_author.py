@@ -155,6 +155,11 @@ def _strict_source_reselection_fixture(
                 "response_expectation_assessment": normalized.get(
                     "response_expectation_assessment"
                 ),
+                "revisit": (
+                    None
+                    if timing_choice in {"later", "silent"}
+                    else normalized.get("revisit")
+                ),
                 "world_claims": normalized.get("world_claims", []),
             },
             "episode_disposition": episode_disposition,
@@ -1795,6 +1800,7 @@ class _ReplyOnlyStreamingProvider(_ForcedStreamingCombinedProvider):
             "<role:visible_text>": "嗯，我在听。",
             "<role:text>": "这是我此刻自己选择的表述。",
             "<role:response_expectation_or_null>": None,
+            "<role:revisit_or_null>": None,
             "<role:response_expectation_assessment_or_null>": None,
         }
         if isinstance(value, str) and value in replacements:
@@ -1945,6 +1951,7 @@ class _FullTurnGateStreamingProvider(_ForcedStreamingCombinedProvider):
             return "这是我此刻自己选择的表述。"
         if value in {
             "<role:response_expectation_or_null>",
+            "<role:revisit_or_null>",
             "<role:response_expectation_assessment_or_null>",
         }:
             return None
@@ -2008,8 +2015,7 @@ class _RecallGateStreamingProvider(_FullTurnGateStreamingProvider):
     ) -> tuple[str, ModelUsageProvenance]:
         assert tools is not None
         name = str(tools[0]["function"]["name"])
-        result_kinds = tools[0]["function"]["parameters"]["properties"]["result_kind"]["enum"]
-        if name == "character_inbound_compact_gate_v2" and "recall" not in result_kinds:
+        if name == "character_inbound_compact_gate_v2" and self.calls:
             return await super().complete_json_stream_with_usage(
                 messages,
                 temperature=temperature,
@@ -2197,16 +2203,22 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "result_kind=reply_only" in provider.messages[0][0]["content"]
     assert "result_kind=full_turn" in provider.messages[0][0]["content"]
     compact_system = provider.messages[0][0]["content"]
-    assert "complete external effect is one immediate text message" in compact_system
+    assert "the text bubbles you choose to send now, the text bubbles you choose to send later, or silence" in compact_system
+    assert "Ordinary QQ private chat" in compact_system
+    assert "not as a helpdesk ticket" in compact_system
+    assert "CAPABILITY GATE" not in compact_system
     assert "minimum sufficient branch" in compact_system
-    assert "losslessly represents the external effect you have chosen" in compact_system
-    assert "multiple sentences or paragraphs" in compact_system
-    assert "not required to be terse or emotionally flat" in compact_system
+    assert "does not prefer reply_only as a calm default" in compact_system
+    assert "Each messages item or text beat is one bubble" in compact_system
+    assert "Silence is complete" in compact_system
+    assert "unfinished bubble" not in compact_system
+    assert "REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON" in compact_system
+    assert "payload_json is usually this slim object" in compact_system
     assert "only when the external effect you choose actually requires" in compact_system
     assert "does not classify by topic, length, complexity, or keywords" in compact_system
     assert "does not choose the branch" in compact_system
     assert "result_kind=reply_only only when" not in compact_system
-    assert "canonical appraisal and affect lifecycle" in compact_system
+    assert "reply_only may still carry appraisal and affect fields you choose" in compact_system
     assert (
         "brief_rationale, behavior_tendency, stance, display_strategy, and confidence"
         in compact_system
@@ -2218,6 +2230,8 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "reply-only instruction metadata block is not part of payload_json" in compact_system
     assert "host never substitutes null as a semantic default" in compact_system
     assert "full_turn_json" not in compact_system
+    assert "Chat color is allowed" in compact_system
+    assert "Fact, Relationship, Media, or lasting Affect events" in compact_system
     assert (
         "Recall is unavailable on this call; use result_kind=decision."
         not in provider.messages[0][0]["content"]
@@ -2265,8 +2279,14 @@ async def test_compact_full_turn_keeps_full_stream_in_one_physical_character_cal
     assert specimen["protocol"] == "character-interior-events.1"
     assert "contract" not in specimen
     system = provider.messages[0][0]["content"]
-    assert "APPRAISAL SEMANTIC CONTRACT" in system
-    assert "EXPRESSION SEMANTIC CONTRACT" in system
+    assert "APPRAISAL DRAFT CONTRACT" not in system
+    assert "EXPRESSION DRAFT CONTRACT" not in system
+    assert "Speak as this person in ordinary QQ chat" in system
+    assert "Ordinary QQ private chat" in system
+    assert "REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON" in system
+    assert "FULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON" in system
+    assert "CAPABILITY GATE" not in system
+    assert "not as a helpdesk ticket" in system
     assert head.semantic_stream_part == "head"
     assert tail.semantic_stream_part == "tail"
     assert "这次我选择完整地回应。" in json.dumps(head.raw_proposal, ensure_ascii=False)
@@ -2331,6 +2351,7 @@ async def test_compact_gate_stays_enabled_when_recall_is_unavailable() -> None:
     assert parameters["properties"]["result_kind"]["enum"] == [
         "reply_only",
         "full_turn",
+        "recall",
     ]
     assert "recall_request" not in parameters["properties"]
     assert "private_turn_state" not in parameters["properties"]
@@ -2373,11 +2394,14 @@ async def test_compact_recall_reuses_gate_without_reopening_recall_after_transfe
         "character_inbound_compact_gate_v2",
     ]
     assert len(provider.calls) == 2
+    first_tools, _ = provider.calls[0]
     second_tools, _ = provider.calls[1]
+    assert first_tools == second_tools
     assert second_tools is not None
     assert second_tools[0]["function"]["parameters"]["properties"]["result_kind"]["enum"] == [
         "reply_only",
         "full_turn",
+        "recall",
     ]
     assert "这次我选择完整地回应。" in json.dumps(
         head.raw_proposal,
@@ -7067,6 +7091,7 @@ class _RoleIdenticalSourceCorrectionProvider:
                     "variation_profile": None,
                     "response_expectation": None,
                     "response_expectation_assessment": None,
+                    "revisit": None,
                     "world_claims": expression["world_claims"],
                 },
                 "episode_disposition": self.episode_disposition,

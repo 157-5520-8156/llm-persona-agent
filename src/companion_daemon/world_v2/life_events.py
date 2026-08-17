@@ -235,6 +235,7 @@ class OutcomeProposalRecordedPayload(FrozenModel):
             "life-aftermath-context.2",
             "life-aftermath-context.3",
             "life-aftermath-context.4",
+            "life-aftermath-context.5",
         ]
         | None
     ) = None
@@ -296,6 +297,14 @@ class OutcomeProposalRecordedPayload(FrozenModel):
                     "Context v3 character outcome requires a durable model audit "
                     "and forbids World-authored direction adoption"
                 )
+            if self.context_identity_version == "life-aftermath-context.5" and (
+                any(item is None for item in durable_audit_identity)
+                or self.adopt_proposed_life_direction is None
+            ):
+                raise ValueError(
+                    "Context v5 character outcome requires a durable model audit "
+                    "and an explicit direction-adoption decision"
+                )
             if self.context_identity_version == "life-aftermath-context.1" and (
                 any(item is not None for item in durable_audit_identity)
                 or self.character_life_direction is not None
@@ -307,7 +316,6 @@ class OutcomeProposalRecordedPayload(FrozenModel):
             if (
                 any(item is not None for item in context_identity)
                 or any(item is not None for item in durable_audit_identity)
-                or self.adopt_proposed_life_direction is not None
                 or self.character_life_direction is not None
             ):
                 raise ValueError("world draw cannot carry character-model identity")

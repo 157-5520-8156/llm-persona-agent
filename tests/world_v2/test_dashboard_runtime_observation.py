@@ -250,6 +250,7 @@ async def test_capacity_and_endpoint_contention_remain_distinctly_busy(
     (
         ("unknown", "unknown", "warming"),
         ("ready", "ready", "ready"),
+        ("ready", "degraded", "warming"),
         ("degraded", "degraded", "degraded"),
         ("technical_failure", "unknown", "degraded"),
     ),
@@ -287,3 +288,18 @@ async def test_semantic_recall_reports_embedding_readiness_without_raw_trace_det
         if expected_state in {"ready", "warming"}
         else [{"signal": "semantic_recall", "reason_code": "source_unavailable"}]
     )
+
+
+@pytest.mark.asyncio
+async def test_unsafe_shared_runtime_is_degraded_not_unavailable() -> None:
+    probes = _ready_probes()
+    probes["life_source_authority"] = _probe({"status": "unsafe_shared_runtime"})
+    observation = await DashboardRuntimeObservationSampler(
+        **probes,  # type: ignore[arg-type]
+        clock=lambda: NOW,
+    ).capture()
+
+    assert observation.life_source_authority_state == "degraded"
+    assert [reason.model_dump(mode="json") for reason in observation.reasons] == [
+        {"signal": "life_source_authority", "reason_code": "source_unavailable"},
+    ]

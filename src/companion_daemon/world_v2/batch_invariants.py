@@ -907,6 +907,7 @@ def _validate_deliberation_audit_transaction(events: Sequence[WorldEvent]) -> No
                 "life-aftermath-context.2",
                 "life-aftermath-context.3",
                 "life-aftermath-context.4",
+                "life-aftermath-context.5",
             }
             or outcome.decision_authority != "character_model"
             or outcome.decision_model_result_ref != final.model_result_ref

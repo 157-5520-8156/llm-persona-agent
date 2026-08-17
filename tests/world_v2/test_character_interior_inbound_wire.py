@@ -290,6 +290,11 @@ def _strict_source_reselection_fixture(
         "variation_profile": normalized.get("variation_profile"),
         "response_expectation": expectation,
         "response_expectation_assessment": normalized.get("response_expectation_assessment"),
+        "revisit": (
+            None
+            if timing_choice in {"later", "silent"}
+            else normalized.get("revisit")
+        ),
         "world_claims": normalized.get("world_claims", []),
     }
     return json.dumps(
@@ -466,6 +471,7 @@ async def test_expression_structural_correction_uses_required_tool_without_plain
                 "variation_profile": None,
                 "response_expectation": None,
                 "response_expectation_assessment": None,
+                "revisit": None,
                 "world_claims": [],
             },
             "episode_disposition": "complete_without_more",
@@ -1101,6 +1107,7 @@ def _compact_reply_only_outer() -> dict[str, object]:
                 "confidence": 7000,
                 "response_expectation": None,
                 "response_expectation_assessment": None,
+                "revisit": None,
                 "world_claims": [],
                 "media_request": "none",
                 "media_source_refs": [],
@@ -3692,7 +3699,8 @@ async def test_automatic_prefetch_uses_the_configured_semantic_lane() -> None:
     assert audit.embedding_status == "degraded"
     assert semantic.calls > 0
     health = coordinator.semantic_health()
-    assert health["last_prefetch_status"] == "degraded"
+    assert health["last_prefetch_status"] == "ready"
+    assert health["last_prefetch_embedding_status"] == "degraded"
     assert health["last_prefetch_hit_count"] == 1
     assert "lexical" in health["last_prefetch_match_channels"]
 

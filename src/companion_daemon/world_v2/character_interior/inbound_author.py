@@ -30,10 +30,13 @@ from ..companion_identity import (
 )
 from ..model_completion import ChatCompletionModel
 from ..present_prompt import (
+    attach_hitchhiked_relationship_residue,
     combined_turn_system_lead,
     compact_gate_recall_instruction,
     compile_slim_consider_payload,
     forced_tool_recall_instruction,
+    reply_only_bubble_clause,
+    reply_only_completion_clause,
     slim_consider_instruction,
 )
 from ..source_closure_lane import SourceClosureReselectionLane
@@ -60,6 +63,7 @@ from .inbound_wire import (
     _stream_unit_identity,
     _trace_source_reselection_materialization_failure,
     _combine_usage,
+    _compile_combined_cognition_envelope,
     _expression_tool_reselection_kwargs,
     parse_character_recall_request,
     claim_repair_instruction,
@@ -172,6 +176,125 @@ _APPRAISAL_AFFECT_FIELDS = {
 logger = logging.getLogger(__name__)
 
 
+def _compact_gate_system_content(
+    *,
+    identity_instruction: str,
+    reply_only_specimen: dict[str, object],
+    reply_only_rules: dict[str, object],
+    full_turn_specimen: dict[str, object],
+    full_turn_rules: dict[str, object],
+) -> str:
+    """Ordinary compact-gate system text without pasted semantic essays.
+
+    Lead with identity and QQ-dialogue framing. Keep wire specimens and branch
+    rules; drop the capability-gate / fill-form voice that taught helpdesk tone.
+    Host still validates wire and hard boundaries after she speaks.
+    """
+
+    identity = identity_instruction.strip()
+    lead = (identity + "\n\n") if identity else ""
+    return (
+        lead
+        + "Ordinary QQ private chat on this pinned turn. Stay the person in the "
+        "identity above; answer the current message the way she would in QQ—short "
+        "or longer as she feels, not as a helpdesk ticket, not as a compliance form, "
+        "and not as a task assistant. Motive, tone, whether to reply, how many "
+        "bubbles, silence, and wording stay yours.\n\n"
+        "Return transport only (not a speech script): call the required function "
+        "once. Choose result_kind and put the complete chosen inner object in "
+        "payload_json as one JSON string. "
+        "result_kind="
+        + reply_only_completion_clause()
+        + ". "
+        + reply_only_bubble_clause()
+        + " "
+        "reply_only may still carry appraisal and affect fields you choose: "
+        "brief_rationale, behavior_tendency, stance, display_strategy, and "
+        "confidence; appraise and affect remain your choices. On the slim object, "
+        "optional mood is how you open a lasting Affect component without leaving "
+        "reply_only. It excludes relationship/interaction updates, media, typing/"
+        "reaction, turn supersession, continuation, and more text beats than the "
+        "installed beat limit. If appraisal or affect is incomplete, keep a legal "
+        "now, later, or silent head; the host records affect no_change only for that "
+        "broken appraisal rather than inventing later or discarding silence. Choose "
+        "result_kind=full_turn only when the external effect you choose actually "
+        "requires a capability reply_only excludes. "
+        "For every branch, payload_json is the slim object for reply_only, the "
+        "full character-interior-events.1 envelope for full_turn, or the exact "
+        "private_turn_state plus recall_request object for recall. "
+        + compact_gate_recall_instruction()
+        + slim_consider_instruction()
+        + "\n\nREPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON:\n"
+        '{"messages":["<role:visible_text>"],"felt":"<role:text>"}\n'
+        "END REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON.\n"
+        "For result_kind=reply_only, payload_json is usually this slim object. "
+        "messages may be empty for silence or several strings for several bubbles. "
+        "Replace every marker; never copy marker text.\n"
+        "Only recall transfers control. A full_turn payload contains the complete "
+        "decision now. The host validates payload_json, does not classify by topic, "
+        "length, complexity, or keywords, does not choose the branch, and does not "
+        "generate role wording. Choose the minimum sufficient branch for the "
+        "external effect you actually want: slim reply_only for pure text, "
+        "full_turn when you also need media, relationship protocol fields, or "
+        "the full affect lifecycle surface. The host does not prefer reply_only "
+        "as a calm default and does not invent those branches from topic words. "
+        "Speak as this person in ordinary QQ chat; do not paste mechanism essays "
+        "into messages. When you author appraisal_draft or a "
+        "character-interior-events envelope, complete those fields yourself; the "
+        "host validates wire and hard boundaries and never invents wording.\n"
+        "\nREPLY_ONLY PAYLOAD_JSON CANONICAL SPECIMEN JSON:\n"
+        + json.dumps(
+            reply_only_specimen,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        + "\nEND REPLY_ONLY PAYLOAD_JSON CANONICAL SPECIMEN JSON.\n"
+        "For result_kind=reply_only, if you instead author the "
+        "character-interior-events envelope, the decoded payload_json object copies "
+        "this specimen's exact root and events transport skeleton. Replace every "
+        "marker with your role-chosen scalar, object, or null. A literal null means "
+        "absence you chose or the contract requires; the host never substitutes null "
+        "as a semantic default. Its root has exactly protocol, appraisal_draft, and "
+        "events, and events has exactly one head followed by one exact end. The head "
+        "is the text beats you choose now or later, or silence with beat null. A "
+        "root field named contract is invalid; protocol is the required "
+        "character-interior-events.1 field.\n"
+        "\nREPLY_ONLY PAYLOAD_JSON INSTRUCTION METADATA JSON:\n"
+        + json.dumps(
+            reply_only_rules,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        + "\nEND REPLY_ONLY PAYLOAD_JSON INSTRUCTION METADATA JSON.\n"
+        "The reply-only instruction metadata block is not part of payload_json. "
+        "Do not copy grammar_id or any other instruction-metadata field into "
+        "payload_json.\n"
+        + "\n\nFULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON:\n"
+        + json.dumps(
+            full_turn_specimen,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        + "\nEND FULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON.\n"
+        "For result_kind=full_turn, the decoded payload_json object copies this "
+        "specimen's exact root and events transport skeleton. Replace every "
+        "marker with your role-chosen scalar, object, or null; the host never "
+        "substitutes null as a semantic default. Its root has exactly protocol, "
+        "appraisal_draft, and events; a root field named contract is invalid. "
+        "protocol is the required character-interior-events.1 field.\n"
+        "\nFULL_TURN PAYLOAD_JSON INSTRUCTION METADATA JSON:\n"
+        + json.dumps(
+            full_turn_rules,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        + "\nEND FULL_TURN PAYLOAD_JSON INSTRUCTION METADATA JSON.\n"
+        "The instruction metadata block is not part of payload_json. Do not copy "
+        "grammar_id or any other instruction-metadata field into payload_json.\n"
+        "This required compact function is the sole outer return transport."
+    )
+
+
 def _compact_full_turn_transport_grammar(
     *,
     capabilities: ExpressionDraftCapabilities,
@@ -180,8 +303,8 @@ def _compact_full_turn_transport_grammar(
     """Describe the existing full event wire without duplicating its huge schema.
 
     This is transport grammar, not a behavior policy. Marker strings in the
-    shape specimen denote values the role must choose from the semantic
-    contracts; they are never defaults and the host never substitutes them.
+    shape specimen denote role-chosen values; they are never defaults and the
+    host never substitutes them.
     """
 
     visible_modalities = [item for item in capabilities.modalities if item != "typing"]
@@ -224,6 +347,7 @@ def _compact_full_turn_transport_grammar(
                         "brief_rationale": "<role:text>",
                         "confidence": "<role:confidence_bp>",
                         "response_expectation": ("<role:response_expectation_or_null>"),
+                        "revisit": ("<role:revisit_or_null>"),
                         "response_expectation_assessment": (
                             {
                                 "status": ("<role:choose:response_expectation_assessment_status>"),
@@ -241,8 +365,8 @@ def _compact_full_turn_transport_grammar(
             },
         },
         "semantic_contract_references": {
-            "appraisal_draft": "APPRAISAL SEMANTIC CONTRACT above",
-            "events": "EXPRESSION SEMANTIC CONTRACT above",
+            "appraisal_draft": "role-authored; host validates wire",
+            "events": "role-authored; host validates wire",
         },
         "event_rules": {
             "order": "one head, zero or more beat, one exact end",
@@ -320,7 +444,7 @@ def _compact_reply_only_transport_grammar(
                             "inner_state_summary": "<role:private_state_text>",
                             "attended_source_refs": [],
                         },
-                        "timing_choice": "now",
+                        "timing_choice": "<role:choose:reply_only_timing>",
                         "turn_posture": "<role:choose:reply_only_turn_posture>",
                         "cadence": "<role:choose:cadence>",
                         "beat": {
@@ -331,6 +455,7 @@ def _compact_reply_only_transport_grammar(
                         "brief_rationale": "<role:text>",
                         "confidence": "<role:confidence_bp>",
                         "response_expectation": "<role:response_expectation_or_null>",
+                        "revisit": "<role:revisit_or_null>",
                         "response_expectation_assessment": (
                             {
                                 "status": ("<role:choose:response_expectation_assessment_status>"),
@@ -348,11 +473,12 @@ def _compact_reply_only_transport_grammar(
             },
         },
         "semantic_contract_references": {
-            "appraisal_draft": "APPRAISAL SEMANTIC CONTRACT above",
-            "events": "EXPRESSION SEMANTIC CONTRACT above",
+            "appraisal_draft": "role-authored; host validates wire",
+            "events": "role-authored; host validates wire",
         },
         "domains": {
             "affect": ["no_change", "open", "update", "resolve", "supersede"],
+            "reply_only_timing": ["now", "later", "silent"],
             "reply_only_turn_posture": [None, "continue", "interject"],
             "cadence": ["conversational", "rapid", "hesitant", "escalating"],
             "response_expectation_assessment_status": [
@@ -364,7 +490,8 @@ def _compact_reply_only_transport_grammar(
         },
         "events": {
             "exact_sequence": ["head", "end"],
-            "head_is_immediate_text_only": True,
+            "head_is_immediate_text_only": False,
+            "head_allows_now_later_or_silent": True,
             "continuation_allowed": False,
         },
         "appraisal_carrier": {
@@ -3179,90 +3306,12 @@ class _InboundCharacterAuthor:
             messages = [
                 {
                     "role": "system",
-                    "content": (
-                        "CAPABILITY GATE. Same role and pinned turn; call once. Choose the minimum sufficient "
-                        "branch that losslessly represents the external effect you have chosen. "
-                        "result_kind=reply_only is complete when your complete external effect is "
-                        "one immediate text message; it may contain multiple "
-                        "sentences or paragraphs and is not required to be terse or emotionally "
-                        "flat. It supports a canonical appraisal and affect lifecycle: "
-                        "brief_rationale, behavior_tendency, stance, "
-                        "display_strategy, and confidence; appraise and affect remain your "
-                        "choices. It excludes relationship/interaction updates, media, "
-                        "delayed/silent delivery, typing/reaction, turn supersession, multiple "
-                        "beats, and continuation. "
-                        "Choose result_kind=full_turn only when the external effect you choose "
-                        "actually requires a capability reply_only excludes. For every branch, "
-                        "put the complete chosen inner object in payload_json as one JSON string: "
-                        "the compact character-interior-events.1 envelope for reply_only, the "
-                        "full character-interior-events.1 envelope for full_turn, or the exact "
-                        "private_turn_state plus recall_request object for recall. "
-                        + compact_gate_recall_instruction()
-                        + slim_consider_instruction()
-                        + "Only recall transfers control. A full_turn payload contains the complete "
-                        "decision now. The host validates payload_json, does not classify by topic, length, "
-                        "complexity, or keywords, does not choose the branch, and does not "
-                        "generate role wording."
-                        "\n\nAPPRAISAL SEMANTIC CONTRACT (normative for reply_only's compact "
-                        "appraisal carrier and for a full_turn payload_json):\n"
-                        + appraisal_messages[0]["content"]
-                        + "\n\nEXPRESSION SEMANTIC CONTRACT (normative for reply_only's text "
-                        "head and for every full_turn payload_json event):\n"
-                        + expression_messages[0]["content"]
-                        + "\n\nREPLY_ONLY PAYLOAD_JSON CANONICAL SPECIMEN JSON:\n"
-                        + json.dumps(
-                            reply_only_specimen,
-                            ensure_ascii=False,
-                            separators=(",", ":"),
-                        )
-                        + "\nEND REPLY_ONLY PAYLOAD_JSON CANONICAL SPECIMEN JSON.\n"
-                        "For result_kind=reply_only, the decoded payload_json object copies this "
-                        "specimen's exact root and events transport skeleton. Replace every "
-                        "marker with your role-chosen scalar, object, or null, and complete "
-                        "conditional appraisal, affect, and response fields under the semantic "
-                        "contracts above. A literal null means absence you chose or the contract "
-                        "requires; the host never substitutes null as a semantic default. "
-                        "Its root has exactly protocol, appraisal_draft, and events, and events "
-                        "has exactly one immediate text head followed by one exact end. A root "
-                        "field named contract is invalid; protocol is the required "
-                        "character-interior-events.1 field.\n"
-                        "\nREPLY_ONLY PAYLOAD_JSON INSTRUCTION METADATA JSON:\n"
-                        + json.dumps(
-                            reply_only_rules,
-                            ensure_ascii=False,
-                            separators=(",", ":"),
-                        )
-                        + "\nEND REPLY_ONLY PAYLOAD_JSON INSTRUCTION METADATA JSON.\n"
-                        "The reply-only instruction metadata block is not part of payload_json. "
-                        "Do not copy grammar_id or any other instruction-metadata field into "
-                        "payload_json.\n"
-                        + "\n\nFULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON:\n"
-                        + json.dumps(
-                            full_turn_specimen,
-                            ensure_ascii=False,
-                            separators=(",", ":"),
-                        )
-                        + "\nEND FULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON.\n"
-                        "For result_kind=full_turn, the decoded payload_json object copies this "
-                        "specimen's exact root and events transport skeleton. Replace every "
-                        "marker with your role-chosen scalar, object, or null, and complete "
-                        "conditional fields under the semantic contracts above; the host never "
-                        "substitutes null as a semantic default. "
-                        "Its root has exactly protocol, appraisal_draft, and events; a root field "
-                        "named contract is invalid. protocol is the required "
-                        "character-interior-events.1 field.\n"
-                        "\nFULL_TURN PAYLOAD_JSON INSTRUCTION METADATA JSON:\n"
-                        + json.dumps(
-                            full_turn_rules,
-                            ensure_ascii=False,
-                            separators=(",", ":"),
-                        )
-                        + "\nEND FULL_TURN PAYLOAD_JSON INSTRUCTION METADATA JSON.\n"
-                        "The instruction metadata block is not part of payload_json. Do not copy "
-                        "grammar_id or any other instruction-metadata field into payload_json.\n"
-                        "The standalone return-envelope sentences inside the two semantic "
-                        "contracts describe their inner values only. This required compact "
-                        "function is the sole outer return transport."
+                    "content": _compact_gate_system_content(
+                        identity_instruction=expression_adapter._identity_instruction(),  # noqa: SLF001
+                        reply_only_specimen=reply_only_specimen,
+                        reply_only_rules=reply_only_rules,
+                        full_turn_specimen=full_turn_specimen,
+                        full_turn_rules=full_turn_rules,
                     ),
                 },
                 expression_messages[1],
@@ -3334,12 +3383,14 @@ class _InboundCharacterAuthor:
                 "and events in any valid JSON member order; protocol and events are the "
                 "complete append-only CHARACTER INTERIOR STREAM TRANSPORT above. Choose the "
                 "minimum sufficient branch that losslessly represents the external effect you "
-                "have chosen. result_kind=reply_only is complete when your complete external "
-                "effect is exactly one immediate text head; that text may contain multiple "
-                "sentences or paragraphs and is not required to be terse or emotionally flat. "
+                "have chosen. result_kind="
+                + reply_only_completion_clause()
+                + ". "
+                + reply_only_bubble_clause()
+                + " "
                 "This branch "
                 "still lets you choose a canonical appraisal and affect lifecycle, but it cannot "
-                "choose a relationship or interaction update, media, delayed or silent delivery, "
+                "choose a relationship or interaction update, media, "
                 "typing, reaction, superseding, or "
                 "additional beat/stream continuation. reply_only still includes the protocol, "
                 "canonical compact appraisal_draft, and exact head/end events, and its carrier "
@@ -4189,6 +4240,9 @@ def _parse_combined(raw: str) -> dict[str, dict[str, Any]]:
             aliases[canonical] = item
         if set(aliases) == {"appraisal_draft", "expression_draft"}:
             value = aliases
+    compiled = _compile_combined_cognition_envelope(value)
+    if compiled is not None:
+        value = compiled
     slim = compile_slim_consider_payload(value)
     if slim is not None:
         value = slim
@@ -4198,6 +4252,7 @@ def _parse_combined(raw: str) -> dict[str, dict[str, Any]]:
         )
     if not all(isinstance(value[key], dict) for key in value):
         raise ValueError("combined cognition drafts must be objects")
+    value = attach_hitchhiked_relationship_residue(value)
     return value  # type: ignore[return-value]
 
 

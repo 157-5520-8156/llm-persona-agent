@@ -938,7 +938,7 @@ def build_semantic_chat_composition(
         daily_life=tuple(character.daily_life),
         first_message=character.first_message,
     )
-    del source_closure_model, life_source_closure_model, _unused
+    del source_closure_model, _unused
     background_model = world_support_model
     if (
         background_model is None
@@ -988,6 +988,18 @@ def build_semantic_chat_composition(
         turn_store=character_interior_turn_store,
         turn_owner_id=character_interior_turn_owner_id,
     )
+    # Life Development fails closed without a source reviewer, so leaving this
+    # lane unbuilt keeps the whole event machine dark.  An independent reviewer
+    # stays the default; letting the world author audit its own draft is a
+    # deliberate operator trade (2026-08-14) and must be switched on explicitly
+    # so the weaker boundary is visible in config and in health.
+    resolved_life_source_closure_model = life_source_closure_model
+    if (
+        resolved_life_source_closure_model is None
+        and settings.world_v2_life_source_review_enabled
+        and settings.world_v2_life_self_review_allowed
+    ):
+        resolved_life_source_closure_model = background_model
     return SemanticChatComposition(
         world_support_model=background_model,
         character_author_model_id=(
@@ -998,8 +1010,15 @@ def build_semantic_chat_composition(
         recovery_source_closure_model=None,
         source_closure_reselection_lane=None,
         proactive_source_closure_model=None,
-        life_source_closure_model=None,
-        life_source_runtime_isolation="unavailable",
+        life_source_closure_model=resolved_life_source_closure_model,
+        life_source_runtime_isolation=(
+            "self_review_operator_approved"
+            if resolved_life_source_closure_model is background_model
+            and resolved_life_source_closure_model is not None
+            else "independent"
+            if resolved_life_source_closure_model is not None
+            else "unavailable"
+        ),
         known_source_inventory=None,
         proactive_source_authority=proactive_source_authority,
         character_interior=character_interior,

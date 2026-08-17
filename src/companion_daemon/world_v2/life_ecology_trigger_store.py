@@ -345,7 +345,14 @@ class LedgerLifeEcologyTriggerStore:
                     raise ValueError("life ecology lease expired before completion")
                 opened = None
             assert claimed.claim_lease is not None
-            if outcome in SILENT_LIFE_ECOLOGY_OUTCOMES:
+            if (
+                outcome in SILENT_LIFE_ECOLOGY_OUTCOMES
+                and (
+                    outcome == "cooldown"
+                    or schedule is None
+                    or schedule.last_failure_code is None
+                )
+            ):
                 delay_seconds = _silent_cadence_seconds(trigger_id, outcome)
                 next_due = (
                     None

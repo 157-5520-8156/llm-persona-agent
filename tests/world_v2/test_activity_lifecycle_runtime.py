@@ -241,8 +241,16 @@ def test_interruption_acceptance_records_source_bound_change_plan_coordinates() 
 
 
 class _Interior:
-    def __init__(self, *, technical_failure: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        technical_failure: bool = False,
+        failure_code: str = "role_result_not_json",
+        choice: str = "select",
+    ) -> None:
         self.technical_failure = technical_failure
+        self.failure_code = failure_code
+        self.choice = choice
         self.opportunities = []
 
     async def consider(self, opportunity):  # type: ignore[no-untyped-def]
@@ -253,7 +261,7 @@ class _Interior:
                 (),
                 {
                     "status": "technical_failure",
-                    "failure_code": "role_result_not_json",
+                    "failure_code": self.failure_code,
                     "decision": None,
                     "author_lineage": None,
                 },
@@ -303,11 +311,18 @@ class _Interior:
                 "capability_ref": manifest.capability_ref,
                 "capability_payload_hash": manifest.payload_hash,
                 "source_refs": list(manifest.source_refs),
-                "payload": {
-                    "contract": "character-interior-activity-lifecycle-choice.1",
-                    "decision": "select",
-                    "selected_token": token,
-                },
+                "payload": (
+                    {
+                        "contract": "character-interior-activity-lifecycle-choice.1",
+                        "decision": "no_op",
+                    }
+                    if self.choice == "no_op"
+                    else {
+                        "contract": "character-interior-activity-lifecycle-choice.1",
+                        "decision": "select",
+                        "selected_token": token,
+                    }
+                ),
             },
             author_lineage=author,
         )
@@ -559,3 +574,131 @@ async def test_second_start_on_the_same_local_day_does_not_call_the_model() -> N
     assert result.status == "no_op"
     assert result.reason_code == "activity_lifecycle.day_open_already_spent"
     assert interior.opportunities == []
+
+
+def _worker(
+    *,
+    ledger,
+    interior,
+    daily_occasions=None,
+) -> ActivityLifecycleWorker:
+    return ActivityLifecycleWorker(
+        ledger=ledger,
+        catalog=_catalog(),
+        character_interior=interior,
+        owner_actor_ref="actor:companion",
+        proposal_recorder=ActivityLifecycleProposalRecorder(ledger=ledger),
+        acceptance_runtime=ActivityLifecycleAcceptanceRuntime(
+            ledger=ledger, batch_issuer=ledger.issuer
+        ),
+        ecology_catalog_version=ECOLOGY_CATALOG_VERSION,
+        daily_occasions=daily_occasions,
+    )
+
+
+@pytest.mark.asyncio
+async def test_successful_no_op_marks_the_local_day_so_later_ticks_skip_the_model() -> None:
+    from companion_daemon.world_v2.daily_occasion import (
+        InMemoryDailyOccasionStore,
+        local_day_key,
+    )
+
+    projection, trigger_id = _claimed_projection()
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    store = InMemoryDailyOccasionStore()
+    first = _Interior(choice="no_op")
+    worker = _worker(ledger=ledger, interior=first, daily_occasions=store)
+
+    result = await worker.advance_once(
+        wake_event_ref="event:clock:opening",
+        trigger_id=trigger_id,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:worker",
+        correlation_id="correlation:worker",
+    )
+
+    assert result.status == "no_op"
+    assert store.spent("day_open", local_day_key(NOW))
+    assert len(first.opportunities) == 1
+
+    second = _Interior()
+    skipped = await _worker(
+        ledger=ledger, interior=second, daily_occasions=store
+    ).advance_once(
+        wake_event_ref="event:clock:opening",
+        trigger_id=trigger_id,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:worker-skip",
+        correlation_id="correlation:worker-skip",
+    )
+
+    assert skipped.status == "no_op"
+    assert skipped.reason_code == "activity_lifecycle.day_open_already_spent"
+    assert second.opportunities == []
+
+
+@pytest.mark.asyncio
+async def test_spent_occasion_gate_skips_the_model_when_daily_marks_are_missing() -> None:
+    from companion_daemon.world_v2.daily_occasion import (
+        InMemoryDailyOccasionStore,
+        local_day_key,
+    )
+    from companion_daemon.world_v2.occasion import occasion_spend_store_for_ledger
+
+    projection, trigger_id = _claimed_projection()
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    store = InMemoryDailyOccasionStore()
+    occasion_spend_store_for_ledger(ledger).mark(
+        f"occasion:day_open:{local_day_key(NOW)}"
+    )
+    interior = _Interior()
+    worker = _worker(ledger=ledger, interior=interior, daily_occasions=store)
+
+    result = await worker.advance_once(
+        wake_event_ref="event:clock:opening",
+        trigger_id=trigger_id,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:worker",
+        correlation_id="correlation:worker",
+    )
+
+    assert result.status == "no_op"
+    assert result.reason_code == "activity_lifecycle.day_open_already_spent"
+    assert interior.opportunities == []
+    assert store.spent("day_open", local_day_key(NOW))
+
+
+@pytest.mark.asyncio
+async def test_occasion_already_considered_is_quiet_no_op_not_technical_failure() -> None:
+    from companion_daemon.world_v2.daily_occasion import (
+        InMemoryDailyOccasionStore,
+        local_day_key,
+    )
+
+    projection, trigger_id = _claimed_projection()
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    store = InMemoryDailyOccasionStore()
+    interior = _Interior(
+        technical_failure=True, failure_code="occasion_already_considered"
+    )
+    worker = _worker(ledger=ledger, interior=interior, daily_occasions=store)
+
+    result = await worker.advance_once(
+        wake_event_ref="event:clock:opening",
+        trigger_id=trigger_id,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:worker",
+        correlation_id="correlation:worker",
+    )
+
+    assert result.status == "no_op"
+    assert result.reason_code == "activity_lifecycle.day_open_already_spent"
+    assert store.spent("day_open", local_day_key(NOW))
+    assert ledger.accepted == ()

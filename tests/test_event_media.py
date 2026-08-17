@@ -584,22 +584,26 @@ class V5SelectingModel(FakeModel):
                 and payload["character_visibility"] in item["legal_character_visibilities"]
                 and payload["route"] in item["legal_routes"]
             ] or candidates
+        capture_matches = [
+            item
+            for item in legal
+            if payload["capture_mode"] in item["legal_capture_modes"]
+        ]
+        pool = capture_matches or legal
         selected = next(
             (
                 item
-                for item in legal
-                if payload["capture_mode"] in item["legal_capture_modes"]
-                and payload["visual_form"] in item["legal_visual_forms"]
+                for item in pool
+                if payload["visual_form"] in item["legal_visual_forms"]
                 and payload["share_intent"] in item["legal_share_intents"]
             ),
             next(
                 (
                     item
-                    for item in legal
+                    for item in pool
                     if payload["visual_form"] in item["legal_visual_forms"]
-                    and payload["share_intent"] in item["legal_share_intents"]
                 ),
-                legal[0],
+                pool[0],
             ),
         )
         payload["capture_mode"] = selected["legal_capture_modes"][0]
@@ -720,7 +724,7 @@ async def test_v5_freezes_complete_expression_candidate_without_free_direction_t
 
 
 @pytest.mark.asyncio
-async def test_v5_repairs_one_candidate_bound_semantic_conflict(
+async def test_v5_binds_incompatible_candidate_labels_without_repair(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("COMPANION_EVENT_MEDIA_V5_ENABLED", "1")
@@ -740,7 +744,129 @@ async def test_v5_repairs_one_candidate_bound_semantic_conflict(
     result = await MediaPlanner(model).plan(_opportunity())
 
     assert isinstance(result, PlannedMedia)
-    assert model.calls == 2
+    assert model.calls == 1
+    assert result.plan.visual_form != "body_detail" or result.plan.character_visibility == "body_detail"
+
+
+class MislabeledV5Model(V5SelectingModel):
+    async def complete(self, messages, *, temperature=0.8):
+        raw = await super().complete(messages, temperature=temperature)
+        payload = json.loads(raw)
+        payload.update(
+            {
+                "content_domain": "information_screen",
+                "visual_form": "body_detail",
+                "share_intent": "care_update",
+                "capture_mode": "timer_fixed",
+                "interaction_bid_id": "invite_desire",
+                "tone": "quiet",
+                "polish": "editorial",
+            }
+        )
+        return json.dumps(payload, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_v5_first_pass_binds_mislabeled_selfie_classification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("COMPANION_EVENT_MEDIA_V5_ENABLED", "1")
+    proposal = _proposal(interaction_bid_id="share_presence")
+    for field in (
+        "composition",
+        "action",
+        "camera_direction",
+        "sharing_motive",
+        "subject_variant_id",
+    ):
+        proposal.pop(field, None)
+    model = MislabeledV5Model(proposal)
+
+    result = await MediaPlanner(model).plan(_opportunity())
+
+    assert isinstance(result, PlannedMedia)
+    assert model.calls == 1
+    assert result.plan.capture_mode != "timer_fixed"
+    assert result.plan.tone in {"warm", "bright", "calm", "neutral"}
+    assert result.plan.polish == "casual"
+    assert result.plan.interaction_bid is not None
+    assert result.plan.interaction_bid.communicative_goal != "invite_desire"
+    if result.plan.character_visibility != "body_detail":
+        assert result.plan.visual_form != "body_detail"
+
+
+@pytest.mark.asyncio
+async def test_v5_authorized_capture_allow_list_hides_other_modes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("COMPANION_EVENT_MEDIA_V5_ENABLED", "1")
+    proposal = _proposal(interaction_bid_id="share_presence")
+    for field in (
+        "composition",
+        "action",
+        "camera_direction",
+        "sharing_motive",
+        "subject_variant_id",
+    ):
+        proposal.pop(field, None)
+    model = V5SelectingModel(proposal)
+    opportunity = replace(
+        _opportunity(),
+        authorized_capture_modes=("character_front_camera",),
+        authorized_character_visibilities=("identifiable",),
+    )
+
+    result = await MediaPlanner(model).plan(opportunity)
+
+    assert isinstance(result, PlannedMedia)
+    assert result.plan.capture_mode == "character_front_camera"
+    assert result.plan.character_visibility == "identifiable"
+    user = str(model.messages[-1]["content"])
+    encoded = user.split("legal_complete_media_expression_candidates=", 1)[1].split("\n", 1)[0]
+    candidates = json.loads(encoded)
+    assert candidates
+    assert {item["legal_capture_modes"][0] for item in candidates} == {"character_front_camera"}
+
+
+@pytest.mark.asyncio
+async def test_v5_disclosed_candidates_keep_front_camera_status_and_presence_bids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("COMPANION_EVENT_MEDIA_V5_ENABLED", "1")
+    proposal = _proposal(interaction_bid_id="inform_status", share_intent="record")
+    for field in (
+        "composition",
+        "action",
+        "camera_direction",
+        "sharing_motive",
+        "subject_variant_id",
+    ):
+        proposal.pop(field, None)
+    model = V5SelectingModel(proposal)
+
+    result = await MediaPlanner(model).plan(_opportunity())
+
+    assert isinstance(result, PlannedMedia)
+    assert result.plan.capture_mode == "character_front_camera"
+    assert result.plan.interaction_bid.communicative_goal == "inform_status"
+    encoded = (
+        str(model.messages[-1]["content"])
+        .split("legal_complete_media_expression_candidates=", 1)[1]
+        .split("\n", 1)[0]
+    )
+    candidates = json.loads(encoded)
+    assert any(
+        "character_front_camera" in item["legal_capture_modes"]
+        and "inform_status" in item["legal_interaction_bids"]
+        and "identifiable" in item["legal_character_visibilities"]
+        for item in candidates
+    )
+    assert any(
+        "character_front_camera" in item["legal_capture_modes"]
+        and "share_presence" in item["legal_interaction_bids"]
+        and "identifiable" in item["legal_character_visibilities"]
+        for item in candidates
+    )
 
 
 @pytest.mark.asyncio

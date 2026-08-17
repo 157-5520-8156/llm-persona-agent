@@ -26,6 +26,7 @@ def _provider(text: str, calls: dict[str, int]) -> httpx.MockTransport:
         assert payload["messages"][1]["content"][1]["image_url"]["url"].startswith(
             "data:image/"
         )
+        assert payload["enable_thinking"] is False
         return httpx.Response(
             200,
             json={
@@ -43,8 +44,9 @@ def _transport(
     return SQLiteDurableVisionPerceptionTransport(
         path,
         api_key="test-key",
-        base_url="https://api.openai.example/v1",
-        model="gpt-4o-mini",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        model="qwen3-vl-flash",
+        thinking_disabled=True,
         transport=mock,
     )
 

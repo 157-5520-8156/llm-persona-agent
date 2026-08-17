@@ -84,7 +84,7 @@
 | 媒体 | visual evidence、PhotoCandidate、角色选片、planning→authorization→render→inspection→Action→receipt、Appearance State | 已覆盖 | 授权/provider/自动投递未全局启用；外观连续和发送后心理反馈未闭环 |
 | 人生发展 | Reflection→Aspiration→Choice→Plan→Activity/Action→Outcome→Life Arc/Biography | 已覆盖 | Aspiration/Choice 真实 producer、计划结晶、失败回流和长期迁移仍未形成完整生产证据 |
 | 专属角色与未来多用户 | world/actor/user 坐标、Dedicated Companion isolation、per-world budget/cache/sidecar | 部分覆盖 | 当前 QQ 明确单用户；需审计进程全局状态和跨 world key，但不实现商业化控制面 |
-| 亲密与成人伴侣 | CharacterInterior + Relationship/Affect + Adult Eligibility + Intimate Consent + Privacy/Capability/Action/provider route | 部分覆盖 | 通用授权和 non-explicit 私密媒体存在；缺用户成人资格、内容级双方同意，relationship stage 仍错误承担 lane/强度决定，explicit route 未资格化 |
+| 亲密与成人伴侣 | CharacterInterior + Relationship/Affect + Adult Eligibility + Intimate Consent + Privacy/Capability/Action/provider route | 部分覆盖 | 通用授权和暗示性私密媒体存在；P3 渲染 route 已接到 Civitai Krea2 部署。缺用户成人资格、内容级双方同意；relationship stage 仍不得授权 lane/强度 |
 | 管理与故障透明 | read-only Projection/health、未来 typed administrative command、独立 System Notice | 部分覆盖 | health 存在但管理面板未建；provider 故障目前缺统一且与角色 Expression 隔离的可见提示 |
 | 外部能力范围 | Capability Manifest/Grant、显式 allowlist、Action authorization/receipt | 已覆盖 | 保持现有能力集合；需 guard 通用 tool/MCP 不能暴露未部署能力 |
 | 可靠与可负担 | immutable ledger、ModelResult、CAS、durable turn sidecar、Action effect-once、Function Calling、usage budget、health/lineage | 已覆盖 | durable turn、first-attempt 分层指标、scheduler/embedding 阻断、真实 99.9% 资格和 24h 增长证据未达标 |
@@ -230,10 +230,10 @@ Eligibility 和显式 Intimate Consent。明确禁止未成年人、年龄不明
 声称“adult”就获得能力。
 
 当前代码状态是 `[partial]`：通用 Consent/Privacy/Capability/Action 授权和暗示性私密媒体原件存在，但
-ConsentGrant 主要覆盖操作/数据访问，缺 Adult Eligibility 与内容级双方同意；P3 media 仍用 relationship stage
-确定性决定 lane/强度；`explicit_adult` 没有完整生产 route。Luna 必须深化现有 authorization seam，不新建
-第二 consent 系统，并删除“关系阶段自动授权亲密强度”的语义。未完成资格化前，超出已证实 non-explicit
-route 的内容保持不可执行，但自然的文字亲密仍由角色在有效边界内选择。
+ConsentGrant 主要覆盖操作/数据访问，缺 Adult Eligibility 与内容级双方同意；P3 media 不得用 relationship
+stage 确定性决定 lane/强度。`suggestive_private` / `explicit_private` 的 Civitai Krea2 生产 route 已接到
+部署工厂，缺 `CIVITAI_API_KEY` 或模板时 fail-closed、不降级 OpenAI。Luna 必须深化现有 authorization seam，不新建
+第二 consent 系统，并删除“关系阶段自动授权亲密强度”的语义。自然的文字亲密仍由角色在有效边界内选择。
 
 亲密消息与媒体属于高敏感材料：默认 recipient-exclusive、最小 provider disclosure、operator 面板默认只看
 元数据；日志、评测和 bug bundle 必须脱敏。未来多用户/管理删除需求落地前，Luna 应比较 encrypted payload
@@ -500,7 +500,7 @@ biographical → activity → aftermath → life_development → npc_initiative 
 | 选片 | 角色决定选哪张、要不要；CharacterInterior 通过 `character_role_media_selection_v1` required tool 运输 `select|no_op` 与候选 token，工具只闭合能力和来源，不替角色选候选 | [active]（limited-production） | `media_selection_worker.py`、`media_selection_acceptance_runtime.py`、`character_interior/structured_role_tool_contract.py` |
 | 计划/渲染/审查/投递 | 全链路 v2 媒体 vertical（receipt-bound、修复一次、预览永不等同投递） | [active]（limited-production：需显式预览部署 + 预置授权 grant + operator approval；自动投递未全局启用） | `media_planning_runtime.py`、`media_execution_runtime.py`、`media_continuation_runtime.py`、`media_delivery_runtime.py` |
 | 隐私分层 | ordinary / personal / intimate 路由 | [active] | 顶层 `media_eligibility.py`（`MediaEligibilityRouter`） |
-| P3 私密车道（suggestive/private） | 高私密分轨渲染 | **[disconnected]**：`PrivateRenderContract` 存在但部署**未安装** private prompt author/专用生成器，fail-closed | `media_eligibility.py` 引用、CONTEXT.md Private Render Contract 词条 |
+| P3 私密车道（suggestive/private） | 高私密分轨渲染 | **[partial]**：部署在 Civitai Krea2 + 私密 prompt 作者齐全时安装；缺 key/模板 fail-closed、不降级 OpenAI。生产尚未发出 P3 照片。Adult Eligibility / 内容级同意仍缺 | `qq_media_deployment.py`、`media_eligibility.py`、CONTEXT.md Private Render Contract |
 | 旧图片机桥 | World v2 证据 → 旧 `event_media` 的冻结预览桥 | [active]（仅预览用途） | `event_media_planner_adapter.py` |
 | 旧图片机本体 | `world_media.py`、`image_requests.py` 顶层车道 | [abandoned]（无消费者） | 顶层 `world_v2/` 外 |
 
@@ -519,7 +519,7 @@ RSS/NWS/USGS → hub 采集/去重/嵌入/聚类 → attention 影子/实时注�
 - 感知工具：`injected-perception-tool`（mechanism_closure: closed/limited-production）——
   需显式模型输入源 + 预置 enforcement authority；结果审议当前"无可见动作"。
 - QQ 附件：`character_interior/qq_attachment_perception.py` 经唯一 CharacterInterior 做有来源的附件感知，
-  `perception_vision_transport.py`（OpenAI vision, SQLite 持久化）。角色运输使用
+  `perception_vision_transport.py`（阿里百炼 `qwen3-vl-flash`，思考关闭，SQLite 持久化）。角色运输使用
   `character_role_qq_attachment_perception_v1` required tool，在当前附件 capability 中选择一个
   opaque token 或明确 `no_op`；工具不替角色决定是否理解图片，也不越过视觉 transport、预算和回执边界。
 - 状态：registry off/shadow/live 门控，**半启用**——离线/影子模式可用，live 模式需配置。
@@ -696,9 +696,8 @@ RSS/NWS/USGS → hub 采集/去重/嵌入/聚类 → attention 影子/实时注�
 ### 5.9 P3 私密媒体车道——优先级低
 
 - **意图**：私密照片分轨。**仍要**（延伸目标，非北极星核心）。
-- **断在哪**：`PrivateRenderContract` 存在但部署未安装 private prompt author/专用生成器，
-  fail-closed（不会静默降级到普通渲染——这是正确行为）。
-- **修复着力点**：要么安装专用渲染链，要么明确把该车道标注为"未部署能力"。
+- **断在哪**：渲染链已接到部署工厂（Civitai Krea2 + `FirstPersonPrivatePromptAuthor`）；生产缺 `CIVITAI_API_KEY` 时该车道仍 fail-closed。资格层仍缺 Adult Eligibility 与内容级双方同意；关系阶段不得授权亲密强度。
+- **修复着力点**：补生产 Civitai 凭证后验证真实出图；深化现有 authorization seam，不要用关系阶段自动授权。
 
 ### 5.10 Appearance State（形象连续）——优先级低
 
@@ -907,8 +906,8 @@ RSS/NWS/USGS → hub 采集/去重/嵌入/聚类 → attention 影子/实时注�
 - **场景描述**：她给你发了一张照片或说了一件在意的事，之后会不安地等你的反应；收到回应后满足，没回应则失落。
 - **期望表现**：分享动作本身留下心理余波（"他会怎么想"），对方的回应（或无回应）触发后续感受。
 - **依赖机制链**：投递回执 → 期待/忐忑类 Appraisal 机会 → 你的回应作为新观察 → 满足/失落 Affect → 影响后续主动性。
-- **现状**：**断链**——`inner-life-coverage-plan` 感受空白表明示"媒体分享之后无心理余波"；投递回执存在（Action 终态），但分享后评估机会未接通。
-- **修复要点**：沿 S6 的模式补"分享余波"评估通道（回执 → appraisal 机会），或交给 silence/aftermath 刺激通道承担；这是媒体机发照片后"照片有后续"的关键。
+- **现状**：**代码已接通、生产证据仍缺**——slim `waiting_for`/`wait`/`how_it_landed` 走同一套 Character Interior；敷衍当场追问是入站 `consider()`；完全没说话且她声明了 wait 才按秒到点再 `consider()`；没填 wait 不定时叫醒；`still_pending` 同轮结案。生产账本几乎还没声明过期待。
+- **修复要点**：不要另开追问机或敷衍检测器。等生产出现带 `waiting_for` 且声明了 wait 的计划与评估事件；时长由她选秒数，系统只守 30 秒硬下限；没填 wait 视为结束这条盼头。
 - 来源：`world-v2-inner-life-coverage-plan` 感受空白表。
 
 #### S10 自己说了重话后的后悔/坚持 [disconnected]
@@ -1019,7 +1018,7 @@ RSS/NWS/USGS → hub 采集/去重/嵌入/聚类 → attention 影子/实时注�
 - **场景描述**：她今天做了顿好吃的、路上看到好看的云、去了一家新店——她会"拍下来"发给你，像真人发照片那样，附一句"你看这个"。
 - **期望表现**：照片源于已发生的共享性生活事件（不临场编造）；生成的照片形象一致（Identity Binding）；自动发送有节奏（不是一天几十张也不是从来不发）；照片之后还有后续（S9）。
 - **依赖机制链**：已结算生活事件 → `life_visual_evidence_author`（视觉证据声明）→ `event_ecology_media`（PhotoCandidate）→ 选片（角色决定）→ Media Plan（隐私上限/表达意图）→ 渲染（审查/修复一次）→ 自动投递（每日上限+最小间隔）→ 你的回应成为新刺激（S9）。
-- **现状**：[disconnected]（§5.1：全链路代码 closed 但 limited-production——需显式预览部署 + 预置 grant + operator approval；自动投递未全局启用；P3 私密车道部署未安装；生产只接 OpenAI 一家）。
+- **现状**：[disconnected]（§5.1：全链路代码 closed 但 limited-production——需显式预览部署 + 预置 grant；自动投递已接世界自有投递；P3 渲染链已接到部署工厂，生产尚未发出照片，缺 Civitai key 时高档仍 fail-closed）。
 - **修复要点**：§5.1 四条着力点；另注意照片发送后 S9（期待与忐忑）是"照片有生命"的配套，需一起接通。
 - 来源：`companion-experience-roadmap` #4、用户聊天记录、CLAUDE.md 媒体系统。
 
@@ -1036,8 +1035,8 @@ RSS/NWS/USGS → hub 采集/去重/嵌入/聚类 → attention 影子/实时注�
 
 - **场景描述**：你发一张照片/截图/文件给她，她能"看到"并自然回应内容（"这猫好可爱""你发的这个我看不懂"）。
 - **期望表现**：附件经闭式语法决定是否分析 → 角色经唯一 CharacterInterior 感知（有来源、私密）→ 表达回应；分析结果作为来源上下文（不冒充她"亲眼看过"之外的事实）。
-- **依赖机制链**：QQ 附件 → `perception_trigger_runtime`（闭式语法决定）→ `qq_attachment_perception`（角色考虑）→ `perception_vision_transport`（OpenAI vision，SQLite 持久化）→ 结果进上下文。
-- **现状**：[active] limited-production（`injected-perception-tool`：需显式模型输入源 + 预置 enforcement authority；结果审议当前"无可见动作"限制）。
+- **依赖机制链**：QQ 附件 → `perception_trigger_runtime`（闭式语法决定）→ `qq_attachment_perception`（角色考虑）→ `perception_vision_transport`（阿里百炼 `qwen3-vl-flash`，思考关闭，SQLite 持久化）→ 结果进上下文。
+- **现状**：[active] limited-production（`injected-perception-tool`：需显式模型输入源 + 预置 enforcement authority + `QWEN_API_KEY`；结果审议当前"无可见动作"限制）。像素不进 DeepSeek；识图是独立客观 transport。生产未发出过真实识图前不把半启用升成 fully active。
 - **修复要点**：验证 QQ 附件端到端（attachment → 感知 → 回应）在生产配置下可达；"结果审议无可见动作"限制是否阻碍了回应的自然性。
 - 来源：CLAUDE.md QQ 附件、`mechanism_closure` injected-perception-tool。
 
@@ -1048,8 +1047,8 @@ RSS/NWS/USGS → hub 采集/去重/嵌入/聚类 → attention 影子/实时注�
 - **场景描述**：你们关系走到暧昧阶段，你一句平常的话她会多想——"他这句话是什么意思？"——内心戏丰富，可能因此变得主动、试探、或患得患失。
 - **期望表现**：relationship stage（慢变量）+ Affect 综合影响她的内心（Private Impression），内心再影响表达选择——但系统不做"暧昧度 → 行为"的映射矩阵。
 - **依赖机制链**：关系慢变量（`relationship_reducers`）→ 快照关系面 → 她对你的话形成 Appraisal/Private Impression（模型自选）→ 表达（试探/直接/保留）。
-- **现状**：[active] 机制在，效果未验证（关系信号生产 `relationship_proposal_compiler` 已接入）；"暧昧期胡思乱想"是否真实发生无评测。
-- **修复要点**：长对话实测——关系阶段变化后，她的表达是否真的会变（对照 §2 目标 7）。
+- **现状**：[active] 生产 slim consider 已接线：她写下的关系散文残留可 hitchhike 进下一轮快照关系面；普通 commitment 仍走已有协议；账本仍无 `ambiguous`/`lover`。效果未验证（无长对话评测）。
+- **修复要点**：长对话实测——她写下残留后，下一轮内心与表达是否真的会变（对照 §2 目标 7）。
 - 来源：`design-intent` 记忆（2026-07-27）、`world-v2-relationship-production.md`。
 
 #### S24 吵架后一直生气，不想回消息 [active]（疑未真正接通；开发阶段：暂不进行真实延迟，仅作联动期望）
@@ -1735,7 +1734,8 @@ S20 图片分享等明确 disconnected 场景。
 
 ### 12.5 本轮冻结与保留
 
-冻结：人生节拍的双模型审查（0% 进入用户视野）、P3 私密媒体车道（部署本就未安装作者，保持 fail-closed）。
+冻结：人生节拍的双模型审查（0% 进入用户视野）。
+不冻结：P3 私密媒体车道（部署安装 Civitai Krea2 + 私密 prompt 作者；缺凭证 fail-closed，不降级 OpenAI）。
 不冻结：外部感知与 NPC，但它们不再拥有独立的模型作者链——感知条目作为环境进入她的"现在"，NPC 动向并入
 重节拍的同一次作者调用。
 
@@ -1744,3 +1744,13 @@ S20 图片分享等明确 disconnected 场景。
 `deepseek-v4-pro` 于 2026-08-13 发布正式版，但能力尚不稳定、可能低于 flash，因此暂不切换。允许并要求先做
 prompt 稳定前缀改造（缓存命中价是未命中价的 1/50，实测命中率仅 23.1%）；换模型只能由真实自由对聊 A/B
 证据支持，不得以"更贵所以更像人"为由切换。成本口径不变：加厚上下文是允许的开销，削上下文省钱不允许。
+
+### 12.7 2026-08-15：连续存在不是连续计算
+
+情绪连续、随时可能想念用户，靠账本状态，不是每隔几十秒喊一次大模型。
+
+- **系统可以**决定「现在值不值得让她想」：时机、注意力、有无新材料。这是 Occasion 层，0 次模型。
+- **系统不可以**决定「她想不想、说不说」。本机小模型不得挡在前面判是否联系。每个机会恰好一次 `consider()`。
+- 「想念用户」仍然会发生：安静窗口、生活节拍、未平情绪到阈值 → 给她一次机会 → 她自己选 now/later/silent。
+- 已选的 `later` 与到期承诺到点执行，0 模型。不因供应商高峰价推迟后台 consider（2026-08-15 用户关掉错峰）。
+- 主模型本轮仍不换。降本合法手段是减少「不改变她的调用」，禁止削上下文、让她失声、或把技术失败记成沉默。

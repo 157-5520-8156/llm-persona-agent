@@ -6,9 +6,9 @@ the module validates that authority, computes every legal successor for the
 companion-owned abstract plans, and returns only opaque, deterministic tokens.
 It cannot claim a trigger, call a model, or append an event.
 
-Location and registered-NPC plans are eligible only when their accepted plan
-binds the exact durable availability snapshot emitted by Life Author.  A bare
-reference is still not proof and remains an explicit capability block.
+Catalog-era location and registered-NPC plans still need the historical
+availability snapshot.  Open-life plans already bound a location capability
+when the world author accepted them; a bare location_ref remains blocked.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from .schema_core import FrozenModel
 from .schemas import LedgerProjection, PlanStateProjection
 
 
-ACTIVITY_OPENING_CATALOG_VERSION = "activity-opening.6"
+ACTIVITY_OPENING_CATALOG_VERSION = "activity-opening.7"
 """Current frozen semantics of the abstract-plan opening catalog."""
 
 # ``activity-opening.1`` and ``.2`` were already persisted by long-lived
@@ -65,6 +65,20 @@ _NO_FUTURE_SHIELD_CATALOG_VERSIONS = frozenset({"activity-opening.4"})
 # token.  ``.6`` dwell-gates the ordinary abandon exactly like the ordinary
 # pause; ``.5`` proposals replay against their exact old matrix.
 _NO_ABANDON_DWELL_CATALOG_VERSIONS = frozenset({"activity-opening.5"})
+
+# ``activity-opening.6`` and earlier required LifeAvailabilitySnapshotRecorded
+# on every location or NPC plan.  That event has no producer on the open-life
+# path; ``.7`` treats an already-accepted open_life plan as the binding.
+_SNAPSHOT_REQUIRED_LOCATION_CATALOG_VERSIONS = frozenset(
+    {
+        "activity-opening.1",
+        "activity-opening.2",
+        "activity-opening.3",
+        "activity-opening.4",
+        "activity-opening.5",
+        "activity-opening.6",
+    }
+)
 
 ActivityOpeningOperation = Literal["start", "pause", "resume", "complete", "abandon"]
 ActivityOpeningKind = Literal[
@@ -442,11 +456,18 @@ class ActivityOpeningCatalog:
     ) -> tuple[MissingActivityCapability, ...]:
         missing: set[MissingActivityCapability] = set()
         has_snapshot = self._has_exact_availability_snapshot(plan, projection=projection)
-        if plan.location_ref is not None and not has_snapshot:
+        open_life_bound = (
+            self._catalog_version not in _SNAPSHOT_REQUIRED_LOCATION_CATALOG_VERSIONS
+            and plan.activity_kind.startswith("open_life.")
+        )
+        if plan.location_ref is not None and not has_snapshot and not open_life_bound:
             missing.add("location_authority_binding")
         active_npcs = {f"npc:{item.npc_id}" for item in projection.npcs if item.status == "active"}
         npc_refs = tuple(ref for ref in plan.participant_refs if ref.startswith("npc:"))
-        if npc_refs and (not has_snapshot or any(ref not in active_npcs for ref in npc_refs)):
+        if npc_refs and (
+            (not has_snapshot and not open_life_bound)
+            or any(ref not in active_npcs for ref in npc_refs)
+        ):
             missing.add("npc_availability")
         if any(
             ref != self._owner_actor_ref

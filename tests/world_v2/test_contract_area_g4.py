@@ -81,13 +81,58 @@ def test_compact_gate_accepts_slim_payload_json() -> None:
         }
     )
     assert compiled is not None
-    assert compiled["appraisal_draft"]["appraise"] is False
+    assert compiled["appraisal_draft"]["appraise"] is True
+    assert compiled["appraisal_draft"]["affect"] == "no_change"
+    assert compiled["appraisal_draft"]["meanings"] == [
+        {"meaning": "心里还挂着刚才那句话", "confidence": 5000}
+    ]
+    assert compiled["appraisal_draft"]["attribution"] == "unknown"
+    assert "relationship_signal" not in compiled["appraisal_draft"]
     assert compiled["expression_draft"]["beats"] == [{"modality": "text", "text": "嗯，我在听。"}]
     assert compiled["expression_draft"]["world_claims"] == []
     assert compiled["expression_draft"]["impulse_summary"] == "想听他继续说"
     assert compiled["expression_draft"]["private_turn_state"]["inner_state_summary"] == (
         "他好像没把这件事说完"
     )
+
+
+def test_slim_optional_mood_opens_affect_without_host_invention() -> None:
+    from companion_daemon.world_v2.present_prompt import compile_slim_consider_payload
+
+    opened = compile_slim_consider_payload(
+        {
+            "messages": ["嗯。"],
+            "felt": "心里有点闷",
+            "mood": "sadness",
+        }
+    )
+    assert opened is not None
+    assert opened["appraisal_draft"]["appraise"] is True
+    assert opened["appraisal_draft"]["affect"] == "open"
+    assert opened["appraisal_draft"]["components"] == [
+        {"dimension": "sadness", "target_intensity_bp": 5000}
+    ]
+
+    ignored = compile_slim_consider_payload(
+        {
+            "messages": ["嗯。"],
+            "felt": "心里有点闷",
+            "mood": "annoyed",
+        }
+    )
+    assert ignored is not None
+    assert ignored["appraisal_draft"]["affect"] == "no_change"
+    assert "components" not in ignored["appraisal_draft"]
+
+    stable = compile_slim_consider_payload(
+        {
+            "messages": ["嗯。"],
+            "felt": "心里有点闷",
+        }
+    )
+    assert stable is not None
+    assert stable["appraisal_draft"]["affect"] == "no_change"
+    assert "components" not in stable["appraisal_draft"]
 
 
 def test_string_beats_normalize_to_text_objects() -> None:

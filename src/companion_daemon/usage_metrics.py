@@ -88,6 +88,16 @@ QWEN_PLUS_PRICE = ModelPrice(
     output_usd_per_million=1.20,
 )
 
+# Mainland DashScope list for Qwen3-VL-Flash ≤32K, thinking off, 2026-08-15.
+# Official CNY: ¥0.03 / ¥0.15 / ¥1.5 per million; converted at 7.2 CNY/USD.
+QWEN3_VL_FLASH_PRICE = ModelPrice(
+    model="qwen3-vl-flash",
+    version="dashscope-2026-08-15",
+    cache_hit_usd_per_million=0.004167,
+    cache_miss_usd_per_million=0.020833,
+    output_usd_per_million=0.208333,
+)
+
 # A new provider model must never silently become free just because its price
 # table has not reached this release yet.  This is intentionally above the
 # currently supported Pro rate, so routing remains bounded until an exact row
@@ -112,6 +122,8 @@ MODEL_PRICES: Mapping[str, ModelPrice] = {
     "openai/gpt-5.4-nano": GPT_5_4_NANO_PRICE,
     GPT_5_6_LUNA_PRICE.model: GPT_5_6_LUNA_PRICE,
     QWEN_PLUS_PRICE.model: QWEN_PLUS_PRICE,
+    QWEN3_VL_FLASH_PRICE.model: QWEN3_VL_FLASH_PRICE,
+    "qwen/qwen3-vl-flash": QWEN3_VL_FLASH_PRICE,
 }
 
 

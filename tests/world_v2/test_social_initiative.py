@@ -397,9 +397,9 @@ async def test_expired_message_context_is_dropped_instead_of_ambient_backfill() 
 
 
 @pytest.mark.asyncio
-async def test_semantic_situation_change_gets_one_recorded_jittered_consideration() -> None:
+async def test_situation_change_does_not_mint_a_delay_table_consideration() -> None:
     compiler, projection, _committed = _compiler_fixture(receptive=True)
-    occurred_at = NOW + timedelta(minutes=30)
+    occurred_at = NOW + timedelta(minutes=5)
     stimulus = WorldEvent.from_payload(
         schema_version="world-v2.1",
         event_id="event:experience:shared",
@@ -432,22 +432,13 @@ async def test_semantic_situation_change_gets_one_recorded_jittered_consideratio
     projection.logical_time = occurred_at + timedelta(minutes=3)
     draws: list[dict[str, object]] = []
     compiler._random = SimpleNamespace(  # noqa: SLF001
-        draw=lambda **kwargs: (
-            draws.append(kwargs)
-            or SimpleNamespace(
-                selected_candidate_ref="delay:120",
-                draw_id="draw:situation-change",
-            )
-        )
+        draw=lambda **kwargs: (draws.append(kwargs) or (_ for _ in ()).throw(AssertionError("situation_change must not draw a delay")))
     )
 
     opportunity = await compiler.next_opportunity(projection)
 
-    assert opportunity is not None
-    assert opportunity.source_kind == "situation_change"
-    assert opportunity.source_event_ref == stimulus.event_id
-    assert opportunity.stimulus_event_refs == (stimulus.event_id,)
-    assert draws[0]["candidate_refs"] == ("delay:120", "delay:900", "delay:2700")
+    assert opportunity is None
+    assert draws == []
 
 
 @pytest.mark.parametrize("visibility", ["private", "public", "shareable"])
@@ -573,9 +564,7 @@ async def test_protagonist_participation_authorizes_occurrence_stimulus() -> Non
 
     opportunity = await compiler.next_opportunity(projection)
 
-    assert opportunity is not None
-    assert opportunity.source_kind == "situation_change"
-    assert opportunity.stimulus_event_refs == (stimulus.event_id,)
+    assert opportunity is None
 
 
 @pytest.mark.asyncio
@@ -625,9 +614,7 @@ async def test_explicit_perception_is_observable_only_to_its_bound_actor() -> No
 
     opportunity = await compiler.next_opportunity(projection)
 
-    assert opportunity is not None
-    assert opportunity.source_event_ref == perceptions[1].event_id
-    assert opportunity.stimulus_event_refs == (perceptions[1].event_id,)
+    assert opportunity is None
 
 
 @pytest.mark.asyncio
@@ -668,8 +655,7 @@ async def test_failed_situation_consideration_retains_its_stimulus_on_retry() ->
             draw_id="draw:situation-retry",
         )
     )
-    first = await compiler.next_opportunity(projection)
-    assert first is not None
+    consideration_id = "consideration:social-initiative:" + "c" * 64
 
     failure_ref = SimpleNamespace(
         event_id="event:model-result:situation-retry",
@@ -690,7 +676,7 @@ async def test_failed_situation_consideration_retains_its_stimulus_on_retry() ->
         SimpleNamespace(
             process_kind="proactive_action_deliberation",
             state="terminal",
-            trigger_ref="proactive-consideration:" + first.consideration_id,
+            trigger_ref="proactive-consideration:" + consideration_id,
             runtime_outcome_ref=(
                 "proactive:deliberation-failed:model-result:situation-retry"
             ),
@@ -778,8 +764,7 @@ async def test_technical_retry_precedes_cooldown_from_another_successful_contact
             draw_id="draw:retry-before-contact-cooldown",
         )
     )
-    failed_opportunity = await compiler.next_opportunity(projection)
-    assert failed_opportunity is not None
+    failed_opportunity_id = "consideration:social-initiative:" + "d" * 64
 
     failed_at = occurred_at + timedelta(minutes=4)
     failure_ref = SimpleNamespace(
@@ -802,7 +787,7 @@ async def test_technical_retry_precedes_cooldown_from_another_successful_contact
             process_kind="proactive_action_deliberation",
             state="terminal",
             trigger_ref=(
-                "proactive-consideration:" + failed_opportunity.consideration_id
+                "proactive-consideration:" + failed_opportunity_id
             ),
             runtime_outcome_ref=(
                 "proactive:deliberation-failed:"
@@ -828,7 +813,7 @@ async def test_technical_retry_precedes_cooldown_from_another_successful_contact
     retry = await compiler.next_opportunity(projection)
 
     assert retry is not None
-    assert retry.consideration_id == failed_opportunity.consideration_id
+    assert retry.consideration_id == failed_opportunity_id
     assert retry.cadence_reason_codes == ("technical_failure:retry",)
 
     # Only a newer user Observation invalidates the old pinned social context.
@@ -886,6 +871,7 @@ async def test_not_due_retry_does_not_starve_an_independent_due_situation() -> N
             draw_id="draw:retry-independent-situation",
         )
     )
+    first_id = "consideration:social-initiative:" + "e" * 64
     first_ref = SimpleNamespace(
         event_id=first_event.event_id,
         event_type=first_event.event_type,
@@ -894,8 +880,6 @@ async def test_not_due_retry_does_not_starve_an_independent_due_situation() -> N
     )
     projection.committed_world_event_refs = (first_ref,)
     projection.logical_time = first_at + timedelta(minutes=3)
-    first = await compiler.next_opportunity(projection)
-    assert first is not None
 
     failed_at = first_at + timedelta(minutes=5)
     failure_ref = SimpleNamespace(
@@ -910,10 +894,10 @@ async def test_not_due_retry_does_not_starve_an_independent_due_situation() -> N
         logical_time=second_event.logical_time,
         world_revision=5,
     )
-    trigger_ref = "proactive-consideration:" + first.consideration_id
+    trigger_ref = "proactive-consideration:" + first_id
     failed_trigger_id = ProactiveActionRuntime._trigger_id_for_world(  # noqa: SLF001
         world_id=projection.world_id,
-        consideration_id=first.consideration_id,
+        consideration_id=first_id,
         retry_ordinal=0,
     )
     projection.trigger_processes = (
@@ -931,7 +915,7 @@ async def test_not_due_retry_does_not_starve_an_independent_due_situation() -> N
     projection.model_result_audits = (
         SimpleNamespace(
             attempt_id=ProactiveActionRuntime._model_attempt_id(  # noqa: SLF001
-                consideration_id=first.consideration_id,
+                consideration_id=first_id,
                 retry_ordinal=0,
             ),
             model_result_ref="model-result:failed-situation",
@@ -969,10 +953,8 @@ async def test_not_due_retry_does_not_starve_an_independent_due_situation() -> N
 
     result = await runtime.drain_one()
 
-    assert result.status == "opened"
-    assert len(opened) == 1
-    assert opened[0].source_event_ref == second_event.event_id
-    assert opened[0].consideration_id != first.consideration_id
+    assert result.status == "retry_wait"
+    assert opened == []
 
 
 @pytest.mark.asyncio
@@ -997,19 +979,12 @@ async def test_not_due_situation_retry_does_not_occupy_the_ambient_cadence() -> 
         del _projection
         return failed_situation
 
-    async def no_situation(  # type: ignore[no-untyped-def]
-        _projection, _logical_time, *, excluded_consideration_ids
-    ):
-        del _projection, _logical_time, excluded_consideration_ids
-        return None
-
     async def ambient_opportunity(_projection, _logical_time):  # type: ignore[no-untyped-def]
         del _projection, _logical_time
         return ambient
 
     compiler._pending_consideration = no_pending  # type: ignore[method-assign]  # noqa: SLF001
     compiler._failed_consideration_retry = failed_retry  # type: ignore[method-assign]  # noqa: SLF001
-    compiler._situation_change = no_situation  # type: ignore[method-assign]  # noqa: SLF001
     compiler._spontaneous_contact = ambient_opportunity  # type: ignore[method-assign]  # noqa: SLF001
 
     opportunity = await compiler.next_opportunity(
@@ -1096,7 +1071,7 @@ async def test_successful_retry_terminally_settles_the_failed_consideration() ->
 
 
 @pytest.mark.asyncio
-async def test_each_situation_window_survives_a_newer_window_until_considered() -> None:
+async def test_situation_windows_do_not_mint_dedicated_model_considers() -> None:
     compiler, projection, _committed = _compiler_fixture(receptive=True)
     first_at = NOW + timedelta(minutes=10)
     second_at = first_at + timedelta(minutes=11)
@@ -1131,48 +1106,30 @@ async def test_each_situation_window_survives_a_newer_window_until_considered() 
         for index, item in enumerate(events, start=2)
     )
     projection.logical_time = first_at + timedelta(minutes=50)
+    original_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
     compiler._ledger.lookup_event_commit = lambda event_id: next(  # type: ignore[attr-defined]  # noqa: SLF001
         (
             (item, SimpleNamespace(world_revision=index))
             for index, item in enumerate(events, start=2)
             if item.event_id == event_id
         ),
-        None,
+        original_lookup(event_id),
     )
     compiler._random = SimpleNamespace(  # noqa: SLF001
         draw=lambda **kwargs: SimpleNamespace(
-            selected_candidate_ref=(
-                "delay:2700" if kwargs["seed_instant"] == first_at else "delay:120"
-            ),
-            draw_id="draw:situation-window",
+            selected_candidate_ref="delay:3600",
+            draw_id="draw:idle-hitch",
         )
     )
-    newer = await compiler.next_opportunity(projection)
-    assert newer is not None
-    assert newer.source_event_ref == events[1].event_id
-
-    older = await compiler.next_opportunity(
-        projection,
-        excluded_consideration_ids=frozenset({newer.consideration_id}),
-    )
-    assert older is not None
-    assert older.source_event_ref == events[0].event_id
-
-    projection.trigger_processes = (
-        SimpleNamespace(
-            process_kind="proactive_action_deliberation",
-            trigger_ref="proactive-consideration:" + newer.consideration_id,
-            state="terminal",
-            runtime_outcome_ref="proactive:silent",
-        ),
-    )
-    terminal_fallback = await compiler.next_opportunity(projection)
-    assert terminal_fallback is not None
-    assert terminal_fallback.source_event_ref == events[0].event_id
+    due = await compiler.next_opportunity(projection)
+    assert due is not None
+    assert due.source_kind in {"spontaneous_contact", "ambient_presence"}
+    assert due.stimulus_event_refs == (events[1].event_id,)
+    assert "stimulus:situation_change" in due.cadence_reason_codes
 
 
 @pytest.mark.asyncio
-async def test_new_stimulus_in_a_settled_window_reuses_draw_but_gets_a_new_epoch() -> None:
+async def test_paid_idle_consider_hitches_the_latest_situation_cluster() -> None:
     compiler, projection, _committed = _compiler_fixture(receptive=True)
     anchor_at = NOW + timedelta(minutes=10)
     events = tuple(
@@ -1196,44 +1153,6 @@ async def test_new_stimulus_in_a_settled_window_reuses_draw_but_gets_a_new_epoch
             ("event:experience:window-append", anchor_at + timedelta(minutes=5)),
         )
     )
-    projection.committed_world_event_refs = (
-        SimpleNamespace(
-            event_id=events[0].event_id,
-            event_type=events[0].event_type,
-            logical_time=events[0].logical_time,
-            world_revision=2,
-        ),
-    )
-    projection.logical_time = anchor_at + timedelta(minutes=3)
-    compiler._ledger.lookup_event_commit = lambda event_id: next(  # type: ignore[attr-defined]  # noqa: SLF001
-        (
-            (item, SimpleNamespace(world_revision=index))
-            for index, item in enumerate(events, start=2)
-            if item.event_id == event_id
-        ),
-        None,
-    )
-    draw_calls: list[str] = []
-    compiler._random = SimpleNamespace(  # noqa: SLF001
-        draw=lambda **kwargs: (
-            draw_calls.append(kwargs["attempt_id"])
-            or SimpleNamespace(
-                selected_candidate_ref="delay:120",
-                draw_id="draw:same-window",
-            )
-        )
-    )
-
-    first = await compiler.next_opportunity(projection)
-    assert first is not None
-    projection.trigger_processes = (
-        SimpleNamespace(
-            process_kind="proactive_action_deliberation",
-            trigger_ref="proactive-consideration:" + first.consideration_id,
-            state="terminal",
-            runtime_outcome_ref="proactive:silent",
-        ),
-    )
     projection.committed_world_event_refs = tuple(
         SimpleNamespace(
             event_id=item.event_id,
@@ -1243,13 +1162,29 @@ async def test_new_stimulus_in_a_settled_window_reuses_draw_but_gets_a_new_epoch
         )
         for index, item in enumerate(events, start=2)
     )
-    projection.logical_time = anchor_at + timedelta(minutes=6)
-    appended = await compiler.next_opportunity(projection)
+    original_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
+    compiler._ledger.lookup_event_commit = lambda event_id: next(  # type: ignore[attr-defined]  # noqa: SLF001
+        (
+            (item, SimpleNamespace(world_revision=index))
+            for index, item in enumerate(events, start=2)
+            if item.event_id == event_id
+        ),
+        original_lookup(event_id),
+    )
+    projection.logical_time = anchor_at + timedelta(minutes=3)
+    assert await compiler.next_opportunity(projection) is None
 
-    assert appended is not None
-    assert appended.consideration_id != first.consideration_id
-    assert appended.stimulus_event_refs == tuple(item.event_id for item in events)
-    assert len(set(draw_calls)) == 1
+    projection.logical_time = NOW + timedelta(minutes=90)
+    compiler._random = SimpleNamespace(  # noqa: SLF001
+        draw=lambda **_kwargs: SimpleNamespace(
+            selected_candidate_ref="delay:3600",
+            draw_id="draw:idle-hitch-cluster",
+        )
+    )
+    due = await compiler.next_opportunity(projection)
+    assert due is not None
+    assert due.source_kind in {"spontaneous_contact", "ambient_presence"}
+    assert due.stimulus_event_refs == tuple(item.event_id for item in events)
 
 
 @pytest.mark.asyncio

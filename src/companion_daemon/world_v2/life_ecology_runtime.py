@@ -37,6 +37,12 @@ from .schema_core import FrozenModel
 from .schemas import EvidenceRef, ProjectionCursor, WorldEvent
 
 _LOG = logging.getLogger(__name__)
+_ACTIVITY_QUIET_TECHNICAL_CODES = frozenset(
+    {
+        "activity_lifecycle.occasion_already_considered",
+        "activity_lifecycle.occasion_expired",
+    }
+)
 
 
 LifeEcologyAvailabilityState = Literal[
@@ -346,22 +352,25 @@ class LifeEcologyRuntime:
                         else ""
                     )
                     failure_code = normalized[:96] or "activity_lifecycle.unknown"
-                    persisted = await self._complete_technical_failure(
-                        key=key,
-                        trigger_id=claim.trigger_id,
-                        failure_code=failure_code,
-                    )
-                    return LifeEcologyRunResult(
-                        status="deferred" if persisted else "failed_safe",
-                        trigger_id=claim.trigger_id,
-                        reason_code=(
-                            "life_ecology.activity_lifecycle_technical_failure"
-                            if persisted
-                            else "life_ecology.technical_failure_persistence_failed"
-                        ),
-                        activity_followup_status=activity_status,
-                        technical_failure_code=failure_code if persisted else None,
-                    )
+                    if failure_code in _ACTIVITY_QUIET_TECHNICAL_CODES:
+                        activity_status = "no_op"
+                    else:
+                        persisted = await self._complete_technical_failure(
+                            key=key,
+                            trigger_id=claim.trigger_id,
+                            failure_code=failure_code,
+                        )
+                        return LifeEcologyRunResult(
+                            status="deferred" if persisted else "failed_safe",
+                            trigger_id=claim.trigger_id,
+                            reason_code=(
+                                "life_ecology.activity_lifecycle_technical_failure"
+                                if persisted
+                                else "life_ecology.technical_failure_persistence_failed"
+                            ),
+                            activity_followup_status=activity_status,
+                            technical_failure_code=failure_code if persisted else None,
+                        )
             except Exception:
                 _LOG.exception(
                     "life ecology activity followup failed wake=%s",

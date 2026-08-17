@@ -16,6 +16,7 @@ import hashlib
 import json
 from types import MappingProxyType
 from typing import Literal, TypeAlias
+from zoneinfo import ZoneInfo
 
 from pydantic import Field, model_validator
 
@@ -36,7 +37,59 @@ from .schema_core import FrozenModel
 from .schemas import LedgerProjection, ProjectionCursor
 
 
-_DETAIL_LIMIT = 32
+_DETAIL_LIMIT = 48
+_KIND_KEEP_DEFAULT = 2
+_KIND_KEEP: Mapping[str, int] = MappingProxyType(
+    {
+        "plan": 3,
+        "location": 2,
+        "resource": 6,
+        "attention": 2,
+        "affect_episode": 3,
+        "appraisal": 2,
+        "relationship_state": 2,
+        "private_impression": 3,
+        "response_expectation": 2,
+        "revisit_intention": 2,
+        "expectation_assessment": 2,
+        "interaction_bid": 2,
+        "action": 5,
+        "expression_plan": 3,
+        "npc": 8,
+        "thread": 2,
+        "life_ecology_schedule": 1,
+        "life_retry": 3,
+        "execution_receipt": 3,
+        "trigger_process": 0,
+        "expression_beat": 0,
+        "affect_baseline": 0,
+        "fact": 4,
+        "memory_candidate": 4,
+        "character_core": 1,
+        "budget_account": 3,
+        "budget_reservation": 2,
+        "budget_settlement": 2,
+        "action_reconciliation": 2,
+    }
+)
+_NOW_KINDS: tuple[str, ...] = (
+    "plan",
+    "location",
+    "resource",
+    "attention",
+    "affect_episode",
+    "relationship_state",
+    "private_impression",
+    "response_expectation",
+    "revisit_intention",
+    "interaction_bid",
+    "appraisal",
+    "action",
+    "expression_plan",
+    "npc",
+    "thread",
+    "life_ecology_schedule",
+)
 _TERMINAL_RETURN_LIMIT = 64
 _ROOM_VISIBLE_PRIVACY = frozenset({"public", "shareable"})
 _HOME_LOCATION_REF = "location:ecnu-dorm-room"
@@ -166,6 +219,8 @@ _ROOM_ROUTES = DashboardRoomRouteCatalog(
 _STATUS_LABELS: Mapping[str, str] = MappingProxyType(
     {
         "planned": "已计划",
+        "window_missed": "窗口过了还没开始",
+        "committed": "已记下",
         "active": "进行中",
         "paused": "暂停",
         "completed": "已完成",
@@ -194,6 +249,45 @@ _STATUS_LABELS: Mapping[str, str] = MappingProxyType(
         "pending": "待处理",
         "settled": "已结算",
         "active_reply": "回复处理中",
+        "committed_world_event": "已经落进世界的事",
+        "terminal": "已结束",
+        "depleted": "快没了",
+        "low": "偏低",
+        "moderate": "还行",
+        "high": "挺充足",
+        "full": "满的",
+        "private": "自己待着",
+        "shareable": "可以给人看",
+        "public": "在外面",
+        "dormant": "暂时不在",
+        "departed": "离开了",
+        "retired": "已经退场",
+        "contradicted": "已经对不上",
+        "fulfilled": "她觉得你应了",
+        "still_pending": "她觉得还没等到",
+        "uncertain": "她还拿不准",
+        "topic_open": "还没说完",
+        "question_pending": "还等一个回答",
+        "repair_open": "还想把话说圆",
+        "external_result_pending": "还等外面的结果",
+        "coordination_pending": "还在对一下",
+        "reply_reconsideration": "还在想要不要再回",
+        "reply": "回你的消息",
+        "proactive_message": "主动找你",
+        "followup": "又补了一句",
+        "ack": "回执",
+        "provider_result": "外部结果",
+        "physical_energy": "体力",
+        "cognitive_capacity": "脑子清不清",
+        "social_capacity": "社交力气",
+        "warmth": "暖",
+        "joy": "开心",
+        "sadness": "难过",
+        "hurt": "委屈",
+        "anger": "生气",
+        "loneliness": "孤单",
+        "anxiety": "担心",
+        "resentment": "怨气",
     }
 )
 _STAGE_LABELS: Mapping[str, str] = MappingProxyType(
@@ -252,20 +346,25 @@ _NPC_LABELS: Mapping[str, str] = MappingProxyType(
         "hometown-xu": "徐青禾",
     }
 )
+_LOCATION_LABELS: Mapping[str, str] = MappingProxyType(
+    {
+        _HOME_LOCATION_REF: "华东师大宿舍",
+    }
+)
 _RUNTIME_SIGNAL_LABELS: Mapping[str, str] = MappingProxyType(
     {
-        "scheduler": "调度器",
-        "character_interior": "角色内在决策",
-        "local_provider_capacity": "本地模型容量",
-        "text_endpoint": "文本入口",
-        "proactive_source_authority": "主动联系来源权限",
-        "life_source_authority": "生活来源权限",
-        "external_perception_upstream": "外部感知上游",
-        "model_usage_budget": "模型用量预算",
-        "process_latency": "进程延迟",
-        "storage": "存储",
-        "expression_episode": "表达 episode",
-        "semantic_recall": "语义召回",
+        "scheduler": "时钟还在走",
+        "character_interior": "她自己的判断",
+        "local_provider_capacity": "本地小模型",
+        "text_endpoint": "对话入口",
+        "proactive_source_authority": "主动找你这条路",
+        "life_source_authority": "生活事件这条路",
+        "external_perception_upstream": "外面的新闻天气",
+        "model_usage_budget": "模型预算",
+        "process_latency": "这一下快不快",
+        "storage": "账本存储",
+        "expression_episode": "说话节奏",
+        "semantic_recall": "记得的事",
     }
 )
 _RUNTIME_STATE_LABELS: Mapping[str, str] = MappingProxyType(
@@ -574,6 +673,8 @@ _TYPED_SUMMARY_FIELDS = frozenset(
         "affect_baselines",
         "affect_episodes",
         "facts",
+        "private_impressions",
+        "response_expectation_assessments",
     }
 )
 
@@ -1366,9 +1467,9 @@ class DashboardHomeSnapshotModule:
                 expression_episode=DashboardExpressionEpisodeRuntime(
                     mode=observation.expression_episode_mode,
                     mode_label={
-                        "off": "episode 未启用",
-                        "shadow": "影子观察",
-                        "stream": "语义单元流",
+                        "off": "说话节奏未启用",
+                        "shadow": "只在旁边看着",
+                        "stream": "按语义往外说",
                     }[observation.expression_episode_mode],
                 ),
                 semantic_recall=DashboardSemanticRecallRuntime(
@@ -1443,7 +1544,7 @@ def _facts_memory_inner_metrics(
         _metric("character_core_proposal_ids", "角色核心提议标识", projection.character_core_proposal_ids),
         _metric("appraisals", "情境评估", projection.appraisals),
         _metric("affect_baselines", "情感基线", projection.affect_baselines),
-        _metric("affect_episodes", "情感 episode", projection.affect_episodes),
+        _metric("affect_episodes", "心情", projection.affect_episodes),
         _metric("appraisal_proposals", "评估提议", projection.appraisal_proposals),
         _metric("appraisal_proposal_ids", "评估提议标识", projection.appraisal_proposal_ids),
         _metric("affect_proposals", "情感提议", projection.affect_proposals),
@@ -1498,7 +1599,7 @@ def _operations_metrics(projection: LedgerProjection) -> tuple[DashboardMetric, 
         _metric("budget_reservations", "预算预留", projection.budget_reservations),
         _metric("trigger_processes", "触发流程", projection.trigger_processes),
         _metric("life_ecology_schedule", "生活生态调度", 1 if projection.life_ecology_schedule is not None else 0),
-        _metric("pending_contextual_life_sources", "待处理生活来源", projection.pending_contextual_life_sources),
+        _metric("pending_contextual_life_sources", "退役生活来源索引", projection.pending_contextual_life_sources),
         _metric("contextual_life_retries", "生活来源重试", projection.contextual_life_retries),
         _metric("pending_biographical_settlements", "待结算生平变化", projection.pending_biographical_settlements),
         _metric("pending_external_observations", "待接受外部观察", projection.pending_external_observations),
@@ -1508,7 +1609,7 @@ def _operations_metrics(projection: LedgerProjection) -> tuple[DashboardMetric, 
         _metric("reconciliations", "行动对账", projection.reconciliations),
         _metric("completed_trigger_ids", "已完成触发", projection.completed_trigger_ids),
         _metric("minimal_reply_manifests", "最小回复清单", projection.minimal_reply_manifests),
-        _metric("response_expectation_assessments", "回复期待评估", projection.response_expectation_assessments),
+        _metric("response_expectation_assessments", "她有没有等到", projection.response_expectation_assessments),
         _metric("stored_message_payloads", "已存消息", projection.stored_message_payloads),
         _metric("expression_payload_descriptors", "表达载荷描述", projection.expression_payload_descriptors),
         _metric("life_content_descriptors", "生活内容描述", projection.life_content_descriptors),
@@ -1610,8 +1711,9 @@ def _overview_life_summaries(
                 kind="location",
                 kind_label="位置",
                 entity_id=item.actor_ref,
-                title="位置状态已更新",
+                title=_place_title(item.values.location_ref),
                 status=item.values.scene_visibility,
+                status_mapping=_STATUS_LABELS,
                 occurred_at=item.updated_at,
                 privacy_class=item.values.privacy_class,
             )
@@ -1622,11 +1724,11 @@ def _overview_life_summaries(
                 kind="resource",
                 kind_label="资源",
                 entity_id=f"{item.actor_ref}:{item.resource_kind}",
-                title=_label(item.resource_kind, {}),
+                title=_label(item.resource_kind, _STATUS_LABELS),
                 status=item.values.derived_band,
                 occurred_at=item.updated_at,
                 privacy_class=item.values.privacy_class,
-                values=(_value("value_bp", "数值", item.values.value_bp),),
+                values=(_bp_value("value_bp", "现在", item.values.value_bp),),
             )
         )
     for item in projection.attentions:
@@ -1703,8 +1805,8 @@ def _overview_life_summaries(
                 kind="plan",
                 kind_label="计划与活动",
                 entity_id=item.plan_id,
-                title=_label(item.activity_kind, _ACTIVITY_LABELS),
-                status=item.status,
+                title=_activity_title(item.activity_kind),
+                status=_plan_display_status(item, projection.logical_time),
                 occurred_at=item.last_transitioned_at,
                 privacy_class=item.privacy_class,
                 values=(_value("importance_bp", "重要度", item.importance_bp),),
@@ -1716,7 +1818,7 @@ def _overview_life_summaries(
                 kind="world_occurrence",
                 kind_label="世界事件",
                 entity_id=item.occurrence_id,
-                title="世界事件",
+                title="刚发生过一件事",
                 status=item.status,
                 occurred_at=item.settled_at or item.activated_at,
                 values=(
@@ -1731,7 +1833,7 @@ def _overview_life_summaries(
                 kind="outcome_observation",
                 kind_label="结果观察",
                 entity_id=item.observation_id,
-                title=_label(item.source_kind, {}),
+                title=_label(item.source_kind, _STATUS_LABELS),
                 occurred_at=item.observed_at,
                 values=(_value("confidence_bp", "置信度", item.confidence_bp),),
             )
@@ -1751,7 +1853,7 @@ def _overview_life_summaries(
                 kind="experience",
                 kind_label="经历",
                 entity_id=item.experience_id,
-                title="经历",
+                title="一段经历",
                 status=getattr(item, "status", None),
                 occurred_at=occurred_at,
                 privacy_class=privacy_class,
@@ -1809,7 +1911,7 @@ def _facts_memory_inner_summaries(
                 kind="character_core",
                 kind_label="角色核心",
                 entity_id=item.core_id,
-                title="角色核心已建立",
+                title="她这个人已经立住了",
                 occurred_at=item.updated_at,
                 privacy_class=item.values.privacy_class,
             )
@@ -1841,22 +1943,34 @@ def _facts_memory_inner_summaries(
                 values=(_value("baseline_bp", "基线", item.baseline_bp),),
             )
         )
-    for item in projection.affect_episodes:
-        dimensions = "、".join(_label(component.dimension, {}) for component in item.components)
+    affect_items = tuple(
+        item for item in projection.affect_episodes if item.status == "active"
+    )
+    if not affect_items and projection.affect_episodes:
+        affect_items = projection.affect_episodes[-1:]
+    for item in affect_items:
+        pieces = tuple(
+            f"{_label(component.dimension, _STATUS_LABELS)} {round(component.intensity_bp / 100)}%"
+            for component in sorted(
+                item.components,
+                key=lambda component: component.intensity_bp,
+                reverse=True,
+            )
+        )
         summaries.append(
             _summary(
                 kind="affect_episode",
-                kind_label="情感 episode",
+                kind_label="心情",
                 entity_id=item.episode_id,
-                title=dimensions or "情感 episode",
+                title="、".join(pieces) or "心情",
                 status=item.status,
                 occurred_at=item.updated_at,
                 privacy_class=item.privacy_class,
                 values=(
-                    _value("component_count", "成分", len(item.components)),
-                    _value(
+                    _value("component_count", "几种心情", len(item.components)),
+                    _bp_value(
                         "peak_intensity_bp",
-                        "最高强度",
+                        "最浓的一下",
                         max((component.intensity_bp for component in item.components), default=0),
                     ),
                 ),
@@ -1875,7 +1989,7 @@ def _relationship_summaries(
                 kind="npc",
                 kind_label="人物",
                 entity_id=item.npc_id,
-                title=_NPC_LABELS.get(item.npc_id, "人物"),
+                title=_NPC_LABELS.get(item.npc_id, "还叫不出名字的人"),
                 status=item.status,
                 privacy_class=item.privacy_class,
                 occurred_at=(
@@ -1958,17 +2072,17 @@ def _relationship_summaries(
                 kind="relationship_state",
                 kind_label="关系状态",
                 entity_id=item.relationship_id,
-                title="关系状态",
+                title="和你",
                 status=item.stage,
                 status_mapping=_STAGE_LABELS,
                 occurred_at=item.last_adjusted_at,
                 values=(
-                    _value("trust_bp", "信任", variables.trust_bp),
-                    _value("closeness_bp", "亲近", variables.closeness_bp),
-                    _value("respect_bp", "尊重", variables.respect_bp),
-                    _value("reliability_bp", "可靠", variables.reliability_bp),
-                    _value("mutuality_bp", "相互", variables.mutuality_bp),
-                    _value("repair_confidence_bp", "修复信心", variables.repair_confidence_bp),
+                    _bp_value("trust_bp", "信任", variables.trust_bp),
+                    _bp_value("closeness_bp", "亲近", variables.closeness_bp),
+                    _bp_value("respect_bp", "尊重", variables.respect_bp),
+                    _bp_value("reliability_bp", "可靠", variables.reliability_bp),
+                    _bp_value("mutuality_bp", "相互", variables.mutuality_bp),
+                    _bp_value("repair_confidence_bp", "修复信心", variables.repair_confidence_bp),
                 ),
             )
         )
@@ -1991,7 +2105,7 @@ def _relationship_summaries(
                 kind="thread",
                 kind_label="关系线程",
                 entity_id=item.thread_id,
-                title=_label(values.kind, {}),
+                title=_label(values.kind, _STATUS_LABELS),
                 status=values.status,
                 occurred_at=item.updated_at,
                 privacy_class=values.privacy_class,
@@ -2022,7 +2136,21 @@ def _relationship_summaries(
                 status=item.status,
                 detail=_short_text(item.hoped_response),
                 occurred_at=item.opened_at,
-                values=(_value("pressure_bp", "压力", item.pressure_bp),),
+                values=(_bp_value("pressure_bp", "在意", item.pressure_bp),),
+            )
+        )
+    for item in projection.private_impressions:
+        if item.status != "active":
+            continue
+        summaries.append(
+            _summary(
+                kind="private_impression",
+                kind_label="对你的印象",
+                entity_id=item.impression_id,
+                title=_short_text(item.reflection_summary, limit=80) or "她心里有一个对你的判断",
+                status=item.status,
+                occurred_at=item.last_supported,
+                values=(_bp_value("confidence_bp", "把握", item.confidence_bp),),
             )
         )
     return tuple(summaries)
@@ -2038,12 +2166,17 @@ def _operations_summaries(
                 kind="action",
                 kind_label="行动",
                 entity_id=item.action_id,
-                title=_label(item.kind, {}),
+                title=_label(item.kind, _STATUS_LABELS),
                 status=item.state,
                 occurred_at=item.created_at,
                 values=(
-                    _value("layer", "层级", item.layer, _label(item.layer, {})),
-                    _value("dispatch_pending", "等待发送", item.dispatch_pending),
+                    _value(
+                        "layer",
+                        "是不是发出去了",
+                        item.layer,
+                        "已经对着你" if item.layer == "external_action" else _label(item.layer, {}),
+                    ),
+                    _value("dispatch_pending", "还在等发送", item.dispatch_pending),
                 ),
             )
         )
@@ -2076,7 +2209,7 @@ def _operations_summaries(
                 kind="execution_receipt",
                 kind_label="执行回执",
                 entity_id=item.receipt_id,
-                title=_label(item.receipt_kind, {}),
+                title=_label(item.receipt_kind, _STATUS_LABELS),
                 status=item.observed_state,
                 detail=failure_label if item.error_class is not None else None,
                 occurred_at=item.received_at,
@@ -2150,17 +2283,6 @@ def _operations_summaries(
                 ),
             )
         )
-    for item in projection.trigger_processes:
-        summaries.append(
-            _summary(
-                kind="trigger_process",
-                kind_label="触发流程",
-                entity_id=item.trigger_id,
-                title=_label(item.process_kind, {}),
-                status=item.state,
-                values=(_value("attempt_count", "尝试次数", len(item.attempt_ids)),),
-            )
-        )
     if projection.life_ecology_schedule is not None:
         item = projection.life_ecology_schedule
         _failure_code, failure_label = _dashboard_failure(
@@ -2170,14 +2292,14 @@ def _operations_summaries(
         summaries.append(
             _summary(
                 kind="life_ecology_schedule",
-                kind_label="生活生态调度",
+                kind_label="她自己的日子",
                 entity_id=None,
-                title="生活生态调度",
+                title="生活还在往下过" if item.last_failure_code is None else "生活这条线卡住了",
                 status=("failed" if item.last_failure_code else "ready"),
                 detail=failure_label if item.last_failure_code is not None else None,
                 occurred_at=item.last_completed_at,
                 values=(
-                    _value("consecutive_failures", "连续失败", item.consecutive_failures),
+                    _value("consecutive_failures", "连续卡住", item.consecutive_failures),
                 ),
             )
         )
@@ -2209,22 +2331,76 @@ def _operations_summaries(
         summaries.append(
             _summary(
                 kind="expression_plan",
-                kind_label="表达计划",
+                kind_label="说过的话",
                 entity_id=item.plan_id,
-                title="表达计划",
+                title="对你说的话",
                 status=item.state,
             )
         )
-    for item in projection.expression_beats:
+    for item in projection.expression_plan_manifests:
+        expectation = item.response_expectation
+        if expectation is not None:
+            summaries.append(
+                _summary(
+                    kind="response_expectation",
+                    kind_label="她在等",
+                    entity_id=item.plan_id,
+                    title=_short_text(expectation.hoped_response) or "等你回一句",
+                    status="open",
+                    occurred_at=expectation.not_before,
+                    values=(
+                        _value(
+                            "not_before",
+                            "她说等到",
+                            expectation.not_before.isoformat(),
+                            _clock_label(expectation.not_before),
+                        ),
+                        _value(
+                            "expires_at",
+                            "这份盼头看到",
+                            expectation.expires_at.isoformat(),
+                            _clock_label(expectation.expires_at),
+                        ),
+                        _bp_value("pressure_bp", "在意", expectation.pressure_bp),
+                    ),
+                )
+            )
+        leftover = item.revisit
+        if leftover is not None:
+            summaries.append(
+                _summary(
+                    kind="revisit_intention",
+                    kind_label="她还惦记",
+                    entity_id=item.plan_id,
+                    title=_short_text(leftover.thought) or "还想再回来想这件事",
+                    status="open",
+                    occurred_at=leftover.not_before,
+                    values=(
+                        _value(
+                            "not_before",
+                            "她说再想",
+                            leftover.not_before.isoformat(),
+                            _clock_label(leftover.not_before),
+                        ),
+                        _value(
+                            "expires_at",
+                            "这份惦记看到",
+                            leftover.expires_at.isoformat(),
+                            _clock_label(leftover.expires_at),
+                        ),
+                    ),
+                )
+            )
+    for item in projection.response_expectation_assessments:
         summaries.append(
             _summary(
-                kind="expression_beat",
-                kind_label="表达节拍",
-                entity_id=item.beat_id,
-                title="表达节拍",
-                status=item.state,
-                occurred_at=item.not_before,
-                values=(_value("dependency_count", "依赖", len(item.dependency_beat_ids)),),
+                kind="expectation_assessment",
+                kind_label="等到了没有",
+                entity_id=item.assessment_id,
+                title=_label(item.status, _STATUS_LABELS),
+                status=item.status,
+                detail=_short_text(item.reason),
+                occurred_at=item.assessed_at,
             )
         )
     return tuple(summaries)
@@ -2604,6 +2780,52 @@ def _value(
     )
 
 
+def _bp_value(key: str, label: str, value: int) -> DashboardLabeledValue:
+    return _value(key, label, value, f"{round(value / 100)}%")
+
+
+def _clock_label(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    local = value.astimezone(ZoneInfo("Asia/Shanghai"))
+    return f"{local.month}月{local.day}日 {local.hour:02d}:{local.minute:02d}"
+
+
+def _plan_display_status(item: object, logical_time: datetime | None) -> str | None:
+    status = getattr(item, "status", None)
+    if not isinstance(status, str):
+        return None
+    window = getattr(item, "scheduled_window", None)
+    closes_at = getattr(window, "closes_at", None) if window is not None else None
+    if (
+        status == "planned"
+        and isinstance(closes_at, datetime)
+        and logical_time is not None
+        and logical_time >= closes_at
+    ):
+        return "window_missed"
+    return status
+
+
+def _activity_title(activity_kind: str | None) -> str:
+    if not activity_kind:
+        return "一件还没说明的事"
+    labeled = _ACTIVITY_LABELS.get(activity_kind)
+    if labeled:
+        return labeled
+    if activity_kind.startswith("open_life."):
+        return "她自己在过的一件事"
+    if activity_kind.startswith("npc_initiative."):
+        return "别人找上门的事"
+    return "一件进行中的事"
+
+
+def _place_title(location_ref: str | None) -> str:
+    if not location_ref:
+        return "位置还没具体到哪"
+    return _LOCATION_LABELS.get(location_ref, "一个记下的地方")
+
+
 def _short_text(value: object, *, limit: int = 240) -> str | None:
     if not isinstance(value, str):
         return None
@@ -2657,15 +2879,33 @@ def _dashboard_failure(
 def _bounded_summaries(
     summaries: Iterable[DashboardEntitySummary],
 ) -> tuple[DashboardEntitySummary, ...]:
-    ordered = sorted(
-        summaries,
-        key=lambda item: (
-            item.occurred_at or datetime.min.replace(tzinfo=UTC),
-            item.kind,
-            item.title,
-        ),
-    )
-    return tuple(ordered[-_DETAIL_LIMIT:])
+    grouped: dict[str, list[DashboardEntitySummary]] = {}
+    for item in summaries:
+        grouped.setdefault(item.kind, []).append(item)
+
+    def _latest(items: Sequence[DashboardEntitySummary], limit: int) -> list[DashboardEntitySummary]:
+        ordered = sorted(
+            items,
+            key=lambda item: (
+                item.occurred_at or datetime.min.replace(tzinfo=UTC),
+                item.kind,
+                item.title,
+            ),
+        )
+        return list(ordered[-limit:]) if limit > 0 else []
+
+    selected: list[DashboardEntitySummary] = []
+    now_kinds = set(_NOW_KINDS)
+    for kind in _NOW_KINDS:
+        selected.extend(_latest(grouped.pop(kind, ()), _KIND_KEEP.get(kind, _KIND_KEEP_DEFAULT)))
+    for kind, items in grouped.items():
+        selected.extend(_latest(items, _KIND_KEEP.get(kind, _KIND_KEEP_DEFAULT)))
+    if len(selected) <= _DETAIL_LIMIT:
+        return tuple(selected)
+    now_items = [item for item in selected if item.kind in now_kinds]
+    other_items = [item for item in selected if item.kind not in now_kinds]
+    room = max(0, _DETAIL_LIMIT - len(now_items))
+    return tuple((*now_items, *other_items[-room:]))
 
 
 def _state_from_metrics(metrics: Sequence[DashboardMetric]) -> Literal["ready", "empty"]:

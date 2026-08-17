@@ -114,6 +114,8 @@ class _ProactiveRoleScript:
                 self.proactive_source_kinds.append(source_kind)
                 break
         reply = self._proactive_replies.pop(0)
+        if reply == "timeout":
+            raise TimeoutError("proactive provider window exhausted")
         if isinstance(reply, str):
             return reply
         return json.dumps(
@@ -554,10 +556,10 @@ async def test_public_host_post_silent_failure_retry_preserves_identity(
         mechanism_ids=("proactive.post_silent", "proactive.technical_retry"),
         qualification_scope="public_host_post_silent_technical_retry_lifecycle",
     )
-    # The post-silent attempt receives one malformed result and one malformed
-    # same-role correction.  Only the later retry receives a valid silent
-    # decision; no local fallback is allowed to speak for the role.
-    model = _ProactiveRoleScript((_silent(), "{}", "{}", _silent()))
+    # The post-silent attempt receives a provider timeout. Only the later
+    # retry receives a valid silent decision; no local fallback is allowed
+    # to speak for the role.
+    model = _ProactiveRoleScript((_silent(), "timeout", _silent()))
     settings = Settings(
         _env_file=None,
         database_path=tmp_path / "proactive-public-host-post-silent-retry.sqlite",
@@ -621,10 +623,9 @@ async def test_public_host_post_silent_failure_retry_preserves_identity(
             run_life_ecology=False,
         )
         await host.drain(max_action_units=8, max_background_units=16)
-        assert model.proactive_calls == 3
+        assert model.proactive_calls == 2
         assert model.proactive_source_kinds == [
             "ambient_presence",
-            "post_silent",
             "post_silent",
         ]
         failed_projection = host.export_replay_evidence().projection
@@ -655,7 +656,7 @@ async def test_public_host_post_silent_failure_retry_preserves_identity(
             run_life_ecology=False,
         )
         await host.drain(max_action_units=8, max_background_units=16)
-        assert model.proactive_calls == 4
+        assert model.proactive_calls == 3
         assert model.proactive_source_kinds[-1] == "post_silent"
         recovered = host.export_replay_evidence()
         recovered_processes = tuple(
@@ -683,7 +684,7 @@ async def test_public_host_post_silent_failure_retry_preserves_identity(
         )
         await host.drain(max_action_units=8, max_background_units=16)
         repeated = host.export_replay_evidence()
-        assert model.proactive_calls == 4
+        assert model.proactive_calls == 3
         assert repeated.cursor == cursor
     finally:
         await host.aclose()
@@ -699,7 +700,7 @@ async def test_public_host_technical_retry_survives_restart_and_is_effect_once(
         mechanism_ids=("proactive.technical_retry",),
         qualification_scope="public_host_proactive_technical_retry_lifecycle",
     )
-    model = _ProactiveRoleScript(("{}", "{}", _silent()))
+    model = _ProactiveRoleScript(("timeout", _silent()))
     settings = Settings(
         _env_file=None,
         database_path=tmp_path / "proactive-public-host-retry.sqlite",
@@ -736,9 +737,9 @@ async def test_public_host_technical_retry_survives_restart_and_is_effect_once(
         )
         await host.drain(max_action_units=8, max_background_units=16)
 
-        # One semantic failure consists of the initial malformed physical call
-        # and the same-role correction call. It must not masquerade as silence.
-        assert model.proactive_calls == 2
+        # One semantic failure is a provider timeout. It must not masquerade
+        # as silence.
+        assert model.proactive_calls == 1
         assert _proactive_action_count(host) == 0
         failed_outcomes = _proactive_terminal_outcomes(host)
         assert len(failed_outcomes) == 1
@@ -780,7 +781,7 @@ async def test_public_host_technical_retry_survives_restart_and_is_effect_once(
             run_life_ecology=False,
         )
         await restarted.drain(max_action_units=8, max_background_units=16)
-        assert model.proactive_calls == 2
+        assert model.proactive_calls == 1
 
         await restarted.tick(
             tick_id="tick:public-host-retry:ordinal-1",
@@ -791,7 +792,7 @@ async def test_public_host_technical_retry_survives_restart_and_is_effect_once(
             run_life_ecology=False,
         )
         await restarted.drain(max_action_units=8, max_background_units=16)
-        assert model.proactive_calls == 3
+        assert model.proactive_calls == 2
         assert _proactive_action_count(restarted) == 0
         recovered_outcomes = _proactive_terminal_outcomes(restarted)
         assert len(recovered_outcomes) == 2
@@ -826,7 +827,7 @@ async def test_public_host_technical_retry_survives_restart_and_is_effect_once(
             run_life_ecology=False,
         )
         await restarted.drain(max_action_units=8, max_background_units=16)
-        assert model.proactive_calls == 3
+        assert model.proactive_calls == 2
         assert _proactive_action_count(restarted) == 0
         assert _proactive_terminal_outcomes(restarted) == recovered_outcomes
     finally:
@@ -843,7 +844,7 @@ async def test_public_host_new_inbound_supersedes_old_technical_retry(
         mechanism_ids=("proactive.technical_retry",),
         qualification_scope="public_host_proactive_retry_supersession",
     )
-    model = _ProactiveRoleScript(("{}", "{}"))
+    model = _ProactiveRoleScript(("timeout",))
     host = build_qq_c2c_host(
         settings=Settings(
             _env_file=None,
@@ -878,7 +879,7 @@ async def test_public_host_new_inbound_supersedes_old_technical_retry(
             run_life_ecology=False,
         )
         await host.drain(max_action_units=8, max_background_units=16)
-        assert model.proactive_calls == 2
+        assert model.proactive_calls == 1
         failed_outcomes = _proactive_terminal_outcomes(host)
         assert len(failed_outcomes) == 1
         assert failed_outcomes[0].startswith("proactive:deliberation-failed:")
@@ -917,7 +918,7 @@ async def test_public_host_new_inbound_supersedes_old_technical_retry(
         )
         await host.drain(max_action_units=8, max_background_units=16)
 
-        assert model.proactive_calls == 2
+        assert model.proactive_calls == 1
         assert _proactive_action_count(host) == 0
         assert _proactive_terminal_outcomes(host) == failed_outcomes
         projection = host.export_replay_evidence().projection

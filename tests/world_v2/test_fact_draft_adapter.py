@@ -7,6 +7,7 @@ import json
 
 import pytest
 
+from companion_daemon.llm import _MODEL_CALL_PURPOSE
 from companion_daemon.world_v2.fact_draft_adapter import (
     FactDraftTechnicalFailure,
     FactObservationSource,
@@ -176,6 +177,26 @@ async def test_adapter_no_change_does_not_create_a_proposal() -> None:
     assert await FactObservationProposalAdapter(model=_Chat()).propose(
         observation=observation, observation_event=event, source_world_revision=1,
     ) is None
+
+
+@pytest.mark.asyncio
+async def test_adapter_attributes_the_provider_call_instead_of_leaving_it_unclassified() -> None:
+    observation, event = _observation()
+
+    class _PurposeChat(_Chat):
+        def __init__(self) -> None:
+            self.purpose = None
+
+        async def complete(self, messages, *, temperature: float = 0.2):  # type: ignore[no-untyped-def]
+            self.purpose = _MODEL_CALL_PURPOSE.get()
+            return await super().complete(messages, temperature=temperature)
+
+    chat = _PurposeChat()
+    await FactObservationProposalAdapter(model=chat).propose(
+        observation=observation, observation_event=event, source_world_revision=1,
+    )
+
+    assert chat.purpose == "interaction_fact_draft"
 
 
 @pytest.mark.asyncio

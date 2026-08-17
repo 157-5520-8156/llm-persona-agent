@@ -286,7 +286,7 @@ _ADDITIONAL_BID_ADDRESS_RECIPES: tuple[tuple[tuple[str, ...], dict[str, str | No
             engagement_tactic="presence",
             disclosure_mode="selective_focus",
             staging_degree="camera_aware",
-            temporal_beat="held_for_response",
+            temporal_beat="just_after",
             visual_priority="character",
             expression_charge="none",
             attraction_mechanism=None,
@@ -532,6 +532,22 @@ def build_complete_candidates(
                 for item in (presentation or {}).get("legal_share_intents", _life_intents(charge))
             )
             legal_bids = bids
+            if presentation is not None:
+                subject = presentation.get("subject_presentation")
+                strategy = (
+                    subject.get("display_strategy") if isinstance(subject, dict) else None
+                )
+                goals = {
+                    str(goal)
+                    for goal in (
+                        strategy.get("communicative_goals", [])
+                        if isinstance(strategy, dict)
+                        else []
+                    )
+                }
+                legal_bids = tuple(bid for bid in bids if bid in goals)
+                if not legal_bids:
+                    continue
             for capture_mode in modes:
                 geometry, forms = _geometry_for(capture_mode, subject_index + index, family)
                 if geometry is None:
@@ -847,13 +863,21 @@ def _geometry_for(
             _geo(
                 "close" if variant % 2 else "medium",
                 "high" if variant % 3 == 0 else "eye",
-                "left_three_quarter" if variant % 2 else "right_three_quarter",
-                "portrait" if variant % 3 else "landscape",
+                "front"
+                if variant % 3 == 0
+                else "left_three_quarter"
+                if variant % 3 == 1
+                else "right_three_quarter",
+                "portrait",
                 "dominant" if variant % 2 else "balanced",
-                "left_third" if variant % 2 else "right_third",
+                "center"
+                if variant % 3 == 0
+                else "left_third"
+                if variant % 3 == 1
+                else "right_third",
                 "supporting",
                 "out_of_frame",
-                "partial_crop" if variant % 3 == 0 else "casual_offset",
+                "casual_offset",
             ),
             ("portrait_closeup", "portrait_context"),
         ),
@@ -1027,6 +1051,15 @@ def _geo(
     )
 
 
+def _is_close_identifiable_face(geometry: CameraGeometry) -> bool:
+    if geometry.camera_face_distance in {"very_close", "arm_length", "supported_near"}:
+        return True
+    return geometry.shot_distance in {"intimate_close", "close"} and geometry.subject_occupancy in {
+        "dominant",
+        "balanced",
+    }
+
+
 def _identity_selection(
     geometry: CameraGeometry,
     *,
@@ -1072,6 +1105,10 @@ def _identity_selection(
         if usage(item) in {"canonical_identity", "angle_support"}
         and target_yaw is not None
         and metadata.get(item, {}).get("head_yaw") == target_yaw
+        and not (
+            _is_close_identifiable_face(geometry)
+            and metadata.get(item, {}).get("expression") == "glance_back"
+        )
     )
     # An oblique mirror / over-shoulder camera has no intrinsic left/right
     # face yaw.  A canonical image alone is too weak for a medium/full-body

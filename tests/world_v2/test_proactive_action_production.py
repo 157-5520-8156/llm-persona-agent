@@ -194,7 +194,7 @@ def _proactive_model_request() -> ModelInput:
 class _ProactiveReplySequence:
     model = "test-proactive-grounding"
 
-    def __init__(self, replies: list[dict[str, object] | str]) -> None:
+    def __init__(self, replies: list[dict[str, object] | str | BaseException]) -> None:
         self.replies = list(replies)
         self.calls = 0
         self.messages: list[list[dict[str, str]]] = []
@@ -204,6 +204,8 @@ class _ProactiveReplySequence:
         self.calls += 1
         self.messages.append(messages)
         reply = self.replies.pop(0)
+        if isinstance(reply, BaseException):
+            raise reply
         return reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
 
 
@@ -235,6 +237,8 @@ class _MeteredProactiveReplySequence(_ProactiveReplySequence):
         self.calls += 1
         self.messages.append(messages)
         reply = self.replies.pop(0)
+        if isinstance(reply, BaseException):
+            raise reply
         raw = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
         return raw, _usage(provider=self.model, ordinal=self.calls)
 
@@ -947,6 +951,18 @@ class _MalformedProactiveModel:
         del temperature
         self.calls += 1
         return "{}"
+
+
+class _TimeoutProactiveModel:
+    model = "test-timeout-proactive"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete(self, _messages, *, temperature: float = 0.8):  # type: ignore[no-untyped-def]
+        del temperature
+        self.calls += 1
+        raise TimeoutError("proactive provider window exhausted")
 
 
 class _RetainedPreferenceFactModel:
@@ -1662,10 +1678,70 @@ async def test_two_unparseable_choices_are_technical_failure_not_character_silen
     assert process.state == "terminal"
     assert process.runtime_outcome_ref.startswith("proactive:deliberation-failed:")
     waiting = await runtime.drain_one()
-    assert waiting.status == "retry_wait"
-    assert waiting.retry_ordinal == 1
-    assert waiting.next_retry_at == projection.logical_time + timedelta(minutes=10)
+    assert waiting.status == "idle"
     assert malformed.calls == 2
+
+
+def test_interior_invalid_codes_are_not_all_mapped_to_non_retryable_reselection() -> None:
+    map_fn = proactive_action_module.map_character_interior_proactive_failure
+    assert map_fn("authored_expression_reselection_invalid") == (
+        "authored_expression_reselection_invalid"
+    )
+    assert map_fn("role_faculty_unavailable") == "role_faculty_unavailable"
+    assert map_fn("role_result_schema_invalid") == (
+        "authored_expression_reselection_invalid"
+    )
+    assert map_fn("invalid_role_result_after_correction") == (
+        "authored_expression_reselection_invalid"
+    )
+    assert map_fn("occasion_already_considered") == "authored_subcall_exception"
+    assert map_fn("character_interior_decision_binding_invalid") == (
+        "authored_subcall_exception"
+    )
+    assert map_fn("provider_timeout") == "authored_subcall_timeout"
+
+
+@pytest.mark.asyncio
+async def test_now_plus_yield_authorizes_on_the_first_pass() -> None:
+    ledger, _model, _runtime_value, _turn = _runtime(choice="silent")
+    draft = _proactive_draft("图书馆坐了一上午，忽然想问你在不在。")
+    draft["turn_posture"] = "yield"
+    model = _ProactiveReplySequence([draft])
+    runtime, _ = _make_proactive_runtime(
+        ledger=ledger,
+        issuer=ledger._accepted_batch_issuer,  # noqa: SLF001
+        model=model,
+        owner="worker:proactive:first-pass-yield",
+    )
+
+    assert (await runtime.drain_one()).status == "opened"
+    result = await runtime.drain_one()
+
+    assert result.status == "authorized"
+    assert model.calls == 1
+    assert (await runtime.drain_one()).status == "idle"
+
+
+@pytest.mark.asyncio
+async def test_later_without_due_window_authorizes_on_the_first_pass() -> None:
+    ledger, _model, _runtime_value, _turn = _runtime(choice="silent")
+    draft = _proactive_draft("你在忙吗？我这边图书馆坐了一上午。")
+    draft["timing_choice"] = "later"
+    model = _ProactiveReplySequence([draft])
+    runtime, _ = _make_proactive_runtime(
+        ledger=ledger,
+        issuer=ledger._accepted_batch_issuer,  # noqa: SLF001
+        model=model,
+        owner="worker:proactive:first-pass-later",
+    )
+
+    assert (await runtime.drain_one()).status == "opened"
+    result = await runtime.drain_one()
+
+    assert result.status == "authorized"
+    assert model.calls == 1
+    action = ledger.project().actions[-1]
+    assert action.kind == "followup"
 
 
 @pytest.mark.asyncio
@@ -1703,9 +1779,7 @@ async def test_repeated_unpinned_private_state_commits_no_effect_and_waits_for_r
     assert projection.proposal_audits == ()
     assert projection.actions == ()
     waiting = await runtime.drain_one()
-    assert waiting.status == "retry_wait"
-    assert waiting.retry_ordinal == 1
-    assert waiting.next_retry_at == projection.logical_time + timedelta(minutes=10)
+    assert waiting.status == "idle"
     assert model.calls == 2
 
 
@@ -1935,7 +2009,7 @@ async def test_restart_closes_an_audited_technical_failure_then_waits_for_retry(
     assert result.status == "failed_safe"
     assert malformed.calls == 2
     assert ledger.project().trigger_processes[-1].state == "terminal"
-    assert (await runtime.drain_one()).status == "retry_wait"
+    assert (await runtime.drain_one()).status == "idle"
 
 
 @pytest.mark.asyncio
@@ -2171,9 +2245,17 @@ async def test_production_proactive_lane_does_not_reauthor_after_timeout(
             reply_target="user:primary",
             action_pump_owner="worker:actions",
             interactive_turn_budget_policy=InteractiveTurnBudgetPolicy(
-                # This policy is shared by inbound and proactive authorship.
-                # Leave enough room for the production inbound composition so
-                # this regression exercises only the proactive timeout below.
+                total_seconds=0.25,
+                hedge_after_seconds=0.02,
+                acceptance_dispatch_reserve_seconds=0.02,
+                first_provider_entry_seconds=0.01,
+                technical_recovery_seconds=0.2,
+                validation_recovery_seconds=0.2,
+                validation_reselection_seconds=0.2,
+            ),
+            # Proactive authorship now owns a separate ceiling, so the timeout
+            # under test has to be set on the background lane.
+            background_turn_budget_policy=InteractiveTurnBudgetPolicy(
                 total_seconds=0.25,
                 hedge_after_seconds=0.02,
                 acceptance_dispatch_reserve_seconds=0.02,
@@ -2447,11 +2529,11 @@ async def test_expired_quiet_gap_is_dropped_instead_of_ambient_backfill(
 @pytest.mark.asyncio
 async def test_technical_failures_retry_at_ten_thirty_then_capped_one_twenty_minutes() -> None:
     ledger, _model, _runtime_value, _turn = _runtime(choice="silent")
-    malformed = _MalformedProactiveModel()
+    timed_out = _TimeoutProactiveModel()
     runtime, _ = _make_proactive_runtime(
         ledger=ledger,
         issuer=ledger._accepted_batch_issuer,  # noqa: SLF001
-        model=malformed,
+        model=timed_out,
         owner="worker:proactive:retry-backoff",
     )
 
@@ -2486,7 +2568,7 @@ async def test_technical_failures_retry_at_ten_thirty_then_capped_one_twenty_min
         )
         assert (await runtime.drain_one()).status == "failed_safe"
 
-    assert malformed.calls == 10
+    assert timed_out.calls == 5
 
 
 @pytest.mark.parametrize(
@@ -2562,11 +2644,11 @@ async def test_technical_failure_retry_survives_sixty_four_attempts_and_runtime_
         choice="silent",
         consideration_horizon=timedelta(days=14),
     )
-    malformed = _MalformedProactiveModel()
+    timed_out = _TimeoutProactiveModel()
     runtime, _ = _make_proactive_runtime(
         ledger=ledger,
         issuer=ledger._accepted_batch_issuer,  # noqa: SLF001
-        model=malformed,
+        model=timed_out,
         owner="worker:proactive:retry-before-restart",
     )
 
@@ -2597,7 +2679,7 @@ async def test_technical_failure_retry_survives_sixty_four_attempts_and_runtime_
     restarted, _ = _make_proactive_runtime(
         ledger=ledger,
         issuer=ledger._accepted_batch_issuer,  # noqa: SLF001
-        model=malformed,
+        model=timed_out,
         owner="worker:proactive:retry-after-restart",
     )
     waiting = await restarted.drain_one()
@@ -2623,18 +2705,18 @@ async def test_technical_failure_retry_survives_sixty_four_attempts_and_runtime_
     )
     assert (await restarted.drain_one()).status == "opened"
     assert (await restarted.drain_one()).status == "failed_safe"
-    calls_after_retry = malformed.calls
+    calls_after_retry = timed_out.calls
 
     restarted_again, _ = _make_proactive_runtime(
         ledger=ledger,
         issuer=ledger._accepted_batch_issuer,  # noqa: SLF001
-        model=malformed,
+        model=timed_out,
         owner="worker:proactive:retry-second-restart",
     )
     next_wait = await restarted_again.drain_one()
     assert next_wait.status == "retry_wait"
     assert next_wait.retry_ordinal == 66
-    assert malformed.calls == calls_after_retry
+    assert timed_out.calls == calls_after_retry
 
 
 @pytest.mark.asyncio
@@ -2684,11 +2766,11 @@ async def test_invalid_proactive_source_after_claim_is_terminal_not_a_scheduler_
 @pytest.mark.asyncio
 async def test_new_user_observation_supersedes_an_old_technical_retry() -> None:
     ledger, _model, _runtime_value, _turn = _runtime(choice="silent")
-    malformed = _MalformedProactiveModel()
+    timed_out = _TimeoutProactiveModel()
     runtime, _ = _make_proactive_runtime(
         ledger=ledger,
         issuer=ledger._accepted_batch_issuer,  # noqa: SLF001
-        model=malformed,
+        model=timed_out,
         owner="worker:proactive:retry-superseded",
     )
     assert (await runtime.drain_one()).status == "opened"
@@ -2741,7 +2823,7 @@ async def test_new_user_observation_supersedes_an_old_technical_retry() -> None:
     result = await runtime.drain_one()
 
     assert result.status == "idle"
-    assert malformed.calls == 2
+    assert timed_out.calls == 1
     assert proactive_technical_retry_states(ledger.project()) == ()
     assert next_proactive_retry_due(ledger.project()) is None
 
@@ -2750,7 +2832,7 @@ async def test_new_user_observation_supersedes_an_old_technical_retry() -> None:
 async def test_proactive_retry_wait_does_not_starve_ready_background_cognition(
     tmp_path,
 ) -> None:  # type: ignore[no-untyped-def]
-    malformed = _MalformedProactiveModel()
+    timed_out = _TimeoutProactiveModel()
     chat = _production_expression_wire(_NoExpectationChat())
     app = build_sqlite_world_v2_test_application(
         path=tmp_path / "proactive-retry-background-fairness.sqlite3",
@@ -2769,7 +2851,7 @@ async def test_proactive_retry_wait_does_not_starve_ready_background_cognition(
         router=_Router(),
         character_interior=_fixture_character_interior(
             inbound_author=chat,
-            proactive_provider=malformed,
+            proactive_provider=timed_out,
         ),
         transport=_DeliveredTransport(),
         fact_model=_RetainedPreferenceFactModel(),
@@ -2806,7 +2888,7 @@ async def test_proactive_retry_wait_does_not_starve_ready_background_cognition(
         assert background is not None
         assert background.status == "processed"
         assert background.work_status == "accepted"
-        assert malformed.calls == 2
+        assert timed_out.calls == 1
         health = await app.world_health_diagnostics()
         assert health["initiative_state"] == "retry_wait"
         assert health["initiative_next_consideration_at"] == retry_due.isoformat()
@@ -2820,7 +2902,7 @@ async def test_proactive_retry_wait_does_not_starve_ready_background_cognition(
 async def test_new_cadence_epoch_cannot_bypass_a_social_technical_backoff(
     tmp_path,
 ) -> None:  # type: ignore[no-untyped-def]
-    malformed = _MalformedProactiveModel()
+    timed_out = _TimeoutProactiveModel()
     chat = _production_expression_wire(_NoExpectationChat())
     app = build_sqlite_world_v2_test_application(
         path=tmp_path / "social-initiative-backoff-epoch.sqlite3",
@@ -2839,7 +2921,7 @@ async def test_new_cadence_epoch_cannot_bypass_a_social_technical_backoff(
         router=_Router(),
         character_interior=_fixture_character_interior(
             inbound_author=chat,
-            proactive_provider=malformed,
+            proactive_provider=timed_out,
         ),
         transport=_DeliveredTransport(),
         now=NOW,
@@ -2885,12 +2967,12 @@ async def test_new_cadence_epoch_cannot_bypass_a_social_technical_backoff(
         assert health["initiative_cadence_reason_codes"] == ["technical_failure:retry"]
         assert health["initiative_consecutive_technical_failures"] == 1
         assert health["initiative_retry_ordinal"] == 1
-        assert health["initiative_last_failure_code"] == ("authored_expression_reselection_invalid")
+        assert health["initiative_last_failure_code"] == ("authored_subcall_timeout")
         waiting = await app.drain_background_once()
         # A future retry remains visible in health/timer projections, but is
         # not reported as work performed by this background pass.
         assert waiting is None
-        assert malformed.calls == 2
+        assert timed_out.calls == 1
         await app.tick(
             tick_id="tick:backoff:retry-due",
             logical_time_from=second_epoch,
@@ -2907,7 +2989,7 @@ async def test_new_cadence_epoch_cannot_bypass_a_social_technical_backoff(
         assert considering["initiative_retry_ordinal"] == 1
         assert considering["initiative_next_consideration_at"] == retry_due.isoformat()
         assert (await app.drain_background_once()).status == "failed_safe"
-        assert malformed.calls == 4
+        assert timed_out.calls == 2
         second_retry = await app.world_health_diagnostics()
         assert second_retry["initiative_state"] == "retry_wait"
         assert second_retry["initiative_retry_ordinal"] == 2
@@ -2974,9 +3056,7 @@ async def test_newer_semantic_consideration_resets_older_technical_retry(
 ) -> None:  # type: ignore[no-untyped-def]
     proactive = _ProactiveReplySequence(
         [
-            "{}",
-            "{}",
-            "{}",
+            TimeoutError("proactive provider window exhausted"),
             semantic_draft,
         ]
     )
@@ -3240,8 +3320,8 @@ async def test_delivered_response_expectation_does_not_open_a_proactive_lane(
         await app.tick(
             tick_id="tick:response-gap",
             logical_time_from=NOW,
-            logical_time_to=NOW + timedelta(seconds=61),
-            observed_at=NOW + timedelta(seconds=61),
+            logical_time_to=NOW + timedelta(seconds=30),
+            observed_at=NOW + timedelta(seconds=30),
             trace_id="trace:response-gap",
             causation_id="scheduler:test",
             correlation_id="conversation:response-gap",
@@ -3300,8 +3380,8 @@ async def test_real_qq_provider_expectation_remains_advisory_only(
         await app.tick(
             tick_id="tick:qq-response-gap",
             logical_time_from=NOW,
-            logical_time_to=NOW + timedelta(seconds=61),
-            observed_at=NOW + timedelta(seconds=61),
+            logical_time_to=NOW + timedelta(seconds=30),
+            observed_at=NOW + timedelta(seconds=30),
             trace_id="trace:qq-response-gap",
             causation_id="scheduler:test",
             correlation_id="conversation:qq-response-gap",
@@ -3495,8 +3575,8 @@ async def test_persisted_qq_provider_expectation_does_not_reopen_after_restart(
         await restarted.tick(
             tick_id="tick:qq-restart",
             logical_time_from=NOW,
-            logical_time_to=NOW + timedelta(seconds=61),
-            observed_at=NOW + timedelta(seconds=61),
+            logical_time_to=NOW + timedelta(seconds=30),
+            observed_at=NOW + timedelta(seconds=30),
             trace_id="trace:qq-restart-tick",
             causation_id="scheduler:test",
             correlation_id="conversation:qq-restart",

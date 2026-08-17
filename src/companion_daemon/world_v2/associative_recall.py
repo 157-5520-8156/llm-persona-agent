@@ -97,6 +97,19 @@ def _recall_features(texts: tuple[str, ...]) -> frozenset[str]:
     return frozenset(features)
 
 
+def lexical_relevance_bp(query_text: str, document_texts: tuple[str, ...]) -> int:
+    query = _recall_features((query_text,))
+    document = _recall_features(document_texts)
+    if not query or not document:
+        return 0
+    overlap = query & document
+    if not overlap:
+        return 0
+    numerator = sum(len(feature) * len(feature) for feature in overlap)
+    denominator = max(1, sum(len(feature) * len(feature) for feature in query))
+    return min(10_000, numerator * 10_000 // denominator)
+
+
 class AssociativeRecallCompiler:
     """Select a bounded evidence-only prefetch set behind one small Interface."""
 
@@ -141,4 +154,5 @@ __all__ = [
     "AssociativeRecallCandidate",
     "AssociativeRecallCompiler",
     "AssociativeRecallSelection",
+    "lexical_relevance_bp",
 ]

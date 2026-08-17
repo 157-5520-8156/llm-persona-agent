@@ -57,6 +57,7 @@ from .conversation_continuity import (
     ContinuityRetrievalCandidate,
     ConversationContinuityCompiler,
 )
+from .associative_recall import lexical_relevance_bp
 from .fact_accepted_contracts import rehydrate_fact_commit_materialized_v2_json
 from .fact_events import FactChangedPayload
 from .context_resolver import (
@@ -324,6 +325,16 @@ def _typed_refs(item: BaseModel, *, observation_aliases: dict[str, str]) -> tupl
         # exact Fact event. Its retained observation id is an internal anchor,
         # not a second event authority that Context must resolve as an event.
         return (item.origin.accepted_event_ref,)
+    if isinstance(item, AppraisalProjection):
+        # AppraisalAccepted commits the reading. Observation evidence ids are
+        # stimulus anchors inside that payload; requiring them as separate
+        # committed-event authorities drops the whole appraisals slice whenever
+        # message_observations no longer alias them (production photo-pressure
+        # turns then saw appraisal_affect unavailable despite AppraisalAccepted).
+        return (item.origin.accepted_event_ref,)
+    if isinstance(item, AffectEpisodeProjection):
+        # Same as appraisals: AffectEpisodeOpened is the Context authority.
+        return (item.origin.accepted_event_ref,)
     if isinstance(item, FactRecallItem):
         return tuple(sorted((item.accepted_fact_event_ref, item.observation_event_ref)))
     if isinstance(item, PrivateImpressionProjection):
@@ -428,6 +439,10 @@ def _typed_authority_claims(
         # and was verified by the Fact reducer. Context binds that complete
         # payload through ``origin.accepted_event_ref`` instead of attempting
         # to reinterpret its durable observation identifier as an event id.
+        return ()
+    if isinstance(item, (AppraisalProjection, AffectEpisodeProjection)):
+        # Accepted psychological events already sealed stimulus evidence. Context
+        # proves those acceptances; it does not re-prove observation envelopes.
         return ()
     if isinstance(item, FactRecallItem):
         return tuple(
@@ -653,11 +668,45 @@ def memory_read_score_bp(
     )
 
 
-def _rank(slice_name: SliceName, item: BaseModel, logical_time: datetime | None) -> int:
+def _item_relevance_texts(item: BaseModel) -> tuple[str, ...]:
+    excerpt = getattr(item, "source_excerpt", None)
+    if isinstance(excerpt, str) and excerpt.strip():
+        texts = [excerpt]
+        predicate = getattr(item, "predicate_code", None)
+        if isinstance(predicate, str) and predicate.strip():
+            texts.append(predicate)
+        return tuple(texts)
+    excerpts = getattr(item, "source_excerpts", None)
+    if not excerpts:
+        return ()
+    texts = tuple(
+        part.text
+        for part in excerpts
+        if isinstance(getattr(part, "text", None), str) and part.text.strip()
+    )
+    return texts
+
+
+def memory_relevance_bp(query_text: str, item: BaseModel) -> int:
+    if not query_text.strip():
+        return 10_000
+    texts = _item_relevance_texts(item)
+    if not texts:
+        return 10_000
+    return lexical_relevance_bp(query_text, texts)
+
+
+def _rank(
+    slice_name: SliceName,
+    item: BaseModel,
+    logical_time: datetime | None,
+    query_text: str = "",
+) -> int:
     if slice_name in _READ_SCORE_SLICES:
         return memory_read_score_bp(
             recency_bp=_recency_bp(item, logical_time),
             importance_bp=_signal_bp(slice_name, item),
+            relevance_bp=memory_relevance_bp(query_text, item),
         )
     total_weight = sum(RANK_WEIGHT_BP.values())
     return (
@@ -672,6 +721,7 @@ def _bounded_domain_items(
     items: tuple[BaseModel, ...],
     logical_time: datetime | None,
     rank_overrides: frozenset[tuple[str, str]] = frozenset(),
+    query_text: str = "",
 ) -> tuple[BaseModel, ...] | None:
     """Apply the installed bounded selection policy before any ledger lookup."""
 
@@ -682,9 +732,9 @@ def _bounded_domain_items(
             items,
             key=lambda item: (
                 -(
-                    max(9_900, _rank(slice_name, item, logical_time))
+                    max(9_900, _rank(slice_name, item, logical_time, query_text))
                     if (slice_name, _item_ref(slice_name, item)) in rank_overrides
-                    else _rank(slice_name, item, logical_time)
+                    else _rank(slice_name, item, logical_time, query_text)
                 ),
                 _item_ref(slice_name, item),
             ),
@@ -1872,6 +1922,17 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         budget_authority_refs = self._budget_authority_refs(projection)
         budget_ms = (time.perf_counter() - domain_phase_started) * 1000
         after_domains = time.perf_counter()
+        trigger_text = next(
+            (
+                item.text
+                for item in dialogue_candidates
+                if any(
+                    claim.authority_event_ref == query.trigger_ref
+                    for claim in item.source_claims
+                )
+            ),
+            "",
+        )
 
         domains: dict[SliceName, tuple[BaseModel, ...] | None] = {
             # ``agent:companion`` is the canonical companion actor reference.
@@ -1919,6 +1980,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     items,
                     query.logical_time,
                     continuity_rank_overrides,
+                    trigger_text,
                 )
             )
             for slice_name, items in domains.items()

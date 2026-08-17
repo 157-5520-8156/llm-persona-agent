@@ -1,4 +1,4 @@
-"""Durable OpenAI-route vision provider for accepted perception Actions.
+"""Durable DashScope-route vision provider for accepted perception Actions.
 
 The transport satisfies the perception vertical's :class:`PerceptionTransport`
 contract: every delivered analysis is persisted in one SQLite row keyed by the
@@ -6,7 +6,9 @@ Action's idempotency key before it is returned, so a crash between provider
 settlement and ledger commit recovers through ``lookup`` instead of a second
 provider call, and ``read_exact`` replays the exact hash-bound text for later
 Context compilation.  The input body is the archive's canonical ``data:`` URL
-string; no provider URL or raw provider payload is persisted.
+string; no provider URL or raw provider payload is persisted.  Production
+uses Qwen VL with thinking disabled; this is an objective captioner, not a
+role author.
 """
 
 from __future__ import annotations
@@ -62,7 +64,7 @@ def _asserts_identity(summary: str) -> bool:
 class SQLiteDurableVisionPerceptionTransport:
     """Effect-once vision analysis bound to idempotency keys and hashes."""
 
-    provider = "openai:vision"
+    provider = "dashscope:vision"
 
     def __init__(
         self,
@@ -74,6 +76,7 @@ class SQLiteDurableVisionPerceptionTransport:
         proxy_url: str | None = None,
         timeout_seconds: float = 45.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        thinking_disabled: bool = True,
     ) -> None:
         if not api_key or not base_url or not model:
             raise ValueError("vision perception transport requires provider credentials")
@@ -83,6 +86,7 @@ class SQLiteDurableVisionPerceptionTransport:
         self._proxy_url = proxy_url
         self._timeout = timeout_seconds
         self._transport = transport
+        self._thinking_disabled = thinking_disabled
         self._lock = threading.RLock()
         self._connection = sqlite3.connect(str(path), isolation_level=None, check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
@@ -227,6 +231,23 @@ class SQLiteDurableVisionPerceptionTransport:
             options["proxy"] = self._proxy_url
         if self._transport is not None:
             options["transport"] = self._transport
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": _USER_PROMPT},
+                        {"type": "image_url", "image_url": {"url": body}},
+                    ],
+                },
+            ],
+            "max_tokens": 300,
+            "max_completion_tokens": 300,
+        }
+        if self._thinking_disabled:
+            payload["enable_thinking"] = False
         async with httpx.AsyncClient(**options) as client:
             response = await client.post(
                 f"{self._base_url}/chat/completions",
@@ -234,20 +255,7 @@ class SQLiteDurableVisionPerceptionTransport:
                     "Authorization": f"Bearer {self._api_key}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "model": self._model,
-                    "messages": [
-                        {"role": "system", "content": _SYSTEM_PROMPT},
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": _USER_PROMPT},
-                                {"type": "image_url", "image_url": {"url": body}},
-                            ],
-                        },
-                    ],
-                    "max_completion_tokens": 300,
-                },
+                json=payload,
             )
             response.raise_for_status()
             payload = response.json()

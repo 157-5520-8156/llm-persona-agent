@@ -277,6 +277,20 @@ class ResponseExpectationDraft(FrozenModel):
         return self
 
 
+class RevisitDraft(FrozenModel):
+    """Optional leftover she wants to return to; the host does not invent one."""
+
+    thought: str = Field(min_length=1, max_length=160)
+    wait_seconds: int = Field(ge=30, le=RESPONSE_EXPECTATION_WAIT_MAX_SECONDS)
+    expires_after_seconds: int = Field(ge=60, le=172_800)
+
+    @model_validator(mode="after")
+    def expiry_follows_wait(self) -> "RevisitDraft":
+        if self.expires_after_seconds <= self.wait_seconds:
+            raise ValueError("revisit expiry must follow its wait")
+        return self
+
+
 class WorldClaimDraft(FrozenModel):
     """Model-declared autobiographical claim, checked against Context authority."""
 
@@ -333,6 +347,7 @@ class ExpressionDraft(FrozenModel):
     variation_profile: VariationProfile | None = None
     response_expectation: ResponseExpectationDraft | None = None
     response_expectation_assessment: ResponseExpectationAssessmentDraft | None = None
+    revisit: RevisitDraft | None = None
     world_claims: tuple[WorldClaimDraft, ...] = Field(default=(), max_length=8)
     # A role-owned request to wake the existing source-closed media-selection
     # lane.  It is deliberately not a render instruction, delivery claim, or
@@ -363,6 +378,7 @@ class ExpressionDraft(FrozenModel):
                 or self.delay_seconds is not None
                 or self.expires_after_seconds is not None
                 or self.response_expectation is not None
+                or self.revisit is not None
             ):
                 raise ValueError("silent expression cannot smuggle visible beats or a due window")
             return self
@@ -379,6 +395,8 @@ class ExpressionDraft(FrozenModel):
             if self.delay_seconds is not None or self.expires_after_seconds is not None:
                 raise ValueError("immediate expression cannot select a due window")
             return self
+        if self.revisit is not None:
+            raise ValueError("later expression cannot also freeze a revisit leftover")
         if self.delay_seconds is None or self.expires_after_seconds is None:
             raise ValueError("later expression requires a relative due window")
         if self.expires_after_seconds <= self.delay_seconds:
@@ -1772,13 +1790,13 @@ def is_world_claim_violation(violation: str) -> bool:
 
 
 def _normalize_world_claim_aliases(value: dict[str, object]) -> dict[str, object]:
-    """Repair one unambiguous field-name echo without loosening validation.
+    """Repair unambiguous field-name echoes without loosening validation.
 
     Models regularly echo the prompt phrase "exact source_refs" as a literal
-    ``exact_source_refs`` key.  The meaning is identical and the strict
-    schema would otherwise collapse a fully valid reply into the recovery
-    lane, so only this exact alias is renamed — any other extra key still
-    fails closed.
+    ``exact_source_refs`` key, and "claim" for ``claim_text``.  The meaning is
+    identical and the strict schema would otherwise collapse a fully valid
+    reply into the recovery lane, so only these exact aliases are renamed —
+    any other extra key still fails closed.
     """
 
     claims = value.get("world_claims")
@@ -1787,9 +1805,18 @@ def _normalize_world_claim_aliases(value: dict[str, object]) -> dict[str, object
     repaired = []
     changed = False
     for claim in claims:
-        if isinstance(claim, dict) and "exact_source_refs" in claim and "source_refs" not in claim:
+        if not isinstance(claim, dict):
+            repaired.append(claim)
+            continue
+        if "exact_source_refs" in claim and "source_refs" not in claim:
             claim = {
                 ("source_refs" if key == "exact_source_refs" else key): item
+                for key, item in claim.items()
+            }
+            changed = True
+        if "claim" in claim and "claim_text" not in claim:
+            claim = {
+                ("claim_text" if key == "claim" else key): item
                 for key, item in claim.items()
             }
             changed = True
@@ -1910,6 +1937,262 @@ def normalize_expression_draft_wire(value: dict[str, object]) -> dict[str, objec
     normalized = dict(value)
     normalized["beats"] = normalized_beats
     return normalized
+
+
+_VISIBLE_BEAT_MODALITIES = frozenset({"text", "reaction", "sticker"})
+_BEAT_WIRE_KEYS = frozenset({"modality", "text", "reaction_id", "sticker_id"})
+_BEAT_KEY_ALIASES = {
+    "reaction_option_id": "reaction_id",
+    "sticker_option_id": "sticker_id",
+}
+_PROACTIVE_EXPRESSION_WIRE_KEYS = frozenset(
+    {
+        "appraisal_draft",
+        "beats",
+        "brief_rationale",
+        "cadence",
+        "confidence",
+        "contract",
+        "delay_seconds",
+        "expires_after_seconds",
+        "impulse_summary",
+        "media_request",
+        "media_source_refs",
+        "mood",
+        "private_turn_state",
+        "response_expectation",
+        "response_expectation_assessment",
+        "revisit",
+        "stance",
+        "timing_choice",
+        "turn_posture",
+        "variation_profile",
+        "world_claims",
+    }
+)
+_WORLD_CLAIM_SCOPE_PREFERENCE = (
+    "current_world",
+    "past_world",
+    "shared_history",
+    "counterpart_history",
+    "stable_identity",
+)
+_LATER_DEFAULT_DELAY_SECONDS = 1_800
+_LATER_DEFAULT_EXPIRES_AFTER_SECONDS = 7_200
+
+
+def _clip_authored_text(value: object, *, max_length: int) -> object:
+    if not isinstance(value, str) or len(value) <= max_length:
+        return value
+    clipped = value[:max_length].rstrip()
+    return clipped if clipped else value
+
+
+def _beat_has_visible_content(item: object) -> bool:
+    if isinstance(item, str) and item.strip():
+        return True
+    if not isinstance(item, dict):
+        return False
+    modality = item.get("modality")
+    if modality in _VISIBLE_BEAT_MODALITIES:
+        return True
+    return bool(item.get("text") or item.get("reaction_id") or item.get("sticker_id"))
+
+
+def _bind_proactive_beat(item: object) -> object:
+    if not isinstance(item, dict):
+        return item
+    bound: dict[str, object] = {}
+    for key, value in item.items():
+        if value is None:
+            continue
+        canonical = _BEAT_KEY_ALIASES.get(key, key)
+        if canonical in _BEAT_WIRE_KEYS and canonical not in bound:
+            bound[canonical] = value
+    return bound
+
+
+def bind_proactive_expression_wire(value: dict[str, object]) -> dict[str, object]:
+    """Bind recoverable timing/posture/window contradictions onto the authored beats.
+
+    This does not invent words or a motive. Visible beats keep their text;
+    ``timing_choice`` and due-window fields are closed over that already-made
+    expression so a legal ProactiveDraft can be accepted on the first pass.
+    """
+
+    bound = {
+        key: item for key, item in value.items() if key in _PROACTIVE_EXPRESSION_WIRE_KEYS
+    }
+    beats = bound.get("beats")
+    beat_list = [
+        _bind_proactive_beat(item) for item in beats
+    ] if isinstance(beats, (list, tuple)) else []
+    while (
+        beat_list
+        and isinstance(beat_list[-1], dict)
+        and beat_list[-1].get("modality") == "typing"
+        and any(_beat_has_visible_content(item) for item in beat_list[:-1])
+    ):
+        beat_list.pop()
+    visible = any(_beat_has_visible_content(item) for item in beat_list)
+    later_non_text = visible and any(
+        isinstance(item, dict)
+        and item.get("modality") in {"reaction", "sticker"}
+        for item in beat_list
+    )
+    timing = bound.get("timing_choice")
+    if visible:
+        if timing == "silent" or later_non_text:
+            bound["timing_choice"] = "now"
+            timing = "now"
+        if timing == "now":
+            bound["delay_seconds"] = None
+            bound["expires_after_seconds"] = None
+            if bound.get("turn_posture") == "yield":
+                bound["turn_posture"] = "continue"
+        elif timing == "later":
+            delay = bound.get("delay_seconds")
+            expiry = bound.get("expires_after_seconds")
+            if not isinstance(delay, int) or isinstance(delay, bool) or delay < 1:
+                delay = _LATER_DEFAULT_DELAY_SECONDS
+            delay = min(max(delay, 1), EXPRESSION_DELAY_MAX_SECONDS)
+            if (
+                not isinstance(expiry, int)
+                or isinstance(expiry, bool)
+                or expiry <= delay
+            ):
+                expiry = max(delay + 60, _LATER_DEFAULT_EXPIRES_AFTER_SECONDS)
+            expiry = min(max(expiry, delay + 1), 172_800)
+            bound["delay_seconds"] = delay
+            bound["expires_after_seconds"] = expiry
+            if bound.get("turn_posture") == "interject":
+                bound["turn_posture"] = "continue"
+        bound["beats"] = beat_list
+    else:
+        bound["timing_choice"] = "silent"
+        bound["beats"] = []
+        bound["delay_seconds"] = None
+        bound["expires_after_seconds"] = None
+        bound["response_expectation"] = None
+        bound["revisit"] = None
+        if bound.get("turn_posture") == "interject":
+            bound["turn_posture"] = "continue"
+    bound["stance"] = _clip_authored_text(bound.get("stance"), max_length=128)
+    bound["brief_rationale"] = _clip_authored_text(
+        bound.get("brief_rationale"), max_length=240
+    )
+    if "impulse_summary" in bound:
+        bound["impulse_summary"] = _clip_authored_text(
+            bound.get("impulse_summary"), max_length=240
+        )
+    expectation = bound.get("response_expectation")
+    if isinstance(expectation, dict):
+        hoped = _clip_authored_text(expectation.get("hoped_response"), max_length=128)
+        repaired = dict(expectation)
+        repaired["hoped_response"] = hoped
+        wait = repaired.get("wait_seconds")
+        expiry = repaired.get("expires_after_seconds")
+        if (
+            isinstance(wait, int)
+            and not isinstance(wait, bool)
+            and isinstance(expiry, int)
+            and not isinstance(expiry, bool)
+            and expiry <= wait
+        ):
+            repaired["expires_after_seconds"] = min(172_800, max(wait + 60, expiry))
+        bound["response_expectation"] = repaired
+    leftover = bound.get("revisit")
+    if isinstance(leftover, dict):
+        thought = _clip_authored_text(leftover.get("thought"), max_length=160)
+        repaired_leftover = dict(leftover)
+        repaired_leftover["thought"] = thought
+        wait = repaired_leftover.get("wait_seconds")
+        expiry = repaired_leftover.get("expires_after_seconds")
+        if (
+            isinstance(wait, int)
+            and not isinstance(wait, bool)
+            and isinstance(expiry, int)
+            and not isinstance(expiry, bool)
+            and expiry <= wait
+        ):
+            repaired_leftover["expires_after_seconds"] = min(172_800, max(wait + 60, expiry))
+        bound["revisit"] = repaired_leftover
+    claims = bound.get("world_claims")
+    if isinstance(claims, list):
+        bound["world_claims"] = [
+            claim
+            for claim in claims
+            if isinstance(claim, dict)
+            and (
+                claim.get("scope")
+                not in {
+                    "current_world",
+                    "past_world",
+                    "counterpart_history",
+                    "shared_history",
+                }
+                or (
+                    isinstance(claim.get("source_refs"), (list, tuple))
+                    and any(isinstance(ref, str) and ref for ref in claim["source_refs"])
+                )
+            )
+        ]
+    return bound
+
+
+def bind_proactive_world_claims(
+    *,
+    draft: ExpressionDraft,
+    request: ModelInput,
+    stable_identity_source_refs: frozenset[str] = frozenset(),
+) -> ExpressionDraft:
+    """Rebind or drop lane-mismatched world claims without silencing the draft.
+
+    A cited ref that belongs to exactly one factual lane is moved onto that
+    lane. Refs that prove nothing are dropped. If every grounded claim was
+    unsupported, the caller still fail-closes; mixed legal/illegal sets keep
+    the legal remainder so a later/now choice can still go out.
+    """
+
+    try:
+        context = json.loads(request.model_content_json)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("world claim binding requires Context JSON") from exc
+    if not isinstance(context, dict):
+        raise ValueError("world claim binding requires a Context object")
+    allowed = world_claim_source_refs_by_scope(
+        context=context,
+        stable_identity_source_refs=stable_identity_source_refs,
+        counterpart_message_source_refs=current_counterpart_report_source_refs(
+            context=context,
+            request=request,
+        ),
+    )
+    rebound: list[WorldClaimDraft] = []
+    dropped_grounded = 0
+    for claim in draft.world_claims:
+        if claim.scope == "subjective_or_hypothetical":
+            dropped_grounded += 1
+            continue
+        refs = set(claim.source_refs)
+        permitted = allowed.get(claim.scope, frozenset())
+        if refs <= permitted:
+            rebound.append(claim)
+            continue
+        matching = tuple(
+            scope
+            for scope in _WORLD_CLAIM_SCOPE_PREFERENCE
+            if refs <= allowed.get(scope, frozenset())
+        )
+        if matching:
+            rebound.append(claim.model_copy(update={"scope": matching[0]}))
+            continue
+        dropped_grounded += 1
+    if dropped_grounded and not rebound:
+        raise ValueError("world claim cites authority outside its semantic source lane")
+    if rebound == list(draft.world_claims):
+        return draft
+    return draft.model_copy(update={"world_claims": tuple(rebound)})
 
 
 class ExpressionPlanBeatMaterialization(NamedTuple):
@@ -2256,6 +2539,11 @@ def materialize_expression_draft(
                     if draft.response_expectation is not None
                     else None
                 ),
+                "revisit": (
+                    draft.revisit.model_dump(mode="json")
+                    if draft.revisit is not None
+                    else None
+                ),
                 "world_claims": [item.model_dump(mode="json") for item in draft.world_claims],
                 **(
                     {
@@ -2345,6 +2633,8 @@ __all__ = [
     "SourceRefAliasTable",
     "TEXT_ONLY_EXPRESSION_CAPABILITIES",
     "PRODUCTION_TEXT_ONLY_EXPRESSION_CAPABILITIES",
+    "bind_proactive_expression_wire",
+    "bind_proactive_world_claims",
     "build_source_ref_alias_table",
     "current_counterpart_report_source_refs",
     "expand_expression_source_ref_aliases",

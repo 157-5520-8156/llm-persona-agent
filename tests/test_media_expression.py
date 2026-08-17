@@ -172,6 +172,110 @@ def test_unclassified_reference_cannot_silently_become_angle_support(tmp_path) -
     assert selection.roles == ("identity_anchor",)
 
 
+def test_close_front_camera_does_not_use_glance_back_turn_as_angle_support(tmp_path) -> None:
+    assets = tuple(
+        str(tmp_path / name)
+        for name in ("canonical.png", "night-turn.png", "seated-left.png")
+    )
+    for path in assets:
+        Path(path).write_bytes(b"reference")
+    geometry = CameraGeometry.create(
+        shot_distance="close",
+        camera_height="eye",
+        view_axis="left_three_quarter",
+        pitch="level",
+        roll="slight_left",
+        orientation="portrait",
+        subject_occupancy="dominant",
+        subject_placement="left_third",
+        environment_share="supporting",
+        focus_behavior="subject_priority",
+        imperfection_profile="casual_offset",
+        device_visibility="out_of_frame",
+        camera_face_distance="arm_length",
+        face_radial_position="inner_third",
+    )
+
+    selection = _identity_selection(
+        geometry,
+        assets=assets,
+        metadata={
+            assets[0]: {"identity_usage": "canonical_identity", "head_yaw": "near_front"},
+            assets[1]: {
+                "identity_usage": "angle_support",
+                "head_yaw": "toward_frame_left",
+                "expression": "glance_back",
+            },
+            assets[2]: {
+                "identity_usage": "angle_support",
+                "head_yaw": "toward_frame_left",
+                "expression": "thoughtful",
+            },
+        },
+        catalog_version="test-catalog",
+        selection_seed="close-selfie-skips-turnaround",
+    )
+
+    assert selection is not None
+    assert selection.asset_ids == (assets[0], assets[2])
+    assert selection.roles == ("identity_anchor", "angle_support")
+
+
+def test_close_front_camera_keeps_canonical_only_when_all_angle_supports_are_turnarounds(
+    tmp_path,
+) -> None:
+    assets = tuple(str(tmp_path / name) for name in ("canonical.png", "night-turn.png"))
+    for path in assets:
+        Path(path).write_bytes(b"reference")
+    geometry = CameraGeometry.create(
+        shot_distance="close",
+        camera_height="eye",
+        view_axis="left_three_quarter",
+        pitch="level",
+        roll="slight_left",
+        orientation="portrait",
+        subject_occupancy="dominant",
+        subject_placement="left_third",
+        environment_share="supporting",
+        focus_behavior="subject_priority",
+        imperfection_profile="casual_offset",
+        device_visibility="out_of_frame",
+        camera_face_distance="arm_length",
+        face_radial_position="inner_third",
+    )
+
+    selection = _identity_selection(
+        geometry,
+        assets=assets,
+        metadata={
+            assets[0]: {"identity_usage": "canonical_identity", "head_yaw": "near_front"},
+            assets[1]: {
+                "identity_usage": "angle_support",
+                "head_yaw": "toward_frame_left",
+                "expression": "glance_back",
+            },
+        },
+        catalog_version="test-catalog",
+        selection_seed="close-selfie-canonical-only",
+    )
+
+    assert selection is not None
+    assert selection.asset_ids == (assets[0],)
+    assert selection.roles == ("identity_anchor",)
+
+
+def test_front_camera_geometry_includes_a_near_front_selfie_axis() -> None:
+    from companion_daemon.media_expression import _geometry_for
+
+    axes = {
+        _geometry_for("character_front_camera", variant, "character_media")[0].view_axis
+        for variant in range(6)
+    }
+    assert "front" in axes
+    assert "left_three_quarter" in axes
+    assert "right_three_quarter" in axes
+
+
 def test_media_address_strategy_rejects_attraction_without_recipient_address() -> None:
     with pytest.raises(ValueError, match="attraction requires recipient address"):
         MediaAddressStrategy.create(
@@ -508,6 +612,7 @@ def test_character_media_freezes_rich_visible_expression_beats_not_only_face_axe
             limit=64,
         )
         if item.presentation.display_strategy is not None
+        and "invite_desire" in item.presentation.display_strategy.communicative_goals
     )
     embodiment = next(
         item
@@ -594,6 +699,65 @@ def test_interaction_bids_have_multiple_compatible_address_routes() -> None:
     )
     assert len(validation) >= 2
     assert {"vulnerability", "contrast"}.issubset({tactic for _address, tactic in validation})
+
+
+def test_character_media_candidates_only_claim_presentation_goals() -> None:
+    snapshot = {
+        "event": {"event_id": "event:status", "status": "committed"},
+        "activity": {"kind": "study", "description": "写完一段笔记"},
+        "location": {"kind": "home", "name": "书桌边"},
+        "character": {"emotion": "calm"},
+    }
+    subject = next(
+        item
+        for item in build_subject_candidates(
+            snapshot=snapshot,
+            opportunity_id="op:goal-bound-source",
+            capture_mode="character_front_camera",
+            character_visibility="identifiable",
+            privacy_ceiling="personal",
+            relationship_stage="close_friend",
+            limit=64,
+        )
+        if item.presentation.display_strategy is not None
+        and {
+            "inform_status",
+            "share_presence",
+        }.issubset(item.presentation.display_strategy.communicative_goals)
+    )
+    embodiment = next(
+        item
+        for item in build_embodied_candidates(
+            snapshot=snapshot,
+            opportunity_id="op:goal-bound-source",
+            relationship_stage="close_friend",
+            sensual_charge_ceiling="none",
+            limit=256,
+        )
+        if "character_front_camera" in item.legal_capture_modes
+    )
+    goals = set(subject.presentation.display_strategy.communicative_goals)
+    source = {
+        "presentation_candidate_id": "source:goal-bound",
+        "legal_capture_modes": ["character_front_camera"],
+        "legal_share_intents": ["record", "show_and_tell"],
+        "character_visibility": "identifiable",
+        "subject_presentation": subject.presentation.to_payload(),
+        "embodied_presentation": embodiment.presentation.to_payload(),
+    }
+
+    candidates = build_complete_candidates(
+        opportunity_id="op:goal-bound",
+        family="character_media",
+        expression_charge_ceiling="none",
+        presentation_candidates=(source,),
+        event_snapshot=snapshot,
+        limit=64,
+    )
+
+    assert candidates
+    assert all(set(item.legal_interaction_bids) <= goals for item in candidates)
+    assert any("inform_status" in item.legal_interaction_bids for item in candidates)
 
 
 def test_complete_candidates_freeze_authenticity_and_varied_visible_face_actions() -> None:
@@ -683,6 +847,11 @@ def test_character_media_candidates_freeze_lived_moment_contracts() -> None:
             limit=64,
         )
         if item.presentation.display_strategy is not None
+        and {
+            "inform_status",
+            "share_presence",
+            "share_discovery",
+        }.issubset(item.presentation.display_strategy.communicative_goals)
     )
     embodiment = next(
         item

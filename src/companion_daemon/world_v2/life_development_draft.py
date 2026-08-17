@@ -20,6 +20,7 @@ from .schema_core import FrozenModel, PrivacyClass
 from .schemas import (
     BiographicalCoordinateReplacement,
     DueWindow,
+    DynamicLifeArcContextDescriptor,
     ProjectionCursor,
 )
 
@@ -37,6 +38,7 @@ LIFE_DEVELOPMENT_PRIVACY_ORDER = (
     "private",
     "withhold",
 )
+ORDINARY_LIFE_PHOTO_PRIVACY = ("public", "shareable", "personal", "private")
 _PRIVACY_RANK = {
     value: rank for rank, value in enumerate(LIFE_DEVELOPMENT_PRIVACY_ORDER)
 }
@@ -588,6 +590,48 @@ class ObjectiveBiographicalTransitionDraft(FrozenModel):
         return self
 
 
+class DynamicLifeDirectionDraft(FrozenModel):
+    summary: str = Field(min_length=1, max_length=12_000)
+    context_tags: tuple[str, ...] = Field(min_length=1, max_length=16)
+    supersedes_context_tag_prefixes: tuple[str, ...] = Field(default=(), max_length=8)
+    narrative_tags: tuple[str, ...] = Field(default=(), max_length=16)
+    duration_days: int | None = Field(default=None, ge=1, le=730)
+    privacy_class: PrivacyClass = "personal"
+
+    @field_validator(
+        "context_tags",
+        "supersedes_context_tag_prefixes",
+        "narrative_tags",
+        mode="before",
+    )
+    @classmethod
+    def canonicalize_coordinates(cls, value: object) -> object:
+        return _canonicalize_string_set(value)
+
+    @model_validator(mode="after")
+    def event_impact_is_structurally_closed(self) -> "DynamicLifeDirectionDraft":
+        if (
+            any(item.startswith("direction.") for item in self.context_tags)
+            or any(
+                item.startswith("direction.")
+                for item in self.supersedes_context_tag_prefixes
+            )
+        ):
+            raise ValueError(
+                "dynamic life direction cannot author the character direction namespace"
+            )
+        DynamicLifeArcContextDescriptor.create(
+            summary_content_ref="content:validate:dynamic-life-direction",
+            summary_payload_hash="0" * 64,
+            narrative_tags=self.narrative_tags,
+            duration_days=self.duration_days,
+            privacy_class=self.privacy_class,
+            context_tags=self.context_tags,
+            supersedes_context_tag_prefixes=self.supersedes_context_tag_prefixes,
+        )
+        return self
+
+
 class LifeDevelopmentOutcomeDraft(FrozenModel):
     experienced_by_ref: str = Field(min_length=1, max_length=512)
     text: str = Field(min_length=1, max_length=12_000)
@@ -597,7 +641,7 @@ class LifeDevelopmentOutcomeDraft(FrozenModel):
     provisional_npcs: tuple[ProvisionalNpcDraft, ...] = Field(default=(), max_length=4)
     provisional_places: tuple[ProvisionalPlaceDraft, ...] = Field(default=(), max_length=4)
     objective_biographical_transition: "ObjectiveBiographicalTransitionDraft | None" = None
-    dynamic_life_direction: None = None
+    dynamic_life_direction: DynamicLifeDirectionDraft | None = None
     visual_evidence: LifeDevelopmentVisualEvidenceDraft | None = None
 
     @field_validator("claim_refs", mode="before")
@@ -624,14 +668,18 @@ class LifeDevelopmentOutcomeDraft(FrozenModel):
                 self.objective_biographical_transition.privacy_class
             ]
             < _PRIVACY_RANK[self.privacy_class]
+        ) or (
+            self.dynamic_life_direction is not None
+            and _PRIVACY_RANK[self.dynamic_life_direction.privacy_class]
+            < _PRIVACY_RANK[self.privacy_class]
         ):
             raise ValueError("outcome effect cannot weaken outcome privacy")
         if self.visual_evidence is not None:
             if not set(self.visual_evidence.claim_refs) <= set(self.claim_refs):
                 raise ValueError("outcome visual evidence must close over outcome claim refs")
-            if self.privacy_class not in {"public", "shareable"}:
+            if self.privacy_class not in ORDINARY_LIFE_PHOTO_PRIVACY:
                 raise ValueError(
-                    "recipient-unbound life-development visual evidence must be public or shareable"
+                    "recipient-unbound life-development visual evidence must be ordinary life privacy, not withhold"
                 )
         return self
 
@@ -770,6 +818,14 @@ class LifeDevelopmentPossibilityDraft(FrozenModel):
             raise ValueError("location_ref and location_capability_ref must be supplied together")
         for outcome in self.outcomes:
             visual = outcome.visual_evidence
+            if (
+                self.location_ref is not None
+                and outcome.privacy_class in ORDINARY_LIFE_PHOTO_PRIVACY
+                and visual is None
+            ):
+                raise ValueError(
+                    "location-bound ordinary-privacy outcomes must carry visual_evidence"
+                )
             if (
                 visual is not None
                 and visual.location is not None
@@ -1333,6 +1389,7 @@ __all__ = [
     "LifeDevelopmentClaimDeclaration",
     "LifeDevelopmentDraftError",
     "LifeDevelopmentNoOpDraft",
+    "DynamicLifeDirectionDraft",
     "ObjectiveBiographicalTransitionDraft",
     "LifeDevelopmentOutcomeDraft",
     "ProvisionalPlaceDraft",
@@ -1342,6 +1399,7 @@ __all__ = [
     "LifeDevelopmentVisualObjectDraft",
     "LifeDevelopmentPossibilityDraft",
     "LIFE_DEVELOPMENT_PRIVACY_ORDER",
+    "ORDINARY_LIFE_PHOTO_PRIVACY",
     "LifeDevelopmentTimingDraft",
     "LifeDevelopmentWorldDraft",
     "ProvisionalNpcDraft",

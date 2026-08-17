@@ -93,6 +93,34 @@ def _hash_text(value: str) -> str:
     return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _pinned_attended_source_refs(
+    attended: object, *, snapshot_refs: Sequence[str]
+) -> list[str]:
+    """Copy already-authored attention onto the decision envelope.
+
+    DeepSeek's documented strict subset still lets the model flatten a
+    complete purpose payload into ``decision``.  Closing that wrapper over
+    pinned ``attended_source_refs`` does not invent evidence or a choice.
+    """
+
+    if not isinstance(attended, list):
+        return []
+    allowed = set(snapshot_refs)
+    closed: list[str] = []
+    seen: set[str] = set()
+    for item in attended:
+        if (
+            not isinstance(item, str)
+            or not item
+            or item not in allowed
+            or item in seen
+        ):
+            continue
+        closed.append(item)
+        seen.add(item)
+    return closed
+
+
 _PRIVATE_IMPRESSION_IDENTITY_KEYS = frozenset(
     {
         "source",
@@ -346,20 +374,36 @@ def _validate_proactive_payload(
 ) -> None:
     # Import locally so the deep Module's generic role contract does not make
     # proactive scheduling a dependency of every CharacterInterior import.
-    from ..expression_draft import normalize_expression_draft_wire
+    from ..expression_draft import (
+        bind_proactive_expression_wire,
+        normalize_expression_draft_wire,
+    )
     from ..proactive_action import ProactiveDraft
 
     if "private_turn_state" in payload:
         raise ValueError("proactive private_turn_state is supplied by the same InnerTurn summary")
-    normalized = normalize_expression_draft_wire(
-        {
-            **dict(payload),
-            "private_turn_state": {
-                "inner_state_summary": "structural validation only",
-                "attended_source_refs": [],
-            },
-        }
+    mood = payload.get("mood")
+    appraisal_draft = payload.get("appraisal_draft")
+    expression_payload = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"mood", "appraisal_draft"}
+    }
+    normalized = bind_proactive_expression_wire(
+        normalize_expression_draft_wire(
+            {
+                **dict(expression_payload),
+                "private_turn_state": {
+                    "inner_state_summary": "structural validation only",
+                    "attended_source_refs": [],
+                },
+            }
+        )
     )
+    if mood is not None:
+        normalized["mood"] = mood
+    if appraisal_draft is not None:
+        normalized["appraisal_draft"] = appraisal_draft
     ProactiveDraft.model_validate_json(_canonical(normalized), strict=True)
 
 
@@ -449,12 +493,16 @@ def _validate_activity_lifecycle_payload(
     payload: Mapping[str, object],
     offered_tokens: frozenset[str],
 ) -> None:
+    noticed = payload.get("noticed")
+    if noticed is not None and (not isinstance(noticed, str) or not noticed.strip()):
+        raise ValueError("activity noticed must be non-empty text")
+    keys = {key for key in payload if key != "noticed"}
     decision = payload.get("decision")
     if decision == "no_op":
-        if set(payload) != {"decision"}:
+        if keys != {"decision"}:
             raise ValueError("activity lifecycle no_op may contain only decision")
         return
-    if decision != "select" or set(payload) != {"decision", "selected_token"}:
+    if decision != "select" or keys != {"decision", "selected_token"}:
         raise ValueError("activity lifecycle must select one offered token or no_op")
     selected = payload.get("selected_token")
     if not isinstance(selected, str) or selected not in offered_tokens:
@@ -467,9 +515,14 @@ def _validate_outcome_selection_payload(
 ) -> None:
     """Close one consequential choice over the exact observed alternatives."""
 
-    if set(payload) != {"selected_token", "character_life_direction"}:
+    if set(payload) != {
+        "selected_token",
+        "adopt_proposed_life_direction",
+        "character_life_direction",
+    }:
         raise ValueError(
-            "outcome selection needs one selected token and an optional character direction"
+            "outcome selection needs one selected token, an explicit adoption "
+            "choice, and an optional character direction"
         )
     selected = payload.get("selected_token")
     if not isinstance(selected, str) or not selected:
@@ -482,6 +535,8 @@ def _validate_outcome_selection_payload(
             "selected_token_not_offered",
             detail=_FAILURE_DETAILS["selected_token_not_offered"],
         )
+    if not isinstance(payload.get("adopt_proposed_life_direction"), bool):
+        raise ValueError("outcome selection needs an explicit adoption choice")
     direction = payload.get("character_life_direction")
     if direction is None:
         return
@@ -509,6 +564,7 @@ class _OutcomeSelectionPayload(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
     selected_token: str = Field(min_length=1, max_length=512)
+    adopt_proposed_life_direction: bool
     character_life_direction: CharacterLifeDirectionDraft | None = None
 
 
@@ -519,6 +575,7 @@ class _ActivityLifecyclePayload(BaseModel):
 
     decision: Literal["no_op", "select"]
     selected_token: str | None = None
+    noticed: str | None = Field(default=None, min_length=1, max_length=720)
 
     @model_validator(mode="after")
     def choice_shape_is_closed(self) -> "_ActivityLifecyclePayload":
@@ -1572,15 +1629,14 @@ class StructuredCharacterRoleFaculty:
     ) -> dict[str, object]:
         """Repair only an unambiguous provider transport wrapper.
 
-        DeepSeek's JSON mode occasionally emits a complete purpose payload in
-        the generic ``decision`` slot while omitting the envelope.  This
-        adapter only moves an object when its own explicit source binding is
-        already present; it must never promote attention refs into decision
-        evidence or invent summary, refs, timing, silence, or any semantic
-        field.  Proposal contracts have the inverse legacy
-        shape: a duplicate semantic decision string appears beside an already
-        complete typed proposal.  It is safe to discard that duplicate only
-        when it exactly agrees with the typed proposal.
+        DeepSeek's documented strict mode still emits a complete purpose
+        payload in the generic ``decision`` slot.  When the model already
+        named pinned attention refs, close the envelope over those refs and
+        leave the payload bytes unchanged.  Do not invent refs, summary,
+        timing, silence, or any semantic field.  Proposal contracts have the
+        inverse legacy shape: a duplicate semantic decision string appears
+        beside an already complete typed proposal.  It is safe to discard
+        that duplicate only when it exactly agrees with the typed proposal.
         """
 
         normalized = dict(decoded)
@@ -1662,9 +1718,26 @@ class StructuredCharacterRoleFaculty:
                 if request.phase == "experience":
                     normalized["status"] = "transition"
                 return normalized
-            # Already canonical.  Do not reinterpret a host-shaped or
-            # otherwise partially wrapped object; strict validation should
-            # explain the exact missing/extra field to the one correction.
+            if "source_refs" not in raw_decision and "payload" not in raw_decision:
+                if contract.proposal_type is not None:
+                    return normalized
+                source_refs = _pinned_attended_source_refs(
+                    normalized.get("attended_source_refs"),
+                    snapshot_refs=request.snapshot.source_refs,
+                )
+                if not source_refs:
+                    return normalized
+                payload = raw_decision
+                if (
+                    contract.purpose == "life_development_choice"
+                    and "completion" not in payload
+                ):
+                    payload = {"completion": payload}
+                raw_decision = {
+                    "source_refs": source_refs,
+                    "payload": payload,
+                }
+                normalized["decision"] = raw_decision
             if "source_refs" in raw_decision or "payload" in raw_decision:
                 if (
                     contract.purpose == "life_development_choice"
@@ -1680,10 +1753,6 @@ class StructuredCharacterRoleFaculty:
                         "payload": {"completion": raw_decision["payload"]},
                     }
                 return normalized
-            # A bare decision has no explicit evidence binding.  Attention
-            # refs are a separate model-authored signal and cannot be promoted
-            # into decision evidence by the host; strict validation must send
-            # this result through the bounded same-author correction instead.
             return normalized
 
         if isinstance(raw_decision, str) and contract.proposal_type is not None:
@@ -2087,6 +2156,32 @@ class StructuredCharacterRoleFaculty:
                         detail=str(exc),
                         response_hash=response_hash,
                     ) from exc
+            if payload.get("adopt_proposed_life_direction") is True:
+                selected_token = payload.get("selected_token")
+                raw_candidates = manifest.payload.get("candidates")
+                candidates = raw_candidates if isinstance(raw_candidates, list) else []
+                selected = next(
+                    (
+                        item
+                        for item in candidates
+                        if isinstance(item, dict) and item.get("token") == selected_token
+                    ),
+                    None,
+                )
+                proposed = (
+                    selected.get("proposed_objective_direction")
+                    if isinstance(selected, dict)
+                    else None
+                )
+                if not proposed:
+                    raise StructuredRoleResultError(
+                        "role_result_schema_invalid",
+                        detail=(
+                            "adopt_proposed_life_direction is true only for a "
+                            "selected candidate that carries proposed_objective_direction"
+                        ),
+                        response_hash=response_hash,
+                    )
         if request.purpose == "media_selection" and payload.get("decision") == "select":
             manifest = request.capability_manifest
             assert manifest is not None
@@ -2567,7 +2662,9 @@ class StructuredCharacterRoleFaculty:
             )
             replacement_available = bool(existing_impression_tokens)
             view["status_schema"] = {
-                "no_change": "proposals must be []",
+                "no_change": (
+                    "proposals must be []; character-chosen omit—host never forces retain"
+                ),
                 "transition": "exactly one private_impression_transition proposal",
             }
             view["proposal_schema"] = {
@@ -2593,7 +2690,11 @@ class StructuredCharacterRoleFaculty:
                     "predecessor must also be listed in source_refs, retain has no "
                     "predecessors, and consolidate/supersede has at least one"
                     if replacement_available
-                    else "retain is the only installed transition and has no predecessors"
+                    else (
+                        "retain is the only installed transition when no prior "
+                        "impression exists; status=no_change remains available "
+                        "and equally valid when she chooses not to keep one"
+                    )
                 ),
                 "reflection_summary": "free tentative private reading",
                 "confidence_bp": "integer 0..10000",
@@ -2752,10 +2853,16 @@ class StructuredCharacterRoleFaculty:
             view["payload_schema"] = {
                 "decision": "select|no_op",
                 "selected_token": "select only: one offered activity token",
+                "noticed": "optional short subjective moment in a verified situation",
             }
         if contract.purpose == "outcome_selection":
             view["payload_schema"] = {
                 "selected_token": "exactly one offered outcome token",
+                "adopt_proposed_life_direction": (
+                    "true only when the selected candidate carries "
+                    "proposed_objective_direction and that exact candidate's "
+                    "objective life consequence becomes true; otherwise false"
+                ),
                 "character_life_direction": (
                     "null or one freely authored, structurally closed subjective direction"
                 ),

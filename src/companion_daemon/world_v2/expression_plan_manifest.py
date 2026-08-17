@@ -18,7 +18,7 @@ from pydantic import Field, model_validator
 
 from .minimal_reply_acceptance import ExpressionBeatMaterial
 from .schema_core import FrozenModel
-from .schemas import ResponseExpectationAuthority
+from .schemas import ResponseExpectationAuthority, RevisitIntentionAuthority
 from .schemas import Action, BudgetReservation
 
 if TYPE_CHECKING:
@@ -73,6 +73,11 @@ def canonical_expression_plan_manifest_hash(value: dict[str, object]) -> str:
     elif expectation is None:
         # Preserve every pre-initiative manifest hash byte-for-byte.
         material.pop("response_expectation", None)
+    leftover = material.get("revisit")
+    if isinstance(leftover, RevisitIntentionAuthority):
+        material["revisit"] = leftover.model_dump(mode="json")
+    elif leftover is None:
+        material.pop("revisit", None)
     return canonical_expression_plan_value_hash(material)
 
 
@@ -126,6 +131,7 @@ class ExpressionPlanAcceptanceManifest(FrozenModel):
     terminal_policy: str = Field(min_length=1, max_length=128)
     beats: tuple[ExpressionPlanBeatManifest, ...] = Field(min_length=1, max_length=32)
     response_expectation: ResponseExpectationAuthority | None = None
+    revisit: RevisitIntentionAuthority | None = None
     media_request: Literal["none", "consider_available_candidate"] = Field(
         default="none", exclude_if=lambda value: value == "none"
     )
@@ -165,6 +171,11 @@ class ExpressionPlanAcceptanceManifest(FrozenModel):
             or self.response_expectation.source_beat_id not in beat_ids
         ):
             raise ValueError("response expectation does not bind this expression")
+        if self.revisit is not None and (
+            self.revisit.source_plan_id != self.plan_id
+            or self.revisit.source_beat_id not in beat_ids
+        ):
+            raise ValueError("revisit leftover does not bind this expression")
         return self
 
 
@@ -187,6 +198,7 @@ def build_expression_plan_manifest(
         "ordering_policy": material.ordering_policy,
         "terminal_policy": material.terminal_policy,
         "response_expectation": material.response_expectation,
+        "revisit": material.revisit,
         "beats": tuple(
             ExpressionPlanBeatManifest(
                 beat=item.beat,

@@ -48,7 +48,6 @@ from .perception_result_context import PerceptionResultContextItem
 from .external_perception_events import ExternalPerceptionLifeInfluenceView
 from .present_prompt import (
     PRESENT_CAPSULE_HARD_MAX_CHARACTERS,
-    PRESENT_DIALOGUE_SLICE_CHARACTERS,
     PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
 )
 from .recent_dialogue import RecentDialogueItem
@@ -432,7 +431,7 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
         default_factory=lambda: SliceBudget(
             max_items=PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
             max_fields=96,
-            max_characters=PRESENT_DIALOGUE_SLICE_CHARACTERS,
+            max_characters=80_000,
         )
     )
     relationship_slice: SliceBudget = Field(
@@ -1048,6 +1047,11 @@ def _typed_source_refs(slice_name: SliceName, item: BaseModel) -> tuple[str, ...
         return (item.origin.accepted_event_ref,)
     if slice_name == "relevant_facts" and isinstance(item, FactRecallItem):
         return tuple(sorted((item.accepted_fact_event_ref, item.observation_event_ref)))
+    if slice_name == "appraisals" and isinstance(item, AppraisalProjection):
+        # AppraisalAccepted seals stimulus evidence; observation ids stay anchors.
+        return (item.origin.accepted_event_ref,)
+    if slice_name == "affect_episodes" and isinstance(item, AffectEpisodeProjection):
+        return (item.origin.accepted_event_ref,)
     if slice_name == "active_memory_candidates" and isinstance(item, MemoryRetrievalItem):
         return tuple(sorted({source.authority_event_ref for source in item.source_excerpts}))
 
@@ -1086,6 +1090,10 @@ def _typed_source_authorities(item: BaseModel) -> tuple[tuple[str, str, int, str
         # The Fact reducer validates its immutable evidence closure.  Context
         # pins the resulting accepted Fact event, while the retained evidence
         # uses durable observation identities rather than committed event ids.
+        return ()
+    if isinstance(item, (AppraisalProjection, AffectEpisodeProjection)):
+        # Same sealed-acceptance pattern as Facts: stimulus evidence is inside
+        # the accepted psychological event, not a second Context authority.
         return ()
     if isinstance(item, FactRecallItem):
         return tuple(

@@ -150,6 +150,7 @@ def _inbound_character_result(
         "cadence": "conversational",
         "response_expectation": None,
         "response_expectation_assessment": None,
+        "revisit": None,
         "world_claims": [],
         **expression_draft,
     }

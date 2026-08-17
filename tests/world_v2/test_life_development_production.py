@@ -37,6 +37,13 @@ from companion_daemon.world_v2.schemas import (
 NOW = datetime(2026, 7, 29, 10, 0, tzinfo=UTC)
 
 
+def _force_life_development_draw(monkeypatch: pytest.MonkeyPatch, token: str) -> None:
+    monkeypatch.setattr(
+        "companion_daemon.world_v2.life_development_runtime.draw_life_development_opportunity",
+        lambda **_kwargs: token,
+    )
+
+
 class _Identities:
     def resolve(self, *, platform: str, platform_user_id: str) -> tuple[str, str]:
         return f"user:{platform_user_id}", f"user:{platform_user_id}"
@@ -501,7 +508,13 @@ def test_projection_manifest_compiler_exposes_facts_and_affordances_without_stor
 @pytest.mark.asyncio
 async def test_production_open_life_no_op_is_effect_once_across_cold_restart(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from companion_daemon.world_v2.life_development_runtime import (
+        LIFE_DEVELOPMENT_NOTHING_REF,
+    )
+
+    _force_life_development_draw(monkeypatch, LIFE_DEVELOPMENT_NOTHING_REF)
     database = tmp_path / "open-life-production.sqlite"
     seed = _open_life_seed(tmp_path / "production-seed.yaml")
     config = WorldV2TurnApplicationConfig(
@@ -629,7 +642,13 @@ def test_production_open_life_refuses_an_unmarked_legacy_story_catalog(
 @pytest.mark.asyncio
 async def test_production_open_life_does_not_call_world_author_when_catalog_is_reviewed(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from companion_daemon.world_v2.life_development_runtime import (
+        LIFE_DEVELOPMENT_NOTHING_REF,
+    )
+
+    _force_life_development_draw(monkeypatch, LIFE_DEVELOPMENT_NOTHING_REF)
     database = tmp_path / "open-life-retry.sqlite"
     seed = _open_life_seed(tmp_path / "retry-seed.yaml")
     config = WorldV2TurnApplicationConfig(
@@ -684,9 +703,77 @@ async def test_production_open_life_does_not_call_world_author_when_catalog_is_r
 
 
 @pytest.mark.asyncio
+async def test_production_open_life_opportunity_draw_calls_world_author(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from companion_daemon.world_v2.life_development_runtime import (
+        LIFE_DEVELOPMENT_OPPORTUNITY_REF,
+    )
+
+    _force_life_development_draw(monkeypatch, LIFE_DEVELOPMENT_OPPORTUNITY_REF)
+    database = tmp_path / "open-life-opportunity.sqlite"
+    seed = _open_life_seed(tmp_path / "opportunity-seed.yaml")
+    config = WorldV2TurnApplicationConfig(
+        world_id="world:open-life-production",
+        companion_actor_ref="actor:companion",
+        reply_target="user:user.1",
+        action_pump_owner="pump:open-life-production",
+        character_memory_enabled=False,
+        life_ecology=LifeEcologyComposition.production_v1(seed_catalog_path=seed),
+    )
+    world_author = _NoOpWorldAuthor()
+    app = build_sqlite_world_v2_test_application(
+        path=database,
+        config=config,
+        identities=_Identities(),
+        router=_Router(),
+        character_interior=compose_fixture_character_interior(
+            inbound_author=_MainModel(),
+            purpose_faculties=(
+                compose_fixture_character_purpose(
+                    purpose="life_development_choice",
+                    provider=_NeverCharacterModel(),
+                ),
+            ),
+        ),
+        transport=_Transport(),
+        life_world_author_model=world_author,
+        now=NOW,
+    )
+    try:
+        await app.tick(
+            tick_id="open-life-opportunity",
+            logical_time_from=NOW,
+            logical_time_to=NOW.replace(minute=10),
+            observed_at=NOW.replace(minute=10),
+            trace_id="trace:open-life-opportunity",
+            causation_id="scheduler:open-life-opportunity",
+            correlation_id="correlation:open-life-opportunity",
+            reason="open-life-opportunity",
+            run_life_ecology=False,
+        )
+        first = await app.advance_life_ecology_once(
+            wake_event_ref="event:trigger:clock:open-life-opportunity",
+            trace_id="trace:open-life-opportunity",
+            correlation_id="correlation:open-life-opportunity",
+        )
+        assert first.life_development_followup_status == "no_op"
+        assert world_author.calls >= 1
+    finally:
+        app.close()
+
+
+@pytest.mark.asyncio
 async def test_production_reviewed_catalog_does_not_invent_a_world_author_plan(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from companion_daemon.world_v2.life_development_runtime import (
+        LIFE_DEVELOPMENT_NOTHING_REF,
+    )
+
+    _force_life_development_draw(monkeypatch, LIFE_DEVELOPMENT_NOTHING_REF)
     database = tmp_path / "open-life-dynamic-aftermath.sqlite"
     seed = _open_life_seed(tmp_path / "dynamic-aftermath-seed.yaml")
     config = WorldV2TurnApplicationConfig(

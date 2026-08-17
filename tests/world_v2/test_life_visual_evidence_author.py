@@ -13,6 +13,7 @@ from companion_daemon.world_v2.life_development_draft import (
     LifeDevelopmentVisualEvidenceDraft,
 )
 from companion_daemon.world_v2.life_development_runtime import (
+    LifeDevelopmentOccurrenceMaterial,
     LifeDevelopmentPlanMaterial,
     LifeDevelopmentReadableOutcome,
 )
@@ -118,6 +119,27 @@ _SEED = dedent(
             location: {id: location:dorm-room, kind: dorm_room, publicness: private, mirror_available: true}
             environment: {light: warm dim lamp, structure: small dorm room}
             self_capture: [character_front_camera, mirror]
+        - id: home-reading
+          activity_kind: leisure.home_reading
+          source: routine
+          domain: rest_recovery
+          social_shape: alone
+          deviation: persist
+          visual_potential: activity
+          privacy: private
+          location_id: dorm-room
+          local_windows: ["00:00-23:59"]
+          weekdays: [0, 1, 2, 3, 4, 5, 6]
+          duration_minutes: 40
+          importance_bp: 3000
+          outcomes:
+            - {id: reading-quiet, text: 在宿舍安静看了一会儿书。, privacy: private}
+            - {id: reading-distracted, text: 书翻了几页就放下了。, privacy: private}
+          visual_evidence:
+            activity_description: 在宿舍靠窗看书
+            location: {id: location:dorm-room, kind: dorm_room, publicness: private}
+            environment: {light: afternoon window light, structure: small dorm room}
+            self_capture: [character_front_camera]
     """
 ).strip()
 
@@ -282,14 +304,44 @@ def _bed_world(*, relationship_states=()):  # type: ignore[no-untyped-def]
     return ledger, settlement, text
 
 
-def _author(ledger: _Ledger, tmp_path: Path, *, content_text: str | None = None) -> LifeVisualEvidenceAuthor:
-    return LifeVisualEvidenceAuthor(
-        ledger=ledger,
-        catalog=_catalog(tmp_path),
-        content_store=_ContentStore(content_text) if content_text else _ContentStore(),
-        character_ref=CHARACTER,
-        recipient_ref=RECIPIENT,
+def _home_reading_world() -> tuple[_Ledger, WorldEvent, str]:
+    settlement = _event(
+        event_id="event:settlement:home-reading", event_type="WorldOccurrenceSettled",
+        at=NOW - timedelta(hours=1),
     )
+    text = "在宿舍安静看了一会儿书。"
+    occurrence = SimpleNamespace(
+        occurrence_id="occurrence:home-reading", status="settled",
+        settled_at=NOW - timedelta(hours=1),
+        settlement_event_ref=settlement.event_id, trigger_ref="plan:home-reading",
+        visibility="private",
+        result_payload_ref="content:home-reading-result",
+        result_payload_hash=life_content_payload_hash(text),
+    )
+    plan = SimpleNamespace(plan_id="plan:home-reading", activity_kind="leisure.home_reading")
+    ledger = _Ledger(
+        _timeline_event(), settlement, plans=(plan,), occurrences=(occurrence,),
+    )
+    return ledger, settlement, text
+
+
+def _author(
+    ledger: _Ledger,
+    tmp_path: Path,
+    *,
+    content_text: str | None = None,
+    policy: VisualEvidenceAuthorPolicy | None = None,
+) -> LifeVisualEvidenceAuthor:
+    kwargs: dict[str, object] = {
+        "ledger": ledger,
+        "catalog": _catalog(tmp_path),
+        "content_store": _ContentStore(content_text) if content_text else _ContentStore(),
+        "character_ref": CHARACTER,
+        "recipient_ref": RECIPIENT,
+    }
+    if policy is not None:
+        kwargs["policy"] = policy
+    return LifeVisualEvidenceAuthor(**kwargs)  # type: ignore[arg-type]
 
 
 def _force_bucket(monkeypatch: pytest.MonkeyPatch, bucket: int) -> None:
@@ -342,7 +394,83 @@ class _OpenLifeProposalReader:
         )
 
 
-def _open_life_world() -> tuple[_Ledger, WorldEvent]:
+class _OpenLifeOccurrenceReader:
+    def __init__(
+        self, visual_evidence: LifeDevelopmentVisualEvidenceDraft | None
+    ) -> None:
+        self._visual_evidence = visual_evidence
+
+    def read_for_occurrence(self, *, occurrence: object) -> LifeDevelopmentOccurrenceMaterial:
+        del occurrence
+        descriptor = OutcomeCandidateDescriptor(
+            candidate_result_ref="candidate:open-life:1",
+            result_id="result:open-life:1",
+            result_payload_ref="content:open-life:1",
+            result_payload_hash="a" * 64,
+            privacy_class="private",
+        )
+        alternate = OutcomeCandidateDescriptor(
+            candidate_result_ref="candidate:open-life:2",
+            result_id="result:open-life:2",
+            result_payload_ref="content:open-life:2",
+            result_payload_hash="b" * 64,
+            privacy_class="private",
+        )
+        return LifeDevelopmentOccurrenceMaterial(
+            proposal_event_ref="event:life-development:proposal:home-storm",
+            activity_kind="open_life.world_occurrence",
+            outcomes=(
+                LifeDevelopmentReadableOutcome(
+                    descriptor=descriptor,
+                    text="嘉兴家里夏夜雷雨，她在窗边看雨。",
+                    visual_evidence=self._visual_evidence,
+                ),
+                LifeDevelopmentReadableOutcome(
+                    descriptor=alternate,
+                    text="雷雨很快过去，屋里只剩下潮气。",
+                    visual_evidence=self._visual_evidence,
+                ),
+            ),
+        )
+
+
+def _open_life_production_world(*, visibility: str = "private") -> tuple[_Ledger, WorldEvent]:
+    proposal = _event(
+        event_id="event:life-development:proposal:home-storm",
+        event_type="ProposalRecorded",
+        at=NOW - timedelta(hours=2),
+    )
+    settlement = _event(
+        event_id="event:settlement:home-storm",
+        event_type="WorldOccurrenceSettled",
+        at=NOW - timedelta(hours=1),
+    )
+    text = "嘉兴家里夏夜雷雨，她在窗边看雨。"
+    occurrence = SimpleNamespace(
+        occurrence_id="occurrence:life-development:home-storm",
+        status="settled",
+        settled_at=NOW - timedelta(hours=1),
+        settlement_event_ref=settlement.event_id,
+        settled_outcome_ref="candidate:open-life:1",
+        trigger_ref=proposal.event_id,
+        visibility=visibility,
+        participant_refs=(CHARACTER,),
+        location_ref="location:jiaxing-family-home",
+        result_payload_ref="content:open-life-result",
+        result_payload_hash=life_content_payload_hash(text),
+    )
+    return (
+        _Ledger(
+            _timeline_event(),
+            proposal,
+            settlement,
+            occurrences=(occurrence,),
+        ),
+        settlement,
+    )
+
+
+def _open_life_world(*, visibility: str = "shareable") -> tuple[_Ledger, WorldEvent]:
     settlement = _event(
         event_id="event:settlement:open-life",
         event_type="WorldOccurrenceSettled",
@@ -356,7 +484,8 @@ def _open_life_world() -> tuple[_Ledger, WorldEvent]:
         settlement_event_ref=settlement.event_id,
         settled_outcome_ref="candidate:open-life:1",
         trigger_ref="plan:open-life",
-        visibility="shareable",
+        visibility=visibility,
+        participant_refs=(CHARACTER,),
         result_payload_ref="content:open-life-result",
         result_payload_hash=life_content_payload_hash(text),
     )
@@ -424,6 +553,10 @@ def test_open_life_world_author_visual_claim_enters_the_existing_media_declarati
     assert evidence["location"]["id"] == "location:off-campus-riverside-market"
     assert evidence["objects"][0]["description"] == "刚买的一束向日葵"
     assert evidence["situational_context"]["academic_phase"] == "summer_break"
+    assert evidence["character_media"]["capture_capabilities"] == ["character_front_camera"]
+    opened = ledger.events_of_type("PhotoCandidateOpened")
+    assert len(opened) == 1
+    assert opened[0].payload()["candidate"]["character_media_contract"]["kind"] == "selfie"
     declaration = ledger.events_of_type("ImageEvidenceDeclared")[0]
     projection = ledger.project()
     compiled = MediaEvidenceSnapshotCompiler(ledger=ledger).compile(
@@ -449,6 +582,154 @@ def test_open_life_world_author_visual_claim_enters_the_existing_media_declarati
     assert snapshot.location["id"] == "location:off-campus-riverside-market"
     assert snapshot.situational_context is not None
     assert snapshot.situational_context["season"] == "summer"
+
+
+def test_private_home_open_life_declares_ordinary_evidence_not_p3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger, settlement = _open_life_world(visibility="private")
+    _force_bucket(monkeypatch, 0)
+    visual = LifeDevelopmentVisualEvidenceDraft(
+        claim_refs=("local:claim:home-reading",),
+        activity_description="在嘉兴家里看书",
+        location={
+            "location_ref": "location:jiaxing-family-home",
+            "kind": "home",
+            "city": "嘉兴",
+            "publicness": "private",
+        },
+        environment={
+            "light": "afternoon window light",
+            "structure": "family living room",
+        },
+    )
+    author = LifeVisualEvidenceAuthor(
+        ledger=ledger,
+        catalog=_catalog(tmp_path),
+        content_store=_ContentStore("她在河边市集逛了一会儿，买到一束向日葵。"),
+        character_ref=CHARACTER,
+        recipient_ref=RECIPIENT,
+        life_development_proposals=_OpenLifeProposalReader(visual),
+    )
+
+    result = author.advance_once(
+        wake_event_ref=settlement.event_id,
+        trace_id="trace",
+        correlation_id="corr",
+    )
+
+    assert result.status == "declared"
+    assert result.lane == "public"
+    assert ledger.events_of_type("RecipientScopedImageEvidenceDeclared") == ()
+    evidence = ledger.events_of_type("ImageEvidenceDeclared")[0].payload()["image_evidence"]
+    assert evidence["visibility"] == "private"
+    assert evidence["character_media"]["capture_capabilities"] == ["character_front_camera"]
+    opened = ledger.events_of_type("PhotoCandidateOpened")
+    assert len(opened) == 1
+    candidate = opened[0].payload()["candidate"]
+    assert candidate["family"] == "character_media"
+    assert candidate["privacy_ceiling"] == "private"
+    assert candidate["character_media_contract"]["kind"] == "selfie"
+    declaration = ledger.events_of_type("ImageEvidenceDeclared")[0]
+    projection = ledger.project()
+    compiled = MediaEvidenceSnapshotCompiler(ledger=ledger).compile(
+        MediaEvidenceCompileRequest(
+            candidate=PhotoCandidate(
+                candidate_id="candidate:home-life",
+                source_event_refs=tuple(sorted((settlement.event_id, declaration.event_id))),
+                family="life_share",
+                privacy_ceiling="private",
+            ),
+            category="settled_outcome",
+            cursor=ProjectionCursor(
+                world_revision=projection.world_revision,
+                deliberation_revision=projection.deliberation_revision,
+                ledger_sequence=projection.ledger_sequence,
+            ),
+        )
+    )
+    snapshot = compiled.snapshot.image_event_snapshot
+    assert snapshot is not None
+    assert snapshot.location["id"] == "location:jiaxing-family-home"
+
+
+def test_production_open_life_proposal_trigger_declares_home_private_selfie(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger, settlement = _open_life_production_world(visibility="private")
+    _force_bucket(monkeypatch, 0)
+    visual = LifeDevelopmentVisualEvidenceDraft(
+        claim_refs=("local:claim:storm",),
+        activity_description="嘉兴家里夏夜靠窗看雷雨",
+        location={
+            "location_ref": "location:jiaxing-family-home",
+            "kind": "home",
+            "city": "嘉兴",
+            "publicness": "private",
+        },
+        environment={
+            "weather": "summer thunderstorm",
+            "light": "warm indoor lamp against window lightning",
+            "structure": "family living room",
+        },
+    )
+    author = LifeVisualEvidenceAuthor(
+        ledger=ledger,
+        catalog=_catalog(tmp_path),
+        content_store=_ContentStore("嘉兴家里夏夜雷雨，她在窗边看雨。"),
+        character_ref=CHARACTER,
+        recipient_ref=RECIPIENT,
+        life_development_proposals=_OpenLifeOccurrenceReader(visual),
+    )
+
+    result = author.advance_once(
+        wake_event_ref=settlement.event_id,
+        trace_id="trace",
+        correlation_id="corr",
+    )
+
+    assert result.status == "declared"
+    assert result.lane == "public"
+    assert ledger.events_of_type("RecipientScopedImageEvidenceDeclared") == ()
+    declarations = ledger.events_of_type("ImageEvidenceDeclared")
+    assert len(declarations) == 1
+    evidence = declarations[0].payload()["image_evidence"]
+    assert evidence["visibility"] == "private"
+    assert evidence["location"]["id"] == "location:jiaxing-family-home"
+    assert evidence["environment"]["weather"] == "summer thunderstorm"
+    assert evidence["character_media"]["capture_capabilities"] == ["character_front_camera"]
+    opened = ledger.events_of_type("PhotoCandidateOpened")
+    assert len(opened) == 1
+    candidate = opened[0].payload()["candidate"]
+    assert candidate["family"] == "character_media"
+    assert candidate["privacy_ceiling"] == "private"
+    assert candidate["character_media_contract"]["kind"] == "selfie"
+
+
+def test_production_open_life_without_annex_does_not_invent_visual_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger, settlement = _open_life_production_world(visibility="private")
+    _force_bucket(monkeypatch, 0)
+    author = LifeVisualEvidenceAuthor(
+        ledger=ledger,
+        catalog=_catalog(tmp_path),
+        content_store=_ContentStore("嘉兴家里夏夜雷雨，她在窗边看雨。"),
+        character_ref=CHARACTER,
+        recipient_ref=RECIPIENT,
+        life_development_proposals=_OpenLifeOccurrenceReader(None),
+    )
+
+    result = author.advance_once(
+        wake_event_ref=settlement.event_id,
+        trace_id="trace",
+        correlation_id="corr",
+    )
+
+    assert result.status == "idle"
+    assert result.reason_code == "visual_evidence.no_eligible_settled_occurrence"
+    assert ledger.events_of_type("ImageEvidenceDeclared") == ()
+    assert ledger.events_of_type("PhotoCandidateOpened") == ()
 
 
 def test_open_life_outcome_may_choose_to_supply_no_visual_evidence(
@@ -726,6 +1007,29 @@ def test_daily_budget_and_minimum_gap_suppress_further_declarations(
     assert budgeted.reason_code == "visual_evidence.daily_budget_exhausted"
 
 
+def test_catalog_private_home_life_declares_ordinary_selfie_not_p3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger, settlement, text = _home_reading_world()
+    _force_bucket(monkeypatch, 0)
+
+    result = _author(ledger, tmp_path, content_text=text).advance_once(
+        wake_event_ref=settlement.event_id, trace_id="trace", correlation_id="corr",
+    )
+
+    assert result.status == "declared"
+    assert result.lane == "public"
+    assert ledger.events_of_type("RecipientScopedImageEvidenceDeclared") == ()
+    evidence = ledger.events_of_type("ImageEvidenceDeclared")[0].payload()["image_evidence"]
+    assert evidence["visibility"] == "private"
+    assert evidence["activity"]["description"] == "在宿舍靠窗看书"
+    assert evidence["character_media"]["capture_capabilities"] == ["character_front_camera"]
+    opened = ledger.events_of_type("PhotoCandidateOpened")
+    assert len(opened) == 1
+    assert opened[0].payload()["candidate"]["character_media_contract"]["kind"] == "selfie"
+    assert opened[0].payload()["candidate"]["privacy_ceiling"] == "private"
+
+
 def test_private_transition_declares_recipient_scoped_only_at_close_friend(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -806,6 +1110,42 @@ def test_the_chance_ticket_is_recorded_once_and_stays_stable(tmp_path: Path) -> 
     assert first == second
     assert 0 <= first < 40
     assert len(ledger.events_of_type("RandomDrawRecorded")) == 1
+
+
+def test_role_media_request_without_source_refs_starvation_fills_from_eligible_life(
+    tmp_path: Path,
+) -> None:
+    ledger, settlement = _walk_world()
+    # Push the settled moment outside ordinary lookback but inside starvation lookback.
+    for occurrence in ledger.occurrences:
+        occurrence.settled_at = NOW - timedelta(days=2)
+    result = _author(ledger, tmp_path).request_once(
+        source_refs=(),
+        trace_id="trace:role-starvation",
+        correlation_id="corr:role-starvation",
+    )
+    assert result.status == "declared"
+    assert result.reason_code == "visual_evidence.role_requested_starvation_fill"
+    assert result.opened_candidate_ids
+    assert ledger.events_of_type("ImageEvidenceDeclared")
+    assert ledger.events_of_type("PhotoCandidateOpened")
+
+
+def test_scheduler_starvation_fill_only_catches_older_than_ordinary_lookback(
+    tmp_path: Path,
+) -> None:
+    ledger, settlement = _walk_world()
+    for occurrence in ledger.occurrences:
+        occurrence.settled_at = NOW - timedelta(days=2)
+    result = _author(ledger, tmp_path).advance_once(
+        wake_event_ref=settlement.event_id,
+        trace_id="trace:scheduler-starvation",
+        correlation_id="corr:scheduler-starvation",
+    )
+    assert result.status == "declared"
+    assert result.reason_code == "visual_evidence.starvation_fill_declared"
+    assert result.opened_candidate_ids
+    assert ledger.events_of_type("PhotoCandidateOpened")
 
 
 def test_catalog_rejects_visual_evidence_on_a_visually_silent_opening(tmp_path: Path) -> None:

@@ -233,6 +233,7 @@ async def test_proactive_deepseek_transport_uses_strict_beta_tool_contract() -> 
                     "variation_profile": None,
                     "response_expectation": None,
                     "response_expectation_assessment": None,
+                    "revisit": None,
                     "world_claims": [],
                     "media_request": "none",
                     "media_source_refs": [],

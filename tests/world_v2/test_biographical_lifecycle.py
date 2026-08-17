@@ -838,6 +838,68 @@ async def test_long_lived_outcome_model_failure_cannot_fall_back_to_random() -> 
     assert failure.failure_code == "role_faculty_unavailable"
 
 
+@pytest.mark.asyncio
+async def test_adopting_a_catalog_outcome_without_objective_direction_fails_closed() -> None:
+    effect = FrozenLifeArcEffectDescriptor.create(
+        arc_kind="employment",
+        context_pack_ref="life-context:test-employment",
+        context_tags=("role:test",),
+        duration_days=30,
+        privacy_class="personal",
+        catalog_version="reviewed-test.1",
+        catalog_hash="c" * 64,
+    )
+    runtime = object.__new__(LifeAftermathRuntime)
+    runtime._character_interior = _CapturingLongLivedOutcomeModel(  # noqa: SLF001
+        selected_ref="candidate:accept",
+        adopt_proposed_life_direction=True,
+    )
+    runtime._ledger = SimpleNamespace(world_id="world:test")  # noqa: SLF001
+    runtime._owner_actor_ref = "actor:character"  # noqa: SLF001
+    runtime._candidate_text = lambda *_args: "reviewed outcome"  # type: ignore[method-assign]  # noqa: SLF001
+    occurrence = SimpleNamespace(
+        occurrence_id="occurrence:test",
+        entity_revision=1,
+        candidate_outcomes=(
+            OutcomeCandidateDescriptor(
+                candidate_result_ref="candidate:accept",
+                result_id="result:accept",
+                result_payload_ref="content:accept",
+                result_payload_hash="b" * 64,
+                privacy_class="personal",
+                life_arc_effect=effect,
+            ),
+            OutcomeCandidateDescriptor(
+                candidate_result_ref="candidate:decline",
+                result_id="result:decline",
+                result_payload_ref="content:decline",
+                result_payload_hash="d" * 64,
+                privacy_class="personal",
+            ),
+        ),
+    )
+
+    chosen, failure = await runtime._select_long_lived_outcome(  # noqa: SLF001
+        occurrence=occurrence,
+        projection=SimpleNamespace(
+            logical_time=datetime(2026, 1, 1, tzinfo=UTC),
+            biographical_coordinates=(),
+        ),
+        observation_event=SimpleNamespace(event_id="event:observation:test"),
+        observation_id="observation:test",
+        cursor=ProjectionCursor(
+            world_revision=1,
+            deliberation_revision=0,
+            ledger_sequence=1,
+        ),
+        retry_ordinal=0,
+    )
+
+    assert chosen is None
+    assert failure.status == "technical_failure"
+    assert failure.failure_code == "character_interior_outcome_direction_invalid"
+
+
 def test_long_lived_outcome_proposal_records_complete_pinned_context_identity() -> None:
     context_cursor = ProjectionCursor(
         world_revision=7,
@@ -1043,7 +1105,7 @@ async def test_long_lived_outcome_is_atomic_and_restart_does_not_repeat_the_mode
     assert proposal.context_cursor is not None
     assert proposal.context_cursor.world_revision == proposal.evaluated_world_revision
     assert proposal.context_capsule_id == "2" * 64
-    assert proposal.context_identity_version == "life-aftermath-context.4"
+    assert proposal.context_identity_version == "life-aftermath-context.5"
     assert proposal.decision_model_result_ref is not None
     assert proposal.decision_model_result_event_ref is not None
     assert proposal.decision_audit_proposal_event_ref is not None
@@ -1060,6 +1122,137 @@ async def test_long_lived_outcome_is_atomic_and_restart_does_not_repeat_the_mode
     assert len(settled.biographical_coordinates) == 1
     assert settled.biographical_coordinates[0].settlement_event_ref == (settlement_ref.event_id)
     assert settled.biographical_coordinates[0].entity_revision == 1
+
+
+@pytest.mark.parametrize("adopt_direction", (True, False))
+@pytest.mark.asyncio
+async def test_character_adoption_is_the_only_gate_for_a_dynamic_life_arc(
+    tmp_path: Path,
+    adopt_direction: bool,
+) -> None:
+    world_id = f"world:biography:adopt-dynamic-arc:{adopt_direction}"
+    started_at = datetime(2026, 7, 28, 4, 0, tzinfo=UTC)
+    ledger = SQLiteWorldLedger(
+        path=tmp_path / f"adopt-dynamic-{adopt_direction}.sqlite",
+        world_id=world_id,
+    )
+    first_clock = _clock_advance(
+        world_id=world_id,
+        event_id="clock:adopt-dynamic:start",
+        origin=started_at - timedelta(minutes=10),
+        target=started_at,
+    )
+    _commit_event(ledger, first_clock)
+    arc_text = "她决定把接下来几个月都放在出版社实习上。"
+    arc = DynamicLifeArcContextDescriptor.create(
+        summary_content_ref="content:adopt-dynamic:arc",
+        summary_payload_hash=life_content_payload_hash(arc_text),
+        narrative_tags=("narrative:internship",),
+        context_tags=("role:intern", "workplace:publishing"),
+        supersedes_context_tag_prefixes=("role:",),
+        duration_days=90,
+        privacy_class="personal",
+    )
+    occurrence, candidate_texts = _commit_active_long_lived_occurrence(
+        ledger=ledger,
+        clock=first_clock,
+        include_reviewed_life_arc_effect=False,
+        dynamic_life_arc_context=arc,
+    )
+    wake_at = started_at + timedelta(minutes=10)
+    wake = _event(
+        world_id=world_id,
+        event_id="clock:adopt-dynamic:settle",
+        event_type="ClockAdvanced",
+        logical_at=wake_at,
+        payload={
+            "logical_time_from": started_at.isoformat(),
+            "logical_time_to": wake_at.isoformat(),
+        },
+    )
+    _commit_event(ledger, wake)
+    content_store = InMemoryImmutableLifeContentStore()
+    for candidate, text in zip(occurrence.candidate_outcomes, candidate_texts, strict=True):
+        assert candidate.content_ref is not None
+        assert candidate.content_payload_hash is not None
+        content_store.put_if_absent(
+            StoredLifeContent(
+                content_ref=candidate.content_ref,
+                content_kind="outcome_candidate",
+                content_payload_hash=candidate.content_payload_hash,
+                text=text,
+            )
+        )
+    content_store.put_if_absent(
+        StoredLifeContent(
+            content_ref=arc.summary_content_ref,
+            content_kind="dynamic_life_arc_context",
+            content_payload_hash=arc.summary_payload_hash,
+            text=arc_text,
+        )
+    )
+    model = _CapturingLongLivedOutcomeModel(
+        selected_ref=occurrence.candidate_outcomes[0].candidate_result_ref,
+        adopt_proposed_life_direction=adopt_direction,
+    )
+    runtime = LifeAftermathRuntime(
+        ledger=ledger,
+        catalog=SimpleNamespace(),
+        occurrence_content=OccurrenceContentCoordinator(
+            ledger=ledger,
+            store=content_store,
+        ),
+        content_store=content_store,
+        owner_actor_ref="actor:companion",
+        character_interior=model,
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=wake.event_id,
+        trace_id="trace:adopt-dynamic",
+        correlation_id="correlation:adopt-dynamic",
+    )
+
+    assert result.status == "settled"
+    offered = model.last_material["candidates"][0]
+    assert offered["proposed_objective_direction"]["duration_days"] == 90
+    proposal_event, _ = ledger.lookup_event_commit(
+        "event:life-aftermath:outcome-proposal:consequential"
+    )
+    proposal = OutcomeProposalRecordedPayload.model_validate_json(proposal_event.payload_json)
+    assert proposal.adopt_proposed_life_direction is adopt_direction
+    pending = ledger.project().pending_biographical_settlements
+    if adopt_direction:
+        assert len(pending) == 1
+        assert pending[0].dynamic_life_arc_context == arc
+    else:
+        assert pending == ()
+    settlement_ref = next(
+        item
+        for item in ledger.project().committed_world_event_refs
+        if item.event_type == "WorldOccurrenceSettled"
+    )
+    biographical = BiographicalLifecycleRuntime(
+        ledger=ledger,
+        catalog=_NoNpcCatalog(),
+        owner_actor_ref="actor:companion",
+        content_store=content_store,
+    )
+    transitioned = biographical.advance_once(
+        wake_event_ref=settlement_ref.event_id,
+        trace_id="trace:adopt-dynamic:arc",
+        correlation_id="correlation:adopt-dynamic",
+    )
+    projection = ledger.project()
+    if adopt_direction:
+        assert transitioned.status == "transitioned"
+        assert len(projection.life_arcs) == 1
+        assert projection.life_arcs[0].arc_kind == "dynamic"
+        assert projection.life_arcs[0].context_pack_ref == arc.summary_content_ref
+    else:
+        assert transitioned.status == "idle"
+        assert projection.life_arcs == ()
+    assert not projection.pending_biographical_settlements
 
 
 @pytest.mark.parametrize(
@@ -1564,14 +1757,10 @@ def test_expired_recovered_effect_starts_and_completes_atomically(
     assert not final_projection.pending_biographical_settlements
 
 
-@pytest.mark.parametrize(
-    ("adopt_direction", "expected_arc_count"),
-    ((True, 1), (False, 0)),
-)
-def test_selected_open_outcome_registers_npc_and_only_adopted_dynamic_arc_once(
+@pytest.mark.parametrize("adopt_direction", (True, False))
+def test_selected_open_outcome_registers_npc_and_dynamic_arc_once(
     tmp_path: Path,
     adopt_direction: bool,
-    expected_arc_count: int,
 ) -> None:
     world_id = "world:biography:open-effects"
     logical_at = datetime(2026, 7, 29, 4, 0, tzinfo=UTC)
@@ -1666,14 +1855,16 @@ def test_selected_open_outcome_registers_npc_and_only_adopted_dynamic_arc_once(
     assert projection.npcs[0].promotion_edge.stable_npc_ref == (f"npc:{projection.npcs[0].npc_id}")
     assert projection.npcs[0].promotion_edge.origin_settlement_event_ref == (settlement.event_id)
     assert projection.npcs[0].promotion_edge.descriptor_hash == npc.descriptor_hash
-    assert len(projection.life_arcs) == expected_arc_count
     if adopt_direction:
+        assert len(projection.life_arcs) == 1
         assert projection.life_arcs[0].arc_kind == "dynamic"
         assert projection.life_arcs[0].context_pack_ref == arc.summary_content_ref
         assert projection.life_arcs[0].context_tags == tuple(
             sorted({*arc.narrative_tags, *arc.context_tags})
         )
         assert projection.life_arcs[0].supersedes_context_tag_prefixes == ("occupation:",)
+    else:
+        assert projection.life_arcs == ()
     assert not projection.pending_biographical_settlements
     assert ledger.rebuild().npcs[0].promotion_edge == projection.npcs[0].promotion_edge
 
@@ -1758,6 +1949,7 @@ class _CapturingLongLivedOutcomeModel:
         invalid_first: bool = False,
         invalid_responses: int = 0,
         life_direction: dict[str, object] | None = None,
+        adopt_proposed_life_direction: bool = False,
     ) -> None:
         self._selected_ref = selected_ref
         self._fail_first = fail_first
@@ -1768,6 +1960,7 @@ class _CapturingLongLivedOutcomeModel:
             1 if invalid_first else 0,
         )
         self._life_direction = life_direction
+        self._adopt_proposed_life_direction = adopt_proposed_life_direction
         self.calls = 0
         self.last_material: dict[str, object] = {}
 
@@ -1807,6 +2000,9 @@ class _CapturingLongLivedOutcomeModel:
             raw = json.dumps(
                 {
                     "selected_token": selected_ref,
+                    "adopt_proposed_life_direction": (
+                        self._adopt_proposed_life_direction
+                    ),
                     "character_life_direction": self._life_direction,
                 },
                 ensure_ascii=False,
@@ -1886,6 +2082,9 @@ class _CapturingLongLivedOutcomeModel:
                     "payload": {
                         "contract": "character-interior-outcome-selection-decision.1",
                         "selected_token": selected_ref,
+                        "adopt_proposed_life_direction": (
+                            self._adopt_proposed_life_direction
+                        ),
                         "character_life_direction": self._life_direction,
                     },
                 },
@@ -1935,20 +2134,26 @@ def _commit_active_long_lived_occurrence(
     *,
     ledger: SQLiteWorldLedger,
     clock: WorldEvent,
+    include_reviewed_life_arc_effect: bool = True,
+    dynamic_life_arc_context: DynamicLifeArcContextDescriptor | None = None,
 ) -> tuple[WorldOccurrenceProjection, tuple[str, ...]]:
     occurrence_id = "occurrence:life-aftermath:consequential"
     texts = (
         "聊完后她决定接下这段编辑实习。",
         "聊完后她觉得现实条件不合适，没有接下实习。",
     )
-    effect = FrozenLifeArcEffectDescriptor.create(
-        arc_kind="employment",
-        context_pack_ref="life-context:test-publishing-internship",
-        context_tags=("role:intern", "workplace:publishing"),
-        duration_days=30,
-        privacy_class="personal",
-        catalog_version="reviewed-test.1",
-        catalog_hash="c" * 64,
+    effect = (
+        FrozenLifeArcEffectDescriptor.create(
+            arc_kind="employment",
+            context_pack_ref="life-context:test-publishing-internship",
+            context_tags=("role:intern", "workplace:publishing"),
+            duration_days=30,
+            privacy_class="personal",
+            catalog_version="reviewed-test.1",
+            catalog_hash="c" * 64,
+        )
+        if include_reviewed_life_arc_effect
+        else None
     )
     candidate_refs = (
         "candidate:consequential:accept",
@@ -1964,6 +2169,9 @@ def _commit_active_long_lived_occurrence(
             content_ref=f"content:candidate:{candidate_ref}",
             content_payload_hash=life_content_payload_hash(text),
             life_arc_effect=effect if index == 0 else None,
+            dynamic_life_arc_context=(
+                dynamic_life_arc_context if index == 0 else None
+            ),
         )
         for index, (candidate_ref, text) in enumerate(zip(candidate_refs, texts, strict=True))
     )

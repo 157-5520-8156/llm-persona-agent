@@ -132,13 +132,6 @@ class ReviewedLifeSeedOpening(FrozenModel):
                     raise ValueError(
                         "private transition visual evidence permits only self-authored capture"
                     )
-            elif self.privacy not in {"public", "shareable"}:
-                # Personal/private ordinary openings have no reviewed public
-                # declaration path yet; registering an annex would leave a
-                # permanently undeclarable dead entry.
-                raise ValueError(
-                    "ordinary visual evidence requires a public or shareable opening"
-                )
         for field_name in (
             "requires_all_context_tags",
             "excludes_context_tags",

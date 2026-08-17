@@ -12,7 +12,10 @@ It composes only already-reviewed seams:
 - render/inspection wrap ``MediaRenderer``/``SourcedLifeMediaInspector``
   behind :class:`SQLiteDurableMediaProviderTransport` so restart recovery
   replays the exact stored bytes.  Inspection is a sourced-life file check,
-  not a vision model;
+  not a vision model.  The adult P3 route installs Civitai Krea2 plus the
+  first-person private prompt author when the reviewed template and
+  ``CIVITAI_API_KEY`` are present; otherwise that route stays fail-closed
+  and never falls back to GPT Image or disables the ordinary life lane;
 - grant bindings reference the identities written by
   :mod:`media_authority_provisioning`; this factory never manufactures
   enforcement authority;
@@ -288,6 +291,102 @@ def _provisioned_grants_present(*, database_path: Path, world_id: str) -> bool:
         connection.close()
 
 
+def _private_prompt_author_model(settings: Settings):
+    """Hermes via OpenRouter when present; otherwise the required DeepSeek chat model."""
+
+    from companion_daemon.llm import DeepSeekChatModel, OpenAICompatibleChatModel
+
+    if settings.hermes_private_prompt_enabled and settings.openrouter_api_key:
+        return OpenAICompatibleChatModel(
+            api_key=settings.openrouter_api_key,
+            base_url=settings.openrouter_base_url,
+            model=settings.hermes_private_prompt_model,
+            max_completion_tokens=400,
+            proxy_url=settings.openai_proxy_url,
+        )
+    if settings.deepseek_api_key:
+        return DeepSeekChatModel(
+            api_key=settings.deepseek_api_key,
+            base_url=settings.deepseek_base_url,
+            model=settings.deepseek_model,
+            thinking_enabled=False,
+            max_completion_tokens=400,
+        )
+    return None
+
+
+def _compose_high_private_lane(
+    settings: Settings,
+    *,
+    diagnostic_recorder: MediaProviderDiagnosticRecorder,
+    world_id: str,
+) -> tuple[dict[str, object], object] | None:
+    """Install the adult Civitai route, or leave it fail-closed without touching ordinary media."""
+
+    if not settings.civitai_krea2_enabled:
+        return None
+
+    from companion_daemon.event_media import FirstPersonPrivatePromptAuthor
+    from companion_daemon.image_generation import CivitaiTemplateWorkflowImageGenerator
+    from companion_daemon.media_suggestive_lane import (
+        SPECIALIZED_EXPLICIT_ROUTE,
+        SPECIALIZED_SUGGESTIVE_ROUTE,
+    )
+
+    missing: list[str] = []
+    if not settings.civitai_api_key:
+        missing.append("CIVITAI_API_KEY")
+    template_path = settings.civitai_krea2_template_path
+    if template_path is None or not Path(template_path).is_file():
+        missing.append("CIVITAI_KREA2_TEMPLATE_PATH")
+    if missing:
+        _LOG.warning(
+            "world v2 high-private P3 lane left fail-closed for %s; missing: %s",
+            world_id,
+            ", ".join(missing),
+        )
+        return None
+    author_model = _private_prompt_author_model(settings)
+    if author_model is None:
+        _LOG.warning(
+            "world v2 high-private P3 lane left fail-closed for %s; missing: private prompt author model",
+            world_id,
+        )
+        return None
+
+    try:
+        generator = CivitaiTemplateWorkflowImageGenerator(
+            settings.civitai_api_key,
+            template_path=Path(template_path),
+            base_url=settings.civitai_base_url,
+            proxy_url=settings.civitai_proxy_url or settings.openai_proxy_url,
+            require_reference_free=True,
+        )
+    except (OSError, ValueError, TypeError, json.JSONDecodeError, KeyError) as exc:
+        _LOG.warning(
+            "world v2 high-private P3 lane left fail-closed for %s; krea2 template rejected: %s",
+            world_id,
+            type(exc).__name__,
+        )
+        return None
+
+    wrapped = _DiagnosticImageGenerator(
+        generator,
+        recorder=diagnostic_recorder,
+        endpoint=settings.civitai_base_url,
+        model="civitai-krea2-template",
+        proxy_configured=bool(settings.civitai_proxy_url or settings.openai_proxy_url),
+        api_key=settings.civitai_api_key,
+    )
+    return (
+        {
+            SPECIALIZED_SUGGESTIVE_ROUTE: wrapped,
+            SPECIALIZED_EXPLICIT_ROUTE: wrapped,
+        },
+        FirstPersonPrivatePromptAuthor(author_model),
+    )
+
+
 def build_qq_media_preview_deployment(
     *, settings: Settings, world_id: str, output_dir: Path | None = None
 ) -> QQMediaDeploymentBundle | None:
@@ -377,15 +476,20 @@ def build_qq_media_preview_deployment(
         api_key="",
     )
     # Composed directly rather than through the archived runtime module (the
-    # platform reverse-architecture guard forbids that import).  No
-    # specialized high-private generators and no private prompt author are
-    # installed: this deployment serves the ordinary life lane, and frozen
-    # high-lane plans fail closed exactly as the renderer contract requires.
+    # platform reverse-architecture guard forbids that import).  Adult P3
+    # installs only with Civitai Krea2 plus the private prompt author; a
+    # missing credential leaves that route fail-closed and does not disable
+    # the ordinary OpenAI life lane or silently fall back to GPT Image.
+    high_private = _compose_high_private_lane(
+        settings, diagnostic_recorder=diagnostic_recorder, world_id=world_id
+    )
     renderer = SourcedLifeMediaRenderer(
         generator=generator,
         inspector=inspector,
         output_dir=output_dir or Path("output/event-media"),
         visual_identity_path=settings.visual_identity_path,
+        specialized_generators=None if high_private is None else high_private[0],
+        private_prompt_author=None if high_private is None else high_private[1],
     )
     transport = SQLiteDurableMediaProviderTransport(
         path=str(database_path),
@@ -436,8 +540,13 @@ def build_qq_media_preview_deployment(
         ),
     )
     _LOG.warning(
-        "world v2 media lane enabled for %s (world-owned delivery, guardrails on)",
+        "world v2 media lane enabled for %s (world-owned delivery, guardrails on%s)",
         world_id,
+        (
+            ", high-private P3 krea2 installed"
+            if high_private is not None
+            else ", high-private P3 fail-closed"
+        ),
     )
     return QQMediaDeploymentBundle(deployment=deployment, transport=transport)
 

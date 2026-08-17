@@ -23,6 +23,7 @@ from .proposal_envelope import (
     ProposalInput,
     ProactiveExpressionPlanSourceBindingV2,
     ResponseExpectationDraftPayload,
+    RevisitDraftPayload,
     validate_proposal_envelope,
 )
 from .schema_core import FrozenModel
@@ -33,6 +34,7 @@ from .schemas import (
     Observation,
     ProjectionCursor,
     ResponseExpectationAuthority,
+    RevisitIntentionAuthority,
 )
 from .unified_inbound_decision import (
     UnifiedInboundDecisionError,
@@ -112,6 +114,7 @@ class ExpressionPlanAcceptanceMaterial(FrozenModel):
     recorded_cadence_mode: Literal["off", "shadow", "on"] = "off"
     recorded_draw_refs: tuple[str, ...] = ()
     response_expectation: ResponseExpectationAuthority | None = None
+    revisit: RevisitIntentionAuthority | None = None
     media_request: Literal["none", "consider_available_candidate"] = "none"
 
     @model_validator(mode="after")
@@ -139,6 +142,11 @@ class ExpressionPlanAcceptanceMaterial(FrozenModel):
             or self.response_expectation.source_beat_id not in ids
         ):
             raise ValueError("response expectation is not expression-bound")
+        if self.revisit is not None and (
+            self.revisit.source_plan_id != self.plan_id
+            or self.revisit.source_beat_id not in ids
+        ):
+            raise ValueError("revisit leftover is not expression-bound")
         return self
 
 
@@ -431,6 +439,20 @@ def derive_expression_plan_material(
             not_before=logical_time + timedelta(seconds=expectation.wait_seconds),
             expires_at=logical_time + timedelta(seconds=expectation.expires_after_seconds),
         )
+    leftover = None
+    raw_leftover = payload.get("revisit")
+    if raw_leftover is not None:
+        try:
+            leftover_draft = RevisitDraftPayload.model_validate(raw_leftover, strict=True)
+        except ValueError as exc:
+            raise ExpressionPlanAcceptanceError("revisit_invalid") from exc
+        leftover = RevisitIntentionAuthority(
+            source_plan_id=plan_id,
+            source_beat_id=materialized[-1].beat.beat_id,
+            thought=leftover_draft.thought,
+            not_before=logical_time + timedelta(seconds=leftover_draft.wait_seconds),
+            expires_at=logical_time + timedelta(seconds=leftover_draft.expires_after_seconds),
+        )
     media_request = payload.get("media_request", "none")
     if media_request not in {"none", "consider_available_candidate"}:
         raise ExpressionPlanAcceptanceError("media_request_invalid")
@@ -461,6 +483,7 @@ def derive_expression_plan_material(
         recorded_cadence_mode=cadence_mode,
         recorded_draw_refs=draw_refs,
         response_expectation=response_expectation,
+        revisit=leftover,
         media_request=media_request,
     )
     _LOG.info(

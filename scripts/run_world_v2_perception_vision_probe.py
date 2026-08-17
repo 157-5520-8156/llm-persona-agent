@@ -42,8 +42,8 @@ async def main() -> int:
     args = parser.parse_args()
 
     settings = get_settings()
-    if not settings.openai_api_key:
-        print("OPENAI_API_KEY is required", file=sys.stderr)
+    if not settings.qwen_api_key:
+        print("QWEN_API_KEY is required", file=sys.stderr)
         return 2
     image_path = Path(args.image)
     data = image_path.read_bytes()
@@ -56,10 +56,10 @@ async def main() -> int:
         model = args.model or settings.vision_model
         transport = SQLiteDurableVisionPerceptionTransport(
             Path(scratch) / "perception-probe.sqlite",
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
+            api_key=settings.qwen_api_key,
+            base_url=settings.qwen_base_url,
             model=model,
-            proxy_url=settings.openai_proxy_url,
+            thinking_disabled=True,
         )
         try:
             class _Action:

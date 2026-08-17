@@ -402,8 +402,6 @@ async def test_production_identity_leaves_current_relationship_to_the_world_proj
     assert composition.identity_frame.style_rules == (
         "像手机私聊；消息长度、条数和间隔由她当下真正想怎样表达决定，不固定成一两句。",
         "你的消息就是纯粹的私聊文字。",
-        "语气平实，偶尔俏皮就好。",
-        "先真实，再可爱；先自然，再浪漫。",
     )
     assert "刚认识" not in json.dumps(
         composition.identity_frame.model_dump(mode="json"),

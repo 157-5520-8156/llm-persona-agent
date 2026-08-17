@@ -16,7 +16,7 @@ import json
 import logging
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .accepted_ledger_batch import AcceptedLedgerBatchIssuer
 from .character_interior import CharacterInterior, InteriorOpportunity
@@ -48,11 +48,12 @@ from .expression_plan_atomic_recorder import ExpressionPlanAtomicRecorder
 from .expression_draft import (
     ExpressionDraft,
     ExpressionDraftCapabilities,
+    bind_proactive_expression_wire,
+    bind_proactive_world_claims,
     materialize_expression_plan_beats,
     normalize_expression_draft_wire,
     validate_expression_draft_capabilities,
     validate_expression_private_turn_state,
-    world_claim_source_refs_by_scope,
 )
 from .interactive_turn_budget import InteractiveTurnBudgetPolicy
 from .ledger import LedgerPort
@@ -75,6 +76,8 @@ from .schema_core import FrozenModel
 from .delayed_trigger_policies import TECHNICAL_RETRY_BACKOFF_SECONDS
 from .schemas import ClaimLease, ProjectionCursor, TriggerProcess, WorldEvent
 from .shared_private_invitation import pending_shared_private_invitation_advisories
+from .response_expectation_view import expired_unanswered_expectation
+from .revisit_intention_view import due_unfinished_revisit
 from .social_initiative import (
     SITUATION_STIMULUS_EVENT_TYPES,
     SocialInitiativeCompiler,
@@ -95,15 +98,156 @@ def _digest(value: object) -> str:
     return hashlib.sha256(_canonical(value).encode()).hexdigest()
 
 
+_ADVISORY_VALUE_MAX = 256
+_ADVISORY_CHOICE_PREFIX = " Choose freely: now, later, or silent; kind="
+
+
+def _proactive_opportunity_context(
+    *,
+    opportunity: "ProactiveOpportunity",
+    event: WorldEvent,
+    head: object | None,
+    projection: object,
+) -> str:
+    kind = opportunity.source_kind
+    if kind == "settled_world_event" and head is not None:
+        return "Verified shareable settled occurrence: " + _canonical(
+            {
+                "occurrence_id": head.occurrence_id,
+                "result_id": head.result_id,
+                "result_payload_ref": head.result_payload_ref,
+                "result_payload_hash": head.result_payload_hash,
+                "participant_refs": head.participant_refs,
+                "location_ref": head.location_ref,
+                "settled_at": head.settled_at.isoformat() if head.settled_at else None,
+                "visibility": head.visibility,
+                "source_event_ref": event.event_id,
+                "source_payload_hash": event.payload_hash,
+            }
+        )
+    if kind == "spontaneous_contact":
+        text = (
+            "Verified latest inbound message before the idle gap: "
+            + str(event.payload().get("text") or "[content unavailable]")[:1_024]
+        )
+        if opportunity.stimulus_event_refs:
+            return (
+                text
+                + " Committed situation changes are readable materials, not a wakeup: "
+                + _canonical(opportunity.stimulus_event_refs)
+            )
+        return text
+    if kind == "ambient_presence":
+        text = (
+            "A durable ambient-presence consideration is due. The Clock is timing authority only; "
+            "relationship, current life, affect, commitments, and remembered context remain available "
+            "as non-directive context."
+        )
+        if opportunity.stimulus_event_refs:
+            return (
+                text
+                + " Committed situation changes are readable materials, not a wakeup: "
+                + _canonical(opportunity.stimulus_event_refs)
+            )
+        return text
+    if kind == "post_silent":
+        return (
+            "A prior role-authored silent consideration is the timing source. It only opens "
+            "another chance to think; the character still decides whether any motive or "
+            "expression exists."
+        )
+    if kind == "situation_change":
+        return (
+            "A bounded set of committed situation changes is available. "
+            "It is timing and attention evidence only; derive any motive "
+            "freely from the verified relationship, affect, current "
+            "situation, life, memory, threads and commitments. Stimulus refs: "
+            + _canonical(opportunity.stimulus_event_refs)
+        )
+    if kind == "expired_expectation":
+        expired = expired_unanswered_expectation(projection)
+        hoped = getattr(expired, "hoped_response", None) if expired is not None else None
+        hope_text = hoped.strip()[:128] if isinstance(hoped, str) and hoped.strip() else ""
+        if hope_text:
+            return (
+                "Unanswered hope expired: "
+                + hope_text
+                + " Timing evidence only; she still decides."
+            )
+        return (
+            "A reply she hoped for did not arrive before that hope expired. "
+            "Timing evidence only; she still decides."
+        )
+    if kind == "thread":
+        return (
+            "A leftover she asked to return to is due. Timing evidence only; "
+            "she still decides whether to speak, wait, or stay silent."
+        )
+    if kind == "commitment":
+        return (
+            "A private commitment she left open is due. Timing evidence only; "
+            "she still decides whether to speak, wait, or stay silent."
+        )
+    if kind == "revisit_intention":
+        leftover = due_unfinished_revisit(projection)
+        thought = getattr(leftover, "thought", None) if leftover is not None else None
+        text = thought.strip()[:160] if isinstance(thought, str) and thought.strip() else ""
+        if text:
+            return (
+                "Leftover she asked to return to: "
+                + text
+                + " Timing evidence only; she still decides."
+            )
+        return (
+            "A leftover she asked to return to is due. Timing evidence only; "
+            "she still decides."
+        )
+    return "A verified proactive opportunity exists."
+
+
+def _proactive_advisory_value(*, opportunity_context: str, source_kind: str) -> str:
+    suffix = _ADVISORY_CHOICE_PREFIX + source_kind + "."
+    budget = max(1, _ADVISORY_VALUE_MAX - len(suffix))
+    return opportunity_context[:budget] + suffix
+
+
 class ProactiveDraft(ExpressionDraft):
     """The ordinary ExpressionDraft grammar, with proactive impulse audit.
 
     This intentionally does not have a one-message ``response_text`` escape
     hatch.  A proactive turn chooses the same zero/one/many beat plan as an
     inbound turn; only the causal source binding differs.
+
+    Optional mood / appraisal_draft let her open or update lasting Affect on
+    the same turn as the expression.  Omitting both is her no_change choice;
+    the host never invents affect for a proactive contact.
     """
 
     impulse_summary: str = Field(min_length=1, max_length=240)
+    mood: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    appraisal_draft: dict[str, object] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def mood_and_appraisal_draft_stay_orthogonal(self) -> "ProactiveDraft":
+        if self.mood is not None and self.appraisal_draft is not None:
+            raise ValueError("proactive mood and appraisal_draft cannot both be set")
+        if self.mood is not None:
+            dimension = self.mood.strip().lower()
+            if dimension not in {
+                "hurt",
+                "anger",
+                "sadness",
+                "loneliness",
+                "anxiety",
+                "resentment",
+                "warmth",
+                "joy",
+            }:
+                raise ValueError("proactive mood is not an offered lasting Affect dimension")
+            object.__setattr__(self, "mood", dimension)
+        return self
 
 
 class _ProactiveGroundingViolation(ValueError):
@@ -136,9 +280,11 @@ def _caused_by(exc: BaseException, error_type: type[BaseException]) -> bool:
     return False
 
 
-def _validate_proactive_grounding(*, draft: ProactiveDraft, request: ModelInput) -> None:
+def _validate_proactive_grounding(
+    *, draft: ProactiveDraft, request: ModelInput
+) -> ProactiveDraft:
     if not draft.beats:
-        return
+        return draft
     try:
         context = json.loads(request.model_content_json)
     except (TypeError, json.JSONDecodeError) as exc:
@@ -151,19 +297,20 @@ def _validate_proactive_grounding(*, draft: ProactiveDraft, request: ModelInput)
             code="proactive_grounding_context_invalid",
             path="model_content_json",
         )
-    allowed = world_claim_source_refs_by_scope(context=context)
-    for claim in draft.world_claims:
-        if claim.scope == "subjective_or_hypothetical":
+    del context
+    try:
+        return bind_proactive_world_claims(draft=draft, request=request)
+    except ValueError as exc:
+        message = str(exc)
+        if "Context" in message:
             raise _ProactiveGroundingViolation(
-                code="proactive_world_claim_scope_not_authoritative",
-                path="world_claims[].scope",
-            )
-        permitted = allowed.get(claim.scope)
-        if permitted is not None and not set(claim.source_refs).issubset(permitted):
-            raise _ProactiveGroundingViolation(
-                code="proactive_world_claim_source_lane_mismatch",
-                path="world_claims[].source_refs",
-            )
+                code="proactive_grounding_context_invalid",
+                path="model_content_json",
+            ) from exc
+        raise _ProactiveGroundingViolation(
+            code="proactive_world_claim_source_lane_mismatch",
+            path="world_claims[].source_refs",
+        ) from exc
 
 
 def _proactive_source_review_raw(draft: ProactiveDraft) -> str:
@@ -192,6 +339,41 @@ def _proactive_source_review_raw(draft: ProactiveDraft) -> str:
 
 class _ProactiveSourceBindingError(ValueError):
     """A claimed proactive opportunity no longer binds committed authority."""
+
+
+_PROACTIVE_INTERIOR_PASSTHROUGH_FAILURES = frozenset(
+    {
+        "role_faculty_unavailable",
+        "required_tool_choice_unsupported",
+        "authored_expression_reselection_invalid",
+        "recall_choice_reselection_invalid",
+        "affect_target_reselection_invalid",
+        "proactive_claim_binding_invalid",
+    }
+)
+_PROACTIVE_INTERIOR_RESELECTION_FAILURES = frozenset(
+    {
+        "authored_expression_reselection_invalid",
+        "recall_choice_reselection_invalid",
+        "affect_target_reselection_invalid",
+        "role_result_schema_invalid",
+        "role_result_not_json",
+        "invalid_role_result",
+        "invalid_role_result_after_correction",
+    }
+)
+
+
+def map_character_interior_proactive_failure(failure: str) -> str:
+    """Keep exact Interior terminals; do not treat every 'invalid' as reselection."""
+
+    if failure in _PROACTIVE_INTERIOR_PASSTHROUGH_FAILURES:
+        return failure
+    if failure in _PROACTIVE_INTERIOR_RESELECTION_FAILURES:
+        return "authored_expression_reselection_invalid"
+    if "timeout" in failure:
+        return "authored_subcall_timeout"
+    return "authored_subcall_exception"
 
 
 class _CharacterInteriorProactiveTransport:
@@ -330,14 +512,7 @@ class _CharacterInteriorProactiveTransport:
         if decision.status == "technical_failure":
             failure = decision.failure_code or "unknown"
             raise ValidationTechnicalFailure(
-                failure
-                if failure
-                in {"role_faculty_unavailable", "required_tool_choice_unsupported"}
-                else "authored_subcall_timeout"
-                if "timeout" in failure
-                else "authored_expression_reselection_invalid"
-                if "invalid" in failure
-                else "authored_subcall_exception"
+                map_character_interior_proactive_failure(failure)
             ) from RuntimeError("character Interior proactive failure: " + failure)
         if decision.status != "decided" or decision.decision is None:
             # Proactive silence is the explicit timing_choice=silent payload;
@@ -345,7 +520,7 @@ class _CharacterInteriorProactiveTransport:
             raise ValueError("proactive Interior result lacks an explicit decision payload")
         draft = self._draft(decision=decision)
         try:
-            _validate_proactive_grounding(draft=draft, request=request)
+            draft = _validate_proactive_grounding(draft=draft, request=request)
         except _ProactiveGroundingViolation as violation:
             if violation.code == "proactive_grounding_context_invalid":
                 raise
@@ -441,11 +616,19 @@ class _CharacterInteriorProactiveTransport:
             capability_manifest=capability,
             context_note=(
                 "A source-bound proactive contact opportunity is due; the character "
-                "freely owns now, later, silent, wording and message count."
+                "freely owns now, later, silent, wording, message count, and whether "
+                "this turn also opens or updates lasting Affect."
             ),
             occasion=mint_quiet_gap(
                 source_event_ref=trigger_ref,
                 created_at=logical_time,
+                # The trigger alone is the wrong grain: one user message
+                # legitimately opens a fresh quiet gap in every later cadence
+                # epoch, and she must be free to reconsider after choosing
+                # silence.  ``attempt_id`` is derived from consideration plus
+                # retry ordinal, so it stays stable across a restart while
+                # still separating those epochs.
+                merge_key=attempt_id,
             ),
         )
 
@@ -482,7 +665,7 @@ class _CharacterInteriorProactiveTransport:
             "inner_state_summary": decision.summary,
             "attended_source_refs": list(decision.attended_source_refs),
         }
-        normalized = normalize_expression_draft_wire(value)
+        normalized = bind_proactive_expression_wire(normalize_expression_draft_wire(value))
         draft = ProactiveDraft.model_validate_json(_canonical(normalized), strict=True)
         validate_expression_draft_capabilities(
             draft=draft,
@@ -514,6 +697,24 @@ class _CharacterInteriorProactiveTransport:
         if result.review is None:
             return "not_required"
         return "accepted" if result.review.decision == "supported" else "rejected"
+
+
+def _proactive_appraisal_raw(*, draft: ProactiveDraft) -> str | None:
+    """Build character-chosen appraisal/affect JSON, or None for her no_change."""
+
+    if draft.appraisal_draft is not None:
+        return json.dumps(draft.appraisal_draft, ensure_ascii=False, separators=(",", ":"))
+    if draft.mood is None:
+        return None
+    from .present_prompt import _slim_appraisal_draft
+
+    appraisal = _slim_appraisal_draft(
+        felt=draft.brief_rationale,
+        authored_felt=draft.brief_rationale,
+        label=draft.stance,
+        mood=draft.mood,
+    )
+    return json.dumps(appraisal, ensure_ascii=False, separators=(",", ":"))
 
 
 def _materialize_interior_proactive_draft(
@@ -594,8 +795,34 @@ def _materialize_interior_proactive_draft(
         impulse_summary=draft.impulse_summary,
         proactive_grounding_outcome=grounding_outcome,
     )
+    state_changes: tuple[TypedChange, ...] = ()
+    appraisals = ()
+    affect_tendencies = ()
+    affect_decision: Literal["no_change", "propose"] = "no_change"
+    appraisal_raw = _proactive_appraisal_raw(draft=draft)
+    if appraisal_raw is not None:
+        from .character_interior.inbound_appraisal_wire import (
+            _proposal_from_draft as materialize_appraisal_draft,
+        )
+
+        appraisal_proposal = DecisionProposal.model_validate(
+            materialize_appraisal_draft(raw=appraisal_raw, request=request)
+        )
+        state_changes = tuple(
+            item
+            for item in appraisal_proposal.proposed_changes
+            if item.kind in {"appraisal_transition", "affect_transition"}
+        )
+        appraisals = appraisal_proposal.appraisals
+        affect_tendencies = appraisal_proposal.affect_tendencies
+        affect_decision = appraisal_proposal.affect_decision
+    common.update(
+        appraisals=appraisals,
+        affect_tendencies=affect_tendencies,
+        affect_decision=affect_decision,
+    )
     if draft.timing_choice == "silent" or grounding_outcome == "rejected":
-        return DecisionProposal(**common)
+        return DecisionProposal(**common, proposed_changes=state_changes)
     due_window = None
     if draft.timing_choice == "later":
         assert draft.delay_seconds is not None and draft.expires_after_seconds is not None
@@ -657,7 +884,7 @@ def _materialize_interior_proactive_draft(
     )
     return DecisionProposal(
         **common,
-        proposed_changes=(change,),
+        proposed_changes=(*state_changes, change),
         action_intents=tuple(intents),
     )
 
@@ -799,6 +1026,8 @@ def _proactive_source_frame(model_content_json: str) -> dict[str, object] | None
             "ambient_presence",
             "post_silent",
             "situation_change",
+            "expired_expectation",
+            "revisit_intention",
         }:
             candidates = value.get("candidates")
             candidate = (
@@ -873,6 +1102,8 @@ class ProactiveOpportunity(FrozenModel):
         "ambient_presence",
         "post_silent",
         "situation_change",
+        "expired_expectation",
+        "revisit_intention",
     ]
     source_id: str
     source_event_ref: str
@@ -1068,6 +1299,28 @@ class ProactiveDeliberationTurn:
                 and message.world_revision == opportunity.source_world_revision
                 and projection.message_observations[-1] == message
             )
+        elif opportunity.source_kind == "expired_expectation":
+            # The source is her own delivered message, so the binding is the
+            # receipt of that message rather than an inbound observation.
+            # Re-deriving the expiry from the pinned projection also means a
+            # reply that arrived in the meantime silently retires the
+            # opportunity instead of prompting her to chase an answer she
+            # already has.
+            expired = expired_unanswered_expectation(projection)
+            valid_source = (
+                event.event_type == "ExecutionReceiptRecorded"
+                and expired is not None
+                and expired.plan_id == opportunity.source_id
+                and expired.receipt_event_id == opportunity.source_event_ref
+            )
+        elif opportunity.source_kind == "revisit_intention":
+            leftover = due_unfinished_revisit(projection)
+            valid_source = (
+                event.event_type == "ExecutionReceiptRecorded"
+                and leftover is not None
+                and leftover.plan_id == opportunity.source_id
+                and leftover.receipt_event_id == opportunity.source_event_ref
+            )
         elif opportunity.source_kind == "ambient_presence":
             valid_source = event.event_type == "ClockAdvanced"
         elif opportunity.source_kind == "post_silent":
@@ -1151,51 +1404,11 @@ class ProactiveDeliberationTurn:
             raise _ProactiveSourceBindingError(
                 "proactive source does not bind the current domain head"
             )
-        opportunity_context = (
-            "Verified shareable settled occurrence: "
-            + _canonical(
-                {
-                    "occurrence_id": head.occurrence_id,
-                    "result_id": head.result_id,
-                    "result_payload_ref": head.result_payload_ref,
-                    "result_payload_hash": head.result_payload_hash,
-                    "participant_refs": head.participant_refs,
-                    "location_ref": head.location_ref,
-                    "settled_at": head.settled_at.isoformat() if head.settled_at else None,
-                    "visibility": head.visibility,
-                    "source_event_ref": event.event_id,
-                    "source_payload_hash": event.payload_hash,
-                }
-            )
-            if opportunity.source_kind == "settled_world_event" and head is not None
-            else (
-                "Verified latest inbound message before the idle gap: "
-                + str(event.payload().get("text") or "[content unavailable]")[:1_024]
-                if opportunity.source_kind == "spontaneous_contact"
-                else (
-                    "A durable ambient-presence consideration is due. The Clock is timing authority only; "
-                    "relationship, current life, affect, commitments, and remembered context remain available "
-                    "as non-directive context."
-                    if opportunity.source_kind == "ambient_presence"
-                    else (
-                        "A prior role-authored silent consideration is the timing source. It only opens "
-                        "another chance to think; the character still decides whether any motive or "
-                        "expression exists."
-                        if opportunity.source_kind == "post_silent"
-                        else (
-                        (
-                            "A bounded set of committed situation changes is available. "
-                            "It is timing and attention evidence only; derive any motive "
-                            "freely from the verified relationship, affect, current "
-                            "situation, life, memory, threads and commitments. Stimulus refs: "
-                            + _canonical(opportunity.stimulus_event_refs)
-                        )
-                        if opportunity.source_kind == "situation_change"
-                        else "A verified proactive opportunity exists."
-                        )
-                    )
-                )
-            )
+        opportunity_context = _proactive_opportunity_context(
+            opportunity=opportunity,
+            event=event,
+            head=head,
+            projection=projection,
         )
         # The immutable Clock event remains the source authority for a
         # post-silent opportunity.  Its source kind is carried by the verified
@@ -1211,25 +1424,34 @@ class ProactiveDeliberationTurn:
             )
             bounded_stimulus_event_refs = tuple(ref.event_id for ref in evidence_refs)
         else:
-            evidence_refs = (committed_ref,)
-            bounded_stimulus_event_refs = ()
+            hitch_refs = (
+                _unique_committed_stimulus_refs(
+                    projection, opportunity.stimulus_event_refs
+                )
+                if opportunity.stimulus_event_refs
+                else ()
+            )
+            evidence_refs = (committed_ref, *hitch_refs)
+            bounded_stimulus_event_refs = tuple(ref.event_id for ref in hitch_refs)
         advisory = InnerAdvisoryProjection(
             advisory_id="advisory:proactive:" + _digest(opportunity.model_dump(mode="json")),
             kind="proactive_opportunity",
             source_refs=(
                 bounded_stimulus_event_refs
                 if opportunity.source_kind == "situation_change"
-                else (opportunity.source_event_ref,)
+                else (
+                    (opportunity.source_event_ref, *bounded_stimulus_event_refs)
+                    if bounded_stimulus_event_refs
+                    else (opportunity.source_event_ref,)
+                )
             ),
             candidate_refs=(f"{opportunity.source_kind}:{opportunity.source_id}",),
             candidates=(
                 InnerAdvisoryCandidate(
                     candidate_ref=f"{opportunity.source_kind}:{opportunity.source_id}",
-                    value=(
-                        opportunity_context[:190]
-                        + " Choose freely: now, later, or silent; kind="
-                        + opportunity.source_kind
-                        + "."
+                    value=_proactive_advisory_value(
+                        opportunity_context=opportunity_context,
+                        source_kind=opportunity.source_kind,
                     ),
                     weight_bp=10_000,
                     confidence_bp=10_000,
@@ -1405,6 +1627,8 @@ class ProactiveActionRuntime:
         {
             "source_review_timeout",
             "source_review_exception",
+            "authored_subcall_timeout",
+            "authored_subcall_exception",
             "role_faculty_unavailable",
             "required_tool_choice_unsupported",
             "recall_choice_reselection_invalid",
@@ -1413,6 +1637,18 @@ class ProactiveActionRuntime:
             "affect_target_reselection_invalid",
             "inventory_invalid",
             "coverage_invalid",
+        }
+    )
+    _NON_RETRYABLE_VALIDATION_FAILURE_CODES = frozenset(
+        {
+            "authored_expression_reselection_invalid",
+            "recall_choice_reselection_invalid",
+            "proactive_claim_binding_invalid",
+            "affect_target_reselection_invalid",
+            "inventory_invalid",
+            "coverage_invalid",
+            "required_tool_choice_unsupported",
+            "role_faculty_unavailable",
         }
     )
     _SEMANTIC_TERMINAL_OUTCOMES = frozenset(
@@ -2078,6 +2314,8 @@ class ProactiveActionRuntime:
             last_failure_model_version,
             _,
         ) = failures[-1]
+        if last_failure_code in cls._NON_RETRYABLE_VALIDATION_FAILURE_CODES:
+            return None
         latest_message_revision = (
             projection.message_observations[-1].world_revision
             if projection.message_observations

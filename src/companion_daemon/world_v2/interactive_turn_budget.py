@@ -329,7 +329,22 @@ class InteractiveTurnBudget:
             self.marker(event)
 
 
+def background_turn_budget_policy() -> InteractiveTurnBudgetPolicy:
+    """Timing for lanes where nobody is watching a typing indicator.
+
+    The interactive ceiling is a courtesy to a waiting human. Proactive contact
+    and the other background lanes have no such observer, but they still owe the
+    same constrained reselection: it can only begin once the primary has
+    returned, so the window has to hold two serial provider calls rather than
+    one. At the measured p99 of 8.5s each, an 11s window cancels the second leg
+    after the first has already been generated and billed.
+    """
+
+    return InteractiveTurnBudgetPolicy(total_seconds=24.0)
+
+
 __all__ = [
     "InteractiveTurnBudget",
     "InteractiveTurnBudgetPolicy",
+    "background_turn_budget_policy",
 ]

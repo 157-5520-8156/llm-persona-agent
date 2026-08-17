@@ -1081,6 +1081,8 @@ class ProactiveExpressionSourceBinding(FrozenModel):
         "ambient_presence",
         "post_silent",
         "situation_change",
+        "expired_expectation",
+        "revisit_intention",
     ]
     source_event_ref: BoundedRef
     source_payload_hash: str = Field(pattern=_HASH_PATTERN)
@@ -1106,6 +1108,8 @@ class ProactiveExpressionPlanSourceBindingV2(FrozenModel):
         "ambient_presence",
         "post_silent",
         "situation_change",
+        "expired_expectation",
+        "revisit_intention",
     ]
     source_event_ref: BoundedRef
     source_payload_hash: str = Field(pattern=_HASH_PATTERN)
@@ -1149,6 +1153,8 @@ class ProactiveOpportunityDecision(FrozenModel):
         "ambient_presence",
         "post_silent",
         "situation_change",
+        "expired_expectation",
+        "revisit_intention",
     ]
     source_event_ref: BoundedRef
     source_payload_hash: str = Field(pattern=_HASH_PATTERN)
@@ -1185,6 +1191,20 @@ class ResponseExpectationDraftPayload(FrozenModel):
         return self
 
 
+class RevisitDraftPayload(FrozenModel):
+    """Model-proposed leftover; acceptance supplies the wake window."""
+
+    thought: str = Field(min_length=1, max_length=160)
+    wait_seconds: int = Field(ge=30, le=86_400)
+    expires_after_seconds: int = Field(ge=60, le=172_800)
+
+    @model_validator(mode="after")
+    def expiry_follows_wait(self) -> "RevisitDraftPayload":
+        if self.expires_after_seconds <= self.wait_seconds:
+            raise ValueError("revisit expiry must follow its wait")
+        return self
+
+
 class ExpressionPlanWorldClaim(FrozenModel):
     """Audited source declaration retained with the expression proposal."""
 
@@ -1211,6 +1231,9 @@ class ExpressionPlanPayload(FrozenModel):
     recorded_cadence_mode: Literal["off", "shadow", "on"] | None = None
     recorded_draw_refs: list[BoundedRef] = Field(default_factory=list, max_length=7)
     response_expectation: ResponseExpectationDraftPayload | None = None
+    revisit: RevisitDraftPayload | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     event_share_claim: EventShareClaimBinding | None = None
     proactive_source_binding: ProactiveExpressionSourceBinding | None = None
     event_share_plan_claim_v2: EventSharePlanClaimBindingV2 | None = None

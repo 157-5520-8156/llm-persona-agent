@@ -534,7 +534,9 @@ class MediaSelectionWorker:
     def _derive_selection(self, *, projection, candidate) -> MediaSelection | None:  # type: ignore[no-untyped-def]
         """Derive all P3 authority from ledger facts, never from model output."""
 
-        if candidate.family != "character_media" or candidate.privacy_ceiling != "private":
+        if candidate.family != "character_media":
+            return MediaSelection(candidate_id=candidate.candidate_id, family=candidate.family)
+        if not self._recipient_scoped_private_candidate(candidate=candidate):
             return MediaSelection(candidate_id=candidate.candidate_id, family=candidate.family)
         contract = candidate.character_media_contract
         if contract is None or projection.logical_time is None:
@@ -578,6 +580,17 @@ class MediaSelectionWorker:
             expression_charge_ceiling="subtle", recipient_ref=recipient_ref,
             private_expression_basis_ref=context.private_expression_basis.basis_id,
         )
+
+    def _recipient_scoped_private_candidate(self, *, candidate) -> bool:  # type: ignore[no-untyped-def]
+        if candidate.privacy_ceiling != "private":
+            return False
+        for source in candidate.source_events:
+            located = self._ledger.lookup_event_commit(source.event_ref)
+            if located is None or located[0].payload_hash != source.payload_hash:
+                continue
+            if located[0].event_type == "RecipientScopedImageEvidenceDeclared":
+                return True
+        return False
 
     @staticmethod
     def _private_transition(*, declaration, declaration_event, valid_until):  # type: ignore[no-untyped-def]

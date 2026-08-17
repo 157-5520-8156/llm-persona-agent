@@ -530,6 +530,35 @@ async def test_activity_character_failure_uses_the_shared_technical_retry_lane()
 
 
 @pytest.mark.asyncio
+async def test_occasion_already_considered_does_not_abort_the_rest_of_the_ecology() -> None:
+    event = _event("clock-activity-occasion-spent")
+    trigger_store, media = _TriggerStore(), _Media()
+    activity = _Activity(
+        status="technical_failure",
+        reason_code="activity_lifecycle.occasion_already_considered",
+    )
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event),
+        trigger_store=trigger_store,
+        media_followup=media,
+        activity_followup=activity,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:activity-occasion-spent",
+        correlation_id="correlation:activity-occasion-spent",
+    )
+
+    assert result.status == "idle"
+    assert result.activity_followup_status == "no_op"
+    assert result.technical_failure_code is None
+    assert len(media.calls) == 1
+    assert trigger_store.completed[0][2] == "idle"
+
+
+@pytest.mark.asyncio
 async def test_life_ecology_persists_a_retryable_media_failure_code() -> None:
     event = _event("clock-media-failure")
     trigger_store = _TriggerStore()

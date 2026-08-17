@@ -122,10 +122,25 @@ class MediaSituationalContextV1(FrozenModel):
         return self
 
 
-class ImageEvidenceV1(FrozenModel):
-    """A typed envelope; leaf-level planner checks remain fail-closed downstream."""
+_ORDINARY_SOURCE_PRIVACY = frozenset({"public", "shareable", "personal", "private"})
+_PRIVACY_RANK = {
+    "public": 0,
+    "shareable": 1,
+    "personal": 2,
+    "private": 3,
+    "withhold": 4,
+}
 
-    visibility: Literal["public", "shareable"]
+
+class ImageEvidenceV1(FrozenModel):
+    """A typed envelope; leaf-level planner checks remain fail-closed downstream.
+
+    ``personal`` / ``private`` here are still ordinary life photos for the
+    companion's unique recipient.  They are not P3 intimate evidence; that
+    wire stays on ``RecipientScopedImageEvidenceDeclared``.
+    """
+
+    visibility: Literal["public", "shareable", "personal", "private"]
     summary: str | None = Field(default=None, max_length=480)
     outcome: str | None = Field(default=None, max_length=480)
     location: dict[str, object] | None = None
@@ -155,7 +170,7 @@ class ImageEvidenceV1(FrozenModel):
 
 
 class ImageEvidenceDeclaredPayload(FrozenModel):
-    """Bind one public/shareable visual slice to one immutable life event."""
+    """Bind one ordinary-life visual slice to one immutable life event."""
 
     source_event_ref: str = Field(min_length=1, max_length=512)
     source_event_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -168,9 +183,12 @@ class ImageEvidenceDeclaredPayload(FrozenModel):
     def source_is_supported_and_not_more_private_than_its_anchor(self) -> "ImageEvidenceDeclaredPayload":
         if self.source_event_type not in DECLARABLE_SOURCE_EVENT_TYPES:
             raise ValueError("image evidence declaration source event type is unsupported")
-        if self.source_privacy_ceiling not in {"public", "shareable"}:
-            raise ValueError("image evidence declaration source must be public or shareable")
-        if self.image_evidence.visibility == "shareable" and self.source_privacy_ceiling != "shareable":
+        if self.source_privacy_ceiling not in _ORDINARY_SOURCE_PRIVACY:
+            raise ValueError("image evidence declaration source must be an ordinary life privacy class")
+        if (
+            _PRIVACY_RANK[self.image_evidence.visibility]
+            < _PRIVACY_RANK[self.source_privacy_ceiling]
+        ):
             raise ValueError("image evidence visibility exceeds its source privacy")
         return self
 

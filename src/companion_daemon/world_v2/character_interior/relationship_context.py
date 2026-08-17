@@ -13,6 +13,10 @@ from dataclasses import dataclass
 from typing import Mapping
 
 from ..life_events import WorldOccurrenceSettledPayload
+from ..present_prompt import (
+    PRESENT_ACCEPTED_RELATIONSHIP_COMMITMENT_LIMIT,
+    PRESENT_AUTHORED_RELATIONSHIP_SIGNAL_LIMIT,
+)
 from ..relationship_events import (
     RelationshipCommitmentAcceptedPayload,
     RelationshipSlowVariableAdjustedPayload,
@@ -275,6 +279,110 @@ def install_relationship_context(
     return result
 
 
+_ORDINARY_COMMITTED_STAGES = frozenset({"acquaintance", "friend", "close_friend"})
+
+
+def _authored_signals_for_subject(
+    projection: LedgerProjection, subject_ref: str
+) -> list[dict[str, object]]:
+    ranked = sorted(
+        (
+            item
+            for item in projection.relationship_signals
+            if item.subject_ref == subject_ref
+        ),
+        key=lambda item: item.accepted_at,
+        reverse=True,
+    )
+    return [
+        {
+            "signal_code": item.signal_code,
+            "rationale_code": item.rationale_code,
+            "confidence_bp": item.confidence_bp,
+        }
+        for item in ranked[:PRESENT_AUTHORED_RELATIONSHIP_SIGNAL_LIMIT]
+    ]
+
+
+def _accepted_commitments_for_head(
+    projection: LedgerProjection, *, relationship_id: str, subject_ref: str
+) -> list[dict[str, object]]:
+    ranked = sorted(
+        (
+            item
+            for item in projection.relationship_commitments
+            if item.status == "active"
+            and item.subject_ref == subject_ref
+            and item.relationship_id == relationship_id
+            and item.committed_stage in _ORDINARY_COMMITTED_STAGES
+        ),
+        key=lambda item: item.committed_at,
+        reverse=True,
+    )
+    return [
+        {
+            "committed_stage": item.committed_stage,
+            "commitment_code": item.commitment_code,
+            "visible_text_span": item.visible_text_span,
+        }
+        for item in ranked[:PRESENT_ACCEPTED_RELATIONSHIP_COMMITMENT_LIMIT]
+    ]
+
+
+def install_relationship_authored_residues(
+    context: Mapping[str, object], projection: LedgerProjection
+) -> dict[str, object]:
+    result = dict(context)
+    slices = dict(context.get("slices") or {})
+    changed = False
+    for lane in ("relationship_slice", "protagonist_npc_relationships"):
+        lane_value = slices.get(lane)
+        if not isinstance(lane_value, dict) or lane_value.get("availability") != "available":
+            continue
+        items = lane_value.get("items")
+        if not isinstance(items, list):
+            continue
+        rewritten: list[object] = []
+        lane_changed = False
+        for item in items:
+            if not isinstance(item, dict):
+                rewritten.append(item)
+                continue
+            value = item.get("value")
+            if not isinstance(value, dict):
+                rewritten.append(item)
+                continue
+            subject_ref = value.get("subject_ref")
+            relationship_id = value.get("relationship_id")
+            if not isinstance(subject_ref, str) or not subject_ref:
+                rewritten.append(item)
+                continue
+            next_value = dict(value)
+            signals = _authored_signals_for_subject(projection, subject_ref)
+            if signals:
+                next_value["recent_authored_signals"] = signals
+            if isinstance(relationship_id, str) and relationship_id:
+                commitments = _accepted_commitments_for_head(
+                    projection,
+                    relationship_id=relationship_id,
+                    subject_ref=subject_ref,
+                )
+                if commitments:
+                    next_value["accepted_commitments"] = commitments
+            if next_value == value:
+                rewritten.append(item)
+                continue
+            rewritten.append({**item, "value": next_value})
+            lane_changed = True
+        if not lane_changed:
+            continue
+        slices[lane] = {**lane_value, "items": rewritten}
+        changed = True
+    if changed:
+        result["slices"] = slices
+    return result
+
+
 def relationship_transition_subject_refs(
     *, projection: object, source_event: object
 ) -> tuple[str, ...]:
@@ -306,6 +414,7 @@ def relationship_transition_subject_refs(
 __all__ = [
     "RelationshipContextJoin",
     "build_relationship_context_join",
+    "install_relationship_authored_residues",
     "install_relationship_context",
     "relationship_transition_subject_refs",
 ]

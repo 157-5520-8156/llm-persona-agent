@@ -49,6 +49,8 @@ _PRODUCTION_MODEL_IDS = (
     "openai/gpt-5.4-nano",
     "openai/gpt-4o-mini",
     "gpt-5.6-luna",
+    "qwen3-vl-flash",
+    "qwen/qwen3-vl-flash",
 )
 
 

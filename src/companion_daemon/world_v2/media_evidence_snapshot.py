@@ -9,7 +9,7 @@ accepts caller-provided snapshot JSON.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Protocol
 
 from .ledger import LedgerPort
 from .image_evidence_contract import ImageEvidenceDeclaredPayload
@@ -36,7 +36,7 @@ from .schema_core import PrivacyClass
 
 
 _PUBLIC_VISIBILITIES = frozenset({"public", "shareable"})
-_RECIPIENT_SCOPED_VISIBILITIES = frozenset({"personal", "private"})
+_ORDINARY_VISIBILITIES = frozenset({"public", "shareable", "personal", "private"})
 _PRIVACY_RANK = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}
 _SUPPORTED_EVENT_TYPES = frozenset({
     "ActivityPlanned", "ActivityStarted", "ActivityResumed", "ActivityCompleted", "ActivityAbandoned",
@@ -121,7 +121,7 @@ def _leaf_pointers(value: object, pointer: str) -> tuple[str, ...]:
 
 
 def _visibility(
-    value: object, *, reason: str, allowed: frozenset[str] = _PUBLIC_VISIBILITIES
+    value: object, *, reason: str, allowed: frozenset[str] = _ORDINARY_VISIBILITIES
 ) -> PrivacyClass:
     if value not in allowed:
         raise MediaEvidenceNotRenderable(reason)
@@ -144,7 +144,7 @@ def _plain_context_value(
 
 def _clean_mapping(
     value: object, *, fields: frozenset[str], reason: str,
-    fallback_visibility: PrivacyClass, allowed_visibilities: frozenset[str] = _PUBLIC_VISIBILITIES,
+    fallback_visibility: PrivacyClass, allowed_visibilities: frozenset[str] = _ORDINARY_VISIBILITIES,
     allow_string_sequences: bool = False,
 ) -> tuple[dict[str, object], PrivacyClass]:
     if not isinstance(value, dict):
@@ -187,8 +187,8 @@ class MediaEvidenceSnapshotCompiler:
 
     def compile(self, request: MediaEvidenceCompileRequest) -> CompiledMediaEvidence:
         candidate = request.candidate
-        if candidate.family not in {"life_share", "character_media"} or candidate.privacy_ceiling not in _PUBLIC_VISIBILITIES:
-            raise MediaEvidenceNotRenderable("media_candidate_requires_public_or_shareable_evidence")
+        if candidate.family not in {"life_share", "character_media"} or candidate.privacy_ceiling not in _ORDINARY_VISIBILITIES:
+            raise MediaEvidenceNotRenderable("media_candidate_requires_ordinary_life_evidence")
         if candidate.family == "character_media" and candidate.character_media_contract is None:
             raise MediaEvidenceNotRenderable("character_media_contract_missing")
         projection = self._ledger.project_at(request.cursor)
@@ -227,7 +227,7 @@ class MediaEvidenceSnapshotCompiler:
             "visual_requirements": {"requires_readable_text": False},
             "relationship_media_context": None,
         }
-        origins: dict[str, tuple[WorldEvent, Literal["public", "shareable"]]] = {
+        origins: dict[str, tuple[WorldEvent, PrivacyClass]] = {
             "/event": (primary, candidate.privacy_ceiling),
             "/source": (primary, candidate.privacy_ceiling),
             "/visual_requirements": (primary, candidate.privacy_ceiling),
@@ -466,8 +466,8 @@ class MediaEvidenceSnapshotCompiler:
     def _merge_explicit_evidence(
         self, *, target: dict[str, object], origins: dict[str, tuple[WorldEvent, PrivacyClass]],
         event: WorldEvent, fallback_visibility: PrivacyClass, raw: object | None = None,
-        allowed_visibilities: frozenset[str] = _PUBLIC_VISIBILITIES,
-        visibility_reason: str = "image_evidence_not_public_or_shareable",
+        allowed_visibilities: frozenset[str] = _ORDINARY_VISIBILITIES,
+        visibility_reason: str = "image_evidence_not_ordinary_life",
     ) -> None:
         if raw is None:
             payload = event.payload()
@@ -609,7 +609,7 @@ class MediaEvidenceSnapshotCompiler:
         events: tuple[WorldEvent, ...],
         projection: _ProjectionLike,
         body: dict[str, object],
-        origins: dict[str, tuple[WorldEvent, Literal["public", "shareable"]]],
+        origins: dict[str, tuple[WorldEvent, PrivacyClass]],
     ) -> tuple[WorldEvent, ...]:
         """Freeze P2 character facts, not a current projection or prompt hint."""
 
@@ -638,7 +638,8 @@ class MediaEvidenceSnapshotCompiler:
             raise MediaEvidenceNotRenderable("character_media_contract_not_proven_by_declaration")
         visibility = _visibility(
             declaration.image_evidence.visibility,
-            reason="character_media_evidence_not_public_or_shareable",
+            reason="character_media_evidence_not_ordinary_life",
+            allowed=_ORDINARY_VISIBILITIES,
         )
         body["character"] = {
             "subject_ref": contract.subject_ref,
@@ -699,7 +700,7 @@ class MediaEvidenceSnapshotCompiler:
 
     @staticmethod
     def _visible_at_candidate_ceiling(*, value: object, ceiling: object) -> bool:
-        return value in _PUBLIC_VISIBILITIES and _PRIVACY_RANK[value] <= _PRIVACY_RANK[ceiling]
+        return value in _ORDINARY_VISIBILITIES and _PRIVACY_RANK[value] <= _PRIVACY_RANK[ceiling]
 
     @staticmethod
     def _character_contract_is_proven(*, contract, declaration: ImageEvidenceDeclaredPayload) -> bool:  # type: ignore[no-untyped-def]

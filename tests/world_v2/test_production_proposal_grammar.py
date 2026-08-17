@@ -438,17 +438,68 @@ def test_interaction_appraisal_rejects_multiple_affects_defensively() -> None:
         production_proposal_grammar("interaction_appraisal").validate(proposal)
 
 
+def test_settled_and_silence_lanes_accept_appraisal_with_bound_affect() -> None:
+    appraisal = _change("appraisal_transition", "activate")
+    affect = _change(
+        "affect_transition",
+        "open",
+        appraisal_change_refs=[appraisal.change_id],
+    )
+    proposal = _interaction_decision((appraisal, affect))
+    for lane in (
+        "settled_world_appraisal",
+        "silence_appraisal",
+        "plan_disruption_appraisal",
+    ):
+        production_proposal_grammar(lane).validate(proposal)  # type: ignore[arg-type]
+
+
+def test_proactive_lane_accepts_expression_with_bound_appraisal_affect() -> None:
+    appraisal = _change("appraisal_transition", "activate")
+    affect = _change(
+        "affect_transition",
+        "open",
+        appraisal_change_refs=[appraisal.change_id],
+    )
+    expression = _change("expression_plan_transition", "accept")
+    proposal = DecisionProposal(
+        proposal_id="proposal:proactive-affect",
+        trigger_ref="trigger:proactive",
+        evaluated_world_revision=1,
+        evidence_refs=(),
+        proposed_changes=(appraisal, affect, expression),
+        action_intents=(
+            ProposalActionIntent(
+                intent_id="intent:proactive",
+                kind="proactive_message",
+                layer="external_action",
+                target="user:1",
+                payload_ref="payload:proactive",
+                payload_hash=_hash("hi"),
+                causal_change_id=expression.change_id,
+                beat_ref="beat:1",
+            ),
+        ),
+        confidence=5_000,
+        brief_rationale="reach out",
+        affect_decision="propose",
+        behavior_tendency="respond",
+        stance="warm",
+        display_strategy="model_selected_expression",
+        timing_choice="now",
+    )
+    production_proposal_grammar("proactive").validate(proposal)
+
+
 def test_every_non_inbound_lane_rejects_the_source_bound_appraisal_affect_composite() -> None:
     appraisal = _change("appraisal_transition", "activate")
     affect = _change("affect_transition", "open", appraisal_change_refs=[appraisal.change_id])
     proposal = _interaction_decision((appraisal, affect))
     for lane in (
-        "settled_world_appraisal",
         "affect",
         "relationship",
         "outcome",
         "interaction_bid",
-        "proactive",
     ):
         with pytest.raises(ProductionProposalGrammarError, match="change_count_not_reachable"):
             production_proposal_grammar(lane).validate(proposal)  # type: ignore[arg-type]

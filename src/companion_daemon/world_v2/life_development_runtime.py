@@ -39,6 +39,7 @@ from .life_development_draft import (
     CharacterChoiceAcceptDraft,
     CharacterChoiceNoOpDraft,
     LIFE_DEVELOPMENT_PRIVACY_ORDER,
+    ORDINARY_LIFE_PHOTO_PRIVACY,
     LifeDevelopmentCapabilityManifest,
     LifeDevelopmentCapabilityManifestCompiler,
     LifeDevelopmentClaimDeclaration,
@@ -62,6 +63,7 @@ from .life_development_deterministic_closure import (
     evaluate_general_source_closure,
 )
 from .life_author_seed import ReviewedLifeSeedCatalog
+from .weighted_table import inject_nothing_mass, pick_weighted_token
 from .life_development_source_closure import (
     LifeDevelopmentNovelOriginReview,
     LifeDevelopmentSourceClosureError,
@@ -103,6 +105,7 @@ from .structured_completion import complete_json_object
 from .schemas import (
     BiographicalCoordinateReplacement,
     DueWindow,
+    DynamicLifeArcContextDescriptor,
     EvidenceRef,
     OutcomeCandidateDescriptor,
     PlanStateProjection,
@@ -125,6 +128,46 @@ _WORLD_AUTHOR_SOURCE_REWRITE_CONTRACT = "world-author-source-rewrite.1"
 _WORLD_AUTHOR_SOURCE_REWRITE_PROPOSE_REPAIR_CONTRACT = (
     "world-author-source-rewrite-propose-repair.1"
 )
+LIFE_DEVELOPMENT_OPPORTUNITY_REF = "life-development:opportunity"
+LIFE_DEVELOPMENT_NOTHING_REF = "nothing:life-development"
+LIFE_DEVELOPMENT_OPPORTUNITY_MASS_BP = 2_000
+_DYNAMIC_LIFE_DIRECTION_AUTHORITY = {
+    "status": "optional_per_outcome",
+    "authority": "world_author_event_impact",
+    "applied_when": "that_exact_candidate_is_accepted_and_settled",
+    "must_be": "durable_life_context_entailed_by_candidate_branch",
+    "must_not_be": [
+        "character_motive",
+        "desire",
+        "subjective_direction_namespace",
+        "predetermined_plot_type",
+    ],
+    "direction_namespace": "reserved_for_character_model",
+}
+
+
+def life_development_opportunity_weights() -> dict[str, int]:
+    return inject_nothing_mass(
+        {LIFE_DEVELOPMENT_OPPORTUNITY_REF: LIFE_DEVELOPMENT_OPPORTUNITY_MASS_BP},
+        nothing_ref=LIFE_DEVELOPMENT_NOTHING_REF,
+    )
+
+
+def draw_life_development_opportunity(
+    *,
+    catalog_hash: str,
+    wake_event_ref: str,
+) -> str:
+    weights = life_development_opportunity_weights()
+    return pick_weighted_token(
+        weights,
+        {
+            "lane": "life_development_weighted_table",
+            "wake_event_ref": wake_event_ref,
+            "catalog_hash": catalog_hash,
+            "weights": {key: weights[key] for key in sorted(weights)},
+        },
+    )
 
 
 def compile_recent_life_texture(context: dict[str, object]) -> dict[str, object]:
@@ -414,12 +457,74 @@ class LifeDevelopmentPlanMaterial(FrozenModel):
     character_intention: str = Field(min_length=1, max_length=4_000)
 
 
+class LifeDevelopmentOccurrenceMaterial(FrozenModel):
+    """Settled open-life material, including production world_contingency shape.
+
+    Production world occurrences bind ``trigger_ref`` to the ProposalRecorded
+    event id and never create ``ActivityPlanned``.  Character-choice Plans keep
+    the older ``plan_id`` trigger.  This envelope is the visual-evidence
+    author's one read shape for both.
+    """
+
+    proposal_event_ref: str = Field(min_length=1)
+    activity_kind: str = Field(min_length=1)
+    outcomes: tuple[LifeDevelopmentReadableOutcome, ...] = Field(min_length=2, max_length=4)
+
+
+_OPEN_LIFE_WORLD_OCCURRENCE_KIND = "open_life.world_occurrence"
+_LIFE_DEVELOPMENT_POSSIBILITY_VERSIONS = frozenset({
+    "life-development-possibility.3",
+    "life-development-possibility.4",
+    "life-development-possibility.5",
+    "life-development-possibility.6",
+    "life-development-possibility.7",
+})
+
+
 class LifeDevelopmentProposalReader:
     """Rehydrate one accepted open Plan from its exact Proposal sidecars."""
 
     def __init__(self, *, ledger, content_store: ImmutableLifeContentStore) -> None:
         self._ledger = ledger
         self._store = content_store
+
+    def read_for_occurrence(
+        self, *, occurrence: object
+    ) -> LifeDevelopmentOccurrenceMaterial | None:
+        """Read claim-closed visual annexes for one settled open-life occurrence.
+
+        Production world_contingency occurrences store the ProposalRecorded
+        event id in ``trigger_ref`` and have no ActivityPlanned row.  Character
+        choice Plans still use ``plan_id`` as ``trigger_ref``.  Both shapes
+        expose the same outcome visual_evidence bytes.
+        """
+
+        trigger_ref = getattr(occurrence, "trigger_ref", None)
+        if not isinstance(trigger_ref, str) or not trigger_ref:
+            return None
+        plan_material = self.read_for_plan(plan_id=trigger_ref)
+        if plan_material is not None:
+            plan = next(
+                (
+                    item
+                    for item in self._ledger.project().plans
+                    if item.plan_id == trigger_ref
+                ),
+                None,
+            )
+            activity_kind = getattr(plan, "activity_kind", None)
+            if not isinstance(activity_kind, str) or not activity_kind.startswith(
+                "open_life."
+            ):
+                activity_kind = "open_life.character_plan"
+            return LifeDevelopmentOccurrenceMaterial(
+                proposal_event_ref=plan_material.proposal_event_ref,
+                activity_kind=activity_kind,
+                outcomes=plan_material.outcomes,
+            )
+        return self._read_world_occurrence_proposal(
+            occurrence=occurrence, proposal_event_id=trigger_ref
+        )
 
     def read_for_plan(self, *, plan_id: str) -> LifeDevelopmentPlanMaterial | None:
         plan = next(
@@ -471,6 +576,64 @@ class LifeDevelopmentProposalReader:
             raise ValueError("life-development Plan material descriptor is incomplete")
         premise = self._read_bound_text(premise_descriptor)
         intention = self._read_bound_text(intention_descriptor)
+        return LifeDevelopmentPlanMaterial(
+            plan_id=plan_id,
+            proposal_event_ref=proposal_event.event_id,
+            causal_authority="character_choice",
+            premise=premise,
+            claim_declarations=tuple(
+                LifeDevelopmentClaimDeclaration.model_validate_json(
+                    json.dumps(
+                        item,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                )
+                for item in claims
+            ),
+            outcomes=self._parse_readable_outcomes(outcome_values),
+            character_intention=intention,
+        )
+
+    def _read_world_occurrence_proposal(
+        self, *, occurrence: object, proposal_event_id: str
+    ) -> LifeDevelopmentOccurrenceMaterial | None:
+        located = self._ledger.lookup_event_commit(proposal_event_id)
+        if (
+            located is None
+            or located[0].event_type != "ProposalRecorded"
+            or located[0].source != "world-v2:life-development"
+        ):
+            return None
+        proposal_event = located[0]
+        payload = proposal_event.payload()
+        possibility = payload.get("possibility_authority")
+        occurrence_id = getattr(occurrence, "occurrence_id", None)
+        if (
+            payload.get("proposal_kind") != "life_development"
+            or payload.get("effect_kind") != "world_occurrence"
+            or payload.get("effect_ref") != occurrence_id
+            or payload.get("possibility_authority_version")
+            not in _LIFE_DEVELOPMENT_POSSIBILITY_VERSIONS
+            or not isinstance(possibility, dict)
+            or payload.get("possibility_authority_hash") != _digest(possibility)
+        ):
+            return None
+        outcome_values = possibility.get("outcomes")
+        if not isinstance(outcome_values, list):
+            raise ValueError("open-life occurrence proposal outcomes are incomplete")
+        return LifeDevelopmentOccurrenceMaterial(
+            proposal_event_ref=proposal_event.event_id,
+            activity_kind=_OPEN_LIFE_WORLD_OCCURRENCE_KIND,
+            outcomes=self._parse_readable_outcomes(outcome_values),
+        )
+
+    def _parse_readable_outcomes(
+        self, outcome_values: object
+    ) -> tuple[LifeDevelopmentReadableOutcome, ...]:
+        if not isinstance(outcome_values, list):
+            raise ValueError("life-development outcome descriptor is malformed")
         outcomes: list[LifeDevelopmentReadableOutcome] = []
         for item in outcome_values:
             if not isinstance(item, dict) or not isinstance(item.get("descriptor"), dict):
@@ -509,25 +672,7 @@ class LifeDevelopmentProposalReader:
                     ),
                 )
             )
-        return LifeDevelopmentPlanMaterial(
-            plan_id=plan_id,
-            proposal_event_ref=proposal_event.event_id,
-            causal_authority="character_choice",
-            premise=premise,
-            claim_declarations=tuple(
-                LifeDevelopmentClaimDeclaration.model_validate_json(
-                    json.dumps(
-                        item,
-                        ensure_ascii=False,
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    )
-                )
-                for item in claims
-            ),
-            outcomes=tuple(outcomes),
-            character_intention=intention,
-        )
+        return tuple(outcomes)
 
     def read_active_occurrence(
         self,
@@ -3215,6 +3360,13 @@ class LifeDevelopmentRuntime:
                         privacy_class=place.privacy_class,
                     )
                 )
+            if outcome.dynamic_life_direction is not None:
+                store_binding(
+                    role=f"outcome:{index}:dynamic_life_direction",
+                    ref=f"content:life-development:dynamic-arc:{suffix}:{index}",
+                    text=outcome.dynamic_life_direction.summary,
+                    content_kind="dynamic_life_arc_context",
+                )
             candidates.append(
                 OutcomeCandidateDescriptor(
                     candidate_result_ref=(f"candidate:life-development:{suffix}:{index}"),
@@ -3241,6 +3393,25 @@ class LifeDevelopmentRuntime:
                             privacy_class=(outcome.objective_biographical_transition.privacy_class),
                         )
                         if outcome.objective_biographical_transition is not None
+                        else None
+                    ),
+                    dynamic_life_arc_context=(
+                        DynamicLifeArcContextDescriptor.create(
+                            summary_content_ref=(
+                                f"content:life-development:dynamic-arc:{suffix}:{index}"
+                            ),
+                            summary_payload_hash=life_content_payload_hash(
+                                outcome.dynamic_life_direction.summary
+                            ),
+                            narrative_tags=outcome.dynamic_life_direction.narrative_tags,
+                            duration_days=outcome.dynamic_life_direction.duration_days,
+                            privacy_class=outcome.dynamic_life_direction.privacy_class,
+                            context_tags=outcome.dynamic_life_direction.context_tags,
+                            supersedes_context_tag_prefixes=(
+                                outcome.dynamic_life_direction.supersedes_context_tag_prefixes
+                            ),
+                        )
+                        if outcome.dynamic_life_direction is not None
                         else None
                     ),
                 )
@@ -3438,56 +3609,28 @@ class LifeDevelopmentRuntime:
                 reason_code="life_development.world_author_source_rewrite_unavailable",
             )
         if recovered_rewrite is None:
-            rewrite_run = await self._world_author_source_rewrite(
-                context=context,
-                logical_time=wake.logical_time,
-                manifest=manifest,
-                rejected_raw=raw,
-                review=rejection_review,
+            _LOG.warning(
+                "life development source closure unsupported; rejecting without a rewrite call"
             )
-            try:
-                rewrite_deliberation = self._record_model_run(
-                    proposal_id=rewrite_proposal_id,
-                    role="world_author",
-                    run=rewrite_run,
-                    wake=wake,
-                    capsule=capsule,
-                    manifest=manifest,
-                    decision_subject_hash=rewrite_subject_hash,
-                    expected_cursor=context_cursor,
-                    commit_cursor=_cursor(self._ledger.project()),
-                    trace_id=trace_id,
-                    correlation_id=correlation_id,
-                )
-            except ConcurrencyConflict:
-                return LifeDevelopmentResult(
-                    status="stale_prefix",
-                    reason_code="life_development.model_result_prefix_stale",
-                )
-            if not rewrite_run.succeeded:
-                return LifeDevelopmentResult(
-                    status="technical_failure",
-                    reason_code="life_development.world_author_source_rewrite_unavailable",
-                )
-            rewritten_draft = rewrite_run.parsed
-            rewritten_raw = rewrite_run.final_raw
-            rewrite_repair_ordinal = rewrite_run.repair_ordinal
-        else:
-            (
-                rewritten_raw,
-                rewrite_repair_ordinal,
-                rewrite_deliberation,
-                _rewrite_capsule,
-                recovered_manifest,
-            ) = recovered_rewrite
-            if recovered_manifest is None:
-                raise ValueError("recovered World Author source rewrite lacks its manifest")
-            manifest = recovered_manifest
-            rewritten_draft = parse_world_author_draft(
-                raw=rewritten_raw,
-                manifest=manifest,
-                logical_time=wake.logical_time,
+            return LifeDevelopmentResult(
+                status="technical_failure",
+                reason_code="life_development.source_closure_rejected",
             )
+        (
+            rewritten_raw,
+            rewrite_repair_ordinal,
+            rewrite_deliberation,
+            _rewrite_capsule,
+            recovered_manifest,
+        ) = recovered_rewrite
+        if recovered_manifest is None:
+            raise ValueError("recovered World Author source rewrite lacks its manifest")
+        manifest = recovered_manifest
+        rewritten_draft = parse_world_author_draft(
+            raw=rewritten_raw,
+            manifest=manifest,
+            logical_time=wake.logical_time,
+        )
         if (
             not isinstance(
                 rewritten_draft,
@@ -4222,6 +4365,7 @@ class LifeDevelopmentRuntime:
                                         error=exc,
                                         manifest=manifest,
                                         hard_boundary_contract=hard_boundary_contract,
+                                        logical_time=logical_time,
                                     )
                                 ),
                                 "same_pinned_authority": {
@@ -4296,29 +4440,34 @@ class LifeDevelopmentRuntime:
     ) -> _LifeDevelopmentModelRun:
         catalog = getattr(self._manifest_compiler, "catalog", None)
         if isinstance(catalog, ReviewedLifeSeedCatalog):
-            raw = '{"decision":"no_op"}'
-            parsed = LifeDevelopmentNoOpDraft.model_validate_json(raw)
-            request_hash = _digest(
-                {
-                    "lane": "life_development_weighted_table",
-                    "wake_event_ref": wake_event_ref,
-                    "catalog_hash": catalog.catalog_hash,
-                    "logical_time": logical_time.isoformat(),
-                }
+            picked = draw_life_development_opportunity(
+                catalog_hash=catalog.catalog_hash,
+                wake_event_ref=wake_event_ref,
             )
-            return _LifeDevelopmentModelRun(
-                model_id="deterministic:weighted-table",
-                parsed=parsed,
-                attempts=(
-                    _LifeDevelopmentAttempt(
-                        request_hash=request_hash,
-                        raw_output=raw,
-                        status="proposal_validated",
-                        slot="primary",
-                        outcome="winner",
+            if picked != LIFE_DEVELOPMENT_OPPORTUNITY_REF:
+                raw = '{"decision":"no_op"}'
+                parsed = LifeDevelopmentNoOpDraft.model_validate_json(raw)
+                request_hash = _digest(
+                    {
+                        "lane": "life_development_weighted_table",
+                        "wake_event_ref": wake_event_ref,
+                        "catalog_hash": catalog.catalog_hash,
+                        "logical_time": logical_time.isoformat(),
+                    }
+                )
+                return _LifeDevelopmentModelRun(
+                    model_id="deterministic:weighted-table",
+                    parsed=parsed,
+                    attempts=(
+                        _LifeDevelopmentAttempt(
+                            request_hash=request_hash,
+                            raw_output=raw,
+                            status="proposal_validated",
+                            slot="primary",
+                            outcome="winner",
+                        ),
                     ),
-                ),
-            )
+                )
         hard_boundary_contract = _world_author_hard_boundary_contract(
             manifest=manifest,
             owner_actor_ref=self._owner,
@@ -4470,6 +4619,7 @@ class LifeDevelopmentRuntime:
                                         error=exc,
                                         manifest=manifest,
                                         hard_boundary_contract=hard_boundary_contract,
+                                        logical_time=logical_time,
                                     )
                                 ),
                                 "timing_coordinates": (
@@ -4486,7 +4636,7 @@ class LifeDevelopmentRuntime:
                                         "world_author_objective_candidate_consequence"
                                     ),
                                     "dynamic_life_direction": (
-                                        "retired_character_model_at_settlement"
+                                        "world_author_event_impact"
                                     ),
                                     "system_supplied_story_content": "none",
                                 },
@@ -4705,13 +4855,19 @@ class LifeDevelopmentRuntime:
                     "window cover the proposal. Location binding is optional; an empty "
                     "location_capabilities list means both location fields must be "
                     "omitted, while a location-independent possibility or no_op remains "
-                    "available for your own choice. An outcome may optionally include "
-                    "visual_evidence when its settled result would contain concrete "
-                    "visible facts. Bind every visual field through visual_evidence."
+                    "available for your own choice. An outcome MUST include "
+                    "visual_evidence when the proposal has a location_ref, she is "
+                    "present, and that outcome's privacy is public, shareable, personal, "
+                    "or private. This annex is the structured visible slice of that same "
+                    "located result — home thunderstorms, indoor private rooms, and "
+                    "ordinary selfies included — not a decision to photograph. Bind "
+                    "every visual field through visual_evidence "
                     "claim_refs to claims already used by that outcome, and copy the "
-                    "authorized location_ref exactly. Omit visual_evidence when the "
-                    "outcome has no defensible visual slice; never infer one merely "
-                    "because a picture might be appealing. Provisional NPC local refs "
+                    "authorized location_ref exactly. Omit it only for withhold, or when "
+                    "the proposal has no location. Never infer a picture from appealing "
+                    "prose after the fact. Intimate P3 "
+                    "evidence is a different wire and must not be authored here. "
+                    "Provisional NPC local refs "
                     "must be canonical narrative:<tag> tokens (e.g. narrative:poet) "
                     "and provisional_places are allowed inside outcomes; a selected "
                     "settlement gives a provisional place attempt-only future identity, "
@@ -4723,9 +4879,14 @@ class LifeDevelopmentRuntime:
                     "motive, desire, intention, plan, or hoped-for future in this slot; "
                     "those belong to the Character Model. Omit it when the candidate "
                     "does not itself establish an objective durable change. "
-                    "dynamic_life_direction is a retired transport slot and must be null; "
-                    "only the Character Model may freely form a durable life direction "
-                    "after observing an objective result. Classify "
+                    "An outcome may also carry one optional dynamic_life_direction "
+                    "when that exact candidate branch itself reshapes the next stretch "
+                    "of her life: context_tags for the impact surface, optional "
+                    "supersedes_context_tag_prefixes for what it replaces, and "
+                    "duration_days for how long. This is event-machine consequence, "
+                    "not a plot type menu and not her subjective direction.* "
+                    "namespace; omit it when the candidate does not itself establish "
+                    "a durable life context. Classify "
                     "claims by authority, not by whether their "
                     "content sounds realistic or familiar. Existing-world means the "
                     "material was already true before this proposal and therefore "
@@ -4758,8 +4919,8 @@ class LifeDevelopmentRuntime:
                     "Privacy is one coupled hard boundary across the "
                     "selected location capability, proposal, outcomes, and optional "
                     "visual evidence; follow the rank relationships in "
-                    "cross_field_authority, and omit optional visual evidence whenever "
-                    "it is incompatible with the chosen privacy floor. "
+                    "cross_field_authority, and omit optional visual evidence only when "
+                    "the chosen privacy is withhold. "
                     "Author only the life possibilities of the owner_actor_ref named "
                     "in authored_subject. The user and user facts are context that may "
                     "affect that life; never author the user's choices, actions, inner "
@@ -4774,48 +4935,14 @@ class LifeDevelopmentRuntime:
                     "pinned logical_time; never propose a window that has already "
                     "opened or closed. "
                     "Here is one exact compliant propose example. Mirror its field "
-                    "names and structure precisely (you choose different content): "
+                    "names and structure precisely. Do not copy this premise, claims, "
+                    "or timestamps. Copy location_ref, location_capability_ref, "
+                    "anchor_refs, and later windows from the pinned manifest and "
+                    "timing_coordinates. If location_capabilities is empty, omit both "
+                    "location fields. Weather-only color remains a legal chosen "
+                    "premise, not the repair for a failed location window: "
                     + json.dumps(
-                        {
-                            "decision": "propose",
-                            "authored_subject_ref": "agent:companion",
-                            "causal_authority": "world_contingency",
-                            "outcome_resolution_authority": "world_contingency",
-                            "premise_scope": "external_opportunity",
-                            "premise": "A sudden summer thunderstorm rolls through the city in the late evening, bringing heavy rain and occasional lightning. The downpour makes staying indoors feel natural while creating a cozy, reflective atmosphere.",
-                            "premise_claim_refs": ["local:claim:storm"],
-                            "claim_declarations": [
-                                {
-                                    "claim_id": "local:claim:storm",
-                                    "summary": "A sudden summer thunderstorm with heavy rain passes through the city this evening, lasting about an hour.",
-                                    "scope": "novel_world_generation",
-                                    "subject_scope": "world_environment",
-                                    "source_refs": [],
-                                }
-                            ],
-                            "timing": {"mode": "now", "duration_minutes": 60},
-                            "anchor_refs": ["event:anchor:1"],
-                            "location_ref": None,
-                            "location_capability_ref": None,
-                            "entity_refs": [],
-                            "privacy_class": "private",
-                            "outcomes": [
-                                {
-                                    "experienced_by_ref": "agent:companion",
-                                    "text": "The storm keeps her indoors. She sits by the window, watching the rain streak down the glass and listening to the thunder, sinking into a rare sense of stillness.",
-                                    "privacy_class": "private",
-                                    "relative_plausibility_weight": 6000,
-                                    "claim_refs": ["local:claim:storm"],
-                                },
-                                {
-                                    "experienced_by_ref": "agent:companion",
-                                    "text": "The storm interrupts her evening plans and forces her to change course; she stays indoors and feels a bit restless until the rain lets up.",
-                                    "privacy_class": "private",
-                                    "relative_plausibility_weight": 4000,
-                                    "claim_refs": ["local:claim:storm"],
-                                },
-                            ],
-                        },
+                        _WORLD_AUTHOR_COMPLIANT_PROPOSE_EXAMPLE,
                         ensure_ascii=False,
                     )
                     + " Return exactly JSON."
@@ -5633,7 +5760,7 @@ def _world_author_hard_boundary_contract(
         privacy: [
             candidate
             for candidate in allowed_outcomes[privacy]
-            if candidate in {"public", "shareable"}
+            if candidate in ORDINARY_LIFE_PHOTO_PRIVACY
         ]
         for privacy in privacy_order
     }
@@ -5653,7 +5780,7 @@ def _world_author_hard_boundary_contract(
         capability.model_dump(mode="json") for capability in manifest.location_capabilities
     ]
     return {
-        "contract_version": "life-development-world-author-authority.4",
+        "contract_version": "life-development-world-author-authority.6",
         "canonical_reference_arrays": {
             "duplicates": "discarded_as_set_equivalent",
             "normal_form": "lexicographic_ascending",
@@ -5744,22 +5871,27 @@ def _world_author_hard_boundary_contract(
                 {
                     "when": "outcome.visual_evidence is present",
                     "field": "outcome.privacy_class",
-                    "allowed_values": ["public", "shareable"],
+                    "allowed_values": list(ORDINARY_LIFE_PHOTO_PRIVACY),
+                },
+                {
+                    "when": (
+                        "proposal.location_ref is present and outcome.privacy_class "
+                        "is ordinary life photo privacy"
+                    ),
+                    "field": "outcome.visual_evidence",
+                    "required": True,
                 },
             ],
             "allowed_outcome_privacy_by_proposal_privacy": allowed_outcomes,
             "allowed_visual_outcome_privacy_by_proposal_privacy": (allowed_visual_outcomes),
             "location_capability_privacy_envelopes": location_privacy_envelopes,
             "recipient_unbound_visual_compatibility": {
-                "compatible_proposal_privacy": ["public", "shareable"],
-                "compatible_location_capability_privacy": ["public", "shareable"],
+                "compatible_proposal_privacy": list(ORDINARY_LIFE_PHOTO_PRIVACY),
+                "compatible_location_capability_privacy": list(ORDINARY_LIFE_PHOTO_PRIVACY),
                 "when_incompatible": "omit_visual_evidence",
             },
         },
-        "dynamic_life_direction": {
-            "status": "retired_must_be_null",
-            "authority": "character_model_at_outcome_settlement",
-        },
+        "dynamic_life_direction": _DYNAMIC_LIFE_DIRECTION_AUTHORITY,
         "objective_biographical_transition": {
             "status": "optional_per_outcome",
             "authority": "world_author_objective_candidate_consequence",
@@ -5788,9 +5920,9 @@ def _world_author_hard_boundary_contract(
             "must_not_author_user_choice_or_action": True,
         },
         "visual_evidence": {
-            "status": "optional",
+            "status": "required_when_proposal_is_location_bound_and_outcome_privacy_is_ordinary",
             "claim_refs": "subset_of_outcome.claim_refs",
-            "permitted_outcome_privacy": ["public", "shareable"],
+            "permitted_outcome_privacy": list(ORDINARY_LIFE_PHOTO_PRIVACY),
             "location_binding": {
                 "when_proposal_location_ref_is_null": (
                     "every_outcome.visual_evidence.location_must_be_null"
@@ -5803,7 +5935,12 @@ def _world_author_hard_boundary_contract(
                     "must_describe_the_same_execution_coordinate_not_an_origin_or_background_place"
                 ),
             },
-            "when_absent": None,
+            "when_absent": {
+                "allowed_if": [
+                    "proposal.location_ref is null",
+                    "outcome.privacy_class is withhold",
+                ],
+            },
             "when_present": {
                 "concrete_fields": {
                     "at_least_one_of": [
@@ -5819,6 +5956,86 @@ def _world_author_hard_boundary_contract(
     }
 
 
+_WORLD_AUTHOR_COMPLIANT_PROPOSE_EXAMPLE = {
+    "decision": "propose",
+    "authored_subject_ref": "agent:companion",
+    "causal_authority": "character_choice",
+    "outcome_resolution_authority": "character_choice",
+    "premise_scope": "external_opportunity",
+    "premise": (
+        "One specific current possibility at an authorized location during a "
+        "covered window, not a weather default."
+    ),
+    "premise_claim_refs": ["local:claim:local-possibility"],
+    "claim_declarations": [
+        {
+            "claim_id": "local:claim:local-possibility",
+            "summary": (
+                "A time-bounded local possibility is available at an authorized "
+                "place during a covered window."
+            ),
+            "scope": "novel_world_generation",
+            "subject_scope": "world_environment",
+            "source_refs": [],
+        }
+    ],
+    "timing": {
+        "mode": "later",
+        "opens_at": "2026-01-02T01:00:00+00:00",
+        "closes_at": "2026-01-02T03:00:00+00:00",
+    },
+    "anchor_refs": ["event:anchor:1"],
+    "location_ref": "location:reviewed-place",
+    "location_capability_ref": "location-capability:" + ("0" * 64),
+    "entity_refs": [],
+    "privacy_class": "shareable",
+    "outcomes": [
+        {
+            "experienced_by_ref": "agent:companion",
+            "text": "She can take the opening and let it change the next hours.",
+            "privacy_class": "shareable",
+            "relative_plausibility_weight": 6000,
+            "claim_refs": ["local:claim:local-possibility"],
+            "visual_evidence": {
+                "claim_refs": ["local:claim:local-possibility"],
+                "activity_description": (
+                    "At the authorized place during the covered window."
+                ),
+                "location": {
+                    "location_ref": "location:reviewed-place",
+                    "kind": "place",
+                    "publicness": "public",
+                },
+                "environment": {
+                    "structure": "authorized place during a covered window",
+                },
+            },
+        },
+        {
+            "experienced_by_ref": "agent:companion",
+            "text": "She can leave the opening unused and keep her current course.",
+            "privacy_class": "shareable",
+            "relative_plausibility_weight": 4000,
+            "claim_refs": ["local:claim:local-possibility"],
+            "visual_evidence": {
+                "claim_refs": ["local:claim:local-possibility"],
+                "activity_description": (
+                    "Leaving the authorized place without taking the opening."
+                ),
+                "location": {
+                    "location_ref": "location:reviewed-place",
+                    "kind": "place",
+                    "publicness": "public",
+                },
+                "environment": {
+                    "structure": "authorized place during a covered window",
+                },
+            },
+        },
+    ],
+}
+
+
 def _world_author_reselection_instruction(*, failure_code: str) -> str:
     instruction = (
         "Return one complete replacement using only the same pinned Context and "
@@ -5827,18 +6044,26 @@ def _world_author_reselection_instruction(*, failure_code: str) -> str:
         "first; do not leave the failed field combination unchanged. Then revalidate "
         "the complete replacement. Treat privacy as one coupled choice across the "
         "selected location capability, proposal, every outcome, and optional "
-        "visual_evidence; do not repair one privacy field in isolation. If "
-        "recipient-unbound visual evidence is incompatible with the chosen privacy "
-        "floor, omit visual_evidence. The system will not supply narrative tags, "
+        "visual_evidence; do not repair one privacy field in isolation. If the "
+        "chosen privacy is withhold, omit visual_evidence. If the proposal is "
+        "location-bound and the outcome privacy is public, shareable, personal, "
+        "or private, supply visual_evidence for that outcome, including ordinary "
+        "home life. The system will not "
+        "supply narrative tags, "
         "privacy, visual facts, or event text."
     )
     if failure_code == "unsupported_location_window":
         instruction += (
-            " For this failure, use only an exact available location capability whose "
-            "window covers the proposal, or omit both location fields and freely "
-            "author a location-independent possibility; no_op also remains your "
-            "choice. The system has not selected the replacement event, NPCs, "
-            "direction, or outcome."
+            " For this failure, repair only the location/timing pair. Copy "
+            "location_ref and location_capability_ref from the pinned manifest, "
+            "never from the system example. If repair_coordinates names a "
+            "selected_location_later_interval, keep that place and copy that "
+            "later window. Otherwise switch to a listed capability in covering_now. "
+            "Omit both location fields only when location_capabilities is empty. "
+            "Do not replace a place-bound draft with a location-independent filler "
+            "while listed capabilities remain. no_op remains available if no listed "
+            "capability fits. The system has not selected the replacement event, "
+            "NPCs, direction, or outcome."
         )
     return instruction
 
@@ -5849,6 +6074,7 @@ def _world_author_repair_coordinates(
     error: LifeDevelopmentDraftError,
     manifest: LifeDevelopmentCapabilityManifest,
     hard_boundary_contract: dict[str, object],
+    logical_time: datetime,
 ) -> list[dict[str, object]]:
     """Expose only failed authority coordinates; never repair authored content.
 
@@ -5857,6 +6083,57 @@ def _world_author_repair_coordinates(
     host choosing a premise, location, privacy, prose, or outcome.
     """
 
+    if error.code == "unsupported_location_window":
+        selected_ref = error.failure_context.get("selected_location_ref")
+        covering_now: list[dict[str, object]] = []
+        selected_later: dict[str, object] | None = None
+        for capability in manifest.location_capabilities:
+            coord = _location_capability_timing_coordinate(
+                capability=capability,
+                logical_time=logical_time,
+                max_future_days=manifest.max_future_days,
+                max_window_minutes=manifest.max_window_minutes,
+            )
+            maximum_now = coord.get("maximum_now_duration_minutes")
+            if maximum_now:
+                covering_now.append(
+                    {
+                        "location_ref": capability.location_ref,
+                        "capability_ref": capability.capability_ref,
+                        "maximum_now_duration_minutes": maximum_now,
+                    }
+                )
+            if capability.location_ref == selected_ref:
+                later = coord.get("near_term_later_interval")
+                if isinstance(later, dict):
+                    selected_later = {
+                        "location_ref": capability.location_ref,
+                        "capability_ref": capability.capability_ref,
+                        **later,
+                    }
+        capabilities_listed = bool(manifest.location_capabilities)
+        return [
+            {
+                "rule": "location_capability_covers_proposal_window",
+                "field_paths": ["location_ref", "location_capability_ref", "timing"],
+                "legal_repairs": (
+                    ["omit_both_location_fields"]
+                    if not capabilities_listed
+                    else [
+                        "same_location_later_window_from_selected_location_later_interval",
+                        "different_listed_capability_that_covers_now",
+                    ]
+                ),
+                "illegal_repair": (
+                    None
+                    if not capabilities_listed
+                    else "omit_both_location_fields_while_listed_capabilities_remain"
+                ),
+                "covering_now": covering_now,
+                "selected_location_later_interval": selected_later,
+                "no_op_remains_available": True,
+            }
+        ]
     if error.code == "unsupported_anchor_ref":
         return [
             {
@@ -5923,6 +6200,25 @@ def _world_author_repair_coordinates(
                         "set(premise_claim_refs union outcomes[*].claim_refs) "
                         "equals set(claim_declarations[*].claim_id)"
                     ),
+                }
+            )
+            matched = True
+        if "location-bound ordinary-privacy outcomes must carry visual_evidence" in message:
+            coordinates.append(
+                {
+                    "rule": "located_ordinary_visual_evidence_required",
+                    "field_paths": [
+                        "location_ref",
+                        "outcomes.*.privacy_class",
+                        "outcomes.*.visual_evidence",
+                    ],
+                    "required": (
+                        "supply_visual_evidence_for_each_located_ordinary_outcome"
+                    ),
+                    "omit_only_when": [
+                        "proposal.location_ref is null",
+                        "outcome.privacy_class is withhold",
+                    ],
                 }
             )
             matched = True
@@ -6262,6 +6558,7 @@ def _capsule_cursor(capsule) -> ProjectionCursor:
 
 __all__ = [
     "LifeDevelopmentModel",
+    "LifeDevelopmentOccurrenceMaterial",
     "LifeDevelopmentPlanMaterial",
     "LifeDevelopmentProposalReader",
     "LifeDevelopmentReadableOutcome",

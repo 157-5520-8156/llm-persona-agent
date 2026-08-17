@@ -40,6 +40,7 @@ from ..interaction_act_context_builder import (
 )
 from ..occasion import OccasionConsiderGate, occasion_spend_store_for_ledger
 from ..response_expectation_view import attach_pending_expectation_advisory
+from ..revisit_intention_view import attach_open_revisit_advisory
 from ..private_impression_producer import (
     PrivateImpressionTriggerOpener,
     PrivateImpressionTriggerRuntime,
@@ -79,6 +80,7 @@ from .expression_reconsideration import (
 )
 from .relationship_context import (
     build_relationship_context_join,
+    install_relationship_authored_residues,
     install_relationship_context,
 )
 from .snapshot_compiler import (
@@ -159,6 +161,7 @@ class _LedgerCapsuleInteriorProjection:
             projection,
             anchor_event_ref=subject.trigger_ref,
         )
+        context = attach_open_revisit_advisory(context, projection)
         relationship_join = await build_relationship_context_join(
             ledger=self.ledger,
             projection=projection,
@@ -166,6 +169,7 @@ class _LedgerCapsuleInteriorProjection:
             cursor=subject.cursor,
         )
         context = install_relationship_context(context, relationship_join)
+        context = install_relationship_authored_residues(context, projection)
         interaction_act_join = await InteractionActContextBuilder(
             ledger=self.ledger
         ).build(
@@ -727,6 +731,23 @@ class _CharacterInteriorBackgroundDriver:
     async def drain_private_impression_once(self) -> object | None:
         return None
 
+    async def hitch_paid_inbound_impression(
+        self,
+        *,
+        keep_impression: bool | None,
+        reflection_summary: str,
+        model_result_ref: str,
+        source_event,
+    ) -> object | None:
+        if self._private_impression is None:
+            return None
+        return await self._private_impression.record_paid_inbound(
+            keep_impression=keep_impression,
+            reflection_summary=reflection_summary,
+            model_result_ref=model_result_ref,
+            source_event=source_event,
+        )
+
 
 def _bind_production_character_interior(
     *,
@@ -740,7 +761,7 @@ def _bind_production_character_interior(
     reply_target: str,
     expression_capabilities: ExpressionDraftCapabilities,
     proactive_source_closure_model: ChatCompletionModel | None,
-    interactive_turn_budget_policy: InteractiveTurnBudgetPolicy,
+    background_turn_budget_policy: InteractiveTurnBudgetPolicy,
     proactive_account_id: str,
     proactive_amount_per_action: int,
     reply_recovery_policy: str,
@@ -811,7 +832,7 @@ def _bind_production_character_interior(
                 source_closure_reviewer=None,
                 report_relative_reviewer=None,
                 companion_actor_ref=companion_actor_ref,
-                budget_policy=interactive_turn_budget_policy,
+                budget_policy=background_turn_budget_policy,
             ),
             batch_issuer=batch_issuer,
             policy=ExpressionPlanBudgetPolicy(

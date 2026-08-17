@@ -119,6 +119,7 @@ def _life_source_authority(payload: Mapping[str, object]) -> _NormalizedSignal:
             {
                 "operational_isolation_unverified",
                 "operational_unqualified",
+                "unsafe_shared_runtime",
             }
         ),
     )
@@ -169,8 +170,10 @@ def _semantic_recall(payload: Mapping[str, object]) -> _NormalizedSignal:
         return _NormalizedSignal("disabled", "not_configured")
     prefetch_status = str(payload.get("last_prefetch_status") or "")
     embedding_status = str(payload.get("last_prefetch_embedding_status") or "")
-    if prefetch_status in {"degraded", "technical_failure"} or embedding_status == ("degraded"):
+    if prefetch_status in {"degraded", "technical_failure"}:
         return _NormalizedSignal("degraded", "source_unavailable")
+    if embedding_status == "degraded":
+        return _NormalizedSignal("warming")
     if prefetch_status == "unknown" or embedding_status == "unknown":
         return _NormalizedSignal("warming")
     return _NormalizedSignal("ready")

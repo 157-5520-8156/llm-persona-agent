@@ -1,8 +1,9 @@
 """P3 compiler for recipient-scoped character-media evidence.
 
 This is deliberately separate from ``MediaEvidenceSnapshotCompiler``.  The
-P0/P2 compiler remains public/shareable-only; this seam reads personal/private
-facts only after a pinned relationship context has bound one recipient.
+P0/P2 compiler reads ordinary life photos, including private home life;
+this seam reads intimate P3 facts only after a pinned relationship context
+has bound one recipient.
 """
 
 from __future__ import annotations
@@ -15,7 +16,6 @@ from .media_evidence_snapshot import (
     CompiledMediaEvidence,
     MediaEvidenceNotRenderable,
     MediaEvidenceSnapshotCompiler,
-    _RECIPIENT_SCOPED_VISIBILITIES,
 )
 from .media_v2 import (
     FrozenMediaEvidenceSnapshot,
@@ -34,6 +34,9 @@ from .visible_physical_state import (
     VisiblePhysicalStateRecordedPayload,
     visible_physical_state_at,
 )
+
+
+_RECIPIENT_SCOPED_VISIBILITIES = frozenset({"personal", "private"})
 
 
 @dataclass(frozen=True, slots=True)
