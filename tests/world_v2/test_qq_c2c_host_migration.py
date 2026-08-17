@@ -2946,6 +2946,7 @@ class _SelectingLifeEcologyModel:
     async def complete(self, messages, *, temperature: float = 0.2):  # type: ignore[no-untyped-def]
         del temperature
         system = messages[0]["content"]
+        print("LIFE_MODEL system", system[:160].replace("\n", " | "))
         if "retrieval memory" in system:
             return '{"retain":false}'
         capsule = json.loads(messages[-1]["content"])
@@ -3026,6 +3027,7 @@ class _SelectingLifeEcologyModel:
                             }
                         },
                     },
+                    "recall_query": None,
                     "proposals": [],
                 },
                 ensure_ascii=False,
@@ -3053,6 +3055,7 @@ class _SelectingLifeEcologyModel:
                             "selected_token": selected["opening_token"],
                         },
                     },
+                    "recall_query": None,
                     "proposals": [],
                 },
                 ensure_ascii=False,
@@ -3184,9 +3187,17 @@ class _LaterQQModel:
 @pytest.mark.asyncio
 async def test_qq_production_composition_ticks_life_from_plan_through_experience(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The actual QQ host installs and advances the complete life vertical."""
 
+    import companion_daemon.world_v2.life_development_runtime as life_dev_runtime
+
+    monkeypatch.setattr(
+        life_dev_runtime,
+        "draw_life_development_opportunity",
+        lambda **_kwargs: life_dev_runtime.LIFE_DEVELOPMENT_OPPORTUNITY_REF,
+    )
     conversation_reviewer = _NamedCompactReviewNoCallModel(
         "qq-life-vertical-compact-reviewer"
     )

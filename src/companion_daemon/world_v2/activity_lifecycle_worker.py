@@ -12,7 +12,12 @@ from zoneinfo import ZoneInfo
 from .activity_lifecycle_draft import (
     ActivityLifecycleModelDraft,
 )
-from .occasion import OccasionSpendStore, mint_day_open, occasion_spend_store_for_ledger
+from .occasion import (
+    OccasionSpendStore,
+    mint_day_open,
+    mint_life_beat,
+    occasion_spend_store_for_ledger,
+)
 from .daily_occasion import (
     DEFAULT_LOCAL_TIMEZONE,
     DailyOccasionStore,
@@ -222,19 +227,34 @@ class ActivityLifecycleWorker:
 
         openings = catalog.openings
         day_key = local_day_key(projection.logical_time, self._local_timezone)
-        occasion_id = f"occasion:day_open:{day_key}"
-        if self._daily_occasions.spent("day_open", day_key) or self._occasion_spends.spent(
-            occasion_id
-        ):
-            self._daily_occasions.mark("day_open", day_key)
-            completes = tuple(item for item in openings if item.operation == "complete")
-            if len(completes) == 1:
-                return _timing_closure_draft(completes[0].opening_token), None
-            return ActivityLifecycleModelDraft(decision="no_op"), None
+        first_occasion_id = f"occasion:day_open:{day_key}"
+        first_chance_spent = self._daily_occasions.spent(
+            "day_open", day_key
+        ) or self._occasion_spends.spent(first_occasion_id)
+        cause_bound = tuple(
+            item for item in openings if item.opening_kind != "ordinary"
+        )
+        completes = tuple(item for item in openings if item.operation == "complete")
         if not openings:
             return ActivityLifecycleModelDraft(decision="no_op"), None
-        if all(item.operation == "complete" for item in openings) and len(openings) == 1:
-            return _timing_closure_draft(openings[0].opening_token), None
+        if (
+            len(completes) == 1
+            and all(item.operation == "complete" for item in openings)
+        ):
+            return _timing_closure_draft(completes[0].opening_token), None
+        if first_chance_spent and not cause_bound:
+            # The one daily day_open Occasion is spent.  Ordinary reversals
+            # stay quiet until the next local day; this is the G2 timing
+            # boundary, not a scripted activity choice.
+            self._daily_occasions.mark("day_open", day_key)
+            return ActivityLifecycleModelDraft(decision="no_op"), None
+        # Cause-bound openings (an observed user interruption, a clock
+        # conflict, a shared-private invitation, or repair/resume authority)
+        # are new life material.  They get their own bounded Occasion so she
+        # can react on the same local day instead of being forced toward the
+        # single complete token.
+        use_day_open = not first_chance_spent
+        occasion_merge_key = day_key if use_day_open else wake_event_ref
         opening_summaries = []
         for item in openings:
             summary = item.safe_summary
@@ -315,22 +335,32 @@ class ActivityLifecycleWorker:
                     "the day is like. The character owns select or no-op; the system owns "
                     "only token authority."
                 ),
-                occasion=mint_day_open(
-                    source_event_ref=wake_event_ref,
-                    created_at=projection.logical_time,
-                    merge_key=day_key,
+                occasion=(
+                    mint_day_open(
+                        source_event_ref=wake_event_ref,
+                        created_at=projection.logical_time,
+                        merge_key=occasion_merge_key,
+                    )
+                    if use_day_open
+                    else mint_life_beat(
+                        source_event_ref=wake_event_ref,
+                        created_at=projection.logical_time,
+                        merge_key=occasion_merge_key,
+                    )
                 ),
             )
         )
         if result.status == "technical_failure":
             failure_code = result.failure_code or "character_interior_technical_failure"
             if failure_code in _OCCASION_CONSUMED_FAILURES:
-                self._daily_occasions.mark("day_open", day_key)
+                if use_day_open:
+                    self._daily_occasions.mark("day_open", day_key)
                 return ActivityLifecycleModelDraft(decision="no_op"), None
             return None, failure_code
         if result.status != "decided" or not isinstance(result.decision, dict):
             return None, "character_interior_decision_missing"
-        self._daily_occasions.mark("day_open", day_key)
+        if use_day_open:
+            self._daily_occasions.mark("day_open", day_key)
         decision = result.decision
         if (
             decision.get("contract") != "character-interior-purpose-decision.1"

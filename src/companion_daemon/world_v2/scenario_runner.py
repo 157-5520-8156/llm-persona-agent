@@ -413,8 +413,12 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.70"
 # Recall control-transfer recovery and the evidence-bound 30-second retry
 # authority. Two independent complete 120-case processes must produce the
 # same aggregate manifest before installation.
+# ``.71`` composes H17-H21: one-shot corrective policy, slim mood/wait/media
+# fields, deterministic declared-claim source closure, and the ambient
+# proactive expiry switch. Per-case predicates remain enforced; the aggregate
+# prompt/snapshot identities intentionally move.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "f9bdcaa4c656bfb0c8c8aa277daeeaa6ef44b113a403e3be769f3f272f310d1d"
+    "553e7b541064daa60b42a9075de4db283d3349ae5584d116cb94c2461c69bb00"
 )
 
 
