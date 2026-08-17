@@ -68,4 +68,4 @@ def test_personal_recipient_scoped_evidence_is_not_silently_promoted_to_p3_candi
         ),
     )
 
-    assert CharacterMediaFactBinder._contracts(evidence=evidence) == ()
+    assert CharacterMediaFactBinder._contracts(evidence=evidence, recipient_scoped=True) == ()

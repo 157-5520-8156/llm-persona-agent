@@ -350,7 +350,7 @@ FIXTURE_ACCEPTANCE_MANIFEST: tuple[FixtureAcceptance, ...] = (
         ("Appraisal hypotheses", "InnerLifeSnapshot appraisal material"),
         (
             "tests/world_v2/test_life_projection.py::test_claimed_world_trigger_can_commit_multi_hypothesis_appraisal",
-            "tests/world_v2/test_character_interior_inbound_wire.py::test_v8_lane_unsupported_declared_claim_is_rejected",
+            "tests/world_v2/test_character_interior_inbound_wire.py::test_declared_known_claim_skips_second_model_inventory_and_review",
         ),
     ),
     _fixture(

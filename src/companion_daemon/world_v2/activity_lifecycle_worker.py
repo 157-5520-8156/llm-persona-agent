@@ -88,6 +88,7 @@ class ActivityLifecycleWorker:
         occasion_spends: OccasionSpendStore | None = None,
         local_timezone_name: str = DEFAULT_LOCAL_TIMEZONE,
         open_world_event=None,
+        plan_material_reader=None,
     ) -> None:
         if not ecology_catalog_version or not source or not owner_actor_ref:
             raise ValueError(
@@ -107,6 +108,7 @@ class ActivityLifecycleWorker:
         self._occasion_spends = occasion_spends or occasion_spend_store_for_ledger(ledger)
         self._local_timezone = ZoneInfo(local_timezone_name)
         self._open_world_event = open_world_event
+        self._plan_material_reader = plan_material_reader
 
     async def advance_once(
         self,
@@ -233,18 +235,40 @@ class ActivityLifecycleWorker:
             return ActivityLifecycleModelDraft(decision="no_op"), None
         if all(item.operation == "complete" for item in openings) and len(openings) == 1:
             return _timing_closure_draft(openings[0].opening_token), None
+        opening_summaries = []
+        for item in openings:
+            summary = item.safe_summary
+            resolved = self._catalog.resolve_opening(
+                projection=projection,
+                wake_event_ref=wake_event_ref,
+                opening_token=item.opening_token,
+            )
+            if resolved is not None and self._plan_material_reader is not None:
+                try:
+                    material = self._plan_material_reader.read_for_plan(
+                        plan_id=resolved.plan_id
+                    )
+                    intention = getattr(material, "character_intention", None)
+                    if isinstance(intention, str) and intention.strip():
+                        clipped = " ".join(intention.strip().split())[:96]
+                        summary = f"{item.safe_summary}; she planned: {clipped}"
+                except Exception:
+                    # Plan-material reading is optional foreground texture.
+                    # A missing sidecar must not hide an otherwise legal
+                    # activity opening from the character.
+                    pass
+            opening_summaries.append(
+                {
+                    "opening_token": item.opening_token,
+                    "safe_summary": summary,
+                }
+            )
         capability = {
             "contract": "character-interior-activity-lifecycle-capability.2",
             "catalog_version": catalog.catalog_version,
             "catalog_hash": catalog.catalog_hash,
             "offered_tokens": [item.opening_token for item in openings],
-            "openings": [
-                {
-                    "opening_token": item.opening_token,
-                    "safe_summary": item.safe_summary,
-                }
-                for item in openings
-            ],
+            "openings": opening_summaries,
         }
         payload_json = json.dumps(
             capability,

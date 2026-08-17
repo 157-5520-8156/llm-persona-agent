@@ -220,13 +220,12 @@ async def test_http_composition_wires_compact_source_guard_without_inventory(
         assert identity is host._semantic_chat.identity_frame  # noqa: SLF001
         assert identity.companion_name == "沈知栀"
         assert source_health["author_model"] == author.model
-        assert source_health["reviewer_model"] == reviewer.model
+        # H1d removed the separate generative reviewer and inventory models.
+        assert source_health["reviewer_model"] is None
         assert source_health["candidate_inventory_model"] is None
-        assert source_health["visible_review_strategy"] == "visible_beat_verdict"
-        assert source_health["active_source_review_protocol"] == (
-            "visible_beat_source_verdict.1"
-        )
-        assert source_health["selective_source_review"]["enabled"] is True
+        assert source_health["visible_review_strategy"] == "unavailable"
+        assert source_health["active_source_review_protocol"] == "unavailable"
+        assert source_health["selective_source_review"]["enabled"] is False
         assert source_health["candidate_review_capabilities"]["ordinary"] == {
             "inventory_v5": False,
             "coverage_v5": False,
@@ -243,9 +242,9 @@ async def test_http_composition_wires_compact_source_guard_without_inventory(
             development._source_closure_reviewer.authority_origin is life_reviewer
         )
         assert development._source_closure_reviewer_is_independent is True  # noqa: SLF001
-        assert source_health["status"] == "ready"
+        assert source_health["status"] == "fact_effects_fail_closed"
         assert host.life_source_authority_health()["status"] == (
-            "operational_unqualified"
+            "unsafe_shared_runtime"
         )
     finally:
         await host.aclose()

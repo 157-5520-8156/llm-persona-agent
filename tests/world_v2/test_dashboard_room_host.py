@@ -34,8 +34,9 @@ def test_dashboard_html_embeds_pixel_home_instead_of_static_render() -> None:
     assert "zhizhi-room-isometric" not in DASHBOARD_APP_JS
     assert 'href="/pixel-home/index.html?edit=1"' in DASHBOARD_HTML
     assert 'aria-label="在独立页面编辑渲染房间"' in DASHBOARD_HTML
-    assert 'title="World v2 room renderer"' in DASHBOARD_HTML
-    assert '<div id="roomOverlay" class="room-overlay">unavailable</div>' in DASHBOARD_HTML
+    assert 'title="知栀的房间"' in DASHBOARD_HTML
+    assert 'aria-label="知栀的房间"' in DASHBOARD_HTML
+    assert '<div id="roomOverlay" class="room-overlay">房间暂时看不到</div>' in DASHBOARD_HTML
     assert "align-items:start" in DASHBOARD_HTML
     assert ".room{position:relative;overflow:hidden;aspect-ratio:7/4}" in DASHBOARD_HTML
     assert "position:absolute;top:0;left:0;width:1120px;height:640px" in DASHBOARD_HTML

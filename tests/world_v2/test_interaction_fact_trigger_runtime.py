@@ -390,11 +390,15 @@ async def test_fact_trigger_accepts_one_source_bound_fact_and_completes(tmp_path
 
     # The semantic source must remain recallable after the bounded recent
     # dialogue window no longer contains the message which established it.
+    from companion_daemon.world_v2.present_prompt import (
+        PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
+    )
+
     latest_event = observation_event
-    for index in range(13):
+    for index in range(PRESENT_RECENT_DIALOGUE_ITEM_LIMIT + 1):
         text = (
             "我之前喜欢喝什么来着？"
-            if index == 12
+            if index == PRESENT_RECENT_DIALOGUE_ITEM_LIMIT
             else f"这是随后第 {index + 1} 条普通消息。"
         )
         filler = Observation(

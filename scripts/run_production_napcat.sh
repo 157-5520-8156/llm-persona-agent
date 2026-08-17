@@ -14,6 +14,9 @@ fi
 
 export DATABASE_PATH="$LIVE_ROOT/data/companion.epoch2.sqlite"
 export PYTHONPATH="$WT/src${PYTHONPATH:+:$PYTHONPATH}"
+# cwd is LIVE_ROOT (relative configs/*), but production code/YAML live in the
+# worktree. Pin character.yaml absolutely so a stale main-repo copy cannot win.
+export CHARACTER_PATH="$WT/configs/character.yaml"
 : "${QQ_TURN_OBSERVATION_PATH:=data/private/qq-turns.jsonl}"
 export QQ_TURN_OBSERVATION_PATH
 : "${QQ_MESSAGE_BATCH_SECONDS:=0.8}"

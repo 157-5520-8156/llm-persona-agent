@@ -152,7 +152,11 @@ from .open_world_event_runtime import (
 from .life_ecology_trigger_store import LedgerLifeEcologyTriggerStore
 from .life_author_seed import ReviewedLifeSeedCatalog
 from .life_development_capability import ProjectionLifeCapabilityManifestCompiler
-from .life_development_runtime import LifeDevelopmentModel, LifeDevelopmentRuntime
+from .life_development_runtime import (
+    LifeDevelopmentModel,
+    LifeDevelopmentProposalReader,
+    LifeDevelopmentRuntime,
+)
 from .life_aftermath_runtime import LifeAftermathRuntime
 from .biographical_lifecycle import BiographicalLifecycleCatalog
 from .biographical_lifecycle_runtime import BiographicalLifecycleRuntime
@@ -4044,6 +4048,10 @@ def build_sqlite_world_v2_turn_application(
                 ),
                 ecology_catalog_version=config.life_ecology.catalog_version,
                 open_world_event=open_world_event,
+                plan_material_reader=LifeDevelopmentProposalReader(
+                    ledger=ledger,
+                    content_store=life_content_store,
+                ),
             )
             if config.life_ecology is not None
             else None

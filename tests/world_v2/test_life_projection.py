@@ -857,6 +857,7 @@ async def test_settled_world_occurrence_reaches_model_owned_proactive_action() -
     opened = await runtime.drain_one()
     authorized = await runtime.drain_one()
 
+    print("PROACTIVE_DEBUG", opened)
     assert opened.status == "opened"
     assert opened.source_ref == "occurrence-activated"
     assert authorized.status == "authorized"
