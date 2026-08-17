@@ -443,8 +443,8 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.75"
 # processes produced this hash before installation.
 # ``.75`` retires the fixed reflection bar. What comes back to her is now the
 # heaviest reading she is still carrying on her own scale, with the unweighted
-# default as the floor, because four recorded conversations produced weights of
-# 4_500 through 7_000 against a constant 8_500 and revisited nothing. Per-case
+# default as the floor, because the production ledger holds 44 weighed readings
+# that top out at 8_200 against a constant 8_500 and revisited nothing. Per-case
 # predicates remain enforced; the aggregate prompt identity intentionally moves.
 # Two independent complete 120-case processes produced this hash.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (

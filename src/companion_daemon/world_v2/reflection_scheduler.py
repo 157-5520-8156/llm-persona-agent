@@ -20,12 +20,12 @@ from .schemas import ProjectionCursor, TriggerProcess, WorldEvent
 
 
 # What comes back to her is the heaviest thing she is currently carrying, on her
-# own scale.  A fixed 8_500 bar sat above the whole range she actually uses: four
-# recorded conversations produced weights of 4_500 through 7_000 and never once
-# crossed it, so nothing was ever revisited and "it keeps coming back to me" was
-# unreachable no matter what she chose.  The bar that replaced it is her own live
-# maximum, which invents no significance she did not assign and stays naturally
-# bounded to one wound.
+# own scale.  A fixed 8_500 bar sat just above the whole range she actually uses:
+# across the production ledger she weighed 44 readings, 37 of them at the
+# unweighted default and the 7 she did weigh topping out at 8_200, so nothing was
+# ever revisited and "it keeps coming back to me" was unreachable no matter what
+# she chose.  The bar that replaced it is her own live maximum, which invents no
+# significance she did not assign and stays naturally bounded to one wound.
 #
 # The absolute floor is the weight the host assumes when she does not weigh a
 # reading at all: a turn she never marked must never schedule her to think about
