@@ -1943,6 +1943,8 @@ class _FullTurnGateStreamingProvider(_ForcedStreamingCombinedProvider):
             return False
         if value == "<role:confidence_bp>":
             return 7000
+        if value == "<role:severity_bp>":
+            return 5000
         if value == "<role:private_state_text>":
             return "我想用完整能力把这句话说清楚。"
         if value == "<role:visible_text>":

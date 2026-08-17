@@ -56,6 +56,7 @@ class MediaSelectionWorker:
         proposal_recorder: MediaSelectionProposalRecorder,
         catalog_version: str,
         source: str = "world-v2:media-selection",
+        candidate_material_reader=None,
     ) -> None:  # type: ignore[no-untyped-def]
         if not character_actor_ref:
             raise ValueError("media selection requires a character actor")
@@ -67,6 +68,7 @@ class MediaSelectionWorker:
         self._advisory = MediaCandidateAdvisoryCompiler()
         self._random = RandomAuthority(ledger=ledger)
         self._relationship_context_resolver = RelationshipMediaContextResolver()
+        self._candidate_material_reader = candidate_material_reader
 
     async def select_once(self, *, logical_time: datetime, actor: str, trace_id: str, correlation_id: str) -> MediaSelectionRunResult:
         projection = self._ledger.project()
@@ -288,7 +290,10 @@ class MediaSelectionWorker:
                 {
                     "token": token,
                     "entity_revision": tokens[token].entity_revision,
-                    "safe_summary": "一件已确认、可选择但不必分享的生活事件",
+                    "safe_summary": self._candidate_safe_summary(
+                        projection=projection,
+                        candidate=tokens[token],
+                    ),
                     "advisory": self._advisory.compile(
                         projection=projection,
                         candidate=tokens[token],
@@ -471,6 +476,37 @@ class MediaSelectionWorker:
         )
         recorded = self._recorder.record(cursor=cursor, proposal=proposal, actor=actor, source=self._source, created_at=logical_time, trace_id=trace_id, correlation_id=correlation_id)
         return MediaSelectionRunResult(status="proposed", proposal_event_ref=recorded.proposal_event_ref)
+
+    def _candidate_safe_summary(self, *, projection, candidate) -> str:
+        """Add concrete lived texture to an otherwise opaque candidate token."""
+
+        base = "一件已确认、可选择但不必分享的生活事件"
+        if self._candidate_material_reader is None:
+            return base
+        read = getattr(self._candidate_material_reader, "read_for_occurrence", None)
+        if not callable(read):
+            return base
+        source_refs = {source.event_ref for source in candidate.source_events}
+        occurrences = tuple(
+            item
+            for item in getattr(projection, "world_occurrences", ())
+            if getattr(item, "settlement_event_ref", None) in source_refs
+            or getattr(item, "trigger_ref", None) in source_refs
+        )
+        if not occurrences:
+            return base
+        for occurrence in occurrences[:1]:
+            try:
+                material = read(occurrence=occurrence)
+                outcomes = getattr(material, "outcomes", ())
+                if outcomes:
+                    text = getattr(outcomes[0], "text", None)
+                    if isinstance(text, str) and text.strip():
+                        clipped = " ".join(text.strip().split())[:96]
+                        return f"{base}｜具体发生：{clipped}"
+            except Exception:
+                continue
+        return base
 
     @staticmethod
     def _decision_hash(value: dict[str, object]) -> str:

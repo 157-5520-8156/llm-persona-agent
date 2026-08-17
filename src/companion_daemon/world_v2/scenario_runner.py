@@ -418,7 +418,7 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.70"
 # proactive expiry switch. Per-case predicates remain enforced; the aggregate
 # prompt/snapshot identities intentionally move.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "553e7b541064daa60b42a9075de4db283d3349ae5584d116cb94c2461c69bb00"
+    "fa7aa48552319a179f4b24ff94fd4992a0c4b8278e265a4fe5a41d8e32cfbf33"
 )
 
 

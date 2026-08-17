@@ -154,6 +154,12 @@ def situation_stimulus_is_observable(
     return False
 
 
+# A quiet gap may become ambient only at the first scheduler wake after its
+# spontaneous window expires.  Later wakes must drop the stale context instead
+# of backfilling an old conversation.
+_AMBIENT_EXPIRY_GRACE_SECONDS = 60
+
+
 class SocialInitiativePolicy(FrozenModel):
     spontaneous_idle_seconds: int = Field(default=1_800, ge=60, le=172_800)
     spontaneous_expiry_seconds: int = Field(default=43_200, ge=120, le=604_800)
@@ -1325,8 +1331,16 @@ class SocialInitiativeCompiler:
         elapsed = (logical_time - source[0].logical_time).total_seconds()
         if elapsed < self._policy.spontaneous_idle_seconds:
             return None
-        # Expiry switches the source_kind to ambient_presence below; it must
-        # not make the whole cadence disappear at the exact upper boundary.
+        if elapsed >= self._policy.spontaneous_expiry_seconds:
+            # Test/qualification overrides pin a deterministic band and do not
+            # intend an ambient backfill after that band closes.
+            if self._policy.consideration_band_override_seconds is not None:
+                return None
+            if elapsed >= self._policy.spontaneous_expiry_seconds + _AMBIENT_EXPIRY_GRACE_SECONDS:
+                return None
+        # Expiry switches the source_kind to ambient_presence below for the
+        # first wake after the spontaneous window closes; later stale context
+        # is dropped, never backfilled.
         try:
             pending = pending_response_expectation(projection)
         except (TypeError, ValueError, AttributeError):

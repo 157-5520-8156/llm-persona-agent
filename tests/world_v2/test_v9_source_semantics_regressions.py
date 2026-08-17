@@ -319,6 +319,7 @@ def _accepted(result: object) -> bool:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v23_t04_inventory_misroles_get_one_independent_narrow_verdict() -> None:
     companion_dialogue_ref = "dialogue:expression:t04"
     text = "我就没再追着问。你后面提项目的时候，我都有留意。"
@@ -399,6 +400,7 @@ async def test_v23_t04_inventory_misroles_get_one_independent_narrow_verdict() -
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v23_t09_inventory_misroles_get_current_private_authority() -> None:
     text = "我刚才确实有点端着，反而说拧巴了。"
     guarded = "我刚才确实有点端着"
@@ -443,6 +445,7 @@ async def test_v23_t09_inventory_misroles_get_current_private_authority() -> Non
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v20_t05_embedded_current_report_gets_the_narrow_source_authority() -> None:
     text = "嗯，我记得你提过。"
     private = "我记得你提过"
@@ -482,6 +485,7 @@ async def test_v20_t05_embedded_current_report_gets_the_narrow_source_authority(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v20_t07_embedded_prior_user_report_gets_exact_dialogue_authority() -> None:
     dialogue_ref = "dialogue:observation:t06"
     prior_user_text = "今天终于把最麻烦的延迟问题压下去一点，我其实挺高兴的。"
@@ -538,6 +542,7 @@ async def test_v20_t07_embedded_prior_user_report_gets_exact_dialogue_authority(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v20_embedded_external_cannot_use_private_continuity_to_escape_sources() -> None:
     text = "我记得你提过。"
     private = "我记得你提过"
@@ -582,6 +587,7 @@ async def test_v20_embedded_external_cannot_use_private_continuity_to_escape_sou
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v23_source_bearing_off_conversation_episode_gets_narrow_retain() -> None:
     text = "下午你讲项目的时候我闪过一个念头。"
     historical_private = text
@@ -613,6 +619,7 @@ async def test_v23_source_bearing_off_conversation_episode_gets_narrow_retain() 
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v21_external_world_state_cannot_be_reclassified_as_private_intention() -> None:
     """An ordinary unclosed external fact does not reopen Inventory itself."""
 
@@ -637,6 +644,7 @@ async def test_v21_external_world_state_cannot_be_reclassified_as_private_intent
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v21_mixed_conflicts_grant_immediate_authority_only_to_private_scope() -> None:
     """One mixed verdict cannot lend the private locator's capability to an external fact."""
 
@@ -680,6 +688,7 @@ async def test_v21_mixed_conflicts_grant_immediate_authority_only_to_private_sco
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v5_unclosed_same_conversation_private_continuity_requires_explicit_narrow_verdict() -> (
     None
 ):
@@ -708,6 +717,7 @@ async def test_v5_unclosed_same_conversation_private_continuity_requires_explici
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v5_open_information_question_is_nonassertive_without_narrow_adjudication() -> None:
     text = "啊？项目进度？你下午提过吗……我有点没印象了。"
     span = "你下午提过吗"
@@ -739,6 +749,7 @@ async def test_v5_open_information_question_is_nonassertive_without_narrow_adjud
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v5_misclassified_open_question_gets_targeted_assertion_scope_adjudication() -> (
     None
 ):
@@ -768,6 +779,7 @@ async def test_v5_misclassified_open_question_gets_targeted_assertion_scope_adju
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v5_presupposed_afternoon_report_remains_source_relevant_and_unclosed() -> None:
     text = "既然你下午提过，为什么现在又不想说了？"
     span = "你下午提过"
@@ -796,6 +808,7 @@ async def test_v5_presupposed_afternoon_report_remains_source_relevant_and_unclo
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v5_inventory_grants_future_conversational_intention_current_private_authority() -> (
     None
 ):
@@ -827,6 +840,7 @@ async def test_v5_inventory_grants_future_conversational_intention_current_priva
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v5_future_private_intention_cannot_launder_external_plan_premise() -> None:
     text = "下次去成都看熊猫时，我不跟你客套了。"
     outer = "我不跟你客套了"
@@ -867,6 +881,7 @@ async def test_v5_future_private_intention_cannot_launder_external_plan_premise(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v5_unclosed_same_conversation_episode_gets_targeted_private_scope_adjudication() -> (
     None
 ):
@@ -911,6 +926,7 @@ async def test_v5_unclosed_same_conversation_episode_gets_targeted_private_scope
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v5_private_scope_adjudication_cannot_launder_mixed_sibling_verdicts() -> None:
     text = (
         "我刚才确实以为你是想让我分析事情本身，"
@@ -1031,6 +1047,7 @@ async def test_v5_private_scope_adjudication_cannot_launder_mixed_sibling_verdic
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v5_unclosed_off_conversation_life_episode_stays_rejected() -> None:
     text = "下午翻书的时候，我忽然想起这件事。"
     span = "下午翻书的时候"
@@ -1060,6 +1077,7 @@ async def test_v5_unclosed_off_conversation_life_episode_stays_rejected() -> Non
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v23_unclosed_current_availability_stays_rejected_after_narrow_review() -> None:
     text = "我今晚正好闲。"
     inventory = _SequenceJsonModel(
@@ -1087,6 +1105,7 @@ async def test_v23_unclosed_current_availability_stays_rejected_after_narrow_rev
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="H1d removed the model reviewer/inventory lanes; legacy narrow-verdict tests are superseded by deterministic declared-claim review")
 async def test_v5_inventory_receives_bounded_non_authoritative_typed_conversation_anchor() -> None:
     text = "这次我不问了。"
     inventory = _SequenceJsonModel([_inventory(text, (text, "immediate_private_state"))])
@@ -1121,3 +1140,28 @@ async def test_v5_inventory_receives_bounded_non_authoritative_typed_conversatio
         "companion",
     ]
     assert "source_evidence" not in packet
+
+@pytest.mark.asyncio
+async def test_h1d_review_seams_are_inert_and_never_call_models() -> None:
+    """The legacy reviewer/inventory seams remain callable but deterministic."""
+
+    class _CountingReviewer(_SequenceJsonModel):
+        pass
+
+    reviewer = _CountingReviewer(["{}"])
+    inventory = _CountingReviewer(["{}"])
+    narrow = _CountingReviewer(["{}"])
+    result = await review_expression_with_candidate_external_coverage(
+        reviewer=reviewer,
+        inventory_model=inventory,
+        report_relative_reviewer=narrow,
+        request=_request(current_text="在吗"),
+        raw=_draft("我在。"),
+        identity_frame=None,
+    )
+
+    assert result.review is None
+    assert result.report_relative_adjudication_used is False
+    assert reviewer.calls == []
+    assert inventory.calls == []
+    assert narrow.calls == []

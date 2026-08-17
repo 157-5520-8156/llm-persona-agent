@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import Field
 
 from .media_v2 import PhotoCandidate
+from .mood_view import active_mood_intensities
 from .schema_core import FrozenModel
 
 
@@ -42,6 +43,7 @@ class MediaCandidateAdvisory(FrozenModel):
     budget_state: Literal["available", "constrained", "unconfigured"]
     advisory_score_bp: int = Field(ge=0, le=10_000)
     missing_signals: tuple[Literal["existing_media", "user_preference"], ...] = ()
+    mood_context: tuple[tuple[str, int], ...] = ()
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     def model_material(self) -> dict[str, object]:
@@ -55,6 +57,10 @@ class MediaCandidateAdvisory(FrozenModel):
             "budget_state": self.budget_state,
             "advisory_score_bp": self.advisory_score_bp,
             "missing_signals": self.missing_signals,
+            "mood_context": [
+                {"dimension": item[0], "intensity_bp": item[1]}
+                for item in self.mood_context
+            ],
         }
         return material
 
@@ -75,6 +81,15 @@ class MediaCandidateAdvisoryCompiler:
         visual_evidence = 10_000 if len(candidate.source_events) >= 2 else 0
         budget_state, budget_score = self._budget(projection=projection)
         missing = ("existing_media", "user_preference")
+        mood_context = tuple(
+            tuple(item)
+            for item in sorted(
+                active_mood_intensities(
+                    tuple(getattr(projection, "affect_episodes", ()) or ())
+                ).items(),
+                key=lambda item: (-item[1], item[0]),
+            )[:3]
+        )
         score = (freshness + novelty + visual_evidence + budget_score) // 4
         material = {
             "advisory_version": ADVISORY_VERSION,
@@ -86,6 +101,7 @@ class MediaCandidateAdvisoryCompiler:
             "budget_state": budget_state,
             "advisory_score_bp": score,
             "missing_signals": missing,
+            "mood_context": mood_context,
         }
         return MediaCandidateAdvisory(**material, digest=_digest(material))
 

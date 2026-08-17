@@ -4015,6 +4015,10 @@ def build_sqlite_world_v2_turn_application(
                 character_actor_ref=config.companion_actor_ref,
                 proposal_recorder=MediaSelectionProposalRecorder(ledger=ledger),
                 catalog_version=ecology_policy.catalog_version + ":selection.1",
+                candidate_material_reader=LifeDevelopmentProposalReader(
+                    ledger=ledger,
+                    content_store=life_content_store,
+                ),
             )
             if ecology_policy is not None and config.media_selection_acceptance is not None
             else None

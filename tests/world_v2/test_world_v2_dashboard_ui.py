@@ -83,6 +83,7 @@ def _dashboard_app(
             database_path=tmp_path / name,
             DELIVERY_RECONCILIATION_TOKEN=DELIVERY_TOKEN,
             WORLD_V2_DASHBOARD_OPERATOR_TOKEN=OPERATOR_TOKEN,
+            DEEPSEEK_API_KEY="dashboard-test-key",
         ),
         dashboard_home_source=source,
     )

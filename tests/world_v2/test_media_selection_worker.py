@@ -524,6 +524,7 @@ async def test_worker_gives_the_model_deterministic_non_authoritative_candidate_
         "budget_state": "unconfigured",
         "advisory_score_bp": 8_750,
         "missing_signals": ["existing_media", "user_preference"],
+        "mood_context": [],
     }
     assert "emotional_meaning" not in choice["advisory"]
     assert "candidate:advisory" not in opportunity.capability_manifest.payload_json

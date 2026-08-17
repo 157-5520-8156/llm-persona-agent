@@ -106,9 +106,12 @@ def slim_consider_instruction() -> str:
         "Empty messages with felt is silence; do not combine later with silence. "
         "The host will not invent a later, and will not turn a broken later into now. "
         "photo true means you want the media lane to consider an available candidate "
-        "now; it is not inferred from wording. Saying you will send a picture inside "
-        "text alone does not open that lane. photo true cannot ride reply_only; use "
-        "full_turn (or the full expression path) when you set photo. "
+        "now; it is not inferred from wording. photo may instead be the exact "
+        "source_ref of the lived moment from Context that you want to share; the "
+        "host then tries to compile exactly that moment before media selection. "
+        "Saying you will send a picture inside text alone does not open that lane. "
+        "photo true cannot ride reply_only; use full_turn (or the full expression "
+        "path) when you set photo. "
         "When expression_capabilities.media_request_mode is candidate_only, photo is "
         "an available choice on full_turn even if Context does not list a candidate yet; "
         "the host may compile one from reviewed settled life evidence after you choose it. "
@@ -184,7 +187,7 @@ def slim_consider_json_schema() -> dict[str, object]:
             "felt": {"type": "string"},
             "stuck_with_me": {"type": "string"},
             "wants": {"type": "string"},
-            "photo": {"type": "boolean"},
+            "photo": {"type": ["boolean", "string"]},
             "waiting_for": {"type": "string"},
             "wait": {},
             "how_it_landed": {"type": "string"},
