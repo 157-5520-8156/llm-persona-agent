@@ -62,7 +62,7 @@ from .media_continuation_acceptance_manifest import (
     canonical_media_continuation_hash,
     media_continuation_event_identity,
 )
-from .media_v2 import MediaOpportunityFrozenPayload
+from .media_v2 import MediaOpportunityFrozenPayload, P3_PRIVATE_MEDIA_LANES
 from .outcome_acceptance_manifest import (
     OUTCOME_ACCEPTANCE_MANIFEST_VERSION,
     OutcomeAcceptanceManifest,
@@ -3210,7 +3210,7 @@ def _validate_authorized_media_selection_acceptance_manifest_batch(
         raise ValueError("media_selection_acceptance.batch_does_not_match_manifest")
     if getattr(manifest, "manifest_version", None) == "media-selection-acceptance.2" and (
         opportunity.p3_authorization_digest != getattr(manifest, "p3_authorization_digest", None)
-        or opportunity.media_lane not in {"alluring_life", "exclusive_private"}
+        or opportunity.media_lane not in P3_PRIVATE_MEDIA_LANES
         or opportunity.media_privacy_ceiling != "intimate"
         or opportunity.recipient_ref is None
         or opportunity.private_expression_basis_ref is None

@@ -25,6 +25,15 @@ from companion_daemon.qq_delivery import QQDelivery
 
 from .action_due_wake import ActionDueWake
 from .dashboard_home_snapshot import DashboardHomeSnapshot, DashboardRuntimeObservation
+from .dashboard_projection_adapter import (
+    DashboardPublicProjectionDTO,
+    DashboardRoomProjectionDTO,
+)
+from .dashboard_projection_composition import (
+    CompositionDashboardRequestIssuer,
+    bind_dashboard_projection_lane,
+    plan_dashboard_projection_lane,
+)
 from .errors import ConcurrencyConflict
 from .model_completion import ChatCompletionModel
 from .model_usage_budget import WorldV2UsageStore
@@ -324,6 +333,8 @@ class QQC2CHost:
         external_world_perception_disabled_reason: str = "not_configured",
         external_world_perception_registry_health: Mapping[str, object] | None = None,
         system_notice_dispatcher: SQLiteSystemNoticeDispatcher | None = None,
+        dashboard_request_issuer: CompositionDashboardRequestIssuer | None = None,
+        dashboard_public_request_issuer: CompositionDashboardRequestIssuer | None = None,
     ) -> None:
         if not recipient_id or not canonical_user_id:
             raise ValueError("QQ C2C host requires recipient and canonical user ids")
@@ -346,6 +357,8 @@ class QQC2CHost:
             else None
         )
         self._system_notice_dispatcher = system_notice_dispatcher
+        self._dashboard_request_issuer = dashboard_request_issuer
+        self._dashboard_public_request_issuer = dashboard_public_request_issuer
         self._ingress_store = ingress_store
         self._ingress_now = ingress_now or _utc_now
         self._ingress_sleep = ingress_sleep
@@ -2479,6 +2492,20 @@ class QQC2CHost:
 
         return await self._host.dashboard_home_snapshot(runtime_observation)
 
+    def dashboard_room(self) -> DashboardRoomProjectionDTO:
+        """Return the fixed public Room DTO without minting a writable host."""
+
+        if self._dashboard_request_issuer is None:
+            raise RuntimeError("dashboard capture is not configured for this platform host")
+        return self._host.capture_dashboard_room(self._dashboard_request_issuer.issue())
+
+    def dashboard_public(self) -> DashboardPublicProjectionDTO:
+        """Return the fixed public Dashboard DTO without minting a writable host."""
+
+        if self._dashboard_public_request_issuer is None:
+            raise RuntimeError("dashboard public capture is not configured for this platform host")
+        return self._host.capture_dashboard_public(self._dashboard_public_request_issuer.issue())
+
     def external_world_perception_health(self) -> dict[str, object]:
         """Read the optional Hub health projection without advancing it."""
 
@@ -2913,6 +2940,10 @@ def build_qq_c2c_host(
     resolved_recall_embedding = semantic_recall_embedding
     if resolved_recall_embedding is None and use_configured_recall_embedding:
         resolved_recall_embedding = configured_recall_embedding(settings)
+    dashboard_plan = plan_dashboard_projection_lane(
+        world_id=world_id,
+        lane="qq-c2c-v2",
+    )
     application = build_sqlite_world_v2_turn_application(
         path=Path(settings.database_path),
         config=WorldV2TurnApplicationConfig(
@@ -2933,6 +2964,7 @@ def build_qq_c2c_host(
             media_auto_delivery=(
                 media_preview.auto_delivery if media_preview is not None else None
             ),
+            adult_media_enabled=settings.world_v2_adult_media_enabled,
             perception_budget_limit=perception_budget_limit,
             interactive_turn_budget_policy=interactive_turn_budget_policy,
             expression_episode_mode=expression_episode_mode,
@@ -2961,6 +2993,7 @@ def build_qq_c2c_host(
         life_source_closure_reviewer=life_source_closure_reviewer,
         semantic_recall_embedding=resolved_recall_embedding,
         now=bootstrap_at or datetime.now(UTC),
+        projection_authority=dashboard_plan.authority,
     )
     external_world_perception_disabled_reason = "not_configured"
     external_world_perception_registry_health: dict[str, object] | None = None
@@ -2984,8 +3017,16 @@ def build_qq_c2c_host(
         delivery=delivery,
         now=scheduler_now,
     )
+    dashboard = bind_dashboard_projection_lane(
+        plan=dashboard_plan,
+        source=application,
+    )
     return QQC2CHost(
-        host=WorldV2PlatformHost(application=application),
+        host=WorldV2PlatformHost(
+            application=application,
+            dashboard_capture=dashboard.capture,
+            dashboard_public_capture=dashboard.public_capture,
+        ),
         recipient_id=recipient_id,
         canonical_user_id=settings.primary_user_id,
         semantic_chat=semantic_chat,
@@ -3011,6 +3052,8 @@ def build_qq_c2c_host(
         barge_in_enabled=settings.qq_c2c_barge_in_enabled,
         barge_in_probe_seconds=settings.qq_c2c_barge_in_probe_ms / 1_000,
         system_notice_dispatcher=system_notice_dispatcher,
+        dashboard_request_issuer=dashboard.room_issuer,
+        dashboard_public_request_issuer=dashboard.public_issuer,
     )
 
 

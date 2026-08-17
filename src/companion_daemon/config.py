@@ -721,6 +721,13 @@ class Settings(BaseSettings):
     world_v2_media_preview_enabled: bool = Field(
         default=True, alias="WORLD_V2_MEDIA_PREVIEW_ENABLED"
     )
+    # Adult P3 intensity.  Default off: relationship stage never implies an
+    # adult lane.  Production also needs the ledger CapabilityGranted /
+    # ConsentGranted pair written by the adult-media provisioner.  The
+    # character still chooses whether to take or send a photo.
+    world_v2_adult_media_enabled: bool = Field(
+        default=False, alias="WORLD_V2_ADULT_MEDIA_ENABLED"
+    )
     # Planner model for the image machine's one bounded planning call.
     # Defaults to the flash chat model when unset.
     world_v2_media_planner_model: str | None = Field(

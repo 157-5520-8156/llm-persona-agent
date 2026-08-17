@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
+import logging
 from time import perf_counter_ns
 
 import httpx
@@ -143,6 +144,10 @@ class _RequiredToolQueueModel(_QueueModel):
         if isinstance(result, BaseException):
             raise result
         return result
+
+
+class _StrictToolQueueModel(_RequiredToolQueueModel):
+    supports_strict_tool_choice = True
 
 
 class _FailingRequiredToolModel:
@@ -439,6 +444,35 @@ def _proactive_provider_payload_schema() -> dict[str, object]:
     parameters = function["parameters"]
     decision_branch = parameters["anyOf"][0]
     return decision_branch["properties"]["decision"]["properties"]["payload"]
+
+
+def _strict_proactive_contract():
+    return StructuredRoleToolContracts().proactive_contact(
+        capability_payload=_proactive_manifest().payload,
+        recall_allowed=True,
+        schema_dialect="deepseek-strict",
+    )
+
+
+def _silent_proactive_role_object() -> dict[str, object]:
+    return json.loads(
+        _result(
+            status="decision",
+            decision={
+                "source_refs": ["source:private_self"],
+                "payload": {
+                    "timing_choice": "silent",
+                    "cadence": "conversational",
+                    "beats": [],
+                    "stance": "private",
+                    "brief_rationale": "not sending",
+                    "impulse_summary": "thought of them",
+                    "confidence": 5000,
+                    "world_claims": [],
+                },
+            },
+        )
+    )
 
 
 def _valid_proactive_payload(**updates: object) -> dict[str, object]:
@@ -4330,3 +4364,163 @@ async def test_bare_world_stimulus_proposal_is_rejected_without_host_authored_en
                 capability_manifest=manifest,
             )
         )
+
+
+def test_strict_proactive_unwrap_accepts_already_unwrapped_role_json() -> None:
+    contract = _strict_proactive_contract()
+    inner = _silent_proactive_role_object()
+
+    unwrapped = contract.unwrap(json.dumps(inner, ensure_ascii=False))
+
+    assert json.loads(unwrapped)["status"] == "decision"
+    assert json.loads(unwrapped)["summary"] == inner["summary"]
+
+
+def test_strict_proactive_unwrap_ignores_sibling_keys_beside_result() -> None:
+    contract = _strict_proactive_contract()
+    inner = _silent_proactive_role_object()
+
+    unwrapped = contract.unwrap(
+        json.dumps({"result": inner, "reasoning": "hidden chain"}, ensure_ascii=False)
+    )
+
+    decoded = json.loads(unwrapped)
+    assert decoded["status"] == "decision"
+    assert "reasoning" not in decoded
+
+
+def test_strict_proactive_unwrap_failure_includes_actual_root_keys() -> None:
+    contract = _strict_proactive_contract()
+
+    with pytest.raises(ValueError, match=r"got keys=\['note', 'reasoning', 'status'\]") as caught:
+        contract.unwrap(
+            json.dumps(
+                {
+                    "status": "decision",
+                    "reasoning": "the walk felt unfinished",
+                    "note": "刚在傍晚散步呢",
+                },
+                ensure_ascii=False,
+            )
+        )
+
+    assert "structured role tool result wrapper is invalid" in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_strict_proactive_faculty_accepts_already_unwrapped_and_extra_siblings() -> None:
+    inner = _silent_proactive_role_object()
+    model = _StrictToolQueueModel(
+        json.dumps(inner, ensure_ascii=False),
+        json.dumps({"result": inner, "reasoning": "hidden chain"}, ensure_ascii=False),
+    )
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+    manifest = _proactive_manifest()
+
+    already_unwrapped = await role.consider(
+        await _request(purpose="proactive_contact", capability_manifest=manifest)
+    )
+    with_siblings = await role.consider(
+        await _request(purpose="proactive_contact", capability_manifest=manifest)
+    )
+
+    assert already_unwrapped["status"] == "decision"
+    assert with_siblings["status"] == "decision"
+    assert already_unwrapped["decision"]["payload"]["timing_choice"] == "silent"
+    assert with_siblings["decision"]["payload"]["timing_choice"] == "silent"
+
+
+@pytest.mark.asyncio
+async def test_strict_proactive_unwrap_still_rejects_invalid_inner_payload() -> None:
+    inner = _silent_proactive_role_object()
+    inner["decision"]["payload"]["private_turn_state"] = {
+        "inner_state_summary": "secret private state",
+        "attended_source_refs": ["source:private_self"],
+    }
+    model = _StrictToolQueueModel(
+        json.dumps({"result": inner, "reasoning": "hidden chain"}, ensure_ascii=False)
+    )
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+
+    with pytest.raises(StructuredRoleResultError) as caught:
+        await role.consider(
+            await _request(
+                purpose="proactive_contact",
+                capability_manifest=_proactive_manifest(),
+            )
+        )
+
+    assert caught.value.code == "role_result_schema_invalid"
+    assert "got keys=" not in caught.value.detail
+    assert "private_turn_state" in caught.value.detail
+
+
+@pytest.mark.asyncio
+async def test_strict_proactive_unwrap_logs_one_warning_with_actual_keys(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    model = _StrictToolQueueModel(
+        json.dumps(
+            {
+                "status": "decision",
+                "reasoning": "the walk felt unfinished",
+                "note": "刚在傍晚散步呢",
+            },
+            ensure_ascii=False,
+        )
+    )
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+
+    with caplog.at_level(
+        logging.WARNING,
+        logger="companion_daemon.world_v2.character_interior.structured_role",
+    ):
+        with pytest.raises(StructuredRoleResultError) as caught:
+            await role.consider(
+                await _request(
+                    purpose="proactive_contact",
+                    capability_manifest=_proactive_manifest(),
+                )
+            )
+
+    records = [
+        record
+        for record in caplog.records
+        if "structured role validation rejected" in record.getMessage()
+    ]
+    assert len(records) == 1
+    message = records[0].getMessage()
+    assert "purpose=proactive_contact" in message
+    assert "code=role_result_schema_invalid" in message
+    assert "got keys=" in message
+    assert "got keys=" in caught.value.detail
+    assert "刚在傍晚散步呢" in caught.value.rejected_raw
+
+
+@pytest.mark.asyncio
+async def test_proactive_contract_copy_keeps_private_state_out_of_payload() -> None:
+    inner = _silent_proactive_role_object()
+    model = _RequiredToolQueueModel(json.dumps(inner, ensure_ascii=False))
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+
+    await role.consider(
+        await _request(purpose="proactive_contact", capability_manifest=_proactive_manifest())
+    )
+
+    system = model.calls[0][0][0]["content"]
+    user = json.loads(model.calls[0][0][1]["content"])
+    contract = user["purpose_contract"]["payload_schema"]
+    instruction = user["purpose_instruction"]
+
+    assert "payload 里禁止 private_turn_state" in system
+    assert "inbound 相反" in system
+    assert "world_claims 写 []" in system
+    assert "对话 beat 不是 current_world" in system
+    assert "payload 里禁止 private_turn_state" in instruction
+    assert "inbound 相反" in instruction
+    assert "world_claims 写 []" in instruction
+    assert "对话 beat 不是 current_world" in instruction
+    assert "subjective_or_hypothetical" in contract["world_claims"][0]["scope"]
+    assert "payload 里禁止 private_turn_state" in contract["private_state_rule"]
+    assert "world_claims 写 []" in contract["author_notes"]
+    assert "对话 beat 不是 current_world" in contract["author_notes"]

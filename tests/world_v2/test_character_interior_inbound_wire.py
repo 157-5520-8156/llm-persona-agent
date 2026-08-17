@@ -217,6 +217,38 @@ def test_private_turn_state_contract_does_not_license_invented_life_context() ->
     assert "optimize the conversation" in contract
 
 
+def test_expression_draft_shape_contract_speaks_her_language() -> None:
+    """Everything addressed to her is Chinese; only literal JSON stays English."""
+
+    contract = expression_draft_shape_contract()
+    chinese = sum(1 for char in contract if "\u4e00" <= char <= "\u9fff")
+    assert chinese / len(contract) > 0.28
+    for field in (
+        "timing_choice",
+        "cadence",
+        "turn_posture",
+        "media_request",
+        "world_claims",
+        "private_turn_state",
+        "source_refs",
+        "beats",
+    ):
+        assert field in contract
+    for enum_value in (
+        "now",
+        "later",
+        "silent",
+        "yield",
+        "consider_available_candidate",
+        "still_pending",
+        "current_world",
+    ):
+        assert enum_value in contract
+    assert "140" in contract
+    assert "120" in contract
+    assert "10000" in contract
+
+
 def _strict_source_reselection_fixture(
     messages: list[dict[str, str]],
     raw: str,
@@ -8444,9 +8476,7 @@ def test_private_turn_state_prompt_describes_a_private_self_not_a_reply_optimize
         failure_code=None,
     )[0]["content"]
 
-    assert "character's own genuinely salient feelings" in system
-    assert "attention, desires or resistance, associations, and uncertainty" in system
-    assert "before expression" in system
+    assert "表达之前你自己真正搁着的感觉、注意、欲望或抵触、联想和不确定" in system
     assert "what reply would satisfy the counterpart or optimize the conversation" in system
     assert "You own the motive, tone, timing" in system
     assert (

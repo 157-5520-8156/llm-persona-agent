@@ -128,19 +128,31 @@ class _Activity:
         self,
         *,
         status: str = "no_op",
+        statuses: tuple[str, ...] | None = None,
         raises: bool = False,
         reason_code: str | None = None,
+        ledger: object | None = None,
     ) -> None:
         self.status = status
+        self.statuses = statuses
         self.raises = raises
         self.reason_code = reason_code
+        self.ledger = ledger
         self.calls = []
+        self.plans_seen: list[int] = []
 
     async def advance_once(self, **kwargs):  # type: ignore[no-untyped-def]
         self.calls.append(kwargs)
+        if self.ledger is not None:
+            self.plans_seen.append(len(getattr(self.ledger.project(), "plans", ())))
         if self.raises:
             raise RuntimeError("activity failed")
-        return SimpleNamespace(status=self.status, reason_code=self.reason_code)
+        if self.statuses is not None:
+            index = min(len(self.calls) - 1, len(self.statuses) - 1)
+            status = self.statuses[index]
+        else:
+            status = self.status
+        return SimpleNamespace(status=status, reason_code=self.reason_code)
 
 
 class _OpenWorld:
@@ -154,13 +166,32 @@ class _OpenWorld:
 
 
 class _LifeDevelopment:
-    def __init__(self, status: str, *, reason_code: str | None = None) -> None:
+    def __init__(
+        self,
+        status: str,
+        *,
+        reason_code: str | None = None,
+        commit_plan_on_ledger: object | None = None,
+    ) -> None:
         self.status = status
         self.reason_code = reason_code
+        self.commit_plan_on_ledger = commit_plan_on_ledger
         self.calls = []
 
     async def advance_once(self, **kwargs):  # type: ignore[no-untyped-def]
         self.calls.append(kwargs)
+        if self.commit_plan_on_ledger is not None:
+            projection = self.commit_plan_on_ledger.project()
+            projection.plans = (
+                SimpleNamespace(
+                    plan_id="plan:same-wake-bookstore",
+                    status="planned",
+                    scheduled_window=SimpleNamespace(
+                        opens_at=NOW,
+                        closes_at=NOW + timedelta(hours=2),
+                    ),
+                ),
+            )
         return SimpleNamespace(status=self.status, reason_code=self.reason_code)
 
 
@@ -628,6 +659,110 @@ async def test_life_ecology_keeps_model_deferred_wake_recoverable_instead_of_ter
     assert result.open_world_followup_status == "deferred"
     assert media.calls == []
     assert trigger_store.completed == []
+
+
+@pytest.mark.asyncio
+async def test_same_wake_plan_commit_gives_activity_a_second_opening_chance() -> None:
+    """A plan committed this wake must be visible to activity before the wake ends.
+
+    The catalog is re-read on the second pass.  Start remains her choice; this
+    test only proves the newly committed, currently-open plan is in front of
+    activity in the same wake instead of waiting for the next clock.
+    """
+
+    event = _event("clock-same-wake-plan-start-chance")
+    ledger = _Ledger(event)
+    ledger._projection.plans = ()
+    order: list[str] = []
+    activity = _Activity(status="no_op", ledger=ledger)
+    original_activity = activity.advance_once
+
+    async def _track_activity(**kwargs):  # type: ignore[no-untyped-def]
+        order.append("activity")
+        return await original_activity(**kwargs)
+
+    activity.advance_once = _track_activity  # type: ignore[method-assign]
+    development = _LifeDevelopment("plan_committed", commit_plan_on_ledger=ledger)
+    original_development = development.advance_once
+
+    async def _track_development(**kwargs):  # type: ignore[no-untyped-def]
+        order.append("development")
+        return await original_development(**kwargs)
+
+    development.advance_once = _track_development  # type: ignore[method-assign]
+    trigger_store, media = _TriggerStore(), _Media()
+    runtime = LifeEcologyRuntime(
+        ledger=ledger,
+        trigger_store=trigger_store,
+        media_followup=media,
+        activity_followup=activity,
+        life_development_followup=development,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:same-wake-plan",
+        correlation_id="correlation:same-wake-plan",
+    )
+
+    assert result.status == "advanced"
+    assert result.life_development_followup_status == "plan_committed"
+    assert result.activity_followup_status == "no_op"
+    assert order == ["activity", "development", "activity"]
+    assert len(activity.calls) == 2
+    assert activity.plans_seen == [0, 1]
+    assert ledger.project().plans[0].plan_id == "plan:same-wake-bookstore"
+    assert trigger_store.completed[0][2] == "life_development_plan_committed"
+
+
+@pytest.mark.asyncio
+async def test_same_wake_plan_commit_does_not_start_the_plan_for_her() -> None:
+    event = _event("clock-same-wake-plan-she-declines")
+    activity = _Activity(statuses=("no_op", "no_op"))
+    development = _LifeDevelopment("plan_committed")
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event),
+        trigger_store=_TriggerStore(),
+        media_followup=_Media(),
+        activity_followup=activity,
+        life_development_followup=development,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:same-wake-decline",
+        correlation_id="correlation:same-wake-decline",
+    )
+
+    assert len(activity.calls) == 2
+    assert result.activity_followup_status == "no_op"
+    assert result.life_development_followup_status == "plan_committed"
+
+
+@pytest.mark.asyncio
+async def test_occurrence_commit_does_not_buy_a_second_activity_pass() -> None:
+    event = _event("clock-occurrence-is-not-a-plan")
+    activity = _Activity(status="no_op")
+    development = _LifeDevelopment("occurrence_committed")
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event),
+        trigger_store=_TriggerStore(),
+        media_followup=_Media(),
+        activity_followup=activity,
+        life_development_followup=development,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:occurrence-no-extra-activity",
+        correlation_id="correlation:occurrence-no-extra-activity",
+    )
+
+    assert len(activity.calls) == 1
+    assert result.life_development_followup_status == "occurrence_committed"
 
 
 @pytest.mark.asyncio

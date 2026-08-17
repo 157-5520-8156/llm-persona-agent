@@ -66,6 +66,7 @@ from .turn_store import (
 
 
 _CACHE_LIMIT = 128
+_REJECTED_ROLE_RAW_EXCERPT_CHARS = 800
 _NON_RETRYABLE_ROLE_ERRORS = frozenset(
     {
         # These describe a host/provider capability or wiring defect.  Asking
@@ -215,9 +216,71 @@ class _InteriorTechnicalError(RuntimeError):
         self.role_failure_evidence = role_failure_evidence
 
 
+def _unprefixed_sha256(value: str | None) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    digest = value.removeprefix("sha256:")
+    if len(digest) != 64 or any(item not in "0123456789abcdef" for item in digest):
+        return None
+    return digest
+
+
+def _rejected_raw_excerpt(raw: str | None) -> str | None:
+    if not isinstance(raw, str) or not raw:
+        return None
+    if len(raw) <= _REJECTED_ROLE_RAW_EXCERPT_CHARS:
+        return raw
+    return raw[:_REJECTED_ROLE_RAW_EXCERPT_CHARS]
+
+
+def _role_contract_error_evidence(
+    exc: _RoleResultContractError,
+    *,
+    terminal_code: str,
+    faculty: object,
+) -> _RoleFacultyTechnicalEvidence:
+    rejected_raw = getattr(exc, "rejected_raw", None)
+    excerpt = _rejected_raw_excerpt(rejected_raw if isinstance(rejected_raw, str) else None)
+    response_hash = _unprefixed_sha256(getattr(exc, "response_hash", None))
+    if response_hash is None and isinstance(rejected_raw, str) and rejected_raw:
+        response_hash = hashlib.sha256(rejected_raw.encode("utf-8")).hexdigest()
+    request_hash = _unprefixed_sha256(getattr(exc, "request_hash", None))
+    model_call_id = getattr(exc, "model_call_id", None)
+    if not isinstance(model_call_id, str) or not model_call_id:
+        model_call_id = None
+    if (model_call_id is None) != (request_hash is None):
+        model_call_id = None
+        request_hash = None
+    attempted_model_id = getattr(faculty, "_model_id", None)
+    attempted_model_version = getattr(faculty, "_model_version", None)
+    if not isinstance(attempted_model_id, str) or not attempted_model_id:
+        attempted_model_id = None
+        attempted_model_version = None
+    elif not isinstance(attempted_model_version, str) or not attempted_model_version:
+        attempted_model_id = None
+        attempted_model_version = None
+    detail = exc.detail if isinstance(exc.detail, str) and exc.detail else exc.code
+    return _RoleFacultyTechnicalEvidence(
+        failure_code=terminal_code,
+        model_call_id=model_call_id,
+        request_hash=request_hash,
+        attempted_model_id=attempted_model_id,
+        attempted_model_version=attempted_model_version,
+        original_failure_code=exc.code,
+        failure_detail=detail[:4_000],
+        rejected_raw_hash=response_hash,
+        rejected_raw_excerpt=excerpt,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _RoleFacultyTechnicalEvidence:
-    """Prompt/body-free provider evidence crossing the frozen Faculty seam."""
+    """Provider evidence crossing the frozen Faculty seam.
+
+    Identity and usage stay prompt-free. A truncated rejected role payload is
+    retained so a technical failure can still show the original wire code and
+    the words that were refused.
+    """
 
     failure_code: str
     model_call_id: str | None = None
@@ -228,6 +291,10 @@ class _RoleFacultyTechnicalEvidence:
     provider_subcall_audits: tuple[object, ...] = ()
     authored_candidate_audits: tuple[object, ...] = ()
     physical_provider_audits: tuple[object, ...] = ()
+    original_failure_code: str | None = None
+    failure_detail: str | None = None
+    rejected_raw_hash: str | None = None
+    rejected_raw_excerpt: str | None = None
 
 
 class _RoleFacultyTechnicalFailure(RuntimeError):
@@ -247,6 +314,10 @@ class _RoleFacultyTechnicalFailure(RuntimeError):
         provider_subcall_audits: tuple[object, ...] = (),
         authored_candidate_audits: tuple[object, ...] = (),
         physical_provider_audits: tuple[object, ...] = (),
+        original_failure_code: str | None = None,
+        failure_detail: str | None = None,
+        rejected_raw_hash: str | None = None,
+        rejected_raw_excerpt: str | None = None,
     ) -> None:
         super().__init__("role_faculty_technical_failure")
         self.failure_code = failure_code
@@ -260,6 +331,10 @@ class _RoleFacultyTechnicalFailure(RuntimeError):
             provider_subcall_audits=tuple(provider_subcall_audits),
             authored_candidate_audits=tuple(authored_candidate_audits),
             physical_provider_audits=tuple(physical_provider_audits),
+            original_failure_code=original_failure_code,
+            failure_detail=failure_detail,
+            rejected_raw_hash=rejected_raw_hash,
+            rejected_raw_excerpt=rejected_raw_excerpt,
         )
 
 
@@ -2075,6 +2150,7 @@ class CharacterInterior:
             method = getattr(faculty, method_name)
             structural_failure_code: str | None = None
             structural_failure_detail: str | None = None
+            last_contract_error: _RoleResultContractError | None = None
             try:
                 raw = await _resolve(method(current_request))
             except _RoleFacultyTechnicalFailure as exc:
@@ -2088,9 +2164,15 @@ class CharacterInterior:
                     raise _InteriorTechnicalError(
                         exc.code,
                         snapshot=current_request.snapshot,
+                        role_failure_evidence=_role_contract_error_evidence(
+                            exc,
+                            terminal_code=exc.code,
+                            faculty=faculty,
+                        ),
                     ) from exc
                 structural_failure_code = exc.code
                 structural_failure_detail = exc.detail
+                last_contract_error = exc
             except TimeoutError as exc:
                 raise _InteriorTechnicalError(
                     "authored_subcall_timeout",
@@ -2135,6 +2217,15 @@ class CharacterInterior:
                 raise _InteriorTechnicalError(
                     "invalid_role_result_after_correction",
                     snapshot=current_request.snapshot,
+                    role_failure_evidence=(
+                        _role_contract_error_evidence(
+                            last_contract_error,
+                            terminal_code="invalid_role_result_after_correction",
+                            faculty=faculty,
+                        )
+                        if last_contract_error is not None
+                        else None
+                    ),
                 )
             entry.correction_attempted = True
             self._metrics["correction_attempt"] += 1
@@ -2142,7 +2233,11 @@ class CharacterInterior:
                 update={
                     "correction_ordinal": 1,
                     "correction_failure_code": structural_failure_code,
-                    "correction_failure_detail": structural_failure_detail,
+                    "correction_failure_detail": (
+                        structural_failure_detail[:4_096]
+                        if isinstance(structural_failure_detail, str)
+                        else structural_failure_detail
+                    ),
                 }
             )
             try:
@@ -2158,10 +2253,20 @@ class CharacterInterior:
                     raise _InteriorTechnicalError(
                         correction_exc.code,
                         snapshot=current_request.snapshot,
+                        role_failure_evidence=_role_contract_error_evidence(
+                            correction_exc,
+                            terminal_code=correction_exc.code,
+                            faculty=faculty,
+                        ),
                     ) from correction_exc
                 raise _InteriorTechnicalError(
                     "invalid_role_result_after_correction",
                     snapshot=current_request.snapshot,
+                    role_failure_evidence=_role_contract_error_evidence(
+                        correction_exc,
+                        terminal_code="invalid_role_result_after_correction",
+                        faculty=faculty,
+                    ),
                 ) from correction_exc
             except Exception as correction_exc:
                 raise _InteriorTechnicalError(

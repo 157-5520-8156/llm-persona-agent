@@ -830,105 +830,6 @@ def _week_diary(
     return diary
 
 
-def _current_window_title(day_sheet: str) -> str | None:
-    marker = "此刻窗口是"
-    start = day_sheet.find(marker)
-    if start < 0:
-        return None
-    rest = day_sheet[start + len(marker) :]
-    end = rest.find("。")
-    title = (rest if end < 0 else rest[:end]).strip()
-    return title or None
-
-
-def _walking_in_residue(appraisals: object) -> str | None:
-    if not isinstance(appraisals, list):
-        return None
-    for entry in appraisals:
-        if not isinstance(entry, dict):
-            continue
-        meaning = None
-        hypotheses = entry.get("hypotheses")
-        if isinstance(hypotheses, list):
-            for hypo in hypotheses:
-                if (
-                    isinstance(hypo, dict)
-                    and isinstance(hypo.get("meaning"), str)
-                    and hypo["meaning"].strip()
-                ):
-                    meaning = hypo["meaning"].strip()[:80]
-                    break
-        excerpt = None
-        excerpts = entry.get("stimulus_excerpts")
-        if isinstance(excerpts, list):
-            for item in excerpts:
-                if isinstance(item, str) and item.strip():
-                    excerpt = item.strip()[:80]
-                    break
-        if meaning and excerpt:
-            return f"还挂着：{excerpt} → {meaning}"
-        if meaning:
-            return f"还挂着：{meaning}"
-        if excerpt:
-            return f"还挂着：{excerpt}"
-    return None
-
-
-def _walking_in_impression(impressions: object) -> str | None:
-    if not isinstance(impressions, list):
-        return None
-    for entry in impressions:
-        if not isinstance(entry, dict):
-            continue
-        status = entry.get("status")
-        if status not in {None, "active"}:
-            continue
-        summary = entry.get("reflection_summary")
-        if isinstance(summary, str) and summary.strip():
-            return f"心里还搁着：{summary.strip()[:80]}"
-    return None
-
-
-def _lived_moment(
-    *,
-    day_sheet: str | None,
-    week_diary: list[dict[str, object]],
-    logical_time: datetime | None,
-    appraisals: object = None,
-    impressions: object = None,
-) -> str | None:
-    parts: list[str] = []
-    if isinstance(day_sheet, str):
-        window = _current_window_title(day_sheet)
-        if window:
-            parts.append(f"这会儿是{window}")
-    if logical_time is not None:
-        today = logical_time.astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat()
-        for item in week_diary:
-            if item.get("date") != today:
-                continue
-            lines = item.get("lines")
-            if not isinstance(lines, list):
-                break
-            clipped = [
-                line.strip()
-                for line in lines
-                if isinstance(line, str) and line.strip()
-            ][:2]
-            if clipped:
-                parts.append("今天已经过的：" + "；".join(clipped))
-            break
-    residue = _walking_in_residue(appraisals)
-    if residue:
-        parts.append(residue)
-    impression = _walking_in_impression(impressions)
-    if impression:
-        parts.append(impression)
-    if not parts:
-        return None
-    return "。".join(parts) + "。"
-
-
 def _cursor(context: Mapping[str, object]) -> ProjectionCursor | None:
     values = tuple(context.get(key) for key in (
         "world_revision", "deliberation_revision", "ledger_sequence"
@@ -1156,18 +1057,9 @@ def compile_inner_life_snapshot(
     week_diary = _week_diary(diary_source, logical_time)
     if week_diary:
         materials["week_diary"] = week_diary
-    lived = _lived_moment(
-        day_sheet=materials.get("day_sheet") if isinstance(materials.get("day_sheet"), str) else None,
-        week_diary=week_diary,
-        logical_time=logical_time,
-        appraisals=materials.get("appraisals"),
-        impressions=materials.get("private_impressions"),
-    )
-    if lived:
-        materials["lived_moment"] = lived
 
     facet_keys = {
-        "private_self": ("stable_self", "biographical_context", "day_sheet", "week_diary", "lived_moment", "situation", "private_impressions", "recent_self_experiences"),
+        "private_self": ("stable_self", "biographical_context", "day_sheet", "week_diary", "situation", "private_impressions", "recent_self_experiences"),
         "selective_memory": (
             "folded_dialogue",
             "recent_dialogue",
@@ -1208,7 +1100,6 @@ def compile_inner_life_snapshot(
         ),
         "expression_stance": (
             "stable_self",
-            "lived_moment",
             "situation",
             "relationship",
             "protagonist_npc_relationships",

@@ -758,7 +758,11 @@ class LifeAftermathRuntime:
                 for item in occurrence.candidate_outcomes
                 if item.candidate_result_ref == draw.selected_candidate_ref
             )
-            adopted = chosen.dynamic_life_arc_context is not None
+            # A recorded draw decides which outcome text became true.  Whether
+            # that event enters her long-lived life direction is her decision,
+            # not the lottery's.  Character-choice settlement still copies the
+            # bool she wrote; this path must not auto-adopt.
+            adopted = False
             draw_event_ref = f"event:random-draw:{draw.draw_id}"
             draw_event = self._ledger.lookup_event_commit(draw_event_ref)
             if draw_event is None:

@@ -907,6 +907,7 @@ def build_http_v2_capture_host(
                 media_preview.acceptance if media_preview is not None else None
             ),
             media_continuation=(media_preview.continuation if media_preview is not None else None),
+            adult_media_enabled=settings.world_v2_adult_media_enabled,
             perception_budget_limit=perception_budget_limit,
         ),
         identities=HttpCaptureIdentityResolver(primary_user_id=primary_user_id),

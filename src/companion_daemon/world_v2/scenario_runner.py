@@ -295,7 +295,7 @@ class ScenarioVerificationError(AssertionError):
 # source-review, acceptance, Action, and receipt boundaries; the frozen suite
 # keeps every existing per-case predicate enabled while request, audit,
 # scheduler, snapshot, and replay identities intentionally move together.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.75"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.76"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -447,8 +447,18 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.75"
 # that top out at 8_200 against a constant 8_500 and revisited nothing. Per-case
 # predicates remain enforced; the aggregate prompt identity intentionally moves.
 # Two independent complete 120-case processes produced this hash.
+# ``.76`` composes one night of production-evidence repairs: a redaction leak
+# closed by deriving lived_moment after redaction, Postel unwrap so a provider's
+# extra sibling key no longer burns her one correction, subjective claims kept,
+# rejection evidence recorded instead of a null shell, a second start chance in
+# the wake that commits a plan, a recorded draw no longer adopting a life arc for
+# her, a dead plan no longer spending the day's start chance, the adult P3 lane
+# behind an explicit default-off grant, and the read-only room/dashboard views
+# mounted on the live process. Per-case predicates remain enforced; the aggregate
+# prompt/policy identities intentionally move. Two independent complete 120-case
+# processes produced this hash before installation.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "eb7bf56c2ab2dc76ce742ac3145151fbc4706039c4c2fa0d502f61587a15d0c7"
+    "5db2749ba687f15e0acb911cf25c2a91bc9968875130e5bf287e54798abf919c"
 )
 
 

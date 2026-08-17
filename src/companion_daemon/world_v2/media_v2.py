@@ -49,7 +49,21 @@ MediaCandidateStatus = Literal[
     "expired",
     "failed",
 ]
-MediaLane = Literal["ordinary_life", "alluring_life", "exclusive_private", "explicit_reserved"]
+MediaLane = Literal[
+    "ordinary_life",
+    "alluring_life",
+    "exclusive_private",
+    "suggestive_private",
+    "explicit_private",
+    "explicit_reserved",
+]
+# Recipient-scoped P3 character media.  ``suggestive_private`` /
+# ``explicit_private`` are additive World-v2 names that already exist on the
+# image-machine planner; they are not a migration of historical payloads.
+P3_PRIVATE_MEDIA_LANES = frozenset(
+    {"alluring_life", "exclusive_private", "suggestive_private", "explicit_private"}
+)
+ADULT_PRIVATE_MEDIA_LANES = frozenset({"suggestive_private", "explicit_private"})
 MediaPrivacyCeiling = Literal["ordinary", "personal", "intimate"]
 CharacterMediaKind = Literal[
     "public_checkin", "selfie", "mirror", "companion_shot", "body_detail",
@@ -310,7 +324,9 @@ class PrivateMediaSnapshotAuthorization(FrozenModel):
     candidate_id: str = Field(min_length=1, max_length=256)
     candidate_revision: int = Field(ge=1)
     recipient_ref: str = Field(min_length=1, max_length=512)
-    media_lane: Literal["alluring_life", "exclusive_private"]
+    media_lane: Literal[
+        "alluring_life", "exclusive_private", "suggestive_private", "explicit_private"
+    ]
     media_privacy_ceiling: Literal["intimate"] = "intimate"
     expression_charge_ceiling: Literal["subtle", "charged", "veiled"]
     allowed_capture_modes: tuple[Literal["character_front_camera", "mirror"], ...] = Field(
@@ -612,7 +628,7 @@ class MediaOpportunity(FrozenModel):
             raise ValueError("character media opportunity requires explicit snapshot lineage")
         if self.family == "life_share" and self.snapshot_source_events and candidate_refs != self.source_event_refs:
             raise ValueError("life-share opportunity may not expand candidate lineage")
-        private_lane = self.media_lane in {"alluring_life", "exclusive_private"}
+        private_lane = self.media_lane in P3_PRIVATE_MEDIA_LANES
         if private_lane and (
             self.family != "character_media"
             or self.delivery_mode != "preview"
@@ -873,7 +889,9 @@ def media_delivery_id(*, action_id: str, receipt_id: str) -> str:
 
 
 __all__ = [
+    "ADULT_PRIVATE_MEDIA_LANES",
     "MEDIA_V2_PAYLOAD_MODELS", "PhotoCandidate", "MediaEvidenceSource", "ImageEvidenceIndexEntry", "ImageEventSnapshot", "FrozenMediaEvidenceSnapshot", "MediaPrivacyCeiling", "MediaOpportunity", "MediaPlan", "MediaNotRenderable", "MediaArtifact", "MediaInspectionRecord", "MediaPreview", "MediaRepairAuthorization", "MediaAutomaticDeliveryApproval", "MediaDeliveryShared",
+    "P3_PRIVATE_MEDIA_LANES",
     "PhotoCandidateOpenedPayload", "PhotoCandidateUnrenderablePayload", "PhotoCandidateExpiredPayload", "MediaOpportunityFrozenPayload", "MediaPlanRecordedPayload", "MediaNotRenderableRecordedPayload", "MediaRenderArtifactRecordedPayload", "MediaInspectionRecordedPayload", "MediaPreviewGeneratedPayload", "MediaPreviewFailedPayload", "MediaRepairAuthorizedPayload", "MediaAutomaticDeliveryApprovedPayload", "MediaDeliverySharedPayload",
     "StoredMediaPayload", "ImmutableMediaPayloadStore", "InMemoryImmutableMediaPayloadStore", "SQLiteImmutableMediaPayloadStore",
     "MediaPlanner", "MediaPlanningResult", "media_digest", "media_payload_hash", "planning_request_id", "continuation_trigger_id", "artifact_continuation_trigger_id", "media_repair_trigger_id", "media_repair_attempt_id", "media_repair_action_id", "media_repair_reservation_id", "media_delivery_action_id", "media_delivery_reservation_id", "media_delivery_id",

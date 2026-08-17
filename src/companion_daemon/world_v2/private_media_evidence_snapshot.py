@@ -22,6 +22,7 @@ from .media_v2 import (
     ImageEventSnapshotV3,
     MediaEvidenceSource,
     PhotoCandidate,
+    P3_PRIVATE_MEDIA_LANES,
     PrivateMediaSnapshotAuthorization,
     canonical_media_json,
     media_digest,
@@ -67,7 +68,7 @@ class PrivateMediaEvidenceSnapshotCompiler:
             or not set(contract.allowed_capture_modes) <= {"character_front_camera", "mirror"}
         ):
             raise MediaEvidenceNotRenderable("p3_candidate_not_private_self_authored")
-        if request.media_lane not in {"alluring_life", "exclusive_private"}:
+        if request.media_lane not in P3_PRIVATE_MEDIA_LANES:
             raise MediaEvidenceNotRenderable("p3_media_lane_unsupported")
         if context.audience.character_ref != contract.subject_ref:
             raise MediaEvidenceNotRenderable("p3_context_character_mismatch")

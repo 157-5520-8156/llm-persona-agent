@@ -150,3 +150,135 @@ def test_qq_owner_dashboard_endpoint_is_disabled_without_its_read_token(
         response = client.get("/internal/world-v2/dashboard/operator-snapshot")
 
     assert response.status_code == 503
+
+
+def _local_client(app):
+    return TestClient(
+        app,
+        base_url="http://localhost",
+        client=("127.0.0.1", 50000),
+    )
+
+
+def test_qq_public_room_and_dashboard_dtos_are_read_only_and_do_not_touch_health(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    app = _app(tmp_path)
+
+    async def health_must_not_be_used() -> dict[str, object]:
+        raise AssertionError("public projection routes must not read /health")
+
+    async def inbound_must_not_run(*_args, **_kwargs):
+        raise AssertionError("read-only projection routes must not ingest")
+
+    monkeypatch.setattr(
+        app.state.qq_c2c_host,
+        "world_health_diagnostics",
+        health_must_not_be_used,
+    )
+    monkeypatch.setattr(app.state.qq_c2c_host, "inbound_fragment", inbound_must_not_run)
+
+    with TestClient(app) as client:
+        room = client.get("/world-v2/room")
+        denied = client.get("/world-v2/dashboard")
+        dashboard = client.get(
+            "/world-v2/dashboard",
+            headers={"X-World-V2-Internal-Token": TOKEN},
+        )
+        not_modified = client.get(
+            "/world-v2/dashboard",
+            headers={
+                "X-World-V2-Internal-Token": TOKEN,
+                "If-None-Match": dashboard.headers.get("etag", ""),
+            },
+        )
+
+    assert room.status_code == 200
+    room_payload = room.json()
+    assert set(room_payload) == {"schema_version", "cursor", "projection_hash", "route"}
+    assert room_payload["schema_version"] == "world-v2-dashboard-room.1"
+    assert set(room_payload["cursor"]) == {"world_revision", "ledger_sequence"}
+    assert set(room_payload["route"]) == {"scene_id", "action_id", "availability"}
+    assert room_payload["route"]["scene_id"] in {"unavailable", "zhizhi-home", "zhizhi-home-legacy"}
+    wire = str(room_payload)
+    for forbidden in ("world_id", "semantic_hash", "affect", "participant", "debug", "operator"):
+        assert forbidden not in wire
+
+    assert denied.status_code == 403
+    assert dashboard.status_code == 200
+    assert dashboard.headers["cache-control"] == "no-store"
+    payload = dashboard.json()
+    assert payload["schema_version"] == "world-v2-dashboard.1"
+    assert set(payload) == {
+        "schema_version",
+        "cursor",
+        "projection_hash",
+        "room",
+        "now",
+        "agenda",
+        "notices",
+        "freshness",
+    }
+    assert dashboard.headers["etag"] == f'"{payload["projection_hash"]}"'
+    assert not_modified.status_code in {200, 304}
+
+
+def test_qq_public_dashboard_dto_is_disabled_without_its_read_token(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("WORLD_V2_DASHBOARD_OPERATOR_TOKEN", raising=False)
+    app = create_qq_c2c_onebot_app(
+        adapter="napcat",
+        settings=Settings(
+            _env_file=None,
+            database_path=tmp_path / "qq-dashboard-public-disabled.sqlite",
+            NAPCAT_ALLOWED_PRIVATE_USER_IDS="10001",
+        ),
+        use_fake_model=True,
+        scheduler_interval_seconds=3_600,
+    )
+
+    with TestClient(app) as client:
+        room = client.get("/world-v2/room")
+        dashboard = client.get("/world-v2/dashboard")
+
+    assert room.status_code == 200
+    assert dashboard.status_code == 503
+
+
+def test_qq_owner_dashboard_html_and_room_assets_are_served_from_this_process(
+    tmp_path: Path,
+) -> None:
+    app = _app(tmp_path)
+
+    with _local_client(app) as client:
+        login_page = client.get("/dashboard")
+        accepted = client.post(
+            "/world-v2/dashboard/session",
+            data={"operator_token": TOKEN},
+            headers={"Origin": "http://localhost"},
+            follow_redirects=False,
+        )
+        page = client.get("/dashboard")
+        script = client.get("/world-v2/dashboard/app.js")
+        home = client.get("/world-v2/dashboard/home")
+        pixel_home = client.get("/pixel-home/index.html")
+        scene_registry = client.get("/assets/dashboard/rooms/scene-registry.json")
+
+    assert login_page.status_code == 200
+    assert "operator-token" in login_page.text
+    assert accepted.status_code == 303
+    assert page.status_code == 200
+    assert "/pixel-home/index.html?embed=1" in page.text
+    assert script.status_code == 200
+    assert "/world-v2/dashboard/home" in script.text
+    assert home.status_code == 200
+    assert home.json()["schema_version"] == "world-v2-dashboard-home.1"
+    assert TOKEN not in page.text
+    assert TOKEN not in script.text
+    assert pixel_home.status_code == 200
+    assert "js/bridge.js" in pixel_home.text
+    assert scene_registry.status_code == 200
+    assert scene_registry.json()["defaultScene"] == "zhizhi-home-legacy"

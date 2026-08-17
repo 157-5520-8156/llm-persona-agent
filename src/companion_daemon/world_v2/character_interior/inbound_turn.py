@@ -255,6 +255,10 @@ def _sanitized_role_technical_failure(
         provider_subcall_audits=provider_subcall_audits,
         authored_candidate_audits=authored_candidate_audits,
         physical_provider_audits=physical_provider_audits,
+        original_failure_code=getattr(exc, "original_failure_code", None),
+        failure_detail=getattr(exc, "failure_detail", None),
+        rejected_raw_hash=getattr(exc, "rejected_raw_hash", None),
+        rejected_raw_excerpt=getattr(exc, "rejected_raw_excerpt", None),
     )
 
 
@@ -981,9 +985,14 @@ class CharacterInteriorInboundDeliberationAdapter:
         if decision.status == "technical_failure":
             failure_code = sanitize_validation_technical_failure_code(decision.failure_code)
             if failure_code is not None:
-                evidence = self._interior._consume_role_failure_evidence(  # noqa: SLF001
-                    inner_turn_id=decision.inner_turn_id,
-                    failure_code=failure_code,
+                consume = getattr(self._interior, "_consume_role_failure_evidence", None)
+                evidence = (
+                    consume(
+                        inner_turn_id=decision.inner_turn_id,
+                        failure_code=failure_code,
+                    )
+                    if callable(consume)
+                    else None
                 )
                 if evidence is None:
                     raise ValidationTechnicalFailure(failure_code)
@@ -997,6 +1006,10 @@ class CharacterInteriorInboundDeliberationAdapter:
                     provider_subcall_audits=evidence.provider_subcall_audits,  # type: ignore[arg-type]
                     authored_candidate_audits=evidence.authored_candidate_audits,  # type: ignore[arg-type]
                     physical_provider_audits=evidence.physical_provider_audits,  # type: ignore[arg-type]
+                    original_failure_code=evidence.original_failure_code,
+                    failure_detail=evidence.failure_detail,
+                    rejected_raw_hash=evidence.rejected_raw_hash,
+                    rejected_raw_excerpt=evidence.rejected_raw_excerpt,
                 )
             raise RuntimeError("character_interior_inbound_technical_failure")
         if decision.status != "decided" or not isinstance(decision.decision, dict):

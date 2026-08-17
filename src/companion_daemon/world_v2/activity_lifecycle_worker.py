@@ -62,6 +62,17 @@ def _timing_closure_draft(opening_token: str) -> ActivityLifecycleModelDraft:
     )
 
 
+def _openings_are_closed_window_abandons(openings: tuple) -> bool:
+    """True when this wake offers only abandon, with no lived start/complete.
+
+    Letting go of a window that already closed is not beginning the day, so it
+    must not spend ``day_open``.  A mixed catalog that also offers start,
+    complete, pause, or resume remains a real first chance.
+    """
+
+    return bool(openings) and all(item.operation == "abandon" for item in openings)
+
+
 class ActivityLifecycleFollowupResult(FrozenModel):
     status: Literal["transitioned", "no_op", "blocked", "technical_failure"]
     reason_code: str | None = None
@@ -253,8 +264,34 @@ class ActivityLifecycleWorker:
         # are new life material.  They get their own bounded Occasion so she
         # can react on the same local day instead of being forced toward the
         # single complete token.
-        use_day_open = not first_chance_spent
-        occasion_merge_key = day_key if use_day_open else wake_event_ref
+        closed_window_abandon_only = _openings_are_closed_window_abandons(openings)
+        use_day_open = not first_chance_spent and not closed_window_abandon_only
+        if closed_window_abandon_only:
+            occasion_merge_key = self._closed_window_abandon_merge_key(
+                projection=projection,
+                catalog=catalog,
+                wake_event_ref=wake_event_ref,
+            )
+        else:
+            occasion_merge_key = day_key if use_day_open else wake_event_ref
+        occasion = (
+            mint_day_open(
+                source_event_ref=wake_event_ref,
+                created_at=projection.logical_time,
+                merge_key=occasion_merge_key,
+            )
+            if use_day_open
+            else mint_life_beat(
+                source_event_ref=wake_event_ref,
+                created_at=projection.logical_time,
+                merge_key=occasion_merge_key,
+            )
+        )
+        if closed_window_abandon_only and self._occasion_spends.spent(occasion.occasion_id):
+            # Same missed-plan abandon set already had its one consider.
+            # Re-asking every clock wake would burn a model call; a later
+            # start/complete entering the catalog changes the merge key.
+            return ActivityLifecycleModelDraft(decision="no_op"), None
         opening_summaries = []
         for item in openings:
             summary = item.safe_summary
@@ -335,19 +372,7 @@ class ActivityLifecycleWorker:
                     "the day is like. The character owns select or no-op; the system owns "
                     "only token authority."
                 ),
-                occasion=(
-                    mint_day_open(
-                        source_event_ref=wake_event_ref,
-                        created_at=projection.logical_time,
-                        merge_key=occasion_merge_key,
-                    )
-                    if use_day_open
-                    else mint_life_beat(
-                        source_event_ref=wake_event_ref,
-                        created_at=projection.logical_time,
-                        merge_key=occasion_merge_key,
-                    )
-                ),
+                occasion=occasion,
             )
         )
         if result.status == "technical_failure":
@@ -361,6 +386,8 @@ class ActivityLifecycleWorker:
             return None, "character_interior_decision_missing"
         if use_day_open:
             self._daily_occasions.mark("day_open", day_key)
+        if closed_window_abandon_only:
+            self._occasion_spends.mark(occasion.occasion_id)
         decision = result.decision
         if (
             decision.get("contract") != "character-interior-purpose-decision.1"
@@ -430,6 +457,45 @@ class ActivityLifecycleWorker:
             None,
         )
 
+    def _closed_window_abandon_merge_key(
+        self,
+        *,
+        projection,
+        catalog,
+        wake_event_ref: str,
+    ) -> str:
+        """Stable Occasion key for one missed-plan abandon set.
+
+        Catalog hashes include the clock wake, so they cannot bound consider.
+        Plan identity plus operation stays the same across idle ticks and
+        changes when a startable window actually opens.
+        """
+
+        parts: list[str] = []
+        for item in catalog.openings:
+            resolved = self._catalog.resolve_opening(
+                projection=projection,
+                wake_event_ref=wake_event_ref,
+                opening_token=item.opening_token,
+            )
+            if resolved is None:
+                parts.append(
+                    f"{item.operation}:{item.opening_kind}:{item.cause_kind or ''}"
+                )
+            else:
+                parts.append(
+                    f"{resolved.plan_id}:{resolved.plan_revision}:"
+                    f"{resolved.operation}:{resolved.opening_kind}"
+                )
+        digest = hashlib.sha256(
+            json.dumps(
+                {"world_id": self._ledger.world_id, "openings": sorted(parts)},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        return "closed-window-abandon:" + digest
 
     def _hitch_paid_noticed(
         self,

@@ -483,6 +483,7 @@ def _strict_audit(value: ModelResultAudit) -> ModelResultAudit:
         provider_subcall_audits=subcalls,
         authored_candidate_audits=candidates,
         physical_provider_audits=physical,
+        role_rejection=value.role_rejection,
     )
     # A streamed expression unit is a distinct semantic result while its
     # parent identifies the single physical provider request that emitted the

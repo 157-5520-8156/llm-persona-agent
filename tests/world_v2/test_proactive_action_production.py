@@ -1295,6 +1295,43 @@ class _ProactiveInteriorWireModel:
         )
 
 
+class _StrictProactiveInteriorWireModel(_ProactiveInteriorWireModel):
+    supports_strict_tool_choice = True
+
+
+class _InvalidProactiveRoleWrapperModel:
+    """Production-shaped DeepSeek wrapper: extra siblings, no inner role object."""
+
+    model = "test-invalid-proactive-wrapper"
+    supports_required_tool_choice = True
+    supports_strict_tool_choice = True
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete(self, messages, *, temperature: float = 0.8):  # type: ignore[no-untyped-def]
+        return await self.complete_json(messages, temperature=temperature)
+
+    async def complete_json(
+        self,
+        messages,
+        *,
+        temperature: float = 0.8,
+        tools=None,
+        tool_choice=None,
+    ):  # type: ignore[no-untyped-def]
+        del messages, temperature, tools, tool_choice
+        self.calls += 1
+        return json.dumps(
+            {
+                "status": "decision",
+                "reasoning": "the walk felt unfinished",
+                "note": "刚在傍晚散步呢",
+            },
+            ensure_ascii=False,
+        )
+
+
 def _fixture_character_interior(
     *,
     inbound_author: object,
@@ -1320,11 +1357,17 @@ def _make_proactive_runtime(
     identity_frame=None,
     social_initiative=None,
     expression_capabilities=TEXT_ONLY_EXPRESSION_CAPABILITIES,
+    strict_tools: bool = False,
 ):  # type: ignore[no-untyped-def]
+    wire_model = (
+        _StrictProactiveInteriorWireModel(model)
+        if strict_tools
+        else _ProactiveInteriorWireModel(model)
+    )
     interior = CharacterInterior(
         projection=_ProactiveInteriorProjection(),
         role=StructuredCharacterRoleFaculty(
-            model=_ProactiveInteriorWireModel(model),
+            model=wire_model,
             model_id=str(getattr(model, "model", "test-proactive-character")),
         ),
     )
@@ -1680,6 +1723,36 @@ async def test_two_unparseable_choices_are_technical_failure_not_character_silen
     waiting = await runtime.drain_one()
     assert waiting.status == "idle"
     assert malformed.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_unwrap_failure_audit_keeps_original_code_and_rejected_text() -> None:
+    ledger, _model, _runtime_value, _turn = _runtime(choice="silent")
+    malformed = _InvalidProactiveRoleWrapperModel()
+    runtime, _ = _make_proactive_runtime(
+        ledger=ledger,
+        issuer=ledger._accepted_batch_issuer,  # noqa: SLF001 - acceptance seam fixture
+        model=malformed,
+        owner="worker:proactive:unwrap-audit",
+        strict_tools=True,
+    )
+
+    assert (await runtime.drain_one()).status == "opened"
+    result = await runtime.drain_one()
+
+    assert result.status == "failed_safe"
+    assert malformed.calls == 2
+    projection = ledger.project()
+    assert len(projection.model_result_audits) == 1
+    audit = json.loads(projection.model_result_audits[0].audit_json)
+    assert audit["status"] == "main_exception"
+    assert audit["failure_code"] == "authored_expression_reselection_invalid"
+    rejection = audit["role_rejection"]
+    assert rejection["original_failure_code"] == "role_result_schema_invalid"
+    assert "got keys=" in rejection["failure_detail"]
+    assert "刚在傍晚散步呢" in rejection["rejected_raw_excerpt"]
+    assert rejection["rejected_raw_hash"]
+    assert projection.trigger_processes[-1].state == "terminal"
 
 
 def test_interior_invalid_codes_are_not_all_mapped_to_non_retryable_reselection() -> None:

@@ -777,6 +777,9 @@ class WorldV2TurnApplicationConfig:
     media_selection_acceptance: MediaSelectionAcceptanceComposition | None = None
     media_continuation: MediaContinuationComposition | None = None
     media_auto_delivery: MediaAutoDeliveryComposition | None = None
+    # Adult P3 intensity.  Default off; the authorizer still requires the
+    # dedicated ledger grants before emitting explicit_private.
+    adult_media_enabled: bool = False
     event_ecology_policy: EcologyPolicy | None = None
     life_ecology: LifeEcologyComposition | None = None
     media_cost_profile: CostProfile | None = None
@@ -4033,6 +4036,7 @@ def build_sqlite_world_v2_turn_application(
                         visual_fact_sidecar=media_payload_store,
                     ),
                     catalog_version=ecology_policy.catalog_version,
+                    adult_media_enabled=config.adult_media_enabled,
                 ),
                 sidecar=media_payload_store,
                 batch_issuer=issuer,

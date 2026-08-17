@@ -327,61 +327,17 @@ class LifeEcologyRuntime:
         activity_status: str | None = None
         activity_quiet_model_result = None
         if self._activity_followup is not None:
-            try:
-                activity_result = await self._advance_activity_once(
-                    wake_event_ref=wake_event_ref,
-                    trigger_id=claim.trigger_id,
-                    logical_time=logical_time,
-                    trace_id=trace_id,
-                    correlation_id=correlation_id,
-                )
-                activity_status = getattr(activity_result, "status", None)
-                if not isinstance(activity_status, str) or not activity_status:
-                    raise ValueError("activity lifecycle result has no stable status")
-                if activity_status == "no_op":
-                    activity_quiet_model_result = getattr(
-                        activity_result,
-                        "character_interior_model_result",
-                        None,
-                    )
-                if activity_status == "technical_failure":
-                    supplied = getattr(activity_result, "reason_code", None)
-                    normalized = (
-                        re.sub(r"[^a-z0-9._-]+", "_", supplied.lower()).strip("._-")
-                        if isinstance(supplied, str)
-                        else ""
-                    )
-                    failure_code = normalized[:96] or "activity_lifecycle.unknown"
-                    if failure_code in _ACTIVITY_QUIET_TECHNICAL_CODES:
-                        activity_status = "no_op"
-                    else:
-                        persisted = await self._complete_technical_failure(
-                            key=key,
-                            trigger_id=claim.trigger_id,
-                            failure_code=failure_code,
-                        )
-                        return LifeEcologyRunResult(
-                            status="deferred" if persisted else "failed_safe",
-                            trigger_id=claim.trigger_id,
-                            reason_code=(
-                                "life_ecology.activity_lifecycle_technical_failure"
-                                if persisted
-                                else "life_ecology.technical_failure_persistence_failed"
-                            ),
-                            activity_followup_status=activity_status,
-                            technical_failure_code=failure_code if persisted else None,
-                        )
-            except Exception:
-                _LOG.exception(
-                    "life ecology activity followup failed wake=%s",
-                    wake_event_ref,
-                )
-                await self._complete_failed_safe(key=key, trigger_id=claim.trigger_id)
-                return LifeEcologyRunResult(
-                    status="failed_safe",
-                    trigger_id=claim.trigger_id,
-                    reason_code="life_ecology.activity_followup_failed",
-                )
+            activity_pass = await self._run_activity_lifecycle_pass(
+                key=key,
+                trigger_id=claim.trigger_id,
+                wake_event_ref=wake_event_ref,
+                logical_time=logical_time,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+            if isinstance(activity_pass, LifeEcologyRunResult):
+                return activity_pass
+            activity_status, activity_quiet_model_result = activity_pass
 
         aftermath_status: str | None = None
         memory_postprocess_failure_code: str | None = None
@@ -513,6 +469,40 @@ class LifeEcologyRuntime:
                     biographical_followup_status=biographical_status,
                     life_development_followup_status=life_development_status,
                 )
+
+        # Additive same-wake start chance.  Life Development commits new
+        # plans after the first activity pass, so a window that opens on
+        # this wake would otherwise miss every start opportunity (the next
+        # activity wake can be after close).  This is not a reorder:
+        # aftermath still observes the pre-plan activity state.  The extra
+        # pass only re-reads the catalog; start / no_op / abandon stay hers.
+        # Occasion gating is unchanged.  If the first pass already spent
+        # day_open, the worker no_ops without a second consider(); if the
+        # first pass had no openings, day_open is still free and this pass
+        # is the one consider for the new plan.
+        if self._activity_followup is not None and life_development_status == "plan_committed":
+            extra_pass = await self._run_activity_lifecycle_pass(
+                key=key,
+                trigger_id=claim.trigger_id,
+                wake_event_ref=wake_event_ref,
+                logical_time=logical_time,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+            if isinstance(extra_pass, LifeEcologyRunResult):
+                return extra_pass.model_copy(
+                    update={
+                        "aftermath_followup_status": aftermath_status,
+                        "biographical_followup_status": biographical_status,
+                        "life_development_followup_status": life_development_status,
+                    }
+                )
+            extra_status, extra_quiet = extra_pass
+            activity_status = extra_status
+            if extra_status == "transitioned":
+                activity_quiet_model_result = None
+            elif extra_quiet is not None:
+                activity_quiet_model_result = extra_quiet
 
         npc_initiative_status: str | None = None
         # NPC Ecology is a quiet-wake lane: it runs when no main life family
@@ -964,6 +954,75 @@ class LifeEcologyRuntime:
         if getattr(self._ledger, "blocks_event_loop", False):
             return await asyncio.to_thread(self._media_followup.drain_once, **kwargs)
         return self._media_followup.drain_once(**kwargs)
+
+    async def _run_activity_lifecycle_pass(
+        self,
+        *,
+        key: LifeEcologyRunKey,
+        trigger_id: str,
+        wake_event_ref: str,
+        logical_time: datetime,
+        trace_id: str,
+        correlation_id: str,
+    ) -> LifeEcologyRunResult | tuple[str, object | None]:
+        """Run activity lifecycle once; return an early-exit result or (status, quiet)."""
+
+        try:
+            activity_result = await self._advance_activity_once(
+                wake_event_ref=wake_event_ref,
+                trigger_id=trigger_id,
+                logical_time=logical_time,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+            activity_status = getattr(activity_result, "status", None)
+            if not isinstance(activity_status, str) or not activity_status:
+                raise ValueError("activity lifecycle result has no stable status")
+            quiet_model_result = None
+            if activity_status == "no_op":
+                quiet_model_result = getattr(
+                    activity_result,
+                    "character_interior_model_result",
+                    None,
+                )
+            if activity_status == "technical_failure":
+                supplied = getattr(activity_result, "reason_code", None)
+                normalized = (
+                    re.sub(r"[^a-z0-9._-]+", "_", supplied.lower()).strip("._-")
+                    if isinstance(supplied, str)
+                    else ""
+                )
+                failure_code = normalized[:96] or "activity_lifecycle.unknown"
+                if failure_code in _ACTIVITY_QUIET_TECHNICAL_CODES:
+                    return "no_op", quiet_model_result
+                persisted = await self._complete_technical_failure(
+                    key=key,
+                    trigger_id=trigger_id,
+                    failure_code=failure_code,
+                )
+                return LifeEcologyRunResult(
+                    status="deferred" if persisted else "failed_safe",
+                    trigger_id=trigger_id,
+                    reason_code=(
+                        "life_ecology.activity_lifecycle_technical_failure"
+                        if persisted
+                        else "life_ecology.technical_failure_persistence_failed"
+                    ),
+                    activity_followup_status=activity_status,
+                    technical_failure_code=failure_code if persisted else None,
+                )
+            return activity_status, quiet_model_result
+        except Exception:
+            _LOG.exception(
+                "life ecology activity followup failed wake=%s",
+                wake_event_ref,
+            )
+            await self._complete_failed_safe(key=key, trigger_id=trigger_id)
+            return LifeEcologyRunResult(
+                status="failed_safe",
+                trigger_id=trigger_id,
+                reason_code="life_ecology.activity_followup_failed",
+            )
 
     async def _advance_activity_once(
         self,

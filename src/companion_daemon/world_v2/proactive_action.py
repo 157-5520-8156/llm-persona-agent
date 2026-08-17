@@ -511,9 +511,34 @@ class _CharacterInteriorProactiveTransport:
         )
         if decision.status == "technical_failure":
             failure = decision.failure_code or "unknown"
+            mapped = map_character_interior_proactive_failure(failure)
+            consume = getattr(self._interior, "_consume_role_failure_evidence", None)
+            evidence = (
+                consume(
+                    inner_turn_id=decision.inner_turn_id,
+                    failure_code=failure,
+                )
+                if callable(consume)
+                else None
+            )
+            cause = RuntimeError("character Interior proactive failure: " + failure)
+            if evidence is None:
+                raise ValidationTechnicalFailure(mapped) from cause
             raise ValidationTechnicalFailure(
-                map_character_interior_proactive_failure(failure)
-            ) from RuntimeError("character Interior proactive failure: " + failure)
+                mapped,
+                model_call_id=evidence.model_call_id,
+                request_hash=evidence.request_hash,
+                attempted_model_id=evidence.attempted_model_id,
+                attempted_model_version=evidence.attempted_model_version,
+                usage=evidence.usage,  # type: ignore[arg-type]
+                provider_subcall_audits=evidence.provider_subcall_audits,  # type: ignore[arg-type]
+                authored_candidate_audits=evidence.authored_candidate_audits,  # type: ignore[arg-type]
+                physical_provider_audits=evidence.physical_provider_audits,  # type: ignore[arg-type]
+                original_failure_code=evidence.original_failure_code,
+                failure_detail=evidence.failure_detail,
+                rejected_raw_hash=evidence.rejected_raw_hash,
+                rejected_raw_excerpt=evidence.rejected_raw_excerpt,
+            ) from cause
         if decision.status != "decided" or decision.decision is None:
             # Proactive silence is the explicit timing_choice=silent payload;
             # generic model_silent would discard the capability binding.

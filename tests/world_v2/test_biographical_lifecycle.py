@@ -1255,6 +1255,222 @@ async def test_character_adoption_is_the_only_gate_for_a_dynamic_life_arc(
     assert not projection.pending_biographical_settlements
 
 
+@pytest.mark.asyncio
+async def test_world_contingency_draw_does_not_adopt_a_dynamic_life_arc(
+    tmp_path: Path,
+) -> None:
+    """A recorded draw may choose the outcome text, not her life direction."""
+
+    world_id = "world:biography:contingency-no-auto-adopt"
+    started_at = datetime(2026, 7, 28, 4, 0, tzinfo=UTC)
+    ledger = SQLiteWorldLedger(
+        path=tmp_path / "contingency-no-auto-adopt.sqlite",
+        world_id=world_id,
+    )
+    first_clock = _clock_advance(
+        world_id=world_id,
+        event_id="clock:contingency-no-auto-adopt:start",
+        origin=started_at - timedelta(minutes=10),
+        target=started_at,
+    )
+    _commit_event(ledger, first_clock)
+    arc_text = "抽中的结局自带接下来几个月的实习方向。"
+    arc = DynamicLifeArcContextDescriptor.create(
+        summary_content_ref="content:contingency-no-auto-adopt:arc",
+        summary_payload_hash=life_content_payload_hash(arc_text),
+        narrative_tags=("narrative:internship",),
+        context_tags=("role:intern", "workplace:publishing"),
+        supersedes_context_tag_prefixes=("role:",),
+        duration_days=90,
+        privacy_class="personal",
+    )
+    occurrence, candidate_texts = _commit_active_long_lived_occurrence(
+        ledger=ledger,
+        clock=first_clock,
+        include_reviewed_life_arc_effect=False,
+        dynamic_life_arc_context=arc,
+        causal_authority="world_contingency",
+        dynamic_life_arc_on_every_candidate=True,
+    )
+    wake_at = started_at + timedelta(minutes=10)
+    wake = _event(
+        world_id=world_id,
+        event_id="clock:contingency-no-auto-adopt:settle",
+        event_type="ClockAdvanced",
+        logical_at=wake_at,
+        payload={
+            "logical_time_from": started_at.isoformat(),
+            "logical_time_to": wake_at.isoformat(),
+        },
+    )
+    _commit_event(ledger, wake)
+    content_store = InMemoryImmutableLifeContentStore()
+    for candidate, text in zip(occurrence.candidate_outcomes, candidate_texts, strict=True):
+        assert candidate.content_ref is not None
+        assert candidate.content_payload_hash is not None
+        content_store.put_if_absent(
+            StoredLifeContent(
+                content_ref=candidate.content_ref,
+                content_kind="outcome_candidate",
+                content_payload_hash=candidate.content_payload_hash,
+                text=text,
+            )
+        )
+    content_store.put_if_absent(
+        StoredLifeContent(
+            content_ref=arc.summary_content_ref,
+            content_kind="dynamic_life_arc_context",
+            content_payload_hash=arc.summary_payload_hash,
+            text=arc_text,
+        )
+    )
+
+    class _MustNotConsider:
+        calls = 0
+
+        async def consider(self, opportunity):  # type: ignore[no-untyped-def]
+            del opportunity
+            self.calls += 1
+            raise AssertionError("world contingency must not ask her to adopt a life direction")
+
+    interior = _MustNotConsider()
+    runtime = LifeAftermathRuntime(
+        ledger=ledger,
+        catalog=SimpleNamespace(),
+        occurrence_content=OccurrenceContentCoordinator(
+            ledger=ledger,
+            store=content_store,
+        ),
+        content_store=content_store,
+        owner_actor_ref="actor:companion",
+        character_interior=interior,
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=wake.event_id,
+        trace_id="trace:contingency-no-auto-adopt",
+        correlation_id="correlation:contingency-no-auto-adopt",
+    )
+
+    assert result.status == "settled"
+    assert interior.calls == 0
+    proposal_event, _ = ledger.lookup_event_commit(
+        "event:life-aftermath:outcome-proposal:consequential"
+    )
+    proposal = OutcomeProposalRecordedPayload.model_validate_json(proposal_event.payload_json)
+    assert proposal.decision_authority == "recorded_world_draw"
+    chosen = next(
+        item
+        for item in occurrence.candidate_outcomes
+        if item.candidate_result_ref == proposal.candidate_result_ref
+    )
+    assert chosen.dynamic_life_arc_context == arc
+    assert proposal.adopt_proposed_life_direction is False
+    assert ledger.project().pending_biographical_settlements == ()
+
+
+@pytest.mark.asyncio
+async def test_character_choice_true_still_adopts_a_proposed_life_direction(
+    tmp_path: Path,
+) -> None:
+    """The character_choice path still lands the bool she wrote."""
+
+    world_id = "world:biography:character-choice-still-adopts"
+    started_at = datetime(2026, 7, 28, 4, 0, tzinfo=UTC)
+    ledger = SQLiteWorldLedger(
+        path=tmp_path / "character-choice-still-adopts.sqlite",
+        world_id=world_id,
+    )
+    first_clock = _clock_advance(
+        world_id=world_id,
+        event_id="clock:character-choice-still-adopts:start",
+        origin=started_at - timedelta(minutes=10),
+        target=started_at,
+    )
+    _commit_event(ledger, first_clock)
+    arc_text = "她决定把接下来几个月都放在出版社实习上。"
+    arc = DynamicLifeArcContextDescriptor.create(
+        summary_content_ref="content:character-choice-still-adopts:arc",
+        summary_payload_hash=life_content_payload_hash(arc_text),
+        narrative_tags=("narrative:internship",),
+        context_tags=("role:intern", "workplace:publishing"),
+        supersedes_context_tag_prefixes=("role:",),
+        duration_days=90,
+        privacy_class="personal",
+    )
+    occurrence, candidate_texts = _commit_active_long_lived_occurrence(
+        ledger=ledger,
+        clock=first_clock,
+        include_reviewed_life_arc_effect=False,
+        dynamic_life_arc_context=arc,
+    )
+    wake_at = started_at + timedelta(minutes=10)
+    wake = _event(
+        world_id=world_id,
+        event_id="clock:character-choice-still-adopts:settle",
+        event_type="ClockAdvanced",
+        logical_at=wake_at,
+        payload={
+            "logical_time_from": started_at.isoformat(),
+            "logical_time_to": wake_at.isoformat(),
+        },
+    )
+    _commit_event(ledger, wake)
+    content_store = InMemoryImmutableLifeContentStore()
+    for candidate, text in zip(occurrence.candidate_outcomes, candidate_texts, strict=True):
+        assert candidate.content_ref is not None
+        assert candidate.content_payload_hash is not None
+        content_store.put_if_absent(
+            StoredLifeContent(
+                content_ref=candidate.content_ref,
+                content_kind="outcome_candidate",
+                content_payload_hash=candidate.content_payload_hash,
+                text=text,
+            )
+        )
+    content_store.put_if_absent(
+        StoredLifeContent(
+            content_ref=arc.summary_content_ref,
+            content_kind="dynamic_life_arc_context",
+            content_payload_hash=arc.summary_payload_hash,
+            text=arc_text,
+        )
+    )
+    model = _CapturingLongLivedOutcomeModel(
+        selected_ref=occurrence.candidate_outcomes[0].candidate_result_ref,
+        adopt_proposed_life_direction=True,
+    )
+    runtime = LifeAftermathRuntime(
+        ledger=ledger,
+        catalog=SimpleNamespace(),
+        occurrence_content=OccurrenceContentCoordinator(
+            ledger=ledger,
+            store=content_store,
+        ),
+        content_store=content_store,
+        owner_actor_ref="actor:companion",
+        character_interior=model,
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=wake.event_id,
+        trace_id="trace:character-choice-still-adopts",
+        correlation_id="correlation:character-choice-still-adopts",
+    )
+
+    assert result.status == "settled"
+    assert model.calls >= 1
+    proposal_event, _ = ledger.lookup_event_commit(
+        "event:life-aftermath:outcome-proposal:consequential"
+    )
+    proposal = OutcomeProposalRecordedPayload.model_validate_json(proposal_event.payload_json)
+    assert proposal.decision_authority == "character_model"
+    assert proposal.adopt_proposed_life_direction is True
+    pending = ledger.project().pending_biographical_settlements
+    assert len(pending) == 1
+    assert pending[0].dynamic_life_arc_context == arc
+
+
 @pytest.mark.parametrize(
     (
         "failure_kind",
@@ -2136,6 +2352,8 @@ def _commit_active_long_lived_occurrence(
     clock: WorldEvent,
     include_reviewed_life_arc_effect: bool = True,
     dynamic_life_arc_context: DynamicLifeArcContextDescriptor | None = None,
+    causal_authority: str = "character_choice",
+    dynamic_life_arc_on_every_candidate: bool = False,
 ) -> tuple[WorldOccurrenceProjection, tuple[str, ...]]:
     occurrence_id = "occurrence:life-aftermath:consequential"
     texts = (
@@ -2168,9 +2386,12 @@ def _commit_active_long_lived_occurrence(
             privacy_class="personal",
             content_ref=f"content:candidate:{candidate_ref}",
             content_payload_hash=life_content_payload_hash(text),
+            causal_authority=causal_authority,  # type: ignore[arg-type]
             life_arc_effect=effect if index == 0 else None,
             dynamic_life_arc_context=(
-                dynamic_life_arc_context if index == 0 else None
+                dynamic_life_arc_context
+                if index == 0 or dynamic_life_arc_on_every_candidate
+                else None
             ),
         )
         for index, (candidate_ref, text) in enumerate(zip(candidate_refs, texts, strict=True))

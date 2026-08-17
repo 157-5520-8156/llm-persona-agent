@@ -22,6 +22,7 @@ from .media_selection_proposal import (
 from .media_v2 import (
     ImmutableMediaPayloadStore,
     MediaOpportunityFrozenPayload,
+    P3_PRIVATE_MEDIA_LANES,
     PhotoCandidate,
     PhotoCandidateOpenedPayload,
     PhotoCandidateUnrenderablePayload,
@@ -423,7 +424,7 @@ class MediaSelectionAtomicRecorder:
             if (
                 p3_authorization is None
                 or opportunity.p3_authorization_digest != p3_authorization.authorization_digest
-                or opportunity.media_lane not in {"alluring_life", "exclusive_private"}
+                or opportunity.media_lane not in P3_PRIVATE_MEDIA_LANES
                 or compiled.snapshot.image_event_snapshot is None
                 or compiled.snapshot.image_event_snapshot.schema_version != "world-image-event-snapshot-v3"
             ):

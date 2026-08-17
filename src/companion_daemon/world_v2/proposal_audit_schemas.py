@@ -332,6 +332,15 @@ class RecordedModelResponseStorage(FrozenModel):
         return self
 
 
+class RecordedRoleRejectionEvidence(FrozenModel):
+    """Original refused role payload kept on a technical ModelResult audit."""
+
+    original_failure_code: str = Field(min_length=1, max_length=64)
+    failure_detail: str = Field(min_length=1, max_length=4_000)
+    rejected_raw_hash: str = Field(pattern=_HASH)
+    rejected_raw_excerpt: str = Field(min_length=1, max_length=800)
+
+
 class RecordedModelResultAudit(FrozenModel):
     model_call_id: str = Field(min_length=1, max_length=256)
     parent_model_call_id: str | None = Field(
@@ -379,6 +388,10 @@ class RecordedModelResultAudit(FrozenModel):
         exclude_if=lambda value: value is None,
     )
     response_storage: RecordedModelResponseStorage | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    role_rejection: RecordedRoleRejectionEvidence | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
     )
@@ -1182,6 +1195,7 @@ __all__ = [
     "ModelResultAuditProjection",
     "RecordedCharacterInteriorTurnLineage",
     "RecordedPhysicalProviderInvocationAudit",
+    "RecordedRoleRejectionEvidence",
     "RecordedModelUsage",
     "ModelResultRecordedPayload",
     "ProposalAuditProjection",

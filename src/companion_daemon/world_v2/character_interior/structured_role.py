@@ -221,11 +221,17 @@ class StructuredRoleResultError(_RoleResultContractError):
         *,
         detail: str,
         response_hash: str | None = None,
+        rejected_raw: str | None = None,
+        request_hash: str | None = None,
+        model_call_id: str | None = None,
     ) -> None:
         super().__init__(
             code,
             detail=detail,
             response_hash=response_hash,
+            rejected_raw=rejected_raw,
+            request_hash=request_hash,
+            model_call_id=model_call_id,
         )
 
 
@@ -1192,20 +1198,26 @@ class StructuredCharacterRoleFaculty:
                 ),
             )
         raw = provider_raw
-        if tool_contract is not None:
-            try:
-                raw = tool_contract.unwrap(provider_raw)
-            except ValueError as exc:
-                raise StructuredRoleResultError(
-                    "role_result_schema_invalid",
-                    detail=str(exc),
-                    response_hash=(
-                        _hash_text(provider_raw)
-                        if isinstance(provider_raw, str)
-                        else None
-                    ),
-                ) from exc
         try:
+            if tool_contract is not None:
+                try:
+                    raw = tool_contract.unwrap(provider_raw)
+                except ValueError as exc:
+                    raise StructuredRoleResultError(
+                        "role_result_schema_invalid",
+                        detail=str(exc),
+                        response_hash=(
+                            _hash_text(provider_raw)
+                            if isinstance(provider_raw, str)
+                            else None
+                        ),
+                        rejected_raw=provider_raw if isinstance(provider_raw, str) else None,
+                        request_hash=request_hash,
+                        model_call_id=self._model_call_id(
+                            request=request,
+                            request_hash=request_hash,
+                        ),
+                    ) from exc
             result, response_hash = self._parse_and_validate(
                 raw,
                 request=request,
@@ -1213,14 +1225,32 @@ class StructuredCharacterRoleFaculty:
                 response_hash_source=provider_raw,
             )
         except StructuredRoleResultError as exc:
+            rejected = (
+                exc.rejected_raw
+                if isinstance(exc.rejected_raw, str)
+                else provider_raw
+                if isinstance(provider_raw, str)
+                else raw
+                if isinstance(raw, str)
+                else ""
+            )
+            if exc.rejected_raw is None and isinstance(rejected, str):
+                exc.rejected_raw = rejected
+            if exc.request_hash is None:
+                exc.request_hash = request_hash
+            if exc.model_call_id is None:
+                exc.model_call_id = self._model_call_id(
+                    request=request,
+                    request_hash=request_hash,
+                )
             import logging
 
             logging.getLogger(__name__).warning(
                 "structured role validation rejected purpose=%s code=%s output_len=%d tail=%r detail=%s",
                 request.purpose,
                 exc.code,
-                len(raw),
-                raw[-120:],
+                len(rejected),
+                rejected[-120:],
                 getattr(exc, "detail", str(exc))[:500],
             )
             raise
@@ -1507,6 +1537,13 @@ class StructuredCharacterRoleFaculty:
                 ),
             },
         }
+        if request.purpose == "proactive_contact":
+            user_payload["purpose_instruction"] = (
+                "对 proactive_contact：私人状态只写在外层 summary 和 attended_source_refs；"
+                "payload 里禁止 private_turn_state（这一点和 inbound 相反，不要照 inbound 的草稿来写）。"
+                "没有可核对的世界事实时 world_claims 写 []。"
+                "对话 beat 不是 current_world；current_world 只能引用当前生活/世界来源。"
+            )
         if request.correction_ordinal == 1:
             code = request.correction_failure_code or "role_result_schema_invalid"
             user_payload["correction"] = {
@@ -1534,6 +1571,13 @@ class StructuredCharacterRoleFaculty:
                     "complete proposal in proposals. Never flatten a purpose payload into the "
                     "outer decision field. Cite only supplied source refs and capability tokens. Do not return "
                     "author audit fields; the trusted boundary adds those after the provider call."
+                    + (
+                        " 对 proactive_contact：私人状态只写在外层 summary / attended_source_refs；"
+                        "payload 里禁止 private_turn_state（这和 inbound 相反）。"
+                        "没有世界事实时 world_claims 写 []。对话 beat 不是 current_world。"
+                        if request.purpose == "proactive_contact"
+                        else ""
+                    )
                 ),
             },
             {
@@ -2638,16 +2682,26 @@ class StructuredCharacterRoleFaculty:
                         "claim_text": "one concrete claim",
                         "scope": (
                             "current_world|past_world|counterpart_history|"
-                            "shared_history|stable_identity"
+                            "shared_history|stable_identity|subjective_or_hypothetical"
                         ),
                         "source_refs": ["one supplied matching pinned ref"],
                     }
                 ],
                 "world_claims_rule": (
                     "Use objects, never strings. Only factual claims need entries; "
-                    "feelings and hypothetical impulses use no claim. Every grounded "
-                    "claim cites at least one matching supplied source ref; use [] when "
-                    "the beats contain no factual claim."
+                    "feelings and hypothetical impulses may use scope=subjective_or_hypothetical "
+                    "or omit the claim. Every grounded claim cites at least one matching "
+                    "supplied source ref; use [] when the beats contain no factual claim. "
+                    "A dialogue beat is not current_world."
+                ),
+                "private_state_rule": (
+                    "私人状态只写在外层 summary / attended_source_refs；"
+                    "payload 里禁止 private_turn_state（这一点和 inbound 相反）。"
+                ),
+                "author_notes": (
+                    "没有可核对的世界事实时 world_claims 写 []。"
+                    "对话 beat 不是 current_world；current_world 只能引用当前生活/世界来源，"
+                    "不能引用她自己上一句对话。"
                 ),
             }
         if contract.purpose == "expression_reconsideration":
@@ -2900,18 +2954,12 @@ class StructuredCharacterRoleFaculty:
         return "model-call:character-interior:" + _hash_text(_canonical(identity))
 
     @staticmethod
-    def _raise(code: str, *, response_hash: str) -> None:
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "structured role wire rejected code=%s detail=%s",
-            code,
-            _FAILURE_DETAILS.get(code, "")[:300],
-        )
+    def _raise(code: str, *, response_hash: str, rejected_raw: str | None = None) -> None:
         raise StructuredRoleResultError(
             code,
             detail=_FAILURE_DETAILS[code],
             response_hash=response_hash,
+            rejected_raw=rejected_raw,
         )
 
 

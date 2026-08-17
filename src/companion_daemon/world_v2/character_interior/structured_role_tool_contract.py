@@ -34,6 +34,20 @@ _MEMORY_WITHDRAWAL_REVIEW_TOOL_NAME = "character_role_memory_withdrawal_review_v
 StructuredRoleToolSchemaDialect = Literal["standard", "deepseek-strict"]
 
 
+_ROLE_RESULT_FEATURE_KEYS = ("status", "summary")
+
+
+def _looks_like_structured_role_result(value: object) -> bool:
+    """True when the object already is the inner role JSON, not the tool wrapper."""
+
+    if not isinstance(value, dict):
+        return False
+    return all(
+        isinstance(value.get(key), str) and bool(value.get(key))
+        for key in _ROLE_RESULT_FEATURE_KEYS
+    )
+
+
 def _canonical_json(value: object) -> str:
     value = _canonical_json_value(value)
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -421,7 +435,12 @@ class StructuredRoleToolContract:
     result_wrapper_key: str | None = None
 
     def unwrap(self, raw: object) -> object:
-        """Remove only the declared provider transport wrapper."""
+        """Remove only the declared provider transport wrapper.
+
+        Postel on the outer envelope only: an already-unwrapped role object is
+        accepted, and extra sibling keys beside ``result`` are ignored. Inner
+        ``_WireRoleResult`` / purpose-payload validation stays strict.
+        """
 
         if self.result_wrapper_key is None:
             return raw
@@ -431,13 +450,20 @@ class StructuredRoleToolContract:
             decoded = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise ValueError("structured role tool result must be one JSON object") from exc
-        if (
-            not isinstance(decoded, dict)
-            or set(decoded) != {self.result_wrapper_key}
-            or not isinstance(decoded[self.result_wrapper_key], dict)
-        ):
-            raise ValueError("structured role tool result wrapper is invalid")
-        return _canonical_json(decoded[self.result_wrapper_key])
+        if not isinstance(decoded, dict):
+            raise ValueError(
+                "structured role tool result wrapper is invalid: "
+                f"got type={type(decoded).__name__}"
+            )
+        wrapped = decoded.get(self.result_wrapper_key)
+        if isinstance(wrapped, dict):
+            return _canonical_json(wrapped)
+        if _looks_like_structured_role_result(decoded):
+            return _canonical_json(decoded)
+        raise ValueError(
+            "structured role tool result wrapper is invalid: "
+            f"got keys={sorted(decoded)!r}"
+        )
 
 
 def _compile_generic_decision_contract(

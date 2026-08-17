@@ -239,6 +239,43 @@ def test_mismatched_dialogue_claim_is_rebound_instead_of_silencing() -> None:
     assert kept.beats[0].text == "想到你了。"
 
 
+def test_subjective_or_hypothetical_claim_is_kept() -> None:
+    draft = _draft_with_claims(
+        {
+            "claim_text": "好像刚散过步",
+            "scope": "subjective_or_hypothetical",
+        }
+    )
+    request = _request(_context())
+
+    bound = bind_proactive_world_claims(draft=draft, request=request)
+    kept = _validate_proactive_grounding(draft=draft, request=request)
+
+    assert [claim.scope for claim in bound.world_claims] == ["subjective_or_hypothetical"]
+    assert bound.world_claims[0].claim_text == "好像刚散过步"
+    assert kept.world_claims == bound.world_claims
+    assert kept.beats[0].text == "想到你了。"
+
+
+def test_subjective_claim_does_not_fail_a_mixed_unsupported_set() -> None:
+    draft = _draft_with_claims(
+        {
+            "claim_text": "好像刚散过步",
+            "scope": "subjective_or_hypothetical",
+        },
+        {
+            "claim_text": "对方之前说去成都看熊猫",
+            "scope": "counterpart_history",
+            "source_refs": ["event:user:chengdu:not-in-context"],
+        },
+    )
+
+    bound = bind_proactive_world_claims(draft=draft, request=_request(_context()))
+
+    assert [claim.scope for claim in bound.world_claims] == ["subjective_or_hypothetical"]
+    assert bound.beats[0].text == "想到你了。"
+
+
 def test_unsupported_only_claim_still_rejects() -> None:
     draft = _draft_with_claims(
         {

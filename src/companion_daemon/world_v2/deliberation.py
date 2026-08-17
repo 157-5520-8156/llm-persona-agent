@@ -19,7 +19,7 @@ import math
 import time
 from typing import Any, Awaitable, Callable, Iterable, Literal, Protocol, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from companion_daemon.llm import model_request_emission_scope
 
@@ -41,7 +41,7 @@ from .proposal_envelope import (
     ProposalInput,
     validate_proposal_envelope,
 )
-from .proposal_audit_schemas import RecordedCharacterInteriorTurnLineage
+from .proposal_audit_schemas import RecordedCharacterInteriorTurnLineage, RecordedRoleRejectionEvidence
 from .recall_audit import PrefetchPresentationAudit, RecallAuditTrace
 from .recall_index import RecallCursor
 from .recall_runtime import (
@@ -396,6 +396,10 @@ class ValidationTechnicalFailure(RuntimeError):
         provider_subcall_audits: tuple[ProviderSubcallAudit, ...] = (),
         authored_candidate_audits: tuple[AuthoredCandidateInvocationAudit, ...] = (),
         physical_provider_audits: tuple[PhysicalProviderInvocationAudit, ...] = (),
+        original_failure_code: str | None = None,
+        failure_detail: str | None = None,
+        rejected_raw_hash: str | None = None,
+        rejected_raw_excerpt: str | None = None,
     ):
         identity = (model_call_id, request_hash)
         if (identity[0] is None) != (identity[1] is None):
@@ -415,6 +419,10 @@ class ValidationTechnicalFailure(RuntimeError):
         self.provider_subcall_audits = tuple(provider_subcall_audits)
         self.authored_candidate_audits = tuple(authored_candidate_audits)
         self.physical_provider_audits = tuple(physical_provider_audits)
+        self.original_failure_code = original_failure_code
+        self.failure_detail = failure_detail
+        self.rejected_raw_hash = rejected_raw_hash
+        self.rejected_raw_excerpt = rejected_raw_excerpt
 
 
 def _validation_failure_with_preserved_attempt(
@@ -437,12 +445,20 @@ def _validation_failure_with_preserved_attempt(
     provider_subcall_audits = tuple(getattr(exc, "provider_subcall_audits", ()))
     authored_candidate_audits = tuple(getattr(exc, "authored_candidate_audits", ()))
     physical_provider_audits = tuple(getattr(exc, "physical_provider_audits", ()))
+    original_failure_code = getattr(exc, "original_failure_code", None)
+    failure_detail = getattr(exc, "failure_detail", None)
+    rejected_raw_hash = getattr(exc, "rejected_raw_hash", None)
+    rejected_raw_excerpt = getattr(exc, "rejected_raw_excerpt", None)
     if model_call_id is None:
         return ValidationTechnicalFailure(
             failure_code,
             provider_subcall_audits=provider_subcall_audits,
             authored_candidate_audits=authored_candidate_audits,
             physical_provider_audits=physical_provider_audits,
+            original_failure_code=original_failure_code,
+            failure_detail=failure_detail,
+            rejected_raw_hash=rejected_raw_hash,
+            rejected_raw_excerpt=rejected_raw_excerpt,
         )
     return ValidationTechnicalFailure(
         failure_code,
@@ -454,6 +470,10 @@ def _validation_failure_with_preserved_attempt(
         provider_subcall_audits=provider_subcall_audits,
         authored_candidate_audits=authored_candidate_audits,
         physical_provider_audits=physical_provider_audits,
+        original_failure_code=original_failure_code,
+        failure_detail=failure_detail,
+        rejected_raw_hash=rejected_raw_hash,
+        rejected_raw_excerpt=rejected_raw_excerpt,
     )
 
 
@@ -1359,6 +1379,37 @@ class _TerminalValidationAudit:
     slot: Literal["primary", "corrective"]
 
 
+def _role_rejection_from_technical_failure(
+    technical_failure: ValidationTechnicalFailure | None,
+) -> RecordedRoleRejectionEvidence | None:
+    if technical_failure is None:
+        return None
+    code = technical_failure.original_failure_code
+    detail = technical_failure.failure_detail
+    raw_hash = technical_failure.rejected_raw_hash
+    excerpt = technical_failure.rejected_raw_excerpt
+    if (
+        not isinstance(code, str)
+        or not code
+        or not isinstance(detail, str)
+        or not detail
+        or not isinstance(raw_hash, str)
+        or not raw_hash
+        or not isinstance(excerpt, str)
+        or not excerpt
+    ):
+        return None
+    try:
+        return RecordedRoleRejectionEvidence(
+            original_failure_code=code[:64],
+            failure_detail=detail[:4_000],
+            rejected_raw_hash=raw_hash.removeprefix("sha256:"),
+            rejected_raw_excerpt=excerpt[:800],
+        )
+    except (TypeError, ValueError, ValidationError):
+        return None
+
+
 def _map_terminal_validation_failure(
     failure_code: ValidationTechnicalFailureCode,
     *,
@@ -1467,6 +1518,10 @@ class ModelResultAudit(_FrozenModel):
         default=(),
         max_length=1,
         exclude=True,
+    )
+    role_rejection: RecordedRoleRejectionEvidence | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
     )
 
     @model_validator(mode="after")
@@ -4199,6 +4254,7 @@ class Deliberation:
             provider_subcall_audits=provider_subcall_audits,
             authored_candidate_audits=authored_candidate_audits,
             physical_provider_audits=physical_provider_audits,
+            role_rejection=_role_rejection_from_technical_failure(technical_failure),
         )
 
     @staticmethod

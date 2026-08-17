@@ -22,14 +22,21 @@ from companion_daemon.world_v2.character_interior.run_result import CausalOpport
 from companion_daemon.world_v2.event_identity import domain_idempotency_key
 from companion_daemon.world_v2.ledger import WorldLedger
 from companion_daemon.world_v2.life_ecology_activity import ActivityOpeningCatalog
-from companion_daemon.world_v2.life_ecology_contract import LifeEcologyRunKey
+from companion_daemon.world_v2.life_ecology_contract import (
+    LifeEcologyRunKey,
+    life_ecology_trigger_id,
+    life_ecology_trigger_ref,
+)
 from companion_daemon.world_v2.life_ecology_trigger_store import LedgerLifeEcologyTriggerStore
 from companion_daemon.world_v2.schema_core import EvidenceRef
 from companion_daemon.world_v2.schemas import (
+    ClaimLease,
     CommitResult,
+    DueWindow,
     MessageObservationRef,
     PlanStateProjection,
     ProjectionCursor,
+    TriggerProcess,
     WorldEvent,
 )
 
@@ -39,7 +46,7 @@ from test_activity_lifecycle_proposal import (
     _claimed_projection,
     _selected_draft,
 )
-from test_life_ecology_activity import NOW
+from test_life_ecology_activity import NOW, WAKE_REF, _plan, _projection
 
 
 def _real_event(
@@ -702,3 +709,203 @@ async def test_occasion_already_considered_is_quiet_no_op_not_technical_failure(
     assert result.reason_code == "activity_lifecycle.day_open_already_spent"
     assert store.spent("day_open", local_day_key(NOW))
     assert ledger.accepted == ()
+
+
+def _claimed_custom_projection(*plans, wake_ref: str = WAKE_REF):
+    projection = _projection(*plans, wake_ref=wake_ref)
+    trigger_id = life_ecology_trigger_id(
+        world_id=projection.world_id,
+        wake_event_ref=wake_ref,
+        catalog_version=ECOLOGY_CATALOG_VERSION,
+    )
+    process = TriggerProcess(
+        trigger_id=trigger_id,
+        trigger_ref=life_ecology_trigger_ref(
+            wake_event_ref=wake_ref,
+            catalog_version=ECOLOGY_CATALOG_VERSION,
+        ),
+        process_kind="life_ecology",
+        source_evidence_ref=wake_ref,
+        state="claimed",
+        claim_lease=ClaimLease(
+            owner_id="worker:life-ecology",
+            attempt_id="attempt:life-ecology:1",
+            acquired_at=NOW,
+            expires_at=NOW + timedelta(minutes=1),
+        ),
+        attempt_ids=("attempt:life-ecology:1",),
+    )
+    return projection.model_copy(update={"trigger_processes": (process,)}), trigger_id
+
+
+def _missed_window_plan():
+    return _plan(
+        "bookstore",
+        scheduled_window=DueWindow(
+            opens_at=NOW - timedelta(days=3),
+            closes_at=NOW - timedelta(hours=1),
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_closed_window_abandon_only_does_not_spend_day_open() -> None:
+    from companion_daemon.world_v2.daily_occasion import (
+        InMemoryDailyOccasionStore,
+        local_day_key,
+    )
+
+    projection, trigger_id = _claimed_custom_projection(_missed_window_plan())
+    openings = _catalog().openings_for(
+        projection=projection, wake_event_ref=WAKE_REF
+    )
+    assert [item.operation for item in openings.openings] == ["abandon"]
+
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    store = InMemoryDailyOccasionStore()
+    interior = _Interior(choice="no_op")
+    result = await _worker(
+        ledger=ledger, interior=interior, daily_occasions=store
+    ).advance_once(
+        wake_event_ref=WAKE_REF,
+        trigger_id=trigger_id,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:missed-abandon",
+        correlation_id="correlation:missed-abandon",
+    )
+
+    assert result.status == "no_op"
+    assert store.spent("day_open", local_day_key(NOW)) is False
+    assert len(interior.opportunities) == 1
+    occasion = interior.opportunities[0].occasion
+    assert occasion is not None
+    assert occasion.kind == "life_beat"
+    assert occasion.merge_key.startswith("closed-window-abandon:")
+    offered = interior.opportunities[0].capability_manifest.payload["offered_tokens"]
+    assert offered == [openings.openings[0].opening_token]
+
+
+@pytest.mark.asyncio
+async def test_mixed_abandon_and_start_still_spends_day_open() -> None:
+    from companion_daemon.world_v2.daily_occasion import (
+        InMemoryDailyOccasionStore,
+        local_day_key,
+    )
+
+    projection, trigger_id = _claimed_custom_projection(
+        _missed_window_plan(),
+        _plan("reading", entity_revision=2),
+    )
+    operations = [
+        item.operation
+        for item in _catalog().openings_for(
+            projection=projection, wake_event_ref=WAKE_REF
+        ).openings
+    ]
+    assert "abandon" in operations
+    assert "start" in operations
+
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    store = InMemoryDailyOccasionStore()
+    interior = _Interior(choice="no_op")
+    result = await _worker(
+        ledger=ledger, interior=interior, daily_occasions=store
+    ).advance_once(
+        wake_event_ref=WAKE_REF,
+        trigger_id=trigger_id,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:mixed-day-open",
+        correlation_id="correlation:mixed-day-open",
+    )
+
+    assert result.status == "no_op"
+    assert store.spent("day_open", local_day_key(NOW)) is True
+    assert len(interior.opportunities) == 1
+    occasion = interior.opportunities[0].occasion
+    assert occasion is not None
+    assert occasion.kind == "day_open"
+
+
+@pytest.mark.asyncio
+async def test_closed_window_abandon_consider_is_bounded_to_the_opening_set() -> None:
+    from companion_daemon.world_v2.daily_occasion import (
+        InMemoryDailyOccasionStore,
+        local_day_key,
+    )
+
+    first_projection, first_trigger = _claimed_custom_projection(_missed_window_plan())
+    later_ref = "event:clock:later"
+    later_projection, later_trigger = _claimed_custom_projection(
+        _missed_window_plan(), wake_ref=later_ref
+    )
+    ledger = _Ledger(first_projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    store = InMemoryDailyOccasionStore()
+    first = _Interior(choice="no_op")
+    first_result = await _worker(
+        ledger=ledger, interior=first, daily_occasions=store
+    ).advance_once(
+        wake_event_ref=WAKE_REF,
+        trigger_id=first_trigger,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:missed-abandon-first",
+        correlation_id="correlation:missed-abandon-first",
+    )
+
+    assert first_result.status == "no_op"
+    assert len(first.opportunities) == 1
+    assert store.spent("day_open", local_day_key(NOW)) is False
+
+    ledger.projection = later_projection
+    second = _Interior(choice="no_op")
+    second_result = await _worker(
+        ledger=ledger, interior=second, daily_occasions=store
+    ).advance_once(
+        wake_event_ref=later_ref,
+        trigger_id=later_trigger,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:missed-abandon-second",
+        correlation_id="correlation:missed-abandon-second",
+    )
+
+    assert second_result.status == "no_op"
+    assert second.opportunities == []
+    assert store.spent("day_open", local_day_key(NOW)) is False
+
+
+@pytest.mark.asyncio
+async def test_closed_window_abandon_can_still_be_selected_without_spending_day_open() -> None:
+    from companion_daemon.world_v2.daily_occasion import (
+        InMemoryDailyOccasionStore,
+        local_day_key,
+    )
+
+    projection, trigger_id = _claimed_custom_projection(_missed_window_plan())
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    store = InMemoryDailyOccasionStore()
+    interior = _Interior(choice="select")
+    result = await _worker(
+        ledger=ledger, interior=interior, daily_occasions=store
+    ).advance_once(
+        wake_event_ref=WAKE_REF,
+        trigger_id=trigger_id,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:missed-abandon-select",
+        correlation_id="correlation:missed-abandon-select",
+    )
+
+    assert result.status == "transitioned"
+    assert [item.event_type for item in ledger.accepted] == [
+        "AcceptanceRecorded",
+        "ActivityAbandoned",
+    ]
+    assert store.spent("day_open", local_day_key(NOW)) is False
+    assert len(interior.opportunities) == 1

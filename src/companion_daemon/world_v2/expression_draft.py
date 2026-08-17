@@ -2149,9 +2149,10 @@ def bind_proactive_world_claims(
     """Rebind or drop lane-mismatched world claims without silencing the draft.
 
     A cited ref that belongs to exactly one factual lane is moved onto that
-    lane. Refs that prove nothing are dropped. If every grounded claim was
-    unsupported, the caller still fail-closes; mixed legal/illegal sets keep
-    the legal remainder so a later/now choice can still go out.
+    lane. Refs that prove nothing are dropped. ``subjective_or_hypothetical``
+    is a legal no-fact marker on this wire and is kept. If every grounded
+    claim was unsupported, the caller still fail-closes; mixed legal/illegal
+    sets keep the legal remainder so a later/now choice can still go out.
     """
 
     try:
@@ -2172,7 +2173,7 @@ def bind_proactive_world_claims(
     dropped_grounded = 0
     for claim in draft.world_claims:
         if claim.scope == "subjective_or_hypothetical":
-            dropped_grounded += 1
+            rebound.append(claim)
             continue
         refs = set(claim.source_refs)
         permitted = allowed.get(claim.scope, frozenset())

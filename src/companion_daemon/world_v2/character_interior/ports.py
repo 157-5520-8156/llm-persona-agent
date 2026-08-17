@@ -32,10 +32,16 @@ class _RoleResultContractError(ValueError):
         *,
         detail: str,
         response_hash: str | None = None,
+        rejected_raw: str | None = None,
+        request_hash: str | None = None,
+        model_call_id: str | None = None,
     ) -> None:
         self.code = code
         self.detail = detail
         self.response_hash = response_hash
+        self.rejected_raw = rejected_raw
+        self.request_hash = request_hash
+        self.model_call_id = model_call_id
         super().__init__(code)
 
 

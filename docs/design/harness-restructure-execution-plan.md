@@ -1228,6 +1228,35 @@ H22 记录的六条剩余缺口本轮全部施工。核心判断：账本里"什
   2. 后台独立私人印象车道（`drain_private_impression_once` 恒 `return None`）仍关闭。现在她只能在**已付费的回合里**留下印象；真正"他不在时想起他"需要一条 0 调用的替代路径（例如在已付费回合的印象上挂一次 quiet-gap 复访），未施工。
   3. 生活生态点火后必须回采成本：`life_development` 与 NPC actor 现在会真的打模型。月桶 NPC+社会 ¥8 / 人生节拍 ¥8 未变，超了按记录只减机会频率，不削她的上下文。
 
+### 2026-08-18 H26 一次生产实证驱动的成批修复（六条并行）
+
+先做只读生产审计，再按证据施工。审计推翻了三处文档结论（见文末冲突表），并暴露了几处"装好了但走不完"。
+
+- **隐私缺陷（最要紧）**：`lived_moment` 在**编译期**把私人印象的 `reflection_summary` 与 appraisal stimulus 摘录拼成一个**无 `source_ref`** 的字符串，而 `_redact_materials` 是按 `source_ref` 删条目的——删不掉它。于是本该被脱敏的私人印象原文照样进模型视图。修法：整段移到 `model_view()`、在脱敏**之后**从已脱敏材料派生（与 `conversation`、`我最近留下的` 同一层）。连带结论：`lived_moment` 无 refs，编译期 facet availability 只看 sourced refs，所以从 `private_self` / `expression_stance` 的 `material_keys` 拿掉它不会让未脱敏快照掉成 unavailable；脱敏后若该 facet 的 sourced keys 全被删，它会**正确地**变成 unavailable（此前是靠这条无来源字符串把 facet 撑成 available，那本身就是泄漏的症状）。`lived_moment` 不再进 `materials_json`，快照身份因此改变——这是修泄漏的预期代价。
+- **主动联系：花了钱、一条都没送出去**（21 次 `proactive_contact` 成功、¥0.26、`proactive_message` 送达 **0**）。根因有两层：`unwrap` 要求根对象**恰好** `{"result": {…}}`，供应商多一个兄弟键（如 `reasoning`）就整体拒绝，且给她的重选理由只有罐头句 `"wrapper is invalid"`——在 forced tool 下那层包装根本不是她能控制的；两次都倒在这里后折叠成 `authored_expression_reselection_invalid`，而该码在不可重试集合里，机会直接放弃。修法：Postel 式宽进（接受已解包 JSON、忽略兄弟键，内层校验不放宽）；`failure_detail` 带**实际根键** `got keys=[...]`；`unwrap` 与 `_parse_and_validate` 合用一条 warning；技术失败的 `ModelResultRecorded.audit_json.role_rejection` 记原始码 + detail + 800 字截断原文（此前全 null，人和模型都看不到原因，违反 AGENTS.md）。另修一个确定的校验 bug：`bind_proactive_world_claims` 把工具 schema **允许**的 `subjective_or_hypothetical` 当成 unsupported 丢掉。
+  - **账本硬证据**：她真的写出过两句要发的话——「刚在傍晚散步呢，顺便整理点照片。你呢，这个点还在忙？」与「你在忙吗？我这边图书馆坐了一上午，天阴得跟要下雨似的，闷闷的」，都因 `world_claims` 指错车道被 `proactive:grounding-rejected` **整句**丢掉；另有一次她自己选了 `silent`（合法终态）。
+- **抽签不得替她把弧线收进人生**：`life_aftermath_runtime.py` 的 `world_contingency` 路径原为 `adopted = chosen.dynamic_life_arc_context is not None`——抽中的结局自带弧线上下文，系统就替她把这条人生方向收进长期生活走向。改为恒 `False`；`character_choice` 路径仍复制她写的 bool。**这是本轮第二处 AGENTS.md 违规修复。**
+- **计划永远等不到开始**：调度顺序是 activity 先跑、life_development 最后才提交计划，所以 8/15 那条窗口仅 2 小时的嘉兴书店计划在 10:01 落账时 activity 已经跑过，下一次 14:02 窗口已关。改为加法：`life_development_status == "plan_committed"` 时同一 wake 再跑一次 activity；start/no_op/abandon 仍由她选，窗口 future shield 不动，`occurrence_committed` 不买第二次。
+- **死计划吃掉当天开始机会**：窗口已关的 planned 计划只提供 abandon，而 abandon 会花掉当天唯一的 `day_open`，于是 8/22 那条**已带视觉证据**的旧书市计划（唯一可用出图种子）会在上午被静默废掉。改为：opening 集合里只有"窗口已关计划的 abandon"时不消耗 `day_open`。有界性是关键——merge_key 必须用 **opening 集合身份**，不能用 `catalog_hash` / `wake_event_ref`（两者每次 tick 都变，会变成每醒一次问一次模型）。
+- **成人 P3 车道（用户裁决：本人成年、单用户部署、`close_friend` 以上允许）**：做成**默认关闭 + 账本可审计**而非硬编码——开关 `WORLD_V2_ADULT_MEDIA_ENABLED` 默认 false，加 `CapabilityGranted` `capability:world-v2:adult-media` 与可撤回的 `ConsentGranted` `consent:world-v2:adult-media`；三者齐备且阶段 ∈ {close_friend, ambiguous, lover} 才给 `explicit_private`，缺任一条 fail-closed。`MediaLane` 新增 `suggestive_private` / `explicit_private`（纯加法，无 SQLite 迁移）。同意与法律边界正是宗旨规定该由确定性代码守的东西，所以必须显式、可审计、可撤回。
+- **房间/仪表盘只读投影挂到生产**：`companion-daemon`（8765）对生产库**不安全**——只要有人打一次 `/health` 就会 warmup → `_bootstrap()`，拿走账本 writer lock 并可能补写 bootstrap 事件，且其 action pump owner（`pump:http-v2-capture`）与现网 QQ（`pump:qq-c2c-v2`）不同，会抢同一本账本。因此把只读路由挂到已在跑的 8787，读那份已打开的 World，不新开写入者。`.env` 的 `WORLD_V2_DASHBOARD_AUTH_ENABLED=false` 只影响 8765，8787 的仪表盘始终要 operator token。
+- **语义召回连续 5 天全失败**（静默 fallback 到词法索引，无人发现）。两层故障叠在同一条警告后面：本地 embedding 服务启动即崩（加载器只认 safetensors，而 `BAAI/bge-m3` 上游只提供 `pytorch_model.bin`，`mlx-community` 也无转换版）——就地零下载转换已下载的 2.2GB 权重解决；第二层是**用 curl 单句验证骗过了我们**——应用实际一次 POST 最多 64 条批量 + `dimensions`、超时 10s，而服务器在 async 里同步跑 MLX，41 条长文本被 pad 到 512 要 14.4s，既超时又堵住事件循环。改为 off-thread + 锁 + 按长度分桶 + 缓存，真实 40 篇从超时变 0.69s，端到端 `succeeded_count=2`。**教训：用错的形状去验证等于没验证。**
+- **回采工具补三类静默失败信号**：语义召回降级、主动联系花费 vs 真实送达、复燃频率与按 purpose 花费排行。本轮三个最贵的发现全都只有靠一次专门审计才看见，而那正是这个脚本的职责。顺带纠正两处字段误解：动作种类在 `ActionAuthorized.action.kind`（`ActionDelivered.payload.kind` 恒为 `execution_receipt`），以及 `world_v2_model_usage.world_id` 全库为空所以花费无法按世界切分（现在明说而不是报 0）。
+- **基线**：`.75` → `.76`，manifest `5db2749b…`，两个独立 120 例进程复核一致。全量 **5392 通过 / 19 跳过**。
+- **产品裁决（已记录，勿再重开）**：第一张图之前**不加**二次确认关卡——她选片时已经做过决定，再加一道等于把她的决定降级成建议，且这属于部署策略而非法律边界。自动发送保持每天 2 张、最小间隔 2 小时。
+- **顶回来的两条（记录以免重复犯）**：
+  1. 我曾据审计要求"把视觉证据校验扩展到非 private、private 保持豁免"——**错**。现行 `ORDINARY_LIFE_PHOTO_PRIVACY` 已覆盖 public/shareable/personal/**private**，照做反而会**放宽**规则并让 `test_location_bound_ordinary_outcome_must_carry_visual_evidence` 守的属性失效。
+  2. 我曾考虑照 inbound 的 `strip_unpinned_world_claims` 让 proactive"丢 claim 保 beats"——**错**。案例①她写的是「刚在傍晚散步呢」而账本里她并没有散步，只丢 claim 就发出去等于让宗旨明令禁止的伪造事实过关。正解是把精确 grounding 原因喂进她本来就有的那一次同模型校正（Postel 修好后该额度通常空着），仍然 fail-closed，不许丢 beats、不许第二作者、不许本地模板。**已分析未实现。**
+- **剩余缺口**：
+  1. **图片机至今 0 张图，总闸已完全查清**：账本从来没有一份"已结算 + 带 `visual_evidence` 附件"的生活证据。8/14 那场雷雨**不是**绕过校验——该校验 8/17 16:50（`86b8085c`）才加上，而在 8/14 当时 `private` + 视觉附件**反而非法**，所以 `location-bound + private + visual_evidence: null` 是当时唯一合法形状。starvation fill 兜的是"池空但**有带附件的**已结算生活"，所以从未兜住，连抽签事件都不会写。她点名要拍（`request_once`）同样需要那份附件，不是捷径。**最短出图路径**：8/22 01:00–09:00Z 旧书市计划（shareable、已带附件）→ 她在窗口内 start → 结算 → 声明 → 候选。剩余不可控因素：生产要在窗口内醒着；01:00Z 后 catalog 同时有"书店 abandon + 旧书市 start"，那一次会正常花 `day_open`，她若 no_op 当天就没有第二次——那是她的决定，不能代选。
+  2. **成人车道下一道闸**：规划冻结要求 `relationship_media_context.declared_display.media_intent == "explicit_adult"`，而 `RelationshipMediaContextV1` **没有** `declared_display` 字段。**故意未做**——现在无法被验证（关系仍 stranger、候选为 0），而且正解应是**她自己的声明**而非配置项，否则又变成替她决定。
+  3. 高档渲染走 `specialized_private_workflow_direct`，**跳过** OpenAI 审查与 ≤1 次修复（H19 原样，本轮未补）。
+  4. `week_diary` / `day_sheet` 同样没有 `source_ref`，`_redact_materials` 删不掉，`lived_moment` 仍可能经由它们带上内容。同类缺口，未修。
+  5. 外层审计的 `model_id` / `response_hash` / `input_tokens` 仍可能为 null（`complete_json_object` 不回传用量）；原始码与截断原文已在 `role_rejection` 上。
+  6. Godot 房间 URL 写死 `127.0.0.1:8767`，重启后不会连上生产（房间视图已近弃用，按用户裁决不管）。
+  7. 本地 embedding 常驻约 7.2GB（GPU/统一内存约 5.9GB），对 40 篇短文档过大。**不能**改回按需——plist 无 socket 激活，`RunAtLoad=false` + `KeepAlive=false` 意味着没有任何东西会拉起它（这正是坏了 5 天的直接原因，证据是 `runs=0`）。省内存的正路是量化（维度仍 1024，缓存与索引不必重建）或加 socket 激活。
+  8. 复燃频率的真实量级仍未回采（H25 遗留）。
+
 ### 2026-08-17 H24 把这一轮交回她的语言，并让她看见自己留下过什么
 
 先做真人对照：用生产账本副本（不污染真实记录）跑 12 回合真实对话，再按结果施工。首轮结果是**话对了、记性没跟上**——句号率 66%→0%、会说"你别一直问 问多了我真会烦"这种带刺的边界，但 0 个新情绪片段、0 次 `matters_bp`、0 条私人印象。能力链路逐个验证是通的，所以缺的是动机与语言。

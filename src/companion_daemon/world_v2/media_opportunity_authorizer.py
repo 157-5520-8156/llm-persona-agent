@@ -1,16 +1,17 @@
 """Authorize a public preview from one selected, source-bound candidate."""
 from __future__ import annotations
 from datetime import datetime
+from .adult_media_authority import adult_media_is_authorized
 from .media_evidence_snapshot import MediaEvidenceCompileRequest, MediaEvidenceSnapshotCompiler
+from .media_v2 import ADULT_PRIVATE_MEDIA_LANES, MediaOpportunity, media_digest
+from .private_image_evidence_contract import RecipientScopedImageEvidenceDeclaredPayload
 from .private_media_evidence_snapshot import (
     PrivateMediaEvidenceCompileRequest,
     PrivateMediaEvidenceSnapshotCompiler,
 )
-from .relationship_media_context import RelationshipMediaContextResolver
 from .relationship_media_context import PrivateTransitionEvidenceV1
-from .private_image_evidence_contract import RecipientScopedImageEvidenceDeclaredPayload
+from .relationship_media_context import RelationshipMediaContextResolver
 from .media_selection import MediaSelection
-from .media_v2 import MediaOpportunity, media_digest
 from .schemas import ProjectionCursor
 
 
@@ -19,10 +20,12 @@ class MediaOpportunityAuthorizer:
         self, *, ledger, compiler: MediaEvidenceSnapshotCompiler, catalog_version: str,
         private_compiler: PrivateMediaEvidenceSnapshotCompiler | None = None,
         relationship_context_resolver: RelationshipMediaContextResolver | None = None,
+        adult_media_enabled: bool = False,
     ) -> None:
         self._ledger, self._compiler, self._catalog_version = ledger, compiler, catalog_version
         self._private_compiler = private_compiler or PrivateMediaEvidenceSnapshotCompiler(ledger=ledger)
         self._relationship_context_resolver = relationship_context_resolver or RelationshipMediaContextResolver()
+        self._adult_media_enabled = adult_media_enabled
 
     def authorize(self, *, cursor: ProjectionCursor, selection: MediaSelection, category: str,
                   observed_at: datetime, expires_at: datetime) -> tuple[MediaOpportunity, object]:
@@ -142,14 +145,27 @@ class MediaOpportunityAuthorizer:
             raise ValueError("media_authorizer.p3_" + (resolution.reason_code or "context_unavailable"))
         if selection.private_expression_basis_ref != context.private_expression_basis.basis_id:
             raise ValueError("media_authorizer.p3_private_basis_not_current")
-        lane, maximum = self._p3_lane_for_stage(context.audience.relationship_stage)
+        adult_eligible = adult_media_is_authorized(
+            enabled=self._adult_media_enabled,
+            projection=projection,
+            at_logical_time=projection.logical_time,
+        )
+        lane, maximum = self._p3_lane_for_stage(
+            context.audience.relationship_stage, adult_eligible=adult_eligible
+        )
         ranks = {"subtle": 1, "charged": 2, "veiled": 3}
         if ranks[selection.expression_charge_ceiling] > ranks[maximum]:
             raise ValueError("media_authorizer.p3_expression_charge_exceeds_relationship_bound")
+        # Lane and charge are re-derived at the accepted cursor.  Adult
+        # eligibility raises the ceiling so the planner may use charged/veiled
+        # candidates; it does not instruct the character to take the photo.
+        authorized_charge = (
+            maximum if lane in ADULT_PRIVATE_MEDIA_LANES else selection.expression_charge_ceiling
+        )
         compiled = self._private_compiler.compile(
             PrivateMediaEvidenceCompileRequest(
                 candidate=candidate, category=category, cursor=cursor, relationship_context=context,
-                media_lane=lane, expression_charge_ceiling=selection.expression_charge_ceiling,
+                media_lane=lane, expression_charge_ceiling=authorized_charge,
             )
         )
         authorization = getattr(compiled.snapshot, "private_media_authorization", None)
@@ -160,7 +176,7 @@ class MediaOpportunityAuthorizer:
             or authorization.candidate_revision != candidate.entity_revision
             or authorization.recipient_ref != selection.recipient_ref
             or authorization.media_lane != lane
-            or authorization.expression_charge_ceiling != selection.expression_charge_ceiling
+            or authorization.expression_charge_ceiling != authorized_charge
             or authorization.candidate_contract_digest != contract.authority_digest
             or authorization.relationship_context_digest != context.authority_digest
             or authorization.private_basis_digest != context.private_expression_basis.basis_digest
@@ -185,19 +201,21 @@ class MediaOpportunityAuthorizer:
         ), compiled
 
     @staticmethod
-    def _p3_lane_for_stage(stage: str) -> tuple[str, str]:
-        """Relationship stage constrains expression; it never creates a basis."""
+    def _p3_lane_for_stage(stage: str, *, adult_eligible: bool) -> tuple[str, str]:
+        """Relationship stage is a floor; adult intensity needs a ledger grant.
 
+        Adult eligibility is the same at close_friend, ambiguous, and lover:
+        the stage gate does not choose intensity.  Without the grant the
+        historical alluring cap remains.
+        """
+
+        if stage not in {"close_friend", "ambiguous", "lover"}:
+            raise ValueError("media_authorizer.p3_relationship_stage_not_eligible")
+        if adult_eligible:
+            return "explicit_private", "veiled"
         if stage == "close_friend":
             return "alluring_life", "subtle"
-        if stage == "ambiguous":
-            return "alluring_life", "charged"
-        if stage == "lover":
-            # The current World v2 basis module intentionally has no proven
-            # coverage/private-transition authority, so even this stage stays
-            # in the bounded alluring lane until that fact domain exists.
-            return "alluring_life", "charged"
-        raise ValueError("media_authorizer.p3_relationship_stage_not_eligible")
+        return "alluring_life", "charged"
 
     def _private_transition(self, *, candidate, expires_at: datetime):  # type: ignore[no-untyped-def]
         """Re-read an exact P3 declaration; never trust selection prose."""

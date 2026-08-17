@@ -38,6 +38,7 @@ from .media_v2 import (
     MediaPlan,
     MediaPlanningResult,
     StoredMediaPayload,
+    P3_PRIVATE_MEDIA_LANES,
     PhotoCandidate,
     canonical_media_json,
     media_digest,
@@ -415,7 +416,7 @@ class EventMediaPlannerAdapter:
             and opportunity.delivery_mode == "preview"
             and opportunity.privacy_ceiling == "private"
             and opportunity.media_privacy_ceiling == "intimate"
-            and opportunity.media_lane in {"alluring_life", "exclusive_private"}
+            and opportunity.media_lane in P3_PRIVATE_MEDIA_LANES
             and opportunity.recipient_ref is not None
             and opportunity.private_expression_basis_ref is not None
             and opportunity.p3_authorization_digest is not None
@@ -681,7 +682,7 @@ class EventMediaPlannerAdapter:
                 or legacy_plan.private_expression_basis is not None
             ):
                 return self._not_renderable(opportunity, planning_request_id, "p2_legacy_plan_exceeds_authorization")
-        if opportunity.family == "character_media" and opportunity.media_lane in {"alluring_life", "exclusive_private"}:
+        if opportunity.family == "character_media" and opportunity.media_lane in P3_PRIVATE_MEDIA_LANES:
             authorization = self._p3_authorization_from_sidecar(opportunity)
             context = image_event_snapshot.get("relationship_media_context")
             lane = getattr(legacy_plan.media_lane, "lane", "")

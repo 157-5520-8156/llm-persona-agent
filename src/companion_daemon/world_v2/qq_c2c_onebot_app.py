@@ -12,11 +12,14 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import logging
+from pathlib import Path
 import secrets
 import time
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import FastAPI, Header, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from companion_daemon.config import Settings
 from companion_daemon.llm import FakeCompanionModel
@@ -42,9 +45,91 @@ from .qq_history_backfill import (
     backfill_missed_private_messages,
 )
 from .qq_ingress_policy import normalize_onebot_qq_ingress
+from .world_v2_dashboard_ui import (
+    DASHBOARD_APP_JS,
+    DASHBOARD_HTML,
+    DASHBOARD_SESSION_COOKIE,
+    DASHBOARD_SESSION_TTL_SECONDS,
+    DashboardSessionCodec,
+    LOGIN_HTML,
+    UNAVAILABLE_HTML,
+)
 
 
 logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_DAEMON_STATIC = Path(__file__).resolve().parents[1] / "static"
+_LOCAL_DASHBOARD_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+def _is_local_dashboard_request(request: Request) -> bool:
+    client = request.client
+    host = client.host.strip().lower() if client is not None else ""
+    return host in _LOCAL_DASHBOARD_HOSTS
+
+
+def _require_safe_dashboard_host(request: Request) -> JSONResponse | None:
+    if not _is_local_dashboard_request(request):
+        return JSONResponse({"error": "Dashboard is loopback-only"}, status_code=403)
+    host = (request.url.hostname or "").strip().lower()
+    if host not in _LOCAL_DASHBOARD_HOSTS:
+        return JSONResponse({"error": "invalid Dashboard host"}, status_code=403)
+    return None
+
+
+def _http_origin_coordinate(value: str) -> tuple[str, str, int] | None:
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return None
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower()
+    if (
+        scheme not in {"http", "https"}
+        or not host
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+    ):
+        return None
+    return scheme, host, port or (443 if scheme == "https" else 80)
+
+
+def _same_dashboard_origin(request: Request) -> bool:
+    supplied = _http_origin_coordinate(request.headers.get("origin", ""))
+    expected = _http_origin_coordinate(str(request.base_url))
+    return supplied is not None and supplied == expected
+
+
+def _dashboard_session_codec(
+    asgi_app: FastAPI, settings: Settings
+) -> DashboardSessionCodec | None:
+    token = (settings.world_v2_dashboard_operator_token or "").strip()
+    secret = getattr(asgi_app.state, "dashboard_session_secret", None)
+    if not token or not isinstance(secret, bytes):
+        return None
+    return DashboardSessionCodec(operator_token=token, instance_secret=secret)
+
+
+def _dashboard_session_is_valid(request: Request, settings: Settings) -> bool:
+    codec = _dashboard_session_codec(request.app, settings)
+    return codec is not None and codec.verify(request.cookies.get(DASHBOARD_SESSION_COOKIE))
+
+
+def _mount_dashboard_static_files(app: FastAPI) -> None:
+    """Serve the already-built room/dashboard assets from this World owner process."""
+
+    app.mount("/assets", StaticFiles(directory=_REPO_ROOT / "assets"), name="assets")
+    app.mount("/dashboard-static", StaticFiles(directory=_DAEMON_STATIC), name="dashboard-static")
+    app.mount(
+        "/pixel-home",
+        StaticFiles(directory=_REPO_ROOT / "prototypes" / "pixel-home"),
+        name="pixel-home",
+    )
 
 
 def _dashboard_host_probe(
@@ -484,6 +569,8 @@ def create_qq_c2c_onebot_app(
     app = FastAPI(title=f"Girl-Agent {adapter.title()} World v2 C2C", lifespan=lifespan)
     app.state.qq_c2c_host = host
     app.state.dashboard_runtime_sampler = dashboard_runtime_sampler
+    app.state.dashboard_session_secret = secrets.token_bytes(32)
+    _mount_dashboard_static_files(app)
 
     @app.post("/onebot/event")
     async def onebot_event(
@@ -606,6 +693,171 @@ def create_qq_c2c_onebot_app(
         if request.query_params:
             return JSONResponse(
                 {"error": "dashboard snapshot does not accept query parameters"},
+                status_code=400,
+            )
+        runtime_observation = await dashboard_runtime_sampler.capture()
+        snapshot = await host.dashboard_home_snapshot(runtime_observation)
+        etag = f'"{snapshot.snapshot_hash}"'
+        headers = {"Cache-Control": "private, no-store", "ETag": etag}
+        if if_none_match == etag:
+            return Response(status_code=304, headers=headers)
+        return JSONResponse(content=snapshot.to_payload(), headers=headers)
+
+    def _owner_dashboard_access(
+        request: Request,
+        token: str | None,
+    ) -> JSONResponse | HTMLResponse | None:
+        host_denied = _require_safe_dashboard_host(request)
+        if host_denied is not None:
+            return host_denied
+        if _dashboard_session_is_valid(request, settings):
+            return None
+        return _read_only_operator_access(
+            token=token,
+            configured=settings.world_v2_dashboard_operator_token,
+            disabled_error=(
+                "dashboard snapshot is disabled until its read-only operator token is configured"
+            ),
+        )
+
+    @app.get("/world-v2/room")
+    def world_v2_public_room():
+        """Return the public-only Room DTO from the already-open QQ World."""
+
+        try:
+            return host.dashboard_room().to_payload()
+        except PermissionError:
+            return JSONResponse(
+                {"error": "World v2 room projection denied"},
+                status_code=403,
+            )
+        except RuntimeError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=503)
+
+    @app.get("/world-v2/dashboard")
+    def world_v2_dashboard_public(
+        if_none_match: str | None = Header(None),
+        x_world_v2_internal_token: str | None = Header(None),
+    ):
+        denied = _read_only_operator_access(
+            token=x_world_v2_internal_token,
+            configured=settings.world_v2_dashboard_operator_token,
+            disabled_error=(
+                "World v2 Dashboard is disabled until its read-only token is configured"
+            ),
+        )
+        if denied is not None:
+            return denied
+        try:
+            payload = host.dashboard_public().to_payload()
+        except PermissionError:
+            return JSONResponse(
+                {"error": "World v2 dashboard projection denied"},
+                status_code=403,
+            )
+        except RuntimeError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=503)
+        etag = f'"{payload["projection_hash"]}"'
+        headers = {"Cache-Control": "no-store", "ETag": etag}
+        if if_none_match == etag:
+            return Response(status_code=304, headers=headers)
+        return JSONResponse(content=payload, headers=headers)
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    def owner_dashboard(request: Request):
+        host_denied = _require_safe_dashboard_host(request)
+        if host_denied is not None:
+            return host_denied
+        codec = _dashboard_session_codec(request.app, settings)
+        if codec is None:
+            return HTMLResponse(
+                UNAVAILABLE_HTML,
+                status_code=503,
+                headers={"Cache-Control": "no-store"},
+            )
+        if not _dashboard_session_is_valid(request, settings):
+            return HTMLResponse(LOGIN_HTML, headers={"Cache-Control": "no-store"})
+        return HTMLResponse(DASHBOARD_HTML, headers={"Cache-Control": "no-store"})
+
+    @app.post("/world-v2/dashboard/session")
+    async def world_v2_dashboard_login(request: Request):
+        host_denied = _require_safe_dashboard_host(request)
+        if host_denied is not None:
+            return host_denied
+        if not _same_dashboard_origin(request):
+            return JSONResponse({"error": "invalid Dashboard origin"}, status_code=403)
+        codec = _dashboard_session_codec(request.app, settings)
+        if codec is None:
+            return HTMLResponse(
+                UNAVAILABLE_HTML,
+                status_code=503,
+                headers={"Cache-Control": "no-store"},
+            )
+        if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != (
+            "application/x-www-form-urlencoded"
+        ):
+            return HTMLResponse(LOGIN_HTML, status_code=415, headers={"Cache-Control": "no-store"})
+        body = await request.body()
+        if len(body) > 4096:
+            return HTMLResponse(LOGIN_HTML, status_code=413, headers={"Cache-Control": "no-store"})
+        try:
+            submitted = parse_qs(
+                body.decode("utf-8"),
+                keep_blank_values=True,
+                strict_parsing=True,
+            ).get("operator_token", [""])[0]
+        except (UnicodeDecodeError, ValueError):
+            submitted = ""
+        configured = (settings.world_v2_dashboard_operator_token or "").strip()
+        if not submitted or not secrets.compare_digest(submitted, configured):
+            return HTMLResponse(LOGIN_HTML, status_code=401, headers={"Cache-Control": "no-store"})
+        response = Response(
+            status_code=303, headers={"Location": "/dashboard", "Cache-Control": "no-store"}
+        )
+        response.set_cookie(
+            DASHBOARD_SESSION_COOKIE,
+            codec.issue(),
+            max_age=DASHBOARD_SESSION_TTL_SECONDS,
+            httponly=True,
+            secure=request.url.scheme == "https",
+            samesite="strict",
+            path="/",
+        )
+        return response
+
+    @app.post("/world-v2/dashboard/logout")
+    def world_v2_dashboard_logout(request: Request):
+        host_denied = _require_safe_dashboard_host(request)
+        if host_denied is not None:
+            return host_denied
+        if not _same_dashboard_origin(request):
+            return JSONResponse({"error": "invalid Dashboard origin"}, status_code=403)
+        response = Response(
+            status_code=303, headers={"Location": "/dashboard", "Cache-Control": "no-store"}
+        )
+        response.delete_cookie(DASHBOARD_SESSION_COOKIE, path="/", httponly=True, samesite="strict")
+        return response
+
+    @app.get("/world-v2/dashboard/app.js")
+    def world_v2_dashboard_script():
+        return Response(
+            DASHBOARD_APP_JS,
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/world-v2/dashboard/home")
+    async def world_v2_dashboard_home(
+        request: Request,
+        if_none_match: str | None = Header(None),
+        x_world_v2_internal_token: str | None = Header(None),
+    ):
+        denied = _owner_dashboard_access(request, x_world_v2_internal_token)
+        if denied is not None:
+            return denied
+        if request.query_params:
+            return JSONResponse(
+                {"error": "dashboard home does not accept query parameters"},
                 status_code=400,
             )
         runtime_observation = await dashboard_runtime_sampler.capture()
