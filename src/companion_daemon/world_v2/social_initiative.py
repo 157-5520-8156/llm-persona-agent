@@ -1325,8 +1325,8 @@ class SocialInitiativeCompiler:
         elapsed = (logical_time - source[0].logical_time).total_seconds()
         if elapsed < self._policy.spontaneous_idle_seconds:
             return None
-        if elapsed >= self._policy.spontaneous_expiry_seconds:
-            return None
+        # Expiry switches the source_kind to ambient_presence below; it must
+        # not make the whole cadence disappear at the exact upper boundary.
         try:
             pending = pending_response_expectation(projection)
         except (TypeError, ValueError, AttributeError):

@@ -1654,6 +1654,7 @@ def test_audit_v8_keeps_recall_and_prefetch_evidence_with_its_physical_binding()
         subject_refs=("actor:companion",),
         viewer_privacy_ceiling="withhold",
         at=NOW,
+        limit=recall_request.limit,
         accessibility_seed="draw:audit:v8-recall",
     )
     recall_query_digest = recall_query_hash(
@@ -1683,6 +1684,7 @@ def test_audit_v8_keeps_recall_and_prefetch_evidence_with_its_physical_binding()
         subject_refs=("actor:companion",),
         viewer_privacy_ceiling="withhold",
         at=NOW,
+        limit=prefetch_request.limit,
         accessibility_seed="draw:audit:v8-prefetch",
     )
     prefetch_query_digest = recall_query_hash(
@@ -1846,6 +1848,7 @@ def test_recall_query_and_results_are_pinned_through_cold_replay(tmp_path) -> No
         subject_refs=("actor:companion",),
         viewer_privacy_ceiling="withhold",
         at=NOW,
+        limit=request.limit,
         accessibility_seed="draw:audit:recall",
     )
     query_hash = recall_query_hash(
@@ -1926,6 +1929,7 @@ def test_life_character_recall_trace_cannot_change_outer_trigger_or_cursor() -> 
         subject_refs=("actor:companion",),
         viewer_privacy_ceiling="withhold",
         at=NOW,
+        limit=request.limit,
         accessibility_seed="draw:life-recall-lineage",
     )
     query_hash = recall_query_hash(index_version="recall-index:test", query=query)
@@ -1987,6 +1991,7 @@ def test_ordered_prefetch_presentations_survive_cold_replay(tmp_path) -> None:
         subject_refs=("actor:companion",),
         viewer_privacy_ceiling="withhold",
         at=NOW,
+        limit=request.limit,
         accessibility_seed="draw:audit:ordered-prefetch",
     )
     query_hash = recall_query_hash(index_version="recall-index:test", query=query)

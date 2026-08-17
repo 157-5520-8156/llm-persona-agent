@@ -313,9 +313,7 @@ class _PublicReceiptHarness:
             transport=transport,
             fact_model=semantic.world_support_model,
             proactive_source_closure_model=semantic.proactive_source_closure_model,
-            proactive_candidate_external_proposition_inventory_model=(
-                semantic.candidate_external_proposition_inventory_model
-            ),
+            proactive_candidate_external_proposition_inventory_model=None,  # H1d removed the inventory model
             npc_actor_model=semantic.world_support_model,
             now=self.started_at,
         )

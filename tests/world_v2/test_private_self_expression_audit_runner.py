@@ -2419,23 +2419,13 @@ async def test_explicit_trace_captures_qq_single_call_post_appraisal_delegate(
         await host.aclose()
 
     assert outcome.status == "action_authorized"
-    assert len(role_model.calls) == 2
-    # Each authored candidate pays exactly one exhaustive compact review. The
-    # rejected candidate enters the same Character author's one correction;
-    # no Inventory, report-relative, or full-V7 chat call remains.
-    assert len(reviewer.calls) == 2
+    # H1d removed the separate generative reviewer/correction lane.  One
+    # CharacterInterior call produces the complete visible answer; source
+    # closure is deterministic after the fact and no reviewer model remains.
+    assert len(role_model.calls) == 1
+    assert len(reviewer.calls) == 0
     trace = [event.as_dict() for event in collector.snapshot()]
-    rejections = [event for event in trace if "stage" in event]
-    assert [event["stage"] for event in rejections] == ["initial_rejection"]
-    assert rejections[0]["visible_beat_texts"] == ["刚才在宿舍翻书，现在看到你了。"]
-    review_packets = [json.loads(call[1]["content"]) for call in reviewer.calls]
-    assert [
-        packet["output_contract"]["contract"] for packet in review_packets
-    ] == ["visible-beat-source-verdict.1", "visible-beat-source-verdict.1"]
-    assert [packet["visible_beats"][0]["text"] for packet in review_packets] == [
-        "刚才在宿舍翻书，现在看到你了。",
-        "我看到你这句了。",
-    ]
+    assert [event for event in trace if "stage" in event] == []
     assert [item["content"] for item in delivery.sent if item["modality"] == "text"] == [
-        "我看到你这句了。"
+        "刚才在宿舍翻书，现在看到你了。"
     ]

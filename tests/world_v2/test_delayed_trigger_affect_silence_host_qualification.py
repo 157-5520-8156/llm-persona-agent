@@ -618,7 +618,7 @@ async def test_public_host_affect_decay_obeys_boundary_restart_and_effect_once(
     evidence = await _qualify_affect_decay(tmp_path)
 
     assert evidence["scenario_id"] == "affect.decay"
-    assert evidence["decay_event_count"] == 1
+    assert evidence["decay_event_count"] == 0  # H10 made decay a pure projection
     assert evidence["intensity_decreased"] is True
     assert evidence["cold_replay_hash_matches"] is True
     assert evidence["qualification"]["semantic_author_scope"] == (

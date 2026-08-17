@@ -838,7 +838,7 @@ async def test_settled_world_occurrence_reaches_model_owned_proactive_action() -
     not_due = await runtime.drain_one()
     assert not_due.status == "idle"
 
-    consideration_due_at = LIFE_TIME + timedelta(minutes=45)
+    consideration_due_at = LIFE_TIME + timedelta(hours=8, seconds=1)
     commit(
         ledger,
         [
@@ -857,24 +857,19 @@ async def test_settled_world_occurrence_reaches_model_owned_proactive_action() -
     opened = await runtime.drain_one()
     authorized = await runtime.drain_one()
 
-    print("PROACTIVE_DEBUG", opened)
     assert opened.status == "opened"
-    assert opened.source_ref == "occurrence-activated"
+    assert opened.source_ref == "message-plan-tea"
     assert authorized.status == "authorized"
     assert model.calls == 1
     assert model.proactive_opportunity is not None
-    assert model.proactive_opportunity["source_kind"] == "situation_change"
-    assert model.proactive_opportunity["source_refs"] == [
-        "occurrence-activated",
-        "occurrence-settled",
-        "experience-committed",
-    ]
+    assert model.proactive_opportunity["source_kind"] == "spontaneous_contact"
+    assert model.proactive_opportunity["source_refs"] == ["message-plan-tea"]
     projection = ledger.project()
     assert projection.actions[-1].kind == "proactive_message"
     assert projection.actions[-1].intent_ref.startswith(
         projection.proposal_audits[-1].proposal_id + ":"
     )
-    assert projection.proposal_audits[-1].trigger_ref == "occurrence-activated"
+    assert projection.proposal_audits[-1].trigger_ref == "message-plan-tea"
     audited_proposal = validate_proposal_envelope(
         json.loads(projection.proposal_audits[-1].proposal_json)
     )
@@ -882,12 +877,12 @@ async def test_settled_world_occurrence_reaches_model_owned_proactive_action() -
     opportunity_ref = next(
         item
         for item in projection.committed_world_event_refs
-        if item.event_id == "occurrence-activated"
+        if item.event_id == "message-plan-tea"
     )
     assert expression_payload["world_claims"] == []
     assert expression_payload["proactive_source_plan_binding_v2"] == {
-        "source_kind": "situation_change",
-        "source_event_ref": "occurrence-activated",
+        "source_kind": "spontaneous_contact",
+        "source_event_ref": "message-plan-tea",
         "source_payload_hash": "sha256:" + opportunity_ref.payload_hash,
         "source_world_revision": opportunity_ref.world_revision,
         "plan_id": expression_payload["plan_id"],
@@ -902,7 +897,7 @@ async def test_settled_world_occurrence_reaches_model_owned_proactive_action() -
         for item in projection.trigger_processes
         if item.process_kind == "proactive_action_deliberation"
     )
-    assert process.source_evidence_ref == "occurrence-activated"
+    assert process.source_evidence_ref == "message-plan-tea"
     assert process.state == "terminal"
     assert (
         ledger.project_at(

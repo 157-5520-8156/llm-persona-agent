@@ -4443,14 +4443,35 @@ def _prepare_source_closure_review_material(
 
 
 def _known_capsule_source_refs(source_evidence: dict[str, object]) -> frozenset[str]:
+    rows = compact_source_reference_table(source_evidence)
+    entries = source_evidence.get("entries", ())
+    attention_only = {
+        str(ref)
+        for entry in entries
+        if isinstance(entry, dict)
+        and isinstance(entry.get("authority"), str)
+        and (
+            entry["authority"].startswith("private_attention_")
+            or entry["authority"].startswith("attention_only_")
+            or entry["authority"].startswith("non_authoritative_advisory")
+        )
+        for ref in entry.get("source_refs", ())
+        if isinstance(ref, str)
+    }
     known = {
         str(row["source_ref"])
-        for row in compact_source_reference_table(source_evidence)
-        if isinstance(row, dict) and row.get("source_ref")
+        for row in rows
+        if isinstance(row, dict)
+        and row.get("source_ref")
+        and str(row["source_ref"]) not in attention_only
     }
     required = source_evidence.get("required_source_refs", ())
     if isinstance(required, (list, tuple)):
-        known.update(ref for ref in required if isinstance(ref, str) and ref)
+        known.update(
+            ref
+            for ref in required
+            if isinstance(ref, str) and ref and ref not in attention_only
+        )
     return frozenset(known)
 
 

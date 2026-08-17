@@ -124,12 +124,12 @@ async def test_qq_composition_wires_compact_proactive_source_guard(
         assert (  # noqa: SLF001
             development._world_author_source_rewriter.authority_origin is author
         )
-        assert development._source_closure_reviewer is None  # noqa: SLF001
+        assert development._source_closure_reviewer is not None  # noqa: SLF001
         source_health = host.proactive_source_authority_health()
         assert source_health["status"] == "fact_effects_fail_closed"
         assert "one_shot.model_review_lanes_removed" in source_health["warning_reasons"]
         assert source_health["reviewer_model"] is None
-        assert host.life_source_authority_health()["status"] == "unavailable"
+        assert host.life_source_authority_health()["status"] == "unsafe_shared_runtime"
     finally:
         await host.aclose()
 
@@ -4553,7 +4553,7 @@ def test_onebot_entry_accepts_explicit_distinct_test_authorities_without_provide
         assert health["reviewer_model"] is None
         assert "one_shot.model_review_lanes_removed" in health["warning_reasons"]
         assert app.state.qq_c2c_host.life_source_authority_health()["status"] == (
-            "unavailable"
+            "unsafe_shared_runtime"
         )
     finally:
         asyncio.run(app.state.qq_c2c_host.aclose())

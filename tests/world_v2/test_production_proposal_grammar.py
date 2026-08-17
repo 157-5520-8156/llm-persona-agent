@@ -474,7 +474,7 @@ def test_proactive_lane_accepts_expression_with_bound_appraisal_affect() -> None
                 kind="proactive_message",
                 layer="external_action",
                 target="user:1",
-                payload_ref="payload:proactive",
+                payload_ref="payload:1",
                 payload_hash=_hash("hi"),
                 causal_change_id=expression.change_id,
                 beat_ref="beat:1",
