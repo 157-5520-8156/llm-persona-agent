@@ -2159,6 +2159,9 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
         "stance",
         "display_strategy",
         "confidence",
+        "meanings",
+        "attribution",
+        "severity",
     }
     reply_only_events = reply_only_specimen["events"]
     assert isinstance(reply_only_events, list)

@@ -930,6 +930,7 @@ def build_semantic_chat_composition(
         personality_frame=character.personality,
         values=tuple(character.values),
         speech_frame=character.speech,
+        speech_examples=tuple(character.speech_examples),
         style_rules=tuple(character.style_rules),
         boundaries=tuple(character.boundaries),
         base_prompt=character.base_prompt,

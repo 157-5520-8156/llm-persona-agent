@@ -19,6 +19,7 @@ class CharacterProfile(BaseModel):
     personality: str | None = None
     values: list[str] = Field(default_factory=list)
     speech: str | None = None
+    speech_examples: list[str] = Field(default_factory=list)
     relationship_policy: str | None = None
     first_message: str | None = None
     style_rules: list[str] = Field(default_factory=list)

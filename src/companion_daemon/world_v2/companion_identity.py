@@ -26,6 +26,7 @@ class CompanionIdentityFrame(FrozenModel):
     personality_frame: str | None = Field(default=None, max_length=2_048)
     values: tuple[str, ...] = Field(default=(), max_length=16)
     speech_frame: str | None = Field(default=None, max_length=2_048)
+    speech_examples: tuple[str, ...] = Field(default=(), max_length=16)
     style_rules: tuple[str, ...] = Field(default=(), max_length=16)
     boundaries: tuple[str, ...] = Field(default=(), max_length=16)
     base_prompt: str | None = Field(default=None, max_length=8_192)
@@ -70,6 +71,7 @@ def companion_identity_source_ref(
                     "appearance",
                     "background",
                     "daily_life",
+                    "speech_examples",
                     "first_message",
                 },
                 exclude_none=True,

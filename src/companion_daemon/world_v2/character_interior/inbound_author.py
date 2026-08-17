@@ -320,13 +320,21 @@ def _compact_full_turn_transport_grammar(
             "shape_only_nonsemantic_specimen": {
                 "protocol": "character-interior-events.1",
                 "appraisal_draft": {
-                    "appraise": "<role:boolean>",
-                    "affect": "<role:choose:affect>",
+                    "appraise": True,
+                    "affect": "no_change",
                     "brief_rationale": "<role:text>",
                     "behavior_tendency": "<role:text>",
                     "stance": "<role:text>",
                     "display_strategy": "<role:text>",
                     "confidence": "<role:confidence_bp>",
+                    "meanings": [
+                        {
+                            "meaning": "<role:text>",
+                            "confidence": "<role:confidence_bp>",
+                        }
+                    ],
+                    "attribution": "<role:choose:attribution>",
+                    "severity": "<role:severity_bp>",
                 },
                 "events": [
                     {
@@ -383,6 +391,14 @@ def _compact_full_turn_transport_grammar(
         },
         "domains": {
             "affect": ["no_change", "open", "update", "resolve", "supersede"],
+            "attribution": [
+                "user",
+                "companion",
+                "npc",
+                "situation",
+                "third_party",
+                "unknown",
+            ],
             "timing_choice": ["now", "later", "silent"],
             "turn_posture": ["continue", "interject", "supersede", "yield"],
             "cadence": ["conversational", "rapid", "hesitant", "escalating"],
@@ -428,13 +444,21 @@ def _compact_reply_only_transport_grammar(
             "shape_only_nonsemantic_specimen": {
                 "protocol": "character-interior-events.1",
                 "appraisal_draft": {
-                    "appraise": "<role:boolean>",
-                    "affect": "<role:choose:affect>",
+                    "appraise": True,
+                    "affect": "no_change",
                     "brief_rationale": "<role:text>",
                     "behavior_tendency": "<role:text>",
                     "stance": "<role:text>",
                     "display_strategy": "<role:text>",
                     "confidence": "<role:confidence_bp>",
+                    "meanings": [
+                        {
+                            "meaning": "<role:text>",
+                            "confidence": "<role:confidence_bp>",
+                        }
+                    ],
+                    "attribution": "<role:choose:attribution>",
+                    "severity": "<role:severity_bp>",
                 },
                 "events": [
                     {
@@ -478,6 +502,14 @@ def _compact_reply_only_transport_grammar(
         },
         "domains": {
             "affect": ["no_change", "open", "update", "resolve", "supersede"],
+            "attribution": [
+                "user",
+                "companion",
+                "npc",
+                "situation",
+                "third_party",
+                "unknown",
+            ],
             "reply_only_timing": ["now", "later", "silent"],
             "reply_only_turn_posture": [None, "continue", "interject"],
             "cadence": ["conversational", "rapid", "hesitant", "escalating"],
@@ -500,6 +532,15 @@ def _compact_reply_only_transport_grammar(
             "affect_lifecycle_fields": (
                 "add only those required by the role-chosen affect operation under the "
                 "APPRAISAL SEMANTIC CONTRACT"
+            ),
+            "appraise_true_fields": (
+                "when appraise is true, meanings, attribution and severity are "
+                "required; the specimen already shows the complete true shape"
+            ),
+            "appraise_false_fields": (
+                "when appraise is false, affect must be no_change and omit "
+                "meanings, attribution, severity, components, episode_id and "
+                "resolution_summary"
             ),
         },
         "marker_rule": (

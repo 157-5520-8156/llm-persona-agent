@@ -368,6 +368,13 @@ def identity_prose(frame: CompanionIdentityFrame) -> str:
         )
     if frame.speech_frame:
         parts.append("说话：" + frame.speech_frame.strip())
+    if frame.style_rules:
+        parts.append("写法：" + " ".join(item.strip() for item in frame.style_rules if item.strip()))
+    if frame.speech_examples:
+        parts.append(
+            "她说话的样子（示例，不是固定台词）："
+            + " ".join(item.strip() for item in frame.speech_examples if item.strip())
+        )
     if frame.values:
         parts.append("价值：" + " ".join(item.strip() for item in frame.values if item.strip()))
     if frame.boundaries:
