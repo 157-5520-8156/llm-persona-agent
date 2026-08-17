@@ -34,9 +34,28 @@ EMOJI = re.compile(r"[\U0001F300-\U0001FAFF\u2600-\u27BF]")
 QUESTION_TAIL = ("?", "？", "吗", "呢", "吧")
 
 
-def _events(connection: sqlite3.Connection) -> Iterator[dict[str, Any]]:
+def busiest_world(connection: sqlite3.Connection) -> str | None:
+    """Pick the world she actually lives in.
+
+    A ledger file can hold more than one world: the QQ deployment writes
+    ``world:companion-v2:qq-c2c:<user>`` while an older console world may keep a
+    handful of events under a different id.  ``ledger_sequence`` restarts per
+    world, so aggregating across them mixes two histories and silently
+    misreports every figure below.
+    """
+
+    row = connection.execute(
+        "SELECT world_id, COUNT(*) FROM world_v2_events"
+        " GROUP BY world_id ORDER BY COUNT(*) DESC LIMIT 1"
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _events(connection: sqlite3.Connection, world_id: str) -> Iterator[dict[str, Any]]:
     cursor = connection.execute(
-        "SELECT event_json FROM world_v2_events ORDER BY ledger_sequence"
+        "SELECT event_json FROM world_v2_events WHERE world_id = ?"
+        " ORDER BY ledger_sequence",
+        (world_id,),
     )
     for (raw,) in cursor:
         try:
@@ -69,9 +88,12 @@ def _walk(value: Any, key: str) -> Iterator[Any]:
             yield from _walk(item, key)
 
 
-def audit(path: Path) -> dict[str, Any]:
+def audit(path: Path, *, world_id: str | None = None) -> dict[str, Any]:
     connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
+        world = world_id or busiest_world(connection)
+        if world is None:
+            raise ValueError(f"账本里没有任何世界事件：{path}")
         types: Counter[str] = Counter()
         messages: list[str] = []
         affect: Counter[str] = Counter()
@@ -81,7 +103,7 @@ def audit(path: Path) -> dict[str, Any]:
         stages: list[str] = []
         span: list[str] = []
         reflections = 0
-        for event in _events(connection):
+        for event in _events(connection, world):
             kind = event.get("event_type")
             if not isinstance(kind, str):
                 continue
@@ -129,6 +151,7 @@ def audit(path: Path) -> dict[str, Any]:
     revisitable = [weight for weight in appraisal_weights if weight >= REFLECTION_THRESHOLD_BP]
     return {
         "ledger": str(path),
+        "world_id": world,
         "events": sum(types.values()),
         "span": {"from": min(span, default=None), "to": max(span, default=None)},
         "relationship": {
@@ -191,7 +214,7 @@ def render(report: dict[str, Any]) -> str:
     life = report["life"]
     voice = report["voice"]
     lines = [
-        f"账本 {report['ledger']}  事件 {report['events']}",
+        f"账本 {report['ledger']}  世界 {report['world_id']}  事件 {report['events']}",
         f"区间 {report['span']['from']} → {report['span']['to']}",
         "",
         "关系是否真的在动",
@@ -234,11 +257,12 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("ledger", type=Path, nargs="?", default=Path("data/companion.epoch2.sqlite"))
     parser.add_argument("--json", action="store_true", help="emit the raw figures")
+    parser.add_argument("--world", help="audit one world id instead of the busiest one")
     args = parser.parse_args(argv)
     if not args.ledger.exists():
         print(f"账本不存在：{args.ledger}", file=sys.stderr)
         return 2
-    report = audit(args.ledger)
+    report = audit(args.ledger, world_id=args.world)
     print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else render(report))
     return 0
 
