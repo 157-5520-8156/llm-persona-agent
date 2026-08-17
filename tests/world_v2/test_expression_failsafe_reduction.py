@@ -169,8 +169,14 @@ def test_compact_inbound_branch_counter_rejects_unknown_transport() -> None:
         metrics.record_compact_inbound_branch("host_guessed_reply")
 
 
-# --- corrective coverage for non-claim structural rejects ----------------------
-
+_BROKEN_SHAPE_EXPRESSION = {
+    "timing_choice": "now",
+    "beats": [{"modality": "text", "text": "我在的。", "note": "extra"}],
+    "stance": "attentive",
+    "brief_rationale": "Stay with the current conversation.",
+    "confidence": 7200,
+    "world_claims": [],
+}
 
 _VALID_APPRAISAL = {
     "appraise": False,
@@ -181,41 +187,15 @@ _VALID_APPRAISAL = {
     "confidence": 3000,
 }
 
-# A beat with an undeclared extra key defeats both the strict materializer and
-# the bounded structural normalizer, producing a non-claim shape violation.
-_BROKEN_SHAPE_EXPRESSION = {
-    "timing_choice": "now",
-    "beats": [{"modality": "text", "text": "我在的。", "note": "extra"}],
-    "stance": "attentive",
-    "brief_rationale": "Stay with the current conversation.",
-    "confidence": 7200,
-    "world_claims": [],
-}
-
-_CORRECTED_EXPRESSION = {
-    "timing_choice": "now",
-    "beats": [{"modality": "text", "text": "我在的，这句我接住了。"}],
-    "stance": "attentive",
-    "brief_rationale": "Corrected the beat shape only.",
-    "confidence": 7200,
-    "world_claims": [],
-}
-
 
 class _ShapeRepairedCombinedProvider:
-    """First combined pass returns a broken beat shape; the corrective fixes it."""
+    """A provider whose second call would repair; H17 forbids that second call."""
 
     model = "combined-flash"
 
-    def __init__(
-        self,
-        *,
-        corrected_on_call: int = 2,
-        direct_expression_on_call: int | None = None,
-    ) -> None:
+    def __init__(self, *, corrected_on_call: int = 2) -> None:
         self.calls: list[list[dict[str, str]]] = []
         self._corrected_on_call = corrected_on_call
-        self._direct_expression_on_call = direct_expression_on_call
 
     async def complete(
         self, messages: list[dict[str, str]], *, temperature: float = 0.8
@@ -223,47 +203,46 @@ class _ShapeRepairedCombinedProvider:
         del temperature
         self.calls.append(messages)
         expression = (
-            _CORRECTED_EXPRESSION
+            {
+                "timing_choice": "now",
+                "beats": [{"modality": "text", "text": "我在的，这句我接住了。"}],
+                "stance": "attentive",
+                "brief_rationale": "Corrected the beat shape only.",
+                "confidence": 7200,
+                "world_claims": [],
+            }
             if len(self.calls) >= self._corrected_on_call
             else _BROKEN_SHAPE_EXPRESSION
         )
-        if self._direct_expression_on_call == len(self.calls):
-            return json.dumps(expression, ensure_ascii=False)
         return json.dumps(
             {"appraisal_draft": _VALID_APPRAISAL, "expression_draft": expression},
             ensure_ascii=False,
         )
 
 
+# --- one-shot corrective policy (H1b/H17) --------------------------------------
+# The same-contract corrective retry was retired.  A malformed structural wire
+# is a technical failure for that one Occasion; the host never repairs it with
+# local prose or repeats the identical model call.
+
+
 @pytest.mark.asyncio
-async def test_paired_shape_reject_is_repaired_with_violation_feedback() -> None:
+async def test_paired_shape_reject_is_terminal_without_same_contract_retry() -> None:
     provider = _ShapeRepairedCombinedProvider(corrected_on_call=2)
     cognition = InboundCharacterAuthor(flash_model=provider)
     request = _request(revision=3, call="call:paired-shape-repair")
 
     await cognition._appraisal_materializer.propose(request)
-    expression = await cognition._expression_materializer.propose(request)
+    with pytest.raises(ValidationTechnicalFailure) as caught:
+        await cognition._expression_materializer.propose(request)
 
-    # The combined pass and its one correction author both Appraisal and
-    # Expression for one pinned turn.  Expression consumes that exact authored
-    # result; it must not open the retired second author call.
-    assert len(provider.calls) == 2
-    corrective = provider.calls[1][-1]["content"]
-    assert "structural validation" in corrective
-    assert "note" in corrective  # quotes the concrete violation
-    assert "接住" in json.dumps(expression.raw_proposal, ensure_ascii=False)
-    assert expression.model_id == "combined-flash"
-    assert metrics.reliability_snapshot()["shape_repair_24h"] == 1
+    assert caught.value.failure_code == "paired_expression_reselection_invalid"
+    assert len(provider.calls) == 1
+    assert metrics.reliability_snapshot()["shape_repair_24h"] == 0
 
 
 @pytest.mark.asyncio
-async def test_deadline_deferred_repair_is_spent_before_the_failsafe() -> None:
-    # The paired attempt has nearly no budget left, so its in-attempt repair
-    # is deferred (never started).  A direct expression pass for that exact
-    # pinned request then spends the one violation-quoting corrective retry
-    # instead of landing on a canned line.  A different request identity must
-    # instead ask the role model afresh and is covered by the paired identity
-    # tests.
+async def test_deadline_deferred_repair_is_never_started_after_h17() -> None:
     from companion_daemon.world_v2 import deliberation as deliberation_module
 
     provider = _ShapeRepairedCombinedProvider(corrected_on_call=2)
@@ -275,42 +254,31 @@ async def test_deadline_deferred_repair_is_spent_before_the_failsafe() -> None:
         await cognition._appraisal_materializer.propose(request)
     finally:
         deliberation_module._ATTEMPT_DEADLINE.reset(token)
-    assert len(provider.calls) == 1  # repair deferred, not spent
 
-    expression = await cognition._expression_materializer.propose(request)
+    with pytest.raises(ValidationTechnicalFailure):
+        await cognition._expression_materializer.propose(request)
 
-    assert len(provider.calls) == 2
-    assert "structural validation" in provider.calls[1][-1]["content"]
-    assert expression.model_id == "combined-flash"
-    assert expression.model_version == InboundCharacterAuthor.VERSION
-    assert "接住" in json.dumps(expression.raw_proposal, ensure_ascii=False)
+    assert len(provider.calls) == 1
     assert metrics.reliability_snapshot()["failsafe_24h"] == 0
 
 
 @pytest.mark.asyncio
-async def test_spent_corrective_is_not_repeated_or_replaced_with_local_prose() -> None:
-    # The in-attempt corrective already ran once and failed; the expression
-    # pass for the same pinned request must not repeat the identical repair
-    # before its bounded model-owned recovery.
+async def test_spent_corrective_is_not_repeated_after_h17() -> None:
     provider = _ShapeRepairedCombinedProvider(corrected_on_call=99)
     cognition = InboundCharacterAuthor(flash_model=provider)
     request = _request(revision=3, call="call:pre-failsafe-exhausted")
 
     await cognition._appraisal_materializer.propose(request)
-    assert len(provider.calls) == 2  # paired pass plus one failed corrective
-
     with pytest.raises(ValidationTechnicalFailure) as caught:
         await cognition._expression_materializer.propose(request)
 
     assert caught.value.failure_code == "paired_expression_reselection_invalid"
-    assert len(provider.calls) == 2  # no third identical repair
+    assert len(provider.calls) == 1
     assert metrics.reliability_snapshot()["failsafe_24h"] == 0
 
 
 @pytest.mark.asyncio
-async def test_direct_adapter_repairs_non_claim_shape_rejects_too() -> None:
-    provider = _ShapeRepairedCombinedProvider(corrected_on_call=2)
-
+async def test_direct_adapter_rejects_non_claim_shape_without_retry() -> None:
     class _DirectShapeProvider:
         model = "direct-flash"
 
@@ -322,16 +290,12 @@ async def test_direct_adapter_repairs_non_claim_shape_rejects_too() -> None:
         ) -> str:
             del temperature
             self.calls.append(messages)
-            expression = (
-                _CORRECTED_EXPRESSION if len(self.calls) >= 2 else _BROKEN_SHAPE_EXPRESSION
-            )
-            return json.dumps(expression, ensure_ascii=False)
+            return json.dumps(_BROKEN_SHAPE_EXPRESSION, ensure_ascii=False)
 
     direct = _DirectShapeProvider()
     adapter = _ExpressionDraftWire(model=direct)
-    output = await adapter.propose(_request(revision=3, call="call:direct-shape-repair"))
+    with pytest.raises(ValidationTechnicalFailure) as caught:
+        await adapter.propose(_request(revision=3, call="call:direct-shape-repair"))
 
-    assert len(direct.calls) == 2
-    assert "structural validation" in direct.calls[1][-1]["content"]
-    assert "接住" in json.dumps(output.raw_proposal, ensure_ascii=False)
-    del provider
+    assert caught.value.failure_code == "authored_expression_reselection_invalid"
+    assert len(direct.calls) == 1

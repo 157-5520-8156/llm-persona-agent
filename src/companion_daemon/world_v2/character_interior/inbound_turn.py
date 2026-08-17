@@ -968,6 +968,13 @@ class CharacterInteriorInboundDeliberationAdapter:
                 occasion=mint_user_message(
                     source_event_ref=request.trigger_ref,
                     created_at=_logical_time(request),
+                    # The same Observation may legally author again when the
+                    # World head advances before its previous draft is
+                    # delivered.  Occasion identity therefore follows the
+                    # exact provider attempt + cursor, not the raw
+                    # observation alone; duplicate ingress remains closed by
+                    # the event-sourced observation idempotency layer above.
+                    merge_key=identity,
                 ),
             )
         )
