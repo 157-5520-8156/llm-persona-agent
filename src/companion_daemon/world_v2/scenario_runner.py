@@ -295,7 +295,7 @@ class ScenarioVerificationError(AssertionError):
 # source-review, acceptance, Action, and receipt boundaries; the frozen suite
 # keeps every existing per-case predicate enabled while request, audit,
 # scheduler, snapshot, and replay identities intentionally move together.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.73"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.74"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -435,8 +435,14 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.73"
 # lane finally has an anchor. Per-case predicates remain enforced; the aggregate
 # prompt/policy identities intentionally move. Two independent complete 120-case
 # processes produced this hash before installation.
+# ``.74`` puts the turn in her language and shows her what her own choices kept.
+# The slim contract is Chinese prose around English JSON identifiers, and the
+# snapshot carries a derived retention view of the feelings, impressions and
+# weights that survived. Per-case predicates remain enforced; the aggregate
+# prompt identity intentionally moves. Two independent complete 120-case
+# processes produced this hash before installation.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "abf5608e010d8429bf5f6d4bd66c761ae36dd848744b575519af84e8223c391f"
+    "5c03009ec9ec2408e35524749f3e209f9f19876ca3091097d67aa08fcb219a18"
 )
 
 

@@ -196,7 +196,7 @@ def test_present_stage_note_steers_neither_toward_nor_away_from_closeness() -> N
     instruction = slim_consider_instruction()
     assert "no target stage and no preferred direction" in instruction
     assert "us_deltas" in instruction
-    assert "only you decide that" in instruction
+    assert "这件事只有你能定" in instruction
     for discouragement in (
         "will not change relationship scores",
         "do not have to move the stage",

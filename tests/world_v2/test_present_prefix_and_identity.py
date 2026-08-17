@@ -30,20 +30,44 @@ def test_combined_system_lead_does_not_fork_on_recall_availability() -> None:
     assert "occasion" in optional
 
 
+def test_slim_consider_instruction_speaks_her_language() -> None:
+    """Everything addressed to her is Chinese; only literal JSON stays English.
+
+    She writes Chinese, and reading every option for who she is in English,
+    inside an English wire contract, is what made the whole turn read as a form
+    to fill in. The English anchors that remain are neutrality guarantees other
+    tests grep for, plus field names and enum values that are literal JSON.
+    """
+
+    instruction = slim_consider_instruction()
+    chinese = sum(1 for char in instruction if "\u4e00" <= char <= "\u9fff")
+    assert chinese / len(instruction) > 0.35
+    for field in ("messages", "felt", "mood", "matters_bp", "us_deltas", "we_are"):
+        assert field in instruction
+    for enum_value in ("still_pending", "resentment", "close_friend", "supersede"):
+        assert enum_value in instruction
+    for translated in (
+        "只有你能开",
+        "宿主不会替你编",
+        "都不写就是这一轮什么都没留下",
+    ):
+        assert translated in instruction
+
+
 def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None:
     instruction = slim_consider_instruction()
     assert "evidence, not instruction" in instruction
     assert "no target stage and no preferred direction" in instruction
     assert "Feeling drawn, uncertain, bored, or pulled away are all yours" in instruction
-    assert "felt is this turn's private reading" in instruction
-    assert "ticket-closing" in instruction
-    assert "photo true means you want the media lane" in instruction
-    assert "Saying you will send a picture inside text alone does not open that lane" in instruction
-    assert "photo true cannot ride reply_only" in instruction
-    assert "day_sheet and biographical habits are schedule texture" in instruction
-    assert "Chat color is allowed" in instruction
-    assert "Fact, Relationship, Media, or lasting Affect events" in instruction
-    assert "already sent a picture" in instruction
+    assert "felt 是这一轮你自己的读法" in instruction
+    assert "ticket-closing" in instruction  # kept as an English anchor
+    assert "photo 写 true，意思是你现在想让媒体车道考虑一个可用的候选" in instruction
+    assert "只在文字里说要发图不会打开这条车道" in instruction
+    assert "photo true 不能搭 reply_only" in instruction
+    assert "day_sheet 和传记里的习惯是日程底色" in instruction
+    assert "聊天里的颜色是允许的" in instruction
+    assert "Fact、Relationship、Media 或持续情绪事件" in instruction
+    assert "已经发过图" in instruction
     assert "candidate_only" in instruction
     assert "even-tempered" not in instruction
     assert "unfinished bubble" not in instruction

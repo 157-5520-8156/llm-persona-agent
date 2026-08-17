@@ -212,6 +212,185 @@ def _rendered_conversation(materials: Mapping[str, object]) -> list[str]:
     return lines
 
 
+INNER_RETENTION_MATERIAL_KEY = "我最近留下的"
+
+_RETENTION_LINE_LIMIT = 8
+_LIVE_STATUSES = frozenset({"active"})
+
+
+def _material_entries(materials: Mapping[str, object], key: str) -> list[Mapping[str, object]]:
+    value = materials.get(key)
+    if isinstance(value, dict):
+        value = value.get("items")
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _is_live(entry: Mapping[str, object]) -> bool:
+    status = entry.get("status")
+    return status is None or status in _LIVE_STATUSES
+
+
+def _instant(value: object) -> datetime | None:
+    """Parse one offset-bearing timestamp; a naive one stays uncomparable."""
+
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None and parsed.utcoffset() is not None else None
+
+
+def _elapsed_phrase(earlier: datetime, later: datetime) -> str | None:
+    seconds = (later - earlier).total_seconds()
+    if seconds < 0:
+        return None
+    if seconds < 60:
+        return "刚刚"
+    if seconds < 3_600:
+        return f"{int(seconds // 60)} 分钟前"
+    if seconds < 86_400:
+        return f"{int(seconds // 3_600)} 小时前"
+    return f"{int(seconds // 86_400)} 天前"
+
+
+def _live_affect_lines(
+    materials: Mapping[str, object], logical_time: datetime | None
+) -> list[str]:
+    lines: list[str] = []
+    for episode in _material_entries(materials, "affect"):
+        if not _is_live(episode):
+            continue
+        components = episode.get("components")
+        if not isinstance(components, list):
+            continue
+        for component in components:
+            if not isinstance(component, dict):
+                continue
+            dimension = component.get("dimension")
+            if not isinstance(dimension, str) or not dimension:
+                continue
+            intensity = component.get("intensity_bp")
+            head = (
+                f"{dimension} {intensity}"
+                if isinstance(intensity, int) and not isinstance(intensity, bool)
+                else dimension
+            )
+            opened = _instant(component.get("opened_at")) or _instant(episode.get("opened_at"))
+            phrase = (
+                _elapsed_phrase(opened, logical_time)
+                if opened is not None and logical_time is not None
+                else None
+            )
+            lines.append(f"{head}（{phrase}开的）" if phrase else head)
+            if len(lines) >= _RETENTION_LINE_LIMIT:
+                return lines
+    return lines
+
+
+def _retention_instants(materials: Mapping[str, object]) -> list[datetime]:
+    """Every moment at which a durable inner state was opened or revised."""
+
+    instants: list[datetime] = []
+    for episode in _material_entries(materials, "affect"):
+        for key in ("opened_at", "updated_at"):
+            moment = _instant(episode.get(key))
+            if moment is not None:
+                instants.append(moment)
+        components = episode.get("components")
+        if isinstance(components, list):
+            for component in components:
+                if isinstance(component, dict):
+                    moment = _instant(component.get("opened_at"))
+                    if moment is not None:
+                        instants.append(moment)
+    for impression in _material_entries(materials, "private_impressions"):
+        moment = _instant(impression.get("first_seen"))
+        if moment is not None:
+            instants.append(moment)
+    return instants
+
+
+def _companion_turn_windows(
+    materials: Mapping[str, object],
+) -> list[tuple[datetime, datetime]]:
+    """Bound each of her turns by the message she was answering.
+
+    One turn is an unbroken run of her own delivered messages, because a
+    multi-beat expression is one choice rather than several.  Everything that
+    turn could have written happened after the counterpart message that opened
+    it and before its own last beat was receipted, so ``(opened, last beat]``
+    is the exact interval to look in.  A run with no visible message before it
+    has no knowable interval and is left out rather than guessed.
+    """
+
+    ordered: list[tuple[datetime, bool]] = []
+    for entry in _material_entries(materials, "recent_dialogue"):
+        occurred = _instant(entry.get("occurred_at"))
+        if occurred is not None:
+            ordered.append((occurred, entry.get("speaker") == "companion"))
+    ordered.sort()
+    windows: list[tuple[datetime, datetime]] = []
+    opened: datetime | None = None
+    run_end: datetime | None = None
+    for occurred, is_companion in ordered:
+        if is_companion:
+            run_end = occurred
+            continue
+        if run_end is not None and opened is not None:
+            windows.append((opened, run_end))
+        run_end = None
+        opened = occurred
+    if run_end is not None and opened is not None:
+        windows.append((opened, run_end))
+    return windows
+
+
+def _rendered_inner_retention(
+    materials: Mapping[str, object], logical_time: datetime | None
+) -> dict[str, object] | None:
+    """Count what of her own recent inner state is still standing.
+
+    This is projection arithmetic over the material she already holds, derived
+    after redaction so it can never total an episode, impression, or turn she
+    is not allowed to see.  It states what is there and what is not; whether
+    any of it is worth keeping remains entirely hers.
+    """
+
+    if logical_time is not None and logical_time.utcoffset() is None:
+        logical_time = None
+    affect_lines = _live_affect_lines(materials, logical_time)
+    impressions = sum(
+        1 for entry in _material_entries(materials, "private_impressions") if _is_live(entry)
+    )
+    windows = _companion_turn_windows(materials)
+    if not affect_lines and not impressions and not windows:
+        return None
+    weights = [
+        weight
+        for entry in _material_entries(materials, "appraisals")
+        if isinstance((weight := entry.get("confidence_bp")), int)
+        and not isinstance(weight, bool)
+    ][:_RETENTION_LINE_LIMIT]
+    retention: dict[str, object] = {
+        "还活着的持续情绪": affect_lines,
+        "还在的私人印象": impressions,
+        "最近这些读法的分量": weights,
+    }
+    if windows:
+        marks = _retention_instants(materials)
+        retention["最近我说话的回合"] = len(windows)
+        retention["其中没有新增持续情绪或私人印象的"] = sum(
+            1
+            for lower, upper in windows
+            if not any(lower < mark <= upper for mark in marks)
+        )
+    return retention
+
+
 class _InteriorContextView(FrozenModel):
     availability: Literal["available", "unavailable"]
     payload_json: str
@@ -754,6 +933,9 @@ class InnerLifeSnapshot(FrozenModel):
             else set(self.source_refs) & set(visible_source_refs)
         )
         materials = _redact_materials(dict(self.materials), visible)
+        retention = _rendered_inner_retention(materials, self.logical_time)
+        if retention is not None:
+            materials = {**materials, INNER_RETENTION_MATERIAL_KEY: retention}
         transcript = _rendered_conversation(materials)
         if transcript:
             materials = {**materials, "conversation": transcript}
@@ -1018,6 +1200,7 @@ class InnerDecision(FrozenModel):
 
 
 __all__ = [
+    "INNER_RETENTION_MATERIAL_KEY",
     "InteriorAffectTransition",
     "InteriorAffectNewComponentTarget",
     "InteriorAffectExistingComponentTarget",

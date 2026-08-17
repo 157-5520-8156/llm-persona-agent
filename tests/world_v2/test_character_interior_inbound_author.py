@@ -2239,8 +2239,8 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "Neither instruction metadata block is part of payload_json" in compact_system
     assert "never a default the host substitutes for you" in compact_system
     assert "full_turn_json" not in compact_system
-    assert "Chat color is allowed" in compact_system
-    assert "Fact, Relationship, Media, or lasting Affect events" in compact_system
+    assert "聊天里的颜色是允许的" in compact_system
+    assert "Fact、Relationship、Media 或持续情绪事件" in compact_system
     assert (
         "Recall is unavailable on this call; use result_kind=decision."
         not in provider.messages[0][0]["content"]
