@@ -29,7 +29,12 @@ from companion_daemon.world_v2.media_v2 import (
     character_media_contract_digest,
 )
 from companion_daemon.world_v2.reducers import ReducerState, reduce_event
-from companion_daemon.world_v2.schemas import CommittedWorldEventRef, LedgerProjection, WorldEvent
+from companion_daemon.world_v2.schemas import (
+    CommittedWorldEventRef,
+    LedgerProjection,
+    ProposalRevisionRef,
+    WorldEvent,
+)
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
 
 
@@ -185,6 +190,81 @@ def test_media_selection_decline_is_a_deliberation_fact_for_current_candidates()
     )
 
     assert reduced.photo_candidates == state.photo_candidates
+    assert reduced.media_declined_candidate_revisions == candidates
+
+
+def test_media_selection_decline_accepts_a_lapsed_generated_reask() -> None:
+    """A no_op after the send window lapses must not crash the decline path."""
+
+    decided = NOW - timedelta(minutes=40)
+    state = _opened_state()
+    candidate = state.photo_candidates[0].model_copy(
+        update={"status": "generated", "opened_at": decided, "expires_at": NOW + timedelta(hours=1)}
+    )
+    proposal_ref = "event:selection-proposal:reask"
+    draw_event_id = "event:random-draw:draw:test-reask-decline"
+    state = state.model_copy(
+        update={
+            "photo_candidates": (candidate,),
+            "proposal_revisions": (
+                ProposalRevisionRef(
+                    proposal_id="proposal:reask",
+                    evaluated_world_revision=1,
+                    proposal_event_ref=proposal_ref,
+                    proposal_event_payload_hash="b" * 64,
+                    proposed_change_hash="c" * 64,
+                    selection_hash="d" * 64,
+                    candidate_id=candidate.candidate_id,
+                    expected_candidate_revision=candidate.entity_revision,
+                ),
+            ),
+            "committed_world_event_refs": (
+                *state.committed_world_event_refs,
+                CommittedWorldEventRef(
+                    event_id=proposal_ref,
+                    event_type="MediaSelectionProposalRecorded",
+                    world_revision=len(state.committed_world_event_refs) + 1,
+                    payload_hash="b" * 64,
+                    logical_time=decided,
+                ),
+                CommittedWorldEventRef(
+                    event_id=draw_event_id,
+                    event_type="RandomDrawRecorded",
+                    world_revision=len(state.committed_world_event_refs) + 2,
+                    payload_hash="9" * 64,
+                    logical_time=NOW,
+                ),
+            ),
+        }
+    )
+    candidates = (
+        MediaSelectionCandidateRevision(
+            candidate_id=candidate.candidate_id,
+            entity_revision=candidate.entity_revision,
+        ),
+    )
+    payload = MediaSelectionAttemptRecordedPayload(
+        attempt_id=media_selection_attempt_id(
+            world_id=WORLD, logical_time=NOW, candidates=candidates,
+        ),
+        candidates=candidates,
+        outcome="declined",
+        model="test-flash",
+        raw_output_hash="sha256:" + "e" * 64,
+        normalized_output_hash="sha256:" + "f" * 64,
+    )
+
+    reduced = reduce_event(
+        state,
+        _event(
+            "event:media-selection-attempt:" + payload.attempt_id,
+            "MediaSelectionAttemptRecorded",
+            payload.model_dump(mode="json"),
+            causation_id=draw_event_id,
+        ),
+    )
+
+    assert reduced.photo_candidates[0].status == "generated"
     assert reduced.media_declined_candidate_revisions == candidates
 
 

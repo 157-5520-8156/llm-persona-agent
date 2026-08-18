@@ -693,7 +693,7 @@ def test_life_arc_opens_and_retires_its_contextual_npc_on_clock_boundaries(
     )
 
     assert introduced.status == "transitioned"
-    assert introduced.npc_ids == ("editor-qin",)
+    assert "editor-qin" in introduced.npc_ids
     assert next(item for item in ledger.project().npcs if item.npc_id == "editor-qin").status == (
         "active"
     )
@@ -725,6 +725,56 @@ def test_life_arc_opens_and_retires_its_contextual_npc_on_clock_boundaries(
     assert retired.status == "transitioned"
     assert replayed.life_arcs[0].status == "completed"
     assert next(item for item in replayed.npcs if item.npc_id == "editor-qin").status == ("retired")
+
+
+def test_summer_wake_registers_always_on_and_family_home_people(
+    tmp_path: Path,
+) -> None:
+    from companion_daemon.world_v2.life_author_seed import ReviewedLifeSeedCatalog
+    from companion_daemon.world_v2.local_chronology import LocalChronology
+
+    world_id = "world:biography:summer-npcs"
+    started_at = datetime(2026, 8, 18, 4, 0, tzinfo=UTC)
+    path = tmp_path / "summer-npcs.sqlite"
+    ledger = SQLiteWorldLedger(path=path, world_id=world_id)
+    clock = _event(
+        world_id=world_id,
+        event_id="clock:summer-npc-sync",
+        event_type="ClockAdvanced",
+        logical_at=started_at,
+        payload={
+            "logical_time_from": (started_at - timedelta(minutes=10)).isoformat(),
+            "logical_time_to": started_at.isoformat(),
+        },
+    )
+    ledger.commit(
+        (clock,),
+        expected_world_revision=0,
+        expected_deliberation_revision=0,
+    )
+    runtime = BiographicalLifecycleRuntime(
+        ledger=ledger,
+        catalog=ReviewedLifeSeedCatalog.from_yaml(
+            path=Path("configs/world_seed.yaml"),
+            chronology=LocalChronology("Asia/Shanghai"),
+        ),
+        owner_actor_ref="actor:companion",
+    )
+
+    result = runtime.advance_once(
+        wake_event_ref=clock.event_id,
+        trace_id="trace:summer-npc-sync",
+        correlation_id="correlation:summer-npc-sync",
+    )
+
+    assert result.status == "transitioned"
+    assert result.reason_code == "biographical_lifecycle.contextual_npcs_synchronized"
+    registered = {item.npc_id: item.status for item in ledger.project().npcs}
+    assert registered["literature-fan"] == "active"
+    assert registered["mother-shen"] == "active"
+    assert registered["father-shen"] == "active"
+    assert registered["hometown-xu"] == "active"
+    assert "roommate-lin" not in registered
 
 
 def test_settled_outcome_maps_to_a_reviewed_long_lived_effect(

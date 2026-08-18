@@ -2350,7 +2350,15 @@ _CONTRACTS: Mapping[str, EventContract] = MappingProxyType(
                 "world_runtime",
                 "world",
                 "AppraisalExpiredPayload",
-                allowed_predecessors=("AppraisalAccepted",),
+                allowed_predecessors=(
+                    "ClockAdvanced",
+                    "V2GoalExpired",
+                    "AppraisalExpired",
+                    "AffectEpisodeDecayed",
+                    "WorldOccurrenceActivated",
+                    "WorldOccurrenceExpired",
+                    "AppraisalAccepted",
+                ),
                 evidence_types=("clock_observation",),
             ),
             _contract(
@@ -2399,7 +2407,10 @@ _CONTRACTS: Mapping[str, EventContract] = MappingProxyType(
                 allowed_predecessors=(
                     "ClockAdvanced",
                     "V2GoalExpired",
+                    "AppraisalExpired",
                     "AffectEpisodeDecayed",
+                    "WorldOccurrenceActivated",
+                    "WorldOccurrenceExpired",
                 ),
                 evidence_types=("clock_observation",),
             ),

@@ -114,6 +114,7 @@ class RecallDocument(FrozenModel):
         "superseded",
         "contradicted",
         "expired",
+        "released",
     ] = "active"
     privacy_class: PrivacyClass
     authority: Literal[
@@ -571,7 +572,7 @@ class _RecallIndexCore:
             return False
         if query.memory_kinds and document.memory_kind not in query.memory_kinds:
             return False
-        if not query.include_historical and document.status != "active":
+        if not query.include_historical and document.status not in {"active", "released"}:
             return False
         if (
             document.valid_from is not None

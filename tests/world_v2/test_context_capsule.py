@@ -1625,12 +1625,30 @@ def test_global_pressure_preserves_current_turn_and_pending_interaction() -> Non
             continuity_reasons=("pending_interaction",),
         ),
         RecentDialogueItem(
+            dialogue_id="dialogue:her-last",
+            speaker="companion",
+            text="晚点整理好了发你",
+            occurred_at=NOW - timedelta(minutes=2),
+            delivery_state="delivered",
+            sequence=18,
+            source_claims=(
+                DialogueSourceClaim(
+                    authority_event_ref="event:dialogue:her-last",
+                    authority_world_revision=7,
+                    authority_payload_hash=hashlib.sha256(
+                        b"event:dialogue:her-last"
+                    ).hexdigest(),
+                ),
+            ),
+            continuity_reasons=("recent_companion",),
+        ),
+        RecentDialogueItem(
             dialogue_id="dialogue:acknowledged-context",
             speaker="counterpart",
             text="都是些工作上的事情，需要一些看板工具。",
-            occurred_at=NOW - timedelta(minutes=2),
+            occurred_at=NOW - timedelta(minutes=3),
             delivery_state="observed",
-            sequence=18,
+            sequence=17,
             source_claims=(
                 DialogueSourceClaim(
                     authority_event_ref="event:dialogue:acknowledged-context",
@@ -1674,7 +1692,7 @@ def test_global_pressure_preserves_current_turn_and_pending_interaction() -> Non
             dialogue,
             slice_name="recent_dialogue",
             source_refs_by_item=dialogue_refs,
-            ranks=(10_000, 9_900, 9_850, 8_000, 8_000, 8_000, 8_000, 8_000, 8_000),
+            ranks=(10_000, 9_900, 9_800, 9_700, 8_000, 8_000, 8_000, 8_000, 8_000, 8_000),
         ),
         active_memory_candidates=memories,
     )
@@ -1703,7 +1721,7 @@ def test_global_pressure_preserves_current_turn_and_pending_interaction() -> Non
     assert retained >= {
         "dialogue:current",
         "dialogue:pending",
-        "dialogue:acknowledged-context",
+        "dialogue:her-last",
     }
 
 

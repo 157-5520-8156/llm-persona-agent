@@ -493,6 +493,22 @@ mechanisms:
     projection_due_fields: []
     activation_note: Limited and mutually exclusive with open-life development; its custom model protocol has no installed StructuredRole contract.
 
+  - mechanism_id: appraisal.expiry
+    purpose: Execute an accepted appraisal's recorded expires_at
+    release_status: active
+    upstream_authority: [AppraisalAccepted with expires_at]
+    due_identity: {coordinates: [world_id, appraisal_id, revision], logical_deadline: AppraisalProjection.expires_at, merge_dedup_key: appraisal_revision}
+    controlled_injection: {public_seams: [QQC2CHost.inbound_text, QQC2CHost.inbound_fragment, QQC2CHost.tick, QQC2CHost.drain], upstream_material: [accepted appraisal expires_at, logical Clock advance]}
+    expected_path: [Clock-derived discovery, AppraisalExpired, status expired]
+    legal_terminals: [expired]
+    visible_effect: none
+    observability: [health, causal lineage, appraisal revision, ledger refs]
+    fault_matrix: [CAS conflict, restart, same-deadline concurrency, stale revision, time boundary]
+    vertical_lanes: [clock]
+    closure_mechanisms: [appraisal-affect-relationship-impression]
+    projection_due_fields: [AppraisalProjection.expires_at]
+    activation_note: Mechanical execution of a recorded deadline. Not a character decision about which reading still matters.
+
   - mechanism_id: affect.decay
     purpose: Logical-time decay and terminal resolution of Affect episodes
     release_status: active
@@ -500,7 +516,7 @@ mechanisms:
     due_identity: {coordinates: [world_id, actor_ref, affect_episode_id, revision], logical_deadline: AffectComponentProjection.decay_not_before, merge_dedup_key: affect_episode_revision}
     controlled_injection: {public_seams: [QQC2CHost.inbound_text, QQC2CHost.inbound_fragment, QQC2CHost.tick, QQC2CHost.drain], upstream_material: [real accepted AffectEpisode, logical Clock advance]}
     expected_path: [Clock-derived discovery, deterministic decay projection, terminal or residue]
-    legal_terminals: [active residue, resolved, superseded]
+    legal_terminals: [active mid-curve, decayed residue, resolved, superseded]
     visible_effect: none
     observability: [health, causal lineage, Affect revision, decay latency, ledger refs]
     fault_matrix: [CAS conflict, restart, same-deadline concurrency, stale revision, correction/withdrawal, time boundary, bad-trigger starvation]

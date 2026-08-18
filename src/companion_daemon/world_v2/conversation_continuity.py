@@ -19,6 +19,16 @@ from .present_prompt import (
 from .recent_dialogue import RecentDialogueItem
 
 
+_ACKNOWLEDGED_COMPANION_TAIL = 8
+# ResolverProof proves at most 32 authority refs per slice. Companion beats
+# carry several claims each, so a rank-order fill of that bound keeps only
+# one speaker. Pack a mixed live window that still fits the same 32 refs.
+WORKING_DIALOGUE_SOURCE_REF_BUDGET = 32
+WORKING_DIALOGUE_ITEM_BUDGET = 16
+WORKING_DIALOGUE_COMPANION_ITEMS = 4
+WORKING_DIALOGUE_COUNTERPART_ITEMS = 8
+
+
 @dataclass(frozen=True, slots=True)
 class ConversationContinuitySelection:
     dialogue: tuple[RecentDialogueItem, ...]
@@ -108,13 +118,17 @@ class ConversationContinuityCompiler:
         acknowledged_event_refs.update(
             ref for item in companions_before for ref in item.acknowledges_observation_event_refs
         )
-        pending = tuple(
+        recent_counterpart = tuple(
             item
             for item in ordered
             if item.speaker == "counterpart"
             and item.dialogue_id != current.dialogue_id
             and (item.sequence, item.occurred_at) < (current.sequence, current.occurred_at)
-            and not any(
+        )[-WORKING_DIALOGUE_COUNTERPART_ITEMS:]
+        pending = tuple(
+            item
+            for item in recent_counterpart
+            if not any(
                 claim.authority_event_ref in acknowledged_event_refs
                 for claim in item.source_claims
             )
@@ -132,7 +146,13 @@ class ConversationContinuityCompiler:
             for claim in item.source_claims
         }
         recent_companions = companions_before[-self._max_companion :]
-        for offset, companion in enumerate(reversed(recent_companions[-2:])):
+        # Same tail as the live-head companion window.  Only the last two
+        # beats were consulted before, so an inbound reaction could keep the
+        # photo-thread acknowledgements and drop the line she actually
+        # answered minutes earlier.
+        for offset, companion in enumerate(
+            reversed(recent_companions[-_ACKNOWLEDGED_COMPANION_TAIL:])
+        ):
             for acknowledged_ref in companion.acknowledges_observation_event_refs:
                 acknowledged = counterpart_by_source_ref.get(acknowledged_ref)
                 if acknowledged is not None:
@@ -177,8 +197,111 @@ class ConversationContinuityCompiler:
         )
 
 
+def _dialogue_source_refs(item: RecentDialogueItem) -> set[str]:
+    refs = {claim.authority_event_ref for claim in item.source_claims}
+    if item.sidecar_ref:
+        refs.add(item.sidecar_ref)
+    return refs
+
+
+def pack_recent_dialogue_under_source_budget(
+    items: tuple[RecentDialogueItem, ...] | list[RecentDialogueItem],
+    *,
+    max_refs: int = WORKING_DIALOGUE_SOURCE_REF_BUDGET,
+    max_items: int = WORKING_DIALOGUE_ITEM_BUDGET,
+    companion_items: int = WORKING_DIALOGUE_COMPANION_ITEMS,
+    counterpart_items: int = WORKING_DIALOGUE_COUNTERPART_ITEMS,
+) -> tuple[RecentDialogueItem, ...]:
+    """Keep a real back-and-forth inside the ResolverProof source-ref bound.
+
+    Rank-order filling spends the 32-ref budget on whichever speaker the
+    continuity tags currently favour. The live window is both speakers,
+    newest first, with a reserved seat for her last beats so the next turn
+    can see what she just said.
+    """
+
+    if not items:
+        return ()
+
+    selected: list[RecentDialogueItem] = []
+    selected_ids: set[str] = set()
+    used_refs: set[str] = set()
+
+    def try_add(item: RecentDialogueItem) -> bool:
+        if item.dialogue_id in selected_ids:
+            return True
+        if len(selected) >= max_items:
+            return False
+        candidate = _dialogue_source_refs(item)
+        if len(used_refs | candidate) > max_refs:
+            return False
+        selected.append(item)
+        selected_ids.add(item.dialogue_id)
+        used_refs.update(candidate)
+        return True
+
+    def has_reason(item: RecentDialogueItem, reason: str) -> bool:
+        return reason in item.continuity_reasons
+
+    for item in items:
+        if has_reason(item, "current_turn"):
+            try_add(item)
+    for item in items:
+        if has_reason(item, "pending_interaction"):
+            try_add(item)
+
+    newest_first = sorted(
+        items,
+        key=lambda item: (item.sequence, item.occurred_at, item.dialogue_id),
+        reverse=True,
+    )
+
+    companion_added = 0
+    for item in newest_first:
+        if companion_added >= companion_items:
+            break
+        if item.speaker != "companion":
+            continue
+        if item.dialogue_id in selected_ids:
+            companion_added += 1
+            continue
+        if try_add(item):
+            companion_added += 1
+
+    for item in newest_first:
+        if item.dialogue_id.startswith("dialogue:media-delivery:"):
+            try_add(item)
+
+    counterpart_added = 0
+    for item in newest_first:
+        if counterpart_added >= counterpart_items:
+            break
+        if item.speaker != "counterpart":
+            continue
+        if item.dialogue_id in selected_ids:
+            counterpart_added += 1
+            continue
+        if try_add(item):
+            counterpart_added += 1
+
+    for item in newest_first:
+        if has_reason(item, "acknowledged_context"):
+            try_add(item)
+
+    for item in newest_first:
+        if item.speaker == "companion":
+            try_add(item)
+
+    return tuple(selected)
+
+
 __all__ = [
     "ContinuityRetrievalCandidate",
     "ConversationContinuityCompiler",
     "ConversationContinuitySelection",
+    "WORKING_DIALOGUE_COMPANION_ITEMS",
+    "WORKING_DIALOGUE_COUNTERPART_ITEMS",
+    "WORKING_DIALOGUE_ITEM_BUDGET",
+    "WORKING_DIALOGUE_SOURCE_REF_BUDGET",
+    "pack_recent_dialogue_under_source_budget",
 ]

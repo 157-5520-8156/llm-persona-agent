@@ -2224,26 +2224,16 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "Silence is complete" in compact_system
     assert "unfinished bubble" not in compact_system
     assert "REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON" in compact_system
-    assert "payload_json is usually this slim object" in compact_system
+    assert "payload_json is usually this slim object" not in compact_system
     assert '"waiting_for":null' in compact_system
-    assert '"wait":null' in compact_system
-    assert '"come_back":null' in compact_system
-    assert '"come_back_in":null' in compact_system
     assert '"later":null' in compact_system
-    assert '"we_are":null' in compact_system
-    assert '"calling_it":null' in compact_system
-    assert '"said_as":null' in compact_system
-    assert '"us_deltas":null' in compact_system
-    assert '"about_us":null' in compact_system
-    assert '"why_us":null' in compact_system
-    assert '"mood":null' in compact_system
-    assert '"declared_display":null' in compact_system
-    assert '"photo":null' in compact_system
-    assert "省略是常态" in compact_system
-    assert "看见键名不是建议你填" in compact_system
+    assert '"wait":null' not in compact_system
+    assert "messages、felt、later、waiting_for 同级" in compact_system
+    assert "空数组就是这一轮不回" in compact_system
+    assert "一句短话就够" in compact_system
     assert "full_turn 写在 private_turn_state" in compact_system
     assert "收件人由宿主绑定" in compact_system
-    assert "waiting_for 和 wait" in compact_system
+    assert "waiting_for 和 wait" not in compact_system
     assert "come_back 和 come_back_in" in compact_system
     assert "一字不差抄进 said_as" in compact_system
     assert "请写 wait" not in compact_system

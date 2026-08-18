@@ -359,6 +359,17 @@ class PurposeDecisionContract:
             raise ValueError("typed proposal contract identity is incomplete")
 
 
+def _is_explicit_media_no_op(payload: Mapping[str, object]) -> bool:
+    """``no_op`` may omit the token or send JSON null.  Both mean decline."""
+
+    if payload.get("decision") != "no_op":
+        return False
+    extra = set(payload) - {"decision", "selected_token"}
+    if extra:
+        return False
+    return payload.get("selected_token") is None
+
+
 def _validate_media_selection_payload(
     payload: Mapping[str, object],
     offered_tokens: frozenset[str],
@@ -366,7 +377,7 @@ def _validate_media_selection_payload(
     """Close only the media wire shape, never the character's preference."""
 
     decision = payload.get("decision")
-    if decision == "no_op" and set(payload) == {"decision"}:
+    if _is_explicit_media_no_op(payload):
         return
     selected_token = payload.get("selected_token")
     if decision == "select":
@@ -763,7 +774,7 @@ class _PrivateImpressionProposal(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
     proposal_type: Literal["private_impression_transition"]
-    decision: Literal["retain", "consolidate", "supersede"]
+    decision: Literal["retain", "consolidate", "supersede", "release"]
     predecessor_refs: list[str] = Field(default_factory=list, max_length=32)
     source_refs: list[str] = Field(min_length=1, max_length=48)
     reflection_summary: str = Field(min_length=1, max_length=1_200)
@@ -784,7 +795,9 @@ class _PrivateImpressionProposal(BaseModel):
         if self.decision == "retain" and self.predecessor_refs:
             raise ValueError("retain cannot retire an existing impression")
         if self.decision != "retain" and not self.predecessor_refs:
-            raise ValueError("consolidate/supersede require predecessor refs")
+            raise ValueError("consolidate/supersede/release require predecessor refs")
+        if self.decision == "release" and len(self.predecessor_refs) != 1:
+            raise ValueError("release puts down exactly one existing impression")
         if set(self.predecessor_refs) - set(self.source_refs):
             raise ValueError("private impression predecessors must also be selected sources")
         return self
@@ -2673,6 +2686,8 @@ class StructuredCharacterRoleFaculty:
                 }
             )
         payload = dict(decision.payload)
+        if _is_explicit_media_no_op(payload):
+            payload.pop("selected_token", None)
         if request.purpose == "life_development_choice":
             manifest = request.capability_manifest
             assert manifest is not None
@@ -2871,13 +2886,33 @@ class StructuredCharacterRoleFaculty:
                 ),
                 "transition": "exactly one private_impression_transition proposal",
             }
+            decision_meanings = {
+                "no_change": (
+                    "这次先不动印象：不开新的，也不搁下已有的。省略也完全正常。"
+                ),
+                "retain": "记下一条新的、仍可改的私人印象。",
+            }
+            if replacement_available:
+                decision_meanings.update(
+                    {
+                        "consolidate": "把已有印象收成一条，仍然搁在心里。",
+                        "supersede": (
+                            "用一条新的印象替代旧的；旧的不再作为未了结的心事。"
+                        ),
+                        "release": (
+                            "这件事我已经说过或做过，可以搁下了。"
+                            "仍记得，只是不再占着未了结的位置。选或不选都正常。"
+                        ),
+                    }
+                )
             view["proposal_schema"] = {
                 "proposal_type": "private_impression_transition",
                 "decision": (
-                    "retain|consolidate|supersede"
+                    "retain|consolidate|supersede|release"
                     if replacement_available
                     else "retain"
                 ),
+                "decision_meanings": decision_meanings,
                 "predecessor_refs": (
                     "selected existing-impression short tokens from "
                     "capability_manifest.payload.existing_impression_short_tokens"
@@ -2892,7 +2927,8 @@ class StructuredCharacterRoleFaculty:
                 "cross_field_rules": (
                     "predecessor_refs are existing-impression short tokens, every "
                     "predecessor must also be listed in source_refs, retain has no "
-                    "predecessors, and consolidate/supersede has at least one"
+                    "predecessors, consolidate/supersede has at least one, and "
+                    "release puts down exactly one existing impression"
                     if replacement_available
                     else (
                         "retain is the only installed transition when no prior "

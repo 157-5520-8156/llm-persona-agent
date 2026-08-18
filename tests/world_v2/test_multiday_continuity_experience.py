@@ -187,7 +187,9 @@ async def test_three_day_affect_decay_changes_the_next_unified_interior_turn(
             previous = at
 
         final = app._ledger.project()  # noqa: SLF001 - experience replay evidence
+        assert final.affect_episodes[0].status == "decayed"
         assert final.affect_episodes[0].components[0].intensity_bp < initial_hurt
+        assert final.affect_episodes[0].closed_at is not None
 
         second = await app.respond(
             InboundTurn(
@@ -201,12 +203,15 @@ async def test_three_day_affect_decay_changes_the_next_unified_interior_turn(
         )
         assert second.status == "action_authorized"
         provider_request = json.loads(reply.requests[-1][-1]["content"])
-        affect_material = provider_request["inner_life_snapshot"]["materials"][
+        affect_material = provider_request["inner_life_snapshot"]["materials"].get(
             "affect"
-        ]
-        assert any(
-            item["components"][0]["dimension"] == "hurt"
+        ) or ()
+        # Residue-floor episodes leave the unsettled working set.  The opening
+        # remains recallable World history; it is not an open feeling.
+        assert not any(
+            item.get("episode_id") == final.affect_episodes[0].episode_id
             for item in affect_material
+            if isinstance(item, dict)
         )
         assert len(reply.responses) >= 2
         assert reply.responses[-1][1] == "acknowledge_briefly"

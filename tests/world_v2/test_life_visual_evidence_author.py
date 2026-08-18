@@ -708,6 +708,83 @@ def test_production_open_life_proposal_trigger_declares_home_private_selfie(
     assert candidate["character_media_contract"]["kind"] == "selfie"
 
 
+def _active_walk_world() -> tuple[_Ledger, WorldEvent]:
+    started = _event(event_id="event:started:walk", event_type="ActivityStarted")
+    plan = SimpleNamespace(
+        plan_id="plan:walk",
+        activity_kind="commute.short_walk",
+        status="active",
+        privacy_class="shareable",
+        participant_refs=(CHARACTER,),
+        last_transitioned_at=NOW,
+        authority_origin=SimpleNamespace(accepted_event_ref=started.event_id),
+    )
+    ledger = _Ledger(_timeline_event(), started, plans=(plan,))
+    return ledger, started
+
+
+def test_present_moment_declares_annex_onto_active_activity(tmp_path: Path) -> None:
+    ledger, started = _active_walk_world()
+    author = _author(ledger, tmp_path)
+
+    result = author.request_once(
+        source_refs=(),
+        trace_id="trace",
+        correlation_id="corr",
+    )
+
+    assert result.status == "declared"
+    assert result.reason_code == "visual_evidence.present_moment_declared"
+    assert result.declared_source_ref == started.event_id
+    declared = ledger.events_of_type("ImageEvidenceDeclared")
+    assert len(declared) == 1
+    payload = declared[0].payload()
+    assert payload["source_event_ref"] == started.event_id
+    assert payload["source_event_type"] == "ActivityStarted"
+    assert payload["image_evidence"]["activity"]["description"] == "傍晚沿校园林荫道散步"
+
+
+def test_present_moment_sleep_does_not_invent_a_scene(tmp_path: Path) -> None:
+    started = _event(event_id="event:started:bed", event_type="ActivityStarted")
+    plan = SimpleNamespace(
+        plan_id="plan:bed",
+        activity_kind="sleep.prepare_for_bed",
+        status="active",
+        privacy_class="private",
+        participant_refs=(CHARACTER,),
+        last_transitioned_at=NOW,
+        authority_origin=SimpleNamespace(accepted_event_ref=started.event_id),
+    )
+    ledger = _Ledger(_timeline_event(), started, plans=(plan,))
+    author = _author(ledger, tmp_path)
+
+    result = author.request_once(
+        source_refs=(),
+        trace_id="trace",
+        correlation_id="corr",
+    )
+
+    assert result.status == "idle"
+    assert ledger.events_of_type("ImageEvidenceDeclared") == ()
+
+
+def test_present_moment_without_active_plan_is_idle(tmp_path: Path) -> None:
+    ledger, _settlement = _walk_world()
+    author = _author(ledger, tmp_path)
+
+    result = author.request_once(
+        source_refs=("event:unrelated",),
+        trace_id="trace",
+        correlation_id="corr",
+    )
+
+    assert result.declared_source_ref != "event:started:walk"
+    assert all(
+        event.payload().get("source_event_type") != "ActivityStarted"
+        for event in ledger.events_of_type("ImageEvidenceDeclared")
+    )
+
+
 def test_production_open_life_without_annex_does_not_invent_visual_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

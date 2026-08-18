@@ -29,7 +29,12 @@ class AffectRetentionAssertion:
     required_status: str = "active"
 
     def __post_init__(self) -> None:
-        if not self.episode_id.strip() or self.required_status not in {"active", "resolved", "superseded"}:
+        if not self.episode_id.strip() or self.required_status not in {
+            "active",
+            "resolved",
+            "superseded",
+            "decayed",
+        }:
             raise MechanicalEvaluationScopeError("affect retention assertion is invalid")
 
 

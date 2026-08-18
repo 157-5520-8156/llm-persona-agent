@@ -509,6 +509,19 @@ class MediaDeliveryShared(FrozenModel):
     recipient_ref: str = Field(min_length=1, max_length=256)
     action_id: str = Field(min_length=1, max_length=256)
     receipt_id: str = Field(min_length=1, max_length=512)
+    # Conversation/world clock of the share claim.  Distinct from the
+    # receipt wall clock so her materials can line up with the dialogue.
+    shared_at: datetime | None = None
+    received_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def delivery_clocks_are_aware_when_present(self) -> "MediaDeliveryShared":
+        for instant in (self.shared_at, self.received_at):
+            if instant is not None and (
+                instant.tzinfo is None or instant.utcoffset() is None
+            ):
+                raise ValueError("media delivery clocks must be timezone-aware")
+        return self
 
 
 class MediaAutomaticDeliveryApprovedPayload(FrozenModel):

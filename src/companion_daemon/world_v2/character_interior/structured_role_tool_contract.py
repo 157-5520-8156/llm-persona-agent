@@ -1442,7 +1442,7 @@ class StructuredRoleToolContracts:
         if not isinstance(decision_field, dict):
             raise ValueError("private impression decision schema is incomplete")
         installed_decisions = (
-            ("retain", "consolidate", "supersede")
+            ("retain", "consolidate", "supersede", "release")
             if existing_impression_short_tokens
             else ("retain",)
         )
@@ -1499,6 +1499,21 @@ class StructuredRoleToolContracts:
                         # both arrays closes the common one-predecessor wire;
                         # the canonical Pydantic validator still enforces the
                         # complete predecessor subset for every candidate.
+                        "source_refs": {
+                            "contains": {
+                                "enum": list(existing_impression_short_tokens),
+                            },
+                            "minContains": 1,
+                        },
+                    },
+                    "required": ["decision", "predecessor_refs", "source_refs"],
+                }
+            )
+            transition_shapes.append(
+                {
+                    "properties": {
+                        "decision": {"type": "string", "enum": ["release"]},
+                        "predecessor_refs": {"minItems": 1, "maxItems": 1},
                         "source_refs": {
                             "contains": {
                                 "enum": list(existing_impression_short_tokens),

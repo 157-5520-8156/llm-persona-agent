@@ -49,7 +49,6 @@ from ..present_prompt import (
     forced_tool_recall_instruction,
     reply_only_bubble_clause,
     reply_only_completion_clause,
-    reply_only_slim_shape_specimen,
     slim_consider_instruction,
 )
 from ..source_closure_lane import SourceClosureReselectionLane
@@ -291,6 +290,20 @@ _VIOLATION_ZH_PREFIXES: tuple[tuple[str, str], ...] = (
 )
 
 
+def _compact_slim_peer_specimen() -> dict[str, object]:
+    """messages / later / waiting_for sit at the same rank. Empty messages is silent.
+
+    wait is a number and stays off this specimen; she writes the short sentence.
+    """
+
+    return {
+        "messages": ["<role:visible_text>"],
+        "felt": "<role:text>",
+        "later": None,
+        "waiting_for": None,
+    }
+
+
 def _compact_gate_system_content(
     *,
     identity_instruction: str,
@@ -342,20 +355,16 @@ def _compact_gate_system_content(
         + slim_consider_instruction()
         + "\n\nREPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON:\n"
         + json.dumps(
-            reply_only_slim_shape_specimen(),
+            _compact_slim_peer_specimen(),
             ensure_ascii=False,
             separators=(",", ":"),
         )
         + "\nEND REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON.\n"
-        "messages 和 felt 是这一轮说话和读法的形状。"
-        "其余键在范本里写成 null，只是让你看见它们存在：null 就是「这一轮不用」，"
-        "省略这些键和写成 null 完全一样。看见键名不是建议你填。省略是常态。"
-        "只有你这轮真的要用那个效果时才写非空值。宿主从不把 null 换成默认值。\n"
-        "For result_kind=reply_only, payload_json is usually this slim object. "
-        "messages may be empty for silence or several strings for several bubbles. "
-        "Optional keys are shown as null so the available decisions are visible; "
-        "null is absence, and omitting those keys is the normal case, never a missing "
-        "field. Seeing a key is not a request to fill it. "
+        "messages、felt、later、waiting_for 同级。"
+        "messages 为空数组就是这一轮不回（silent）。"
+        "later 是已经想好的话延后多少秒。"
+        "waiting_for 是你在等什么的短句；wait 秒数可写可不写，不在这个范本里。"
+        "不要把 later 和空 messages 一起写。"
         "Replace every marker with your own scalar, object, or null; never copy "
         "marker text, and a literal null is absence you chose, never a default "
         "the host substitutes for you.\n"
@@ -432,17 +441,18 @@ def _compact_gate_voice_close() -> str:
         "都按你此刻真实的想法；说话习惯以最前面的人设为准。\n"
         "长度和条数跟着你真正想说的东西走：没什么要说就短，心里有话就说透，"
         "不想说就不说。不用每条都完整、都圆满，也不用每条都反问。\n"
-        "slim 范本里那些 null 只是让你看见这一轮还能写哪些决定，不是一张要填的表。"
-        "省略是常态；看见键名不是建议你填。写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
+        "范本只把跟 messages 同级的决定摊开：现在说、延后说、或者不回。"
+        "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
         "还有一件事同样是你的：说出去的话这一轮就过去了，只有你写下的内心状态"
         "会留到下一次。真的高兴、真的烦、真的被冒犯、真的想他，就用 mood 把它"
         "留成一段持续的情绪（生气和温暖一样是可选项）；这件事对你有多重要用 "
         "matters_bp 说，够重你才会被再叫醒想起它；一直放不下的那句话写进 "
         "stuck_with_me 并把 keep_impression 设成 true；你们之间真的变了就写 "
         "about_us / why_us / us_deltas；"
-        "等他下一句才写 waiting_for 和 wait（两个一起）；"
+        "等他下一句，写 waiting_for（一句短话就够；wait 秒数可写可不写）；"
         "自己想过一阵再开口才写 come_back 和 come_back_in（两个一起）；"
         "已经想好的话要延后发才写 later；"
+        "这一轮不回就把 messages 写成空数组——那就是 silent；"
         "要声明你们现在是什么关系，才写 we_are、calling_it，并把那一句原话一字不差抄进 said_as，"
         "而且那句话必须真的说出去；"
         "想让媒体车道考虑一张图才写 photo（reply_only 不能带图，要用 full_turn）；"

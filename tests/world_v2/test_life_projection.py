@@ -838,7 +838,10 @@ async def test_settled_world_occurrence_reaches_model_owned_proactive_action() -
     not_due = await runtime.drain_one()
     assert not_due.status == "idle"
 
-    consideration_due_at = LIFE_TIME + timedelta(hours=8, seconds=1)
+    # Spontaneous idle is due after a few hours, but local 07:00 is a hard
+    # mute: 12:05 UTC + 8h lands at 04:05 Asia/Shanghai and must not ping.
+    # Stay inside the 12h spontaneous window and after the morning floor.
+    consideration_due_at = LIFE_TIME + timedelta(hours=11, minutes=1)
     commit(
         ledger,
         [

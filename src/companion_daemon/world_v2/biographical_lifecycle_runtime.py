@@ -544,14 +544,16 @@ class BiographicalLifecycleRuntime:
                 instant=logical_time,
                 life_arcs=life_arcs,
             )
+        # Always-on reviewed people (empty context tags) plus currently
+        # eligible tagged people.  Bootstrap uses the same rule; this wake
+        # is the catch-up for worlds that started before a catalog person
+        # existed, and the retire/reactivate path when residence changes.
         desired = {
-            item.npc_id: item for item in self._catalog.contextual_npcs(context)
-        }
-        contextual = {
             item.npc_id: item
             for item in self._catalog.reviewed_npcs
-            if item.requires_all_context_tags
+            if item.eligible_in_context(context)
         }
+        tracked = {item.npc_id: item for item in self._catalog.reviewed_npcs}
         current = {item.npc_id: item for item in projection.npcs}
         locations = {item.id: item for item in self._catalog.reviewed_locations}
         evidence_type = (
@@ -562,7 +564,7 @@ class BiographicalLifecycleRuntime:
         evidence = self._evidence(source, evidence_type=evidence_type)
         events: list[WorldEvent] = []
         changed: list[str] = []
-        for npc_id, reviewed in contextual.items():
+        for npc_id, reviewed in tracked.items():
             existing = current.get(npc_id)
             should_be_active = npc_id in desired
             if existing is None and should_be_active:

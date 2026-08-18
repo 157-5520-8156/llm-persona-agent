@@ -260,26 +260,27 @@ def test_wait_pair_incomplete_is_explained_in_chinese() -> None:
     text = _role_readable_expression_violation(
         ValueError(
             SLIM_WAIT_PAIR_INCOMPLETE
-            + "。这次缺了：wait。宿主不会替你补上缺的字段。"
+            + "。这次缺了：waiting_for。宿主不会替你补上缺的字段。"
             "两个一起写才会在那个秒数叫醒你；只写一半不会生效，也不会被默默丢掉。"
             "两个都不写也可以，那就是这一轮没有人叫你。"
         )
     )
     assert SLIM_WAIT_PAIR_INCOMPLETE in text
-    assert "这次缺了：wait" in text
+    assert "这次缺了：waiting_for" in text
     assert "结构校验没过" not in text
 
 
-def test_parse_combined_rejects_waiting_for_without_wait() -> None:
-    from companion_daemon.world_v2.present_prompt import SLIM_WAIT_PAIR_INCOMPLETE
-
+def test_parse_combined_accepts_waiting_for_without_wait() -> None:
     raw = (
         '{"result_kind": "reply_only", "payload_json": '
         '"{\\"messages\\":[\\"行 等你\\"],\\"felt\\":\\"先等他回来\\",'
         '\\"waiting_for\\":\\"他倒完水回来\\"}"}'
     )
-    with pytest.raises(ValueError, match=SLIM_WAIT_PAIR_INCOMPLETE):
-        _parse_combined(raw)
+    parsed = _parse_combined(raw)
+    expectation = parsed["expression_draft"]["response_expectation"]
+    assert expectation["hoped_response"] == "他倒完水回来"
+    assert expectation["wait_seconds"] == 86_400
+    assert expectation["expires_after_seconds"] == 172_800
 
 
 def test_parse_combined_rejects_come_back_without_come_back_in() -> None:
@@ -524,7 +525,7 @@ class _HalfWaitThenFixedProvider:
                     {
                         "messages": ["行 等你"],
                         "felt": "先等他回来",
-                        "waiting_for": "他倒完水回来",
+                        "wait": 60,
                     },
                     ensure_ascii=False,
                 ),
@@ -588,7 +589,7 @@ async def test_half_written_wait_pair_gets_one_same_occasion_reselection(tmp_pat
     assert len(provider.calls) <= MAX_PROVIDER_CALLS_PER_TURN
     correction = provider.calls[1][0]["content"]
     assert "结构校验失败" in correction
-    assert "这次缺了：wait" in correction
+    assert "这次缺了：waiting_for" in correction
     assert "宿主不会替你补上缺的字段" in correction
 
 
@@ -697,7 +698,7 @@ class _HalfWaitThenFixedStreamProvider:
             inner = {
                 "messages": ["行 等你"],
                 "felt": "先等他回来",
-                "waiting_for": "他倒完水回来",
+                "wait": 60,
             }
         return json.dumps(
             {
@@ -742,5 +743,5 @@ async def test_stream_compact_half_wait_pair_gets_one_same_occasion_reselection(
     assert len(provider.calls) <= MAX_PROVIDER_CALLS_PER_TURN
     correction = provider.calls[1][0]["content"]
     assert "结构校验失败" in correction
-    assert "这次缺了：wait" in correction
+    assert "这次缺了：waiting_for" in correction
     assert "宿主不会替你补上缺的字段" in correction

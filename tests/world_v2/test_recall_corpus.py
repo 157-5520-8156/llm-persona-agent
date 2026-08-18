@@ -804,6 +804,58 @@ def test_superseded_private_impression_is_not_production_recall_history() -> Non
     )
 
 
+def test_released_private_impression_stays_in_default_recall() -> None:
+    sources = _sources()
+    released = sources.private_impressions[0].model_copy(
+        update={
+            "status": "released",
+            "reflection_summary": "这件事我已经说过了，可以搁下，但我还记得。",
+            "last_supported": NOW,
+        }
+    )
+    sources = sources.model_copy(update={"private_impressions": (released,)})
+    documents = RecallCorpusCompiler().compile(
+        cursor=CURSOR,
+        actor_ref="agent:companion",
+        subject_refs=("agent:companion", "user:primary"),
+        sources=sources,
+    )
+    assert any(
+        item.source_item_ref == released.impression_id and item.status == "released"
+        for item in documents
+    )
+
+    coordinator = RecallCoordinator(
+        index=InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding())
+    )
+    coordinator.refresh(
+        cursor=CURSOR,
+        actor_ref="agent:companion",
+        subject_refs=("agent:companion", "user:primary"),
+        logical_time=NOW,
+        sources=sources,
+        trigger_ref="trigger:private-impression-released",
+    )
+    current = verify_trusted_recall_trace(
+        coordinator.recall(
+            request=CharacterRecallRequest(
+                query_text=released.reflection_summary,
+                memory_kinds=("reflective",),
+                include_historical=False,
+                limit=6,
+            ),
+            accessibility_seed="draw:private-impression:released",
+            expected_cursor=CURSOR,
+            trigger_ref="trigger:private-impression-released",
+        )
+    )
+    coordinator.close()
+    assert any(
+        hit.document.source_item_ref == released.impression_id
+        for hit in current.hits
+    )
+
+
 def test_appraisal_becomes_source_bound_affective_reflective_recall() -> None:
     documents = RecallCorpusCompiler().compile(
         cursor=CURSOR,
@@ -823,6 +875,29 @@ def test_appraisal_becomes_source_bound_affective_reflective_recall() -> None:
         "event:appraisal:1",
         "event:observation:1",
     )
+
+
+def test_expired_appraisal_stays_recallable() -> None:
+    sources = _sources()
+    expired = sources.appraisals[0].model_copy(
+        update={
+            "status": "expired",
+            "closed_at": NOW - timedelta(hours=1),
+            "expires_at": NOW - timedelta(hours=1),
+        }
+    )
+    documents = RecallCorpusCompiler().compile(
+        cursor=CURSOR,
+        actor_ref="agent:companion",
+        subject_refs=("agent:companion", "user:primary"),
+        sources=sources.model_copy(update={"appraisals": (expired,)}),
+    )
+    emotion = next(
+        document for document in documents if document.source_item_ref == "appraisal:care"
+    )
+    assert emotion.status == "expired"
+    assert "care" in emotion.text
+    assert emotion.authority == "defeasible_interpretation"
 
 
 def test_exact_affect_opening_dimension_is_source_bound_recall() -> None:

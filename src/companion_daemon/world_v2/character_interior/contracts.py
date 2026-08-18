@@ -244,6 +244,8 @@ def _redact_materials(
     list item is kept so post-redaction presentation (conversation lines) can
     be attached after this function; compile-time sourceless materials are
     rejected by `InnerLifeSnapshot` identity instead of being silently shown.
+    An empty sourced inventory (`items: []` plus visible `source_refs`) stays:
+    available_count 0 and `now.photographable` false are facts, not missing keys.
     """
 
     redacted: dict[str, object] = {}
@@ -271,6 +273,17 @@ def _redact_materials(
                 redacted[key] = {**value, "items": retained}
             elif value.get("availability") == "unavailable":
                 redacted[key] = value
+            else:
+                refs = value.get("source_refs")
+                if (
+                    isinstance(refs, (list, tuple))
+                    and refs
+                    and all(
+                        isinstance(ref, str) and ref in visible_source_refs
+                        for ref in refs
+                    )
+                ):
+                    redacted[key] = {**value, "items": []}
             continue
         if isinstance(value, dict):
             refs = value.get("source_refs")
@@ -295,19 +308,28 @@ def _redact_materials(
 _TRANSCRIPT_SPEAKERS = {"counterpart": "他", "companion": "我"}
 
 
-def _rendered_conversation(materials: Mapping[str, object]) -> list[str]:
+def _rendered_conversation(
+    materials: Mapping[str, object], logical_time: datetime | None = None
+) -> list[str]:
     """Render the already-redacted dialogue as the chat log it actually is.
 
     The same lines reach her as `recent_dialogue` objects keyed in English, which
     reads as a record to transcribe rather than a conversation to answer.  This
     is presentation only: it is derived here, after redaction, so it can carry
-    no source she may not see and mints no new authority.
+    no source she may not see and mints no new authority.  Lines older than a
+    minute carry how long ago they occurred; that is a clock fact, not a
+    suggestion to drop the topic.
     """
 
     entries = materials.get("recent_dialogue")
     if not isinstance(entries, list):
-        return []
-    lines: list[str] = []
+        entries = []
+    if logical_time is not None and (
+        logical_time.tzinfo is None or logical_time.utcoffset() is None
+    ):
+        logical_time = None
+    rows: list[tuple[int, str, str, str]] = []
+    seen_photo: set[str] = set()
     for entry in entries:
         if not isinstance(entry, dict):
             continue
@@ -315,8 +337,58 @@ def _rendered_conversation(materials: Mapping[str, object]) -> list[str]:
         if not isinstance(text, str) or not text.strip():
             continue
         speaker = _TRANSCRIPT_SPEAKERS.get(str(entry.get("speaker")), "?")
-        lines.append(f"{speaker}：{text.strip()}")
-    return lines
+        occurred = _instant(entry.get("occurred_at"))
+        age = _conversation_age(occurred, logical_time)
+        body = text.strip()
+        line = f"{speaker}（{age}）：{body}" if age and age != "刚刚" else f"{speaker}：{body}"
+        sequence = entry.get("sequence")
+        seq = sequence if isinstance(sequence, int) and not isinstance(sequence, bool) else 0
+        occurred_key = occurred.isoformat() if occurred is not None else ""
+        rows.append((seq, occurred_key, line, body))
+        if body.startswith("[") and body.endswith("]"):
+            seen_photo.add(body[1:-1].strip())
+    photos = materials.get("photos_i_shared")
+    if isinstance(photos, list):
+        for photo in photos:
+            if not isinstance(photo, dict):
+                continue
+            about = photo.get("about")
+            about_text = about.strip() if isinstance(about, str) and about.strip() else ""
+            line_text = photo.get("line")
+            body = (
+                f"[{about_text}]"
+                if about_text
+                else (
+                    line_text.strip()
+                    if isinstance(line_text, str) and line_text.strip()
+                    else ""
+                )
+            )
+            if not body:
+                continue
+            marker = about_text or body.strip("[]")
+            if marker in seen_photo:
+                continue
+            when = photo.get("when")
+            age = when if isinstance(when, str) and when.strip() else None
+            line = (
+                f"我（{age}）：{body}"
+                if age and age != "刚刚"
+                else f"我：{body}"
+            )
+            occurred = _instant(photo.get("shared_at"))
+            if (
+                occurred is not None
+                and logical_time is not None
+                and occurred > logical_time
+            ):
+                occurred = logical_time
+            occurred_key = occurred.isoformat() if occurred is not None else ""
+            seq = max((item[0] for item in rows), default=0)
+            rows.append((seq, occurred_key, line, body))
+            seen_photo.add(marker)
+    rows.sort(key=lambda item: (item[0], item[1], item[2]))
+    return [item[2] for item in rows]
 
 
 LIVED_MOMENT_MATERIAL_KEY = "lived_moment"
@@ -333,7 +405,7 @@ def _current_window_title(day_sheet: str) -> str | None:
     return title or None
 
 
-def _walking_in_residue(appraisals: object) -> str | None:
+def _walking_in_residue(appraisals: object, logical_time: datetime | None = None) -> str | None:
     if not isinstance(appraisals, list):
         return None
     for entry in appraisals:
@@ -357,16 +429,25 @@ def _walking_in_residue(appraisals: object) -> str | None:
                 if isinstance(item, str) and item.strip():
                     excerpt = item.strip()[:80]
                     break
+        accepted = _instant(entry.get("accepted_at"))
+        age = (
+            _elapsed_phrase(accepted, logical_time)
+            if accepted is not None and logical_time is not None
+            else None
+        )
+        age_prefix = f"（{age}）" if age and age != "刚刚" else ""
         if meaning and excerpt:
-            return f"还挂着：{excerpt} → {meaning}"
+            return f"还挂着{age_prefix}：{excerpt} → {meaning}"
         if meaning:
-            return f"还挂着：{meaning}"
+            return f"还挂着{age_prefix}：{meaning}"
         if excerpt:
-            return f"还挂着：{excerpt}"
+            return f"还挂着{age_prefix}：{excerpt}"
     return None
 
 
-def _walking_in_impression(impressions: object) -> str | None:
+def _walking_in_impression(
+    impressions: object, logical_time: datetime | None = None
+) -> str | None:
     if not isinstance(impressions, list):
         return None
     for entry in impressions:
@@ -376,8 +457,17 @@ def _walking_in_impression(impressions: object) -> str | None:
         if status not in {None, "active"}:
             continue
         summary = entry.get("reflection_summary")
-        if isinstance(summary, str) and summary.strip():
-            return f"心里还搁着：{summary.strip()[:80]}"
+        if not (isinstance(summary, str) and summary.strip()):
+            continue
+        first = _instant(entry.get("first_seen"))
+        age = (
+            _elapsed_phrase(first, logical_time)
+            if first is not None and logical_time is not None
+            else None
+        )
+        if age and age != "刚刚":
+            return f"心里还搁着（{age}记下的）：{summary.strip()[:80]}"
+        return f"心里还搁着：{summary.strip()[:80]}"
     return None
 
 
@@ -406,10 +496,10 @@ def _lived_moment(
             if clipped:
                 parts.append("今天已经过的：" + "；".join(clipped))
             break
-    residue = _walking_in_residue(appraisals)
+    residue = _walking_in_residue(appraisals, logical_time)
     if residue:
         parts.append(residue)
-    impression = _walking_in_impression(impressions)
+    impression = _walking_in_impression(impressions, logical_time)
     if impression:
         parts.append(impression)
     if not parts:
@@ -689,6 +779,16 @@ def _elapsed_phrase(earlier: datetime, later: datetime) -> str | None:
     if seconds < 86_400:
         return f"{int(seconds // 3_600)} 小时前"
     return f"{int(seconds // 86_400)} 天前"
+
+
+def _conversation_age(
+    occurred: datetime | None, logical_time: datetime | None
+) -> str | None:
+    if occurred is None or logical_time is None:
+        return None
+    if occurred > logical_time:
+        return "刚刚"
+    return _elapsed_phrase(occurred, logical_time)
 
 
 def _live_affect_lines(
@@ -1399,7 +1499,7 @@ class InnerLifeSnapshot(FrozenModel):
         retention = _rendered_inner_retention(materials, self.logical_time)
         if retention is not None:
             materials = {**materials, INNER_RETENTION_MATERIAL_KEY: retention}
-        transcript = _rendered_conversation(materials)
+        transcript = _rendered_conversation(materials, self.logical_time)
         if transcript:
             materials = {**materials, "conversation": transcript}
         lived = _rendered_lived_moment(materials, self.logical_time)

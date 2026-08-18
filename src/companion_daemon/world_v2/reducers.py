@@ -390,6 +390,7 @@ from .life_events import (
     WorldOccurrenceTerminalPayload,
 )
 from .character_outcome_contract import outcome_selection_audit_text
+from .media_conversation_window import is_reask_eligible
 from .media_selection_proposal import (
     MediaSelectionProposalRecordedPayload,
     media_candidate_authority_hash,
@@ -8984,11 +8985,18 @@ def _media_selection_attempt_recorded(state: ReducerState, event: WorldEvent) ->
     current = {
         (item.candidate_id, item.entity_revision)
         for item in state.photo_candidates
-        if item.status == "available"
-        and item.opened_at is not None
-        and item.expires_at is not None
-        and item.expires_at > event.logical_time
-        and item.source_events
+        if (
+            (
+                item.status == "available"
+                and item.opened_at is not None
+                and item.expires_at is not None
+                and item.expires_at > event.logical_time
+                and item.source_events
+            )
+            or is_reask_eligible(
+                state, candidate=item, logical_time=event.logical_time
+            )
+        )
     }
     recorded = {(item.candidate_id, item.entity_revision) for item in payload.candidates}
     draw_source = next(
@@ -9041,7 +9049,12 @@ def _media_selection_proposal_recorded(state: ReducerState, event: WorldEvent) -
     )
     if (
         candidate is None
-        or candidate.status != "available"
+        or (
+            candidate.status != "available"
+            and not is_reask_eligible(
+                state, candidate=candidate, logical_time=event.logical_time
+            )
+        )
         or candidate.entity_revision != payload.expected_candidate_revision
         or candidate.opened_at is None
         or candidate.expires_at is None

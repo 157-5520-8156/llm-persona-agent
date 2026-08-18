@@ -176,11 +176,23 @@ def test_share_materializes_only_after_delivered_receipt() -> None:
         receipt_kind="terminal", observed_state="delivered", is_terminal=True, cost_actual=0,
         received_at=NOW, raw_payload_hash="sha256:" + "3" * 64,
     )
-    state = state.model_copy(update={"actions": (action,), "execution_receipts": (receipt,)})
+    conversation = NOW
+    wall = NOW + timedelta(minutes=5)
+    receipt = receipt.model_copy(update={"received_at": wall})
+    state = state.model_copy(
+        update={
+            "actions": (action,),
+            "execution_receipts": (receipt,),
+            "logical_time": conversation,
+        }
+    )
     events = MediaDeliveryReceiptLifecycle().events_for_terminal_receipt(
         projection=_projection(state), action=action, receipt=receipt,
     )
     assert len(events) == 1 and events[0][0] == "MediaDeliveryShared"
+    delivery = events[0][2]["delivery"]
+    assert str(delivery["shared_at"]).startswith(conversation.isoformat()[:19])
+    assert str(delivery["received_at"]).startswith(wall.isoformat()[:19])
     shared_event = _event(events[0][0], events[0][2], "shared")
     state = reduce_event(state, shared_event)
     assert state.media_deliveries[0].recipient_ref == "user:1"

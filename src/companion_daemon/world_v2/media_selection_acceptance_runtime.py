@@ -9,6 +9,7 @@ import json
 from .accepted_ledger_batch import AcceptedLedgerBatchHandle, AcceptedLedgerBatchIssuer
 from .event_identity import domain_idempotency_key
 from .ledger import LedgerPort
+from .media_conversation_window import is_reask_eligible
 from .media_opportunity_authorizer import MediaOpportunityAuthorizer
 from .media_evidence_snapshot import MediaEvidenceNotRenderable
 from .media_selection_acceptance_manifest import (
@@ -67,6 +68,27 @@ class MediaSelectionAcceptanceError(ValueError):
         super().__init__(self.code)
 
 
+def _candidate_opening_matches(*, opened: PhotoCandidate, candidate: PhotoCandidate) -> bool:
+    """Same photographable moment, ignoring lifecycle status/revision.
+
+    A lapsed send decision may re-record a choice against a generated
+    aggregate.  Status and entity_revision are the only fields
+    ``_advance_media_candidate`` mutates; source identity must still match
+    the opening envelope.
+    """
+
+    return (
+        opened.candidate_id == candidate.candidate_id
+        and opened.source_event_refs == candidate.source_event_refs
+        and opened.source_events == candidate.source_events
+        and opened.family == candidate.family
+        and opened.privacy_ceiling == candidate.privacy_ceiling
+        and opened.ecology_category == candidate.ecology_category
+        and opened.opened_at == candidate.opened_at
+        and opened.character_media_contract == candidate.character_media_contract
+    )
+
+
 def _candidate_lineage_is_bound(*, ledger: LedgerPort, candidate: PhotoCandidate) -> bool:
     """Verify the aggregate still derives from its exact opening envelope.
 
@@ -106,7 +128,7 @@ def _candidate_lineage_is_bound(*, ledger: LedgerPort, candidate: PhotoCandidate
         )
     except ValueError:
         return False
-    if opened_candidate != candidate:
+    if not _candidate_opening_matches(opened=opened_candidate, candidate=candidate):
         return False
     return all(
         (located := ledger.lookup_event_commit(source.event_ref)) is not None
@@ -159,7 +181,14 @@ class MediaSelectionProposalRecorder:
         }
         if (
             candidate is None
-            or candidate.status != "available"
+            or (
+                candidate.status != "available"
+                and not is_reask_eligible(
+                    projection,
+                    candidate=candidate,
+                    logical_time=projection.logical_time,
+                )
+            )
             or candidate.entity_revision != proposal.expected_candidate_revision
             or candidate.opened_at is None
             or candidate.expires_at is None

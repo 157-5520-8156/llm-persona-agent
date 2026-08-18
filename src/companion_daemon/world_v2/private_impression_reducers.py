@@ -14,12 +14,17 @@ def validate_private_impression_appraisals(
     *,
     subject_ref: str,
 ) -> None:
-    """Require each readable interpretation to resolve to an active appraisal."""
+    """Require each readable interpretation to resolve to a still-known appraisal.
+
+    ``expired`` is allowed because clock expiry only leaves the unsettled set.
+    The reading itself remains; release/retain of an already-bound impression
+    is not amnesia and must not require the deadline to be unexecuted.
+    """
     for ref in refs:
         appraisal = next((item for item in appraisals if item.appraisal_id == ref.appraisal_id), None)
         if (
             appraisal is None
-            or appraisal.status != "active"
+            or appraisal.status not in {"active", "expired"}
             or appraisal.subject_ref != subject_ref
             or appraisal.source_cluster_ref != ref.source_cluster_ref
             or appraisal.origin.change_id != ref.accepted_change_id
@@ -41,10 +46,6 @@ def accept_private_impression(
     impression = payload.impression
     if impression.last_supported != logical_time:
         raise ValueError("private impression timestamps must equal authoritative logical time")
-    if payload.transition_kind != "consolidate" and impression.first_seen != logical_time:
-        raise ValueError("private impression timestamps must equal authoritative logical time")
-    if any(item.impression_id == impression.impression_id for item in impressions):
-        raise ValueError("private impression already exists")
     predecessors: list[PrivateImpressionProjection] = []
     for ref in payload.predecessor_refs:
         predecessor = next(
@@ -59,6 +60,34 @@ def accept_private_impression(
         ):
             raise ValueError("private impression predecessor does not resolve as active")
         predecessors.append(predecessor)
+    if payload.transition_kind == "release":
+        if len(predecessors) != 1:
+            raise ValueError("private impression release requires exactly one predecessor")
+        predecessor = predecessors[0]
+        if (
+            impression.impression_id != predecessor.impression_id
+            or impression.entity_revision != predecessor.entity_revision + 1
+            or impression.status != "released"
+            or impression.first_seen != predecessor.first_seen
+            or impression.interpretation_refs != predecessor.interpretation_refs
+        ):
+            raise ValueError("released impression must keep identity, first_seen, and reading")
+        if any(
+            item.origin is None or item.origin.accepted_event_ref not in impression.source_refs
+            for item in predecessors
+        ):
+            raise ValueError("private impression replacement dropped predecessor event lineage")
+        validate_private_impression_appraisals(
+            appraisals, payload.appraisal_refs, subject_ref=impression.subject_ref
+        )
+        return tuple(
+            impression if item.impression_id == impression.impression_id else item
+            for item in impressions
+        )
+    if payload.transition_kind != "consolidate" and impression.first_seen != logical_time:
+        raise ValueError("private impression timestamps must equal authoritative logical time")
+    if any(item.impression_id == impression.impression_id for item in impressions):
+        raise ValueError("private impression already exists")
     if payload.transition_kind == "consolidate":
         if impression.first_seen != min(item.first_seen for item in predecessors):
             raise ValueError("consolidated impression must preserve its earliest first-seen time")

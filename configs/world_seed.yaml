@@ -91,7 +91,13 @@ life_author_catalog:
   # through 2026-08-31; dorm-room requires residence:campus_dorm, so those
   # three IDs were unreachable all summer. No new opening IDs. Term-time
   # (from 2026-09-01) needs the dorm location restored on the same IDs.
-  version: reviewed-life.15
+  # reviewed-life.16 registers the three people who are actually around
+  # during family_home_jiaxing (mother, father, hometown friend). They
+  # already existed on the unused root `npcs:` list; the reviewed catalog
+  # only had campus people, so NPC ecology had no summer actors. No new
+  # openings and no weighted chance changes. Term-time still uses 范予安 /
+  # 林晚 via their existing tags.
+  version: reviewed-life.16
   # Fixed openings, outcome prose, NPC-event variants and aspiration seeds
   # below remain readable only for immutable ledger recovery and fixtures.
   # Production life generation consumes facts, affordances and capability
@@ -184,6 +190,36 @@ life_author_catalog:
       local_windows: ["18:30-23:30"]
       weekdays: [0, 1, 2, 3, 4, 5, 6]
       requires_all_context_tags: [residence:campus_dorm]
+    - id: mother-shen
+      npc_id: mother-shen
+      stable_identity_ref: reviewed-person:mother-shen
+      identity_summary: 沈岚，知知的妈妈。暑假人在嘉兴家里，白天多半在自家书店。
+      known_trait_refs: [trait:parent]
+      privacy: personal
+      location_id: jiaxing-family-home
+      local_windows: ["07:00-22:00"]
+      weekdays: [0, 1, 2, 3, 4, 5, 6]
+      requires_all_context_tags: [residence:family_home_jiaxing]
+    - id: father-shen
+      npc_id: father-shen
+      stable_identity_ref: reviewed-person:father-shen
+      identity_summary: 陈远，知知的爸爸。暑假人在嘉兴，白天守着家里的书店。
+      known_trait_refs: [trait:parent]
+      privacy: personal
+      location_id: jiaxing-bookstore
+      local_windows: ["09:00-20:00"]
+      weekdays: [0, 1, 2, 3, 4, 5, 6]
+      requires_all_context_tags: [residence:family_home_jiaxing]
+    - id: hometown-xu
+      npc_id: hometown-xu
+      stable_identity_ref: reviewed-person:hometown-xu
+      identity_summary: 徐青禾，知知嘉兴的旧友。她回家过暑假时，人还在本地。
+      known_trait_refs: [trait:hometown_friend]
+      privacy: personal
+      location_id: jiaxing-bookstore
+      local_windows: ["10:00-21:00"]
+      weekdays: [0, 1, 2, 3, 4, 5, 6]
+      requires_all_context_tags: [residence:family_home_jiaxing]
   openings:
     - id: settle-morning-routine
       activity_kind: routine.morning_settle

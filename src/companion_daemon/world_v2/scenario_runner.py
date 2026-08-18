@@ -305,7 +305,14 @@ class ScenarioVerificationError(AssertionError):
 # attraction catalog putting closeup ahead of context so explicit is not framed
 # wider than suggestive. Per-case predicates remain enforced; the aggregate
 # prompt/policy identities intentionally move.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.77"
+# ``.78`` restores visible world-truth: her own last line and delivered photos
+# in the conversation slice, named QQ faces, impression release, expired
+# readings that expire, waiting_for without a timer, factual wake copy, a
+# 30-minute media conversation window, shareable-now inventory, a wake that
+# survives one failed activity cell, family NPC registration, and the same
+# local-07:00 overnight mute on spontaneous contact that open hopes already
+# had. Per-case predicates remain enforced; aggregate identities move.
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.78"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -469,8 +476,10 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.77"
 # processes produced this hash before installation.
 # ``.77`` is installed only after two independent complete 120-case processes
 # produced the same aggregate manifest.
+# ``.78`` is installed only after two independent complete 120-case processes
+# produced the same aggregate manifest.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "31d19cdd0f44147c6d968312c8f3471177dde135e702fe009bbc5df2ddd7bd38"
+    "dd0e339129b40c5732f5ee183b18779d2806b391963096c0e636cfe93e7ac594"
 )
 
 

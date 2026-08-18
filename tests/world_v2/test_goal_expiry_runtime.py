@@ -458,6 +458,95 @@ async def test_due_goal_expiry_and_affect_decay_share_one_clock_commit() -> None
 
 
 @pytest.mark.asyncio
+async def test_advance_closes_an_affect_episode_once_residue_is_reached() -> None:
+    seed = WorldLedger.in_memory(world_id=WORLD_ID)
+    seed_runtime = WorldRuntime(world_id=WORLD_ID, ledger=seed)
+    await bootstrap_goal_clock(seed_runtime)
+    opened = OPEN_TIME - timedelta(days=3)
+    meaning = AppraisalMeaningRef(
+        appraisal_id="appraisal:runtime-residue",
+        hypothesis_id="hypothesis:runtime-residue",
+        source_cluster_ref="cluster:runtime",
+        accepted_change_id="change:appraisal:runtime-residue",
+        accepted_transition_id="transition:appraisal:runtime-residue",
+    )
+    profile = AffectDecayProfileProjection(
+        half_life_seconds=3_600,
+        floor_bp=300,
+        delay_seconds=0,
+        config_version="affect-decay.1",
+        config_digest=affect_decay_config_digest(
+            kind="exponential_half_life",
+            half_life_seconds=3_600,
+            floor_bp=300,
+            delay_seconds=0,
+            config_version="affect-decay.1",
+        ),
+    )
+    episode = AffectEpisodeProjection(
+        episode_id="affect:runtime-residue",
+        entity_revision=1,
+        origin=AffectOrigin(
+            change_id="change:affect:runtime-residue",
+            transition_id="transition:affect:runtime-residue",
+            policy_refs=("policy:affect-v1",),
+            matrix_catalog_version="affect-matrix.1",
+            accepted_event_ref="event:affect:runtime-residue",
+        ),
+        components=(
+            AffectComponentProjection(
+                component_id="component:hurt:runtime-residue",
+                dimension="hurt",
+                source_cluster_ref="cluster:runtime",
+                appraisal_refs=(meaning,),
+                intensity_bp=4_200,
+                decay_anchor_intensity_bp=4_200,
+                opened_at=opened,
+                decay_anchor_at=opened,
+                decay_not_before=opened,
+                last_stimulus_at=opened,
+                last_updated_at=opened,
+                decay_profile=profile,
+                residue_bp=500,
+            ),
+        ),
+        evidence_refs=(
+            EvidenceRef(
+                ref_id="observation:runtime-residue",
+                evidence_type="observed_message",
+                claim_purpose="private_hypothesis",
+            ),
+        ),
+        opened_at=opened,
+        updated_at=opened,
+        status="active",
+    )
+    ledger = StaticProjectionLedger(
+        seed.project().model_copy(update={"affect_episodes": (episode,)})
+    )
+    runtime = WorldRuntime(world_id=WORLD_ID, ledger=ledger)
+
+    await runtime.advance(clock(tick_id="affect-residue"))
+
+    assert tuple(event.event_type for event in ledger.committed_events) == (
+        "ClockAdvanced",
+        "AffectEpisodeDecayed",
+    )
+    state = ReducerState(
+        logical_time=seed.project().logical_time,
+        committed_world_event_refs=seed.project().committed_world_event_refs,
+        clock_transition_history=seed.project().clock_transition_history,
+        affect_episodes=(episode,),
+    )
+    for event in ledger.committed_events:
+        state = reduce_event(state, event)
+    assert state.affect_episodes[0].status == "decayed"
+    assert state.affect_episodes[0].closed_at == NOW
+    assert state.affect_episodes[0].components[0].intensity_bp == 500
+
+
+
+@pytest.mark.asyncio
 async def test_a_terminal_goal_is_not_expired_again_on_a_later_clock() -> None:
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
     runtime = WorldRuntime(world_id=WORLD_ID, ledger=ledger)

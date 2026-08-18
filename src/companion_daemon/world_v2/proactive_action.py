@@ -48,6 +48,7 @@ from .expression_plan_atomic_recorder import ExpressionPlanAtomicRecorder
 from .expression_draft import (
     ExpressionDraft,
     ExpressionDraftCapabilities,
+    PrivateTurnStateValidationError,
     bind_proactive_expression_wire,
     bind_proactive_world_claims,
     materialize_expression_plan_beats,
@@ -80,6 +81,8 @@ from .response_expectation_view import (
     counterpart_last_spoke_facts,
     expired_hope_advisory_value,
     expired_unanswered_expectation,
+    living_hope_hitch_clause,
+    living_unanswered_hope,
 )
 from .revisit_intention_view import due_unfinished_revisit
 from .social_initiative import (
@@ -106,6 +109,24 @@ def _digest(value: object) -> str:
 
 _ADVISORY_VALUE_MAX = 256
 _ADVISORY_CHOICE_PREFIX = " Choose freely: now, later, or silent; kind="
+
+
+def _hitch_living_hope(text: str, projection: object) -> str:
+    """Prepend a living unanswered hope so the 256-char advisory keeps the fact."""
+
+    hope = living_unanswered_hope(projection)
+    if hope is None:
+        return text
+    seconds, spoken_since = counterpart_last_spoke_facts(
+        projection, since_world_revision=hope.declared_world_revision
+    )
+    if spoken_since:
+        return text
+    clause = living_hope_hitch_clause(
+        hoped_response=hope.hoped_response,
+        seconds_since_he_last_spoke=seconds,
+    )
+    return clause + " " + text
 
 
 def _proactive_opportunity_context(
@@ -137,12 +158,12 @@ def _proactive_opportunity_context(
             + str(event.payload().get("text") or "[content unavailable]")[:1_024]
         )
         if opportunity.stimulus_event_refs:
-            return (
+            text = (
                 text
                 + " Committed situation changes are readable materials, not a wakeup: "
                 + _canonical(opportunity.stimulus_event_refs)
             )
-        return text
+        return _hitch_living_hope(text, projection)
     if kind == "ambient_presence":
         text = (
             "A durable ambient-presence consideration is due. The Clock is timing authority only; "
@@ -150,17 +171,20 @@ def _proactive_opportunity_context(
             "as non-directive context."
         )
         if opportunity.stimulus_event_refs:
-            return (
+            text = (
                 text
                 + " Committed situation changes are readable materials, not a wakeup: "
                 + _canonical(opportunity.stimulus_event_refs)
             )
-        return text
+        return _hitch_living_hope(text, projection)
     if kind == "post_silent":
-        return (
-            "A prior role-authored silent consideration is the timing source. It only opens "
-            "another chance to think; the character still decides whether any motive or "
-            "expression exists."
+        return _hitch_living_hope(
+            (
+                "She chose not to reply on the prior consideration. "
+                "The host did not treat that as read-without-reply. "
+                "It only opens another chance to think; she still decides."
+            ),
+            projection,
         )
     if kind == "situation_change":
         return (
@@ -191,9 +215,12 @@ def _proactive_opportunity_context(
             "Timing evidence only; she still decides."
         )
     if kind == "thread":
-        return (
-            "A leftover she asked to return to is due. Timing evidence only; "
-            "she still decides whether to speak, wait, or stay silent."
+        return _hitch_living_hope(
+            (
+                "A leftover she asked to return to is due. Timing evidence only; "
+                "she still decides whether to speak, wait, or stay silent."
+            ),
+            projection,
         )
     if kind == "commitment":
         return (
@@ -215,7 +242,7 @@ def _proactive_opportunity_context(
             "she still decides."
         )
     if kind == "private_impression":
-        return private_impression_opportunity_context()
+        return _hitch_living_hope(private_impression_opportunity_context(), projection)
     return "A verified proactive opportunity exists."
 
 
@@ -782,11 +809,29 @@ def _materialize_interior_proactive_draft(
 ) -> DecisionProposal:
     """Compile an already-authored Interior expression into typed authority."""
 
-    validate_expression_private_turn_state(
-        value=draft.model_dump(mode="json"),
-        request=request,
-        capabilities=expression_capabilities,
-    )
+    try:
+        validate_expression_private_turn_state(
+            value=draft.model_dump(mode="json"),
+            request=request,
+            capabilities=expression_capabilities,
+        )
+    except PrivateTurnStateValidationError as exc:
+        if exc.code != "private_turn_state.unpinned_source" or draft.private_turn_state is None:
+            raise
+        # Attended refs are attention provenance, not wording. Drop unrestorable
+        # pins and keep the beats and summary she already wrote.
+        draft = draft.model_copy(
+            update={
+                "private_turn_state": draft.private_turn_state.model_copy(
+                    update={"attended_source_refs": ()}
+                )
+            }
+        )
+        validate_expression_private_turn_state(
+            value=draft.model_dump(mode="json"),
+            request=request,
+            capabilities=expression_capabilities,
+        )
     identity_draft = draft.model_dump(mode="json")
     identity_draft.pop("private_turn_state", None)
     identity = _digest(

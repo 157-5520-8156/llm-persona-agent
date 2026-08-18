@@ -227,7 +227,7 @@ def _paid_inbound_impression_lineage(
 class PrivateImpressionDraft(FrozenModel):
     """One role-authored, non-factual reflection over accepted hypotheses."""
 
-    decision: Literal["retain", "consolidate", "supersede"] = "retain"
+    decision: Literal["retain", "consolidate", "supersede", "release"] = "retain"
     predecessor_refs: tuple[str, ...] = ()
     source_refs: tuple[str, ...]
     reflection_summary: str = Field(min_length=1, max_length=1_200)
@@ -740,7 +740,7 @@ def _materialize_draft(
     legacy_retain = value.get("retain")
     if decision is None and isinstance(legacy_retain, bool):
         decision = "retain" if legacy_retain else "no_change"
-    if decision not in {"no_change", "retain", "consolidate", "supersede"}:
+    if decision not in {"no_change", "retain", "consolidate", "supersede", "release"}:
         raise ValueError("private impression decision is invalid")
     if decision == "no_change":
         return None
@@ -790,9 +790,10 @@ def _materialize_draft(
         or any(not isinstance(item, str) for item in predecessor_refs)
         or len(predecessor_refs) != len(set(predecessor_refs))
         or (
-            decision in {"consolidate", "supersede"}
+            decision in {"consolidate", "supersede", "release"}
             and (
                 not predecessor_refs
+                or (decision == "release" and len(predecessor_refs) != 1)
                 or any(
                     not isinstance(item, str)
                     or item not in existing_refs
@@ -997,6 +998,7 @@ def compile_private_impression_reflection_capsule(
             value={
                 "reflection_summary": impression.reflection_summary,
                 "confidence_bp": impression.confidence_bp,
+                "first_seen": getattr(impression, "first_seen", None),
                 "last_supported": impression.last_supported,
                 "expiry_condition": impression.expiry_condition,
                 "interpretation_refs": impression.interpretation_refs,
@@ -1307,6 +1309,22 @@ def _private_impression_capability(
             token for token, ref in token_map.items() if ref in anchor_source_refs
         ],
         "expiry_conditions": list(EXPIRY_CONDITIONS),
+        "decision_meanings": {
+            "no_change": "这次先不动印象：不开新的，也不搁下已有的。省略也完全正常。",
+            "retain": "记下一条新的、仍可改的私人印象。",
+            **(
+                {
+                    "consolidate": "把已有印象收成一条，仍然搁在心里。",
+                    "supersede": "用一条新的印象替代旧的；旧的不再作为未了结的心事。",
+                    "release": (
+                        "这件事我已经说过或做过，可以搁下了。"
+                        "仍记得，只是不再占着未了结的位置。选或不选都正常。"
+                    ),
+                }
+                if existing_impression_short_tokens
+                else {}
+            ),
+        },
     }
     payload_json = json.dumps(
         payload,
@@ -2075,45 +2093,66 @@ class PrivateImpressionTriggerRuntime:
             )
             for event_ref in selected_event_refs
         )
-        impression = PrivateImpressionProjection(
-            impression_id="impression:"
-            + _digest(
-                {
-                    "world_id": self._ledger.world_id,
-                    "appraisal_id": appraisal.appraisal_id,
-                    "transition_kind": transition_kind,
-                    "predecessor_refs": list(draft.predecessor_refs),
-                    "reflection_source_refs": list(draft.source_refs),
-                }
-            ),
-            entity_revision=1,
-            subject_ref=appraisal.subject_ref,
-            interpretation_refs=tuple(
-                f"appraisal:{item.appraisal_id}:{item.hypothesis_id}" for item in appraisal_refs
-            ),
-            source_refs=selected_event_refs,
-            reflection_summary=draft.reflection_summary,
-            confidence_bp=draft.confidence_bp,
-            first_seen=(
-                min(item.first_seen for item in predecessors)
-                if draft.decision == "consolidate"
-                else logical_time
-            ),
-            last_supported=logical_time,
-            expiry_condition=draft.expiry_condition,
-            status="active",
-            origin=PrivateImpressionOrigin(
-                change_id=change_id,
-                transition_id=transition_id,
-                policy_refs=PRIVATE_IMPRESSION_POLICY_REFS,
-                accepted_event_ref=accepted_event_id,
-            ),
+        origin = PrivateImpressionOrigin(
+            change_id=change_id,
+            transition_id=transition_id,
+            policy_refs=PRIVATE_IMPRESSION_POLICY_REFS,
+            accepted_event_ref=accepted_event_id,
         )
+        expected_entity_revision = 0
+        if draft.decision == "release":
+            if len(predecessors) != 1:
+                raise ValueError("private impression release requires exactly one predecessor")
+            predecessor = predecessors[0]
+            expected_entity_revision = predecessor.entity_revision
+            impression = predecessor.model_copy(
+                update={
+                    "entity_revision": predecessor.entity_revision + 1,
+                    "status": "released",
+                    "reflection_summary": draft.reflection_summary,
+                    "confidence_bp": draft.confidence_bp,
+                    "last_supported": logical_time,
+                    "expiry_condition": draft.expiry_condition,
+                    "source_refs": selected_event_refs,
+                    "origin": origin,
+                }
+            )
+        else:
+            impression = PrivateImpressionProjection(
+                impression_id="impression:"
+                + _digest(
+                    {
+                        "world_id": self._ledger.world_id,
+                        "appraisal_id": appraisal.appraisal_id,
+                        "transition_kind": transition_kind,
+                        "predecessor_refs": list(draft.predecessor_refs),
+                        "reflection_source_refs": list(draft.source_refs),
+                    }
+                ),
+                entity_revision=1,
+                subject_ref=appraisal.subject_ref,
+                interpretation_refs=tuple(
+                    f"appraisal:{item.appraisal_id}:{item.hypothesis_id}"
+                    for item in appraisal_refs
+                ),
+                source_refs=selected_event_refs,
+                reflection_summary=draft.reflection_summary,
+                confidence_bp=draft.confidence_bp,
+                first_seen=(
+                    min(item.first_seen for item in predecessors)
+                    if draft.decision == "consolidate"
+                    else logical_time
+                ),
+                last_supported=logical_time,
+                expiry_condition=draft.expiry_condition,
+                status="active",
+                origin=origin,
+            )
         payload: dict[str, object] = {
             "change_id": change_id,
             "transition_id": transition_id,
             "transition_kind": transition_kind,
-            "expected_entity_revision": 0,
+            "expected_entity_revision": expected_entity_revision,
             "predecessor_refs": [
                 PrivateImpressionPredecessorRef(
                     impression_id=item.impression_id,
@@ -2147,7 +2186,7 @@ class PrivateImpressionTriggerRuntime:
                 "change_id": change_id,
                 "transition_id": transition_id,
                 "evaluated_world_revision": payload["evaluated_world_revision"],
-                "expected_entity_revision": 0,
+                "expected_entity_revision": expected_entity_revision,
                 "proposed_change_hash": payload["accepted_change_hash"],
                 "evidence_refs": payload["evidence_refs"],
                 "appraisal_refs": payload["appraisal_refs"],
@@ -2751,8 +2790,8 @@ class _PrivateImpressionInteriorAuthorityHandler:
             ),
             None,
         )
-        if appraisal is None or appraisal.status != "active":
-            raise ValueError("private impression anchor appraisal is no longer active")
+        if appraisal is None or appraisal.status not in {"active", "expired"}:
+            raise ValueError("private impression anchor appraisal is no longer readable")
         lineage = request.author_lineage
         if lineage is None:
             raise ValueError("private impression transition lacks character author lineage")

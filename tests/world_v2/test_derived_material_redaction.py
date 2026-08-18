@@ -388,7 +388,7 @@ def test_hidden_counterpart_line_does_not_count_in_since_he_last_spoke() -> None
     assert hidden["materials"]["since_he_last_spoke"] == {"seconds": 14400}
     assert _SECRET_MESSAGE not in json.dumps(hidden, ensure_ascii=False)
     assert "conversation" in hidden["materials"]
-    assert hidden["materials"]["conversation"] == ["他：在吗"]
+    assert hidden["materials"]["conversation"] == ["他（4 小时前）：在吗"]
 
 
 def test_hidden_folded_line_does_not_leak_through_fold_chunks() -> None:

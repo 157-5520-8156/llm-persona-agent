@@ -425,7 +425,7 @@ class _PrivateInteriorWireModel:
                 "recall_query": None,
                 "proposals": [],
             }
-        elif decision in {"retain", "consolidate", "supersede"}:
+        elif decision in {"retain", "consolidate", "supersede", "release"}:
             proposal = {
                 "proposal_type": "private_impression_transition",
                 "decision": decision,

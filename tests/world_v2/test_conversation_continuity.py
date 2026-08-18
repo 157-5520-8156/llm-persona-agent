@@ -6,6 +6,7 @@ import hashlib
 from companion_daemon.world_v2.conversation_continuity import (
     ContinuityRetrievalCandidate,
     ConversationContinuityCompiler,
+    pack_recent_dialogue_under_source_budget,
 )
 from companion_daemon.world_v2.recent_dialogue import DialogueSourceClaim, RecentDialogueItem
 
@@ -95,6 +96,70 @@ def test_compile_separates_pending_interaction_from_replied_history_and_memory()
     # Retrieval candidates are already source-bound Context.  Lexical overlap
     # must not secretly promote one of them into the model's working set.
     assert result.rank_overrides == frozenset()
+
+
+def test_acknowledged_context_reaches_beyond_the_last_two_companion_beats() -> None:
+    explained = _dialogue(
+        "explained",
+        "是个太阳的表情来着，表示我今天心情不错",
+        speaker="counterpart",
+        at=NOW - timedelta(minutes=10),
+        sequence=1,
+    )
+    reply_explained = _dialogue(
+        "reply-explained",
+        "太阳啊 那挺好",
+        speaker="companion",
+        at=NOW - timedelta(minutes=9),
+        sequence=2,
+        acknowledges=("event:dialogue:explained",),
+    )
+    photo = _dialogue(
+        "photo",
+        "好！",
+        speaker="counterpart",
+        at=NOW - timedelta(minutes=5),
+        sequence=5,
+    )
+    reply_photo = _dialogue(
+        "reply-photo",
+        "嗯 那我发你",
+        speaker="companion",
+        at=NOW - timedelta(minutes=4),
+        sequence=6,
+        acknowledges=("event:dialogue:photo",),
+    )
+    later = tuple(
+        _dialogue(
+            f"later-{index}",
+            f"later {index}",
+            speaker="companion",
+            at=NOW - timedelta(minutes=3, seconds=index),
+            sequence=7 + index,
+        )
+        for index in range(5)
+    )
+    current = _dialogue(
+        "current",
+        "☀️ 太阳",
+        speaker="counterpart",
+        at=NOW,
+        sequence=20,
+    )
+    result = ConversationContinuityCompiler().compile(
+        dialogue=(explained, reply_explained, photo, reply_photo, *later, current),
+        trigger_ref="event:dialogue:current",
+    )
+    by_id = {item.dialogue_id: item for item in result.dialogue}
+    assert "current_turn" in by_id[current.dialogue_id].continuity_reasons
+    assert "acknowledged_context" in by_id[explained.dialogue_id].continuity_reasons
+    assert "acknowledged_context" in by_id[photo.dialogue_id].continuity_reasons
+    packed = pack_recent_dialogue_under_source_budget(result.dialogue)
+    packed_ids = {item.dialogue_id for item in packed}
+    assert current.dialogue_id in packed_ids
+    assert explained.dialogue_id in packed_ids
+    assert photo.dialogue_id in packed_ids
+    assert reply_explained.dialogue_id in packed_ids
 
 
 def test_selected_dialogue_is_returned_in_causal_sequence_when_timestamps_tie() -> None:
@@ -341,3 +406,262 @@ def test_clarification_keeps_user_context_behind_recent_companion_questions() ->
 
     retained = {item.dialogue_id for item in result.dialogue}
     assert dashboard.dialogue_id in retained
+
+
+def _beat(
+    suffix: str,
+    text: str,
+    *,
+    speaker: str,
+    at: datetime,
+    sequence: int,
+    claim_count: int = 1,
+    acknowledges: tuple[str, ...] = (),
+    reasons: tuple[str, ...] = (),
+) -> RecentDialogueItem:
+    claims = tuple(
+        DialogueSourceClaim(
+            authority_event_ref=f"event:dialogue:{suffix}:{index}",
+            authority_world_revision=max(1, sequence),
+            authority_payload_hash=hashlib.sha256(
+                f"event:dialogue:{suffix}:{index}".encode()
+            ).hexdigest(),
+        )
+        for index in range(claim_count)
+    )
+    return RecentDialogueItem(
+        dialogue_id=f"dialogue:{suffix}",
+        speaker=speaker,
+        text=text,
+        occurred_at=at,
+        delivery_state="observed" if speaker == "counterpart" else "delivered",
+        sequence=sequence,
+        source_claims=claims,
+        acknowledges_observation_event_refs=acknowledges,
+        continuity_reasons=reasons,
+    )
+
+
+def test_twelve_turn_slice_keeps_her_last_line_and_does_not_stick_current() -> None:
+    turns: list[RecentDialogueItem] = []
+    sequence = 1
+    for index in range(12):
+        him_ref = f"event:dialogue:him-{index}:0"
+        turns.append(
+            _beat(
+                f"him-{index}",
+                f"他第 {index} 句",
+                speaker="counterpart",
+                at=NOW - timedelta(minutes=30 - index),
+                sequence=sequence,
+            )
+        )
+        sequence += 1
+        turns.append(
+            _beat(
+                f"her-{index}",
+                f"我第 {index} 句",
+                speaker="companion",
+                at=NOW - timedelta(minutes=30 - index, seconds=-20),
+                sequence=sequence,
+                claim_count=4,
+                acknowledges=(him_ref,),
+            )
+        )
+        sequence += 1
+    current = _beat(
+        "him-now",
+        "还没睡呀",
+        speaker="counterpart",
+        at=NOW,
+        sequence=sequence,
+    )
+    result = ConversationContinuityCompiler().compile(
+        dialogue=(*turns, current),
+        trigger_ref="event:dialogue:him-now:0",
+    )
+    packed = pack_recent_dialogue_under_source_budget(result.dialogue)
+    texts = [item.text for item in packed]
+    speakers = {item.speaker for item in packed}
+    current_marks = [
+        item.text for item in packed if "current_turn" in item.continuity_reasons
+    ]
+    ordered = sorted(packed, key=lambda item: (item.sequence, item.occurred_at))
+
+    assert speakers == {"counterpart", "companion"}
+    assert "我第 11 句" in texts
+    assert "还没睡呀" in texts
+    assert current_marks == ["还没睡呀"]
+    assert [item.sequence for item in ordered] == sorted(item.sequence for item in packed)
+    assert len(packed) > 7
+
+
+def test_four_hour_old_reaction_is_not_current_after_newer_turns() -> None:
+    sun = _beat(
+        "old-sun",
+        "☀️ 太阳",
+        speaker="counterpart",
+        at=NOW - timedelta(hours=4),
+        sequence=1,
+        reasons=("recent",),
+    )
+    later: list[RecentDialogueItem] = []
+    sequence = 10
+    for index in range(10):
+        later.append(
+            _beat(
+                f"later-him-{index}",
+                f"后来他 {index}",
+                speaker="counterpart",
+                at=NOW - timedelta(minutes=20 - index),
+                sequence=sequence,
+            )
+        )
+        sequence += 1
+        later.append(
+            _beat(
+                f"later-her-{index}",
+                f"后来我 {index}",
+                speaker="companion",
+                at=NOW - timedelta(minutes=20 - index, seconds=-15),
+                sequence=sequence,
+                claim_count=4,
+            )
+        )
+        sequence += 1
+    current = later[-2]
+    result = ConversationContinuityCompiler().compile(
+        dialogue=(sun, *later),
+        trigger_ref=current.source_claims[0].authority_event_ref,
+    )
+    packed = pack_recent_dialogue_under_source_budget(result.dialogue)
+    by_text = {item.text: item for item in packed}
+
+    assert "☀️ 太阳" not in by_text
+    current_marks = [
+        item.text for item in packed if "current_turn" in item.continuity_reasons
+    ]
+    assert current_marks == [current.text]
+
+
+def test_unacked_old_reaction_is_not_pending_after_a_live_counterpart_window() -> None:
+    sun = _beat(
+        "old-sun",
+        "☀️ 太阳",
+        speaker="counterpart",
+        at=NOW - timedelta(hours=10),
+        sequence=1,
+    )
+    later: list[RecentDialogueItem] = []
+    sequence = 10
+    for index in range(8):
+        him_ref = f"event:dialogue:later-him-{index}:0"
+        later.append(
+            _beat(
+                f"later-him-{index}",
+                f"后来他 {index}",
+                speaker="counterpart",
+                at=NOW - timedelta(minutes=16 - index),
+                sequence=sequence,
+            )
+        )
+        sequence += 1
+        later.append(
+            _beat(
+                f"later-her-{index}",
+                f"后来我 {index}",
+                speaker="companion",
+                at=NOW - timedelta(minutes=16 - index, seconds=-10),
+                sequence=sequence,
+                claim_count=4,
+                acknowledges=(him_ref,),
+            )
+        )
+        sequence += 1
+    current = _beat(
+        "him-now",
+        "困了就睡",
+        speaker="counterpart",
+        at=NOW,
+        sequence=sequence,
+    )
+    result = ConversationContinuityCompiler().compile(
+        dialogue=(sun, *later, current),
+        trigger_ref="event:dialogue:him-now:0",
+    )
+    packed = pack_recent_dialogue_under_source_budget(result.dialogue)
+    by_text = {item.text: item for item in packed}
+    pending = [
+        item.text
+        for item in result.dialogue
+        if "pending_interaction" in item.continuity_reasons
+    ]
+
+    assert "☀️ 太阳" not in by_text
+    assert "☀️ 太阳" not in pending
+    assert "困了就睡" in by_text
+
+
+def test_conversation_view_follows_causal_order_not_rank_order() -> None:
+    from companion_daemon.world_v2.character_interior.snapshot_compiler import (
+        compile_inner_life_snapshot,
+    )
+
+    snapshot = compile_inner_life_snapshot(
+        {
+            "world_id": "world:conversation-order",
+            "actor_ref": "agent:companion",
+            "world_revision": 4,
+            "deliberation_revision": 1,
+            "ledger_sequence": 4,
+            "logical_time": NOW.isoformat(),
+            "slices": {
+                "recent_dialogue": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "item_ref": "dialogue:her",
+                            "source_ref": "event:dialogue:her",
+                            "value": {
+                                "dialogue_id": "dialogue:her",
+                                "speaker": "companion",
+                                "text": "晚点整理好了发你",
+                                "occurred_at": (NOW - timedelta(minutes=1)).isoformat(),
+                                "delivery_state": "delivered",
+                                "sequence": 2,
+                            },
+                        },
+                        {
+                            "item_ref": "dialogue:him-old",
+                            "source_ref": "event:dialogue:him-old",
+                            "value": {
+                                "dialogue_id": "dialogue:him-old",
+                                "speaker": "counterpart",
+                                "text": "☀️ 太阳",
+                                "occurred_at": (NOW - timedelta(hours=4)).isoformat(),
+                                "delivery_state": "observed",
+                                "sequence": 1,
+                            },
+                        },
+                        {
+                            "item_ref": "dialogue:him-now",
+                            "source_ref": "event:dialogue:him-now",
+                            "value": {
+                                "dialogue_id": "dialogue:him-now",
+                                "speaker": "counterpart",
+                                "text": "还没睡呀",
+                                "occurred_at": NOW.isoformat(),
+                                "delivery_state": "observed",
+                                "sequence": 3,
+                            },
+                        },
+                    ],
+                }
+            },
+        }
+    )
+    conversation = snapshot.model_view()["materials"]["conversation"]
+    assert isinstance(conversation, list)
+    assert conversation[0].endswith("☀️ 太阳")
+    assert conversation[1].endswith("晚点整理好了发你")
+    assert conversation[2].endswith("还没睡呀")

@@ -587,6 +587,7 @@ VERTICAL_REGISTRY: tuple[VerticalRegistration, ...] = (
             "conversation.commitment_due",
             "conversation.expectation_expiry",
             "life.activity_occurrence",
+            "appraisal.expiry",
             "affect.decay",
             "goal.expiry",
         ),

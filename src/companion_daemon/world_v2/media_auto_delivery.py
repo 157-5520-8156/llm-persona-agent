@@ -18,7 +18,10 @@ Fail-closed properties preserved from the existing seams:
 - approval binds the exact inspected artifact hash and expires;
 - the ActionPump re-verifies the approval revision on its final projection;
 - a terminal failed delivery Action is not silently retried (it stays visible
-  to the observer surface instead of looping provider sends).
+  to the observer surface instead of looping provider sends);
+- a send decision older than ``conversation_ttl`` (30 minutes from her
+  selection) is not auto-delivered.  The candidate stays choosable so the
+  next occasion may ask her again.  Auto-delivery itself is not cancelled.
 """
 
 from __future__ import annotations
@@ -28,6 +31,12 @@ from datetime import datetime, timedelta
 import logging
 from typing import Literal
 
+from .media_conversation_window import (
+    CONVERSATION_SELECTION_TTL,
+    conversation_send_allowed,
+    conversation_window_expires_at,
+    selection_decision_at,
+)
 from .media_v2 import MediaAutomaticDeliveryApproval, media_delivery_action_id
 from .schema_core import FrozenModel
 
@@ -51,6 +60,7 @@ class MediaAutoDeliveryComposition:
     max_deliveries_per_day: int = 2
     min_gap: timedelta = timedelta(hours=2)
     approval_ttl: timedelta = timedelta(hours=24)
+    conversation_ttl: timedelta = CONVERSATION_SELECTION_TTL
 
     def __post_init__(self) -> None:
         if (
@@ -62,13 +72,19 @@ class MediaAutoDeliveryComposition:
             or self.max_deliveries_per_day < 1
             or self.min_gap < timedelta(0)
             or self.approval_ttl <= timedelta(0)
+            or self.conversation_ttl <= timedelta(0)
         ):
             raise ValueError("media auto-delivery composition is invalid")
 
 
 class MediaAutoDeliveryRunResult(FrozenModel):
     status: Literal[
-        "delivered_attempted", "idle", "budget_exhausted", "min_gap", "unavailable"
+        "delivered_attempted",
+        "idle",
+        "budget_exhausted",
+        "min_gap",
+        "conversation_expired",
+        "unavailable",
     ]
     preview_id: str | None = None
     action_id: str | None = None
@@ -123,6 +139,7 @@ class MediaAutoDeliveryWorker:
         )
         last_approved_at = max((item.approved_at for item in recent), default=None)
         blocked: Literal["budget_exhausted", "min_gap"] | None = None
+        conversation_expired = False
 
         for preview in sorted(projection.media_previews, key=lambda item: item.preview_id):
             plan = plans.get(preview.plan_id)
@@ -132,6 +149,12 @@ class MediaAutoDeliveryWorker:
                 continue
             if preview.plan_id in delivered_plan_ids:
                 continue
+            send_allowed = conversation_send_allowed(
+                projection,
+                logical_time=logical_time,
+                plan=plan,
+                ttl=self._composition.conversation_ttl,
+            )
             approval_id = _approval_id(preview.preview_id)
             revisions = approvals_by_id.get(approval_id, ())
             latest = max(revisions, key=lambda item: item.entity_revision, default=None)
@@ -150,15 +173,22 @@ class MediaAutoDeliveryWorker:
                     # done, and a terminal non-delivery stays closed rather
                     # than looping provider sends of a human-visible artifact.
                     continue
-                if logical_time >= latest.expires_at:
+                if logical_time >= latest.expires_at or not send_allowed:
                     if action is not None:
                         # An in-flight Action under a lapsed approval can no
                         # longer dispatch (the pump gate rejects it); leave it
                         # to recovery/observation instead of a new decision.
+                        # Do not cancel auto-delivery; the candidate stays
+                        # choosable once the conversational window is gone.
+                        if not send_allowed:
+                            conversation_expired = True
                         continue
-                    # The prior decision lapsed un-dispatched (for example the
-                    # process was down past the TTL).  It still consumed its
-                    # daily slot above; a fresh revision may be issued below.
+                    if not send_allowed:
+                        conversation_expired = True
+                        continue
+                    # The prior artefact-binding lapsed un-dispatched while
+                    # her conversational decision is still current.  A fresh
+                    # revision may be issued below.
                     latest = None
                 else:
                     # Approval is current and its Action is absent or still in
@@ -172,6 +202,9 @@ class MediaAutoDeliveryWorker:
                         trace_id=trace_id,
                         correlation_id=correlation_id,
                     )
+            if not send_allowed:
+                conversation_expired = True
+                continue
             if budget_exhausted:
                 blocked = "budget_exhausted"
                 continue
@@ -180,6 +213,19 @@ class MediaAutoDeliveryWorker:
                 and logical_time - last_approved_at < self._composition.min_gap
             ):
                 blocked = blocked or "min_gap"
+                continue
+            decided = selection_decision_at(projection, plan=plan)
+            conversation_expires = (
+                conversation_window_expires_at(
+                    decided, ttl=self._composition.conversation_ttl
+                )
+                if decided is not None
+                else logical_time + self._composition.conversation_ttl
+            )
+            artefact_expires = logical_time + self._composition.approval_ttl
+            expires_at = min(artefact_expires, conversation_expires)
+            if expires_at <= logical_time:
+                conversation_expired = True
                 continue
             approval = MediaAutomaticDeliveryApproval(
                 approval_id=approval_id,
@@ -196,7 +242,7 @@ class MediaAutoDeliveryWorker:
                 operator_ref=self._composition.policy_actor,
                 family=plan.family,
                 approved_at=logical_time,
-                expires_at=logical_time + self._composition.approval_ttl,
+                expires_at=expires_at,
             )
             recorded = await self._application.approve_media_automatic_delivery(
                 approval=approval,
@@ -215,6 +261,8 @@ class MediaAutoDeliveryWorker:
             )
         if blocked is not None:
             return MediaAutoDeliveryRunResult(status=blocked)
+        if conversation_expired:
+            return MediaAutoDeliveryRunResult(status="conversation_expired")
         return MediaAutoDeliveryRunResult(status="idle")
 
     async def _deliver(

@@ -92,8 +92,8 @@ def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None
     assert "写大一点" not in instruction
     assert "叫醒你" in instruction
     assert "30、60、90" in instruction
-    assert "不写就不会有人叫你" in instruction
-    assert "口头说「我等你」不会变成 wait" in instruction
+    assert "不写 wait 不会有人按秒叫你" in instruction
+    assert "口头说「我等你」和写下 waiting_for 不是同一件事" in instruction
     assert "两千才是两成，八十不是百分之八" in instruction
     assert "come_back 是你心里搁着的一件事" in instruction
     assert "we_are 是你可以写的字段" in instruction
@@ -134,6 +134,31 @@ def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None
     assert "你在暧昧" not in instruction
     assert "搞抽象" not in instruction
     assert "relationship_signal" not in instruction
+
+
+def test_present_moments_i_can_share_now_is_a_world_fact() -> None:
+    instruction = slim_consider_instruction()
+    assert "now 是此刻能不能拍这一世界事实" in instruction
+    assert "photographable 为 true" in instruction
+    assert "photographable 为 false 就是现在拍不了" in instruction
+    assert "no_active_activity" in instruction
+    assert "annex_insufficient" in instruction
+    assert "already_open" in instruction
+    assert "what_happened 是那一刻已接受的原文" in instruction
+    assert "这不是建议你发，也不是建议你去拍" in instruction
+    assert "会和这个事实打架" in instruction
+    assert "没有候选、现在拍不了，都如实是空的" in instruction
+    assert "发出去的那张会出现在 conversation 栏里" in instruction
+    assert "conversation 栏可能暂时画不出" not in instruction
+    assert "你可以给他看看" not in instruction
+    assert "不要答应现在拍" not in instruction
+    assert "应该给他看" not in instruction
+    assert "试着发一张" not in instruction
+    lowered = instruction.lower()
+    assert "civitai" not in lowered
+    assert "lora" not in lowered
+    assert "charge" not in lowered
+    assert "生成提示" not in instruction
 
 
 def test_slim_photo_true_binds_media_request_and_cannot_ride_reply_only() -> None:

@@ -1846,8 +1846,11 @@ async def test_private_impression_reflection_uses_one_versioned_forced_tool() ->
     assert result["proposals"][0]["payload"]["source_refs"] == ["s0"]
     provider_request = json.loads(model.calls[0][0][1]["content"])
     assert provider_request["purpose_contract"]["proposal_schema"]["decision"] == (
-        "retain|consolidate|supersede"
+        "retain|consolidate|supersede|release"
     )
+    meanings = provider_request["purpose_contract"]["proposal_schema"]["decision_meanings"]
+    assert "release" in meanings
+    assert "搁下" in meanings["release"]
     assert len(model.tool_calls) == 1
     tools, tool_choice = model.tool_calls[0]
     assert tool_choice == {
@@ -1948,9 +1951,10 @@ def test_private_impression_tool_schema_preserves_no_change_tokens_and_expiry() 
         "retain",
         "consolidate",
         "supersede",
+        "release",
     ]
     description = contract.provider_tools[0]["function"]["description"]
-    assert "retain/consolidate/supersede" in description
+    assert "retain/consolidate/supersede/release" in description
     assert proposal["properties"]["source_refs"]["items"]["enum"] == ["s0", "s1", "s2"]
     assert proposal["properties"]["predecessor_refs"]["items"]["enum"] == ["s2"]
     assert proposal["properties"]["expiry_condition"]["enum"] == [
@@ -1986,6 +1990,7 @@ def test_private_impression_tool_schema_removes_unavailable_replacement_choices(
     description = contract.provider_tools[0]["function"]["description"]
     assert "consolidate" not in description
     assert "supersede" not in description
+    assert "release" not in description
 
 
 @pytest.mark.asyncio
@@ -2069,7 +2074,7 @@ def test_private_impression_tool_schema_rejects_nonexistent_predecessor_token() 
     assert errors
 
 
-@pytest.mark.parametrize("decision", ("consolidate", "supersede"))
+@pytest.mark.parametrize("decision", ("consolidate", "supersede", "release"))
 def test_private_impression_tool_schema_requires_a_predecessor_for_replacement(
     decision: str,
 ) -> None:
@@ -3475,6 +3480,31 @@ async def test_media_no_op_is_an_explicit_character_decision_without_a_token() -
         "contract": "character-interior-media-selection-decision.1",
         "decision": "no_op",
     }
+
+
+@pytest.mark.asyncio
+async def test_media_no_op_with_null_token_is_an_explicit_decline() -> None:
+    manifest = _manifest("media-token:1")
+    model = _RequiredToolQueueModel(
+        _result(
+            status="decision",
+            decision={
+                "source_refs": ["source:private_self"],
+                "payload": {"decision": "no_op", "selected_token": None},
+            },
+        )
+    )
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-chat")
+
+    result = await role.consider(
+        await _request(purpose="media_selection", capability_manifest=manifest)
+    )
+
+    assert result["decision"]["payload"] == {
+        "contract": "character-interior-media-selection-decision.1",
+        "decision": "no_op",
+    }
+    assert "selected_token" not in result["decision"]["payload"]
 
 
 @pytest.mark.asyncio

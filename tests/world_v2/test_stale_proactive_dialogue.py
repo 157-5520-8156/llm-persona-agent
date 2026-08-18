@@ -9,7 +9,10 @@ from types import SimpleNamespace
 from companion_daemon.world_v2.character_interior.snapshot_compiler import (
     compile_inner_life_snapshot,
 )
-from companion_daemon.world_v2.conversation_continuity import ConversationContinuityCompiler
+from companion_daemon.world_v2.conversation_continuity import (
+    ConversationContinuityCompiler,
+    pack_recent_dialogue_under_source_budget,
+)
 from companion_daemon.world_v2.ledger_context_resolver import _bounded_domain_items
 from companion_daemon.world_v2.recent_dialogue import (
     DialogueSourceClaim,
@@ -157,37 +160,31 @@ def test_without_live_head_the_sun_line_loses_the_ref_budget() -> None:
     assert any(item.speaker == "companion" for item in selected)
 
 
-def test_with_live_head_the_later_three_lines_survive() -> None:
+def test_packed_live_window_keeps_both_speakers() -> None:
     him, her = _production_like_dialogue()
     marked_him, marked_her = _mark_live_conversation_head(list(him), list(her))
-    selected = _select_under_ref_budget(_ranked([*marked_him, *marked_her]))
-    texts = [item.text for item in selected]
+    packed = pack_recent_dialogue_under_source_budget((*marked_him, *marked_her))
+    texts = [item.text for item in packed]
+    speakers = {item.speaker for item in packed}
 
-    assert OLD_HIM in texts
-    assert BUSY in texts
-    assert SUN in texts
-    assert STRANGE in texts
-
-
-def test_with_live_head_eight_item_field_budget_keeps_the_sun_line() -> None:
-    him, her = _production_like_dialogue()
-    marked_him, marked_her = _mark_live_conversation_head(list(him), list(her))
-    ranked = _ranked([*marked_him, *marked_her])
-    kept: list[RecentDialogueItem] = []
-    used = 0
-    for item in ranked:
-        n = len(item.model_dump(mode="json"))
-        if used + n > 96:
-            continue
-        kept.append(item)
-        used += n
-        if len(kept) >= 8:
-            break
-    texts = [item.text for item in kept]
-
+    assert speakers == {"counterpart", "companion"}
     assert SUN in texts
     assert BUSY in texts
     assert STRANGE in texts
+    assert her[-1].text in texts
+    assert all("current_turn" not in item.continuity_reasons for item in packed)
+
+
+def test_packed_window_fits_the_source_ref_budget() -> None:
+    him, her = _production_like_dialogue()
+    marked_him, marked_her = _mark_live_conversation_head(list(him), list(her))
+    packed = pack_recent_dialogue_under_source_budget((*marked_him, *marked_her))
+    refs = {claim.authority_event_ref for item in packed for claim in item.source_claims}
+
+    assert len(packed) <= 16
+    assert len(refs) <= 32
+    field_count = sum(len(item.model_dump(mode="json")) for item in packed)
+    assert field_count <= 256
 
 
 def test_live_head_marks_are_deterministic() -> None:
@@ -216,8 +213,9 @@ def test_receipt_clock_and_impression_triggers_keep_live_head_marks() -> None:
         continuity = compiler.compile(dialogue=dialogue, trigger_ref=trigger)
         by_text = {item.text: item for item in continuity.dialogue}
         assert SUN in by_text
-        assert "acknowledged_context" in by_text[SUN].continuity_reasons
-        assert "current_turn" in by_text[STRANGE].continuity_reasons
+        assert "recent" in by_text[SUN].continuity_reasons
+        assert "current_turn" not in by_text[STRANGE].continuity_reasons
+        assert "current_turn" not in by_text[SUN].continuity_reasons
 
 
 def test_inbound_observation_trigger_still_overwrites_live_head_marks() -> None:
@@ -244,10 +242,11 @@ def test_expired_advisory_states_timing_facts_without_telling_her_to_chase() -> 
     )
 
     assert value == (
-        "Hope expired: 他解释一下这个表情是什么意思 "
-        "He last spoke 73s ago; he has spoken since this hope was declared. "
+        "He last spoke 73s ago; he has spoken since she declared a hope. "
+        "What she hoped for (her words, not a world event): 他解释一下这个表情是什么意思. "
         "Timing evidence only; she still decides."
     )
+    assert "Hope expired:" not in value
     assert "Unanswered" not in value
     assert "没理" not in value
     assert "should" not in value.lower()
@@ -342,7 +341,9 @@ def test_expired_advisory_attaches_when_pending_hope_has_already_expired() -> No
     assert advisories[0]["kind"] == "expired_expectation"
     value = advisories[0]["candidates"][0]["value"]
     assert "He last spoke 90s ago" in value
-    assert "he has spoken since this hope was declared" in value
+    assert "he has spoken since she declared a hope" in value
+    assert "her words, not a world event" in value
+    assert "Hope expired:" not in value
     assert "Timing evidence only; she still decides." in value
     assert "没理" not in value
     assert "追问" not in value

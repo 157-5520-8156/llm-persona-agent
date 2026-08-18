@@ -160,14 +160,16 @@ def test_faculties_reference_the_same_source_bound_material_without_behavior_ver
     snapshot = _compiled_snapshot(_context())
 
     assert snapshot["faculties"]["selective_memory"]["material_keys"] == [
-        "remembered_material"
+        "remembered_material",
+        "moments_i_can_share",
     ]
     assert snapshot["faculties"]["appraisal_affect"]["material_keys"] == [
         "appraisals",
         "affect",
     ]
     assert snapshot["faculties"]["subjective_relationship"]["material_keys"] == [
-        "relationship"
+        "relationship",
+        "moments_i_can_share",
     ]
     serialized = json.dumps(snapshot, ensure_ascii=False)
     for forbidden in ("should_reply", "must_ask", "act_or_hold", "required_stance"):

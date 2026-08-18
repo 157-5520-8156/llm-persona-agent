@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from .event_identity import domain_idempotency_key
+from .media_conversation_window import conversation_send_allowed
 from .ledger import LedgerPort
 from .media_v2 import (
     MediaAutomaticDeliveryApproval,
@@ -202,6 +203,8 @@ class MediaDeliveryReceiptLifecycle:
             plan_id=approval.plan_id, inspection_id=approval.inspection_id,
             artifact_id=approval.artifact_id, artifact_hash=approval.artifact_hash,
             recipient_ref=approval.recipient_ref, action_id=action.action_id, receipt_id=receipt.receipt_id,
+            shared_at=projection.logical_time or action.logical_time,
+            received_at=receipt.received_at,
         )
         if any(item.delivery_id == delivery.delivery_id for item in projection.media_deliveries):
             return ()
@@ -221,6 +224,16 @@ def require_current_media_delivery_approval(*, action: Action, projection: Ledge
         raise MediaDeliveryError("media delivery operator approval revision is stale")
     if logical_time >= exact.expires_at:
         raise MediaDeliveryError("media delivery operator approval has expired")
+    plan = next(
+        (item for item in projection.media_plans if item.plan_id == exact.plan_id),
+        None,
+    )
+    if not conversation_send_allowed(
+        projection, logical_time=logical_time, plan=plan
+    ):
+        raise MediaDeliveryError(
+            "media delivery conversational window has elapsed"
+        )
     return exact
 
 

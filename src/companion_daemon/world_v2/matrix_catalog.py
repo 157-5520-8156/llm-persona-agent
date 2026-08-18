@@ -950,7 +950,7 @@ def default_matrix_catalog() -> MatrixCatalog:
         # 5.12 lifecycle (shared with appraisal above)
         _field(
             "impression.lifecycle",
-            ("candidate", "active", "contradicted", "expired", "superseded"),
+            ("candidate", "active", "contradicted", "expired", "superseded", "released"),
             owner="projection",
             persistence="projection",
             confidence_required=False,

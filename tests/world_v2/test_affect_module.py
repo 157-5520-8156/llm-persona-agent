@@ -16,6 +16,7 @@ from companion_daemon.world_v2.affect_events import (
     AffectEpisodeUpdatedPayload,
     affect_mutation_hash,
 )
+from companion_daemon.world_v2.affect_math import DecayAnchor, DecayProfile, decay_intensity_bp
 from companion_daemon.world_v2.affect_reducers import (
     adjust_affect_baseline,
     decay_affect_episode,
@@ -519,6 +520,114 @@ def test_decay_uses_fixed_point_math_without_moving_anchor() -> None:
     assert decayed[0].components[0].decay_anchor_intensity_bp == 4_000
     assert decayed[0].components[0].decay_anchor_at == NOW
     assert decayed[0].status == "active"
+
+
+def test_residue_floor_decay_closes_the_episode() -> None:
+    active = (episode(),)
+    target = NOW + timedelta(days=3)
+    after = decay_intensity_bp(
+        DecayAnchor(
+            intensity_bp=4_000,
+            anchored_at=NOW,
+            baseline_bp=0,
+            residue_bp=500,
+            decay_not_before=NOW + timedelta(seconds=60),
+        ),
+        DecayProfile(
+            half_life_seconds=3_600,
+            floor_bp=500,
+            delay_seconds=60,
+            config_version="affect-decay.1",
+            kind="exponential_half_life",
+        ),
+        target,
+    )
+    payload = AffectEpisodeDecayedPayload(
+        change_id="change:decay:residue",
+        transition_id="transition:decay:residue",
+        expected_entity_revision=1,
+        evidence_refs=(
+            EvidenceRef(
+                ref_id=f"clock:{target.isoformat()}",
+                evidence_type="clock_observation",
+                claim_purpose="current_fact",
+            ),
+        ),
+        policy_refs=("policy:affect.1",),
+        episode_id="affect:1",
+        from_logical_time=NOW,
+        to_logical_time=target,
+        component_results=(
+            AffectComponentDecay(
+                component_id="component:affect:1",
+                before_intensity_bp=4_000,
+                after_intensity_bp=after,
+                config_version="affect-decay.1",
+                table_digest=TABLE_DIGEST,
+                config_digest=profile().config_digest,
+            ),
+        ),
+    )
+
+    closed = decay_affect_episode(active, payload, logical_time=target)
+
+    assert after == 500
+    assert closed[0].status == "decayed"
+    assert closed[0].closed_at == target
+    assert closed[0].components[0].intensity_bp == 500
+    assert closed[0].components[0].decay_anchor_intensity_bp == 4_000
+
+
+def test_residue_close_accepts_a_head_that_already_stores_the_live_floor() -> None:
+    """Production epoch2 heads leaked live intensity into stored intensity_bp.
+
+    The clock producer still cites the authored decay anchor. Closing the
+    slot must not demand that those two numbers still match.
+    """
+
+    stored_at_floor = (
+        episode().model_copy(
+            update={
+                "components": (
+                    episode().components[0].model_copy(update={"intensity_bp": 500}),
+                )
+            }
+        ),
+    )
+    target = NOW + timedelta(days=3)
+    payload = AffectEpisodeDecayedPayload(
+        change_id="change:decay:leaked-floor",
+        transition_id="transition:decay:leaked-floor",
+        expected_entity_revision=1,
+        evidence_refs=(
+            EvidenceRef(
+                ref_id=f"clock:{target.isoformat()}",
+                evidence_type="clock_observation",
+                claim_purpose="current_fact",
+            ),
+        ),
+        policy_refs=("policy:affect.1",),
+        episode_id="affect:1",
+        from_logical_time=NOW,
+        to_logical_time=target,
+        component_results=(
+            AffectComponentDecay(
+                component_id="component:affect:1",
+                before_intensity_bp=4_000,
+                after_intensity_bp=500,
+                config_version="affect-decay.1",
+                table_digest=TABLE_DIGEST,
+                config_digest=profile().config_digest,
+            ),
+        ),
+    )
+
+    closed = decay_affect_episode(stored_at_floor, payload, logical_time=target)
+
+    assert closed[0].status == "decayed"
+    assert closed[0].closed_at == target
+    assert closed[0].components[0].intensity_bp == 500
+    assert closed[0].components[0].decay_anchor_intensity_bp == 4_000
 
 
 def test_baseline_requires_explicit_multi_scene_calibration_and_cas() -> None:

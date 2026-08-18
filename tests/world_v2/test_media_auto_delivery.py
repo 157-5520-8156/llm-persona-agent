@@ -205,6 +205,45 @@ async def test_terminal_failed_delivery_is_never_resent_by_the_policy() -> None:
 
 
 @pytest.mark.asyncio
+async def test_conversation_window_blocks_a_late_auto_send() -> None:
+    application = _Application()
+    bundle = _preview_bundle(1)
+    bundle["plan"] = SimpleNamespace(
+        plan_id="plan:1", family="life_share", media_lane="ordinary_life",
+        frozen_at=NOW - timedelta(minutes=40),
+    )
+    projection = _projection(bundles=(bundle,))
+    projection.logical_time = NOW
+    worker = MediaAutoDeliveryWorker(
+        application=application, ledger=_Ledger(projection), composition=_composition(),
+    )
+    result = await worker.drain_once(trace_id="trace:t", correlation_id="corr:t")
+    assert result.status == "conversation_expired"
+    assert application.approvals == [] and application.deliveries == []
+
+
+@pytest.mark.asyncio
+async def test_expired_approval_is_not_reissued_after_conversation_lapse() -> None:
+    application = _Application()
+    bundle = _preview_bundle(1)
+    bundle["plan"] = SimpleNamespace(
+        plan_id="plan:1", family="life_share", media_lane="ordinary_life",
+        frozen_at=NOW - timedelta(minutes=45),
+    )
+    approval = _approval(1, approved_at=NOW - timedelta(hours=25))
+    approval.expires_at = NOW - timedelta(minutes=1)
+    projection = _projection(bundles=(bundle,), approvals=(approval,))
+    worker = MediaAutoDeliveryWorker(
+        application=application,
+        ledger=_Ledger(projection),
+        composition=_composition(max_deliveries_per_day=5),
+    )
+    result = await worker.drain_once(trace_id="trace:t", correlation_id="corr:t")
+    assert result.status == "conversation_expired"
+    assert application.approvals == [] and application.deliveries == []
+
+
+@pytest.mark.asyncio
 async def test_failed_inspection_previews_are_ignored() -> None:
     application = _Application()
     bundle = _preview_bundle(1)

@@ -111,10 +111,10 @@ def required_recall_authority_refs(sources: RecallCorpusSources) -> frozenset[st
     for item in sources.private_impressions:
         # A superseded private impression remains immutable World history, but
         # it is no longer part of the character's current private
-        # understanding.  Historical recall is allowed to recover superseded
-        # facts; it must not resurrect a hypothesis the character explicitly
-        # replaced.
-        if item.status != "active":
+        # understanding.  Released impressions stay recallable: putting one
+        # down is not amnesia.  Superseded/expired/contradicted readings stay
+        # out of the live recall set so a replaced hypothesis is not revived.
+        if item.status not in {"active", "released"}:
             continue
         refs.update(item.source_refs)
         if item.origin is not None:
@@ -666,13 +666,14 @@ class RecallCorpusCompiler:
                         )
                     ),
                     occurred_from=item.accepted_at,
+                    status=item.status,
                     privacy_class="withhold",
                     authority="defeasible_interpretation",
                 )
             )
 
         for item in sources.private_impressions:
-            if item.status != "active":
+            if item.status not in {"active", "released"}:
                 continue
             resolved = tuple(meanings[ref] for ref in item.interpretation_refs if ref in meanings)
             if len(resolved) != len(item.interpretation_refs):

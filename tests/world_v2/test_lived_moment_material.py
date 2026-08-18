@@ -78,6 +78,21 @@ def test_visible_impression_still_appears_in_lived_moment() -> None:
     assert f"心里还搁着：{_VISIBLE_SUMMARY}" in view["materials"][LIVED_MOMENT_MATERIAL_KEY]
 
 
+def test_lived_moment_names_how_old_an_impression_is() -> None:
+    impression = _impression("impression:1", _VISIBLE_SUMMARY)
+    impression["value"]["first_seen"] = "2026-08-14T16:00:00+08:00"
+    view = compile_inner_life_snapshot(_context(impressions=[impression])).model_view()
+
+    assert (
+        f"心里还搁着（2 天前记下的）：{_VISIBLE_SUMMARY}"
+        in view["materials"][LIVED_MOMENT_MATERIAL_KEY]
+    )
+    hashed = json.loads(
+        compile_inner_life_snapshot(_context(impressions=[impression])).materials_json
+    )
+    assert LIVED_MOMENT_MATERIAL_KEY not in hashed
+
+
 def test_lived_moment_is_view_only_and_does_not_enter_materials_hash() -> None:
     typed = compile_inner_life_snapshot(
         _context(impressions=[_impression("impression:1", _VISIBLE_SUMMARY)])

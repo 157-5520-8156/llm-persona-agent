@@ -326,7 +326,7 @@ async def test_expired_expectation_opportunity_reaches_her_instead_of_failing_sa
     assert process.runtime_outcome_ref != "proactive:source-binding-invalid"
 
 
-def test_expired_expectation_context_states_the_hope_as_fact(monkeypatch) -> None:
+def test_expired_expectation_context_does_not_state_the_hope_as_fact(monkeypatch) -> None:
     monkeypatch.setattr(
         proactive_action_module,
         "expired_unanswered_expectation",
@@ -355,9 +355,10 @@ def test_expired_expectation_context_states_the_hope_as_fact(monkeypatch) -> Non
     )
 
     assert HOPED in context
-    assert "Hope expired" in context
+    assert "her words, not a world event" in context
+    assert "Hope expired" not in context
     assert "He last spoke 90s ago" in context
-    assert "he has spoken since this hope was declared" in context
+    assert "he has spoken since she declared a hope" in context
     assert "Unanswered" not in context
     assert "没理" not in context
     assert "should" not in context.lower()

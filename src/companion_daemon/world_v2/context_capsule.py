@@ -227,17 +227,19 @@ def compile_shared_media_delivery_item(
     authority_event_ref: str,
     authority_world_revision: int,
     authority_payload_hash: str,
+    about: str | None = None,
 ) -> SharedMediaDeliveryContextItem:
     """Bind one delivered photo as a source-closed world fact."""
 
     privacy_class: PrivacyClass = "private" if privacy_layer == "intimate" else "personal"
+    label = about.strip() if isinstance(about, str) and about.strip() else ""
     return SharedMediaDeliveryContextItem(
         delivery_id=delivery_id,
         shared_at=shared_at,
         family=family,
         kind=kind,
         privacy_layer=privacy_layer,
-        about=_shared_media_about(family=family, kind=kind),
+        about=label or _shared_media_about(family=family, kind=kind),
         he_spoke_after=he_spoke_after,
         privacy_class=privacy_class,
         authority_event_ref=authority_event_ref,
@@ -528,7 +530,11 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
     recent_dialogue: SliceBudget = Field(
         default_factory=lambda: SliceBudget(
             max_items=PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
-            max_fields=96,
+            # A dialogue item dumps ~11–13 keys. 96 fields therefore kept only
+            # ~7 lines — a half-conversation of whoever rank favoured. 256
+            # fits the mixed 16-item working window (~16×13 keys) without
+            # raising the ResolverProof 32-ref cap.
+            max_fields=256,
             max_characters=80_000,
         )
     )
@@ -2300,13 +2306,11 @@ def _compile_resolved_context(
         item.item_ref
         for item in slices["recent_dialogue"].items
         if set(json.loads(item.payload_json).get("continuity_reasons", ()))
-        & {"current_turn", "pending_interaction", "acknowledged_context"}
+        & {"current_turn", "pending_interaction", "recent_companion"}
     }
-    # Current attention and an unacknowledged counterpart message are not
-    # interchangeable with ordinary recency.  They remain a tiny mandatory
-    # working-memory set while unrelated optional slices are still available
-    # to evict.  A capsule that cannot represent this bounded set fails
-    # explicitly rather than silently making a received message disappear.
+    # Current attention, an unacknowledged counterpart message, and her own
+    # live tail are not interchangeable with ordinary recency. Acknowledged
+    # history can recede; pinning it kept a four-hour-old reaction current.
     terminal_minimum_items: dict[SliceName, int] = {
         "recent_dialogue": len(required_dialogue_ids),
         # Preserve one recent self Experience all the way through emergency

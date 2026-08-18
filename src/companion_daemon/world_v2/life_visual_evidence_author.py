@@ -29,7 +29,7 @@ from datetime import datetime, timedelta
 import hashlib
 import json
 import logging
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from typing import Literal, Mapping, Protocol
 
 from .character_media_fact_binder import CharacterMediaCandidateRuntime
@@ -50,6 +50,7 @@ from .life_author_seed import (
 from .life_development_draft import LifeDevelopmentVisualEvidenceDraft
 from .life_development_runtime import LifeDevelopmentProposalReader
 from .mood_view import active_mood_intensities
+from .present_moment_candidate import inspect_present_moment
 from .private_image_evidence_contract import RecipientScopedImageEvidenceV1
 from .private_image_evidence_runtime import (
     RecipientScopedImageEvidenceDeclarationCommand,
@@ -228,6 +229,16 @@ class LifeVisualEvidenceAuthor:
         )
         mood_multiplier = self._mood_multiplier_bp(projection)
         pool_empty = self._available_photo_candidate_count(projection) == 0
+        present = self._declare_present_moment_if_ready(
+            projection=projection,
+            declared_sources=declared_sources,
+            logical_time=logical_time,
+            private_today=private_today,
+            trace_id=trace_id,
+            correlation_id=correlation_id,
+        )
+        if present is not None:
+            return present
         eligible = self._eligible_occurrences(
             projection=projection,
             logical_time=logical_time,
@@ -357,6 +368,17 @@ class LifeVisualEvidenceAuthor:
         """
 
         requested = tuple(dict.fromkeys(source_refs))
+        projection: _ProjectionLike = self._ledger.project()
+        present = self._declare_present_moment_if_ready(
+            projection=projection,
+            declared_sources=frozenset(),
+            logical_time=getattr(projection, "logical_time", None),
+            private_today=0,
+            trace_id=trace_id,
+            correlation_id=correlation_id,
+        )
+        if present is not None:
+            return present
         if not requested:
             # Role chose consider_available_candidate without naming a source.
             # Compile at most one eligible settled moment so selection is not an
@@ -495,6 +517,164 @@ class LifeVisualEvidenceAuthor:
 
     # -- discovery -------------------------------------------------------
 
+    def _declare_present_moment_if_ready(
+        self,
+        *,
+        projection: _ProjectionLike,
+        declared_sources: frozenset[str],
+        logical_time: datetime | None,
+        private_today: int,
+        trace_id: str,
+        correlation_id: str,
+    ) -> VisualEvidenceAuthorResult | None:
+        """Open one annex-backed active plan.  Does not invent a scene."""
+
+        if not isinstance(logical_time, datetime):
+            return None
+        if not declared_sources:
+            declared_sources, _recent = self._declaration_ledger_view(
+                projection=projection, logical_time=logical_time
+            )
+        fact = inspect_present_moment(
+            projection=projection,
+            catalog=self._catalog,
+            logical_time=logical_time,
+            declared_sources=declared_sources,
+        )
+        if fact.reason == "already_open":
+            return VisualEvidenceAuthorResult(
+                status="idle",
+                reason_code="visual_evidence.present_moment_already_open",
+                declared_source_ref=fact.source_ref,
+            )
+        if not fact.photographable or fact.reason != "active" or not fact.source_ref:
+            return None
+        open_life = self._declare_open_life_present_moment(
+            projection=projection,
+            source_ref=fact.source_ref,
+            trace_id=trace_id,
+            correlation_id=correlation_id,
+        )
+        if open_life is not None:
+            return open_life
+        row = self._active_plan_declaration_row(
+            projection=projection, source_ref=fact.source_ref
+        )
+        if row is None:
+            return None
+        occurrence, opening, annex, lane = row
+        if lane == "private" and (
+            private_today >= self._policy.max_private_declarations_per_day
+            or not self._recipient_relationship_ready(projection)
+        ):
+            return None
+        result = self._declare(
+            occurrence=occurrence,
+            opening=opening,
+            annex=annex,
+            lane=lane,
+            trace_id=trace_id,
+            correlation_id=correlation_id,
+        )
+        return result.model_copy(
+            update={"reason_code": "visual_evidence.present_moment_declared"}
+        )
+
+    def _declare_open_life_present_moment(
+        self,
+        *,
+        projection: _ProjectionLike,
+        source_ref: str,
+        trace_id: str,
+        correlation_id: str,
+    ) -> VisualEvidenceAuthorResult | None:
+        """Declare an in-progress open-life plan from its accepted visual annex."""
+
+        for plan in getattr(projection, "plans", ()) or ():
+            origin = getattr(plan, "authority_origin", None)
+            if getattr(origin, "accepted_event_ref", None) != source_ref:
+                continue
+            kind = getattr(plan, "activity_kind", None)
+            if not isinstance(kind, str) or not kind.startswith("open_life."):
+                return None
+            reader = getattr(self._life_development_proposals, "read_for_plan", None)
+            if not callable(reader):
+                return None
+            try:
+                material = reader(plan_id=getattr(plan, "plan_id"))
+            except ValueError:
+                return None
+            if material is None:
+                return None
+            visual = next(
+                (
+                    item.visual_evidence
+                    for item in getattr(material, "outcomes", ()) or ()
+                    if getattr(item, "visual_evidence", None) is not None
+                ),
+                None,
+            )
+            if visual is None:
+                return None
+            occurrence = SimpleNamespace(
+                settlement_event_ref=source_ref,
+                trigger_ref=getattr(plan, "plan_id", kind),
+                visibility=getattr(plan, "privacy_class", None) or "shareable",
+                settled_at=getattr(plan, "last_transitioned_at", None)
+                or getattr(projection, "logical_time", None),
+                result_payload_ref=None,
+                result_payload_hash=None,
+                participant_refs=getattr(plan, "participant_refs", ()) or (self._character_ref,),
+            )
+            result = self._declare_open_life(
+                occurrence=occurrence,
+                activity_kind=kind,
+                visual=visual,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+            return result.model_copy(
+                update={"reason_code": "visual_evidence.present_moment_declared"}
+            )
+        return None
+
+    def _active_plan_declaration_row(
+        self, *, projection: _ProjectionLike, source_ref: str
+    ) -> tuple[object, ReviewedLifeSeedOpening, object, str] | None:
+        for plan in getattr(projection, "plans", ()) or ():
+            origin = getattr(plan, "authority_origin", None)
+            if getattr(origin, "accepted_event_ref", None) != source_ref:
+                continue
+            if getattr(plan, "status", None) != "active":
+                continue
+            kind = getattr(plan, "activity_kind", None)
+            opening = self._catalog.opening_for_activity(kind) if isinstance(kind, str) else None
+            annex = getattr(opening, "visual_evidence", None) if opening is not None else None
+            if opening is None or annex is None:
+                return None
+            visibility = getattr(plan, "privacy_class", None) or opening.privacy
+            if visibility not in _ORDINARY_LIFE_VISIBILITIES and visibility != "private":
+                return None
+            lane = (
+                "private"
+                if opening.visual_potential == "private_transition"
+                else "public"
+            )
+            if lane == "public" and visibility not in _ORDINARY_LIFE_VISIBILITIES:
+                return None
+            occurrence = SimpleNamespace(
+                settlement_event_ref=source_ref,
+                trigger_ref=getattr(plan, "plan_id", kind),
+                visibility=visibility if visibility in _ORDINARY_LIFE_VISIBILITIES else "private",
+                settled_at=getattr(plan, "last_transitioned_at", None)
+                or getattr(projection, "logical_time", None),
+                result_payload_ref=None,
+                result_payload_hash=None,
+                participant_refs=getattr(plan, "participant_refs", ()) or (),
+            )
+            return occurrence, opening, annex, lane
+        return None
+
     @staticmethod
     def _available_photo_candidate_count(projection: _ProjectionLike) -> int:
         logical_time = getattr(projection, "logical_time", None)
@@ -566,6 +746,16 @@ class LifeVisualEvidenceAuthor:
             return VisualEvidenceAuthorResult(
                 status="idle", reason_code="visual_evidence.candidates_already_available"
             )
+        present = self._declare_present_moment_if_ready(
+            projection=projection,
+            declared_sources=frozenset(),
+            logical_time=logical_time,
+            private_today=0,
+            trace_id=trace_id,
+            correlation_id=correlation_id,
+        )
+        if present is not None:
+            return present
         declared_sources, recent = self._declaration_ledger_view(
             projection=projection,
             logical_time=logical_time,

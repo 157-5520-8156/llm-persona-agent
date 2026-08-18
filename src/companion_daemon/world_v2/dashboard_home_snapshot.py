@@ -233,6 +233,7 @@ _STATUS_LABELS: Mapping[str, str] = MappingProxyType(
         "open": "进行中",
         "resolved": "已解决",
         "superseded": "已替代",
+        "released": "已搁下",
         "accepted": "已接受",
         "rejected": "已拒绝",
         "stale": "已过期",

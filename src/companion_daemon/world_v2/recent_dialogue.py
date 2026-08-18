@@ -14,6 +14,7 @@ from .present_prompt import (
     PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
 )
 from .ledger import LedgerPort
+from .qq_face_render_catalog import compile_inbound_surfaces
 from .schema_core import FrozenModel, PrivacyClass
 from .schemas import (
     CommittedWorldEventRef,
@@ -30,6 +31,46 @@ _DIALOGUE_SEQUENCE_SCALE = 100
 # his later ones. These caps mark the still-live tail so rank keeps it.
 _LIVE_COUNTERPART_ATTENTION = 8
 _LIVE_COMPANION_ATTENTION = 8
+
+
+def observation_dialogue_text(observation: Observation) -> str | None:
+    """Visible counterpart line for one Observation, including non-text reactions.
+
+    Text stays the Observation body when he actually typed.  A reaction or
+    sticker with no body uses the reviewed platform render label (glyph plus
+    catalog name) so continuity can mark that Observation as the current turn.
+    Unmatched ids stay as the provider ref.  This is the same catalog fact as
+    ``inbound_surfaces``; it is not a host reading of mood or intent.
+    """
+
+    if observation.text is not None and observation.text.strip():
+        return observation.text
+    meta = observation.coalescing_metadata
+    if not isinstance(meta, dict):
+        return None
+    reaction_refs = tuple(
+        item for item in (meta.get("reaction_refs") or ()) if isinstance(item, str) and item
+    )
+    sticker_refs = tuple(
+        item for item in (meta.get("sticker_refs") or ()) if isinstance(item, str) and item
+    )
+    if not reaction_refs and not sticker_refs:
+        return None
+    labels: list[str] = []
+    for surface in compile_inbound_surfaces(
+        reaction_refs=reaction_refs,
+        sticker_refs=sticker_refs,
+    ):
+        glyph = surface.platform_render_glyph
+        name = surface.platform_render_name
+        if isinstance(glyph, str) and glyph.strip() and isinstance(name, str) and name.strip():
+            labels.append(f"{glyph.strip()} {name.strip()}")
+        elif isinstance(name, str) and name.strip():
+            labels.append(name.strip())
+        else:
+            labels.append(surface.provider_ref)
+    joined = "、".join(labels)
+    return joined[:4_096] if joined else None
 
 
 def dialogue_causal_sequence(*, world_revision: int, position: int = 0) -> int:
@@ -186,10 +227,11 @@ class RecentDialogueCompiler:
                 observation = Observation.model_validate_json(located[0].payload_json)
             except ValueError:
                 continue
+            text = observation_dialogue_text(observation)
             if (
                 observation.actor == actor_ref
                 or observation.actor not in subject_refs
-                or observation.text is None
+                or text is None
             ):
                 continue
             inbound.append(
@@ -197,7 +239,7 @@ class RecentDialogueCompiler:
                     dialogue_id=f"dialogue:observation:{observation.observation_id}",
                     speaker="counterpart",
                     speaker_ref=observation.actor,
-                    text=observation.text,
+                    text=text,
                     occurred_at=observation.received_at,
                     delivery_state="observed",
                     # Observation timestamps are only second-granularity on
@@ -514,12 +556,13 @@ def _mark_live_conversation_head(
     inbound: list[RecentDialogueItem],
     companion: list[RecentDialogueItem],
 ) -> tuple[list[RecentDialogueItem], list[RecentDialogueItem]]:
-    """Boost the live tail so a she-initiates turn keeps his latest lines.
+    """Tag both live tails so a she-initiates turn keeps a real conversation.
 
     Inbound continuity overwrites these reasons when a counterpart Observation
-    is the trigger.  When the trigger is a receipt, clock, or impression, the
-    tags remain and rank the still-current conversation above older companion
-    beats that would otherwise exhaust the slice's source-ref budget.
+    is the trigger. Receipt, clock, and impression triggers keep the tags.
+    His latest line is ordinary live history (``recent``), never ``current_turn``:
+    only the actual triggering observation is current. Packing, not a sticky
+    current mark, is what keeps his last few lines in the slice.
     """
 
     inbound_by_seq = sorted(
@@ -529,16 +572,11 @@ def _mark_live_conversation_head(
         companion, key=lambda item: (item.sequence, item.occurred_at, item.dialogue_id)
     )
     live_him = {id(item) for item in inbound_by_seq[-_LIVE_COUNTERPART_ATTENTION:]}
-    newest_him = inbound_by_seq[-1] if inbound_by_seq else None
     live_me = {id(item) for item in companion_by_seq[-_LIVE_COMPANION_ATTENTION:]}
-    marked_inbound = []
-    for item in inbound:
-        extra: list[str] = []
-        if id(item) in live_him:
-            extra.append("acknowledged_context")
-        if newest_him is not None and item.dialogue_id == newest_him.dialogue_id:
-            extra.append("current_turn")
-        marked_inbound.append(_with_continuity_reasons(item, *extra) if extra else item)
+    marked_inbound = [
+        _with_continuity_reasons(item, "recent") if id(item) in live_him else item
+        for item in inbound
+    ]
     marked_companion = [
         _with_continuity_reasons(item, "recent_companion") if id(item) in live_me else item
         for item in companion
@@ -546,10 +584,44 @@ def _mark_live_conversation_head(
     return marked_inbound, marked_companion
 
 
+def delivered_photo_dialogue_item(
+    *,
+    delivery_id: str,
+    about: str,
+    shared_at: datetime,
+    actor_ref: str,
+    authority_event_ref: str,
+    authority_world_revision: int,
+    authority_payload_hash: str,
+) -> RecentDialogueItem:
+    """Companion line for one already-delivered photo. No prompt or artifact."""
+
+    label = about.strip()
+    return RecentDialogueItem(
+        dialogue_id=f"dialogue:media-delivery:{delivery_id}",
+        speaker="companion",
+        speaker_ref=actor_ref,
+        text=f"[{label}]",
+        occurred_at=shared_at,
+        delivery_state="delivered",
+        sequence=dialogue_causal_sequence(world_revision=authority_world_revision),
+        source_claims=(
+            DialogueSourceClaim(
+                authority_event_ref=authority_event_ref,
+                authority_world_revision=authority_world_revision,
+                authority_payload_hash=authority_payload_hash,
+            ),
+        ),
+        continuity_reasons=("recent_companion",),
+    )
+
+
 __all__ = [
     "DialogueSourceClaim",
     "RecentDialogueCompilation",
     "RecentDialogueCompiler",
     "RecentDialogueItem",
+    "delivered_photo_dialogue_item",
     "dialogue_causal_sequence",
+    "observation_dialogue_text",
 ]

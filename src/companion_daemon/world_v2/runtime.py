@@ -32,6 +32,8 @@ from .declared_display_runtime import (
     validate_declared_display_hitch_terminal,
 )
 from .goal_expiry_runtime import build_due_goal_expiry_events
+from .appraisal_expiry_runtime import build_due_appraisal_expiry_events
+from .affect_decay_runtime import build_due_affect_residue_close_events
 from .occurrence_clock_continuation import build_occurrence_clock_events
 from .outcome_observation_runtime import build_outcome_observation_event
 from .pinned_turn import PinnedTurnCompiler
@@ -4958,11 +4960,40 @@ class WorldRuntime:
             projection_hint=f"world-revision:{committed.world_revision}",
         )
 
-    def _affect_decay_events(self, projection, clock: ClockObservation) -> list[WorldEvent]:
-        """H10: intensity is computed at read time; clock ticks do not write decay."""
+    def _affect_decay_events(
+        self,
+        projection,
+        clock: ClockObservation,
+        *,
+        clock_event: WorldEvent,
+    ) -> list[WorldEvent]:
+        """H10: intensity stays a read-time function.
 
-        del projection, clock
-        return []
+        Clock ticks write AffectEpisodeDecayed only when live intensity has
+        reached the recorded residue/floor, so the slot can leave active.
+        """
+
+        return build_due_affect_residue_close_events(
+            world_id=self._world_id,
+            episodes=projection.affect_episodes,
+            baselines=projection.affect_baselines,
+            clock=clock,
+            clock_event=clock_event,
+        )
+
+    def _appraisal_expiry_events(
+        self,
+        projection,
+        clock: ClockObservation,
+        *,
+        clock_event: WorldEvent,
+    ) -> list[WorldEvent]:
+        return build_due_appraisal_expiry_events(
+            world_id=self._world_id,
+            appraisals=projection.appraisals,
+            clock=clock,
+            clock_event=clock_event,
+        )
 
     def _goal_expiry_events(
         self,
@@ -5047,7 +5078,8 @@ class WorldRuntime:
                 event,
                 *self._goal_expiry_events(before, clock, clock_event=event),
                 *self._occurrence_clock_events(before, clock, clock_event=event),
-                *self._affect_decay_events(before, clock),
+                *self._appraisal_expiry_events(before, clock, clock_event=event),
+                *self._affect_decay_events(before, clock, clock_event=event),
             ]
             try:
                 committed = await self._commit(
@@ -5223,12 +5255,27 @@ class WorldRuntime:
                 or latest.payload_hash != clock_event.payload_hash
             ):
                 return original_outcome
-            events = build_due_goal_expiry_events(
-                world_id=self._world_id,
-                goals=current.goals,
-                clock=clock,
-                clock_transition=latest,
-            )
+            events = [
+                *build_due_goal_expiry_events(
+                    world_id=self._world_id,
+                    goals=current.goals,
+                    clock=clock,
+                    clock_transition=latest,
+                ),
+                *build_due_appraisal_expiry_events(
+                    world_id=self._world_id,
+                    appraisals=current.appraisals,
+                    clock=clock,
+                    clock_event=clock_event,
+                ),
+                *build_due_affect_residue_close_events(
+                    world_id=self._world_id,
+                    episodes=current.affect_episodes,
+                    baselines=current.affect_baselines,
+                    clock=clock,
+                    clock_event=clock_event,
+                ),
+            ]
             if not events:
                 return original_outcome
             try:

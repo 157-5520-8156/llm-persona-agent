@@ -91,4 +91,45 @@ def materialize_affect_episodes(
     return tuple(materialized)
 
 
-__all__ = ["live_component_intensity_bp", "materialize_affect_episodes"]
+def component_lower_bound_bp(
+    component: AffectComponentProjection,
+    *,
+    baseline_bp: int,
+) -> int:
+    """The installed floor the decay curve may not fall below."""
+
+    return max(component.decay_profile.floor_bp, component.residue_bp, baseline_bp)
+
+
+def episode_at_residue_floor(
+    episode: AffectEpisodeProjection,
+    *,
+    logical_time: datetime,
+    baselines: tuple[AffectBaselineProjection, ...] = (),
+) -> bool:
+    """True when an active episode's live intensity has reached residue/floor.
+
+    This is the natural close of the decay curve, not a character ``resolve``.
+    """
+
+    if episode.status != "active":
+        return False
+    baseline_by_dimension = {item.dimension: item.baseline_bp for item in baselines}
+    for component in episode.components:
+        baseline_bp = baseline_by_dimension.get(component.dimension, 0)
+        live = live_component_intensity_bp(
+            component,
+            baseline_bp=baseline_bp,
+            at=logical_time,
+        )
+        if live > component_lower_bound_bp(component, baseline_bp=baseline_bp):
+            return False
+    return True
+
+
+__all__ = [
+    "component_lower_bound_bp",
+    "episode_at_residue_floor",
+    "live_component_intensity_bp",
+    "materialize_affect_episodes",
+]

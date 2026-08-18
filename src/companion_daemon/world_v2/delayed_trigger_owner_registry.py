@@ -50,6 +50,7 @@ from .qq_c2c_host import QQC2CHost
 from .schemas import (
     Action,
     AffectComponentProjection,
+    AppraisalProjection,
     ClaimLease,
     CommitmentValues,
     ExpressionPlanManifestBeatRef,
@@ -121,6 +122,7 @@ INSTALLED_PROJECTION_DUE_FIELDS = frozenset(
         _field(PlanStateProjection, "scheduled_window"),
         _field(WorldOccurrenceProjection, "time_window"),
         _field(AffectComponentProjection, "decay_not_before"),
+        _field(AppraisalProjection, "expires_at"),
         _field(SilenceOpportunity, "anchored_at"),
         _field(SilenceOpportunity, "idle_seconds"),
         _field(V2GoalValues, "due_window"),
@@ -359,6 +361,12 @@ DELAYED_TRIGGER_OWNERS: tuple[DelayedTriggerOwner, ...] = (
         runtime_owner=OpenWorldEventRuntime.advance_once,
         public_seams=_CLOCK_SEAMS,
         trigger_mode="event_triggered",
+    ),
+    DelayedTriggerOwner(
+        mechanism_id="appraisal.expiry",
+        runtime_owner=WorldRuntime.advance,
+        public_seams=_INBOUND_CLOCK_SEAMS,
+        projection_due_fields=(_field(AppraisalProjection, "expires_at"),),
     ),
     DelayedTriggerOwner(
         mechanism_id="affect.decay",

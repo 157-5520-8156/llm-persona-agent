@@ -21,6 +21,7 @@ from .random_authority import RandomAuthority, RandomDrawRecordedPayload
 from .response_expectation_view import (
     expired_expectation_consideration_id,
     expired_unanswered_expectation,
+    is_overnight_local,
     pending_response_expectation,
 )
 from .revisit_intention_view import (
@@ -1266,6 +1267,9 @@ class SocialInitiativeCompiler:
             ),
             None,
         )
+        # One consideration per plan_id. A terminal process means she already
+        # had this offer and chose now / later / silent; cadence wakeup must
+        # not open a second farm or a second short wake for the same hope.
         if existing is not None and existing.state == "terminal":
             return None
         return await self._from_source(
@@ -1489,6 +1493,10 @@ class SocialInitiativeCompiler:
         return getattr(ref, "world_revision", 1)
 
     async def _spontaneous_contact(self, projection, logical_time: datetime):
+        # Hard boundary: do not offer a morning ping before local 07:00.
+        # She still chooses now / later / silent once the day starts.
+        if is_overnight_local(logical_time):
+            return None
         if not projection.message_observations:
             return None
         latest = projection.message_observations[-1]

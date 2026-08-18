@@ -37,12 +37,35 @@ from .schema_core import FrozenModel
 from .schemas import EvidenceRef, ProjectionCursor, WorldEvent
 
 _LOG = logging.getLogger(__name__)
+# Activity/NPC interior skips that must not abort the rest of the wake.
+# Occasion spent is already-asked. Faculty/projection skips mean this lane
+# could not call the model this tick; they are not an occurrence-family claim
+# and retrying them with 10/30/120 backoff starves NPC, visual, and media.
+# The spend cap itself is unchanged: the skipped lane still did not spend.
+_QUIET_LANE_SKIP_TAILS = frozenset(
+    {
+        "occasion_already_considered",
+        "occasion_expired",
+        "role_faculty_unavailable",
+        "invalid_projection",
+        "projection_unavailable",
+    }
+)
 _ACTIVITY_QUIET_TECHNICAL_CODES = frozenset(
     {
         "activity_lifecycle.occasion_already_considered",
         "activity_lifecycle.occasion_expired",
+        "activity_lifecycle.role_faculty_unavailable",
+        "activity_lifecycle.invalid_projection",
+        "activity_lifecycle.projection_unavailable",
     }
 )
+
+
+def _is_quiet_lane_skip(failure_code: str) -> bool:
+    if failure_code in _ACTIVITY_QUIET_TECHNICAL_CODES:
+        return True
+    return failure_code.rsplit(".", 1)[-1] in _QUIET_LANE_SKIP_TAILS
 
 
 LifeEcologyAvailabilityState = Literal[
@@ -521,10 +544,13 @@ class LifeEcologyRuntime:
                 activity_quiet_model_result = extra_quiet
 
         npc_initiative_status: str | None = None
-        # NPC Ecology is a quiet-wake lane: it runs when no main life family
-        # claimed this wake.  Unlike the retired reviewed-candidate lane it is
-        # also valid beside open Life Development; both share the ordinary
-        # occurrence/aftermath event machine, so only one may materialize.
+        # NPC Ecology is a quiet-wake lane: it runs when no occurrence-bearing
+        # life family claimed this wake.  A newly written *future* plan is not
+        # that family — Life Development and NPC share the occurrence/aftermath
+        # machine, so an occurrence_committed wake still excludes NPC, but a
+        # plan_committed wake must not.  After H23 the World Author usually
+        # writes a plan whenever it is due; treating that as "the wake is
+        # taken" starved NPC of every ambient consideration.
         npc_has_due_work = False
         if self._npc_initiative_followup is not None:
             due_reader = getattr(self._npc_initiative_followup, "has_due_work", None)
@@ -537,9 +563,7 @@ class LifeEcologyRuntime:
             and life_development_status
             not in {
                 "occurrence_committed",
-                "plan_committed",
                 "plan_completed",
-                "technical_failure",
             }
             and aftermath_status
             not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}
@@ -560,27 +584,34 @@ class LifeEcologyRuntime:
                         if isinstance(supplied, str)
                         else ""
                     )
-                    failure_code = "npc_ecology." + (normalized[:80] or "unknown")
-                    persisted = await self._complete_technical_failure(
-                        key=key,
-                        trigger_id=claim.trigger_id,
-                        failure_code=failure_code,
-                    )
-                    return LifeEcologyRunResult(
-                        status="failed_safe",
-                        trigger_id=claim.trigger_id,
-                        reason_code=(
-                            "life_ecology.npc_ecology_technical_failure"
-                            if persisted
-                            else "life_ecology.technical_failure_persistence_failed"
-                        ),
-                        activity_followup_status=activity_status,
-                        aftermath_followup_status=aftermath_status,
-                        biographical_followup_status=biographical_status,
-                        life_development_followup_status=life_development_status,
-                        npc_initiative_followup_status=npc_initiative_status,
-                        technical_failure_code=(failure_code if persisted else None),
-                    )
+                    if _is_quiet_lane_skip(normalized):
+                        # Faculty/projection skip: this NPC tick did not spend.
+                        # Visual declaration and media scan are unrelated and
+                        # must still run.  Real actor/world-author failures
+                        # keep the shared retry lane below.
+                        npc_initiative_status = "no_op"
+                    else:
+                        failure_code = "npc_ecology." + (normalized[:80] or "unknown")
+                        persisted = await self._complete_technical_failure(
+                            key=key,
+                            trigger_id=claim.trigger_id,
+                            failure_code=failure_code,
+                        )
+                        return LifeEcologyRunResult(
+                            status="failed_safe",
+                            trigger_id=claim.trigger_id,
+                            reason_code=(
+                                "life_ecology.npc_ecology_technical_failure"
+                                if persisted
+                                else "life_ecology.technical_failure_persistence_failed"
+                            ),
+                            activity_followup_status=activity_status,
+                            aftermath_followup_status=aftermath_status,
+                            biographical_followup_status=biographical_status,
+                            life_development_followup_status=life_development_status,
+                            npc_initiative_followup_status=npc_initiative_status,
+                            technical_failure_code=(failure_code if persisted else None),
+                        )
             except Exception:
                 await self._complete_failed_safe(key=key, trigger_id=claim.trigger_id)
                 return LifeEcologyRunResult(
@@ -1011,7 +1042,7 @@ class LifeEcologyRuntime:
                     else ""
                 )
                 failure_code = normalized[:96] or "activity_lifecycle.unknown"
-                if failure_code in _ACTIVITY_QUIET_TECHNICAL_CODES:
+                if _is_quiet_lane_skip(failure_code):
                     return "no_op", quiet_model_result
                 persisted = await self._complete_technical_failure(
                     key=key,

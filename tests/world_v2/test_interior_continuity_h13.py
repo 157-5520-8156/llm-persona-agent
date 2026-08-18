@@ -111,13 +111,21 @@ def test_slim_wait_soon_is_a_visible_failure() -> None:
         )
 
 
-def test_slim_wait_prefix_without_seconds_is_a_visible_failure() -> None:
-    from companion_daemon.world_v2.present_prompt import SLIM_WAIT_PAIR_INCOMPLETE
+def test_slim_waiting_for_prefix_without_wait_lands_as_open_hope() -> None:
+    from companion_daemon.world_v2.present_prompt import (
+        SLIM_OPEN_HOPE_EXPIRES_AFTER_SECONDS,
+        SLIM_OPEN_HOPE_WAIT_SECONDS,
+    )
 
-    with pytest.raises(ValueError, match=SLIM_WAIT_PAIR_INCOMPLETE):
-        compile_slim_consider_payload(
-            _slim_payload(waiting_for="短: 想听你怎么看这件事")
-        )
+    compiled = compile_slim_consider_payload(
+        _slim_payload(waiting_for="短: 想听你怎么看这件事")
+    )
+
+    assert compiled is not None
+    expectation = compiled["expression_draft"]["response_expectation"]
+    assert expectation["hoped_response"] == "短: 想听你怎么看这件事"
+    assert expectation["wait_seconds"] == SLIM_OPEN_HOPE_WAIT_SECONDS
+    assert expectation["expires_after_seconds"] == SLIM_OPEN_HOPE_EXPIRES_AFTER_SECONDS
 
 
 def test_slim_unknown_wait_is_a_visible_failure() -> None:
@@ -129,15 +137,21 @@ def test_slim_unknown_wait_is_a_visible_failure() -> None:
         )
 
 
-def test_slim_waiting_for_without_wait_is_a_visible_failure() -> None:
-    from companion_daemon.world_v2.present_prompt import SLIM_WAIT_PAIR_INCOMPLETE
+def test_slim_waiting_for_without_wait_lands_as_open_hope() -> None:
+    from companion_daemon.world_v2.present_prompt import (
+        SLIM_OPEN_HOPE_EXPIRES_AFTER_SECONDS,
+        SLIM_OPEN_HOPE_WAIT_SECONDS,
+    )
 
-    with pytest.raises(ValueError, match=SLIM_WAIT_PAIR_INCOMPLETE) as caught:
-        compile_slim_consider_payload(
-            _slim_payload(waiting_for="他回来把那件事说完")
-        )
-    assert "这次缺了：wait" in str(caught.value)
-    assert "不会被默默丢掉" in str(caught.value)
+    compiled = compile_slim_consider_payload(
+        _slim_payload(waiting_for="他回来把那件事说完")
+    )
+
+    assert compiled is not None
+    expectation = compiled["expression_draft"]["response_expectation"]
+    assert expectation["hoped_response"] == "他回来把那件事说完"
+    assert expectation["wait_seconds"] == SLIM_OPEN_HOPE_WAIT_SECONDS
+    assert expectation["expires_after_seconds"] == SLIM_OPEN_HOPE_EXPIRES_AFTER_SECONDS
 
 
 def test_slim_wait_without_waiting_for_is_a_visible_failure() -> None:
@@ -157,6 +171,17 @@ def test_slim_declared_wait_below_the_floor_still_wakes_at_thirty_seconds() -> N
     expectation = compiled["expression_draft"]["response_expectation"]
     assert expectation["wait_seconds"] == 30
     assert expectation["expires_after_seconds"] == 90
+
+
+def test_slim_max_wait_is_not_an_open_hope() -> None:
+    compiled = compile_slim_consider_payload(
+        _slim_payload(waiting_for="想听你怎么看这件事", wait=86_400)
+    )
+
+    assert compiled is not None
+    expectation = compiled["expression_draft"]["response_expectation"]
+    assert expectation["wait_seconds"] == 86_400
+    assert expectation["expires_after_seconds"] == 86_460
 
 
 def test_slim_still_pending_with_now_messages_is_an_in_turn_follow_up() -> None:

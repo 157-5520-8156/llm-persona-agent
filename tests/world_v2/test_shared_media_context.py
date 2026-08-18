@@ -164,14 +164,25 @@ def test_snapshot_photos_i_shared_are_source_bound() -> None:
             "about": "刚做完的一件事的照片",
             "he_spoke_after": True,
             "source_ref": "delivery:book-market",
+            "when": "1 小时前",
+            "local_clock": "16:00",
+            "already_in_chat": True,
+            "line": (
+                "1 小时前（当地16:00）已经发给他刚做完的一件事的照片，"
+                "这张已经出现在你们的对话里。发出之后他又开口了。"
+            ),
         }
     ]
+    assert "已经发给他" in photos[0]["line"]
     assert item.delivery_id in typed.source_refs
     view = typed.model_view()
     serialized = __import__("json").dumps(view, ensure_ascii=False)
     for token in _LEAK_TOKENS:
         assert token not in serialized
     assert "刚做完的一件事的照片" in serialized
+    conversation = view["materials"].get("conversation")
+    assert isinstance(conversation, list)
+    assert any(line.startswith("我") and "刚做完的一件事的照片" in line for line in conversation)
     del hashed
 
 
@@ -187,6 +198,32 @@ def test_sourceless_photos_i_shared_fail_identity() -> None:
                 ]
             }
         )
+
+
+def test_future_receipt_clock_still_reads_as_just_now() -> None:
+    item = _item(he_spoke_after=False)
+    typed = compile_inner_life_snapshot(
+        {
+            "world_id": "world:shared-media",
+            "actor_ref": "agent:companion",
+            "world_revision": 12,
+            "deliberation_revision": 2,
+            "ledger_sequence": 12,
+            "logical_time": "2026-08-18T15:48:00+08:00",
+            "slices": {
+                "media_deliveries": {
+                    "availability": "available",
+                    "items": [_media_slice_item(item)],
+                }
+            },
+        }
+    )
+    photos = __import__("json").loads(typed.materials_json)["photos_i_shared"]
+    assert photos[0]["when"] == "刚刚"
+    assert "已经出现在你们的对话里" in photos[0]["line"]
+    assert "还没回这张" in photos[0]["line"]
+    conversation = typed.model_view()["materials"]["conversation"]
+    assert conversation == ["我：[刚做完的一件事的照片]"]
 
 
 def test_hiding_delivery_ref_drops_the_about_token() -> None:
@@ -228,3 +265,124 @@ def test_hiding_delivery_ref_drops_the_about_token() -> None:
     )
     other = __import__("json").dumps(other_hidden, ensure_ascii=False)
     assert "刚做完的一件事的照片" in other
+
+
+def test_selfie_bound_to_book_market_names_the_place() -> None:
+    from types import SimpleNamespace
+
+    from companion_daemon.world_v2.ledger_context_resolver import _bound_shared_media_about
+
+    afternoon = datetime(2026, 8, 18, 15, 20, tzinfo=_SHANGHAI)
+    about = _bound_shared_media_about(
+        family="character_media",
+        kind="selfie",
+        candidate=SimpleNamespace(
+            source_event_refs=("event:settlement:book",),
+            source_events=(),
+            ecology_observed_at=afternoon,
+        ),
+        projection=SimpleNamespace(
+            world_occurrences=(
+                SimpleNamespace(
+                    settlement_event_ref="event:settlement:book",
+                    location_ref="location:shanghai-old-book-market",
+                    settled_at=afternoon,
+                ),
+            )
+        ),
+    )
+    assert about == "一张书店下午的自拍"
+    for token in _LEAK_TOKENS:
+        assert token not in about
+
+
+def test_unbound_selfie_does_not_invent_a_bookstore() -> None:
+    from types import SimpleNamespace
+
+    from companion_daemon.world_v2.ledger_context_resolver import _bound_shared_media_about
+
+    about = _bound_shared_media_about(
+        family="character_media",
+        kind="selfie",
+        candidate=SimpleNamespace(
+            source_event_refs=("event:settlement:other",),
+            source_events=(),
+            ecology_observed_at=None,
+        ),
+        projection=SimpleNamespace(world_occurrences=()),
+    )
+    assert about == "一张自拍"
+
+
+def test_delivered_photo_sits_in_causal_conversation_order() -> None:
+    from companion_daemon.world_v2.character_interior.snapshot_compiler import (
+        compile_inner_life_snapshot,
+    )
+    from companion_daemon.world_v2.recent_dialogue import delivered_photo_dialogue_item
+
+    photo = delivered_photo_dialogue_item(
+        delivery_id="delivery:book-market",
+        about="一张书店下午的自拍",
+        shared_at=datetime(2026, 8, 18, 15, 53, tzinfo=_SHANGHAI),
+        actor_ref="agent:companion",
+        authority_event_ref="event:media-delivery:1",
+        authority_world_revision=12,
+        authority_payload_hash=_HASH,
+    )
+    snapshot = compile_inner_life_snapshot(
+        {
+            "world_id": "world:shared-media",
+            "actor_ref": "agent:companion",
+            "world_revision": 14,
+            "deliberation_revision": 2,
+            "ledger_sequence": 14,
+            "logical_time": "2026-08-18T15:48:00+08:00",
+            "slices": {
+                "recent_dialogue": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "item_ref": "dialogue:him",
+                            "source_ref": "event:him",
+                            "value": {
+                                "dialogue_id": "dialogue:him",
+                                "speaker": "counterpart",
+                                "text": "等我一下哈，我去倒杯水",
+                                "occurred_at": "2026-08-18T15:48:00+08:00",
+                                "delivery_state": "observed",
+                                "sequence": 11 * 100,
+                            },
+                        },
+                        {
+                            "item_ref": photo.dialogue_id,
+                            "source_ref": photo.dialogue_id,
+                            "value": photo.model_dump(mode="json"),
+                        },
+                        {
+                            "item_ref": "dialogue:him-back",
+                            "source_ref": "event:him-back",
+                            "value": {
+                                "dialogue_id": "dialogue:him-back",
+                                "speaker": "counterpart",
+                                "text": "我回来了",
+                                "occurred_at": "2026-08-18T15:48:00+08:00",
+                                "delivery_state": "observed",
+                                "sequence": 13 * 100,
+                            },
+                        },
+                    ],
+                }
+            },
+        }
+    )
+    conversation = snapshot.model_view()["materials"]["conversation"]
+    assert conversation[0].endswith("等我一下哈，我去倒杯水")
+    assert conversation[1] == "我：[一张书店下午的自拍]"
+    assert conversation[2].endswith("我回来了")
+    hidden = snapshot.model_view(
+        visible_source_refs=frozenset(snapshot.source_refs) - {"delivery:book-market"}
+    )
+    hidden_blob = __import__("json").dumps(hidden, ensure_ascii=False)
+    assert "一张书店下午的自拍" not in hidden_blob
+    for token in _LEAK_TOKENS:
+        assert token not in hidden_blob

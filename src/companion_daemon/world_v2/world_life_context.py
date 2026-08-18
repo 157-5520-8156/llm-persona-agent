@@ -18,6 +18,7 @@ from pydantic import Field, model_validator
 
 from .biographical_lifecycle import BiographicalLifecycleCatalog
 from .life_content import LifeContentCompiler, LifeContentExcerpt
+from .photographable_inventory import settlement_has_available_photo
 from .schema_core import FrozenModel, PrivacyClass
 from .schemas import DueWindow, LedgerProjection, ProjectionCursor
 
@@ -52,6 +53,9 @@ class WorldLifeContextItem(FrozenModel):
     privacy_class: PrivacyClass
     source: WorldLifeSourceBinding
     content: LifeContentExcerpt | None = None
+    # Projection fact: an available PhotoCandidate currently binds this
+    # settlement.  False is the empty-album case, not a request to create one.
+    photo_in_hand: bool = False
 
 
 class ActiveWorldOccurrencePremise(FrozenModel):
@@ -305,6 +309,11 @@ class WorldLifeContextCompiler:
                         authority_payload_hash=settlement.payload_hash,
                     ),
                     content=excerpts.get(occurrence.occurrence_id),
+                    photo_in_hand=settlement_has_available_photo(
+                        projection,
+                        settlement_ref=settlement.event_id,
+                        logical_time=projection.logical_time,
+                    ),
                 )
             )
         biography = self._biographical_item(

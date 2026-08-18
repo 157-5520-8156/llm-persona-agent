@@ -13,6 +13,7 @@ import json
 
 from pydantic import Field, model_validator
 
+from .media_conversation_window import is_reask_eligible
 from .media_selection import MediaSelection, media_selection_hash
 from .media_v2 import PhotoCandidate, media_digest
 from .proposal_audit_schemas import ModelResultRecordedPayload
@@ -229,7 +230,14 @@ class MediaSelectionProposalCompiler:
         if (
             candidate is None
             or projection.logical_time is None
-            or candidate.status != "available"
+            or (
+                candidate.status != "available"
+                and not is_reask_eligible(
+                    projection,
+                    candidate=candidate,
+                    logical_time=projection.logical_time,
+                )
+            )
             or candidate.opened_at is None
             or candidate.expires_at is None
             or candidate.expires_at <= projection.logical_time

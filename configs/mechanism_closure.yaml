@@ -184,13 +184,13 @@ mechanisms:
       - tests/world_v2/test_ledger_context_resolver.py::test_nonempty_context_is_byte_equivalent_across_memory_and_sqlite
 
   - id: appraisal-affect-relationship-impression
-    delayed_trigger_ids: [reflection.life, affect.decay, relationship.silence_aftermath]
+    delayed_trigger_ids: [reflection.life, appraisal.expiry, affect.decay, relationship.silence_aftermath]
     phase: 3
     status: closed
     runtime_activation: default
     limitations: [semantic-recognition-quality-and-long-term-human-calibration-are-not-proven]
     sources: [observed-message, committed-world-occurrence, settled-interaction]
-    events: [AppraisalAccepted, AffectEpisodeOpened, PrivateImpressionAccepted, RelationshipSignalAccepted]
+    events: [AppraisalAccepted, AppraisalExpired, AffectEpisodeOpened, AffectEpisodeDecayed, PrivateImpressionAccepted, RelationshipSignalAccepted]
     reducers: [src/companion_daemon/world_v2/reducers.py]
     projections: [appraisals, affect, private-impressions, relationship]
     decision_consumers: [CharacterInterior, ContextCapsule, ImmediateEmotionProposalWorker]

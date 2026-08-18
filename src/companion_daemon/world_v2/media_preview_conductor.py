@@ -83,6 +83,14 @@ class MediaPreviewConductor:
             return MediaPreviewConductorResult(
                 status="idle", selection=selection, reason_code=selection.reason_code
             )
+        if selection.status == "reaffirmed":
+            # She chose the already-rendered photo again.  Do not freeze a
+            # second opportunity or start another paid planning Action.
+            return MediaPreviewConductorResult(
+                status="idle",
+                selection=selection,
+                reason_code=selection.reason_code or "media_preview.selection_reaffirmed",
+            )
         if selection.status != "proposed" or selection.proposal_event_ref is None:
             return MediaPreviewConductorResult(
                 status="blocked", selection=selection,

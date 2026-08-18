@@ -52,12 +52,14 @@ from .context_capsule import (
     canonical_value_hash,
     compile_shared_media_delivery_item,
     derived_privacy_floor,
+    _shared_media_about,
     resolved_result_set_hash,
     source_bindings_hash,
 )
 from .conversation_continuity import (
     ContinuityRetrievalCandidate,
     ConversationContinuityCompiler,
+    pack_recent_dialogue_under_source_budget,
 )
 from .associative_recall import lexical_relevance_bp
 from .fact_accepted_contracts import rehydrate_fact_commit_materialized_v2_json
@@ -89,7 +91,11 @@ from .expression_payload_store import ImmutableExpressionPayloadStore
 from .media_v2 import MediaDeliverySharedPayload
 from .model_facing_context import CHAT_RECENT_DIALOGUE_ITEM_LIMIT
 from .present_prompt import PRESENT_SHARED_MEDIA_ITEM_LIMIT
-from .recent_dialogue import RecentDialogueCompiler, RecentDialogueItem
+from .recent_dialogue import (
+    RecentDialogueCompiler,
+    RecentDialogueItem,
+    delivered_photo_dialogue_item,
+)
 from .recall_corpus import (
     AffectOpeningRecallItem,
     MAX_RECALL_CORPUS_DOCUMENTS,
@@ -641,12 +647,12 @@ def _signal_bp(slice_name: SliceName, item: BaseModel) -> int:
             return 10_000
         if "pending_interaction" in reasons:
             return 10_000
-        if "acknowledged_context" in reasons:
-            return 9_850
         if "topic_reactivation" in reasons:
             return 9_900
-        if "recent_companion" in reasons:
+        if "recent_companion" in reasons or "recent" in reasons:
             return 9_800
+        if "acknowledged_context" in reasons:
+            return 9_700
     values = getattr(item, "values", None)
     direct = (
         getattr(values, "importance_bp", None),
@@ -776,6 +782,60 @@ def _shared_media_kind(*, family: str, contract_kind: str | None, ecology_catego
     return family
 
 
+_BOOK_LOCATION_MARKERS = ("book-market", "bookstore", "book_market")
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
+
+
+def _bound_shared_media_about(
+    *,
+    family: str,
+    kind: str,
+    candidate: object,
+    projection: LedgerProjection,
+) -> str:
+    """Copy a place already bound on the candidate. Never invent a scene."""
+
+    base = _shared_media_about(family=family, kind=kind)
+    bound_refs = {
+        ref
+        for ref in getattr(candidate, "source_event_refs", ()) or ()
+        if isinstance(ref, str) and ref
+    }
+    bound_refs.update(
+        item.event_ref
+        for item in getattr(candidate, "source_events", ()) or ()
+        if isinstance(getattr(item, "event_ref", None), str)
+    )
+    if not bound_refs:
+        return base
+    place: str | None = None
+    observed_at = getattr(candidate, "ecology_observed_at", None)
+    for occurrence in projection.world_occurrences:
+        settlement = getattr(occurrence, "settlement_event_ref", None)
+        if not isinstance(settlement, str) or settlement not in bound_refs:
+            continue
+        location = str(getattr(occurrence, "location_ref", "") or "").lower()
+        if any(marker in location for marker in _BOOK_LOCATION_MARKERS):
+            place = "书店"
+        if observed_at is None:
+            settled_at = getattr(occurrence, "settled_at", None)
+            if isinstance(settled_at, datetime):
+                observed_at = settled_at
+    if place is None:
+        return base
+    when = ""
+    if isinstance(observed_at, datetime) and observed_at.tzinfo is not None:
+        hour = observed_at.astimezone(_SHANGHAI).hour
+        if 12 <= hour < 18:
+            when = "下午的"
+        elif 18 <= hour <= 23:
+            when = "晚上的"
+        elif hour < 12:
+            when = "上午的"
+    rest = base[2:] if base.startswith("一张") else base
+    return f"一张{place}{when}{rest}"
+
+
 def shared_media_delivery_items(
     *,
     ledger: LedgerPort,
@@ -840,15 +900,16 @@ def shared_media_delivery_items(
             continue
         if opportunity.family not in {"life_share", "character_media"}:
             continue
+        shared_at = delivery.shared_at or ref.logical_time
         he_spoke_after = any(
-            item.speaker == "counterpart" and item.occurred_at > ref.logical_time
+            item.speaker == "counterpart" and item.occurred_at > shared_at
             for item in recent_dialogue
         )
         try:
             items.append(
                 compile_shared_media_delivery_item(
                     delivery_id=delivery.delivery_id,
-                    shared_at=ref.logical_time,
+                    shared_at=shared_at,
                     family=opportunity.family,
                     kind=kind,
                     privacy_layer=privacy_layer,
@@ -856,6 +917,12 @@ def shared_media_delivery_items(
                     authority_event_ref=ref.event_id,
                     authority_world_revision=ref.world_revision,
                     authority_payload_hash=ref.payload_hash,
+                    about=_bound_shared_media_about(
+                        family=opportunity.family,
+                        kind=kind,
+                        candidate=candidate,
+                        projection=projection,
+                    ),
                 )
             )
         except ValueError:
@@ -1483,7 +1550,34 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             subject_refs=subject_refs,
             max_user_items=CHAT_RECENT_DIALOGUE_ITEM_LIMIT,
         )
-        dialogue_candidates = recent_dialogue.dialogue
+        media_deliveries = shared_media_delivery_items(
+            ledger=self._ledger,
+            projection=projection,
+            recent_dialogue=recent_dialogue.dialogue,
+        )
+        photo_dialogue = tuple(
+            delivered_photo_dialogue_item(
+                delivery_id=item.delivery_id,
+                about=item.about,
+                shared_at=item.shared_at,
+                actor_ref=query.actor_ref,
+                authority_event_ref=item.authority_event_ref,
+                authority_world_revision=item.authority_world_revision,
+                authority_payload_hash=item.authority_payload_hash,
+            )
+            for item in media_deliveries
+        )
+        dialogue_candidates = (
+            tuple(
+                sorted(
+                    (*recent_dialogue.dialogue, *photo_dialogue),
+                    key=lambda item: (item.sequence, item.occurred_at, item.dialogue_id),
+                    reverse=True,
+                )
+            )
+            if photo_dialogue
+            else recent_dialogue.dialogue
+        )
         recent_dialogue_ms = (time.perf_counter() - domain_phase_started) * 1000
         domain_phase_started = time.perf_counter()
         scoped_facts = tuple(
@@ -1886,7 +1980,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     private_impressions=tuple(
                         item
                         for item in projection.private_impressions
-                        if item.status == "active"
+                        if item.status in {"active", "released"}
                         and item.subject_ref in subject_refs
                         and item.origin is not None
                     ),
@@ -2079,11 +2173,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 and item.origin is not None
             ),
             "advisories": None,
-            "media_deliveries": shared_media_delivery_items(
-                ledger=self._ledger,
-                projection=projection,
-                recent_dialogue=dialogue_candidates,
-            ),
+            "media_deliveries": media_deliveries,
         }
         if perception_results is not None:
             domains["perception_results"] = perception_results
@@ -2419,6 +2509,12 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         metadata: list[ResolvedItemMetadata] = []
         selected_items: list[BaseModel] = []
         selected_authority_refs: set[str] = set()
+        if slice_name == "recent_dialogue":
+            dialogue_items = tuple(
+                item for item in items if isinstance(item, RecentDialogueItem)
+            )
+            if len(dialogue_items) == len(items):
+                items = pack_recent_dialogue_under_source_budget(dialogue_items)
         for item in items:
             item_ref = _item_ref(slice_name, item)
             refs = refs_by_item[(slice_name, item_ref)]

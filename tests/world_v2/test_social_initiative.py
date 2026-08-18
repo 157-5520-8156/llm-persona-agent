@@ -376,6 +376,31 @@ async def test_unchanged_context_reuses_one_delay_draw_across_scheduler_ticks() 
 
 
 @pytest.mark.asyncio
+async def test_overnight_spontaneous_contact_waits_until_local_morning() -> None:
+    """Idle cadence may not wake him before 07:00 Asia/Shanghai; daytime still can."""
+
+    compiler, projection, committed = _compiler_fixture(receptive=True)
+    compiler._random = SimpleNamespace(  # noqa: SLF001
+        draw=lambda **_kwargs: SimpleNamespace(
+            selected_candidate_ref="delay:3600",
+            draw_id="draw:overnight-mute",
+        )
+    )
+    # 05:15 Asia/Shanghai — inside the same overnight floor as waiting_for.
+    projection.logical_time = datetime(2026, 7, 17, 21, 15, tzinfo=UTC)
+
+    overnight = await compiler.next_opportunity(projection)
+    assert overnight is None
+    assert committed == []
+
+    # 07:00 Asia/Shanghai — the floor lifts; she may still choose silent.
+    projection.logical_time = datetime(2026, 7, 17, 23, 0, tzinfo=UTC)
+    daytime = await compiler.next_opportunity(projection)
+    assert daytime is not None
+    assert daytime.source_kind == "spontaneous_contact"
+
+
+@pytest.mark.asyncio
 async def test_each_due_epoch_reaches_the_model_owned_opportunity() -> None:
     """Cadence may decide when to consider, never whether the character may speak."""
 

@@ -4194,7 +4194,7 @@ class AffectEpisodeProjection(FrozenModel):
     evidence_refs: tuple[EvidenceRef, ...] = Field(min_length=1)
     opened_at: datetime
     updated_at: datetime
-    status: Literal["active", "resolved", "superseded"]
+    status: Literal["active", "resolved", "superseded", "decayed"]
     privacy_class: PrivacyClass = "private"
     expression_history_refs: tuple[str, ...] = ()
     closed_at: datetime | None = None
@@ -4335,7 +4335,7 @@ class PrivateImpressionProjection(FrozenModel):
     last_supported: datetime
     expiry_condition: str = Field(min_length=1)
     contradiction_refs: tuple[str, ...] = ()
-    status: Literal["active", "contradicted", "expired", "superseded"]
+    status: Literal["active", "contradicted", "expired", "superseded", "released"]
     origin: PrivateImpressionOrigin | None = None
 
     @model_validator(mode="after")
@@ -4373,7 +4373,7 @@ class PrivateImpressionProposalProjection(FrozenModel):
     proposal_kind: Literal["private_impression_transition"] = "private_impression_transition"
     proposal_encoding: Literal["typed-authority-v1"]
     authority_contract_ref: Literal["proposal-contract:private-impression.1"]
-    transition_kind: Literal["open", "consolidate", "supersede"]
+    transition_kind: Literal["open", "consolidate", "supersede", "release"]
     change_id: str = Field(min_length=1)
     transition_id: str = Field(min_length=1)
     evaluated_world_revision: int = Field(ge=0)

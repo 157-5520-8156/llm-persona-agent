@@ -591,6 +591,33 @@ def test_summer_family_home_offers_the_three_existing_private_transition_routine
     assert "late-night-wind-down" in ids_at(late, "event:clock:summer-late")
 
 
+def test_summer_family_home_offers_reviewed_people_who_are_actually_around() -> None:
+    catalog = ReviewedLifeSeedCatalog.from_yaml(
+        path=Path("configs/world_seed.yaml"),
+        chronology=LocalChronology("Asia/Shanghai"),
+    )
+    summer = datetime(2026, 8, 18, 16, 0, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(UTC)
+    term = datetime(2026, 9, 8, 16, 0, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(UTC)
+    summer_ctx = catalog.biographical_context_at(instant=summer, life_arcs=())
+    term_ctx = catalog.biographical_context_at(instant=term, life_arcs=())
+    summer_ids = {item.npc_id for item in catalog.contextual_npcs(summer_ctx)}
+    term_ids = {item.npc_id for item in catalog.contextual_npcs(term_ctx)}
+    eligible_summer = {
+        item.npc_id for item in catalog.reviewed_npcs if item.eligible_in_context(summer_ctx)
+    }
+    eligible_term = {
+        item.npc_id for item in catalog.reviewed_npcs if item.eligible_in_context(term_ctx)
+    }
+
+    assert catalog.version == "reviewed-life.16"
+    assert summer_ids == {"mother-shen", "father-shen", "hometown-xu"}
+    assert term_ids == {"roommate-lin"}
+    assert "literature-fan" in eligible_summer
+    assert "literature-fan" in eligible_term
+    assert "roommate-lin" not in eligible_summer
+    assert {"mother-shen", "father-shen", "hometown-xu"}.isdisjoint(eligible_term)
+
+
 def test_reviewed_candidates_compile_soft_daypart_fit_from_local_window(
     tmp_path: Path,
 ) -> None:

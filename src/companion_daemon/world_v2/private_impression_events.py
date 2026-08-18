@@ -156,7 +156,7 @@ def offered_private_impression_reflection_bindings(
 class PrivateImpressionAuthorizedPayload(FrozenModel):
     change_id: str = Field(min_length=1)
     transition_id: str = Field(min_length=1)
-    transition_kind: Literal["open", "consolidate", "supersede"] = "open"
+    transition_kind: Literal["open", "consolidate", "supersede", "release"] = "open"
     expected_entity_revision: int = Field(ge=0)
     predecessor_refs: tuple[PrivateImpressionPredecessorRef, ...] = ()
     evidence_refs: tuple[EvidenceRef, ...] = Field(min_length=1)
@@ -174,7 +174,7 @@ class PrivateImpressionAuthorizedPayload(FrozenModel):
         "private-impression-draft.4",
         "character-interior-private-impression-transition.1",
     ] | None = None
-    reflection_decision: Literal["retain", "consolidate", "supersede"] | None = None
+    reflection_decision: Literal["retain", "consolidate", "supersede", "release"] | None = None
     reflection_source_refs: tuple[str, ...] = ()
     source_model_result: str | None = Field(default=None, min_length=1, max_length=256)
     source_capsule_id: str | None = Field(
@@ -260,10 +260,25 @@ class PrivateImpressionAcceptedPayload(PrivateImpressionAuthorizedPayload):
 
     @model_validator(mode="after")
     def accepts_a_sourced_private_hypothesis(self) -> PrivateImpressionAcceptedPayload:
-        if self.expected_entity_revision != 0:
-            raise ValueError("private impression acceptance must create revision one")
-        if self.impression.entity_revision != 1 or self.impression.status != "active":
-            raise ValueError("private impression acceptance must create an active impression")
+        if self.transition_kind == "release":
+            if len(self.predecessor_refs) != 1:
+                raise ValueError("private impression release requires exactly one predecessor")
+            predecessor = self.predecessor_refs[0]
+            if self.expected_entity_revision != predecessor.expected_entity_revision:
+                raise ValueError("private impression release revision does not match predecessor")
+            if self.expected_entity_revision < 1:
+                raise ValueError("private impression release requires an existing revision")
+            if (
+                self.impression.impression_id != predecessor.impression_id
+                or self.impression.entity_revision != predecessor.expected_entity_revision + 1
+                or self.impression.status != "released"
+            ):
+                raise ValueError("private impression release must put down the selected impression")
+        else:
+            if self.expected_entity_revision != 0:
+                raise ValueError("private impression acceptance must create revision one")
+            if self.impression.entity_revision != 1 or self.impression.status != "active":
+                raise ValueError("private impression acceptance must create an active impression")
         if self.impression.origin is None:
             raise ValueError("private impression acceptance requires an origin")
         if (
@@ -277,10 +292,17 @@ class PrivateImpressionAcceptedPayload(PrivateImpressionAuthorizedPayload):
         expected_interpretations = tuple(
             f"appraisal:{item.appraisal_id}:{item.hypothesis_id}" for item in self.appraisal_refs
         )
-        if self.impression.interpretation_refs != expected_interpretations:
-            raise ValueError("private impression interpretations must be appraisal references")
         if (
-            self.transition_kind != "consolidate"
+            self.transition_kind != "release"
+            and self.impression.interpretation_refs != expected_interpretations
+        ):
+            raise ValueError("private impression interpretations must be appraisal references")
+        if self.transition_kind == "release" and any(
+            not item.startswith("appraisal:") for item in self.impression.interpretation_refs
+        ):
+            raise ValueError("released private impression must keep appraisal interpretations")
+        if (
+            self.transition_kind not in {"consolidate", "release"}
             and self.impression.first_seen != self.impression.last_supported
         ):
             raise ValueError("new private impression must have one authoritative support time")

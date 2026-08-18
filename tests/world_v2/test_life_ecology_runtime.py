@@ -622,6 +622,77 @@ async def test_occasion_already_considered_does_not_abort_the_rest_of_the_ecolog
 
 
 @pytest.mark.asyncio
+async def test_activity_faculty_skip_does_not_starve_npc_or_media() -> None:
+    """Spend-cap / faculty skip is not an activity-family claim.
+
+    The skipped lane still did not spend. Aborting the wake would starve NPC
+    and the deterministic visual/media scan of an otherwise quiet clock.
+    """
+
+    event = _event("clock-activity-faculty-skip-still-asks-npc")
+    trigger_store, media = _TriggerStore(), _Media()
+    activity = _Activity(
+        status="technical_failure",
+        reason_code="activity_lifecycle.role_faculty_unavailable",
+    )
+    npc_ecology = _LifeDevelopment("no_op", reason_code="npc_idle")
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event),
+        trigger_store=trigger_store,
+        media_followup=media,
+        activity_followup=activity,
+        life_development_followup=_LifeDevelopment("no_op"),
+        npc_initiative_followup=npc_ecology,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:activity-faculty-npc",
+        correlation_id="correlation:activity-faculty-npc",
+    )
+
+    assert result.status == "idle"
+    assert result.activity_followup_status == "no_op"
+    assert result.npc_initiative_followup_status == "no_op"
+    assert result.technical_failure_code is None
+    assert len(npc_ecology.calls) == 1
+    assert len(media.calls) == 1
+    assert trigger_store.completed[0][2] == "life_development_no_op"
+
+
+@pytest.mark.asyncio
+async def test_activity_invalid_projection_does_not_starve_npc_or_media() -> None:
+    event = _event("clock-activity-invalid-projection-still-asks-npc")
+    trigger_store, media = _TriggerStore(), _Media()
+    activity = _Activity(
+        status="technical_failure",
+        reason_code="invalid_projection",
+    )
+    npc_ecology = _LifeDevelopment("no_op", reason_code="npc_idle")
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event),
+        trigger_store=trigger_store,
+        media_followup=media,
+        activity_followup=activity,
+        life_development_followup=_LifeDevelopment("no_op"),
+        npc_initiative_followup=npc_ecology,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:activity-invalid-projection-npc",
+        correlation_id="correlation:activity-invalid-projection-npc",
+    )
+
+    assert result.activity_followup_status == "no_op"
+    assert result.npc_initiative_followup_status == "no_op"
+    assert len(npc_ecology.calls) == 1
+    assert len(media.calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_life_ecology_persists_a_retryable_media_failure_code() -> None:
     event = _event("clock-media-failure")
     trigger_store = _TriggerStore()
@@ -776,6 +847,87 @@ async def test_same_wake_plan_commit_does_not_start_the_plan_for_her() -> None:
 
 
 @pytest.mark.asyncio
+async def test_future_plan_commit_does_not_starve_npc_ecology() -> None:
+    """A future plan is not an occurrence. NPC still gets the quiet wake."""
+
+    event = _event("clock-plan-commit-still-asks-npc")
+    activity = _Activity(statuses=("no_op", "no_op"))
+    development = _LifeDevelopment("plan_committed")
+    npc_ecology = _LifeDevelopment("no_op", reason_code="npc_idle")
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event),
+        trigger_store=_TriggerStore(),
+        media_followup=_Media(),
+        activity_followup=activity,
+        life_development_followup=development,
+        npc_initiative_followup=npc_ecology,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:plan-commit-npc",
+        correlation_id="correlation:plan-commit-npc",
+    )
+
+    assert result.life_development_followup_status == "plan_committed"
+    assert result.npc_initiative_followup_status == "no_op"
+    assert len(npc_ecology.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_occurrence_commit_still_excludes_npc_ecology() -> None:
+    event = _event("clock-occurrence-commit-skips-npc")
+    development = _LifeDevelopment("occurrence_committed")
+    npc_ecology = _LifeDevelopment("no_op", reason_code="should-not-run")
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event),
+        trigger_store=_TriggerStore(),
+        media_followup=_Media(),
+        life_development_followup=development,
+        npc_initiative_followup=npc_ecology,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:occurrence-skips-npc",
+        correlation_id="correlation:occurrence-skips-npc",
+    )
+
+    assert result.life_development_followup_status == "occurrence_committed"
+    assert result.npc_initiative_followup_status is None
+    assert npc_ecology.calls == []
+
+
+@pytest.mark.asyncio
+async def test_life_development_technical_failure_does_not_starve_npc_ecology() -> None:
+    event = _event("clock-life-dev-failure-still-asks-npc")
+    development = _LifeDevelopment(
+        "technical_failure", reason_code="life_development.world_author_unavailable"
+    )
+    npc_ecology = _LifeDevelopment("no_op", reason_code="npc_idle")
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event),
+        trigger_store=_TriggerStore(),
+        media_followup=_Media(),
+        life_development_followup=development,
+        npc_initiative_followup=npc_ecology,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:dev-fail-npc",
+        correlation_id="correlation:dev-fail-npc",
+    )
+
+    assert result.life_development_followup_status == "technical_failure"
+    assert result.npc_initiative_followup_status == "no_op"
+    assert len(npc_ecology.calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_occurrence_commit_does_not_buy_a_second_activity_pass() -> None:
     event = _event("clock-occurrence-is-not-a-plan")
     activity = _Activity(status="no_op")
@@ -892,6 +1044,35 @@ async def test_npc_ecology_technical_failure_uses_shared_10_30_120_retry_lane() 
     assert trigger_store.completed[0][2].startswith(
         "technical_failure.npc_ecology."
     )
+
+
+@pytest.mark.asyncio
+async def test_npc_faculty_skip_does_not_starve_media() -> None:
+    event = _event("clock-npc-faculty-skip-still-scans-media")
+    trigger_store, media = _TriggerStore(), _Media()
+    npc_ecology = _LifeDevelopment(
+        "technical_failure", reason_code="role_faculty_unavailable"
+    )
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event),
+        trigger_store=trigger_store,
+        media_followup=media,
+        life_development_followup=_LifeDevelopment("no_op", reason_code="quiet"),
+        npc_initiative_followup=npc_ecology,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:npc-faculty-media",
+        correlation_id="correlation:npc-faculty-media",
+    )
+
+    assert result.status == "idle"
+    assert result.npc_initiative_followup_status == "no_op"
+    assert result.technical_failure_code is None
+    assert len(npc_ecology.calls) == 1
+    assert len(media.calls) == 1
 
 
 @pytest.mark.asyncio

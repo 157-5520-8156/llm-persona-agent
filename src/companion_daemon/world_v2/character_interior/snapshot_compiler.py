@@ -15,6 +15,17 @@ from zoneinfo import ZoneInfo
 
 from ..dialogue_fold import fold_dialogue_entries, fold_dialogue_line
 from ..pinned_source_ref import PinnedSourceCatalog
+from ..photographable_inventory import (
+    PhotographableMomentFact,
+    compile_photographable_inventory,
+    empty_inventory_material,
+    inventory_material,
+)
+from ..present_moment_candidate import (
+    activity_kind_is_sleep,
+    present_moment_material,
+    PresentMomentFact,
+)
 from ..present_prompt import (
     PRESENT_ACCEPTED_RELATIONSHIP_COMMITMENT_LIMIT,
     PRESENT_AUTHORED_RELATIONSHIP_SIGNAL_LIMIT,
@@ -37,10 +48,12 @@ from .contracts import (
     _InteriorFacet,
     _InteriorSourceAuthorityBinding,
     _InteriorSourceInventoryItem,
+    _elapsed_phrase,
+    _instant,
 )
 
 
-SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.13"
+SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.14"
 
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
@@ -89,6 +102,31 @@ def _semantic_value(value: object) -> object:
     }
 
 
+def _dialogue_causal_order(entry: Mapping[str, object]) -> tuple[int, str, str]:
+    sequence = entry.get("sequence")
+    seq = sequence if isinstance(sequence, int) and not isinstance(sequence, bool) else 0
+    occurred = entry.get("occurred_at")
+    if isinstance(occurred, datetime):
+        occurred_key = occurred.isoformat()
+    elif isinstance(occurred, str):
+        occurred_key = occurred
+    else:
+        occurred_key = ""
+    dialogue_id = entry.get("dialogue_id")
+    did = dialogue_id if isinstance(dialogue_id, str) else ""
+    return (seq, occurred_key, did)
+
+
+def _media_delivery_dialogue_source(entry: dict[str, object]) -> dict[str, object]:
+    dialogue_id = entry.get("dialogue_id")
+    prefix = "dialogue:media-delivery:"
+    if isinstance(dialogue_id, str) and dialogue_id.startswith(prefix):
+        delivery_id = dialogue_id.removeprefix(prefix)
+        if delivery_id:
+            return {**entry, "source_ref": delivery_id}
+    return entry
+
+
 def _slice_items(slices: Mapping[str, object], name: str) -> list[dict[str, object]]:
     lane = slices.get(name)
     if not isinstance(lane, dict) or lane.get("availability") != "available":
@@ -128,6 +166,73 @@ def _state_entry(
     if not isinstance(semantic, dict) or not semantic:
         return None
     return {**semantic, "source_ref": source_ref}
+
+
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
+
+
+def _shared_photo_when(
+    shared_at: object, logical_time: datetime | None
+) -> str | None:
+    instant = shared_at if isinstance(shared_at, datetime) else _instant(shared_at)
+    if instant is None or logical_time is None:
+        return None
+    if logical_time.tzinfo is None or logical_time.utcoffset() is None:
+        return None
+    if instant > logical_time:
+        # Execution receipts may stamp wall time after the conversation clock.
+        # A committed delivery is still "刚刚", not a future event.
+        return "刚刚"
+    return _elapsed_phrase(instant, logical_time)
+
+
+def _shared_photo_clock(shared_at: object) -> str | None:
+    instant = shared_at if isinstance(shared_at, datetime) else _instant(shared_at)
+    if instant is None:
+        return None
+    return instant.astimezone(_SHANGHAI).strftime("%H:%M")
+
+
+def _photos_i_shared_entry(
+    item: dict[str, object], *, logical_time: datetime | None
+) -> dict[str, object] | None:
+    """Bind one delivery as a fact she can read, not a UTC sidecar."""
+
+    entry = _state_entry(
+        item,
+        fields=(
+            "delivery_id",
+            "shared_at",
+            "family",
+            "kind",
+            "privacy_layer",
+            "about",
+            "he_spoke_after",
+        ),
+    )
+    if entry is None:
+        return None
+    about = entry.get("about")
+    if not (isinstance(about, str) and about.strip()):
+        return entry
+    when = _shared_photo_when(entry.get("shared_at"), logical_time)
+    clock = _shared_photo_clock(entry.get("shared_at"))
+    after = (
+        "发出之后他又开口了。"
+        if entry.get("he_spoke_after") is True
+        else "发出之后他还没回这张。"
+    )
+    age = when or "已经"
+    stamp = f"（当地{clock}）" if clock else ""
+    if when:
+        entry["when"] = when
+    if clock:
+        entry["local_clock"] = clock
+    entry["already_in_chat"] = True
+    entry["line"] = (
+        f"{age}{stamp}已经发给他{about.strip()}，这张已经出现在你们的对话里。{after}"
+    )
+    return entry
 
 
 _ORDINARY_COMMITTED_STAGES = frozenset({"acquaintance", "friend", "close_friend"})
@@ -386,6 +491,7 @@ def _experience_entry(
                 "settled_at",
                 "privacy_class",
                 "content",
+                "photo_in_hand",
             )
         )
         semantic = {key: value[key] for key in fields if key in value}
@@ -424,6 +530,161 @@ def _experience_entry(
         if isinstance(semantic, dict) and semantic
         else None
     )
+
+
+def _slice_source_refs(slices: Mapping[str, object], name: str) -> tuple[str, ...]:
+    lane = slices.get(name)
+    if not isinstance(lane, dict):
+        return ()
+    refs = lane.get("source_refs")
+    if isinstance(refs, (list, tuple)):
+        return tuple(item for item in refs if isinstance(item, str) and item)
+    return tuple(
+        item["source_ref"]
+        for item in _slice_items(slices, name)
+        if isinstance(item.get("source_ref"), str)
+    )
+
+
+def _moment_what_happened(entry: Mapping[str, object]) -> str | None:
+    content = entry.get("content")
+    if isinstance(content, dict):
+        text = content.get("text")
+        if isinstance(text, str) and text.strip():
+            return text.strip()[:240]
+    if isinstance(content, str) and content.strip():
+        return content.strip()[:240]
+    return None
+
+
+def _present_moment_from_situation(slices: Mapping[str, object]) -> dict[str, object]:
+    """Whether she is in an active, non-sleep activity that could be photographed."""
+
+    items = _slice_items(slices, "current_situation")
+    refs = _slice_source_refs(slices, "current_situation")
+    active: dict[str, object] | None = None
+    for item in items:
+        value = item.get("value") if isinstance(item, dict) else None
+        slices_of = value.get("activity_slices") if isinstance(value, dict) else None
+        if not isinstance(slices_of, list):
+            continue
+        for row in slices_of:
+            if not isinstance(row, dict) or row.get("status") != "active":
+                continue
+            active = row
+            break
+        if active is not None:
+            break
+    if active is None:
+        fact = PresentMomentFact(photographable=False, reason="no_active_activity")
+    elif activity_kind_is_sleep(active.get("activity_kind")):
+        fact = PresentMomentFact(
+            photographable=False,
+            reason="sleep",
+            plan_id=active.get("plan_id") if isinstance(active.get("plan_id"), str) else None,
+            activity_kind=active.get("activity_kind")
+            if isinstance(active.get("activity_kind"), str)
+            else None,
+        )
+    else:
+        fact = PresentMomentFact(
+            photographable=True,
+            reason="active",
+            plan_id=active.get("plan_id") if isinstance(active.get("plan_id"), str) else None,
+            activity_kind=active.get("activity_kind")
+            if isinstance(active.get("activity_kind"), str)
+            else None,
+        )
+    payload = present_moment_material(fact)
+    if refs:
+        payload["source_refs"] = list(refs)
+    return payload
+
+
+def _moments_i_can_share(
+    slices: Mapping[str, object],
+    *,
+    recent: list[dict[str, object]],
+    already_sent_count: int,
+) -> dict[str, object] | None:
+    """Always state album emptiness.  Never a suggestion to take or send."""
+
+    moments: list[PhotographableMomentFact] = []
+    for entry in recent:
+        source_ref = entry.get("source_ref")
+        if not isinstance(source_ref, str) or not source_ref:
+            continue
+        privacy = entry.get("privacy_class")
+        if privacy not in {"public", "shareable", "personal", "private"}:
+            continue
+        settled_at = entry.get("settled_at")
+        parsed_settled = None
+        if isinstance(settled_at, datetime):
+            parsed_settled = settled_at
+        elif isinstance(settled_at, str) and settled_at:
+            try:
+                parsed_settled = datetime.fromisoformat(settled_at.replace("Z", "+00:00"))
+            except ValueError:
+                parsed_settled = None
+        location_ref = entry.get("location_ref")
+        moments.append(
+            PhotographableMomentFact(
+                source_ref=source_ref,
+                photo_in_hand=entry.get("photo_in_hand") is True,
+                privacy_class=privacy,
+                settled_at=parsed_settled,
+                location_ref=location_ref if isinstance(location_ref, str) else None,
+                what_happened=_moment_what_happened(entry),
+            )
+        )
+    extra = (
+        _slice_source_refs(slices, "world_life")
+        or _slice_source_refs(slices, "media_deliveries")
+        or _slice_source_refs(slices, "current_situation")
+    )
+    if not moments:
+        if not extra:
+            world_life = slices.get("world_life")
+            media = slices.get("media_deliveries")
+            situation = slices.get("current_situation")
+            if not (
+                isinstance(world_life, dict) and world_life.get("availability") == "available"
+                or isinstance(media, dict) and media.get("availability") == "available"
+                or isinstance(situation, dict) and situation.get("availability") == "available"
+            ):
+                return None
+            return _with_present_moment(empty_inventory_material(source_refs=extra), slices)
+        return _with_present_moment(empty_inventory_material(source_refs=extra), slices)
+    return _with_present_moment(
+        inventory_material(
+            compile_photographable_inventory(
+                moments=tuple(moments),
+                already_sent_count=already_sent_count,
+                extra_source_refs=extra,
+            )
+        ),
+        slices,
+    )
+
+
+def _with_present_moment(
+    material: dict[str, object], slices: Mapping[str, object]
+) -> dict[str, object]:
+    now = _present_moment_from_situation(slices)
+    material = dict(material)
+    material["now"] = now
+    refs = list(material.get("source_refs") or [])
+    for ref in now.get("source_refs") or ():
+        if isinstance(ref, str) and ref and ref not in refs:
+            refs.append(ref)
+    source_ref = now.get("source_ref")
+    if isinstance(source_ref, str) and source_ref and source_ref not in refs:
+        refs.append(source_ref)
+    if refs and not material.get("source_refs"):
+        material["source_refs"] = refs
+    elif refs:
+        material["source_refs"] = refs
+    return material
 
 
 def _material_refs(value: object) -> tuple[str, ...]:
@@ -974,7 +1235,7 @@ def compile_inner_life_snapshot(
         materials["private_impressions"] = impressions
 
     compiled_dialogue = [
-        entry
+        _media_delivery_dialogue_source(entry)
         for item in dialogue_items
         if (
             entry := _state_entry(
@@ -993,6 +1254,7 @@ def compile_inner_life_snapshot(
             )
         )
     ]
+    compiled_dialogue.sort(key=_dialogue_causal_order)
     folded_dialogue, recent_dialogue = fold_dialogue_entries(
         compiled_dialogue,
         budget_characters=PRESENT_DIALOGUE_SLICE_CHARACTERS,
@@ -1030,23 +1292,21 @@ def compile_inner_life_snapshot(
     photos_i_shared = [
         entry
         for item in _slice_items(slices, "media_deliveries")
-        if (
-            entry := _state_entry(
-                item,
-                fields=(
-                    "delivery_id",
-                    "shared_at",
-                    "family",
-                    "kind",
-                    "privacy_layer",
-                    "about",
-                    "he_spoke_after",
-                ),
-            )
-        )
+        if (entry := _photos_i_shared_entry(item, logical_time=logical_time))
     ][:PRESENT_SHARED_MEDIA_ITEM_LIMIT]
     if photos_i_shared:
         materials["photos_i_shared"] = photos_i_shared
+    shareable = _moments_i_can_share(
+        slices,
+        recent=[
+            entry
+            for item in _slice_items(slices, "world_life")
+            if (entry := _experience_entry(item, lane="world_life"))
+        ],
+        already_sent_count=len(photos_i_shared),
+    )
+    if shareable is not None:
+        materials["moments_i_can_share"] = shareable
     diary_source = [entry for entries in experience_lanes for entry in entries]
     week_diary = _week_diary(diary_source, logical_time)
     if week_diary:
@@ -1060,6 +1320,7 @@ def compile_inner_life_snapshot(
             "relevant_facts",
             "remembered_material",
             "photos_i_shared",
+            "moments_i_can_share",
         ),
         "appraisal_affect": ("appraisals", "affect"),
         "emotional_continuity": (
@@ -1077,6 +1338,7 @@ def compile_inner_life_snapshot(
             "recent_dialogue",
             "interaction_acts",
             "photos_i_shared",
+            "moments_i_can_share",
         ),
         "aspirations_conflicts": ("situation", "unresolved"),
         "autonomous_impulses": (
@@ -1094,6 +1356,7 @@ def compile_inner_life_snapshot(
             "relevant_facts",
             "interaction_acts",
             "photos_i_shared",
+            "moments_i_can_share",
         ),
         "expression_stance": (
             "stable_self",
@@ -1109,6 +1372,7 @@ def compile_inner_life_snapshot(
             "relevant_facts",
             "interaction_acts",
             "photos_i_shared",
+            "moments_i_can_share",
         ),
     }
     facets: list[_InteriorFacet] = []

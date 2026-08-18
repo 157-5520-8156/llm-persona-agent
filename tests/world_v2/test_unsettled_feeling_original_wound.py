@@ -175,6 +175,17 @@ def test_resolved_wound_is_not_revisited() -> None:
     assert ledger.commits == []
 
 
+def test_expired_wound_is_not_revisited() -> None:
+    wound = _StubAppraisal(SOURCE, status="expired", expires_at=NOW - timedelta(hours=1))
+    ledger = _StubLedger([wound], [])
+    result = ReflectionScheduler(ledger=ledger, actor="worker:reflection").open_once(
+        trace_id="t",
+        correlation_id="c",
+    )
+    assert result.opened == 0
+    assert ledger.commits == []
+
+
 def test_a_reading_she_never_weighed_does_not_come_back() -> None:
     """The unweighted default must never schedule her to think again."""
 

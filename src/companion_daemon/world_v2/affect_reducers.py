@@ -323,9 +323,17 @@ def decay_affect_episode(
 
     components: list[AffectComponentProjection] = []
     changed = False
+    at_floor = True
     for component in current.components:
         result = results[component.component_id]
-        if result.before_intensity_bp != component.intensity_bp:
+        # H10 keeps the authored decay anchor on the component. The public
+        # projection materializes live intensity, and some persisted heads
+        # already store that live floor. Either figure is a legal "before"
+        # for residue close; a true mid-curve decay still has to match.
+        if result.before_intensity_bp not in {
+            component.intensity_bp,
+            component.decay_anchor_intensity_bp,
+        }:
             raise ValueError("affect decay before intensity is stale")
         if (
             result.config_version != component.decay_profile.config_version
@@ -346,10 +354,21 @@ def decay_affect_episode(
         )
         if calculated != result.after_intensity_bp:
             raise ValueError("affect decay result does not match fixed-point math")
-        lower_bound = max(component.decay_profile.floor_bp, component.residue_bp)
-        if not lower_bound <= calculated <= component.intensity_bp:
+        lower_bound = max(
+            component.decay_profile.floor_bp,
+            component.residue_bp,
+            next(
+                (item.baseline_bp for item in baselines if item.dimension == component.dimension),
+                0,
+            ),
+        )
+        if not lower_bound <= calculated <= max(
+            component.intensity_bp,
+            component.decay_anchor_intensity_bp,
+        ):
             raise ValueError("affect decay must move monotonically toward its lower bound")
         changed = changed or calculated != component.intensity_bp
+        at_floor = at_floor and calculated <= lower_bound
         components.append(
             _validated_component(
                 component,
@@ -357,15 +376,20 @@ def decay_affect_episode(
                 last_updated_at=logical_time,
             )
         )
-    if not changed:
+    if not changed and not at_floor:
         raise ValueError("AffectEpisodeDecayed requires a materialized intensity change")
 
-    updated = _validated_episode(
-        current,
-        entity_revision=current.entity_revision + 1,
-        components=tuple(components),
-        updated_at=logical_time,
-    )
+    updates: dict[str, object] = {
+        "entity_revision": current.entity_revision + 1,
+        "components": tuple(components),
+        "updated_at": logical_time,
+    }
+    if at_floor:
+        # Natural close of the decay curve.  Distinct from resolve: she did
+        # not decide to let this go; the recorded residue/floor was reached.
+        updates["status"] = "decayed"
+        updates["closed_at"] = logical_time
+    updated = _validated_episode(current, **updates)
     return _replace(episodes, index, updated)
 
 

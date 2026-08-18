@@ -30,6 +30,7 @@ from .relationship_media_context import (
     RelationshipMediaContextResolver,
 )
 from .media_candidate_advisory import MediaCandidateAdvisoryCompiler
+from .media_conversation_window import is_reask_eligible
 from .media_selection_occasion import (
     compile_candidate_occasion,
     compile_lived_facts,
@@ -41,7 +42,7 @@ from .schemas import ProjectionCursor, WorldEvent
 
 
 class MediaSelectionRunResult(FrozenModel):
-    status: Literal["proposed", "no_op", "blocked"]
+    status: Literal["proposed", "reaffirmed", "no_op", "blocked"]
     proposal_event_ref: str | None = None
     reason_code: str | None = None
 
@@ -92,11 +93,18 @@ class MediaSelectionWorker:
         open_candidates = tuple(
             item
             for item in projection.photo_candidates
-            if item.status == "available"
-            and item.opened_at is not None
-            and item.expires_at is not None
-            and item.expires_at > logical_time
-            and item.source_events
+            if (
+                (
+                    item.status == "available"
+                    and item.opened_at is not None
+                    and item.expires_at is not None
+                    and item.expires_at > logical_time
+                    and item.source_events
+                )
+                or is_reask_eligible(
+                    projection, candidate=item, logical_time=logical_time
+                )
+            )
         )
         declined_revisions = {
             (item.candidate_id, item.entity_revision)
@@ -208,12 +216,23 @@ class MediaSelectionWorker:
             logical_time=logical_time,
         )
         if not spend.allowed:
-            # Cost hard boundary: a photo she cannot currently deliver must
-            # not start a paid chain.  The candidate stays available.
-            return MediaSelectionRunResult(
-                status="blocked",
-                reason_code="media_selection.generation_spend_cap:" + spend.reason,
+            reask_only = tuple(
+                item
+                for item in candidates
+                if is_reask_eligible(
+                    projection, candidate=item, logical_time=logical_time
+                )
             )
+            if not reask_only:
+                # Cost hard boundary: a photo she cannot currently deliver must
+                # not start a paid chain.  The candidate stays available.
+                return MediaSelectionRunResult(
+                    status="blocked",
+                    reason_code="media_selection.generation_spend_cap:" + spend.reason,
+                )
+            # A lapsed send decision already paid for the render.  Asking
+            # again must not start a second generation chain.
+            candidates = reask_only
         if self._require_conversation_occasion:
             occasioned = tuple(
                 item
@@ -494,10 +513,13 @@ class MediaSelectionWorker:
             router_version="character-interior-media-selection.1",
             proposal_hash=self._decision_hash(value),
         )
-        if payload == {
-            "contract": "character-interior-media-selection-decision.1",
-            "decision": "no_op",
-        }:
+        if (
+            payload.get("contract")
+            == "character-interior-media-selection-decision.1"
+            and payload.get("decision") == "no_op"
+            and payload.get("selected_token") is None
+            and set(payload) <= {"contract", "decision", "selected_token"}
+        ):
             normalized_output_hash = self._decision_hash(value)
             if durable_lookup and callable(getattr(self._ledger, "commit_at_cursor", None)):
                 assert attempt_causation_id is not None
@@ -543,6 +565,12 @@ class MediaSelectionWorker:
             character_interior_model_result=model_result_audit,
         )
         recorded = self._recorder.record(cursor=cursor, proposal=proposal, actor=actor, source=self._source, created_at=logical_time, trace_id=trace_id, correlation_id=correlation_id)
+        if is_reask_eligible(projection, candidate=candidate, logical_time=logical_time):
+            return MediaSelectionRunResult(
+                status="reaffirmed",
+                proposal_event_ref=recorded.proposal_event_ref,
+                reason_code="media_selection.conversation_window_reaffirmed",
+            )
         return MediaSelectionRunResult(status="proposed", proposal_event_ref=recorded.proposal_event_ref)
 
     def _candidate_safe_summary(self, *, projection, candidate) -> str:

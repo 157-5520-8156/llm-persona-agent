@@ -43,6 +43,30 @@ class _Interior:
         )
 
 
+class _NullTokenNoOpInterior(_Interior):
+    async def consider(self, opportunity):  # type: ignore[no-untyped-def]
+        self.calls += 1
+        self.opportunities.append(opportunity)
+        manifest = opportunity.capability_manifest
+        assert manifest is not None
+        return canonical_inner_decision(
+            opportunity,
+            decision={
+                "contract": "character-interior-purpose-decision.1",
+                "purpose": "media_selection",
+                "source_refs": list(manifest.source_refs),
+                "capability_ref": manifest.capability_ref,
+                "capability_payload_hash": manifest.payload_hash,
+                "payload": {
+                    "contract": "character-interior-media-selection-decision.1",
+                    "decision": "no_op",
+                    "selected_token": None,
+                },
+            },
+            identity=f"media-selection:{self.calls}",
+        )
+
+
 class _InvalidInterior(_Interior):
     async def consider(self, opportunity):  # type: ignore[no-untyped-def]
         self.calls += 1
@@ -355,6 +379,81 @@ async def test_worker_persists_and_recovers_terminal_attempt_at_same_logical_tim
             event.event_type == "MediaSelectionAttemptRecorded"
             for event, _commit in events.values()
         )
+
+
+@pytest.mark.asyncio
+async def test_worker_persists_no_op_with_null_token_and_does_not_reask() -> None:
+    candidate = PhotoCandidate(
+        candidate_id="candidate:null-decline", source_event_refs=("event:source",),
+        family="life_share", privacy_ceiling="shareable", opened_at=NOW,
+        expires_at=NOW.replace(hour=1), ecology_category="activity_result",
+        ecology_observed_at=NOW,
+        source_events=(MediaEvidenceSource(event_ref="event:source", payload_hash="a" * 64),),
+    )
+    projection = SimpleNamespace(
+        logical_time=NOW, world_id="world:test", world_revision=3,
+        deliberation_revision=0, ledger_sequence=3,
+        photo_candidates=(candidate,), proposal_revisions=(),
+        media_declined_candidate_revisions=(),
+    )
+    events = {}
+
+    def lookup(event_id):  # type: ignore[no-untyped-def]
+        return events.get(event_id)
+
+    def commit_at_cursor(new_events, *, expected_cursor, commit_id):  # type: ignore[no-untyped-def]
+        del expected_cursor, commit_id
+        event = new_events[0]
+        if event.event_type == "RandomDrawRecorded":
+            projection.world_revision += 1
+        else:
+            projection.deliberation_revision += 1
+            payload = json.loads(event.payload_json)
+            if payload.get("outcome") == "declined":
+                projection.media_declined_candidate_revisions = tuple(
+                    SimpleNamespace(**item) for item in payload["candidates"]
+                )
+        projection.ledger_sequence += 1
+        commit = SimpleNamespace(
+            world_revision=projection.world_revision,
+            deliberation_revision=projection.deliberation_revision,
+            ledger_sequence=projection.ledger_sequence,
+        )
+        events[event.event_id] = (event, commit)
+        return commit
+
+    ledger = SimpleNamespace(
+        world_id="world:test", project=lambda: projection,
+        lookup_event_commit=lookup, commit_at_cursor=commit_at_cursor,
+    )
+    interior = _NullTokenNoOpInterior()
+    worker = MediaSelectionWorker(
+        ledger=ledger, character_interior=interior,
+        character_actor_ref="agent:companion",
+        proposal_recorder=_Recorder(), catalog_version="test.1",
+        require_conversation_occasion=False,
+    )
+
+    first = await worker.select_once(
+        logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation"
+    )
+    projection.logical_time = NOW.replace(minute=10)
+    later = await worker.select_once(
+        logical_time=projection.logical_time,
+        actor="worker",
+        trace_id="trace:later",
+        correlation_id="correlation:later",
+    )
+
+    assert first.status == "no_op"
+    assert first.reason_code == "media_selection.model_declined"
+    assert later.status == "no_op"
+    assert later.reason_code == "media_selection.recovered_decline"
+    assert interior.calls == 1
+    assert any(
+        event.event_type == "MediaSelectionAttemptRecorded"
+        for event, _commit in events.values()
+    )
 
 
 @pytest.mark.asyncio
