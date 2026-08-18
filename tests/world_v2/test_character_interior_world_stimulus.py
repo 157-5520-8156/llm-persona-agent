@@ -2171,6 +2171,69 @@ async def test_relationship_compiler_failure_is_durable_and_recovers_without_rea
 
 
 @pytest.mark.asyncio
+async def test_world_stimulus_relationship_signal_rebases_after_later_world_event(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    issuer = AcceptedLedgerBatchIssuer()
+    ledger = WorldLedger.in_memory(
+        world_id=WORLD_ID,
+        accepted_batch_issuer=issuer,
+    )
+    seed_through_proposal(ledger)
+    commit(ledger, settlement_batch())
+    await _seed_relationship_state(
+        ledger=ledger,
+        issuer=issuer,
+        source_ref=SOURCE_REF,
+        subject_ref="user:geoff",
+    )
+    model = _RoleModel(
+        decision="activate",
+        relationship_subject_ref="user:geoff",
+    )
+    runtime, _ledger, _projection = _runtime_for_ledger(
+        ledger=ledger,
+        issuer=issuer,
+        model=model,
+        source_ref=SOURCE_REF,
+        companion_actor_ref="actor:companion",
+        settle_relationship=True,
+    )
+    settlement = runtime._relationship_settlement  # noqa: SLF001 - failure seam
+    assert settlement is not None
+
+    async def fail_compilation(**_kwargs):  # type: ignore[no-untyped-def]
+        raise RelationshipProposalCompilerError("injected_failure")
+
+    monkeypatch.setattr(settlement, "process", fail_compilation)
+    failed = await runtime.drain_one()
+    assert failed.work_status == "technical_failure"
+    authored_revision = ledger.project().world_revision
+    _seed_active_aspiration(ledger)
+    bumped = ledger.project()
+    assert bumped.world_revision > authored_revision
+
+    recovery_model = _RoleModel(
+        failure=AssertionError("durable relationship recovery must not re-author")
+    )
+    recovered_runtime, _ledger, _projection = _runtime_for_ledger(
+        ledger=ledger,
+        issuer=issuer,
+        model=recovery_model,
+        source_ref=SOURCE_REF,
+        companion_actor_ref="actor:companion",
+        settle_relationship=True,
+    )
+    recovered = await recovered_runtime.drain_one()
+
+    assert recovered.work_status == "accepted"
+    assert recovery_model.calls == 0
+    assert len(ledger.project().relationship_signals) == 2
+    assert (await recovered_runtime.drain_one()).status == "idle"
+    assert ledger.rebuild() == ledger.project()
+
+
+@pytest.mark.asyncio
 async def test_relationship_settlement_cas_is_not_recorded_as_model_failure(
     monkeypatch,
 ) -> None:  # type: ignore[no-untyped-def]

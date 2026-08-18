@@ -996,6 +996,80 @@ async def test_compiler_error_backs_off_without_starving_later_workers() -> None
     assert later.calls == 2
 
 
+class _FailingStimulusThenImpressionInterior:
+    def __init__(self, ledger) -> None:
+        self.ledger = ledger
+        self.stimulus_calls = 0
+        self.impression_calls = 0
+        self.stimulus_result = SimpleNamespace(
+            status="processed",
+            work_status="technical_failure",
+            trigger_id="stimulus:poison",
+        )
+        self.impression_result = SimpleNamespace(
+            status="processed",
+            work_status="accepted",
+            lane="private_impression",
+        )
+
+    def _is_bound_to(self, ledger) -> bool:
+        return ledger is self.ledger
+
+    async def _drain_reconsideration_once(self):
+        return None
+
+    async def _drain_proactive_once(self):
+        return None
+
+    async def _drain_world_stimulus_once(self):
+        self.stimulus_calls += 1
+        return self.stimulus_result
+
+    async def _drain_private_impression_once(self):
+        self.impression_calls += 1
+        return self.impression_result
+
+
+@pytest.mark.asyncio
+async def test_returned_technical_failure_does_not_starve_later_workers() -> None:
+    ledger, _proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    interior = _FailingStimulusThenImpressionInterior(ledger)
+    runtime = WorldRuntime(
+        world_id=WORLD_ID,
+        ledger=ledger,
+        character_interior=interior,  # type: ignore[arg-type]
+    )
+
+    first = await runtime.drain_background_once()
+
+    assert first is interior.impression_result
+    assert interior.stimulus_calls == 1
+    assert interior.impression_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_returned_technical_failure_is_visible_when_later_workers_are_idle() -> None:
+    ledger, _proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    interior = _FailingStimulusThenImpressionInterior(ledger)
+
+    async def idle_impression():
+        interior.impression_calls += 1
+        return None
+
+    interior._drain_private_impression_once = idle_impression  # type: ignore[method-assign]
+    runtime = WorldRuntime(
+        world_id=WORLD_ID,
+        ledger=ledger,
+        character_interior=interior,  # type: ignore[arg-type]
+    )
+
+    result = await runtime.drain_background_once()
+
+    assert result is interior.stimulus_result
+    assert interior.stimulus_calls == 1
+    assert interior.impression_calls == 1
+
+
 def test_undelivered_commitment_is_not_a_terminal_reject() -> None:
     """She must actually send the sentence.  Missing delivery waits, it does not settle.
 

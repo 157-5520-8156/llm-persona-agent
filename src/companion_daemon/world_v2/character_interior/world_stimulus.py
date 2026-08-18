@@ -1811,9 +1811,10 @@ class CharacterInteriorWorldStimulusRuntime:
                 # stays in sanitized logs instead of breaking failure audit.
                 _LOG.warning(
                     "world stimulus relationship settlement failed; "
-                    "keeping trigger retryable type=%s compiler_code=%s",
+                    "keeping trigger retryable type=%s compiler_code=%s error=%s",
                     type(exc).__name__,
                     getattr(exc, "code", "unavailable"),
+                    exc,
                 )
                 await self._record_technical_failure(
                     process=active,

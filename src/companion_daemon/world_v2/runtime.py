@@ -615,6 +615,12 @@ class WorldRuntime:
         way on retry also enter process-local technical backoff.  If the whole
         drain would otherwise be idle, the isolated exception is re-raised so
         the host still records a technical failure.
+
+        A worker that *returns* ``work_status="technical_failure"`` is the same
+        kind of non-progress: it has already persisted its durable retry and
+        must not consume this drain's one successful-work slot.  Generic
+        ``ValueError`` is still not backed off; silence comes from letting a
+        later independent worker run, not from sleeping the broken one.
         """
 
         if self._background_worker_is_deferred(name):
@@ -639,7 +645,15 @@ class WorldRuntime:
         return result
 
     async def drain_background_once(self):
-        """Run one background job and turn an expected cursor race into a retry."""
+        """Run background workers until one makes progress.
+
+        Workers are tried in priority order.  Idle, isolated exceptions, and
+        returned ``technical_failure`` do not count as progress: the next
+        independent worker still runs in this same call.  The first accepted
+        unit is returned.  If every worker is idle, an isolated exception is
+        re-raised; a leftover technical failure is returned so the host can
+        record it without inventing success.
+        """
 
         try:
             return await self._drain_background_once_impl()
@@ -679,13 +693,22 @@ class WorldRuntime:
         # low-priority thought block the next user message.
         async with self._background_lock:
             isolated_exc: BaseException | None = None
+            technical_result = None
 
             async def invoke(name: str, drain):
-                nonlocal isolated_exc
+                nonlocal isolated_exc, technical_result
                 result = await self._isolated_background_worker(name, drain)
                 if isinstance(result, _BackgroundWorkerIsolated):
                     if result.exc is not None:
                         isolated_exc = result.exc
+                    return None
+                if getattr(result, "work_status", None) == "technical_failure":
+                    # The worker already recorded a durable retry.  Production
+                    # gives the scheduler one background unit per 30s pass;
+                    # treating this as "did work" lets one poisoned trigger
+                    # starve every later lane (private impression, memory).
+                    if technical_result is None:
+                        technical_result = result
                     return None
                 return result
 
@@ -877,9 +900,9 @@ class WorldRuntime:
                     and social_action.status != "idle"
                 ):
                     return social_action
-            if isolated_exc is not None:
+            if isolated_exc is not None and technical_result is None:
                 raise isolated_exc
-            return None
+            return technical_result
 
     async def drain_actions_once(
         self,

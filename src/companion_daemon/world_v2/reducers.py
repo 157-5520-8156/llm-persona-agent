@@ -5030,6 +5030,83 @@ def _validate_compiled_affect_proposal_source(
         raise ValueError("compiled affect proposal source change does not resolve")
 
 
+def _inbound_relationship_signal_rebase_is_live(
+    state: ReducerState, audit: object
+) -> bool:
+    """Re-prove the Observation-bound relationship trigger is still claimed."""
+
+    trigger_ref = getattr(audit, "trigger_ref", None)
+    source_event = next(
+        (
+            item
+            for item in state.committed_world_event_refs
+            if item.event_id == trigger_ref and item.event_type == "ObservationRecorded"
+        ),
+        None,
+    )
+    process = next(
+        (
+            item
+            for item in state.trigger_processes
+            if item.process_kind == "relationship_deliberation"
+            and item.source_evidence_ref == trigger_ref
+            and item.trigger_ref == f"relationship-continuity:{trigger_ref}"
+            and item.state == "claimed"
+        ),
+        None,
+    )
+    return source_event is not None and process is not None
+
+
+_WORLD_STIMULUS_RELATIONSHIP_REBASE_PROCESS_KINDS = {
+    "WorldOccurrenceSettled": "npc_world_appraisal",
+    "ExecutionReceiptRecorded": "silence_appraisal",
+    "ActivityAbandoned": "plan_disruption_appraisal",
+    "PerceptionResultAccepted": "perception_result_deliberation",
+    "AppraisalAccepted": "life_reflection",
+}
+
+
+def _world_stimulus_relationship_signal_rebase_is_live(
+    state: ReducerState, audit: object
+) -> bool:
+    """Re-prove a claimed world-stimulus source can carry its authored signal forward.
+
+    The compiler already has ``record_world_stimulus_rebased``.  This check does
+    not trust that compiler: the source event kind, the matching claimed
+    stimulus process, and the CharacterInterior proposal identity must all
+    still hold on the current prefix.
+    """
+
+    proposal_id = getattr(audit, "proposal_id", "")
+    trigger_ref = getattr(audit, "trigger_ref", None)
+    if not isinstance(proposal_id, str) or not proposal_id.startswith(
+        "proposal:character-interior-world-stimulus:"
+    ):
+        return False
+    source_event = next(
+        (
+            item
+            for item in state.committed_world_event_refs
+            if item.event_id == trigger_ref
+        ),
+        None,
+    )
+    if source_event is None:
+        return False
+    process_kind = _WORLD_STIMULUS_RELATIONSHIP_REBASE_PROCESS_KINDS.get(
+        source_event.event_type
+    )
+    if process_kind is None:
+        return False
+    return any(
+        item.process_kind == process_kind
+        and item.source_evidence_ref == trigger_ref
+        and item.state == "claimed"
+        for item in state.trigger_processes
+    )
+
+
 def _validate_compiled_relationship_proposal_source(
     state: ReducerState, proposal: RelationshipProposalProjection
 ) -> None:
@@ -5066,31 +5143,14 @@ def _validate_compiled_relationship_proposal_source(
         # signal.  Permit only a forward rebase while the exact Observation-
         # bound relationship trigger is claimed; this does not authorize a
         # fresh interpretation or a different source.
-        source_event = next(
-            (
-                item
-                for item in state.committed_world_event_refs
-                if item.event_id == audit.trigger_ref and item.event_type == "ObservationRecorded"
-            ),
-            None,
-        )
-        process = next(
-            (
-                item
-                for item in state.trigger_processes
-                if item.process_kind == "relationship_deliberation"
-                and item.source_evidence_ref == audit.trigger_ref
-                and item.trigger_ref == f"relationship-continuity:{audit.trigger_ref}"
-            ),
-            None,
-        )
-        if (
-            source_event is None
-            or process is None
-            or process.process_kind != "relationship_deliberation"
-            or process.state != "claimed"
-            or process.trigger_ref != f"relationship-continuity:{audit.trigger_ref}"
-            or process.source_evidence_ref != audit.trigger_ref
+        #
+        # World-stimulus uses a separate rebase compiler.  Clock / Life events
+        # may advance World revision while that source trigger stays claimed;
+        # the reducer re-proves the claimed stimulus process and source kind
+        # independently of the compiler.
+        if not (
+            _inbound_relationship_signal_rebase_is_live(state, audit)
+            or _world_stimulus_relationship_signal_rebase_is_live(state, audit)
         ):
             raise ValueError("compiled relationship proposal source audit revision does not rebase")
     source_shape = {
