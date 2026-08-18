@@ -42,9 +42,12 @@ from ..occasion import OccasionConsiderGate, occasion_spend_store_for_ledger
 from ..response_expectation_view import attach_pending_expectation_advisory
 from ..revisit_intention_view import attach_open_revisit_advisory
 from ..private_impression_producer import (
+    PrivateImpressionDrainPolicy,
     PrivateImpressionTriggerOpener,
     PrivateImpressionTriggerRuntime,
     _PrivateImpressionInteriorAuthorityHandler,
+    evaluate_private_impression_drain_gate,
+    record_private_impression_gate,
 )
 from ..plan_disruption_appraisal_trigger import PlanDisruptionAppraisalTriggerOpener
 from ..perception_result_context import PerceptionResultReader
@@ -665,6 +668,7 @@ class _CharacterInteriorBackgroundDriver:
     _reconsideration: ExpressionReconsiderationRuntime | None = None
     _private_impression_opener: PrivateImpressionTriggerOpener | None = None
     _private_impression: PrivateImpressionTriggerRuntime | None = None
+    _private_impression_policy: PrivateImpressionDrainPolicy | None = None
 
     def is_bound_to(self, ledger: LedgerPort) -> bool:
         return self._ledger is ledger
@@ -729,7 +733,37 @@ class _CharacterInteriorBackgroundDriver:
         return None if result.status in {"idle", "retry_wait"} else result
 
     async def drain_private_impression_once(self) -> object | None:
-        return None
+        if self._private_impression is None:
+            return None
+        policy = getattr(self, "_private_impression_policy", None)
+        if policy is None:
+            policy = PrivateImpressionDrainPolicy(daily_model_call_limit=0)
+        if not policy.allows_model_calls:
+            return None
+        opener = getattr(self, "_private_impression_opener", None)
+        if opener is not None:
+            try:
+                await opener.open_once()
+            except (ConcurrencyConflict, IdempotencyConflict):
+                pass
+        projection = (
+            await asyncio.to_thread(self._ledger.project)
+            if self._ledger.blocks_event_loop
+            else self._ledger.project()
+        )
+        decision = evaluate_private_impression_drain_gate(
+            projection, policy=policy, ledger=self._ledger
+        )
+        if decision.action != "ask":
+            if decision.action == "skip":
+                record_private_impression_gate(
+                    self._ledger,
+                    decision,
+                    now=getattr(projection, "logical_time", None),
+                )
+            return None
+        result = await self._private_impression.advance_due_once()
+        return None if result.status in {"idle", "owned_elsewhere"} else result
 
     async def hitch_paid_inbound_impression(
         self,
@@ -775,6 +809,10 @@ def _bind_production_character_interior(
     silence_appraisal_idle_seconds: int | None,
     plan_disruption_appraisal_enabled: bool,
     perception_result_reader: PerceptionResultReader | None,
+    private_impression_daily_model_call_limit: int = 3,
+    private_impression_min_interval_seconds: int = 14_400,
+    private_impression_idle_after_user_seconds: int = 1_800,
+    private_impression_local_timezone: str = "Asia/Shanghai",
     **_unused: object,
 ) -> None:
     """Bind ledger authorities and private background scheduling exactly once."""
@@ -849,6 +887,7 @@ def _bind_production_character_interior(
                 actor_ref=companion_actor_ref,
                 policy=social_initiative_policy,
             ),
+            immediate_emotion_worker=immediate_emotion_worker,
         )
 
     reconsideration_reviewer = (
@@ -949,6 +988,12 @@ def _bind_production_character_interior(
         _reconsideration=reconsideration_runtime,
         _private_impression_opener=private_opener,
         _private_impression=private_runtime,
+        _private_impression_policy=PrivateImpressionDrainPolicy(
+            daily_model_call_limit=private_impression_daily_model_call_limit,
+            min_interval_seconds=private_impression_min_interval_seconds,
+            idle_after_user_seconds=private_impression_idle_after_user_seconds,
+            local_timezone=private_impression_local_timezone,
+        ),
     )
     interior._install_background_driver(driver)  # noqa: SLF001 - same deep Module
     bound_health = interior.runtime_health()

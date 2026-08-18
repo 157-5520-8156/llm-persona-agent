@@ -51,6 +51,8 @@ _PRODUCTION_MODEL_IDS = (
     "gpt-5.6-luna",
     "qwen3-vl-flash",
     "qwen/qwen3-vl-flash",
+    "gpt-image-2",
+    "openai/gpt-image-2",
 )
 
 
@@ -224,3 +226,42 @@ def test_model_usage_schema_adds_linkage_columns_to_an_existing_database(tmp_pat
         ).fetchone()
     assert row["thinking_enabled"] == 0
     assert row["reasoning_effort"] == ""
+
+
+def test_gpt_image_2_has_verified_2026_08_18_price_row() -> None:
+    from companion_daemon.usage_metrics import (
+        GPT_IMAGE_2_PRICE,
+        estimate_gpt_image_2_cost_usd,
+        parse_openai_image_usage,
+    )
+
+    cost, version = estimate_model_cost_usd(
+        model="gpt-image-2",
+        prompt_tokens=0,
+        completion_tokens=1_366,
+        cache_hit_tokens=0,
+        cache_miss_tokens=6_563,
+    )
+    table_usd, table_version = estimate_gpt_image_2_cost_usd(
+        size="1024x1536", quality="medium", reference_count=1
+    )
+
+    assert version == GPT_IMAGE_2_PRICE.version == "openai-image-2026-08-18"
+    assert table_version == version
+    assert table_usd == pytest.approx(0.041 + 6_563 * 8 / 1_000_000)
+    assert cost == pytest.approx(
+        6_563 * 8 / 1_000_000 + 1_366 * 30 / 1_000_000
+    )
+    parsed = parse_openai_image_usage(
+        {
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 1366,
+                "total_tokens": 1466,
+                "input_tokens_details": {"text_tokens": 40, "image_tokens": 60},
+            }
+        }
+    )
+    assert parsed["text_input_tokens"] == 40
+    assert parsed["image_input_tokens"] == 60
+    assert parsed["output_tokens"] == 1366

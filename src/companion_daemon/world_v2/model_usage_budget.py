@@ -1,19 +1,25 @@
-"""World V2 model usage recording and monthly budget gating.
+"""World V2 model usage recording and CNY budget gating.
 
-The legacy daemon budget gate never covered World V2 calls, so monthly cost
-was invisible and unbounded.  This module records every model call through a
-usage observer and exposes monthly/daily CNY aggregates plus a monthly gate
-the turn entry can consult before spending another provider call.
+The legacy daemon ``BudgetGate`` never covered World V2 text calls.  Visible
+inbound turns still must not go silent because of money; background workers
+(private impressions, proactive contact, life ecology) share the same
+monthly/daily/soft-daily envelope and are skipped before the provider call.
+Image CNY still lives in ``usage_events`` on this same sqlite path.
 """
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
+from ..db import ensure_usage_events_schema
 from ..usage_metrics import estimate_model_cost_usd, estimate_routed_model_reserve_cny
+
+_LOG = logging.getLogger(__name__)
 
 _USD_TO_CNY = 7.2
 
@@ -22,6 +28,22 @@ GENERIC_MODEL_PURPOSES = frozenset(
         "",
         "unclassified",
         "world_v2_character_interior",
+    }
+)
+
+# Answering him is not a cost-control lever.  These purposes ride the visible
+# inbound turn; a CNY skip would look like she chose not to reply.
+VISIBLE_INBOUND_PURPOSES = frozenset(
+    {
+        "inbound_turn",
+        "paired_cognition_initial",
+        "paired_cognition_stream",
+        "expression_stream_tail",
+        "paired_recall_followup",
+        "recall_followup",
+        "recall_control_transfer",
+        "validation_reselection",
+        "qq_attachment_perception",
     }
 )
 
@@ -79,6 +101,10 @@ class ModelUsageAdmissionError(ValueError):
     """Raised when a World V2 provider call has no attributable reservation."""
 
 
+class BackgroundSpendCapDenied(ModelUsageAdmissionError):
+    """Background model work hit the CNY envelope; do not call the provider."""
+
+
 def _is_invalid_cost(*, purpose: str, attempt: int) -> bool:
     if attempt > 1:
         return True
@@ -86,15 +112,46 @@ def _is_invalid_cost(*, purpose: str, attempt: int) -> bool:
     return any(marker in lowered for marker in _REPAIR_PURPOSE_MARKERS)
 
 
+def usage_store_for_settings(settings: object) -> WorldV2UsageStore:
+    """Bind World V2 usage to the same sqlite Settings uses for the ledger."""
+
+    return WorldV2UsageStore(
+        path=str(getattr(settings, "database_path")),
+        monthly_budget_cny=_optional_float(getattr(settings, "monthly_budget_cny", None)),
+        daily_budget_cny=_optional_float(getattr(settings, "daily_budget_cny", None)),
+        soft_daily_budget_cny=_optional_float(
+            getattr(settings, "soft_daily_budget_cny", None)
+        ),
+    )
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
 class WorldV2UsageStore:
     """SQLite-backed usage recording plus cost aggregates."""
 
-    def __init__(self, *, path: str, usd_to_cny: float = _USD_TO_CNY) -> None:
+    def __init__(
+        self,
+        *,
+        path: str,
+        usd_to_cny: float = _USD_TO_CNY,
+        monthly_budget_cny: float | None = None,
+        daily_budget_cny: float | None = None,
+        soft_daily_budget_cny: float | None = None,
+    ) -> None:
         if not path:
             raise ValueError("world v2 usage store requires a database path")
         self._path = path
         self._usd_to_cny = usd_to_cny
+        self._monthly_budget_cny = monthly_budget_cny
+        self._daily_budget_cny = daily_budget_cny
+        self._soft_daily_budget_cny = soft_daily_budget_cny
         self._lock = threading.RLock()
+        ensure_usage_events_schema(Path(path))
         connection = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
         try:
             connection.execute(_SCHEMA)
@@ -115,6 +172,126 @@ class WorldV2UsageStore:
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._path, isolation_level=None, check_same_thread=False)
+
+    def _gates_background_cny(self, purpose: str) -> bool:
+        if purpose in VISIBLE_INBOUND_PURPOSES:
+            return False
+        return any(
+            limit is not None
+            for limit in (
+                self._monthly_budget_cny,
+                self._daily_budget_cny,
+                self._soft_daily_budget_cny,
+            )
+        )
+
+    def _utc_window_start(self, *, month: bool) -> datetime:
+        now = datetime.now(timezone.utc)
+        if month:
+            return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def _combined_spend_cny(self, *, since: datetime) -> float:
+        iso = since.isoformat()
+        with self._lock:
+            connection = self._connect()
+            try:
+                model_row = connection.execute(
+                    """
+                    SELECT COALESCE(SUM(cost_cny), 0) FROM world_v2_model_usage
+                    WHERE recorded_at >= ?
+                      AND purpose != 'image_generation'
+                      AND status != 'budget_denied'
+                    """,
+                    (iso,),
+                ).fetchone()
+                pending_row = connection.execute(
+                    """
+                    SELECT COALESCE(SUM(estimated_cny), 0)
+                    FROM world_v2_model_reservations
+                    WHERE created_at >= ? AND status = 'pending'
+                    """,
+                    (iso,),
+                ).fetchone()
+                try:
+                    image_row = connection.execute(
+                        """
+                        SELECT COALESCE(SUM(estimated_cny), 0) FROM usage_events
+                        WHERE created_at >= ?
+                        """,
+                        (iso,),
+                    ).fetchone()
+                    images = float(image_row[0] if image_row is not None else 0.0)
+                except sqlite3.DatabaseError:
+                    images = 0.0
+                model_total = float(model_row[0] if model_row is not None else 0.0)
+                pending = float(pending_row[0] if pending_row is not None else 0.0)
+                return model_total + pending + images
+            finally:
+                connection.close()
+
+    def _background_spend_cap_reason(self, estimated_cny: float) -> str | None:
+        amount = max(0.0, float(estimated_cny))
+        monthly = self._combined_spend_cny(since=self._utc_window_start(month=True))
+        daily = self._combined_spend_cny(since=self._utc_window_start(month=False))
+        if (
+            self._monthly_budget_cny is not None
+            and monthly + amount > self._monthly_budget_cny
+        ):
+            return "monthly_budget_exceeded"
+        if self._daily_budget_cny is not None and daily + amount > self._daily_budget_cny:
+            return "daily_budget_exceeded"
+        if (
+            self._soft_daily_budget_cny is not None
+            and daily + amount > self._soft_daily_budget_cny
+        ):
+            return "soft_daily_budget_exceeded"
+        return None
+
+    def _record_budget_denial(
+        self,
+        *,
+        purpose: str,
+        actor: str,
+        provider: str,
+        model: str,
+        reason: str,
+        estimated_cny: float,
+        world_id: str,
+        turn_id: str,
+    ) -> None:
+        recorded_at = datetime.now(timezone.utc).isoformat()
+        _LOG.warning(
+            "world v2 background model call skipped reason=%s purpose=%s",
+            reason,
+            purpose,
+        )
+        with self._lock:
+            connection = self._connect()
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO world_v2_model_usage (
+                        recorded_at, world_id, turn_id, purpose, model, status,
+                        provider, prompt_tokens, completion_tokens, cache_hit_tokens,
+                        cache_miss_tokens, total_tokens, error, cost_cny, latency_ms,
+                        actor, reservation_id, estimated_cny, attempt
+                    ) VALUES (?, ?, ?, ?, ?, 'budget_denied', ?, 0, 0, 0, 0, 0, ?, 0, 0, ?, '', ?, 1)
+                    """,
+                    (
+                        recorded_at,
+                        world_id,
+                        turn_id,
+                        purpose,
+                        model,
+                        provider,
+                        reason[:2_400],
+                        actor,
+                        float(estimated_cny),
+                    ),
+                )
+            finally:
+                connection.close()
 
     def admit_provider_call(
         self,
@@ -148,6 +325,22 @@ class WorldV2UsageStore:
             reserved_cny = float(estimated_cny)
         if reserved_cny < 0:
             raise ModelUsageAdmissionError("world v2 model call estimated CNY is invalid")
+        if self._gates_background_cny(resolved_purpose):
+            reason = self._background_spend_cap_reason(reserved_cny)
+            if reason is not None:
+                self._record_budget_denial(
+                    purpose=resolved_purpose,
+                    actor=resolved_actor,
+                    provider=resolved_provider,
+                    model=model or "",
+                    reason=reason,
+                    estimated_cny=reserved_cny,
+                    world_id=world_id,
+                    turn_id=turn_id,
+                )
+                raise BackgroundSpendCapDenied(
+                    f"world v2 background model call skipped: {reason}"
+                )
         token = reservation_id.strip() or f"reservation:{uuid.uuid4().hex}"
         created_at = datetime.now(timezone.utc).isoformat()
         with self._lock:
@@ -181,7 +374,11 @@ class WorldV2UsageStore:
             self._record_usage(usage)
         except Exception:
             # Observability must never turn a model response into a failure.
-            pass
+            _LOG.exception(
+                "world v2 model usage record failed purpose=%s provider=%s",
+                getattr(usage, "purpose", ""),
+                getattr(usage, "provider", ""),
+            )
 
     def _record_usage(self, usage: object) -> None:
         model = str(getattr(usage, "model", "") or "")
@@ -246,7 +443,7 @@ class WorldV2UsageStore:
                         cache_hit_tokens,
                         cache_miss_tokens,
                         int(getattr(usage, "total_tokens", 0) or 0),
-                        str(getattr(usage, "error", "") or "")[:512],
+                        str(getattr(usage, "error", "") or "")[:2_400],
                         cost_cny,
                         int(getattr(usage, "latency_ms", 0) or 0),
                         actor,
@@ -285,24 +482,42 @@ class WorldV2UsageStore:
     def budget_state(
         self,
         *,
-        monthly_budget_cny: float | None,
-        daily_budget_cny: float | None,
+        monthly_budget_cny: float | None = None,
+        daily_budget_cny: float | None = None,
+        soft_daily_budget_cny: float | None = None,
     ) -> dict[str, object]:
+        if monthly_budget_cny is None:
+            monthly_budget_cny = self._monthly_budget_cny
+        if daily_budget_cny is None:
+            daily_budget_cny = self._daily_budget_cny
+        if soft_daily_budget_cny is None:
+            soft_daily_budget_cny = self._soft_daily_budget_cny
         monthly = self.monthly_cost_cny()
         daily = self.daily_cost_cny()
         attribution = self._daily_attribution()
         warning_reasons = list(attribution["warning_reasons"])
-        if monthly_budget_cny is not None and monthly >= monthly_budget_cny:
+        monthly_exhausted = (
+            monthly_budget_cny is not None and monthly >= monthly_budget_cny
+        )
+        daily_exhausted = daily_budget_cny is not None and daily >= daily_budget_cny
+        soft_daily_exhausted = (
+            soft_daily_budget_cny is not None and daily >= soft_daily_budget_cny
+        )
+        if monthly_exhausted:
             warning_reasons.append("monthly_exhausted")
-        if daily_budget_cny is not None and daily >= daily_budget_cny:
+        if daily_exhausted:
             warning_reasons.append("daily_exhausted")
+        if soft_daily_exhausted:
+            warning_reasons.append("soft_daily_exhausted")
         return {
             "monthly_cost_cny": round(monthly, 2),
             "monthly_budget_cny": monthly_budget_cny,
-            "monthly_exhausted": (monthly_budget_cny is not None and monthly >= monthly_budget_cny),
+            "monthly_exhausted": monthly_exhausted,
             "daily_cost_cny": round(daily, 2),
             "daily_budget_cny": daily_budget_cny,
-            "daily_exhausted": (daily_budget_cny is not None and daily >= daily_budget_cny),
+            "daily_exhausted": daily_exhausted,
+            "soft_daily_budget_cny": soft_daily_budget_cny,
+            "soft_daily_exhausted": soft_daily_exhausted,
             "purpose_counts": attribution["purpose_counts"],
             "calls_per_user_message": attribution["calls_per_user_message"],
             "calls_per_user_message_alert": attribution["calls_per_user_message_alert"],
@@ -424,7 +639,10 @@ class WorldV2UsageStore:
 
 
 __all__ = [
+    "BackgroundSpendCapDenied",
     "GENERIC_MODEL_PURPOSES",
     "ModelUsageAdmissionError",
+    "VISIBLE_INBOUND_PURPOSES",
     "WorldV2UsageStore",
+    "usage_store_for_settings",
 ]

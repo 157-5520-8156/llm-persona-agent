@@ -27,6 +27,14 @@ PRIVATE_BASIS_KINDS = frozenset(
 )
 CHARGE_RANK = {"none": 0, "subtle": 1, "charged": 2, "veiled": 3}
 
+# Relationship stage is a floor, not an intensity chooser.  close_friend and
+# above may carry adult private media; her live ``declared_display`` still
+# picks suggestive vs explicit, and the authorized charge ceiling still caps
+# the candidate matrix.  Must stay aligned with
+# ``MediaOpportunityAuthorizer._p3_lane_for_stage``.
+P3_RELATIONSHIP_STAGE_FLOOR = frozenset({"close_friend", "ambiguous", "lover"})
+DECLARED_DISPLAY_EVIDENCE_REF = "/relationship_media_context/declared_display"
+
 # These names describe what the recipient is being shown, rather than how
 # much skin happens to be visible.  `explicit_reserved` is kept only to reject
 # stale proposal payloads; current high private lanes are renderable through a
@@ -103,7 +111,7 @@ class PrivateExpressionBasis:
             return "private_expression_basis_evidence_missing"
         roots = {
             "relational_turn": "/relationship_media_context/active_exchange",
-            "recipient_display": "/relationship_media_context/declared_display",
+            "recipient_display": DECLARED_DISPLAY_EVIDENCE_REF,
             "embodied_state": "/character/visible_physical_state",
             "private_transition": "/activity/private_transition",
             "shared_ritual": "/relationship_media_context/shared_ritual",
@@ -432,7 +440,7 @@ _MISSING = object()
 
 _BASIS_ROOTS = {
     "relational_turn": "/relationship_media_context/active_exchange",
-    "recipient_display": "/relationship_media_context/declared_display",
+    "recipient_display": DECLARED_DISPLAY_EVIDENCE_REF,
     "embodied_state": "/character/visible_physical_state",
     "private_transition": "/activity/private_transition",
     "shared_ritual": "/relationship_media_context/shared_ritual",
@@ -453,7 +461,7 @@ def _high_private_intent_error(
     """
 
     expected = HIGH_PRIVATE_INTENT_BY_LANE.get(lane)
-    display = _pointer(snapshot, "/relationship_media_context/declared_display")
+    display = _pointer(snapshot, DECLARED_DISPLAY_EVIDENCE_REF)
     if not isinstance(display, Mapping):
         return "high_private_intent_evidence_missing"
     if str(display.get("recipient_ref") or "").strip() != recipient_ref:
@@ -475,9 +483,25 @@ def _meaningful(value: object) -> bool:
 
 def _basis_value_matches_kind(*, kind: str, root_value: object, recipient_ref: str) -> bool:
     if kind == "embodied_state":
-        cues = root_value.get("cues") if isinstance(root_value, Mapping) else None
+        if not isinstance(root_value, Mapping):
+            return False
+        cues = root_value.get("cues")
+        if not isinstance(cues, list):
+            # World v2 VisiblePhysicalStateProjection dumps `positive_cues`.
+            cues = root_value.get("positive_cues")
         return isinstance(cues, list) and any(
             isinstance(cue, Mapping) and str(cue.get("cue_id") or "").strip() for cue in cues
+        )
+    if kind == "private_transition":
+        # World v2 compiles `activity.private_transition` as a boolean flag.
+        # Planner-oriented tests may instead freeze a mapping with event_id/kind.
+        if root_value is True:
+            return True
+        if not isinstance(root_value, Mapping):
+            return False
+        return bool(
+            str(root_value.get("event_id") or "").strip()
+            or str(root_value.get("kind") or "").strip()
         )
     if not isinstance(root_value, Mapping):
         return False
@@ -486,11 +510,6 @@ def _basis_value_matches_kind(*, kind: str, root_value: object, recipient_ref: s
             return False
         linked_recipient = str(root_value.get("recipient_ref") or "").strip()
         return bool(linked_recipient) and linked_recipient == recipient_ref
-    if kind == "private_transition":
-        return bool(
-            str(root_value.get("event_id") or "").strip()
-            or str(root_value.get("kind") or "").strip()
-        )
     return False
 
 

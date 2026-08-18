@@ -177,6 +177,71 @@ def prepare_claimed_interaction(
     return ledger, claimed, evidence
 
 
+def prepare_claimed_proactive(
+    ledger: Ledger | None = None,
+) -> tuple[Ledger, TriggerProcess, EvidenceRef]:
+    """Claim a proactive deliberation trigger bound to one Observation event."""
+
+    ledger = ledger or WorldLedger.in_memory(world_id=WORLD_ID)
+    observation_payload = message_payload("message:1")
+    commit(
+        ledger,
+        [event("message-event:1", "ObservationRecorded", observation_payload)],
+    )
+    opened = TriggerProcess(
+        trigger_id="trigger:proactive:message-event:1",
+        trigger_ref="proactive:message-event:1",
+        process_kind="proactive_action_deliberation",
+        source_evidence_ref="message-event:1",
+        state="open",
+    )
+    commit(
+        ledger,
+        [
+            event(
+                "proactive-trigger-opened",
+                "TriggerProcessOpened",
+                {"process": opened.model_dump(mode="json")},
+            )
+        ],
+    )
+    claimed = opened.model_copy(
+        update={
+            "state": "claimed",
+            "claim_lease": ClaimLease(
+                owner_id="worker:proactive-action",
+                attempt_id="attempt:proactive:message-event:1",
+                acquired_at=NOW,
+                expires_at=NOW + timedelta(minutes=2),
+            ),
+            "attempt_ids": ("attempt:proactive:message-event:1",),
+        }
+    )
+    commit(
+        ledger,
+        [
+            event(
+                "proactive-trigger-claimed",
+                "TriggerProcessClaimed",
+                {"process": claimed.model_dump(mode="json")},
+            )
+        ],
+    )
+    source = next(
+        item
+        for item in ledger.project().committed_world_event_refs
+        if item.event_id == "message-event:1"
+    )
+    evidence = EvidenceRef(
+        ref_id="message-event:1",
+        evidence_type="committed_world_event",
+        claim_purpose="private_hypothesis",
+        source_world_revision=source.world_revision,
+        immutable_hash=source.payload_hash,
+    )
+    return ledger, claimed, evidence
+
+
 def accepted_payload(
     ledger: Ledger, trigger: TriggerProcess, evidence: EvidenceRef
 ) -> dict[str, object]:

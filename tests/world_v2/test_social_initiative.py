@@ -11,9 +11,13 @@ from companion_daemon.world_v2.expression_plan_acceptance import (
 )
 from companion_daemon.world_v2.proactive_action import ProactiveActionRuntime
 from companion_daemon.world_v2.social_initiative import (
+    PRIVATE_IMPRESSION_OCCASION_REASON,
     SocialInitiativeCompiler,
     SocialInitiativeContextPolicy,
     SocialInitiativePolicy,
+    private_impression_consideration_id,
+    private_impression_opportunity_context,
+    private_impression_source_binds_head,
 )
 from companion_daemon.world_v2.schemas import WorldEvent
 
@@ -80,9 +84,53 @@ def test_context_changes_relationship_aware_consideration_band_without_deciding_
         projection=guarded,
         logical_time=NOW.replace(hour=18),
     )
+    stranger_profile = compiler.compile(
+        projection=SimpleNamespace(
+            relationship_states=(
+                SimpleNamespace(
+                    stage="stranger",
+                    variables=SimpleNamespace(
+                        trust_bp=120,
+                        closeness_bp=200,
+                        respect_bp=80,
+                        reliability_bp=0,
+                        mutuality_bp=110,
+                        repair_confidence_bp=0,
+                    ),
+                ),
+            ),
+            affect_episodes=(),
+            plans=(),
+        ),
+        logical_time=NOW,
+    )
+    friend_profile = compiler.compile(
+        projection=SimpleNamespace(
+            relationship_states=(
+                SimpleNamespace(
+                    stage="friend",
+                    variables=SimpleNamespace(
+                        trust_bp=4_000,
+                        closeness_bp=4_000,
+                        respect_bp=4_000,
+                        reliability_bp=4_000,
+                        mutuality_bp=4_000,
+                        repair_confidence_bp=4_000,
+                    ),
+                ),
+            ),
+            affect_episodes=(),
+            plans=(),
+        ),
+        logical_time=NOW,
+    )
 
     assert receptive_profile.consideration_band_seconds == (3_600, 7_200)
     assert guarded_profile.consideration_band_seconds == (10_800, 21_600)
+    assert stranger_profile.consideration_band_seconds == (21_600, 28_800)
+    assert stranger_profile.reason_codes[0] == "relationship:stranger"
+    assert friend_profile.consideration_band_seconds == (7_200, 14_400)
+    assert friend_profile.reason_codes[0] == "relationship:friend"
     assert receptive_profile.delay_candidates_seconds == (3_600, 5_400, 7_200)
     assert guarded_profile.delay_candidates_seconds == (10_800, 16_200, 21_600)
     assert receptive_profile.reason_codes == (
@@ -97,6 +145,45 @@ def test_context_changes_relationship_aware_consideration_band_without_deciding_
         "activity:engaged",
         "daypart:overnight",
     )
+
+
+def test_friend_stage_with_production_axes_uses_two_to_four_hour_candidates() -> None:
+    """Production scores stay tiny; only the declared stage changes the draw table."""
+
+    policy = SocialInitiativePolicy(
+        spontaneous_idle_seconds=1_800,
+        spontaneous_expiry_seconds=43_200,
+    )
+    compiler = SocialInitiativeContextPolicy(policy=policy)
+    production_axes = SimpleNamespace(
+        trust_bp=120,
+        closeness_bp=200,
+        respect_bp=80,
+        reliability_bp=0,
+        mutuality_bp=110,
+        repair_confidence_bp=0,
+    )
+    stranger = compiler.compile(
+        projection=SimpleNamespace(
+            relationship_states=(SimpleNamespace(stage="stranger", variables=production_axes),),
+            affect_episodes=(),
+            plans=(),
+        ),
+        logical_time=NOW,
+    )
+    friend = compiler.compile(
+        projection=SimpleNamespace(
+            relationship_states=(SimpleNamespace(stage="friend", variables=production_axes),),
+            affect_episodes=(),
+            plans=(),
+        ),
+        logical_time=NOW,
+    )
+    assert stranger.consideration_band_seconds == (21_600, 28_800)
+    assert stranger.delay_candidates_seconds == (21_600, 25_200, 28_800)
+    assert friend.consideration_band_seconds == (7_200, 14_400)
+    assert friend.delay_candidates_seconds == (7_200, 10_800, 14_400)
+    assert friend.reason_codes[0] == "relationship:friend"
 
 
 def _compiler_fixture(*, receptive: bool):
@@ -166,6 +253,7 @@ def _compiler_fixture(*, receptive: bool):
         commitments=(),
         thread_transitions=(),
         commitment_transitions=(),
+        private_impressions=(),
     )
 
     def commit_at_cursor(events, *, expected_cursor, commit_id):  # type: ignore[no-untyped-def]
@@ -1271,3 +1359,216 @@ async def test_response_expectation_never_opens_a_standalone_proactive_opportuni
     )
 
     assert await compiler.next_opportunity(projection) is None
+
+
+_IMPRESSION_SECRET = "他记岔了这点反而有点可爱，我不觉得冒犯，这是私密原文"
+
+
+def _attach_living_impression(
+    compiler,
+    projection,
+    *,
+    status: str = "active",
+    summary: str = _IMPRESSION_SECRET,
+    event_id: str = "event:private-impression:accepted",
+    impression_id: str = "impression:living",
+    world_revision: int = 2,
+):
+    accepted_at = NOW + timedelta(minutes=5)
+    event = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id=event_id,
+        world_id=projection.world_id,
+        event_type="PrivateImpressionAccepted",
+        logical_time=accepted_at,
+        created_at=accepted_at,
+        actor="actor:companion",
+        source="test",
+        trace_id="trace:private-impression",
+        causation_id="cause:private-impression",
+        correlation_id="conversation:private-impression",
+        idempotency_key=event_id,
+        payload={"impression_id": impression_id, "reflection_summary": summary},
+    )
+    original_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
+    compiler._ledger.lookup_event_commit = lambda event_id: (  # type: ignore[attr-defined]  # noqa: SLF001
+        (event, SimpleNamespace(world_revision=world_revision))
+        if event_id == event.event_id
+        else original_lookup(event_id)
+    )
+    projection.private_impressions = (
+        SimpleNamespace(
+            impression_id=impression_id,
+            status=status,
+            last_supported=accepted_at,
+            first_seen=accepted_at,
+            reflection_summary=summary,
+            origin=SimpleNamespace(accepted_event_ref=event.event_id),
+        ),
+    )
+    projection.committed_world_event_refs = (
+        *tuple(projection.committed_world_event_refs),
+        SimpleNamespace(
+            event_id=event.event_id,
+            event_type=event.event_type,
+            logical_time=accepted_at,
+            world_revision=world_revision,
+        ),
+    )
+    compiler._random = SimpleNamespace(  # noqa: SLF001
+        draw=lambda **_kwargs: SimpleNamespace(
+            selected_candidate_ref="delay:3600",
+            draw_id="draw:private-impression",
+        )
+    )
+    return event
+
+
+@pytest.mark.asyncio
+async def test_living_private_impression_takes_a_due_consider_slot_without_scripting_speech() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    event = _attach_living_impression(compiler, projection)
+
+    opportunity = await compiler.next_opportunity(projection)
+
+    assert opportunity is not None
+    assert opportunity.source_kind == "private_impression"
+    assert opportunity.source_id == "impression:living"
+    assert opportunity.source_event_ref == event.event_id
+    assert opportunity.scheduled_for == NOW + timedelta(seconds=3600)
+    assert PRIVATE_IMPRESSION_OCCASION_REASON in opportunity.cadence_reason_codes
+    dumped = opportunity.model_dump_json()
+    assert _IMPRESSION_SECRET not in dumped
+    assert "reflection_summary" not in dumped
+    assert private_impression_opportunity_context().find(_IMPRESSION_SECRET) == -1
+    assert "she still decides" in private_impression_opportunity_context()
+    assert private_impression_source_binds_head(
+        projection=projection, event=event, opportunity=opportunity
+    )
+
+
+@pytest.mark.asyncio
+async def test_private_impression_does_not_open_a_faster_channel_than_the_cadence_band() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    _attach_living_impression(compiler, projection)
+    projection.logical_time = NOW + timedelta(minutes=10)
+
+    assert await compiler.next_opportunity(projection) is None
+
+
+@pytest.mark.asyncio
+async def test_private_impression_respects_the_ordinary_contact_cooldown() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    _attach_living_impression(compiler, projection)
+    projection.actions = (
+        SimpleNamespace(
+            kind="proactive_message",
+            state="delivered",
+            logical_time=projection.logical_time - timedelta(minutes=1),
+        ),
+    )
+
+    assert await compiler.next_opportunity(projection) is None
+
+
+@pytest.mark.asyncio
+async def test_spent_or_dead_impression_falls_through_to_the_ordinary_idle_slot() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    event = _attach_living_impression(compiler, projection, status="superseded")
+
+    dead = await compiler.next_opportunity(projection)
+
+    assert dead is not None
+    assert dead.source_kind == "spontaneous_contact"
+    assert dead.source_event_ref != event.event_id
+
+    _attach_living_impression(compiler, projection, status="active")
+    spent_id = private_impression_consideration_id("impression:living")
+    projection.trigger_processes = (
+        SimpleNamespace(
+            process_kind="proactive_action_deliberation",
+            trigger_ref="proactive-consideration:" + spent_id,
+            source_evidence_ref=event.event_id,
+            state="terminal",
+            runtime_outcome_ref="proactive:silent",
+        ),
+    )
+
+    spent = await compiler.next_opportunity(projection)
+
+    assert spent is not None
+    assert spent.source_kind == "spontaneous_contact"
+
+
+@pytest.mark.asyncio
+async def test_open_private_impression_consideration_recovers_from_the_accepted_event() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    event = _attach_living_impression(compiler, projection)
+    consideration_id = private_impression_consideration_id("impression:living")
+    projection.trigger_processes = (
+        SimpleNamespace(
+            trigger_id="trigger:proactive:private-impression",
+            trigger_ref="proactive-consideration:" + consideration_id,
+            process_kind="proactive_action_deliberation",
+            source_evidence_ref=event.event_id,
+            state="open",
+            runtime_outcome_ref=None,
+        ),
+    )
+    projection.actions = (
+        SimpleNamespace(
+            kind="proactive_message",
+            state="delivered",
+            logical_time=projection.logical_time - timedelta(minutes=1),
+        ),
+    )
+
+    opportunity = await compiler.next_opportunity(projection)
+
+    assert opportunity is not None
+    assert opportunity.source_kind == "private_impression"
+    assert opportunity.consideration_id == consideration_id
+    assert opportunity.source_event_ref == event.event_id
+    assert opportunity.cadence_reason_codes == ("recovery:persisted_process",)
+
+
+@pytest.mark.asyncio
+async def test_living_impression_takes_a_due_idle_retry_slot() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    observation_id = "event:observation:message:source"
+    failed_id = "consideration:social-initiative:" + "e" * 64
+    projection.committed_world_event_refs = (
+        SimpleNamespace(
+            event_id=observation_id,
+            event_type="ObservationRecorded",
+            logical_time=NOW,
+            world_revision=1,
+        ),
+    )
+    projection.model_result_audits = (
+        SimpleNamespace(
+            model_result_ref="model-result:idle-retry",
+            proposal_hash=None,
+            event_ref="event:model-result:idle-retry",
+            evaluated_world_revision=1,
+        ),
+    )
+    projection.trigger_processes = (
+        SimpleNamespace(
+            process_kind="proactive_action_deliberation",
+            state="terminal",
+            trigger_ref="proactive-consideration:" + failed_id,
+            runtime_outcome_ref="proactive:deliberation-failed:model-result:idle-retry",
+            source_evidence_ref=observation_id,
+            claim_lease=None,
+        ),
+    )
+    event = _attach_living_impression(compiler, projection)
+
+    opportunity = await compiler.next_opportunity(projection)
+
+    assert opportunity is not None
+    assert opportunity.source_kind == "private_impression"
+    assert opportunity.source_event_ref == event.event_id
+    assert PRIVATE_IMPRESSION_OCCASION_REASON in opportunity.cadence_reason_codes
+    assert "technical_failure:retry" in opportunity.cadence_reason_codes

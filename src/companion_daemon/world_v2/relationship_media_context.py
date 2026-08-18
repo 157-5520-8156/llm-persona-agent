@@ -2,10 +2,14 @@
 
 This is intentionally a *read-only* domain seam.  It does not open a media
 candidate, select a lane, or authorize generation.  Given a pinned projection
-it can only expose the relationship stage for the intended recipient and one
-currently-positive ``VisiblePhysicalStateProjection``.  More expressive bases
-(conversation turns, rituals, transitions, or recipient displays) have no
-source-bound World v2 authority yet and therefore fail closed here.
+it can expose the relationship stage for the intended recipient, one
+currently-positive ``VisiblePhysicalStateProjection`` or private-transition
+basis, and an optional character-authored ``DeclaredDisplayV1``.  Conversation
+turns and shared rituals still have no source-bound World v2 authority and
+therefore fail closed here.  Adult consent stays on the ledger grant pair;
+``declared_display`` is only *her* display intent, never a deployment switch.
+Adult private media is eligible from ``close_friend`` upward; that stage is a
+floor.  Intensity remains her live declaration, not a planner matrix.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ RelationshipStageV1 = Literal[
 ]
 PrivateExpressionBasisKindV1 = Literal["embodied_state", "private_transition"]
 PrivateExpressionChargeV1 = Literal["subtle", "charged", "veiled"]
+DeclaredMediaIntentV1 = Literal["sexual_suggestive", "explicit_adult"]
 
 _EMBODIED_STATE_POINTER = "/character/visible_physical_state"
 _PRIVATE_TRANSITION_POINTER = "/activity/private_transition"
@@ -125,12 +130,30 @@ class PrivateExpressionBasisV1(FrozenModel):
         return self
 
 
+class DeclaredDisplayV1(FrozenModel):
+    """One character-authored, recipient-scoped display intent.
+
+    ``event_id`` is the declaration's source event.  ``media_intent`` is a
+    content-routing fact for high-private lanes, not adult authorization.
+    A refusal is represented by omitting this object, not by a config flag.
+    """
+
+    schema_version: Literal["declared-display-v1"] = "declared-display-v1"
+    event_id: str = Field(min_length=1, max_length=512)
+    recipient_ref: str = Field(min_length=1, max_length=256)
+    media_intent: DeclaredMediaIntentV1
+    kind: Literal["recipient_directed"] = "recipient_directed"
+
+
 class RelationshipMediaContextV1(FrozenModel):
     """Complete P3 context slice, frozen independently of any image prompt."""
 
     schema_version: Literal["relationship-media-context-v1"] = "relationship-media-context-v1"
     audience: AudienceContextV1
     private_expression_basis: PrivateExpressionBasisV1
+    declared_display: DeclaredDisplayV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     resolved_at: datetime
     expires_at: datetime
     authority_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -141,6 +164,11 @@ class RelationshipMediaContextV1(FrozenModel):
             raise ValueError("relationship context character subject does not match basis")
         if self.audience.recipient_ref != self.private_expression_basis.recipient_ref:
             raise ValueError("relationship context recipient does not match basis")
+        if (
+            self.declared_display is not None
+            and self.declared_display.recipient_ref != self.audience.recipient_ref
+        ):
+            raise ValueError("declared display recipient does not match audience")
         if self.expires_at != self.private_expression_basis.valid_until:
             raise ValueError("relationship context expiry must equal its basis validity")
         if self.expires_at <= self.resolved_at:
@@ -183,6 +211,7 @@ class RelationshipMediaContextResolver:
         basis_kind: str = "embodied_state",
         required_charge: PrivateExpressionChargeV1 = "subtle",
         private_transition: PrivateTransitionEvidenceV1 | None = None,
+        declared_display: DeclaredDisplayV1 | None = None,
     ) -> RelationshipMediaContextResolution:
         if basis_kind not in {"embodied_state", "private_transition"}:
             return RelationshipMediaContextResolution(None, "unsupported_private_expression_basis")
@@ -190,6 +219,8 @@ class RelationshipMediaContextResolver:
             return RelationshipMediaContextResolution(None, "recipient_character_subject_mismatch")
         if at_logical_time.tzinfo is None or at_logical_time.utcoffset() is None:
             return RelationshipMediaContextResolution(None, "logical_time_not_timezone_aware")
+        if declared_display is not None and declared_display.recipient_ref != recipient_ref:
+            return RelationshipMediaContextResolution(None, "declared_display_recipient_mismatch")
 
         states = tuple(getattr(projection, "relationship_states", ()))
         recipient_states = tuple(state for state in states if getattr(state, "subject_ref", None) == recipient_ref)
@@ -215,7 +246,7 @@ class RelationshipMediaContextResolver:
             return self._resolve_private_transition(
                 audience=audience, character_ref=character_ref, recipient_ref=recipient_ref,
                 at_logical_time=at_logical_time, required_charge=required_charge,
-                transition=private_transition,
+                transition=private_transition, declared_display=declared_display,
             )
         physical_states = tuple(getattr(projection, "visible_physical_states", ()))
         active = visible_physical_state_at(
@@ -258,10 +289,15 @@ class RelationshipMediaContextResolver:
             "resolved_at": at_logical_time,
             "expires_at": active.valid_until,
         }
+        if declared_display is not None:
+            context_body["declared_display"] = declared_display.model_dump(
+                mode="json", exclude_none=True
+            )
         return RelationshipMediaContextResolution(
             RelationshipMediaContextV1(
                 audience=audience,
                 private_expression_basis=basis,
+                declared_display=declared_display,
                 resolved_at=at_logical_time,
                 expires_at=active.valid_until,
                 authority_digest=_canonical_digest(context_body),
@@ -273,6 +309,7 @@ class RelationshipMediaContextResolver:
         *, audience: AudienceContextV1, character_ref: str, recipient_ref: str,
         at_logical_time: datetime, required_charge: PrivateExpressionChargeV1,
         transition: PrivateTransitionEvidenceV1 | None,
+        declared_display: DeclaredDisplayV1 | None = None,
     ) -> RelationshipMediaContextResolution:
         if transition is None:
             return RelationshipMediaContextResolution(None, "private_transition_evidence_missing")
@@ -304,9 +341,14 @@ class RelationshipMediaContextResolver:
             "resolved_at": at_logical_time,
             "expires_at": transition.valid_until,
         }
+        if declared_display is not None:
+            context_body["declared_display"] = declared_display.model_dump(
+                mode="json", exclude_none=True
+            )
         return RelationshipMediaContextResolution(
             RelationshipMediaContextV1(
                 audience=audience, private_expression_basis=basis,
+                declared_display=declared_display,
                 resolved_at=at_logical_time, expires_at=transition.valid_until,
                 authority_digest=_canonical_digest(context_body),
             )
@@ -315,6 +357,7 @@ class RelationshipMediaContextResolver:
 
 __all__ = [
     "AudienceContextV1",
+    "DeclaredDisplayV1",
     "PrivateTransitionEvidenceV1",
     "PrivateExpressionBasisV1",
     "RelationshipMediaContextResolution",

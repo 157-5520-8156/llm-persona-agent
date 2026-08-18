@@ -1,4 +1,6 @@
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import unquote
 import json
 
 import httpx
@@ -12,11 +14,21 @@ from companion_daemon.image_generation import (
     ImageQualityResult,
     OpenAIImageGenerator,
     VolcArkImageGenerator,
+    persist_generated_image_bytes,
     render_character_image,
     life_image_prompt,
+    sniff_generated_image_media_type,
     visual_reference_paths,
 )
 from companion_daemon.visual_identity import load_visual_identity
+
+
+def _civitai_resource_ok(request: httpx.Request) -> httpx.Response | None:
+    if "/v2/resources/" not in request.url.path:
+        return None
+    if "unschedulable" in unquote(request.url.path):
+        return httpx.Response(404, json={"status": 404, "title": "Not Found"})
+    return httpx.Response(200, json={"air": "ok", "size": 1})
 
 
 def test_civitai_specialized_template_defaults_to_high_priority() -> None:
@@ -105,6 +117,50 @@ def test_visual_identity_loads_anchor() -> None:
     assert any("02-bedtime-close-selfie" in path for path in identity.reference_assets("relationship_private"))
 
 
+def test_persist_generated_image_bytes_uses_magic_not_requested_suffix(tmp_path: Path) -> None:
+    jpeg = b"\xff\xd8\xff" + b"\x00" * 24
+    png = b"\x89PNG\r\n\x1a\n" + b"payload"
+    requested = tmp_path / "plan.png"
+
+    jpeg_path, jpeg_type = persist_generated_image_bytes(requested, jpeg)
+    png_path, png_type = persist_generated_image_bytes(requested, png)
+
+    assert jpeg_path == tmp_path / "plan.jpg"
+    assert jpeg_path.read_bytes() == jpeg
+    assert jpeg_type == "image/jpeg"
+    assert sniff_generated_image_media_type(jpeg) == "image/jpeg"
+    assert png_path == tmp_path / "plan.png"
+    assert png_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_civitai_writes_jpeg_bytes_with_jpeg_suffix(tmp_path: Path) -> None:
+    jpeg = b"\xff\xd8\xff" + b"\x00" * 24
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "artifact.test":
+            return httpx.Response(200, content=jpeg)
+        return httpx.Response(
+            200,
+            json={
+                "id": "workflow-jpeg",
+                "status": "succeeded",
+                "steps": [{"output": {"images": [{"url": "https://artifact.test/result.png"}]}}],
+            },
+        )
+
+    generated = await CivitaiWorkflowImageGenerator(
+        "civitai-test-key",
+        model="urn:air:sdxl:checkpoint:civitai:312530@2840768",
+        transport=httpx.MockTransport(handler),
+    ).generate("frozen", output_path=tmp_path / "out.png")
+
+    assert generated.path == tmp_path / "out.jpg"
+    assert generated.path.read_bytes() == jpeg
+    assert generated.content_type == "image/jpeg"
+    assert not (tmp_path / "out.png").exists()
+
+
 @pytest.mark.asyncio
 async def test_openai_generator_submits_reference_images_for_identity_render(tmp_path: Path) -> None:
     observed: dict[str, object] = {}
@@ -131,6 +187,79 @@ async def test_openai_generator_submits_reference_images_for_identity_render(tmp
     assert b'name="image[]"' in bytes(observed["body"])
     assert b'name="quality"' in bytes(observed["body"])
     assert b"medium" in bytes(observed["body"])
+
+
+@pytest.mark.asyncio
+async def test_openai_generator_records_usage_on_http_200_even_if_bytes_are_unreadable(
+    tmp_path: Path,
+) -> None:
+    from companion_daemon.db import CompanionStore
+    from companion_daemon.image_generation import ImageGenerationProviderError
+
+    calls = {"n": 0}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(
+            200,
+            json={
+                "data": [],
+                "usage": {
+                    "input_tokens": 80,
+                    "output_tokens": 1366,
+                    "total_tokens": 1446,
+                    "input_tokens_details": {"text_tokens": 20, "image_tokens": 60},
+                },
+            },
+        )
+
+    store = CompanionStore(tmp_path / "image-usage.sqlite")
+    generator = OpenAIImageGenerator(
+        "test-key",
+        transport=httpx.MockTransport(handler),
+        spend_store=store,
+    )
+
+    with pytest.raises(ImageGenerationProviderError) as raised:
+        await generator.generate("prompt", output_path=tmp_path / "out.png")
+
+    assert raised.value.kind == "invalid_response"
+    assert not raised.value.retryable
+    assert calls["n"] == 1
+    assert store.usage_count("image_generation", "day", datetime.now(UTC)) == 1
+    assert store.usage_total("day", datetime.now(UTC)) > 0
+
+
+@pytest.mark.asyncio
+async def test_openai_generator_does_not_retry_http_failures_and_enforces_min_gap(
+    tmp_path: Path,
+) -> None:
+    from companion_daemon.db import CompanionStore
+
+    calls = {"n": 0}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(200, json={"data": [{"b64_json": "cG5n"}]})
+        raise AssertionError("second paid OpenAI image request is unbounded spend")
+
+    store = CompanionStore(tmp_path / "image-cap.sqlite")
+    generator = OpenAIImageGenerator(
+        "test-key",
+        transport=httpx.MockTransport(handler),
+        spend_store=store,
+    )
+    first = await generator.generate(
+        "one", output_path=tmp_path / "one.png", reference_images=()
+    )
+    with pytest.raises(ImageGenerationProviderError) as raised:
+        await generator.generate("two", output_path=tmp_path / "two.png")
+
+    assert first.path.read_bytes() == b"png"
+    assert calls["n"] == 1
+    assert not raised.value.retryable
+    assert "image_generation_spend_cap" in raised.value.detail
 
 
 @pytest.mark.asyncio
@@ -247,6 +376,9 @@ async def test_civitai_template_generator_preserves_realism_recipe_and_only_fill
     observed: dict[str, object] = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
+        resource = _civitai_resource_ok(request)
+        if resource is not None:
+            return resource
         if request.url.host == "artifact.test":
             return httpx.Response(200, content=b"template-image")
         if request.url.path.endswith("/blobs/upload"):
@@ -340,6 +472,9 @@ async def test_reference_free_civitai_template_submits_quickly_then_polls_to_com
     calls: list[tuple[str, str, str | None]] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
+        resource = _civitai_resource_ok(request)
+        if resource is not None:
+            return resource
         calls.append((request.method, request.url.path, request.url.params.get("wait")))
         if request.url.host == "artifact.test":
             return httpx.Response(200, content=b"polled-template-image")
@@ -365,14 +500,15 @@ async def test_reference_free_civitai_template_submits_quickly_then_polls_to_com
 
     assert generated.path.read_bytes() == b"polled-template-image"
     receipt = json.loads((tmp_path / "out.jpg.civitai.json").read_text(encoding="utf-8"))
-    assert receipt == {
-        "provider": "civitai_template",
-        "status": "succeeded",
-        "template": "civitai-krea2-celia-realism-template.json",
-        "workflow_id": "workflow-poll-1",
-    }
-    assert calls[0] == ("POST", "/v2/consumer/workflows", "8")
-    assert calls[1] == ("GET", "/v2/consumer/workflows/workflow-poll-1", None)
+    assert receipt["provider"] == "civitai_template"
+    assert receipt["status"] == "succeeded"
+    assert receipt["template"] == "civitai-krea2-celia-realism-template.json"
+    assert receipt["workflow_id"] == "workflow-poll-1"
+    assert receipt["has_output"] is True
+    assert receipt["ephemeral"] is False
+    assert ("POST", "/v2/consumer/workflows", "8") in calls
+    assert calls.count(("POST", "/v2/consumer/workflows", "8")) == 1
+    assert ("GET", "/v2/consumer/workflows/workflow-poll-1", None) in calls
 
 
 def test_civitai_template_generator_rejects_a_template_with_unbounded_prompt_slot(tmp_path: Path) -> None:
@@ -432,7 +568,7 @@ def test_repo_realism_template_is_a_valid_reviewed_krea2_recipe() -> None:
     assert "images" not in input_payload
     assert input_payload["loras"] == {
         "urn:air:krea2:lora:civitai:2750659@3094831": 1.0,
-        "urn:air:krea2:lora:civitai:2787068@3140284": 1.0,
+        "urn:air:krea2:lora:civitai:2868686@3240992": 1.0,
         "urn:air:krea2:lora:civitai:2781697@3132956": 0.1,
     }
     negative_prompt = str(input_payload["negativePrompt"])
@@ -488,6 +624,9 @@ async def test_civitai_template_generator_keeps_a_reviewed_static_face_input(tmp
     observed: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        resource = _civitai_resource_ok(request)
+        if resource is not None:
+            return resource
         assert not request.url.path.endswith("/blobs/upload")
         if request.url.host == "artifact.test":
             return httpx.Response(200, content=b"static-template-image")
@@ -547,6 +686,230 @@ async def test_civitai_template_generator_keeps_a_reviewed_static_face_input(tmp
     assert result.path.read_bytes() == b"static-template-image"
     image_input = observed["payload"]["steps"][0]["input"]  # type: ignore[index]
     assert image_input["images"] == ["reviewed-face-only-anchor.jpg"]
+
+
+def _write_krea_template(path: Path, *, loras: dict[str, float]) -> Path:
+    path.write_text(
+        json.dumps(
+            {
+                "allowMatureContent": True,
+                "steps": [
+                    {
+                        "$type": "imageGen",
+                        "input": {
+                            "engine": "comfy",
+                            "ecosystem": "krea2",
+                            "model": "turbo",
+                            "operation": "createImage",
+                            "prompt": "{{render_prompt}}",
+                            "negativePrompt": "fixed",
+                            "width": 512,
+                            "height": 768,
+                            "steps": 8,
+                            "cfgScale": 1,
+                            "sampler": "euler",
+                            "scheduler": "simple",
+                            "seed": "{{seed}}",
+                            "quantity": 1,
+                            "loras": loras,
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.mark.asyncio
+async def test_civitai_template_refuses_unschedulable_lora_before_post(tmp_path: Path) -> None:
+    posts = {"n": 0}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        resource = _civitai_resource_ok(request)
+        if resource is not None:
+            return resource
+        if request.method == "POST":
+            posts["n"] += 1
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    template = _write_krea_template(
+        tmp_path / "unschedulable.json",
+        loras={"urn:air:krea2:lora:civitai:unschedulable@1": 1.0},
+    )
+    with pytest.raises(ImageGenerationProviderError) as raised:
+        await CivitaiTemplateWorkflowImageGenerator(
+            "civitai-test-key",
+            template_path=template,
+            transport=httpx.MockTransport(handler),
+        ).generate("frozen", output_path=tmp_path / "out.png")
+
+    assert raised.value.kind == "invalid_request"
+    assert "lora_not_schedulable" in raised.value.detail
+    assert not raised.value.retryable
+    assert posts["n"] == 0
+    assert not (tmp_path / "out.png.civitai.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_civitai_template_reconcile_never_posts_a_second_workflow(tmp_path: Path) -> None:
+    from companion_daemon.db import CompanionStore
+
+    posts: list[str] = []
+    gets: list[str] = []
+    store = CompanionStore(tmp_path / "usage.sqlite")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        resource = _civitai_resource_ok(request)
+        if resource is not None:
+            return resource
+        if request.url.host == "artifact.test":
+            return httpx.Response(200, content=b"reconciled-image")
+        if request.method == "POST":
+            posts.append(str(request.url.path))
+            payload = json.loads(request.content)
+            assert payload["ephemeral"] is False
+            return httpx.Response(
+                202,
+                json={
+                    "id": "wf-once",
+                    "status": "preparing",
+                    "cost": {"total": 44},
+                    "transactions": {
+                        "list": [{"type": "debit", "amount": 44, "accountType": "yellow"}]
+                    },
+                    "steps": [
+                        {
+                            "status": "preparing",
+                            "preparation": {
+                                "resource": "urn:air:krea2:lora:civitai:identity@1",
+                                "progress": 0,
+                            },
+                            "output": {"images": [{"url": "https://artifact.test/pending.jpg", "available": False}]},
+                        }
+                    ],
+                },
+            )
+        if request.method == "GET" and request.url.path.endswith("/wf-once"):
+            gets.append(str(request.url.path))
+            if len(gets) == 1:
+                return httpx.Response(200, json={"id": "wf-once", "status": "preparing"})
+            return httpx.Response(
+                200,
+                json={
+                    "id": "wf-once",
+                    "status": "succeeded",
+                    "cost": {"total": 44},
+                    "steps": [
+                        {
+                            "output": {
+                                "images": [
+                                    {"url": "https://artifact.test/result.png", "available": True}
+                                ]
+                            }
+                        }
+                    ],
+                },
+            )
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    generator = CivitaiTemplateWorkflowImageGenerator(
+        "civitai-test-key",
+        template_path=_write_krea_template(
+            tmp_path / "once.json",
+            loras={"urn:air:krea2:lora:civitai:identity@1": 1.0},
+        ),
+        transport=httpx.MockTransport(handler),
+        spend_store=store,
+    )
+    output = tmp_path / "out.png"
+    with pytest.raises(ImageGenerationProviderError) as first:
+        await generator.generate("frozen", output_path=output)
+    assert first.value.kind == "pending"
+    assert first.value.detail == "workflow_pending:wf-once"
+    assert not first.value.retryable
+    assert posts == ["/v2/consumer/workflows"]
+    receipt_path = output.with_suffix(".png.civitai.json")
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["workflow_id"] == "wf-once"
+    assert receipt["yellow_buzz"] == 44
+    assert receipt["billed"] is True
+    assert receipt["has_output"] is False
+    assert store.usage_count("civitai_buzz", "day", datetime.now(UTC)) == 1
+    with store.connect() as conn:
+        note = str(conn.execute("select note from usage_events where kind = 'civitai_buzz'").fetchone()[0])
+    assert "yellow_buzz=44" in note
+    assert "has_output=0" in note
+
+    receipt["last_polled_at"] = (datetime.now(UTC) - timedelta(seconds=20)).isoformat()
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    generated = await generator.generate("frozen", output_path=output)
+    assert generated.path.read_bytes() == b"reconciled-image"
+    assert posts == ["/v2/consumer/workflows"]
+    assert len(gets) == 2
+    done = json.loads(output.with_suffix(".png.civitai.json").read_text(encoding="utf-8"))
+    assert done["has_output"] is True
+    assert done["status"] == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_civitai_template_marks_billed_no_output_after_abandon(tmp_path: Path) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        resource = _civitai_resource_ok(request)
+        if resource is not None:
+            return resource
+        if request.method == "GET" and request.url.path.endswith("/wf-stuck"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": "wf-stuck",
+                    "status": "preparing",
+                    "cost": {"total": 44},
+                    "steps": [{"preparation": {"resource": "urn:air:krea2:lora:civitai:gone@1", "progress": 0}}],
+                },
+            )
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    output = tmp_path / "stuck.png"
+    submitted = (datetime.now(UTC) - timedelta(hours=5)).isoformat()
+    output.with_suffix(".png.civitai.json").write_text(
+        json.dumps(
+            {
+                "provider": "civitai_template",
+                "workflow_id": "wf-stuck",
+                "status": "preparing",
+                "template": "once.json",
+                "submitted_at": submitted,
+                "last_polled_at": submitted,
+                "abandon_after": datetime.now(UTC).isoformat(),
+                "yellow_buzz": 44,
+                "buzz_currency": "yellow",
+                "billed": True,
+                "has_output": False,
+                "billed_no_output": False,
+                "ephemeral": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ImageGenerationProviderError) as raised:
+        await CivitaiTemplateWorkflowImageGenerator(
+            "civitai-test-key",
+            template_path=_write_krea_template(
+                tmp_path / "once.json",
+                loras={"urn:air:krea2:lora:civitai:identity@1": 1.0},
+            ),
+            transport=httpx.MockTransport(handler),
+        ).generate("frozen", output_path=output)
+
+    assert raised.value.kind == "unknown"
+    assert raised.value.detail == "billed_no_output:wf-stuck"
+    assert not raised.value.retryable
+    receipt = json.loads(output.with_suffix(".png.civitai.json").read_text(encoding="utf-8"))
+    assert receipt["billed_no_output"] is True
+    assert receipt["has_output"] is False
+    assert receipt["yellow_buzz"] == 44
 
 
 @pytest.mark.asyncio

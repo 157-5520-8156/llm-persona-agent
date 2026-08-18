@@ -171,7 +171,7 @@ def test_compact_inbound_branch_counter_rejects_unknown_transport() -> None:
 
 _BROKEN_SHAPE_EXPRESSION = {
     "timing_choice": "now",
-    "beats": [{"modality": "text", "text": "我在的。", "note": "extra"}],
+    "beats": [{"modality": "text"}],
     "stance": "attentive",
     "brief_rationale": "Stay with the current conversation.",
     "confidence": 7200,
@@ -232,9 +232,8 @@ async def test_paired_shape_reject_is_terminal_without_same_contract_retry() -> 
     cognition = InboundCharacterAuthor(flash_model=provider)
     request = _request(revision=3, call="call:paired-shape-repair")
 
-    await cognition._appraisal_materializer.propose(request)
     with pytest.raises(ValidationTechnicalFailure) as caught:
-        await cognition._expression_materializer.propose(request)
+        await cognition._appraisal_materializer.propose(request)
 
     assert caught.value.failure_code == "paired_expression_reselection_invalid"
     assert len(provider.calls) == 1
@@ -251,12 +250,10 @@ async def test_deadline_deferred_repair_is_never_started_after_h17() -> None:
 
     token = deliberation_module._ATTEMPT_DEADLINE.set(time.monotonic() + 1.0)
     try:
-        await cognition._appraisal_materializer.propose(request)
+        with pytest.raises(ValidationTechnicalFailure):
+            await cognition._appraisal_materializer.propose(request)
     finally:
         deliberation_module._ATTEMPT_DEADLINE.reset(token)
-
-    with pytest.raises(ValidationTechnicalFailure):
-        await cognition._expression_materializer.propose(request)
 
     assert len(provider.calls) == 1
     assert metrics.reliability_snapshot()["failsafe_24h"] == 0
@@ -268,9 +265,8 @@ async def test_spent_corrective_is_not_repeated_after_h17() -> None:
     cognition = InboundCharacterAuthor(flash_model=provider)
     request = _request(revision=3, call="call:pre-failsafe-exhausted")
 
-    await cognition._appraisal_materializer.propose(request)
     with pytest.raises(ValidationTechnicalFailure) as caught:
-        await cognition._expression_materializer.propose(request)
+        await cognition._appraisal_materializer.propose(request)
 
     assert caught.value.failure_code == "paired_expression_reselection_invalid"
     assert len(provider.calls) == 1

@@ -49,6 +49,7 @@ from .external_perception_events import ExternalPerceptionLifeInfluenceView
 from .present_prompt import (
     PRESENT_CAPSULE_HARD_MAX_CHARACTERS,
     PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
+    PRESENT_SHARED_MEDIA_ITEM_LIMIT,
 )
 from .recent_dialogue import RecentDialogueItem
 
@@ -71,6 +72,7 @@ SliceName = Literal[
     "action_budget",
     "private_impressions",
     "advisories",
+    "media_deliveries",
 ]
 TruncationReason = Literal[
     "item_budget",
@@ -149,6 +151,101 @@ class HistoricalFactRecallItem(FactRecallItem):
         return self
 
 
+class SharedMediaDeliveryContextItem(_FrozenModel):
+    """World fact that she already delivered a photo to him.
+
+    This is what she showed him, not how it was rendered. Prompt bytes, payload
+    hashes, provider names, capture modes, and private-lane charge stay out.
+    """
+
+    delivery_id: str = Field(min_length=1, max_length=256)
+    shared_at: datetime
+    family: Literal["life_share", "character_media"]
+    kind: str = Field(min_length=1, max_length=128)
+    privacy_layer: Literal["ordinary", "personal", "intimate"]
+    about: str = Field(min_length=1, max_length=160)
+    he_spoke_after: bool
+    privacy_class: PrivacyClass
+    authority_event_ref: str = Field(min_length=1)
+    authority_world_revision: int = Field(ge=1)
+    authority_payload_hash: str = Field(min_length=64, max_length=64)
+
+    @field_validator("authority_payload_hash")
+    @classmethod
+    def authority_hash_is_digest(cls, value: str) -> str:
+        return _validate_hex_digest(value, label="shared media delivery authority hash")
+
+    @field_validator("shared_at")
+    @classmethod
+    def shared_at_is_aware(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("shared media delivery time must be timezone-aware")
+        return value
+
+
+_CHARACTER_KIND_ABOUT = {
+    "public_checkin": "一张在外面拍的照片",
+    "selfie": "一张自拍",
+    "mirror": "一张镜子照",
+    "companion_shot": "一张有人陪着拍的照片",
+    "body_detail": "一张更近的身体细节照",
+}
+_ECOLOGY_ABOUT = {
+    "activity_process": "一件正在做的事的照片",
+    "activity_result": "刚做完的一件事的照片",
+    "settled_outcome": "一件已经落定的事的照片",
+    "npc_shared_outcome": "和别人一起的一刻的照片",
+    "shared_experience": "你们之间的一刻的照片",
+    "place_environment": "一个地方的照片",
+    "object_or_food": "一件东西或吃的的照片",
+    "user_influenced_activity": "因他而起的一件事的照片",
+    "sleep_wake_result": "睡前或刚起的一刻的照片",
+    "shared_private_outcome": "一件私下的事的照片",
+    "plan_change": "计划改了之后的照片",
+    "plan_repair": "把计划修好之后的照片",
+}
+
+
+def _shared_media_about(*, family: str, kind: str) -> str:
+    if kind in _CHARACTER_KIND_ABOUT:
+        return _CHARACTER_KIND_ABOUT[kind]
+    if kind in _ECOLOGY_ABOUT:
+        return _ECOLOGY_ABOUT[kind]
+    if family == "character_media":
+        return "一张她自己的照片"
+    return "一张生活照"
+
+
+def compile_shared_media_delivery_item(
+    *,
+    delivery_id: str,
+    shared_at: datetime,
+    family: Literal["life_share", "character_media"],
+    kind: str,
+    privacy_layer: Literal["ordinary", "personal", "intimate"],
+    he_spoke_after: bool,
+    authority_event_ref: str,
+    authority_world_revision: int,
+    authority_payload_hash: str,
+) -> SharedMediaDeliveryContextItem:
+    """Bind one delivered photo as a source-closed world fact."""
+
+    privacy_class: PrivacyClass = "private" if privacy_layer == "intimate" else "personal"
+    return SharedMediaDeliveryContextItem(
+        delivery_id=delivery_id,
+        shared_at=shared_at,
+        family=family,
+        kind=kind,
+        privacy_layer=privacy_layer,
+        about=_shared_media_about(family=family, kind=kind),
+        he_spoke_after=he_spoke_after,
+        privacy_class=privacy_class,
+        authority_event_ref=authority_event_ref,
+        authority_world_revision=authority_world_revision,
+        authority_payload_hash=authority_payload_hash,
+    )
+
+
 def _canonical_json(value: object) -> str:
     return json.dumps(
         value,
@@ -186,6 +283,7 @@ RANK_DOMAIN_IMPORTANCE_BP: dict[SliceName, int] = {
     "action_budget": 6_000,
     "private_impressions": 8_000,
     "advisories": 5_000,
+    "media_deliveries": 8_800,
 }
 RANK_WEIGHT_BP = {"domain_importance": 4_000, "typed_signal": 4_000, "recency": 2_000}
 RANK_RECENCY_WINDOW_SECONDS = 7 * 24 * 60 * 60
@@ -512,6 +610,13 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
         # capsule-wide 32k hard cap still limits total prompt growth.
         default_factory=lambda: SliceBudget(max_items=12, max_fields=96, max_characters=8_000)
     )
+    media_deliveries: SliceBudget = Field(
+        default_factory=lambda: SliceBudget(
+            max_items=PRESENT_SHARED_MEDIA_ITEM_LIMIT,
+            max_fields=48,
+            max_characters=4_000,
+        )
+    )
 
 
 class ContextCapsuleRequest(_FrozenModel):
@@ -547,6 +652,7 @@ class ContextCapsuleRequest(_FrozenModel):
     action_budget: ResolvedSlice[tuple[BudgetAccount, ...]] | None = None
     private_impressions: ResolvedSlice[tuple[PrivateImpressionProjection, ...]] | None = None
     advisories: ResolvedSlice[tuple[InnerAdvisoryProjection, ...]] | None = None
+    media_deliveries: ResolvedSlice[tuple[SharedMediaDeliveryContextItem, ...]] | None = None
 
     @field_validator("logical_time")
     @classmethod
@@ -786,6 +892,7 @@ class ContextCapsule(_FrozenModel):
     action_budget: CapsuleSlice
     private_impressions: CapsuleSlice
     advisories: CapsuleSlice
+    media_deliveries: CapsuleSlice | None = None
     relationship_evaluation: RelationshipEvaluationContext | None = None
     model_content_json: str
     budget: ContextBudgetAudit
@@ -830,6 +937,8 @@ class ContextCapsule(_FrozenModel):
             )
         if self.perception_results is not None:
             material["perception_results"] = self.perception_results.model_dump(mode="json")
+        if self.media_deliveries is not None:
+            material["media_deliveries"] = self.media_deliveries.model_dump(mode="json")
         result_material = dict(material)
         for field in ("provenance_kind", "compiler_result_hash", "compiler_result_tag"):
             result_material.pop(field)
@@ -867,6 +976,7 @@ _ITEM_IDS: dict[SliceName, str] = {
     "action_budget": "account_id",
     "private_impressions": "impression_id",
     "advisories": "advisory_id",
+    "media_deliveries": "delivery_id",
 }
 
 
@@ -953,6 +1063,7 @@ def derived_privacy_floor(slice_name: SliceName, item: BaseModel) -> PrivacyClas
         "action_budget": "withhold",
         "private_impressions": "withhold",
         "advisories": "private",
+        "media_deliveries": "personal",
     }
     typed: list[PrivacyClass] = [conservative[slice_name]]
     if slice_name == "current_situation":
@@ -1002,6 +1113,8 @@ def derived_privacy_floor(slice_name: SliceName, item: BaseModel) -> PrivacyClas
             getattr(getattr(item, "values", None), "privacy_ceiling", None)
             or getattr(item, "privacy_ceiling")
         )
+    if slice_name == "media_deliveries" and isinstance(item, SharedMediaDeliveryContextItem):
+        typed.append(item.privacy_class)
     return _strictest_privacy(tuple(typed))
 
 
@@ -1011,6 +1124,8 @@ def _typed_source_refs(slice_name: SliceName, item: BaseModel) -> tuple[str, ...
         return tuple(sorted(set(refs))) or None
     if slice_name == "recent_dialogue" and isinstance(item, RecentDialogueItem):
         return tuple(sorted(claim.authority_event_ref for claim in item.source_claims))
+    if slice_name == "media_deliveries" and isinstance(item, SharedMediaDeliveryContextItem):
+        return (item.authority_event_ref,)
     if slice_name == "private_impressions":
         origin = getattr(item, "origin", None)
         refs = set(item.source_refs)
@@ -1085,6 +1200,15 @@ def _typed_source_authorities(item: BaseModel) -> tuple[tuple[str, str, int, str
                 claim.authority_payload_hash,
             )
             for claim in item.source_claims
+        )
+    if isinstance(item, SharedMediaDeliveryContextItem):
+        return (
+            (
+                "committed_event",
+                item.authority_event_ref,
+                item.authority_world_revision,
+                item.authority_payload_hash,
+            ),
         )
     if isinstance(item, FactProjection):
         # The Fact reducer validates its immutable evidence closure.  Context
@@ -1280,6 +1404,19 @@ def _slice_model_content(
                     for key, field_value in value.items()
                     if key not in {"source_claims", "sidecar_ref", "sidecar_hash"}
                 }
+        if slice_name == "media_deliveries":
+            material.pop("source_bindings")
+            if isinstance(value, dict):
+                material["value"] = {
+                    key: field_value
+                    for key, field_value in value.items()
+                    if key
+                    not in {
+                        "authority_event_ref",
+                        "authority_world_revision",
+                        "authority_payload_hash",
+                    }
+                }
         if model_content_profile == "proactive_decision" and slice_name in {
             "character_core",
             "current_situation",
@@ -1315,7 +1452,7 @@ def _slice_model_content(
         "resolver_proof": resolver_proof.model_dump(mode="json"),
         "items": tuple(model_item(item) for item in items),
     }
-    if slice_name == "recent_dialogue":
+    if slice_name in {"recent_dialogue", "media_deliveries"}:
         # The exact refs remain in CapsuleSlice.source_refs and CapsuleItem;
         # the model-facing packet only needs proof that the verified authority
         # set is fixed. Long provider-generated ids are otherwise repeated at
@@ -1599,6 +1736,8 @@ def _validate_input_contract(request: ContextCapsuleRequest) -> None:
     )
     if request.perception_results is not None:
         bound_slices = (*bound_slices, ("perception_results", request.perception_results))
+    if request.media_deliveries is not None:
+        bound_slices = (*bound_slices, ("media_deliveries", request.media_deliveries))
     if any(
         bound is not None and bound.pinned_world_revision != request.world_revision
         for _, bound in bound_slices
@@ -2097,6 +2236,8 @@ def _compile_resolved_context(
     )
     if request.perception_results is not None:
         inputs = (*inputs, ("perception_results", request.perception_results))
+    if request.media_deliveries is not None:
+        inputs = (*inputs, ("media_deliveries", request.media_deliveries))
     slices: dict[str, CapsuleSlice] = {}
     bounds = {name: bound for name, bound in inputs}
     truncation_log: list[TruncationEntry] = []
@@ -2147,6 +2288,7 @@ def _compile_resolved_context(
         # the same utterance.  The compiler already caps the slice and the
         # global envelope remains the final safety bound.
         "advisories": len(slices["advisories"].items),
+        "media_deliveries": 1,
     }
     protected_advisory_present = any(
         json.loads(item.payload_json).get("kind")

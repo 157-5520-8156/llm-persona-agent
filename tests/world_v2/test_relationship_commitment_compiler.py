@@ -42,7 +42,11 @@ from companion_daemon.world_v2.relationship_proposal_compiler import (
 from companion_daemon.world_v2.relationship_trigger import (
     relationship_continuity_trigger_id,
 )
-from companion_daemon.world_v2.relationship_reducers import relationship_primary_id
+from companion_daemon.world_v2.relationship_reducers import (
+    RELATIONSHIP_POLICY_DIGEST,
+    RETIRED_RELATIONSHIP_POLICY_DIGESTS,
+    relationship_primary_id,
+)
 from companion_daemon.world_v2.reducers import ReducerState, reduce_event
 from companion_daemon.world_v2.schemas import (
     AcceptanceDecisionRef,
@@ -58,6 +62,7 @@ from companion_daemon.world_v2.schemas import (
     ProjectionCursor,
     RelationshipProposalProjection,
     RelationshipProposedMutation,
+    RelationshipStateProjection,
     StoredMessagePayloadProjection,
     TriggerProcess,
     WorldEvent,
@@ -1080,6 +1085,86 @@ def test_record_commitment_rebased_rejects_stored_text_not_bound_to_event() -> N
     with pytest.raises(
         RelationshipProposalCompilerError,
         match="commitment_expression_authority_mismatch",
+    ):
+        RelationshipProposalCompiler(ledger=ledger).record_commitment_rebased(
+            world_id=WORLD_ID,
+            audit_cursor=audit_cursor,
+            current_cursor=current_cursor,
+            proposal_id=proposal.proposal_id,
+        )
+
+
+H26_RETIRED_POLICY_DIGEST = (
+    "13bfa71dd9f8377b968714eb3d4f9a927e587832c92d2381c6ecc772071deede"
+)
+
+
+def _with_carried_relationship_state(ledger, *, policy_digest: str):
+    state = RelationshipStateProjection(
+        relationship_id=relationship_primary_id(subject_ref="user:test"),
+        subject_ref="user:test",
+        entity_revision=1,
+        stage="stranger",
+        policy_digest=policy_digest,
+    )
+    ledger._current = ledger._current.model_copy(
+        update={"relationship_states": (state,)}
+    )
+    return state
+
+
+def test_record_commitment_rebased_reads_retired_policy_and_writes_installed_digest() -> None:
+    assert H26_RETIRED_POLICY_DIGEST in RETIRED_RELATIONSHIP_POLICY_DIGESTS
+    ledger, proposal, audit_cursor, current_cursor = _compiler_fixture()
+    _with_carried_relationship_state(ledger, policy_digest=H26_RETIRED_POLICY_DIGEST)
+
+    result = RelationshipProposalCompiler(ledger=ledger).record_commitment_rebased(
+        world_id=WORLD_ID,
+        audit_cursor=audit_cursor,
+        current_cursor=current_cursor,
+        proposal_id=proposal.proposal_id,
+    )
+
+    assert result.status == "candidate_recorded"
+    assert result.commit is not None
+    typed = RelationshipProposalProjection.model_validate_json(
+        ledger.recorded[0].payload_json
+    )
+    mutation = RelationshipCommitmentAcceptedPayload.model_validate_json(
+        typed.proposed_mutation.payload_json
+    )
+    assert mutation.policy_digest == RELATIONSHIP_POLICY_DIGEST
+    assert mutation.policy_version == "relationship-policy.1"
+    assert mutation.stage_before == "stranger"
+    assert mutation.stage_after == "friend"
+    assert mutation.expected_entity_revision == 1
+
+
+def test_record_commitment_rebased_still_rejects_a_foreign_policy_stamp() -> None:
+    ledger, proposal, audit_cursor, current_cursor = _compiler_fixture()
+    _with_carried_relationship_state(ledger, policy_digest="0" * 64)
+
+    with pytest.raises(
+        RelationshipProposalCompilerError,
+        match="relationship_state_policy_uninstalled",
+    ):
+        RelationshipProposalCompiler(ledger=ledger).record_commitment_rebased(
+            world_id=WORLD_ID,
+            audit_cursor=audit_cursor,
+            current_cursor=current_cursor,
+            proposal_id=proposal.proposal_id,
+        )
+
+
+def test_record_commitment_rebased_still_rejects_stage_skip_on_retired_state() -> None:
+    ledger, proposal, audit_cursor, current_cursor = _compiler_fixture(
+        target_stage="close_friend"
+    )
+    _with_carried_relationship_state(ledger, policy_digest=H26_RETIRED_POLICY_DIGEST)
+
+    with pytest.raises(
+        RelationshipProposalCompilerError,
+        match="commitment_stage_transition_not_installed",
     ):
         RelationshipProposalCompiler(ledger=ledger).record_commitment_rebased(
             world_id=WORLD_ID,

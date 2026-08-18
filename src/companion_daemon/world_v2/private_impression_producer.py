@@ -26,7 +26,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
+import logging
+from pathlib import Path
+import sqlite3
+from threading import Lock
 from typing import Any, Callable, Literal
+from weakref import WeakKeyDictionary
+from zoneinfo import ZoneInfo
 
 from pydantic import Field
 from pydantic_core import to_jsonable_python
@@ -106,6 +112,39 @@ _NON_ATTEMPT_TECHNICAL_FAILURES = frozenset({"required_tool_choice_unsupported"}
 # attempts the process is terminal. A fresh epoch requires new accepted
 # appraisal evidence; the opener does not re-derive the same source trigger.
 _PRIVATE_IMPRESSION_MAX_ATTEMPTS = 1
+
+# Conservative production defaults for the independent reflection farm.
+# The daily cap counts ledger farm *asks* (TriggerProcessCompleted with a
+# model outcome), not accepted impressions and not HTTP reselections of the
+# same ask.  Three asks a day at ~¥0.03 each stay inside a single-digit
+# weekly increment; four hours between asks and 30 minutes after his last
+# message keep the farm off the inbound hitch path.
+DEFAULT_PRIVATE_IMPRESSION_DAILY_MODEL_CALL_LIMIT = 3
+DEFAULT_PRIVATE_IMPRESSION_MIN_INTERVAL_SECONDS = 14_400
+DEFAULT_PRIVATE_IMPRESSION_IDLE_AFTER_USER_SECONDS = 1_800
+_PAID_INBOUND_MODEL_CALL_PREFIX = "paid-inbound-impression:"
+_PAID_TURN_MODEL_ID_PREFIX = "paid-turn:"
+_GATE_REASONS = (
+    "daily_cap",
+    "min_interval",
+    "recent_user_observation",
+    "disabled",
+)
+_GATE_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS world_v2_private_impression_gates (
+    world_id TEXT NOT NULL,
+    local_day TEXT NOT NULL,
+    trigger_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    daily_calls INTEGER NOT NULL DEFAULT 0,
+    daily_limit INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (world_id, local_day, trigger_id, reason)
+)
+"""
+_LOG = logging.getLogger(__name__)
+_GATE_LOCK = Lock()
+_MEMORY_GATES: WeakKeyDictionary[object, list[dict[str, object]]] = WeakKeyDictionary()
 
 
 def _digest(value: object) -> str:
@@ -232,6 +271,418 @@ def compile_paid_private_impression_draft(
         confidence_bp=5_000,
         expiry_condition="until_counter_evidence",
     )
+
+
+class PrivateImpressionDrainPolicy(FrozenModel):
+    """When the host may spend a provider call asking her to reflect.
+
+    The character still owns retain / no_change.  These numbers only bound
+    *whether the host pays to ask*, never what she answers.
+    """
+
+    daily_model_call_limit: int = Field(
+        default=DEFAULT_PRIVATE_IMPRESSION_DAILY_MODEL_CALL_LIMIT, ge=0, le=24
+    )
+    min_interval_seconds: int = Field(
+        default=DEFAULT_PRIVATE_IMPRESSION_MIN_INTERVAL_SECONDS, ge=0, le=86_400
+    )
+    idle_after_user_seconds: int = Field(
+        default=DEFAULT_PRIVATE_IMPRESSION_IDLE_AFTER_USER_SECONDS, ge=0, le=86_400
+    )
+    local_timezone: str = "Asia/Shanghai"
+
+    @property
+    def allows_model_calls(self) -> bool:
+        return self.daily_model_call_limit > 0
+
+
+class PrivateImpressionGateDecision(FrozenModel):
+    """One drain-tick decision: ask her, stay idle, or skip without a call."""
+
+    action: Literal["ask", "idle", "skip"]
+    reason: str | None = None
+    daily_calls: int = 0
+    daily_limit: int = 0
+    trigger_id: str = ""
+    last_user_observation_at: datetime | None = None
+    last_background_call_at: datetime | None = None
+    local_timezone: str = "Asia/Shanghai"
+
+
+def private_impression_drain_policy_from_settings(
+    settings: object | None = None,
+) -> PrivateImpressionDrainPolicy:
+    """Build the drain policy from Settings / explicit host overrides."""
+
+    if settings is None:
+        from companion_daemon.config import Settings
+
+        settings = Settings()
+    timezone_name = str(getattr(settings, "local_timezone", None) or "Asia/Shanghai")
+    return PrivateImpressionDrainPolicy(
+        daily_model_call_limit=int(
+            getattr(
+                settings,
+                "world_v2_private_impression_daily_model_call_limit",
+                DEFAULT_PRIVATE_IMPRESSION_DAILY_MODEL_CALL_LIMIT,
+            )
+        ),
+        min_interval_seconds=int(
+            getattr(
+                settings,
+                "world_v2_private_impression_min_interval_seconds",
+                DEFAULT_PRIVATE_IMPRESSION_MIN_INTERVAL_SECONDS,
+            )
+        ),
+        idle_after_user_seconds=int(
+            getattr(
+                settings,
+                "world_v2_private_impression_idle_after_user_seconds",
+                DEFAULT_PRIVATE_IMPRESSION_IDLE_AFTER_USER_SECONDS,
+            )
+        ),
+        local_timezone=timezone_name,
+    )
+
+
+def _local_zone(name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(name)
+    except Exception:
+        return ZoneInfo("Asia/Shanghai")
+
+
+def _as_utc(moment: datetime) -> datetime:
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=UTC)
+    return moment.astimezone(UTC)
+
+
+def _local_day(moment: datetime, timezone_name: str) -> str:
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment.astimezone(_local_zone(timezone_name)).date().isoformat()
+
+
+def _ledger_sqlite_path(ledger: object) -> Path | None:
+    path = getattr(ledger, "_database_path", None)
+    if isinstance(path, Path):
+        return path
+    if isinstance(path, str) and path:
+        return Path(path)
+    return None
+
+
+def _memory_gate_rows(ledger: object) -> list[dict[str, object]]:
+    """Per-ledger skip rows for in-memory ledgers.
+
+    Object identity is the key.  A process-global ``id(ledger)`` map used to
+    leak another test's daily_cap / min_interval rows after GC reused the
+    integer.  WeakKeyDictionary holds live ledgers; objects that cannot be
+    weakly referenced carry their own list.
+    """
+
+    try:
+        return _MEMORY_GATES.setdefault(ledger, [])
+    except TypeError:
+        rows = getattr(ledger, "_world_v2_private_impression_gate_rows", None)
+        if not isinstance(rows, list):
+            rows = []
+            object.__setattr__(ledger, "_world_v2_private_impression_gate_rows", rows)
+        return rows
+
+
+def _farm_process_asked_the_model(process) -> bool:
+    """True when this farm trigger spent a provider call and then completed.
+
+    Replay / ignored / expired complete without calling her.  Technical
+    failures that never complete are not counted until a later drain
+    terminals them.  The paid inbound hitch does not open a farm trigger.
+    """
+
+    if getattr(process, "process_kind", None) != "private_impression_deliberation":
+        return False
+    if getattr(process, "state", None) != "terminal":
+        return False
+    outcome = str(getattr(process, "runtime_outcome_ref", None) or "")
+    if ":replay:" in outcome or ":ignored" in outcome or ":expired:" in outcome:
+        return False
+    attempt_id = _farm_completion_attempt_id(process)
+    if attempt_id.startswith("attempt:" + _PAID_INBOUND_MODEL_CALL_PREFIX):
+        return False
+    if ":accepted:" in outcome:
+        return True
+    return outcome.endswith(":no-change")
+
+
+def _farm_completion_attempt_id(process) -> str:
+    lease = getattr(process, "claim_lease", None)
+    if lease is not None and getattr(lease, "attempt_id", None):
+        return str(lease.attempt_id)
+    attempt_ids = getattr(process, "attempt_ids", ()) or ()
+    if attempt_ids:
+        return str(attempt_ids[-1])
+    return ""
+
+
+def _completion_moment(event) -> datetime | None:
+    payload = event.payload() if hasattr(event, "payload") else {}
+    if not isinstance(payload, dict):
+        payload = {}
+    raw = payload.get("completed_at")
+    if isinstance(raw, datetime):
+        return raw
+    if isinstance(raw, str) and raw:
+        try:
+            return datetime.fromisoformat(raw)
+        except ValueError:
+            pass
+    moment = getattr(event, "logical_time", None)
+    return moment if isinstance(moment, datetime) else None
+
+
+def _background_private_impression_calls(
+    projection,
+    ledger: object | None = None,
+) -> tuple[tuple[datetime, str], ...]:
+    """Ledger-auditable background asks, timed at drain completion.
+
+    ``TriggerProcessCompleted`` is a deliberation event, so it never appears
+    in ``committed_world_event_refs``.  ``ModelResultRecorded`` copies the
+    source ``AppraisalAccepted`` logical time, which can be hours old on a
+    quiet farm tick.  ``completed_at`` on the completion event is the drain
+    clock, which is what interval and the local-day cap must use.
+    """
+
+    lookup = getattr(ledger, "find_trigger_completion", None) if ledger is not None else None
+    found: list[tuple[datetime, str]] = []
+    for process in getattr(projection, "trigger_processes", ()):
+        if not _farm_process_asked_the_model(process):
+            continue
+        trigger_id = str(process.trigger_id)
+        event = lookup(trigger_id) if callable(lookup) else None
+        if event is None:
+            continue
+        moment = _completion_moment(event)
+        if moment is None:
+            continue
+        found.append((moment, trigger_id))
+    found.sort(key=lambda item: (item[0], item[1]))
+    return tuple(found)
+
+
+def last_user_observation_at(projection) -> datetime | None:
+    """Authoritative time of his last inbound ObservationRecorded."""
+
+    latest: datetime | None = None
+    for ref in getattr(projection, "committed_world_event_refs", ()):
+        if getattr(ref, "event_type", None) != "ObservationRecorded":
+            continue
+        moment = getattr(ref, "logical_time", None)
+        if not isinstance(moment, datetime):
+            continue
+        if latest is None or moment > latest:
+            latest = moment
+    return latest
+
+
+def pending_private_impression_trigger_id(projection) -> str:
+    pending = [
+        item
+        for item in getattr(projection, "trigger_processes", ())
+        if item.process_kind == "private_impression_deliberation" and item.state != "terminal"
+    ]
+    if not pending:
+        return ""
+    pending.sort(key=lambda item: item.trigger_id)
+    return pending[0].trigger_id
+
+
+def evaluate_private_impression_drain_gate(
+    projection,
+    *,
+    policy: PrivateImpressionDrainPolicy,
+    ledger: object | None = None,
+) -> PrivateImpressionGateDecision:
+    """Decide whether this drain tick may spend a provider call.
+
+    Skip reasons are host gates, not character decisions.  ``no_change`` after
+    a call is recorded on the ledger by the existing completion path.
+    Interval and daily cap count farm ``TriggerProcessCompleted`` events whose
+    outcome is ``:accepted:`` or ``:no-change``, using ``completed_at`` (the
+    drain clock) rather than the source appraisal's logical time.  One farm
+    ask is one slot, not one HTTP reselection.
+    """
+
+    if not policy.allows_model_calls:
+        return PrivateImpressionGateDecision(
+            action="skip",
+            reason="disabled",
+            daily_limit=policy.daily_model_call_limit,
+            local_timezone=policy.local_timezone,
+        )
+    now = getattr(projection, "logical_time", None)
+    if now is None:
+        return PrivateImpressionGateDecision(
+            action="idle", local_timezone=policy.local_timezone
+        )
+    trigger_id = pending_private_impression_trigger_id(projection)
+    if not trigger_id:
+        return PrivateImpressionGateDecision(
+            action="idle", local_timezone=policy.local_timezone
+        )
+    user_at = last_user_observation_at(projection)
+    calls = _background_private_impression_calls(projection, ledger)
+    day = _local_day(now, policy.local_timezone)
+    ledger_today = [item for item in calls if _local_day(item[0], policy.local_timezone) == day]
+    daily_calls = len(ledger_today)
+    last_call_at = max((item[0] for item in calls), default=None)
+    if user_at is not None:
+        idle = (_as_utc(now) - _as_utc(user_at)).total_seconds()
+        if idle < policy.idle_after_user_seconds:
+            return PrivateImpressionGateDecision(
+                action="skip",
+                reason="recent_user_observation",
+                daily_calls=daily_calls,
+                daily_limit=policy.daily_model_call_limit,
+                trigger_id=trigger_id,
+                last_user_observation_at=user_at,
+                last_background_call_at=last_call_at,
+                local_timezone=policy.local_timezone,
+            )
+    if last_call_at is not None and policy.min_interval_seconds > 0:
+        gap = (_as_utc(now) - _as_utc(last_call_at)).total_seconds()
+        if gap < policy.min_interval_seconds:
+            return PrivateImpressionGateDecision(
+                action="skip",
+                reason="min_interval",
+                daily_calls=daily_calls,
+                daily_limit=policy.daily_model_call_limit,
+                trigger_id=trigger_id,
+                last_user_observation_at=user_at,
+                last_background_call_at=last_call_at,
+                local_timezone=policy.local_timezone,
+            )
+    if daily_calls >= policy.daily_model_call_limit:
+        return PrivateImpressionGateDecision(
+            action="skip",
+            reason="daily_cap",
+            daily_calls=daily_calls,
+            daily_limit=policy.daily_model_call_limit,
+            trigger_id=trigger_id,
+            last_user_observation_at=user_at,
+            last_background_call_at=last_call_at,
+            local_timezone=policy.local_timezone,
+        )
+    return PrivateImpressionGateDecision(
+        action="ask",
+        daily_calls=daily_calls,
+        daily_limit=policy.daily_model_call_limit,
+        trigger_id=trigger_id,
+        last_user_observation_at=user_at,
+        last_background_call_at=last_call_at,
+        local_timezone=policy.local_timezone,
+    )
+
+
+def recorded_private_impression_gates(ledger: object) -> tuple[dict[str, object], ...]:
+    """Return skip rows from the sqlite side table or the in-memory fallback."""
+
+    path = _ledger_sqlite_path(ledger)
+    if path is not None:
+        try:
+            with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
+                connection.row_factory = sqlite3.Row
+                rows = connection.execute(
+                    "SELECT world_id, local_day, trigger_id, reason, recorded_at, "
+                    "daily_calls, daily_limit FROM world_v2_private_impression_gates "
+                    "ORDER BY recorded_at, reason"
+                ).fetchall()
+            return tuple(dict(row) for row in rows)
+        except sqlite3.Error:
+            pass
+    return tuple(_memory_gate_rows(ledger))
+
+
+def record_private_impression_gate(
+    ledger: object,
+    decision: PrivateImpressionGateDecision,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Persist one skip.  Returns True when this exact skip is new today.
+
+    Repeated drain ticks with the same (day, trigger, reason) stay silent so
+    the scheduler cannot flood logs.  Never records ``ask`` or ``idle``.
+    """
+
+    if decision.action != "skip" or decision.reason not in _GATE_REASONS:
+        return False
+    world_id = str(getattr(ledger, "world_id", "") or "")
+    moment = now or datetime.now(UTC)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    timezone_name = decision.local_timezone or "Asia/Shanghai"
+    local_day = _local_day(moment, timezone_name)
+    row = {
+        "world_id": world_id,
+        "local_day": local_day,
+        "trigger_id": decision.trigger_id,
+        "reason": decision.reason,
+        "recorded_at": moment.isoformat(),
+        "daily_calls": decision.daily_calls,
+        "daily_limit": decision.daily_limit,
+    }
+    path = _ledger_sqlite_path(ledger)
+    inserted = False
+    if path is not None:
+        with _GATE_LOCK:
+            try:
+                with sqlite3.connect(path) as connection:
+                    connection.execute(_GATE_TABLE_SQL)
+                    cursor = connection.execute(
+                        "INSERT OR IGNORE INTO world_v2_private_impression_gates ("
+                        "world_id, local_day, trigger_id, reason, recorded_at, "
+                        "daily_calls, daily_limit) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            world_id,
+                            local_day,
+                            decision.trigger_id,
+                            decision.reason,
+                            row["recorded_at"],
+                            decision.daily_calls,
+                            decision.daily_limit,
+                        ),
+                    )
+                    connection.commit()
+                    inserted = cursor.rowcount == 1
+            except sqlite3.Error:
+                inserted = False
+    if path is None or not inserted:
+        bucket = _memory_gate_rows(ledger)
+        key = (world_id, local_day, decision.trigger_id, decision.reason)
+        if any(
+            (
+                item.get("world_id"),
+                item.get("local_day"),
+                item.get("trigger_id"),
+                item.get("reason"),
+            )
+            == key
+            for item in bucket
+        ):
+            return False
+        bucket.append(row)
+        inserted = True
+    if inserted:
+        _LOG.info(
+            "private impression gated reason=%s trigger_id=%s daily_calls=%s daily_limit=%s",
+            decision.reason,
+            decision.trigger_id or "-",
+            decision.daily_calls,
+            decision.daily_limit,
+        )
+    return inserted
 
 
 class PrivateImpressionReflectionSource(FrozenModel):
@@ -587,17 +1038,19 @@ def compile_private_impression_reflection_capsule(
 
 
 def private_impression_opportunity(projection) -> tuple[str, str] | None:
-    """Open at most one impression from the newly accepted head event (G7)."""
+    """Open at most one impression trigger for one uninterpreted appraisal.
+
+    G7 still wins when the head event is an eligible ``AppraisalAccepted``.
+    Production inbound batches bury that event behind later receipts, so the
+    farm also accepts the newest active uninterpreted appraisal that does not
+    already have a trigger.  That is still one identity per appraisal and one
+    open per ``open_once`` — not a historical sweep.
+    """
 
     if projection.logical_time is None:
         return None
-    new_refs = newly_accepted_head_refs(
-        projection.committed_world_event_refs,
-        event_type="AppraisalAccepted",
-    )
-    if not new_refs:
+    if pending_private_impression_trigger_id(projection):
         return None
-    source_ref = next(iter(new_refs))
     interpreted = {
         ref.split(":", 2)[1]
         for impression in projection.private_impressions
@@ -605,24 +1058,51 @@ def private_impression_opportunity(projection) -> tuple[str, str] | None:
         if ref.startswith("appraisal:")
     }
     existing_triggers = {item.trigger_id for item in projection.trigger_processes}
-    trigger_id = private_impression_trigger_identity(projection.world_id, source_ref)
-    if trigger_id in existing_triggers:
-        return None
-    appraisal = next(
-        (
-            item
-            for item in projection.appraisals
-            if item.origin.accepted_event_ref == source_ref
-        ),
-        None,
+
+    def eligible(appraisal: object) -> str | None:
+        origin = getattr(appraisal, "origin", None)
+        source_ref = getattr(origin, "accepted_event_ref", None)
+        if (
+            getattr(appraisal, "status", None) != "active"
+            or not isinstance(source_ref, str)
+            or not source_ref
+            or getattr(appraisal, "appraisal_id", None) in interpreted
+        ):
+            return None
+        trigger_id = private_impression_trigger_identity(projection.world_id, source_ref)
+        if trigger_id in existing_triggers:
+            return None
+        return source_ref
+
+    head_refs = newly_accepted_head_refs(
+        projection.committed_world_event_refs,
+        event_type="AppraisalAccepted",
     )
-    if (
-        appraisal is None
-        or appraisal.status != "active"
-        or appraisal.appraisal_id in interpreted
-    ):
-        return None
-    return trigger_id, source_ref
+    if head_refs:
+        source_ref = next(iter(head_refs))
+        appraisal = next(
+            (
+                item
+                for item in projection.appraisals
+                if item.origin is not None
+                and item.origin.accepted_event_ref == source_ref
+            ),
+            None,
+        )
+        if appraisal is not None and eligible(appraisal) == source_ref:
+            return (
+                private_impression_trigger_identity(projection.world_id, source_ref),
+                source_ref,
+            )
+    for appraisal in reversed(projection.appraisals):
+        source_ref = eligible(appraisal)
+        if source_ref is None:
+            continue
+        return (
+            private_impression_trigger_identity(projection.world_id, source_ref),
+            source_ref,
+        )
+    return None
 
 
 class PrivateImpressionTriggerOpener:
@@ -2407,8 +2887,13 @@ def _cursor(projection) -> ProjectionCursor:
 
 
 __all__ = [
+    "DEFAULT_PRIVATE_IMPRESSION_DAILY_MODEL_CALL_LIMIT",
+    "DEFAULT_PRIVATE_IMPRESSION_IDLE_AFTER_USER_SECONDS",
+    "DEFAULT_PRIVATE_IMPRESSION_MIN_INTERVAL_SECONDS",
     "EXPIRY_CONDITIONS",
     "PrivateImpressionDraft",
+    "PrivateImpressionDrainPolicy",
+    "PrivateImpressionGateDecision",
     "PrivateImpressionReflectionCapsule",
     "PrivateImpressionReflectionSource",
     "PrivateImpressionRunResult",
@@ -2416,5 +2901,9 @@ __all__ = [
     "PrivateImpressionTriggerRuntime",
     "compile_paid_private_impression_draft",
     "compile_private_impression_reflection_capsule",
+    "evaluate_private_impression_drain_gate",
+    "private_impression_drain_policy_from_settings",
     "private_impression_opportunity",
+    "record_private_impression_gate",
+    "recorded_private_impression_gates",
 ]

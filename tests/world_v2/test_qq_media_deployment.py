@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,7 +20,11 @@ from companion_daemon.world_v2.production_turn_application import (
     WorldV2TurnApplicationConfig,
 )
 from companion_daemon.world_v2.qq_c2c_onebot_app import create_qq_c2c_onebot_app
+from companion_daemon.world_v2.media_provider_transport import (
+    MediaProviderDiagnosticRecorder,
+)
 from companion_daemon.world_v2.qq_media_deployment import (
+    _compose_high_private_lane,
     build_qq_media_preview_deployment,
 )
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
@@ -256,6 +261,9 @@ async def test_factory_composes_a_complete_preview_deployment_when_provisioned(
         renderer = bundle.transport._renderer
         assert renderer.specialized_generators == {}
         assert renderer.private_prompt_author is None
+        inner = _unwrap(renderer.generator)
+        assert inner.spend_store is not None
+        assert Path(inner.spend_store.path) == Path(settings.database_path)
         high_plan = SimpleNamespace(
             private_render_contract=SimpleNamespace(render_route="adult_suggestive"),
             suggestive_private_contract=None,
@@ -292,12 +300,15 @@ def _ordinary_plan() -> SimpleNamespace:
 
 @pytest.mark.asyncio
 async def test_factory_keeps_ordinary_lane_when_civitai_key_is_missing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setenv("WORLD_V2_ENABLE_INSECURE_TEST_ROOT", "1")
     settings = _settings(tmp_path, CIVITAI_KREA2_ENABLED="1", CIVITAI_API_KEY=None)
     await _provisioned_world(Path(settings.database_path))
-    bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
+    with caplog.at_level(logging.WARNING, logger="companion_daemon.world_v2.qq_media_deployment"):
+        bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
     assert bundle is not None
     try:
         renderer = bundle.transport._renderer
@@ -305,13 +316,17 @@ async def test_factory_keeps_ordinary_lane_when_civitai_key_is_missing(
         assert renderer.private_prompt_author is None
         assert renderer._generator_for(_high_plan()) is None
         assert renderer._generator_for(_ordinary_plan()) is renderer.generator
+        assert "missing: CIVITAI_API_KEY" in caplog.text
+        assert "high-private P3 fail-closed" in caplog.text
     finally:
         bundle.transport.close()
 
 
 @pytest.mark.asyncio
 async def test_factory_keeps_ordinary_lane_when_krea2_template_is_missing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setenv("WORLD_V2_ENABLE_INSECURE_TEST_ROOT", "1")
     settings = _settings(
@@ -321,20 +336,25 @@ async def test_factory_keeps_ordinary_lane_when_krea2_template_is_missing(
         CIVITAI_KREA2_TEMPLATE_PATH=tmp_path / "missing-krea2-template.json",
     )
     await _provisioned_world(Path(settings.database_path))
-    bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
+    with caplog.at_level(logging.WARNING, logger="companion_daemon.world_v2.qq_media_deployment"):
+        bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
     assert bundle is not None
     try:
         renderer = bundle.transport._renderer
         assert renderer.specialized_generators == {}
         assert renderer.private_prompt_author is None
         assert renderer._generator_for(_ordinary_plan()) is renderer.generator
+        assert "missing: CIVITAI_KREA2_TEMPLATE_PATH" in caplog.text
+        assert "high-private P3 fail-closed" in caplog.text
     finally:
         bundle.transport.close()
 
 
 @pytest.mark.asyncio
 async def test_factory_installs_krea2_high_private_when_credentials_are_complete(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     from companion_daemon.event_media import FirstPersonPrivatePromptAuthor, MediaRenderFailure
     from companion_daemon.image_generation import (
@@ -351,7 +371,8 @@ async def test_factory_installs_krea2_high_private_when_credentials_are_complete
         CIVITAI_API_KEY="test-civitai",
     )
     await _provisioned_world(Path(settings.database_path))
-    bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
+    with caplog.at_level(logging.WARNING, logger="companion_daemon.world_v2.qq_media_deployment"):
+        bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
     assert bundle is not None
     try:
         renderer = bundle.transport._renderer
@@ -365,12 +386,19 @@ async def test_factory_installs_krea2_high_private_when_credentials_are_complete
         assert suggestive is explicit
         assert isinstance(_unwrap(suggestive), CivitaiTemplateWorkflowImageGenerator)
         assert isinstance(_unwrap(renderer.generator), OpenAIImageGenerator)
+        assert Path(_unwrap(suggestive).spend_store.path) == Path(settings.database_path)
+        assert Path(_unwrap(renderer.generator).spend_store.path) == Path(settings.database_path)
         assert renderer._generator_for(_high_plan()) is suggestive
         assert renderer._generator_for(_high_plan(route="adult_explicit")) is explicit
         assert renderer._generator_for(_ordinary_plan()) is renderer.generator
         assert renderer._generator_for(_ordinary_plan()) is not suggestive
         assert isinstance(renderer.private_prompt_author, FirstPersonPrivatePromptAuthor)
         assert isinstance(renderer.private_prompt_author.model, DeepSeekChatModel)
+        assert renderer.private_prompt_author.model.provider == "deepseek"
+        assert "falling back to deepseek:" in caplog.text
+        assert "HERMES_PRIVATE_PROMPT_ENABLED but OPENROUTER_API_KEY is missing" in caplog.text
+        assert "high-private P3 krea2 installed, private prompt author deepseek:" in caplog.text
+        assert "Hermes fallback; OPENROUTER_API_KEY missing" in caplog.text
         unsourced = await renderer.render(
             SimpleNamespace(
                 plan_id="plan:unsourced-high",
@@ -389,7 +417,9 @@ async def test_factory_installs_krea2_high_private_when_credentials_are_complete
 
 @pytest.mark.asyncio
 async def test_factory_uses_hermes_private_prompt_author_when_openrouter_is_present(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     from companion_daemon.event_media import FirstPersonPrivatePromptAuthor
     from companion_daemon.llm import OpenAICompatibleChatModel
@@ -402,12 +432,91 @@ async def test_factory_uses_hermes_private_prompt_author_when_openrouter_is_pres
         OPENROUTER_API_KEY="test-openrouter",
     )
     await _provisioned_world(Path(settings.database_path))
-    bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
+    with caplog.at_level(logging.WARNING, logger="companion_daemon.world_v2.qq_media_deployment"):
+        bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
     assert bundle is not None
     try:
         author = bundle.transport._renderer.private_prompt_author
         assert isinstance(author, FirstPersonPrivatePromptAuthor)
         assert isinstance(author.model, OpenAICompatibleChatModel)
         assert author.model.model == "nousresearch/hermes-4-70b"
+        assert author.model.provider == "openrouter"
+        assert author.model.base_url == "https://openrouter.ai/api/v1"
+        assert "private prompt author installed" in caplog.text
+        assert "openrouter:nousresearch/hermes-4-70b via hermes_openrouter" in caplog.text
+        assert "falling back" not in caplog.text
+        assert (
+            "high-private P3 krea2 installed, private prompt author "
+            "openrouter:nousresearch/hermes-4-70b"
+        ) in caplog.text
     finally:
         bundle.transport.close()
+
+
+@pytest.mark.asyncio
+async def test_factory_uses_explicit_deepseek_when_hermes_is_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from companion_daemon.event_media import FirstPersonPrivatePromptAuthor
+    from companion_daemon.llm import DeepSeekChatModel
+
+    monkeypatch.setenv("WORLD_V2_ENABLE_INSECURE_TEST_ROOT", "1")
+    settings = _settings(
+        tmp_path,
+        CIVITAI_KREA2_ENABLED="1",
+        CIVITAI_API_KEY="test-civitai",
+        HERMES_PRIVATE_PROMPT_ENABLED=False,
+    )
+    await _provisioned_world(Path(settings.database_path))
+    with caplog.at_level(logging.WARNING, logger="companion_daemon.world_v2.qq_media_deployment"):
+        bundle = build_qq_media_preview_deployment(settings=settings, world_id=WORLD_ID)
+    assert bundle is not None
+    try:
+        author = bundle.transport._renderer.private_prompt_author
+        assert isinstance(author, FirstPersonPrivatePromptAuthor)
+        assert isinstance(author.model, DeepSeekChatModel)
+        assert "falling back" not in caplog.text
+        assert "OPENROUTER_API_KEY is missing" not in caplog.text
+        assert "via deepseek" in caplog.text
+        assert "Hermes fallback" not in caplog.text
+    finally:
+        bundle.transport.close()
+
+
+def test_compose_fail_closes_high_private_when_author_credentials_are_missing(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    settings = _settings(
+        tmp_path,
+        CIVITAI_KREA2_ENABLED="1",
+        CIVITAI_API_KEY="test-civitai",
+        DEEPSEEK_API_KEY=None,
+        OPENROUTER_API_KEY=None,
+    )
+    with caplog.at_level(logging.WARNING, logger="companion_daemon.world_v2.qq_media_deployment"):
+        composed = _compose_high_private_lane(
+            settings,
+            diagnostic_recorder=MediaProviderDiagnosticRecorder(),
+            world_id=WORLD_ID,
+        )
+    assert composed is None
+    assert "missing: OPENROUTER_API_KEY, DEEPSEEK_API_KEY" in caplog.text
+    assert "private prompt author model" not in caplog.text
+
+
+def test_compose_logs_when_krea2_is_disabled(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    settings = _settings(tmp_path, CIVITAI_KREA2_ENABLED="0", CIVITAI_API_KEY="test-civitai")
+    with caplog.at_level(logging.WARNING, logger="companion_daemon.world_v2.qq_media_deployment"):
+        composed = _compose_high_private_lane(
+            settings,
+            diagnostic_recorder=MediaProviderDiagnosticRecorder(),
+            world_id=WORLD_ID,
+        )
+    assert composed is None
+    assert "disabled: CIVITAI_KREA2_ENABLED" in caplog.text

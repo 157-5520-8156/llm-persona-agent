@@ -443,31 +443,46 @@ class LifeEcologyRuntime:
             and aftermath_status
             not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}
         ):
-            development_result = await self._life_development_followup.advance_once(
-                wake_event_ref=wake_event_ref,
-                trace_id=trace_id,
-                correlation_id=correlation_id,
-            )
-            life_development_status = getattr(development_result, "status", None)
-            if not isinstance(life_development_status, str) or not life_development_status:
-                raise ValueError("life development result has no stable status")
-            if life_development_status == "technical_failure":
-                supplied = getattr(development_result, "reason_code", None)
-                normalized = (
-                    re.sub(r"[^a-z0-9._-]+", "_", supplied.lower()).strip("._-")
-                    if isinstance(supplied, str)
-                    else ""
+            try:
+                development_result = await self._life_development_followup.advance_once(
+                    wake_event_ref=wake_event_ref,
+                    trace_id=trace_id,
+                    correlation_id=correlation_id,
                 )
-                life_development_failure_code = normalized[:96] or "life_development.unknown"
-            if life_development_status == "deferred":
+                life_development_status = getattr(development_result, "status", None)
+                if not isinstance(life_development_status, str) or not life_development_status:
+                    raise ValueError("life development result has no stable status")
+                if life_development_status == "technical_failure":
+                    supplied = getattr(development_result, "reason_code", None)
+                    normalized = (
+                        re.sub(r"[^a-z0-9._-]+", "_", supplied.lower()).strip("._-")
+                        if isinstance(supplied, str)
+                        else ""
+                    )
+                    life_development_failure_code = normalized[:96] or "life_development.unknown"
+                if life_development_status == "deferred":
+                    return LifeEcologyRunResult(
+                        status="deferred",
+                        trigger_id=claim.trigger_id,
+                        reason_code="life_ecology.life_development_deferred",
+                        activity_followup_status=activity_status,
+                        aftermath_followup_status=aftermath_status,
+                        biographical_followup_status=biographical_status,
+                        life_development_followup_status=life_development_status,
+                    )
+            except Exception:
+                _LOG.exception(
+                    "life ecology life development followup failed wake=%s",
+                    wake_event_ref,
+                )
+                await self._complete_failed_safe(key=key, trigger_id=claim.trigger_id)
                 return LifeEcologyRunResult(
-                    status="deferred",
+                    status="failed_safe",
                     trigger_id=claim.trigger_id,
-                    reason_code="life_ecology.life_development_deferred",
+                    reason_code="life_ecology.life_development_followup_failed",
                     activity_followup_status=activity_status,
                     aftermath_followup_status=aftermath_status,
                     biographical_followup_status=biographical_status,
-                    life_development_followup_status=life_development_status,
                 )
 
         # Additive same-wake start chance.  Life Development commits new
@@ -476,8 +491,8 @@ class LifeEcologyRuntime:
         # activity wake can be after close).  This is not a reorder:
         # aftermath still observes the pre-plan activity state.  The extra
         # pass only re-reads the catalog; start / no_op / abandon stay hers.
-        # Occasion gating is unchanged.  If the first pass already spent
-        # day_open, the worker no_ops without a second consider(); if the
+        # If the first pass already spent day_open, the worker still gets
+        # one life_beat consider for the newly committed start set.  If the
         # first pass had no openings, day_open is still free and this pass
         # is the one consider for the new plan.
         if self._activity_followup is not None and life_development_status == "plan_committed":
@@ -488,6 +503,7 @@ class LifeEcologyRuntime:
                 logical_time=logical_time,
                 trace_id=trace_id,
                 correlation_id=correlation_id,
+                renewed_plan_catalog=True,
             )
             if isinstance(extra_pass, LifeEcologyRunResult):
                 return extra_pass.model_copy(
@@ -964,6 +980,7 @@ class LifeEcologyRuntime:
         logical_time: datetime,
         trace_id: str,
         correlation_id: str,
+        renewed_plan_catalog: bool = False,
     ) -> LifeEcologyRunResult | tuple[str, object | None]:
         """Run activity lifecycle once; return an early-exit result or (status, quiet)."""
 
@@ -974,6 +991,7 @@ class LifeEcologyRuntime:
                 logical_time=logical_time,
                 trace_id=trace_id,
                 correlation_id=correlation_id,
+                renewed_plan_catalog=renewed_plan_catalog,
             )
             activity_status = getattr(activity_result, "status", None)
             if not isinstance(activity_status, str) or not activity_status:
@@ -1032,16 +1050,26 @@ class LifeEcologyRuntime:
         logical_time: datetime,
         trace_id: str,
         correlation_id: str,
+        renewed_plan_catalog: bool = False,
     ) -> object:
         assert self._activity_followup is not None
-        return await self._activity_followup.advance_once(
-            wake_event_ref=wake_event_ref,
-            trigger_id=trigger_id,
-            logical_time=logical_time,
-            actor=self._actor,
-            trace_id=trace_id,
-            correlation_id=correlation_id,
-        )
+        kwargs: dict[str, object] = {
+            "wake_event_ref": wake_event_ref,
+            "trigger_id": trigger_id,
+            "logical_time": logical_time,
+            "actor": self._actor,
+            "trace_id": trace_id,
+            "correlation_id": correlation_id,
+        }
+        try:
+            parameters = inspect.signature(self._activity_followup.advance_once).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+        if "renewed_plan_catalog" in parameters or any(
+            item.kind is inspect.Parameter.VAR_KEYWORD for item in parameters.values()
+        ):
+            kwargs["renewed_plan_catalog"] = renewed_plan_catalog
+        return await self._activity_followup.advance_once(**kwargs)
 
     async def _advance_visual_evidence_once(
         self, *, wake_event_ref: str, trace_id: str, correlation_id: str

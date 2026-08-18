@@ -86,6 +86,7 @@ async def test_worker_does_not_call_the_model_or_write_when_no_candidate_exists(
         ledger=_Ledger(), character_interior=interior,
         character_actor_ref="agent:companion",
         proposal_recorder=_Recorder(), catalog_version="test.1",
+        require_conversation_occasion=False,
     )
     result = await worker.select_once(logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation")
     assert result.status == "no_op"
@@ -143,6 +144,7 @@ async def test_worker_recovers_the_current_head_proposal_without_repeating_the_m
         ledger=ledger, character_interior=interior,
         character_actor_ref="agent:companion",
         proposal_recorder=_Recorder(), catalog_version="test.1",
+        require_conversation_occasion=False,
     )
 
     result = await worker.select_once(logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation")
@@ -210,6 +212,7 @@ async def test_worker_re_deliberates_when_a_valid_pending_proposal_is_no_longer_
         ledger=ledger, character_interior=interior,
         character_actor_ref="agent:companion",
         proposal_recorder=_Recorder(), catalog_version="test.1",
+        require_conversation_occasion=False,
     )
     worker._random = SimpleNamespace(  # type: ignore[assignment]
         draw=lambda **_kwargs: SimpleNamespace(
@@ -305,6 +308,7 @@ async def test_worker_persists_and_recovers_terminal_attempt_at_same_logical_tim
         ledger=ledger, character_interior=interior,
         character_actor_ref="agent:companion",
         proposal_recorder=_Recorder(), catalog_version="test.1",
+        require_conversation_occasion=False,
     )
 
     first = await worker.select_once(
@@ -373,6 +377,7 @@ async def test_worker_structures_invalid_model_output_without_writing_a_proposal
         ledger=ledger, character_interior=interior,
         character_actor_ref="agent:companion",
         proposal_recorder=_Recorder(), catalog_version="test.1",
+        require_conversation_occasion=False,
     )
 
     result = await worker.select_once(
@@ -402,6 +407,7 @@ async def test_worker_structures_retryable_model_outage_for_scheduler_isolation(
         character_interior=interior,
         character_actor_ref="agent:companion",
         proposal_recorder=_Recorder(), catalog_version="test.1",
+        require_conversation_occasion=False,
     )
 
     result = await worker.select_once(
@@ -438,6 +444,7 @@ async def test_worker_blocks_instead_of_deliberating_around_missing_pending_auth
         ledger=ledger, character_interior=interior,
         character_actor_ref="agent:companion",
         proposal_recorder=_Recorder(), catalog_version="test.1",
+        require_conversation_occasion=False,
     )
 
     result = await worker.select_once(
@@ -477,6 +484,7 @@ async def test_worker_asks_the_model_about_an_ordinary_character_candidate() -> 
         ledger=ledger, character_interior=interior,
         character_actor_ref="agent:companion",
         proposal_recorder=_Recorder(), catalog_version="test.1",
+        require_conversation_occasion=False,
     )
 
     result = await worker.select_once(logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation")
@@ -507,6 +515,7 @@ async def test_worker_gives_the_model_deterministic_non_authoritative_candidate_
         ledger=ledger, character_interior=interior,
         character_actor_ref="agent:companion",
         proposal_recorder=_Recorder(), catalog_version="test.1",
+        require_conversation_occasion=False,
     )
 
     result = await worker.select_once(logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation")
@@ -528,3 +537,338 @@ async def test_worker_gives_the_model_deterministic_non_authoritative_candidate_
     }
     assert "emotional_meaning" not in choice["advisory"]
     assert "candidate:advisory" not in opportunity.capability_manifest.payload_json
+    assert choice["lived_facts"] == []
+    assert "reason_to_share" not in choice
+    assert "occasion" not in choice
+
+
+@pytest.mark.asyncio
+async def test_worker_does_not_call_the_model_when_a_generation_slot_is_closed() -> None:
+    candidate = PhotoCandidate(
+        candidate_id="candidate:spend-cap", source_event_refs=("event:source",),
+        family="life_share", privacy_ceiling="shareable", opened_at=NOW,
+        expires_at=NOW.replace(hour=1), ecology_category="activity_result",
+        ecology_observed_at=NOW,
+        source_events=(MediaEvidenceSource(event_ref="event:source", payload_hash="a" * 64),),
+    )
+    interior = _Interior()
+    ledger = SimpleNamespace(
+        project=lambda: SimpleNamespace(
+            logical_time=NOW, world_revision=3, deliberation_revision=0,
+            ledger_sequence=3, photo_candidates=(candidate,), proposal_revisions=(),
+            media_previews=(SimpleNamespace(plan_id="plan:waiting"),),
+            media_deliveries=(),
+            media_artifacts=(),
+            actions=(),
+            media_delivery_approvals=(),
+        ),
+    )
+    worker = MediaSelectionWorker(
+        ledger=ledger, character_interior=interior,
+        character_actor_ref="agent:companion",
+        proposal_recorder=_Recorder(), catalog_version="test.1",
+        require_conversation_occasion=False,
+    )
+
+    result = await worker.select_once(
+        logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation"
+    )
+
+    assert result.status == "blocked"
+    assert result.reason_code == "media_selection.generation_spend_cap:undelivered_preview"
+    assert interior.calls == 0
+
+
+def _life_candidate(*, candidate_id: str = "candidate:book") -> PhotoCandidate:
+    return PhotoCandidate(
+        candidate_id=candidate_id,
+        source_event_refs=("event:source",),
+        family="life_share",
+        privacy_ceiling="shareable",
+        opened_at=NOW,
+        expires_at=NOW.replace(hour=3),
+        ecology_category="activity_result",
+        ecology_observed_at=NOW,
+        source_events=(MediaEvidenceSource(event_ref="event:source", payload_hash="a" * 64),),
+    )
+
+
+def _base_projection(candidate: PhotoCandidate, **extra):  # type: ignore[no-untyped-def]
+    projection = dict(
+        logical_time=NOW,
+        world_revision=3,
+        deliberation_revision=0,
+        ledger_sequence=3,
+        photo_candidates=(candidate,),
+        proposal_revisions=(),
+        media_declined_candidate_revisions=(),
+        message_observations=(),
+        committed_world_event_refs=(),
+        threads=(),
+        conversation_threads=(),
+        trigger_processes=(),
+        expression_plan_manifests=(),
+        world_occurrences=(),
+        media_opportunities=(),
+        budget_accounts=(),
+    )
+    projection.update(extra)
+    return SimpleNamespace(**projection)
+
+
+@pytest.mark.asyncio
+async def test_worker_does_not_ask_when_conversation_is_not_adjacent() -> None:
+    candidate = _life_candidate()
+    interior = _Interior()
+    worker = MediaSelectionWorker(
+        ledger=SimpleNamespace(project=lambda: _base_projection(candidate)),
+        character_interior=interior,
+        character_actor_ref="agent:companion",
+        proposal_recorder=_Recorder(),
+        catalog_version="test.1",
+    )
+
+    result = await worker.select_once(
+        logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation"
+    )
+
+    assert result.status == "no_op"
+    assert result.reason_code == "media_selection.no_conversation_occasion"
+    assert interior.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_spend_cap_still_blocks_before_a_live_conversation_occasion() -> None:
+    candidate = _life_candidate()
+    interior = _Interior()
+    worker = MediaSelectionWorker(
+        ledger=SimpleNamespace(
+            project=lambda: _base_projection(
+                candidate,
+                media_previews=(SimpleNamespace(plan_id="plan:waiting"),),
+                media_deliveries=(),
+                media_artifacts=(),
+                actions=(),
+                media_delivery_approvals=(),
+                message_observations=(
+                    SimpleNamespace(actor="user:geoff", source_event_id="event:inbound"),
+                ),
+                committed_world_event_refs=(
+                    SimpleNamespace(
+                        event_id="event:inbound",
+                        event_type="ObservationRecorded",
+                        logical_time=NOW,
+                        payload_hash="c" * 64,
+                        world_revision=1,
+                    ),
+                ),
+            )
+        ),
+        character_interior=interior,
+        character_actor_ref="agent:companion",
+        proposal_recorder=_Recorder(),
+        catalog_version="test.1",
+    )
+
+    result = await worker.select_once(
+        logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation"
+    )
+
+    assert result.status == "blocked"
+    assert result.reason_code == "media_selection.generation_spend_cap:undelivered_preview"
+    assert interior.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_worker_asks_when_conversation_is_live_and_the_candidate_is_fresh() -> None:
+    candidate = _life_candidate()
+    interior = _Interior()
+    worker = MediaSelectionWorker(
+        ledger=SimpleNamespace(
+            project=lambda: _base_projection(
+                candidate,
+                message_observations=(
+                    SimpleNamespace(actor="user:geoff", source_event_id="event:inbound"),
+                ),
+                committed_world_event_refs=(
+                    SimpleNamespace(
+                        event_id="event:inbound",
+                        event_type="ObservationRecorded",
+                        logical_time=NOW,
+                        payload_hash="c" * 64,
+                        world_revision=1,
+                    ),
+                ),
+            )
+        ),
+        character_interior=interior,
+        character_actor_ref="agent:companion",
+        proposal_recorder=_Recorder(),
+        catalog_version="test.1",
+    )
+
+    result = await worker.select_once(
+        logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation"
+    )
+
+    assert result.reason_code == "media_selection.model_declined"
+    assert interior.calls == 1
+    payload = interior.opportunities[0].capability_manifest.payload
+    assert "occasion" not in payload
+    assert "occasion" not in payload["candidates"][0]
+    assert payload["candidates"][0]["lived_facts"] == []
+
+
+@pytest.mark.asyncio
+async def test_worker_asks_on_qq_coalesced_observation_ids() -> None:
+    candidate = _life_candidate()
+    source_event_id = (
+        "qq:2759284998:qq-coalesced:ae28c68882abe5cb0c3652f549e92ca8104040c9265872cd1e868c9278874f2d"
+    )
+    interior = _Interior()
+    worker = MediaSelectionWorker(
+        ledger=SimpleNamespace(
+            project=lambda: _base_projection(
+                candidate,
+                message_observations=(
+                    SimpleNamespace(
+                        actor="user:geoff",
+                        source_event_id=source_event_id,
+                        observation_id="observation:" + source_event_id,
+                    ),
+                ),
+                committed_world_event_refs=(
+                    SimpleNamespace(
+                        event_id="event:trigger:observation:platform:qq:" + source_event_id,
+                        event_type="ObservationRecorded",
+                        logical_time=NOW,
+                        payload_hash="c" * 64,
+                        world_revision=1,
+                    ),
+                ),
+            )
+        ),
+        character_interior=interior,
+        character_actor_ref="agent:companion",
+        proposal_recorder=_Recorder(),
+        catalog_version="test.1",
+    )
+
+    result = await worker.select_once(
+        logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation"
+    )
+
+    assert result.reason_code == "media_selection.model_declined"
+    assert interior.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_worker_asks_when_she_already_wrote_media_request() -> None:
+    candidate = _life_candidate()
+    interior = _Interior()
+    worker = MediaSelectionWorker(
+        ledger=SimpleNamespace(
+            project=lambda: _base_projection(
+                candidate,
+                trigger_processes=(
+                    SimpleNamespace(
+                        process_kind="media_request",
+                        state="open",
+                        source_evidence_ref="event:expression-accepted",
+                    ),
+                ),
+            )
+        ),
+        character_interior=interior,
+        character_actor_ref="agent:companion",
+        proposal_recorder=_Recorder(),
+        catalog_version="test.1",
+    )
+
+    result = await worker.select_once(
+        logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation"
+    )
+
+    assert result.reason_code == "media_selection.model_declined"
+    assert interior.calls == 1
+    facts = interior.opportunities[0].capability_manifest.payload["candidates"][0]["lived_facts"]
+    assert any(item.get("kind") == "her_media_request" for item in facts)
+
+
+@pytest.mark.asyncio
+async def test_worker_asks_when_an_open_thread_shares_candidate_sources() -> None:
+    candidate = _life_candidate()
+    interior = _Interior()
+    worker = MediaSelectionWorker(
+        ledger=SimpleNamespace(
+            project=lambda: _base_projection(
+                candidate,
+                conversation_threads=(
+                    SimpleNamespace(
+                        thread_id="thread:book",
+                        kind="topic_open",
+                        status="open",
+                        source_refs=("event:source",),
+                    ),
+                ),
+            )
+        ),
+        character_interior=interior,
+        character_actor_ref="agent:companion",
+        proposal_recorder=_Recorder(),
+        catalog_version="test.1",
+    )
+
+    result = await worker.select_once(
+        logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation"
+    )
+
+    assert result.reason_code == "media_selection.model_declined"
+    assert interior.calls == 1
+    facts = interior.opportunities[0].capability_manifest.payload["candidates"][0]["lived_facts"]
+    assert any(item.get("kind") == "open_thread" for item in facts)
+    assert all(isinstance(item.get("source_ref"), str) and item["source_ref"] for item in facts)
+
+
+@pytest.mark.asyncio
+async def test_worker_does_not_reask_a_declined_revision_just_because_conversation_is_live() -> None:
+    candidate = _life_candidate(candidate_id="candidate:declined-live")
+    interior = _Interior()
+    worker = MediaSelectionWorker(
+        ledger=SimpleNamespace(
+            project=lambda: _base_projection(
+                candidate,
+                media_declined_candidate_revisions=(
+                    SimpleNamespace(
+                        candidate_id=candidate.candidate_id,
+                        entity_revision=candidate.entity_revision,
+                    ),
+                ),
+                message_observations=(
+                    SimpleNamespace(actor="user:geoff", source_event_id="event:inbound"),
+                ),
+                committed_world_event_refs=(
+                    SimpleNamespace(
+                        event_id="event:inbound",
+                        event_type="ObservationRecorded",
+                        logical_time=NOW,
+                        payload_hash="c" * 64,
+                        world_revision=1,
+                    ),
+                ),
+            )
+        ),
+        character_interior=interior,
+        character_actor_ref="agent:companion",
+        proposal_recorder=_Recorder(),
+        catalog_version="test.1",
+    )
+
+    result = await worker.select_once(
+        logical_time=NOW, actor="worker", trace_id="trace", correlation_id="correlation"
+    )
+
+    assert result.status == "no_op"
+    assert result.reason_code == "media_selection.recovered_decline"
+    assert interior.calls == 0
+

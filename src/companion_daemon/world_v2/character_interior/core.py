@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 import hashlib
 import inspect
 import json
+import logging
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -67,6 +69,9 @@ from .turn_store import (
 
 _CACHE_LIMIT = 128
 _REJECTED_ROLE_RAW_EXCERPT_CHARS = 800
+_FAILURE_DETAIL_CHARS = 2_000
+_SECRET_FRAGMENT_RE = re.compile(r"(?i)(bearer\s+)\S+|(sk-[A-Za-z0-9_-]{8,})")
+logger = logging.getLogger(__name__)
 _NON_RETRYABLE_ROLE_ERRORS = frozenset(
     {
         # These describe a host/provider capability or wiring defect.  Asking
@@ -214,6 +219,80 @@ class _InteriorTechnicalError(RuntimeError):
         self.code = code
         self.snapshot = snapshot
         self.role_failure_evidence = role_failure_evidence
+
+
+def _redact_secret_fragments(text: str) -> str:
+    return _SECRET_FRAGMENT_RE.sub(
+        lambda match: f"{match.group(1)}[redacted]" if match.group(1) else "[redacted]",
+        text,
+    )
+
+
+def _http_status_code(exc: BaseException) -> int | None:
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status is None:
+        status = getattr(exc, "status_code", None)
+    try:
+        value = int(status)
+    except (TypeError, ValueError):
+        return None
+    if 100 <= value <= 599:
+        return value
+    return None
+
+
+def _sanitized_exception_detail(exc: BaseException) -> str:
+    parts = [f"{type(exc).__name__}: {exc}"]
+    response = getattr(exc, "response", None)
+    body = None
+    if response is not None:
+        try:
+            body = response.text
+        except Exception:
+            body = None
+        status = _http_status_code(exc)
+        if status is not None and f"{status}" not in parts[0]:
+            parts.append(f"http_{status}")
+        if isinstance(body, str) and body and body not in parts[0]:
+            parts.append(body)
+    text = _redact_secret_fragments(" ".join(part for part in parts if part))
+    if len(text) > _FAILURE_DETAIL_CHARS:
+        return text[:_FAILURE_DETAIL_CHARS]
+    return text or type(exc).__name__
+
+
+def _role_faculty_error_from_exception(
+    exc: BaseException,
+    *,
+    snapshot: InnerLifeSnapshot | None,
+    faculty: object,
+) -> _InteriorTechnicalError:
+    status = _http_status_code(exc)
+    code = (
+        "provider_rejection"
+        if status is not None and 400 <= status < 500
+        else "role_faculty_unavailable"
+    )
+    attempted_model_id = getattr(faculty, "_model_id", None)
+    attempted_model_version = getattr(faculty, "_model_version", None)
+    if not isinstance(attempted_model_id, str) or not attempted_model_id:
+        attempted_model_id = None
+        attempted_model_version = None
+    elif not isinstance(attempted_model_version, str) or not attempted_model_version:
+        attempted_model_id = None
+        attempted_model_version = None
+    return _InteriorTechnicalError(
+        code,
+        snapshot=snapshot,
+        role_failure_evidence=_RoleFacultyTechnicalEvidence(
+            failure_code=code,
+            attempted_model_id=attempted_model_id,
+            attempted_model_version=attempted_model_version,
+            original_failure_code=code,
+            failure_detail=_sanitized_exception_detail(exc),
+        ),
+    )
 
 
 def _unprefixed_sha256(value: str | None) -> str | None:
@@ -594,6 +673,7 @@ class CharacterInterior:
                 "acquire",
                 "checkpoint",
                 "complete",
+                "release",
                 "health",
                 "prune_terminal",
             )
@@ -842,6 +922,39 @@ class CharacterInterior:
             )
         except Exception as exc:
             raise _InteriorTechnicalError("turn_completion_failed") from exc
+
+    def _release_turn(
+        self,
+        durable: tuple[_TurnCoordinationRequest, _TurnCoordinationRecord] | None,
+    ) -> None:
+        """Drop an unfinished claim so a later retry can reacquire this turn.
+
+        Technical failures are not character decisions. Completing them as a
+        terminal sidecar result would freeze the same inner-turn identity and
+        block replay/retry. Uncheckpointed rows are deleted; checkpointed
+        authored state is kept and the lease is expired so recovery can resume
+        after the last durable external result.
+        """
+
+        if durable is None or self._turn_store is None:
+            return
+        request, record = durable
+        if record.state == "terminal":
+            return
+        try:
+            self._turn_store.release(
+                request=request,
+                owner_id=self._turn_owner_id,
+                lease_token=record.lease_token or "",
+                attempt_ordinal=record.attempt_ordinal,
+                now=self._turn_now(),
+            )
+        except Exception:
+            logger.warning(
+                "character interior failed to release claimed turn inner_turn_id=%s",
+                request.inner_turn_id,
+                exc_info=True,
+            )
 
     @staticmethod
     def _restore_terminal(
@@ -1430,6 +1543,8 @@ class CharacterInterior:
                     turn_id=turn_id,
                     error=_InteriorTechnicalError("interior_runtime_failure"),
                 )
+            if transition.status == "technical_failure":
+                self._release_turn(durable)
             entry = self._cache.setdefault(cache_key, _TurnCacheEntry())
             # Technical failures are retryable work, not effect-once
             # outcomes.  Keeping them in the process-local result cache would
@@ -1621,6 +1736,8 @@ class CharacterInterior:
                     turn_id=turn_id,
                     error=_InteriorTechnicalError("interior_runtime_failure"),
                 )
+            if decision.status == "technical_failure":
+                self._release_turn(durable)
             entry = self._cache.setdefault(cache_key, _TurnCacheEntry())
             # A model/provider/authority failure must remain retryable; only
             # a role-authored decision or silence is effect-once cached.
@@ -1904,10 +2021,18 @@ class CharacterInterior:
                 )
             )
         materials = dict(snapshot.materials)
-        materials["selected_recall"] = {
-            "content": recalled.content,
-            "source_refs": list(recalled.source_refs),
-        }
+        if recalled.source_refs:
+            materials["selected_recall"] = {
+                "content": recalled.content,
+                "source_refs": list(recalled.source_refs),
+            }
+        else:
+            # An empty pull still consumes the one bounded retrieval and is
+            # carried on ``recall_trace_json``. A sourceless
+            # ``{content, source_refs: []}`` wrapper fails snapshot identity
+            # (the compile-time source-bound gate) and would be dropped by
+            # redaction anyway, so it must not be minted.
+            materials.pop("selected_recall", None)
         recalled_hash = _digest(recalled.content)
         inventory = tuple(
             dict.fromkeys(
@@ -2179,15 +2304,15 @@ class CharacterInterior:
                     snapshot=current_request.snapshot,
                 ) from exc
             except Exception as exc:
-                import logging
-
-                logging.getLogger(__name__).warning(
+                logger.warning(
                     "role faculty inner failure method=%s type=%s",
                     method_name,
                     type(exc).__name__,
                 )
-                raise _InteriorTechnicalError(
-                    "role_faculty_unavailable", snapshot=current_request.snapshot
+                raise _role_faculty_error_from_exception(
+                    exc,
+                    snapshot=current_request.snapshot,
+                    faculty=faculty,
                 ) from exc
             else:
                 try:

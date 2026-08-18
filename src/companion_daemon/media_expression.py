@@ -707,7 +707,7 @@ def build_complete_candidates(
         take(
             min(
                 matching,
-                key=lambda item: (
+                key=lambda item, preferred=preferred: (
                     0
                     if (
                         family == "character_media"
@@ -846,7 +846,13 @@ def _preferred_forms(tactic: str, family: str) -> tuple[str, ...]:
         "question": ("portrait_context", "full_body", "body_detail"),
         "comparison": ("body_detail", "portrait_context", "full_body"),
         "celebration": ("portrait_context", "full_body", "portrait_closeup"),
-        "attraction": ("portrait_context", "portrait_closeup", "full_body"),
+        # Attraction exists only on invite_desire charged/veiled packages.
+        # portrait_context means "still belong to the activity and place";
+        # ranking it first turned a higher adult declaration into a modest
+        # full-outfit environmental shot.  Closeup stays first so host
+        # ranking does not cancel declared intensity.  portrait_context
+        # remains in the catalog for the planner to pick.
+        "attraction": ("portrait_closeup", "portrait_context", "full_body"),
     }.get(tactic, ("portrait_context", "portrait_closeup", "full_body", "social_frame"))
 
 

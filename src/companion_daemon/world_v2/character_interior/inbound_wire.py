@@ -27,6 +27,7 @@ from companion_daemon.llm import (
     model_call_scope,
     model_provider_request_identity_scope,
     model_request_emission_scope,
+    model_turn_scope,
     provider_invocation_request_hash,
 )
 
@@ -90,6 +91,7 @@ from ..isolated_source_closure_trace import (
     emit_source_closure_trace,
     emit_source_closure_wire_failure_trace,
 )
+from ..json_wire_repair import loads_one_json_object
 from ..model_facing_context import (
     compact_model_facing_context,
     compact_recovery_model_facing_context,
@@ -160,6 +162,26 @@ class InventoryAvailabilityExhausted(Exception):
 
 
 logger = logging.getLogger(__name__)
+_REJECTED_ROLE_RAW_EXCERPT_CHARS = 800
+
+
+def rejected_role_payload_kwargs(raw: str, violation: object) -> dict[str, str]:
+    """Attach the refused payload onto a terminal technical failure.
+
+    Same-contract retry is disabled, so this evidence is the only way a
+    later reader can tell the host threw her words away rather than that she
+    chose silence.
+    """
+
+    if not isinstance(raw, str) or not raw:
+        return {}
+    detail = str(violation).strip() or "role payload failed structural validation"
+    return {
+        "original_failure_code": "role_result_schema_invalid",
+        "failure_detail": detail[:4_000],
+        "rejected_raw_hash": hashlib.sha256(raw.encode("utf-8")).hexdigest(),
+        "rejected_raw_excerpt": raw[:_REJECTED_ROLE_RAW_EXCERPT_CHARS],
+    }
 
 _SourceClosureReselectionFailureStage = Literal["candidate_inventory_incomplete",]
 
@@ -6677,7 +6699,7 @@ def _compact_gate_full_turn_json(value: dict[str, object]) -> str | None:
     raw = value.get("full_turn_json")
     if not isinstance(raw, str) or not raw:
         raise ValueError("compact gate full turn requires one JSON string")
-    envelope = _parse_json_object(raw)
+    envelope = _parse_json_object(raw, repair_transport=True)
     if (
         set(envelope) != {"protocol", "appraisal_draft", "events"}
         or envelope.get("protocol") != "character-interior-events.1"
@@ -6688,7 +6710,7 @@ def _compact_gate_full_turn_json(value: dict[str, object]) -> str | None:
 
 def _stream_first_expression(raw: str) -> str:
     parsed = _normalize_forced_stream_envelope(
-        _expand_compact_gate_payload(_parse_json_object(raw))
+        _expand_compact_gate_payload(_parse_json_object(raw, repair_transport=True))
     )
     result_kind = parsed.get("result_kind")
     full_turn_json = _compact_gate_full_turn_json(parsed)
@@ -6764,7 +6786,7 @@ def _stream_first_expression(raw: str) -> str:
 
 def _stream_tail_expression(raw: str) -> str:
     parsed = _normalize_forced_stream_envelope(
-        _expand_compact_gate_payload(_parse_json_object(raw))
+        _expand_compact_gate_payload(_parse_json_object(raw, repair_transport=True))
     )
     result_kind = parsed.get("result_kind")
     full_turn_json = _compact_gate_full_turn_json(parsed)
@@ -7454,10 +7476,7 @@ def _compile_combined_cognition_envelope(
     parsed = dict(value)
     result_kind = parsed.get("result_kind")
     if "payload_json" in parsed:
-        try:
-            expanded = _expand_compact_gate_payload(parsed)
-        except (TypeError, ValueError):
-            return None
+        expanded = _expand_compact_gate_payload(parsed)
         result_kind = expanded.get("result_kind")
         parsed = {key: item for key, item in expanded.items() if key != "result_kind"}
     elif result_kind in {"decision", "reply_only", "full_turn"}:
@@ -8521,9 +8540,10 @@ class _ExpressionDraftWire:
                         # handed to the bounded same-role correction path.
                         incremental_parse_error = exc
                         logger.warning(
-                            "incremental character stream head rejected error_type=%s detail=%s",
+                            "incremental character stream head rejected error_type=%s detail=%s raw=%s",
                             type(exc).__name__,
                             str(exc)[:300],
+                            "".join(chunks)[:800],
                         )
                         if not head_future.done():
                             # Release only an invalid, non-visible carrier so
@@ -8577,7 +8597,9 @@ class _ExpressionDraftWire:
                             first_raw = _stream_first_expression(complete_raw)
                             tail_raw = _stream_tail_expression(complete_raw)
                             if compact_gate_tool:
-                                compact_branch = _parse_json_object(complete_raw).get("result_kind")
+                                compact_branch = _parse_json_object(
+                                    complete_raw, repair_transport=True
+                                ).get("result_kind")
                                 if not isinstance(compact_branch, str):
                                     raise ValueError("compact gate result kind is missing")
                                 record_compact_inbound_branch(compact_branch)
@@ -8687,6 +8709,8 @@ class _ExpressionDraftWire:
     ) -> ModelOutput:
         """Capture every nested reviewer invocation under this authored call."""
 
+        turn_scope = model_turn_scope(turn_id=request.trigger_ref)
+        turn_scope.__enter__()
         capture = _ProviderSubcallCapture(
             root_model_call_id=request.call_id,
             attempts=[],
@@ -8740,6 +8764,10 @@ class _ExpressionDraftWire:
                     usage=exc.usage,
                     provider_subcall_audits=provider_subcall_audits,
                     authored_candidate_audits=authored_candidate_audits,
+                    original_failure_code=getattr(exc, "original_failure_code", None),
+                    failure_detail=getattr(exc, "failure_detail", None),
+                    rejected_raw_hash=getattr(exc, "rejected_raw_hash", None),
+                    rejected_raw_excerpt=getattr(exc, "rejected_raw_excerpt", None),
                 ) from exc
             except asyncio.CancelledError as exc:
                 # The enclosing Deliberation deadline may cancel an already
@@ -8814,6 +8842,7 @@ class _ExpressionDraftWire:
             )
         finally:
             _PROVIDER_SUBCALL_CAPTURE.reset(token)
+            turn_scope.__exit__(None, None, None)
 
     async def _complete(
         self,
@@ -10075,6 +10104,7 @@ class _ExpressionDraftWire:
             "authored_expression_reselection_invalid",
             attempted_model_id=reselection_model_id,
             attempted_model_version=self.VERSION,
+            **rejected_role_payload_kwargs(raw, violation),
         )
         corrected = await complete_bounded_validation_reselection(
             model=reselection_model,
@@ -10696,11 +10726,30 @@ class _RoutedExpressionDraftWire:
         return await self._flash.recover_stream_head(request, failure_code)
 
 
-def _parse_json_object(raw: str) -> dict[str, object]:
-    """Accept one object, including a provider's accidental fenced JSON wrapper."""
+def _parse_json_object(raw: str, *, repair_transport: bool = False) -> dict[str, object]:
+    """Accept one object, including a provider's accidental fenced JSON wrapper.
+
+    ``repair_transport`` is only for a completed provider payload. Incremental
+    stream parsers must leave it off: closing a partial object would release
+    a first expression before the role finished writing it.
+    """
 
     if not isinstance(raw, str):
         raise ValueError("chat model did not return text")
+    if repair_transport:
+        try:
+            return loads_one_json_object(
+                raw,
+                object_pairs_hook=_unique_stream_json_object,
+                not_object_message="chat model did not return one JSON object",
+                invalid_message="chat model did not return one JSON object",
+                unclosed_fence_message="chat model returned an unclosed JSON fence",
+            )
+        except ValueError as exc:
+            detail = str(exc)
+            if "duplicated field" in detail or "duplicate field" in detail:
+                raise
+            raise ValueError("chat model did not return one JSON object") from exc
     candidate = raw.strip()
     if candidate.startswith("```"):
         lines = candidate.splitlines()

@@ -577,6 +577,7 @@ class InboundTurnFaculty:
             content["inner_life_snapshot"]["role_result_correction"] = {
                 "contract": "character-interior-role-result-correction.1",
                 "failure_code": request.correction_failure_code,
+                "failure_detail": request.correction_failure_detail,
                 "task": "return_one_fresh_complete_role_result",
             }
         model_content_json = _canonical(content)
@@ -696,6 +697,34 @@ class InboundTurnFaculty:
             }
         except ValidationTechnicalFailure as exc:
             failure_code = sanitize_validation_technical_failure_code(exc.failure_code)
+            if (
+                request.correction_ordinal == 0
+                and failure_code
+                in {
+                    "paired_expression_reselection_invalid",
+                    "authored_expression_reselection_invalid",
+                    "appraisal_reselection_invalid",
+                    "paired_expression_missing",
+                }
+                and isinstance(exc.failure_detail, str)
+                and exc.failure_detail.strip()
+            ):
+                parent_id = exc.model_call_id or owned_input.call_id
+                self._decision_parents[request.inner_turn_id] = parent_id
+                self._decision_parents.move_to_end(request.inner_turn_id)
+                while len(self._decision_parents) > _CACHE_LIMIT:
+                    self._decision_parents.popitem(last=False)
+                raise _RoleResultContractError(
+                    "role_result_schema_invalid",
+                    detail=exc.failure_detail.strip()[:4_096],
+                    rejected_raw=(
+                        exc.rejected_raw_excerpt
+                        if isinstance(exc.rejected_raw_excerpt, str)
+                        else None
+                    ),
+                    request_hash=exc.request_hash,
+                    model_call_id=exc.model_call_id,
+                ) from exc
             if failure_code is None:
                 raise RuntimeError("inbound role technical failure is not installed") from None
             recall_audit, _recall_usage = _recall_control_transfer_audit(request)

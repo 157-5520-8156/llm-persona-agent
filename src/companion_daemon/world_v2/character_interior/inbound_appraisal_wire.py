@@ -625,6 +625,18 @@ def _appraisal_draft_messages(
 
 
 def _proposal_from_draft(*, raw: str, request: ModelInput) -> dict[str, object]:
+    """JSON interchange for inbound authors.
+
+    JSON arrays are Python lists.  Callers that need the typed envelope must
+    use ``_decision_proposal_from_draft`` or ``validate_proposal_envelope``;
+    ``DecisionProposal.model_validate`` is strict Python validation and will
+    reject this dump's lists even though they are the same sequences.
+    """
+
+    return _decision_proposal_from_draft(raw=raw, request=request).model_dump(mode="json")
+
+
+def _decision_proposal_from_draft(*, raw: str, request: ModelInput) -> DecisionProposal:
     draft = _parse_object(raw)
     # Some local instruction-tuned checkpoints copy the contract name as a
     # wrapper even when asked for one object. Accept only that single, exact
@@ -938,7 +950,7 @@ def _proposal_from_draft(*, raw: str, request: ModelInput) -> dict[str, object]:
         stance=stance,
         display_strategy=display,
     )
-    return proposal.model_dump(mode="json")
+    return proposal
 
 
 def _affect_components(value: object) -> list[dict[str, object]]:
@@ -1379,7 +1391,7 @@ def _no_change_proposal(
     relationship_signal: dict[str, object] | None = None,
     relationship_commitment: dict[str, object] | None = None,
     interaction_act: dict[str, object] | None = None,
-) -> dict[str, object]:
+) -> DecisionProposal:
     identity = _identity(
         request=request,
         appraise=False,
@@ -1473,7 +1485,7 @@ def _no_change_proposal(
         stance=stance,
         display_strategy=display,
     )
-    return proposal.model_dump(mode="json")
+    return proposal
 
 
 __all__: list[str] = []

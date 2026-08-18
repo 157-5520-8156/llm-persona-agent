@@ -9,6 +9,103 @@ from companion_daemon.models import IncomingMessage, LifeRuntimeState, MoodState
 from companion_daemon.time import utc_now
 
 
+USAGE_EVENTS_DDL = """
+create table if not exists usage_events (
+  id integer primary key autoincrement,
+  kind text not null,
+  estimated_cny real not null,
+  note text not null,
+  created_at text not null
+);
+"""
+
+
+def ensure_usage_events_schema(path: Path | str) -> None:
+    """Create usage_events on a World V2 ledger without CompanionStore's full schema."""
+
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(target)
+    try:
+        connection.execute(USAGE_EVENTS_DDL)
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def insert_usage_event(
+    conn: sqlite3.Connection,
+    *,
+    kind: str,
+    estimated_cny: float,
+    note: str = "",
+    created_at: str | None = None,
+) -> None:
+    """Insert one usage row, creating the table if this ledger never saw CompanionStore."""
+
+    payload = (kind, float(estimated_cny), note, created_at or utc_now().isoformat())
+    insert_sql = """
+        insert into usage_events (kind, estimated_cny, note, created_at)
+        values (?, ?, ?, ?)
+    """
+    try:
+        conn.execute(insert_sql, payload)
+    except sqlite3.OperationalError as exc:
+        if "usage_events" not in str(exc).casefold():
+            raise
+        conn.rollback()
+        conn.execute(USAGE_EVENTS_DDL)
+        conn.execute(insert_sql, payload)
+
+
+class UsageEventsLedger:
+    """Narrow spend ledger for image CNY. Does not create the legacy CompanionStore schema."""
+
+    def __init__(self, path: Path | str):
+        self.path = Path(path)
+        ensure_usage_events_schema(self.path)
+
+    @contextmanager
+    def connect(self) -> Iterable[sqlite3.Connection]:
+        conn = sqlite3.connect(self.path)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+    def record_usage(self, kind: str, estimated_cny: float, *, note: str = "") -> None:
+        with self.connect() as conn:
+            insert_usage_event(conn, kind=kind, estimated_cny=estimated_cny, note=note)
+
+    def usage_total(self, window: str, now: datetime) -> float:
+        prefix, where = _usage_window(window, now)
+        with self.connect() as conn:
+            row = conn.execute(
+                f"select coalesce(sum(estimated_cny), 0) as total from usage_events where {where}",
+                (prefix,),
+            ).fetchone()
+        return float(row["total"])
+
+    def usage_count(self, kind: str, window: str, now: datetime) -> int:
+        prefix, where = _usage_window(window, now)
+        with self.connect() as conn:
+            row = conn.execute(
+                f"select count(*) as count from usage_events where kind = ? and {where}",
+                (kind, prefix),
+            ).fetchone()
+        return int(row["count"])
+
+
+def _usage_window(window: str, now: datetime) -> tuple[str, str]:
+    if window == "day":
+        return now.date().isoformat(), "substr(created_at, 1, 10) = ?"
+    if window == "month":
+        return now.strftime("%Y-%m"), "substr(created_at, 1, 7) = ?"
+    raise ValueError(f"Unsupported usage window: {window}")
+
+
 class CompanionStore:
     def __init__(self, path: Path, *, primary_user_id: str | None = "geoff"):
         self.path = path
@@ -2525,47 +2622,23 @@ class CompanionStore:
 
     def record_usage(self, kind: str, estimated_cny: float, *, note: str = "") -> None:
         with self.connect() as conn:
-            conn.execute(
-                """
-                insert into usage_events (kind, estimated_cny, note, created_at)
-                values (?, ?, ?, ?)
-                """,
-                (kind, estimated_cny, note, utc_now().isoformat()),
-            )
+            insert_usage_event(conn, kind=kind, estimated_cny=estimated_cny, note=note)
 
     def usage_total(self, window: str, now: datetime) -> float:
-        if window == "day":
-            prefix = now.date().isoformat()
-            where = "substr(created_at, 1, 10) = ?"
-            args = (prefix,)
-        elif window == "month":
-            prefix = now.strftime("%Y-%m")
-            where = "substr(created_at, 1, 7) = ?"
-            args = (prefix,)
-        else:
-            raise ValueError(f"Unsupported usage window: {window}")
+        prefix, where = _usage_window(window, now)
         with self.connect() as conn:
             row = conn.execute(
                 f"select coalesce(sum(estimated_cny), 0) as total from usage_events where {where}",
-                args,
+                (prefix,),
             ).fetchone()
         return float(row["total"])
 
     def usage_count(self, kind: str, window: str, now: datetime) -> int:
-        if window == "day":
-            prefix = now.date().isoformat()
-            where = "kind = ? and substr(created_at, 1, 10) = ?"
-            args = (kind, prefix)
-        elif window == "month":
-            prefix = now.strftime("%Y-%m")
-            where = "kind = ? and substr(created_at, 1, 7) = ?"
-            args = (kind, prefix)
-        else:
-            raise ValueError(f"Unsupported usage window: {window}")
+        prefix, where = _usage_window(window, now)
         with self.connect() as conn:
             row = conn.execute(
-                f"select count(*) as count from usage_events where {where}",
-                args,
+                f"select count(*) as count from usage_events where kind = ? and {where}",
+                (kind, prefix),
             ).fetchone()
         return int(row["count"])
 
@@ -2631,7 +2704,7 @@ class CompanionStore:
                     max(0, int(cache_hit_tokens)),
                     max(0, int(cache_miss_tokens)),
                     max(0, int(total_tokens)),
-                    error[:500],
+                    error[:2400],
                     world_id[:120],
                     turn_id[:120],
                     action_id[:120],

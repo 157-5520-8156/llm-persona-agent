@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from companion_daemon.world_v2.relationship_media_context import (
+    DeclaredDisplayV1,
     PrivateTransitionEvidenceV1,
     RelationshipMediaContextResolver,
 )
@@ -131,3 +132,64 @@ def test_resolver_freezes_a_recipient_scoped_private_transition() -> None:
     assert result.context.private_expression_basis.kind == "private_transition"
     assert result.context.private_expression_basis.evidence_ref == "/activity/private_transition"
     assert result.context.private_expression_basis.source_event_ref == transition.declaration_event_ref
+
+
+def _display(*, recipient_ref: str = "user:1", intent: str = "sexual_suggestive") -> DeclaredDisplayV1:
+    return DeclaredDisplayV1(
+        event_id="event:declared-display:1",
+        recipient_ref=recipient_ref,
+        media_intent=intent,  # type: ignore[arg-type]
+    )
+
+
+def test_resolver_omits_declared_display_from_dump_until_she_authors_one() -> None:
+    projection = SimpleNamespace(
+        relationship_states=(_relationship(),), visible_physical_states=(_physical(),)
+    )
+    context = RelationshipMediaContextResolver().resolve(
+        projection=projection, character_ref="character:ava", recipient_ref="user:1", at_logical_time=NOW
+    ).context
+    assert context is not None
+    dumped = context.model_dump(mode="json")
+    assert "declared_display" not in dumped
+    assert context.declared_display is None
+
+
+def test_resolver_freezes_character_authored_declared_display() -> None:
+    projection = SimpleNamespace(
+        relationship_states=(_relationship(),), visible_physical_states=(_physical(),)
+    )
+    display = _display(intent="explicit_adult")
+    result = RelationshipMediaContextResolver().resolve(
+        projection=projection,
+        character_ref="character:ava",
+        recipient_ref="user:1",
+        at_logical_time=NOW,
+        declared_display=display,
+    )
+    assert result.accepted
+    assert result.context is not None
+    assert result.context.declared_display == display
+    dumped = result.context.model_dump(mode="json")
+    assert dumped["declared_display"]["media_intent"] == "explicit_adult"
+    assert dumped["declared_display"]["event_id"] == "event:declared-display:1"
+    without = RelationshipMediaContextResolver().resolve(
+        projection=projection, character_ref="character:ava", recipient_ref="user:1", at_logical_time=NOW
+    ).context
+    assert without is not None
+    assert result.context.authority_digest != without.authority_digest
+
+
+def test_resolver_rejects_declared_display_for_a_different_recipient() -> None:
+    projection = SimpleNamespace(
+        relationship_states=(_relationship(),), visible_physical_states=(_physical(),)
+    )
+    result = RelationshipMediaContextResolver().resolve(
+        projection=projection,
+        character_ref="character:ava",
+        recipient_ref="user:1",
+        at_logical_time=NOW,
+        declared_display=_display(recipient_ref="user:other"),
+    )
+    assert not result.accepted
+    assert result.reason_code == "declared_display_recipient_mismatch"

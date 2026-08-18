@@ -89,6 +89,16 @@ class _CharacterInteriorTurnStore(Protocol):
         now: datetime,
     ) -> _TurnCoordinationRecord: ...
 
+    def release(
+        self,
+        *,
+        request: _TurnCoordinationRequest,
+        owner_id: str,
+        lease_token: str,
+        attempt_ordinal: int,
+        now: datetime,
+    ) -> _TurnCoordinationRecord | None: ...
+
     def health(
         self,
         *,
@@ -280,6 +290,42 @@ class _InMemoryCharacterInteriorTurnStore:
                 updated_at=now,
             )
             self._rows[self._key(request)] = row
+            return row
+
+    def release(
+        self,
+        *,
+        request: _TurnCoordinationRequest,
+        owner_id: str,
+        lease_token: str,
+        attempt_ordinal: int,
+        now: datetime,
+    ) -> _TurnCoordinationRecord | None:
+        now = _utc(now)
+        key = self._key(request)
+        with self._lock:
+            row = self._rows.get(key)
+            if row is None:
+                return None
+            if not _same_request(row.request, request):
+                raise ValueError("CharacterInterior turn identity has conflicting request bytes")
+            if row.state == "terminal":
+                return row
+            if (
+                row.lease_owner != owner_id
+                or row.lease_token != lease_token
+                or row.attempt_ordinal != attempt_ordinal
+            ):
+                return row
+            if row.authored_state_json is None:
+                del self._rows[key]
+                return None
+            row = replace(
+                row,
+                lease_expires_at=now,
+                updated_at=now,
+            )
+            self._rows[key] = row
             return row
 
     def _owned(
@@ -585,6 +631,79 @@ class _SQLiteCharacterInteriorTurnStore:
                 )
                 if changed.rowcount != 1:
                     raise RuntimeError("CharacterInterior terminal CAS lost")
+                record = self._select_required(request)
+                self._connection.commit()
+                return record
+            except Exception:
+                self._connection.rollback()
+                raise
+
+    def release(
+        self,
+        *,
+        request: _TurnCoordinationRequest,
+        owner_id: str,
+        lease_token: str,
+        attempt_ordinal: int,
+        now: datetime,
+    ) -> _TurnCoordinationRecord | None:
+        now = _utc(now)
+        with self._database_write_lock, self._thread_lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                existing = self._select(request)
+                if existing is None:
+                    self._connection.commit()
+                    return None
+                record = self._record(existing)
+                if record.request != request:
+                    raise ValueError("CharacterInterior turn identity has conflicting request bytes")
+                if record.state == "terminal":
+                    self._connection.commit()
+                    return record
+                if (
+                    record.lease_owner != owner_id
+                    or record.lease_token != lease_token
+                    or record.attempt_ordinal != attempt_ordinal
+                ):
+                    self._connection.commit()
+                    return record
+                if record.authored_state_json is None:
+                    self._connection.execute(
+                        """DELETE FROM world_v2_character_interior_turns
+                           WHERE world_id = ? AND actor_ref = ? AND inner_turn_id = ?
+                             AND state != 'terminal' AND lease_owner = ?
+                             AND lease_token = ? AND attempt_ordinal = ?
+                             AND authored_state_json IS NULL""",
+                        (
+                            request.world_id,
+                            request.actor_ref,
+                            request.inner_turn_id,
+                            owner_id,
+                            lease_token,
+                            attempt_ordinal,
+                        ),
+                    )
+                    self._connection.commit()
+                    return None
+                self._connection.execute(
+                    """UPDATE world_v2_character_interior_turns
+                       SET lease_expires_at = ?, updated_at = ?
+                       WHERE world_id = ? AND actor_ref = ? AND inner_turn_id = ?
+                         AND state != 'terminal' AND lease_owner = ?
+                         AND lease_token = ? AND attempt_ordinal = ?
+                         AND authored_state_json IS NOT NULL""",
+                    (
+                        now.isoformat(),
+                        now.isoformat(),
+                        request.world_id,
+                        request.actor_ref,
+                        request.inner_turn_id,
+                        owner_id,
+                        lease_token,
+                        attempt_ordinal,
+                    ),
+                )
                 record = self._select_required(request)
                 self._connection.commit()
                 return record

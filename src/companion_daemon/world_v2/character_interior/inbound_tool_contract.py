@@ -12,6 +12,9 @@ from copy import deepcopy
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import logging
+from os import getenv
+from pathlib import Path
 from typing import Literal
 
 from ..expression_draft import (
@@ -19,10 +22,12 @@ from ..expression_draft import (
     ExpressionDraftCapabilities,
     required_authored_expression_fields,
 )
+from ..json_wire_repair import loads_one_json_object
 from ..private_turn_state import PrivateTurnState
 from ..recall_audit import CharacterRecallRequest
 from .inbound_appraisal_wire import AppraisalDraftWire
 from ..present_prompt import (
+    SLIM_CONSIDER_KEYS,
     compact_gate_recall_instruction,
     compile_slim_interior_envelope,
     reply_only_bubble_clause,
@@ -69,6 +74,8 @@ _REPLY_ONLY_HEAD_FIELDS = (
 # existing canonical materializer.  This projection is kept here, rather than
 # at call sites, so the standard provider path and the strict provider path
 # cannot drift apart.
+_LOG = logging.getLogger(__name__)
+_REJECTED_CARRIER_EXCERPT_CHARS = 800
 _DEEPSEEK_STRICT_UNSUPPORTED_KEYS = frozenset(
     {
         "default",
@@ -85,8 +92,39 @@ _DEEPSEEK_STRICT_UNSUPPORTED_KEYS = frozenset(
 _DEEPSEEK_STRICT_FORMATS = frozenset({"email", "hostname", "ipv4", "ipv6", "uuid"})
 
 
+def _rewrite_object_type_array(schema: dict[str, object]) -> dict[str, object]:
+    """Turn ``type: [..., "object", ...]`` into the anyOf shape DeepSeek accepts.
+
+    DeepSeek strict tools accept a scalar ``type: "object"`` and
+    ``anyOf: [{type: object, ...}, {type: null}]``. They reject a type array
+    that includes ``object`` (``type: ["object", "null"]``), including after
+    that array is wrapped by ``_nullable_strict_schema``.
+    """
+
+    type_value = schema.get("type")
+    if not isinstance(type_value, list) or "object" not in type_value:
+        return schema
+    types: list[object] = []
+    for item in type_value:
+        if item not in types:
+            types.append(item)
+    object_schema = {key: value for key, value in schema.items() if key != "type"}
+    object_schema["type"] = "object"
+    variants: list[object] = []
+    for item in types:
+        if item == "object":
+            variants.append(object_schema)
+        else:
+            variants.append({"type": item})
+    if len(variants) == 1:
+        first = variants[0]
+        return first if isinstance(first, dict) else schema
+    return {"anyOf": variants}
+
+
 def _nullable_strict_schema(schema: object) -> object:
     if isinstance(schema, dict):
+        schema = _rewrite_object_type_array(schema)
         if schema.get("type") == "null":
             return schema
         variants = schema.get("anyOf")
@@ -123,6 +161,7 @@ def _deepseek_strict_schema(value: object) -> object:
         return [_deepseek_strict_schema(item) for item in value]
     if not isinstance(value, dict):
         return value
+    value = _rewrite_object_type_array(value)
     projected: dict[str, object] = {}
     for key, item in value.items():
         if key in _DEEPSEEK_STRICT_UNSUPPORTED_KEYS:
@@ -255,6 +294,115 @@ def _unique_compact_gate_object(
     return value
 
 
+def _record_rejected_compact_gate_carrier(
+    reason: str,
+    value: dict[str, object],
+) -> None:
+    """Keep the refused carrier inspectable without inventing a second author."""
+
+    extra_keys = sorted(set(value) - {"result_kind", "payload_json"})
+    payload = value.get("payload_json")
+    try:
+        excerpt = json.dumps(value, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        excerpt = str(value)
+    if len(excerpt) > _REJECTED_CARRIER_EXCERPT_CHARS:
+        excerpt = excerpt[:_REJECTED_CARRIER_EXCERPT_CHARS]
+    _LOG.warning(
+        "compact gate carrier rejected reason=%s extra_keys=%s payload_json_type=%s excerpt=%s",
+        reason,
+        ",".join(extra_keys) or "-",
+        type(payload).__name__,
+        excerpt,
+    )
+    dump_path = getenv("WORLD_V2_COMPACT_GATE_REJECT_LOG")
+    if dump_path:
+        path = Path(dump_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {"reason": reason, "carrier": value},
+                    ensure_ascii=False,
+                    default=str,
+                )
+                + "\n"
+            )
+
+
+_COMPACT_GATE_TRANSPORT_KEYS = frozenset({"result_kind", "payload_json"})
+_COMPACT_GATE_ENVELOPE_KEYS = frozenset({"protocol", "appraisal_draft", "events"})
+_COMPACT_GATE_FOREIGN_CAPABILITY_KEYS = frozenset(
+    {
+        "recall_request",
+        "full_turn_json",
+        "expression_draft",
+        "media_request",
+        "media_source_refs",
+        "leading_typing_beat",
+    }
+)
+
+
+def _compact_gate_non_padding_items(value: dict[str, object]) -> dict[str, object]:
+    cleaned: dict[str, object] = {}
+    for key, item in value.items():
+        if key == "result_kind":
+            cleaned[key] = item
+            continue
+        if item is None:
+            continue
+        if _deepseek_strict_union_padding_is_empty(key, item):
+            continue
+        if key == "media_request" and item == "none":
+            continue
+        if key == "media_source_refs" and item == []:
+            continue
+        cleaned[key] = item
+    return cleaned
+
+
+def _loads_compact_gate_payload_object(payload_json: str) -> dict[str, object]:
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError("compact gate carrier payload has a duplicate field")
+            result[key] = item
+        return result
+
+    def reject_constant(_value: str) -> object:
+        raise ValueError("compact gate carrier payload has a non-JSON constant")
+
+    try:
+        payload = json.loads(
+            payload_json,
+            object_pairs_hook=unique_object,
+            parse_constant=reject_constant,
+        )
+    except json.JSONDecodeError:
+        payload = None
+    else:
+        if not isinstance(payload, dict):
+            raise ValueError("compact gate carrier payload must be one JSON object")
+        return payload
+    try:
+        payload = loads_one_json_object(
+            payload_json,
+            object_pairs_hook=unique_object,
+            parse_constant=reject_constant,
+            not_object_message="compact gate carrier payload must be one JSON object",
+            invalid_message="compact gate carrier payload_json is invalid",
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if "duplicate field" in detail or "non-JSON constant" in detail:
+            raise
+        raise ValueError("compact gate carrier payload_json is invalid") from exc
+    _LOG.info("compact gate carrier payload_json accepted after transport-shape repair")
+    return payload
+
+
 def _expand_compact_gate_payload(value: dict[str, object]) -> dict[str, object]:
     """Expand the compact provider carrier into the existing typed branches."""
 
@@ -262,13 +410,33 @@ def _expand_compact_gate_payload(value: dict[str, object]) -> dict[str, object]:
         value.get("payload_json") is None and set(value) != {"result_kind", "payload_json"}
     ):
         return value
-    if set(value) != {"result_kind", "payload_json"}:
-        raise ValueError("compact gate carrier has cross-branch fields")
-    kind = value.get("result_kind")
-    payload_json = value.get("payload_json")
+    cleaned = _compact_gate_non_padding_items(value)
+    extras = set(cleaned) - _COMPACT_GATE_TRANSPORT_KEYS
+    foreign = tuple(sorted(extras & _COMPACT_GATE_FOREIGN_CAPABILITY_KEYS))
+    if foreign:
+        _record_rejected_compact_gate_carrier(
+            "compact gate carrier has cross-branch fields",
+            value,
+        )
+        raise ValueError(
+            "compact gate carrier has cross-branch fields keys=" + ",".join(foreign)
+        )
+    kind = cleaned.get("result_kind")
+    payload_json = cleaned.get("payload_json")
     if kind not in {"reply_only", "full_turn", "recall"}:
+        _record_rejected_compact_gate_carrier(
+            "compact gate carrier result_kind is invalid",
+            value,
+        )
         raise ValueError("compact gate carrier result_kind is invalid")
-    payload: object
+    slim_extras = {
+        key: cleaned[key] for key in extras if key in SLIM_CONSIDER_KEYS
+    }
+    envelope_extras = {
+        key: cleaned[key] for key in extras if key in _COMPACT_GATE_ENVELOPE_KEYS
+    }
+    payload: object | None = None
+    parse_error: ValueError | None = None
     if isinstance(payload_json, dict):
         payload = payload_json
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -278,33 +446,41 @@ def _expand_compact_gate_payload(value: dict[str, object]) -> dict[str, object]:
         try:
             payload_bytes = payload_json.encode("utf-8")
         except UnicodeEncodeError as exc:
+            _record_rejected_compact_gate_carrier(
+                "compact gate carrier payload_json is invalid",
+                value,
+            )
             raise ValueError("compact gate carrier payload_json is invalid") from exc
         if len(payload_bytes) > 131_072:
             raise ValueError("compact gate carrier payload_json exceeds its byte limit")
-
-        def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-            result: dict[str, object] = {}
-            for key, item in pairs:
-                if key in result:
-                    raise ValueError("compact gate carrier payload has a duplicate field")
-                result[key] = item
-            return result
-
-        def reject_constant(_value: str) -> object:
-            raise ValueError("compact gate carrier payload has a non-JSON constant")
-
         try:
-            payload = json.loads(
-                payload_json,
-                object_pairs_hook=unique_object,
-                parse_constant=reject_constant,
+            payload = _loads_compact_gate_payload_object(payload_json)
+        except ValueError as exc:
+            if "duplicate field" in str(exc) or "non-JSON constant" in str(exc):
+                raise
+            parse_error = exc
+    elif payload_json is not None:
+        parse_error = ValueError("compact gate carrier payload_json is invalid")
+    if payload is None:
+        if set(envelope_extras) == _COMPACT_GATE_ENVELOPE_KEYS:
+            payload = {
+                key: envelope_extras[key] for key in ("protocol", "appraisal_draft", "events")
+            }
+        elif "messages" in slim_extras:
+            payload = dict(slim_extras)
+        else:
+            _record_rejected_compact_gate_carrier(
+                "compact gate carrier payload_json is invalid",
+                value,
             )
-        except json.JSONDecodeError as exc:
-            raise ValueError("compact gate carrier payload_json is invalid") from exc
-    else:
-        raise ValueError("compact gate carrier payload_json is invalid")
+            if parse_error is not None:
+                raise ValueError("compact gate carrier payload_json is invalid") from parse_error
+            raise ValueError("compact gate carrier payload_json is invalid")
     if not isinstance(payload, dict):
         raise ValueError("compact gate carrier payload must be one JSON object")
+    payload = dict(payload)
+    for key, item in slim_extras.items():
+        payload.setdefault(key, item)
 
     node_count = 0
 
@@ -341,6 +517,8 @@ def _expand_compact_gate_payload(value: dict[str, object]) -> dict[str, object]:
     elif set(payload) != {"private_turn_state", "recall_request"}:
         raise ValueError("compact gate carrier requires the exact Recall envelope")
     if kind == "full_turn":
+        if not isinstance(payload_json, str) or not payload_json:
+            payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         return {"result_kind": kind, "full_turn_json": payload_json}
     return {**payload, "result_kind": kind}
 
@@ -817,8 +995,6 @@ class InboundGateToolContract:
             raise ValueError("compact gate transport must be one JSON object") from exc
         if not isinstance(value, dict):
             raise ValueError("compact gate transport must be one JSON object")
-        if set(value) != {"result_kind", "payload_json"}:
-            raise ValueError("compact gate transport envelope is incomplete")
         value = _expand_compact_gate_payload(value)
         kind = value.get("result_kind")
         expected = {

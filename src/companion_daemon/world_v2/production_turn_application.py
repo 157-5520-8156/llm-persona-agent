@@ -798,6 +798,13 @@ class WorldV2TurnApplicationConfig:
     # gets one chance to appraise the silence.  ``0``/``None`` disables the
     # lane; the QQ composition keeps the default enabled.
     silence_appraisal_idle_seconds: int | None = 3_600
+    # Background private-impression farm.  Zero disables the independent
+    # model calls; inbound hitch (keep_impression on a paid turn) is separate
+    # and still 0 extra provider spend.  Defaults stay conservative so a week
+    # of quiet days costs well under ¥10.
+    private_impression_daily_model_call_limit: int = 3
+    private_impression_min_interval_seconds: int = 14_400
+    private_impression_idle_after_user_seconds: int = 1_800
     # Every committed plan abandonment leaves her one chance to appraise what
     # losing that plan means (regret, relief, nothing).  Disabling stops
     # opening new triggers; already-open ones still drain.
@@ -874,6 +881,12 @@ class WorldV2TurnApplicationConfig:
             and self.silence_appraisal_idle_seconds < 0
         ):
             raise ValueError("silence appraisal idle threshold must not be negative")
+        if self.private_impression_daily_model_call_limit < 0:
+            raise ValueError("private impression daily model call limit must not be negative")
+        if self.private_impression_min_interval_seconds < 0:
+            raise ValueError("private impression min interval must not be negative")
+        if self.private_impression_idle_after_user_seconds < 0:
+            raise ValueError("private impression idle-after-user threshold must not be negative")
 
 
 class WorldV2TurnApplication:
@@ -3840,6 +3853,14 @@ def build_sqlite_world_v2_turn_application(
             silence_appraisal_idle_seconds=config.silence_appraisal_idle_seconds,
             plan_disruption_appraisal_enabled=config.plan_disruption_appraisal_enabled,
             perception_result_reader=perception_transport,
+            private_impression_daily_model_call_limit=config.private_impression_daily_model_call_limit,
+            private_impression_min_interval_seconds=(
+                config.private_impression_min_interval_seconds
+            ),
+            private_impression_idle_after_user_seconds=(
+                config.private_impression_idle_after_user_seconds
+            ),
+            private_impression_local_timezone=config.local_timezone,
         )
         open_world_event = (
             OpenWorldEventRuntime(

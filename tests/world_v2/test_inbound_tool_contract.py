@@ -11,6 +11,7 @@ from companion_daemon.llm import DeepSeekChatModel
 from companion_daemon.world_v2.character_interior.inbound_author import _parse_combined
 from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
     InboundToolContracts,
+    deepseek_strict_tool_schema,
 )
 from companion_daemon.world_v2.character_interior.inbound_wire import (
     SameContractRetryForbidden,
@@ -94,6 +95,7 @@ def _fill_strict_private_turn_state(payload: dict[str, object]) -> dict[str, obj
                 value.setdefault("we_are", None)
                 value.setdefault("calling_it", None)
                 value.setdefault("said_as", None)
+                value.setdefault("declared_display", None)
             for item in value.values():
                 walk(item)
         elif isinstance(value, list):
@@ -120,6 +122,7 @@ def _strip_none_hitch_fields(value: object) -> object:
                     "we_are",
                     "calling_it",
                     "said_as",
+                    "declared_display",
                 }
                 and item is None
             )
@@ -226,6 +229,7 @@ def test_compact_gate_strict_contract_is_small_and_keeps_role_owned_branches() -
     assert "no appraisal, affect" not in description
     assert "complete chosen branch object as a JSON string in payload_json" in description
     assert "full_turn_json" not in description
+    assert _object_type_array_paths(parameters) == []
 
     multi_paragraph = _reply_only_stream_arguments()
     events = multi_paragraph["events"]
@@ -248,6 +252,77 @@ def test_compact_gate_strict_contract_is_small_and_keeps_role_owned_branches() -
     assert contract.decode(json.dumps(compact_carrier, ensure_ascii=False))[
         "events"
     ] == events
+
+
+def _object_type_array_paths(schema: object, path: str = "$") -> list[str]:
+    hits: list[str] = []
+    if isinstance(schema, dict):
+        schema_type = schema.get("type")
+        if isinstance(schema_type, list) and "object" in schema_type:
+            hits.append(f"{path} type={schema_type}")
+        for key, value in schema.items():
+            hits.extend(_object_type_array_paths(value, f"{path}.{key}"))
+    elif isinstance(schema, list):
+        for index, value in enumerate(schema):
+            hits.extend(_object_type_array_paths(value, f"{path}[{index}]"))
+    return hits
+
+
+def test_deepseek_strict_projection_rewrites_handwritten_object_null_type_array() -> None:
+    projected = deepseek_strict_tool_schema(
+        {
+            "type": "object",
+            "properties": {
+                "payload": {
+                    "type": ["object", "null"],
+                    "properties": {"k": {"type": "string"}},
+                    "required": ["k"],
+                    "additionalProperties": False,
+                }
+            },
+            "required": ["payload"],
+            "additionalProperties": False,
+        }
+    )
+
+    assert _object_type_array_paths(projected) == []
+    payload = projected["properties"]["payload"]
+    assert payload == {
+        "anyOf": [
+            {
+                "type": "object",
+                "properties": {"k": {"type": "string"}},
+                "required": ["k"],
+                "additionalProperties": False,
+            },
+            {"type": "null"},
+        ]
+    }
+
+
+def test_deepseek_strict_projection_does_not_change_compact_gate_carrier() -> None:
+    contract = InboundToolContracts().compact_gate_for(
+        capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
+        recall_allowed=True,
+        schema_dialect="deepseek-strict",
+    )
+    parameters = contract.provider_tools[0]["function"]["parameters"]
+    projected = deepseek_strict_tool_schema(parameters)
+
+    assert parameters == {
+        "type": "object",
+        "properties": {
+            "result_kind": {
+                "type": "string",
+                "enum": ["reply_only", "full_turn", "recall"],
+            },
+            "payload_json": {"type": "string"},
+        },
+        "required": ["result_kind", "payload_json"],
+        "additionalProperties": False,
+    }
+    assert _object_type_array_paths(projected) == []
+    assert set(projected["properties"]) == {"result_kind", "payload_json"}
 
 
 def test_compact_gate_provider_tools_do_not_fork_on_recall_permission() -> None:
@@ -481,6 +556,123 @@ def test_compact_gate_accepts_payload_json_already_parsed_as_an_object() -> None
     assert decoded["events"][0]["beat"]["text"] == "桂花乌龙啊，我也想喝"
     assert decoded["appraisal_draft"]["appraise"] is True
     assert decoded["appraisal_draft"]["meanings"][0]["meaning"] == "懒得动但嘴馋"
+
+
+_REPRODUCED_QUOTED_DIALOGUE_PAYLOAD_JSON = (
+    '{"messages":["……我知道你是认真的"],'
+    '"felt":"他连着追问，语气很认真，我有点慌，但也不想躲。'
+    '我们认识确实不算久，可被他这样认真地问，我心里也不是完全没感觉。",'
+    '"stuck_with_me":"他说"我是认真问的"，这句话让我有点不知道怎么接。",'
+    '"keep_impression":true,"matters_bp":6500,"mood":"warmth",'
+    '"about_us":"他认真问我们算什么，我嘴上说了朋友，但心里其实有点动摇。",'
+    '"why_us":"认识不算久，但他这样认真地问，让我觉得这段关系可能比我想的更重。",'
+    '"us_deltas":{"closeness_bp":30,"trust_bp":20}}'
+)
+
+
+def test_compact_gate_accepts_missing_inner_wrapper_brace() -> None:
+    from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
+        _expand_compact_gate_payload,
+    )
+
+    inner = '{"messages":["嗯"],"felt":"先接住"'
+    expanded = _expand_compact_gate_payload(
+        {"result_kind": "reply_only", "payload_json": inner}
+    )
+    assert expanded["events"][0]["beat"]["text"] == "嗯"
+
+
+def test_completed_compact_gate_stream_repairs_missing_outer_brace() -> None:
+    inner = json.dumps({"messages": ["嗯"], "felt": "先接住"}, ensure_ascii=False)
+    raw = json.dumps(
+        {"result_kind": "reply_only", "payload_json": inner},
+        ensure_ascii=False,
+    )
+    assert raw.endswith("}")
+    first = _stream_first_expression(raw[:-1])
+    parsed = json.loads(first)
+    assert parsed["expression_draft"]["beats"][0]["text"] == "嗯"
+
+
+def test_incremental_compact_gate_does_not_close_a_partial_object() -> None:
+    inner = json.dumps({"messages": ["嗯"], "felt": "先接住"}, ensure_ascii=False)
+    raw = json.dumps(
+        {"result_kind": "reply_only", "payload_json": inner},
+        ensure_ascii=False,
+    )
+    assert _incremental_first_expression(raw[:-1], compact_gate=True) is None
+
+
+def test_compact_gate_accepts_reproduced_unescaped_dialogue_quotes() -> None:
+    from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
+        _expand_compact_gate_payload,
+    )
+
+    carrier = {
+        "result_kind": "reply_only",
+        "payload_json": _REPRODUCED_QUOTED_DIALOGUE_PAYLOAD_JSON,
+    }
+    expanded = _expand_compact_gate_payload(carrier)
+    assert expanded["result_kind"] == "reply_only"
+    head = expanded["events"][0]
+    assert head["beat"]["text"] == "……我知道你是认真的"
+    assert "我是认真问的" in head["private_turn_state"]["inner_state_summary"]
+    assert head["private_turn_state"]["keep_impression"] is True
+    assert expanded["appraisal_draft"]["affect"] == "open"
+    assert expanded["appraisal_draft"]["relationship_signal"]["signal_code"] == (
+        "他认真问我们算什么，我嘴上说了朋友，但心里其实有点动摇。"
+    )
+    combined = _parse_combined(json.dumps(carrier, ensure_ascii=False))
+    assert combined["expression_draft"]["beats"][0]["text"] == "……我知道你是认真的"
+    first = _stream_first_expression(json.dumps(carrier, ensure_ascii=False))
+    parsed_first = json.loads(first)
+    assert parsed_first["expression_draft"]["beats"][0]["text"] == "……我知道你是认真的"
+
+
+def test_compact_gate_ignores_sibling_reasoning_and_merges_outer_slim_fields() -> None:
+    from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
+        _expand_compact_gate_payload,
+    )
+
+    expanded = _expand_compact_gate_payload(
+        {
+            "result_kind": "reply_only",
+            "payload_json": json.dumps(
+                {"messages": ["朋友吧"], "felt": "被问到我们算什么"},
+                ensure_ascii=False,
+            ),
+            "reasoning": "provider sibling, not a role choice",
+            "we_are": "ambiguous",
+            "calling_it": "说不清",
+            "said_as": "朋友吧",
+        }
+    )
+    assert expanded["events"][0]["beat"]["text"] == "朋友吧"
+    state = expanded["events"][0]["private_turn_state"]
+    assert state["we_are"] == "ambiguous"
+    assert state["calling_it"] == "说不清"
+    assert state["said_as"] == "朋友吧"
+    assert expanded["appraisal_draft"]["relationship_commitment"]["target_stage"] == (
+        "ambiguous"
+    )
+
+
+def test_compact_gate_still_rejects_nonempty_foreign_capability_siblings() -> None:
+    from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
+        _expand_compact_gate_payload,
+    )
+
+    with pytest.raises(ValueError, match="cross-branch fields keys=recall_request"):
+        _expand_compact_gate_payload(
+            {
+                "result_kind": "reply_only",
+                "payload_json": json.dumps(
+                    {"messages": ["嗯"], "felt": "先接住"},
+                    ensure_ascii=False,
+                ),
+                "recall_request": {"query": "what did he say last week"},
+            }
+        )
 
 
 def test_stream_contract_contains_one_constrained_role_owned_reply_branch() -> None:

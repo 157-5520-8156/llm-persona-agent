@@ -151,10 +151,100 @@ def _decoded_object(payload_json: str) -> Mapping[str, object]:
     return MappingProxyType(decoded)
 
 
+# Clock / identity metadata that is not copied from a privacy-bearing source.
+# Anything else in materials_json must be source-bound so `_redact_materials`
+# can drop it. Presentation that copies sourced prose belongs in model_view
+# after redaction, not here.
+COMPILE_TIME_SOURCELESS_ALLOWLIST = frozenset({"logical_time"})
+
+# Keys minted only in `model_view()` from already-redacted material. They must
+# not appear in `materials_json`; putting them there is the lived_moment leak.
+POST_REDACTION_ONLY_KEYS = frozenset(
+    {
+        "conversation",
+        "day_sheet",
+        "lived_moment",
+        "since_he_last_spoke",
+        "我最近留下的",
+    }
+)
+
+# CharacterInterior._assemble_snapshot stores situation/continuity/facet
+# payloads under these names. That stub schema is not the compiler's
+# model-facing materials dict; the source-bound gate still applies to every
+# other key, including week_diary and folded_dialogue.
+_PROJECTION_STUB_MATERIAL_KEYS = frozenset(("situation", "continuity", *FACET_NAMES))
+
+
+def compile_time_material_is_source_bound(key: str, value: object) -> bool:
+    """Return whether one compile-time material can be covered by redaction.
+
+    `_redact_materials` keeps a list item when it is not a dict, when it has
+    no string `source_ref`, or when that ref is visible. A sourceless string,
+    a `{seconds: N}` dict, or a list of `{date, lines}` therefore survives
+    every purpose view: absence of `source_ref` is a bypass, not a public
+    default. The only compile-time exception is `logical_time`, which is the
+    snapshot clock and does not copy withhold/personal/private prose.
+    """
+
+    if key in POST_REDACTION_ONLY_KEYS:
+        return False
+    if key in COMPILE_TIME_SOURCELESS_ALLOWLIST:
+        return True
+    if isinstance(value, list):
+        return all(
+            isinstance(item, dict)
+            and isinstance(item.get("source_ref"), str)
+            and item["source_ref"]
+            for item in value
+        )
+    if isinstance(value, dict):
+        if value.get("availability") == "unavailable" and not isinstance(
+            value.get("items"), list
+        ):
+            return True
+        items = value.get("items")
+        if isinstance(items, list):
+            return all(
+                isinstance(item, dict)
+                and isinstance(item.get("source_ref"), str)
+                and item["source_ref"]
+                for item in items
+            )
+        if isinstance(value.get("source_ref"), str) and value["source_ref"]:
+            return True
+        refs = value.get("source_refs")
+        return bool(
+            isinstance(refs, (list, tuple))
+            and refs
+            and all(isinstance(ref, str) and ref for ref in refs)
+        )
+    return False
+
+
+def assert_compile_time_materials_are_source_bound(
+    materials: Mapping[str, object],
+) -> None:
+    """Reject sourceless compile-time materials that `_redact_materials` cannot drop."""
+
+    for scope, value in materials.items():
+        if not compile_time_material_is_source_bound(scope, value):
+            raise ValueError(
+                "character interior compile-time material must be source-bound"
+                f" ({scope})"
+            )
+
+
 def _redact_materials(
     materials: dict[str, object], visible_source_refs: set[str]
 ) -> dict[str, object]:
-    """Delete non-visible source items while preserving explicit absence."""
+    """Delete non-visible source items while preserving explicit absence.
+
+    Coverage is by `source_ref` (or a container's `source_refs`). A sourceless
+    list item is kept so post-redaction presentation (conversation lines) can
+    be attached after this function; compile-time sourceless materials are
+    rejected by `InnerLifeSnapshot` identity instead of being silently shown.
+    """
 
     redacted: dict[str, object] = {}
     for key, value in materials.items():
@@ -182,7 +272,23 @@ def _redact_materials(
             elif value.get("availability") == "unavailable":
                 redacted[key] = value
             continue
-        redacted[key] = value
+        if isinstance(value, dict):
+            refs = value.get("source_refs")
+            if isinstance(refs, (list, tuple)) and refs:
+                if all(
+                    isinstance(ref, str) and ref in visible_source_refs for ref in refs
+                ):
+                    redacted[key] = value
+                continue
+            if isinstance(value.get("source_ref"), str):
+                if value["source_ref"] in visible_source_refs:
+                    redacted[key] = value
+                continue
+            if value.get("availability") == "unavailable":
+                redacted[key] = value
+                continue
+        if key in COMPILE_TIME_SOURCELESS_ALLOWLIST:
+            redacted[key] = value
     return redacted
 
 
@@ -341,6 +447,203 @@ def _rendered_lived_moment(
         appraisals=materials.get("appraisals"),
         impressions=materials.get("private_impressions"),
     )
+
+
+_DAY_SKELETON = None
+
+
+def _rendered_day_sheet(
+    materials: Mapping[str, object], logical_time: datetime | None
+) -> str | None:
+    """Rebuild today's sheet from already-redacted biography plus the seed.
+
+    Compile-time assembly was a sourceless string, so redacting biographical
+    context could not drop age/phase/season copied into it. Schedule and
+    weather come from the reviewed seed and the snapshot clock, not from a
+    withhold item; they remain when biography is hidden.
+    """
+
+    from ..day_skeleton import compile_day_sheet, load_world_day_skeleton
+
+    global _DAY_SKELETON
+    biography = materials.get("biographical_context")
+    head = biography[0] if isinstance(biography, list) and biography else None
+    instant = logical_time
+    if instant is not None and (instant.tzinfo is None or instant.utcoffset() is None):
+        instant = None
+    if instant is None and isinstance(head, dict):
+        instant = _instant(head.get("logical_at"))
+    if instant is None:
+        instant = _instant(materials.get("logical_time"))
+    if instant is None:
+        return None
+    if _DAY_SKELETON is None:
+        try:
+            _DAY_SKELETON = load_world_day_skeleton()
+        except (OSError, TypeError, ValueError):
+            return None
+    phase = head.get("academic_phase") if isinstance(head, dict) else None
+    year = head.get("academic_year") if isinstance(head, dict) else None
+    age = head.get("age") if isinstance(head, dict) else None
+    season = head.get("season") if isinstance(head, dict) else None
+    return compile_day_sheet(
+        logical_at=instant,
+        skeleton=_DAY_SKELETON,
+        academic_phase=phase if isinstance(phase, str) else None,
+        academic_year=year if isinstance(year, int) else None,
+        age=age if isinstance(age, int) else None,
+        season=season if isinstance(season, str) else None,
+    )
+
+
+def _regroup_week_diary(value: object) -> list[dict[str, object]]:
+    """Present sourced diary rows as the date-grouped reading she already had."""
+
+    if not isinstance(value, list):
+        return []
+    grouped: dict[str, list[str]] = {}
+    order: list[str] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        day = item.get("date")
+        line = item.get("line")
+        if not isinstance(day, str) or not day or not isinstance(line, str) or not line.strip():
+            continue
+        if day not in grouped:
+            order.append(day)
+            grouped[day] = []
+        text = line.strip()
+        if text not in grouped[day]:
+            grouped[day].append(text)
+    return [{"date": day, "lines": grouped[day]} for day in order if grouped[day]]
+
+
+def _regroup_folded_dialogue(value: object) -> list[dict[str, object]]:
+    """Restore fold chunks from already-redacted sourced lines."""
+
+    if not isinstance(value, list) or not value:
+        return []
+    if isinstance(value[0], dict) and isinstance(value[0].get("dialogue_ids"), list):
+        return [item for item in value if isinstance(item, dict)]
+    grouped: dict[int, list[dict[str, object]]] = {}
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        ordinal = item.get("chunk_ordinal")
+        key = ordinal if isinstance(ordinal, int) and not isinstance(ordinal, bool) else 0
+        grouped.setdefault(key, []).append(item)
+    chunks: list[dict[str, object]] = []
+    for ordinal in sorted(grouped):
+        entries = grouped[ordinal]
+        ids = [
+            dialogue_id
+            for entry in entries
+            if isinstance((dialogue_id := entry.get("dialogue_id")), str) and dialogue_id
+        ]
+        lines = [
+            line
+            for entry in entries
+            if isinstance((line := entry.get("line")), str) and line
+        ]
+        occurred = [
+            stamp
+            for entry in entries
+            if isinstance((stamp := entry.get("occurred_at")), str) and stamp
+        ]
+        if not ids and not lines:
+            continue
+        chunk: dict[str, object] = {"dialogue_ids": ids, "lines": lines}
+        if occurred:
+            chunk["from"] = occurred[0]
+            chunk["to"] = occurred[-1]
+        chunks.append(chunk)
+    return chunks
+
+
+def _visible_dialogue_texts(materials: Mapping[str, object]) -> set[str]:
+    texts: set[str] = set()
+    for entry in _material_entries(materials, "recent_dialogue"):
+        text = entry.get("text")
+        if isinstance(text, str) and text.strip():
+            texts.add(text.strip())
+    folded = materials.get("folded_dialogue")
+    if not isinstance(folded, list):
+        return texts
+    for entry in folded:
+        if not isinstance(entry, dict):
+            continue
+        line = entry.get("line")
+        if isinstance(line, str) and ": " in line:
+            body = line.split(": ", 1)[1].strip()
+            if body:
+                texts.add(body)
+        text = entry.get("text")
+        if isinstance(text, str) and text.strip():
+            texts.add(text.strip())
+    return texts
+
+
+def _refresh_stimulus_excerpts(materials: dict[str, object]) -> dict[str, object]:
+    """Keep appraisal excerpts only when the quoted dialogue survived redaction.
+
+    Compile-time copy writes the counterpart's text onto the appraisal, whose
+    own `source_ref` is the appraisal, not the message. Redacting the message
+    therefore used to leave the quote behind.
+    """
+
+    appraisals = materials.get("appraisals")
+    if not isinstance(appraisals, list):
+        return materials
+    visible = _visible_dialogue_texts(materials)
+    refreshed: list[object] = []
+    changed = False
+    for entry in appraisals:
+        if not isinstance(entry, dict):
+            refreshed.append(entry)
+            continue
+        excerpts = entry.get("stimulus_excerpts")
+        if not isinstance(excerpts, list):
+            refreshed.append(entry)
+            continue
+        kept = [
+            excerpt
+            for excerpt in excerpts
+            if isinstance(excerpt, str) and excerpt.strip() and excerpt.strip() in visible
+        ]
+        if kept == excerpts:
+            refreshed.append(entry)
+            continue
+        item = dict(entry)
+        if kept:
+            item["stimulus_excerpts"] = kept
+        else:
+            item.pop("stimulus_excerpts", None)
+        refreshed.append(item)
+        changed = True
+    return {**materials, "appraisals": refreshed} if changed else materials
+
+
+def _rendered_since_he_last_spoke(
+    materials: Mapping[str, object], logical_time: datetime | None
+) -> dict[str, object] | None:
+    """Seconds since a counterpart line she is still allowed to see."""
+
+    if logical_time is None or logical_time.tzinfo is None or logical_time.utcoffset() is None:
+        return None
+    latest: datetime | None = None
+    for entry in _material_entries(materials, "recent_dialogue"):
+        if entry.get("speaker") != "counterpart":
+            continue
+        occurred = _instant(entry.get("occurred_at"))
+        if occurred is None:
+            continue
+        if latest is None or occurred > latest:
+            latest = occurred
+    if latest is None:
+        return None
+    elapsed = int((logical_time - latest).total_seconds())
+    return {"seconds": elapsed} if elapsed >= 0 else None
 
 
 INNER_RETENTION_MATERIAL_KEY = "我最近留下的"
@@ -966,6 +1269,14 @@ class InnerLifeSnapshot(FrozenModel):
             raise ValueError("character interior source inventory coordinates are duplicated")
         material_coordinates: set[tuple[str, str]] = set()
         for scope, value in decoded_materials.items():
+            if (
+                scope not in _PROJECTION_STUB_MATERIAL_KEYS
+                and not compile_time_material_is_source_bound(scope, value)
+            ):
+                raise ValueError(
+                    "character interior compile-time material must be source-bound"
+                    f" ({scope})"
+                )
             candidates = value.get("items") if isinstance(value, dict) else value
             if not isinstance(candidates, list):
                 continue
@@ -1064,6 +1375,27 @@ class InnerLifeSnapshot(FrozenModel):
             else set(self.source_refs) & set(visible_source_refs)
         )
         materials = _redact_materials(dict(self.materials), visible)
+        materials = _refresh_stimulus_excerpts(materials)
+        day_sheet = _rendered_day_sheet(materials, self.logical_time)
+        if day_sheet:
+            materials = {**materials, "day_sheet": day_sheet}
+        week_diary = _regroup_week_diary(materials.get("week_diary"))
+        if week_diary:
+            materials = {**materials, "week_diary": week_diary}
+        elif "week_diary" in materials:
+            materials = {
+                key: item for key, item in materials.items() if key != "week_diary"
+            }
+        elapsed = _rendered_since_he_last_spoke(materials, self.logical_time)
+        if elapsed is not None:
+            materials = {**materials, "since_he_last_spoke": elapsed}
+        folded = _regroup_folded_dialogue(materials.get("folded_dialogue"))
+        if folded:
+            materials = {**materials, "folded_dialogue": folded}
+        elif "folded_dialogue" in materials:
+            materials = {
+                key: item for key, item in materials.items() if key != "folded_dialogue"
+            }
         retention = _rendered_inner_retention(materials, self.logical_time)
         if retention is not None:
             materials = {**materials, INNER_RETENTION_MATERIAL_KEY: retention}
@@ -1334,8 +1666,12 @@ class InnerDecision(FrozenModel):
 
 
 __all__ = [
+    "COMPILE_TIME_SOURCELESS_ALLOWLIST",
     "INNER_RETENTION_MATERIAL_KEY",
     "LIVED_MOMENT_MATERIAL_KEY",
+    "POST_REDACTION_ONLY_KEYS",
+    "compile_time_material_is_source_bound",
+    "assert_compile_time_materials_are_source_bound",
     "InteriorAffectTransition",
     "InteriorAffectNewComponentTarget",
     "InteriorAffectExistingComponentTarget",

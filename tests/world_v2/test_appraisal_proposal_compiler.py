@@ -14,7 +14,7 @@ from companion_daemon.world_v2.proposal_envelope import (
     TypedChange,
 )
 
-from test_appraisal_authority import NOW, WORLD_ID, prepare_claimed_interaction
+from test_appraisal_authority import NOW, WORLD_ID, prepare_claimed_interaction, prepare_claimed_proactive
 from test_proposal_audit import _digest, _result
 
 
@@ -133,3 +133,113 @@ def test_compiler_records_and_accepts_a_source_bound_appraisal() -> None:
         if item.proposal_id == compilation.typed_proposal_id
     )
     assert decision.status == "accepted"
+
+
+def test_compiler_records_and_accepts_a_proactive_source_bound_appraisal() -> None:
+    """Her same-turn proactive reading must survive compiler → acceptance → projection."""
+
+    issuer = AcceptedLedgerBatchIssuer()
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID, accepted_batch_issuer=issuer)
+    _, trigger, evidence = prepare_claimed_proactive(ledger)
+    base = _result()
+    her_reading = "他刚回了个简短的嗯，对话有点停在原地。"
+    change = TypedChange(
+        change_id="change:decision:proactive-appraisal:1",
+        kind="appraisal_transition",
+        target_id="appraisal:ignored-model-hint",
+        transition="activate",
+        expected_entity_revision=0,
+        evidence_refs=(evidence.ref_id,),
+        payload=CanonicalTypedPayload.from_value(
+            payload_schema="appraisal_transition.v1",
+            value={
+                "appraisal_id": "appraisal:ignored-model-hint",
+                "meaning_candidates": [
+                    {"meaning": her_reading, "confidence": 7200},
+                    {"meaning": "也可能只是双方对回复节奏理解不同", "confidence": 2800},
+                ],
+                "attribution": "user",
+                "severity": 4200,
+                "confidence": 6000,
+                "expiry": None,
+            },
+        ),
+    )
+    proposal = DecisionProposal(
+        proposal_id="proposal:proactive:compiler-accept:1",
+        trigger_ref="message-event:1",
+        evaluated_world_revision=ledger.project().world_revision,
+        evidence_refs=(
+            ProposalEvidenceRef(
+                ref_id=evidence.ref_id,
+                evidence_kind="committed_world_event",
+                source_world_revision=evidence.source_world_revision,
+                immutable_hash="sha256:" + str(evidence.immutable_hash),
+            ),
+        ),
+        proposed_changes=(change,),
+        action_intents=(),
+        confidence=6000,
+        brief_rationale=her_reading,
+        behavior_tendency="respond",
+        stance="warm",
+        display_strategy="model_selected_expression",
+    )
+    audit = base.audit
+    result = DeliberationResult(
+        result_id="deliberation:"
+        + _digest(
+            {
+                "capsule_id": base.capsule_id,
+                "proposal_hash": proposal.proposal_hash,
+                "attempt_audits": [audit.model_dump(mode="json")],
+            }
+        ),
+        capsule_id=base.capsule_id,
+        proposal=proposal,
+        audit=audit,
+        attempt_audits=(audit,),
+    )
+    head = ledger.project()
+    recorded = ProposalAuditRecorder(ledger=ledger).record(
+        result,
+        ProposalAuditContext(
+            world_id=WORLD_ID,
+            trigger_ref="message-event:1",
+            logical_time=NOW,
+            created_at=NOW,
+            actor="agent:companion",
+            source="test",
+            trace_id="trace:proactive-appraisal",
+            causation_id="cause:proactive-appraisal",
+            correlation_id="correlation:proactive-appraisal",
+            evaluated_world_revision=head.world_revision,
+            expected_commit_world_revision=head.world_revision,
+            expected_deliberation_revision=head.deliberation_revision,
+            expected_ledger_sequence=head.ledger_sequence,
+        ),
+    )
+
+    worker = AppraisalProposalWorker(
+        compiler=AppraisalProposalCompiler(ledger=ledger),
+        acceptance=AppraisalAcceptanceRuntime(ledger=ledger, batch_issuer=issuer),
+        actor="worker:proactive-appraisal",
+    )
+    compilation = worker.process(
+        world_id=WORLD_ID, cursor=recorded.cursor, proposal_id=proposal.proposal_id
+    )
+
+    assert compilation.status == "accepted"
+    assert compilation.compile_commit is not None
+    assert compilation.acceptance_commit is not None
+    projection = ledger.project()
+    accepted = next(
+        item for item in projection.committed_world_event_refs if item.event_type == "AppraisalAccepted"
+    )
+    assert trigger.process_kind == "proactive_action_deliberation"
+    assert projection.appraisals[0].hypotheses[0].meaning == her_reading
+    assert projection.appraisals[0].origin.change_id == change.change_id
+    assert projection.trigger_processes[0].state == "claimed"
+    assert projection.trigger_processes[0].process_kind == "proactive_action_deliberation"
+    assert accepted.event_id == projection.appraisals[0].origin.accepted_event_ref
+

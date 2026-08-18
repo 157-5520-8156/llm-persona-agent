@@ -9,6 +9,7 @@ import inspect
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from threading import Lock
 from time import monotonic, time
@@ -340,6 +341,118 @@ class ModelCircuitOpenError(ConnectionError):
 
 class ModelCapacityBusyError(ModelCircuitOpenError):
     """Raised before transport when a single-worker provider cannot admit work."""
+
+
+class ModelTurnBudgetExceeded(RuntimeError):
+    """Raised before transport when one user-visible turn has spent its call ceiling.
+
+    This is a hard cost boundary, not a character decision. Empty ``turn_id``
+    is a test/unscoped call and is not counted. A named turn may make at most
+    eight provider calls; two consecutive failures open a 30-second cooldown
+    that matches the first durable expression-retry delay.
+    """
+
+
+# One inbound turn can legally spend: primary author, optional Recall,
+# optional one constrained reselection, source-closure review, and a hedge.
+# Eight is headroom above that pattern without allowing a drain loop to
+# re-spend on the same turn_id. Chosen against measured Flash p99 of ~8.5s
+# and EXPRESSION_RETRY_DELAYS_SECONDS[0] == 30.
+MAX_PROVIDER_CALLS_PER_TURN = 8
+TURN_FAILURE_COOLDOWN_AFTER = 2
+TURN_FAILURE_COOLDOWN_SECONDS = 30.0
+_TURN_BUDGET_RETENTION_SECONDS = 3_600.0
+_TURN_BUDGET_MAX_KEYS = 256
+
+_TURN_PROVIDER_BUDGET: dict[str, "_TurnProviderBudget"] = {}
+_TURN_PROVIDER_BUDGET_LOCK = Lock()
+
+
+@dataclass
+class _TurnProviderBudget:
+    calls: int = 0
+    consecutive_failures: int = 0
+    cooldown_until: float = 0.0
+    updated_at: float = 0.0
+
+
+def reset_turn_provider_call_budget() -> None:
+    """Test-only: drop process-local per-turn call ceilings."""
+
+    with _TURN_PROVIDER_BUDGET_LOCK:
+        _TURN_PROVIDER_BUDGET.clear()
+
+
+def _turn_provider_budget_key(world_id: str, turn_id: str) -> str | None:
+    if not turn_id:
+        return None
+    # Isolate pytest cases that reuse fixture trigger ids; production has no
+    # PYTEST_CURRENT_TEST so the same observation still shares one ceiling.
+    test_id = os.getenv("PYTEST_CURRENT_TEST") or ""
+    return f"{test_id}:{world_id}:{turn_id}"
+
+
+def _prune_turn_provider_budgets(now: float) -> None:
+    stale = [
+        key
+        for key, state in _TURN_PROVIDER_BUDGET.items()
+        if now - state.updated_at >= _TURN_BUDGET_RETENTION_SECONDS
+    ]
+    for key in stale:
+        _TURN_PROVIDER_BUDGET.pop(key, None)
+    if len(_TURN_PROVIDER_BUDGET) <= _TURN_BUDGET_MAX_KEYS:
+        return
+    overflow = sorted(
+        _TURN_PROVIDER_BUDGET.items(),
+        key=lambda item: item[1].updated_at,
+    )[: len(_TURN_PROVIDER_BUDGET) - _TURN_BUDGET_MAX_KEYS]
+    for key, _state in overflow:
+        _TURN_PROVIDER_BUDGET.pop(key, None)
+
+
+def admit_turn_provider_call(*, world_id: str = "", turn_id: str = "") -> str | None:
+    """Count one provider call against the current user-visible turn, if named."""
+
+    key = _turn_provider_budget_key(world_id, turn_id)
+    if key is None:
+        return None
+    now = monotonic()
+    with _TURN_PROVIDER_BUDGET_LOCK:
+        _prune_turn_provider_budgets(now)
+        state = _TURN_PROVIDER_BUDGET.setdefault(key, _TurnProviderBudget())
+        if state.cooldown_until > now:
+            remaining = max(0.0, state.cooldown_until - now)
+            raise ModelTurnBudgetExceeded(
+                f"turn {turn_id} is in a {TURN_FAILURE_COOLDOWN_SECONDS:g}s "
+                f"failure cooldown ({remaining:.1f}s remaining)"
+            )
+        if state.calls >= MAX_PROVIDER_CALLS_PER_TURN:
+            raise ModelTurnBudgetExceeded(
+                f"turn {turn_id} already spent {MAX_PROVIDER_CALLS_PER_TURN} "
+                "provider calls"
+            )
+        state.calls += 1
+        state.updated_at = now
+    return key
+
+
+def record_turn_provider_call_outcome(key: str | None, *, succeeded: bool) -> None:
+    """Close the per-turn call that ``admit_turn_provider_call`` opened."""
+
+    if not key:
+        return
+    now = monotonic()
+    with _TURN_PROVIDER_BUDGET_LOCK:
+        state = _TURN_PROVIDER_BUDGET.get(key)
+        if state is None:
+            return
+        if succeeded:
+            state.consecutive_failures = 0
+        else:
+            state.consecutive_failures += 1
+            if state.consecutive_failures >= TURN_FAILURE_COOLDOWN_AFTER:
+                state.cooldown_until = now + TURN_FAILURE_COOLDOWN_SECONDS
+        state.updated_at = now
 
 
 @dataclass(frozen=True, slots=True)
@@ -710,6 +823,98 @@ def text_endpoint_capacity_marker_path() -> Path:
     return Path(os.environ.get("TMPDIR") or "/tmp") / ("girl-agent-text-endpoint.capacity")
 
 
+_PROVIDER_ERROR_BODY_LIMIT = 2_000
+_USAGE_ERROR_LIMIT = 2_400
+_SECRET_FRAGMENT_RE = re.compile(
+    r"(?i)(bearer\s+)\S+|(sk-[A-Za-z0-9_-]{8,})"
+)
+
+
+def _redact_provider_secrets(text: str) -> str:
+    """Strip credential-shaped fragments from provider error text."""
+
+    return _SECRET_FRAGMENT_RE.sub(
+        lambda match: f"{match.group(1)}[redacted]" if match.group(1) else "[redacted]",
+        text,
+    )
+
+
+def _truncated_provider_error_body(
+    body: object,
+    *,
+    limit: int = _PROVIDER_ERROR_BODY_LIMIT,
+) -> str:
+    if body is None:
+        return ""
+    if isinstance(body, bytes):
+        text = body.decode("utf-8", errors="replace")
+    else:
+        text = str(body)
+    text = _redact_provider_secrets(text.replace("\x00", ""))
+    if len(text) > limit:
+        return text[:limit]
+    return text
+
+
+def _provider_error_location(response: httpx.Response) -> str:
+    parsed = urlsplit(str(response.url))
+    host = parsed.hostname or ""
+    path = parsed.path or ""
+    return f"{host}{path}"
+
+
+def _raise_for_provider_status(
+    response: httpx.Response,
+    *,
+    body: object | None = None,
+) -> None:
+    """Raise HTTPStatusError with a truncated body and no request secrets."""
+
+    if response.is_success:
+        return
+    if body is None:
+        try:
+            body = response.content
+        except Exception:
+            try:
+                body = response.text
+            except Exception:
+                body = ""
+    excerpt = _truncated_provider_error_body(body)
+    location = _provider_error_location(response)
+    logger.warning(
+        "provider http error status=%s location=%s body=%s",
+        response.status_code,
+        location,
+        excerpt,
+    )
+    phrase = (response.reason_phrase or "").strip()
+    status_label = (
+        f"{response.status_code} {phrase}".rstrip()
+        if phrase
+        else str(response.status_code)
+    )
+    kind = "Client error" if response.status_code < 500 else "Server error"
+    message = f"{kind} '{status_label}' for url '{location}'"
+    if excerpt:
+        message = f"{message} body={excerpt}"
+    raise httpx.HTTPStatusError(
+        message,
+        request=response.request,
+        response=response,
+    )
+
+
+async def _raise_for_provider_status_async(response: httpx.Response) -> None:
+    if response.is_success:
+        return
+    try:
+        body = await response.aread()
+    except Exception:
+        body = b""
+    _raise_for_provider_status(response, body=body)
+
+
 def _is_provider_outage(exc: Exception) -> bool:
     if isinstance(exc, ModelCircuitOpenError):
         return False
@@ -892,6 +1097,10 @@ class DeepSeekChatModel:
         call_meta: Mapping[str, object],
         prompt_characters: int,
     ) -> str:
+        admit_turn_provider_call(
+            world_id=str(call_meta.get("world_id") or ""),
+            turn_id=str(call_meta.get("turn_id") or ""),
+        )
         admit = getattr(getattr(self.usage_observer, "__self__", None), "admit_provider_call", None)
         if not callable(admit):
             return str(call_meta.get("budget_reservation_id") or "")
@@ -1140,7 +1349,7 @@ class DeepSeekChatModel:
                     },
                     json=request_payload,
                 ) as response:
-                    response.raise_for_status()
+                    await _raise_for_provider_status_async(response)
                     content_type = response.headers.get("content-type", "").lower()
                     if "text/event-stream" not in content_type:
                         # A few OpenAI-compatible gateways accept ``stream``
@@ -1332,7 +1541,9 @@ class DeepSeekChatModel:
                     status="failed",
                     provider=self.provider,
                     latency_ms=max(0, int((monotonic() - started) * 1000)),
-                    error=f"stream_error:{type(exc).__name__}:{exc}"[:500],
+                    error=_redact_provider_secrets(
+                        f"stream_error:{type(exc).__name__}:{exc}"
+                    )[:_USAGE_ERROR_LIMIT],
                     world_id=str(call_meta.get("world_id") or ""),
                     turn_id=str(call_meta.get("turn_id") or ""),
                     action_id=str(call_meta.get("action_id") or ""),
@@ -1448,7 +1659,7 @@ class DeepSeekChatModel:
                 )
             finally:
                 mark_model_request_completed(request_span)
-            response.raise_for_status()
+            _raise_for_provider_status(response)
             payload = response.json()
             choices = payload.get("choices") if isinstance(payload, dict) else None
             if not isinstance(choices, list) or not choices:
@@ -1537,7 +1748,7 @@ class DeepSeekChatModel:
                     status="failed",
                     provider=self.provider,
                     latency_ms=max(0, int((monotonic() - started) * 1000)),
-                    error=error[:500],
+                    error=_redact_provider_secrets(error)[:_USAGE_ERROR_LIMIT],
                     world_id=str(call_meta.get("world_id") or ""),
                     turn_id=str(call_meta.get("turn_id") or ""),
                     action_id=str(call_meta.get("action_id") or ""),
@@ -1637,6 +1848,10 @@ class DeepSeekChatModel:
         await self.client.aclose()
 
     def _report_usage(self, usage: ModelCallUsage) -> None:
+        record_turn_provider_call_outcome(
+            _turn_provider_budget_key(usage.world_id, usage.turn_id),
+            succeeded=usage.status == "succeeded",
+        )
         state = _MODEL_CALL_STATE.get()
         if self.usage_observer is None:
             if state is not None:

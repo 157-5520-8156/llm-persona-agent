@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from world_v2_application import (
     build_sqlite_world_v2_test_application,
@@ -31,6 +32,14 @@ from companion_daemon.world_v2.deliberation import (
     ModelRoute,
     ModelUsageProvenance,
     RouteRequest,
+)
+from companion_daemon.world_v2.affect_acceptance_runtime import AffectAcceptanceRuntime
+from companion_daemon.world_v2.affect_proposal_compiler import AffectProposalCompiler
+from companion_daemon.world_v2.appraisal_acceptance_runtime import AppraisalAcceptanceRuntime
+from companion_daemon.world_v2.appraisal_proposal_compiler import AppraisalProposalCompiler
+from companion_daemon.world_v2.appraisal_proposal_worker import AppraisalProposalWorker
+from companion_daemon.world_v2.immediate_emotion_proposal_worker import (
+    ImmediateEmotionProposalWorker,
 )
 from companion_daemon.world_v2.errors import ConcurrencyConflict
 from companion_daemon.world_v2.event_identity import domain_idempotency_key
@@ -862,6 +871,22 @@ class _SequenceDraftModel(_DraftModel):
         return await super().complete(messages, temperature=temperature)
 
 
+class _WarmthDraftModel(_DraftModel):
+    """Same visible choice as ``now``, plus the lasting mood she actually authored."""
+
+    def __init__(self, *, reading: str) -> None:
+        super().__init__("now")
+        self.reading = reading
+
+    async def complete(self, messages, *, temperature: float = 0.8):  # type: ignore[no-untyped-def]
+        raw = json.loads(await super().complete(messages, temperature=temperature))
+        raw["mood"] = "warmth"
+        raw["brief_rationale"] = self.reading
+        raw["impulse_summary"] = self.reading[:240]
+        raw["beats"] = [{"modality": "text", "text": "你最近怎么样？雅思还顺利吗。"}]
+        return json.dumps(raw, ensure_ascii=False)
+
+
 class _SlowPrimaryThenSilentDraftModel:
     model = "test-slow-primary-then-silent-proactive"
 
@@ -963,6 +988,40 @@ class _TimeoutProactiveModel:
         del temperature
         self.calls += 1
         raise TimeoutError("proactive provider window exhausted")
+
+
+class _ProviderRejectionProactiveModel:
+    model = "test-provider-rejection-proactive"
+    supports_required_tool_choice = True
+    supports_strict_tool_choice = True
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete(self, messages, *, temperature: float = 0.8):  # type: ignore[no-untyped-def]
+        return await self.complete_json(messages, temperature=temperature)
+
+    async def complete_json(
+        self,
+        messages,
+        *,
+        temperature: float = 0.8,
+        tools=None,
+        tool_choice=None,
+    ):  # type: ignore[no-untyped-def]
+        del messages, temperature, tools, tool_choice
+        self.calls += 1
+        request = httpx.Request("POST", "https://api.deepseek.com/beta/chat/completions")
+        response = httpx.Response(
+            400,
+            text='{"error":{"message":"Invalid schema: additionalProperties"}}',
+            request=request,
+        )
+        raise httpx.HTTPStatusError(
+            "Client error '400 Bad Request' for url 'https://api.deepseek.com/beta/chat/completions'",
+            request=request,
+            response=response,
+        )
 
 
 class _RetainedPreferenceFactModel:
@@ -1358,6 +1417,7 @@ def _make_proactive_runtime(
     social_initiative=None,
     expression_capabilities=TEXT_ONLY_EXPRESSION_CAPABILITIES,
     strict_tools: bool = False,
+    immediate_emotion_worker=None,
 ):  # type: ignore[no-untyped-def]
     wire_model = (
         _StrictProactiveInteriorWireModel(model)
@@ -1400,6 +1460,7 @@ def _make_proactive_runtime(
         ),
         owner_id=owner,
         social_initiative=social_initiative,
+        immediate_emotion_worker=immediate_emotion_worker,
     )
     return runtime, turn
 
@@ -1472,6 +1533,97 @@ async def test_due_thread_is_a_model_opportunity_not_a_timer_message(
         reservation = projection.budget_reservations[-1]
         assert reservation.category == "proactive"
         assert reservation.action_id == projection.actions[-1].action_id
+
+
+def _immediate_emotion_worker(*, ledger, issuer):
+    return ImmediateEmotionProposalWorker(
+        appraisal_worker=AppraisalProposalWorker(
+            compiler=AppraisalProposalCompiler(
+                ledger=ledger,
+                world_appraisal_subject_ref="actor:companion",
+            ),
+            acceptance=AppraisalAcceptanceRuntime(ledger=ledger, batch_issuer=issuer),
+            actor="worker:immediate-appraisal",
+        ),
+        affect_compiler=AffectProposalCompiler(ledger=ledger),
+        affect_acceptance=AffectAcceptanceRuntime(ledger=ledger, batch_issuer=issuer),
+        actor="worker:immediate-affect",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "her_reading",
+    (
+        "他七小时没回，之前那句嗯有点收尾的意思，但我还是想自然问一句近况。",
+        "他记得我说过的事虽然记错了，这种被在意的感觉有点暖。",
+        "他记得我说过要给他看照片却记混了内容，还主动讨要。",
+    ),
+)
+async def test_proactive_mood_lands_appraisal_without_killing_the_message(
+    her_reading: str,
+) -> None:
+    """Same claimed trigger must accept her reading and still authorize the text."""
+
+    issuer = AcceptedLedgerBatchIssuer()
+    ledger = WorldLedger.in_memory(world_id=WORLD, accepted_batch_issuer=issuer)
+    _commit(ledger, _event("event:world:start", "WorldStarted", {}))
+    if ledger.project().logical_time != NOW:
+        _commit(
+            ledger,
+            _event(
+                "event:clock",
+                "ClockAdvanced",
+                {
+                    "logical_time_from": (
+                        ledger.project().logical_time or NOW - timedelta(minutes=2)
+                    ).isoformat(),
+                    "logical_time_to": NOW.isoformat(),
+                },
+            ),
+        )
+    account = BudgetAccount(
+        account_id="account:proactive", category="proactive", window_id="day:1", limit=100
+    )
+    _commit(
+        ledger,
+        _event(
+            "event:budget:proactive",
+            "BudgetAccountConfigured",
+            {"account": account.model_dump(mode="json")},
+        ),
+    )
+    _seed_due_thread(ledger)
+    model = _WarmthDraftModel(reading=her_reading)
+    runtime, _turn = _make_proactive_runtime(
+        ledger=ledger,
+        issuer=issuer,
+        model=model,
+        immediate_emotion_worker=_immediate_emotion_worker(ledger=ledger, issuer=issuer),
+    )
+
+    assert (await runtime.drain_one()).status == "opened"
+    result = await runtime.drain_one()
+
+    projection = ledger.project()
+    assert result.status == "authorized"
+    assert projection.actions[-1].kind == "proactive_message"
+    accepted = next(
+        item
+        for item in projection.committed_world_event_refs
+        if item.event_type == "AppraisalAccepted"
+    )
+    assert projection.appraisals[0].hypotheses[0].meaning == her_reading
+    assert accepted.event_id == projection.appraisals[0].origin.accepted_event_ref
+    process = next(
+        item
+        for item in projection.trigger_processes
+        if item.process_kind == "proactive_action_deliberation"
+    )
+    assert process.state == "terminal"
+    assert str(process.runtime_outcome_ref).startswith("proactive:authorized:")
+    assert len(projection.affect_episodes) == 1
+    assert projection.affect_episodes[0].components[0].dimension == "warmth"
 
 
 @pytest.mark.asyncio
@@ -1772,6 +1924,37 @@ def test_interior_invalid_codes_are_not_all_mapped_to_non_retryable_reselection(
         "authored_subcall_exception"
     )
     assert map_fn("provider_timeout") == "authored_subcall_timeout"
+    assert map_fn("provider_rejection") == "provider_rejection"
+
+
+@pytest.mark.asyncio
+async def test_http_400_is_retryable_provider_rejection_with_failure_detail() -> None:
+    ledger, _model, _runtime_value, _turn = _runtime(choice="silent")
+    rejected = _ProviderRejectionProactiveModel()
+    runtime, _ = _make_proactive_runtime(
+        ledger=ledger,
+        issuer=ledger._accepted_batch_issuer,  # noqa: SLF001 - acceptance seam fixture
+        model=rejected,
+        owner="worker:proactive:provider-rejection",
+        strict_tools=True,
+    )
+
+    assert (await runtime.drain_one()).status == "opened"
+    result = await runtime.drain_one()
+
+    assert result.status == "failed_safe"
+    assert rejected.calls == 1
+    projection = ledger.project()
+    assert len(projection.model_result_audits) == 1
+    audit = json.loads(projection.model_result_audits[0].audit_json)
+    assert audit["status"] == "main_exception"
+    assert audit["failure_code"] == "provider_rejection"
+    assert "Invalid schema: additionalProperties" in audit["failure_detail"]
+    assert "role_rejection" not in audit
+    waiting = await runtime.drain_one()
+    assert waiting.status == "retry_wait"
+    assert waiting.retry_ordinal == 1
+    assert waiting.reason_code == "proactive.technical_failure_backoff"
 
 
 @pytest.mark.asyncio

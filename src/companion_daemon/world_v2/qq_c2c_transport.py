@@ -24,6 +24,7 @@ from companion_daemon.qq_delivery import QQDelivery
 
 from .action_pump import TerminalPreDispatchFailure
 from .platform_action_executor import PlatformDispatchReceipt, PlatformDispatchRequest
+from .qq_attachment_archive import sniff_image_media_type
 from .schema_core import FrozenModel
 
 
@@ -48,6 +49,12 @@ class QQC2CDelivery(Protocol):
 
 
 _MEDIA_DELIVERY_OUTBOX = Path("output/media-delivered")
+_IMAGE_SUFFIX_BY_TYPE = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+}
 
 
 class _ReactionPayload(FrozenModel):
@@ -329,8 +336,12 @@ class QQC2CPlatformTransport:
                 message="QQ media artifact payload is empty",
             )
         # A durable on-disk copy doubles as the audit trail of what was sent.
+        # NapCat infers type from the file suffix; sniff the bytes, never the
+        # provider-declared name (Civitai returns JPEG under a .png request).
+        media_type = sniff_image_media_type(image)
+        suffix = _IMAGE_SUFFIX_BY_TYPE.get(media_type or "", ".bin")
         image_path = _MEDIA_DELIVERY_OUTBOX / (
-            hashlib.sha256(image).hexdigest()[:24] + ".png"
+            hashlib.sha256(image).hexdigest()[:24] + suffix
         )
         try:
             _write_private_media_copy(image_path, image)

@@ -17,6 +17,7 @@ var/
 training/runs/
 training/datasets/
 training/civitai-packages/
+*.safetensors
 
 .DS_Store
 .idea/

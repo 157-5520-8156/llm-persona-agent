@@ -18,6 +18,7 @@ ValidationTechnicalFailureCode = Literal[
     "authored_subcall_timeout",
     "authored_subcall_exception",
     "role_faculty_unavailable",
+    "provider_rejection",
     "required_tool_choice_unsupported",
     "recall_choice_reselection_invalid",
     "authored_expression_reselection_invalid",

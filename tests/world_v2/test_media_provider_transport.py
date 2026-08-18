@@ -23,6 +23,7 @@ from companion_daemon.world_v2.media_provider_transport import (
 from companion_daemon.world_v2.platform_action_executor import (
     MediaProviderDispatchRequest,
 )
+from companion_daemon.world_v2.schemas import DispatchPending
 
 
 NOW = datetime(2026, 7, 20, 4, 0, tzinfo=UTC)
@@ -47,13 +48,18 @@ def _request(
 
 
 class _Renderer:
-    def __init__(self, *, image: Path, fail: bool = False) -> None:
+    def __init__(self, *, image: Path, fail: bool = False, pending: bool = False) -> None:
         self.image = image
         self.fail = fail
+        self.pending = pending
         self.calls = 0
 
     async def render(self, plan):  # type: ignore[no-untyped-def]
         self.calls += 1
+        if self.pending:
+            return event_media.MediaRenderFailure(
+                plan_id="plan:transport", reason="image_provider_pending", attempts=1
+            )
         if self.fail:
             return event_media.MediaRenderFailure(
                 plan_id="plan:transport", reason="image_provider_quota", attempts=1
@@ -376,4 +382,51 @@ async def test_idempotency_key_cannot_be_rebound_to_different_bytes(
             idempotency_key=request.idempotency_key,
             request_fingerprint="sha256:" + "f" * 64,
         )
+    transport.close()
+
+
+@pytest.mark.asyncio
+async def test_civitai_pending_render_is_not_a_terminal_receipt(
+    tmp_path: Path, image: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        event_media.MediaPlan, "from_payload", staticmethod(_parse_plan_stub)
+    )
+    renderer = _Renderer(image=image, pending=True)
+    transport = SQLiteDurableMediaProviderTransport(
+        path=str(tmp_path / "transport-pending.sqlite"),
+        world_id="world:transport",
+        renderer=renderer,
+        now=lambda: NOW,
+    )
+    request = _request(
+        kind="media_render",
+        action_id="action:media-render:pending",
+        idempotency_key="media-render:plan:pending",
+        body=_PLAN_BODY,
+        content_type="application/vnd.world-v2.media-plan+json",
+    )
+    first = await transport.send(request)
+    assert isinstance(first, DispatchPending)
+    assert first.idempotency_mode == "effect_once"
+    assert first.deadline > first.lookup_after
+    assert renderer.calls == 1
+    assert (
+        await transport.lookup(
+            idempotency_key=request.idempotency_key,
+            request_fingerprint=request.fingerprint,
+        )
+        is None
+    )
+
+    again = await transport.send(request)
+    assert isinstance(again, DispatchPending)
+    assert renderer.calls == 2
+
+    renderer.pending = False
+    delivered = await transport.send(request)
+    assert delivered.status == "delivered"
+    assert renderer.calls == 3
+    assert await transport.send(request) == delivered
+    assert renderer.calls == 3
     transport.close()

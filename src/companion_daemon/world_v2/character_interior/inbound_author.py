@@ -30,6 +30,18 @@ from ..companion_identity import (
 )
 from ..model_completion import ChatCompletionModel
 from ..present_prompt import (
+    SLIM_COME_BACK_IN_NOT_A_DURATION,
+    SLIM_COME_BACK_PAIR_INCOMPLETE,
+    SLIM_COMMITMENT_TRIPLET_INCOMPLETE,
+    SLIM_COMMITMENT_WE_ARE_INVALID,
+    SLIM_DECLARED_DISPLAY_INVALID,
+    SLIM_HOW_IT_LANDED_INVALID,
+    SLIM_LATER_NOT_A_DURATION,
+    SLIM_LATER_REQUIRES_TEXT,
+    SLIM_RELATIONSHIP_DELTAS_UNREADABLE,
+    SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE,
+    SLIM_WAIT_NOT_A_DURATION,
+    SLIM_WAIT_PAIR_INCOMPLETE,
     attach_hitchhiked_relationship_residue,
     combined_turn_system_lead,
     compact_gate_recall_instruction,
@@ -37,6 +49,7 @@ from ..present_prompt import (
     forced_tool_recall_instruction,
     reply_only_bubble_clause,
     reply_only_completion_clause,
+    reply_only_slim_shape_specimen,
     slim_consider_instruction,
 )
 from ..source_closure_lane import SourceClosureReselectionLane
@@ -58,7 +71,7 @@ from .inbound_wire import (
     _life_authority_availability_from_messages,
     _split_expression_episode_disposition,
     _provider_invocation_identity,
-    _proposal_from_model_text as materialize_expression_draft,
+    _proposal_from_model_text as _strict_materialize_expression_draft,
     _source_closure_reselection_envelope,
     _stream_unit_identity,
     _trace_source_reselection_materialization_failure,
@@ -66,6 +79,7 @@ from .inbound_wire import (
     _compile_combined_cognition_envelope,
     _expression_tool_reselection_kwargs,
     parse_character_recall_request,
+    rejected_role_payload_kwargs,
     claim_repair_instruction,
     complete_bounded_validation_reselection,
     is_authored_expression_draft_shape_violation,
@@ -95,6 +109,8 @@ from ..deliberation import (
     mark_first_role_provider_entry,
 )
 from ..expression_draft import (
+    ExpressionBeatDraftChoice,
+    ExpressionDraft,
     ExpressionDraftCapabilities,
     SourceRefAliasTable,
     TEXT_ONLY_EXPRESSION_CAPABILITIES,
@@ -104,6 +120,7 @@ from ..expression_draft import (
     validate_expression_private_turn_state,
     world_claim_source_ref_aliases_by_scope,
 )
+from ..json_wire_repair import loads_one_json_object
 from ..isolated_source_closure_trace import (
     SourceClosureTraceStage,
     emit_source_closure_trace,
@@ -175,6 +192,104 @@ _APPRAISAL_AFFECT_FIELDS = {
 }
 logger = logging.getLogger(__name__)
 
+_EXPRESSION_DRAFT_KNOWN_KEYS = frozenset(ExpressionDraft.model_fields) | {
+    "beat",
+    "beats",
+    "episode_disposition",
+    "leading_typing_beat",
+    "messages",
+    "photo",
+    "type",
+}
+_EXPRESSION_BEAT_KNOWN_KEYS = frozenset(ExpressionBeatDraftChoice.model_fields)
+_NULL_PADDING_EXPRESSION_KEYS = frozenset(
+    {
+        "delay_seconds",
+        "episode_disposition",
+        "expires_after_seconds",
+        "impulse_summary",
+        "leading_typing_beat",
+        "media_source_refs",
+        "response_expectation",
+        "response_expectation_assessment",
+        "revisit",
+        "turn_posture",
+        "variation_profile",
+        "world_claims",
+    }
+)
+_VIOLATION_ZH_PREFIXES: tuple[tuple[str, str], ...] = (
+    (
+        "authored ExpressionDraft is missing explicit fields:",
+        "你这次的表达草稿漏了必须由你亲口写明的字段。空数组也要写出来，不要省略键。缺的字段：",
+    ),
+    (
+        "media request requires an immediate expression",
+        "media_request 只有配 timing_choice=now 才能执行；later 或 silent 不能带照片。",
+    ),
+    (
+        "Input should be an object",
+        "有个字段写成了字符串，但契约要的是对象。常见是 response_expectation：要么省略，要么写成带 hoped_response / wait_seconds 的对象，不要写 awaiting_reply 这种单词。",
+    ),
+    (
+        "Extra inputs are not permitted",
+        "有字段契约不认。常见是 beats 里多写了 note 这类键；每个 beat 只留 modality 和对应内容（text / reaction_id / sticker_id）。",
+    ),
+    (
+        "unknown source-ref alias:",
+        "attended_source_refs 里的短名在当前钉住的 Context 对不上。请只用快照里出现过的 source_ref，没有就写成 []。",
+    ),
+    (
+        "media request source lacks immutable event authority",
+        "你点的照片来源在当前钉住的 Context 里没有不可变事件权威。这轮可以先发文字：media_request 写成 none，media_source_refs 写成 []。若真要动媒体，只用快照里已打开、带事件权威的候选。",
+    ),
+    (
+        "reply_only slim payload exceeds text-only capability",
+        "reply_only 不能带照片或媒体。若你这轮真的要动媒体，请改用 result_kind=full_turn，并在 payload 里写 media_request。",
+    ),
+    (
+        "visible span must occur exactly once",
+        "关系承诺或互动动作里的 visible_text_span 必须在你发出的某一句原话里完整出现一次。",
+    ),
+    (
+        "combined cognition must contain exactly appraisal_draft and expression_draft",
+        "这一轮需要完整的 appraisal_draft 和 expression_draft；full_turn 请用 protocol/appraisal_draft/events，reply_only 可用 messages。",
+    ),
+    (
+        "compact gate carrier payload_json is invalid",
+        "payload_json 不是一层合法 JSON。常见原因是末尾多了一个 }，或字符串里有未转义的英文双引号。"
+        "请把 payload_json 写成一个对象，或只包一层合法 JSON 字符串；引用别人的话用「」。",
+    ),
+    (
+        "compact gate carrier payload has a duplicate field",
+        "payload_json 里出现了重复字段。每个键只写一次；改完的完整对象覆盖旧的，不要并排写两个同名键。",
+    ),
+    (
+        "compact gate carrier has a duplicate field",
+        "投递对象里出现了重复字段。每个键只写一次。",
+    ),
+    (
+        "yield posture cannot authorize an immediate expression",
+        "turn_posture=yield 表示这轮不说话，不能配 timing_choice=now。",
+    ),
+    (
+        "silent expression cannot smuggle visible beats",
+        "timing_choice=silent 时 beats 必须是空数组，不能夹带可见内容。",
+    ),
+    (
+        "immediate expression cannot select a due window",
+        "timing_choice=now 时不要写 delay_seconds 或 expires_after_seconds。",
+    ),
+    (
+        "later expression requires a relative due window",
+        "timing_choice=later 时必须同时写 delay_seconds 和 expires_after_seconds。",
+    ),
+    (
+        "visible expression requires at least one beat",
+        "要开口时 beats 至少要有一条可见内容；沉默请明确写 timing_choice=silent 且 beats=[]。",
+    ),
+)
+
 
 def _compact_gate_system_content(
     *,
@@ -226,10 +341,21 @@ def _compact_gate_system_content(
         + compact_gate_recall_instruction()
         + slim_consider_instruction()
         + "\n\nREPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON:\n"
-        '{"messages":["<role:visible_text>"],"felt":"<role:text>"}\n'
-        "END REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON.\n"
+        + json.dumps(
+            reply_only_slim_shape_specimen(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        + "\nEND REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON.\n"
+        "messages 和 felt 是这一轮说话和读法的形状。"
+        "其余键在范本里写成 null，只是让你看见它们存在：null 就是「这一轮不用」，"
+        "省略这些键和写成 null 完全一样。看见键名不是建议你填。省略是常态。"
+        "只有你这轮真的要用那个效果时才写非空值。宿主从不把 null 换成默认值。\n"
         "For result_kind=reply_only, payload_json is usually this slim object. "
         "messages may be empty for silence or several strings for several bubbles. "
+        "Optional keys are shown as null so the available decisions are visible; "
+        "null is absence, and omitting those keys is the normal case, never a missing "
+        "field. Seeing a key is not a request to fill it. "
         "Replace every marker with your own scalar, object, or null; never copy "
         "marker text, and a literal null is absence you chose, never a default "
         "the host substitutes for you.\n"
@@ -267,6 +393,11 @@ def _compact_gate_system_content(
             separators=(",", ":"),
         )
         + "\nEND FULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON.\n"
+        "full_turn 的 events[].private_turn_state 里，contract / inner_state_summary / "
+        "attended_source_refs 之外的键在范本里写成 null，只是让你看见它们存在。"
+        "null 就是这一轮不用；省略这些键和写成 null 完全一样。看见键名不是建议你填。省略是常态。"
+        "declared_display 在 reply_only 写在 slim 顶层，在 full_turn 写在 private_turn_state；"
+        "收件人由宿主绑定，不要自己写 recipient_ref。\n"
         "For result_kind=full_turn, the decoded payload_json object copies this "
         "specimen's exact root and events transport skeleton. Its root has exactly "
         "protocol, appraisal_draft, and events; a root field named contract is "
@@ -301,14 +432,305 @@ def _compact_gate_voice_close() -> str:
         "都按你此刻真实的想法；说话习惯以最前面的人设为准。\n"
         "长度和条数跟着你真正想说的东西走：没什么要说就短，心里有话就说透，"
         "不想说就不说。不用每条都完整、都圆满，也不用每条都反问。\n"
+        "slim 范本里那些 null 只是让你看见这一轮还能写哪些决定，不是一张要填的表。"
+        "省略是常态；看见键名不是建议你填。写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
         "还有一件事同样是你的：说出去的话这一轮就过去了，只有你写下的内心状态"
         "会留到下一次。真的高兴、真的烦、真的被冒犯、真的想他，就用 mood 把它"
         "留成一段持续的情绪（生气和温暖一样是可选项）；这件事对你有多重要用 "
         "matters_bp 说，够重你才会被再叫醒想起它；一直放不下的那句话写进 "
         "stuck_with_me 并把 keep_impression 设成 true；你们之间真的变了就写 "
-        "about_us / why_us / us_deltas。都不写也行，那就是这一轮什么都没留下。\n"
+        "about_us / why_us / us_deltas；"
+        "等他下一句才写 waiting_for 和 wait（两个一起）；"
+        "自己想过一阵再开口才写 come_back 和 come_back_in（两个一起）；"
+        "已经想好的话要延后发才写 later；"
+        "要声明你们现在是什么关系，才写 we_are、calling_it，并把那一句原话一字不差抄进 said_as，"
+        "而且那句话必须真的说出去；"
+        "想让媒体车道考虑一张图才写 photo（reply_only 不能带图，要用 full_turn）；"
+        "只在你决定让他看见带性意味的私密照片时才写 declared_display"
+        "（reply_only 写在顶层，full_turn 写在 private_turn_state；收件人由宿主绑定）。"
+        "都不写也行，那就是这一轮什么都没留下。\n"
         "payload_json 里那些可见文字就是你要发出去的原话。"
+        "如果 payload_json 是字符串，引用别人的原话请用「」或『』，"
+        "不要在字符串里直接打英文双引号——那会把这一层投递弄坏。"
+        "宿主仍会尽量读出你的意思，但那不是让你少写字段。"
     )
+
+
+def _pydantic_error_join(exc: BaseException) -> str:
+    errors_fn = getattr(exc, "errors", None)
+    if not callable(errors_fn):
+        return ""
+    try:
+        items = errors_fn()
+    except Exception:
+        return ""
+    parts: list[str] = []
+    for item in list(items)[:6]:
+        if not isinstance(item, dict):
+            continue
+        location = ".".join(str(part) for part in item.get("loc") or ())
+        parts.append(
+            f"{location}:{item.get('type', '')}:{str(item.get('msg', ''))[:120]}"
+        )
+    return " | ".join(parts)
+
+
+def _expression_contract_log_detail(exc: BaseException) -> str:
+    """Prefer a real reason over an empty pydantic errors() join.
+
+    Do not dump provider payload bodies (pydantic ``input_value``) into logs.
+    """
+
+    joined = _pydantic_error_join(exc)
+    if joined:
+        return joined[:1_000]
+    text = str(exc).strip().split("\n", 1)[0]
+    if "input_value" in str(exc) or len(text) > 240:
+        return (type(exc).__name__ + (": " + text if text else ""))[:240]
+    return (text or type(exc).__name__)[:1_000]
+
+
+def _role_readable_expression_violation(violation: object) -> str:
+    """Chinese wire-failure copy for the same-author constrained reselection."""
+
+    text = str(violation).strip()
+    joined = (
+        _pydantic_error_join(violation) if isinstance(violation, BaseException) else ""
+    )
+    if not text:
+        text = joined or "表达草稿没通过结构校验，原因记录是空的；请按当前契约重写完整结果。"
+    for stem in (
+        SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE,
+        SLIM_RELATIONSHIP_DELTAS_UNREADABLE,
+        SLIM_WAIT_PAIR_INCOMPLETE,
+        SLIM_WAIT_NOT_A_DURATION,
+        SLIM_COME_BACK_PAIR_INCOMPLETE,
+        SLIM_COME_BACK_IN_NOT_A_DURATION,
+        SLIM_COMMITMENT_TRIPLET_INCOMPLETE,
+        SLIM_COMMITMENT_WE_ARE_INVALID,
+        SLIM_DECLARED_DISPLAY_INVALID,
+        SLIM_HOW_IT_LANDED_INVALID,
+        SLIM_LATER_NOT_A_DURATION,
+        SLIM_LATER_REQUIRES_TEXT,
+    ):
+        if stem in text:
+            return text.split("\n", 1)[0][:640]
+    for prefix, chinese in _VIOLATION_ZH_PREFIXES:
+        if prefix in text:
+            if prefix == "authored ExpressionDraft is missing explicit fields:":
+                fields = text.split(":", 1)[-1].strip()
+                return chinese + fields
+            return chinese
+    if joined:
+        return "结构校验没过：" + joined[:640]
+    return "结构校验没过：" + text.split("\n", 1)[0][:640]
+
+
+def _role_failure_payload_kwargs(raw: str, violation: object) -> dict[str, str]:
+    kwargs = dict(rejected_role_payload_kwargs(raw if isinstance(raw, str) else "", violation))
+    kwargs["failure_detail"] = _role_readable_expression_violation(violation)[:4_000]
+    return kwargs
+
+
+_UNEXPLAINED_RESELECTION_DETAIL = (
+    "结构校验没过，但宿主没记下具体原因。请按当前契约重写一份完整结果。"
+)
+
+
+def _ensure_reselection_detail(kwargs: dict[str, Any]) -> dict[str, Any]:
+    detail = kwargs.get("failure_detail")
+    if not isinstance(detail, str) or not detail.strip():
+        kwargs["failure_detail"] = _UNEXPLAINED_RESELECTION_DETAIL
+    return kwargs
+
+
+def _postel_compact_gate_carrier(value: dict[str, Any]) -> dict[str, Any]:
+    """Accept extra braces / last-wins keys on payload_json before the gate expands."""
+
+    payload = value.get("payload_json")
+    if isinstance(payload, dict) or not isinstance(payload, str) or not payload.strip():
+        return value
+    loaded: object
+    try:
+        loaded = json.loads(payload)
+    except json.JSONDecodeError:
+        try:
+            loaded = loads_one_json_object(payload)
+        except (TypeError, ValueError):
+            return value
+    if not isinstance(loaded, dict):
+        return value
+    repaired = dict(value)
+    repaired["payload_json"] = loaded
+    return repaired
+
+
+def _coerce_media_request(value: object) -> str | object:
+    if value is True:
+        return "consider_available_candidate"
+    if value is False or value is None:
+        return "none"
+    if isinstance(value, str):
+        stripped = value.strip()
+        lowered = stripped.lower()
+        if lowered in {"", "none", "false", "no"}:
+            return "none"
+        if lowered in {"true", "photo", "yes", "consider_available_candidate"}:
+            return "consider_available_candidate"
+    return value
+
+
+def _postel_expression_draft(value: dict[str, Any]) -> dict[str, Any]:
+    """Accept lossless wire padding the host can fill; never invent her speech."""
+
+    cleaned: dict[str, Any] = {}
+    for key, item in value.items():
+        if key not in _EXPRESSION_DRAFT_KNOWN_KEYS:
+            continue
+        if item is None and key in _NULL_PADDING_EXPRESSION_KEYS:
+            continue
+        cleaned[key] = item
+    photo = cleaned.pop("photo", None)
+    if "media_request" not in cleaned:
+        if photo is True or (
+            isinstance(photo, str) and photo.strip().lower() in {"true", "yes", "photo"}
+        ):
+            cleaned["media_request"] = "consider_available_candidate"
+        else:
+            cleaned["media_request"] = "none"
+    else:
+        cleaned["media_request"] = _coerce_media_request(cleaned["media_request"])
+    if "media_source_refs" not in cleaned:
+        if isinstance(photo, str) and photo.strip() not in {"", "true", "false", "none", "yes", "photo"}:
+            cleaned["media_source_refs"] = [photo.strip()]
+        else:
+            cleaned["media_source_refs"] = []
+    elif cleaned["media_source_refs"] is None:
+        cleaned["media_source_refs"] = []
+    if "world_claims" not in cleaned or cleaned["world_claims"] is None:
+        cleaned["world_claims"] = []
+    if "cadence" not in cleaned or cleaned["cadence"] is None:
+        cleaned["cadence"] = "conversational"
+    for key in (
+        "response_expectation",
+        "response_expectation_assessment",
+        "revisit",
+        "leading_typing_beat",
+    ):
+        item = cleaned.get(key)
+        if item is not None and not isinstance(item, dict):
+            cleaned.pop(key, None)
+    if "messages" in cleaned and "beats" not in cleaned:
+        messages = cleaned.get("messages")
+        if (
+            isinstance(messages, list)
+            and messages
+            and all(isinstance(item, str) and item.strip() for item in messages)
+        ):
+            cleaned["beats"] = [
+                {"modality": "text", "text": item.strip()} for item in messages
+            ]
+            cleaned.pop("messages", None)
+    beats = cleaned.get("beats")
+    if isinstance(beats, list):
+        cleaned["beats"] = [
+            (
+                {key: item[key] for key in item if key in _EXPRESSION_BEAT_KNOWN_KEYS}
+                if isinstance(item, dict)
+                else item
+            )
+            for item in beats
+        ]
+    return cleaned
+
+
+def _postel_expression_raw(raw: str) -> str:
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return raw
+    if not isinstance(value, dict):
+        return raw
+    wrapped = value.get("expression_draft")
+    if set(value) == {"expression_draft"} and isinstance(wrapped, dict):
+        return json.dumps(
+            {"expression_draft": _postel_expression_draft(wrapped)},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    return json.dumps(
+        _postel_expression_draft(value),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def materialize_expression_draft(
+    *,
+    raw: str,
+    request: ModelInput,
+    capabilities: ExpressionDraftCapabilities,
+    quick_recovery: bool,
+    stable_identity_source_refs: frozenset[str] = frozenset(),
+    private_state_context_json: str | None = None,
+    source_ref_aliases: SourceRefAliasTable | None = None,
+    require_explicit_authored_decision_fields: bool = False,
+) -> dict[str, object]:
+    return _strict_materialize_expression_draft(
+        raw=_postel_expression_raw(raw) if isinstance(raw, str) else raw,
+        request=request,
+        capabilities=capabilities,
+        quick_recovery=quick_recovery,
+        stable_identity_source_refs=stable_identity_source_refs,
+        private_state_context_json=private_state_context_json,
+        source_ref_aliases=source_ref_aliases,
+        require_explicit_authored_decision_fields=require_explicit_authored_decision_fields,
+    )
+
+
+def _role_result_correction_instruction(correction: Mapping[str, object]) -> str:
+    failure_code = correction.get("failure_code")
+    if not isinstance(failure_code, str) or not failure_code:
+        raise ValueError("character interior role correction is malformed")
+    detail = correction.get("failure_detail")
+    if not isinstance(detail, str) or not detail.strip():
+        detail = "上一轮结果没通过结构校验，但宿主没把具体原因写清楚。请按当前契约重写一份完整结果。"
+    else:
+        detail = detail.strip()
+    return (
+        "\n\n结构校验失败，请按同一份钉住的 Context 和能力重写一份完整结果。"
+        f"失败码 {failure_code}。具体原因：{detail} "
+        "这只说明上一轮的投递形状不合法，不替你决定要不要说话、说什么、或什么心情。"
+    )
+
+
+# Optional PrivateTurnState keys shown as JSON null in envelope specimens.
+# Null is absence: seeing the key is not a request to fill it. Keep this
+# tuple aligned with PrivateTurnState.model_fields minus the three required
+# skeleton keys; a missing name here is a capability she cannot see.
+PRIVATE_TURN_STATE_OPTIONAL_SPECIMEN_KEYS = (
+    "keep_impression",
+    "noticed",
+    "about_us",
+    "why_us",
+    "we_are",
+    "calling_it",
+    "said_as",
+    "declared_display",
+)
+
+
+def _private_turn_state_shape_specimen() -> dict[str, object]:
+    """full_turn / envelope private_turn_state: required markers, optionals as null."""
+
+    specimen: dict[str, object] = {
+        "contract": "private-turn-state.1",
+        "inner_state_summary": "<role:private_state_text>",
+        "attended_source_refs": [],
+    }
+    for key in PRIVATE_TURN_STATE_OPTIONAL_SPECIMEN_KEYS:
+        specimen[key] = None
+    return specimen
 
 
 def _compact_full_turn_transport_grammar(
@@ -355,11 +777,7 @@ def _compact_full_turn_transport_grammar(
                 "events": [
                     {
                         "type": "head",
-                        "private_turn_state": {
-                            "contract": "private-turn-state.1",
-                            "inner_state_summary": "<role:private_state_text>",
-                            "attended_source_refs": [],
-                        },
+                        "private_turn_state": _private_turn_state_shape_specimen(),
                         "timing_choice": "<role:choose:timing_choice>",
                         "turn_posture": "<role:choose:turn_posture>",
                         "cadence": "<role:choose:cadence>",
@@ -479,11 +897,7 @@ def _compact_reply_only_transport_grammar(
                 "events": [
                     {
                         "type": "head",
-                        "private_turn_state": {
-                            "contract": "private-turn-state.1",
-                            "inner_state_summary": "<role:private_state_text>",
-                            "attended_source_refs": [],
-                        },
+                        "private_turn_state": _private_turn_state_shape_specimen(),
                         "timing_choice": "<role:choose:reply_only_timing>",
                         "turn_posture": "<role:choose:reply_only_turn_posture>",
                         "cadence": "<role:choose:cadence>",
@@ -1508,10 +1922,23 @@ class _PairedExpressionMaterializer:
         if pending is None:
             failed_key = _failed_cache_key(request)
             if key in self._owner._terminal_authored_expression_combined:
-                raise ValidationTechnicalFailure("authored_expression_reselection_invalid")
+                stored = self._owner._failed_details.get(failed_key)
+                extra = (
+                    _role_failure_payload_kwargs(stored.raw, stored.violation)
+                    if stored is not None
+                    else {"failure_detail": "表达草稿第二次仍没通过结构校验。"}
+                )
+                raise ValidationTechnicalFailure(
+                    "authored_expression_reselection_invalid",
+                    **_ensure_reselection_detail(extra),
+                )
             if key in self._owner._terminal_failed_combined:
-                raise ValidationTechnicalFailure("recall_choice_reselection_invalid")
+                raise ValidationTechnicalFailure(
+                    "recall_choice_reselection_invalid",
+                    failure_detail="回忆选择第二次仍没通过结构校验。",
+                )
             if failed_key in self._owner._failed_combined:
+                stored = self._owner._failed_details.get(failed_key)
                 self._owner._failed_combined.discard(failed_key)
                 repaired = await self._owner._retry_failed_expression_before_failsafe(
                     request,
@@ -1519,15 +1946,26 @@ class _PairedExpressionMaterializer:
                 )
                 if repaired is not None:
                     return repaired
+                extra = (
+                    _role_failure_payload_kwargs(stored.raw, stored.violation)
+                    if stored is not None
+                    else {
+                        "failure_detail": (
+                            "表达草稿没通过结构校验，且没有留下可核对的失败原因。"
+                        )
+                    }
+                )
                 raise ValidationTechnicalFailure(
                     "paired_expression_reselection_invalid",
                     attempted_model_id=self._owner._model_id_for(request),
                     attempted_model_version=self._owner.VERSION,
+                    **_ensure_reselection_detail(extra),
                 )
             raise ValidationTechnicalFailure(
                 "paired_expression_missing",
                 attempted_model_id=self._owner._model_id_for(request),
                 attempted_model_version=self._owner.VERSION,
+                failure_detail="这一轮没有可用的表达草稿；请按当前契约重写一份完整结果。",
             )
         carried_recall_trace = pending.recall_trace
         carried_prefetch_trace = pending.prefetch_trace
@@ -1598,6 +2036,10 @@ class _PairedExpressionMaterializer:
                 attempted_model_id=pending.model_id,
                 attempted_model_version=self._owner.VERSION,
                 usage=pending.usage,
+                failure_detail=(
+                    "这一轮的表达草稿和当时一起写的 appraisal 对不上号了。"
+                    "请按当前钉住的 Context 重写一份完整结果。"
+                ),
             )
         usage = pending.usage
         winning_model_call_id = pending.winning_model_call_id
@@ -1625,6 +2067,7 @@ class _PairedExpressionMaterializer:
                 attempted_model_id=pending.model_id,
                 attempted_model_version=self._owner.VERSION,
                 usage=pending.usage,
+                **_role_failure_payload_kwargs(pending.raw, exc),
             ) from exc
         reviewer = self._owner._source_closure_reviewer
         if reviewer is not None:
@@ -1669,6 +2112,7 @@ class _PairedExpressionMaterializer:
                         attempted_model_id=winning_model_id,
                         attempted_model_version=self._owner.VERSION,
                         usage=usage,
+                        **_role_failure_payload_kwargs(pending.raw, violation),
                     ) from ValueError(violation)
                 if not begin_validation_reselection_recovery():
                     _trace_source_closure_rejection(
@@ -1762,6 +2206,10 @@ class _PairedExpressionMaterializer:
                         attempted_model_id=(repaired_result.winning_model_id or pending.model_id),
                         attempted_model_version=self._owner.VERSION,
                         usage=usage,
+                        **_role_failure_payload_kwargs(
+                            repaired_result.raw,
+                            source_closure_violation(corrected_review),
+                        ),
                     ) from ValueError(source_closure_violation(corrected_review))
                 proposal = materialize_expression_draft(
                     raw=repaired_result.raw,
@@ -2104,6 +2552,17 @@ class _InboundCharacterAuthor:
 
         if not failure_code:
             raise ValueError("character interior correction failure code is missing")
+        key = _cache_key(request)
+        failed_key = _failed_cache_key(request)
+        self._failed_combined.discard(failed_key)
+        self._failed_details.pop(failed_key, None)
+        self._terminal_authored_expression_combined.discard(key)
+        self._terminal_failed_combined.discard(key)
+        self._pending.pop(key, None)
+        for item_key in [item for item in self._candidate_pending if item[0] == key]:
+            self._candidate_pending.pop(item_key, None)
+        if self.stream_provider_available(request):
+            return await self.propose_stream_head(request)
         return await self.propose(request)
 
     def stream_provider_available(self, request: ModelInput) -> bool:
@@ -2146,6 +2605,15 @@ class _InboundCharacterAuthor:
 
         if not self.stream_provider_available(request):
             raise RuntimeError("character interior stream provider is unavailable")
+        key = _cache_key(request)
+        previous = self._interior_streams.pop(key, None)
+        if previous is not None:
+            # Cancel before reserving a new generation token. Combined stream
+            # construction reuses ``_unit_stream_key``; cancelling afterwards
+            # would void the token the replacement just captured, so the
+            # same-Occasion correction would replay the rejected head instead
+            # of calling the role model again.
+            previous.cancel()
         route = self._routed_expression._route(request)  # noqa: SLF001
         selected_provider = self._selected_provider(request)
         stream = _CombinedInteriorStreamProvider(
@@ -2155,10 +2623,6 @@ class _InboundCharacterAuthor:
             temperature=self._temperature,
             model_version=self.VERSION,
         )
-        key = _cache_key(request)
-        previous = self._interior_streams.pop(key, None)
-        if previous is not None:
-            previous.cancel()
         self._interior_streams[key] = stream
         self._interior_streams.move_to_end(key)
         while len(self._interior_streams) > 32:
@@ -2358,6 +2822,10 @@ class _InboundCharacterAuthor:
                         usage=usage,
                         provider_subcall_audits=provider_subcall_audits,
                         authored_candidate_audits=exc.authored_candidate_audits,
+                        original_failure_code=exc.original_failure_code,
+                        failure_detail=exc.failure_detail,
+                        rejected_raw_hash=exc.rejected_raw_hash,
+                        rejected_raw_excerpt=exc.rejected_raw_excerpt,
                     ) from exc
                 provider_subcall_audits = review_capture.finalize()
             review = review_result.review
@@ -2370,6 +2838,7 @@ class _InboundCharacterAuthor:
                     attempted_model_version=self.VERSION,
                     usage=usage,
                     provider_subcall_audits=provider_subcall_audits,
+                    **_role_failure_payload_kwargs(expression_raw, source_closure_violation(review)),
                 ) from ValueError(source_closure_violation(review))
 
         physical = PhysicalProviderInvocationAudit(
@@ -2590,6 +3059,7 @@ class _InboundCharacterAuthor:
                 "authored_expression_reselection_invalid",
                 attempted_model_id=self._model_id_for_provider(request, provider),
                 attempted_model_version=self.VERSION,
+                **_role_failure_payload_kwargs(raw, violation),
             )
         is_private_state = is_private_turn_state_violation(violation)
         violation_text = str(violation)
@@ -2766,6 +3236,7 @@ class _InboundCharacterAuthor:
                     "authored_expression_reselection_invalid",
                     attempted_model_id=reselection_model_id,
                     attempted_model_version=self.VERSION,
+                    **_role_failure_payload_kwargs(raw, exc),
                 ) from exc
             return None
 
@@ -2855,6 +3326,7 @@ class _InboundCharacterAuthor:
                     attempted_model_id=reselection_model_id,
                     attempted_model_version=self.VERSION,
                     usage=reselection.usage,
+                    **_role_failure_payload_kwargs(corrected_raw, exc),
                 ) from exc
             return None
         if source_closure_review is not None:
@@ -2986,6 +3458,7 @@ class _InboundCharacterAuthor:
                 attempted_model_id=self._model_id_for_provider(request, provider),
                 attempted_model_version=self.VERSION,
                 usage=reselection.usage,
+                **_role_failure_payload_kwargs(corrected_raw, exc),
             ) from exc
         logger.warning("private recall-choice reselection produced a final paired cognition")
         record_shape_repair()
@@ -3064,6 +3537,7 @@ class _InboundCharacterAuthor:
                 attempted_model_id=self._model_id_for_provider(request, provider),
                 attempted_model_version=self.VERSION,
                 usage=usage,
+                **_role_failure_payload_kwargs(detail.raw, exc),
             ) from exc
         if repaired_result.paired_appraisal_proposal != original_appraisal:
             # The appraisal candidate has already left this materializer. A
@@ -3076,6 +3550,10 @@ class _InboundCharacterAuthor:
                 attempted_model_id=self._model_id_for_provider(request, provider),
                 attempted_model_version=self.VERSION,
                 usage=usage,
+                **_role_failure_payload_kwargs(
+                    detail.raw,
+                    "paired appraisal must stay unchanged during expression reselection",
+                ),
             )
         reviewer = self._source_closure_reviewer
         if reviewer is not None:
@@ -3310,16 +3788,6 @@ class _InboundCharacterAuthor:
             if isinstance(inner_snapshot, dict)
             else None
         )
-        if isinstance(correction, dict):
-            failure_code = correction.get("failure_code")
-            if not isinstance(failure_code, str) or not failure_code:
-                raise ValueError("character interior role correction is malformed")
-            messages[0]["content"] += (
-                "\n\nROLE RESULT HARD-BOUNDARY CORRECTION: your preceding result failed "
-                f"the exact wire with failure_code={failure_code}. Return one fresh, complete "
-                "choice from the same pinned Context and capabilities. This failure says nothing "
-                "about whether to speak, what to feel, or what to say; those remain your decision."
-            )
         provider = transport_provider or self._selected_provider(request)
         compact_gate = bool(
             compact_gate
@@ -3391,6 +3859,8 @@ class _InboundCharacterAuthor:
                 "instead choose the available recall-first option, return that exact recall "
                 "object normally; it has no expression continuation."
             )
+        if isinstance(correction, dict):
+            messages[0]["content"] += _role_result_correction_instruction(correction)
         model_id = self._model_id_for_provider(request, provider)
         cognition_contract = (
             InboundToolContracts().compact_gate_for(
@@ -3627,6 +4097,10 @@ class _InboundCharacterAuthor:
                     attempted_model_id=model_id,
                     attempted_model_version=self.VERSION,
                     usage=_combine_usage(usage, terminal.usage, request.call_id),
+                    original_failure_code=terminal.original_failure_code,
+                    failure_detail=terminal.failure_detail,
+                    rejected_raw_hash=terminal.rejected_raw_hash,
+                    rejected_raw_excerpt=terminal.rejected_raw_excerpt,
                 ) from terminal
             if corrected_result is None:
                 raise
@@ -3924,12 +4398,17 @@ class _InboundCharacterAuthor:
                 source_ref_aliases=source_ref_aliases,
                 origin_request=expression_request,
             )
-            # H1b: illegal envelope is a technical failure. Same-contract
-            # retry is disabled; the next Occasion may try again.
+            # Same-contract retry on this lane is disabled. CharacterInterior
+            # spends one same-author correction on this Occasion after
+            # inbound_turn lifts this into _RoleResultContractError.
             raise ValidationTechnicalFailure(
                 "authored_expression_reselection_invalid",
+                model_call_id=winning_provider_identity.model_call_id,
+                request_hash=winning_provider_identity.request_hash,
                 attempted_model_id=model_id,
                 attempted_model_version=self.VERSION,
+                usage=usage,
+                **_role_failure_payload_kwargs(raw, exc),
             ) from exc
         key = _cache_key(request)
 
@@ -3957,6 +4436,7 @@ class _InboundCharacterAuthor:
                 attempted_model_id=model_id,
                 attempted_model_version=self.VERSION,
                 usage=usage,
+                **_role_failure_payload_kwargs(raw, target_error),
             ) from target_error
         except (TypeError, ValueError) as appraisal_error:
             raise ValidationTechnicalFailure(
@@ -3966,8 +4446,9 @@ class _InboundCharacterAuthor:
                 attempted_model_id=model_id,
                 attempted_model_version=self.VERSION,
                 usage=usage,
+                **_role_failure_payload_kwargs(raw, appraisal_error),
             ) from appraisal_error
-        expression_value = dict(value["expression_draft"])
+        expression_value = _postel_expression_draft(dict(value["expression_draft"]))
         expression_raw = json.dumps(expression_value, ensure_ascii=False, separators=(",", ":"))
         expression_raw, episode_disposition = _split_expression_episode_disposition(
             expression_raw,
@@ -4012,10 +4493,7 @@ class _InboundCharacterAuthor:
                 "combined expression failed its exact contract: shape=%s error_type=%s detail=%s",
                 _visible_expression_shape(expression_value),
                 type(exc).__name__,
-                " | ".join(
-                    f"{'.'.join(str(part) for part in item.get('loc', ()))}:{item.get('type', '')}:{str(item.get('msg', ''))[:120]}"
-                    for item in getattr(exc, "errors", lambda: ())()[:6]
-                ),
+                _expression_contract_log_detail(exc),
             )
             expression_valid = False
         else:
@@ -4089,6 +4567,7 @@ class _InboundCharacterAuthor:
                 attempted_model_id=model_id,
                 attempted_model_version=self.VERSION,
                 usage=usage,
+                failure_detail="这一轮缺少 appraisal_draft。full_turn 请写 protocol/appraisal_draft/events；reply_only 可把心情写在 felt。",
             )
         if expression_valid:
             self._terminal_failed_combined.discard(_cache_key(expression_request))
@@ -4126,41 +4605,58 @@ class _InboundCharacterAuthor:
                 self._pending.move_to_end(key)
                 while len(self._pending) > _MAX_PENDING_DRAFTS:
                     self._pending.popitem(last=False)
-        else:
-            self._pending.pop(key, None)
-            # The appraisal bytes may still be valid even when the paired
-            # expression draft is not.  Preserve a same-trigger marker plus
-            # the exact violation so the post-acceptance expression lane can
-            # spend one corrective retry that names the concrete problem
-            # before it falls back to the bounded role-model recovery. When the
-            # in-attempt corrective was already spent (and failed once), do
-            # not queue the same correction again: repeating an identical
-            # failed repair only delays the bounded model recovery.
-            failed_key = _failed_cache_key(expression_request)
-            self._failed_combined.add(failed_key)
-            if violation is not None and not corrective_spent:
-                self._remember_failed_expression(
-                    failed_key,
-                    messages=repair_messages,
-                    raw=raw,
-                    violation=violation,
-                    usage=usage,
-                    private_state_context_json=(provider_expression_request.model_content_json),
-                    source_ref_aliases=source_ref_aliases,
-                    origin_request=expression_request,
-                )
-        return ModelOutput(
-            model_id=model_id,
-            model_version=self.VERSION,
-            raw_proposal=appraisal_proposal,
-            input_tokens=usage.input_tokens if usage is not None else None,
-            output_tokens=usage.output_tokens if usage is not None else None,
+            return ModelOutput(
+                model_id=model_id,
+                model_version=self.VERSION,
+                raw_proposal=appraisal_proposal,
+                input_tokens=usage.input_tokens if usage is not None else None,
+                output_tokens=usage.output_tokens if usage is not None else None,
+                usage=usage,
+                winning_model_call_id=winning_provider_identity.model_call_id,
+                winning_request_hash=winning_provider_identity.request_hash,
+                recall_trace=recall_trace,
+                prefetch_trace=prefetch_trace,
+                presented_prefetch_traces=presented_prefetch_traces,
+            )
+        self._pending.pop(key, None)
+        # The appraisal bytes may still be valid even when the paired
+        # expression draft is not.  Preserve a same-trigger marker plus
+        # the exact violation so Character Interior can spend one
+        # same-author correction that names the concrete problem.
+        # Same-contract repair on this lane is disabled; raising here
+        # (instead of returning a lone appraisal) is what lets Interior
+        # see paired_expression_reselection_invalid with a readable detail.
+        failed_key = _failed_cache_key(expression_request)
+        self._failed_combined.add(failed_key)
+        if violation is not None and not corrective_spent:
+            self._remember_failed_expression(
+                failed_key,
+                messages=repair_messages,
+                raw=raw,
+                violation=violation,
+                usage=usage,
+                private_state_context_json=(provider_expression_request.model_content_json),
+                source_ref_aliases=source_ref_aliases,
+                origin_request=expression_request,
+            )
+        extra = (
+            _role_failure_payload_kwargs(raw, violation_object or violation)
+            if (violation_object or violation) is not None
+            else {"failure_detail": _UNEXPLAINED_RESELECTION_DETAIL}
+        )
+        failure_code = (
+            "authored_expression_reselection_invalid"
+            if authored_field_violation
+            else "paired_expression_reselection_invalid"
+        )
+        raise ValidationTechnicalFailure(
+            failure_code,
+            model_call_id=winning_provider_identity.model_call_id,
+            request_hash=winning_provider_identity.request_hash,
+            attempted_model_id=model_id,
+            attempted_model_version=self.VERSION,
             usage=usage,
-            winning_model_call_id=winning_provider_identity.model_call_id,
-            winning_request_hash=winning_provider_identity.request_hash,
-            recall_trace=recall_trace,
-            prefetch_trace=prefetch_trace,
-            presented_prefetch_traces=presented_prefetch_traces,
+            **_ensure_reselection_detail(extra),
         )
 
     def _remember_failed_expression(
@@ -4278,10 +4774,16 @@ def _parse_combined(raw: str) -> dict[str, dict[str, Any]]:
         candidate = "\n".join(lines[1:-1]).strip()
     try:
         value = json.loads(candidate)
-    except json.JSONDecodeError as exc:
-        raise ValueError("combined cognition model did not return one JSON object") from exc
+    except json.JSONDecodeError:
+        try:
+            value = loads_one_json_object(candidate)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "combined cognition model did not return one JSON object"
+            ) from exc
     if not isinstance(value, dict):
         raise ValueError("combined cognition model must return an object")
+    value = _postel_compact_gate_carrier(value)
     if len(value) == 2:
         aliases: dict[str, object] = {}
         for key, item in value.items():

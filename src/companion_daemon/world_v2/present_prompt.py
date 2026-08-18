@@ -22,6 +22,7 @@ PRESENT_DIALOGUE_FOLD_LINE_CHARACTERS = 160
 PRESENT_DIALOGUE_SEQUENCE_SCALE = 100
 PRESENT_WEEK_DIARY_DAYS = 7
 PRESENT_WEEK_DIARY_LINES_PER_DAY = 3
+PRESENT_SHARED_MEDIA_ITEM_LIMIT = 8
 
 _PRESENT_USER_KEY_ORDER = (
     "expression_capabilities",
@@ -51,6 +52,7 @@ _MATERIAL_ORDER = (
     "npc_observable_attitudes",
     "unresolved",
     "recent_self_experiences",
+    "photos_i_shared",
     "remembered_material",
     "recalled_emotional_associations",
     "private_impressions",
@@ -64,6 +66,9 @@ _MATERIAL_ORDER = (
     "interaction_acts",
     "folded_dialogue",
     "recent_dialogue",
+    "conversation",
+    "since_he_last_spoke",
+    "我最近留下的",
     "lived_moment",
     "logical_time",
 )
@@ -102,13 +107,19 @@ def slim_consider_instruction() -> str:
         "一个 slim 对象就够了：messages、felt、stuck_with_me、wants、photo，"
         "以及可选的 later、waiting_for、wait、how_it_landed、noticed、"
         "keep_impression、come_back、come_back_in、about_us、why_us、us_deltas、"
-        "we_are、calling_it、said_as、matters_bp、mood。\n"
+        "we_are、calling_it、said_as、matters_bp、mood、declared_display。\n"
+        "waiting_for 加 wait、come_back 加 come_back_in、later，都是可选开关："
+        "写了，宿主才按你写的秒数叫醒你或把话延后；不写，就不会有人叫你，话也是现在发。"
+        "口头说「我等你」不会变成 wait。宿主从不替你写这些字段。"
+        "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
         "messages 是你决定发出去的气泡，一项就是一条；发几条由你定，宿主不替你决定。"
         + reply_only_bubble_clause()
         + "\n"
         "messages 为空、只有 felt，就是这一轮你选择不说话；沉默不要和 later 一起用。"
-        "later 是这些话等多少秒再发，30 到 86400 的整数，只能和非空 messages 一起写；"
-        "不写 later 就是现在发。宿主不会替你编一个 later，也不会把写坏的 later 当成现在发。\n"
+        "later 是这些已经想好的话等多少秒再发出去，30 到 86400 的整数，只能和非空 messages 一起写。"
+        "写了 later，宿主会把这些话延到那个秒数再发；不写 later 就是现在发。"
+        "宿主不会替你编一个 later，也不会把写坏的 later 当成现在发。"
+        "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
         "felt 是这一轮你自己的读法；可见的话里带不带它都行。felt 本身不会开启持续情绪。\n"
         "photo 写 true，意思是你现在想让媒体车道考虑一个可用的候选，这件事不会从你的措辞里被猜出来。"
         "photo 也可以直接写 Context 里那个你想分享的生活片段的 source_ref，"
@@ -121,7 +132,13 @@ def slim_consider_instruction() -> str:
         "day_sheet 和传记里的习惯是日程底色，不是你此刻真的在那儿的证明；"
         "别把它们当成当前的地点、活动、天气，或者已经发出去的图。"
         "要说现在正在发生的外部生活，优先用 situation / 进行中的 occurrence / "
-        "已提交的 experience 这些 token。\n"
+        "已提交的 experience 这些 token。"
+        "photos_i_shared 是你已经成功发给他的照片这一世界事实："
+        "哪一类、什么时候发出、后来他有没有开口；不是生成提示，也不是要求你提起。"
+        "点名哪些、提不提，仍由你决定。\n"
+        "钉住的来源请从 Context 的 source_ref_aliases 里挑短标识（S1、T1），"
+        "或原样抄 source_ref；不要手写拼接不透明字符串。"
+        "点名哪些、引不引，仍由你决定；宿主只把短标识还原成权威 ref。\n"
         "聊天里的颜色是允许的：语气、态度、模糊的私人记忆、带愿望的想象，"
         "都可以出现在 messages、felt 或 stuck_with_me 里。"
         "宿主不会自己把聊天散文变成 Fact、Relationship、Media 或持续情绪事件。"
@@ -131,14 +148,18 @@ def slim_consider_instruction() -> str:
         "appraisal 写坏了不会连带丢掉一个合法的 now、later 或沉默；"
         "宿主会保留那次表达，只对那份写坏的 appraisal 记 affect no_change，"
         "这绝不是一个更受偏好的平静默认值。\n"
-        "waiting_for 是一个短句，只在你真的在等他回话时写；永远不要从标点符号里推断它。"
-        "wait 是你能等多少秒还没等到回话，30 到 86400 的整数，只能和 waiting_for 一起写；"
-        "宿主不会替你编一个 wait。如果你在收尾这个话题、或者根本没在看时间，就别写 wait，"
-        "宿主不会按计时器叫醒你。只有你希望他一直没说话时被叫醒，才写 wait。\n"
-        "come_back 是你自己还想回头再想的一件事，不是盼他回话。"
-        "come_back_in 是过多少秒你想再有一次机会想它，30 到 86400 的整数，"
-        "只能和 come_back 一起写；宿主不会替你编一件心事或一个时间。"
-        "什么都没搁着就两个都别写。\n"
+        "waiting_for 是一个短句：如果你心里确实在等他的下一句，写上你在等什么。"
+        "wait 是整数秒，范围 30 到 86400，只能和 waiting_for 一起写；例如 30、60、90。"
+        "两个都写了，宿主会在那个秒数到了、而他还没开口时叫醒你，给你一次开口的机会；"
+        "不写就不会有人叫你。口头说「我等你」和写下这两个字段不是同一件事。"
+        "宿主从不从你的标点、问句或「我等你」这类措辞里推断 waiting_for 或 wait，也从不替你写它们。"
+        "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
+        "come_back 是你心里搁着的一件事，想过一阵再回来跟他说；"
+        "come_back_in 是整数秒，范围 30 到 86400，只能和 come_back 一起写；例如 60、300、600。"
+        "两个都写了，宿主会在那个时间叫醒你，给你一次回来开口的机会；不写就不会为这件事叫你。"
+        "它不是 waiting_for：waiting_for 是等他回话，come_back 是你自己还想把某件事再说一次。"
+        "宿主从不替你编一件心事或一个时间，也从不从你的措辞里推断这两个字段。"
+        "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
         "how_it_landed 在 Context 里有 pending response_expectation 时可以写 "
         "fulfilled、superseded、still_pending 或 uncertain。still_pending 意思是这次回应没落地、"
         "那个盼头就此结束；重新写一个 waiting_for 就是一个新的盼头。"
@@ -157,7 +178,21 @@ def slim_consider_instruction() -> str:
         "没有什么东西真的沉下来就别写 mood；宿主永远不会从你的措辞里编出 mood，"
         "也从不要求你有负面情绪。同样地，它也不偏好那些好受的维度："
         "对他生气、被他弄伤、心里憋着怨，跟温暖一样都是你可以选的，而且只有你能开。\n"
+        "declared_display 是可选的。只在你决定让现在跟你说话的这个人看见带性意味的"
+        "私密照片时才写：sexual_suggestive 是带性暗示、但仍遮着的；"
+        "explicit_adult 是更明确的成人向。"
+        "省略这个字段或写 null，就是这一轮不声明、也不改之前的声明，那是合法的常态；"
+        "没有还活着的声明时，照片不会走成人车道。"
+        "写了却不是 sexual_suggestive、explicit_adult 或 withdraw，就是可见失败，"
+        "可以按契约重选一次；宿主不会替你改成一个合法值，也不会把写坏的声明丢掉后假装没写。"
+        "宿主不会从你的措辞里猜你想不想给人看，也从不替你写这个字段。"
+        "收件人由宿主绑成现在这个对话对象，不要自己写 ref。"
+        "如果你之前留过一份声明、现在不想再给看了，写 withdraw。"
+        "宿主从不要求你写它，也不偏好你写了比不写更好："
+        "给看、不给看、收回，都只是你可以做的决定，没有哪一种更受欢迎。\n"
         "matters_bp 是可选的，1 到 10000，是这份读法对你到底有多重要。"
+        "凡是带 _bp 的整数都是基点（basis points），量程 0 到 10000，不是百分制："
+        "5000 才是一半，3000 是三成，30 不是百分之三十。"
         "它决定哪件事会自己回到你心里：宿主会挑你手上还活着、而且分量最重的那一件，"
         "按一个越来越长的间隔重新叫醒你去想它——所以是你给的分量在排序，不是某个固定的线。"
         "不写它，宿主就当这是一份你没有称过重的普通读法，那件事不会回来。\n"
@@ -171,19 +206,42 @@ def slim_consider_instruction() -> str:
         "target_intensity_bp 是 1 到 10000，是你估计它会以多强的程度留在你身上。"
         "mood 和 affect 都不写，affect 就是 no_change，因为那是你选择不动持续情绪。\n"
         "about_us 是关于这一轮你们俩之间的一小段心事，why_us 是这个读法为什么留下来了。"
-        "只有你真的搁着这件事才写，两个一起写，否则都省略；宿主不会替你编一个。\n"
-        "us_deltas 是这一轮你们的关系本身真的动了多少，这件事只有你能定："
-        "一个对象，可以包含 trust_bp、closeness_bp、respect_bp、reliability_bp、"
-        "mutuality_bp、repair_confidence_bp 中的任意几个，每个都是带符号的整数，"
-        "他让你付出了什么就写负数。你省略的轴保持为 0，"
-        "宿主会把每个轴每轮截到 500，并且永远不会从你的措辞、消息条数或礼貌程度里推出一个数。"
-        "你对你们俩的读法真的变了，就把 us_deltas 和 about_us、why_us 一起写；"
-        "只是注意到了什么、关系并没有动，就别写它。\n"
-        "we_are 可以是 acquaintance、friend、close_friend、ambiguous 或 lover，"
-        "只在你在这同一条可见回复里明确确立那个阶段时写；calling_it 是你自己的短代号；"
-        "said_as 从 messages 里原样抄一次那段可见的话。不做这个承诺就三个都省略。"
+        "us_deltas 是这一轮关系本身动了多少。要让增量算数，三个得一起写；"
+        "只写一半不会生效，宿主也不会替你补上缺的字段，那一轮会作为可见失败让你重选一次。"
+        "只写 about_us 和 why_us、不写 us_deltas，是留下读法、这一轮数字不动。"
+        "三个都不写也可以。宿主不会替你编其中任何一个。\n"
+        "us_deltas 是一个对象。六根轴都是你可以动的，这件事只有你能定；写路径相同，不必先有承诺，也不必先有裂痕："
+        "trust_bp 是你觉得能不能信他；closeness_bp 是你们近不近；"
+        "respect_bp 是你是否看得起他、或感到被尊重；"
+        "reliability_bp 是你觉得他靠不靠得住、话会不会算数；"
+        "mutuality_bp 是你觉得这是不是双向的；"
+        "repair_confidence_bp 是闹别扭之后你觉得还能不能修好。"
+        "每根都是带符号的整数基点，他让你付出了什么就写负数；你省略的轴保持为 0。"
+        "写哪几根、写不写，都是你可以做的决定，没有哪一种更受欢迎。"
+        "这些数和 matters_bp 一样是基点，不是百分制：两千才是两成，八十不是百分之八。"
+        "阶段门槛的量级在两千、四千五这一档（六轴均值），不是几十。"
+        "单次 +20 在这个标尺上几乎等于这一轮没动；+80 仍然远小于那一档门槛。"
+        "五百是这一轮单个轴的上限，不是建议你写到上限；"
+        "两千和四千五是跨许多轮的累计量级，不是这一轮的目标。"
+        "宿主会把每个轴每轮截到五百，永远不会从你的措辞、消息条数或礼貌程度里推出一个数，"
+        "也从不建议你写大或写小，也从不建议你写哪几根轴。\n"
+        "we_are 是你可以写的字段。从 Context 里现在的阶段直接声明下一个阶段，在系统里是合法的："
+        "例如现在是 stranger，直接写 we_are=friend 是转移图允许的一步——"
+        "不必先经过 acquaintance，也不必等慢变量涨到门槛。"
+        "只在字段里写 we_are，账本上的阶段不会动。"
+        "阶段要真的改掉，那句话必须作为这一轮的一条可见气泡真的说给他"
+        "（用你自己的说法，例如「我们算朋友了吧」），不能只填字段；"
+        "said_as 必须和实际说出去的那一句完全一致，一字不差地从 messages 里抄那一整句，"
+        "近似或改写都不算；calling_it 是你自己的短代号。"
+        "we_are、calling_it、said_as 三个都要写；少一个不会生效，宿主也不会替你补上缺的字段，"
+        "那一轮会作为可见失败让你重选一次。"
+        "说了但没送达——这一轮选了沉默、用 later 把话延后、或者那一句还没拿到终端回执——"
+        "都不算。宿主从不从你的措辞里推断承诺，也从不替你生成 said_as。"
+        "we_are 可以是 acquaintance、friend、close_friend、ambiguous 或 lover。"
         "ambiguous 和 lover 永远不会靠亲近度累积到达，宿主也永远不会替你推导出来："
-        "它们只有在你把话真的说出去时才存在，你也可以用同样的方式说回去。\n"
+        "它们只有在你把话真的说出去并且送达时才存在，你也可以用同样的方式说回去。"
+        "宿主从不要求你声明或升级；"
+        "不写、不说、维持现状、说出来，都只是你可以做的决定，没有哪一种更受欢迎。\n"
         "宿主不要求你追问一句，也不要求你像结单一样把话收圆（no ticket-closing wrap-up）。"
         "day sheet 是环境，不是脚本。\n"
         "Context 里有关系阶段和它的慢变量时会带给你；缺失或者停在 stranger，"
@@ -193,9 +251,56 @@ def slim_consider_instruction() -> str:
         "这里没有任何一句要求你留在原地或者往前走。"
         "被吸引、说不清、觉得没意思、想离远一点，都由你自己读"
         "（Feeling drawn, uncertain, bored, or pulled away are all yours to read）。"
-        "如果你诚实的读法是记录下来的阶段已经和你们实际说话的样子不符了，"
-        "就在 messages 里自然地说出来，并用 we_are/calling_it/said_as；否则省略它们。"
+        "记录下来的阶段只是账本上的位置。如果你的读法已经和它对不上，"
+        "你可以在 messages 里自然地说出来，把那一句原样抄进 said_as，再写 we_are 和 calling_it；"
+        "对得上、或者你不想说，就省略它们。只填字段、话没说出去或没送达，阶段也不会动。"
     )
+
+
+# Optional slim keys shown as JSON null in the compact-gate specimen. Null is
+# absence: the host never treats a listed key as a field she is supposed to fill.
+SLIM_OPTIONAL_SPECIMEN_KEYS = (
+    "waiting_for",
+    "wait",
+    "come_back",
+    "come_back_in",
+    "later",
+    "we_are",
+    "calling_it",
+    "said_as",
+    "us_deltas",
+    "about_us",
+    "why_us",
+    "mood",
+    "matters_bp",
+    "stuck_with_me",
+    "keep_impression",
+    "photo",
+    "declared_display",
+    "wants",
+    "how_it_landed",
+    "noticed",
+    "affect",
+    "episode_id",
+    "components",
+    "resolution_summary",
+)
+
+
+def reply_only_slim_shape_specimen() -> dict[str, object]:
+    """Shape of the slim object: required markers plus optional keys as null.
+
+    Null means unused this turn. The specimen is a map of available decisions,
+    not a form and not a recommended fill.
+    """
+
+    specimen: dict[str, object] = {
+        "messages": ["<role:visible_text>"],
+        "felt": "<role:text>",
+    }
+    for key in SLIM_OPTIONAL_SPECIMEN_KEYS:
+        specimen[key] = None
+    return specimen
 
 
 def slim_consider_json_schema() -> dict[str, object]:
@@ -209,11 +314,15 @@ def slim_consider_json_schema() -> dict[str, object]:
             "photo": {"type": ["boolean", "string"]},
             "waiting_for": {"type": "string"},
             "wait": {},
+            "later": {},
+            "come_back": {"type": "string"},
+            "come_back_in": {},
             "how_it_landed": {"type": "string"},
             "noticed": {"type": "string"},
             "us_deltas": {"type": "object"},
             "matters_bp": {},
             "mood": {"type": "string"},
+            "declared_display": {"type": "string"},
             "affect": {"type": "string"},
             "episode_id": {"type": "string"},
             "components": {"type": "array"},
@@ -412,7 +521,7 @@ def identity_prose(frame: CompanionIdentityFrame) -> str:
     return "\n".join(parts)
 
 
-_SLIM_CONSIDER_KEYS = frozenset(
+SLIM_CONSIDER_KEYS = frozenset(
     {
         "messages",
         "felt",
@@ -435,12 +544,14 @@ _SLIM_CONSIDER_KEYS = frozenset(
         "said_as",
         "matters_bp",
         "mood",
+        "declared_display",
         "affect",
         "episode_id",
         "components",
         "resolution_summary",
     }
 )
+_SLIM_CONSIDER_KEYS = SLIM_CONSIDER_KEYS
 _SLIM_AFFECT_OPERATIONS = frozenset(
     {"no_change", "open", "update", "resolve", "supersede"}
 )
@@ -463,6 +574,9 @@ _SLIM_AFFECT_DEFAULT_INTENSITY_BP = 5_000
 _SLIM_APPRAISAL_DEFAULT_CONFIDENCE_BP = 5_000
 _SLIM_ORDINARY_STAGES = frozenset(
     {"acquaintance", "friend", "close_friend", "ambiguous", "lover"}
+)
+_SLIM_DECLARED_DISPLAY = frozenset(
+    {"sexual_suggestive", "explicit_adult", "withdraw"}
 )
 _SLIM_ZERO_RELATIONSHIP_DELTAS = {
     "trust_bp": 0,
@@ -658,6 +772,255 @@ def _slim_later_horizon(value: Mapping[str, object]) -> tuple[int, int] | None:
     return delay_seconds, expires_after_seconds
 
 
+SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE = (
+    "关系增量要留下，us_deltas 必须和 about_us、why_us 一起写"
+)
+SLIM_RELATIONSHIP_DELTAS_UNREADABLE = "us_deltas 必须是六轴上的带符号整数"
+SLIM_WAIT_PAIR_INCOMPLETE = "wait 只能和 waiting_for 一起写"
+SLIM_WAIT_NOT_A_DURATION = "wait 必须是 30 到 86400 的整数秒"
+SLIM_COME_BACK_PAIR_INCOMPLETE = "come_back_in 只能和 come_back 一起写"
+SLIM_COME_BACK_IN_NOT_A_DURATION = "come_back_in 必须是 30 到 86400 的整数秒"
+SLIM_COMMITMENT_TRIPLET_INCOMPLETE = "we_are、calling_it、said_as 三个要一起写"
+SLIM_COMMITMENT_WE_ARE_INVALID = (
+    "we_are 只能是 acquaintance、friend、close_friend、ambiguous 或 lover"
+)
+SLIM_DECLARED_DISPLAY_INVALID = (
+    "declared_display 只能是 sexual_suggestive、explicit_adult 或 withdraw"
+)
+SLIM_LATER_NOT_A_DURATION = "later 必须是 30 到 86400 的整数秒"
+SLIM_LATER_REQUIRES_TEXT = "later 只能和非空 messages 一起写，不能和沉默或 photo 一起用"
+SLIM_HOW_IT_LANDED_INVALID = (
+    "how_it_landed 只能是 fulfilled、superseded、still_pending 或 uncertain"
+)
+
+
+def _slim_field_attempted(value: Mapping[str, object], key: str) -> bool:
+    """True when she wrote a key as a real attempt. JSON null is omission."""
+
+    if key not in value:
+        return False
+    raw = value[key]
+    if raw is None:
+        return False
+    if isinstance(raw, str) and not raw.strip():
+        return False
+    if isinstance(raw, Mapping) and not raw:
+        return False
+    if isinstance(raw, list) and not raw:
+        return False
+    return True
+
+
+def _raise_incomplete_pair(
+    *,
+    stem: str,
+    missing: list[str],
+) -> None:
+    raise ValueError(
+        stem
+        + "。这次缺了："
+        + "、".join(missing)
+        + "。宿主不会替你补上缺的字段。"
+        "两个一起写才会在那个秒数叫醒你；只写一半不会生效，也不会被默默丢掉。"
+        "两个都不写也可以，那就是这一轮没有人叫你。"
+    )
+
+
+def _raise_if_incomplete_wait_pair(value: Mapping[str, object]) -> None:
+    """Refuse a half-written wait instead of silently eating waiting_for or wait."""
+
+    hoped = (
+        _clip_text(value.get("waiting_for"), 160)
+        if _slim_field_attempted(value, "waiting_for")
+        else ""
+    )
+    wait_attempted = _slim_field_attempted(value, "wait")
+    parsed = _parse_declared_wait_seconds(value.get("wait")) if wait_attempted else None
+    if not hoped and not wait_attempted:
+        return
+    if wait_attempted and parsed is None:
+        raise ValueError(
+            SLIM_WAIT_NOT_A_DURATION
+            + "。这次写的 wait 读不成秒数。宿主不会替你编一个秒数，"
+            "也不会把写坏的 wait 丢掉后假装没写。"
+            "两个都写对了才会叫醒你；两个都不写也可以。"
+        )
+    missing = [
+        name
+        for name, present in (("waiting_for", hoped), ("wait", wait_attempted and parsed is not None))
+        if not present
+    ]
+    if missing:
+        _raise_incomplete_pair(stem=SLIM_WAIT_PAIR_INCOMPLETE, missing=missing)
+
+
+def _raise_if_incomplete_come_back_pair(value: Mapping[str, object]) -> None:
+    """Refuse a half-written come_back instead of silently eating the leftover."""
+
+    thought = (
+        _clip_text(value.get("come_back"), 160)
+        if _slim_field_attempted(value, "come_back")
+        else ""
+    )
+    time_attempted = _slim_field_attempted(value, "come_back_in")
+    parsed = (
+        _parse_declared_wait_seconds(value.get("come_back_in")) if time_attempted else None
+    )
+    if not thought and not time_attempted:
+        return
+    if time_attempted and parsed is None:
+        raise ValueError(
+            SLIM_COME_BACK_IN_NOT_A_DURATION
+            + "。这次写的 come_back_in 读不成秒数。宿主不会替你编一个秒数，"
+            "也不会把写坏的 come_back_in 丢掉后假装没写。"
+            "两个都写对了才会为这件事叫你；两个都不写也可以。"
+        )
+    missing = [
+        name
+        for name, present in (
+            ("come_back", thought),
+            ("come_back_in", time_attempted and parsed is not None),
+        )
+        if not present
+    ]
+    if missing:
+        _raise_incomplete_pair(stem=SLIM_COME_BACK_PAIR_INCOMPLETE, missing=missing)
+
+
+def _raise_if_incomplete_relationship_residue(value: Mapping[str, object]) -> None:
+    """Refuse a half-written relationship residue instead of silently eating it.
+
+    about_us + why_us without us_deltas still records a reading with zero
+    movement.  us_deltas, or exactly one of the prose fields, used to compile
+    and then vanish.  That is a visible failure: the host never invents the
+    missing field.
+    """
+
+    about_us = _clip_text(value.get("about_us"), 128)
+    why_us = _clip_text(value.get("why_us"), 128)
+    wrote_deltas = slim_relationship_deltas(value.get("us_deltas")) is not None
+    if _slim_field_attempted(value, "us_deltas") and not wrote_deltas:
+        raise ValueError(
+            SLIM_RELATIONSHIP_DELTAS_UNREADABLE
+            + "。这次写的 us_deltas 读不成六轴增量。宿主不会替你编一个数，"
+            "也不会把写坏的增量丢掉后假装没写。"
+            "要留下增量就写成带符号整数的对象，并和 about_us、why_us 一起写；"
+            "三个都不写也可以。"
+        )
+    if (bool(about_us) == bool(why_us)) and (not wrote_deltas or (about_us and why_us)):
+        return
+    missing = [
+        name
+        for name, present in (("about_us", about_us), ("why_us", why_us))
+        if not present
+    ]
+    raise ValueError(
+        SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE
+        + "。这次缺了："
+        + "、".join(missing)
+        + "。宿主不会替你补上缺的字段。"
+        "三个一起写才会变成信号；只写一半不会生效，也不会被默默丢掉。"
+        "三个都不写也可以，那就是这一轮关系没有动。"
+    )
+
+
+def _raise_if_incomplete_commitment_triplet(value: Mapping[str, object]) -> None:
+    """Refuse a half-written we_are / calling_it / said_as instead of dropping it."""
+
+    we_are_attempted = _slim_field_attempted(value, "we_are")
+    calling_attempted = _slim_field_attempted(value, "calling_it")
+    said_attempted = _slim_field_attempted(value, "said_as")
+    if not we_are_attempted and not calling_attempted and not said_attempted:
+        return
+    we_are = value.get("we_are") if we_are_attempted else None
+    valid_stage = we_are in _SLIM_ORDINARY_STAGES
+    if we_are_attempted and not valid_stage:
+        raise ValueError(
+            SLIM_COMMITMENT_WE_ARE_INVALID
+            + "。这次写的 we_are 不是其中之一。宿主不会替你改成一个合法阶段，"
+            "也不会把写坏的承诺丢掉后假装没写。"
+            "三个都写对了才会留下这条路径；三个都不写也可以。"
+        )
+    calling_it = (
+        _clip_text(value.get("calling_it"), 128) if calling_attempted else ""
+    )
+    said_as = _clip_text(value.get("said_as"), 512) if said_attempted else ""
+    missing = [
+        name
+        for name, present in (
+            ("we_are", valid_stage),
+            ("calling_it", calling_it),
+            ("said_as", said_as),
+        )
+        if not present
+    ]
+    if missing:
+        raise ValueError(
+            SLIM_COMMITMENT_TRIPLET_INCOMPLETE
+            + "。这次缺了："
+            + "、".join(missing)
+            + "。宿主不会替你补上缺的字段。"
+            "三个一起写才会留下这条路径；只写一半不会生效，也不会被默默丢掉。"
+            "三个都不写也可以，那就是这一轮没有声明你们是什么关系。"
+        )
+
+
+def _raise_if_invalid_declared_display(value: Mapping[str, object]) -> None:
+    """Refuse a written-but-unreadable display intent instead of eating it."""
+
+    if not _slim_field_attempted(value, "declared_display"):
+        return
+    if _slim_declared_display(value.get("declared_display")) is None:
+        raise ValueError(
+            SLIM_DECLARED_DISPLAY_INVALID
+            + "。省略或 null 也可以，那是这一轮不声明、也不改之前的声明。"
+            "这次写的 declared_display 不是其中之一。宿主不会替你改成一个合法值，"
+            "也不会把写坏的声明丢掉后假装没写。"
+        )
+
+
+def _raise_if_invalid_later(
+    value: Mapping[str, object],
+    *,
+    messages: list[str],
+    media_request: str,
+) -> tuple[int, int] | None:
+    """Refuse a written-but-unreadable later instead of sending now or dropping."""
+
+    if not _slim_field_attempted(value, "later"):
+        return None
+    horizon = _slim_later_horizon(value)
+    if horizon is None:
+        raise ValueError(
+            SLIM_LATER_NOT_A_DURATION
+            + "。这次写的 later 读不成秒数。宿主不会替你编一个秒数，"
+            "也不会把写坏的 later 当成现在发，更不会丢掉后假装没写。"
+            "不写 later 也可以，那就是现在发。"
+        )
+    if not messages or media_request != "none":
+        raise ValueError(
+            SLIM_LATER_REQUIRES_TEXT
+            + "。later 只能配已经想好的文字气泡；沉默和 photo 都不能跟 later 一起写。"
+            "宿主不会替你改成现在发，也不会把写坏的 later 丢掉后假装没写。"
+        )
+    return horizon
+
+
+def _raise_if_invalid_how_it_landed(value: Mapping[str, object]) -> None:
+    """Refuse a written-but-unreadable landing status instead of eating it."""
+
+    if not _slim_field_attempted(value, "how_it_landed"):
+        return
+    status = value.get("how_it_landed")
+    if not isinstance(status, str) or status not in _SLIM_ASSESSMENT_STATUSES:
+        raise ValueError(
+            SLIM_HOW_IT_LANDED_INVALID
+            + "。省略或 null 也可以，那是这一轮不评估上次的盼头。"
+            "这次写的 how_it_landed 不是其中之一。宿主不会替你改成一个合法值，"
+            "也不会把写坏的评估丢掉后假装没写。"
+        )
+
+
 def compile_slim_consider_payload(
     value: Mapping[str, object],
 ) -> dict[str, object] | None:
@@ -694,11 +1057,11 @@ def compile_slim_consider_payload(
         return None
     delay_seconds: int | None = None
     expires_after_seconds: int | None = None
-    if "later" in value:
-        horizon = _slim_later_horizon(value)
-        if horizon is None or not messages or media_request != "none":
-            return None
-        delay_seconds, expires_after_seconds = horizon
+    later_horizon = _raise_if_invalid_later(
+        value, messages=messages, media_request=media_request
+    )
+    if later_horizon is not None:
+        delay_seconds, expires_after_seconds = later_horizon
         timing = "later"
     else:
         timing = "now" if messages else "silent"
@@ -715,6 +1078,12 @@ def compile_slim_consider_payload(
         private_turn_state["keep_impression"] = True
     elif keep_impression is False:
         private_turn_state["keep_impression"] = False
+    _raise_if_incomplete_wait_pair(value)
+    _raise_if_incomplete_come_back_pair(value)
+    _raise_if_incomplete_relationship_residue(value)
+    _raise_if_incomplete_commitment_triplet(value)
+    _raise_if_invalid_declared_display(value)
+    _raise_if_invalid_how_it_landed(value)
     about_us = _clip_text(value.get("about_us"), 128)
     why_us = _clip_text(value.get("why_us"), 128)
     if about_us and why_us:
@@ -727,6 +1096,9 @@ def compile_slim_consider_payload(
         private_turn_state["we_are"] = we_are
         private_turn_state["calling_it"] = calling_it
         private_turn_state["said_as"] = said_as
+    declared_display = _slim_declared_display(value.get("declared_display"))
+    if declared_display is not None:
+        private_turn_state["declared_display"] = declared_display
     expression: dict[str, object] = {
         "private_turn_state": private_turn_state,
         "timing_choice": timing,
@@ -770,6 +1142,24 @@ def compile_slim_consider_payload(
         ),
         "expression_draft": expression,
     }
+
+
+def _slim_declared_display(value: object) -> str | None:
+    """Read her display intent; the host never invents one from prose.
+
+    A string enum is the documented shape.  An object with only media_intent is
+    accepted so a nested write is not dropped, but recipient_ref is ignored:
+    the inbound observation actor is bound later, never a model-authored ref.
+    """
+
+    if isinstance(value, str):
+        intent = value.strip()
+        return intent if intent in _SLIM_DECLARED_DISPLAY else None
+    if isinstance(value, Mapping):
+        intent = value.get("media_intent")
+        if isinstance(intent, str) and intent.strip() in _SLIM_DECLARED_DISPLAY:
+            return intent.strip()
+    return None
 
 
 def _slim_matters_bp(value: object) -> int:
@@ -905,6 +1295,8 @@ def attach_hitchhiked_relationship_residue(
     state = expression.get("private_turn_state")
     if not isinstance(state, dict):
         return dict(value)
+    if authored is not None:
+        _raise_if_incomplete_relationship_residue(authored)
     next_appraisal = dict(appraisal)
     changed = False
     if next_appraisal.get("relationship_signal") is None:

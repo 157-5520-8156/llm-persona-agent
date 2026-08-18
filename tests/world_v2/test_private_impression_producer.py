@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 import json
 from types import SimpleNamespace
 
@@ -17,6 +17,9 @@ from companion_daemon.world_v2.character_interior import CharacterInterior
 from companion_daemon.world_v2.character_interior.authority import (
     _DeferredInteriorAuthority,
 )
+from companion_daemon.world_v2.character_interior.production import (
+    _CharacterInteriorBackgroundDriver,
+)
 from companion_daemon.world_v2.character_interior.contracts import FACET_NAMES
 from companion_daemon.world_v2.character_interior.run_result import (
     CausalOpportunityIdentity,
@@ -28,6 +31,8 @@ from companion_daemon.world_v2.character_interior.structured_role import (
 )
 from companion_daemon.world_v2.ledger import WorldLedger
 from companion_daemon.world_v2.private_impression_producer import (
+    PrivateImpressionDrainPolicy,
+    PrivateImpressionGateDecision,
     PrivateImpressionReflectionCapsule,
     PrivateImpressionReflectionSource,
     PrivateImpressionTriggerOpener,
@@ -37,6 +42,11 @@ from companion_daemon.world_v2.private_impression_producer import (
     _digest,
     _materialize_draft,
     compile_private_impression_reflection_capsule,
+    evaluate_private_impression_drain_gate,
+    private_impression_drain_policy_from_settings,
+    private_impression_opportunity,
+    record_private_impression_gate,
+    recorded_private_impression_gates,
 )
 from companion_daemon.world_v2.schemas import (
     ClaimLease,
@@ -73,9 +83,20 @@ def _ledger_with_active_appraisal():
 def _append_second_appraisal(ledger: WorldLedger) -> None:
     logical_time = ledger.project().logical_time
     assert logical_time is not None
+    observation_payload = message_payload("message:2")
+    observation_payload["logical_time"] = logical_time.isoformat()
+    observation_payload["created_at"] = logical_time.isoformat()
+    observation_payload["received_at"] = logical_time.isoformat()
     commit(
         ledger,
-        [event("message-event:2", "ObservationRecorded", message_payload("message:2"))],
+        [
+            event(
+                "message-event:2",
+                "ObservationRecorded",
+                observation_payload,
+                at=logical_time,
+            )
+        ],
     )
     opened = TriggerProcess(
         trigger_id=interaction_appraisal_trigger_identity(WORLD_ID, "message:2"),
@@ -91,6 +112,7 @@ def _append_second_appraisal(ledger: WorldLedger) -> None:
                 "interaction-trigger-opened:2",
                 "TriggerProcessOpened",
                 {"process": opened.model_dump(mode="json")},
+                at=logical_time,
             )
         ],
     )
@@ -113,6 +135,7 @@ def _append_second_appraisal(ledger: WorldLedger) -> None:
                 "interaction-trigger-claimed:2",
                 "TriggerProcessClaimed",
                 {"process": claimed.model_dump(mode="json")},
+                at=logical_time,
             )
         ],
     )
@@ -131,6 +154,8 @@ def _append_second_appraisal(ledger: WorldLedger) -> None:
         update={
             "appraisal_id": "appraisal:interaction:2",
             "source_cluster_ref": "conversation:2",
+            "accepted_at": logical_time,
+            "expires_at": logical_time + (first.expires_at - first.accepted_at),
             "origin": first.origin.model_copy(
                 update={
                     "change_id": "change:interaction-appraisal:2",
@@ -184,6 +209,7 @@ def _append_second_appraisal(ledger: WorldLedger) -> None:
                         ),
                     },
                 },
+                at=logical_time,
             )
         ],
     )
@@ -201,8 +227,9 @@ def _append_second_appraisal(ledger: WorldLedger) -> None:
                     "accepted_change_id": payload["change_id"],
                     "accepted_change_hash": payload["accepted_change_hash"],
                 },
+                at=logical_time,
             ),
-            event("interaction-appraisal-accepted:2", "AppraisalAccepted", payload),
+            event("interaction-appraisal-accepted:2", "AppraisalAccepted", payload, at=logical_time),
             event(
                 "interaction-appraisal-completed:2",
                 "TriggerProcessCompleted",
@@ -213,6 +240,7 @@ def _append_second_appraisal(ledger: WorldLedger) -> None:
                     "completed_at": logical_time.isoformat(),
                     "runtime_outcome_ref": "appraisal:appraisal:interaction:2",
                 },
+                at=logical_time,
             ),
         ],
     )
@@ -1020,3 +1048,343 @@ def test_no_change_ignores_unknown_keys() -> None:
         )
         is None
     )
+
+
+def _advance_clock(ledger: WorldLedger, delta: timedelta, *, event_id: str) -> None:
+    current = ledger.project().logical_time
+    assert current is not None
+    later = current + delta
+    commit(
+        ledger,
+        [
+            event(
+                event_id,
+                "ClockAdvanced",
+                {
+                    "logical_time_from": current.isoformat(),
+                    "logical_time_to": later.isoformat(),
+                },
+                at=later,
+            )
+        ],
+    )
+
+
+def _ask_now_policy(**overrides: object) -> PrivateImpressionDrainPolicy:
+    payload = {
+        "daily_model_call_limit": 3,
+        "min_interval_seconds": 0,
+        "idle_after_user_seconds": 0,
+    }
+    payload.update(overrides)
+    return PrivateImpressionDrainPolicy(**payload)
+
+
+def _background_driver(ledger, runtime, policy: PrivateImpressionDrainPolicy):
+    driver = object.__new__(_CharacterInteriorBackgroundDriver)
+    driver._ledger = ledger
+    driver._private_impression = runtime
+    driver._private_impression_opener = PrivateImpressionTriggerOpener(
+        ledger=ledger, owner_id=OWNER
+    )
+    driver._private_impression_policy = policy
+    return driver
+
+
+@pytest.mark.asyncio
+async def test_opener_still_finds_an_appraisal_when_head_is_a_later_clock() -> None:
+    ledger = _ledger_with_active_appraisal()
+    _advance_clock(ledger, timedelta(minutes=5), event_id="private-impression-clock-head")
+    opener = PrivateImpressionTriggerOpener(ledger=ledger, owner_id=OWNER)
+
+    trigger_id = await opener.open_once()
+
+    assert trigger_id == private_impression_trigger_identity(
+        WORLD_ID, "interaction-appraisal-accepted"
+    )
+    assert ledger.project().committed_world_event_refs[-1].event_type == "ClockAdvanced"
+
+
+@pytest.mark.asyncio
+async def test_enabled_drain_asks_once_when_gates_are_open() -> None:
+    ledger = _ledger_with_active_appraisal()
+    model = _Model([_retain(["appraisal:appraisal:interaction:1:meaning:disappointment"])])
+    runtime, _interior = _private_runtime(ledger, model)
+    driver = _background_driver(ledger, runtime, _ask_now_policy())
+
+    result = await driver.drain_private_impression_once()
+
+    assert result is not None
+    assert result.work_status == "accepted"
+    assert len(ledger.project().private_impressions) == 1
+    assert len(model.calls) == 1
+    assert recorded_private_impression_gates(ledger) == ()
+
+
+@pytest.mark.asyncio
+async def test_drain_skips_quietly_while_he_just_spoke() -> None:
+    ledger = _ledger_with_active_appraisal()
+    model = _Model([_retain(["appraisal:appraisal:interaction:1:meaning:disappointment"])])
+    runtime, _interior = _private_runtime(ledger, model)
+    driver = _background_driver(
+        ledger, runtime, _ask_now_policy(idle_after_user_seconds=1_800)
+    )
+
+    skipped = await driver.drain_private_impression_once()
+    gates = recorded_private_impression_gates(ledger)
+
+    assert skipped is None
+    assert model.calls == []
+    assert ledger.project().private_impressions == ()
+    assert [item["reason"] for item in gates] == ["recent_user_observation"]
+    pending = [
+        item
+        for item in ledger.project().trigger_processes
+        if item.process_kind == "private_impression_deliberation" and item.state != "terminal"
+    ]
+    assert len(pending) == 1
+
+    skipped_again = await driver.drain_private_impression_once()
+    assert skipped_again is None
+    assert recorded_private_impression_gates(ledger) == gates
+
+
+@pytest.mark.asyncio
+async def test_drain_asks_after_the_idle_window() -> None:
+    ledger = _ledger_with_active_appraisal()
+    model = _Model([_retain(["appraisal:appraisal:interaction:1:meaning:disappointment"])])
+    runtime, _interior = _private_runtime(ledger, model)
+    driver = _background_driver(
+        ledger, runtime, _ask_now_policy(idle_after_user_seconds=1_800)
+    )
+    await driver.drain_private_impression_once()
+    _advance_clock(ledger, timedelta(seconds=1_800), event_id="private-impression-idle")
+
+    result = await driver.drain_private_impression_once()
+
+    assert result is not None
+    assert result.work_status == "accepted"
+    assert len(model.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_drain_respects_min_interval_without_calling_the_model() -> None:
+    ledger = _ledger_with_active_appraisal()
+    first_model = _Model(
+        [_retain(["appraisal:appraisal:interaction:1:meaning:disappointment"])]
+    )
+    first_runtime, _interior = _private_runtime(ledger, first_model)
+    first_driver = _background_driver(ledger, first_runtime, _ask_now_policy())
+    assert (await first_driver.drain_private_impression_once()).work_status == "accepted"
+
+    _append_second_appraisal(ledger)
+    second_model = _Model(
+        [_retain(["appraisal:appraisal:interaction:2:meaning:disappointment"])]
+    )
+    second_runtime, _interior = _private_runtime(ledger, second_model)
+    second_driver = _background_driver(
+        ledger,
+        second_runtime,
+        _ask_now_policy(min_interval_seconds=3_600),
+    )
+
+    skipped = await second_driver.drain_private_impression_once()
+
+    assert skipped is None
+    assert second_model.calls == []
+    assert [item["reason"] for item in recorded_private_impression_gates(ledger)] == [
+        "min_interval"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_interval_uses_drain_clock_not_appraisal_logical_time() -> None:
+    """ModelResultRecorded copies the appraisal's time.  Interval must not."""
+
+    ledger = _ledger_with_active_appraisal()
+    appraisal_at = ledger.project().logical_time
+    assert appraisal_at is not None
+    _advance_clock(ledger, timedelta(hours=15), event_id="private-impression-quiet-gap")
+    first_model = _Model(
+        [_retain(["appraisal:appraisal:interaction:1:meaning:disappointment"])]
+    )
+    first_runtime, _interior = _private_runtime(ledger, first_model)
+    first_driver = _background_driver(ledger, first_runtime, _ask_now_policy())
+    assert (await first_driver.drain_private_impression_once()).work_status == "accepted"
+
+    process = next(
+        item
+        for item in ledger.project().trigger_processes
+        if item.process_kind == "private_impression_deliberation"
+    )
+    completion = ledger.find_trigger_completion(process.trigger_id)
+    assert completion is not None
+    model_events = ledger.recent_events_by_type(
+        event_types=frozenset({"ModelResultRecorded"}),
+        since=appraisal_at,
+        limit=32,
+    )
+    farm_model = next(
+        item
+        for item in model_events
+        if str(item.event_id).startswith("event:private-impression:model-result:")
+    )
+    assert farm_model.logical_time == appraisal_at
+    completed_at = datetime.fromisoformat(completion.payload()["completed_at"])
+    assert completed_at > appraisal_at
+
+    _append_second_appraisal(ledger)
+    _advance_clock(ledger, timedelta(seconds=40), event_id="private-impression-inside-interval")
+    second_model = _Model(
+        [_retain(["appraisal:appraisal:interaction:2:meaning:disappointment"])]
+    )
+    second_runtime, _interior = _private_runtime(ledger, second_model)
+    second_driver = _background_driver(
+        ledger,
+        second_runtime,
+        _ask_now_policy(min_interval_seconds=90),
+    )
+
+    skipped = await second_driver.drain_private_impression_once()
+
+    assert skipped is None
+    assert second_model.calls == []
+    assert [item["reason"] for item in recorded_private_impression_gates(ledger)] == [
+        "min_interval"
+    ]
+
+    _advance_clock(ledger, timedelta(seconds=60), event_id="private-impression-past-interval")
+    third_model = _Model(
+        [_retain(["appraisal:appraisal:interaction:2:meaning:disappointment"])]
+    )
+    third_runtime, _interior = _private_runtime(ledger, third_model)
+    third_driver = _background_driver(ledger, third_runtime, _ask_now_policy(min_interval_seconds=90))
+
+    asked = await third_driver.drain_private_impression_once()
+
+    assert asked is not None
+    assert asked.work_status == "accepted"
+    assert len(third_model.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_drain_stops_at_the_daily_model_call_cap() -> None:
+    ledger = _ledger_with_active_appraisal()
+    first_model = _Model(
+        [_retain(["appraisal:appraisal:interaction:1:meaning:disappointment"])]
+    )
+    first_runtime, _interior = _private_runtime(ledger, first_model)
+    first_driver = _background_driver(
+        ledger,
+        first_runtime,
+        _ask_now_policy(daily_model_call_limit=1, local_timezone="UTC"),
+    )
+    assert (await first_driver.drain_private_impression_once()).work_status == "accepted"
+
+    _append_second_appraisal(ledger)
+    _advance_clock(ledger, timedelta(hours=5), event_id="private-impression-next-window")
+    second_model = _Model(
+        [_retain(["appraisal:appraisal:interaction:2:meaning:disappointment"])]
+    )
+    second_runtime, _interior = _private_runtime(ledger, second_model)
+    second_driver = _background_driver(
+        ledger,
+        second_runtime,
+        _ask_now_policy(
+            daily_model_call_limit=1, min_interval_seconds=0, local_timezone="UTC"
+        ),
+    )
+
+    skipped = await second_driver.drain_private_impression_once()
+
+    assert skipped is None
+    assert second_model.calls == []
+    assert [item["reason"] for item in recorded_private_impression_gates(ledger)] == [
+        "daily_cap"
+    ]
+    assert recorded_private_impression_gates(ledger)[0]["daily_calls"] == 1
+    assert recorded_private_impression_gates(ledger)[0]["daily_limit"] == 1
+
+
+@pytest.mark.asyncio
+async def test_no_change_is_her_choice_and_not_a_gate_skip() -> None:
+    ledger = _ledger_with_active_appraisal()
+    model = _Model(['{"decision":"no_change"}'])
+    runtime, _interior = _private_runtime(ledger, model)
+    driver = _background_driver(ledger, runtime, _ask_now_policy())
+
+    result = await driver.drain_private_impression_once()
+
+    assert result is not None
+    assert result.work_status == "no_change"
+    assert ledger.project().private_impressions == ()
+    assert recorded_private_impression_gates(ledger) == ()
+    completed = [
+        item
+        for item in ledger.project().trigger_processes
+        if item.process_kind == "private_impression_deliberation" and item.state == "terminal"
+    ]
+    assert completed[-1].runtime_outcome_ref.endswith(":no-change")
+
+
+def test_settings_expose_conservative_private_impression_defaults() -> None:
+    policy = private_impression_drain_policy_from_settings(
+        SimpleNamespace(
+            world_v2_private_impression_daily_model_call_limit=3,
+            world_v2_private_impression_min_interval_seconds=14_400,
+            world_v2_private_impression_idle_after_user_seconds=1_800,
+            local_timezone="Asia/Shanghai",
+        )
+    )
+    assert policy.daily_model_call_limit == 3
+    assert policy.min_interval_seconds == 14_400
+    assert policy.idle_after_user_seconds == 1_800
+    assert policy.allows_model_calls is True
+    disabled = PrivateImpressionDrainPolicy(daily_model_call_limit=0)
+    assert disabled.allows_model_calls is False
+
+
+def test_env_overrides_private_impression_drain_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("WORLD_V2_PRIVATE_IMPRESSION_DAILY_MODEL_CALL_LIMIT", "1")
+    monkeypatch.setenv("WORLD_V2_PRIVATE_IMPRESSION_MIN_INTERVAL_SECONDS", "600")
+    monkeypatch.setenv("WORLD_V2_PRIVATE_IMPRESSION_IDLE_AFTER_USER_SECONDS", "120")
+    from companion_daemon.config import Settings, get_settings
+
+    get_settings.cache_clear()
+    settings = Settings()
+    assert settings.world_v2_private_impression_daily_model_call_limit == 1
+    assert settings.world_v2_private_impression_min_interval_seconds == 600
+    assert settings.world_v2_private_impression_idle_after_user_seconds == 120
+    get_settings.cache_clear()
+
+
+def test_evaluate_gate_is_idle_when_nothing_is_pending() -> None:
+    projection = _ledger_with_active_appraisal().project()
+    decision = evaluate_private_impression_drain_gate(
+        projection, policy=_ask_now_policy()
+    )
+    assert decision.action == "idle"
+    assert decision.reason is None
+
+
+def test_in_memory_gate_rows_stay_on_their_own_ledger() -> None:
+    first = _ledger_with_active_appraisal()
+    second = _ledger_with_active_appraisal()
+    now = first.project().logical_time
+    assert now is not None
+    record_private_impression_gate(
+        first,
+        PrivateImpressionGateDecision(
+            action="skip",
+            reason="daily_cap",
+            daily_calls=1,
+            daily_limit=1,
+            trigger_id="trigger:private-impression:isolation",
+            local_timezone="UTC",
+        ),
+        now=now,
+    )
+    assert [item["reason"] for item in recorded_private_impression_gates(first)] == [
+        "daily_cap"
+    ]
+    assert recorded_private_impression_gates(second) == ()

@@ -135,6 +135,7 @@ class ActivityLifecycleWorker:
         actor: str,
         trace_id: str,
         correlation_id: str,
+        renewed_plan_catalog: bool = False,
     ) -> ActivityLifecycleFollowupResult:
         projection = self._ledger.project()
         if projection.logical_time != logical_time:
@@ -157,6 +158,7 @@ class ActivityLifecycleWorker:
             catalog=catalog,
             wake_event_ref=wake_event_ref,
             trigger_id=trigger_id,
+            renewed_plan_catalog=renewed_plan_catalog,
         )
         if draft is None:
             return ActivityLifecycleFollowupResult(
@@ -228,6 +230,7 @@ class ActivityLifecycleWorker:
         catalog,
         wake_event_ref: str,
         trigger_id: str,
+        renewed_plan_catalog: bool = False,
     ) -> tuple[ActivityLifecycleModelDraft | None, str | None]:
         """Ask the sole protagonist author to choose one already-legal token.
 
@@ -253,10 +256,16 @@ class ActivityLifecycleWorker:
             and all(item.operation == "complete" for item in openings)
         ):
             return _timing_closure_draft(completes[0].opening_token), None
-        if first_chance_spent and not cause_bound:
-            # The one daily day_open Occasion is spent.  Ordinary reversals
-            # stay quiet until the next local day; this is the G2 timing
-            # boundary, not a scripted activity choice.
+        # day_open is the one ordinary first-chance of a local day.  It must
+        # not also be the last chance: a plan committed later the same wake,
+        # or an activity that has become legally completable, is new catalog
+        # material.  She still picks or no_ops; this only asks again.
+        if (
+            first_chance_spent
+            and not cause_bound
+            and not renewed_plan_catalog
+            and not completes
+        ):
             self._daily_occasions.mark("day_open", day_key)
             return ActivityLifecycleModelDraft(decision="no_op"), None
         # Cause-bound openings (an observed user interruption, a clock
@@ -272,6 +281,10 @@ class ActivityLifecycleWorker:
                 catalog=catalog,
                 wake_event_ref=wake_event_ref,
             )
+        elif renewed_plan_catalog and first_chance_spent:
+            occasion_merge_key = f"{wake_event_ref}:renewed-plan"
+        elif completes and first_chance_spent and not cause_bound:
+            occasion_merge_key = f"active-complete:{day_key}"
         else:
             occasion_merge_key = day_key if use_day_open else wake_event_ref
         occasion = (
@@ -287,10 +300,11 @@ class ActivityLifecycleWorker:
                 merge_key=occasion_merge_key,
             )
         )
-        if closed_window_abandon_only and self._occasion_spends.spent(occasion.occasion_id):
-            # Same missed-plan abandon set already had its one consider.
-            # Re-asking every clock wake would burn a model call; a later
-            # start/complete entering the catalog changes the merge key.
+        if not use_day_open and self._occasion_spends.spent(occasion.occasion_id):
+            # Same life_beat (missed-plan abandon, renewed-plan extra pass, or
+            # same-day complete set) already had its one consider.  Re-asking
+            # every clock wake would burn a model call; a later start/complete
+            # entering the catalog changes the merge key.
             return ActivityLifecycleModelDraft(decision="no_op"), None
         opening_summaries = []
         for item in openings:
@@ -386,7 +400,7 @@ class ActivityLifecycleWorker:
             return None, "character_interior_decision_missing"
         if use_day_open:
             self._daily_occasions.mark("day_open", day_key)
-        if closed_window_abandon_only:
+        else:
             self._occasion_spends.mark(occasion.occasion_id)
         decision = result.decision
         if (

@@ -1,11 +1,19 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from companion_daemon.budget import BudgetGate, UsageEstimate, image_render_estimate
-from companion_daemon.db import CompanionStore
+from companion_daemon.budget import (
+    BudgetGate,
+    UsageEstimate,
+    admit_image_generation,
+    image_render_estimate,
+    occupancy_from_media_projection,
+    ImageGenerationOccupancy,
+)
+from companion_daemon.db import CompanionStore, UsageEventsLedger
 
 
 def test_budget_gate_blocks_soft_daily_for_automatic_calls(tmp_path: Path) -> None:
@@ -285,3 +293,186 @@ def test_expired_unstarted_reservations_release_but_started_calls_become_unknown
         automatic=True,
         now=recovered,
     ).allowed
+
+
+def test_image_generation_admission_aligns_with_delivery_slots() -> None:
+    now = datetime(2026, 8, 18, 12, tzinfo=UTC)
+    open_slot = admit_image_generation(
+        occupancy=ImageGenerationOccupancy(),
+        logical_time=now,
+    )
+    after_send = admit_image_generation(
+        occupancy=ImageGenerationOccupancy(
+            paid_renders_today=1,
+            deliveries_today=1,
+            last_delivery_at=now - timedelta(minutes=30),
+        ),
+        logical_time=now,
+    )
+    daily_full = admit_image_generation(
+        occupancy=ImageGenerationOccupancy(paid_renders_today=2),
+        logical_time=now,
+    )
+    waiting_preview = admit_image_generation(
+        occupancy=ImageGenerationOccupancy(undelivered_previews=1),
+        logical_time=now,
+    )
+
+    assert open_slot.allowed
+    assert after_send.reason == "delivery_min_gap"
+    assert daily_full.reason == "daily_generation_limit"
+    assert waiting_preview.reason == "undelivered_preview"
+
+
+def test_occupancy_counts_in_flight_renders_and_undelivered_previews() -> None:
+    now = datetime(2026, 8, 18, 12, tzinfo=UTC)
+    occupancy = occupancy_from_media_projection(
+        SimpleNamespace(
+            actions=(
+                SimpleNamespace(
+                    action_id="action:render:1",
+                    kind="media_render",
+                    state="dispatch_started",
+                    logical_time=now,
+                ),
+            ),
+            media_artifacts=(),
+            media_previews=(SimpleNamespace(plan_id="plan:waiting"),),
+            media_deliveries=(),
+            media_delivery_approvals=(),
+        ),
+        logical_time=now,
+    )
+
+    assert occupancy.in_flight_renders == 1
+    assert occupancy.undelivered_previews == 1
+    assert occupancy.paid_renders_today == 0
+
+
+def test_budget_gate_blocks_a_second_same_day_image_inside_the_delivery_gap(
+    tmp_path: Path,
+) -> None:
+    store = CompanionStore(tmp_path / "image-cap.sqlite")
+    gate = BudgetGate(
+        store,
+        monthly_budget_cny=80,
+        daily_budget_cny=30,
+        soft_daily_budget_cny=20,
+        monthly_image_limit=20,
+        monthly_vision_limit=120,
+        monthly_audio_limit=60,
+    )
+    estimate = image_render_estimate(reference_count=1, attempts=1)
+    first = gate.check(estimate, automatic=True)
+    gate.record(estimate, note="first")
+    second = gate.check(estimate, automatic=True)
+
+    assert first.allowed
+    assert not second.allowed
+    assert second.reason == "image_generation_min_gap"
+    assert store.usage_count("image_generation", "day", datetime.now(UTC)) == 1
+
+
+def test_usage_events_ledger_does_not_create_legacy_companion_tables(tmp_path: Path) -> None:
+    import sqlite3
+
+    path = tmp_path / "world-v2-only.sqlite"
+    ledger = UsageEventsLedger(path)
+    ledger.record_usage("image_generation", 1.25, note="stub")
+    now = datetime.now(UTC)
+    gate = BudgetGate(
+        ledger,  # type: ignore[arg-type]
+        monthly_budget_cny=80,
+        daily_budget_cny=3,
+        soft_daily_budget_cny=2,
+        monthly_image_limit=20,
+        monthly_vision_limit=120,
+        monthly_audio_limit=60,
+    )
+
+    assert ledger.usage_total("day", now) == pytest.approx(1.25)
+    decision = gate.check(image_render_estimate(reference_count=0), automatic=True)
+    assert not decision.allowed
+    conn = sqlite3.connect(path)
+    try:
+        tables = {row[0] for row in conn.execute("select name from sqlite_master where type='table'")}
+    finally:
+        conn.close()
+    assert "usage_events" in tables
+    assert "users" not in tables
+    assert "mood_state" not in tables
+
+
+def test_record_usage_recreates_missing_usage_events_table(tmp_path: Path) -> None:
+    import sqlite3
+
+    path = tmp_path / "missing-usage.sqlite"
+    store = CompanionStore(path)
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("drop table usage_events")
+        conn.commit()
+    finally:
+        conn.close()
+
+    store.record_usage("image_generation", 0.42, note="recreated")
+    assert store.usage_count("image_generation", "day", datetime.now(UTC)) == 1
+    assert store.usage_total("day", datetime.now(UTC)) == pytest.approx(0.42)
+
+
+@pytest.mark.asyncio
+async def test_stubbed_openai_image_records_usage_events_for_budget_gate(
+    tmp_path: Path,
+) -> None:
+    import httpx
+
+    from companion_daemon.image_generation import OpenAIImageGenerator
+
+    calls = {"n": 0}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"b64_json": "cG5n"}],
+                "usage": {
+                    "input_tokens": 80,
+                    "output_tokens": 1366,
+                    "total_tokens": 1446,
+                    "input_tokens_details": {"text_tokens": 20, "image_tokens": 60},
+                },
+            },
+        )
+
+    path = tmp_path / "epoch2-like.sqlite"
+    ledger = UsageEventsLedger(path)
+    generator = OpenAIImageGenerator(
+        "test-key",
+        transport=httpx.MockTransport(handler),
+        spend_store=ledger,
+    )
+    generated = await generator.generate("prompt", output_path=tmp_path / "out.png")
+    now = datetime.now(UTC)
+    gate = BudgetGate(
+        ledger,  # type: ignore[arg-type]
+        monthly_budget_cny=100,
+        daily_budget_cny=4,
+        soft_daily_budget_cny=3,
+        monthly_image_limit=20,
+        monthly_vision_limit=120,
+        monthly_audio_limit=60,
+    )
+
+    assert generated.path.read_bytes() == b"png"
+    assert calls["n"] == 1
+    assert ledger.usage_count("image_generation", "day", now) == 1
+    assert ledger.usage_total("day", now) > 0
+    blocked = gate.check(image_render_estimate(reference_count=0), automatic=True)
+    assert not blocked.allowed
+    assert blocked.reason in {
+        "daily_image_limit_exceeded",
+        "image_generation_min_gap",
+        "soft_daily_budget_requires_manual",
+        "daily_budget_exceeded",
+    }

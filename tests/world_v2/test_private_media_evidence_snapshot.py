@@ -28,7 +28,10 @@ from companion_daemon.world_v2.private_media_evidence_snapshot import (
     PrivateMediaEvidenceCompileRequest,
     PrivateMediaEvidenceSnapshotCompiler,
 )
-from companion_daemon.world_v2.relationship_media_context import RelationshipMediaContextResolver
+from companion_daemon.world_v2.relationship_media_context import (
+    DeclaredDisplayV1,
+    RelationshipMediaContextResolver,
+)
 from companion_daemon.world_v2.schemas import (
     CommittedWorldEventRef,
     ProjectionCursor,
@@ -221,3 +224,133 @@ def test_private_compiler_freezes_recipient_context_and_keeps_authorization_oute
     assert legacy.calls[0].audience_context.recipient_ref == "user:1"
     assert legacy.calls[0].private_expression_basis is not None
     assert legacy.calls[0].private_expression_basis.kind == "private_transition"
+    assert legacy.calls[0].expression_charge_ceiling == "subtle"
+    assert legacy.calls[0].sensual_charge_ceiling == "subtle"
+    assert "/relationship_media_context/declared_display" not in legacy.calls[0].allowed_evidence_refs
+
+
+def test_private_compiler_indexes_character_authored_declared_display() -> None:
+    source = _event(SOURCE_ID, "ActivityCompleted", {"status": "committed"})
+    evidence = RecipientScopedImageEvidenceDeclaredPayload(
+        source_event_ref=SOURCE_ID, source_event_payload_hash=source.payload_hash,
+        source_event_type="ActivityCompleted", source_privacy_ceiling="private", recipient_ref="user:1",
+        image_evidence=RecipientScopedImageEvidenceV1(
+            visibility="private", activity={
+                "id": "activity:wind-down", "kind": "wind_down", "private_transition": True,
+            },
+            character_media={
+                "character_ref": "character:ava", "present": True,
+                "capture_capabilities": ("character_front_camera",),
+            },
+        ),
+        declared_at=NOW,
+    )
+    declaration = _event(DECLARATION_ID, "RecipientScopedImageEvidenceDeclared", evidence.model_dump(mode="json"))
+    physical = VisiblePhysicalStateProjection(
+        physical_state_id="physical:wind-down", subject_ref="character:ava", entity_revision=1,
+        source_event_ref=SOURCE_ID, source_event_payload_hash=source.payload_hash,
+        source_event_type="ActivityCompleted", valid_from=NOW - timedelta(minutes=5),
+        valid_until=NOW + timedelta(minutes=20), visibility="private",
+        positive_cues=(VisiblePhysicalCue(cue_id="damp_hair", intensity="light", visible_regions=("hair",)),),
+        negative_cues=(),
+    )
+    physical_record = _event(
+        PHYSICAL_RECORD_ID, "VisiblePhysicalStateRecorded",
+        VisiblePhysicalStateRecordedPayload(state=physical).model_dump(mode="json"),
+    )
+    relationship_origin = _event(RELATIONSHIP_ORIGIN_ID, "RelationshipSlowVariableAdjusted", {"opaque": "origin"})
+    relationship = RelationshipStateProjection(
+        relationship_id="relationship:user:1", subject_ref="user:1", entity_revision=2,
+        stage="lover", policy_digest="c" * 64,
+        origin=RelationshipStateOrigin(
+            change_id="change:relationship:1", transition_id="transition:relationship:1",
+            policy_refs=("policy:relationship",), accepted_event_ref=RELATIONSHIP_ORIGIN_ID,
+        ),
+    )
+    display = DeclaredDisplayV1(
+        event_id="event:declared-display:1",
+        recipient_ref="user:1",
+        media_intent="sexual_suggestive",
+    )
+    context = RelationshipMediaContextResolver().resolve(
+        projection=SimpleNamespace(relationship_states=(relationship,), visible_physical_states=(physical,)),
+        character_ref="character:ava", recipient_ref="user:1", at_logical_time=NOW,
+        declared_display=display,
+    ).context
+    assert context is not None and context.declared_display == display
+    sources = tuple(
+        MediaEvidenceSource(event_ref=event.event_id, payload_hash=event.payload_hash)
+        for event in (source, declaration)
+    )
+    contract = CharacterMediaCandidateContract(
+        subject_ref="character:ava", kind="selfie", allowed_capture_modes=("character_front_camera",),
+        allowed_character_visibility=("identifiable",),
+        authority_digest=character_media_contract_digest(
+            subject_ref="character:ava", kind="selfie", source_events=sources,
+            allowed_capture_modes=("character_front_camera",),
+            allowed_character_visibility=("identifiable",),
+        ),
+    )
+    candidate = PhotoCandidate(
+        candidate_id="candidate:private-selfie", source_event_refs=tuple(item.event_ref for item in sources),
+        family="character_media", privacy_ceiling="private", opened_at=NOW,
+        expires_at=NOW + timedelta(hours=1), ecology_category="character_media:private-selfie",
+        ecology_observed_at=NOW, source_events=sources, opened_event_ref="event:candidate:private",
+        opened_event_payload_hash="d" * 64, character_media_contract=contract,
+    )
+    events = (source, declaration, physical_record, relationship_origin)
+    refs = tuple(
+        CommittedWorldEventRef(
+            event_id=event.event_id, event_type=event.event_type, world_revision=index + 1,
+            payload_hash=event.payload_hash, logical_time=NOW,
+        )
+        for index, event in enumerate(events)
+    )
+    projection = SimpleNamespace(
+        world_revision=4, deliberation_revision=0, ledger_sequence=4, logical_time=NOW,
+        committed_world_event_refs=refs, relationship_states=(relationship,),
+        visible_physical_states=(physical,), appearance_states=(),
+    )
+    compiled = PrivateMediaEvidenceSnapshotCompiler(ledger=_Ledger(projection, events)).compile(
+        PrivateMediaEvidenceCompileRequest(
+            candidate=candidate, category=candidate.ecology_category or "private", cursor=ProjectionCursor(
+                world_revision=4, deliberation_revision=0, ledger_sequence=4,
+            ), relationship_context=context, media_lane="suggestive_private",
+            expression_charge_ceiling="charged",
+        )
+    )
+    snapshot = compiled.snapshot.image_event_snapshot
+    assert snapshot is not None
+    dumped = snapshot.model_dump(mode="json")
+    display_dump = dumped["relationship_media_context"]["declared_display"]
+    assert display_dump["media_intent"] == "sexual_suggestive"
+    assert display_dump["recipient_ref"] == "user:1"
+    assert "/relationship_media_context/declared_display/media_intent" in snapshot.evidence_index
+    from companion_daemon.media_eligibility import MediaEligibilityRouter, MediaLaneRecommendation, PrivateExpressionBasis
+    from companion_daemon.media_suggestive_lane import SUGGESTIVE_PRIVATE_LANE
+    from companion_daemon.world_v2.event_media_planner_adapter import EventMediaPlannerAdapter
+
+    basis = EventMediaPlannerAdapter._p3_basis(dumped)
+    decision = MediaEligibilityRouter().classify_recommendation(
+        family="character_media",
+        privacy_ceiling="intimate",
+        expression_charge_ceiling="veiled",
+        event_snapshot=dumped,
+        private_expression_basis=basis,
+        recipient_ref="user:1",
+        recommendation=MediaLaneRecommendation(
+            lane=SUGGESTIVE_PRIVATE_LANE,
+            recipient_access="recipient_exclusive",
+            attraction_expression="sexual_suggestive",
+        ),
+        selected_expression_charge="charged",
+        selected_capture_mode="character_front_camera",
+        selected_share_intent="intimate_signal",
+        selected_privacy="intimate",
+        selected_address_mode="direct_recipient",
+        selected_interaction_bid="invite_desire",
+        selected_attraction_mechanism="private_trust",
+        selected_coverage_mode="private_apparel",
+    )
+    assert decision.allowed
+    assert decision.lane == SUGGESTIVE_PRIVATE_LANE

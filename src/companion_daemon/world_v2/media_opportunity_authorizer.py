@@ -1,7 +1,10 @@
 """Authorize a public preview from one selected, source-bound candidate."""
 from __future__ import annotations
 from datetime import datetime
+from companion_daemon.media_eligibility import P3_RELATIONSHIP_STAGE_FLOOR
+
 from .adult_media_authority import adult_media_is_authorized
+from .declared_display_contract import live_declared_display
 from .media_evidence_snapshot import MediaEvidenceCompileRequest, MediaEvidenceSnapshotCompiler
 from .media_v2 import ADULT_PRIVATE_MEDIA_LANES, MediaOpportunity, media_digest
 from .private_image_evidence_contract import RecipientScopedImageEvidenceDeclaredPayload
@@ -133,12 +136,19 @@ class MediaOpportunityAuthorizer:
         contract = candidate.character_media_contract
         assert contract is not None
         transition = self._private_transition(candidate=candidate, expires_at=expires_at)
+        declared_display = live_declared_display(
+            ledger=self._ledger,
+            projection=projection,
+            recipient_ref=selection.recipient_ref or "",
+            at_logical_time=projection.logical_time,
+        )
         resolution = self._relationship_context_resolver.resolve(
             projection=projection, character_ref=contract.subject_ref,
             recipient_ref=selection.recipient_ref or "", at_logical_time=projection.logical_time,
             required_charge="subtle",
             basis_kind=("private_transition" if transition is not None else "embodied_state"),
             private_transition=transition,
+            declared_display=declared_display,
         )
         context = resolution.context
         if context is None:
@@ -151,14 +161,18 @@ class MediaOpportunityAuthorizer:
             at_logical_time=projection.logical_time,
         )
         lane, maximum = self._p3_lane_for_stage(
-            context.audience.relationship_stage, adult_eligible=adult_eligible
+            context.audience.relationship_stage,
+            adult_eligible=adult_eligible,
+            declared_intent=(
+                declared_display.media_intent if declared_display is not None else None
+            ),
         )
         ranks = {"subtle": 1, "charged": 2, "veiled": 3}
         if ranks[selection.expression_charge_ceiling] > ranks[maximum]:
             raise ValueError("media_authorizer.p3_expression_charge_exceeds_relationship_bound")
-        # Lane and charge are re-derived at the accepted cursor.  Adult
-        # eligibility raises the ceiling so the planner may use charged/veiled
-        # candidates; it does not instruct the character to take the photo.
+        # Lane and charge are re-derived at the accepted cursor.  His grant
+        # opens adult possibility; her live declaration chooses intensity.
+        # Omission keeps the historical alluring cap.
         authorized_charge = (
             maximum if lane in ADULT_PRIVATE_MEDIA_LANES else selection.expression_charge_ceiling
         )
@@ -201,18 +215,26 @@ class MediaOpportunityAuthorizer:
         ), compiled
 
     @staticmethod
-    def _p3_lane_for_stage(stage: str, *, adult_eligible: bool) -> tuple[str, str]:
-        """Relationship stage is a floor; adult intensity needs a ledger grant.
+    def _p3_lane_for_stage(
+        stage: str, *, adult_eligible: bool, declared_intent: str | None = None,
+    ) -> tuple[str, str]:
+        """Stage is a floor; his grant opens possibility; her declaration picks intensity.
 
-        Adult eligibility is the same at close_friend, ambiguous, and lover:
-        the stage gate does not choose intensity.  Without the grant the
-        historical alluring cap remains.
+        Charge rank is ``subtle < charged < veiled``.  ``veiled`` is the higher
+        erotic charge (``partial_reveal``, private wardrobe required), not a
+        weaker or more-covered setting.  ``sexual_suggestive`` therefore maps
+        to ``charged``; ``explicit_adult`` maps to ``veiled``.  Adult
+        eligibility does not choose a lane by itself.  Without a live
+        character-authored intent the historical alluring cap remains; that
+        omission is legal and common, not a fail-closed error.
         """
 
-        if stage not in {"close_friend", "ambiguous", "lover"}:
+        if stage not in P3_RELATIONSHIP_STAGE_FLOOR:
             raise ValueError("media_authorizer.p3_relationship_stage_not_eligible")
-        if adult_eligible:
+        if adult_eligible and declared_intent == "explicit_adult":
             return "explicit_private", "veiled"
+        if adult_eligible and declared_intent == "sexual_suggestive":
+            return "suggestive_private", "charged"
         if stage == "close_friend":
             return "alluring_life", "subtle"
         return "alluring_life", "charged"

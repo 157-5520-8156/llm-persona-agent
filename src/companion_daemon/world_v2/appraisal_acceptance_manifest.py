@@ -3,7 +3,9 @@
 This is intentionally a narrow production seam.  It does not attempt to turn
 the old generic ``DecisionProposal`` compiler into a second authority path;
 instead it binds the already typed, source-provenanced appraisal proposal to
-its one mutation and its claimed-trigger completion.
+its one mutation. Appraisal-owned triggers complete in the same batch;
+shared-owner triggers such as ``proactive_action_deliberation`` stay claimed
+so the owning vertical can still authorize her visible action.
 """
 
 from __future__ import annotations
@@ -18,6 +20,8 @@ from .schema_core import FrozenModel
 
 
 APPRAISAL_ACCEPTANCE_MANIFEST_VERSION = "appraisal-acceptance.1"
+APPRAISAL_TRIGGER_RETAINED_EVENT_PREFIX = "event:appraisal-trigger-retained:"
+_RETAINED_SHARED_OWNER_PROCESS_KIND = "proactive_action_deliberation"
 
 
 def _canonical_json(value: object) -> str:
@@ -28,6 +32,27 @@ def _canonical_json(value: object) -> str:
 
 def canonical_appraisal_acceptance_value_hash(value: object) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def appraisal_source_trigger_is_retained(completion_event_id: str) -> bool:
+    """True when the owning vertical, not appraisal acceptance, closes the trigger."""
+
+    return completion_event_id.startswith(APPRAISAL_TRIGGER_RETAINED_EVENT_PREFIX)
+
+
+def retained_appraisal_trigger_payload(*, trigger_id: str) -> dict[str, str]:
+    """Closed virtual completion body hashed into the accepted manifest.
+
+    No ``TriggerProcessCompleted`` event is emitted for this payload.  The
+    hash still binds the retained trigger identity so a two-event batch cannot
+    silently drop a different trigger.
+    """
+
+    return {
+        "status": "retained_by_owning_process",
+        "trigger_id": trigger_id,
+        "process_kind": _RETAINED_SHARED_OWNER_PROCESS_KIND,
+    }
 
 
 def canonical_appraisal_acceptance_manifest_hash(value: dict[str, object]) -> str:
@@ -80,8 +105,11 @@ def build_appraisal_acceptance_manifest(**values: object) -> AppraisalAcceptance
 
 __all__ = [
     "APPRAISAL_ACCEPTANCE_MANIFEST_VERSION",
+    "APPRAISAL_TRIGGER_RETAINED_EVENT_PREFIX",
     "AppraisalAcceptanceManifest",
+    "appraisal_source_trigger_is_retained",
     "build_appraisal_acceptance_manifest",
     "canonical_appraisal_acceptance_manifest_hash",
     "canonical_appraisal_acceptance_value_hash",
+    "retained_appraisal_trigger_payload",
 ]

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from typing import Literal
 
+from .audited_change_terminal import RELATIONSHIP_COMMITMENT_TERMINAL_REASONS
 from .audited_proposal_settlement import (
     find_terminal_audited_change,
     settle_terminal_audited_change,
@@ -182,10 +183,7 @@ class RelationshipCommitmentWorker:
                     proposal_id=proposal.proposal_id,
                 )
             except RelationshipProposalCompilerError as exc:
-                if exc.code not in {
-                    "relationship_proposal_compiler."
-                    "commitment_stage_transition_not_installed",
-                }:
+                if exc.code not in RELATIONSHIP_COMMITMENT_TERMINAL_REASONS:
                     raise
                 terminal = settle_terminal_audited_change(
                     ledger=self._ledger,
@@ -194,6 +192,7 @@ class RelationshipCommitmentWorker:
                     current_cursor=current_cursor,
                     actor=self._actor,
                     source=self._source,
+                    reason_code=exc.code,
                 )
                 return RelationshipCommitmentWorkResult(
                     status=terminal.status,

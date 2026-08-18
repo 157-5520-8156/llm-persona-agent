@@ -102,40 +102,50 @@ def test_slim_wait_parses_the_duration_she_wrote() -> None:
     assert expectation["expires_after_seconds"] == 180
 
 
-def test_slim_wait_soon_is_not_a_timed_wake() -> None:
-    compiled = compile_slim_consider_payload(
-        _slim_payload(waiting_for="想听你怎么看这件事", wait="soon")
-    )
+def test_slim_wait_soon_is_a_visible_failure() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_WAIT_NOT_A_DURATION
 
-    assert compiled is not None
-    assert compiled["expression_draft"].get("response_expectation") is None
-
-
-def test_slim_wait_prefix_without_seconds_is_not_a_timed_wake() -> None:
-    compiled = compile_slim_consider_payload(
-        _slim_payload(waiting_for="短: 想听你怎么看这件事")
-    )
-
-    assert compiled is not None
-    assert compiled["expression_draft"].get("response_expectation") is None
+    with pytest.raises(ValueError, match=SLIM_WAIT_NOT_A_DURATION):
+        compile_slim_consider_payload(
+            _slim_payload(waiting_for="想听你怎么看这件事", wait="soon")
+        )
 
 
-def test_slim_unknown_wait_is_not_a_timed_wake() -> None:
-    compiled = compile_slim_consider_payload(
-        _slim_payload(waiting_for="他回来把那件事说完", wait="whenever")
-    )
+def test_slim_wait_prefix_without_seconds_is_a_visible_failure() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_WAIT_PAIR_INCOMPLETE
 
-    assert compiled is not None
-    assert compiled["expression_draft"].get("response_expectation") is None
+    with pytest.raises(ValueError, match=SLIM_WAIT_PAIR_INCOMPLETE):
+        compile_slim_consider_payload(
+            _slim_payload(waiting_for="短: 想听你怎么看这件事")
+        )
 
 
-def test_slim_omitted_wait_lets_her_end_the_topic() -> None:
-    compiled = compile_slim_consider_payload(
-        _slim_payload(waiting_for="他回来把那件事说完")
-    )
+def test_slim_unknown_wait_is_a_visible_failure() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_WAIT_NOT_A_DURATION
 
-    assert compiled is not None
-    assert compiled["expression_draft"].get("response_expectation") is None
+    with pytest.raises(ValueError, match=SLIM_WAIT_NOT_A_DURATION):
+        compile_slim_consider_payload(
+            _slim_payload(waiting_for="他回来把那件事说完", wait="whenever")
+        )
+
+
+def test_slim_waiting_for_without_wait_is_a_visible_failure() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_WAIT_PAIR_INCOMPLETE
+
+    with pytest.raises(ValueError, match=SLIM_WAIT_PAIR_INCOMPLETE) as caught:
+        compile_slim_consider_payload(
+            _slim_payload(waiting_for="他回来把那件事说完")
+        )
+    assert "这次缺了：wait" in str(caught.value)
+    assert "不会被默默丢掉" in str(caught.value)
+
+
+def test_slim_wait_without_waiting_for_is_a_visible_failure() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_WAIT_PAIR_INCOMPLETE
+
+    with pytest.raises(ValueError, match=SLIM_WAIT_PAIR_INCOMPLETE) as caught:
+        compile_slim_consider_payload(_slim_payload(wait=45))
+    assert "这次缺了：waiting_for" in str(caught.value)
 
 
 def test_slim_declared_wait_below_the_floor_still_wakes_at_thirty_seconds() -> None:
@@ -188,7 +198,7 @@ def test_slim_consider_schema_still_fits_g4_after_waiting_for() -> None:
     # schema.  The real G4 area cap is asserted on compact_gate_for below,
     # where payload_json is one string property.
     assert required <= 3
-    assert total <= 16
+    assert total <= 20
     assert depth <= 2
     compact = InboundToolContracts().compact_gate_for(
         capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
@@ -434,13 +444,58 @@ def test_slim_later_compiles_a_delayed_text_reply_only() -> None:
     assert expanded["events"][0]["delay_seconds"] == 90
 
 
+def test_slim_optional_nulls_are_omission_not_a_form_to_fill() -> None:
+    from companion_daemon.world_v2.present_prompt import reply_only_slim_shape_specimen
+
+    payload = reply_only_slim_shape_specimen()
+    payload["messages"] = ["嗯"]
+    payload["felt"] = "没事"
+    compiled = compile_slim_consider_payload(payload)
+
+    assert compiled is not None
+    expression = compiled["expression_draft"]
+    assert expression["timing_choice"] == "now"
+    assert expression.get("response_expectation") is None
+    assert expression.get("revisit") is None
+    assert "we_are" not in expression["private_turn_state"]
+    assert compiled["appraisal_draft"]["affect"] == "no_change"
+
+
+def test_slim_later_null_is_send_now() -> None:
+    compiled = compile_slim_consider_payload(_slim_payload(later=None))
+
+    assert compiled is not None
+    assert compiled["expression_draft"]["timing_choice"] == "now"
+    assert "delay_seconds" not in compiled["expression_draft"]
+
+
 def test_slim_invalid_later_fails_closed_instead_of_sending_now() -> None:
-    assert compile_slim_consider_payload(_slim_payload(later=0)) is None
-    assert compile_slim_consider_payload(_slim_payload(later=True)) is None
-    assert compile_slim_consider_payload(_slim_payload(later=10)) is None
-    assert compile_slim_consider_payload(_slim_payload(later=45, photo=True)) is None
-    silent = compile_slim_consider_payload({"messages": [], "felt": "现在不想回", "later": 45})
-    assert silent is None
+    from companion_daemon.world_v2.present_prompt import (
+        SLIM_LATER_NOT_A_DURATION,
+        SLIM_LATER_REQUIRES_TEXT,
+    )
+
+    with pytest.raises(ValueError, match=SLIM_LATER_NOT_A_DURATION):
+        compile_slim_consider_payload(_slim_payload(later=0))
+    with pytest.raises(ValueError, match=SLIM_LATER_NOT_A_DURATION):
+        compile_slim_consider_payload(_slim_payload(later=True))
+    with pytest.raises(ValueError, match=SLIM_LATER_NOT_A_DURATION):
+        compile_slim_consider_payload(_slim_payload(later=10))
+    with pytest.raises(ValueError, match=SLIM_LATER_REQUIRES_TEXT):
+        compile_slim_consider_payload(_slim_payload(later=45, photo=True))
+    with pytest.raises(ValueError, match=SLIM_LATER_REQUIRES_TEXT):
+        compile_slim_consider_payload({"messages": [], "felt": "现在不想回", "later": 45})
+
+
+def test_slim_invalid_how_it_landed_is_a_visible_failure() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_HOW_IT_LANDED_INVALID
+
+    compiled = compile_slim_consider_payload(_slim_payload())
+    assert compiled is not None
+    compiled_null = compile_slim_consider_payload(_slim_payload(how_it_landed=None))
+    assert compiled_null is not None
+    with pytest.raises(ValueError, match=SLIM_HOW_IT_LANDED_INVALID):
+        compile_slim_consider_payload(_slim_payload(how_it_landed="ok"))
 
 
 def test_slim_photo_true_binds_media_request_on_full_turn_not_reply_only() -> None:

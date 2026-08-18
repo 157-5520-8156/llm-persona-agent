@@ -295,7 +295,17 @@ class ScenarioVerificationError(AssertionError):
 # source-review, acceptance, Action, and receipt boundaries; the frozen suite
 # keeps every existing per-case predicate enabled while request, audit,
 # scheduler, snapshot, and replay identities intentionally move together.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.76"
+# ``.77`` records the day's accumulated production repairs as one executable
+# baseline: declared_display as a world-side grant that hitchs only after the
+# reply lands, compact full_turn specimens that expose the key, JSON-wire
+# transport repair and pinned-source short-id restore, media-selection occasion
+# as a timing gate, process-health vocabulary, post-redaction derived snapshot
+# keys, a second activity consider on the wake that commits a plan, visual
+# starvation fill that no longer excludes the just-missed settlement, and the
+# attraction catalog putting closeup ahead of context so explicit is not framed
+# wider than suggestive. Per-case predicates remain enforced; the aggregate
+# prompt/policy identities intentionally move.
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.77"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -457,8 +467,10 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.76"
 # mounted on the live process. Per-case predicates remain enforced; the aggregate
 # prompt/policy identities intentionally move. Two independent complete 120-case
 # processes produced this hash before installation.
+# ``.77`` is installed only after two independent complete 120-case processes
+# produced the same aggregate manifest.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "5db2749ba687f15e0acb911cf25c2a91bc9968875130e5bf287e54798abf919c"
+    "31d19cdd0f44147c6d968312c8f3471177dde135e702fe009bbc5df2ddd7bd38"
 )
 
 

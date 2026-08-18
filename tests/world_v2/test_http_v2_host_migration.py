@@ -872,7 +872,9 @@ def test_health_starts_one_warmup_and_reports_sanitized_sticky_failure(
             current = client.get("/health")
 
         assert current.status_code == 200
-        assert current.json()["status"] == "degraded"
+        assert current.json()["status"] == "unhealthy"
+        assert "world v2 capture failed" in current.json()["reason"]
+        assert "world_v2_capture_not_ready" in current.json()["reasons"]
         assert current.json()["world_v2_capture"] == {
             "status": "failed",
             "failure_code": "ledger_integrity_error",
@@ -935,7 +937,8 @@ def test_explicit_message_retries_failed_health_warmup_and_restores_ready_status
         ):
             time.sleep(0.01)
             health = client.get("/health")
-        assert health.json()["status"] == "degraded"
+        assert health.json()["status"] == "unhealthy"
+        assert "world v2 capture failed" in health.json()["reason"]
 
         response = client.post(
             "/messages",
@@ -990,8 +993,9 @@ def test_health_reports_running_warmup_without_starting_another_build(
         first = client.get("/health")
         assert build_started.wait(timeout=2)
         second = client.get("/health")
-        assert first.json()["status"] == "degraded"
-        assert second.json()["status"] == "degraded"
+        assert first.json()["status"] == "unhealthy"
+        assert second.json()["status"] == "unhealthy"
+        assert "world v2 capture is still warming" in first.json()["reason"]
         assert first.json()["world_v2_capture"] == {"status": "warming"}
         assert second.json()["world_v2_capture"] == {"status": "warming"}
         assert first.json()["character_interior"] == {
@@ -1017,7 +1021,7 @@ def test_health_reports_running_warmup_without_starting_another_build(
     assert build_calls == 1
 
 
-def test_health_degrades_when_character_interior_reports_parallel_author_conflict(
+def test_health_is_unhealthy_when_character_interior_reports_parallel_author_conflict(
     tmp_path: Path,
 ) -> None:
     class _ConflictedCapture:
@@ -1039,7 +1043,8 @@ def test_health_degrades_when_character_interior_reports_parallel_author_conflic
         current = client.get("/health")
 
     assert current.status_code == 200
-    assert current.json()["status"] == "degraded"
+    assert current.json()["status"] == "unhealthy"
+    assert "parallel author conflicts" in current.json()["reason"]
     assert current.json()["world_v2_capture"] == {"status": "ready"}
     assert current.json()["character_interior"][
         "parallel_character_author_conflicts"
@@ -1381,7 +1386,11 @@ def test_http_dashboard_room_route_is_operator_gated_and_returns_only_the_v2_pub
     """Exercise the HTTP route as a black box, not the projection adapter directly."""
 
     host = build_http_v2_capture_host(
-        settings=Settings(database_path=tmp_path / "http-dashboard-v2.sqlite"),
+        settings=Settings(
+            _env_file=None,
+            WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
+            database_path=tmp_path / "http-dashboard-v2.sqlite",
+        ),
         bootstrap_at=NOW,
         model=FakeCompanionModel(),
     )
@@ -1398,7 +1407,11 @@ def test_http_dashboard_room_route_is_operator_gated_and_returns_only_the_v2_pub
     monkeypatch.setattr(
         app_module,
         "get_settings",
-        lambda: Settings(DELIVERY_RECONCILIATION_TOKEN="dashboard-operator-secret"),
+        lambda: Settings(
+            _env_file=None,
+            WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
+            DELIVERY_RECONCILIATION_TOKEN="dashboard-operator-secret",
+        ),
     )
     try:
         client = TestClient(app_module.app)
@@ -1478,7 +1491,11 @@ def test_http_dashboard_public_route_is_operator_gated_cacheable_and_never_reads
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     host = build_http_v2_capture_host(
-        settings=Settings(database_path=tmp_path / "http-dashboard-public-v2.sqlite"),
+        settings=Settings(
+            _env_file=None,
+            WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
+            database_path=tmp_path / "http-dashboard-public-v2.sqlite",
+        ),
         bootstrap_at=NOW,
         model=FakeCompanionModel(),
     )
@@ -1495,7 +1512,11 @@ def test_http_dashboard_public_route_is_operator_gated_cacheable_and_never_reads
     monkeypatch.setattr(
         app_module,
         "get_settings",
-        lambda: Settings(WORLD_V2_DASHBOARD_OPERATOR_TOKEN="dashboard-public-secret"),
+        lambda: Settings(
+            _env_file=None,
+            WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
+            WORLD_V2_DASHBOARD_OPERATOR_TOKEN="dashboard-public-secret",
+        ),
     )
     try:
         client = TestClient(
@@ -1574,7 +1595,11 @@ def test_http_dashboard_public_route_never_bootstraps_or_falls_back_to_legacy(
     monkeypatch.setattr(
         app_module,
         "get_settings",
-        lambda: Settings(WORLD_V2_DASHBOARD_OPERATOR_TOKEN="dashboard-public-secret"),
+        lambda: Settings(
+            _env_file=None,
+            WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
+            WORLD_V2_DASHBOARD_OPERATOR_TOKEN="dashboard-public-secret",
+        ),
     )
 
     response = TestClient(
@@ -1639,7 +1664,11 @@ def test_http_dashboard_room_route_never_falls_back_to_legacy_when_v2_capture_la
     monkeypatch.setattr(
         app_module,
         "get_settings",
-        lambda: Settings(DELIVERY_RECONCILIATION_TOKEN="dashboard-operator-secret"),
+        lambda: Settings(
+            _env_file=None,
+            WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
+            DELIVERY_RECONCILIATION_TOKEN="dashboard-operator-secret",
+        ),
     )
 
     response = TestClient(app_module.app).get(
@@ -1672,7 +1701,11 @@ def test_http_dashboard_room_route_does_not_bootstrap_a_cold_v2_host(
     monkeypatch.setattr(
         app_module,
         "get_settings",
-        lambda: Settings(DELIVERY_RECONCILIATION_TOKEN="dashboard-operator-secret"),
+        lambda: Settings(
+            _env_file=None,
+            WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
+            DELIVERY_RECONCILIATION_TOKEN="dashboard-operator-secret",
+        ),
     )
 
     response = TestClient(app_module.app).get(

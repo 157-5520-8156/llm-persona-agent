@@ -472,6 +472,7 @@ def _strict_audit(value: ModelResultAudit) -> ModelResultAudit:
         character_interior_lineage=value.character_interior_lineage,
         status=value.status,
         failure_code=value.failure_code,
+        failure_detail=value.failure_detail,
         slot=value.slot,
         outcome=value.outcome,
         input_tokens=value.input_tokens,

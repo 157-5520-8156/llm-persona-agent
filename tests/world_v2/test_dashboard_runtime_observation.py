@@ -303,3 +303,24 @@ async def test_unsafe_shared_runtime_is_degraded_not_unavailable() -> None:
     assert [reason.model_dump(mode="json") for reason in observation.reasons] == [
         {"signal": "life_source_authority", "reason_code": "source_unavailable"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_soft_daily_budget_exhaustion_is_a_visible_degraded_signal() -> None:
+    probes = _ready_probes()
+    probes["model_usage_budget"] = _probe(
+        {
+            "monthly_exhausted": False,
+            "daily_exhausted": False,
+            "soft_daily_exhausted": True,
+        }
+    )
+    observation = await DashboardRuntimeObservationSampler(
+        **probes,  # type: ignore[arg-type]
+        clock=lambda: NOW,
+    ).capture()
+
+    assert observation.model_usage_budget_state == "degraded"
+    assert [reason.model_dump(mode="json") for reason in observation.reasons] == [
+        {"signal": "model_usage_budget", "reason_code": "budget_exhausted"},
+    ]

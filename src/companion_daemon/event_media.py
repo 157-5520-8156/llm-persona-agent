@@ -57,14 +57,17 @@ from companion_daemon.media_interaction import (
     load_interaction_catalog,
 )
 from companion_daemon.media_eligibility import (
+    DECLARED_DISPLAY_EVIDENCE_REF,
     FrozenPrivateExpressionBasis,
     MediaEligibilityRouter,
     MediaLaneRecommendation,
+    P3_RELATIONSHIP_STAGE_FLOOR,
     PrivateExpressionBasis,
 )
 from companion_daemon.media_suggestive_lane import (
     EXPLICIT_PRIVATE_LANE,
     PRIVATE_RENDER_LANES,
+    SUGGESTIVE_MECHANISMS,
     SUGGESTIVE_PRIVATE_LANE,
     PrivateFlairBrief,
     PrivateRenderContract,
@@ -890,17 +893,14 @@ class FirstPersonPrivatePromptAuthor:
             or not plan.private_flair.action_beat
         ):
             raise ValueError("first_person_private_prompt_requires_frozen_high_private_plan")
+        facts = _frozen_high_private_render_facts(plan)
         camera = plan.camera_geometry
         capture = plan.capture_mode.replace("_", " ")
         capture_contract = _first_person_capture_contract(plan.capture_mode)
         camera_prose_restraint = _first_person_camera_prose_restraint(plan.capture_mode)
         facial_contract = _first_person_facial_contract(plan)
         profile_contract = private_facial_profile_contract(plan.private_flair.facial_profile)
-        charge = (
-            plan.media_address_strategy.expression_charge.replace("_", " ")
-            if plan.media_address_strategy
-            else "charged"
-        )
+        intensity_contract = _first_person_declared_intent_contract(facts)
         system = (
             "You are the image-prompt author for an adult fictional girlfriend's recipient-exclusive "
             "personal photo. Return exactly one English positive image prompt, 90-150 words, with no title, "
@@ -910,26 +910,45 @@ class FirstPersonPrivatePromptAuthor:
             "must be candid smartphone photography, not a studio/editorial image. The recipient is absent and "
             "must not appear; do not invent a second person, a second phone, or extra limbs. A strongly heightened "
             "adult erotic facial performance, including ahegao-inspired cues, is allowed only when the frozen "
-            "expression calls for it; do not add a sexual act or key-area exposure."
+            "expression calls for it; do not add a sexual act or key-area exposure. "
+            f"{intensity_contract}"
         )
         user = (
             "Frozen high-private intent:\n"
             f"- capture mode: {capture}; camera framing: {camera.shot_distance if camera else 'personal selfie'}\n"
+            f"- visual form: {facts['visual_form']}; shot distance: {facts['distance']}\n"
             f"- capture physics: {capture_contract}\n"
             f"- prose restraint: {camera_prose_restraint}\n"
-            f"- expression charge: {charge}; recipient is an adult lover and the photo is only for them\n"
+            f"- declared media intent: {facts['declared_intent']}; media lane: {facts['lane']}\n"
+            f"- expression charge: {facts['charge']}; disclosure: {facts['disclosure'] or 'frozen'}; "
+            "recipient is an adult lover and the photo is only for them\n"
+            f"- event-supported look (mandatory, do not replace): {facts['wardrobe']}\n"
+            f"- coverage mode: {facts['coverage']}; naturally visible regions: "
+            f"{facts['allowed_regions'] or 'only those supported by the outfit'}\n"
+            f"- grounded physical cues: {facts['physical_cues']}\n"
             f"- mandatory visible action: {plan.private_flair.action_beat}\n"
             f"- mandatory expression: {plan.private_flair.expression_beat}\n"
             f"- mandatory gaze: {plan.private_flair.gaze_beat}\n"
             f"- frozen facial performance: {facial_contract}\n"
             f"- frozen high-private facial profile: {profile_contract['author_contract']}\n"
             f"- private subtext: {plan.private_flair.recipient_subtext}\n"
-            "Make the face a lived micro-moment, not a symmetric polite smile or a blank generic stare: "
-            "write at least two compatible visible facial cues from the frozen performance as natural prose. "
-            "Do not describe the recipient as visible. Keep it adult and sexually suggestive; do not describe a "
+            "The frozen look, coverage, body framing, and declared intent are host-copied World facts; "
+            "include them in the scene. Make the face a lived micro-moment, not a symmetric polite smile "
+            "or a blank generic stare: write at least two compatible visible facial cues from the frozen "
+            "performance as natural prose. Do not describe the recipient as visible. Do not describe a "
             "sexual act or key-area exposure."
         )
-        raw = (await self.model.complete([{"role": "system", "content": system}, {"role": "user", "content": user}], temperature=0.95)).strip()
+        with model_call_scope(
+            "first_person_private_prompt",
+            action_id=f"private-prompt:{plan.plan_id}",
+            actor="system:first-person-private-prompt-author",
+        ):
+            raw = (
+                await self.model.complete(
+                    [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                    temperature=0.95,
+                )
+            ).strip()
         normalized = _sanitize_first_person_camera_prose(" ".join(raw.split()), plan.capture_mode)
         lowered = normalized.casefold()
         if (
@@ -943,9 +962,11 @@ class FirstPersonPrivatePromptAuthor:
         # is appended last so a prose-first model cannot casually replace a
         # selfie with an invisible off-camera photographer.
         intensity_suffix = _high_intensity_facial_suffix(plan)
+        appearance_suffix = _frozen_appearance_suffix(facts)
         return (
             f"{normalized}\n\nCamera construction requirement: {capture_contract}."
             f"{intensity_suffix}"
+            f"{appearance_suffix}"
         )
 
 
@@ -988,8 +1009,10 @@ def _first_person_camera_prose_restraint(capture_mode: str) -> str:
 
     if capture_mode == "character_front_camera":
         return (
-            "do not mention a phone, screen, device, interface, mirror, or a hand holding the camera; "
-            "describe only an unobstructed face-first selfie viewpoint"
+            "do not mention a phone, screen, device, interface, camera app, shutter button, or a hand "
+            "holding the camera; the capture device stays outside the picture; describe the person, "
+            "the frozen clothing, and the private setting the plan selected, not a camera UI and not "
+            "an ordinary public lifestyle portrait"
         )
     return "keep the camera relationship faithful to the frozen capture mode"
 
@@ -1080,6 +1103,120 @@ def _high_intensity_facial_suffix(plan: MediaPlan) -> str:
         return ""
     suffix = str(private_facial_profile_contract(flair.facial_profile).get("render_suffix") or "").strip()
     return f"\n\n{suffix}" if suffix else ""
+
+
+def _first_person_declared_intent_contract(facts: Mapping[str, str]) -> str:
+    """Copy her frozen declaration into the author contract; do not re-choose it."""
+
+    if facts.get("explicit") == "true":
+        return (
+            "Honor her explicit_adult declaration: this is unmistakably adult sexual communication "
+            "using the frozen private apparel as adult private clothing, with the frozen disclosure "
+            "mode. Keep a close, body-inclusive frame that makes the frozen naturally-visible "
+            "non-key regions readable; do not pull back into a modest fully-wrapped environmental "
+            "portrait that hides the declaration, and do not reduce this to a face-only beauty crop. "
+            "Still no sexual act and no key-area exposure. Do not dilute it into a modest daytime "
+            "portrait."
+        )
+    return (
+        "Honor her sexual_suggestive declaration: sexually suggestive while still covered. "
+        "The frozen private apparel must remain visible as the outfit; do not replace it with "
+        "ordinary daytime clothes. Still no sexual act and no key-area exposure."
+    )
+
+
+def _frozen_appearance_suffix(facts: Mapping[str, str]) -> str:
+    """Keep already-frozen wardrobe and intent even if the author omits them."""
+
+    wardrobe = str(facts.get("wardrobe") or "").strip()
+    if not wardrobe:
+        return ""
+    intent = str(facts.get("declared_intent") or "sexual_suggestive").strip()
+    coverage = str(facts.get("coverage") or "private apparel").strip()
+    regions = str(facts.get("allowed_regions") or "only those supported by the outfit").strip()
+    return (
+        f"\n\nFrozen appearance requirement: wear exactly {wardrobe}; coverage={coverage}; "
+        f"declared_intent={intent}; naturally_visible_regions={regions}. "
+        f"Do not replace this look with ordinary daytime clothes."
+    )
+
+
+def _frozen_high_private_render_facts(plan: MediaPlan) -> dict[str, str]:
+    """Project already-frozen high-private facts for the Krea2 prompt seam.
+
+    Intensity still comes from her ``declared_display`` and the authorized
+    lane.  This helper only copies those facts so a first-person author cannot
+    drop the look or collapse both adult tiers into the same face-only selfie.
+    """
+
+    contract = plan.private_render_contract or plan.suggestive_private_contract
+    lane = ""
+    if plan.media_lane is not None:
+        lane = plan.media_lane.lane
+    elif contract is not None:
+        lane = str(getattr(contract, "lane", "") or "")
+    declared = plan.evidence_values.get(DECLARED_DISPLAY_EVIDENCE_REF)
+    declared_intent = ""
+    if isinstance(declared, Mapping):
+        declared_intent = str(declared.get("media_intent") or "")
+    if not declared_intent:
+        if lane == EXPLICIT_PRIVATE_LANE:
+            declared_intent = "explicit_adult"
+        elif lane == SUGGESTIVE_PRIVATE_LANE:
+            declared_intent = "sexual_suggestive"
+    embodied = plan.embodied_presentation
+    wardrobe_values = [
+        _compact_value(plan.evidence_values[ref])
+        for ref in (embodied.wardrobe_evidence_refs if embodied else ())
+        if ref in plan.evidence_values
+    ]
+    appearance_outfit = plan.evidence_values.get("/character/appearance_state/outfit")
+    if not wardrobe_values and isinstance(appearance_outfit, str) and appearance_outfit.strip():
+        wardrobe_values = [appearance_outfit.strip()]
+    wardrobe = (
+        "; ".join(dict.fromkeys(item for item in wardrobe_values if item))
+        or "event-supported private apparel"
+    )
+    physical_cues = ", ".join(
+        cue.cue_id.replace("_", " ")
+        for cue in (embodied.physical_cues if embodied else ())
+    ) or "natural shot-specific body state"
+    camera = plan.camera_geometry
+    shot_distance = camera.shot_distance if camera is not None else ""
+    distance = {
+        "detail": "detail crop",
+        "intimate_close": "intimate close selfie",
+        "close": "close selfie",
+        "medium": "mid-length selfie",
+        "full_body": "full-body selfie",
+        "long": "full-person photograph",
+        "wide": "wide personal-media photograph",
+    }.get(shot_distance, "close personal-media photograph")
+    address = plan.media_address_strategy
+    charge = address.expression_charge.replace("_", " ") if address is not None else "charged"
+    disclosure = address.disclosure_mode.replace("_", " ") if address is not None else ""
+    coverage = (
+        embodied.coverage_mode.replace("_", " ") if embodied is not None else "private apparel"
+    )
+    # Copy the catalog list as-is.  Truncating to face/hair/neck/shoulders was
+    # an extra crop stricter than the owner hard boundary (no sexual act, no
+    # key-area exposure) and collapsed both adult tiers into a shoulder-up shot.
+    allowed_regions = ", ".join(embodied.allowed_regions) if embodied is not None else ""
+    explicit = declared_intent == "explicit_adult" or lane == EXPLICIT_PRIVATE_LANE
+    return {
+        "lane": lane,
+        "declared_intent": declared_intent,
+        "wardrobe": wardrobe,
+        "coverage": coverage,
+        "charge": charge,
+        "disclosure": disclosure,
+        "visual_form": plan.visual_form.replace("_", " "),
+        "shot_distance": shot_distance.replace("_", " "),
+        "distance": distance,
+        "physical_cues": physical_cues,
+        "allowed_regions": allowed_regions,
+        "explicit": "true" if explicit else "false",
+    }
 
 
 class MediaPlanner:
@@ -2316,50 +2453,42 @@ def _compile_krea2_private_prompt(plan: MediaPlan) -> str:
     flair = plan.private_flair
     if flair is None or not flair.action_beat:
         return "invalid_high_private_director_brief"
+    facts = _frozen_high_private_render_facts(plan)
     camera = plan.camera_geometry
-    embodied = plan.embodied_presentation
-    wardrobe_values = [
-        _compact_value(plan.evidence_values[ref])
-        for ref in (embodied.wardrobe_evidence_refs if embodied else ())
-        if ref in plan.evidence_values
-    ]
-    wardrobe = wardrobe_values[0] if wardrobe_values else "event-supported private apparel"
-    physical_cues = ", ".join(
-        cue.cue_id.replace("_", " ")
-        for cue in (embodied.physical_cues if embodied else ())
-    ) or "natural shot-specific body state"
-    distance = {
-        "detail": "detail crop",
-        "intimate_close": "intimate close selfie",
-        "close": "close selfie",
-        "medium": "mid-length selfie",
-        "full_body": "full-body phone selfie",
-        "long": "full-person phone photograph",
-        "wide": "wide personal-media photograph",
-    }.get(camera.shot_distance, "close personal-media photograph")
     capture = {
         "character_front_camera": (
-            "front-facing phone selfie, she operates the phone herself, one cropped holding arm is physically "
-            "credible, no third photographer"
+            "front-facing selfie, she authors the picture herself, no third photographer, "
+            "no camera-app overlay"
         ),
         "mirror": (
             "one mirror selfie: show the character only as one coherent reflection, with the reflected phone in "
             "her hand; no duplicate person outside the mirror and no second phone"
         ),
     }.get(plan.capture_mode, "self-authored personal-media camera relationship")
-    allowed_regions = ", ".join(embodied.allowed_regions[:4]) if embodied else ""
-    coverage = embodied.coverage_mode.replace("_", " ") if embodied else "private apparel"
-    charge = plan.media_address_strategy.expression_charge.replace("_", " ")
+    if facts["explicit"] == "true":
+        intent_line = (
+            f"Unmistakably recipient-exclusive adult sexual communication with {facts['charge']} "
+            f"expression ({facts['disclosure'] or 'partial reveal'}), using the frozen private apparel; "
+            "include the frozen naturally-visible non-key regions in a close body-inclusive frame "
+            "rather than a modest fully-wrapped environmental portrait or a face-only crop; still "
+            "no sexual act and no key-area exposure; never a public lifestyle photo."
+        )
+    else:
+        intent_line = (
+            f"Private, recipient-exclusive sexually suggestive flirtation with {facts['charge']} "
+            "expression, still covered by the frozen private apparel, never a public lifestyle photo. "
+            "Still no sexual act and no key-area exposure."
+        )
     return "\n".join(
         line
         for line in (
             "Krea2 high-private render brief. One adult fictional East Asian woman; one person, one face, two hands.",
-            f"{distance}; {capture}; {camera.orientation} framing.",
-            f"Private, recipient-exclusive adult flirtation with {charge} expression, never a public lifestyle photo.",
-            f"Wear exactly the event-supported look: {wardrobe}. Coverage mode: {coverage}. Do not add outer layers.",
+            f"{facts['distance']}; {capture}; {camera.orientation} framing.",
+            intent_line,
+            f"Wear exactly the event-supported look: {facts['wardrobe']}. Coverage mode: {facts['coverage']}. Do not add outer layers.",
             f"Visible moment: {flair.action_beat}. Expression: {flair.expression_beat}. Gaze: {flair.gaze_beat}.",
             f"Recipient subtext: {flair.recipient_subtext}. The action, face and gaze are the visual center.",
-            f"Grounded physical cues: {physical_cues}. Naturally visible regions may include: {allowed_regions or 'only those supported by the outfit'}.",
+            f"Grounded physical cues: {facts['physical_cues']}. Naturally visible regions may include: {facts['allowed_regions'] or 'only those supported by the outfit'}.",
             "Natural imperfect smartphone photo, ordinary room texture and uneven available light; no studio beauty campaign, no text, no watermark, no extra limbs.",
         )
         if line
@@ -2772,6 +2901,24 @@ def _freeze_proposal(
         pointers = [primary, *supporting]
         if len(supporting) > 8:
             return NotRenderable(opportunity.opportunity_id, "too_many_supporting_evidence_refs")
+        display_ref = _declared_display_evidence_ref(opportunity)
+        if (
+            display_ref
+            and display_ref not in evidence
+            and display_ref in allowed_evidence
+        ):
+            try:
+                evidence[display_ref] = _resolve_pointer(
+                    opportunity.event_snapshot, display_ref
+                )
+            except (KeyError, IndexError, TypeError, ValueError):
+                return NotRenderable(
+                    opportunity.opportunity_id, "private_render_intent_evidence_missing"
+                )
+            supporting = _ensure_host_derived_supporting_ref(
+                supporting, display_ref, primary=primary
+            )
+            pointers = [primary, *supporting]
         strategy = subject_presentation.display_strategy
         if strategy and interaction_bid.communicative_goal not in strategy.communicative_goals:
             return NotRenderable(opportunity.opportunity_id, "subject_interaction_bid_conflict")
@@ -3047,16 +3194,22 @@ def _freeze_proposal_v5(
                 opportunity.opportunity_id, "private_render_private_context_evidence_missing"
             )
         selected_refs = list(legacy.get("supporting_evidence_refs") or [])
-        if (
-            private_context_ref != legacy.get("primary_evidence_ref")
-            and private_context_ref not in selected_refs
-        ):
-            if len(selected_refs) >= 8:
-                return NotRenderable(
-                    opportunity.opportunity_id, "private_render_private_context_evidence_unselected"
-                )
-            selected_refs.append(private_context_ref)
-            legacy["supporting_evidence_refs"] = selected_refs
+        selected_refs = _ensure_host_derived_supporting_ref(
+            selected_refs,
+            private_context_ref,
+            primary=str(legacy.get("primary_evidence_ref") or ""),
+        )
+        display_ref = _declared_display_evidence_ref(opportunity)
+        if display_ref is None:
+            return NotRenderable(
+                opportunity.opportunity_id, "private_render_intent_evidence_missing"
+            )
+        selected_refs = _ensure_host_derived_supporting_ref(
+            selected_refs,
+            display_ref,
+            primary=str(legacy.get("primary_evidence_ref") or ""),
+        )
+        legacy["supporting_evidence_refs"] = selected_refs
     intimate_life_share = (
         opportunity.family == "life_share"
         and proposal.get("share_intent") == "intimate_signal"
@@ -3678,7 +3831,10 @@ def _private_render_candidate_legal(
         and address.get("address_mode") == "direct_recipient"
         and address.get("engagement_tactic") == "attraction"
         and address.get("expression_charge") in {"charged", "veiled"}
-        and bool(address.get("attraction_mechanism"))
+        # atmospheric_suggestion is an attraction recipe, but the high-private
+        # freeze catalog does not include it.  Tagging it as a private lane
+        # made ranking changes surface an un-freezable first candidate.
+        and address.get("attraction_mechanism") in SUGGESTIVE_MECHANISMS
         and embodiment.get("coverage_mode") in {"private_apparel", "strategic_cover"}
         and "invite_desire" in _private_candidate_interaction_bids(candidate, candidate_sources)
     )
@@ -4497,9 +4653,7 @@ def _validate_frozen_plan_v5(plan: MediaPlan) -> str | None:
                 if plan.media_lane.lane == SUGGESTIVE_PRIVATE_LANE
                 else "explicit_adult"
             )
-            declared_display = plan.evidence_values.get(
-                "/relationship_media_context/declared_display"
-            )
+            declared_display = plan.evidence_values.get(DECLARED_DISPLAY_EVIDENCE_REF)
             if (
                 not isinstance(declared_display, Mapping)
                 or str(declared_display.get("media_intent") or "")
@@ -4993,34 +5147,75 @@ def _private_context_evidence_ref(opportunity: MediaOpportunity) -> str | None:
     return None
 
 
+def _declared_display_evidence_ref(opportunity: MediaOpportunity) -> str | None:
+    """Return the host-derived declared-display parent pointer when present.
+
+    The planning model sees leaf pointers such as ``.../media_intent``.  Freeze
+    validation needs the parent object.  Injecting that container is not a
+    semantic choice: she already authored the declaration; the host only
+    carries the already-frozen World fact into the plan.
+    """
+
+    try:
+        value = _resolve_pointer(opportunity.event_snapshot, DECLARED_DISPLAY_EVIDENCE_REF)
+    except (KeyError, TypeError, ValueError, IndexError):
+        return None
+    if isinstance(value, Mapping) and value:
+        return DECLARED_DISPLAY_EVIDENCE_REF
+    return None
+
+
+def _ensure_host_derived_supporting_ref(
+    refs: list[str], pointer: str, *, primary: str
+) -> list[str]:
+    """Guarantee a host-derived evidence pointer is in the frozen supporting set.
+
+    This does not choose a pose or intensity.  It only keeps an already-frozen
+    World fact on the plan when the model omitted a container pointer.
+    """
+
+    if pointer == primary or pointer in refs:
+        return list(refs)
+    if len(refs) < 8:
+        return [*refs, pointer]
+    if not refs:
+        return [pointer]
+    return [*refs[:-1], pointer]
+
+
 def _allowed_evidence_pointers(opportunity: MediaOpportunity) -> tuple[str, ...]:
     """Return the exact evidence vocabulary exposed to a planning model.
 
     Legacy opportunities have no provenance index, so preserve their current
     bounded traversal.  World v2's image-event-snapshot bridge supplies an
     explicit leaf-only allow-list; in that lane containers and the
-    ``/evidence_index`` metadata must never be selectable as evidence.
+    ``/evidence_index`` metadata must never be selectable as evidence, except
+    the host-derived ``declared_display`` parent object required by freeze.
     """
 
     if opportunity.allowed_evidence_refs:
-        return tuple(sorted(set(opportunity.allowed_evidence_refs)))
+        pointers = set(opportunity.allowed_evidence_refs)
+    else:
+        pointers: set[str] = set()
 
-    pointers: list[str] = []
+        def visit(value: object, pointer: str = "") -> None:
+            if len(pointers) >= 96:
+                return
+            if pointer:
+                pointers.add(pointer)
+            if isinstance(value, dict):
+                for key, nested in value.items():
+                    visit(nested, pointer + "/" + str(key).replace("~", "~0").replace("/", "~1"))
+            elif isinstance(value, list):
+                for index, nested in enumerate(value):
+                    visit(nested, pointer + "/" + str(index))
 
-    def visit(value: object, pointer: str = "") -> None:
-        if len(pointers) >= 96:
-            return
-        if pointer:
-            pointers.append(pointer)
-        if isinstance(value, dict):
-            for key, nested in value.items():
-                visit(nested, pointer + "/" + str(key).replace("~", "~0").replace("/", "~1"))
-        elif isinstance(value, list):
-            for index, nested in enumerate(value):
-                visit(nested, pointer + "/" + str(index))
+        visit(opportunity.event_snapshot)
 
-    visit(opportunity.event_snapshot)
-    return tuple(pointers)
+    display_ref = _declared_display_evidence_ref(opportunity)
+    if display_ref is not None:
+        pointers.add(display_ref)
+    return tuple(sorted(pointers))
 
 
 def _interaction_bid_values(
@@ -5042,7 +5237,7 @@ def _interaction_bid_values(
                 if opportunity.audience_context
                 else ""
             )
-            if stage not in {"ambiguous", "lover"}:
+            if stage not in P3_RELATIONSHIP_STAGE_FLOOR:
                 continue
             minimum_charge = "charged" if bid_id == "invite_desire" else "subtle"
             if (

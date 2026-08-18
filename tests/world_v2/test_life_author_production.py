@@ -567,6 +567,30 @@ def test_production_seed_does_not_contain_new_authored_job_travel_or_home_plots(
     }.isdisjoint(item["npc_id"] for item in catalog["npcs"])
 
 
+def test_summer_family_home_offers_the_three_existing_private_transition_routines() -> None:
+    catalog = ReviewedLifeSeedCatalog.from_yaml(
+        path=Path("configs/world_seed.yaml"),
+        chronology=LocalChronology("Asia/Shanghai"),
+    )
+    morning = datetime(2026, 8, 18, 8, 0, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(UTC)
+    bedtime = datetime(2026, 8, 18, 23, 15, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(UTC)
+    late = datetime(2026, 8, 19, 1, 0, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(UTC)
+
+    def ids_at(instant: datetime, wake: str) -> set[str]:
+        return {
+            item.opening.id
+            for item in catalog.candidates_at(
+                instant=instant,
+                wake_event_ref=wake,
+                plans=(),
+            )
+        }
+
+    assert "settle-morning-routine" in ids_at(morning, "event:clock:summer-morning")
+    assert "prepare-for-bed" in ids_at(bedtime, "event:clock:summer-bed")
+    assert "late-night-wind-down" in ids_at(late, "event:clock:summer-late")
+
+
 def test_reviewed_candidates_compile_soft_daypart_fit_from_local_window(
     tmp_path: Path,
 ) -> None:

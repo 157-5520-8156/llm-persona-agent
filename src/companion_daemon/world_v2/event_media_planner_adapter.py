@@ -26,7 +26,10 @@ from threading import RLock
 from typing import Mapping, Protocol
 
 from companion_daemon import event_media
-from companion_daemon.media_eligibility import PrivateExpressionBasis
+from companion_daemon.media_eligibility import (
+    DECLARED_DISPLAY_EVIDENCE_REF,
+    PrivateExpressionBasis,
+)
 
 from .media_v2 import (
     CharacterMediaSnapshotAuthorization,
@@ -353,8 +356,11 @@ class EventMediaPlannerAdapter:
             expression_requirements=(),
             audience_context=(self._p3_audience(snapshot) if lane == "p3" else None),
             expression_charge_ceiling=(p3_authorization.expression_charge_ceiling if p3_authorization is not None else "none"),
+            sensual_charge_ceiling=(
+                p3_authorization.expression_charge_ceiling if p3_authorization is not None else "none"
+            ),
             private_expression_basis=(self._p3_basis(snapshot) if lane == "p3" else None),
-            allowed_evidence_refs=tuple(sorted(_snapshot_leaves(snapshot))),
+            allowed_evidence_refs=_p3_allowed_evidence_refs(snapshot) if lane == "p3" else tuple(sorted(_snapshot_leaves(snapshot))),
             authorized_capture_modes=(
                 tuple(p2_authorization.allowed_capture_modes)
                 if p2_authorization is not None
@@ -833,6 +839,24 @@ def _snapshot_leaves(value: object, pointer: str = "") -> set[str]:
             leaves |= _snapshot_leaves(item, pointer + "/" + str(index))
         return leaves
     return {pointer}
+
+
+def _p3_allowed_evidence_refs(snapshot: Mapping[str, object]) -> tuple[str, ...]:
+    """Leaf allow-list plus the host-derived declared-display parent object.
+
+    Freeze validation reads ``/relationship_media_context/declared_display`` as
+    a mapping.  ``_snapshot_leaves`` only emits ``.../media_intent`` and other
+    fields.  Adding the parent is not a character decision: she already wrote
+    the declaration; the host carries that World fact into the planner.
+    """
+
+    allowed = set(_snapshot_leaves(snapshot))
+    context = snapshot.get("relationship_media_context")
+    if isinstance(context, Mapping):
+        display = context.get("declared_display")
+        if isinstance(display, Mapping) and display:
+            allowed.add(DECLARED_DISPLAY_EVIDENCE_REF)
+    return tuple(sorted(allowed))
 
 
 def _snapshot_logical_time(snapshot: Mapping[str, object]) -> datetime:

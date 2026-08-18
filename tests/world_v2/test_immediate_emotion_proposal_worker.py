@@ -56,6 +56,7 @@ from test_appraisal_authority import (
     event,
     message_payload,
     prepare_claimed_interaction,
+    prepare_claimed_proactive,
 )
 from test_proposal_audit import _digest, _result
 
@@ -283,6 +284,119 @@ def _record_combined_emotion_proposal(
     return proposal, recorded.cursor
 
 
+def _record_proactive_emotion_proposal(ledger):
+    """Same combined Appraisal/Affect decision, bound to a claimed proactive trigger."""
+
+    _ledger, _trigger, evidence = prepare_claimed_proactive(ledger)
+    her_reading = "他刚回了个简短的嗯，对话有点停在原地。"
+    appraisal_change = TypedChange(
+        change_id="change:immediate-emotion:appraisal:proactive:1",
+        kind="appraisal_transition",
+        target_id="appraisal:model-hint",
+        transition="activate",
+        expected_entity_revision=0,
+        evidence_refs=(evidence.ref_id,),
+        payload=CanonicalTypedPayload.from_value(
+            payload_schema="appraisal_transition.v1",
+            value={
+                "appraisal_id": "appraisal:model-hint",
+                "meaning_candidates": [
+                    {"meaning": her_reading, "confidence": 7200},
+                    {"meaning": "misunderstanding", "confidence": 2800},
+                ],
+                "attribution": "user",
+                "severity": 4200,
+                "confidence": 6000,
+                "expiry": None,
+            },
+        ),
+    )
+    affect_change = TypedChange(
+        change_id="change:immediate-emotion:affect:proactive:1",
+        kind="affect_transition",
+        target_id="affect:model-hint",
+        transition="open",
+        expected_entity_revision=0,
+        evidence_refs=(evidence.ref_id,),
+        payload=CanonicalTypedPayload.from_value(
+            payload_schema="affect_transition.v1",
+            value={
+                "episode_id": "affect:model-hint",
+                "appraisal_change_refs": [appraisal_change.change_id],
+                "component_deltas": [{"name": "warmth", "value": 4200}],
+                "decay_config": {
+                    "object_ref": "policy:decay:standard",
+                    "schema_version": "affect-decay.1",
+                    "payload_hash": "sha256:" + "a" * 64,
+                },
+                "residue_config": {
+                    "object_ref": "policy:residue:standard",
+                    "schema_version": "affect-residue.1",
+                    "payload_hash": "sha256:" + "b" * 64,
+                },
+            },
+        ),
+    )
+    proposal = DecisionProposal(
+        proposal_id="proposal:proactive:immediate-emotion:1",
+        trigger_ref="message-event:1",
+        evaluated_world_revision=ledger.project().world_revision,
+        evidence_refs=(
+            ProposalEvidenceRef(
+                ref_id=evidence.ref_id,
+                evidence_kind="committed_world_event",
+                source_world_revision=evidence.source_world_revision,
+                immutable_hash="sha256:" + str(evidence.immutable_hash),
+            ),
+        ),
+        proposed_changes=(appraisal_change, affect_change),
+        action_intents=(),
+        confidence=6000,
+        brief_rationale=her_reading,
+        affect_decision="propose",
+        affect_tendencies=("warmth",),
+        behavior_tendency="respond",
+        stance="warm",
+        display_strategy="model_selected_expression",
+        timing_choice="now",
+    )
+    base = _result()
+    result = DeliberationResult(
+        result_id="deliberation:"
+        + _digest(
+            {
+                "capsule_id": base.capsule_id,
+                "proposal_hash": proposal.proposal_hash,
+                "attempt_audits": [base.audit.model_dump(mode="json")],
+            }
+        ),
+        capsule_id=base.capsule_id,
+        proposal=proposal,
+        audit=base.audit,
+        attempt_audits=(base.audit,),
+    )
+    head = ledger.project()
+    recorded = ProposalAuditRecorder(ledger=ledger).record(
+        result,
+        ProposalAuditContext(
+            world_id=WORLD_ID,
+            trigger_ref=proposal.trigger_ref,
+            logical_time=NOW,
+            created_at=NOW,
+            actor="agent:companion",
+            source="test:proactive-immediate-emotion",
+            trace_id="trace:proactive-immediate-emotion",
+            causation_id="cause:proactive-immediate-emotion",
+            correlation_id="correlation:proactive-immediate-emotion",
+            evaluated_world_revision=head.world_revision,
+            expected_commit_world_revision=head.world_revision,
+            expected_deliberation_revision=head.deliberation_revision,
+            expected_ledger_sequence=head.ledger_sequence,
+        ),
+    )
+    return proposal, recorded.cursor, her_reading
+
+
 def _worker(*, ledger, issuer):
     return ImmediateEmotionProposalWorker(
         appraisal_worker=AppraisalProposalWorker(
@@ -450,6 +564,28 @@ def test_one_audited_emotion_proposal_accepts_appraisal_then_rebased_affect_with
     )
     assert joined.status == "accepted"
     assert ledger.project() == projection
+
+
+def test_proactive_immediate_emotion_lands_appraisal_and_affect() -> None:
+    issuer = AcceptedLedgerBatchIssuer()
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID, accepted_batch_issuer=issuer)
+    proposal, audit_cursor, her_reading = _record_proactive_emotion_proposal(ledger)
+
+    result = _worker(ledger=ledger, issuer=issuer).process(
+        world_id=WORLD_ID,
+        audit_cursor=audit_cursor,
+        proposal_id=proposal.proposal_id,
+    )
+
+    projection = ledger.project()
+    assert result.status == "accepted"
+    assert any(item.event_type == "AppraisalAccepted" for item in projection.committed_world_event_refs)
+    assert projection.appraisals[0].hypotheses[0].meaning == her_reading
+    assert projection.trigger_processes[0].process_kind == "proactive_action_deliberation"
+    assert projection.trigger_processes[0].state == "claimed"
+    assert len(projection.affect_episodes) == 1
+    assert projection.affect_episodes[0].components[0].dimension == "warmth"
+    assert projection.affect_episodes[0].components[0].intensity_bp == 4200
 
 
 def test_restart_after_appraisal_acceptance_reuses_original_audit_and_completes_affect(

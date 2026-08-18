@@ -195,14 +195,17 @@ async def test_v5_private_media_requires_a_world_frozen_private_expression_basis
         proposal.pop(field, None)
     unselected_basis = dict(proposal)
     unselected_basis["supporting_evidence_refs"] = ["/activity/kind"]
-    rejected = await MediaPlanner(V5SelectingModel(unselected_basis)).plan(opportunity)
+    injected = await MediaPlanner(V5SelectingModel(unselected_basis)).plan(opportunity)
     model = V5SelectingModel(proposal)
     result = await MediaPlanner(model).plan(opportunity)
 
-    # The legacy exclusive-private lane still requires its basis in frozen
-    # evidence. The new high private routes carry their own render contract.
-    assert isinstance(rejected, NotRenderable)
-    assert rejected.reason == "unselected_private_expression_basis_evidence"
+    # declared_display is host-derived World fact.  Omitting the parent
+    # pointer from the model no longer fails freeze; the host injects it.
+    # The basis must still land in frozen evidence_values.
+    assert isinstance(injected, PlannedMedia)
+    assert injected.plan.evidence_values.get(
+        "/relationship_media_context/declared_display"
+    )
     assert isinstance(result, PlannedMedia)
     assert result.plan.media_address_strategy is not None
     assert result.plan.media_address_strategy.expression_charge == "charged"
@@ -1962,6 +1965,35 @@ async def test_sensual_ceiling_requires_intimate_privacy_but_not_local_relations
     assert isinstance(privacy_conflict, NotRenderable)
     assert privacy_conflict.reason == "sensual_charge_ceiling_requires_intimate_privacy"
     assert isinstance(relationship_conflict, PlannedMedia)
+
+
+def test_close_friend_opens_invite_desire_when_authorized_ceiling_is_charged() -> None:
+    from companion_daemon.event_media import _interaction_bid_values
+    from companion_daemon.media_interaction import DEFAULT_INTERACTION_CONFIG
+
+    blocked = _interaction_bid_values(
+        _opportunity(
+            privacy="intimate",
+            sensual_charge_ceiling="charged",
+            audience_context=AudienceContext(
+                recipient_ref="user:geoff", relationship_stage="friend"
+            ),
+        ),
+        config_path=DEFAULT_INTERACTION_CONFIG,
+    )
+    allowed = _interaction_bid_values(
+        _opportunity(
+            privacy="intimate",
+            sensual_charge_ceiling="charged",
+            audience_context=AudienceContext(
+                recipient_ref="user:geoff", relationship_stage="close_friend"
+            ),
+        ),
+        config_path=DEFAULT_INTERACTION_CONFIG,
+    )
+
+    assert "invite_desire" not in blocked
+    assert "invite_desire" in allowed
 
 
 @pytest.mark.asyncio

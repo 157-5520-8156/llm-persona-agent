@@ -70,6 +70,15 @@
 13. **2026-08-15：QQ 附件识图用阿里百炼 `qwen3-vl-flash`，思考关闭。** 像素不进 DeepSeek。缺 `QWEN_API_KEY` 或 perception grant 则整条感知车道 fail-closed，不得静默回到 OpenAI vision。
 14. **2026-08-15：等待时长由角色当轮声明秒数。** 不再用 soon=15 分钟 / later≈12 小时冒充她的耐心。系统只守硬下限 30 秒。没填 wait 不定时叫醒，允许她结束话题。填了短 wait 则按声明密度叫醒，急了可以连着发。没回话后的叫醒按她声明的 wait（`not_before`）；`expires_at` 只结束盼头窗口。到期后再给她一次 `consider()`，问、换话题或继续沉默仍由她选。
 
+### 2.2 用户裁决（2026-08-18，施工日回写，不得由实现者改写）
+
+15. **有界地打开私人印象独立农场。** 覆盖裁决 10 的「独立车道保持停用」。默认日 3 次 / 间隔 4h / idle 30min；`limit=0` 仍关。活印象只领养已到期空闲 consider，不读正文。
+16. **close_friend 门槛维持六轴 7000/6200。** 同日 6000 实验作废。梯子是慢路，已投递的 `we_are` 是主路。
+17. **成人强度只认 `declared_display`；P3 跳过视觉审查保持现状。** 关系阶段是地板。缺 key/模板仍 fail-closed。
+18. **生成与投递共用日 2 / 间隔 2h。** 账本 `cost_actual` 不是 CNY。
+
+裁决 15–18 的施工证据见 §17 H27–H32；意图总纲 §12.8 是业务口径。
+
 ## 3. 唯一 seam：Occasion → Present → Consider → Consequence
 
 全系统只保留一条模型主路径。四层职责与出钱方式：
@@ -742,6 +751,13 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 | H19 | 接通 P3 成人媒体车道：部署安装 Civitai Krea2 + 第一人称私密 prompt 作者；缺凭证 fail-closed，不降级 OpenAI，不关普通车道 | 部署未安装专用生成器/作者；高档计划 `specialized_*_unavailable` | 凭证齐全时 `adult_suggestive`/`adult_explicit` 与 author 装上；缺 key/模板时普通车道仍开；无来源高档计划仍 `unsourced_event` |
 | H20 | QQ 附件识图改阿里百炼 `qwen3-vl-flash`（思考关闭）：工厂要 `QWEN_API_KEY`，不再要 OpenAI 才能开感知 | 感知工厂绑 `OPENAI_API_KEY` + `gpt-4o-mini` | 工厂 `dashscope:vision` + `qwen3-vl-flash`；请求带 `enable_thinking: false`；缺 Qwen key fail-closed |
 | H21 | 等待时长改角色声明秒数（0 新增 Occasion）：slim `wait` 编成秒；没填不定时叫醒；H13e 到 `not_before` 叫醒；expiry 只结盼头 | soon=15min / 未声明=12h；叫醒看 `expires_at` | 她写 45 就是 45 秒；没填 wait 不编译盼头；wait 已过、expiry 未到也会叫醒 |
+| H22–H26 | 生产账本反证与成批修复（关系增量、世界作者、文风、复燃门槛、出图闸） | 见 §17 各条 | 见 §17；H26 剩余缺口已于同日傍晚回写 |
+| H27 | 主动联系首次授权发出：strict schema、JSON 修补、钉源还原、第四堵墙、流式重选、drain 隔离 | 历史上 `proactive_message` 送达 0；受约束重选在生产流式路径上未真正调模型 | 克隆上 `ActionAuthorized` `proactive_message`；同 Occasion 校正会再调模型 |
+| H28 | 她看得见自己能写哪些决定：范本列全键、半套可见失败 + 一次重选 | compact 范本只有 `messages`+`felt`；半套静默丢 | wait 成对从 0/6 升到 3/6；`come_back`/`later`/`we_are` 看得见后选择不用；可见回复 12/12 |
+| H29 | 关系：梯子是慢路，声明是主路；门槛改回 7000/6200 | 生产 stranger / 六轴均值 85；按现频率爬到 friend 约 6.4 年 | 克隆上已投递承诺 stranger→friend→close_friend；friend 考虑带抽中 3h |
+| H30 | 媒体：生成有界、选片贴对话、成人车道真出图 | 生成无日上限；身份 LoRA 404；`declared_display` 未接线 | 生成与投递对齐日 2/间隔 2h；P3 克隆出 JPEG 253651 字节 |
+| H31 | 私人印象农场打开，惦记可变成一次开口机会 | H14 后 drain 恒 `None` | 配置化日上限 3；活印象领养到期空闲 consider；3/3 授权 |
+| H32 | 工程卫生与仍开放项 | 见该条 | `cost_actual` 不是 CNY；`.safetensors` 忽略；两条时序断言与本地出图结论未定 |
 
 ### 13.1 代码坐标（行号以 2026-08-13 的 HEAD 为准，改动前必须先确认）
 
@@ -762,10 +778,16 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 | H10 | `world_v2/sqlite_ledger.py:680-713`（启动序）、`:1973-2076`（冷校验）、`:6060-6207`（replay）、`:3121-3160`（bundle migration）、`:6045-6057`（rebuild）、`:2139-2243`（identity/idempotency）、`:2346-2347`（prefix partial）；ref 累积 `reducers.py:15407-15426`；启动门 `production_turn_application.py:3364`；bootstrap `:4453-4495`；清理入口 `ledger_maintenance.py:1454`；运行时依赖 `memory_retrieval.py:170` |
 | H12–H16 | 坐标全部写在 [`interior-continuity-implementation-spec.md`](./interior-continuity-implementation-spec.md) 各包内（含核实日期 2026-08-14）。主要落点：`world_v2/epoch_continuity.py:120-128,164-168`；`world_v2/context_capsule.py:170-190,2119-2134,2174-2187`；`world_v2/recent_dialogue.py:60,372-374`；`character_interior/snapshot_compiler.py:717-719,730-748`；`world_v2/present_prompt.py:234-244,286-349,352-412`（`:385/402` 硬写 `None`）；`world_v2/expression_draft.py:264-277`；`world_v2/response_expectation_view.py:71-183,240-290`；`world_v2/runtime.py:802-878`；`world_v2/social_initiative.py:1102-1216`（`:1168-1170` 空注释）；`world_v2/silence_appraisal_trigger.py:54-117`；`world_v2/private_impression_producer.py:203-284,513-548`；`world_v2/biographical_lifecycle_runtime.py:190-233`；`world_v2/world_life_context.py:266-308`；`world_v2/occasion.py:15-28,50-68,79-80` |
 | H18 | `present_prompt.py` slim `wait`/`waiting_for`；`response_expectation_view.py` `_TERMINAL_ASSESSMENT_STATES` 含 `still_pending`、advisory `counterpart_replied`；`pinned_turn.py` 入站 advisory；`inbound_wire.py` 同轮追问说明 |
-| H19 | `qq_media_deployment.py` `_compose_high_private_lane`；`config.py` `CIVITAI_KREA2_ENABLED` 默认 True；普通仍 `OpenAIImageGenerator` |
+| H19 | `qq_media_deployment.py` `_compose_high_private_lane`；`config.py` `CIVITAI_KREA2_ENABLED` 默认 True；普通仍 `OpenAIImageGenerator`；P3 身份 LoRA AIR 见模板第 28 行 |
 | H20 | `config.py` `VISION_MODEL` 默认 `qwen3-vl-flash`、`QWEN_BASE_URL`；`qq_perception_deployment.py` 凭证改 `QWEN_API_KEY`；`perception_vision_transport.py` `dashscope:vision` + `enable_thinking: false` |
 | H21 | `present_prompt.py` slim `wait` 解析秒；`response_expectation_view.py` 叫醒看 `not_before`；`social_initiative.py` `scheduled_for` 用 wait |
 | H11 | 开关 `config.py:723`（`ALLOW_AUTO_IMAGE_GENERATION`）、`:731-732`（`WORLD_V2_MEDIA_PREVIEW_ENABLED`）；部署检查 `world_v2/qq_media_deployment.py:293-311`、auto delivery `:433-438`；选片 `media_selection_worker.py:75-79`；provisioning `scripts/provision_world_v2_media_authority.py`；链路 `event_ecology_media.py` → `media_selection_acceptance_runtime.py` → `event_media.MediaPlanner` → `image_generation.OpenAIImageGenerator` → `OpenAIMediaInspector` → `media_auto_delivery.py` |
+| H27 | `llm.py` strict `anyOf`；`json_wire_repair.py`；`pinned_source_ref.py`；`inbound_author.propose_stream_head` 先 cancel 再 reserve；`reducers.py` `_APPRAISAL_SOURCE_PROCESS_KINDS`；`runtime.py` `_isolated_background_worker` |
+| H28 | `inbound_author.py` compact 范本；`present_prompt.py` 半套；`inbound_turn.py` 一次 `correct_role_result` |
+| H29 | `relationship_reducers.py` 7000/6200 + `relationship_state_policy_is_readable`；`relationship_commitment_worker.py` 先投递再接受 |
+| H30 | `budget.py` / `usage_metrics.py` 生图门；`image_generation.py` Civitai 异步对账；`declared_display_*`；`media_selection_occasion.py` |
+| H31 | `character_interior/production.py` `drain_private_impression_once`；`private_impression_producer.py` `WeakKeyDictionary`；`social_initiative.py` `source_kind=private_impression` |
+| H32 | `.gitignore` `*.safetensors`；`tests/world_v2/test_world_v2_dashboard_ui.py` `_env_file=None` |
 
 ## 14. 每个工作包的交付模板
 
@@ -1106,7 +1128,7 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
   - 生产 drain 仍调 opener / advance（独立模型农场）
 - **改动**：
   1. `compile_paid_private_impression_draft`：retain、confidence 5000、`until_counter_evidence`、sources 去重截到 8。
-  2. 生产 `drain_private_impression_once` 直接 `return None`。独立农场停在生产 drain 上。
+  2. 生产 `drain_private_impression_once` 直接 `return None`。独立农场停在生产 drain 上。（**2026-08-18 由 H31 覆盖**：默认日上限 3、间隔 4h；`daily_model_call_limit=0` 仍保留 H14 的关农场行为。）
   3. `PrivateImpressionTriggerRuntime.drain_one` 未改，既有单测仍可跑。未动 `batch_invariants.py`。
 - **测试**：H14 3 passed；`test_private_impression_producer.py` 绿；character-tier 498 passed；ruff 绿。
 - **生产证据**：只读。epoch2 `world_v2_model_usage` **0** 条 private-impression purpose（切纪元后本就没有）。`PrivateImpressionAccepted` **0**。进程未重启前 drain 切断不生效。
@@ -1136,7 +1158,7 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 - **红测**：initial tools JSON 随 `recall_allowed` 分叉；私人印象同契约最多 4 次。
 - **改动**：
   1. `inbound_tool_contract.contract_for`：`phase=initial` 的 tools 始终带 recall 分支，运行时仍按 `recall_allowed` 拒绝。
-  2. 私人印象 `_PRIVATE_IMPRESSION_MAX_ATTEMPTS=1`（生产 drain 仍是 H14 的 `return None`）。
+  2. 私人印象 `_PRIVATE_IMPRESSION_MAX_ATTEMPTS=1`（当时生产 drain 仍是 H14 的 `return None`；**2026-08-18 由 H31 在配置化日上限下重新打开**）。
   3. **同日用户关掉错峰**：删除 `consider_window.py` 及 social/proactive/reflection 的高峰推迟。安静窗口与再访按原 cadence 到期即给她。
 - **剩余缺口**：H16 五种 Occasion 仍未合成单一队列；`life_beat` 没有独立 consider，生活事件只挂到下一次 quiet_gap 上。
 
@@ -1156,7 +1178,7 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
   1. `build_qq_media_preview_deployment` 在 `CIVITAI_KREA2_ENABLED` + `CIVITAI_API_KEY` + 已审模板可加载时，给 `SourcedLifeMediaRenderer` 安装同一 Krea2 模板的两个 route，以及 `FirstPersonPrivatePromptAuthor`（有 OpenRouter 用 Hermes，否则用已要求的 DeepSeek）。
   2. 缺任一件只让高档 fail-closed，普通 OpenAI 生活照继续；禁止静默降级 GPT Image。
   3. `CIVITAI_KREA2_ENABLED` 默认 True。生产要出图仍需 `CIVITAI_API_KEY`。未新建关系阶段→强度规则，也未宣称 Adult Eligibility 已闭合。
-- **剩余缺口**：现网 `.env` 仍无 `CIVITAI_API_KEY`，重启后高档会继续 fail-closed 直到补 key。资格层仍缺用户成人资格证明与内容级双方同意；未发出过 P3 生产照片前不把状态升成 active。
+- **剩余缺口（2026-08-18 回写）**：现网已有 `CIVITAI_API_KEY`，成人车道在克隆上走出图（H30，`output/adult-render-v2/`，253651 字节 JPEG）。缺 key/模板时该车道仍 fail-closed、不降级 OpenAI——机制描述不变，过期的是「现网没有 key」。资格层仍缺用户成人资格证明与内容级双方同意；P3 像素未发到生产 QQ 前不把状态升成 default-on。身份 LoRA 现 AIR 为 `urn:air:krea2:lora:civitai:2868686@3240992`（H30）。
 
 ### 2026-08-15 H20 QQ 附件识图改阿里 `qwen3-vl-flash`
 
@@ -1204,7 +1226,7 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
   1. **英文契约压缩/中文化**：系统提示仍是 ~19k 英文填表说明对 ~1k 中文人设。这是文风的最大结构性负担，也是本轮唯一没动的根因。`slim_consider_instruction`（6.3k）与 `expression_draft_shape_contract`（5k）被大量测试逐字断言，需单独一包。
   2. **对话按真实气泡呈现**：历史仍是单条 user JSON 里的 `materials.recent_dialogue`，英文键名。改成真正的多轮或气泡文本块会动 replay 身份与 32k 预算，需单独评估。
   3. **`ambiguous`/`lover` 承诺协议未安装**：`relationship_reducers` 对这两个阶段 fail-closed，`_POLICY` 无 enter/exit，schema 只允许三档。她可以在聊天里暧昧，但账本永远升不到暧昧/恋人。改 `_POLICY` 会动 `RELATIONSHIP_POLICY_DIGEST`，属迁移级改动。
-  4. **私人印象仍是 0**：`drain_private_impression_once` 恒 `return None`（成本决策），paid-inbound hitch 受冻结批次不变量阻挡。她在他不在时仍不会想起他。
+  4. **私人印象仍是 0**：`drain_private_impression_once` 恒 `return None`（成本决策），paid-inbound hitch 受冻结批次不变量阻挡。她在他不在时仍不会想起他。→ **已由 H31 关闭农场门；生产账本当时 `PrivateImpressionAccepted=0` 仍是事实，打开后的落账见 `output/private-impression/`。**
   5. **生活生态仍近乎静止**：4 天 0 个活动开始/完成、1 个已结算事件。她没有生活可讲，这独立于本轮改动。
   6. **`_reply_only_fallback_appraisal` 仍在 wire 破损时替她写 `no_change`**：违反 AGENTS.md「不得由确定性代码替角色决定」，正解是受约束重选，需一次额外调用的成本裁决。
 
@@ -1225,7 +1247,7 @@ H22 记录的六条剩余缺口本轮全部施工。核心判断：账本里"什
 - **基线**：`.72` → `.73`，manifest `abf5608e…`，两个独立 120 例进程复核一致。全量 5344 通过。
 - **剩余缺口**：
   1. `slim_consider_instruction`（7.5k）与 `expression_draft_shape_contract`（5k）仍是英文。整体中文化是文风的下一个杠杆，但要逐字改约 30 处测试断言，且翻译精确契约语义有漂移风险，值得单独一包并配 A/B 观察。
-  2. 后台独立私人印象车道（`drain_private_impression_once` 恒 `return None`）仍关闭。现在她只能在**已付费的回合里**留下印象；真正"他不在时想起他"需要一条 0 调用的替代路径（例如在已付费回合的印象上挂一次 quiet-gap 复访），未施工。
+  2. 后台独立私人印象车道（`drain_private_impression_once` 恒 `return None`）仍关闭。现在她只能在**已付费的回合里**留下印象；真正"他不在时想起他"需要一条 0 调用的替代路径（例如在已付费回合的印象上挂一次 quiet-gap 复访），未施工。→ **已由 H31 打开独立农场（有日上限），并由 `social_initiative` 的 `private_impression` 来源把活着的印象变成一次已到期空闲 consider；克隆上 3/3 授权发出。**
   3. 生活生态点火后必须回采成本：`life_development` 与 NPC actor 现在会真的打模型。月桶 NPC+社会 ¥8 / 人生节拍 ¥8 未变，超了按记录只减机会频率，不削她的上下文。
 
 ### 2026-08-18 H26 一次生产实证驱动的成批修复（六条并行）
@@ -1247,11 +1269,11 @@ H22 记录的六条剩余缺口本轮全部施工。核心判断：账本里"什
 - **顶回来的两条（记录以免重复犯）**：
   1. 我曾据审计要求"把视觉证据校验扩展到非 private、private 保持豁免"——**错**。现行 `ORDINARY_LIFE_PHOTO_PRIVACY` 已覆盖 public/shareable/personal/**private**，照做反而会**放宽**规则并让 `test_location_bound_ordinary_outcome_must_carry_visual_evidence` 守的属性失效。
   2. 我曾考虑照 inbound 的 `strip_unpinned_world_claims` 让 proactive"丢 claim 保 beats"——**错**。案例①她写的是「刚在傍晚散步呢」而账本里她并没有散步，只丢 claim 就发出去等于让宗旨明令禁止的伪造事实过关。正解是把精确 grounding 原因喂进她本来就有的那一次同模型校正（Postel 修好后该额度通常空着），仍然 fail-closed，不许丢 beats、不许第二作者、不许本地模板。**已分析未实现。**
-- **剩余缺口**：
-  1. **图片机至今 0 张图，总闸已完全查清**：账本从来没有一份"已结算 + 带 `visual_evidence` 附件"的生活证据。8/14 那场雷雨**不是**绕过校验——该校验 8/17 16:50（`86b8085c`）才加上，而在 8/14 当时 `private` + 视觉附件**反而非法**，所以 `location-bound + private + visual_evidence: null` 是当时唯一合法形状。starvation fill 兜的是"池空但**有带附件的**已结算生活"，所以从未兜住，连抽签事件都不会写。她点名要拍（`request_once`）同样需要那份附件，不是捷径。**最短出图路径**：8/22 01:00–09:00Z 旧书市计划（shareable、已带附件）→ 她在窗口内 start → 结算 → 声明 → 候选。剩余不可控因素：生产要在窗口内醒着；01:00Z 后 catalog 同时有"书店 abandon + 旧书市 start"，那一次会正常花 `day_open`，她若 no_op 当天就没有第二次——那是她的决定，不能代选。
-  2. **成人车道下一道闸**：规划冻结要求 `relationship_media_context.declared_display.media_intent == "explicit_adult"`，而 `RelationshipMediaContextV1` **没有** `declared_display` 字段。**故意未做**——现在无法被验证（关系仍 stranger、候选为 0），而且正解应是**她自己的声明**而非配置项，否则又变成替她决定。
-  3. 高档渲染走 `specialized_private_workflow_direct`，**跳过** OpenAI 审查与 ≤1 次修复（H19 原样，本轮未补）。
-  4. `week_diary` / `day_sheet` 同样没有 `source_ref`，`_redact_materials` 删不掉，`lived_moment` 仍可能经由它们带上内容。同类缺口，未修。
+- **剩余缺口（2026-08-18 傍晚回写）**：
+  1. **图片机生产账本仍无 `PhotoCandidateOpened`**（H26 当时的总闸判断仍对：缺「已结算 + 带 visual_evidence 附件」的生活证据）。**克隆上已出图**：H30 用 8/22 旧书市候选走出 OpenAI PNG（`output/first-photo/`、`output/media-delivered/`），并加了对话时机门；生产 QQ 尚未作为日常发出。剩余不可控仍是她在窗口内 start / select，以及生产要在对话附近才问她。
+  2. **成人车道的 `declared_display` 闸已落地**（H30）：`RelationshipMediaContextV1.declared_display` 存在；强度由她的声明决定，owner 授权只开可能性。本条不再是缺口。
+  3. 高档渲染走 `specialized_private_workflow_direct`，**跳过** OpenAI 审查与 ≤1 次修复。**2026-08-18 owner 明确决定保持现状**——这是产品裁决，不是待补缺口。后果：P3 像素没有 sourced-life / 视觉模型第二道门，只靠冻结计划 + Civitai 模板 + 她的 `declared_display`。
+  4. `week_diary` / `day_sheet` 同样没有 `source_ref`，`_redact_materials` 删不掉。`lived_moment` 已在本包移到 `model_view()` 之后；这两段派生材料仍可能带上内容。未修。
   5. 外层审计的 `model_id` / `response_hash` / `input_tokens` 仍可能为 null（`complete_json_object` 不回传用量）；原始码与截断原文已在 `role_rejection` 上。
   6. Godot 房间 URL 写死 `127.0.0.1:8767`，重启后不会连上生产（房间视图已近弃用，按用户裁决不管）。
   7. 本地 embedding 常驻约 7.2GB（GPU/统一内存约 5.9GB），对 40 篇短文档过大。**不能**改回按需——plist 无 socket 激活，`RunAtLoad=false` + `KeepAlive=false` 意味着没有任何东西会拉起它（这正是坏了 5 天的直接原因，证据是 `runs=0`）。省内存的正路是量化（维度仍 1024，缓存与索引不必重建）或加 socket 激活。
@@ -1282,7 +1304,7 @@ H22 记录的六条剩余缺口本轮全部施工。核心判断：账本里"什
 - **剩余缺口**：
   1. **`matters_bp` 至今 0 次达到 8500**（四轮对照全部如此），所以 reflection 一次都没触发，"越想越气"仍然没有真正发生过。她现在能看到自己那串全是 5000 的分量，下一轮回采要看这个数字是否开始分化；若仍不分化，说明 8500 这个固定门槛本身不对，应改为由她声明的强度推导。→ **已由 H25 关闭**。
   2. `expression_draft_shape_contract`（5k 英文）未中文化。它主要在非 compact 路径用，优先级低于 slim。
-  3. **顺带发现一处既有的脱敏泄漏（非本轮引入，未修）**：`snapshot_compiler.py` 的 `lived_moment` 在编译期把私人印象的 `reflection_summary` 与 appraisal 的 stimulus 摘录拼成一个无 `source_ref` 的字符串，`_redact_materials` 删不掉它，因此被脱敏的印象原文仍会进入 model view。修它要把 `lived_moment` 整体移到 model_view 期，会动 `materials_json`、快照哈希与两个 facet 的 `material_keys`，需单独一包。
+  3. **顺带发现一处既有的脱敏泄漏（非本轮引入，未修）**：`snapshot_compiler.py` 的 `lived_moment` 在编译期把私人印象的 `reflection_summary` 与 appraisal 的 stimulus 摘录拼成一个无 `source_ref` 的字符串，`_redact_materials` 删不掉它，因此被脱敏的印象原文仍会进入 model view。修它要把 `lived_moment` 整体移到 model_view 期，会动 `materials_json`、快照哈希与两个 facet 的 `material_keys`，需单独一包。→ **已由 H26 关闭 `lived_moment`；`week_diary` / `day_sheet` 同类缺口仍在。**
 
 ### 2026-08-18 H25 复燃的门槛改成她自己的量程
 
@@ -1311,5 +1333,102 @@ H24 留下的第一个缺口是"`matters_bp` 从未达到 8500"。回采生产�
 - **生产证据**：用生产账本副本回放她真实写下的那个 7000 分量的读法，`ReflectionSchedulerResult(opened=1)`——同一条数据在改动前是 `opened=0`。**这是"越想越气"这条链路第一次端到端跑通。**
 - **基线**：`.74` → `.75`，manifest `eb7bf56c…`，两个独立 120 例进程复核一致。全量 **5355 通过**（改动前唯一红的就是这条冻结基线）。生产 napcat 重启零错误（bootstrap 1365ms，`/health` 200）。
 - **剩余缺口**：本轮只改了"什么会回来"，没有改"回来之后会不会升级"。她现在最重的那件事一定会被再想起，但一轮反思之后强度是否真的往上走、以及会不会稳定在同一件事上循环，要等下一次回采看 `reflections_opened` 与负面情绪成分是否同时出现。
+
+### 2026-08-18 H27 主动联系首次授权发出（历史上从未成功）
+
+生产账本（只读 `data/companion.epoch2.sqlite`，3908 事件）里 `ActionAuthorized` 只有 `reply` × 95，`proactive_message` **0**。H26 已经证明她写出过要发的话，但卡在 wrapper / grounding。本轮把运输层、钉源、第四堵墙、情绪白名单和**流式重选**一条条打通。所有结论来自克隆 + CaptureDelivery，**未发生产 QQ**。
+
+- **坐标**：`structured_role_tool_contract.py`（DeepSeek strict `anyOf`）；`json_wire_repair.py`；`pinned_source_ref.py`；`proactive_action.py` / `life_development_runtime.py`（保留 typed `DecisionProposal`）；`reducers.py` `_APPRAISAL_SOURCE_PROCESS_KINDS`；`inbound_author.propose_stream_head`；`runtime.py` `_isolated_background_worker`；`llm.py` `MAX_PROVIDER_CALLS_PER_TURN`。
+- **红测 / 证据**：
+  1. DeepSeek Beta strict tools 拒收手写 `type: ["object","null"]` → HTTP 400（`output/schema-fix/`）。官方支持 `anyOf`，不支持把 `object` 放进 type 数组。
+  2. `finish_reason=tool_calls` 且未截断时，工具参数仍常不是合法 JSON。`output/proactive-final/CAPTURE_SUMMARY.json`：三次 `tool_calls` 都是 `Expecting ',' delimiter`（字符串内未转义引号），不是缺括号。`output/structured-output/REPORT.md`：主动 strict schema **40455 B / 约 3430 prompt tokens**，首次 `json.loads` **3/10**；廉价修补后可解析 **10/10**。compact gate 2088 B 是 **10/10**。官方 Chat Completions **没有 `json_schema`**；文档原句：tool 参数 *does not always generate valid JSON*。
+  3. 钉源形状损坏会整句丢掉。`pinned_source_ref.py` 对当轮钉住清单做零模型成本唯一匹配（精确拷贝 / 短 id `s0`… / 哈希片段）；0 命中或多命中保持未解析。compiler 把短标识还原成权威 ref。重选降为罕见兜底（`output/pinned-source/`）。
+  4. **第四堵墙**（`output/proactive-fourth-wall/ACCEPTANCE.json`）：`model_dump(mode="json")` 把 tuple 变成 list，撞上 `strict=True` 的 `DecisionProposal`，八个字段 `tuple_type` 失败 → `primary_invalid` → `proactive:deliberation-failed`。修法：保留已经编好的 typed proposal，不为过 JSON 再 `model_validate`。修后 `now`+mood 授权率 4/4。当时 reducers 白名单还没补上，心情停在 proposal JSON 里（下一条修）。
+  5. `_APPRAISAL_SOURCE_PROCESS_KINDS` 漏 `proactive_action_deliberation` 是来源种类遗漏，不是「主动联系不许有情绪」。补上之后同一 trigger 不能被 `AppraisalAccepted` 写成 `TriggerProcessCompleted`（否则消息发不出去），所以共享 trigger 接受批次变成 2 事件、**表达先授权、情绪后结算**。`output/proactive-appraisal/REPORT.md`：入站后到期开口 2 次、私人印象到期开口 **3/3**，均有 `ActionAuthorized.kind=proactive_message` 且同 trigger `AppraisalAccepted`。
+  6. **流式 head 的 cancel / reserve 顺序反了——这一条意味着 ADR 0010「允许一次受约束重选」在今天之前基本是纸面条款。** 生产走 `propose_stream_head`，不是测试夹具的 `complete()`。上一轮失败的 unit-stream 若在新 `CombinedInteriorStreamProvider` **造好之后**才 cancel，新流拿到已被作废的 generation token，校正回合**重放旧结果、不再调模型** → 整轮 `deferred`。`output/paired-reselection/REPORT.md`：修前注入半套 wait 后 deferred；修后同一 Occasion 第二次 compact 真正打到她，她重写成「谁啊 别卖关子」。代码注释在 `inbound_author.py` `propose_stream_head`：先 `previous.cancel()`，再构造新 provider。
+  7. `drain_background_once` 工人隔离：`RelationshipProposalCompilerError` / `RelationshipCommitmentWorkerError` 进 600/1800/7200s 进程内退避；泛 `Exception`（含 `RuntimeError`）只隔离本工人、**故意不退避**（避免把未知故障睡过去）。`output/drain-safety/report.json`：爆炸工人 1 次、later 工人每次 drain 仍跑；inexact `said_as` 收成 `AdvisoryAcceptanceRejected` 后 later 工人不再编译。
+  8. 每命名 `turn_id` 最多 8 次 provider 调用；连续 2 次失败冷却 30s。空 `turn_id` 不计数。
+- **改动**：上列坐标均已落地。`json_wire_repair.loads_one_json_object` 顺序是围栏剥离 → 字符串内引号转义 → 补未闭合 `}`/`]` → Extra data 取首个对象；截断在字符串中途、根不是 object 仍 fail-closed。语义层（别名、slim、hitchhike）不在修补器里。
+- **能不能用**：克隆上主动联系**可以授权发出**。生产 QQ 本线未发，不能声称现网已经开始找他。大 schema 一次合法仍约 30%，靠修补器拉到可解析；这是优化项，不再阻塞开口。
+- **剩余缺口**：主动 strict schema 约 40KB 仍贵（降级为优化，见 H32）；`inbound_author._parse_combined` 主路径仍是自剥围栏 + `json.loads`，失败才回落共享修补器（部分收敛，不是零）；proactive `structured_role` 仍无 `turn_id`，8 次上限管不到这条车道。
+
+### 2026-08-18 H28 她看得见自己能写哪些决定
+
+compact gate 的供应商 schema 是 `{result_kind, payload_json: string}`，slim 键**不进 properties**。她实际抄的是范本。上一条线把开关写进中文指令后，范本仍只有 `messages`+`felt`，她就只填这两项。目标是「她知道有哪些选项」，不是「她一定会用」。
+
+- **坐标**：`inbound_author.py` `reply_only_slim_shape_specimen` / `_compact_gate_voice_close`；`present_prompt.py` 半套抛中文 `ValueError`；`inbound_turn.py` `correction_ordinal==0` 升成一次 `correct_role_result`；`slim_consider_json_schema` 含 `come_back`。
+- **红测 / 证据**（`output/her-switches/REPORT.md`、`output/visible-choices/REPORT.md`、`output/reselection/REPORT.md`、`output/paired-reselection/REPORT.md`）：
+  1. 范本列出当轮 slim 全部可写键，可选键一律 `null`，并写明「看见键名不是建议你填；省略是常态」。实测她常把整份 null 骨架抄进 JSON——那是形状可见，不是在用开关。
+  2. **wait 成对**：her-switches 改前 0/6 成对（1/6 只写了盼头）；after2 **2/6**（秒数 **600、30**）；visible-choices 看见范本后 **3/6**（秒数 **60、30、60**）。come_back 探针的 `meeting_gap` 她选了 **`wait=1800`** 而不是 `come_back`。闲聊/收尾 n=6：**0/6** 写成对闹钟，没有机械滥用。
+  3. **`come_back` / `later` / `we_are` 字段仍为 0**，但已证明是**看得见之后选择不用**：payload 里带着 `"come_back":null` / `"later":null` / `"we_are":null`；felt 写「回头再说」「我这个人慢热」「我不想因为一句好听的话就乱了分寸」。不要误判成能力缺失。`later` 专测 0/6，felt 两轮提到「不用秒回」仍现在发。
+  4. `we_are` 文案写清：必须作为可见 beat 真的说出去、`said_as` 一字不差、未送达不算；三件套少一个现在是可见失败，不再静默不挂承诺。
+  5. 六轴全部列出；`us_deltas` 是基点，门槛量级在两千 / 四千五（六轴均值），单次 +20 几乎等于没写。`pressure_bp` / `importance_bp` 由宿主填默认基点，不是百分制；凡 `_bp` 都在指令里说明是 0–10000 基点。
+  6. 半套字段（`wait`、`come_back`、`us_deltas`+`about_us`/`why_us`、`we_are` 三件套）从静默丢弃改为可见失败 + **一次**受约束重选。开口要照片：生产对照 1/3 可见 → Postel 后 5/6 → 半套媒体权威曾掉到 2/6 → 中文 detail + 立刻抛 `paired_expression_reselection_invalid` 后 **6/6**（`output/reselection/after3`）。半套 wait 注入：可见回复 **5/6 → 12/12**（H27 的流式 cancel 顺序是这块能绿的根因）。
+- **能不能用**：她现在看得见开关。wait 在「他让她等」的情境里会写成对秒数；come_back / later / we_are 她看见了、选择不写——以后不要为了把 0 变成正数去怂恿。
+- **剩余缺口**：口头「我等你」仍然不等于 `wait`（禁止从措辞推断）。生产账本 slim `waiting_for`/`wait`/`come_back` 在本轮审计时仍是 0 节点，要等重启后的真实对聊。
+
+### 2026-08-18 H29 关系：梯子是慢路，声明是主路
+
+这是今天最有解释力的发现：生产不是「她写了被接受链拒」，是「几乎没提议阶段变化，慢变量只动过一次且极小」。修门槛数字解决不了这件事。
+
+- **坐标**：`relationship_reducers.py`（docstring、`enter_bp`/`exit_bp`、`relationship_state_policy_is_readable`、退役集）；`relationship_proposal_compiler.py`（读 `readable()`、写安装摘要）；`relationship_commitment_worker.py`（缺投递是等待，不是终态拒绝）；`audited_change_terminal.py`。
+- **红测 / 证据**（`output/relationship/REPORT.md`、`output/relationship-axes/REPORT.md`、`output/drain-safety/report.json`）：
+  1. 生产 3908 事件 / 62 次入站。六轴 trust 120 / closeness 200 / respect 80 / mutuality 110 / reliability 0 / repair 0，**均值 85**，阶段 stranger。`we_are` **0** 次。接受链关系类拒绝 **0**。唯一一次慢变量是 08-17 `trust +20 / closeness +20`。
+  2. 按生产真实频率（1 次信号 / 62 观察，每次 mean +7）爬到 **friend 约 6.4 年**。四轴打满、reliability/repair 保持 0 时 mean=**6666**，旧 close_friend 门槛 7000 **数学上不可达**。`reliability` / `repair` 有生产者、写路径与 trust/closeness 相同、不要求先有承诺或裂痕——她只是没写过。
+  3. 同日曾把 close_friend 改成 6000/5400（摘要 `374b96bb…`），让四轴饱和刚够开 hysteresis。这是**修错了地方**：6000 mean-of-six 要求四轴均值 9000，比「四轴 7000」更严，也把梯子从「她说出口」拧成「改分数」。**已改回 7000/6200**。口径写进 `relationship_reducers.py` 模块 docstring：六轴均值、梯子是慢路、声明是主路；不要因为两轴停在 0 就降低 close_friend。现安装摘要回到 H23 的 `2ec7c087…`；`374b96bb` 进入退役集。
+  4. `relationship_state_policy_is_readable()` 同时认投影对象和 dumped mapping。退役集：`64d8b7ff` / `13bfa71d` / `374b96bb`。第一次成功写入自动 restamp，**不需要账本迁移事件**。生产头 `13bfa71d` 可读。
+  5. 端到端（生产跟进克隆，overlay 只强制写出 `we_are`，`said_as` 与可见 beat 一致，CaptureDelivery 真送）：`ActionAuthorized` → `ActionDelivered` → **然后才** `RelationshipCommitmentAccepted`。stranger→friend（seq 3924→3944→3953）→close_friend（3994→4003）。friend 之后调度器真实抽出考虑带候选 7200/10800/14400，抽中 **10800s = 3.0h**。`_p3_lane_for_stage("friend")` 仍 `p3_relationship_stage_not_eligible`；`close_friend` 打开 P3 关系门（仍要 grant+consent+她的声明）。
+  6. 承诺编译两类失败收成 typed terminal，reducer 独立再证明（不信工人自称）。`said_as` 与可见句不完全一致 → `commitment_visible_span_not_exact` → `AdvisoryAcceptanceRejected`。`commitment_expression_not_delivered` **不在**终态集：缺回执是等待。
+  7. `us_deltas` 与 `about_us`/`why_us` 的成对要求原为静默丢弃（关系轴报告当时仍是缺口），已改可见失败（H28）。
+- **能不能用**：声明路径在克隆上可推进到 close_friend，并打开 P3 关系地板。生产仍停在 stranger / 均值 85，直到她真的把承诺句说出去且送达，或持续写非零增量。不要再靠改门槛催阶段。
+- **剩余缺口**：`ambiguous`/`lover` 仍只能靠声明（H23 已装协议，生产 0 次）。生产重启前头状态继续带着退役摘要，但不会因此 fail-closed。
+
+### 2026-08-18 H30 媒体：生成有界、选片贴对话、成人车道真出图
+
+H26 查清生产账本没有合法出图种子。本轮做了三件事：让花钱有界、让选片问在对话附近、把 P3 五处断线接上并真正向 Civitai 要到一张图。
+
+- **坐标**：`budget.py` `daily_image_limit=2` / `image_min_gap=2h`；`usage_metrics.py` `GPT_IMAGE_2_PRICE` version `openai-image-2026-08-18`；`media_selection_worker.py` 无投递槽不问；`media_selection_occasion.py`；`image_generation.py` 异步对账 + AIR 预检 + magic bytes；`configs/civitai-krea2-celia-realism-template.json` 第 28 行；`declared_display_contract.py` / `declared_display_runtime.py` / `relationship_media_context.py`；`event_media.py` `_ensure_host_derived_supporting_ref`。
+- **红测 / 证据**：
+  1. **生成侧原来无日上限**（只有投递 2/天、间隔 2h）。她连续 `select` 会在同 drain 连烧。现与投递对齐：日 2 张、间隔 2h、同时 1 张 in-flight；无投递槽**连选片模型都不调**（`media_selection.generation_spend_cap:*`）。`output/media-cost/REPORT.md`。`gpt-image-2` 进带版本价格表；OpenAI 200 记入 `usage_events` 与日预算门（坏 JSON 也记账，避免已计费再打一枪）。
+  2. **账本 `cost_actual=0` 不是生图没花钱，也不是漏记。** `BudgetSettlement.cost_actual` / `settled_cost` / `cost_delta` 是 Action 预约结算整数，按设计不是 CNY。生图花费权威在 `usage_events`（`kind=image_generation` 或 `civitai_buzz`）。不要当 bug 去「修」成人民币。
+  3. Civitai 原为同步轮询 180s：一次 billed `preparing` 被记成 `kind=unknown`。改为异步对账、**永不二次 POST**、4h 放弃并写 `billed_no_output` 审计、buzz 按 buzz 记账。提交前 `GET /v2/resources` 预检，AIR 404 直接拒，不花钱。`output/civitai-async/report.json`：旧身份 AIR `2787068@3140284` 全 404，仍被编排器收了 **44 yellow buzz、零产出**。
+  4. 身份 LoRA：本地 `Celia.safetensors`（Krea2 DiT，rank 32，6500 步，触发词 Celia）是她的脸，不是无关训练垃圾。Civitai 上旧资源已消失。Private+Published 重传后新 AIR **`urn:air:krea2:lora:civitai:2868686@3240992`**，模板第 28 行替换；另两个资源未动（NSFW patch `2750659@3094831`、realism slider `2781697@3132956`）。`scripts/` 下 `celia_v3` / `.cmd` / `.ps1` 是这条身份 LoRA 的训练流水线。
+  5. 成人上游五处接线（`output/adult-wiring/report.json` `five_gaps`，授权后 `snapshot_patched=false`）：规划器未设 `sensual_charge_ceiling`；规划器与授权器的 `close_friend` 口径不一致；`private_transition` 不冻衣柜；容器指针 `/relationship_media_context/declared_display` 不在叶级 allow-list；`declared_display` 需宿主像 location 一样确定性注入。强度由**她的 `declared_display`** 决定，owner 授权只开可能性。
+  6. **意愿探针不是 12/12 都选了 `sexual_suggestive`。** `output/adult-gate/willingness-results.json`：close_friend / ambiguous / lover 各 4 次，共 12。写出声明的 **3/12** 全部是 `sexual_suggestive`；**从未**选 `explicit_adult`；close_friend 档 4/4 不声明。渲染验收走的是 close_friend + 已声明 `sexual_suggestive` 的生产路径，不是 12 次都声明。
+  7. **成人车道今天真的出图**：`output/adult-render-v2/report.final.json`。未打补丁的生产路径（`snapshot_patched=false`），close_friend + `sexual_suggestive` → `suggestive_private` / `adult_suggestive`。Civitai POST 1 次 202，workflow 出图 **253651 字节，JPEG JFIF 1024×1536**（当时文件名仍带 `.png` 后缀）。44 yellow buzz，`billed_no_output=0`。按 magic bytes 决定扩展名与 content type 的代码已在 `image_generation.persist_generated_image_bytes` / `qq_c2c_transport`；NapCat 看后缀，不能信供应商文件名。
+  8. 选片时机（`output/media-timing/REPORT.md`）：机会只来自她自己的 `media_request`、开放线程与候选来源事件的交集、他最近发言与候选 `opened_at` 的 2h 邻近。**不读消息正文**。候选带 `lived_facts[]`（脱敏后派生 `safe_summary`）。同一旧书市自拍：无事实冷问 **33%**（n=3）→ 有事实冷问 **67%**（n=6）→ 事实+对话附近 **100%**（n=6）。拒绝理由从「想留着」变成点名关系还浅 / 买给自己。冷后台无对话时机时 **0 次选片模型**。
+  9. `specialized_private_workflow_direct` 跳过视觉审查与修复——**owner 已明确决定保持现状**。后果见 H26 剩余缺口 3 的回写。
+  10. 普通车道克隆出图：`output/first-photo/` 技术证明 2,402,981 字节 PNG；她自己 `select` 另 4 张。生产同款冷问她写过「想留着，不急着发出去」——链路能跑，她可以拒绝。Capture 副本在 `output/media-delivered/`。
+- **能不能用**：普通 OpenAI 出图在克隆上可用，受日 2 / 2h / 对话时机约束。P3 在凭证+新身份 AIR+close_friend+她的 `sexual_suggestive` 声明下可向 Civitai 要到 JPEG。生产 QQ 本线未投递；生产账本仍无 `PhotoCandidateOpened`。
+- **剩余缺口**：Adult Eligibility / 内容级双方同意仍缺；P3 无视觉审查是明确取舍；本地 ComfyUI 出图可行性未收口（H32）。
+
+### 2026-08-18 H31 私人印象农场打开，惦记可以变成一次开口机会
+
+H14 把 `drain_private_impression_once` 改成恒 `return None`，是成本取舍，不是正确性关停。H23 把 hitch 接到已付费入站。真正「他不在时想起他」今天才打开，并且接上了主动联系的空闲 consider。
+
+- **坐标**：`character_interior/production.py` `drain_private_impression_once`；`config.py` `WORLD_V2_PRIVATE_IMPRESSION_*`；`private_impression_producer.py` 门闸 + `WeakKeyDictionary`；`social_initiative.py` `source_kind=private_impression`；`proactive_action.py` / `proposal_envelope.py` Literal。
+- **红测 / 证据**（`output/private-impression/REPORT.md`、`output/impression-initiative/REPORT.md`、`output/proactive-appraisal/IMPRESSION_SPEAK.json`）：
+  1. 打开后链路：tick → opener（G7 头优先，否则最新未解释 active appraisal）→ 日上限/间隔/idle 门 → `experience(purpose=private_impression_reflection)`。默认 **日 3 次、间隔 14400s、距他上次观察 1800s**。约 ¥0.59/周（cache miss 单次 ≈ ¥0.028）。`limit=0` 仍是 H14 的关农场。
+  2. 活着的私人印象成为 `social_initiative` 的 `source_kind`：只占用**已到期**的空闲 consider（`spontaneous_contact` / `ambient_presence` / `post_silent` 或其 idle retry），**不读 `reflection_summary`**，advisory 只声明资格。没有到期空闲槽就不 mint。普通联系冷却仍挡。同一条印象一个 `consideration_id`。
+  3. 端到端：农场留下印象 → 到期开机会 → 问到她 → 她选 `now` → `proactive_message` 授权 **3/3** + 同 trigger `AppraisalAccepted` **3/3**。发出的话（CaptureDelivery）：「被你逮到了哈哈…」「在整理了！…」「哈哈记错啦…」。
+  4. 脱敏：农场 withhold 原文特征片段未进主动回合 `materials_json`；模型面只有资格声明。`lived_moment` 已在 H26 移到 `model_view()` 之后从已脱敏材料派生；本轮复核仍然成立。
+  5. 日上限门控原用 `id(ledger)` 做键，GC 后整数复用会把别的账本的 daily_cap 挂到新对象上——**生产也会发生**，不是纯测试问题。改为 `WeakKeyDictionary`；不能弱引用的对象把行挂在自身上。
+- **能不能用**：克隆上「惦记 → 被问到 → 开口」通了。生产要吃到配置并重启后才会真正 drain 农场。不要把资格声明写成她必须开口。
+- **剩余缺口**：生产账本打开前 `PrivateImpressionAccepted` 仍是 0。印象正文永不进主动回合材料——这是硬边界，不是缺口。
+
+### 2026-08-18 H32 工程卫生与仍开放项
+
+- **坐标 / 改动**：
+  1. `*.safetensors` 进 `.gitignore`（`Celia.safetensors` 从未被跟踪）。`output/` 已忽略；写本文时约 **15 GB**。
+  2. dashboard 测试显式构造 `Settings(_env_file=None)`，不再吞仓库 `.env`。全量红从十几条降到个位数（冻结基线 + 仍在对照的时序断言；不要为变绿去改别人的包）。
+  3. `cost_actual` 语义见 H30：Action 预约结算整数，不是 CNY。
+- **仍开放（不要写成已完成）**：
+  1. 主动 strict schema 约 40KB / 3430 prompt tokens，首次直接解析 3/10（compact 2KB 是 10/10）。修补器已拉到 100% 可解析，故降级为**优化项**而非阻塞。DeepSeek 官方只有 `json_object` 与 Beta strict tools，**没有 `json_schema`**；官方明说 tool 参数不保证合法 JSON。
+  2. 两条 500ms 时序断言在红（观测曾到 0.6–0.87s）。是否为真回归**正在对照测量中**，结论未定——待 `output/ingress-perf/`（该目录写本文时仍空）。
+  3. 本地出图（ComfyUI + Krea2 Turbo GGUF）可行性**正在实测中**。`output/local-render/` 已有两张 1024×1536 PNG；run1 墙钟 3655s、峰值约 18GB、daemon 存活。结论未定，不以这两张图宣称可替代 Civitai。
+  4. `inbound_author._parse_combined`：失败路径已回落 `loads_one_json_object`，主路径仍自剥围栏 + `json.loads`。别名 / slim / hitchhike 应留在 author。未把围栏/引号/补括号收成单一入口。
+  5. 外部感知与 NPC 生态仍是半启用（本次未动）。`npc_ecology.py` 仍定义 `_weighted_actor_decision` / `_weighted_world_decision`，生产路径无调用点。
+  6. H26 仍开放：`week_diary` / `day_sheet` 无 `source_ref`；复燃频率未回采；embedding 常驻内存。
+- **产品裁决（已记录，勿再重开）**：P3 `specialized_private_workflow_direct` 跳过视觉审查，owner 保持；close_friend 门槛维持六轴 7000/6200，不因 reliability/repair=0 再降；成人强度只认她的 `declared_display`。
 
 

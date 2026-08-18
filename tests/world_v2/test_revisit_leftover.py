@@ -40,19 +40,21 @@ def test_slim_come_back_becomes_a_declared_revisit() -> None:
 
 
 def test_slim_does_not_invent_a_revisit_or_a_time() -> None:
-    missing_time = compile_slim_consider_payload(
-        _slim_payload(come_back="还想把那家店的事说完")
+    from companion_daemon.world_v2.present_prompt import (
+        SLIM_COME_BACK_PAIR_INCOMPLETE,
     )
-    missing_thought = compile_slim_consider_payload(_slim_payload(come_back_in=7200))
+
+    with pytest.raises(ValueError, match=SLIM_COME_BACK_PAIR_INCOMPLETE):
+        compile_slim_consider_payload(
+            _slim_payload(come_back="还想把那家店的事说完")
+        )
+    with pytest.raises(ValueError, match=SLIM_COME_BACK_PAIR_INCOMPLETE):
+        compile_slim_consider_payload(_slim_payload(come_back_in=7200))
     question = compile_slim_consider_payload(
         _slim_payload(messages=["那家店后来怎么样了？"])
     )
 
-    assert missing_time is not None
-    assert missing_thought is not None
     assert question is not None
-    assert missing_time["expression_draft"].get("revisit") is None
-    assert missing_thought["expression_draft"].get("revisit") is None
     assert question["expression_draft"].get("revisit") is None
 
 

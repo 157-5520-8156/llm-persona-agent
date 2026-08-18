@@ -212,7 +212,7 @@ class _UnavailableInboundAuthor:
     _recall = None
 
     async def propose(self, _request: ModelInput) -> ModelOutput:
-        raise RuntimeError("provider response body must not enter the durable audit")
+        raise RuntimeError("inbound faculty consider is unavailable")
 
 
 def _inbound_failure_adapter(author: object) -> CharacterInteriorInboundDeliberationAdapter:
@@ -1371,7 +1371,9 @@ async def test_inbound_character_interior_keeps_true_faculty_outage_distinct(
     assert result.proposal is None
     assert result.audit.status == "main_exception"
     assert result.audit.failure_code == "role_faculty_unavailable"
-    assert "provider response body" not in result.audit.model_dump_json()
+    assert result.audit.role_rejection is None
+    assert result.audit.failure_detail is not None
+    assert "inbound faculty consider is unavailable" in result.audit.failure_detail
     assert "provider response body" not in caplog.text
 
 

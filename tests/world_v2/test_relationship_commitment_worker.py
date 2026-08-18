@@ -9,14 +9,20 @@ import pytest
 
 from companion_daemon.world_v2.audited_change_terminal import (
     AUDITED_CHANGE_TERMINAL_ADVISORY_KIND,
+    RELATIONSHIP_COMMITMENT_POLICY_UNINSTALLED_REASON,
+    RELATIONSHIP_COMMITMENT_STATE_IDENTITY_REASON,
     RELATIONSHIP_COMMITMENT_TERMINAL_REASON,
+    RELATIONSHIP_COMMITMENT_TERMINAL_REASONS,
+    RELATIONSHIP_COMMITMENT_VISIBLE_SPAN_REASON,
     audited_change_authority_fingerprint,
     audited_change_terminal_event_id,
     audited_change_terminal_proposal_id,
+    validate_relationship_commitment_terminal_state,
 )
 from companion_daemon.world_v2.character_interior.inbound_author import (
     _InboundCharacterAuthor,
 )
+from companion_daemon.world_v2.errors import ConcurrencyConflict, IdempotencyConflict
 from companion_daemon.world_v2.event_identity import domain_idempotency_key
 from companion_daemon.world_v2.ledger import WorldLedger
 from companion_daemon.world_v2.relationship_commitment_worker import (
@@ -25,9 +31,15 @@ from companion_daemon.world_v2.relationship_commitment_worker import (
 )
 from companion_daemon.world_v2.relationship_proposal_compiler import (
     RelationshipProposalCompiler,
+    RelationshipProposalCompilerError,
 )
+from companion_daemon.world_v2.relationship_reducers import (
+    RELATIONSHIP_POLICY_DIGEST,
+    relationship_primary_id,
+)
+from companion_daemon.world_v2.reducers import reduce_event
 from companion_daemon.world_v2.runtime import WorldRuntime
-from companion_daemon.world_v2.schemas import CommitResult, WorldEvent
+from companion_daemon.world_v2.schemas import CommitResult, RelationshipStateProjection, WorldEvent
 from companion_daemon.world_v2.world_turn_runtime import InboundTurn
 
 from test_appraisal_authority import WORLD_ID
@@ -35,7 +47,10 @@ from test_interaction_act_proposal_compiler import (
     WORLD as INTERACTION_ACT_WORLD,
     _record_decision as _record_interaction_act_decision,
 )
-from test_relationship_commitment_compiler import _compiler_fixture
+from test_relationship_commitment_compiler import (
+    _compiler_fixture,
+    _reducer_state_with_delivery,
+)
 from test_production_turn_application import (
     NOW as PRODUCTION_NOW,
     _build_application,
@@ -71,7 +86,14 @@ class _Acceptance:
         )
 
 
-def _crafted_terminal_event(*, ledger, audit, change, reason_code: str) -> WorldEvent:
+def _crafted_terminal_event(
+    *,
+    ledger,
+    audit,
+    change,
+    reason_code: str,
+    stage: str = "rejected",
+) -> WorldEvent:
     payload = {
         "proposal_id": audited_change_terminal_proposal_id(
             audit=audit,
@@ -79,7 +101,7 @@ def _crafted_terminal_event(*, ledger, audit, change, reason_code: str) -> World
         ),
         "source_event_ref": audit.event_ref,
         "advisory_kind": AUDITED_CHANGE_TERMINAL_ADVISORY_KIND,
-        "stage": "rejected",
+        "stage": stage,
         "reason_code": reason_code,
         "failure_fingerprint": audited_change_authority_fingerprint(
             audit=audit,
@@ -459,3 +481,528 @@ async def test_world_runtime_prioritizes_eligible_proactive_over_pending_social_
     assert first is interior.result
     assert commitment_worker.calls == 0
     assert interaction_act_worker.calls == 0
+
+
+def _persist_wrapper_commits(ledger) -> None:
+    original = ledger.commit_at_cursor
+
+    def commit_at_cursor(events, *, expected_cursor, commit_id=None):
+        result = original(
+            events, expected_cursor=expected_cursor, commit_id=commit_id
+        )
+        for event in events:
+            ledger._proof_commits[event.event_id] = (event, result)
+        return result
+
+    ledger.commit_at_cursor = commit_at_cursor
+
+
+def _carry_relationship_state(
+    ledger,
+    *,
+    policy_digest: str,
+    relationship_id: str | None = None,
+) -> None:
+    state = RelationshipStateProjection(
+        relationship_id=relationship_id
+        or relationship_primary_id(subject_ref="user:test"),
+        subject_ref="user:test",
+        entity_revision=1,
+        stage="stranger",
+        policy_digest=policy_digest,
+    )
+    ledger._current = ledger._current.model_copy(
+        update={"relationship_states": (state,)}
+    )
+
+
+def test_terminal_validator_accepts_foreign_digest_only_for_policy_uninstalled() -> None:
+    _wrapped, proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    change = next(
+        item
+        for item in proposal.proposed_changes
+        if item.kind == "relationship_commitment"
+    )
+    foreign = RelationshipStateProjection(
+        relationship_id=relationship_primary_id(subject_ref="user:test"),
+        subject_ref="user:test",
+        entity_revision=1,
+        policy_digest="0" * 64,
+    )
+
+    validate_relationship_commitment_terminal_state(
+        change=change,
+        relationship_states=(foreign,),
+        reason_code=RELATIONSHIP_COMMITMENT_POLICY_UNINSTALLED_REASON,
+    )
+    with pytest.raises(ValueError, match="policy is not installed"):
+        validate_relationship_commitment_terminal_state(
+            change=change,
+            relationship_states=(foreign,),
+            reason_code=RELATIONSHIP_COMMITMENT_TERMINAL_REASON,
+        )
+
+
+def test_terminal_validator_reads_retired_digest_for_transition_terminals() -> None:
+    _wrapped, proposal, _audit_cursor, _current_cursor = _compiler_fixture(
+        target_stage="close_friend"
+    )
+    change = next(
+        item
+        for item in proposal.proposed_changes
+        if item.kind == "relationship_commitment"
+    )
+    retired = RelationshipStateProjection(
+        relationship_id=relationship_primary_id(subject_ref="user:test"),
+        subject_ref="user:test",
+        entity_revision=1,
+        policy_digest=(
+            "13bfa71dd9f8377b968714eb3d4f9a927e587832c92d2381c6ecc772071deede"
+        ),
+    )
+
+    validate_relationship_commitment_terminal_state(
+        change=change,
+        relationship_states=(retired,),
+        reason_code=RELATIONSHIP_COMMITMENT_TERMINAL_REASON,
+    )
+
+
+def test_public_reducer_rejects_policy_uninstalled_terminal_when_state_is_readable() -> None:
+    wrapped, proposal, audit_cursor, _current_cursor = _compiler_fixture(
+        target_stage="close_friend"
+    )
+    ledger = wrapped._delegate
+    audit = next(
+        item
+        for item in ledger.project_at(audit_cursor).proposal_audits
+        if item.proposal_id == proposal.proposal_id
+    )
+    change = next(
+        item
+        for item in proposal.proposed_changes
+        if item.kind == "relationship_commitment"
+    )
+    event = _crafted_terminal_event(
+        ledger=ledger,
+        audit=audit,
+        change=change,
+        reason_code=RELATIONSHIP_COMMITMENT_POLICY_UNINSTALLED_REASON,
+    )
+
+    with pytest.raises(ValueError, match="reason"):
+        ledger.commit_at_cursor((event,), expected_cursor=audit_cursor)
+
+
+@pytest.mark.asyncio
+async def test_uninstalled_policy_commitment_settles_terminal_without_raising() -> None:
+    ledger, proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    _carry_relationship_state(ledger, policy_digest="0" * 64)
+    _persist_wrapper_commits(ledger)
+    worker = RelationshipCommitmentWorker(
+        ledger=ledger,
+        compiler=RelationshipProposalCompiler(ledger=ledger),
+        acceptance=_Acceptance(ledger),
+        actor="worker:relationship-commitment",
+    )
+
+    result = await worker.drain_one()
+
+    assert result is not None
+    assert result.status in {"rejected", "stale"}
+    assert result.reason_code == RELATIONSHIP_COMMITMENT_POLICY_UNINSTALLED_REASON
+    assert result.source_proposal_id == proposal.proposal_id
+    second = await worker.drain_one()
+    assert second is None
+
+
+@pytest.mark.asyncio
+async def test_uninstalled_policy_commitment_does_not_starve_later_background_workers() -> None:
+    ledger, _proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    _carry_relationship_state(ledger, policy_digest="0" * 64)
+    _persist_wrapper_commits(ledger)
+    worker = RelationshipCommitmentWorker(
+        ledger=ledger,
+        compiler=RelationshipProposalCompiler(ledger=ledger),
+        acceptance=_Acceptance(ledger),
+        actor="worker:relationship-commitment",
+    )
+    interaction_act_worker = _RuntimeInteractionActWorker(ledger)
+    runtime = WorldRuntime(
+        world_id=WORLD_ID,
+        ledger=ledger,
+        relationship_commitment_worker=worker,
+        interaction_act_worker=interaction_act_worker,  # type: ignore[arg-type]
+    )
+
+    first = await runtime.drain_background_once()
+
+    assert first is not None
+    assert first.status in {"rejected", "stale"}
+    assert interaction_act_worker.calls == 0
+
+    second = await runtime.drain_background_once()
+
+    assert second is interaction_act_worker.result
+    assert interaction_act_worker.calls == 1
+
+
+def test_terminal_validator_accepts_visible_span_only_when_said_as_is_not_exact() -> None:
+    inexact, inexact_proposal, _audit_cursor, _current_cursor = _compiler_fixture(
+        visible_text_span="我们是朋友"
+    )
+    inexact_change = next(
+        item
+        for item in inexact_proposal.proposed_changes
+        if item.kind == "relationship_commitment"
+    )
+    current = inexact._current
+    validate_relationship_commitment_terminal_state(
+        change=inexact_change,
+        relationship_states=(),
+        reason_code=RELATIONSHIP_COMMITMENT_VISIBLE_SPAN_REASON,
+        source_proposal_id=inexact_proposal.proposal_id,
+        expression_plans=current.expression_plans,
+        expression_beats=current.expression_beats,
+        stored_message_payloads=current.stored_message_payloads,
+    )
+
+    exact, exact_proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    exact_change = next(
+        item
+        for item in exact_proposal.proposed_changes
+        if item.kind == "relationship_commitment"
+    )
+    exact_current = exact._current
+    with pytest.raises(ValueError, match="visible span is exact"):
+        validate_relationship_commitment_terminal_state(
+            change=exact_change,
+            relationship_states=(),
+            reason_code=RELATIONSHIP_COMMITMENT_VISIBLE_SPAN_REASON,
+            source_proposal_id=exact_proposal.proposal_id,
+            expression_plans=exact_current.expression_plans,
+            expression_beats=exact_current.expression_beats,
+            stored_message_payloads=exact_current.stored_message_payloads,
+        )
+
+
+def test_terminal_validator_accepts_identity_invalid_only_when_primary_id_mismatches() -> None:
+    _wrapped, proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    change = next(
+        item
+        for item in proposal.proposed_changes
+        if item.kind == "relationship_commitment"
+    )
+    mismatched = RelationshipStateProjection(
+        relationship_id="relationship:forged-identity",
+        subject_ref="user:test",
+        entity_revision=1,
+        policy_digest=RELATIONSHIP_POLICY_DIGEST,
+    )
+    validate_relationship_commitment_terminal_state(
+        change=change,
+        relationship_states=(mismatched,),
+        reason_code=RELATIONSHIP_COMMITMENT_STATE_IDENTITY_REASON,
+    )
+    installed = mismatched.model_copy(
+        update={"relationship_id": relationship_primary_id(subject_ref="user:test")}
+    )
+    with pytest.raises(ValueError, match="identity is installed"):
+        validate_relationship_commitment_terminal_state(
+            change=change,
+            relationship_states=(installed,),
+            reason_code=RELATIONSHIP_COMMITMENT_STATE_IDENTITY_REASON,
+        )
+
+
+def test_public_reducer_accepts_visible_span_terminal_when_said_as_is_not_exact() -> None:
+    wrapped, proposal, audit_cursor, _current_cursor = _compiler_fixture(
+        visible_text_span="我们是朋友"
+    )
+    ledger = wrapped._delegate
+    audit = next(
+        item
+        for item in ledger.project_at(audit_cursor).proposal_audits
+        if item.proposal_id == proposal.proposal_id
+    )
+    change = next(
+        item
+        for item in proposal.proposed_changes
+        if item.kind == "relationship_commitment"
+    )
+    event = _crafted_terminal_event(
+        ledger=ledger,
+        audit=audit,
+        change=change,
+        reason_code=RELATIONSHIP_COMMITMENT_VISIBLE_SPAN_REASON,
+        stage="stale",
+    )
+
+    reduce_event(_reducer_state_with_delivery(wrapped), event)
+
+
+def test_public_reducer_rejects_visible_span_terminal_when_said_as_is_exact() -> None:
+    wrapped, proposal, audit_cursor, _current_cursor = _compiler_fixture()
+    ledger = wrapped._delegate
+    audit = next(
+        item
+        for item in ledger.project_at(audit_cursor).proposal_audits
+        if item.proposal_id == proposal.proposal_id
+    )
+    change = next(
+        item
+        for item in proposal.proposed_changes
+        if item.kind == "relationship_commitment"
+    )
+    event = _crafted_terminal_event(
+        ledger=ledger,
+        audit=audit,
+        change=change,
+        reason_code=RELATIONSHIP_COMMITMENT_VISIBLE_SPAN_REASON,
+        stage="stale",
+    )
+
+    with pytest.raises(ValueError, match="visible span is exact"):
+        reduce_event(_reducer_state_with_delivery(wrapped), event)
+
+
+def test_public_reducer_accepts_identity_invalid_terminal_when_primary_id_mismatches() -> None:
+    wrapped, proposal, audit_cursor, _current_cursor = _compiler_fixture()
+    ledger = wrapped._delegate
+    audit = next(
+        item
+        for item in ledger.project_at(audit_cursor).proposal_audits
+        if item.proposal_id == proposal.proposal_id
+    )
+    change = next(
+        item
+        for item in proposal.proposed_changes
+        if item.kind == "relationship_commitment"
+    )
+    mismatched = RelationshipStateProjection(
+        relationship_id="relationship:forged-identity",
+        subject_ref="user:test",
+        entity_revision=1,
+        policy_digest=RELATIONSHIP_POLICY_DIGEST,
+    )
+    event = _crafted_terminal_event(
+        ledger=ledger,
+        audit=audit,
+        change=change,
+        reason_code=RELATIONSHIP_COMMITMENT_STATE_IDENTITY_REASON,
+    )
+
+    reduce_event(
+        ledger._state.model_copy(update={"relationship_states": (mismatched,)}),
+        event,
+    )
+
+
+def test_public_reducer_rejects_identity_invalid_terminal_when_primary_id_matches() -> None:
+    wrapped, proposal, audit_cursor, _current_cursor = _compiler_fixture()
+    ledger = wrapped._delegate
+    audit = next(
+        item
+        for item in ledger.project_at(audit_cursor).proposal_audits
+        if item.proposal_id == proposal.proposal_id
+    )
+    change = next(
+        item
+        for item in proposal.proposed_changes
+        if item.kind == "relationship_commitment"
+    )
+    installed = RelationshipStateProjection(
+        relationship_id=relationship_primary_id(subject_ref="user:test"),
+        subject_ref="user:test",
+        entity_revision=1,
+        policy_digest=RELATIONSHIP_POLICY_DIGEST,
+    )
+    event = _crafted_terminal_event(
+        ledger=ledger,
+        audit=audit,
+        change=change,
+        reason_code=RELATIONSHIP_COMMITMENT_STATE_IDENTITY_REASON,
+    )
+
+    with pytest.raises(ValueError, match="identity is installed"):
+        reduce_event(
+            ledger._state.model_copy(update={"relationship_states": (installed,)}),
+            event,
+        )
+
+
+@pytest.mark.asyncio
+async def test_inexact_visible_span_commitment_settles_terminal_without_raising() -> None:
+    ledger, proposal, _audit_cursor, _current_cursor = _compiler_fixture(
+        visible_text_span="我们是朋友"
+    )
+    _persist_wrapper_commits(ledger)
+    worker = RelationshipCommitmentWorker(
+        ledger=ledger,
+        compiler=RelationshipProposalCompiler(ledger=ledger),
+        acceptance=_Acceptance(ledger),
+        actor="worker:relationship-commitment",
+    )
+
+    result = await worker.drain_one()
+
+    assert result is not None
+    assert result.status in {"rejected", "stale"}
+    assert result.reason_code == RELATIONSHIP_COMMITMENT_VISIBLE_SPAN_REASON
+    assert result.source_proposal_id == proposal.proposal_id
+    second = await worker.drain_one()
+    assert second is None
+
+
+@pytest.mark.asyncio
+async def test_identity_invalid_commitment_settles_terminal_without_raising() -> None:
+    ledger, proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    _carry_relationship_state(
+        ledger,
+        policy_digest=RELATIONSHIP_POLICY_DIGEST,
+        relationship_id="relationship:forged-identity",
+    )
+    _persist_wrapper_commits(ledger)
+    worker = RelationshipCommitmentWorker(
+        ledger=ledger,
+        compiler=RelationshipProposalCompiler(ledger=ledger),
+        acceptance=_Acceptance(ledger),
+        actor="worker:relationship-commitment",
+    )
+
+    result = await worker.drain_one()
+
+    assert result is not None
+    assert result.status in {"rejected", "stale"}
+    assert result.reason_code == RELATIONSHIP_COMMITMENT_STATE_IDENTITY_REASON
+    assert result.source_proposal_id == proposal.proposal_id
+    second = await worker.drain_one()
+    assert second is None
+
+
+class _ExplodingCommitmentWorker:
+    def __init__(self, exc: BaseException) -> None:
+        self.exc = exc
+        self.calls = 0
+        self.ledger = None
+
+    async def drain_one(self):
+        self.calls += 1
+        raise self.exc
+
+
+@pytest.mark.asyncio
+async def test_unexpected_commitment_exception_does_not_abort_later_workers() -> None:
+    ledger, _proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    exploding = _ExplodingCommitmentWorker(RuntimeError("injected compiler crash"))
+    exploding.ledger = ledger
+    later = _RuntimeInteractionActWorker(ledger)
+    runtime = WorldRuntime(
+        world_id=WORLD_ID,
+        ledger=ledger,
+        relationship_commitment_worker=exploding,  # type: ignore[arg-type]
+        interaction_act_worker=later,  # type: ignore[arg-type]
+    )
+
+    first = await runtime.drain_background_once()
+
+    assert first is later.result
+    assert exploding.calls == 1
+    assert later.calls == 1
+
+    second = await runtime.drain_background_once()
+
+    assert exploding.calls == 2
+    assert later.calls == 2
+    assert second is later.result
+
+
+@pytest.mark.asyncio
+async def test_concurrency_conflict_still_returns_none_without_running_later_workers() -> None:
+    ledger, _proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    exploding = _ExplodingCommitmentWorker(ConcurrencyConflict("stale cursor"))
+    exploding.ledger = ledger
+    later = _RuntimeInteractionActWorker(ledger)
+    runtime = WorldRuntime(
+        world_id=WORLD_ID,
+        ledger=ledger,
+        relationship_commitment_worker=exploding,  # type: ignore[arg-type]
+        interaction_act_worker=later,  # type: ignore[arg-type]
+    )
+
+    result = await runtime.drain_background_once()
+
+    assert result is None
+    assert exploding.calls == 1
+    assert later.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_idempotency_conflict_still_propagates_from_background_drain() -> None:
+    ledger, _proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    exploding = _ExplodingCommitmentWorker(IdempotencyConflict("duplicate identity"))
+    exploding.ledger = ledger
+    later = _RuntimeInteractionActWorker(ledger)
+    runtime = WorldRuntime(
+        world_id=WORLD_ID,
+        ledger=ledger,
+        relationship_commitment_worker=exploding,  # type: ignore[arg-type]
+        interaction_act_worker=later,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(IdempotencyConflict, match="duplicate identity"):
+        await runtime.drain_background_once()
+    assert exploding.calls == 1
+    assert later.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_unexpected_exception_reraise_when_drain_would_be_idle() -> None:
+    ledger, _proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    exploding = _ExplodingCommitmentWorker(RuntimeError("injected compiler crash"))
+    exploding.ledger = ledger
+    runtime = WorldRuntime(
+        world_id=WORLD_ID,
+        ledger=ledger,
+        relationship_commitment_worker=exploding,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(RuntimeError, match="injected compiler crash"):
+        await runtime.drain_background_once()
+    assert exploding.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_compiler_error_backs_off_without_starving_later_workers() -> None:
+    ledger, _proposal, _audit_cursor, _current_cursor = _compiler_fixture()
+    exploding = _ExplodingCommitmentWorker(
+        RelationshipProposalCompilerError("commitment_payload_invalid")
+    )
+    exploding.ledger = ledger
+    later = _RuntimeInteractionActWorker(ledger)
+    runtime = WorldRuntime(
+        world_id=WORLD_ID,
+        ledger=ledger,
+        relationship_commitment_worker=exploding,  # type: ignore[arg-type]
+        interaction_act_worker=later,  # type: ignore[arg-type]
+    )
+
+    first = await runtime.drain_background_once()
+    second = await runtime.drain_background_once()
+
+    assert first is later.result
+    assert second is later.result
+    assert exploding.calls == 1
+    assert later.calls == 2
+
+
+def test_undelivered_commitment_is_not_a_terminal_reject() -> None:
+    """She must actually send the sentence.  Missing delivery waits, it does not settle.
+
+    ``commitment_expression_not_delivered`` is a hard host boundary.  Treating it
+    as a typed terminal reject would burn the proposal before the beat can land.
+    """
+
+    delivered = "relationship_proposal_compiler.commitment_expression_not_delivered"
+    assert delivered not in RELATIONSHIP_COMMITMENT_TERMINAL_REASONS
+    assert RELATIONSHIP_COMMITMENT_TERMINAL_REASON in RELATIONSHIP_COMMITMENT_TERMINAL_REASONS

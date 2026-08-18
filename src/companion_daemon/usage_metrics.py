@@ -98,6 +98,44 @@ QWEN3_VL_FLASH_PRICE = ModelPrice(
     output_usd_per_million=0.208333,
 )
 
+# OpenAI GPT Image 2 token rates, official pricing page verified 2026-08-18.
+# Source: https://developers.openai.com/api/docs/pricing  (Image generation models)
+#   Image input $8.00 / cached $2.00 / output $30.00 per 1M tokens
+#   Text input $5.00 / cached $1.25 per 1M tokens
+# Per-image calculator (same page + image-generation guide, 2026-08-18):
+#   1024x1024  low $0.006 / medium $0.053 / high $0.211
+#   1024x1536  low $0.005 / medium $0.041 / high $0.165
+#   1536x1024  low $0.005 / medium $0.041 / high $0.165
+# ModelPrice below prices image tokens (the dominant cost). Text prompt tokens
+# are added by estimate_gpt_image_2_cost_usd when a provider usage block exists.
+GPT_IMAGE_2_PRICE = ModelPrice(
+    model="gpt-image-2",
+    version="openai-image-2026-08-18",
+    cache_hit_usd_per_million=2.00,
+    cache_miss_usd_per_million=8.00,
+    output_usd_per_million=30.00,
+)
+
+GPT_IMAGE_2_TEXT_INPUT_USD_PER_MILLION = 5.00
+GPT_IMAGE_2_IMAGE_INPUT_USD_PER_MILLION = 8.00
+GPT_IMAGE_2_IMAGE_OUTPUT_USD_PER_MILLION = 30.00
+
+# Official calculator USD for one output image. Verified 2026-08-18.
+GPT_IMAGE_2_OUTPUT_USD: Mapping[tuple[str, str], float] = {
+    ("1024x1024", "low"): 0.006,
+    ("1024x1024", "medium"): 0.053,
+    ("1024x1024", "high"): 0.211,
+    ("1024x1536", "low"): 0.005,
+    ("1024x1536", "medium"): 0.041,
+    ("1024x1536", "high"): 0.165,
+    ("1536x1024", "low"): 0.005,
+    ("1536x1024", "medium"): 0.041,
+    ("1536x1024", "high"): 0.165,
+}
+
+# High-fidelity identity reference (~6,563 image input tokens at $8/M).
+GPT_IMAGE_2_PORTRAIT_REFERENCE_INPUT_USD = 6_563 * 8 / 1_000_000
+
 # A new provider model must never silently become free just because its price
 # table has not reached this release yet.  This is intentionally above the
 # currently supported Pro rate, so routing remains bounded until an exact row
@@ -124,6 +162,8 @@ MODEL_PRICES: Mapping[str, ModelPrice] = {
     QWEN_PLUS_PRICE.model: QWEN_PLUS_PRICE,
     QWEN3_VL_FLASH_PRICE.model: QWEN3_VL_FLASH_PRICE,
     "qwen/qwen3-vl-flash": QWEN3_VL_FLASH_PRICE,
+    GPT_IMAGE_2_PRICE.model: GPT_IMAGE_2_PRICE,
+    "openai/gpt-image-2": GPT_IMAGE_2_PRICE,
 }
 
 
@@ -192,6 +232,77 @@ def estimate_routed_model_reserve_cny(
         cache_miss_tokens=prompt_tokens,
     )
     return round(usd * max(0.0, cny_per_usd), 6)
+
+
+def estimate_gpt_image_2_cost_usd(
+    *,
+    size: str = "1024x1536",
+    quality: str = "medium",
+    reference_count: int = 0,
+    text_input_tokens: int = 0,
+    image_input_tokens: int | None = None,
+    output_tokens: int | None = None,
+) -> tuple[float, str]:
+    """Price one GPT Image 2 render from usage tokens, else the official table.
+
+    Provider usage is authoritative.  The calculator row is only the preflight
+    envelope for a missing usage block, so a 200 response cannot look free.
+    """
+
+    if output_tokens is not None and output_tokens > 0:
+        image_in = max(0, int(image_input_tokens or 0))
+        text_in = max(0, int(text_input_tokens or 0))
+        usd = (
+            text_in * GPT_IMAGE_2_TEXT_INPUT_USD_PER_MILLION
+            + image_in * GPT_IMAGE_2_IMAGE_INPUT_USD_PER_MILLION
+            + max(0, int(output_tokens)) * GPT_IMAGE_2_IMAGE_OUTPUT_USD_PER_MILLION
+        ) / 1_000_000
+        return usd, GPT_IMAGE_2_PRICE.version
+    output_usd = GPT_IMAGE_2_OUTPUT_USD.get((size, quality))
+    if output_usd is None:
+        output_usd = GPT_IMAGE_2_OUTPUT_USD[("1024x1536", "medium")]
+    image_in = image_input_tokens
+    if image_in is None:
+        input_usd = max(0, int(reference_count)) * GPT_IMAGE_2_PORTRAIT_REFERENCE_INPUT_USD
+    else:
+        input_usd = max(0, int(image_in)) * GPT_IMAGE_2_IMAGE_INPUT_USD_PER_MILLION / 1_000_000
+    text_usd = max(0, int(text_input_tokens)) * GPT_IMAGE_2_TEXT_INPUT_USD_PER_MILLION / 1_000_000
+    return output_usd + input_usd + text_usd, GPT_IMAGE_2_PRICE.version
+
+
+def parse_openai_image_usage(payload: Mapping[str, object] | None) -> dict[str, int]:
+    """Read Image API usage without assuming every provider includes the block."""
+
+    empty = {
+        "text_input_tokens": 0,
+        "image_input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+    }
+    if not isinstance(payload, Mapping):
+        return empty
+    usage = payload.get("usage")
+    if not isinstance(usage, Mapping):
+        return empty
+    details = usage.get("input_tokens_details")
+    text_tokens = 0
+    image_tokens = 0
+    if isinstance(details, Mapping):
+        text_tokens = max(0, int(details.get("text_tokens") or 0))
+        image_tokens = max(0, int(details.get("image_tokens") or 0))
+    input_tokens = max(0, int(usage.get("input_tokens") or 0))
+    if text_tokens + image_tokens == 0 and input_tokens:
+        text_tokens = input_tokens
+    output_tokens = max(0, int(usage.get("output_tokens") or 0))
+    total_tokens = max(0, int(usage.get("total_tokens") or 0))
+    if total_tokens == 0:
+        total_tokens = text_tokens + image_tokens + output_tokens
+    return {
+        "text_input_tokens": text_tokens,
+        "image_input_tokens": image_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
 
 
 def estimate_model_cost_usd(

@@ -176,6 +176,7 @@ class _Ledger:
     def __init__(
         self, *events: WorldEvent, plans=(), occurrences=(), affect_episodes=(),
         relationship_states=(), life_arcs=(), experiences=(), life_content_descriptors=(),
+        photo_candidates=(),
     ) -> None:
         self._events: dict[str, WorldEvent] = {}
         self._refs: list[CommittedWorldEventRef] = []
@@ -187,6 +188,7 @@ class _Ledger:
         self.life_arcs = tuple(life_arcs)
         self.experiences = tuple(experiences)
         self.life_content_descriptors = tuple(life_content_descriptors)
+        self.photo_candidates = tuple(photo_candidates)
         for event in events:
             self._append(event)
 
@@ -208,7 +210,7 @@ class _Ledger:
             affect_episodes=self.affect_episodes,
             relationship_states=self.relationship_states,
             life_arcs=self.life_arcs,
-            photo_candidates=(), experiences=self.experiences, facts=(),
+            photo_candidates=self.photo_candidates, experiences=self.experiences, facts=(),
             life_content_descriptors=self.life_content_descriptors,
         )
 
@@ -939,7 +941,15 @@ def test_public_visual_context_does_not_leak_a_private_active_life_arc(
 def test_author_keeps_the_moment_quiet_when_the_ticket_sits_above_the_threshold(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, settlement = _walk_world()
+    ledger, settlement = _walk_world(
+        photo_candidates=(
+            SimpleNamespace(
+                status="available",
+                expires_at=NOW + timedelta(hours=4),
+                candidate_id="candidate:already-available",
+            ),
+        )
+    )
     _force_bucket(monkeypatch, 39)
 
     result = _author(ledger, tmp_path).advance_once(
@@ -951,6 +961,22 @@ def test_author_keeps_the_moment_quiet_when_the_ticket_sits_above_the_threshold(
     assert ledger.events_of_type("ImageEvidenceDeclared") == ()
 
 
+def test_empty_pool_starvation_fill_declares_a_recent_lottery_miss(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger, settlement = _walk_world()
+    _force_bucket(monkeypatch, 39)
+
+    result = _author(ledger, tmp_path).advance_once(
+        wake_event_ref=settlement.event_id, trace_id="trace", correlation_id="corr",
+    )
+
+    assert result.status == "declared"
+    assert result.reason_code == "visual_evidence.starvation_fill_declared"
+    assert ledger.events_of_type("ImageEvidenceDeclared")
+    assert ledger.events_of_type("PhotoCandidateOpened")
+
+
 def test_a_heavy_mood_holds_the_same_ticket_back_and_a_brighter_wake_releases_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -960,7 +986,16 @@ def test_a_heavy_mood_holds_the_same_ticket_back_and_a_brighter_wake_releases_it
         status="active",
         components=(SimpleNamespace(dimension="sadness", intensity_bp=10_000),),
     )
-    ledger, settlement = _walk_world(affect_episodes=(heavy,))
+    already_available = (
+        SimpleNamespace(
+            status="available",
+            expires_at=NOW + timedelta(hours=4),
+            candidate_id="candidate:already-available",
+        ),
+    )
+    ledger, settlement = _walk_world(
+        affect_episodes=(heavy,), photo_candidates=already_available,
+    )
     _force_bucket(monkeypatch, 14)
 
     held = _author(ledger, tmp_path).advance_once(

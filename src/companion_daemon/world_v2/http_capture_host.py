@@ -909,6 +909,15 @@ def build_http_v2_capture_host(
             media_continuation=(media_preview.continuation if media_preview is not None else None),
             adult_media_enabled=settings.world_v2_adult_media_enabled,
             perception_budget_limit=perception_budget_limit,
+            private_impression_daily_model_call_limit=(
+                settings.world_v2_private_impression_daily_model_call_limit
+            ),
+            private_impression_min_interval_seconds=(
+                settings.world_v2_private_impression_min_interval_seconds
+            ),
+            private_impression_idle_after_user_seconds=(
+                settings.world_v2_private_impression_idle_after_user_seconds
+            ),
         ),
         identities=HttpCaptureIdentityResolver(primary_user_id=primary_user_id),
         router=semantic_chat.router,

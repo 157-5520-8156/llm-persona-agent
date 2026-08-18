@@ -36,7 +36,7 @@ from .dashboard_projection_composition import (
 )
 from .errors import ConcurrencyConflict
 from .model_completion import ChatCompletionModel
-from .model_usage_budget import WorldV2UsageStore
+from .model_usage_budget import WorldV2UsageStore, usage_store_for_settings
 from .perception_executor import PerceptionTransport
 from .perception_input_source import PerceptionInputSource
 from .platform_host import PlatformClockTick, PlatformInbound, WorldV2PlatformHost
@@ -316,6 +316,7 @@ class QQC2CHost:
         usage_store: WorldV2UsageStore | None = None,
         monthly_budget_cny: float | None = None,
         daily_budget_cny: float | None = None,
+        soft_daily_budget_cny: float | None = None,
         ingress_store: QQIngressStore | None = None,
         ingress_now: Callable[[], datetime] | None = None,
         ingress_sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
@@ -349,6 +350,7 @@ class QQC2CHost:
         self._usage_store = usage_store
         self._monthly_budget_cny = monthly_budget_cny
         self._daily_budget_cny = daily_budget_cny
+        self._soft_daily_budget_cny = soft_daily_budget_cny
         self._external_world_perception_hub = external_world_perception_hub
         self._external_world_perception_disabled_reason = external_world_perception_disabled_reason
         self._external_world_perception_registry_health = (
@@ -2560,6 +2562,7 @@ class QQC2CHost:
         return self._usage_store.budget_state(
             monthly_budget_cny=self._monthly_budget_cny,
             daily_budget_cny=self._daily_budget_cny,
+            soft_daily_budget_cny=self._soft_daily_budget_cny,
         )
 
     def text_endpoint_health(self) -> dict[str, object]:
@@ -2884,7 +2887,7 @@ def build_qq_c2c_host(
         media_request_available=media_preview is not None,
     )
     interactive_turn_budget_policy = interactive_turn_budget_policy or InteractiveTurnBudgetPolicy()
-    usage_store = WorldV2UsageStore(path=str(settings.database_path))
+    usage_store = usage_store_for_settings(settings)
     world_id = qq_c2c_world_id(settings.primary_user_id)
     character_turn_store = open_sqlite_character_interior_turn_store(
         path=settings.database_path,
@@ -2969,6 +2972,15 @@ def build_qq_c2c_host(
             interactive_turn_budget_policy=interactive_turn_budget_policy,
             expression_episode_mode=expression_episode_mode,
             recorded_cadence_mode=getattr(settings, "world_v2_recorded_cadence_mode", "off"),
+            private_impression_daily_model_call_limit=(
+                settings.world_v2_private_impression_daily_model_call_limit
+            ),
+            private_impression_min_interval_seconds=(
+                settings.world_v2_private_impression_min_interval_seconds
+            ),
+            private_impression_idle_after_user_seconds=(
+                settings.world_v2_private_impression_idle_after_user_seconds
+            ),
         ),
         identities=QQC2CIdentityResolver(
             recipient_id=recipient_id, canonical_user_id=settings.primary_user_id
@@ -3033,6 +3045,7 @@ def build_qq_c2c_host(
         usage_store=usage_store,
         monthly_budget_cny=settings.monthly_budget_cny,
         daily_budget_cny=settings.daily_budget_cny,
+        soft_daily_budget_cny=settings.soft_daily_budget_cny,
         ingress_store=SQLiteQQIngressStore(
             Path(settings.database_path),
             catalog=QQIngressPolicyCatalog(default_window_ms=settings.qq_c2c_transport_coalesce_ms),

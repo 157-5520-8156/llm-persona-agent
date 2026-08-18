@@ -3810,7 +3810,10 @@ async def test_restart_waits_for_foreign_reclaimed_attempt_that_crashed_before_m
             max_action_units=8,
             max_background_units=1,
         )
-        assert crashed_result.background_statuses == ("technical_failure:runtimeerror",)
+        # Expression retry still crashed; drain isolation lets later workers
+        # run in the same unit, so the host records that later worker's
+        # technical failure instead of bubbling RuntimeError from retry.
+        assert crashed_result.background_statuses == ("technical_failure",)
     finally:
         await crashed.aclose()
 

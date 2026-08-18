@@ -1,11 +1,16 @@
 import base64
 from copy import deepcopy
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+import asyncio
 import json
+import logging
 import math
 import mimetypes
+import os
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Protocol
@@ -16,11 +21,82 @@ from companion_daemon.image_requests import detect_style_tags
 from companion_daemon.visual_identity import load_visual_identity
 
 
+_LOG = logging.getLogger(__name__)
+_PAID_GENERATE_LOCK = asyncio.Lock()
+_IMAGE_SPEND_STORE: ContextVar[object | None] = ContextVar(
+    "image_generation_spend_store", default=None
+)
+
+
 @dataclass(frozen=True)
 class GeneratedImage:
     path: Path
     prompt: str
     attempts: int = 1
+    content_type: str = "application/octet-stream"
+
+
+# Provider filenames and Content-Type headers are not authoritative.  Civitai
+# currently returns JPEG bytes while callers request ``.png``.
+_IMAGE_MAGIC: tuple[tuple[bytes, str, str], ...] = (
+    (b"\xff\xd8\xff", "image/jpeg", ".jpg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png", ".png"),
+    (b"GIF87a", "image/gif", ".gif"),
+    (b"GIF89a", "image/gif", ".gif"),
+)
+
+
+def sniff_generated_image_media_type(data: bytes) -> str | None:
+    """Identify image bytes by signature. Never trust a provider filename."""
+
+    for magic, media_type, _suffix in _IMAGE_MAGIC:
+        if data.startswith(magic):
+            return media_type
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def sniff_generated_image_suffix(data: bytes) -> str | None:
+    media_type = sniff_generated_image_media_type(data)
+    if media_type == "image/webp":
+        return ".webp"
+    for _magic, candidate, suffix in _IMAGE_MAGIC:
+        if candidate == media_type:
+            return suffix
+    return None
+
+
+def persist_generated_image_bytes(output_path: Path, content: bytes) -> tuple[Path, str]:
+    """Write image bytes using a suffix that matches the payload, not the request."""
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    suffix = sniff_generated_image_suffix(content)
+    media_type = sniff_generated_image_media_type(content) or "application/octet-stream"
+    actual_path = output_path.with_suffix(suffix) if suffix else output_path
+    actual_path.write_bytes(content)
+    return actual_path, media_type
+
+
+def _existing_generated_image(output_path: Path) -> Path | None:
+    candidates = [output_path]
+    for suffix in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+        candidate = output_path.with_suffix(suffix)
+        if candidate not in candidates:
+            candidates.append(candidate)
+    for path in candidates:
+        if path.is_file() and path.stat().st_size > 0:
+            return path
+    return None
+
+
+def _generated_from_bytes(
+    output_path: Path, content: bytes, prompt: str, *, attempts: int = 1
+) -> GeneratedImage:
+    path, content_type = persist_generated_image_bytes(output_path, content)
+    return GeneratedImage(
+        path=path, prompt=prompt, attempts=attempts, content_type=content_type
+    )
 
 
 @dataclass(frozen=True)
@@ -97,12 +173,14 @@ class OpenAIImageGenerator:
         model: str = "gpt-image-2",
         proxy_url: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        spend_store: object | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.proxy_url = proxy_url
         self.transport = transport
+        self.spend_store = spend_store
 
     async def generate(
         self,
@@ -115,70 +193,101 @@ class OpenAIImageGenerator:
     ) -> GeneratedImage:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         references = tuple(reference_images)
-        try:
-            async with _openai_client(
-                timeout=180,
-                proxy_url=self.proxy_url,
-                transport=self.transport,
-            ) as client:
-                if references:
-                    files = [
-                        (
-                            "image[]",
+        async with _PAID_GENERATE_LOCK:
+            _refuse_unbounded_image_spend(
+                model=self.model,
+                size=size,
+                quality=quality,
+                reference_count=len(references),
+                spend_store=self.spend_store,
+            )
+            started = time.perf_counter()
+            billed = False
+            usage_payload: dict[str, object] | None = None
+            try:
+                async with _openai_client(
+                    timeout=180,
+                    proxy_url=self.proxy_url,
+                    transport=self.transport,
+                ) as client:
+                    if references:
+                        files = [
                             (
-                                path.name,
-                                path.read_bytes(),
-                                mimetypes.guess_type(path.name)[0] or "application/octet-stream",
-                            ),
+                                "image[]",
+                                (
+                                    path.name,
+                                    path.read_bytes(),
+                                    mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                                ),
+                            )
+                            for path in references
+                        ]
+                        response = await client.post(
+                            f"{self.base_url}/images/edits",
+                            headers={"Authorization": f"Bearer {self.api_key}"},
+                            data={
+                                "model": self.model,
+                                "prompt": prompt,
+                                "size": size,
+                                "quality": quality,
+                                "output_format": "png",
+                            },
+                            files=files,
                         )
-                        for path in references
-                    ]
-                    response = await client.post(
-                        f"{self.base_url}/images/edits",
-                        headers={"Authorization": f"Bearer {self.api_key}"},
-                        data={
-                            "model": self.model,
-                            "prompt": prompt,
-                            "size": size,
-                            "quality": quality,
-                            "output_format": "png",
-                        },
-                        files=files,
+                    else:
+                        response = await client.post(
+                            f"{self.base_url}/images/generations",
+                            headers={
+                                "Authorization": f"Bearer {self.api_key}",
+                                "Content-Type": "application/json",
+                            },
+                            json={
+                                "model": self.model,
+                                "prompt": prompt,
+                                "size": size,
+                                "quality": quality,
+                                "output_format": "png",
+                            },
+                        )
+                    if response.is_error:
+                        raise openai_provider_error(response, provider="openai_image")
+                    billed = True
+                    try:
+                        payload = response.json()
+                    except (ValueError, json.JSONDecodeError):
+                        payload = None
+                    if isinstance(payload, dict):
+                        usage_payload = payload
+            except ImageGenerationProviderError:
+                raise
+            except httpx.TransportError as exc:
+                raise ImageGenerationProviderError(
+                    provider="openai", kind="transport", detail=type(exc).__name__
+                ) from exc
+            finally:
+                if billed:
+                    _record_paid_image_generation(
+                        model=self.model,
+                        size=size,
+                        quality=quality,
+                        reference_count=len(references),
+                        prompt=prompt,
+                        usage_payload=usage_payload,
+                        latency_ms=int((time.perf_counter() - started) * 1000),
+                        spend_store=self.spend_store,
                     )
-                else:
-                    response = await client.post(
-                        f"{self.base_url}/images/generations",
-                        headers={
-                            "Authorization": f"Bearer {self.api_key}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": self.model,
-                            "prompt": prompt,
-                            "size": size,
-                            "quality": quality,
-                            "output_format": "png",
-                        },
-                    )
-                if response.is_error:
-                    raise openai_provider_error(response, provider="openai_image")
-        except ImageGenerationProviderError:
-            raise
-        except httpx.TransportError as exc:
-            raise ImageGenerationProviderError(
-                provider="openai", kind="transport", detail=type(exc).__name__
-            ) from exc
-        try:
-            data = response.json()["data"][0]
-            image_b64 = data.get("b64_json") or data.get("image_base64")
-            if not isinstance(image_b64, str) or not image_b64:
-                raise ValueError("missing image payload")
-            output_path.write_bytes(base64.b64decode(image_b64))
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
-            raise ImageGenerationProviderError(
-                provider="openai", kind="invalid_response", detail=type(exc).__name__
-            ) from exc
-        return GeneratedImage(path=output_path, prompt=prompt)
+            try:
+                if not isinstance(usage_payload, dict):
+                    raise ValueError("missing image payload")
+                data = usage_payload["data"][0]
+                image_b64 = data.get("b64_json") or data.get("image_base64")
+                if not isinstance(image_b64, str) or not image_b64:
+                    raise ValueError("missing image payload")
+                return _generated_from_bytes(output_path, base64.b64decode(image_b64), prompt)
+            except (KeyError, IndexError, TypeError, ValueError) as exc:
+                raise ImageGenerationProviderError(
+                    provider="openai", kind="invalid_response", detail=type(exc).__name__
+                ) from exc
 
 
 def openai_provider_error(
@@ -207,6 +316,152 @@ def openai_provider_error(
         status_code=response.status_code,
         detail=detail or f"http_{response.status_code}",
     )
+
+
+def bind_image_spend_store(store: object | None):
+    """Tests inject a CompanionStore; production uses DATABASE_PATH when set."""
+
+    return _IMAGE_SPEND_STORE.set(store)
+
+
+def reset_image_spend_store(token) -> None:
+    _IMAGE_SPEND_STORE.reset(token)
+
+
+def _image_spend_store(explicit: object | None) -> object | None:
+    if explicit is not None:
+        return explicit
+    bound = _IMAGE_SPEND_STORE.get()
+    if bound is not None:
+        return bound
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return None
+    raw = os.environ.get("DATABASE_PATH", "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_file():
+        return None
+    from companion_daemon.db import CompanionStore
+
+    return CompanionStore(path)
+
+
+def _refuse_unbounded_image_spend(
+    *,
+    model: str,
+    size: str,
+    quality: str,
+    reference_count: int,
+    spend_store: object | None,
+) -> None:
+    store = _image_spend_store(spend_store)
+    if store is None or not hasattr(store, "usage_count"):
+        return
+    from companion_daemon.budget import BudgetGate, image_render_estimate
+
+    monthly, daily, soft, monthly_images = 80.0, 3.0, 2.0, 20
+    vision_limit, audio_limit = 120, 60
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        try:
+            from companion_daemon.config import Settings
+
+            settings = Settings()
+            monthly = float(settings.monthly_budget_cny)
+            daily = float(settings.daily_budget_cny)
+            soft = float(settings.soft_daily_budget_cny)
+            monthly_images = int(settings.monthly_image_limit)
+            vision_limit = int(settings.monthly_vision_limit)
+            audio_limit = int(settings.monthly_audio_limit)
+        except Exception:
+            pass
+    gate = BudgetGate(
+        store,  # type: ignore[arg-type]
+        monthly_budget_cny=monthly,
+        daily_budget_cny=daily,
+        soft_daily_budget_cny=soft,
+        monthly_image_limit=monthly_images,
+        monthly_vision_limit=vision_limit,
+        monthly_audio_limit=audio_limit,
+    )
+    estimate = image_render_estimate(
+        reference_count=reference_count, size=size, quality=quality, attempts=1
+    )
+    decision = gate.check(estimate, automatic=True)
+    if decision.allowed:
+        return
+    raise ImageGenerationProviderError(
+        provider="openai_image",
+        kind="invalid_request",
+        detail="image_generation_spend_cap:" + decision.reason,
+    )
+
+
+def _record_paid_image_generation(
+    *,
+    model: str,
+    size: str,
+    quality: str,
+    reference_count: int,
+    prompt: str,
+    usage_payload: dict[str, object] | None,
+    latency_ms: int,
+    spend_store: object | None,
+) -> None:
+    """Record spend after HTTP 200, even when the image bytes cannot be parsed."""
+
+    from companion_daemon.usage_metrics import (
+        estimate_gpt_image_2_cost_usd,
+        parse_openai_image_usage,
+    )
+
+    parsed = parse_openai_image_usage(usage_payload)
+    usd, pricing_version = estimate_gpt_image_2_cost_usd(
+        size=size,
+        quality=quality,
+        reference_count=reference_count,
+        text_input_tokens=parsed["text_input_tokens"],
+        image_input_tokens=parsed["image_input_tokens"] or None,
+        output_tokens=parsed["output_tokens"] or None,
+    )
+    cny = round(usd * 7.2, 4)
+    note = (
+        f"gpt-image:{model}:{size}:{quality}:refs={reference_count}"
+        f":pricing={pricing_version}"
+    )
+    store = _image_spend_store(spend_store)
+    if store is not None and hasattr(store, "record_usage"):
+        try:
+            store.record_usage("image_generation", cny, note=note)
+        except Exception:
+            _LOG.exception("image generation usage_events record failed")
+    db_path = getattr(store, "path", None) if store is not None else None
+    if db_path is None and not os.environ.get("PYTEST_CURRENT_TEST"):
+        raw = os.environ.get("DATABASE_PATH", "").strip()
+        db_path = raw or None
+    if db_path:
+        try:
+            from companion_daemon.llm import ModelCallUsage
+            from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
+
+            WorldV2UsageStore(path=str(db_path)).record(
+                ModelCallUsage(
+                    purpose="image_generation",
+                    model=model or "gpt-image-2",
+                    status="succeeded",
+                    latency_ms=max(0, latency_ms),
+                    prompt_tokens=parsed["text_input_tokens"] + parsed["image_input_tokens"],
+                    completion_tokens=parsed["output_tokens"],
+                    cache_hit_tokens=0,
+                    cache_miss_tokens=parsed["image_input_tokens"]
+                    + parsed["text_input_tokens"],
+                    total_tokens=parsed["total_tokens"],
+                    provider="openai",
+                )
+            )
+        except Exception:
+            _LOG.exception("image generation world-v2 usage record failed")
+    del prompt  # prompt is not persisted; length is not billed as a secret.
 
 
 class VolcArkImageGenerator:
@@ -288,14 +543,13 @@ class VolcArkImageGenerator:
             image_b64 = first.get("b64_json") or first.get("image_base64")
             image_url = first.get("url")
             if isinstance(image_b64, str) and image_b64:
-                output_path.write_bytes(base64.b64decode(image_b64))
+                return _generated_from_bytes(output_path, base64.b64decode(image_b64), prompt)
             elif isinstance(image_url, str) and image_url:
                 download = await client.get(image_url)
                 download.raise_for_status()
-                output_path.write_bytes(download.content)
+                return _generated_from_bytes(output_path, download.content, prompt)
             else:
                 raise ValueError("Ark image response did not include b64_json or url")
-        return GeneratedImage(path=output_path, prompt=prompt)
 
 
 def _ark_request_error(response: httpx.Response) -> ValueError:
@@ -434,7 +688,7 @@ class CivitaiWorkflowImageGenerator:
                 artifact = await client.get(image_url, follow_redirects=True)
                 if artifact.is_error:
                     raise _civitai_provider_error(artifact)
-                output_path.write_bytes(artifact.content)
+                return _generated_from_bytes(output_path, artifact.content, prompt)
         except ImageGenerationProviderError:
             raise
         except httpx.TransportError as exc:
@@ -445,7 +699,6 @@ class CivitaiWorkflowImageGenerator:
             raise ImageGenerationProviderError(
                 provider="civitai_image", kind="invalid_response", detail=type(exc).__name__
             ) from exc
-        return GeneratedImage(path=output_path, prompt=prompt)
 
 
 class CivitaiKrea2ImageGenerator(CivitaiWorkflowImageGenerator):
@@ -573,7 +826,7 @@ class CivitaiKrea2ImageGenerator(CivitaiWorkflowImageGenerator):
                 artifact = await client.get(image_url, follow_redirects=True)
                 if artifact.is_error:
                     raise _civitai_provider_error(artifact)
-                output_path.write_bytes(artifact.content)
+                return _generated_from_bytes(output_path, artifact.content, prompt)
         except ImageGenerationProviderError:
             raise
         except httpx.TransportError as exc:
@@ -584,7 +837,6 @@ class CivitaiKrea2ImageGenerator(CivitaiWorkflowImageGenerator):
             raise ImageGenerationProviderError(
                 provider="civitai_krea2", kind="invalid_response", detail=type(exc).__name__
             ) from exc
-        return GeneratedImage(path=output_path, prompt=prompt)
 
 
 class CivitaiTemplateWorkflowImageGenerator(CivitaiWorkflowImageGenerator):
@@ -604,12 +856,13 @@ class CivitaiTemplateWorkflowImageGenerator(CivitaiWorkflowImageGenerator):
     _PROMPT_SLOT = "{{render_prompt}}"
     _IDENTITY_SLOT = "{{identity_reference_data_url}}"
     _SEED_SLOT = "{{seed}}"
-    # Long-polling a workflow creation request through a local proxy can hold
-    # the HTTP connection indefinitely.  Submit quickly, then poll the
-    # durable workflow ID with a bounded total wait instead.
+    # Submit with a short wait, persist the workflow id, then reconcile on
+    # later drain/tick.  Never block this call for minutes: a preparing LoRA
+    # can outlive any synchronous poll, and a timeout-then-retry POSTs twice.
     _SUBMISSION_WAIT_SECONDS = 8
     _REQUEST_TIMEOUT_SECONDS = 20
-    _WORKFLOW_TIMEOUT_SECONDS = 180
+    _RECONCILE_MIN_INTERVAL_SECONDS = 15
+    _ABANDON_AFTER = timedelta(hours=4)
 
     def __init__(
         self,
@@ -620,6 +873,7 @@ class CivitaiTemplateWorkflowImageGenerator(CivitaiWorkflowImageGenerator):
         proxy_url: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         require_reference_free: bool = False,
+        spend_store: object | None = None,
     ) -> None:
         self.template_path = template_path
         self.template = _load_civitai_imagegen_template(
@@ -627,6 +881,8 @@ class CivitaiTemplateWorkflowImageGenerator(CivitaiWorkflowImageGenerator):
             require_reference_free=require_reference_free,
         )
         self.require_reference_free = require_reference_free
+        self.spend_store = spend_store
+        self._submit_lock = asyncio.Lock()
         self._uses_dynamic_identity_anchor = (
             _template_imagegen_input(self.template).get("images") == [self._IDENTITY_SLOT]
         )
@@ -652,6 +908,17 @@ class CivitaiTemplateWorkflowImageGenerator(CivitaiWorkflowImageGenerator):
     ) -> GeneratedImage:
         del quality
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        prior = _read_civitai_workflow_receipt(output_path)
+        existing = _existing_generated_image(output_path)
+        if (
+            existing is not None
+            and prior.get("status") == "succeeded"
+            and prior.get("has_output") is True
+        ):
+            media_type = sniff_generated_image_media_type(existing.read_bytes()) or (
+                "application/octet-stream"
+            )
+            return GeneratedImage(path=existing, prompt=prompt, content_type=media_type)
         references = tuple(path for path in reference_images if path.is_file())
         workflow = deepcopy(self.template)
         image_input = _template_imagegen_input(workflow)
@@ -676,9 +943,10 @@ class CivitaiTemplateWorkflowImageGenerator(CivitaiWorkflowImageGenerator):
             width=width,
             height=height,
         )
-        # The reviewed source template is intentionally provider-focused. The
-        # media machine, not its editor, owns retention for private assets.
-        workflow["ephemeral"] = True
+        # Retention is required for GET reconciliation.  Ephemeral workflows
+        # 404 after they finish, which would turn a billed success into a lost
+        # image and a second POST.
+        workflow["ephemeral"] = False
         try:
             async with _openai_client(
                 timeout=195,
@@ -694,59 +962,12 @@ class CivitaiTemplateWorkflowImageGenerator(CivitaiWorkflowImageGenerator):
                             reference=identity_reference,
                         )
                     ]
-                response = await client.post(
-                    f"{self.base_url}/workflows",
-                    params={"wait": self._SUBMISSION_WAIT_SECONDS},
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json=workflow,
-                    timeout=self._REQUEST_TIMEOUT_SECONDS,
+                return await self._submit_or_reconcile(
+                    client,
+                    workflow=workflow,
+                    output_path=output_path,
+                    prompt=prompt,
                 )
-                if response.is_error:
-                    raise _civitai_provider_error(response)
-                payload = response.json()
-                workflow_id = str(payload.get("id") or "") if isinstance(payload, dict) else ""
-                _write_civitai_workflow_receipt(
-                    output_path,
-                    workflow_id=workflow_id,
-                    payload=payload,
-                    template_name=self.template_path.name,
-                )
-                deadline = time.monotonic() + self._WORKFLOW_TIMEOUT_SECONDS
-                while _civitai_workflow_pending(payload):
-                    if not workflow_id:
-                        raise ValueError("missing workflow id")
-                    if time.monotonic() >= deadline:
-                        # The provider accepted a durable workflow ID, so a
-                        # blind renderer retry could produce and bill a second
-                        # image. Surface an unknown outcome for reconciliation
-                        # instead of treating it as a transient redraw.
-                        raise ImageGenerationProviderError(
-                            provider="civitai_template",
-                            kind="unknown",
-                            detail=f"workflow_timeout:{workflow_id}",
-                        )
-                    await _sleep_briefly()
-                    response = await client.get(
-                        f"{self.base_url}/workflows/{workflow_id}",
-                        headers={"Authorization": f"Bearer {self.api_key}"},
-                        timeout=self._REQUEST_TIMEOUT_SECONDS,
-                    )
-                    if response.is_error:
-                        raise _civitai_provider_error(response)
-                    payload = response.json()
-                    _write_civitai_workflow_receipt(
-                        output_path,
-                        workflow_id=workflow_id,
-                        payload=payload,
-                        template_name=self.template_path.name,
-                    )
-                image_url = _civitai_image_url(payload)
-                if not image_url:
-                    raise _civitai_terminal_error(payload)
-                artifact = await client.get(image_url, follow_redirects=True)
-                if artifact.is_error:
-                    raise _civitai_provider_error(artifact)
-                output_path.write_bytes(artifact.content)
         except ImageGenerationProviderError:
             raise
         except httpx.TimeoutException as exc:
@@ -763,7 +984,187 @@ class CivitaiTemplateWorkflowImageGenerator(CivitaiWorkflowImageGenerator):
             raise ImageGenerationProviderError(
                 provider="civitai_template", kind="invalid_response", detail=type(exc).__name__
             ) from exc
-        return GeneratedImage(path=output_path, prompt=prompt)
+
+    async def _submit_or_reconcile(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        workflow: dict[str, object],
+        output_path: Path,
+        prompt: str,
+    ) -> GeneratedImage:
+        async with self._submit_lock:
+            receipt = _read_civitai_workflow_receipt(output_path)
+            workflow_id = str(receipt.get("workflow_id") or "")
+            payload: object
+            if workflow_id:
+                payload = await self._get_workflow(client, workflow_id=workflow_id, receipt=receipt)
+            else:
+                await _assert_civitai_airs_schedulable(
+                    client,
+                    base_url=self.base_url,
+                    api_key=self.api_key,
+                    airs=_template_lora_airs(self.template),
+                )
+                response = await client.post(
+                    f"{self.base_url}/workflows",
+                    params={"wait": self._SUBMISSION_WAIT_SECONDS},
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json=workflow,
+                    timeout=self._REQUEST_TIMEOUT_SECONDS,
+                )
+                if response.is_error:
+                    raise _civitai_provider_error(response)
+                payload = response.json()
+                workflow_id = str(payload.get("id") or "") if isinstance(payload, dict) else ""
+                if not workflow_id:
+                    raise ValueError("missing workflow id")
+                yellow_buzz, currency = _civitai_debit_buzz(payload)
+                _write_civitai_workflow_receipt(
+                    output_path,
+                    workflow_id=workflow_id,
+                    payload=payload,
+                    template_name=self.template_path.name,
+                    yellow_buzz=yellow_buzz,
+                    buzz_currency=currency,
+                    billed=True,
+                )
+                if yellow_buzz:
+                    _record_civitai_buzz_usage(
+                        yellow_buzz=yellow_buzz,
+                        workflow_id=workflow_id,
+                        has_output=False,
+                        spend_store=self.spend_store,
+                    )
+                if _civitai_workflow_pending(payload) and not _civitai_ready_image_url(payload):
+                    payload = await self._get_workflow(
+                        client,
+                        workflow_id=workflow_id,
+                        receipt=_read_civitai_workflow_receipt(output_path),
+                        force=True,
+                    )
+        return await self._materialize_or_pending(
+            client,
+            payload=payload,
+            output_path=output_path,
+            prompt=prompt,
+            workflow_id=workflow_id,
+        )
+
+    async def _get_workflow(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        workflow_id: str,
+        receipt: dict[str, object],
+        force: bool = False,
+    ) -> object:
+        if (
+            not force
+            and _civitai_receipt_polled_recently(
+                receipt, min_interval_seconds=self._RECONCILE_MIN_INTERVAL_SECONDS
+            )
+            and not _civitai_receipt_abandoned(receipt, abandon_after=self._ABANDON_AFTER)
+        ):
+            return {
+                "id": workflow_id,
+                "status": receipt.get("status") or "preparing",
+                "cost": {"total": receipt.get("yellow_buzz")},
+            }
+        response = await client.get(
+            f"{self.base_url}/workflows/{workflow_id}",
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            timeout=self._REQUEST_TIMEOUT_SECONDS,
+        )
+        if response.status_code == 404:
+            raise ImageGenerationProviderError(
+                provider="civitai_template",
+                kind="unknown",
+                status_code=404,
+                detail=(
+                    f"billed_no_output:{workflow_id}"
+                    if receipt.get("billed") or receipt.get("yellow_buzz")
+                    else f"workflow_missing:{workflow_id}"
+                ),
+            )
+        if response.is_error:
+            raise _civitai_provider_error(response)
+        return response.json()
+
+    async def _materialize_or_pending(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        payload: object,
+        output_path: Path,
+        prompt: str,
+        workflow_id: str,
+    ) -> GeneratedImage:
+        yellow_buzz, currency = _civitai_debit_buzz(payload)
+        _write_civitai_workflow_receipt(
+            output_path,
+            workflow_id=workflow_id,
+            payload=payload,
+            template_name=self.template_path.name,
+            yellow_buzz=yellow_buzz,
+            buzz_currency=currency,
+        )
+        image_url = _civitai_ready_image_url(payload)
+        if image_url:
+            artifact = await client.get(image_url, follow_redirects=True)
+            if artifact.is_error:
+                raise _civitai_provider_error(artifact)
+            generated = _generated_from_bytes(output_path, artifact.content, prompt)
+            _write_civitai_workflow_receipt(
+                output_path,
+                workflow_id=workflow_id,
+                payload=payload,
+                template_name=self.template_path.name,
+                yellow_buzz=yellow_buzz,
+                buzz_currency=currency,
+                has_output=True,
+            )
+            if yellow_buzz:
+                _record_civitai_buzz_usage(
+                    yellow_buzz=yellow_buzz,
+                    workflow_id=workflow_id,
+                    has_output=True,
+                    spend_store=self.spend_store,
+                )
+            return generated
+        receipt = _read_civitai_workflow_receipt(output_path)
+        status = str(payload.get("status") or "") if isinstance(payload, dict) else ""
+        if status in {"failed", "expired", "canceled", "cancelled"}:
+            raise _civitai_terminal_error(payload)
+        if _civitai_receipt_abandoned(receipt, abandon_after=self._ABANDON_AFTER):
+            _write_civitai_workflow_receipt(
+                output_path,
+                workflow_id=workflow_id,
+                payload=payload,
+                template_name=self.template_path.name,
+                yellow_buzz=yellow_buzz,
+                buzz_currency=currency,
+                billed_no_output=True,
+            )
+            billed_buzz = int(yellow_buzz or receipt.get("yellow_buzz") or 0)
+            if billed_buzz:
+                _record_civitai_buzz_usage(
+                    yellow_buzz=billed_buzz,
+                    workflow_id=workflow_id,
+                    has_output=False,
+                    billed_no_output=True,
+                    spend_store=self.spend_store,
+                )
+            raise ImageGenerationProviderError(
+                provider="civitai_template",
+                kind="unknown",
+                detail=f"billed_no_output:{workflow_id}",
+            )
+        raise ImageGenerationProviderError(
+            provider="civitai_template",
+            kind="pending",
+            detail=f"workflow_pending:{workflow_id}",
+        )
 
 
 def _load_civitai_imagegen_template(
@@ -953,33 +1354,253 @@ def _civitai_workflow_pending(payload: object) -> bool:
     }
 
 
+def _template_lora_airs(template: dict[str, object]) -> tuple[str, ...]:
+    loras = _template_imagegen_input(template).get("loras")
+    if not isinstance(loras, dict):
+        return ()
+    return tuple(str(air) for air in loras if isinstance(air, str) and air)
+
+
+def _civitai_resources_root(base_url: str) -> str:
+    root = base_url.rstrip("/")
+    if root.endswith("/consumer"):
+        return root[: -len("consumer")] + "resources"
+    return root.rsplit("/", 1)[0] + "/resources"
+
+
+async def _assert_civitai_airs_schedulable(
+    client: httpx.AsyncClient,
+    *,
+    base_url: str,
+    api_key: str,
+    airs: tuple[str, ...],
+) -> None:
+    """Fail closed before POST when orchestration cannot resolve a LoRA AIR."""
+
+    missing: list[str] = []
+    root = _civitai_resources_root(base_url)
+    for air in airs:
+        response = await client.get(
+            f"{root}/{air}",
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        if response.status_code == 404:
+            missing.append(air)
+            continue
+        if response.is_error:
+            raise ImageGenerationProviderError(
+                provider="civitai_template",
+                kind="transient",
+                status_code=response.status_code,
+                detail=f"resource_lookup_http_{response.status_code}",
+            )
+    if missing:
+        labels = ",".join(air.rsplit(":", 1)[-1] for air in missing)
+        raise ImageGenerationProviderError(
+            provider="civitai_template",
+            kind="invalid_request",
+            status_code=404,
+            detail=f"lora_not_schedulable:{labels}",
+        )
+
+
+def _civitai_receipt_path(output_path: Path) -> Path:
+    return output_path.with_suffix(output_path.suffix + ".civitai.json")
+
+
+def _read_civitai_workflow_receipt(output_path: Path) -> dict[str, object]:
+    path = _civitai_receipt_path(output_path)
+    if not path.is_file():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _civitai_parse_time(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _civitai_receipt_abandoned(
+    receipt: dict[str, object], *, abandon_after: timedelta
+) -> bool:
+    submitted = _civitai_parse_time(receipt.get("submitted_at"))
+    if submitted is None:
+        return False
+    return datetime.now(timezone.utc) - submitted >= abandon_after
+
+
+def _civitai_receipt_polled_recently(
+    receipt: dict[str, object], *, min_interval_seconds: int
+) -> bool:
+    polled = _civitai_parse_time(receipt.get("last_polled_at"))
+    if polled is None:
+        return False
+    return (datetime.now(timezone.utc) - polled).total_seconds() < min_interval_seconds
+
+
+def _civitai_debit_buzz(payload: object) -> tuple[int | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, None
+    transactions = payload.get("transactions")
+    if isinstance(transactions, dict):
+        items = transactions.get("list")
+        if isinstance(items, list):
+            total = 0
+            currency: str | None = None
+            for item in items:
+                if not isinstance(item, dict) or item.get("type") != "debit":
+                    continue
+                amount = item.get("amount")
+                if isinstance(amount, int) and not isinstance(amount, bool) and amount > 0:
+                    total += amount
+                    account = item.get("accountType")
+                    if isinstance(account, str) and account:
+                        currency = account
+            if total:
+                return total, currency or "yellow"
+    cost = payload.get("cost")
+    if isinstance(cost, dict):
+        total = cost.get("total")
+        if isinstance(total, int) and not isinstance(total, bool) and total > 0:
+            return total, "yellow"
+    return None, None
+
+
+def _civitai_preparing_resource(payload: object) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    steps = payload.get("steps")
+    step = steps[0] if isinstance(steps, list) and steps and isinstance(steps[0], dict) else {}
+    preparation = step.get("preparation") if isinstance(step, dict) else None
+    if not isinstance(preparation, dict):
+        preparation = payload.get("preparation") if isinstance(payload.get("preparation"), dict) else None
+    if not isinstance(preparation, dict):
+        return None
+    resource = preparation.get("resource")
+    return resource if isinstance(resource, str) and resource else None
+
+
 def _write_civitai_workflow_receipt(
     output_path: Path,
     *,
     workflow_id: str,
     payload: object,
     template_name: str,
+    yellow_buzz: int | None = None,
+    buzz_currency: str | None = None,
+    billed: bool | None = None,
+    has_output: bool | None = None,
+    billed_no_output: bool | None = None,
 ) -> None:
-    """Persist only durable Civitai task state beside a generated artifact.
+    """Persist durable Civitai task state beside a generated artifact.
 
-    A timed-out workflow may continue and be billable remotely.  This receipt
-    lets the delivery/reconciliation layer query the exact task later without
-    recording prompts, credentials, or opaque provider response bodies.
+    A billed workflow may continue remotely after this process returns.
+    The receipt is the effect-once source for later GET reconciliation and
+    the audit trail for buzz spent with or without an image.
     """
 
-    status = "unknown"
+    previous = _read_civitai_workflow_receipt(output_path)
+    now = datetime.now(timezone.utc).isoformat()
+    status = str(previous.get("status") or "unknown")
     if isinstance(payload, dict):
         raw_status = payload.get("status")
         if isinstance(raw_status, str) and raw_status:
             status = raw_status
+    submitted_at = previous.get("submitted_at")
+    if not isinstance(submitted_at, str) or not submitted_at:
+        submitted_at = now
+    abandon_after = previous.get("abandon_after")
+    if not isinstance(abandon_after, str) or not abandon_after:
+        abandon_after = (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat()
+    stored_buzz = previous.get("yellow_buzz")
+    if yellow_buzz is None and isinstance(stored_buzz, int):
+        yellow_buzz = stored_buzz
+    stored_currency = previous.get("buzz_currency")
+    if not buzz_currency and isinstance(stored_currency, str):
+        buzz_currency = stored_currency
     receipt = {
         "provider": "civitai_template",
-        "workflow_id": workflow_id or None,
+        "workflow_id": workflow_id or previous.get("workflow_id"),
         "status": status,
         "template": template_name,
+        "submitted_at": submitted_at,
+        "last_polled_at": now,
+        "abandon_after": abandon_after,
+        "yellow_buzz": yellow_buzz,
+        "buzz_currency": buzz_currency,
+        "billed": True if billed else bool(previous.get("billed") or yellow_buzz),
+        "has_output": True if has_output else bool(previous.get("has_output")),
+        "billed_no_output": True if billed_no_output else bool(previous.get("billed_no_output")),
+        "preparing_resource": _civitai_preparing_resource(payload),
+        "ephemeral": False,
     }
-    receipt_path = output_path.with_suffix(output_path.suffix + ".civitai.json")
-    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    _civitai_receipt_path(output_path).write_text(
+        json.dumps(receipt, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def _record_civitai_buzz_usage(
+    *,
+    yellow_buzz: int,
+    workflow_id: str,
+    has_output: bool,
+    spend_store: object | None,
+    billed_no_output: bool = False,
+) -> None:
+    """Record buzz as buzz. Do not invent a USD/CNY exchange rate."""
+
+    if yellow_buzz <= 0:
+        return
+    status = "billed_no_output" if billed_no_output else ("succeeded" if has_output else "billed")
+    note = (
+        f"civitai:yellow_buzz={yellow_buzz}:workflow={workflow_id}"
+        f":has_output={int(has_output)}:billed_no_output={int(billed_no_output)}"
+    )
+    store = _image_spend_store(spend_store)
+    if store is not None and hasattr(store, "record_usage"):
+        try:
+            store.record_usage("civitai_buzz", 0.0, note=note)
+        except Exception:
+            _LOG.exception("civitai buzz usage_events record failed")
+    db_path = getattr(store, "path", None) if store is not None else None
+    if db_path is None and not os.environ.get("PYTEST_CURRENT_TEST"):
+        raw = os.environ.get("DATABASE_PATH", "").strip()
+        db_path = raw or None
+    if not db_path:
+        return
+    try:
+        from companion_daemon.llm import ModelCallUsage
+        from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
+
+        WorldV2UsageStore(path=str(db_path)).record(
+            ModelCallUsage(
+                purpose="image_generation",
+                model="civitai-krea2-template",
+                status=status,
+                latency_ms=0,
+                prompt_tokens=0,
+                completion_tokens=0,
+                cache_hit_tokens=0,
+                cache_miss_tokens=0,
+                total_tokens=0,
+                provider="civitai",
+                error=note,
+            )
+        )
+    except Exception:
+        _LOG.exception("civitai buzz world-v2 usage record failed")
 
 
 def _civitai_image_url(payload: object) -> str:
@@ -993,6 +1614,25 @@ def _civitai_image_url(payload: object) -> str:
     if not isinstance(images, list) or not images or not isinstance(images[0], dict):
         return ""
     url = images[0].get("url")
+    return str(url) if isinstance(url, str) and url else ""
+
+
+def _civitai_ready_image_url(payload: object) -> str:
+    """Return a fetchable blob URL. Advertised but unavailable blobs stay pending."""
+
+    if not isinstance(payload, dict):
+        return ""
+    steps = payload.get("steps")
+    if not isinstance(steps, list) or not steps or not isinstance(steps[0], dict):
+        return ""
+    output = steps[0].get("output")
+    images = output.get("images") if isinstance(output, dict) else None
+    if not isinstance(images, list) or not images or not isinstance(images[0], dict):
+        return ""
+    image = images[0]
+    if image.get("available") is False:
+        return ""
+    url = image.get("url")
     return str(url) if isinstance(url, str) and url else ""
 
 
@@ -1103,8 +1743,7 @@ class ComfyUIImageGenerator:
                         params={"filename": image["filename"], "subfolder": image.get("subfolder", ""), "type": image.get("type", "output")},
                     )
                     response.raise_for_status()
-                    output_path.write_bytes(response.content)
-                    return GeneratedImage(path=output_path, prompt=prompt)
+                    return _generated_from_bytes(output_path, response.content, prompt)
                 await _sleep_briefly()
         raise TimeoutError(f"ComfyUI generation did not finish within 240 seconds: {prompt_id}")
 

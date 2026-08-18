@@ -42,6 +42,7 @@ from .media_continuation_acceptance_manifest import (
 from .media_selection_proposal import MediaSelectionProposalRecordedPayload
 from .image_evidence_contract import IMAGE_EVIDENCE_PAYLOAD_MODELS
 from .private_image_evidence_contract import RECIPIENT_SCOPED_IMAGE_EVIDENCE_PAYLOAD_MODELS
+from .declared_display_contract import DECLARED_DISPLAY_PAYLOAD_MODELS
 from .appearance_state import APPEARANCE_STATE_PAYLOAD_MODELS
 from .visible_physical_state import VISIBLE_PHYSICAL_STATE_PAYLOAD_MODELS
 from .visual_fact import VISUAL_FACT_PAYLOAD_MODELS
@@ -508,6 +509,7 @@ _PAYLOAD_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType(
         **IMAGE_EVIDENCE_PAYLOAD_MODELS,
         **VISUAL_FACT_PAYLOAD_MODELS,
         **RECIPIENT_SCOPED_IMAGE_EVIDENCE_PAYLOAD_MODELS,
+        **DECLARED_DISPLAY_PAYLOAD_MODELS,
         **APPEARANCE_STATE_PAYLOAD_MODELS,
         **VISIBLE_PHYSICAL_STATE_PAYLOAD_MODELS,
         "RandomDrawRecorded": RandomDrawRecordedPayload,
@@ -650,6 +652,8 @@ _IDEMPOTENCY_IDENTITIES: Mapping[str, str] = MappingProxyType(
         "ImageEvidenceDeclared": "world_id+source_event_ref+source_event_payload_hash",
         "VisualFactRecorded": "world_id+visual_fact_id+content_payload_hash",
         "RecipientScopedImageEvidenceDeclared": "world_id+recipient_ref+source_event_ref+source_event_payload_hash",
+        "DeclaredDisplayRecorded": "world_id+recipient_ref+source_event_ref+source_event_payload_hash",
+        "DeclaredDisplayWithdrawn": "world_id+recipient_ref+source_event_ref+source_event_payload_hash",
         "AppearanceStateRecorded": "world_id+appearance_state_id+entity_revision",
         "VisiblePhysicalStateRecorded": "world_id+physical_state_id+entity_revision",
         "RandomDrawRecorded": "world_id+draw_id",
@@ -1312,6 +1316,23 @@ _CONTRACTS: Mapping[str, EventContract] = MappingProxyType(
                 ),
                 evidence_types=("committed_world_event", "recipient_scoped_visual_evidence"),
                 successors=("PhotoCandidateOpened",),
+            ),
+            _contract(
+                "DeclaredDisplayRecorded",
+                "declared_display_acceptance",
+                "world",
+                "DeclaredDisplayRecordedPayload",
+                allowed_predecessors=("ObservationRecorded",),
+                evidence_types=("committed_world_event", "observed_message"),
+                successors=("DeclaredDisplayWithdrawn",),
+            ),
+            _contract(
+                "DeclaredDisplayWithdrawn",
+                "declared_display_acceptance",
+                "world",
+                "DeclaredDisplayWithdrawnPayload",
+                allowed_predecessors=("DeclaredDisplayRecorded", "ObservationRecorded"),
+                evidence_types=("committed_world_event", "observed_message"),
             ),
             _contract(
                 "AppearanceStateRecorded",

@@ -200,3 +200,78 @@ def test_sqlite_prune_is_world_scoped(tmp_path) -> None:
     ] == 1
     first_store.close()
     second_store.close()
+
+
+def test_release_deletes_uncheckpointed_claim_and_allows_immediate_reacquire() -> None:
+    store = _InMemoryCharacterInteriorTurnStore()
+    request = _request()
+    now = datetime(2026, 8, 8, tzinfo=UTC)
+    claimed = store.acquire(
+        request=request,
+        owner_id="runtime:one",
+        now=now,
+        lease_seconds=30,
+    )
+
+    released = store.release(
+        request=request,
+        owner_id="runtime:one",
+        lease_token=claimed.record.lease_token or "",
+        attempt_ordinal=claimed.record.attempt_ordinal,
+        now=now,
+    )
+    reclaimed = store.acquire(
+        request=request,
+        owner_id="runtime:one",
+        now=now,
+        lease_seconds=30,
+    )
+
+    assert released is None
+    assert reclaimed.status == "acquired"
+    assert reclaimed.record.attempt_ordinal == 1
+    assert store.health(world_id="world:one", actor_ref="agent:companion", now=now)[
+        "pending_claim_count"
+    ] == 1
+
+
+def test_sqlite_release_keeps_checkpoint_and_expires_lease(tmp_path) -> None:
+    path = tmp_path / "release-checkpoint.sqlite"
+    store = open_sqlite_character_interior_turn_store(path=path, world_id="world:one")
+    request = _request()
+    now = datetime(2026, 8, 8, tzinfo=UTC)
+    claimed = store.acquire(
+        request=request,
+        owner_id="runtime:first",
+        now=now,
+        lease_seconds=30,
+    )
+    checkpointed = store.checkpoint(
+        request=request,
+        owner_id="runtime:first",
+        lease_token=claimed.record.lease_token or "",
+        attempt_ordinal=claimed.record.attempt_ordinal,
+        authored_state_json='{"status":"silent"}',
+        authored_state_hash="d" * 64,
+        now=now,
+    )
+
+    released = store.release(
+        request=request,
+        owner_id="runtime:first",
+        lease_token=checkpointed.lease_token or "",
+        attempt_ordinal=checkpointed.attempt_ordinal,
+        now=now,
+    )
+    recovered = store.acquire(
+        request=request,
+        owner_id="runtime:second",
+        now=now,
+        lease_seconds=30,
+    )
+
+    assert released is not None
+    assert released.state == "checkpointed"
+    assert recovered.status == "recovered"
+    assert recovered.record.authored_state_json == '{"status":"silent"}'
+    store.close()

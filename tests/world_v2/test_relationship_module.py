@@ -20,6 +20,7 @@ from companion_daemon.world_v2.relationship_reducers import (
     adjust_relationship_slow_variables,
     change_boundary,
     preview_relationship_slow_variable_adjustment,
+    relationship_state_policy_is_readable,
 )
 from companion_daemon.world_v2.schemas import (
     BoundaryProjection,
@@ -38,6 +39,23 @@ from companion_daemon.world_v2.schemas import (
 
 NOW = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
 NAIVE_NOW = datetime(2026, 7, 14, 12, 0)
+# Exact stamps carried on production epoch2.  Genesis brought 64d8b7ff from
+# epoch 1; the 2026-08-17 adjustment restamped to 13bfa71d; H23 restored
+# close_friend enter/exit to 7000/6200 and is the installed digest again.
+# Live writes must still accept every retired stamp as readable state.
+PRODUCTION_EPOCH2_GENESIS_DIGEST = (
+    "64d8b7ffc6f38f79d31bb8a83212c5668ff908ab3f6d7c924dd75ad71fb94e95"
+)
+PRODUCTION_EPOCH2_POST_H22_DIGEST = (
+    "13bfa71dd9f8377b968714eb3d4f9a927e587832c92d2381c6ecc772071deede"
+)
+PRODUCTION_H23_DIGEST = (
+    "2ec7c0874f219a2fa2c7800d3679c393705905130a9007b2833148cb1df9b8de"
+)
+# Same-day 2026-08-18 close_friend 6000/5400 lowering; restored to 7000/6200.
+LOWERED_CLOSE_FRIEND_6000_DIGEST = (
+    "374b96bb36fac6dfb607622075e40f1ae7fbb4dc30c802f6267727805f4fa912"
+)
 
 
 def evidence(ref_id: str = "operator:relationship:1") -> EvidenceRef:
@@ -222,6 +240,100 @@ def test_a_foreign_policy_stamp_is_still_refused() -> None:
             accepted_deltas=RelationshipVariableDeltas(trust_bp=250),
             logical_time=NOW,
         )
+
+
+def test_production_epoch2_policy_stamps_are_readable_as_models_and_mappings() -> None:
+    assert PRODUCTION_EPOCH2_GENESIS_DIGEST in RETIRED_RELATIONSHIP_POLICY_DIGESTS
+    assert PRODUCTION_EPOCH2_POST_H22_DIGEST in RETIRED_RELATIONSHIP_POLICY_DIGESTS
+    assert LOWERED_CLOSE_FRIEND_6000_DIGEST in RETIRED_RELATIONSHIP_POLICY_DIGESTS
+    assert PRODUCTION_H23_DIGEST == RELATIONSHIP_POLICY_DIGEST
+    for digest in (
+        PRODUCTION_EPOCH2_GENESIS_DIGEST,
+        PRODUCTION_EPOCH2_POST_H22_DIGEST,
+        LOWERED_CLOSE_FRIEND_6000_DIGEST,
+        RELATIONSHIP_POLICY_DIGEST,
+    ):
+        state = RelationshipStateProjection(
+            relationship_id="relationship:user:geoff",
+            subject_ref="user:geoff",
+            entity_revision=3,
+            variables=RelationshipVariablesProjection(
+                trust_bp=120, closeness_bp=200, respect_bp=80, mutuality_bp=110
+            ),
+            policy_digest=digest,
+        )
+        dumped = state.model_dump(mode="json")
+        assert relationship_state_policy_is_readable(state)
+        assert relationship_state_policy_is_readable(dumped)
+    assert not relationship_state_policy_is_readable({"policy_version": "relationship-policy.1"})
+    assert not relationship_state_policy_is_readable(
+        {"policy_version": "relationship-policy.1", "policy_digest": "0" * 64}
+    )
+
+
+def test_production_shaped_state_can_be_previewed_and_restamped() -> None:
+    """The 2026-08-17 production head must not fail-closed on its retired stamp."""
+
+    before = RelationshipVariablesProjection(
+        trust_bp=120,
+        closeness_bp=200,
+        respect_bp=80,
+        reliability_bp=0,
+        mutuality_bp=110,
+        repair_confidence_bp=0,
+    )
+    source = signal(
+        "signal:production-shaped",
+        code="production_shaped",
+        contradiction_group_ref="group:production-shaped",
+    )
+    carried = RelationshipStateProjection(
+        relationship_id="relationship:primary:45c9ebfa1a5c474219e868668aff3a6700e2f18fb49e7792ea67dc669f819181",
+        subject_ref="user:geoff",
+        entity_revision=3,
+        variables=before,
+        policy_digest=PRODUCTION_EPOCH2_POST_H22_DIGEST,
+    )
+    preview = preview_relationship_slow_variable_adjustment(
+        states=(carried,),
+        history=(),
+        signals=(source,),
+        subject_ref="user:geoff",
+        signal_refs=(source.signal_id,),
+        proposed_deltas=RelationshipVariableDeltas(trust_bp=20, closeness_bp=20),
+        accepted_deltas=RelationshipVariableDeltas(trust_bp=20, closeness_bp=20),
+        logical_time=NOW,
+    )
+    assert preview.stage_before == "stranger"
+    assert preview.stage_after == "stranger"
+    assert preview.policy_digest == RELATIONSHIP_POLICY_DIGEST
+    assert preview.expected_entity_revision == 3
+
+
+def test_four_everyday_axes_cannot_open_close_friend_hysteresis() -> None:
+    """Four-axis saturation is 6666; close_friend enter is mean-of-six 7000.
+
+    reliability and repair have the same write path as trust/closeness.  If
+    they stay at 0, the slow ladder honestly does not open.  The main road
+    is her ``we_are`` declaration, not a lowered threshold.
+    """
+
+    variables = RelationshipVariablesProjection(
+        trust_bp=10_000,
+        closeness_bp=10_000,
+        respect_bp=10_000,
+        reliability_bp=0,
+        mutuality_bp=10_000,
+        repair_confidence_bp=0,
+    )
+    stage, hysteresis = relationship_reducers._derive_stage(
+        "friend",
+        variables,
+        RelationshipHysteresisProjection(),
+        NOW,
+    )
+    assert stage == "friend"
+    assert hysteresis.candidate_stage is None
 
 
 def test_relationship_policy_digest_binds_commitment_transition_graph(
@@ -1067,6 +1179,97 @@ def test_boundary_lifecycle_is_independent_of_relationship_stage() -> None:
             operation="revise",
             boundary=invalid_revise_boundary,
         )
+
+
+def test_close_friend_7000_is_mean_of_six_not_four_axis_saturation() -> None:
+    """close_friend enter 7000 is honest mean-of-six; four-axis max is 6666.
+
+    The slow ladder must not be lowered because reliability/repair were left
+    at 0.  Those axes share the trust/closeness write path.  Declaration
+    (we_are) is the main road.
+    """
+
+    saturated = RelationshipVariablesProjection(
+        trust_bp=10_000,
+        closeness_bp=10_000,
+        respect_bp=10_000,
+        reliability_bp=0,
+        mutuality_bp=10_000,
+        repair_confidence_bp=0,
+    )
+    just_under = RelationshipVariablesProjection(
+        trust_bp=6_999,
+        closeness_bp=6_999,
+        respect_bp=6_999,
+        reliability_bp=6_999,
+        mutuality_bp=6_999,
+        repair_confidence_bp=6_999,
+    )
+    just_on = RelationshipVariablesProjection(
+        trust_bp=7_000,
+        closeness_bp=7_000,
+        respect_bp=7_000,
+        reliability_bp=7_000,
+        mutuality_bp=7_000,
+        repair_confidence_bp=7_000,
+    )
+
+    def derive(variables: RelationshipVariablesProjection):
+        return relationship_reducers._derive_stage(
+            "friend",
+            variables,
+            RelationshipHysteresisProjection(),
+            NOW,
+        )
+
+    sat_stage, sat_hysteresis = derive(saturated)
+    just_under_stage, just_under_hysteresis = derive(just_under)
+    just_on_stage, just_on_hysteresis = derive(just_on)
+
+    assert sat_stage == "friend"
+    assert sat_hysteresis.candidate_stage is None
+    assert just_under_stage == "friend"
+    assert just_under_hysteresis.candidate_stage is None
+    assert just_on_stage == "friend"
+    assert just_on_hysteresis.candidate_stage == "close_friend"
+
+
+def test_us_deltas_without_about_us_why_us_pair_are_a_visible_failure() -> None:
+    """A lone us_deltas must not compile and vanish; she gets a precise miss.
+
+    ``present_prompt`` owns this gate. inbound_wire.py only forwards it.
+    """
+
+    from companion_daemon.world_v2.present_prompt import (
+        SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE,
+        compile_slim_interior_envelope,
+    )
+
+    base = {
+        "messages": ["我记下了"],
+        "felt": "心里动了一下",
+        "stuck_with_me": "他认真听了",
+        "wants": "把靠近留下来",
+        "photo": False,
+        "us_deltas": {"trust_bp": 120, "closeness_bp": 80},
+    }
+    for partial in (base, {**base, "about_us": "被认真听的感觉"}):
+        try:
+            compile_slim_interior_envelope(partial, reply_only=True)
+        except ValueError as exc:
+            assert SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE in str(exc)
+            continue
+        raise AssertionError("incomplete residue must not compile")
+    kept = compile_slim_interior_envelope(
+        {
+            **base,
+            "about_us": "被认真听的感觉",
+            "why_us": "因为这一句是真的",
+        },
+        reply_only=True,
+    )
+    assert kept is not None
+    assert kept["appraisal_draft"]["relationship_signal"]["suggested_deltas"]["trust_bp"] == 120
 
 
 def test_relationship_schema_rejects_naive_authority_times() -> None:

@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 
+import httpx
 import pytest
 
 from companion_daemon.world_v2.character_interior import (
@@ -505,6 +506,83 @@ async def test_recall_hit_activates_an_initially_unavailable_memory_faculty() ->
         "source_closed_count": 1,
         "truncation_reason": "truncation_not_requested",
     }
+
+
+class _EmptyRecall:
+    def __init__(self) -> None:
+        self.requests = []
+
+    async def recall(self, request):
+        self.requests.append(request)
+        return {
+            "world_id": request.world_id,
+            "actor_ref": request.actor_ref,
+            "cursor": request.cursor,
+            "content": {"items": []},
+            "source_refs": (),
+            "recall_trace_json": json.dumps(
+                {"mode": "character_pull", "hits": []},
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        }
+
+
+class _ConsiderThenRecallRole(_Role):
+    async def consider(self, request):
+        self.consider_requests.append(request)
+        if not request.recall_completed:
+            return {
+                "status": "recall_request",
+                "summary": "She wants to check one related memory before answering.",
+                "attended_source_refs": ("source:private_self",),
+                "recall_query": "something she may not actually have stored",
+                "proposals": (),
+                "author_lineage": _author_lineage(request),
+            }
+        return {
+            "status": "decision",
+            "summary": "The pull came back empty; she still chose a reply.",
+            "attended_source_refs": ("source:expression_stance",),
+            "decision": {"expression_mode": "reply"},
+            "proposals": (),
+            "author_lineage": _author_lineage(request),
+        }
+
+
+@pytest.mark.asyncio
+async def test_empty_character_recall_keeps_snapshot_identity_and_finishes_the_turn() -> None:
+    """A miss must not mint a sourceless selected_recall wrapper.
+
+    Production recall always returns a traced result, including zero hits.
+    Snapshot identity now rejects compile-time-shaped materials without
+    source_refs; an empty ``{content, source_refs: []}`` therefore used to
+    fail the whole inbound turn as ``invalid_role_result``.
+    """
+
+    recall = _EmptyRecall()
+    role = _ConsiderThenRecallRole()
+    interior = CharacterInterior(
+        projection=_Projection(),
+        role=role,
+        recall=recall,
+    )
+
+    result = await interior.consider(_opportunity())
+
+    assert result.status == "decided", result.failure_code
+    assert result.failure_code is None
+    assert len(recall.requests) == 1
+    assert len(role.consider_requests) == 2
+    assert role.consider_requests[0].recall_completed is False
+    assert role.consider_requests[1].recall_completed is True
+    final_snapshot = role.consider_requests[1].snapshot
+    assert "selected_recall" not in final_snapshot.materials
+    assert final_snapshot.recall_trace_json is not None
+    assert json.loads(final_snapshot.recall_trace_json)["hits"] == []
+    final_snapshot.identity_and_inventory_are_complete()
+    view = final_snapshot.model_view()
+    assert "selected_recall" not in view["materials"]
 
 
 @pytest.mark.asyncio
@@ -1009,6 +1087,114 @@ async def test_non_retryable_role_capability_failure_preserves_exact_code() -> N
     assert result.status == "technical_failure"
     assert result.failure_code == "required_tool_choice_unsupported"
     assert len(role.consider_requests) == 1
+
+
+def _http_status_error(status: int, body: str) -> httpx.HTTPStatusError:
+    request = httpx.Request("POST", "https://api.deepseek.com/beta/chat/completions")
+    response = httpx.Response(status, text=body, request=request)
+    return httpx.HTTPStatusError(
+        f"Client error '{status} Bad Request' for url 'https://api.deepseek.com/beta/chat/completions'",
+        request=request,
+        response=response,
+    )
+
+
+@pytest.mark.asyncio
+async def test_http_4xx_is_provider_rejection_with_failure_detail() -> None:
+    class _RejectedRole(_Role):
+        async def consider(self, request):
+            self.consider_requests.append(request)
+            raise _http_status_error(
+                400,
+                '{"error":{"message":"Invalid schema: additionalProperties"}}',
+            )
+
+    interior = CharacterInterior(projection=_Projection(), role=_RejectedRole())
+
+    result = await interior.consider(_opportunity())
+    evidence = interior._consume_role_failure_evidence(  # noqa: SLF001
+        inner_turn_id=result.inner_turn_id,
+        failure_code="provider_rejection",
+    )
+
+    assert result.status == "technical_failure"
+    assert result.failure_code == "provider_rejection"
+    assert evidence is not None
+    assert evidence.failure_code == "provider_rejection"
+    assert "Invalid schema: additionalProperties" in (evidence.failure_detail or "")
+    assert evidence.rejected_raw_excerpt is None
+
+
+@pytest.mark.asyncio
+async def test_generic_faculty_exception_keeps_redacted_failure_detail() -> None:
+    class _BoomRole(_Role):
+        async def consider(self, request):
+            self.consider_requests.append(request)
+            raise RuntimeError("provider exploded sk-LIVESECRETVALUE")
+
+    interior = CharacterInterior(projection=_Projection(), role=_BoomRole())
+
+    result = await interior.consider(_opportunity())
+    evidence = interior._consume_role_failure_evidence(  # noqa: SLF001
+        inner_turn_id=result.inner_turn_id,
+        failure_code="role_faculty_unavailable",
+    )
+
+    assert result.status == "technical_failure"
+    assert result.failure_code == "role_faculty_unavailable"
+    assert evidence is not None
+    assert "RuntimeError" in (evidence.failure_detail or "")
+    assert "provider exploded" in (evidence.failure_detail or "")
+    assert "sk-LIVESECRETVALUE" not in (evidence.failure_detail or "")
+    assert evidence.rejected_raw_excerpt is None
+
+
+@pytest.mark.asyncio
+async def test_technical_failure_releases_uncheckpointed_claimed_turn(tmp_path) -> None:
+    class _HttpThenOk(_Role):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        async def consider(self, request):
+            self.calls += 1
+            self.consider_requests.append(request)
+            if self.calls == 1:
+                raise _http_status_error(400, '{"error":{"message":"Invalid schema"}}')
+            return await super().consider(request)
+
+    path = tmp_path / "claimed-release.sqlite"
+    store = open_sqlite_character_interior_turn_store(path=path, world_id="world:test")
+    role = _HttpThenOk()
+    interior = CharacterInterior(
+        projection=_Projection(),
+        role=role,
+        turn_store=store,
+        turn_owner_id="runtime:test",
+        turn_clock=lambda: _NOW,
+    )
+    opportunity = _opportunity()
+
+    failed = await interior.consider(opportunity)
+    health_after_failure = store.health(
+        world_id="world:test",
+        actor_ref="character:zhizhi",
+        now=_NOW,
+    )
+    recovered = await interior.consider(opportunity)
+
+    assert failed.status == "technical_failure"
+    assert failed.failure_code == "provider_rejection"
+    assert health_after_failure["pending_claim_count"] == 0
+    assert health_after_failure["terminal_turn_count"] == 0
+    assert recovered.status == "decided"
+    assert role.calls == 2
+    assert store.health(
+        world_id="world:test",
+        actor_ref="character:zhizhi",
+        now=_NOW,
+    )["terminal_turn_count"] == 1
+    store.close()
 
 
 @pytest.mark.asyncio

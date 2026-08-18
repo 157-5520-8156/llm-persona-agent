@@ -9,6 +9,7 @@ from companion_daemon.media_embodiment import build_embodied_candidates
 from companion_daemon.media_expression import (
     PERCEPTUAL_SIGNATURE_VERSION,
     _identity_selection,
+    _preferred_forms,
     build_complete_candidates,
     candidate_perceptual_signature,
 )
@@ -590,6 +591,109 @@ def test_invite_desire_has_nine_visual_mechanisms_not_two_scene_templates() -> N
         )
         >= 4
     )
+
+
+def test_attraction_host_ranking_puts_closeup_ahead_of_context() -> None:
+    preferred = _preferred_forms("attraction", "character_media")
+    assert preferred[0] == "portrait_closeup"
+    assert preferred.index("portrait_closeup") < preferred.index("portrait_context")
+
+
+def test_veiled_front_camera_attraction_discloses_closeup_before_context() -> None:
+    snapshot = {
+        "event": {
+            "event_id": "event:private-wind-down",
+            "status": "committed",
+            "logical_at": "2026-07-15T23:00:00+08:00",
+        },
+        "activity": {"kind": "wind_down", "description": "夜里还没睡"},
+        "location": {"kind": "private", "name": "卧室"},
+        "character": {"emotion": "tender"},
+    }
+    subject = next(
+        item
+        for item in build_subject_candidates(
+            snapshot=snapshot,
+            opportunity_id="op:veiled-closeup-source",
+            capture_mode="character_front_camera",
+            character_visibility="identifiable",
+            privacy_ceiling="intimate",
+            relationship_stage="lover",
+            limit=64,
+        )
+        if item.presentation.display_strategy
+        and "invite_desire" in item.presentation.display_strategy.communicative_goals
+    )
+    embodiments = list(
+        build_embodied_candidates(
+            snapshot=snapshot,
+            opportunity_id="op:veiled-closeup-source",
+            relationship_stage="lover",
+            sensual_charge_ceiling="veiled",
+            limit=256,
+        )
+    )
+    charged = next(
+        item
+        for item in embodiments
+        if item.presentation.sensual_charge == "charged"
+        and "character_front_camera" in item.legal_capture_modes
+    )
+    veiled = next(
+        (
+            item
+            for item in embodiments
+            if item.presentation.sensual_charge == "veiled"
+            and "character_front_camera" in item.legal_capture_modes
+        ),
+        None,
+    )
+    sources = [
+        {
+            "presentation_candidate_id": "source:charged-front",
+            "legal_capture_modes": ["character_front_camera"],
+            "legal_share_intents": ["intimate_signal"],
+            "character_visibility": "identifiable",
+            "subject_presentation": subject.presentation.to_payload(),
+            "embodied_presentation": charged.presentation.to_payload(),
+        }
+    ]
+    if veiled is not None:
+        sources.append(
+            {
+                "presentation_candidate_id": "source:veiled-front",
+                "legal_capture_modes": ["character_front_camera"],
+                "legal_share_intents": ["intimate_signal"],
+                "character_visibility": "identifiable",
+                "subject_presentation": subject.presentation.to_payload(),
+                "embodied_presentation": veiled.presentation.to_payload(),
+            }
+        )
+
+    candidates = build_complete_candidates(
+        opportunity_id="op:veiled-closeup",
+        family="character_media",
+        expression_charge_ceiling="veiled",
+        presentation_candidates=tuple(sources),
+        limit=24,
+    )
+    attraction_front = [
+        item
+        for item in candidates
+        if item.media_address_strategy.engagement_tactic == "attraction"
+        and item.legal_capture_modes[0] == "character_front_camera"
+        and "invite_desire" in item.legal_interaction_bids
+    ]
+    veiled_front = [
+        item
+        for item in attraction_front
+        if item.media_address_strategy.expression_charge == "veiled"
+    ]
+    ranked = veiled_front or attraction_front
+    forms_in_order = [item.legal_visual_forms[0] for item in ranked]
+    assert ranked
+    assert "portrait_closeup" in forms_in_order
+    assert any(item.legal_visual_forms[0] == "portrait_context" for item in candidates)
 
 
 def test_character_media_freezes_rich_visible_expression_beats_not_only_face_axes() -> None:

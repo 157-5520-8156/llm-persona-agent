@@ -13,17 +13,40 @@ from .proposal_envelope import (
     TypedChange,
     validate_proposal_envelope,
 )
+from .interaction_act_identity import interaction_act_overlapping_occurrence_count
 from .relationship_reducers import (
     RELATIONSHIP_COMMITMENT_STAGE_TRANSITIONS,
-    RELATIONSHIP_POLICY_DIGEST,
     relationship_primary_id,
+    relationship_state_policy_is_readable,
 )
-from .schemas import RelationshipStateProjection
+from .schemas import (
+    ExpressionBeatProjection,
+    ExpressionPlanProjection,
+    RelationshipStateProjection,
+    StoredMessagePayloadProjection,
+)
 
 
 AUDITED_CHANGE_TERMINAL_ADVISORY_KIND = "typed_change_terminal"
 RELATIONSHIP_COMMITMENT_TERMINAL_REASON = (
     "relationship_proposal_compiler.commitment_stage_transition_not_installed"
+)
+RELATIONSHIP_COMMITMENT_POLICY_UNINSTALLED_REASON = (
+    "relationship_proposal_compiler.relationship_state_policy_uninstalled"
+)
+RELATIONSHIP_COMMITMENT_STATE_IDENTITY_REASON = (
+    "relationship_proposal_compiler.relationship_state_identity_invalid"
+)
+RELATIONSHIP_COMMITMENT_VISIBLE_SPAN_REASON = (
+    "relationship_proposal_compiler.commitment_visible_span_not_exact"
+)
+RELATIONSHIP_COMMITMENT_TERMINAL_REASONS = frozenset(
+    {
+        RELATIONSHIP_COMMITMENT_TERMINAL_REASON,
+        RELATIONSHIP_COMMITMENT_POLICY_UNINSTALLED_REASON,
+        RELATIONSHIP_COMMITMENT_STATE_IDENTITY_REASON,
+        RELATIONSHIP_COMMITMENT_VISIBLE_SPAN_REASON,
+    }
 )
 AuditedChangeTerminalStatus = Literal["rejected", "stale"]
 
@@ -58,14 +81,98 @@ def terminal_relationship_commitment_payload(
     )
 
 
+def _payload_text_hash(text: str) -> str:
+    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _commitment_visible_span_exact_matches(
+    *,
+    visible_text_span: str,
+    source_proposal_id: str,
+    expression_plans: tuple[ExpressionPlanProjection, ...],
+    expression_beats: tuple[ExpressionBeatProjection, ...],
+    stored_message_payloads: tuple[StoredMessagePayloadProjection, ...],
+) -> tuple[int, int]:
+    """Count delivered expression payloads and how many copy the span exactly once.
+
+    Independently reproduces the compiler's span gate: a completed plan, a
+    settled beat, and one stored payload whose text hash matches and whose
+    exact overlapping occurrence count is 1.  The first return is the number
+    of such delivered payloads that can be inspected; the second is how many
+    of them carry the authored span exactly once.
+    """
+
+    inspectable = 0
+    exact = 0
+    for plan in expression_plans:
+        if plan.proposal_id != source_proposal_id or plan.state != "completed":
+            continue
+        for beat in expression_beats:
+            if (
+                beat.proposal_id != source_proposal_id
+                or beat.plan_id != plan.plan_id
+                or beat.acceptance_id != plan.acceptance_id
+                or beat.state != "settled"
+            ):
+                continue
+            stored = tuple(
+                item
+                for item in stored_message_payloads
+                if item.proposal_id == source_proposal_id
+                and item.acceptance_id == plan.acceptance_id
+                and item.payload_ref == beat.payload_ref
+                and item.payload_hash == beat.payload_hash
+            )
+            if len(stored) != 1:
+                continue
+            payload = stored[0]
+            if payload.payload_hash != _payload_text_hash(payload.text):
+                continue
+            inspectable += 1
+            if (
+                interaction_act_overlapping_occurrence_count(
+                    source_text=payload.text,
+                    selected_text=visible_text_span,
+                )
+                == 1
+            ):
+                exact += 1
+    return inspectable, exact
+
+
 def validate_relationship_commitment_terminal_state(
     *,
     change: TypedChange,
     relationship_states: tuple[RelationshipStateProjection, ...],
+    reason_code: str,
+    source_proposal_id: str | None = None,
+    expression_plans: tuple[ExpressionPlanProjection, ...] = (),
+    expression_beats: tuple[ExpressionBeatProjection, ...] = (),
+    stored_message_payloads: tuple[StoredMessagePayloadProjection, ...] = (),
 ) -> None:
-    """Re-prove that the installed policy cannot compile this exact target."""
+    """Re-prove the named compiler failure from current projection slices."""
 
     authored = terminal_relationship_commitment_payload(change)
+    if reason_code == RELATIONSHIP_COMMITMENT_VISIBLE_SPAN_REASON:
+        if not source_proposal_id:
+            raise ValueError(
+                "audited change terminal visible span proof requires the source proposal"
+            )
+        inspectable, exact = _commitment_visible_span_exact_matches(
+            visible_text_span=authored.visible_text_span,
+            source_proposal_id=source_proposal_id,
+            expression_plans=expression_plans,
+            expression_beats=expression_beats,
+            stored_message_payloads=stored_message_payloads,
+        )
+        if inspectable < 1:
+            raise ValueError(
+                "audited change terminal visible span has no delivered expression"
+            )
+        if exact != 0:
+            raise ValueError("audited change terminal visible span is exact")
+        return
+
     matches = tuple(
         item
         for item in relationship_states
@@ -73,17 +180,32 @@ def validate_relationship_commitment_terminal_state(
     )
     if len(matches) > 1:
         raise ValueError("audited change terminal relationship state is ambiguous")
+    if reason_code == RELATIONSHIP_COMMITMENT_STATE_IDENTITY_REASON:
+        if not matches:
+            raise ValueError(
+                "audited change terminal relationship state identity is not present"
+            )
+        if matches[0].relationship_id == relationship_primary_id(
+            subject_ref=authored.subject_ref
+        ):
+            raise ValueError(
+                "audited change terminal relationship state identity is installed"
+            )
+        return
     if matches:
         current = matches[0]
-        if (
-            current.relationship_id
-            != relationship_primary_id(subject_ref=authored.subject_ref)
-            or current.policy_version != "relationship-policy.1"
-            or current.policy_digest != RELATIONSHIP_POLICY_DIGEST
+        if current.relationship_id != relationship_primary_id(
+            subject_ref=authored.subject_ref
         ):
             raise ValueError(
                 "audited change terminal relationship state policy is not installed"
             )
+        if not relationship_state_policy_is_readable(current):
+            if reason_code != RELATIONSHIP_COMMITMENT_POLICY_UNINSTALLED_REASON:
+                raise ValueError(
+                    "audited change terminal relationship state policy is not installed"
+                )
+            return
         stage_before = current.stage
     else:
         stage_before = "stranger"
@@ -94,6 +216,8 @@ def validate_relationship_commitment_terminal_state(
         raise ValueError(
             "audited change terminal relationship transition is installed"
         )
+    if reason_code != RELATIONSHIP_COMMITMENT_TERMINAL_REASON:
+        raise ValueError("audited change terminal reason is not installed")
 
 
 def audited_change_authority_fingerprint(
@@ -147,7 +271,10 @@ def audited_change_terminal_payload(
     audit: ProposalAuditProjection,
     change: TypedChange,
     status: AuditedChangeTerminalStatus,
+    reason_code: str = RELATIONSHIP_COMMITMENT_TERMINAL_REASON,
 ) -> dict[str, str]:
+    if reason_code not in RELATIONSHIP_COMMITMENT_TERMINAL_REASONS:
+        raise ValueError("audited change terminal reason is not installed")
     return {
         "proposal_id": audited_change_terminal_proposal_id(
             audit=audit,
@@ -156,7 +283,7 @@ def audited_change_terminal_payload(
         "source_event_ref": audit.event_ref,
         "advisory_kind": AUDITED_CHANGE_TERMINAL_ADVISORY_KIND,
         "stage": status,
-        "reason_code": RELATIONSHIP_COMMITMENT_TERMINAL_REASON,
+        "reason_code": reason_code,
         "failure_fingerprint": audited_change_authority_fingerprint(
             audit=audit,
             change=change,
@@ -172,7 +299,7 @@ def validate_audited_change_terminal_payload(
 ) -> TypedChange:
     """Re-resolve exactly one typed change from immutable ProposalAudit bytes."""
 
-    if payload.get("reason_code") != RELATIONSHIP_COMMITMENT_TERMINAL_REASON:
+    if payload.get("reason_code") not in RELATIONSHIP_COMMITMENT_TERMINAL_REASONS:
         raise ValueError("audited change terminal reason is not installed")
     if (
         payload.get("advisory_kind") != AUDITED_CHANGE_TERMINAL_ADVISORY_KIND
@@ -209,7 +336,11 @@ def validate_audited_change_terminal_payload(
 __all__ = [
     "AUDITED_CHANGE_TERMINAL_ADVISORY_KIND",
     "AuditedChangeTerminalStatus",
+    "RELATIONSHIP_COMMITMENT_POLICY_UNINSTALLED_REASON",
+    "RELATIONSHIP_COMMITMENT_STATE_IDENTITY_REASON",
     "RELATIONSHIP_COMMITMENT_TERMINAL_REASON",
+    "RELATIONSHIP_COMMITMENT_TERMINAL_REASONS",
+    "RELATIONSHIP_COMMITMENT_VISIBLE_SPAN_REASON",
     "audited_change_authority_fingerprint",
     "audited_change_terminal_event_id",
     "audited_change_terminal_payload",

@@ -81,6 +81,8 @@ from .revisit_intention_view import due_unfinished_revisit
 from .social_initiative import (
     SITUATION_STIMULUS_EVENT_TYPES,
     SocialInitiativeCompiler,
+    private_impression_opportunity_context,
+    private_impression_source_binds_head,
     situation_stimulus_is_observable,
     technical_failure_point,
 )
@@ -202,7 +204,20 @@ def _proactive_opportunity_context(
             "A leftover she asked to return to is due. Timing evidence only; "
             "she still decides."
         )
+    if kind == "private_impression":
+        return private_impression_opportunity_context()
     return "A verified proactive opportunity exists."
+
+
+def _proactive_expression_plan_change(proposal: DecisionProposal) -> TypedChange:
+    """The visible expression plan, even when she also left appraisal/affect."""
+
+    changes = [
+        item for item in proposal.proposed_changes if item.kind == "expression_plan_transition"
+    ]
+    if len(changes) != 1:
+        raise ValueError("visible proactive choice requires one source-bound expression plan")
+    return changes[0]
 
 
 def _proactive_advisory_value(*, opportunity_context: str, source_kind: str) -> str:
@@ -220,7 +235,9 @@ class ProactiveDraft(ExpressionDraft):
 
     Optional mood / appraisal_draft let her open or update lasting Affect on
     the same turn as the expression.  Omitting both is her no_change choice;
-    the host never invents affect for a proactive contact.
+    the host never invents affect for a proactive contact.  If she fills both,
+    ``_proactive_appraisal_raw`` already prefers the explicit draft; rejecting
+    the pair used to discard her expression and emotion.
     """
 
     impulse_summary: str = Field(min_length=1, max_length=240)
@@ -230,9 +247,7 @@ class ProactiveDraft(ExpressionDraft):
     )
 
     @model_validator(mode="after")
-    def mood_and_appraisal_draft_stay_orthogonal(self) -> "ProactiveDraft":
-        if self.mood is not None and self.appraisal_draft is not None:
-            raise ValueError("proactive mood and appraisal_draft cannot both be set")
+    def mood_is_an_offered_affect_dimension(self) -> "ProactiveDraft":
         if self.mood is not None:
             dimension = self.mood.strip().lower()
             if dimension not in {
@@ -344,6 +359,7 @@ class _ProactiveSourceBindingError(ValueError):
 _PROACTIVE_INTERIOR_PASSTHROUGH_FAILURES = frozenset(
     {
         "role_faculty_unavailable",
+        "provider_rejection",
         "required_tool_choice_unsupported",
         "authored_expression_reselection_invalid",
         "recall_choice_reselection_invalid",
@@ -682,13 +698,17 @@ class _CharacterInteriorProactiveTransport:
             "character-interior-proactive-contact-decision.1"
         ):
             raise ValueError("proactive Interior decision payload is invalid")
-        if len(decision.attended_source_refs) > 8 or not decision.summary:
+        if not decision.summary:
             raise ValueError("proactive Interior private turn state is out of bounds")
+        # PrivateTurnState.attended_source_refs max_length is 8.  Overflow is a
+        # typed field bound, not a reason to discard her already-authored
+        # expression or appraisal.  Keep the first 8 in listed order.
+        attended = tuple(decision.attended_source_refs[:8])
         value = dict(raw)
         value.pop("contract")
         value["private_turn_state"] = {
             "inner_state_summary": decision.summary,
-            "attended_source_refs": list(decision.attended_source_refs),
+            "attended_source_refs": list(attended),
         }
         normalized = bind_proactive_expression_wire(normalize_expression_draft_wire(value))
         draft = ProactiveDraft.model_validate_json(_canonical(normalized), strict=True)
@@ -827,11 +847,15 @@ def _materialize_interior_proactive_draft(
     appraisal_raw = _proactive_appraisal_raw(draft=draft)
     if appraisal_raw is not None:
         from .character_interior.inbound_appraisal_wire import (
-            _proposal_from_draft as materialize_appraisal_draft,
+            _decision_proposal_from_draft as materialize_appraisal_proposal,
         )
 
-        appraisal_proposal = DecisionProposal.model_validate(
-            materialize_appraisal_draft(raw=appraisal_raw, request=request)
+        # The appraisal compiler already built a valid DecisionProposal.
+        # Its JSON dump turns tuples into lists; FrozenModel is strict, so
+        # model_validate() would reject that equivalent shape. Keep the
+        # typed object instead of round-tripping through JSON.
+        appraisal_proposal = materialize_appraisal_proposal(
+            raw=appraisal_raw, request=request
         )
         state_changes = tuple(
             item
@@ -1053,6 +1077,7 @@ def _proactive_source_frame(model_content_json: str) -> dict[str, object] | None
             "situation_change",
             "expired_expectation",
             "revisit_intention",
+            "private_impression",
         }:
             candidates = value.get("candidates")
             candidate = (
@@ -1129,6 +1154,7 @@ class ProactiveOpportunity(FrozenModel):
         "situation_change",
         "expired_expectation",
         "revisit_intention",
+        "private_impression",
     ]
     source_id: str
     source_event_ref: str
@@ -1423,6 +1449,10 @@ class ProactiveDeliberationTurn:
                     for item in stimulus_events
                 )
             )
+        elif opportunity.source_kind == "private_impression":
+            valid_source = private_impression_source_binds_head(
+                projection=projection, event=event, opportunity=opportunity
+            )
         else:
             valid_source = False
         if not valid_source:
@@ -1655,6 +1685,7 @@ class ProactiveActionRuntime:
             "authored_subcall_timeout",
             "authored_subcall_exception",
             "role_faculty_unavailable",
+            "provider_rejection",
             "required_tool_choice_unsupported",
             "recall_choice_reselection_invalid",
             "authored_expression_reselection_invalid",
@@ -1693,6 +1724,7 @@ class ProactiveActionRuntime:
         owner_id: str,
         lease_seconds: int = 120,
         social_initiative: SocialInitiativeCompiler | None = None,
+        immediate_emotion_worker=None,
     ) -> None:
         if not owner_id or lease_seconds <= 0 or policy.category != "proactive":
             raise ValueError("proactive runtime requires owner, lease, and proactive budget policy")
@@ -1703,6 +1735,7 @@ class ProactiveActionRuntime:
         self._owner = owner_id
         self._lease_seconds = lease_seconds
         self._social_initiative = social_initiative
+        self._emotion_worker = immediate_emotion_worker
 
     async def advance_due_once(self) -> ProactiveActionRunResult:
         projection = await self._project()
@@ -1863,6 +1896,7 @@ class ProactiveActionRuntime:
             opportunity=opportunity,
             proposal=proposal,
         )
+        current = await self._project()
         existing = next(
             (
                 item
@@ -1872,6 +1906,7 @@ class ProactiveActionRuntime:
             None,
         )
         if existing is not None:
+            await self._settle_authored_emotion(proposal=proposal, audit=audit)
             await self._complete(
                 process=active, opportunity=opportunity, outcome=f"authorized:{existing.action_id}"
             )
@@ -1882,6 +1917,7 @@ class ProactiveActionRuntime:
                 action_id=existing.action_id,
             )
         if proposal.proactive_grounding_outcome == "rejected":
+            await self._settle_authored_emotion(proposal=proposal, audit=audit)
             await self._complete(
                 process=active,
                 opportunity=opportunity,
@@ -1894,6 +1930,7 @@ class ProactiveActionRuntime:
                 reason_code="proactive.grounding_rejected",
             )
         if proposal.timing_choice == "silent" or not proposal.action_intents:
+            await self._settle_authored_emotion(proposal=proposal, audit=audit)
             await self._complete(process=active, opportunity=opportunity, outcome="silent")
             return ProactiveActionRunResult(
                 status="silent",
@@ -1909,6 +1946,7 @@ class ProactiveActionRuntime:
             None,
         )
         if account is None:
+            await self._settle_authored_emotion(proposal=proposal, audit=audit)
             await self._complete(
                 process=active,
                 opportunity=opportunity,
@@ -1939,11 +1977,19 @@ class ProactiveActionRuntime:
                 "expression_plan_acceptance.budget_unavailable",
                 "expression_plan_acceptance.budget_account_unavailable",
             }:
+                await self._settle_authored_emotion(proposal=proposal, audit=audit)
                 await self._complete(
                     process=active, opportunity=opportunity, outcome="budget-exhausted:abandoned"
                 )
                 return ProactiveActionRunResult(
                     status="budget_exhausted",
+                    source_ref=opportunity.source_event_ref,
+                    proposal_id=proposal.proposal_id,
+                    reason_code=exc.code,
+                )
+            if exc.code == "expression_plan_acceptance.stale_revision":
+                return ProactiveActionRunResult(
+                    status="stale",
                     source_ref=opportunity.source_event_ref,
                     proposal_id=proposal.proposal_id,
                     reason_code=exc.code,
@@ -1979,6 +2025,9 @@ class ProactiveActionRuntime:
         action_id = (
             existing.action_id if existing is not None else material.beats[0].action.action_id
         )
+        # Expression acceptance is pinned to the audited revision.  Appraisal
+        # and Affect rebase onto the new head, then this shared trigger closes.
+        await self._settle_authored_emotion(proposal=proposal, audit=audit)
         await self._complete(
             process=active, opportunity=opportunity, outcome=f"authorized:{action_id}"
         )
@@ -1994,6 +2043,55 @@ class ProactiveActionRuntime:
 
         return await self.advance_due_once()
 
+    async def _settle_authored_emotion(self, *, proposal: DecisionProposal, audit) -> None:
+        """Accept the same-turn appraisal/affect she already authored.
+
+        Expression-plan acceptance is pinned to the audited world revision, so
+        this runs after the visible plan (or instead of it on silent paths).
+        Appraisal acceptance retains the shared proactive trigger; Affect has
+        no trigger.  The owning runtime then completes the trigger.
+        """
+
+        worker = self._emotion_worker
+        if worker is None:
+            return
+        if not any(item.kind == "appraisal_transition" for item in proposal.proposed_changes):
+            return
+        located = await self._lookup(audit.event_ref)
+        if located is None:
+            raise RuntimeError("proactive proposal audit event is unavailable")
+        audit_cursor = ProjectionCursor(
+            world_revision=located[1].world_revision,
+            deliberation_revision=located[1].deliberation_revision,
+            ledger_sequence=located[1].ledger_sequence,
+        )
+        current = await self._project()
+        current_cursor = self._cursor(current)
+
+        def run():
+            return worker.process(
+                world_id=self.ledger.world_id,
+                audit_cursor=audit_cursor,
+                proposal_id=proposal.proposal_id,
+                current_cursor=(current_cursor if current_cursor != audit_cursor else None),
+            )
+
+        try:
+            if self.ledger.blocks_event_loop:
+                await asyncio.to_thread(run)
+            else:
+                run()
+        except ValueError as exc:
+            # Emotion settlement is a separate authority chain from the
+            # visible expression.  Appraisal acceptance retains this
+            # shared proactive trigger so the message can still authorize;
+            # keep the message if a later compiler/reducer failure occurs.
+            _LOG.warning(
+                "proactive authored appraisal could not settle proposal=%s error=%s",
+                proposal.proposal_id,
+                exc,
+            )
+
     def _validate_event_share_acceptance(
         self,
         *,
@@ -2006,9 +2104,7 @@ class ProactiveActionRuntime:
             return
         if proposal.timing_choice == "silent" or not proposal.action_intents:
             return
-        if len(proposal.proposed_changes) != 1 or not proposal.action_intents:
-            raise ValueError("proactive event share requires one source-bound expression plan")
-        change = proposal.proposed_changes[0]
+        change = _proactive_expression_plan_change(proposal)
         payload = change.payload.value()
         raw_plan_claim = payload.get("event_share_plan_claim_v2")
         if raw_plan_claim is not None:
@@ -2075,9 +2171,8 @@ class ProactiveActionRuntime:
 
         if proposal.timing_choice == "silent" or not proposal.action_intents:
             return
-        if len(proposal.proposed_changes) != 1 or not proposal.action_intents:
-            raise ValueError("visible proactive choice requires one source-bound expression plan")
-        payload = proposal.proposed_changes[0].payload.value()
+        change = _proactive_expression_plan_change(proposal)
+        payload = change.payload.value()
         raw_plan_binding = payload.get("proactive_source_plan_binding_v2")
         if raw_plan_binding is not None:
             try:

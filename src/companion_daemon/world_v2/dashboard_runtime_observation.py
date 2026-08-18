@@ -140,7 +140,11 @@ def _external_perception_upstream(payload: Mapping[str, object]) -> _NormalizedS
 def _model_usage_budget(payload: Mapping[str, object]) -> _NormalizedSignal:
     if str(payload.get("status") or "") == "disabled":
         return _NormalizedSignal("disabled", "not_configured")
-    if payload.get("monthly_exhausted") is True or payload.get("daily_exhausted") is True:
+    if (
+        payload.get("monthly_exhausted") is True
+        or payload.get("daily_exhausted") is True
+        or payload.get("soft_daily_exhausted") is True
+    ):
         return _NormalizedSignal("degraded", "budget_exhausted")
     if "monthly_exhausted" in payload and "daily_exhausted" in payload:
         return _NormalizedSignal("ready")

@@ -33,6 +33,10 @@ from companion_daemon.world_v2.semantic_chat_composition import (
     unavailable_life_source_authority_health,
 )
 from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
+from companion_daemon.world_v2.process_health import (
+    compile_process_health,
+    ledger_path_is_writable,
+)
 from companion_daemon.world_v2.world_v2_dashboard_ui import (
     DASHBOARD_APP_JS,
     DASHBOARD_HTML,
@@ -273,7 +277,12 @@ def _unavailable_character_interior_health() -> dict[str, object]:
 
 
 def _character_interior_is_ready(health: object) -> bool:
-    """Fail closed unless the composed runtime proves one clean semantic author."""
+    """Fail closed unless the composed runtime proves one clean semantic author.
+
+    ``scripts/install_launchd.sh`` mirrors these nested field checks.  Public
+    ``/health`` uses ``compile_process_health``: this composition gate is
+    unhealthy; later operational limits are degraded.
+    """
 
     if not isinstance(health, dict):
         return False
@@ -478,6 +487,7 @@ def _model_usage_health(asgi_app: FastAPI) -> dict[str, object]:
         return store.budget_state(
             monthly_budget_cny=settings.monthly_budget_cny,
             daily_budget_cny=settings.daily_budget_cny,
+            soft_daily_budget_cny=settings.soft_daily_budget_cny,
         )
     except Exception:
         return {
@@ -590,9 +600,7 @@ def _require_world_v2_dashboard_operator_access(
     *,
     asgi_app: FastAPI,
 ) -> None:
-    configured = (
-        _http_v2_settings(asgi_app).world_v2_dashboard_operator_token or ""
-    ).strip()
+    configured = (_http_v2_settings(asgi_app).world_v2_dashboard_operator_token or "").strip()
     if not configured:
         raise HTTPException(
             status_code=503,
@@ -659,26 +667,29 @@ async def health(request: Request) -> dict[str, object]:
             else:
                 if isinstance(candidate, dict):
                     interior_health = candidate
-    deployment_ready = bool(
-        capture_health.get("status") == "ready"
-        and _character_interior_is_ready(interior_health)
+    model_usage = _model_usage_health(request.app)
+    writable = ledger_path_is_writable(_http_v2_settings(request.app).database_path)
+    verdict = compile_process_health(
+        healthy_status="ok",
+        character_interior=interior_health,
+        capture=capture_health,
+        budget=model_usage if isinstance(model_usage, dict) else None,
+        ledger_writable=writable,
     )
     response: dict[str, object] = {
-        "status": "ok" if deployment_ready else "degraded",
+        "status": verdict.status,
+        "reason": verdict.reason,
+        "reasons": list(verdict.reasons),
         "world_v2_capture": capture_health,
         "character_interior": interior_health,
     }
     if capture is not None:
-        response["proactive_source_authority"] = (
-            capture.proactive_source_authority_health()
-        )
+        response["proactive_source_authority"] = capture.proactive_source_authority_health()
         life_health = getattr(capture, "life_source_authority_health", None)
         response["life_source_authority"] = (
-            life_health()
-            if callable(life_health)
-            else unavailable_life_source_authority_health()
+            life_health() if callable(life_health) else unavailable_life_source_authority_health()
         )
-    response["model_usage"] = _model_usage_health(request.app)
+    response["model_usage"] = model_usage
     return response
 
 
@@ -726,9 +737,7 @@ async def world_v2_dashboard_login(request: Request) -> Response:
         ).get("operator_token", [""])[0]
     except (UnicodeDecodeError, ValueError):
         submitted = ""
-    configured = (
-        _http_v2_settings(request.app).world_v2_dashboard_operator_token or ""
-    ).strip()
+    configured = (_http_v2_settings(request.app).world_v2_dashboard_operator_token or "").strip()
     if not submitted or not secrets.compare_digest(submitted, configured):
         return HTMLResponse(LOGIN_HTML, status_code=401, headers={"Cache-Control": "no-store"})
     response = Response(

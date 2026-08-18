@@ -163,6 +163,11 @@ from .image_evidence_contract import (
 )
 from .visual_fact import VisualFactRecordedPayload
 from .private_image_evidence_contract import RecipientScopedImageEvidenceDeclaredPayload
+from .declared_display_contract import (
+    DECLARED_DISPLAY_SOURCE_EVENT_TYPE,
+    DeclaredDisplayRecordedPayload,
+    DeclaredDisplayWithdrawnPayload,
+)
 from .appearance_state import (
     APPEARANCE_SOURCE_EVENT_TYPES,
     AppearanceStateProjection,
@@ -3431,6 +3436,11 @@ def _advisory_acceptance_rejected(state: ReducerState, event: WorldEvent) -> Red
         validate_relationship_commitment_terminal_state(
             change=change,
             relationship_states=state.relationship_states,
+            reason_code=str(payload["reason_code"]),
+            source_proposal_id=audit.proposal_id,
+            expression_plans=state.expression_plans,
+            expression_beats=state.expression_beats,
+            stored_message_payloads=state.stored_message_payloads,
         )
         if (
             event.causation_id != audit.event_ref
@@ -3775,6 +3785,40 @@ def _validate_one_life_development_deliberation(
     return binding
 
 
+# Process kinds that may persist a typed Appraisal candidate.  This is a
+# source-kind boundary: an appraisal must bind a claimed trigger that is
+# actually an appraisal-authoring stimulus.  It is not a second authority
+# check — claimed trigger, source-evidence kind, evidence resolution, CAS,
+# and installed policy still apply.  ``proactive_action_deliberation`` is
+# one of those stimuli; the compiler already binds it to
+# ``committed_world_event``.
+_APPRAISAL_SOURCE_PROCESS_KINDS = frozenset(
+    {
+        "npc_world_appraisal",
+        "interaction_appraisal",
+        "silence_appraisal",
+        "plan_disruption_appraisal",
+        "perception_result_deliberation",
+        "life_reflection",
+        "proactive_action_deliberation",
+    }
+)
+_APPRAISAL_SOURCE_EVIDENCE_KIND = {
+    "npc_world_appraisal": "settled_world_event",
+    "interaction_appraisal": "observed_message",
+    # The silence anchor is her own delivered-reply receipt, which is
+    # plain committed world authority rather than a settlement or an
+    # observed user message.
+    "silence_appraisal": "committed_world_event",
+    # A plan abandonment is likewise her own lived-world transition:
+    # committed authority, not a settlement or a user message.
+    "plan_disruption_appraisal": "committed_world_event",
+    "perception_result_deliberation": "committed_world_event",
+    "life_reflection": "committed_world_event",
+    "proactive_action_deliberation": "committed_world_event",
+}
+
+
 def _proposal_recorded(
     state: ReducerState,
     event: WorldEvent,
@@ -3930,15 +3974,7 @@ def _proposal_recorded(
     )
     if (
         trigger is None
-        or trigger.process_kind
-        not in {
-            "npc_world_appraisal",
-            "interaction_appraisal",
-            "silence_appraisal",
-            "plan_disruption_appraisal",
-            "perception_result_deliberation",
-            "life_reflection",
-        }
+        or trigger.process_kind not in _APPRAISAL_SOURCE_PROCESS_KINDS
         or trigger.state != "claimed"
         or trigger.trigger_ref != proposal.trigger_ref
         or trigger.source_evidence_ref != proposal.source_evidence_ref
@@ -3948,19 +3984,7 @@ def _proposal_recorded(
         (ref for ref in proposal.evidence_refs if ref.ref_id == proposal.source_evidence_ref),
         None,
     )
-    expected_source_kind = {
-        "npc_world_appraisal": "settled_world_event",
-        "interaction_appraisal": "observed_message",
-        # The silence anchor is her own delivered-reply receipt, which is
-        # plain committed world authority rather than a settlement or an
-        # observed user message.
-        "silence_appraisal": "committed_world_event",
-        # A plan abandonment is likewise her own lived-world transition:
-        # committed authority, not a settlement or a user message.
-        "plan_disruption_appraisal": "committed_world_event",
-        "perception_result_deliberation": "committed_world_event",
-        "life_reflection": "committed_world_event",
-    }[trigger.process_kind]
+    expected_source_kind = _APPRAISAL_SOURCE_EVIDENCE_KIND[trigger.process_kind]
     if source_evidence is None or source_evidence.evidence_type != expected_source_kind:
         raise ValueError("appraisal proposal source evidence has the wrong authority kind")
     _validate_evidence_authority(state, proposal.evidence_refs, require_all=True)
@@ -8665,6 +8689,62 @@ def _recipient_scoped_image_evidence_declared(
         or source.event_type not in DECLARABLE_SOURCE_EVENT_TYPES
     ):
         raise ValueError("recipient-scoped image evidence declaration source is not current")
+    return state
+
+
+def _declared_display_source_is_current(
+    state: ReducerState, event: WorldEvent, *, source_event_ref: str,
+    source_event_type: str, source_event_payload_hash: str, stamped_at: datetime,
+) -> bool:
+    source = next(
+        (
+            item
+            for item in state.committed_world_event_refs
+            if item.event_id == source_event_ref
+        ),
+        None,
+    )
+    return (
+        state.logical_time is not None
+        and event.logical_time == state.logical_time
+        and stamped_at == event.logical_time
+        and event.causation_id == source_event_ref
+        and source is not None
+        and source.event_type == source_event_type
+        and source.payload_hash == source_event_payload_hash
+        and source.event_type == DECLARED_DISPLAY_SOURCE_EVENT_TYPE
+    )
+
+
+def _declared_display_recorded(state: ReducerState, event: WorldEvent) -> ReducerState:
+    """Accept a character-authored display intent without widening P3 evidence."""
+
+    payload = DeclaredDisplayRecordedPayload.model_validate_json(event.payload_json)
+    if not _declared_display_source_is_current(
+        state,
+        event,
+        source_event_ref=payload.source_event_ref,
+        source_event_type=payload.source_event_type,
+        source_event_payload_hash=payload.source_event_payload_hash,
+        stamped_at=payload.declared_at,
+    ):
+        raise ValueError("declared display source is not current")
+    return state
+
+
+def _declared_display_withdrawn(state: ReducerState, event: WorldEvent) -> ReducerState:
+    """Accept a character-authored retract of a standing display intent."""
+
+    payload = DeclaredDisplayWithdrawnPayload.model_validate_json(event.payload_json)
+    if not _declared_display_source_is_current(
+        state,
+        event,
+        source_event_ref=payload.source_event_ref,
+        source_event_type=payload.source_event_type,
+        source_event_payload_hash=payload.source_event_payload_hash,
+        stamped_at=payload.withdrawn_at,
+    ):
+        raise ValueError("declared display withdrawal source is not current")
     return state
 
 
@@ -14705,15 +14785,7 @@ def _require_authorized_appraisal(
     )
     if (
         trigger is None
-        or trigger.process_kind
-        not in {
-            "npc_world_appraisal",
-            "interaction_appraisal",
-            "silence_appraisal",
-            "plan_disruption_appraisal",
-            "perception_result_deliberation",
-            "life_reflection",
-        }
+        or trigger.process_kind not in _APPRAISAL_SOURCE_PROCESS_KINDS
         or trigger.state != "claimed"
     ):
         raise ValueError("appraisal transition requires a claimed appraisal trigger")
@@ -14841,6 +14913,10 @@ _EVENTS = {
             "RecipientScopedImageEvidenceDeclared",
             RevisionClass.WORLD,
             _recipient_scoped_image_evidence_declared,
+        ),
+        EventDefinition("DeclaredDisplayRecorded", RevisionClass.WORLD, _declared_display_recorded),
+        EventDefinition(
+            "DeclaredDisplayWithdrawn", RevisionClass.WORLD, _declared_display_withdrawn
         ),
         EventDefinition("AppearanceStateRecorded", RevisionClass.WORLD, _appearance_state_recorded),
         EventDefinition(

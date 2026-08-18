@@ -10,11 +10,11 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timedelta
-from typing import Mapping
+from collections.abc import Iterable, Mapping
 from zoneinfo import ZoneInfo
 
-from ..day_skeleton import compile_day_sheet, load_world_day_skeleton
-from ..dialogue_fold import fold_dialogue_entries
+from ..dialogue_fold import fold_dialogue_entries, fold_dialogue_line
+from ..pinned_source_ref import PinnedSourceCatalog
 from ..present_prompt import (
     PRESENT_ACCEPTED_RELATIONSHIP_COMMITMENT_LIMIT,
     PRESENT_AUTHORED_RELATIONSHIP_SIGNAL_LIMIT,
@@ -23,6 +23,7 @@ from ..present_prompt import (
     PRESENT_FACT_ITEM_LIMIT,
     PRESENT_IMPRESSION_ITEM_LIMIT,
     PRESENT_MEMORY_ITEM_LIMIT,
+    PRESENT_SHARED_MEDIA_ITEM_LIMIT,
     PRESENT_WEEK_DIARY_DAYS,
     PRESENT_WEEK_DIARY_LINES_PER_DAY,
 )
@@ -30,6 +31,7 @@ from ..schemas import ProjectionCursor
 from .contracts import (
     FACET_NAMES,
     InnerLifeSnapshot,
+    assert_compile_time_materials_are_source_bound,
     _InteriorBinding,
     _InteriorContextView,
     _InteriorFacet,
@@ -38,7 +40,7 @@ from .contracts import (
 )
 
 
-SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.11"
+SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.13"
 
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
@@ -652,71 +654,6 @@ def _datetime(value: object) -> datetime | None:
         return None
 
 
-_DAY_SKELETON = None
-
-
-def _day_sheet_from_biography(
-    biography: list[dict[str, object]],
-    logical_time: datetime | None,
-) -> str | None:
-    global _DAY_SKELETON
-    head = biography[0] if biography else None
-    instant = logical_time
-    if instant is None and isinstance(head, dict):
-        instant = _datetime(head.get("logical_at"))
-    if instant is None:
-        return None
-    if _DAY_SKELETON is None:
-        try:
-            _DAY_SKELETON = load_world_day_skeleton()
-        except (OSError, ValueError, TypeError):
-            return None
-    phase = head.get("academic_phase") if isinstance(head, dict) else None
-    year = head.get("academic_year") if isinstance(head, dict) else None
-    age = head.get("age") if isinstance(head, dict) else None
-    season = head.get("season") if isinstance(head, dict) else None
-    return compile_day_sheet(
-        logical_at=instant,
-        skeleton=_DAY_SKELETON,
-        academic_phase=phase if isinstance(phase, str) else None,
-        academic_year=year if isinstance(year, int) else None,
-        age=age if isinstance(age, int) else None,
-        season=season if isinstance(season, str) else None,
-    )
-
-
-def _seconds_since_last_counterpart_message(
-    recent_dialogue: list[dict[str, object]],
-    folded_dialogue: object,
-    *,
-    logical_time: object,
-) -> int | None:
-    """How long since he last said anything, from the same pinned dialogue.
-
-    Pure projection arithmetic over material she already has, so it costs no
-    model call and introduces no claim she could not have derived herself.
-    Folded history is deliberately ignored: a folded bucket has no timestamps,
-    so a long silence stays unreported rather than guessed.
-    """
-
-    del folded_dialogue
-    if not isinstance(logical_time, datetime):
-        return None
-    latest: datetime | None = None
-    for entry in recent_dialogue:
-        if entry.get("speaker") != "counterpart":
-            continue
-        occurred = _datetime(entry.get("occurred_at"))
-        if occurred is None:
-            continue
-        if latest is None or occurred > latest:
-            latest = occurred
-    if latest is None:
-        return None
-    elapsed = int((logical_time - latest).total_seconds())
-    return elapsed if elapsed >= 0 else None
-
-
 def _dialogue_stimulus_index(items: list[dict[str, object]]) -> dict[str, str]:
     index: dict[str, str] = {}
     for item in items:
@@ -805,6 +742,8 @@ def _week_diary(
     entries: list[dict[str, object]],
     logical_time: datetime | None,
 ) -> list[dict[str, object]]:
+    """One sourced row per diary line so redaction can drop a hidden day."""
+
     if logical_time is None:
         return []
     local = logical_time.astimezone(ZoneInfo("Asia/Shanghai")).date()
@@ -812,22 +751,68 @@ def _week_diary(
         (local - timedelta(days=offset)).isoformat()
         for offset in range(PRESENT_WEEK_DIARY_DAYS)
     }
-    grouped: dict[str, list[str]] = {}
+    grouped: dict[str, list[dict[str, object]]] = {}
     for entry in entries:
+        source_ref = entry.get("source_ref")
+        if not isinstance(source_ref, str) or not source_ref:
+            continue
         day = _experience_day(entry)
         if day not in allowed:
             continue
         line = _experience_line(entry)
-        if line is None or line in grouped.get(day, ()):
+        if line is None:
             continue
-        grouped.setdefault(day, []).append(line)
+        existing = grouped.setdefault(day, [])
+        if any(item.get("line") == line for item in existing):
+            continue
+        if len(existing) >= PRESENT_WEEK_DIARY_LINES_PER_DAY:
+            continue
+        existing.append({"date": day, "line": line, "source_ref": source_ref})
     diary: list[dict[str, object]] = []
     for offset in range(PRESENT_WEEK_DIARY_DAYS - 1, -1, -1):
         day = (local - timedelta(days=offset)).isoformat()
-        lines = grouped.get(day, [])[:PRESENT_WEEK_DIARY_LINES_PER_DAY]
-        if lines:
-            diary.append({"date": day, "lines": lines})
+        diary.extend(grouped.get(day, ()))
     return diary
+
+
+def _sourced_folded_dialogue(
+    chunks: list[dict[str, object]],
+    original: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Flatten fold chunks into sourced lines so a hidden message can drop."""
+
+    by_id = {
+        dialogue_id: entry
+        for entry in original
+        if isinstance(entry, dict)
+        and isinstance((dialogue_id := entry.get("dialogue_id")), str)
+        and dialogue_id
+    }
+    sourced: list[dict[str, object]] = []
+    for ordinal, chunk in enumerate(chunks):
+        ids = chunk.get("dialogue_ids")
+        if not isinstance(ids, list):
+            continue
+        for dialogue_id in ids:
+            if not isinstance(dialogue_id, str):
+                continue
+            entry = by_id.get(dialogue_id)
+            if not isinstance(entry, dict):
+                continue
+            source_ref = entry.get("source_ref")
+            if not isinstance(source_ref, str) or not source_ref:
+                continue
+            row: dict[str, object] = {
+                "source_ref": source_ref,
+                "dialogue_id": dialogue_id,
+                "line": fold_dialogue_line(entry),
+                "chunk_ordinal": ordinal,
+            }
+            occurred = entry.get("occurred_at")
+            if isinstance(occurred, str) and occurred:
+                row["occurred_at"] = occurred
+            sourced.append(row)
+    return sourced
 
 
 def _cursor(context: Mapping[str, object]) -> ProjectionCursor | None:
@@ -881,9 +866,6 @@ def compile_inner_life_snapshot(
     ]
     if biography:
         materials["biographical_context"] = biography
-        day_sheet = _day_sheet_from_biography(biography, logical_time)
-        if day_sheet:
-            materials["day_sheet"] = day_sheet
 
     lanes = (
         ("situation", "current_situation", (
@@ -991,7 +973,7 @@ def compile_inner_life_snapshot(
     if impressions:
         materials["private_impressions"] = impressions
 
-    recent_dialogue = [
+    compiled_dialogue = [
         entry
         for item in dialogue_items
         if (
@@ -1012,22 +994,14 @@ def compile_inner_life_snapshot(
         )
     ]
     folded_dialogue, recent_dialogue = fold_dialogue_entries(
-        recent_dialogue,
+        compiled_dialogue,
         budget_characters=PRESENT_DIALOGUE_SLICE_CHARACTERS,
     )
-    if folded_dialogue:
-        materials["folded_dialogue"] = folded_dialogue
+    sourced_folds = _sourced_folded_dialogue(folded_dialogue, compiled_dialogue)
+    if sourced_folds:
+        materials["folded_dialogue"] = sourced_folds
     if recent_dialogue:
         materials["recent_dialogue"] = recent_dialogue
-    elapsed = _seconds_since_last_counterpart_message(
-        recent_dialogue, folded_dialogue, logical_time=logical_time
-    )
-    if elapsed is not None:
-        # Without an elapsed reading she has to derive "how long has it been"
-        # from raw timestamps on every wake, which is exactly the perception a
-        # person has for free and the one missing thing that made missing him
-        # ungroundable.
-        materials["since_he_last_spoke"] = {"seconds": elapsed}
 
     # Verified facts are memory material, not host-authored conclusions about
     # what the character should do.  Keeping them in the same snapshot lets
@@ -1053,18 +1027,39 @@ def compile_inner_life_snapshot(
         if recent
         else {"availability": "unavailable"}
     )
+    photos_i_shared = [
+        entry
+        for item in _slice_items(slices, "media_deliveries")
+        if (
+            entry := _state_entry(
+                item,
+                fields=(
+                    "delivery_id",
+                    "shared_at",
+                    "family",
+                    "kind",
+                    "privacy_layer",
+                    "about",
+                    "he_spoke_after",
+                ),
+            )
+        )
+    ][:PRESENT_SHARED_MEDIA_ITEM_LIMIT]
+    if photos_i_shared:
+        materials["photos_i_shared"] = photos_i_shared
     diary_source = [entry for entries in experience_lanes for entry in entries]
     week_diary = _week_diary(diary_source, logical_time)
     if week_diary:
         materials["week_diary"] = week_diary
 
     facet_keys = {
-        "private_self": ("stable_self", "biographical_context", "day_sheet", "week_diary", "situation", "private_impressions", "recent_self_experiences"),
+        "private_self": ("stable_self", "biographical_context", "week_diary", "situation", "private_impressions", "recent_self_experiences"),
         "selective_memory": (
             "folded_dialogue",
             "recent_dialogue",
             "relevant_facts",
             "remembered_material",
+            "photos_i_shared",
         ),
         "appraisal_affect": ("appraisals", "affect"),
         "emotional_continuity": (
@@ -1081,6 +1076,7 @@ def compile_inner_life_snapshot(
             "folded_dialogue",
             "recent_dialogue",
             "interaction_acts",
+            "photos_i_shared",
         ),
         "aspirations_conflicts": ("situation", "unresolved"),
         "autonomous_impulses": (
@@ -1097,6 +1093,7 @@ def compile_inner_life_snapshot(
             "recent_dialogue",
             "relevant_facts",
             "interaction_acts",
+            "photos_i_shared",
         ),
         "expression_stance": (
             "stable_self",
@@ -1111,6 +1108,7 @@ def compile_inner_life_snapshot(
             "recent_dialogue",
             "relevant_facts",
             "interaction_acts",
+            "photos_i_shared",
         ),
     }
     facets: list[_InteriorFacet] = []
@@ -1215,6 +1213,7 @@ def compile_inner_life_snapshot(
     actor_ref = context.get("actor_ref") if isinstance(context.get("actor_ref"), str) else None
     cursor = _cursor(context)
     available = bool(source_refs)
+    assert_compile_time_materials_are_source_bound(materials)
     return InnerLifeSnapshot.create(
         availability="available" if available else "unavailable",
         world_id=world_id, actor_ref=actor_ref, cursor=cursor, logical_time=logical_time,
@@ -1243,8 +1242,71 @@ def visible_source_refs(context: Mapping[str, object]) -> frozenset[str]:
     )
 
 
+def citeable_source_labels(snapshot: InnerLifeSnapshot) -> dict[str, str]:
+    """Short identity labels for the pickable catalog, never a suggested cite.
+
+    Derived after the snapshot exists, so this does not enter snapshot
+    identity.  Labels only restate material already in the provider view
+    (who said a line, which advisory kind) so she can pick an id instead of
+    reconstructing an opaque string.
+    """
+
+    labels: dict[str, str] = {}
+    materials = snapshot.materials
+    dialogue = materials.get("recent_dialogue")
+    if isinstance(dialogue, list):
+        for entry in dialogue:
+            if not isinstance(entry, dict):
+                continue
+            source_ref = entry.get("source_ref")
+            text = entry.get("text")
+            if not isinstance(source_ref, str) or not isinstance(text, str) or not text.strip():
+                continue
+            speaker = entry.get("speaker")
+            prefix = (
+                "他："
+                if speaker == "counterpart"
+                else "我："
+                if speaker == "companion"
+                else ""
+            )
+            labels[source_ref] = prefix + text.strip()[:32]
+    advisories = materials.get("advisories")
+    candidates = (
+        advisories.get("items")
+        if isinstance(advisories, dict)
+        else advisories
+        if isinstance(advisories, list)
+        else ()
+    )
+    if isinstance(candidates, list):
+        for entry in candidates:
+            if not isinstance(entry, dict):
+                continue
+            source_ref = entry.get("source_ref")
+            kind = entry.get("kind")
+            if isinstance(source_ref, str) and isinstance(kind, str) and kind:
+                labels.setdefault(source_ref, kind)
+    return labels
+
+
+def compile_citeable_source_catalog(
+    snapshot: InnerLifeSnapshot,
+    *,
+    extra_refs: Iterable[str] = (),
+) -> PinnedSourceCatalog:
+    """Presentation catalog: short ids over this snapshot's pinned refs."""
+
+    return PinnedSourceCatalog.from_refs(
+        (*snapshot.source_refs, *extra_refs),
+        labels=citeable_source_labels(snapshot),
+    )
+
+
 __all__ = [
     "SNAPSHOT_COMPILER_VERSION",
+    "citeable_source_labels",
+    "compile_citeable_source_catalog",
     "compile_inner_life_snapshot",
     "source_envelopes_from_capsule",
     "visible_source_refs",

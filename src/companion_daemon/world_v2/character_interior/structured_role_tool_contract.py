@@ -15,8 +15,11 @@ from hashlib import sha256
 import json
 from typing import Literal, Mapping
 
+from ..json_wire_repair import loads_one_json_object
 from ..schema_core import canonicalize_json_value
-from .inbound_tool_contract import deepseek_strict_tool_schema
+from .inbound_tool_contract import (
+    deepseek_strict_tool_schema,
+)
 
 _CONTRACT_VERSION = "1"
 _MEDIA_SELECTION_TOOL_NAME = "character_role_media_selection_v1"
@@ -144,6 +147,30 @@ def _non_null_schema(field: object, *, field_name: str) -> dict[str, object]:
     raise ValueError(f"canonical proactive {field_name} has no non-null schema")
 
 
+def _nullable_provider_schema(schema: dict[str, object]) -> dict[str, object]:
+    """Optional field as ``anyOf`` of one concrete schema and JSON null.
+
+    DeepSeek strict tools accept ``anyOf: [{type: object, ...}, {type: null}]``.
+    They reject a type array that includes ``object`` (``type: ["object", "null"]``),
+    and ``_nullable_strict_schema`` would wrap that array into the exact
+    ``field anyOf type: object`` 400 the production proactive call hit.
+    """
+
+    return {"anyOf": [schema, {"type": "null"}]}
+
+
+_PROACTIVE_MOODS = (
+    "hurt",
+    "anger",
+    "sadness",
+    "loneliness",
+    "anxiety",
+    "resentment",
+    "warmth",
+    "joy",
+)
+
+
 def _close_beat_value_choice(beat_schema: dict[str, object]) -> None:
     properties = _required_object_properties(beat_schema)
     branches: list[dict[str, object]] = []
@@ -221,6 +248,7 @@ def _proactive_payload_schema(
     expression_capabilities: Mapping[str, object],
 ) -> dict[str, object]:
     from ..expression_draft import ExpressionDraft
+    from .inbound_appraisal_wire import AppraisalDraftWire
 
     # ProactiveDraft only tightens ExpressionDraft.impulse_summary from
     # optional to required.  Deriving the common wire here avoids importing
@@ -248,24 +276,15 @@ def _proactive_payload_schema(
     )
     # Optional lasting Affect self-select on the same proactive turn.  Omit
     # both for character-chosen no_change; do not invent mood from wording.
-    properties["mood"] = {
-        "type": ["string", "null"],
-        "enum": [
-            None,
-            "hurt",
-            "anger",
-            "sadness",
-            "loneliness",
-            "anxiety",
-            "resentment",
-            "warmth",
-            "joy",
-        ],
-    }
-    properties["appraisal_draft"] = {
-        "type": ["object", "null"],
-        "additionalProperties": True,
-    }
+    properties["mood"] = _nullable_provider_schema(
+        {"type": "string", "enum": list(_PROACTIVE_MOODS)}
+    )
+    # Keep the canonical appraisal wire, not an open object.  DeepSeek forbids
+    # empty objects and ``type: ["object", "null"]``; the host materializer
+    # remains the fail-closed owner of appraisal semantics.
+    properties["appraisal_draft"] = _nullable_provider_schema(
+        _provider_schema(AppraisalDraftWire)
+    )
     _close_world_claim_sources(properties.get("world_claims"))
 
     max_beats = expression_capabilities.get("max_beats")
@@ -402,6 +421,17 @@ def _proactive_payload_schema(
     return schema
 
 
+def _loads_one_json_object(raw: str) -> dict[str, object]:
+    """Parse one object; Postel on fence, inner quotes, and a missing wrapper close."""
+
+    return loads_one_json_object(
+        raw,
+        not_object_message="structured role tool result wrapper is invalid",
+        invalid_message="structured role tool result must be one JSON object",
+        unclosed_fence_message="structured role tool result returned an unclosed JSON fence",
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class StructuredRoleToolContractIdentity:
     contract_id: str
@@ -438,7 +468,10 @@ class StructuredRoleToolContract:
         """Remove only the declared provider transport wrapper.
 
         Postel on the outer envelope only: an already-unwrapped role object is
-        accepted, and extra sibling keys beside ``result`` are ignored. Inner
+        accepted, extra sibling keys beside ``result`` are ignored, a Markdown
+        fence is stripped, unescaped quotes inside strings are repaired, a
+        missing wrapper close is completed, Extra data keeps the first object,
+        and a string-encoded ``result`` is decoded as JSON. Inner
         ``_WireRoleResult`` / purpose-payload validation stays strict.
         """
 
@@ -446,16 +479,13 @@ class StructuredRoleToolContract:
             return raw
         if not isinstance(raw, str):
             raise ValueError("structured role tool result must be JSON text")
-        try:
-            decoded = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise ValueError("structured role tool result must be one JSON object") from exc
-        if not isinstance(decoded, dict):
-            raise ValueError(
-                "structured role tool result wrapper is invalid: "
-                f"got type={type(decoded).__name__}"
-            )
+        decoded = _loads_one_json_object(raw)
         wrapped = decoded.get(self.result_wrapper_key)
+        if isinstance(wrapped, str) and wrapped.strip():
+            try:
+                wrapped = loads_one_json_object(wrapped)
+            except ValueError:
+                wrapped = None
         if isinstance(wrapped, dict):
             return _canonical_json(wrapped)
         if _looks_like_structured_role_result(decoded):
@@ -635,6 +665,7 @@ class StructuredRoleToolContracts:
         """Compile canonical Pydantic wires outside provider-entry budgets."""
 
         from ..expression_draft import ExpressionDraft
+        from .inbound_appraisal_wire import AppraisalDraftWire
         from .structured_role import (
             _ActivityLifecyclePayload,
             _ExpressionReconsiderationPayload,
@@ -653,6 +684,7 @@ class StructuredRoleToolContracts:
         )
 
         _compiled_provider_schema(ExpressionDraft)
+        _compiled_provider_schema(AppraisalDraftWire)
         _compiled_provider_schema(_ActivityLifecyclePayload)
         _compiled_provider_schema(_ExpressionReconsiderationPayload)
         _compiled_provider_schema(_MediaSelectionPayload)

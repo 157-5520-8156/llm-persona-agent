@@ -57,9 +57,15 @@ from .ports import (
     _InteriorRoleResult,
     _RoleResultContractError,
 )
+from .snapshot_compiler import compile_citeable_source_catalog
 from .structured_role_tool_contract import (
     StructuredRoleToolContract,
     StructuredRoleToolContracts,
+)
+from ..pinned_source_ref import (
+    PinnedSourceCatalog,
+    resolve_pinned_source_ref_list,
+    unpinned_source_failure_detail,
 )
 
 
@@ -119,6 +125,93 @@ def _pinned_attended_source_refs(
         closed.append(item)
         seen.add(item)
     return closed
+
+
+def _citeable_catalog_for_request(request: _InteriorRoleRequest) -> PinnedSourceCatalog:
+    extra: list[str] = []
+    if request.capability_manifest is not None:
+        extra.extend(request.capability_manifest.source_refs)
+    extra.extend(request.subject_source_refs)
+    extra.append(request.trigger_ref)
+    return compile_citeable_source_catalog(request.snapshot, extra_refs=extra)
+
+
+def _rewrite_unique_source_refs(
+    value: object,
+    *,
+    catalog: PinnedSourceCatalog,
+) -> object:
+    rewritten, _failures = resolve_pinned_source_ref_list(value, catalog)
+    return rewritten if isinstance(value, list) else value
+
+
+def _rewrite_claim_source_refs(
+    claims: list[object],
+    *,
+    catalog: PinnedSourceCatalog,
+) -> list[object]:
+    restored: list[object] = []
+    for claim in claims:
+        if not isinstance(claim, dict) or "source_refs" not in claim:
+            restored.append(claim)
+            continue
+        restored.append(
+            {
+                **claim,
+                "source_refs": _rewrite_unique_source_refs(
+                    claim.get("source_refs"),
+                    catalog=catalog,
+                ),
+            }
+        )
+    return restored
+
+
+def _restore_unique_pinned_source_refs(
+    decoded: dict[str, object],
+    *,
+    catalog: PinnedSourceCatalog,
+) -> None:
+    """Restore uniquely identified opaque refs before structural validation.
+
+    Short catalog ids, collapsed duplicate segments, a missing ``beat`` slot
+    with a unique trailing index, and unique hash fragments are transport
+    damage, not a semantic choice.  Ambiguous or empty hits stay as written
+    and fail closed at the ordinary unpinned check.
+    """
+
+    decoded["attended_source_refs"] = _rewrite_unique_source_refs(
+        decoded.get("attended_source_refs"),
+        catalog=catalog,
+    )
+    raw_decision = decoded.get("decision")
+    if not isinstance(raw_decision, dict):
+        return
+    updated = dict(raw_decision)
+    if "source_refs" in updated:
+        updated["source_refs"] = _rewrite_unique_source_refs(
+            updated.get("source_refs"),
+            catalog=catalog,
+        )
+    payload = updated.get("payload")
+    if isinstance(payload, dict):
+        payload = dict(payload)
+        claims = payload.get("world_claims")
+        if isinstance(claims, list):
+            payload["world_claims"] = _rewrite_claim_source_refs(claims, catalog=catalog)
+        media_refs = payload.get("media_source_refs")
+        if isinstance(media_refs, list):
+            payload["media_source_refs"] = _rewrite_unique_source_refs(
+                media_refs,
+                catalog=catalog,
+            )
+        updated["payload"] = payload
+    if isinstance(updated.get("world_claims"), list):
+        updated["world_claims"] = _rewrite_claim_source_refs(
+            updated["world_claims"],
+            catalog=catalog,
+        )
+    decoded["decision"] = updated
 
 
 _PRIVATE_IMPRESSION_IDENTITY_KEYS = frozenset(
@@ -1032,8 +1125,14 @@ _FAILURE_DETAILS = {
         "The selected provider does not support the required purpose tool."
     ),
     "phase_status_invalid": "The selected status is unavailable in this phase.",
-    "attended_source_unpinned": "An attended source ref was absent from the pinned snapshot.",
-    "decision_source_unpinned": "A decision source ref was absent from the pinned snapshot or manifest.",
+    "attended_source_unpinned": (
+        "attended_source_refs 点名了本轮钉不住的来源。"
+        "只写 citeable_sources 里的 id 或原样抄 ref；不要手写拼接。"
+    ),
+    "decision_source_unpinned": (
+        "decision.source_refs 点名了本轮钉不住的来源。"
+        "只写 citeable_sources 里的 id 或原样抄 ref；不要手写拼接。"
+    ),
     "capability_manifest_required": "This purpose needs its source-bound capability manifest.",
     "capability_kind_mismatch": "The capability kind does not match this purpose contract.",
     "capability_manifest_missing_offered_tokens": (
@@ -1537,12 +1636,19 @@ class StructuredCharacterRoleFaculty:
                 ),
             },
         }
+        if request.purpose != "private_impression_reflection":
+            user_payload["citeable_sources"] = _citeable_catalog_for_request(
+                request
+            ).prompt_value()
         if request.purpose == "proactive_contact":
             user_payload["purpose_instruction"] = (
                 "对 proactive_contact：私人状态只写在外层 summary 和 attended_source_refs；"
                 "payload 里禁止 private_turn_state（这一点和 inbound 相反，不要照 inbound 的草稿来写）。"
                 "没有可核对的世界事实时 world_claims 写 []。"
                 "对话 beat 不是 current_world；current_world 只能引用当前生活/世界来源。"
+                "来源只写 citeable_sources 里的 id（如 s0）或原样抄 ref，不要手写拼接。"
+                "response_expectation 若写，pressure_bp 与 importance_bp 是 0 到 10000 的基点，"
+                "不是百分制：5000 才是一半，30 不是百分之三十。"
             )
         if request.correction_ordinal == 1:
             code = request.correction_failure_code or "role_result_schema_invalid"
@@ -1571,10 +1677,12 @@ class StructuredCharacterRoleFaculty:
                     "complete proposal in proposals. Never flatten a purpose payload into the "
                     "outer decision field. Cite only supplied source refs and capability tokens. Do not return "
                     "author audit fields; the trusted boundary adds those after the provider call."
+                    " 来源只写 citeable_sources 里的 id 或原样抄 ref，不要手写拼接。"
                     + (
                         " 对 proactive_contact：私人状态只写在外层 summary / attended_source_refs；"
                         "payload 里禁止 private_turn_state（这和 inbound 相反）。"
                         "没有世界事实时 world_claims 写 []。对话 beat 不是 current_world。"
+                        "pressure_bp / importance_bp 是 0 到 10000 的基点，不是百分制。"
                         if request.purpose == "proactive_contact"
                         else ""
                     )
@@ -1647,14 +1755,44 @@ class StructuredCharacterRoleFaculty:
             contract=contract,
             response_hash=response_hash,
         )
-        if set(result.attended_source_refs) - set(request.snapshot.source_refs):
-            self._raise("attended_source_unpinned", response_hash=response_hash)
+        outside_attention = [
+            ref
+            for ref in result.attended_source_refs
+            if ref not in request.snapshot.source_refs
+        ]
+        if outside_attention:
+            catalog = _citeable_catalog_for_request(request)
+            _, failures = resolve_pinned_source_ref_list(outside_attention, catalog)
+            self._raise(
+                "attended_source_unpinned",
+                response_hash=response_hash,
+                detail=unpinned_source_failure_detail(
+                    code="attended_source_unpinned",
+                    field="attended_source_refs",
+                    failures=failures,
+                    catalog=catalog,
+                ),
+            )
         if result.decision is not None:
             visible_refs = set(request.snapshot.source_refs)
             if request.capability_manifest is not None:
                 visible_refs.update(request.capability_manifest.source_refs)
-            if set(result.decision.source_refs) - visible_refs:
-                self._raise("decision_source_unpinned", response_hash=response_hash)
+            outside_decision = [
+                ref for ref in result.decision.source_refs if ref not in visible_refs
+            ]
+            if outside_decision:
+                catalog = _citeable_catalog_for_request(request)
+                _, failures = resolve_pinned_source_ref_list(outside_decision, catalog)
+                self._raise(
+                    "decision_source_unpinned",
+                    response_hash=response_hash,
+                    detail=unpinned_source_failure_detail(
+                        code="decision_source_unpinned",
+                        field="decision.source_refs",
+                        failures=failures,
+                        catalog=catalog,
+                    ),
+                )
             self._validate_decision_payload(
                 result.decision.payload,
                 decision_source_refs=frozenset(result.decision.source_refs),
@@ -1684,6 +1822,11 @@ class StructuredCharacterRoleFaculty:
         """
 
         normalized = dict(decoded)
+        if contract.purpose != "private_impression_reflection":
+            _restore_unique_pinned_source_refs(
+                normalized,
+                catalog=_citeable_catalog_for_request(request),
+            )
         if contract.purpose == "private_impression_reflection":
             # Reflection evidence is exposed to the provider through short
             # tokens.  Translate an attended token only when both its semantic
@@ -2697,11 +2840,18 @@ class StructuredCharacterRoleFaculty:
                 "private_state_rule": (
                     "私人状态只写在外层 summary / attended_source_refs；"
                     "payload 里禁止 private_turn_state（这一点和 inbound 相反）。"
+                    "attended_source_refs 只写 citeable_sources 的 id 或原样抄 ref。"
                 ),
                 "author_notes": (
                     "没有可核对的世界事实时 world_claims 写 []。"
                     "对话 beat 不是 current_world；current_world 只能引用当前生活/世界来源，"
                     "不能引用她自己上一句对话。"
+                ),
+                "response_expectation": (
+                    "若写：hoped_response、pressure_bp、importance_bp、wait_seconds、"
+                    "expires_after_seconds。"
+                    "pressure_bp 与 importance_bp 是 0 到 10000 的基点（basis points），"
+                    "不是 0 到 100 的百分制：5000=一半，3000=三成，30 不是百分之三十。"
                 ),
             }
         if contract.purpose == "expression_reconsideration":
@@ -2954,10 +3104,16 @@ class StructuredCharacterRoleFaculty:
         return "model-call:character-interior:" + _hash_text(_canonical(identity))
 
     @staticmethod
-    def _raise(code: str, *, response_hash: str, rejected_raw: str | None = None) -> None:
+    def _raise(
+        code: str,
+        *,
+        response_hash: str,
+        rejected_raw: str | None = None,
+        detail: str | None = None,
+    ) -> None:
         raise StructuredRoleResultError(
             code,
-            detail=_FAILURE_DETAILS[code],
+            detail=detail or _FAILURE_DETAILS[code],
             response_hash=response_hash,
             rejected_raw=rejected_raw,
         )

@@ -25,7 +25,7 @@ def test_production_seed_can_open_a_life_arc_from_a_settled_outcome() -> None:
         outcome_id="publishing-interview-offer",
     )
 
-    assert catalog.version == "reviewed-life.14"
+    assert catalog.version == "reviewed-life.15"
     assert effect is not None
     assert effect.context_tags == ("role:intern", "workplace:publishing")
     assert effect.duration_days == 30

@@ -300,3 +300,44 @@ async def test_worker_runs_a_real_frozen_action_without_authoring_an_opportunity
     assert projection.media_unrenderable_opportunity_ids == (opportunity.opportunity_id,)
     action = next(item for item in projection.actions if item.kind == "media_planning")
     assert action.state == "delivered"
+
+
+def test_unsourced_legacy_plan_is_rejected_before_a_paid_render() -> None:
+    from companion_daemon.world_v2.media_planning_runtime import (
+        reject_unsourced_planning_result,
+        unsourced_legacy_plan_reason,
+    )
+    from companion_daemon.world_v2.media_v2 import MediaPlan, StoredMediaPayload, media_payload_hash
+
+    assert unsourced_legacy_plan_reason('{"plan":"frozen"}') is None
+    assert unsourced_legacy_plan_reason(
+        '{"event_id":"","primary_evidence_ref":"/activity/description","evidence_values":{"/activity/description":"x"}}'
+    ) == "unsourced_event"
+    body = (
+        '{"event_id":"event:walk","primary_evidence_ref":"/legacy/action",'
+        '"evidence_values":{"/legacy/action":"pose"}}'
+    )
+    payload = StoredMediaPayload(
+        payload_ref="sidecar:plan:unsourced",
+        payload_hash=media_payload_hash(body),
+        content_type="application/vnd.world-v2.media-plan+json",
+        body=body,
+    )
+    plan = MediaPlan(
+        plan_id="plan:unsourced",
+        planning_request_id="request:1",
+        opportunity_id="opportunity:1",
+        event_snapshot_hash="sha256:" + "a" * 64,
+        family="life_share",
+        planner_version="planner.1",
+        schema_version="media-plan.1",
+        plan_payload_ref=payload.payload_ref,
+        plan_payload_hash=payload.payload_hash,
+        frozen_at=NOW,
+    )
+    rejected = reject_unsourced_planning_result(
+        MediaPlanningResult(plan=plan, plan_payload=payload)
+    )
+    assert rejected.plan is None
+    assert rejected.not_renderable is not None
+    assert rejected.not_renderable.reason_code == "preflight_unsourced_evidence"

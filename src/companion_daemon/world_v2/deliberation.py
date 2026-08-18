@@ -1471,6 +1471,12 @@ class ModelResultAudit(_FrozenModel):
     )
     status: AuditStatus
     failure_code: str | None = Field(default=None, max_length=64)
+    failure_detail: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=4_000,
+        exclude_if=lambda value: value is None,
+    )
     slot: Literal["primary", "backup", "corrective"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -4195,6 +4201,15 @@ class Deliberation:
             authored_candidate_audits = output.authored_candidate_audits
             physical_provider_audits = output.physical_provider_audits
         response_hash = _output_response_hash(output) if output is not None else None
+        role_rejection = _role_rejection_from_technical_failure(technical_failure)
+        failure_detail: str | None = None
+        if (
+            role_rejection is None
+            and technical_failure is not None
+            and isinstance(technical_failure.failure_detail, str)
+            and technical_failure.failure_detail.strip()
+        ):
+            failure_detail = technical_failure.failure_detail[:4_000]
         return ModelResultAudit(
             model_call_id=model_call_id,
             parent_model_call_id=(
@@ -4215,6 +4230,7 @@ class Deliberation:
             ),
             status=status,
             failure_code=failure_code,
+            failure_detail=failure_detail,
             slot=slot,
             outcome=outcome,
             input_tokens=(
@@ -4254,7 +4270,7 @@ class Deliberation:
             provider_subcall_audits=provider_subcall_audits,
             authored_candidate_audits=authored_candidate_audits,
             physical_provider_audits=physical_provider_audits,
-            role_rejection=_role_rejection_from_technical_failure(technical_failure),
+            role_rejection=role_rejection,
         )
 
     @staticmethod

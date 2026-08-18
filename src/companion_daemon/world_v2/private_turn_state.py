@@ -59,6 +59,10 @@ class PrivateTurnState(FrozenModel):
         max_length=512,
         exclude_if=lambda value: value is None,
     )
+    declared_display: Literal["sexual_suggestive", "explicit_adult", "withdraw"] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
 
     @field_validator("inner_state_summary")
     @classmethod

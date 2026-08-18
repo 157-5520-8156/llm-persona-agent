@@ -305,22 +305,14 @@ class LifeVisualEvidenceAuthor:
                 trace_id=trace_id, correlation_id=correlation_id,
             )
         if pool_empty:
-            ordinary_ids = {
-                getattr(row[0], "occurrence_id", None) for row in (*open_life, *eligible)
-            }
-            catchup_open = tuple(
-                row
-                for row in starvation_open
-                if getattr(row[0], "occurrence_id", None) not in ordinary_ids
-            )
-            catchup_eligible = tuple(
-                row
-                for row in starvation_eligible
-                if getattr(row[0], "occurrence_id", None) not in ordinary_ids
-            )
+            # Empty pool is the starvation condition.  Lottery still ran and
+            # remains on the ledger; fill may now use the same recent
+            # eligibles the lottery just missed.  Excluding them left a
+            # settled life with no photographable candidate until the 12h
+            # ordinary window aged out — and a stable miss never retries.
             fill = self._declare_first_eligible(
-                open_life=catchup_open,
-                eligible=catchup_eligible,
+                open_life=starvation_open or open_life,
+                eligible=starvation_eligible or eligible,
                 private_today=private_today,
                 projection=projection,
                 trace_id=trace_id,
@@ -330,6 +322,17 @@ class LifeVisualEvidenceAuthor:
                 return fill.model_copy(
                     update={"reason_code": "visual_evidence.starvation_fill_declared"}
                 )
+        _LOG.warning(
+            "visual evidence selected nothing wake=%s pool_empty=%s "
+            "ordinary_open=%s ordinary_catalog=%s starvation_open=%s "
+            "starvation_catalog=%s",
+            wake_event_ref,
+            pool_empty,
+            len(open_life),
+            len(eligible),
+            len(starvation_open),
+            len(starvation_eligible),
+        )
         return VisualEvidenceAuthorResult(
             status="idle", reason_code="visual_evidence.nothing_selected"
         )

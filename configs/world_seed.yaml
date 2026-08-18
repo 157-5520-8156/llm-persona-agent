@@ -85,7 +85,13 @@ life_author_catalog:
   # reviewed-life.14 adds one reviewed employment outcome with life_arc_effect
   # so a settled result can open a long arc. The weighted table still decides
   # only whether the opportunity exists; she decides the content and meaning.
-  version: reviewed-life.14
+  # reviewed-life.15 retargets the three existing private_transition openings
+  # (settle-morning-routine, prepare-for-bed, late-night-wind-down) from
+  # dorm-room to jiaxing-family-home. Summer residence is family_home_jiaxing
+  # through 2026-08-31; dorm-room requires residence:campus_dorm, so those
+  # three IDs were unreachable all summer. No new opening IDs. Term-time
+  # (from 2026-09-01) needs the dorm location restored on the same IDs.
+  version: reviewed-life.15
   # Fixed openings, outcome prose, NPC-event variants and aspiration seeds
   # below remain readable only for immutable ledger recovery and fixtures.
   # Production life generation consumes facts, affordances and capability
@@ -187,7 +193,7 @@ life_author_catalog:
       deviation: persist
       visual_potential: private_transition
       privacy: private
-      location_id: dorm-room
+      location_id: jiaxing-family-home
       local_windows: ["07:00-10:00"]
       weekdays: [0, 1, 2, 3, 4, 5, 6]
       duration_minutes: 30
@@ -196,9 +202,9 @@ life_author_catalog:
         - {id: morning-steady, text: 收拾洗漱完，慢慢把早上的状态理顺了。, privacy: private}
         - {id: morning-rushed, text: 早上的节奏有点乱，东西收好了，人还没完全清醒。, privacy: private}
       visual_evidence:
-        activity_description: 早上洗漱整理后在宿舍慢慢收拾自己
-        location: {id: location:ecnu-dorm-room, kind: dorm_room, publicness: private, mirror_available: true}
-        environment: {light: morning light through the dorm curtain, structure: small lived-in dorm room}
+        activity_description: 早上洗漱整理后在家里慢慢收拾自己
+        location: {id: location:jiaxing-family-home, kind: family_home, publicness: private, mirror_available: true}
+        environment: {light: morning light through the family-home curtain, structure: lived-in family bedroom}
         self_capture: [character_front_camera, mirror]
     - id: prepare-for-bed
       activity_kind: sleep.prepare_for_bed
@@ -208,7 +214,7 @@ life_author_catalog:
       deviation: persist
       visual_potential: private_transition
       privacy: private
-      location_id: dorm-room
+      location_id: jiaxing-family-home
       local_windows: ["22:30-00:30"]
       weekdays: [0, 1, 2, 3, 4, 5, 6]
       duration_minutes: 35
@@ -217,9 +223,9 @@ life_author_catalog:
         - {id: bedtime-settled, text: 把睡前要做的事慢慢收好，关掉大灯准备休息了。, privacy: private}
         - {id: bedtime-delayed, text: 本来已经准备睡了，又磨蹭着收了点东西，困意反而散了一会儿。, privacy: private}
       visual_evidence:
-        activity_description: 睡前在宿舍收拾东西、放下头发准备休息
-        location: {id: location:ecnu-dorm-room, kind: dorm_room, publicness: private, mirror_available: true}
-        environment: {light: warm dim bedside lamp after the main light is off, structure: small lived-in dorm room}
+        activity_description: 睡前在家里收拾东西、放下头发准备休息
+        location: {id: location:jiaxing-family-home, kind: family_home, publicness: private, mirror_available: true}
+        environment: {light: warm dim bedside lamp after the main light is off, structure: lived-in family bedroom}
         self_capture: [character_front_camera, mirror]
     - id: late-night-wind-down
       activity_kind: sleep.late_wind_down
@@ -229,7 +235,7 @@ life_author_catalog:
       deviation: delay
       visual_potential: private_transition
       privacy: private
-      location_id: dorm-room
+      location_id: jiaxing-family-home
       local_windows: ["00:30-04:00"]
       weekdays: [0, 1, 2, 3, 4, 5, 6]
       duration_minutes: 40
@@ -239,8 +245,8 @@ life_author_catalog:
         - {id: late-night-still-restless, text: 关掉屏幕后还是没立刻睡着，安静躺了一阵才觉得困意回来。, privacy: private}
       visual_evidence:
         activity_description: 深夜收拾好手边的东西，靠在床头安静下来
-        location: {id: location:ecnu-dorm-room, kind: dorm_room, publicness: private, mirror_available: true}
-        environment: {light: very dim late-night lamp glow, structure: small lived-in dorm room}
+        location: {id: location:jiaxing-family-home, kind: family_home, publicness: private, mirror_available: true}
+        environment: {light: very dim late-night lamp glow, structure: lived-in family bedroom}
         self_capture: [character_front_camera]
     - id: early-morning-wake
       activity_kind: sleep.early_morning_wake

@@ -275,7 +275,13 @@ class PrivateMediaEvidenceSnapshotCompiler:
             origins["/relationship_media_context/private_expression_basis"] = (
                 declaration_event, declaration.image_evidence.visibility,
             )
-            return ()
+            return self._freeze_appearance_state(
+                projection=projection,
+                subject_ref=contract.subject_ref,
+                at_logical_time=at_logical_time,
+                character=body["character"],
+                origins=origins,
+            )
         physical = visible_physical_state_at(
             tuple(projection.visible_physical_states), subject_ref=contract.subject_ref,
             at_logical_time=at_logical_time,
@@ -299,19 +305,49 @@ class PrivateMediaEvidenceSnapshotCompiler:
         origins["/character/visible_physical_state"] = (record, physical.visibility)
         origins["/relationship_media_context/private_expression_basis"] = (record, physical.visibility)
         extras: list[WorldEvent] = [record, anchor]
+        extras.extend(
+            self._freeze_appearance_state(
+                projection=projection,
+                subject_ref=contract.subject_ref,
+                at_logical_time=at_logical_time,
+                character=character,
+                origins=origins,
+            )
+        )
+        return tuple(extras)
+
+    def _freeze_appearance_state(
+        self,
+        *,
+        projection,
+        subject_ref: str,
+        at_logical_time,
+        character: object,
+        origins: dict[str, tuple[WorldEvent, str]],
+    ) -> tuple[WorldEvent, ...]:
+        """Copy recipient-scoped wardrobe facts onto a private-transition snapshot.
+
+        Private-transition basis proves *why* the moment is private; it does not
+        replace the currently valid appearance state.  Without this freeze the
+        embodiment catalog cannot ground ``private_apparel``.
+        """
+
+        if not isinstance(character, dict):
+            return ()
         appearance = appearance_state_at(
-            tuple(projection.appearance_states), subject_ref=contract.subject_ref,
+            tuple(getattr(projection, "appearance_states", ())),
+            subject_ref=subject_ref,
             at_logical_time=at_logical_time,
         )
-        if appearance is not None and appearance.visibility in _RECIPIENT_SCOPED_VISIBILITIES:
-            appearance_record, appearance_anchor = self._public_helpers._state_events(
-                projection=projection, state=appearance, event_type="AppearanceStateRecorded",
-                payload_model=AppearanceStateRecordedPayload,
-            )
-            character["appearance_state"] = appearance.model_dump(mode="json")
-            origins["/character/appearance_state"] = (appearance_record, appearance.visibility)
-            extras.extend((appearance_record, appearance_anchor))
-        return tuple(extras)
+        if appearance is None or appearance.visibility not in _RECIPIENT_SCOPED_VISIBILITIES:
+            return ()
+        appearance_record, appearance_anchor = self._public_helpers._state_events(
+            projection=projection, state=appearance, event_type="AppearanceStateRecorded",
+            payload_model=AppearanceStateRecordedPayload,
+        )
+        character["appearance_state"] = appearance.model_dump(mode="json")
+        origins["/character/appearance_state"] = (appearance_record, appearance.visibility)
+        return (appearance_record, appearance_anchor)
 
 
 __all__ = ["PrivateMediaEvidenceCompileRequest", "PrivateMediaEvidenceSnapshotCompiler"]

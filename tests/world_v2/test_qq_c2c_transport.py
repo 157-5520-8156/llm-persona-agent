@@ -349,8 +349,46 @@ async def test_qq_c2c_media_copy_is_private_exact_and_idempotent(
     assert len(delivery.images) == 1
     image_path = delivery.images[0][1]
     assert image_path.read_bytes() == image
+    assert image_path.suffix == ".png"
     assert stat.S_IMODE(image_path.stat().st_mode) == 0o600
     assert stat.S_IMODE(outbox.stat().st_mode) == 0o700
+
+
+@pytest.mark.asyncio
+async def test_qq_c2c_media_copy_uses_jpeg_suffix_for_jpeg_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outbox = tmp_path / "private-media"
+    monkeypatch.setattr(qq_c2c_transport, "_MEDIA_DELIVERY_OUTBOX", outbox)
+    image = b"\xff\xd8\xff" + b"\x00" * 24
+    body = json.dumps(
+        {"encoding": "base64", "bytes": base64.b64encode(image).decode("ascii")}
+    )
+    request = _request().model_copy(
+        update={
+            "action_id": "action:qq-c2c:media-jpeg",
+            "kind": "media_delivery",
+            "payload_ref": "payload:qq-c2c:media-jpeg",
+            "payload_hash": "sha256:" + hashlib.sha256(body.encode()).hexdigest(),
+            "content_type": "application/vnd.world-v2.media-artifact+json",
+            "body": body,
+            "idempotency_key": "idempotency:qq-c2c:media-jpeg",
+        }
+    )
+    delivery = _ImageDelivery({"message_id": "qq-media-jpeg-receipt"})
+    transport = QQC2CPlatformTransport(
+        delivery=delivery,
+        recipients_by_target={"conversation:qq:c2c:owner": "open-id-1"},
+        now=lambda: NOW,
+    )
+
+    receipt = await transport.send(request)
+
+    assert receipt.status == "provider_accepted"
+    image_path = delivery.images[0][1]
+    assert image_path.suffix == ".jpg"
+    assert image_path.read_bytes() == image
 
 
 @pytest.mark.asyncio

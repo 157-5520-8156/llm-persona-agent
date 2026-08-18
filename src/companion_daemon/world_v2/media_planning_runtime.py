@@ -4,16 +4,21 @@ This runtime never constructs prompts.  It writes immutable opportunity bytes
 to the sidecar before the ledger command, creates one deterministic planning
 Action, and records exactly one terminal planner result.  A retry joins the
 same Action/result; it never creates a replacement opportunity or re-plans.
+
+Selection-time lived facts stay on the character decision payload.  Planning
+still reads only the frozen evidence snapshot.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+import json
 
 from .event_identity import domain_idempotency_key
 from .ledger import LedgerPort
 from .media_v2 import (
-    FrozenMediaEvidenceSnapshot, ImmutableMediaPayloadStore, MediaNotRenderableRecordedPayload,
+    FrozenMediaEvidenceSnapshot, ImmutableMediaPayloadStore, MediaNotRenderable,
+    MediaNotRenderableRecordedPayload,
     MediaOpportunity, MediaOpportunityFrozenPayload, MediaPlanRecordedPayload,
     MediaPlanner, MediaPlanningResult, PhotoCandidate, PhotoCandidateOpenedPayload,
     StoredMediaPayload, continuation_trigger_id, media_digest, media_payload_hash, planning_request_id,
@@ -26,6 +31,52 @@ from .schemas import (
 
 class MediaPlanningError(ValueError):
     pass
+
+
+def unsourced_legacy_plan_reason(body: str) -> str | None:
+    """Fail closed before a paid render when a real plan is missing lived evidence.
+
+    Test doubles and non-legacy sidecars omit ``event_id`` and are left alone.
+    Production sourced-life inspection would reject these after OpenAI spend;
+    catching them here is the cheap preflight.
+    """
+
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict) or "event_id" not in data:
+        return None
+    from types import SimpleNamespace
+
+    from companion_daemon.world_v2.sourced_life_media import sourced_life_closure_error
+
+    return sourced_life_closure_error(
+        SimpleNamespace(
+            event_id=data.get("event_id"),
+            primary_evidence_ref=data.get("primary_evidence_ref") or "",
+            evidence_values=data.get("evidence_values") or {},
+        )
+    )
+
+
+def reject_unsourced_planning_result(result: MediaPlanningResult) -> MediaPlanningResult:
+    """Turn an unsourced frozen plan into NotRenderable instead of a render Action."""
+
+    if result.plan is None or result.plan_payload is None:
+        return result
+    reason = unsourced_legacy_plan_reason(result.plan_payload.body)
+    if reason is None:
+        return result
+    return MediaPlanningResult(
+        not_renderable=MediaNotRenderable(
+            opportunity_id=result.plan.opportunity_id,
+            planning_request_id=result.plan.planning_request_id,
+            event_snapshot_hash=result.plan.event_snapshot_hash,
+            reason_code="preflight_" + reason,
+            planner_version=result.plan.planner_version,
+        )
+    )
 
 
 def _event_id(*, role: str, stable: str) -> str:
@@ -181,6 +232,7 @@ class MediaPlanningRuntime:
         result = await planner.lookup(planning_request_id=action.idempotency_key)
         if result is None:
             result = await planner.plan(opportunity=opportunity, planning_request_id=action.idempotency_key)
+        result = reject_unsourced_planning_result(result)
         return self.record_terminal_result(action_id=action_id, result=result, logical_time=projection.logical_time or action.logical_time)
 
     def record_terminal_result(self, *, action_id: str, result: MediaPlanningResult, logical_time: datetime):
@@ -262,4 +314,9 @@ class MediaPlanningRuntime:
         return self._ledger.commit_at_cursor(events, expected_cursor=self._cursor(projection), commit_id="commit:media-plan:" + media_digest([event.event_id for event in events]))
 
 
-__all__ = ["MediaPlanningError", "MediaPlanningRuntime"]
+__all__ = [
+    "MediaPlanningError",
+    "MediaPlanningRuntime",
+    "reject_unsourced_planning_result",
+    "unsourced_legacy_plan_reason",
+]

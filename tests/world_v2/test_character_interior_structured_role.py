@@ -2376,6 +2376,104 @@ async def test_proactive_contact_uses_one_versioned_forced_tool_at_http_boundary
     assert "prefixItems" not in json.dumps(parameters)
 
 
+def _deepseek_rejected_anyof_object_type_paths(schema: object, path: str = "$") -> list[str]:
+    """Locate the DeepSeek strict 400 shape: anyOf branch with a type array including object."""
+
+    hits: list[str] = []
+    if isinstance(schema, dict):
+        schema_type = schema.get("type")
+        if isinstance(schema_type, list) and "object" in schema_type:
+            hits.append(f"{path} type={schema_type}")
+        variants = schema.get("anyOf")
+        if isinstance(variants, list):
+            for index, variant in enumerate(variants):
+                if isinstance(variant, dict) and isinstance(variant.get("type"), list):
+                    hits.append(f"{path}.anyOf[{index}] type={variant['type']}")
+        for key, value in schema.items():
+            hits.extend(_deepseek_rejected_anyof_object_type_paths(value, f"{path}.{key}"))
+    elif isinstance(schema, list):
+        for index, value in enumerate(schema):
+            hits.extend(_deepseek_rejected_anyof_object_type_paths(value, f"{path}[{index}]"))
+    return hits
+
+
+def _strict_proactive_payload_schema() -> dict[str, object]:
+    parameters = _strict_proactive_contract().provider_tools[0]["function"]["parameters"]
+    return parameters["properties"]["result"]["anyOf"][0]["properties"]["decision"]["properties"][
+        "payload"
+    ]
+
+
+def test_deepseek_strict_proactive_schema_has_no_object_type_arrays() -> None:
+    parameters = _strict_proactive_contract().provider_tools[0]["function"]["parameters"]
+    payload = _strict_proactive_payload_schema()["properties"]
+
+    assert _deepseek_rejected_anyof_object_type_paths(parameters) == []
+    assert "response_expectation" in payload
+    assert "response_expectation_assessment" in payload
+    assert "revisit" in payload
+    appraisal = payload["appraisal_draft"]["anyOf"][0]
+    assert "relationship_signal" in appraisal["properties"]
+    assert payload["mood"]["anyOf"][0]["enum"] == [
+        "hurt",
+        "anger",
+        "sadness",
+        "loneliness",
+        "anxiety",
+        "resentment",
+        "warmth",
+        "joy",
+    ]
+
+
+def test_deepseek_strict_proactive_schema_does_not_weaken_host_object_validation() -> None:
+    from pydantic import ValidationError
+
+    from companion_daemon.world_v2.character_interior.inbound_appraisal_wire import (
+        canonicalize_appraisal_draft_wire,
+    )
+    from companion_daemon.world_v2.proactive_action import ProactiveDraft
+
+    payload_properties = _strict_proactive_payload_schema()["properties"]
+    # Provider schema still exposes the optional object fields.  The host
+    # canonical parsers below remain fail-closed even if a future projection
+    # loosens those provider shapes further.
+    assert "response_expectation" in payload_properties
+    assert "revisit" in payload_properties
+    assert "appraisal_draft" in payload_properties
+
+    with pytest.raises(ValidationError, match="response_expectation"):
+        ProactiveDraft.model_validate_json(
+            json.dumps(
+                {
+                    **_valid_proactive_payload(),
+                    "response_expectation": {"hoped_response": "just say something"},
+                }
+            )
+        )
+    with pytest.raises(ValidationError, match="revisit"):
+        ProactiveDraft.model_validate_json(
+            json.dumps(
+                {
+                    **_valid_proactive_payload(),
+                    "revisit": {"thought": "still thinking about the walk"},
+                }
+            )
+        )
+    with pytest.raises(ValueError, match="AppraisalDraft"):
+        canonicalize_appraisal_draft_wire({"not": "an appraisal"})
+    with pytest.raises(ValueError, match="expiry must follow"):
+        ProactiveDraft.model_validate_json(
+            json.dumps(
+                _valid_proactive_payload(
+                    timing_choice="later",
+                    delay_seconds=90,
+                    expires_after_seconds=60,
+                )
+            )
+        )
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -4376,6 +4474,63 @@ def test_strict_proactive_unwrap_accepts_already_unwrapped_role_json() -> None:
     assert json.loads(unwrapped)["summary"] == inner["summary"]
 
 
+def test_strict_proactive_unwrap_closes_missing_result_wrapper_brace() -> None:
+    contract = _strict_proactive_contract()
+    inner = _silent_proactive_role_object()
+    wrapped = json.dumps({"result": inner}, ensure_ascii=False)
+    assert wrapped.endswith("}")
+
+    unwrapped = contract.unwrap(wrapped[:-1])
+
+    assert json.loads(unwrapped)["status"] == "decision"
+    assert json.loads(unwrapped)["summary"] == inner["summary"]
+
+
+def test_strict_proactive_unwrap_accepts_fenced_json_object() -> None:
+    contract = _strict_proactive_contract()
+    inner = _silent_proactive_role_object()
+    raw = "```json\n" + json.dumps({"result": inner}, ensure_ascii=False) + "\n```"
+
+    unwrapped = contract.unwrap(raw)
+
+    assert json.loads(unwrapped)["status"] == "decision"
+    assert json.loads(unwrapped)["summary"] == inner["summary"]
+
+
+def test_strict_proactive_unwrap_decodes_string_encoded_result() -> None:
+    contract = _strict_proactive_contract()
+    inner = _silent_proactive_role_object()
+    raw = json.dumps({"result": json.dumps(inner, ensure_ascii=False)}, ensure_ascii=False)
+
+    unwrapped = contract.unwrap(raw)
+
+    assert json.loads(unwrapped)["status"] == "decision"
+    assert json.loads(unwrapped)["summary"] == inner["summary"]
+
+
+def test_strict_proactive_unwrap_takes_the_first_complete_object() -> None:
+    contract = _strict_proactive_contract()
+    inner = _silent_proactive_role_object()
+    raw = (
+        json.dumps({"result": inner}, ensure_ascii=False)
+        + json.dumps({"note": "trailing sibling object"}, ensure_ascii=False)
+    )
+
+    unwrapped = contract.unwrap(raw)
+
+    assert json.loads(unwrapped)["status"] == "decision"
+    assert json.loads(unwrapped)["summary"] == inner["summary"]
+
+
+def test_strict_proactive_unwrap_still_rejects_truncated_string() -> None:
+    contract = _strict_proactive_contract()
+    inner = _silent_proactive_role_object()
+    wrapped = json.dumps({"result": inner}, ensure_ascii=False)
+
+    with pytest.raises(ValueError, match="must be one JSON object"):
+        contract.unwrap(wrapped[:40])
+
+
 def test_strict_proactive_unwrap_ignores_sibling_keys_beside_result() -> None:
     contract = _strict_proactive_contract()
     inner = _silent_proactive_role_object()
@@ -4524,3 +4679,174 @@ async def test_proactive_contract_copy_keeps_private_state_out_of_payload() -> N
     assert "payload 里禁止 private_turn_state" in contract["private_state_rule"]
     assert "world_claims 写 []" in contract["author_notes"]
     assert "对话 beat 不是 current_world" in contract["author_notes"]
+    assert "citeable_sources" in user
+    assert user["citeable_sources"]["items"]
+    assert "只写下面的 id" in user["citeable_sources"]["instruction"]
+    assert "基点" in instruction
+    assert "不是百分制" in instruction
+    assert "基点" in contract["response_expectation"]
+
+
+class _PinnedDialogueProjection(_Projection):
+    def __init__(self, extra_refs: tuple[str, ...]) -> None:
+        self._extra_refs = extra_refs
+
+    async def project(self, *, subject):
+        material = await super().project(subject=subject)
+        situation = dict(material["situation"])
+        situation["source_refs"] = tuple(
+            dict.fromkeys((*situation["source_refs"], *self._extra_refs))
+        )
+        material["situation"] = situation
+        return material
+
+
+async def _pinned_dialogue_request(
+    extra_refs: tuple[str, ...],
+) -> _InteriorRoleRequest:
+    opportunity = InteriorOpportunity(
+        opportunity_ref="opportunity:71",
+        inner_turn_ref="turn:71",
+        world_id="world:test",
+        actor_ref="character:zhizhi",
+        trigger_ref="trigger:71",
+        cursor=_CURSOR,
+        logical_time=_NOW,
+        purpose="proactive_contact",
+        source_refs=("source:private_self",),
+        capability_manifest=_proactive_manifest(),
+        context_note="One source-bound opportunity became available.",
+    )
+    interior = CharacterInterior(
+        projection=_PinnedDialogueProjection(extra_refs),
+        role=_ProjectionOnlyRole(),
+    )
+    snapshot = await interior.project(opportunity)
+    return _InteriorRoleRequest(
+        inner_turn_id="character-inner-turn:test:71",
+        phase="consider",
+        subject_ref="subject:71",
+        trigger_ref="trigger:71",
+        purpose="proactive_contact",
+        context_note=opportunity.context_note,
+        subject_source_refs=opportunity.source_refs,
+        capability_manifest=_proactive_manifest(),
+        snapshot=snapshot,
+    )
+
+
+@pytest.mark.asyncio
+async def test_proactive_unique_shape_repair_does_not_call_the_model_again() -> None:
+    plan_hash = "8c27ad02" + "ab" * 28
+    beat_hash = "b7e7e7e7" + "cd" * 28
+    canonical = (
+        f"dialogue:expression:plan:expression:{plan_hash}:beat:chat-reply:{beat_hash}:2"
+    )
+    damaged = f"dialogue:expression:plan:expression:{plan_hash}:2"
+    payload = _silent_proactive_role_object()
+    payload["attended_source_refs"] = [damaged]
+    payload["decision"]["source_refs"] = [damaged]
+    model = _RequiredToolQueueModel(json.dumps(payload, ensure_ascii=False))
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+
+    result = await role.consider(await _pinned_dialogue_request((canonical,)))
+
+    assert result["attended_source_refs"] == (canonical,)
+    assert result["decision"]["source_refs"] == [canonical]
+    assert len(model.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_proactive_extra_observation_segment_restores_without_reselection() -> None:
+    obs_hash = "544acb33c0ffee" + "ab" * 28
+    canonical = (
+        "dialogue:observation:observation:qq:2759284998:"
+        f"qq-coalesced:{obs_hash}"
+    )
+    damaged = (
+        "dialogue:observation:observation:observation:qq:2759284998:"
+        f"qq-coalesced:{obs_hash}"
+    )
+    payload = _silent_proactive_role_object()
+    payload["attended_source_refs"] = [damaged]
+    payload["decision"]["source_refs"] = [damaged]
+    model = _RequiredToolQueueModel(json.dumps(payload, ensure_ascii=False))
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+
+    result = await role.consider(await _pinned_dialogue_request((canonical,)))
+
+    assert result["attended_source_refs"] == (canonical,)
+    assert result["decision"]["source_refs"] == [canonical]
+    assert len(model.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_private_impression_prompt_does_not_mint_citeable_source_ids() -> None:
+    model = _RequiredToolQueueModel(_private_impression_result())
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+
+    await role.experience(
+        await _request(
+            phase="experience",
+            purpose="private_impression_reflection",
+            capability_manifest=_private_impression_manifest(),
+        )
+    )
+
+    user = json.loads(model.calls[0][0][1]["content"])
+    assert "citeable_sources" not in user
+
+
+@pytest.mark.asyncio
+async def test_proactive_short_catalog_id_restores_canonical_ref() -> None:
+    request = await _pinned_dialogue_request(())
+    probe_model = _RequiredToolQueueModel(
+        json.dumps(_silent_proactive_role_object(), ensure_ascii=False)
+    )
+    probe = StructuredCharacterRoleFaculty(
+        model=probe_model, model_id="deepseek-v4-flash"
+    )
+    await probe.consider(request)
+    items = json.loads(probe_model.calls[0][0][1]["content"])["citeable_sources"]["items"]
+    token = items[0]["id"]
+    canonical = items[0]["ref"]
+    payload = _silent_proactive_role_object()
+    payload["attended_source_refs"] = [token]
+    payload["decision"]["source_refs"] = [token]
+    model = _RequiredToolQueueModel(json.dumps(payload, ensure_ascii=False))
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+
+    result = await role.consider(request)
+
+    assert result["attended_source_refs"] == (canonical,)
+    assert result["decision"]["source_refs"] == [canonical]
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_beat_index_fails_closed_with_precise_chinese_detail() -> None:
+    plan_hash = "8c27ad02" + "ab" * 28
+    beat_hash = "b7e7e7e7" + "cd" * 28
+    beat_one = (
+        f"dialogue:expression:plan:expression:{plan_hash}:beat:chat-reply:{beat_hash}:1"
+    )
+    beat_two = (
+        f"dialogue:expression:plan:expression:{plan_hash}:beat:chat-reply:{beat_hash}:2"
+    )
+    payload = _silent_proactive_role_object()
+    payload["attended_source_refs"] = [
+        f"dialogue:expression:plan:expression:{plan_hash}:3"
+    ]
+    payload["decision"]["source_refs"] = ["source:private_self"]
+    model = _RequiredToolQueueModel(json.dumps(payload, ensure_ascii=False))
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+
+    with pytest.raises(StructuredRoleResultError) as raised:
+        await role.consider(await _pinned_dialogue_request((beat_one, beat_two)))
+
+    assert raised.value.code == "attended_source_unpinned"
+    assert "attended_source_refs" in raised.value.detail
+    assert plan_hash[:8] in raised.value.detail
+    assert "不能猜" in raised.value.detail or "无法唯一" in raised.value.detail
+    assert "s0" in raised.value.detail
+    assert "不要手写拼接" in raised.value.detail
+

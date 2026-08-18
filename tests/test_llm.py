@@ -9,8 +9,10 @@ import pytest
 from companion_daemon.llm import (
     DeepSeekChatModel,
     FailoverChatModel,
+    MAX_PROVIDER_CALLS_PER_TURN,
     ModelCapacityBusyError,
     ModelCircuitOpenError,
+    ModelTurnBudgetExceeded,
     OpenAICompatibleChatModel,
     ProviderCapacityGate,
     ProviderCircuitBreaker,
@@ -20,6 +22,7 @@ from companion_daemon.llm import (
     model_request_emission_scope,
     model_turn_scope,
     provider_invocation_request_hash,
+    reset_turn_provider_call_budget,
 )
 from companion_daemon.world_v2.deliberation import ModelUsageProvenance
 from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
@@ -1621,6 +1624,62 @@ async def test_schema_and_client_rejections_do_not_trip_provider_outage_circuit(
 
 
 @pytest.mark.asyncio
+async def test_non_2xx_records_truncated_response_body_without_secrets(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    captured: list[object] = []
+    secret = "sk-LIVESECRETVALUE"
+    diagnostic = "Invalid schema: additionalProperties at $.decision.payload"
+    oversized = diagnostic + ("x" * 3_000)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Authorization"] == f"Bearer {secret}"
+        return httpx.Response(400, text=oversized)
+
+    model = DeepSeekChatModel(
+        secret,
+        "https://api.deepseek.com",
+        "deepseek-v4-flash",
+        transport=httpx.MockTransport(handler),
+        usage_observer=captured.append,
+    )
+    with caplog.at_level("WARNING", logger="companion_daemon.llm"):
+        with pytest.raises(httpx.HTTPStatusError) as raised:
+            await model.complete_json(
+                [{"role": "user", "content": "hello"}],
+                tools=[
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "character_decision",
+                            "strict": True,
+                            "parameters": {
+                                "type": "object",
+                                "properties": {},
+                                "additionalProperties": False,
+                            },
+                        },
+                    }
+                ],
+                tool_choice={"type": "function", "function": {"name": "character_decision"}},
+            )
+
+    await model.aclose()
+    message = str(raised.value)
+    usage_error = captured[-1].error
+    combined = f"{message}\n{usage_error}\n{caplog.text}"
+    assert raised.value.response.status_code == 400
+    assert "400" in usage_error
+    assert diagnostic in usage_error
+    assert diagnostic in message
+    assert "/beta/chat/completions" in message
+    assert len(usage_error) <= 2400
+    assert secret not in combined
+    assert "Authorization" not in combined
+    assert "Bearer " not in combined
+
+
+@pytest.mark.asyncio
 async def test_provider_server_error_trips_outage_circuit() -> None:
     breaker = ProviderCircuitBreaker(failure_threshold=1, cooldown_seconds=30)
     model = DeepSeekChatModel(
@@ -1681,3 +1740,56 @@ async def test_caller_cancellation_is_not_swallowed_by_stubborn_child() -> None:
         await asyncio.wait_for(wrapper, timeout=0.2)
     release.set()
     await asyncio.sleep(0)
+
+
+def _ok_deepseek() -> DeepSeekChatModel:
+    return DeepSeekChatModel(
+        "key",
+        "https://api.deepseek.com",
+        "deepseek-v4-flash",
+        thinking_enabled=False,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(
+                200, json={"choices": [{"message": {"content": "ok"}}]}
+            )
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_named_turn_is_capped_at_eight_provider_calls() -> None:
+    reset_turn_provider_call_budget()
+    model = _ok_deepseek()
+    with model_turn_scope(world_id="world-cap", turn_id="turn-cap"):
+        for _ in range(MAX_PROVIDER_CALLS_PER_TURN):
+            assert await model.complete([{"role": "user", "content": "hi"}]) == "ok"
+        with pytest.raises(ModelTurnBudgetExceeded, match="already spent 8 provider calls"):
+            await model.complete([{"role": "user", "content": "hi"}])
+
+
+@pytest.mark.asyncio
+async def test_two_consecutive_turn_failures_open_a_thirty_second_cooldown() -> None:
+    reset_turn_provider_call_budget()
+    model = DeepSeekChatModel(
+        "key",
+        "https://api.deepseek.com",
+        "deepseek-v4-flash",
+        thinking_enabled=False,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(500, json={"error": "unavailable"})
+        ),
+    )
+    with model_turn_scope(world_id="world-cool", turn_id="turn-cool"):
+        for _ in range(2):
+            with pytest.raises(httpx.HTTPStatusError):
+                await model.complete([{"role": "user", "content": "hi"}])
+        with pytest.raises(ModelTurnBudgetExceeded, match="failure cooldown"):
+            await model.complete([{"role": "user", "content": "hi"}])
+
+
+@pytest.mark.asyncio
+async def test_unscoped_calls_are_not_turn_capped() -> None:
+    reset_turn_provider_call_budget()
+    model = _ok_deepseek()
+    for _ in range(MAX_PROVIDER_CALLS_PER_TURN + 2):
+        assert await model.complete([{"role": "user", "content": "hi"}]) == "ok"

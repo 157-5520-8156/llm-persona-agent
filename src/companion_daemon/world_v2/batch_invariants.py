@@ -11,7 +11,9 @@ from .accepted_effect_contracts import rehydrate_acceptance_manifest_v3
 from .appraisal_acceptance_manifest import (
     APPRAISAL_ACCEPTANCE_MANIFEST_VERSION,
     AppraisalAcceptanceManifest,
+    appraisal_source_trigger_is_retained,
     canonical_appraisal_acceptance_value_hash,
+    retained_appraisal_trigger_payload,
 )
 from .affect_acceptance_manifest import (
     AFFECT_ACCEPTANCE_MANIFEST_VERSION,
@@ -454,6 +456,10 @@ def validate_commit_batch(
         ]
         if appraisal.evaluated_world_revision != expected_world_revision or len(matching) != 1:
             raise ValueError("AppraisalAccepted requires one revision-pinned AcceptanceRecorded")
+        if appraisal_source_trigger_is_retained(
+            str(matching[0].get("completion_event_id") or "")
+        ):
+            continue
         if isinstance(appraisal, AppraisalAcceptedPayload):
             outcome_ref = f"appraisal:{appraisal.appraisal.appraisal_id}"
         elif isinstance(appraisal, AppraisalSupersededPayload):
@@ -2422,11 +2428,20 @@ def _validate_authorized_appraisal_acceptance_manifest_batch(
         return
     if not authorized:
         raise ValueError("appraisal_acceptance.recorder_capability_required")
-    if len(manifests) != 1 or len(events) != 3:
+    if len(manifests) != 1:
         raise ValueError("appraisal_acceptance.accepted_batch_must_be_exact")
-    acceptance, mutation, completion = events
+    acceptance = events[0]
     try:
         manifest = AppraisalAcceptanceManifest.model_validate_json(acceptance.payload_json)
+    except Exception as exc:
+        raise ValueError("appraisal_acceptance.accepted_batch_payload_is_invalid") from exc
+    retain_source_trigger = appraisal_source_trigger_is_retained(manifest.completion_event_id)
+    expected_len = 2 if retain_source_trigger else 3
+    if len(events) != expected_len:
+        raise ValueError("appraisal_acceptance.accepted_batch_must_be_exact")
+    mutation = events[1]
+    completion = None if retain_source_trigger else events[2]
+    try:
         mutation_model = {
             "AppraisalAccepted": AppraisalAcceptedPayload,
             "AppraisalContradicted": AppraisalContradictedPayload,
@@ -2435,20 +2450,30 @@ def _validate_authorized_appraisal_acceptance_manifest_batch(
         payload = mutation_model.model_validate_json(mutation.payload_json)
     except Exception as exc:
         raise ValueError("appraisal_acceptance.accepted_batch_payload_is_invalid") from exc
+    expected_types = (
+        ("AcceptanceRecorded", manifest.mutation_event_type)
+        if retain_source_trigger
+        else ("AcceptanceRecorded", manifest.mutation_event_type, "TriggerProcessCompleted")
+    )
     if (
         manifest.evaluated_world_revision != expected_world_revision
-        or tuple(event.event_type for event in events)
-        != ("AcceptanceRecorded", manifest.mutation_event_type, "TriggerProcessCompleted")
+        or tuple(event.event_type for event in events) != expected_types
         or acceptance.causation_id != manifest.proposal_event_ref
         or mutation.causation_id != acceptance.event_id
-        or completion.causation_id != mutation.event_id
         or mutation.event_id != manifest.mutation_event_id
-        or completion.event_id != manifest.completion_event_id
         or mutation.payload_hash != manifest.mutation_payload_hash
-        or completion.payload_hash != manifest.completion_payload_hash
+        or (
+            completion is not None
+            and (
+                completion.causation_id != mutation.event_id
+                or completion.event_id != manifest.completion_event_id
+                or completion.payload_hash != manifest.completion_payload_hash
+            )
+        )
     ):
         raise ValueError("appraisal_acceptance.batch_does_not_match_manifest")
     first = acceptance
+    companions = (mutation,) if completion is None else (mutation, completion)
     if any(
         (
             item.world_id != first.world_id
@@ -2459,7 +2484,7 @@ def _validate_authorized_appraisal_acceptance_manifest_batch(
             or item.trace_id != first.trace_id
             or item.correlation_id != first.correlation_id
         )
-        for item in (mutation, completion)
+        for item in companions
     ):
         raise ValueError("appraisal_acceptance.envelope_metadata_mismatch")
     if (
@@ -2473,13 +2498,22 @@ def _validate_authorized_appraisal_acceptance_manifest_batch(
         != manifest.mutation_payload_hash
     ):
         raise ValueError("appraisal_acceptance.mutation_does_not_match_manifest")
-    completion_payload = completion.payload()
-    if (
-        completion_payload.get("trigger_id") != manifest.trigger_id
-        or canonical_appraisal_acceptance_value_hash(completion_payload)
-        != manifest.completion_payload_hash
-    ):
-        raise ValueError("appraisal_acceptance.trigger_completion_does_not_match_manifest")
+    if retain_source_trigger:
+        expected_retention = retained_appraisal_trigger_payload(trigger_id=manifest.trigger_id)
+        if (
+            canonical_appraisal_acceptance_value_hash(expected_retention)
+            != manifest.completion_payload_hash
+        ):
+            raise ValueError("appraisal_acceptance.trigger_completion_does_not_match_manifest")
+    else:
+        assert completion is not None
+        completion_payload = completion.payload()
+        if (
+            completion_payload.get("trigger_id") != manifest.trigger_id
+            or canonical_appraisal_acceptance_value_hash(completion_payload)
+            != manifest.completion_payload_hash
+        ):
+            raise ValueError("appraisal_acceptance.trigger_completion_does_not_match_manifest")
     for event in (acceptance, mutation):
         expected = domain_idempotency_key(
             event_type=event.event_type, world_id=event.world_id, payload=event.payload()

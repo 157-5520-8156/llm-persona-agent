@@ -172,14 +172,18 @@ class _LifeDevelopment:
         *,
         reason_code: str | None = None,
         commit_plan_on_ledger: object | None = None,
+        raises: Exception | None = None,
     ) -> None:
         self.status = status
         self.reason_code = reason_code
         self.commit_plan_on_ledger = commit_plan_on_ledger
+        self.raises = raises
         self.calls = []
 
     async def advance_once(self, **kwargs):  # type: ignore[no-untyped-def]
         self.calls.append(kwargs)
+        if self.raises is not None:
+            raise self.raises
         if self.commit_plan_on_ledger is not None:
             projection = self.commit_plan_on_ledger.project()
             projection.plans = (
@@ -529,6 +533,34 @@ async def test_life_ecology_fails_safe_without_media_when_activity_followup_fail
 
 
 @pytest.mark.asyncio
+async def test_life_ecology_fails_safe_when_life_development_raises() -> None:
+    event = _event("clock-life-development-raise")
+    trigger_store, media = _TriggerStore(), _Media()
+    development = _LifeDevelopment(
+        "no_op", raises=ValueError("plan cannot weaken participant NPC privacy")
+    )
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event),
+        trigger_store=trigger_store,
+        media_followup=media,
+        activity_followup=_Activity(status="no_op"),
+        life_development_followup=development,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:life-development-raise",
+        correlation_id="correlation:life-development-raise",
+    )
+
+    assert result.status == "failed_safe"
+    assert result.reason_code == "life_ecology.life_development_followup_failed"
+    assert media.calls == []
+    assert trigger_store.completed[0][2] == "failed_safe"
+
+
+@pytest.mark.asyncio
 async def test_activity_character_failure_uses_the_shared_technical_retry_lane() -> None:
     event = _event("clock-activity-character-failure")
     trigger_store, media = _TriggerStore(), _Media()
@@ -711,6 +743,8 @@ async def test_same_wake_plan_commit_gives_activity_a_second_opening_chance() ->
     assert result.activity_followup_status == "no_op"
     assert order == ["activity", "development", "activity"]
     assert len(activity.calls) == 2
+    assert activity.calls[0].get("renewed_plan_catalog") is False
+    assert activity.calls[1].get("renewed_plan_catalog") is True
     assert activity.plans_seen == [0, 1]
     assert ledger.project().plans[0].plan_id == "plan:same-wake-bookstore"
     assert trigger_store.completed[0][2] == "life_development_plan_committed"

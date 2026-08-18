@@ -909,3 +909,109 @@ async def test_closed_window_abandon_can_still_be_selected_without_spending_day_
     ]
     assert store.spent("day_open", local_day_key(NOW)) is False
     assert len(interior.opportunities) == 1
+
+
+@pytest.mark.asyncio
+async def test_renewed_plan_catalog_asks_after_day_open_is_spent() -> None:
+    from companion_daemon.world_v2.daily_occasion import (
+        InMemoryDailyOccasionStore,
+        local_day_key,
+    )
+
+    projection, trigger_id = _claimed_projection()
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    store = InMemoryDailyOccasionStore()
+    store.mark("day_open", local_day_key(NOW))
+    skipped_interior = _Interior()
+    skipped = await _worker(
+        ledger=ledger, interior=skipped_interior, daily_occasions=store
+    ).advance_once(
+        wake_event_ref="event:clock:opening",
+        trigger_id=trigger_id,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:renewed-skip",
+        correlation_id="correlation:renewed-skip",
+    )
+    assert skipped.status == "no_op"
+    assert skipped.reason_code == "activity_lifecycle.day_open_already_spent"
+    assert skipped_interior.opportunities == []
+
+    asked_interior = _Interior(choice="no_op")
+    asked = await _worker(
+        ledger=ledger, interior=asked_interior, daily_occasions=store
+    ).advance_once(
+        wake_event_ref="event:clock:opening",
+        trigger_id=trigger_id,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:renewed-ask",
+        correlation_id="correlation:renewed-ask",
+        renewed_plan_catalog=True,
+    )
+    assert asked.status == "no_op"
+    assert len(asked_interior.opportunities) == 1
+    occasion = asked_interior.opportunities[0].occasion
+    assert occasion is not None
+    assert occasion.kind == "life_beat"
+    assert occasion.merge_key.endswith(":renewed-plan")
+
+
+@pytest.mark.asyncio
+async def test_completable_active_plan_asks_once_after_day_open_is_spent() -> None:
+    from companion_daemon.world_v2.daily_occasion import (
+        InMemoryDailyOccasionStore,
+        local_day_key,
+    )
+
+    started_at = NOW - timedelta(minutes=50)
+    plan = _plan(
+        "reading",
+        status="active",
+        entity_revision=2,
+        scheduled_window=DueWindow(
+            opens_at=started_at,
+            closes_at=NOW + timedelta(minutes=10),
+        ),
+    ).model_copy(update={"last_transitioned_at": started_at})
+    projection, trigger_id = _claimed_custom_projection(plan)
+    openings = _catalog().openings_for(projection=projection, wake_event_ref=WAKE_REF)
+    assert "complete" in {item.operation for item in openings.openings}
+    assert all(item.opening_kind == "ordinary" for item in openings.openings)
+
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    store = InMemoryDailyOccasionStore()
+    store.mark("day_open", local_day_key(NOW))
+    first = _Interior(choice="no_op")
+    asked = await _worker(
+        ledger=ledger, interior=first, daily_occasions=store
+    ).advance_once(
+        wake_event_ref=WAKE_REF,
+        trigger_id=trigger_id,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:complete-ask",
+        correlation_id="correlation:complete-ask",
+    )
+    assert asked.status == "no_op"
+    assert len(first.opportunities) == 1
+    occasion = first.opportunities[0].occasion
+    assert occasion is not None
+    assert occasion.kind == "life_beat"
+    assert occasion.merge_key.startswith("active-complete:")
+
+    second = _Interior()
+    skipped = await _worker(
+        ledger=ledger, interior=second, daily_occasions=store
+    ).advance_once(
+        wake_event_ref="event:clock:later",
+        trigger_id=trigger_id,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="trace:complete-skip",
+        correlation_id="correlation:complete-skip",
+    )
+    assert skipped.status == "no_op"
+    assert second.opportunities == []

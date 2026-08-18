@@ -32,6 +32,7 @@ from companion_daemon.onebot_adapter import (
 from .platform_action_executor import MediaProviderTransport
 from .dashboard_runtime_observation import DashboardRuntimeObservationSampler
 from .model_completion import ChatCompletionModel
+from .process_health import compile_process_health, ledger_path_is_writable
 from .production_latency_health import production_latency_health_snapshot
 from .production_reliability_metrics import reliability_snapshot
 from .durable_reliability import durable_reliability_snapshot
@@ -105,9 +106,7 @@ def _same_dashboard_origin(request: Request) -> bool:
     return supplied is not None and supplied == expected
 
 
-def _dashboard_session_codec(
-    asgi_app: FastAPI, settings: Settings
-) -> DashboardSessionCodec | None:
+def _dashboard_session_codec(asgi_app: FastAPI, settings: Settings) -> DashboardSessionCodec | None:
     token = (settings.world_v2_dashboard_operator_token or "").strip()
     secret = getattr(asgi_app.state, "dashboard_session_secret", None)
     if not token or not isinstance(secret, bytes):
@@ -395,12 +394,8 @@ def create_qq_c2c_onebot_app(
             "supports_strict_output_contract",
             None,
         )
-        if not callable(strict_checker) or not strict_checker(
-            "visible-beat-source-verdict.1"
-        ):
-            raise ValueError(
-                "test source reviewer requires the compact visible-Beat contract"
-            )
+        if not callable(strict_checker) or not strict_checker("visible-beat-source-verdict.1"):
+            raise ValueError("test source reviewer requires the compact visible-Beat contract")
     if (
         not use_fake_model
         and _test_only_model is None
@@ -456,39 +451,25 @@ def create_qq_c2c_onebot_app(
         perception_budget_limit=(
             perception_bundle.budget_limit if perception_bundle is not None else 0
         ),
-        test_only_provider_capture_authority_id=(
-            _test_only_provider_capture_authority_id
-        ),
+        test_only_provider_capture_authority_id=(_test_only_provider_capture_authority_id),
         scheduler_interval_seconds=scheduler_interval_seconds,
     )
     scheduler = QQC2CSchedulerDiagnostics(interval_seconds=scheduler_interval_seconds)
     dashboard_runtime_sampler = DashboardRuntimeObservationSampler(
         scheduler=lambda: scheduler.snapshot(now=datetime.now(UTC)),
-        character_interior=_dashboard_host_probe(
-            host, "dashboard_character_interior_health"
-        ),
-        local_provider_capacity=_dashboard_host_probe(
-            host, "local_provider_capacity_health"
-        ),
+        character_interior=_dashboard_host_probe(host, "dashboard_character_interior_health"),
+        local_provider_capacity=_dashboard_host_probe(host, "local_provider_capacity_health"),
         text_endpoint=_dashboard_host_probe(host, "text_endpoint_health"),
-        proactive_source_authority=_dashboard_host_probe(
-            host, "proactive_source_authority_health"
-        ),
-        life_source_authority=_dashboard_host_probe(
-            host, "life_source_authority_health"
-        ),
+        proactive_source_authority=_dashboard_host_probe(host, "proactive_source_authority_health"),
+        life_source_authority=_dashboard_host_probe(host, "life_source_authority_health"),
         external_perception_upstream=_dashboard_host_probe(
             host, "external_world_perception_health"
         ),
         model_usage_budget=_dashboard_host_probe(host, "usage_budget_health"),
         process_latency=lambda: _dashboard_latency_probe(host),
         storage=lambda: ledger_storage_snapshot(settings.database_path),
-        expression_episode=_dashboard_host_probe(
-            host, "dashboard_expression_episode_health"
-        ),
-        semantic_recall=_dashboard_host_probe(
-            host, "dashboard_semantic_recall_health"
-        ),
+        expression_episode=_dashboard_host_probe(host, "dashboard_expression_episode_health"),
+        semantic_recall=_dashboard_host_probe(host, "dashboard_semantic_recall_health"),
     )
 
     api_url = settings.napcat_api_url if adapter == "napcat" else settings.onebot_api_url
@@ -611,25 +592,37 @@ def create_qq_c2c_onebot_app(
 
     @app.get("/health")
     async def health():
-        world = await host.world_health_diagnostics()
+        # Report-only: this handler never exits the process.  launchd KeepAlive
+        # watches the PID, not this JSON, so a non-running status must not 5xx.
+        diagnostics_error: str | None = None
+        world: dict[str, object] = {}
+        try:
+            world = await host.world_health_diagnostics()
+        except Exception as exc:  # health must stay available
+            diagnostics_error = type(exc).__name__
         scheduler_view = scheduler.snapshot(now=datetime.now(UTC), world=world)
-        scheduler_view["local_provider_capacity"] = host.local_provider_capacity_health()
-        scheduler_view["text_turn_endpoint"] = host.text_endpoint_health()
-        scheduler_view["proactive_source_authority"] = host.proactive_source_authority_health()
-        scheduler_view["life_source_authority"] = host.life_source_authority_health()
-        scheduler_view["budget"] = host.usage_budget_health()
-        external_perception_health = host.external_world_perception_health()
-        downstream = world.get("external_perception_downstream")
-        if isinstance(downstream, dict):
-            external_perception_health["downstream"] = downstream
-        scheduler_view["external_world_perception"] = external_perception_health
-        scheduler_view["performance"] = production_latency_health_snapshot(host.latency_samples())
-        # Rolling process-local reliability counters (24h window): provider
-        # dispatch ACKs are reported separately from strongly evidenced
-        # visible replies, alongside failsafe engagements and repairs.  The
-        # ledger stays the durable audit; this makes the failsafe rate
-        # checkable at a glance without a ledger scan.
-        scheduler_view["reliability"] = reliability_snapshot()
+        try:
+            scheduler_view["local_provider_capacity"] = host.local_provider_capacity_health()
+            scheduler_view["text_turn_endpoint"] = host.text_endpoint_health()
+            scheduler_view["proactive_source_authority"] = host.proactive_source_authority_health()
+            scheduler_view["life_source_authority"] = host.life_source_authority_health()
+            scheduler_view["budget"] = host.usage_budget_health()
+            external_perception_health = host.external_world_perception_health()
+            downstream = world.get("external_perception_downstream")
+            if isinstance(downstream, dict):
+                external_perception_health["downstream"] = downstream
+            scheduler_view["external_world_perception"] = external_perception_health
+            scheduler_view["performance"] = production_latency_health_snapshot(
+                host.latency_samples()
+            )
+            # Rolling process-local reliability counters (24h window): provider
+            # dispatch ACKs are reported separately from strongly evidenced
+            # visible replies, alongside failsafe engagements and repairs.  The
+            # ledger stays the durable audit; this makes the failsafe rate
+            # checkable at a glance without a ledger scan.
+            scheduler_view["reliability"] = reliability_snapshot()
+        except Exception as exc:  # health must stay available
+            diagnostics_error = diagnostics_error or type(exc).__name__
         try:
             scheduler_view["reliability_ledger"] = durable_reliability_snapshot(
                 settings.database_path
@@ -643,8 +636,36 @@ def create_qq_c2c_onebot_app(
             scheduler_view["storage"] = ledger_storage_snapshot(settings.database_path)
         except Exception as exc:  # health must stay available
             scheduler_view["storage"] = {"status": "error", "error": type(exc).__name__}
+        writable = ledger_path_is_writable(settings.database_path)
+        storage = scheduler_view.get("storage")
+        if isinstance(storage, dict):
+            storage["writable"] = writable
+        interior = scheduler_view.get("character_interior")
+        verdict = compile_process_health(
+            healthy_status="running",
+            character_interior=interior if isinstance(interior, dict) else None,
+            budget=scheduler_view.get("budget")
+            if isinstance(scheduler_view.get("budget"), dict)
+            else None,
+            scheduler_status=(
+                str(scheduler_view.get("status"))
+                if isinstance(scheduler_view.get("status"), str)
+                else None
+            ),
+            storage=storage if isinstance(storage, dict) else None,
+            recall_semantic=scheduler_view.get("recall_semantic")
+            if isinstance(scheduler_view.get("recall_semantic"), dict)
+            else None,
+            external_perception=scheduler_view.get("external_world_perception")
+            if isinstance(scheduler_view.get("external_world_perception"), dict)
+            else None,
+            ledger_writable=writable,
+            diagnostics_error=diagnostics_error,
+        )
         return {
-            "status": "running",
+            "status": verdict.status,
+            "reason": verdict.reason,
+            "reasons": list(verdict.reasons),
             "adapter": adapter,
             "world_v2": True,
             "mode": "c2c-normalized-ingress",

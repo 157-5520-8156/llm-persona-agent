@@ -8,6 +8,7 @@ import time
 from uuid import uuid4
 from datetime import UTC, datetime, timedelta
 
+from .delayed_trigger_policies import TECHNICAL_RETRY_BACKOFF_SECONDS
 from .errors import ConcurrencyConflict, IdempotencyConflict
 from .ledger import LedgerPort, WorldLedger
 from .event_identity import domain_idempotency_key
@@ -17,6 +18,19 @@ from .acceptance_manifest import (
     derive_acceptance_manifest_proposal_v2,
 )
 from .clock_authority import append_clock_transition, resolve_latest_clock
+from .declared_display_contract import (
+    DECLARED_DISPLAY_HITCH_CAS_ATTEMPTS,
+    DECLARED_DISPLAY_HITCH_RETRYABLE_REASONS,
+    DECLARED_DISPLAY_HITCH_TERMINAL_REASONS,
+)
+from .declared_display_runtime import (
+    DeclaredDisplayCommand,
+    DeclaredDisplayHitchResult,
+    DeclaredDisplayRuntime,
+    classify_declared_display_hitch_failure,
+    declared_display_hitch_terminal_payload,
+    validate_declared_display_hitch_terminal,
+)
 from .goal_expiry_runtime import build_due_goal_expiry_events
 from .occurrence_clock_continuation import build_occurrence_clock_events
 from .outcome_observation_runtime import build_outcome_observation_event
@@ -75,7 +89,9 @@ from .character_interior.inbound_relationship import InboundRelationshipSignalWo
 from .relationship_commitment_worker import (
     RelationshipCommitmentWorker,
     RelationshipCommitmentWorkResult,
+    RelationshipCommitmentWorkerError,
 )
+from .relationship_proposal_compiler import RelationshipProposalCompilerError
 from .batch_invariants import interaction_appraisal_trigger_identity
 from .appraisal_acceptance_runtime import (
     AppraisalAcceptanceError,
@@ -135,6 +151,21 @@ _HISTORICAL_QUICK_REACTION_PROPOSAL_PREFIX = "proposal:quick-reaction:"
 
 _LOG = logging.getLogger(__name__)
 _INGRESS_CAS_MAX_ATTEMPTS = 8
+
+
+class _BackgroundWorkerIsolated:
+    """One unexpected worker failure; drain continues, then re-raises if idle."""
+
+    __slots__ = ("exc",)
+
+    def __init__(self, exc: BaseException | None) -> None:
+        self.exc = exc
+
+
+_COMPILER_BACKOFF_EXCEPTIONS = (
+    RelationshipProposalCompilerError,
+    RelationshipCommitmentWorkerError,
+)
 
 
 def _user_perceived_ms(observation: Observation) -> str | None:
@@ -425,6 +456,10 @@ class WorldRuntime:
         # visible inbound lane can then commit/answer while affect, memory,
         # appraisal, and proactive workers continue on a stale-safe cursor.
         self._background_lock = asyncio.Lock()
+        # Process-local backoff for unexpected worker exceptions.  Typed
+        # terminals are durable and do not use this table; CAS/idempotency
+        # keep their existing control-flow exceptions.
+        self._background_worker_failures: dict[str, tuple[int, float]] = {}
 
     @property
     def world_id(self) -> str:
@@ -548,6 +583,61 @@ class WorldRuntime:
         # visible turn.
         await asyncio.wait(tasks, timeout=0.05)
 
+    def _background_worker_is_deferred(self, name: str) -> bool:
+        recorded = self._background_worker_failures.get(name)
+        if recorded is None:
+            return False
+        _count, deferred_until = recorded
+        return time.monotonic() < deferred_until
+
+    def _record_background_worker_failure(self, name: str) -> None:
+        count, _until = self._background_worker_failures.get(name, (0, 0.0))
+        count += 1
+        delay = TECHNICAL_RETRY_BACKOFF_SECONDS[min(max(count, 1), 3) - 1]
+        self._background_worker_failures[name] = (count, time.monotonic() + delay)
+        _LOG.warning(
+            "world v2 background worker %s entering technical backoff "
+            "(failures=%s backoff_s=%s)",
+            name,
+            count,
+            delay,
+        )
+
+    def _clear_background_worker_failure(self, name: str) -> None:
+        self._background_worker_failures.pop(name, None)
+
+    async def _isolated_background_worker(self, name: str, drain):
+        """Run one background worker without letting an unexpected exception abort drain.
+
+        ``ConcurrencyConflict`` and ``IdempotencyConflict`` keep their existing
+        control-flow semantics.  Other exceptions are logged and the remaining
+        workers still run.  Compiler/commitment errors that will fail the same
+        way on retry also enter process-local technical backoff.  If the whole
+        drain would otherwise be idle, the isolated exception is re-raised so
+        the host still records a technical failure.
+        """
+
+        if self._background_worker_is_deferred(name):
+            _LOG.warning(
+                "world v2 background worker %s still in technical backoff; skipping",
+                name,
+            )
+            return _BackgroundWorkerIsolated(None)
+        try:
+            result = await drain()
+        except (ConcurrencyConflict, IdempotencyConflict):
+            raise
+        except Exception as exc:
+            _LOG.exception(
+                "world v2 background worker %s failed; isolating remainder of this drain",
+                name,
+            )
+            if isinstance(exc, _COMPILER_BACKOFF_EXCEPTIONS):
+                self._record_background_worker_failure(name)
+            return _BackgroundWorkerIsolated(exc)
+        self._clear_background_worker_failure(name)
+        return result
+
     async def drain_background_once(self):
         """Run one background job and turn an expected cursor race into a retry."""
 
@@ -588,22 +678,48 @@ class WorldRuntime:
         # holding ``_lock`` across its provider call would make a slow
         # low-priority thought block the next user message.
         async with self._background_lock:
+            isolated_exc: BaseException | None = None
+
+            async def invoke(name: str, drain):
+                nonlocal isolated_exc
+                result = await self._isolated_background_worker(name, drain)
+                if isinstance(result, _BackgroundWorkerIsolated):
+                    if result.exc is not None:
+                        isolated_exc = result.exc
+                    return None
+                return result
+
             # A user-visible turn that failed for technical reasons outranks
             # advisory cognition once its recorded retry lease expires.  The
             # process is event-sourced and source-bound; this does not turn a
             # model-authored `silent` choice into a retry.
-            expression_retry = await self._drain_expression_retry_once()
+            expression_retry = await invoke(
+                "expression_retry",
+                self._drain_expression_retry_once,
+            )
             if expression_retry is not None:
                 return expression_retry
-            inbound_state = await self._drain_inbound_state_settlement_once()
+            inbound_state = await invoke(
+                "inbound_state_settlement",
+                self._drain_inbound_state_settlement_once,
+            )
             if inbound_state is not None:
                 return inbound_state
             if self._perception_trigger_runtime is not None:
-                perception = await self._perception_trigger_runtime.drain_one()
-                if perception.status != "idle":
+                perception = await invoke(
+                    "perception_trigger",
+                    self._perception_trigger_runtime.drain_one,
+                )
+                if (
+                    perception is not None
+                    and perception.status != "idle"
+                ):
                     return perception
             if self._character_interior is not None:
-                reconsideration = await self._character_interior._drain_reconsideration_once()  # noqa: SLF001
+                reconsideration = await invoke(
+                    "reconsideration",
+                    self._character_interior._drain_reconsideration_once,  # noqa: SLF001
+                )
                 if reconsideration is not None:
                     return reconsideration
             # Initiative is time-sensitive: an eligible silence or explicit
@@ -613,27 +729,43 @@ class WorldRuntime:
             # silent.  Before its opening window this check is idle and costs
             # no authority, so ordinary appraisal/fact work keeps its order.
             if self._character_interior is not None:
-                proactive = await self._character_interior._drain_proactive_once()  # noqa: SLF001
+                proactive = await invoke(
+                    "proactive",
+                    self._character_interior._drain_proactive_once,  # noqa: SLF001
+                )
                 if proactive is not None:
                     return proactive
             if self._relationship_commitment_worker is not None:
-                commitment = await self._relationship_commitment_worker.drain_one()
+                commitment = await invoke(
+                    "relationship_commitment",
+                    self._relationship_commitment_worker.drain_one,
+                )
                 if commitment is not None:
                     return commitment
             if self._interaction_act_worker is not None:
-                interaction_act = await self._interaction_act_worker.drain_one()
+                interaction_act = await invoke(
+                    "interaction_act",
+                    self._interaction_act_worker.drain_one,
+                )
                 if interaction_act is not None:
                     return interaction_act
             if self._outcome_deliberation_turn is not None:
                 assert self._outcome_worker is not None
                 assert self._outcome_deliberation_owner is not None
-                outcome = await OutcomeTriggerRuntime(
-                    ledger=self._ledger,
-                    turn=self._outcome_deliberation_turn,
-                    worker=self._outcome_worker,
-                    owner_id=self._outcome_deliberation_owner,
-                ).drain_one()
-                if outcome.status != "idle":
+
+                async def _drain_outcome():
+                    return await OutcomeTriggerRuntime(
+                        ledger=self._ledger,
+                        turn=self._outcome_deliberation_turn,
+                        worker=self._outcome_worker,
+                        owner_id=self._outcome_deliberation_owner,
+                    ).drain_one()
+
+                outcome = await invoke(
+                    "outcome_deliberation",
+                    _drain_outcome,
+                )
+                if outcome is not None and outcome.status != "idle":
                     return outcome
             # Settle source-bound user Facts before the larger appraisal/NPC
             # backlog can consume a bounded scheduler pass. This keeps names
@@ -642,57 +774,111 @@ class WorldRuntime:
             if self._fact_acceptance is not None:
                 assert self._fact_adapter is not None
                 assert self._interaction_fact_owner is not None
-                fact = await InteractionFactTriggerRuntime(
-                    ledger=self._fact_acceptance.ledger,
-                    acceptance=self._fact_acceptance,
-                    adapter=self._fact_adapter,
-                    character_interior=self._character_interior,
-                    memory_lifecycle=self._fact_memory_lifecycle,
-                    memory_actor_ref=self._fact_memory_actor_ref,
-                    owner_id=self._interaction_fact_owner,
-                ).drain_one()
-                if fact.status not in {"idle", "owned_elsewhere"}:
+
+                async def _drain_fact():
+                    return await InteractionFactTriggerRuntime(
+                        ledger=self._fact_acceptance.ledger,
+                        acceptance=self._fact_acceptance,
+                        adapter=self._fact_adapter,
+                        character_interior=self._character_interior,
+                        memory_lifecycle=self._fact_memory_lifecycle,
+                        memory_actor_ref=self._fact_memory_actor_ref,
+                        owner_id=self._interaction_fact_owner,
+                    ).drain_one()
+
+                fact = await invoke(
+                    "interaction_fact",
+                    _drain_fact,
+                )
+                if (
+                    fact is not None
+                    and fact.status not in {"idle", "owned_elsewhere"}
+                ):
                     return fact
             if self._reflection_scheduler is not None:
-                reflection = self._reflection_scheduler.open_once(
-                    trace_id="trace:reflection-scheduler",
-                    correlation_id="correlation:reflection-scheduler",
+
+                async def _drain_reflection():
+                    result = self._reflection_scheduler.open_once(
+                        trace_id="trace:reflection-scheduler",
+                        correlation_id="correlation:reflection-scheduler",
+                    )
+                    return result if result.opened else None
+
+                reflection = await invoke(
+                    "reflection_scheduler",
+                    _drain_reflection,
                 )
-                if reflection.opened:
+                if reflection is not None:
                     return None
             if self._character_interior is not None:
-                stimulus = await self._character_interior._drain_world_stimulus_once()  # noqa: SLF001
+                stimulus = await invoke(
+                    "world_stimulus",
+                    self._character_interior._drain_world_stimulus_once,  # noqa: SLF001
+                )
                 if stimulus is not None:
                     return stimulus
             if self._inbound_relationship_worker is not None:
-                relationship = await self._inbound_relationship_worker.drain_one()
-                if relationship is not None and relationship.status != "owned_elsewhere":
+                relationship = await invoke(
+                    "inbound_relationship",
+                    self._inbound_relationship_worker.drain_one,
+                )
+                if (
+                    relationship is not None
+                    and relationship.status != "owned_elsewhere"
+                ):
                     return relationship
             if self._relationship_adjustment_worker is not None:
                 assert self._relationship_adjustment_owner is not None
-                adjustment = await RelationshipAdjustmentTriggerRuntime(
-                    ledger=self._ledger,
-                    worker=self._relationship_adjustment_worker,
-                    owner_id=self._relationship_adjustment_owner,
-                ).drain_one()
-                if adjustment.status != "idle":
+
+                async def _drain_adjustment():
+                    return await RelationshipAdjustmentTriggerRuntime(
+                        ledger=self._ledger,
+                        worker=self._relationship_adjustment_worker,
+                        owner_id=self._relationship_adjustment_owner,
+                    ).drain_one()
+
+                adjustment = await invoke(
+                    "relationship_adjustment",
+                    _drain_adjustment,
+                )
+                if (
+                    adjustment is not None
+                    and adjustment.status != "idle"
+                ):
                     return adjustment
             if self._character_interior is not None:
-                impression = await self._character_interior._drain_private_impression_once()  # noqa: SLF001
+                impression = await invoke(
+                    "private_impression",
+                    self._character_interior._drain_private_impression_once,  # noqa: SLF001
+                )
                 if impression is not None:
                     return impression
             if self._memory_withdrawal_review is not None:
-                memory_review = await self._memory_withdrawal_review.drain_one()
-                if memory_review.status != "idle":
+                memory_review = await invoke(
+                    "memory_withdrawal_review",
+                    self._memory_withdrawal_review.drain_one,
+                )
+                if (
+                    memory_review is not None
+                    and memory_review.status != "idle"
+                ):
                     return memory_review
             # A delayed social effect is useful, but it must not starve the
             # same observation's appraisal, fact, relationship or affect
             # consumers. Immediate and silent decisions are already final in
             # the shared proposal audit and are filtered by the worker.
             if self._social_action_worker is not None:
-                social_action = await self._social_action_worker.drain_one()
-                if social_action.status != "idle":
+                social_action = await invoke(
+                    "social_action",
+                    self._social_action_worker.drain_one,
+                )
+                if (
+                    social_action is not None
+                    and social_action.status != "idle"
+                ):
                     return social_action
+            if isolated_exc is not None:
+                raise isolated_exc
             return None
 
     async def drain_actions_once(
@@ -806,6 +992,7 @@ class WorldRuntime:
         *,
         proposal: DecisionProposal | MinimalProposal,
         audited: ProposalAuditCommit,
+        observation: Observation,
         observation_event: WorldEvent,
         external_effect_landed: bool = True,
     ) -> None:
@@ -852,6 +1039,290 @@ class WorldRuntime:
                     observation_event.event_id,
                     exc_info=True,
                 )
+        # Display intent changes media authorization, so it is a world claim:
+        # only a turn whose external effect actually landed may write it.
+        self._hitch_paid_inbound_declared_display(
+            state=state,
+            observation=observation,
+            observation_event=observation_event,
+            proposal_id=getattr(audited, "proposal_id", None),
+            external_effect_landed=external_effect_landed,
+        )
+
+    def _hitch_paid_inbound_declared_display(
+        self,
+        *,
+        state,
+        observation: Observation,
+        observation_event: WorldEvent,
+        proposal_id: str | None = None,
+        external_effect_landed: bool = True,
+    ) -> DeclaredDisplayHitchResult:
+        """Land her paid display intent, or make the miss visible and classified.
+
+        Recipient is the inbound observation actor.  Omission does nothing:
+        a missing field is not a withdraw and not a fail-closed error.
+        A superseded or unsent turn does not land a world authorization.
+        """
+
+        intent = getattr(state, "declared_display", None)
+        if intent not in {"sexual_suggestive", "explicit_adult", "withdraw"}:
+            return DeclaredDisplayHitchResult(outcome="omitted")
+        if not external_effect_landed:
+            _LOG.info(
+                "paid inbound declared display not delivered wake=%s reason=%s",
+                observation_event.event_id,
+                "external_effect_not_landed",
+            )
+            return DeclaredDisplayHitchResult(
+                outcome="not_delivered",
+                reason_code="external_effect_not_landed",
+            )
+        last_exc: BaseException | None = None
+        last_reason = "logical_clock_unavailable"
+        for attempt in range(1, DECLARED_DISPLAY_HITCH_CAS_ATTEMPTS + 1):
+            if not observation.actor.startswith("user:"):
+                return self._reject_declared_display_hitch(
+                    observation=observation,
+                    observation_event=observation_event,
+                    proposal_id=proposal_id,
+                    reason_code="recipient_not_user_bound",
+                    attempts=attempt,
+                )
+            try:
+                projection = self._ledger.project()
+                if projection.logical_time is None:
+                    last_reason = "logical_clock_unavailable"
+                    last_exc = RuntimeError(
+                        "declared display logical clock is unavailable"
+                    )
+                    _LOG.error(
+                        "paid inbound declared display hitch retryable wake=%s "
+                        "reason=%s attempt=%s",
+                        observation_event.event_id,
+                        last_reason,
+                        attempt,
+                    )
+                    continue
+                commit = DeclaredDisplayRuntime(ledger=self._ledger).declare(
+                    DeclaredDisplayCommand(
+                        command_id="declared-display:" + observation_event.event_id,
+                        source_event_ref=observation_event.event_id,
+                        media_intent=None if intent == "withdraw" else intent,
+                        withdraw=intent == "withdraw",
+                    ),
+                    logical_time=projection.logical_time,
+                    created_at=observation_event.created_at,
+                    actor="worker:declared-display",
+                    trace_id=observation_event.trace_id,
+                    correlation_id=observation_event.correlation_id,
+                )
+                event_id = commit.event_ids[0] if commit.event_ids else None
+                _LOG.info(
+                    "paid inbound declared display landed wake=%s event=%s attempt=%s",
+                    observation_event.event_id,
+                    event_id,
+                    attempt,
+                )
+                return DeclaredDisplayHitchResult(
+                    outcome="landed",
+                    event_id=event_id,
+                    attempts=attempt,
+                )
+            except Exception as exc:
+                last_exc = exc
+                last_reason, retryable = classify_declared_display_hitch_failure(exc)
+                if retryable:
+                    _LOG.error(
+                        "paid inbound declared display hitch retryable wake=%s "
+                        "reason=%s attempt=%s",
+                        observation_event.event_id,
+                        last_reason,
+                        attempt,
+                        exc_info=True,
+                    )
+                    continue
+                if last_reason in DECLARED_DISPLAY_HITCH_TERMINAL_REASONS:
+                    return self._reject_declared_display_hitch(
+                        observation=observation,
+                        observation_event=observation_event,
+                        proposal_id=proposal_id,
+                        reason_code=last_reason,
+                        attempts=attempt,
+                    )
+                _LOG.error(
+                    "paid inbound declared display hitch failed wake=%s "
+                    "reason=%s attempt=%s",
+                    observation_event.event_id,
+                    last_reason,
+                    attempt,
+                    exc_info=True,
+                )
+                return DeclaredDisplayHitchResult(
+                    outcome="failed",
+                    reason_code=last_reason,
+                    attempts=attempt,
+                )
+        if last_reason in DECLARED_DISPLAY_HITCH_TERMINAL_REASONS:
+            try:
+                validate_declared_display_hitch_terminal(
+                    reason_code=last_reason,
+                    ledger=self._ledger,
+                    source_event_ref=observation_event.event_id,
+                    observation_actor=observation.actor,
+                )
+            except ValueError:
+                _LOG.error(
+                    "paid inbound declared display hitch exhausted but terminal "
+                    "re-proof failed wake=%s reason=%s",
+                    observation_event.event_id,
+                    last_reason,
+                    exc_info=True,
+                )
+            else:
+                return self._reject_declared_display_hitch(
+                    observation=observation,
+                    observation_event=observation_event,
+                    proposal_id=proposal_id,
+                    reason_code=last_reason,
+                    attempts=DECLARED_DISPLAY_HITCH_CAS_ATTEMPTS,
+                )
+        _LOG.error(
+            "paid inbound declared display hitch exhausted wake=%s reason=%s "
+            "retryable=%s",
+            observation_event.event_id,
+            last_reason,
+            last_reason in DECLARED_DISPLAY_HITCH_RETRYABLE_REASONS,
+            exc_info=last_exc,
+        )
+        return DeclaredDisplayHitchResult(
+            outcome="retryable",
+            reason_code=last_reason,
+            attempts=DECLARED_DISPLAY_HITCH_CAS_ATTEMPTS,
+        )
+
+    def _reject_declared_display_hitch(
+        self,
+        *,
+        observation: Observation,
+        observation_event: WorldEvent,
+        proposal_id: str | None,
+        reason_code: str,
+        attempts: int,
+    ) -> DeclaredDisplayHitchResult:
+        """Record a re-proved hitch terminal. Never used for CAS exhaustion."""
+
+        validate_declared_display_hitch_terminal(
+            reason_code=reason_code,
+            ledger=self._ledger,
+            source_event_ref=observation_event.event_id,
+            observation_actor=observation.actor,
+        )
+        derived_proposal_id = (
+            proposal_id
+            or "proposal:declared-display-hitch:" + observation_event.event_id
+        )
+        failure_fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "contract": "declared-display-hitch-terminal.1",
+                    "wake": observation_event.event_id,
+                    "reason_code": reason_code,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        payload = declared_display_hitch_terminal_payload(
+            proposal_id=derived_proposal_id,
+            source_event_ref=observation_event.event_id,
+            reason_code=reason_code,
+            failure_fingerprint=failure_fingerprint,
+        )
+        event_id = "event:advisory-acceptance-rejected:" + hashlib.sha256(
+            json.dumps(
+                [derived_proposal_id, "declared_display", failure_fingerprint],
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        last_exc: BaseException | None = None
+        for attempt in range(DECLARED_DISPLAY_HITCH_CAS_ATTEMPTS):
+            projection = self._ledger.project()
+            at = projection.logical_time or observation_event.logical_time
+            identity = domain_idempotency_key(
+                event_type="AdvisoryAcceptanceRejected",
+                world_id=self._world_id,
+                payload=payload,
+            )
+            if identity is None:
+                raise RuntimeError("declared display hitch terminal has no identity")
+            if self._ledger.lookup_event_commit(event_id) is not None:
+                _LOG.error(
+                    "paid inbound declared display hitch rejected wake=%s reason=%s",
+                    observation_event.event_id,
+                    reason_code,
+                )
+                return DeclaredDisplayHitchResult(
+                    outcome="rejected",
+                    reason_code=reason_code,
+                    event_id=event_id,
+                    attempts=attempts,
+                )
+            event = WorldEvent.from_payload(
+                schema_version="world-v2.1",
+                event_id=event_id,
+                world_id=self._world_id,
+                event_type="AdvisoryAcceptanceRejected",
+                logical_time=at,
+                created_at=observation_event.created_at,
+                actor="worker:declared-display",
+                source="world-runtime:declared-display-hitch",
+                trace_id=observation_event.trace_id,
+                causation_id=observation_event.event_id,
+                correlation_id=observation_event.correlation_id,
+                idempotency_key=identity,
+                payload=payload,
+            )
+            cursor = ProjectionCursor(
+                world_revision=projection.world_revision,
+                deliberation_revision=projection.deliberation_revision,
+                ledger_sequence=projection.ledger_sequence,
+            )
+            try:
+                self._ledger.commit_at_cursor(
+                    (event,),
+                    expected_cursor=cursor,
+                    commit_id="commit:declared-display-hitch-terminal:"
+                    + failure_fingerprint[:16]
+                    + f":{attempt}",
+                )
+            except (ConcurrencyConflict, IdempotencyConflict) as exc:
+                last_exc = exc
+                continue
+            _LOG.error(
+                "paid inbound declared display hitch rejected wake=%s reason=%s",
+                observation_event.event_id,
+                reason_code,
+            )
+            return DeclaredDisplayHitchResult(
+                outcome="rejected",
+                reason_code=reason_code,
+                event_id=event_id,
+                attempts=attempts,
+            )
+        _LOG.error(
+            "paid inbound declared display hitch terminal record exhausted "
+            "wake=%s reason=%s",
+            observation_event.event_id,
+            reason_code,
+            exc_info=last_exc,
+        )
+        return DeclaredDisplayHitchResult(
+            outcome="rejected",
+            reason_code=reason_code,
+            attempts=attempts,
+        )
 
     async def _record_response_expectation_assessment(
         self,
@@ -3761,6 +4232,7 @@ class WorldRuntime:
             await self._hitch_paid_inbound_side_effects(
                 proposal=assessment_proposal,
                 audited=audited,
+                observation=observation,
                 observation_event=event,
                 external_effect_landed=not (
                     technical_expression_failure or expression_superseded_by_inbound

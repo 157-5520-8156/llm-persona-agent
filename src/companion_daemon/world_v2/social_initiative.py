@@ -180,17 +180,113 @@ class SocialInitiativePolicy(FrozenModel):
         return self
 
 
-class SocialInitiativeOpportunity(FrozenModel):
-    source_kind: Literal[
-        "spontaneous_contact",
-        "ambient_presence",
-        "post_silent",
-        "situation_change",
-        "expired_expectation",
-        "thread",
-        "commitment",
-        "revisit_intention",
+SocialInitiativeSourceKind = Literal[
+    "spontaneous_contact",
+    "ambient_presence",
+    "post_silent",
+    "situation_change",
+    "expired_expectation",
+    "thread",
+    "commitment",
+    "revisit_intention",
+    "private_impression",
+]
+
+PRIVATE_IMPRESSION_OCCASION_REASON = "private_impression:unresolved"
+_PRIVATE_IMPRESSION_CONSIDERATION_PREFIX = (
+    "consideration:social-initiative:private-impression:"
+)
+PRIVATE_IMPRESSION_OPPORTUNITY_CONTEXT = (
+    "An unresolved private impression is eligible for consideration. "
+    "Timing evidence only; she still decides whether to speak, wait, or stay silent."
+)
+
+
+def private_impression_consideration_id(impression_id: str) -> str:
+    """Return one effect-once consideration identity for a living impression."""
+
+    return _PRIVATE_IMPRESSION_CONSIDERATION_PREFIX + hashlib.sha256(
+        json.dumps(
+            {"impression_id": impression_id},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+
+def private_impression_opportunity_context() -> str:
+    """Advisory text: eligibility only. Never the withheld reflection."""
+
+    return PRIVATE_IMPRESSION_OPPORTUNITY_CONTEXT
+
+
+def living_private_impression(projection):
+    """Return the newest active impression with a committed origin, or None.
+
+    Presence is eligibility for a consider. This reader does not inspect
+    ``reflection_summary``; wording remains the character's, not a script.
+    """
+
+    candidates = []
+    for impression in getattr(projection, "private_impressions", ()):
+        if getattr(impression, "status", None) != "active":
+            continue
+        impression_id = getattr(impression, "impression_id", None)
+        origin = getattr(impression, "origin", None)
+        accepted = getattr(origin, "accepted_event_ref", None)
+        if not isinstance(impression_id, str) or not impression_id:
+            continue
+        if not isinstance(accepted, str) or not accepted:
+            continue
+        candidates.append(impression)
+    accepted_ids = {
+        item.event_id
+        for item in getattr(projection, "committed_world_event_refs", ())
+        if getattr(item, "event_type", None) == "PrivateImpressionAccepted"
+    }
+    candidates = [
+        item
+        for item in candidates
+        if getattr(getattr(item, "origin", None), "accepted_event_ref", None)
+        in accepted_ids
     ]
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda item: (
+            getattr(item, "last_supported", None) or getattr(item, "first_seen", None),
+            getattr(item, "impression_id", ""),
+        )
+    )
+    return candidates[-1]
+
+
+def private_impression_source_binds_head(
+    *, projection, event: WorldEvent, opportunity
+) -> bool:
+    """Return whether a proactive source is the current living impression head."""
+
+    impression = next(
+        (
+            item
+            for item in getattr(projection, "private_impressions", ())
+            if getattr(item, "impression_id", None) == opportunity.source_id
+        ),
+        None,
+    )
+    origin = getattr(impression, "origin", None)
+    return (
+        event.event_type == "PrivateImpressionAccepted"
+        and impression is not None
+        and getattr(impression, "status", None) == "active"
+        and origin is not None
+        and origin.accepted_event_ref == event.event_id
+        and origin.accepted_event_ref == opportunity.source_event_ref
+    )
+
+
+class SocialInitiativeOpportunity(FrozenModel):
+    source_kind: SocialInitiativeSourceKind
     source_id: str
     source_event_ref: str
     source_event_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -346,16 +442,7 @@ def social_initiative_consideration_id(
     attempt_id: str,
     delay_seconds: int,
     epoch: int,
-    source_kind: Literal[
-        "spontaneous_contact",
-        "ambient_presence",
-        "post_silent",
-        "situation_change",
-        "expired_expectation",
-        "thread",
-        "commitment",
-        "revisit_intention",
-    ],
+    source_kind: SocialInitiativeSourceKind,
 ) -> str:
     return "consideration:social-initiative:" + hashlib.sha256(
         json.dumps(
@@ -491,6 +578,23 @@ class SocialInitiativeCompiler:
             retry is not None
             and retry.consideration_id not in excluded_consideration_ids
         ):
+            # A due idle/retry slot is already a paid consider. Name it as
+            # the living impression when one exists; do not wait out the
+            # retry backoff just to ask about the same quiet gap.
+            if retry.source_kind in {
+                "spontaneous_contact",
+                "ambient_presence",
+                "post_silent",
+            }:
+                adopted = await self._adopt_private_impression(
+                    projection,
+                    excluded_consideration_ids=excluded_consideration_ids,
+                    timing=retry,
+                )
+                if adopted is not None:
+                    return await self._hitch_situation_materials(
+                        projection, logical_time, adopted
+                    )
             return retry
         expired = await self._expired_expectation_contact(
             projection,
@@ -530,8 +634,13 @@ class SocialInitiativeCompiler:
             return None
         post_silent = await self._post_silent_consideration(projection, logical_time)
         if post_silent is not None:
+            adopted = await self._adopt_private_impression(
+                projection,
+                excluded_consideration_ids=excluded_consideration_ids,
+                timing=post_silent,
+            )
             return await self._hitch_situation_materials(
-                projection, logical_time, post_silent
+                projection, logical_time, adopted or post_silent
             )
         if await self._post_silent_chain_active(projection):
             return None
@@ -543,8 +652,13 @@ class SocialInitiativeCompiler:
             return None
         if spontaneous is None:
             return None
+        adopted = await self._adopt_private_impression(
+            projection,
+            excluded_consideration_ids=excluded_consideration_ids,
+            timing=spontaneous,
+        )
         return await self._hitch_situation_materials(
-            projection, logical_time, spontaneous
+            projection, logical_time, adopted or spontaneous
         )
 
     async def _pending_consideration(
@@ -669,6 +783,16 @@ class SocialInitiativeCompiler:
                         continue
                     source_kind = "expired_expectation"
                     source_id = expired.plan_id
+                stimulus_event_refs = ()
+            elif event.event_type == "PrivateImpressionAccepted":
+                impression = living_private_impression(projection)
+                if (
+                    impression is None
+                    or impression.origin.accepted_event_ref != source_ref.event_id
+                ):
+                    continue
+                source_kind = "private_impression"
+                source_id = impression.impression_id
                 stimulus_event_refs = ()
             elif event.event_type in _SITUATION_STIMULUS_EVENT_TYPES:
                 if not situation_stimulus_is_observable(
@@ -1052,6 +1176,8 @@ class SocialInitiativeCompiler:
             and consideration_id.startswith("consideration:social-initiative:revisit:")
             else "expired_expectation"
             if event.event_type == "ExecutionReceiptRecorded"
+            else "private_impression"
+            if event.event_type == "PrivateImpressionAccepted"
             else None
         )
         if source_kind is None:
@@ -1080,6 +1206,14 @@ class SocialInitiativeCompiler:
                 revisit_source_plan_id(projection, consideration_id)
                 or f"retry:{source_ref.event_id}"
             )
+        elif source_kind == "private_impression":
+            impression = living_private_impression(projection)
+            if (
+                impression is None
+                or impression.origin.accepted_event_ref != source_ref.event_id
+            ):
+                return None
+            source_id = impression.impression_id
         stimulus_event_refs = ()
         if source_kind == "situation_change":
             observable = await self._observable_stimulus_refs(
@@ -1296,6 +1430,52 @@ class SocialInitiativeCompiler:
             None,
         )
         return existing is not None and existing.state == "terminal"
+
+    async def _adopt_private_impression(
+        self,
+        projection,
+        *,
+        excluded_consideration_ids: frozenset[str],
+        timing: SocialInitiativeOpportunity,
+    ) -> SocialInitiativeOpportunity | None:
+        """Reuse an already-due consider slot as a private-impression occasion.
+
+        Timing stays the relationship-band / cadence-floor draw that would have
+        asked her anyway. This method only names the source. It does not read
+        impression prose, invent a message, or decide whether she speaks.
+        """
+
+        impression = living_private_impression(projection)
+        if impression is None:
+            return None
+        consideration_id = private_impression_consideration_id(impression.impression_id)
+        if consideration_id in excluded_consideration_ids:
+            return None
+        if self._terminal_consideration(projection, consideration_id):
+            return None
+        origin_ref = impression.origin.accepted_event_ref
+        latest_message_revision = (
+            projection.message_observations[-1].world_revision
+            if projection.message_observations
+            else 0
+        )
+        source_world_revision = self._source_world_revision(projection, origin_ref)
+        if latest_message_revision > source_world_revision:
+            return None
+        reason_codes = timing.cadence_reason_codes
+        if PRIVATE_IMPRESSION_OCCASION_REASON not in reason_codes:
+            reason_codes = (PRIVATE_IMPRESSION_OCCASION_REASON, *reason_codes)
+        return await self._from_source(
+            source_kind="private_impression",
+            source_id=impression.impression_id,
+            source_event_ref=origin_ref,
+            source_world_revision=source_world_revision,
+            consideration_id=consideration_id,
+            consideration_epoch=timing.consideration_epoch,
+            scheduled_for=timing.scheduled_for,
+            cadence_reason_codes=reason_codes,
+            stimulus_event_refs=timing.stimulus_event_refs,
+        )
 
     def _source_world_revision(self, projection, event_id: str) -> int:
         ref = next(
@@ -1523,11 +1703,18 @@ def technical_failure_point(*, projection, process) -> tuple[int | None, datetim
 
 
 __all__ = [
+    "PRIVATE_IMPRESSION_OCCASION_REASON",
+    "PRIVATE_IMPRESSION_OPPORTUNITY_CONTEXT",
     "SocialInitiativeCompiler",
     "SocialInitiativeContextPolicy",
     "SocialInitiativeDecisionProfile",
     "SocialInitiativeOpportunity",
     "SocialInitiativePolicy",
+    "SocialInitiativeSourceKind",
+    "living_private_impression",
+    "private_impression_consideration_id",
+    "private_impression_opportunity_context",
+    "private_impression_source_binds_head",
     "situation_stimulus_is_observable",
     "social_initiative_attempt_id",
     "social_initiative_consideration_id",

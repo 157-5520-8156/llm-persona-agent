@@ -6320,7 +6320,9 @@ def _recorded_source_review_provider_audit(
         ),
         attempt_id=attempt_id,
     )
-    return RecordedModelResultAudit.model_validate(audit.model_dump(mode="json"))
+    # JSON dumps turn tuples into lists; RecordedModelResultAudit is a
+    # strict FrozenModel. Keep Python shapes so sequence fields stay tuples.
+    return RecordedModelResultAudit.model_validate(audit.model_dump(mode="python"))
 
 
 def _source_review_attempt_traces(

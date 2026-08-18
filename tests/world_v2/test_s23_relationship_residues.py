@@ -346,13 +346,17 @@ def _slim_request(*, source_event, evaluated_world_revision: int) -> ModelInput:
 def test_slim_schema_still_fits_g4_without_heavy_relationship_fields() -> None:
     required, total, depth = json_schema_g4_metrics(slim_consider_json_schema())
     assert required <= 3
-    assert total <= 16  # descriptive slim shape; provider G4 is the compact tool
+    assert total <= 20  # descriptive slim shape; provider G4 is the compact tool
     assert depth <= 2
     properties = slim_consider_json_schema()["properties"]
     assert "relationship_signal" not in properties
     assert "relationship_commitment" not in properties
     assert "about_us" not in properties
     assert "we_are" not in properties
+    assert "declared_display" in properties
+    assert "come_back" in properties
+    assert "come_back_in" in properties
+    assert "later" in properties
 
 
 def test_slim_compile_keeps_prose_residue_off_appraisal() -> None:
@@ -383,6 +387,39 @@ def test_slim_compile_keeps_prose_residue_off_appraisal() -> None:
     assert compiled["appraisal_draft"]["meanings"][0]["meaning"] == "心里还搁着刚才那句"
 
 
+def test_incomplete_relationship_residue_is_a_visible_failure() -> None:
+    """A half-written residue must not compile and silently drop her deltas."""
+
+    from companion_daemon.world_v2.present_prompt import (
+        SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE,
+    )
+
+    for partial in (
+        _slim_payload(us_deltas={"trust_bp": 120, "closeness_bp": 80}),
+        _slim_payload(about_us="被认真听的感觉"),
+        _slim_payload(why_us="因为这一句是真的"),
+        _slim_payload(about_us="被认真听的感觉", us_deltas={"trust_bp": 120}),
+    ):
+        try:
+            compile_slim_consider_payload(partial)
+        except ValueError as exc:
+            assert SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE in str(exc)
+            assert "宿主不会替你补上缺的字段" in str(exc)
+            continue
+        raise AssertionError("incomplete residue must not compile")
+    compiled = compile_slim_consider_payload(
+        _slim_payload(
+            about_us="被认真听的感觉",
+            why_us="因为这一句是真的",
+            us_deltas={"trust_bp": 120, "closeness_bp": 80},
+        )
+    )
+    assert compiled is not None
+    assert compiled["expression_draft"]["private_turn_state"]["about_us"] == (
+        "被认真听的感觉"
+    )
+
+
 def test_slim_compile_does_not_invent_residue_when_she_omits_it() -> None:
     compiled = compile_slim_consider_payload(_slim_payload())
     assert compiled is not None
@@ -396,20 +433,44 @@ def test_slim_compile_does_not_invent_residue_when_she_omits_it() -> None:
     assert "relationship_commitment" not in attached["appraisal_draft"]
 
 
-def test_slim_compile_drops_an_incomplete_commitment() -> None:
-    """All three fields or nothing; the host never completes a commitment."""
+def test_slim_compile_rejects_an_incomplete_commitment() -> None:
+    """All three fields or a visible failure; the host never completes a commitment."""
 
-    for partial in (
-        _slim_payload(we_are="friend"),
-        _slim_payload(we_are="lover", calling_it="we_are_together"),
-        _slim_payload(we_are="ambiguous", said_as="那就当你是我很熟的朋友了"),
-    ):
-        compiled = compile_slim_consider_payload(partial)
-        assert compiled is not None
-        private_state = compiled["expression_draft"]["private_turn_state"]
-        assert "we_are" not in private_state
-        attached = attach_hitchhiked_relationship_residue(compiled)
-        assert "relationship_commitment" not in attached["appraisal_draft"]
+    from companion_daemon.world_v2.present_prompt import SLIM_COMMITMENT_TRIPLET_INCOMPLETE
+
+    cases = (
+        (_slim_payload(we_are="friend"), "calling_it"),
+        (_slim_payload(we_are="lover", calling_it="we_are_together"), "said_as"),
+        (
+            _slim_payload(we_are="ambiguous", said_as="那就当你是我很熟的朋友了"),
+            "calling_it",
+        ),
+    )
+    for partial, missing in cases:
+        with pytest.raises(ValueError, match=SLIM_COMMITMENT_TRIPLET_INCOMPLETE) as caught:
+            compile_slim_consider_payload(partial)
+        assert f"这次缺了：{missing}" in str(caught.value)
+        assert "宿主不会替你补上缺的字段" in str(caught.value)
+
+
+def test_slim_compile_rejects_an_invalid_we_are_stage() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_COMMITMENT_WE_ARE_INVALID
+
+    with pytest.raises(ValueError, match=SLIM_COMMITMENT_WE_ARE_INVALID):
+        compile_slim_consider_payload(
+            _slim_payload(
+                we_are="bestie",
+                calling_it="maybe",
+                said_as="我们算朋友了吧",
+            )
+        )
+
+
+def test_slim_compile_rejects_unreadable_us_deltas() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_RELATIONSHIP_DELTAS_UNREADABLE
+
+    with pytest.raises(ValueError, match=SLIM_RELATIONSHIP_DELTAS_UNREADABLE):
+        compile_slim_consider_payload(_slim_payload(us_deltas={"closeness_bp": "很多"}))
 
 
 def test_slim_compile_carries_the_stage_she_actually_declared() -> None:
@@ -501,22 +562,31 @@ def test_authored_us_deltas_can_be_negative_when_he_cost_her_something() -> None
     assert deltas["closeness_bp"] == -150
 
 
-def test_malformed_us_deltas_move_nothing_rather_than_guessing() -> None:
-    for broken in ({"closeness_bp": "400"}, {"unknown_bp": 300}, {}, {"trust_bp": True}):
-        envelope = compile_slim_interior_envelope(
-            _slim_payload(
-                about_us="他说那句话我心里一动",
-                why_us="不像随口敷衍",
-                us_deltas=broken,
-            ),
-            reply_only=True,
-        )
-        assert envelope is not None
-        assert not any(
-            envelope["appraisal_draft"]["relationship_signal"][
-                "suggested_deltas"
-            ].values()
-        )
+def test_malformed_us_deltas_are_a_visible_failure_not_zero_movement() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_RELATIONSHIP_DELTAS_UNREADABLE
+
+    for broken in ({"closeness_bp": "400"}, {"unknown_bp": 300}, {"trust_bp": True}):
+        with pytest.raises(ValueError, match=SLIM_RELATIONSHIP_DELTAS_UNREADABLE):
+            compile_slim_interior_envelope(
+                _slim_payload(
+                    about_us="他说那句话我心里一动",
+                    why_us="不像随口敷衍",
+                    us_deltas=broken,
+                ),
+                reply_only=True,
+            )
+    envelope = compile_slim_interior_envelope(
+        _slim_payload(
+            about_us="他说那句话我心里一动",
+            why_us="不像随口敷衍",
+            us_deltas={},
+        ),
+        reply_only=True,
+    )
+    assert envelope is not None
+    assert not any(
+        envelope["appraisal_draft"]["relationship_signal"]["suggested_deltas"].values()
+    )
 
 
 def test_production_slim_author_lifts_prose_residue_without_score_deltas() -> None:

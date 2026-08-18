@@ -7,6 +7,8 @@ import json
 from datetime import datetime
 from typing import Literal
 
+from companion_daemon.budget import admit_image_generation, occupancy_from_media_projection
+
 from .character_interior import CharacterInterior, InteriorOpportunity
 from .character_interior.audit import recorded_character_interior_model_result
 from .media_selection import MediaSelection
@@ -28,6 +30,11 @@ from .relationship_media_context import (
     RelationshipMediaContextResolver,
 )
 from .media_candidate_advisory import MediaCandidateAdvisoryCompiler
+from .media_selection_occasion import (
+    compile_candidate_occasion,
+    compile_lived_facts,
+    safe_summary_from_lived_facts,
+)
 from .random_authority import RandomAuthority
 from .schema_core import FrozenModel
 from .schemas import ProjectionCursor, WorldEvent
@@ -45,6 +52,10 @@ class MediaSelectionWorker:
     Candidate discovery, privacy derivation, random recording and Acceptance
     remain objective authority seams.  Whether to share anything, and which
     offered opaque token to choose, is one cursor-pinned character decision.
+
+    Conversation occasion only decides *when* the offer is made.  It does not
+    change her answer, does not inspect counterpart wording, and does not
+    bypass generation spend caps.
     """
 
     def __init__(
@@ -57,6 +68,7 @@ class MediaSelectionWorker:
         catalog_version: str,
         source: str = "world-v2:media-selection",
         candidate_material_reader=None,
+        require_conversation_occasion: bool = True,
     ) -> None:  # type: ignore[no-untyped-def]
         if not character_actor_ref:
             raise ValueError("media selection requires a character actor")
@@ -69,6 +81,9 @@ class MediaSelectionWorker:
         self._random = RandomAuthority(ledger=ledger)
         self._relationship_context_resolver = RelationshipMediaContextResolver()
         self._candidate_material_reader = candidate_material_reader
+        # Timing gate only: whether this drain may *offer* a candidate.
+        # It never rewrites her select / no_op, and never inspects his wording.
+        self._require_conversation_occasion = require_conversation_occasion
 
     async def select_once(self, *, logical_time: datetime, actor: str, trace_id: str, correlation_id: str) -> MediaSelectionRunResult:
         projection = self._ledger.project()
@@ -186,6 +201,39 @@ class MediaSelectionWorker:
                     else "media_selection.no_available_candidates"
                 ),
             )
+        spend = admit_image_generation(
+            occupancy=occupancy_from_media_projection(
+                projection, logical_time=logical_time
+            ),
+            logical_time=logical_time,
+        )
+        if not spend.allowed:
+            # Cost hard boundary: a photo she cannot currently deliver must
+            # not start a paid chain.  The candidate stays available.
+            return MediaSelectionRunResult(
+                status="blocked",
+                reason_code="media_selection.generation_spend_cap:" + spend.reason,
+            )
+        if self._require_conversation_occasion:
+            occasioned = tuple(
+                item
+                for item in candidates
+                if compile_candidate_occasion(
+                    projection=projection,
+                    candidate=item,
+                    logical_time=logical_time,
+                    character_actor_ref=self._character_actor_ref,
+                )
+                is not None
+            )
+            if not occasioned:
+                # Timing gate, not a decline.  The candidate stays available
+                # for a later conversation-adjacent drain.
+                return MediaSelectionRunResult(
+                    status="no_op",
+                    reason_code="media_selection.no_conversation_occasion",
+                )
+            candidates = occasioned
         durable_lookup = callable(getattr(self._ledger, "lookup_event_commit", None))
         world_id = getattr(self._ledger, "world_id", getattr(projection, "world_id", None))
         if durable_lookup and world_id is None:
@@ -284,16 +332,26 @@ class MediaSelectionWorker:
                 deliberation_revision=projection.deliberation_revision,
                 ledger_sequence=projection.ledger_sequence,
             )
+        candidate_facts = {
+            item.candidate_id: compile_lived_facts(
+                projection=projection,
+                candidate=item,
+                ledger=self._ledger,
+                material_reader=self._candidate_material_reader,
+                character_actor_ref=self._character_actor_ref,
+            )
+            for item in candidates
+        }
         manifest_payload = {
             "contract": "media-selection-capability.1",
             "candidates": [
                 {
                     "token": token,
                     "entity_revision": tokens[token].entity_revision,
-                    "safe_summary": self._candidate_safe_summary(
-                        projection=projection,
-                        candidate=tokens[token],
+                    "safe_summary": safe_summary_from_lived_facts(
+                        candidate_facts[tokens[token].candidate_id]
                     ),
+                    "lived_facts": list(candidate_facts[tokens[token].candidate_id]),
                     "advisory": self._advisory.compile(
                         projection=projection,
                         candidate=tokens[token],
@@ -313,9 +371,19 @@ class MediaSelectionWorker:
         )
         source_refs = tuple(
             dict.fromkeys(
-                source.event_ref
-                for item in candidates
-                for source in item.source_events
+                (
+                    *(
+                        source.event_ref
+                        for item in candidates
+                        for source in item.source_events
+                    ),
+                    *(
+                        str(fact["source_ref"])
+                        for item in candidates
+                        for fact in candidate_facts[item.candidate_id]
+                        if isinstance(fact.get("source_ref"), str) and fact["source_ref"]
+                    ),
+                )
             )
         )
         opportunity = InteriorOpportunity(
@@ -478,35 +546,17 @@ class MediaSelectionWorker:
         return MediaSelectionRunResult(status="proposed", proposal_event_ref=recorded.proposal_event_ref)
 
     def _candidate_safe_summary(self, *, projection, candidate) -> str:
-        """Add concrete lived texture to an otherwise opaque candidate token."""
+        """Post-redaction label derived from sourced lived facts."""
 
-        base = "一件已确认、可选择但不必分享的生活事件"
-        if self._candidate_material_reader is None:
-            return base
-        read = getattr(self._candidate_material_reader, "read_for_occurrence", None)
-        if not callable(read):
-            return base
-        source_refs = {source.event_ref for source in candidate.source_events}
-        occurrences = tuple(
-            item
-            for item in getattr(projection, "world_occurrences", ())
-            if getattr(item, "settlement_event_ref", None) in source_refs
-            or getattr(item, "trigger_ref", None) in source_refs
+        return safe_summary_from_lived_facts(
+            compile_lived_facts(
+                projection=projection,
+                candidate=candidate,
+                ledger=self._ledger,
+                material_reader=self._candidate_material_reader,
+                character_actor_ref=self._character_actor_ref,
+            )
         )
-        if not occurrences:
-            return base
-        for occurrence in occurrences[:1]:
-            try:
-                material = read(occurrence=occurrence)
-                outcomes = getattr(material, "outcomes", ())
-                if outcomes:
-                    text = getattr(outcomes[0], "text", None)
-                    if isinstance(text, str) and text.strip():
-                        clipped = " ".join(text.strip().split())[:96]
-                        return f"{base}｜具体发生：{clipped}"
-            except Exception:
-                continue
-        return base
 
     @staticmethod
     def _decision_hash(value: dict[str, object]) -> str:

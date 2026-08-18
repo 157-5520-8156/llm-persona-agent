@@ -15,7 +15,10 @@ from companion_daemon.event_media import (
     MediaRenderer,
     PlannedMedia,
     RenderedMedia,
+    _compile_krea2_private_prompt,
     _first_person_capture_contract,
+    _first_person_declared_intent_contract,
+    _frozen_high_private_render_facts,
     _sanitize_first_person_camera_prose,
 )
 from companion_daemon.image_generation import GeneratedImage
@@ -373,6 +376,8 @@ def test_suggestive_route_never_falls_back_to_default_generator(tmp_path) -> Non
 class _HighLaneModel:
     last_prompt = ""
     used_json_mode = False
+    include_declared_display = True
+    include_physical_cue_refs = True
 
     async def complete_json(self, messages, *, temperature=0.8):
         self.used_json_mode = True
@@ -392,12 +397,15 @@ class _HighLaneModel:
             and "invite_desire" in item["legal_interaction_bids"]
         )
         embodied = candidate["embodied_presentation"]
-        supporting = ["/relationship_media_context/declared_display"]
-        supporting.extend(
-            ref
-            for cue in embodied.get("physical_cues", [])
-            for ref in cue.get("evidence_refs", [])
-        )
+        supporting: list[str] = []
+        if self.include_declared_display:
+            supporting.append("/relationship_media_context/declared_display")
+        if self.include_physical_cue_refs:
+            supporting.extend(
+                ref
+                for cue in embodied.get("physical_cues", [])
+                for ref in cue.get("evidence_refs", [])
+            )
         supporting.extend(embodied.get("wardrobe_evidence_refs", []))
         return json.dumps(
             {
@@ -531,7 +539,7 @@ async def test_high_lane_freezes_dedicated_route_without_configuring_a_model(
     assert inspector.calls == 0
     assert rendered.inspection.reason == "specialized_private_workflow_direct"
     assert "Krea2 high-private render brief." in rendered.prompt
-    assert "Private, recipient-exclusive adult flirtation" in rendered.prompt
+    assert "Private, recipient-exclusive sexually suggestive flirtation" in rendered.prompt
     assert "Visible moment:" in rendered.prompt
     assert "High-private suggestive intent:" not in rendered.prompt
     assert len(rendered.prompt) < 1_800
@@ -541,7 +549,7 @@ async def test_high_lane_freezes_dedicated_route_without_configuring_a_model(
     assert "Character identity anchor:" not in rendered.prompt
     assert "outfit: ordinary casual clothes" not in rendered.prompt
     assert "Wear exactly the event-supported look:" in rendered.prompt
-    assert "recipient-exclusive adult flirtation" in rendered.prompt
+    assert "recipient-exclusive sexually suggestive flirtation" in rendered.prompt
     assert "almost caught expression" in rendered.prompt
     # The specialized Krea2 route owns its own mature-content interpretation.
     # Do not leak the ordinary non-explicit/opaque-coverage prompt boundary
@@ -549,6 +557,69 @@ async def test_high_lane_freezes_dedicated_route_without_configuring_a_model(
     assert "every key area remains securely covered" not in rendered.prompt
     assert "No transparent fabric" not in rendered.prompt
     assert "key area opaquely covered" not in rendered.prompt
+
+
+@pytest.mark.asyncio
+async def test_close_friend_high_lane_injects_declared_display_when_model_omits_it(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("COMPANION_EVENT_MEDIA_ENABLED", "1")
+    monkeypatch.setenv("COMPANION_EVENT_MEDIA_V5_ENABLED", "1")
+    snapshot = {
+        "event": {"event_id": "evt-close-friend", "status": "committed"},
+        "activity": {"kind": "dance", "description": "练舞结束", "intensity": "high"},
+        "location": {"kind": "private", "mirror_available": True},
+        "relationship_media_context": {
+            "declared_display": {
+                "event_id": "display-close-friend",
+                "recipient_ref": "user-1",
+                "media_intent": "sexual_suggestive",
+                "reason": "private adult-fantasy display authorized by World",
+            }
+        },
+        "character": {
+            "appearance_state": {
+                "outfit": "bathrobe",
+                "coverage_mode": "private_apparel",
+                "outfit_role": "sleepwear",
+            },
+            "visible_physical_state": {
+                "schema_version": "visible-physical-state-v1",
+                "observed_at": "t1",
+                "source_event_ids": ["evt-close-friend"],
+                "cues": [
+                    {"cue_id": "perspiration", "intensity": "moderate", "regions": ["neck"]}
+                ],
+            },
+        },
+    }
+    from companion_daemon.media_eligibility import DECLARED_DISPLAY_EVIDENCE_REF
+
+    opportunity = MediaOpportunity(
+        opportunity_id="opp-close-friend-inject",
+        family="character_media",
+        privacy_ceiling="intimate",
+        sensual_charge_ceiling="charged",
+        expression_charge_ceiling="charged",
+        event_snapshot=snapshot,
+        audience_context=AudienceContext(
+            recipient_ref="user-1", relationship_stage="close_friend"
+        ),
+        private_expression_basis=_basis(),
+    )
+    model = _HighLaneModel()
+    model.include_declared_display = False
+    result = await MediaPlanner(model).plan(opportunity)
+
+    assert isinstance(result, PlannedMedia)
+    assert result.plan.media_lane is not None
+    assert result.plan.media_lane.lane == SUGGESTIVE_PRIVATE_LANE
+    assert result.plan.private_render_contract is not None
+    assert result.plan.private_render_contract.render_route == "adult_suggestive"
+    assert result.plan.evidence_values[DECLARED_DISPLAY_EVIDENCE_REF][
+        "media_intent"
+    ] == "sexual_suggestive"
+    assert result.plan.relationship_stage_basis == "close_friend"
 
 
 @pytest.mark.asyncio
@@ -625,7 +696,103 @@ async def test_first_person_private_prompt_author_keeps_character_authorship_in_
     assert "frozen facial performance:" in author_input
     assert "at least two compatible visible facial cues" in author_input
     assert "ahegao-inspired cues" in author_system
-    assert "do not describe a sexual act or key-area exposure" in author_input
+    assert "sexual act or key-area exposure" in author_input.casefold()
+    assert "declared media intent: sexual_suggestive" in author_input
+    assert "Honor her sexual_suggestive declaration" in author_system
+    assert "event-supported look (mandatory, do not replace):" in author_input
+    assert "describe only an unobstructed face-first selfie viewpoint" not in author_input
+    assert "Frozen appearance requirement:" in authored
+    assert "declared_intent=sexual_suggestive" in authored
+    assert "naturally_visible_regions=" in authored
+    embodied = planned.plan.embodied_presentation
+    assert embodied is not None
+    suggestive_facts = _frozen_high_private_render_facts(planned.plan)
+    assert suggestive_facts["allowed_regions"] == ", ".join(embodied.allowed_regions)
+    if len(embodied.allowed_regions) > 4:
+        assert suggestive_facts["allowed_regions"] != ", ".join(embodied.allowed_regions[:4])
+    assert "no sexual act and no key-area exposure" in author_system
+    assert any(token in authored.lower() for token in ("sleepwear", "private apparel", "bathrobe"))
+    assert planned.plan.private_render_contract is not None
+    assert planned.plan.media_address_strategy is not None
+    declared = planned.plan.evidence_values["/relationship_media_context/declared_display"]
+    assert isinstance(declared, dict)
+
+    explicit_plan = replace(
+        planned.plan,
+        media_lane=MediaLaneRecommendation(
+            lane=EXPLICIT_PRIVATE_LANE,
+            recipient_access="recipient_exclusive",
+            attraction_expression="explicit_adult",
+        ),
+        private_render_contract=PrivateRenderContract.create(
+            lane=EXPLICIT_PRIVATE_LANE,
+            attraction_mechanism=planned.plan.private_render_contract.attraction_mechanism,
+            framing_mode=planned.plan.private_render_contract.framing_mode,
+            coverage_mode=planned.plan.private_render_contract.coverage_mode,
+        ),
+        evidence_values={
+            **planned.plan.evidence_values,
+            "/relationship_media_context/declared_display": {
+                **dict(planned.plan.evidence_values["/relationship_media_context/declared_display"]),
+                "media_intent": "explicit_adult",
+            },
+        },
+        media_address_strategy=planned.plan.media_address_strategy.__class__.create(
+            address_mode=planned.plan.media_address_strategy.address_mode,
+            engagement_tactic=planned.plan.media_address_strategy.engagement_tactic,
+            disclosure_mode="partial_reveal",
+            staging_degree=planned.plan.media_address_strategy.staging_degree,
+            temporal_beat=planned.plan.media_address_strategy.temporal_beat,
+            visual_priority=planned.plan.media_address_strategy.visual_priority,
+            expression_charge="veiled",
+            attraction_mechanism=planned.plan.media_address_strategy.attraction_mechanism,
+        ),
+    )
+
+    class ExplicitAuthorModel:
+        last_messages = ()
+
+        async def complete(self, messages, **_kwargs):
+            self.last_messages = messages
+            return (
+                "I am still in the same private room, wearing the same frozen look, "
+                "and I hold the more explicit adult beat without adding a second person."
+            )
+
+    explicit_model = ExplicitAuthorModel()
+    explicit_author = FirstPersonPrivatePromptAuthor(explicit_model)
+    explicit_prompt = await explicit_author.write(explicit_plan)
+    explicit_system = str(explicit_model.last_messages[0]["content"])
+    explicit_user = str(explicit_model.last_messages[-1]["content"])
+    assert "Honor her explicit_adult declaration" in explicit_system
+    assert "Honor her sexual_suggestive declaration" not in explicit_system
+    assert "declared media intent: explicit_adult" in explicit_user
+    assert "declared_intent=explicit_adult" in explicit_prompt
+    assert "partial reveal" in explicit_user or "partial_reveal" in explicit_user
+    assert author_system != explicit_system
+    explicit_facts = _frozen_high_private_render_facts(explicit_plan)
+    explicit_contract = _first_person_declared_intent_contract(explicit_facts)
+    assert explicit_facts["explicit"] == "true"
+    assert explicit_facts["allowed_regions"] == ", ".join(
+        explicit_plan.embodied_presentation.allowed_regions
+        if explicit_plan.embodied_presentation is not None
+        else ()
+    )
+    assert "close, body-inclusive frame" in explicit_contract
+    assert "fully-wrapped environmental portrait" in explicit_contract
+    assert "no sexual act and no key-area exposure" in explicit_contract
+    assert "naturally_visible_regions=" in explicit_prompt
+    krea2_explicit = _compile_krea2_private_prompt(explicit_plan)
+    assert "Unmistakably recipient-exclusive adult sexual communication" in krea2_explicit
+    assert "no sexual act and no key-area exposure" in krea2_explicit
+    assert "close body-inclusive frame" in krea2_explicit
+    assert "fully-wrapped environmental portrait" in krea2_explicit
+    krea2_suggestive = _compile_krea2_private_prompt(planned.plan)
+    assert "recipient-exclusive sexually suggestive flirtation" in krea2_suggestive
+    assert "still covered by the frozen private apparel" in krea2_suggestive
+    assert "no sexual act and no key-area exposure" in krea2_suggestive
+    assert "every key area remains securely covered" not in krea2_suggestive
+    assert "key area opaquely covered" not in krea2_suggestive
 
     intense_plan = replace(
         planned.plan,

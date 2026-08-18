@@ -16,6 +16,7 @@ def _app(tmp_path: Path):
         adapter="napcat",
         settings=Settings(
             _env_file=None,
+            WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
             database_path=tmp_path / "qq-dashboard-owner.sqlite",
             NAPCAT_ALLOWED_PRIVATE_USER_IDS="10001",
             WORLD_V2_DASHBOARD_OPERATOR_TOKEN=TOKEN,

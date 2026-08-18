@@ -224,7 +224,10 @@ VERTICAL_REGISTRY: tuple[VerticalRegistration, ...] = (
         claim_identity_from_domain_key=("private_impression_deliberation",),
         may_carry_source_evidence=("private_impression_deliberation",),
         runtime_drain_markers=("drain_private_impression_once",),
-        composition_markers=("private_impression_worker_owner=",),
+        composition_markers=(
+            "private_impression_worker_owner=",
+            "private_impression_daily_model_call_limit=config.private_impression_daily_model_call_limit",
+        ),
         drain_site="WorldRuntime.drain_background_once",
         notes=("Uses the one-corrective-retry bounded model failure policy.",),
     ),

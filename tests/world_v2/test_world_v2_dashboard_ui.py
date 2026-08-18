@@ -80,6 +80,8 @@ def _dashboard_app(
     )
     return app_module.create_http_asgi_app(
         settings=Settings(
+            _env_file=None,
+            WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
             database_path=tmp_path / name,
             DELIVERY_RECONCILIATION_TOKEN=DELIVERY_TOKEN,
             WORLD_V2_DASHBOARD_OPERATOR_TOKEN=OPERATOR_TOKEN,
@@ -322,6 +324,8 @@ def test_factory_builds_safe_production_dashboard_source_when_not_injected(
 ) -> None:
     dashboard_app = app_module.create_http_asgi_app(
         settings=Settings(
+            _env_file=None,
+            WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
             database_path=tmp_path / "production-default-source.sqlite",
             QQ_C2C_ADAPTER_URL="http://127.0.0.1:8787",
             WORLD_V2_DASHBOARD_OPERATOR_TOKEN=OPERATOR_TOKEN,
@@ -341,6 +345,8 @@ def test_module_level_production_app_builds_dashboard_source_from_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = Settings(
+        _env_file=None,
+        WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
         database_path=tmp_path / "module-production-source.sqlite",
         QQ_C2C_ADAPTER_URL="http://127.0.0.1:8787",
         WORLD_V2_DASHBOARD_OPERATOR_TOKEN=OPERATOR_TOKEN,
@@ -364,6 +370,8 @@ def test_module_level_production_app_fails_closed_for_unsafe_owner_origin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = Settings(
+        _env_file=None,
+        WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
         database_path=tmp_path / "module-unsafe-source.sqlite",
         QQ_C2C_ADAPTER_URL="http://owner.example:8787/private",
         WORLD_V2_DASHBOARD_OPERATOR_TOKEN=OPERATOR_TOKEN,
@@ -390,6 +398,8 @@ def test_factory_rejects_unsafe_production_dashboard_owner_origin(tmp_path: Path
     with pytest.raises(ValueError, match="loopback"):
         app_module.create_http_asgi_app(
             settings=Settings(
+                _env_file=None,
+                WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
                 database_path=tmp_path / "unsafe-owner-source.sqlite",
                 QQ_C2C_ADAPTER_URL="http://owner.example:8787",
                 WORLD_V2_DASHBOARD_OPERATOR_TOKEN=OPERATOR_TOKEN,
@@ -468,7 +478,11 @@ def test_dashboard_without_configured_operator_token_is_unavailable(tmp_path: Pa
     dashboard_app = app_module.create_http_asgi_app(
         # This test asserts the unconfigured behavior; do not let the
         # developer's repository-level .env turn it into a configured app.
-        settings=Settings(_env_file=None, database_path=tmp_path / "disabled.sqlite")
+        settings=Settings(
+            _env_file=None,
+            WORLD_V2_DASHBOARD_AUTH_ENABLED=True,
+            database_path=tmp_path / "disabled.sqlite",
+        )
     )
 
     with _local_client(dashboard_app) as client:

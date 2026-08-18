@@ -11,7 +11,7 @@ import hashlib
 import json
 
 
-from .present_prompt import PRESENT_RECENT_DIALOGUE_ITEM_LIMIT
+from .present_prompt import PRESENT_RECENT_DIALOGUE_ITEM_LIMIT, PRESENT_SHARED_MEDIA_ITEM_LIMIT
 
 _CHAT_OMITTED_SLICES = frozenset({"action_budget", "available_capabilities"})
 CHAT_RECENT_DIALOGUE_ITEM_LIMIT = PRESENT_RECENT_DIALOGUE_ITEM_LIMIT
@@ -36,6 +36,7 @@ _CHAT_ITEM_LIMITS = {
     # slice as one item here silently discarded all but the lexicographic tail
     # after the trusted Capsule had already preserved the full matrix.
     "advisories": 12,
+    "media_deliveries": PRESENT_SHARED_MEDIA_ITEM_LIMIT,
 }
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
@@ -518,6 +519,7 @@ def mechanism_consumption_summary(raw: str) -> dict[str, object]:
         "active_memory_candidates",
         "private_impressions",
         "advisories",
+        "media_deliveries",
     ):
         lane = slices.get(name)
         if not isinstance(lane, dict) or lane.get("availability") != "available":

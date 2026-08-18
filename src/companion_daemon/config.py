@@ -740,6 +740,38 @@ class Settings(BaseSettings):
     world_v2_media_inspection_model: str = Field(
         default="gpt-4o", alias="WORLD_V2_MEDIA_INSPECTION_MODEL"
     )
+    # Independent private-impression farm ("she thinks of him when he is
+    # quiet").  The cap counts ledger farm asks per local calendar day
+    # (TriggerProcessCompleted with a model outcome), not accepted impressions
+    # and not HTTP reselections of the same ask.  She may still choose
+    # no_change.  Zero disables the farm; inbound hitch is separate.
+    world_v2_private_impression_daily_model_call_limit: int = Field(
+        default=3,
+        validation_alias=AliasChoices(
+            "WORLD_V2_PRIVATE_IMPRESSION_DAILY_MODEL_CALL_LIMIT",
+            "world_v2_private_impression_daily_model_call_limit",
+        ),
+        ge=0,
+        le=24,
+    )
+    world_v2_private_impression_min_interval_seconds: int = Field(
+        default=14_400,
+        validation_alias=AliasChoices(
+            "WORLD_V2_PRIVATE_IMPRESSION_MIN_INTERVAL_SECONDS",
+            "world_v2_private_impression_min_interval_seconds",
+        ),
+        ge=0,
+        le=86_400,
+    )
+    world_v2_private_impression_idle_after_user_seconds: int = Field(
+        default=1_800,
+        validation_alias=AliasChoices(
+            "WORLD_V2_PRIVATE_IMPRESSION_IDLE_AFTER_USER_SECONDS",
+            "world_v2_private_impression_idle_after_user_seconds",
+        ),
+        ge=0,
+        le=86_400,
+    )
 
 
 @lru_cache

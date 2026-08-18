@@ -31,6 +31,7 @@ from .relationship_reducers import (
     RELATIONSHIP_COMMITMENT_STAGE_TRANSITIONS,
     RELATIONSHIP_POLICY_DIGEST,
     relationship_primary_id,
+    relationship_state_policy_is_readable,
 )
 from .relationship_trigger import (
     relationship_continuity_trigger_id,
@@ -789,10 +790,10 @@ class RelationshipProposalCompiler:
                 raise RelationshipProposalCompilerError(
                     "relationship_state_identity_invalid"
                 )
-            if (
-                current.policy_version != "relationship-policy.1"
-                or current.policy_digest != RELATIONSHIP_POLICY_DIGEST
-            ):
+            # Read the carried projection, including retired stamps from H22/H26
+            # digest migrations.  The mutation below still writes the installed
+            # digest, so the first successful commitment migrates the state.
+            if not relationship_state_policy_is_readable(current):
                 raise RelationshipProposalCompilerError(
                     "relationship_state_policy_uninstalled"
                 )

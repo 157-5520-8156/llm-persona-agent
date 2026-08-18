@@ -178,6 +178,13 @@ def _life_identity_components(
         )
     if event_type == "ImageEvidenceDeclared":
         return world_id, payload.get("source_event_ref"), payload.get("source_event_payload_hash")
+    if event_type in {"DeclaredDisplayRecorded", "DeclaredDisplayWithdrawn"}:
+        return (
+            world_id,
+            payload.get("recipient_ref"),
+            payload.get("source_event_ref"),
+            payload.get("source_event_payload_hash"),
+        )
     if event_type == "VisualFactRecorded":
         return (
             world_id,

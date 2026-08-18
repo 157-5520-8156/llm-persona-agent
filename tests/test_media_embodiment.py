@@ -279,6 +279,64 @@ def test_veiled_candidates_require_lover_and_explicit_private_wardrobe_evidence(
     )
 
 
+def test_close_friend_is_the_adult_media_floor_not_an_intensity_chooser() -> None:
+    snapshot = _snapshot(
+        appearance_state={
+            "coverage_mode": "private_apparel",
+            "outfit_role": "sleepwear",
+            "outfit": "bathrobe",
+        }
+    )
+    charged = build_embodied_candidates(
+        snapshot=snapshot,
+        opportunity_id="opportunity:close-friend-charged",
+        relationship_stage="close_friend",
+        sensual_charge_ceiling="charged",
+        limit=128,
+    )
+    veiled = build_embodied_candidates(
+        snapshot=snapshot,
+        opportunity_id="opportunity:close-friend-veiled",
+        relationship_stage="close_friend",
+        sensual_charge_ceiling="veiled",
+        limit=128,
+    )
+    friend = build_embodied_candidates(
+        snapshot=snapshot,
+        opportunity_id="opportunity:friend-charged",
+        relationship_stage="friend",
+        sensual_charge_ceiling="charged",
+        limit=128,
+    )
+    world_appearance = build_embodied_candidates(
+        snapshot=_snapshot(
+            appearance_state={
+                "visible_attributes": [
+                    {"aspect": "outfit", "description": "bathrobe"},
+                ]
+            }
+        ),
+        opportunity_id="opportunity:close-friend-attributes",
+        relationship_stage="close_friend",
+        sensual_charge_ceiling="charged",
+        limit=128,
+    )
+
+    assert any(item.presentation.sensual_charge == "charged" for item in charged)
+    assert any(
+        item.presentation.coverage_mode in {"private_apparel", "strategic_cover"}
+        for item in charged
+    )
+    assert any(item.presentation.sensual_charge == "veiled" for item in veiled)
+    assert all(item.presentation.sensual_charge == "none" for item in friend)
+    assert any(
+        "/character/appearance_state/visible_attributes/0/description"
+        in item.presentation.wardrobe_evidence_refs
+        for item in world_appearance
+        if item.presentation.coverage_mode == "private_apparel"
+    )
+
+
 def test_full_catalog_can_represent_every_body_strategy_charge_and_coverage_axis() -> None:
     cue_regions = {
         "perspiration": ["face", "neck", "arms"],

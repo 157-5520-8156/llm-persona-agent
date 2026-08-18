@@ -1,7 +1,15 @@
-"""Pure reducers for relationship slow variables, signals, and boundaries."""
+"""Pure reducers for relationship slow variables, signals, and boundaries.
+
+Stage from slow variables is a mean-of-six ladder (close_friend enter 7000 /
+exit 6200).  That ladder is the slow road.  The main road is her own
+``we_are`` declaration.  Do not lower the close_friend number because two
+axes were left at 0: reliability and repair have the same write path as
+trust and closeness.
+"""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 import hashlib
 import json
@@ -52,6 +60,13 @@ _POLICY = {
     "policy_version": "relationship-policy.1",
     "delta_cap_bp": 500,
     "stage_order": _STAGES,
+    # close_friend enter 7000 / exit 6200 is mean-of-six.  That is the slow
+    # ladder, not the main road: she reaches this stage by declaring
+    # we_are=close_friend.  reliability and repair have the same write path
+    # as trust/closeness and do not require a prior commitment or rupture;
+    # if they stay at 0 it is because she has not written them, not because
+    # the ladder is unreachable.  Four-axis saturation is 6666 and must not
+    # be "fixed" by lowering this number.
     "enter_bp": {"acquaintance": 2_000, "friend": 4_500, "close_friend": 7_000},
     "exit_bp": {"acquaintance": 1_500, "friend": 3_800, "close_friend": 6_200},
     "required_confirmations": 2,
@@ -101,16 +116,34 @@ RETIRED_RELATIONSHIP_POLICY_DIGESTS = frozenset(
         # caps, thresholds and dwell are unchanged, and no stage that existed
         # under this digest changes meaning under the current one.
         "13bfa71dd9f8377b968714eb3d4f9a927e587832c92d2381c6ecc772071deede",
+        # 2026-08-18 same-day close_friend 6000/5400 lowering.  Restored to
+        # 7000/6200: four-axis saturation is not a reason to move the ladder.
+        "374b96bb36fac6dfb607622075e40f1ae7fbb4dc30c802f6267727805f4fa912",
     }
 )
+
+
+def _policy_stamp(state: object) -> tuple[str | None, str | None]:
+    """Read policy version/digest from a projection or a dumped mapping."""
+
+    if isinstance(state, Mapping):
+        version = state.get("policy_version")
+        digest = state.get("policy_digest")
+    else:
+        version = getattr(state, "policy_version", None)
+        digest = getattr(state, "policy_digest", None)
+    return (
+        version if isinstance(version, str) else None,
+        digest if isinstance(digest, str) else None,
+    )
 
 
 def relationship_state_policy_is_readable(state: object) -> bool:
     """Whether existing state was written by an installed or retired policy."""
 
-    if getattr(state, "policy_version", None) != _POLICY["policy_version"]:
+    version, digest = _policy_stamp(state)
+    if version != _POLICY["policy_version"] or digest is None:
         return False
-    digest = getattr(state, "policy_digest", None)
     return digest == RELATIONSHIP_POLICY_DIGEST or digest in (
         RETIRED_RELATIONSHIP_POLICY_DIGESTS
     )

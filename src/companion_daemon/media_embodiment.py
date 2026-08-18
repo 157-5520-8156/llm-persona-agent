@@ -12,6 +12,8 @@ from typing import Mapping, Sequence
 
 import yaml
 
+from companion_daemon.media_eligibility import P3_RELATIONSHIP_STAGE_FLOOR
+
 
 DEFAULT_EMBODIMENT_CONFIG = Path("configs/media_embodiment_templates.yaml")
 VISIBLE_STATE_SCHEMA = "visible-physical-state-v1"
@@ -633,11 +635,18 @@ def _validate_embodied_presentation(presentation: EmbodiedPresentation) -> None:
 
 
 def _relationship_allows_charge(stage: str, charge: str) -> bool:
+    """Stage is a floor: eligible stages may carry any catalog charge.
+
+    Intensity is not chosen here.  The authorized ``sensual_charge_ceiling``
+    already encodes her ``declared_display``; this helper only answers whether
+    the relationship is allowed to have adult/charged media at all.
+    """
+
     if charge == "none":
         return True
-    if charge in {"subtle", "charged"}:
-        return stage in {"ambiguous", "lover"}
-    return charge == "veiled" and stage == "lover"
+    if charge not in {"subtle", "charged", "veiled"}:
+        return False
+    return stage in P3_RELATIONSHIP_STAGE_FLOOR
 
 
 def _private_wardrobe_evidence_refs(snapshot: Mapping[str, object]) -> tuple[str, ...]:
@@ -651,6 +660,16 @@ def _private_wardrobe_evidence_refs(snapshot: Mapping[str, object]) -> tuple[str
         value = str(appearance.get(field) or "").lower()
         if _private_wardrobe_text(value):
             refs.append(f"/character/appearance_state/{field}")
+    attributes = appearance.get("visible_attributes")
+    if isinstance(attributes, list):
+        for index, item in enumerate(attributes):
+            if not isinstance(item, Mapping):
+                continue
+            for field in ("aspect", "description"):
+                if _private_wardrobe_text(str(item.get(field) or "").lower()):
+                    refs.append(
+                        f"/character/appearance_state/visible_attributes/{index}/{field}"
+                    )
     event = _mapping(snapshot.get("event"))
     for field in ("summary", "outcome"):
         if _private_wardrobe_text(str(event.get(field) or "").lower()):

@@ -2215,7 +2215,9 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "Take the branch your own external effect needs" in compact_system
     # The transport contract closes in her own language, nearest to what she
     # writes, so a wall of English wire rules does not read as the voice.
-    assert compact_system.rstrip().endswith("就是你要发出去的原话。")
+    assert compact_system.rstrip().endswith("但那不是让你少写字段。")
+    assert "就是你要发出去的原话。" in compact_system
+    assert "不要在字符串里直接打英文双引号" in compact_system
     assert "以上都是投递格式，不是说话方式。" in compact_system
     assert "never prefers reply_only as a calm default" in compact_system
     assert "Each messages item or text beat is one bubble" in compact_system
@@ -2223,6 +2225,31 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "unfinished bubble" not in compact_system
     assert "REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON" in compact_system
     assert "payload_json is usually this slim object" in compact_system
+    assert '"waiting_for":null' in compact_system
+    assert '"wait":null' in compact_system
+    assert '"come_back":null' in compact_system
+    assert '"come_back_in":null' in compact_system
+    assert '"later":null' in compact_system
+    assert '"we_are":null' in compact_system
+    assert '"calling_it":null' in compact_system
+    assert '"said_as":null' in compact_system
+    assert '"us_deltas":null' in compact_system
+    assert '"about_us":null' in compact_system
+    assert '"why_us":null' in compact_system
+    assert '"mood":null' in compact_system
+    assert '"declared_display":null' in compact_system
+    assert '"photo":null' in compact_system
+    assert "省略是常态" in compact_system
+    assert "看见键名不是建议你填" in compact_system
+    assert "full_turn 写在 private_turn_state" in compact_system
+    assert "收件人由宿主绑定" in compact_system
+    assert "waiting_for 和 wait" in compact_system
+    assert "come_back 和 come_back_in" in compact_system
+    assert "一字不差抄进 said_as" in compact_system
+    assert "请写 wait" not in compact_system
+    assert "记得写" not in compact_system
+    assert '"wait":30' not in compact_system
+    assert '"we_are":"friend"' not in compact_system
     assert "only when the external effect you choose actually requires" in compact_system
     assert "never classifies by topic, length or keywords" in compact_system
     assert "never chooses the branch" in compact_system
@@ -2299,6 +2326,28 @@ async def test_compact_full_turn_keeps_full_stream_in_one_physical_character_cal
     assert head.semantic_stream_part == "head"
     assert tail.semantic_stream_part == "tail"
     assert "这次我选择完整地回应。" in json.dumps(head.raw_proposal, ensure_ascii=False)
+    private_state = specimen["events"][0]["private_turn_state"]
+    assert isinstance(private_state, dict)
+    assert private_state["declared_display"] is None
+    from companion_daemon.world_v2.private_turn_state import PrivateTurnState
+
+    assert set(private_state) == set(PrivateTurnState.model_fields)
+    for key in (
+        "keep_impression",
+        "noticed",
+        "about_us",
+        "why_us",
+        "we_are",
+        "calling_it",
+        "said_as",
+        "declared_display",
+    ):
+        assert private_state[key] is None
+    dumped_state = json.dumps(private_state, ensure_ascii=False, separators=(",", ":"))
+    assert '"declared_display":null' in dumped_state
+    assert "sexual_suggestive" not in dumped_state
+    assert "explicit_adult" not in dumped_state
+    assert "full_turn 写在 private_turn_state" in system
     assert not head.raw_proposal.get("appraisal")
     assert len(tail.physical_provider_audits) == 1
     assert tail.physical_provider_audits[0].model_call_id == head.provider_parent_model_call_id
@@ -2336,6 +2385,41 @@ async def test_compact_full_turn_keeps_full_stream_in_one_physical_character_cal
     )
     assert compact_request_bytes <= 40_000
     assert compact_request_bytes < legacy_request_bytes * 0.45
+
+
+def test_full_turn_shape_specimen_exposes_every_private_turn_state_key() -> None:
+    from companion_daemon.world_v2.character_interior.inbound_author import (
+        PRIVATE_TURN_STATE_OPTIONAL_SPECIMEN_KEYS,
+        _compact_full_turn_transport_grammar,
+        _compact_reply_only_transport_grammar,
+        _private_turn_state_shape_specimen,
+    )
+    from companion_daemon.world_v2.expression_draft import qq_expression_capabilities
+    from companion_daemon.world_v2.private_turn_state import PrivateTurnState
+
+    before_keys = {"contract", "inner_state_summary", "attended_source_refs"}
+    specimen = _private_turn_state_shape_specimen()
+    assert set(specimen) == set(PrivateTurnState.model_fields)
+    assert set(specimen) - before_keys == set(PRIVATE_TURN_STATE_OPTIONAL_SPECIMEN_KEYS)
+    assert "declared_display" in specimen
+    assert specimen["declared_display"] is None
+    for key in PRIVATE_TURN_STATE_OPTIONAL_SPECIMEN_KEYS:
+        assert specimen[key] is None
+    grammar = _compact_full_turn_transport_grammar(
+        capabilities=qq_expression_capabilities("napcat", media_request_available=True),
+        response_expectation_assessment_required=False,
+    )
+    events = grammar["decoded_payload_json"]["shape_only_nonsemantic_specimen"]["events"]
+    assert events[0]["private_turn_state"] == specimen
+    reply = _compact_reply_only_transport_grammar(
+        response_expectation_assessment_required=False,
+    )
+    reply_events = reply["decoded_payload_json"]["shape_only_nonsemantic_specimen"]["events"]
+    assert reply_events[0]["private_turn_state"] == specimen
+    blob = json.dumps(specimen, ensure_ascii=False)
+    assert "sexual_suggestive" not in blob
+    assert "explicit_adult" not in blob
+    assert "withdraw" not in blob
 
 
 @pytest.mark.asyncio
@@ -4116,9 +4200,8 @@ async def test_paired_cache_reselects_missing_authored_confidence_and_cadence_on
     )
     request = _request(revision=3, call="call:explicit-paired-cache")
 
-    await cognition._appraisal_materializer.propose(request)
     with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
-        await cognition._expression_materializer.propose(request)
+        await cognition._appraisal_materializer.propose(request)
 
     assert len(provider.calls) == 1
 
@@ -4138,9 +4221,8 @@ async def test_paired_structural_reselection_propagates_its_episode_disposition(
     )
     request = _request(revision=3, call="call:explicit-paired-episode")
 
-    await cognition._appraisal_materializer.propose(request)
     with pytest.raises(ValidationTechnicalFailure, match="authored_expression_reselection_invalid"):
-        await cognition._expression_materializer.propose(request)
+        await cognition._appraisal_materializer.propose(request)
 
     assert len(provider.calls) == 1
 
@@ -4160,9 +4242,8 @@ async def test_paired_cache_repeated_authored_field_omission_is_typed_technical_
     )
     request = _request(revision=3, call="call:explicit-paired-cache-terminal")
 
-    await cognition._appraisal_materializer.propose(request)
     with pytest.raises(ValidationTechnicalFailure) as caught:
-        await cognition._expression_materializer.propose(request)
+        await cognition._appraisal_materializer.propose(request)
 
     assert caught.value.failure_code == "authored_expression_reselection_invalid"
     assert len(provider.calls) == 1
@@ -4185,9 +4266,8 @@ async def test_paired_invalid_correction_episode_disposition_is_typed_terminal()
     )
     request = _request(revision=3, call="call:explicit-paired-invalid-episode")
 
-    await cognition._appraisal_materializer.propose(request)
     with pytest.raises(ValidationTechnicalFailure) as caught:
-        await cognition._expression_materializer.propose(request)
+        await cognition._appraisal_materializer.propose(request)
     assert caught.value.failure_code == "authored_expression_reselection_invalid"
     assert len(provider.calls) == 1
 
@@ -5047,8 +5127,11 @@ async def test_public_turn_never_enters_detached_backup_correction(
     ]
     assert top_level_audits[-1]["status"] == "main_exception"
     assert top_level_audits[-1]["failure_code"] == "paired_expression_reselection_invalid"
-    assert len(primary.calls) == 1
+    assert len(primary.calls) == 2
     assert backup.calls == []
+    second_system = primary.calls[1][0]["content"]
+    assert "结构校验失败" in second_system
+    assert "具体原因" in second_system
 
 
 @pytest.mark.asyncio
@@ -5469,8 +5552,8 @@ async def test_nonmetered_recall_followup_keeps_local_contract_identity_off_prov
     finally:
         app.close()
 
-    assert outcome.status == "deferred"
-    assert len(provider.calls) == 1
+    assert outcome.status == "action_authorized"
+    assert len(provider.calls) == 2
     assert provider.tool_names == []
 
 
@@ -5734,8 +5817,8 @@ async def test_private_state_reselection_stays_on_the_unified_lane_when_shadow_c
     finally:
         app.close()
 
-    assert outcome.status == "deferred"
-    assert len(provider.calls) == 1
+    assert outcome.status == "action_authorized"
+    assert len(provider.calls) == 2
     assert shadow.calls == []
 
 
@@ -5966,15 +6049,16 @@ async def test_invalid_combined_appraisal_is_reselected_before_expression_vertic
     finally:
         app.close()
 
-    assert outcome.status == "deferred"
-    assert len(provider.calls) == 1
+    assert outcome.status == "action_authorized"
+    assert len(provider.calls) == 2
     assert evidence.projection.appraisals == evidence.projection.affect_episodes == ()
     model_statuses = [
         json.loads(item.event.payload()["audit_json"])["status"]
         for item in evidence.events
         if item.event.event_type == "ModelResultRecorded"
     ]
-    assert model_statuses[-1] == "main_exception"
+    assert "proposal_validated" in model_statuses
+    assert model_statuses[-1] != "main_exception"
 
 
 @pytest.mark.asyncio
@@ -6258,12 +6342,8 @@ async def test_loose_combined_reply_text_is_reselected_by_the_character_model(
     finally:
         app.close()
 
-    assert outcome.status == "deferred"
-    assert len(provider.calls) == 1
-
-
-@pytest.mark.asyncio
-async def test_loose_combined_messages_are_reselected_with_two_visible_beats() -> None:
+    assert outcome.status == "action_authorized"
+    assert len(provider.calls) == 2
     provider = _LooseMultiMessageCombinedProvider()
     cognition = InboundCharacterAuthor(flash_model=provider)
 
@@ -6507,7 +6587,7 @@ async def test_model_owned_world_answer_is_not_rewritten_by_a_keyword_gate(
 
     assert outcome.status == "deferred"
     assert delivery.status == "idle"
-    assert len(provider.calls) == 1
+    assert len(provider.calls) == 2
     assert not transport.bodies
     audits = [
         json.loads(item.event.payload()["audit_json"])

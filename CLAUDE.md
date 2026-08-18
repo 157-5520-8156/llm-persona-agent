@@ -4,8 +4,8 @@
 
 ## 架构全景：两个世界
 
-- **旧 daemon 层**（`src/companion_daemon/` 顶层模块）：FastAPI、适配器、情绪状态机、旧"图片机"（`event_media.py` 6322 行）、预算控制。多数顶层模块已被 World V2 取代，仅适配器/预算/LLM 客户端仍活跃。
-- **World V2**（`src/companion_daemon/world_v2/`，452 模块）：事件溯源核心。Append-only 账本（`sqlite_ledger.py`）+ 确定性投影 + 接受链 + CAS + replay。模型是**提议者**：`Model Result` 带哈希，replay 只重放不重调模型。
+- **旧 daemon 层**（`src/companion_daemon/` 顶层模块）：FastAPI、适配器、情绪状态机、旧"图片机"（`event_media.py` 6397 行）、预算控制。多数顶层模块已被 World V2 取代，仅适配器/预算/LLM 客户端仍活跃。
+- **World V2**（`src/companion_daemon/world_v2/`，460 模块）：事件溯源核心。Append-only 账本（`sqlite_ledger.py`）+ 确定性投影 + 接受链 + CAS + replay。模型是**提议者**：`Model Result` 带哈希，replay 只重放不重调模型。运输层确定性修补在 `json_wire_repair.py`；钉源短标识还原在 `pinned_source_ref.py`。
 
 ## 入口与命令（pyproject.toml）
 
@@ -17,7 +17,7 @@
 | `companion-onebot` | `napcat_cli.py` | 通用 OneBot 路线 |
 | `companion-world-v2-test-economy` / `-formal-eval` | world_v2 下 CLI | 离线评估/夹具 |
 
-常用脚本：`run_napcat_adapter.sh`（生产）、`run_daemon.sh`、`interactive_chat.py`（REPL）、`chat_with_world_v2.py`（走生产 host 但拦截发送）、`run_isolated_daemon_acceptance.py`（双进程真实链路验收）。`run_qq_ws.sh` 引用的 `companion-qq-ws` 入口已从 pyproject 移除，疑似过期。scripts 里的 `.cmd/.ps1`/`celia_v3` 系列是无关的模型训练流水线，可忽略。
+常用脚本：`run_napcat_adapter.sh`（生产）、`run_daemon.sh`、`interactive_chat.py`（REPL）、`chat_with_world_v2.py`（走生产 host 但拦截发送）、`run_isolated_daemon_acceptance.py`（双进程真实链路验收）。`run_qq_ws.sh` 引用的 `companion-qq-ws` 入口已从 pyproject 移除，疑似过期。`scripts/` 里的 `celia_v3` / `.cmd` / `.ps1` / `train_celia_*` 是**角色身份 LoRA（她的脸）训练流水线**，产物是仓库根目录未跟踪的 `Celia.safetensors`（Krea2 DiT，rank 32，6500 步）。2026-08-18 成人车道恢复直接依赖这份权重：Civitai 旧 AIR 404 后 Private+Published 重传，模板第 28 行现为 `urn:air:krea2:lora:civitai:2868686@3240992`。不要当无关脚本删掉或忽略。`scripts/inspect_local_celia_loras.py` / `scripts/upload_celia_krea2_lora.py` 是同一条资产链上的只读盘点与上传。
 
 ## HTTP 路由（app.py）
 
@@ -47,11 +47,11 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 
 ### Character Interior（角色内心，`world_v2/character_interior/`）
 - `contracts.py` — 全部公开契约（InnerLifeSnapshot/InnerTransition/InnerDecision）
-- `core.py`（107KB）— `CharacterInterior` 深模块，仅 `project`/`experience`/`consider` 三入口
-- `inbound_author.py`（193KB）/ `inbound_wire.py`（507KB）/ `structured_role.py` — 模型输出物化 + 表达校验
+- `core.py`（118KB）— `CharacterInterior` 深模块，仅 `project`/`experience`/`consider` 三入口
+- `inbound_author.py`（218KB）/ `inbound_wire.py`（521KB）/ `structured_role.py` — 模型输出物化 + 表达校验
 - `snapshot_compiler.py` — 从 Capsule 确定性编译 8-facet 快照
 - `world_stimulus.py`（123KB）— 已提交世界事件 → 内心刺激 → `experience()` → InnerTransition
-- `production.py` — 生产组装 + 后台驱动（proactive/private impression/silence/reconsideration）
+- `production.py` — 生产组装 + 后台驱动（proactive/private impression/silence/reconsideration）。`drain_private_impression_once` 在 `WORLD_V2_PRIVATE_IMPRESSION_DAILY_MODEL_CALL_LIMIT>0` 时打开农场（默认 3/日）；0 仍是 H14 的关农场
 - 主观状态事件流：Appraisal/Affect/Aspiration/Thread/Private Impression 都是"模型提议 → compiler → acceptance runtime → reducer 投影"模式。Appraisal/Affect 有完整接受运行时；Aspiration 无独立 acceptance（DomainMutationPayload）。
 
 ### 生活生态（Life Ecology）
@@ -62,19 +62,19 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 - `world_life_context.py` — settled occurrence → 模型上下文（ActiveWorldOccurrencePremise）
 
 ### 媒体系统（图片机）
-- 管线：生活事件 → `event_ecology_media.py` 冻结 PhotoCandidate（12 类 taxonomy）→ `media_selection_worker.py` 交角色决定 → acceptance（provider grant+预算+关系）→ `media_planning_runtime.py`（桥到旧 `event_media.py` MediaPlanner v5）→ `media_execution_runtime.py`（`image_generation.py` OpenAI 生成 → `OpenAIMediaInspector` 审查 → ≤1 次修复）→ `media_delivery_runtime.py` 自动发送（每日上限+最小间隔）
-- 隐私分层：`media_eligibility.py` `MediaEligibilityRouter` 划 ordinary/personal/intimate；P3 私密车道有 `PrivateRenderContract` 但**部署未安装** private prompt author/专用生成器，fail-closed
-- `image_generation.py` 里 VolcArk/ComfyUI/Fallback **无实例化调用点**；Civitai Krea2 仅 P3 车道在 `qq_media_deployment` 有条件安装，缺密钥或模板时 fail-closed。普通生产仍接 OpenAI
+- 管线：生活事件 → `event_ecology_media.py` 冻结 PhotoCandidate（12 类 taxonomy）→ `media_selection_occasion.py` 判定是否问（她的 `media_request` / 线程相交 / 对话邻近 2h，不读措辞）→ `media_selection_worker.py` 交角色决定 → acceptance（provider grant+预算+关系；无投递槽不问）→ `media_planning_runtime.py`（桥到旧 `event_media.py` MediaPlanner v5）→ `media_execution_runtime.py`（普通：`image_generation.py` OpenAI 生成 → `OpenAIMediaInspector` 审查 → ≤1 次修复；P3：Civitai Krea2，`specialized_private_workflow_direct` 跳过视觉审查）→ `media_delivery_runtime.py` 自动发送。生成与投递均日 2 张、间隔 2h、同时 1 张。
+- 隐私分层：`media_eligibility.py` `MediaEligibilityRouter` 划 ordinary/personal/intimate。P3 强度由她的 `declared_display` 决定（`declared_display_contract.py`），owner grant 只开可能性；close_friend 是关系地板。
+- `image_generation.py` 里 VolcArk/ComfyUI/Fallback **无实例化调用点**（本地 ComfyUI 可行性 2026-08-18 仍在测，结论未定）。Civitai Krea2 仅 P3 车道在 `qq_media_deployment` 有条件安装；缺密钥或模板 fail-closed，不降级 OpenAI。**现网（2026-08-18）** key 与模板齐全，身份 LoRA AIR `urn:air:krea2:lora:civitai:2868686@3240992`；克隆上已出 JPEG。普通生产仍接 OpenAI `gpt-image-2`。Civitai 异步对账、永不二次 POST；AIR 404 预检拒 POST。账本 `cost_actual` 是 Action 预约整数，生图花费在 `usage_events`。
 
 ### 外部感知
 - `world_v2/external_world_perception/` — RSS/NWS/USGS 源 → `hub.py` 采集/去重/嵌入/聚类 → `attention.py` 影子/实时注意力 → 模型决定 → ExternalPerceptionRecorded → 生活影响。靠 registry off/shadow/live 模式门控，半启用
-- QQ 附件：`perception_trigger_runtime.py` 闭式语法决定是否分析 → `character_interior/qq_attachment_perception.py` 角色考虑 → `perception_vision_transport.py`（OpenAI vision，SQLite 持久化）
+- QQ 附件：`perception_trigger_runtime.py` 闭式语法决定是否分析 → `character_interior/qq_attachment_perception.py` 角色考虑 → `perception_vision_transport.py`（阿里百炼 `qwen3-vl-flash`，思考关闭；缺 `QWEN_API_KEY` fail-closed）
 
 ### 适配器与支撑
 - `qq_client.py`（官方 HTTP）/ `qq_delivery.py`（双路分发）/ `onebot_adapter.py`（OneBot v11 文本/图片/face）/ `qq_outbound_owner.py`（出站租约锁）
 - `conversation_cadence.py` — 对话热度分类器（hot/warm/cold，供 model_call_policy 用），**不是**消息批处理
 - `budget.py` + `usage_metrics.py` — 月/日/软日 CNY 预算门 + 带版本价格表
-- `llm.py` — `DeepSeekChatModel`/`OpenAICompatibleChatModel` + ProviderCircuitBreaker + 用量统计
+- `llm.py` — `DeepSeekChatModel`/`OpenAICompatibleChatModel` + ProviderCircuitBreaker + 用量统计；每命名 turn 最多 8 次 provider 调用，连续 2 次失败冷却 30s。DeepSeek strict tools 把可选 object 编成 `anyOf`，不用 `type: ["object","null"]`
 
 ## 关键不变量（改代码前必知）
 
@@ -84,19 +84,20 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 - Producer-First Authority：新 authority 必须和第一个生产者同批落地（见 CONTEXT.md）
 - `configs/mechanism_closure.yaml` 标记 dormant 机制（如 resource_authority 四权威、v16 harness）
 
-## 已确认的死代码/未接线（2026-08-18 盘点）
+## 已确认的死代码/未接线（2026-08-18 傍晚复核）
 
 - `world_v2/scenario_runner.py` — 仅测试与 `scripts/verify_world_v2_scenarios.py` 引用，生产 runtime 不导入
 - `world_v2/scenario_corpus.py` — 被 `scenario_runner.py` 与离线 `formal_evaluation_pipeline.py` 引用，生产 ingest 路径不导入
-- `aspiration_seed_policy.py` — 仅测试引用
-- `npc_initiative_weight_policy.py` — `npc_ecology.py` 仍 import，但 `_weighted_actor_decision` / `_weighted_world_decision` 已无调用点（H23 拆除短路后的残留）
-- `appearance_state` / `visible_physical_state` 记录者 — 宿主 seam 存在（`production_turn_application.record_*`），src 内无生产调用者，仅测试调用 `record_appearance_state`；投影读取已被 media snapshot 使用
+- `aspiration_seed_policy.py` — 仅测试引用；`src/` 无生产 import
+- `npc_initiative_weight_policy.py` — `npc_ecology.py` 仍 import，且 `_weighted_actor_decision` / `_weighted_world_decision` **仍定义**，生产路径无调用点（H23 拆除短路后的残留）
+- `appearance_state` / `visible_physical_state` 记录者 — 宿主 seam 存在（`production_turn_application.record_*`），`src` 内无生产调用者，仅测试调用 `record_appearance_state`。投影读取已被 media snapshot 使用；2026-08-18 P3 `private_transition` 会冻已有 `appearance_state`，仍不产生 record 调用
 - `resource_authority_*` 四权威 — 官方 DORMANT（`mechanism_closure.yaml` 的 v16-situation-constituents）
+- **已不再是死代码**：`drain_private_impression_once` 在默认日上限 3 时会真正 `open_once` + `advance_due_once`（H31）。`limit=0` 或未绑 policy 才安静 `return None`（H14 行为保留给测试）。执行计划 H14/H22/H23 剩余缺口里「恒 return None」的表述已回写。CLAUDE.md 本清单此前从未单列该函数。
 
 ## 测试布局
 
 - `tests/` 顶层 30 文件：适配器、预算、媒体选片契约、房间编译器
-- `tests/world_v2/`：387 文件 ~4026 测试函数。character_interior 最大；含 ledger/sqlite、expression、npc_ecology、life_*、migration golden、formal_evaluation
+- `tests/world_v2/`：397 文件。character_interior 最大；含 ledger/sqlite、expression、npc_ecology、life_*、migration golden、formal_evaluation。2026-08-18 新增/加厚：`test_json_wire_repair`、`test_pinned_source_ref`、`test_declared_display_contract`、`test_media_selection_occasion`、`test_inbound_expression_reselection_detail`、`test_civitai_async_reconcile`、`test_proactive_private_impression_source`、`test_proactive_appraisal_materialization`
 - **无直接测试**：`conversation_cadence.py`（间接）、`qq_outbound_owner.py`（间接）、`world_media.py`。`cli.py` 有 `tests/world_v2/test_simulator_cli.py`。顶层 media_* 多数已有对应测试；无独立测试文件的是 `media_moment.py` / `media_interaction.py` / `media_domain.py` / `media_authenticity.py` / `media_camera.py` / `media_facial.py` / `media_address.py`
 - `tests/support/` 是共享 fixture 构造器（非适配层）；`tests/js/` 是房间渲染器 JS 测试
 

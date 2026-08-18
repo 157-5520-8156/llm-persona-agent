@@ -2,8 +2,8 @@
 
 The public module is deliberately small: pin an appraisal proposal at a cursor,
 then accept that opaque handle.  The implementation owns event identity,
-manifest material, trigger completion and the recorder capability; callers
-never receive a mutable event sequence.
+manifest material, trigger completion-or-retention and the recorder
+capability; callers never receive a mutable event sequence.
 """
 
 from __future__ import annotations
@@ -18,8 +18,10 @@ from .accepted_ledger_batch import (
     AcceptedLedgerBatchIssuer,
 )
 from .appraisal_acceptance_manifest import (
+    APPRAISAL_TRIGGER_RETAINED_EVENT_PREFIX,
     build_appraisal_acceptance_manifest,
     canonical_appraisal_acceptance_value_hash,
+    retained_appraisal_trigger_payload,
 )
 from .appraisal_events import (
     AppraisalAcceptedPayload,
@@ -282,20 +284,42 @@ class AppraisalAtomicRecorder:
             accepted_event_ref = mutation_event_id
         if accepted_event_ref != mutation_event_id:
             raise AppraisalAcceptanceError("mutation_event_identity_not_bound")
-        outcome_ref = (
-            f"appraisal:{mutation.appraisal.appraisal_id}"
-            if isinstance(mutation, AppraisalAcceptedPayload)
-            else f"appraisal:{mutation.successor.appraisal_id}"
-            if isinstance(mutation, AppraisalSupersededPayload)
-            else f"appraisal:{mutation.appraisal_id}:contradicted"
-        )
-        completion_payload = {
-            "trigger_id": trigger.trigger_id,
-            "owner_id": trigger.claim_lease.owner_id,
-            "attempt_id": trigger.claim_lease.attempt_id,
-            "completed_at": completed_at.isoformat(),
-            "runtime_outcome_ref": outcome_ref,
-        }
+        retain_source_trigger = trigger.process_kind == "proactive_action_deliberation"
+        if retain_source_trigger:
+            completion_payload = retained_appraisal_trigger_payload(
+                trigger_id=trigger.trigger_id
+            )
+            completion_id = APPRAISAL_TRIGGER_RETAINED_EVENT_PREFIX + _digest(
+                {
+                    "world_id": proposal_event.world_id,
+                    "proposal_id": proposal.proposal_id,
+                    "trigger_id": trigger.trigger_id,
+                }
+            )
+        else:
+            outcome_ref = (
+                f"appraisal:{mutation.appraisal.appraisal_id}"
+                if isinstance(mutation, AppraisalAcceptedPayload)
+                else f"appraisal:{mutation.successor.appraisal_id}"
+                if isinstance(mutation, AppraisalSupersededPayload)
+                else f"appraisal:{mutation.appraisal_id}:contradicted"
+            )
+            completion_payload = {
+                "trigger_id": trigger.trigger_id,
+                "owner_id": trigger.claim_lease.owner_id,
+                "attempt_id": trigger.claim_lease.attempt_id,
+                "completed_at": completed_at.isoformat(),
+                "runtime_outcome_ref": outcome_ref,
+            }
+            # A self-referential manifest/event id would be unstable.  Derive the
+            # completion identity only from immutable proposal authority instead.
+            completion_id = "event:appraisal-trigger-completed:" + _digest(
+                {
+                    "world_id": proposal_event.world_id,
+                    "proposal_id": proposal.proposal_id,
+                    "trigger_id": trigger.trigger_id,
+                }
+            )
         provisional = {
             "acceptance_id": mutation.acceptance_id,
             "proposal_id": proposal.proposal_id,
@@ -308,18 +332,13 @@ class AppraisalAtomicRecorder:
             "mutation_event_id": mutation_event_id,
             "mutation_event_type": mutation_type,
             "mutation_payload_hash": canonical_appraisal_acceptance_value_hash(mutation_payload),
-            "completion_event_id": "pending",
-            "completion_payload_hash": canonical_appraisal_acceptance_value_hash(completion_payload),
+            "completion_event_id": completion_id,
+            "completion_payload_hash": canonical_appraisal_acceptance_value_hash(
+                completion_payload
+            ),
             "policy_digest": APPRAISAL_ACCEPTANCE_POLICY_DIGEST,
         }
-        # A self-referential manifest/event id would be unstable.  Derive the
-        # completion identity only from immutable proposal authority instead.
-        completion_id = "event:appraisal-trigger-completed:" + _digest(
-            {"world_id": proposal_event.world_id, "proposal_id": proposal.proposal_id, "trigger_id": trigger.trigger_id}
-        )
-        manifest = build_appraisal_acceptance_manifest(
-            **{**provisional, "completion_event_id": completion_id}
-        )
+        manifest = build_appraisal_acceptance_manifest(**provisional)
         acceptance_event_id = appraisal_acceptance_event_id(
             world_id=proposal_event.world_id,
             proposal_id=proposal.proposal_id,
@@ -361,20 +380,26 @@ class AppraisalAtomicRecorder:
                 idempotency_key=mutation_identity,
                 payload=mutation_payload,
             ),
-            WorldEvent.from_payload(
-                **common,
-                event_id=completion_id,
-                event_type="TriggerProcessCompleted",
-                causation_id=mutation_event_id,
-                idempotency_key=_private_idempotency_key(
-                    world_id=proposal_event.world_id, manifest_hash=manifest.manifest_hash, role="completion"
-                ),
-                payload=completion_payload,
-            ),
         )
-        if (
-            events[1].payload_hash != manifest.mutation_payload_hash
-            or events[2].payload_hash != manifest.completion_payload_hash
+        if not retain_source_trigger:
+            events = (
+                *events,
+                WorldEvent.from_payload(
+                    **common,
+                    event_id=completion_id,
+                    event_type="TriggerProcessCompleted",
+                    causation_id=mutation_event_id,
+                    idempotency_key=_private_idempotency_key(
+                        world_id=proposal_event.world_id,
+                        manifest_hash=manifest.manifest_hash,
+                        role="completion",
+                    ),
+                    payload=completion_payload,
+                ),
+            )
+        if events[1].payload_hash != manifest.mutation_payload_hash or (
+            not retain_source_trigger
+            and events[2].payload_hash != manifest.completion_payload_hash
         ):
             raise AppraisalAcceptanceError("effect_hash_mismatch")
         commit_id = "commit:appraisal-acceptance:" + _digest(

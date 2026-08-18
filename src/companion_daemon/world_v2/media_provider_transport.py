@@ -25,13 +25,18 @@ that passed inspection alongside the artifact, keyed by the artifact sidecar
 ref; the later ``media_inspection`` Action replays it as its own durable
 provider result.  A render failure becomes a terminal ``failed`` receipt and
 the preview lane fails closed downstream.
+
+Civitai template workflows are the exception: submit is effect-once, but the
+image may still be ``preparing``.  That outcome is ``DispatchPending`` — not a
+stored terminal receipt — so later ActionPump lookup/re-dispatch GETs the
+same workflow id and never POSTs a second billed job.
 """
 
 from __future__ import annotations
 
 import asyncio
 from contextvars import ContextVar
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 import hashlib
 import json
 import logging
@@ -54,6 +59,7 @@ from .platform_action_executor import (
     MediaProviderDispatchRequest,
     PlatformDispatchReceipt,
 )
+from .schemas import DispatchPending
 from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_write_lock
 
 
@@ -63,6 +69,28 @@ _PLAN_CONTENT_TYPE = "application/vnd.world-v2.media-plan+json"
 _ARTIFACT_CONTENT_TYPE = "application/vnd.world-v2.media-artifact+json"
 _INSPECTION_CONTENT_TYPE = "application/vnd.world-v2.media-inspection+json"
 _SAFE_PROVIDER_CODE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,79}$")
+_CIVITAI_PENDING_REASON_PREFIX = "image_provider_pending"
+_CIVITAI_LOOKUP_AFTER = timedelta(seconds=30)
+_CIVITAI_ABANDON_AFTER = timedelta(hours=4)
+
+
+def _is_civitai_pending_reason(reason: object) -> bool:
+    return str(reason or "").startswith(_CIVITAI_PENDING_REASON_PREFIX)
+
+
+def _civitai_dispatch_pending(
+    request: MediaProviderDispatchRequest, *, provider: str, now: datetime
+) -> DispatchPending:
+    return DispatchPending(
+        action_id=request.action_id,
+        idempotency_key=request.idempotency_key,
+        provider=provider,
+        provider_ref=None,
+        lookup_after=now + _CIVITAI_LOOKUP_AFTER,
+        deadline=now + _CIVITAI_ABANDON_AFTER,
+        dispatch_started_at=now,
+        idempotency_mode="effect_once",
+    )
 
 
 def _safe_label(value: object, *, limit: int = 120) -> str | None:
@@ -202,9 +230,9 @@ class MediaProviderDiagnosticRecorder:
 class SQLiteDurableMediaProviderTransport:
     """Effect-once render/inspection provider bound to durable SQLite rows.
 
-    One idempotency key maps to at most one terminal receipt and result.
-    Re-dispatch and recovery lookups return the stored bytes; they never call
-    the image provider again for the same frozen request.
+    One idempotency key maps to at most one *terminal* receipt and result.
+    Re-dispatch of a still-preparing Civitai workflow returns DispatchPending
+    without storing a failure, so lookup/re-send GETs the same billed job.
     """
 
     provider = "provider:event-media"
@@ -280,7 +308,7 @@ class SQLiteDurableMediaProviderTransport:
 
     async def send(
         self, request: MediaProviderDispatchRequest
-    ) -> PlatformDispatchReceipt:
+    ) -> PlatformDispatchReceipt | DispatchPending:
         async with self._send_lock:
             stored = self._stored_receipt(
                 idempotency_key=request.idempotency_key,
@@ -298,7 +326,7 @@ class SQLiteDurableMediaProviderTransport:
 
     async def lookup(
         self, *, idempotency_key: str, request_fingerprint: str
-    ) -> PlatformDispatchReceipt | None:
+    ) -> PlatformDispatchReceipt | DispatchPending | None:
         return self._stored_receipt(
             idempotency_key=idempotency_key, request_fingerprint=request_fingerprint
         )
@@ -347,7 +375,7 @@ class SQLiteDurableMediaProviderTransport:
 
     async def _render(
         self, request: MediaProviderDispatchRequest
-    ) -> PlatformDispatchReceipt:
+    ) -> PlatformDispatchReceipt | DispatchPending:
         from companion_daemon.event_media import (
             MediaPlan as LegacyMediaPlan,
             MediaRenderFailure,
@@ -383,6 +411,10 @@ class SQLiteDurableMediaProviderTransport:
                 diagnostic=self._consume_diagnostic(),
             )
         if isinstance(rendered, MediaRenderFailure):
+            if _is_civitai_pending_reason(rendered.reason):
+                return _civitai_dispatch_pending(
+                    request, provider=self.provider, now=self._now()
+                )
             return self._persist_failure(
                 request,
                 error_class=str(rendered.reason)[:120] or "render_failed",

@@ -276,6 +276,7 @@ async def test_slow_background_model_does_not_hold_the_inbound_world_lock(tmp_pa
         use_configured_recall_embedding=False,
     )
     background_task: asyncio.Task[object] | None = None
+    second_task: asyncio.Task[object] | None = None
     try:
         first = await host.inbound_text(
             message_id="message:one",
@@ -292,29 +293,53 @@ async def test_slow_background_model_does_not_hold_the_inbound_world_lock(tmp_pa
         )
         await asyncio.wait_for(background.started.wait(), timeout=2)
 
-        started = asyncio.get_running_loop().time()
-        # The API fixtures return immediately, so the public inbound path must
-        # keep its entire non-provider hot path inside the 500ms production
-        # target even while background cognition is indefinitely blocked.
-        second = await asyncio.wait_for(
+        # Observe causal progress instead of one absolute wall-clock sample.
+        # Isolation benches in output/ingress-perf/ (12 idle runs, current tree
+        # vs a clean HEAD worktree) show the 500ms wall budget is lost to
+        # SQLite commit jitter and suite-wide CPU contention, not to a held
+        # World lock: queue stayed ~1ms while ledger_commit spiked to 957ms
+        # on HEAD.  Today's inbound additions did not move the typical CPU
+        # (median 224ms vs HEAD 201ms).  The drain test already uses this
+        # causal shape; keep both entrypoints on the same lock signal.
+        second_task = asyncio.create_task(
             host.inbound_text(
                 message_id="message:two",
                 recipient_id="10001",
                 text="还在吗？",
                 observed_at=NOW + timedelta(minutes=1),
-            ),
-            timeout=3,
+            )
         )
-        elapsed = asyncio.get_running_loop().time() - started
+        await asyncio.wait_for(delivery.second_text_sent.wait(), timeout=3)
 
+        assert not background_task.done()
+        assert not background.release.is_set()
+        second = await asyncio.wait_for(second_task, timeout=1)
         assert first.status == second.status == "action_authorized"
-        assert elapsed < 0.5
         assert delivery.sent == ["收到。", "收到。"]
         assert not background_task.done()
+        coalescing_samples = tuple(
+            sample for sample in host.latency_samples() if sample.segment == "coalescing"
+        )
+        queue_samples = tuple(
+            sample for sample in host.latency_samples() if sample.segment == "queue"
+        )
+        assert len(coalescing_samples) == 2
+        assert all(sample.duration_ms == 100.0 for sample in coalescing_samples)
+        # Queue is wait-before-ingest.  A held World lock would stall here for
+        # as long as the blocked background completion runs (forever in this
+        # fixture).  Idle isolation saw queue p90 ≈ 1.5ms on both trees; 80ms
+        # is ~20× that typical and still fails closed on lock hold, without
+        # treating ledger_commit spikes as a product regression.  The 500ms
+        # non-provider production target remains a real-transport concern of
+        # WarmChatPerformanceGate, not a parallel-suite microbenchmark.
+        assert queue_samples[-1].duration_ms < 80.0
     finally:
         background.release.set()
         if background_task is not None:
             await asyncio.wait_for(background_task, timeout=5)
+        if second_task is not None and not second_task.done():
+            second_task.cancel()
+            await asyncio.gather(second_task, return_exceptions=True)
         await host.aclose()
 
 
@@ -424,7 +449,6 @@ async def test_text_endpoint_cannot_author_or_delay_same_turn_emotion(
         use_configured_recall_embedding=False,
     )
     try:
-        started = asyncio.get_running_loop().time()
         result = await asyncio.wait_for(
             host.inbound_text(
                 message_id="message:half-dead-gate",
@@ -434,10 +458,22 @@ async def test_text_endpoint_cannot_author_or_delay_same_turn_emotion(
             ),
             timeout=3,
         )
-        elapsed = asyncio.get_running_loop().time() - started
 
         assert result.status == "action_authorized"
-        assert elapsed < 0.5
+        coalescing_samples = tuple(
+            sample for sample in host.latency_samples() if sample.segment == "coalescing"
+        )
+        queue_samples = tuple(
+            sample for sample in host.latency_samples() if sample.segment == "queue"
+        )
+        assert len(coalescing_samples) == 1
+        assert coalescing_samples[0].duration_ms == 100.0
+        # Same-turn Appraisal/Affect settlement is on this path by design; a
+        # retired local emotion endpoint would show up as appraisal_calls.
+        # Wall-clock 500ms mixed that work with SQLite jitter (idle isolation:
+        # 1/12 current runs at 523ms, 3/12 HEAD runs above 500ms).  Queue is
+        # the extra-gate/lock signal; typical isolation samples were 1–4ms.
+        assert queue_samples[0].duration_ms < 80.0
         assert delivery.sent == ["收到。"]
         assert infrastructure.appraisal_calls == 0
 

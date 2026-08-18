@@ -802,6 +802,15 @@ class SourceRefAliasTable(NamedTuple):
         expanded = dict(self.entries).get(source_ref)
         if expanded is not None:
             return expanded
+        from .pinned_source_ref import PinnedSourceCatalog, resolve_pinned_source_ref
+
+        catalog = PinnedSourceCatalog.for_resolution(
+            self.canonical_refs,
+            tokens=dict(self.entries),
+        )
+        outcome = resolve_pinned_source_ref(source_ref, catalog)
+        if outcome.status == "unique" and outcome.source_ref is not None:
+            return outcome.source_ref
         if (
             len(source_ref) > 1
             and source_ref[0] in {"S", "T"}
@@ -1105,6 +1114,29 @@ def validate_expression_private_turn_state(
         allowed_attention_refs.update(
             item.source_ref for item in biographical_coordinate_authorities(context)
         )
+        inner_life = context.get("inner_life_snapshot")
+        if isinstance(inner_life, dict):
+            snapshot_refs = inner_life.get("source_refs")
+            if isinstance(snapshot_refs, list):
+                allowed_attention_refs.update(
+                    ref for ref in snapshot_refs if isinstance(ref, str)
+                )
+    if state.attended_source_refs:
+        from .pinned_source_ref import (
+            PinnedSourceCatalog,
+            resolve_pinned_source_ref_list,
+        )
+
+        catalog = PinnedSourceCatalog.for_resolution(
+            allowed_attention_refs,
+            tokens=dict(aliases.entries),
+        )
+        restored, _failures = resolve_pinned_source_ref_list(
+            list(state.attended_source_refs),
+            catalog,
+        )
+        if tuple(restored) != state.attended_source_refs:
+            state = state.model_copy(update={"attended_source_refs": tuple(restored)})
     try:
         validate_private_turn_state_sources(
             state,

@@ -31,11 +31,55 @@ from .media_v2 import (
     StoredMediaPayload, media_digest, media_repair_action_id, media_repair_attempt_id,
     media_repair_reservation_id, media_repair_trigger_id,
 )
-from .schemas import Action, BudgetReservation, ClaimLease, ExecutionReceipt, ProjectionCursor, ProviderMediaGrantBinding, TriggerProcess, WorldEvent
+from .schemas import (
+    Action,
+    BudgetReservation,
+    ClaimLease,
+    DispatchPending,
+    ExecutionReceipt,
+    ProjectionCursor,
+    ProviderMediaGrantBinding,
+    TriggerProcess,
+    WorldEvent,
+)
 
 
 class MediaExecutionError(ValueError):
     pass
+
+
+class MediaRenderInFlight(MediaExecutionError):
+    """Civitai accepted a workflow; later drain must GET that id, never POST again."""
+
+
+CIVITAI_PENDING_REASON_PREFIX = "image_provider_pending"
+CIVITAI_LOOKUP_AFTER = timedelta(seconds=30)
+CIVITAI_ABANDON_AFTER = timedelta(hours=4)
+
+
+def is_civitai_template_pending_reason(reason: object) -> bool:
+    return str(reason or "").startswith(CIVITAI_PENDING_REASON_PREFIX)
+
+
+def civitai_template_dispatch_pending(
+    *,
+    action_id: str,
+    idempotency_key: str,
+    provider: str,
+    now: datetime,
+) -> DispatchPending:
+    """Keep ActionPump on lookup/reconcile until the billed workflow finishes or expires."""
+
+    return DispatchPending(
+        action_id=action_id,
+        idempotency_key=idempotency_key,
+        provider=provider,
+        provider_ref=None,
+        lookup_after=now + CIVITAI_LOOKUP_AFTER,
+        deadline=now + CIVITAI_ABANDON_AFTER,
+        dispatch_started_at=now,
+        idempotency_mode="effect_once",
+    )
 
 
 class MediaExecutionAdapter(Protocol):
@@ -84,6 +128,8 @@ class EventMediaExecutionAdapter:
             raise MediaExecutionError("frozen MediaPlan bytes are not accepted by event_media") from exc
         result = await self._renderer.render(plan)
         if isinstance(result, MediaRenderFailure):
+            if is_civitai_template_pending_reason(result.reason):
+                raise MediaRenderInFlight("media_render_pending:" + result.reason)
             raise MediaExecutionError("media_render_failed:" + result.reason)
         image_bytes = result.path.read_bytes()
         body = json.dumps({
@@ -577,4 +623,13 @@ def _request_fingerprint_from_receipt(receipt: ExecutionReceipt) -> str:
     return matches[0]
 
 
-__all__ = ["EventMediaExecutionAdapter", "MediaExecutionAdapter", "MediaExecutionError", "MediaExecutionRuntime", "MediaExecutionWorker"]
+__all__ = [
+    "EventMediaExecutionAdapter",
+    "MediaExecutionAdapter",
+    "MediaExecutionError",
+    "MediaExecutionRuntime",
+    "MediaExecutionWorker",
+    "MediaRenderInFlight",
+    "civitai_template_dispatch_pending",
+    "is_civitai_template_pending_reason",
+]

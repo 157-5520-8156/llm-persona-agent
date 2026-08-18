@@ -410,6 +410,12 @@ class RecordedModelResultAudit(FrozenModel):
         "provider_unresolved",
     ]
     failure_code: str | None = Field(default=None, max_length=64)
+    failure_detail: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=4_000,
+        exclude_if=lambda value: value is None,
+    )
     slot: Literal["primary", "backup", "corrective"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )

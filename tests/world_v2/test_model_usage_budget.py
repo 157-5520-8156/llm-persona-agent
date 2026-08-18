@@ -13,7 +13,9 @@ from companion_daemon.config import Settings
 from companion_daemon.llm import DeepSeekChatModel, model_call_scope
 from companion_daemon.world_v2.model_usage_budget import (
     GENERIC_MODEL_PURPOSES,
+    BackgroundSpendCapDenied,
     ModelUsageAdmissionError,
+    VISIBLE_INBOUND_PURPOSES,
     WorldV2UsageStore,
 )
 
@@ -307,3 +309,149 @@ def test_http_health_exposes_model_usage_attribution(tmp_path) -> None:
     assert "cache_hit_rate" in usage
     assert "invalid_cost_rate" in usage
     assert "purpose_counts" in usage
+
+
+def test_usage_store_creates_usage_events_without_legacy_schema(tmp_path) -> None:
+    path = tmp_path / "world-v2-ledger.sqlite"
+    WorldV2UsageStore(path=str(path))
+    connection = sqlite3.connect(path)
+    try:
+        tables = {
+            row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+    finally:
+        connection.close()
+    assert "usage_events" in tables
+    assert "world_v2_model_usage" in tables
+    assert "users" not in tables
+    assert "mood_state" not in tables
+
+
+def test_budget_state_reports_soft_daily_exhaustion(tmp_path) -> None:
+    store = WorldV2UsageStore(
+        path=str(tmp_path / "usage.sqlite"),
+        monthly_budget_cny=100.0,
+        daily_budget_cny=4.0,
+        soft_daily_budget_cny=0.5,
+    )
+    store.record(
+        _Usage(model="deepseek-v4-flash", prompt_tokens=10_000_000, completion_tokens=0)
+    )
+    state = store.budget_state()
+    assert state["soft_daily_exhausted"] is True
+    assert state["daily_exhausted"] is True
+    assert "soft_daily_exhausted" in state["warning_reasons"]
+
+
+def test_background_purpose_is_denied_before_the_provider_call(tmp_path) -> None:
+    store = WorldV2UsageStore(
+        path=str(tmp_path / "usage.sqlite"),
+        monthly_budget_cny=100.0,
+        daily_budget_cny=20.0,
+        soft_daily_budget_cny=0.01,
+    )
+    store.record(
+        _Usage(
+            model="deepseek-v4-flash",
+            prompt_tokens=10_000_000,
+            completion_tokens=0,
+            purpose="private_impression_reflection",
+        )
+    )
+    with pytest.raises(BackgroundSpendCapDenied, match="soft_daily_budget_exceeded"):
+        store.admit_provider_call(
+            purpose="private_impression_reflection",
+            actor="agent:companion",
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            prompt_characters=100,
+        )
+    connection = sqlite3.connect(tmp_path / "usage.sqlite")
+    try:
+        row = connection.execute(
+            "SELECT status, error FROM world_v2_model_usage WHERE status = 'budget_denied'"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert row is not None
+    assert row[0] == "budget_denied"
+    assert row[1] == "soft_daily_budget_exceeded"
+
+
+def test_inbound_purpose_is_never_blocked_by_cny_envelope(tmp_path) -> None:
+    store = WorldV2UsageStore(
+        path=str(tmp_path / "usage.sqlite"),
+        monthly_budget_cny=0.01,
+        daily_budget_cny=0.01,
+        soft_daily_budget_cny=0.01,
+    )
+    store.record(
+        _Usage(model="deepseek-v4-flash", prompt_tokens=10_000_000, completion_tokens=0)
+    )
+    assert "inbound_turn" in VISIBLE_INBOUND_PURPOSES
+    reservation = store.admit_provider_call(
+        purpose="inbound_turn",
+        actor="agent:companion",
+        provider="deepseek",
+        model="deepseek-v4-flash",
+        prompt_characters=100,
+    )
+    assert reservation
+
+
+@pytest.mark.asyncio
+async def test_background_cny_cap_does_not_emit_http(tmp_path) -> None:
+    requested: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request)
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "should not run"}}]}
+        )
+
+    store = WorldV2UsageStore(
+        path=str(tmp_path / "usage.sqlite"),
+        monthly_budget_cny=100.0,
+        daily_budget_cny=20.0,
+        soft_daily_budget_cny=0.01,
+    )
+    store.record(
+        _Usage(
+            model="deepseek-v4-flash",
+            prompt_tokens=10_000_000,
+            completion_tokens=0,
+            purpose="proactive_contact",
+        )
+    )
+    model = DeepSeekChatModel(
+        "key",
+        "https://api.deepseek.com",
+        "deepseek-v4-flash",
+        transport=httpx.MockTransport(handler),
+        usage_observer=store.record,
+    )
+    with pytest.raises(BackgroundSpendCapDenied):
+        with model_call_scope("proactive_contact", actor="agent:companion"):
+            await model.complete([{"role": "user", "content": "hi"}])
+    assert requested == []
+
+
+def test_image_usage_events_count_against_background_cny_cap(tmp_path) -> None:
+    from companion_daemon.db import UsageEventsLedger
+
+    path = tmp_path / "usage.sqlite"
+    store = WorldV2UsageStore(
+        path=str(path),
+        monthly_budget_cny=100.0,
+        daily_budget_cny=4.0,
+        soft_daily_budget_cny=3.0,
+    )
+    UsageEventsLedger(path).record_usage("image_generation", 3.5, note="paid-render")
+    with pytest.raises(BackgroundSpendCapDenied, match="soft_daily_budget_exceeded"):
+        store.admit_provider_call(
+            purpose="private_impression_reflection",
+            actor="agent:companion",
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            prompt_characters=80,
+        )

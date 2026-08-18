@@ -42,9 +42,21 @@ def test_slim_consider_instruction_speaks_her_language() -> None:
     instruction = slim_consider_instruction()
     chinese = sum(1 for char in instruction if "\u4e00" <= char <= "\u9fff")
     assert chinese / len(instruction) > 0.35
-    for field in ("messages", "felt", "mood", "matters_bp", "us_deltas", "we_are"):
+    for field in (
+        "messages",
+        "felt",
+        "mood",
+        "matters_bp",
+        "us_deltas",
+        "we_are",
+        "declared_display",
+        "waiting_for",
+        "come_back",
+        "come_back_in",
+        "later",
+    ):
         assert field in instruction
-    for enum_value in ("still_pending", "resentment", "close_friend", "supersede"):
+    for enum_value in ("still_pending", "resentment", "close_friend", "supersede", "sexual_suggestive"):
         assert enum_value in instruction
     for translated in (
         "只有你能开",
@@ -52,6 +64,9 @@ def test_slim_consider_instruction_speaks_her_language() -> None:
         "都不写就是这一轮什么都没留下",
     ):
         assert translated in instruction
+    assert "source_ref_aliases" in instruction
+    assert "基点" in instruction
+    assert "不是百分制" in instruction
 
 
 def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None:
@@ -61,6 +76,46 @@ def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None
     assert "Feeling drawn, uncertain, bored, or pulled away are all yours" in instruction
     assert "felt 是这一轮你自己的读法" in instruction
     assert "ticket-closing" in instruction  # kept as an English anchor
+    assert "declared_display" in instruction
+    assert "也不偏好你写了比不写更好" in instruction
+    assert "发了更好" not in instruction
+    assert "应该给他看" not in instruction
+    assert "试着发一张" not in instruction
+    assert "就别写 wait" not in instruction
+    assert "永远不要从标点" not in instruction
+    assert "什么都没搁着就两个都别写" not in instruction
+    assert "应该升级" not in instruction
+    assert "试着声明" not in instruction
+    assert "应该说出来" not in instruction
+    assert "请写 wait" not in instruction
+    assert "记得写" not in instruction
+    assert "写大一点" not in instruction
+    assert "叫醒你" in instruction
+    assert "30、60、90" in instruction
+    assert "不写就不会有人叫你" in instruction
+    assert "口头说「我等你」不会变成 wait" in instruction
+    assert "两千才是两成，八十不是百分之八" in instruction
+    assert "come_back 是你心里搁着的一件事" in instruction
+    assert "we_are 是你可以写的字段" in instruction
+    assert "we_are=friend" in instruction
+    assert "不必先经过 acquaintance" in instruction
+    assert "只在字段里写 we_are，账本上的阶段不会动" in instruction
+    assert "一字不差" in instruction
+    assert "从不替你生成 said_as" in instruction
+    assert "从不从你的措辞里推断承诺" in instruction
+    assert "选了沉默" in instruction
+    assert "两千" in instruction
+    assert "四千五" in instruction
+    assert "单次 +20" in instruction
+    assert "从不建议你写大或写小" in instruction
+    assert "reliability_bp 是你觉得他靠不靠得住" in instruction
+    assert "repair_confidence_bp 是闹别扭之后你觉得还能不能修好" in instruction
+    assert "不必先有承诺，也不必先有裂痕" in instruction
+    assert "三个得一起写" in instruction
+    assert "也不会替你补上缺的字段" in instruction
+    assert "也从不建议你写哪几根轴" in instruction
+    assert "应该写 reliability" not in instruction
+    assert "不写、不说、维持现状、说出来" in instruction
     assert "photo 写 true，意思是你现在想让媒体车道考虑一个可用的候选" in instruction
     assert "只在文字里说要发图不会打开这条车道" in instruction
     assert "photo true 不能搭 reply_only" in instruction

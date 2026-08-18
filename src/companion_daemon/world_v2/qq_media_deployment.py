@@ -14,8 +14,10 @@ It composes only already-reviewed seams:
   replays the exact stored bytes.  Inspection is a sourced-life file check,
   not a vision model.  The adult P3 route installs Civitai Krea2 plus the
   first-person private prompt author when the reviewed template and
-  ``CIVITAI_API_KEY`` are present; otherwise that route stays fail-closed
-  and never falls back to GPT Image or disables the ordinary life lane;
+  ``CIVITAI_API_KEY`` are present.  The author prefers Hermes via OpenRouter
+  and only falls back to DeepSeek with an explicit warning; a missing
+  author credential fail-closes the adult route and never silently uses a
+  refuse-prone model or GPT Image, and never disables the ordinary life lane;
 - grant bindings reference the identities written by
   :mod:`media_authority_provisioning`; this factory never manufactures
   enforcement authority;
@@ -39,6 +41,7 @@ import time
 import httpx
 
 from companion_daemon.config import Settings
+from companion_daemon.db import UsageEventsLedger
 
 from .event_media_planner_adapter import (
     EventMediaPlannerAdapter,
@@ -291,26 +294,72 @@ def _provisioned_grants_present(*, database_path: Path, world_id: str) -> bool:
         connection.close()
 
 
-def _private_prompt_author_model(settings: Settings):
-    """Hermes via OpenRouter when present; otherwise the required DeepSeek chat model."""
+@dataclass(frozen=True, slots=True)
+class _PrivatePromptAuthorChoice:
+    """Named author selection so startup logs never hide Hermes vs DeepSeek."""
+
+    model: object
+    provider: str
+    model_name: str
+    via: str
+
+
+def _media_usage_observer(settings: Settings):
+    """Record private-prompt spend on the same ledger as other World v2 calls."""
+
+    from .model_usage_budget import usage_store_for_settings
+
+    return usage_store_for_settings(settings).record
+
+
+def _missing_private_prompt_author_credentials(settings: Settings) -> tuple[str, ...]:
+    missing: list[str] = []
+    if settings.hermes_private_prompt_enabled and not settings.openrouter_api_key:
+        missing.append("OPENROUTER_API_KEY")
+    if not settings.deepseek_api_key:
+        missing.append("DEEPSEEK_API_KEY")
+    return tuple(missing)
+
+
+def _private_prompt_author_model(settings: Settings) -> _PrivatePromptAuthorChoice | None:
+    """Hermes via OpenRouter when present; otherwise an explicit DeepSeek fallback."""
 
     from companion_daemon.llm import DeepSeekChatModel, OpenAICompatibleChatModel
 
     if settings.hermes_private_prompt_enabled and settings.openrouter_api_key:
-        return OpenAICompatibleChatModel(
+        model = OpenAICompatibleChatModel(
             api_key=settings.openrouter_api_key,
             base_url=settings.openrouter_base_url,
             model=settings.hermes_private_prompt_model,
             max_completion_tokens=400,
             proxy_url=settings.openai_proxy_url,
+            reasoning_effort="",
+            usage_observer=_media_usage_observer(settings),
+        )
+        model.provider = "openrouter"
+        return _PrivatePromptAuthorChoice(
+            model=model,
+            provider="openrouter",
+            model_name=settings.hermes_private_prompt_model,
+            via="hermes_openrouter",
         )
     if settings.deepseek_api_key:
-        return DeepSeekChatModel(
-            api_key=settings.deepseek_api_key,
-            base_url=settings.deepseek_base_url,
-            model=settings.deepseek_model,
-            thinking_enabled=False,
-            max_completion_tokens=400,
+        return _PrivatePromptAuthorChoice(
+            model=DeepSeekChatModel(
+                api_key=settings.deepseek_api_key,
+                base_url=settings.deepseek_base_url,
+                model=settings.deepseek_model,
+                thinking_enabled=False,
+                max_completion_tokens=400,
+                usage_observer=_media_usage_observer(settings),
+            ),
+            provider="deepseek",
+            model_name=settings.deepseek_model,
+            via=(
+                "deepseek_fallback"
+                if settings.hermes_private_prompt_enabled
+                else "deepseek"
+            ),
         )
     return None
 
@@ -320,10 +369,15 @@ def _compose_high_private_lane(
     *,
     diagnostic_recorder: MediaProviderDiagnosticRecorder,
     world_id: str,
-) -> tuple[dict[str, object], object] | None:
+    spend_store: object | None = None,
+) -> tuple[dict[str, object], object, _PrivatePromptAuthorChoice] | None:
     """Install the adult Civitai route, or leave it fail-closed without touching ordinary media."""
 
     if not settings.civitai_krea2_enabled:
+        _LOG.warning(
+            "world v2 high-private P3 lane left fail-closed for %s; disabled: CIVITAI_KREA2_ENABLED",
+            world_id,
+        )
         return None
 
     from companion_daemon.event_media import FirstPersonPrivatePromptAuthor
@@ -346,13 +400,31 @@ def _compose_high_private_lane(
             ", ".join(missing),
         )
         return None
-    author_model = _private_prompt_author_model(settings)
-    if author_model is None:
+    author_choice = _private_prompt_author_model(settings)
+    if author_choice is None:
+        author_missing = _missing_private_prompt_author_credentials(settings)
         _LOG.warning(
-            "world v2 high-private P3 lane left fail-closed for %s; missing: private prompt author model",
+            "world v2 high-private P3 lane left fail-closed for %s; missing: %s",
             world_id,
+            ", ".join(author_missing) or "private prompt author model",
         )
         return None
+    if author_choice.via == "deepseek_fallback":
+        _LOG.warning(
+            "world v2 high-private P3 private prompt author falling back to %s:%s for %s; "
+            "HERMES_PRIVATE_PROMPT_ENABLED but OPENROUTER_API_KEY is missing",
+            author_choice.provider,
+            author_choice.model_name,
+            world_id,
+        )
+    else:
+        _LOG.warning(
+            "world v2 high-private P3 private prompt author installed for %s: %s:%s via %s",
+            world_id,
+            author_choice.provider,
+            author_choice.model_name,
+            author_choice.via,
+        )
 
     try:
         generator = CivitaiTemplateWorkflowImageGenerator(
@@ -361,6 +433,7 @@ def _compose_high_private_lane(
             base_url=settings.civitai_base_url,
             proxy_url=settings.civitai_proxy_url or settings.openai_proxy_url,
             require_reference_free=True,
+            spend_store=spend_store or UsageEventsLedger(Path(settings.database_path)),
         )
     except (OSError, ValueError, TypeError, json.JSONDecodeError, KeyError) as exc:
         _LOG.warning(
@@ -383,7 +456,8 @@ def _compose_high_private_lane(
             SPECIALIZED_SUGGESTIVE_ROUTE: wrapped,
             SPECIALIZED_EXPLICIT_ROUTE: wrapped,
         },
-        FirstPersonPrivatePromptAuthor(author_model),
+        FirstPersonPrivatePromptAuthor(author_choice.model),
+        author_choice,
     )
 
 
@@ -454,12 +528,14 @@ def build_qq_media_preview_deployment(
         ),
     )
     diagnostic_recorder = MediaProviderDiagnosticRecorder()
+    spend_store = UsageEventsLedger(database_path)
     generator = _DiagnosticImageGenerator(
         OpenAIImageGenerator(
             settings.openai_api_key,
             base_url=settings.openai_base_url,
             model=settings.image_model,
             proxy_url=settings.openai_proxy_url,
+            spend_store=spend_store,
         ),
         recorder=diagnostic_recorder,
         endpoint=settings.openai_base_url,
@@ -481,7 +557,10 @@ def build_qq_media_preview_deployment(
     # missing credential leaves that route fail-closed and does not disable
     # the ordinary OpenAI life lane or silently fall back to GPT Image.
     high_private = _compose_high_private_lane(
-        settings, diagnostic_recorder=diagnostic_recorder, world_id=world_id
+        settings,
+        diagnostic_recorder=diagnostic_recorder,
+        world_id=world_id,
+        spend_store=spend_store,
     )
     renderer = SourcedLifeMediaRenderer(
         generator=generator,
@@ -539,14 +618,20 @@ def build_qq_media_preview_deployment(
             amount_limit=0,
         ),
     )
+    if high_private is None:
+        high_private_suffix = ", high-private P3 fail-closed"
+    else:
+        author_choice = high_private[2]
+        high_private_suffix = (
+            f", high-private P3 krea2 installed, private prompt author "
+            f"{author_choice.provider}:{author_choice.model_name}"
+        )
+        if author_choice.via == "deepseek_fallback":
+            high_private_suffix += " (Hermes fallback; OPENROUTER_API_KEY missing)"
     _LOG.warning(
         "world v2 media lane enabled for %s (world-owned delivery, guardrails on%s)",
         world_id,
-        (
-            ", high-private P3 krea2 installed"
-            if high_private is not None
-            else ", high-private P3 fail-closed"
-        ),
+        high_private_suffix,
     )
     return QQMediaDeploymentBundle(deployment=deployment, transport=transport)
 

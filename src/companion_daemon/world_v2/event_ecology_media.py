@@ -793,7 +793,31 @@ class EventEcologyMediaCandidateRuntime:
         }
 
 
+def occurrence_world_fact_slice(occurrence: object) -> dict[str, object]:
+    """Read-only settled-occurrence coordinates.  Not a share recommendation."""
+
+    participants = tuple(
+        item
+        for item in getattr(occurrence, "participant_refs", ()) or ()
+        if isinstance(item, str) and item
+    )
+    slice_: dict[str, object] = {}
+    settled_at = getattr(occurrence, "settled_at", None)
+    if settled_at is not None:
+        slice_["settled_at"] = settled_at
+    location_ref = getattr(occurrence, "location_ref", None)
+    if isinstance(location_ref, str) and location_ref:
+        slice_["location_ref"] = location_ref
+    if participants:
+        slice_["participant_refs"] = participants
+    outcome_ref = getattr(occurrence, "settled_outcome_ref", None)
+    if isinstance(outcome_ref, str) and outcome_ref:
+        slice_["settled_outcome_ref"] = outcome_ref
+    return slice_
+
+
 __all__ = [
     "EcologyCandidate", "EcologyCategory", "EcologyDrainResult", "EcologyPolicy",
     "EcologySourceTaxon", "EventEcologyMediaCandidateRuntime", "MediaReadiness",
+    "occurrence_world_fact_slice",
 ]

@@ -158,6 +158,137 @@ def test_structured_visible_physical_state_can_ground_private_expression() -> No
     assert decision.allowed
 
 
+def test_world_v2_positive_cues_can_ground_embodied_private_expression() -> None:
+    decision = MediaEligibilityRouter().classify(
+        family="character_media",
+        privacy_ceiling="intimate",
+        expression_charge_ceiling="charged",
+        event_snapshot={
+            "character": {
+                "visible_physical_state": {
+                    "physical_state_id": "physical:wind-down",
+                    "positive_cues": [{"cue_id": "damp_hair", "intensity": "light"}],
+                }
+            }
+        },
+        private_expression_basis=PrivateExpressionBasis(
+            kind="embodied_state",
+            evidence_refs=("/character/visible_physical_state",),
+            required_charge="charged",
+        ),
+        recipient_ref="user:1",
+    )
+
+    assert decision.allowed
+
+
+def test_world_v2_boolean_private_transition_can_ground_private_expression() -> None:
+    decision = MediaEligibilityRouter().classify(
+        family="character_media",
+        privacy_ceiling="intimate",
+        expression_charge_ceiling="charged",
+        event_snapshot={"activity": {"id": "activity:wind-down", "private_transition": True}},
+        private_expression_basis=PrivateExpressionBasis(
+            kind="private_transition",
+            evidence_refs=("/activity/private_transition",),
+            required_charge="charged",
+        ),
+        recipient_ref="user:1",
+    )
+
+    assert decision.allowed
+
+
+def test_compiled_p3_private_transition_without_declared_display_fails_on_intent() -> None:
+    from companion_daemon.media_suggestive_lane import EXPLICIT_PRIVATE_LANE
+
+    decision = MediaEligibilityRouter().classify_recommendation(
+        family="character_media",
+        privacy_ceiling="intimate",
+        expression_charge_ceiling="veiled",
+        event_snapshot={
+            "activity": {"id": "activity:wind-down", "kind": "wind_down", "private_transition": True},
+            "relationship_media_context": {
+                "audience": {"recipient_ref": "user:1", "relationship_stage": "lover"},
+                "private_expression_basis": {
+                    "kind": "private_transition",
+                    "evidence_ref": "/activity/private_transition",
+                },
+            },
+        },
+        private_expression_basis=PrivateExpressionBasis(
+            kind="private_transition",
+            evidence_refs=("/activity/private_transition",),
+            required_charge="charged",
+        ),
+        recipient_ref="user:1",
+        recommendation=MediaLaneRecommendation(
+            lane=EXPLICIT_PRIVATE_LANE,
+            recipient_access="recipient_exclusive",
+            attraction_expression="explicit_adult",
+        ),
+        selected_expression_charge="veiled",
+        selected_capture_mode="character_front_camera",
+        selected_share_intent="intimate_signal",
+        selected_privacy="intimate",
+        selected_address_mode="direct_recipient",
+        selected_interaction_bid="invite_desire",
+        selected_attraction_mechanism="private_trust",
+        selected_coverage_mode="private_apparel",
+    )
+
+    assert not decision.allowed
+    assert decision.reason == "high_private_intent_evidence_missing"
+
+
+def test_compiled_p3_accepts_character_authored_explicit_adult_display() -> None:
+    from companion_daemon.media_suggestive_lane import EXPLICIT_PRIVATE_LANE
+
+    decision = MediaEligibilityRouter().classify_recommendation(
+        family="character_media",
+        privacy_ceiling="intimate",
+        expression_charge_ceiling="veiled",
+        event_snapshot={
+            "activity": {"id": "activity:wind-down", "kind": "wind_down", "private_transition": True},
+            "relationship_media_context": {
+                "audience": {"recipient_ref": "user:1", "relationship_stage": "lover"},
+                "private_expression_basis": {
+                    "kind": "private_transition",
+                    "evidence_ref": "/activity/private_transition",
+                },
+                "declared_display": {
+                    "event_id": "event:declared-display:1",
+                    "kind": "recipient_directed",
+                    "recipient_ref": "user:1",
+                    "media_intent": "explicit_adult",
+                },
+            },
+        },
+        private_expression_basis=PrivateExpressionBasis(
+            kind="private_transition",
+            evidence_refs=("/activity/private_transition",),
+            required_charge="charged",
+        ),
+        recipient_ref="user:1",
+        recommendation=MediaLaneRecommendation(
+            lane=EXPLICIT_PRIVATE_LANE,
+            recipient_access="recipient_exclusive",
+            attraction_expression="explicit_adult",
+        ),
+        selected_expression_charge="veiled",
+        selected_capture_mode="character_front_camera",
+        selected_share_intent="intimate_signal",
+        selected_privacy="intimate",
+        selected_address_mode="direct_recipient",
+        selected_interaction_bid="invite_desire",
+        selected_attraction_mechanism="private_trust",
+        selected_coverage_mode="private_apparel",
+    )
+
+    assert decision.allowed
+    assert decision.lane == EXPLICIT_PRIVATE_LANE
+
+
 def test_alluring_life_can_be_event_grounded_without_claiming_exclusive_access() -> None:
     decision = MediaEligibilityRouter().classify_recommendation(
         family="character_media",

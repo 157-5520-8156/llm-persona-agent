@@ -41,11 +41,24 @@ def test_quiet_gap_past_expiry_is_dropped_not_backfilled() -> None:
 
 
 def test_private_impression_does_not_scan_historical_appraisals() -> None:
-    old = SimpleNamespace(
+    """A clock head is not an AppraisalAccepted, so G7 is empty.
+
+    The farm may still open the newest uninterpreted appraisal (production
+    inbound batches bury AppraisalAccepted).  It still returns one identity,
+    not a historical sweep of every old appraisal.
+    """
+
+    older = SimpleNamespace(
         status="active",
         appraisal_id="appraisal:old",
         origin=SimpleNamespace(accepted_event_ref="event:appraisal:old"),
         confidence_bp=9000,
+    )
+    newer = SimpleNamespace(
+        status="active",
+        appraisal_id="appraisal:newer",
+        origin=SimpleNamespace(accepted_event_ref="event:appraisal:newer"),
+        confidence_bp=8000,
     )
     head_clock = SimpleNamespace(
         event_id="event:clock:now",
@@ -55,7 +68,7 @@ def test_private_impression_does_not_scan_historical_appraisals() -> None:
     projection = SimpleNamespace(
         logical_time=NOW,
         world_id="world:test",
-        appraisals=(old,),
+        appraisals=(older, newer),
         private_impressions=(),
         trigger_processes=(),
         committed_world_event_refs=(
@@ -64,10 +77,18 @@ def test_private_impression_does_not_scan_historical_appraisals() -> None:
                 event_type="AppraisalAccepted",
                 world_revision=1,
             ),
+            SimpleNamespace(
+                event_id="event:appraisal:newer",
+                event_type="AppraisalAccepted",
+                world_revision=2,
+            ),
             head_clock,
         ),
     )
-    assert private_impression_opportunity(projection) is None
+    opened = private_impression_opportunity(projection)
+    assert opened is not None
+    assert opened[1] == "event:appraisal:newer"
+    assert opened[1] != "event:appraisal:old"
     assert (
         newly_accepted_head_refs(
             projection.committed_world_event_refs,
@@ -75,6 +96,19 @@ def test_private_impression_does_not_scan_historical_appraisals() -> None:
         )
         == frozenset()
     )
+    # Newest uninterpreted identity only — both old appraisals stay eligible
+    # for later ticks, but this open_once does not return a historical list.
+    assert private_impression_opportunity(
+        SimpleNamespace(
+            **{**projection.__dict__, "trigger_processes": (
+                SimpleNamespace(
+                    trigger_id=opened[0],
+                    process_kind="private_impression_deliberation",
+                    state="open",
+                ),
+            )},
+        )
+    ) is None
 
 
 def test_private_impression_opens_only_the_head_appraisal() -> None:

@@ -46,9 +46,11 @@ from .context_capsule import (
     ResolvedSlice,
     ResolvedSourceBinding,
     ResolverProof,
+    SharedMediaDeliveryContextItem,
     SliceName,
     authority_refs_digest,
     canonical_value_hash,
+    compile_shared_media_delivery_item,
     derived_privacy_floor,
     resolved_result_set_hash,
     source_bindings_hash,
@@ -84,7 +86,9 @@ from .external_perception_events import (
     compile_external_perception_life_influences,
 )
 from .expression_payload_store import ImmutableExpressionPayloadStore
+from .media_v2 import MediaDeliverySharedPayload
 from .model_facing_context import CHAT_RECENT_DIALOGUE_ITEM_LIMIT
+from .present_prompt import PRESENT_SHARED_MEDIA_ITEM_LIMIT
 from .recent_dialogue import RecentDialogueCompiler, RecentDialogueItem
 from .recall_corpus import (
     AffectOpeningRecallItem,
@@ -140,6 +144,7 @@ _PRIVACY_FLOOR: dict[SliceName, PrivacyClass] = {
     "action_budget": "withhold",
     "private_impressions": "withhold",
     "advisories": "private",
+    "media_deliveries": "personal",
 }
 _PRIVACY_RANK = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}
 _EXPERIENCE_CONTENT_UNAVAILABLE_REASONS = frozenset(
@@ -180,6 +185,7 @@ _ITEM_ID: dict[SliceName, str] = {
     "action_budget": "account_id",
     "private_impressions": "impression_id",
     "advisories": "advisory_id",
+    "media_deliveries": "delivery_id",
 }
 
 
@@ -296,6 +302,8 @@ def _observation_event_aliases(projection: LedgerProjection) -> dict[str, str]:
 def _typed_refs(item: BaseModel, *, observation_aliases: dict[str, str]) -> tuple[str, ...] | None:
     if isinstance(item, RecentDialogueItem):
         return tuple(sorted(claim.authority_event_ref for claim in item.source_claims))
+    if isinstance(item, SharedMediaDeliveryContextItem):
+        return (item.authority_event_ref,)
     if isinstance(item, MemoryRetrievalItem):
         return tuple(sorted({source.authority_event_ref for source in item.source_excerpts}))
     if isinstance(item, RecentExperienceContextItem):
@@ -433,6 +441,14 @@ def _typed_authority_claims(
                 )
                 for claim in item.source_claims
             )
+        )
+    if isinstance(item, SharedMediaDeliveryContextItem):
+        return (
+            (
+                item.authority_event_ref,
+                item.authority_world_revision,
+                item.authority_payload_hash,
+            ),
         )
     if isinstance(item, FactProjection):
         # The source evidence remains immutable inside the Fact event payload
@@ -608,6 +624,7 @@ def _recency_bp(item: BaseModel, logical_time: datetime | None) -> int:
         getattr(item, "settled_at", None),
         getattr(item, "activated_at", None),
         getattr(item, "occurred_at", None),
+        getattr(item, "shared_at", None),
     )
     instant = next((value for value in instants if value is not None), None)
     if instant is None:
@@ -750,6 +767,100 @@ def _binding(event: CommittedWorldEventRef) -> ResolvedSourceBinding:
         source_world_revision=event.world_revision,
         immutable_hash=event.payload_hash,
     )
+
+
+def _shared_media_kind(*, family: str, contract_kind: str | None, ecology_category: str | None) -> str:
+    raw = contract_kind or ecology_category
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip().removeprefix("character_media:")
+    return family
+
+
+def shared_media_delivery_items(
+    *,
+    ledger: LedgerPort,
+    projection: LedgerProjection,
+    recent_dialogue: tuple[RecentDialogueItem, ...],
+) -> tuple[SharedMediaDeliveryContextItem, ...]:
+    """Bind delivered photos as source-closed world facts. Failed joins drop the item."""
+
+    deliveries = {item.delivery_id: item for item in projection.media_deliveries}
+    if not deliveries:
+        return ()
+    plans = {item.plan_id: item for item in projection.media_plans}
+    opportunities = {item.opportunity_id: item for item in projection.media_opportunities}
+    candidates = {item.candidate_id: item for item in projection.photo_candidates}
+    refs = tuple(
+        sorted(
+            (
+                ref
+                for ref in projection.committed_world_event_refs
+                if ref.event_type == "MediaDeliveryShared"
+            ),
+            key=lambda ref: (ref.logical_time, ref.event_id),
+            reverse=True,
+        )
+    )
+    items: list[SharedMediaDeliveryContextItem] = []
+    for ref in refs:
+        if len(items) >= PRESENT_SHARED_MEDIA_ITEM_LIMIT:
+            break
+        located = ledger.lookup_event_commit(ref.event_id)
+        if located is None:
+            continue
+        event, _commit = located
+        if (
+            event.event_id != ref.event_id
+            or event.event_type != "MediaDeliveryShared"
+            or event.payload_hash != ref.payload_hash
+        ):
+            continue
+        try:
+            payload = MediaDeliverySharedPayload.model_validate_json(event.payload_json)
+        except ValueError:
+            continue
+        delivery = payload.delivery
+        if delivery.delivery_id not in deliveries:
+            continue
+        plan = plans.get(delivery.plan_id)
+        opportunity = opportunities.get(plan.opportunity_id) if plan is not None else None
+        candidate = (
+            candidates.get(opportunity.candidate_id) if opportunity is not None else None
+        )
+        if plan is None or opportunity is None or candidate is None:
+            continue
+        contract = candidate.character_media_contract
+        kind = _shared_media_kind(
+            family=opportunity.family,
+            contract_kind=None if contract is None else contract.kind,
+            ecology_category=opportunity.ecology_category or candidate.ecology_category,
+        )
+        privacy_layer = opportunity.media_privacy_ceiling
+        if privacy_layer not in {"ordinary", "personal", "intimate"}:
+            continue
+        if opportunity.family not in {"life_share", "character_media"}:
+            continue
+        he_spoke_after = any(
+            item.speaker == "counterpart" and item.occurred_at > ref.logical_time
+            for item in recent_dialogue
+        )
+        try:
+            items.append(
+                compile_shared_media_delivery_item(
+                    delivery_id=delivery.delivery_id,
+                    shared_at=ref.logical_time,
+                    family=opportunity.family,
+                    kind=kind,
+                    privacy_layer=privacy_layer,
+                    he_spoke_after=he_spoke_after,
+                    authority_event_ref=ref.event_id,
+                    authority_world_revision=ref.world_revision,
+                    authority_payload_hash=ref.payload_hash,
+                )
+            )
+        except ValueError:
+            continue
+    return tuple(items)
 
 
 def fact_recall_items(
@@ -1968,6 +2079,11 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 and item.origin is not None
             ),
             "advisories": None,
+            "media_deliveries": shared_media_delivery_items(
+                ledger=self._ledger,
+                projection=projection,
+                recent_dialogue=dialogue_candidates,
+            ),
         }
         if perception_results is not None:
             domains["perception_results"] = perception_results
@@ -2021,6 +2137,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             "action_budget": "action_budget",
             "private_impressions": "private_impressions",
             "advisories": "advisories",
+            "media_deliveries": "media_deliveries",
         }
         if perception_results is not None:
             request_fields["perception_results"] = "perception_results"

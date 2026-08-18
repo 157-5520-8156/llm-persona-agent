@@ -7,6 +7,7 @@ from typing import Literal
 
 from .audited_change_terminal import (
     RELATIONSHIP_COMMITMENT_TERMINAL_REASON,
+    RELATIONSHIP_COMMITMENT_TERMINAL_REASONS,
     audited_change_terminal_event_id,
     audited_change_terminal_payload,
     audited_change_terminal_proposal_id,
@@ -118,6 +119,7 @@ def settle_terminal_audited_change(
     current_cursor: ProjectionCursor,
     actor: str,
     source: str,
+    reason_code: str = RELATIONSHIP_COMMITMENT_TERMINAL_REASON,
 ) -> AuditedChangeTerminalSettlement:
     """Append an effect-free terminal for one exact audited typed change.
 
@@ -128,6 +130,8 @@ def settle_terminal_audited_change(
 
     if not actor or not source:
         raise ValueError("audited change terminal coordinates are invalid")
+    if reason_code not in RELATIONSHIP_COMMITMENT_TERMINAL_REASONS:
+        raise ValueError("audited change terminal reason is not installed")
     _require_exact_source_change(audit=audit, change=change)
     projection = ledger.project_at(current_cursor)
     matches = tuple(
@@ -172,6 +176,7 @@ def settle_terminal_audited_change(
         audit=audit,
         change=change,
         status=status,
+        reason_code=reason_code,
     )
     idempotency_key = domain_idempotency_key(
         event_type="AdvisoryAcceptanceRejected",
@@ -206,9 +211,9 @@ def settle_terminal_audited_change(
     )
     return AuditedChangeTerminalSettlement(
         status=status,
-        reason_code=RELATIONSHIP_COMMITMENT_TERMINAL_REASON,
-        source_change_id=change.change_id,
+        reason_code=payload["reason_code"],
         derived_proposal_id=payload["proposal_id"],
+        source_change_id=change.change_id,
         commit=commit,
     )
 
