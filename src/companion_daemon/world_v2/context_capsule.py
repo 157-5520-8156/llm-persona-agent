@@ -1571,7 +1571,8 @@ def _compile_slice(
             0
             if slice_name == "advisories"
             and isinstance(pair[0], InnerAdvisoryProjection)
-            and pair[0].kind in {"proactive_opportunity", "response_expectation"}
+            and pair[0].kind
+            in {"proactive_opportunity", "response_expectation", "expired_expectation"}
             else 1,
             -pair[1].rank_score_bp,
             pair[1].item_ref,
@@ -2292,7 +2293,7 @@ def _compile_resolved_context(
     }
     protected_advisory_present = any(
         json.loads(item.payload_json).get("kind")
-        in {"proactive_opportunity", "response_expectation"}
+        in {"proactive_opportunity", "response_expectation", "expired_expectation"}
         for item in slices["advisories"].items
     )
     required_dialogue_ids = {

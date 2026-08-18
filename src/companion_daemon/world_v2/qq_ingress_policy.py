@@ -156,6 +156,7 @@ class QQIngressFragment:
     reply_ref: str | None = None
     reaction_refs: tuple[str, ...] = ()
     sticker_ref: str | None = None
+    sticker_label: str | None = None
     control_kind: ControlKind | None = None
 
     def __post_init__(self) -> None:
@@ -172,6 +173,12 @@ class QQIngressFragment:
             raise ValueError("QQ ingress provider ref exceeds the bounded envelope")
         if self.reply_ref is not None and len(self.reply_ref) > 512:
             raise ValueError("QQ ingress reply ref exceeds the bounded envelope")
+        if self.sticker_label is not None and (
+            not self.sticker_label.strip() or len(self.sticker_label) > 80
+        ):
+            raise ValueError("QQ ingress sticker label exceeds the bounded envelope")
+        if self.sticker_label is not None and not self.sticker_ref:
+            raise ValueError("QQ ingress sticker label requires a sticker ref")
         if self.content_shape == "text" and (self.text is None or self.attachment_refs):
             raise ValueError("text shape requires only text content")
         if self.content_shape == "attachment" and (not self.attachment_refs or self.text):
@@ -199,7 +206,7 @@ class QQIngressFragment:
         return _digest(payload)
 
     def canonical_payload(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "source_event_id": self.source_event_id,
             "recipient_id": self.recipient_id,
             "observed_at": self.observed_at.isoformat(),
@@ -212,6 +219,9 @@ class QQIngressFragment:
             "sticker_ref": self.sticker_ref,
             "control_kind": self.control_kind,
         }
+        if self.sticker_label:
+            payload["sticker_label"] = self.sticker_label
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -300,6 +310,9 @@ def _build_batch(
         "sticker_refs": [
             item.fragment.sticker_ref for item in ordered if item.fragment.sticker_ref
         ],
+        "sticker_provider_labels": [
+            item.fragment.sticker_label for item in ordered if item.fragment.sticker_ref
+        ],
         "control_events": [
             {
                 "kind": item.fragment.control_kind,
@@ -312,6 +325,8 @@ def _build_batch(
         "window_opened_at": min(item.received_at for item in ordered).isoformat(),
         "window_closed_at": min(item.due_at for item in ordered).isoformat(),
     }
+    if not metadata["sticker_refs"]:
+        metadata.pop("sticker_provider_labels", None)
     return QQIngressBatch(
         batch_id=batch_id,
         recipient_id=recipient_id,
@@ -818,6 +833,7 @@ class SQLiteQQIngressStore:
             reply_ref=payload.get("reply_ref") if isinstance(payload.get("reply_ref"), str) else None,
             reaction_refs=tuple(str(item) for item in payload.get("reaction_refs", [])),
             sticker_ref=payload.get("sticker_ref") if isinstance(payload.get("sticker_ref"), str) else None,
+            sticker_label=payload.get("sticker_label") if isinstance(payload.get("sticker_label"), str) else None,
             control_kind=payload.get("control_kind") if isinstance(payload.get("control_kind"), str) else None,  # type: ignore[arg-type]
         )
 
@@ -906,6 +922,7 @@ def normalize_onebot_qq_ingress(
     attachments: list[str] = []
     reactions: list[str] = []
     sticker_ref: str | None = None
+    sticker_label: str | None = None
     reply_ref: str | None = None
     for segment in segments:
         if not isinstance(segment, Mapping):
@@ -921,6 +938,9 @@ def normalize_onebot_qq_ingress(
             reactions.append(f"qq-face:{str(data['id'])[:80]}")
         elif segment_type in {"mface", "market_face"}:
             sticker_ref = f"qq-sticker:sha256:{_digest({'type': segment_type, 'data': data})}"
+            summary = data.get("summary")
+            if isinstance(summary, str) and summary.strip():
+                sticker_label = summary.strip()[:80]
         elif segment_type == "reply" and data.get("id") is not None:
             reply_ref = f"qq-message:{str(data['id'])[:160]}"
     if not texts and not segments and str(event.get("raw_message") or "").strip():
@@ -943,6 +963,7 @@ def normalize_onebot_qq_ingress(
         content_shape=shape, continuity_signal=continuity_signal, text=text,
         attachment_refs=tuple(attachments), reply_ref=reply_ref,
         reaction_refs=tuple(reactions), sticker_ref=sticker_ref,
+        sticker_label=sticker_label,
     )
 
 

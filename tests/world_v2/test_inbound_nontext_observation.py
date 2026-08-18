@@ -1,8 +1,8 @@
 """Non-text inbound observations must reach cognition as facts, not exceptions.
 
-A QQ face-only envelope (production seq 4012) is him speaking.  The host must
-expose opaque provider identifiers and the bound observation, never translate
-``qq-face:74`` into mood, and never mint a fake text body.
+A QQ face-only envelope (production seq 4061) is him speaking.  The host must
+expose the bound observation plus the platform catalog render label (太阳 for
+``qq-face:74``), never a mood/intent translation, and never mint a fake text body.
 """
 
 from __future__ import annotations
@@ -16,6 +16,11 @@ import pytest
 from companion_daemon.world_v2.character_interior.inbound_author import _cache_key
 from companion_daemon.world_v2.character_interior.inbound_wire import _ExpressionDraftWire
 from companion_daemon.world_v2.deliberation import ModelInput, ModelRoute, TriggerMessage
+from companion_daemon.world_v2.expression_draft import expression_hard_boundary_manifest
+from companion_daemon.world_v2.qq_face_render_catalog import (
+    INBOUND_SURFACE_PROMPT_CLAUSE,
+    INBOUND_SURFACE_PROMPT_CLAUSE_ZH,
+)
 from companion_daemon.world_v2.event_identity import domain_idempotency_key
 from companion_daemon.world_v2.fact_draft_adapter import (
     FactObservationProposalAdapter,
@@ -148,6 +153,9 @@ def test_text_only_trigger_dump_stays_byte_stable_without_nontext_keys() -> None
     assert "reaction_refs" not in dumped
     assert "sticker_refs" not in dumped
     assert "reply_refs" not in dumped
+    assert "inbound_surfaces" not in dumped
+    assert "observed_at" not in dumped
+    assert "reaction_target_message_id" not in dumped
 
 
 def test_reaction_only_trigger_is_valid_without_minting_text() -> None:
@@ -198,6 +206,14 @@ def test_compiler_exposes_production_shaped_reaction_without_forged_text() -> No
     assert trigger.platform_message_id == "1937366025"
     assert trigger.observation_ref == observation.observation_id
     assert trigger.event_ref == event.event_id
+    assert trigger.observed_at == NOW
+    assert trigger.reaction_target_message_id == "1937366025"
+    assert len(trigger.inbound_surfaces) == 1
+    surface = trigger.inbound_surfaces[0]
+    assert surface.provider_ref == "qq-face:74"
+    assert surface.platform_render_name == "太阳"
+    assert surface.platform_render_glyph == "☀️"
+    assert surface.epistemic_status == "platform_render_label_not_mood_or_intent"
 
 
 def test_inbound_cache_key_accepts_reaction_trigger() -> None:
@@ -240,6 +256,11 @@ def test_sticker_and_attachment_and_reply_refs_compile() -> None:
     assert sticker_trigger is not None
     assert sticker_trigger.text is None
     assert sticker_trigger.sticker_refs == ("qq-sticker:sha256:" + "a" * 64,)
+    assert sticker_trigger.inbound_surfaces[0].provider_ref == sticker_trigger.sticker_refs[0]
+    assert sticker_trigger.inbound_surfaces[0].epistemic_status == (
+        "unmatched_provider_ref_no_guessed_name"
+    )
+    assert sticker_trigger.inbound_surfaces[0].platform_render_name is None
 
     image = _observation(
         attachment_refs=("qq-attachment:image:sha256:" + "c" * 64,),
@@ -280,18 +301,13 @@ class _SilentChat:
         raise AssertionError("presentation test must not call the model")
 
 
-def test_presented_trigger_is_the_opaque_identifier_after_desensitization() -> None:
-    trigger = TriggerMessage(
-        event_ref="event:trigger:observation:platform:qq:reaction:1",
-        event_payload_hash=FACE_HASH,
-        observation_ref="observation:qq:reaction:1",
-        source_world_revision=4,
-        actor="user:primary",
-        channel="qq",
-        reply_target="conversation:qq:c2c:owner",
-        platform_message_id="1937366025",
-        reaction_refs=("qq-face:74",),
+def test_presented_trigger_includes_platform_render_name_not_mood() -> None:
+    observation = _observation(coalescing_metadata=_reaction_metadata())
+    event = _observation_event(observation)
+    trigger = PinnedTurnCompiler._trigger_message(
+        observation, event, source_world_revision=4
     )
+    assert trigger is not None
     messages = _ExpressionDraftWire(model=_SilentChat())._messages(
         request=_model_input(trigger),
         quick_recovery=False,
@@ -303,11 +319,34 @@ def test_presented_trigger_is_the_opaque_identifier_after_desensitization() -> N
     assert presented["reaction_refs"] == ["qq-face:74"]
     assert presented["text"] is None
     assert presented["platform_message_id"] == "1937366025"
+    assert presented["reaction_target_message_id"] == "1937366025"
+    assert presented["observed_at"] == "2026-08-18T12:04:05Z"
+    surface = presented["inbound_surfaces"][0]
+    assert surface["provider_ref"] == "qq-face:74"
+    assert surface["platform_render_name"] == "太阳"
+    assert surface["platform_render_glyph"] == "☀️"
+    assert surface["epistemic_status"] == "platform_render_label_not_mood_or_intent"
+    assert "太阳" in blob
+    assert "☀️" in blob
     assert "qq-face:74" in blob
-    assert "太阳" not in blob
     assert "他笑了" not in blob
     assert "他觉得开心" not in blob
-    assert "not a host translation of mood" in messages[0]["content"]
+    assert "通常表示" not in blob
+    assert INBOUND_SURFACE_PROMPT_CLAUSE.strip() in messages[0]["content"]
+    assert INBOUND_SURFACE_PROMPT_CLAUSE_ZH.strip() in messages[0]["content"]
+    assert "not a host translation of his mood, intent" in messages[0]["content"]
+    assert "不是宿主对他情绪或意图的翻译" in messages[0]["content"]
+    # Slim present_hard_boundary_prompt keeps only copyable refs; the surface
+    # facts ride current_trigger_message and the source-closure packet dump.
+    manifest = expression_hard_boundary_manifest(request=_model_input(trigger))
+    authority = manifest["current_counterpart_report_authority"]
+    assert authority["reported_reaction_refs"] == ["qq-face:74"]
+    assert authority["reported_inbound_surfaces"][0]["platform_render_name"] == "太阳"
+    assert authority["reported_inbound_surfaces"][0]["epistemic_status"] == (
+        "platform_render_label_not_mood_or_intent"
+    )
+    assert authority["reported_observed_at"] == trigger.observed_at.isoformat()
+    assert authority["reported_reaction_target_message_id"] == "1937366025"
 
 
 def test_ingress_shapes_for_nontext_onebot_envelopes() -> None:
@@ -328,7 +367,7 @@ def test_ingress_shapes_for_nontext_onebot_envelopes() -> None:
             "user_id": 2759284998,
             "message_id": 2,
             "time": NOW.timestamp(),
-            "message": [{"type": "mface", "data": {"emoji_id": "abc"}}],
+            "message": [{"type": "mface", "data": {"emoji_id": "abc", "summary": "[无语]"}}],
         }
     )
     image = normalize_onebot_qq_ingress(
@@ -369,6 +408,7 @@ def test_ingress_shapes_for_nontext_onebot_envelopes() -> None:
     assert sticker is not None
     assert sticker.content_shape == "sticker"
     assert sticker.sticker_ref is not None
+    assert sticker.sticker_label == "[无语]"
     assert image is not None
     assert image.content_shape == "attachment"
     assert image.attachment_refs
@@ -492,3 +532,48 @@ async def test_fact_draft_batch_does_not_send_textless_members_to_the_model() ->
     )
     assert chat.calls == 1
     assert results == (None, None, None)
+
+
+def test_unknown_face_id_stays_unmatched_without_a_guessed_name() -> None:
+    observation = _observation(
+        coalescing_metadata=_reaction_metadata(face="qq-face:99999")
+    )
+    trigger = PinnedTurnCompiler._trigger_message(
+        observation, _observation_event(observation), source_world_revision=1
+    )
+    assert trigger is not None
+    assert trigger.reaction_refs == ("qq-face:99999",)
+    assert len(trigger.inbound_surfaces) == 1
+    surface = trigger.inbound_surfaces[0]
+    assert surface.provider_ref == "qq-face:99999"
+    assert surface.epistemic_status == "unmatched_provider_ref_no_guessed_name"
+    assert surface.platform_render_name is None
+    assert surface.platform_render_glyph is None
+    dumped = json.dumps(trigger.model_dump(mode="json"), ensure_ascii=False)
+    assert "qq-face:99999" in dumped
+    assert "太阳" not in dumped
+    assert "通常表示" not in dumped
+
+
+def test_sticker_provider_summary_is_copied_as_a_render_name() -> None:
+    observation = _observation(
+        coalescing_metadata={
+            **_reaction_metadata(),
+            "content_shapes": ["sticker"],
+            "reaction_refs": [],
+            "sticker_refs": ["qq-sticker:sha256:" + "a" * 64],
+            "sticker_provider_labels": ["[无语]"],
+        }
+    )
+    trigger = PinnedTurnCompiler._trigger_message(
+        observation, _observation_event(observation), source_world_revision=1
+    )
+    assert trigger is not None
+    assert trigger.reaction_refs == ()
+    surface = trigger.inbound_surfaces[0]
+    assert surface.kind == "qq_market_sticker"
+    assert surface.platform_render_name == "[无语]"
+    assert surface.epistemic_status == "platform_render_label_not_mood_or_intent"
+    blob = json.dumps(trigger.model_dump(mode="json"), ensure_ascii=False)
+    assert "[无语]" in blob
+    assert "通常表示" not in blob

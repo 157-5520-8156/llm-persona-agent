@@ -196,6 +196,10 @@ class ExpiredUnansweredExpectation(FrozenModel):
     receipt_event_id: str = Field(min_length=1)
     receipt_world_revision: int = Field(ge=1)
     receipt_logical_time: datetime
+    # First visible delivery of the inviting beat.  Distinct from the latest
+    # receipt, which may arrive late and cannot be used as "has he spoken".
+    declared_world_revision: int = Field(ge=1)
+    declared_logical_time: datetime
 
 
 def expired_expectation_consideration_id(plan_id: str) -> str:
@@ -203,7 +207,11 @@ def expired_expectation_consideration_id(plan_id: str) -> str:
 
 
 def expired_unanswered_expectation(projection) -> ExpiredUnansweredExpectation | None:
-    """One declared hope whose wait ran out and he still has not spoken."""
+    """One declared hope whose wait ran out.
+
+    Whether he has spoken since she declared it is a fact for the advisory,
+    not a host decision to suppress the opportunity.
+    """
 
     try:
         logical_time = projection.logical_time
@@ -227,10 +235,15 @@ def expired_unanswered_expectation(projection) -> ExpiredUnansweredExpectation |
             if item.status in _TERMINAL_ASSESSMENT_STATES
         }
         latest_by_action: dict[str, tuple[object, object]] = {}
+        first_visible_by_action: dict[str, object] = {}
         for ref, receipt in zip(receipt_refs, projection.execution_receipts, strict=True):
             existing = latest_by_action.get(receipt.action_id)
             if existing is None or ref.world_revision > existing[0].world_revision:
                 latest_by_action[receipt.action_id] = (ref, receipt)
+            if receipt.observed_state in _ANSWERABLE_RECEIPT_STATES:
+                visible = first_visible_by_action.get(receipt.action_id)
+                if visible is None or ref.world_revision < visible.world_revision:
+                    first_visible_by_action[receipt.action_id] = ref
         delivered_by_action = {
             action_id: ref
             for action_id, (ref, receipt) in latest_by_action.items()
@@ -257,6 +270,7 @@ def expired_unanswered_expectation(projection) -> ExpiredUnansweredExpectation |
             delivered_ref = delivered_by_action.get(beat.action.action_id)
             if delivered_ref is None:
                 continue
+            declared_ref = first_visible_by_action.get(beat.action.action_id, delivered_ref)
             if latest_message_revision > delivered_ref.world_revision:
                 continue
             candidates.append(
@@ -268,6 +282,8 @@ def expired_unanswered_expectation(projection) -> ExpiredUnansweredExpectation |
                     receipt_event_id=delivered_ref.event_id,
                     receipt_world_revision=delivered_ref.world_revision,
                     receipt_logical_time=delivered_ref.logical_time,
+                    declared_world_revision=declared_ref.world_revision,
+                    declared_logical_time=declared_ref.logical_time,
                 )
             )
         if not candidates:
@@ -361,6 +377,108 @@ def _expectation_summary(
     )[:256]
 
 
+def counterpart_last_spoke_facts(
+    projection,
+    *,
+    since_world_revision: int | None = None,
+) -> tuple[int | None, bool]:
+    """Seconds since his last inbound line, and whether any line follows ``since``.
+
+    Both values are ledger coordinates.  They do not interpret whether a hope
+    was semantically fulfilled.
+    """
+
+    logical_time = getattr(projection, "logical_time", None)
+    observations = tuple(getattr(projection, "message_observations", ()) or ())
+    if logical_time is None or not observations:
+        return None, False
+    last = max(
+        observations,
+        key=lambda item: (item.world_revision, getattr(item, "observation_id", "")),
+    )
+    payload_hash = getattr(last, "event_payload_hash", None)
+    refs = tuple(
+        item
+        for item in getattr(projection, "committed_world_event_refs", ())
+        if item.event_type == "ObservationRecorded"
+    )
+    last_ref = next(
+        (
+            item
+            for item in refs
+            if item.world_revision == last.world_revision
+            and (payload_hash is None or item.payload_hash == payload_hash)
+        ),
+        None,
+    )
+    last_at = getattr(last_ref, "logical_time", None) if last_ref is not None else None
+    seconds: int | None = None
+    if last_at is not None:
+        elapsed = int((logical_time - last_at).total_seconds())
+        seconds = elapsed if elapsed >= 0 else None
+    spoken_since = (
+        last.world_revision > since_world_revision
+        if since_world_revision is not None
+        else False
+    )
+    return seconds, spoken_since
+
+
+def expired_hope_advisory_value(
+    *,
+    hoped_response: str,
+    seconds_since_he_last_spoke: int | None,
+    spoken_since_declared: bool,
+) -> str:
+    """Neutral timing facts for an expired hope.  She still decides."""
+
+    hope = hoped_response.strip()[:72]
+    if seconds_since_he_last_spoke is None:
+        timing = "No counterpart line is on the ledger yet."
+    else:
+        spoken = (
+            "he has spoken since this hope was declared"
+            if spoken_since_declared
+            else "he has not spoken since this hope was declared"
+        )
+        timing = f"He last spoke {seconds_since_he_last_spoke}s ago; {spoken}."
+    return f"Hope expired: {hope} {timing} Timing evidence only; she still decides."[:256]
+
+
+def expired_expectation_advisory(
+    expired: ExpiredUnansweredExpectation,
+    *,
+    logical_time: datetime,
+    seconds_since_he_last_spoke: int | None,
+    spoken_since_declared: bool,
+) -> InnerAdvisoryProjection:
+    """Wrap expired-hope timing facts in the ordinary advisory envelope."""
+
+    source_ref = expired.receipt_event_id
+    value = expired_hope_advisory_value(
+        hoped_response=expired.hoped_response,
+        seconds_since_he_last_spoke=seconds_since_he_last_spoke,
+        spoken_since_declared=spoken_since_declared,
+    )
+    return InnerAdvisoryProjection(
+        advisory_id="advisory:expired-expectation:" + _digest(source_ref),
+        kind="expired_expectation",
+        source_refs=(source_ref,),
+        candidate_refs=("expired-expectation:" + _digest(source_ref),),
+        candidates=(
+            InnerAdvisoryCandidate(
+                candidate_ref="expired-expectation:" + _digest(source_ref),
+                value=value,
+                weight_bp=10_000,
+                confidence_bp=10_000,
+            ),
+        ),
+        confidence_bp=10_000,
+        expiry=logical_time + timedelta(days=1),
+        producer_version=RESPONSE_EXPECTATION_ADVISORY_VERSION,
+    )
+
+
 def response_expectation_advisory(
     view: PendingResponseExpectationView,
     *,
@@ -399,22 +517,51 @@ def attach_pending_expectation_advisory(
     *,
     anchor_event_ref: str,
 ) -> dict[str, object]:
-    """Fold the silence-anchored pending hope into Capsule materials, if any."""
+    """Fold the silence-anchored pending hope into Capsule materials, if any.
+
+    An expired hope whose inviting receipt is this turn's trigger still gets
+    timing facts: how long since he last spoke, and whether he has spoken
+    since she declared the hope.  That is not a suggestion to chase or stay
+    silent.
+    """
 
     try:
         view = pending_response_expectation(
             projection, anchor_event_ref=anchor_event_ref
         )
     except (TypeError, ValueError):
-        return context
-    if view is None:
-        return context
+        view = None
     logical_time = getattr(projection, "logical_time", None)
+    if view is not None and logical_time is not None:
+        advisory = response_expectation_advisory(
+            view, source_ref=anchor_event_ref, logical_time=logical_time
+        )
+        return _append_advisory(context, advisory)
     if logical_time is None:
         return context
-    advisory = response_expectation_advisory(
-        view, source_ref=anchor_event_ref, logical_time=logical_time
+    try:
+        expired = expired_unanswered_expectation(projection)
+    except (TypeError, ValueError):
+        return context
+    if expired is None or expired.receipt_event_id != anchor_event_ref:
+        return context
+    seconds, spoken_since = counterpart_last_spoke_facts(
+        projection, since_world_revision=expired.declared_world_revision
     )
+    return _append_advisory(
+        context,
+        expired_expectation_advisory(
+            expired,
+            logical_time=logical_time,
+            seconds_since_he_last_spoke=seconds,
+            spoken_since_declared=spoken_since,
+        ),
+    )
+
+
+def _append_advisory(
+    context: dict[str, object], advisory: InnerAdvisoryProjection
+) -> dict[str, object]:
     slices = context.get("slices")
     if isinstance(slices, dict):
         slices = dict(slices)
@@ -445,8 +592,13 @@ def attach_pending_expectation_advisory(
 
 __all__ = [
     "RESPONSE_EXPECTATION_ADVISORY_VERSION",
+    "ExpiredUnansweredExpectation",
     "PendingResponseExpectationView",
     "attach_pending_expectation_advisory",
+    "counterpart_last_spoke_facts",
+    "expired_expectation_advisory",
+    "expired_hope_advisory_value",
+    "expired_unanswered_expectation",
     "pending_response_expectation",
     "pending_response_expectation_manifest",
     "response_expectation_advisory",

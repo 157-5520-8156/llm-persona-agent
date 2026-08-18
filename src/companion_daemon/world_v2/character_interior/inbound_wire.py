@@ -30,6 +30,10 @@ from companion_daemon.llm import (
     model_turn_scope,
     provider_invocation_request_hash,
 )
+from ..qq_face_render_catalog import (
+    INBOUND_SURFACE_PROMPT_CLAUSE,
+    INBOUND_SURFACE_PROMPT_CLAUSE_ZH,
+)
 
 from ..biographical_claim_authority import (
     biographical_coordinate_authorities,
@@ -10371,15 +10375,14 @@ class _ExpressionDraftWire:
                 "posture for you."
             )
         trigger = request.trigger_message
-        if trigger is not None and (
-            trigger.reaction_refs or trigger.sticker_refs or trigger.reply_refs
-        ) and trigger.text is None:
-            system += (
-                " The current trigger is a non-text inbound observation. "
-                "reaction_refs, sticker_refs, and reply_refs are opaque provider "
-                "identifiers copied from the committed Observation; they are not a "
-                "host translation of mood, intent, or what the face 'means'."
-            )
+        nontext_trigger = (
+            trigger is not None
+            and trigger.text is None
+            and bool(trigger.reaction_refs or trigger.sticker_refs or trigger.reply_refs)
+        )
+        if nontext_trigger:
+            system += INBOUND_SURFACE_PROMPT_CLAUSE
+            system += INBOUND_SURFACE_PROMPT_CLAUSE_ZH
         if (
             not quick_recovery
             and not provisional

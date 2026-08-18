@@ -1546,6 +1546,28 @@ def expression_hard_boundary_manifest(
                         if request.trigger_message.reply_refs
                         else {}
                     ),
+                    **(
+                        {"reported_inbound_surfaces": [
+                            item.model_dump(mode="json")
+                            for item in request.trigger_message.inbound_surfaces
+                        ]}
+                        if request.trigger_message.inbound_surfaces
+                        else {}
+                    ),
+                    **(
+                        {"reported_observed_at": request.trigger_message.observed_at.isoformat()}
+                        if request.trigger_message.observed_at is not None
+                        else {}
+                    ),
+                    **(
+                        {
+                            "reported_reaction_target_message_id": (
+                                request.trigger_message.reaction_target_message_id
+                            )
+                        }
+                        if request.trigger_message.reaction_target_message_id
+                        else {}
+                    ),
                     "reporter_ref": request.trigger_message.actor,
                     "source_refs": sorted(
                         aliases.alias_for(ref) or ref for ref in current_report_refs

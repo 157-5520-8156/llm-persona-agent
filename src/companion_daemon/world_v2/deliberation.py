@@ -41,6 +41,7 @@ from .proposal_envelope import (
     ProposalInput,
     validate_proposal_envelope,
 )
+from .qq_face_render_catalog import InboundSurfaceFact
 from .proposal_audit_schemas import RecordedCharacterInteriorTurnLineage, RecordedRoleRejectionEvidence
 from .recall_audit import PrefetchPresentationAudit, RecallAuditTrace
 from .recall_index import RecallCursor
@@ -973,9 +974,11 @@ class TriggerMessage(_FrozenModel):
     evidence for the capsule's trigger.
 
     Text is optional.  A reaction, sticker, quote, or attachment is still him
-    addressing her; the host exposes opaque provider identifiers from the
-    committed Observation and never translates them into mood or intent.
-    Empty non-text fields are excluded so a text-only dump stays byte-stable.
+    addressing her.  Opaque provider identifiers stay on the Observation;
+    ``inbound_surfaces`` may add the platform's catalog label (what QQ renders)
+    from a reviewed table or the provider's own sticker summary.  That label is
+    not a host translation of mood or intent.  Empty non-text fields are
+    excluded so a text-only dump stays byte-stable.
     """
 
     event_ref: str = Field(min_length=1, max_length=256)
@@ -1003,6 +1006,13 @@ class TriggerMessage(_FrozenModel):
     reply_refs: tuple[str, ...] = Field(
         default=(), max_length=16, exclude_if=lambda value: not value
     )
+    inbound_surfaces: tuple[InboundSurfaceFact, ...] = Field(
+        default=(), max_length=16, exclude_if=lambda value: not value
+    )
+    observed_at: datetime | None = Field(default=None, exclude_if=lambda value: value is None)
+    reaction_target_message_id: str | None = Field(
+        default=None, min_length=1, max_length=256, exclude_if=lambda value: value is None
+    )
     # The endpoint estimate is current transport evidence, not a response
     # instruction. Keeping it on the verified trigger prevents it from being
     # mistaken for a durable World fact or a host-selected social rule.
@@ -1025,6 +1035,9 @@ class TriggerMessage(_FrozenModel):
         opaque_refs = (*self.attachment_refs, *self.reaction_refs, *self.sticker_refs, *self.reply_refs)
         if any(not item or len(item) > 512 for item in opaque_refs):
             raise ValueError("attachment refs must be bounded opaque tokens")
+        allowed_surface_refs = set(self.reaction_refs) | set(self.sticker_refs)
+        if any(item.provider_ref not in allowed_surface_refs for item in self.inbound_surfaces):
+            raise ValueError("inbound surface is not bound to a provider ref")
         return self
 
 
@@ -4329,6 +4342,7 @@ __all__ = [
     "ModelRoute",
     "ProviderSubcallAudit",
     "TriggerMessage",
+    "InboundSurfaceFact",
     "ModelRouterAdapter",
     "ProviderHealth",
     "QuickRecoveryAdapter",

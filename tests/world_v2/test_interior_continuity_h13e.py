@@ -308,6 +308,7 @@ async def test_expired_expectation_opportunity_reaches_her_instead_of_failing_sa
             plan_id="plan:invite",
             receipt_event_id=receipt.event_id,
             receipt_world_revision=receipt_ref.world_revision,
+            declared_world_revision=receipt_ref.world_revision,
             hoped_response=HOPED,
             expires_at=PROACTIVE_NOW,
         ),
@@ -329,7 +330,15 @@ def test_expired_expectation_context_states_the_hope_as_fact(monkeypatch) -> Non
     monkeypatch.setattr(
         proactive_action_module,
         "expired_unanswered_expectation",
-        lambda _projection: SimpleNamespace(hoped_response=HOPED),
+        lambda _projection: SimpleNamespace(
+            hoped_response=HOPED,
+            declared_world_revision=2,
+        ),
+    )
+    monkeypatch.setattr(
+        proactive_action_module,
+        "counterpart_last_spoke_facts",
+        lambda _projection, since_world_revision=None: (90, True),
     )
     context = _proactive_opportunity_context(
         opportunity=SimpleNamespace(
@@ -346,10 +355,49 @@ def test_expired_expectation_context_states_the_hope_as_fact(monkeypatch) -> Non
     )
 
     assert HOPED in context
+    assert "Hope expired" in context
+    assert "He last spoke 90s ago" in context
+    assert "he has spoken since this hope was declared" in context
+    assert "Unanswered" not in context
+    assert "没理" not in context
     assert "should" not in context.lower()
     assert "追问" not in context
     assert HOPED in value
     assert len(value) <= 256
+
+
+def test_late_verified_receipt_still_mints_expired_hope_after_he_spoke() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    _expired_projection(
+        projection,
+        expires_at=projection.logical_time - timedelta(minutes=5),
+        extra_obs=(
+            SimpleNamespace(observation_id="message:sun", world_revision=8),
+        ),
+    )
+    first_visible = SimpleNamespace(
+        event_id="event:receipt:invite:accepted",
+        event_type="ExecutionReceiptRecorded",
+        world_revision=2,
+        logical_time=EXPECTATION_NOW,
+    )
+    late_verified = SimpleNamespace(
+        event_id="event:receipt:invite",
+        event_type="ExecutionReceiptRecorded",
+        world_revision=10,
+        logical_time=EXPECTATION_NOW + timedelta(minutes=2),
+    )
+    projection.execution_receipts = (
+        SimpleNamespace(action_id="action:invite", observed_state="provider_accepted"),
+        SimpleNamespace(action_id="action:invite", observed_state="delivered"),
+    )
+    projection.committed_world_event_refs = (first_visible, late_verified)
+
+    found = expired_unanswered_expectation(projection)
+
+    assert found is not None
+    assert found.declared_world_revision == 2
+    assert found.receipt_world_revision == 10
 
 
 def test_expired_hope_is_not_unanswered_after_a_later_user_message() -> None:

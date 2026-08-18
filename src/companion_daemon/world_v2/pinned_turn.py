@@ -34,6 +34,7 @@ from .deliberation import (
     _digest,
     _model_result_ref,
 )
+from .qq_face_render_catalog import compile_inbound_surfaces
 from .expression_cadence import CadenceDraw
 from .expression_episode_lifecycle import expression_episode_trigger_id
 from .interactive_turn_budget import InteractiveTurnBudget
@@ -1372,6 +1373,27 @@ class PinnedTurnCompiler:
                 break
         return tuple(items)
 
+    @staticmethod
+    def _coalesced_sticker_labels(
+        observation: Observation, *, expected: int
+    ) -> tuple[str | None, ...]:
+        """Copy provider-supplied sticker summaries; never invent a name."""
+
+        if expected <= 0:
+            return ()
+        raw = observation.coalescing_metadata.get("sticker_provider_labels")
+        if not isinstance(raw, (list, tuple)):
+            return tuple(None for _ in range(expected))
+        labels: list[str | None] = []
+        for item in raw[:expected]:
+            if isinstance(item, str) and item.strip() and len(item.strip()) <= 80:
+                labels.append(item.strip())
+            else:
+                labels.append(None)
+        while len(labels) < expected:
+            labels.append(None)
+        return tuple(labels)
+
     @classmethod
     def _trigger_message(
         cls,
@@ -1393,6 +1415,18 @@ class PinnedTurnCompiler:
             and not reply_refs
         ):
             return None
+        inbound_surfaces = (
+            compile_inbound_surfaces(
+                reaction_refs=reaction_refs,
+                sticker_refs=sticker_refs,
+                sticker_provider_labels=cls._coalesced_sticker_labels(
+                    observation, expected=len(sticker_refs)
+                ),
+            )
+            if reaction_refs or sticker_refs
+            else ()
+        )
+        reaction_target = observation.coalescing_metadata.get("reaction_target_message_id")
         reply_context = observation.reply_context or {}
         platform_message_id = reply_context.get("platform_message_id")
         attention_advisory = None
@@ -1430,6 +1464,19 @@ class PinnedTurnCompiler:
             reaction_refs=reaction_refs,
             sticker_refs=sticker_refs,
             reply_refs=reply_refs,
+            inbound_surfaces=inbound_surfaces,
+            observed_at=(
+                observation.received_at
+                if reaction_refs or sticker_refs
+                else None
+            ),
+            reaction_target_message_id=(
+                reaction_target
+                if reaction_refs
+                and isinstance(reaction_target, str)
+                and reaction_target
+                else None
+            ),
             turn_attention_advisory=attention_advisory,
         )
 

@@ -76,7 +76,11 @@ from .schema_core import FrozenModel
 from .delayed_trigger_policies import TECHNICAL_RETRY_BACKOFF_SECONDS
 from .schemas import ClaimLease, ProjectionCursor, TriggerProcess, WorldEvent
 from .shared_private_invitation import pending_shared_private_invitation_advisories
-from .response_expectation_view import expired_unanswered_expectation
+from .response_expectation_view import (
+    counterpart_last_spoke_facts,
+    expired_hope_advisory_value,
+    expired_unanswered_expectation,
+)
 from .revisit_intention_view import due_unfinished_revisit
 from .social_initiative import (
     SITUATION_STIMULUS_EVENT_TYPES,
@@ -170,11 +174,17 @@ def _proactive_opportunity_context(
         expired = expired_unanswered_expectation(projection)
         hoped = getattr(expired, "hoped_response", None) if expired is not None else None
         hope_text = hoped.strip()[:128] if isinstance(hoped, str) and hoped.strip() else ""
+        seconds = None
+        spoken_since = False
+        if expired is not None:
+            seconds, spoken_since = counterpart_last_spoke_facts(
+                projection, since_world_revision=expired.declared_world_revision
+            )
         if hope_text:
-            return (
-                "Unanswered hope expired: "
-                + hope_text
-                + " Timing evidence only; she still decides."
+            return expired_hope_advisory_value(
+                hoped_response=hope_text,
+                seconds_since_he_last_spoke=seconds,
+                spoken_since_declared=spoken_since,
             )
         return (
             "A reply she hoped for did not arrive before that hope expired. "

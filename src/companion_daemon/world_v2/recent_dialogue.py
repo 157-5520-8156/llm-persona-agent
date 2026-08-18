@@ -24,6 +24,12 @@ from .schemas import (
 
 
 _DIALOGUE_SEQUENCE_SCALE = 100
+# ResolverProof only admits 32 authority refs for the whole dialogue slice.
+# Companion beats carry several claims each, so without a live-head boost the
+# lexicographic item_ref tie-break fills that budget with her lines and drops
+# his later ones. These caps mark the still-live tail so rank keeps it.
+_LIVE_COUNTERPART_ATTENTION = 8
+_LIVE_COMPANION_ATTENTION = 8
 
 
 def dialogue_causal_sequence(*, world_revision: int, position: int = 0) -> int:
@@ -474,6 +480,7 @@ class RecentDialogueCompiler:
                     )
                 )
         companion = sorted(companion, key=lambda item: item.sequence)[-self._max_companion :]
+        inbound, companion = _mark_live_conversation_head(inbound, companion)
         return RecentDialogueCompilation(
             dialogue=tuple(
                 sorted(
@@ -492,6 +499,51 @@ class RecentDialogueCompiler:
             authority_world_revision=ref.world_revision,
             authority_payload_hash=ref.payload_hash,
         )
+
+
+def _with_continuity_reasons(
+    item: RecentDialogueItem, *extra: str
+) -> RecentDialogueItem:
+    reasons = tuple(dict.fromkeys((*item.continuity_reasons, *extra)))
+    if reasons == item.continuity_reasons:
+        return item
+    return item.model_copy(update={"continuity_reasons": reasons})
+
+
+def _mark_live_conversation_head(
+    inbound: list[RecentDialogueItem],
+    companion: list[RecentDialogueItem],
+) -> tuple[list[RecentDialogueItem], list[RecentDialogueItem]]:
+    """Boost the live tail so a she-initiates turn keeps his latest lines.
+
+    Inbound continuity overwrites these reasons when a counterpart Observation
+    is the trigger.  When the trigger is a receipt, clock, or impression, the
+    tags remain and rank the still-current conversation above older companion
+    beats that would otherwise exhaust the slice's source-ref budget.
+    """
+
+    inbound_by_seq = sorted(
+        inbound, key=lambda item: (item.sequence, item.occurred_at, item.dialogue_id)
+    )
+    companion_by_seq = sorted(
+        companion, key=lambda item: (item.sequence, item.occurred_at, item.dialogue_id)
+    )
+    live_him = {id(item) for item in inbound_by_seq[-_LIVE_COUNTERPART_ATTENTION:]}
+    newest_him = inbound_by_seq[-1] if inbound_by_seq else None
+    live_me = {id(item) for item in companion_by_seq[-_LIVE_COMPANION_ATTENTION:]}
+    marked_inbound = []
+    for item in inbound:
+        extra: list[str] = []
+        if id(item) in live_him:
+            extra.append("acknowledged_context")
+        if newest_him is not None and item.dialogue_id == newest_him.dialogue_id:
+            extra.append("current_turn")
+        marked_inbound.append(_with_continuity_reasons(item, *extra) if extra else item)
+    marked_companion = [
+        _with_continuity_reasons(item, "recent_companion") if id(item) in live_me else item
+        for item in companion
+    ]
+    return marked_inbound, marked_companion
 
 
 __all__ = [

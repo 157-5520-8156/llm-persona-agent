@@ -1,0 +1,1633 @@
+# Inbound QQ face render catalog.
+#
+# This is a reviewed table of platform catalog labels: what a OneBot/QQ face
+# identifier renders as in the client picker. It is NOT a mood, intent, or
+# "usually means..." translation, and it is NOT the outbound sticker allowlist
+# (`QQ_STICKER_OPTIONS` in expression_payload_contract.py).
+#
+# Lookup rule: unknown IDs must be left unmatched. Do not guess or substitute
+# a nearby name.
+#
+# Sources (retrieved 2026-08-18):
+# - qq-bot-openapi:
+#   https://bot.q.qq.com/wiki/develop/api-v2/openapi/emoji/model.html
+#   Official QQ Bot emoji list. The table column is labelled 表情含义; overlapping
+#   rows are used as catalog names. When the official name disagrees with the
+#   QQ client QDes, the client render name wins (id 181: official 骚扰, client 戳一戳).
+# - napcat-face-config:
+#   https://raw.githubusercontent.com/NapNeko/NapCatQQ/main/packages/napcat-core/external/face_config.json
+#   QQ client sysface table shipped with NapCat, the production OneBot stack.
+#   QSid is the OneBot `face.id`; QDes is the client slash-command / picker name
+#   (leading "/" stripped).
+# - qface-qqnt:
+#   https://koishi.js.org/QFace/assets/qq_emoji/_index.json
+#   QQ NT `face_config.json` extract. Numeric ids corroborate NapCat with zero
+#   name disagreements.
+#
+# Glyphs: unicode from the official type-2 list, plus a short reviewed object
+# set for system faces whose catalog name *is* the object (太阳, 月亮, 玫瑰, ...).
+# Facial-expression names do not get a guessed mood glyph.
+
+
+catalog_id: qq-face-render.1
+verified_on: "2026-08-18"
+purpose: inbound_platform_render_name_not_mood_or_intent
+sources:
+  - id: qq-bot-openapi
+    url: https://bot.q.qq.com/wiki/develop/api-v2/openapi/emoji/model.html
+    retrieved_on: "2026-08-18"
+  - id: napcat-face-config
+    url: https://raw.githubusercontent.com/NapNeko/NapCatQQ/main/packages/napcat-core/external/face_config.json
+    retrieved_on: "2026-08-18"
+  - id: qface-qqnt
+    url: https://koishi.js.org/QFace/assets/qq_emoji/_index.json
+    retrieved_on: "2026-08-18"
+faces:
+  - id: "0"
+    name: "惊讶"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "1"
+    name: "撇嘴"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "2"
+    name: "色"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "3"
+    name: "发呆"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "4"
+    name: "得意"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "5"
+    name: "流泪"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "6"
+    name: "害羞"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "7"
+    name: "闭嘴"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "8"
+    name: "睡"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "9"
+    name: "大哭"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "10"
+    name: "尴尬"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "11"
+    name: "发怒"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "12"
+    name: "调皮"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "13"
+    name: "呲牙"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "14"
+    name: "微笑"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "15"
+    name: "难过"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "16"
+    name: "酷"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "18"
+    name: "抓狂"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "19"
+    name: "吐"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "20"
+    name: "偷笑"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "21"
+    name: "可爱"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "22"
+    name: "白眼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "23"
+    name: "傲慢"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "24"
+    name: "饥饿"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "25"
+    name: "困"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "26"
+    name: "惊恐"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "27"
+    name: "流汗"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "28"
+    name: "憨笑"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "29"
+    name: "悠闲"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "30"
+    name: "奋斗"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "31"
+    name: "咒骂"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "32"
+    name: "疑问"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "33"
+    name: "嘘"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "34"
+    name: "晕"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "35"
+    name: "折磨"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "36"
+    name: "衰"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "37"
+    name: "骷髅"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "38"
+    name: "敲打"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "39"
+    name: "再见"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "41"
+    name: "发抖"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "42"
+    name: "爱情"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "43"
+    name: "跳跳"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "46"
+    name: "猪头"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "49"
+    name: "拥抱"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "53"
+    name: "蛋糕"
+    glyph: "🎂"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "55"
+    name: "炸弹"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "56"
+    name: "刀"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "59"
+    name: "便便"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "60"
+    name: "咖啡"
+    glyph: "☕"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "63"
+    name: "玫瑰"
+    glyph: "🌹"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "64"
+    name: "凋谢"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "66"
+    name: "爱心"
+    glyph: "❤️"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "67"
+    name: "心碎"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "74"
+    name: "太阳"
+    glyph: "☀️"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "75"
+    name: "月亮"
+    glyph: "🌙"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "76"
+    name: "赞"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "77"
+    name: "踩"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "78"
+    name: "握手"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "79"
+    name: "胜利"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "85"
+    name: "飞吻"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "86"
+    name: "怄火"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "89"
+    name: "西瓜"
+    glyph: "🍉"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "96"
+    name: "冷汗"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "97"
+    name: "擦汗"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "98"
+    name: "抠鼻"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "99"
+    name: "鼓掌"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "100"
+    name: "糗大了"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "101"
+    name: "坏笑"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "102"
+    name: "左哼哼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "103"
+    name: "右哼哼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "104"
+    name: "哈欠"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "105"
+    name: "鄙视"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "106"
+    name: "委屈"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "107"
+    name: "快哭了"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "108"
+    name: "阴险"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "109"
+    name: "左亲亲"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "110"
+    name: "吓"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "111"
+    name: "可怜"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "112"
+    name: "菜刀"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "114"
+    name: "篮球"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "116"
+    name: "示爱"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "118"
+    name: "抱拳"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "119"
+    name: "勾引"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "120"
+    name: "拳头"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "121"
+    name: "差劲"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "122"
+    name: "爱你"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "123"
+    name: "NO"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "124"
+    name: "OK"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "125"
+    name: "转圈"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "129"
+    name: "挥手"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "137"
+    name: "鞭炮"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "144"
+    name: "喝彩"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "146"
+    name: "爆筋"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "147"
+    name: "棒棒糖"
+    glyph: "🍭"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "148"
+    name: "喝奶"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "169"
+    name: "手枪"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "171"
+    name: "茶"
+    glyph: "🍵"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "172"
+    name: "眨眼睛"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "173"
+    name: "泪奔"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "174"
+    name: "无奈"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "175"
+    name: "卖萌"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "176"
+    name: "小纠结"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "177"
+    name: "喷血"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "178"
+    name: "斜眼笑"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "179"
+    name: "doge"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "180"
+    name: "惊喜"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "181"
+    name: "戳一戳"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "182"
+    name: "笑哭"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "183"
+    name: "我最美"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "185"
+    name: "羊驼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "187"
+    name: "幽灵"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "193"
+    name: "大笑"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "194"
+    name: "不开心"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "198"
+    name: "呃"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "200"
+    name: "求求"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "201"
+    name: "点赞"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "202"
+    name: "无聊"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "203"
+    name: "托脸"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "204"
+    name: "吃"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "206"
+    name: "害怕"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "210"
+    name: "飙泪"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "211"
+    name: "我不看"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "212"
+    name: "托腮"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "214"
+    name: "啵啵"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "215"
+    name: "糊脸"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "216"
+    name: "拍头"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "217"
+    name: "扯一扯"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "218"
+    name: "舔一舔"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "219"
+    name: "蹭一蹭"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "221"
+    name: "顶呱呱"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "222"
+    name: "抱抱"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "223"
+    name: "暴击"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "224"
+    name: "开枪"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "225"
+    name: "撩一撩"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "226"
+    name: "拍桌"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "227"
+    name: "拍手"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "229"
+    name: "干杯"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "230"
+    name: "嘲讽"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "231"
+    name: "哼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "232"
+    name: "佛系"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "233"
+    name: "掐一掐"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "235"
+    name: "颤抖"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "237"
+    name: "偷看"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "238"
+    name: "扇脸"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "239"
+    name: "原谅"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "240"
+    name: "喷脸"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "241"
+    name: "生日快乐"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "243"
+    name: "甩头"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "244"
+    name: "扔狗"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "246"
+    name: "加油抱抱"
+    family: system_face
+    sources: [qq-bot-openapi]
+  - id: "262"
+    name: "脑阔疼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "263"
+    name: "沧桑"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "264"
+    name: "捂脸"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "265"
+    name: "辣眼睛"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "266"
+    name: "哦哟"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "267"
+    name: "头秃"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "268"
+    name: "问号脸"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "269"
+    name: "暗中观察"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "270"
+    name: "emm"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "271"
+    name: "吃瓜"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "272"
+    name: "呵呵哒"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "273"
+    name: "我酸了"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "277"
+    name: "汪汪"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "278"
+    name: "汗"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "281"
+    name: "无眼笑"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "282"
+    name: "敬礼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "283"
+    name: "狂笑"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "284"
+    name: "面无表情"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "285"
+    name: "摸鱼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "286"
+    name: "魔鬼笑"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "287"
+    name: "哦"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "288"
+    name: "请"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "289"
+    name: "睁眼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "290"
+    name: "敲开心"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "292"
+    name: "让我康康"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "293"
+    name: "摸锦鲤"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "294"
+    name: "期待"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "295"
+    name: "拿到红包"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "297"
+    name: "拜谢"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "298"
+    name: "元宝"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "299"
+    name: "牛啊"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "300"
+    name: "胖三斤"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "301"
+    name: "好闪"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "302"
+    name: "左拜年"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "303"
+    name: "右拜年"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "305"
+    name: "右亲亲"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "306"
+    name: "牛气冲天"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "307"
+    name: "喵喵"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "311"
+    name: "打call"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "312"
+    name: "变形"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "314"
+    name: "仔细分析"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "315"
+    name: "加油"
+    family: system_face
+    sources: [qq-bot-openapi]
+  - id: "317"
+    name: "菜汪"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "318"
+    name: "崇拜"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "319"
+    name: "比心"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "320"
+    name: "庆祝"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "322"
+    name: "拒绝"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "323"
+    name: "嫌弃"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "324"
+    name: "吃糖"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "325"
+    name: "惊吓"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "326"
+    name: "生气"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt, qq-bot-openapi]
+  - id: "332"
+    name: "举牌牌"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "333"
+    name: "烟花"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "334"
+    name: "虎虎生威"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "336"
+    name: "豹富"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "337"
+    name: "花朵脸"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "338"
+    name: "我想开了"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "339"
+    name: "舔屏"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "341"
+    name: "打招呼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "342"
+    name: "酸Q"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "343"
+    name: "我方了"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "344"
+    name: "大怨种"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "345"
+    name: "红包多多"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "346"
+    name: "你真棒棒"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "347"
+    name: "大展宏兔"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "348"
+    name: "福萝卜"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "349"
+    name: "坚强"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "350"
+    name: "贴贴"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "351"
+    name: "敲敲"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "352"
+    name: "咦"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "353"
+    name: "拜托"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "354"
+    name: "尊嘟假嘟"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "355"
+    name: "耶"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "356"
+    name: "666"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "357"
+    name: "裂开"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "358"
+    name: "骰子"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "359"
+    name: "包剪锤"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "360"
+    name: "亲亲"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "361"
+    name: "狗狗笑哭"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "362"
+    name: "好兄弟"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "363"
+    name: "狗狗可怜"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "364"
+    name: "超级赞"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "365"
+    name: "狗狗生气"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "366"
+    name: "芒狗"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "367"
+    name: "狗狗疑问"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "368"
+    name: "奥特笑哭"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "369"
+    name: "彩虹"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "370"
+    name: "祝贺"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "371"
+    name: "冒泡"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "372"
+    name: "气呼呼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "373"
+    name: "忙"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "374"
+    name: "波波流泪"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "375"
+    name: "超级鼓掌"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "376"
+    name: "跺脚"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "377"
+    name: "嗨"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "378"
+    name: "企鹅笑哭"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "379"
+    name: "企鹅流泪"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "380"
+    name: "真棒"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "381"
+    name: "路过"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "382"
+    name: "emo"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "383"
+    name: "企鹅爱心"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "384"
+    name: "晚安"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "385"
+    name: "太气了"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "386"
+    name: "呜呜呜"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "387"
+    name: "太好笑"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "388"
+    name: "太头疼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "389"
+    name: "太赞了"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "390"
+    name: "太头秃"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "391"
+    name: "太沧桑"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "392"
+    name: "龙年快乐"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "393"
+    name: "新年中龙"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "394"
+    name: "新年大龙"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "395"
+    name: "略略略"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "396"
+    name: "狼狗"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "397"
+    name: "抛媚眼"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "398"
+    name: "超级ok"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "399"
+    name: "tui"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "400"
+    name: "快乐"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "401"
+    name: "超级转圈"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "402"
+    name: "别说话"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "403"
+    name: "出去玩"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "404"
+    name: "闪亮登场"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "405"
+    name: "好运来"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "406"
+    name: "姐是女王"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "407"
+    name: "我听听"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "408"
+    name: "臭美"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "409"
+    name: "送你花花"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "410"
+    name: "么么哒"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "411"
+    name: "一起嗨"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "412"
+    name: "开心"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "413"
+    name: "摇起来"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "415"
+    name: "划龙舟"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "416"
+    name: "中龙舟"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "417"
+    name: "大龙舟"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "419"
+    name: "火车"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "420"
+    name: "中火车"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "421"
+    name: "大火车"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "422"
+    name: "粽于等到你"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "423"
+    name: "复兴号"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "424"
+    name: "续标识"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "425"
+    name: "求放过"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "426"
+    name: "玩火"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "427"
+    name: "偷感"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "428"
+    name: "收到"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "429"
+    name: "蛇年快乐"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "430"
+    name: "蛇身"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "431"
+    name: "蛇尾"
+    family: system_face
+    sources: [napcat-face-config, qface-qqnt]
+  - id: "432"
+    name: "灵蛇献瑞"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "450"
+    name: "撇嘴"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "451"
+    name: "色"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "452"
+    name: "微笑"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "453"
+    name: "发呆"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "454"
+    name: "得意"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "455"
+    name: "害羞"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "456"
+    name: "闭嘴"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "457"
+    name: "睡"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "458"
+    name: "我吗"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "459"
+    name: "优雅"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "460"
+    name: "硬撑"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "461"
+    name: "宕机"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "462"
+    name: "无语"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "463"
+    name: "新年快乐"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "464"
+    name: "马上到"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "465"
+    name: "拆红包"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "466"
+    name: "羞羞哒"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "467"
+    name: "摇花手"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "468"
+    name: "失眠"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "469"
+    name: "坚毅"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "470"
+    name: "马到成功"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "472"
+    name: "心动"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "474"
+    name: "给你一拳"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "475"
+    name: "干饭"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "476"
+    name: "不是吧"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "477"
+    name: "你懂的"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "478"
+    name: "对的对的"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "479"
+    name: "不对不对"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "480"
+    name: "散味儿"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "481"
+    name: "学习"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "482"
+    name: "热化了"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "483"
+    name: "略"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "484"
+    name: "比爱心"
+    family: system_face
+    sources: [napcat-face-config]
+  - id: "9728"
+    name: "晴天"
+    glyph: "☀"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "9749"
+    name: "咖啡"
+    glyph: "☕"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "9786"
+    name: "可爱"
+    glyph: "☺"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "10024"
+    name: "闪光"
+    glyph: "✨"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "10060"
+    name: "错误"
+    glyph: "❌"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "10068"
+    name: "问号"
+    glyph: "❔"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "127801"
+    name: "玫瑰"
+    glyph: "🌹"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "127817"
+    name: "西瓜"
+    glyph: "🍉"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "127822"
+    name: "苹果"
+    glyph: "🍎"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "127827"
+    name: "草莓"
+    glyph: "🍓"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "127836"
+    name: "拉面"
+    glyph: "🍜"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "127838"
+    name: "面包"
+    glyph: "🍞"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "127847"
+    name: "刨冰"
+    glyph: "🍧"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "127866"
+    name: "啤酒"
+    glyph: "🍺"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "127867"
+    name: "干杯"
+    glyph: "🍻"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "127881"
+    name: "庆祝"
+    glyph: "🎉"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128027"
+    name: "虫"
+    glyph: "🐛"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128046"
+    name: "牛"
+    glyph: "🐮"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128051"
+    name: "鲸鱼"
+    glyph: "🐳"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128053"
+    name: "猴"
+    glyph: "🐵"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128074"
+    name: "拳头"
+    glyph: "👊"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128076"
+    name: "好的"
+    glyph: "👌"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128077"
+    name: "厉害"
+    glyph: "👍"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128079"
+    name: "鼓掌"
+    glyph: "👏"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128089"
+    name: "内衣"
+    glyph: "👙"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128102"
+    name: "男孩"
+    glyph: "👦"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128104"
+    name: "爸爸"
+    glyph: "👨"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128147"
+    name: "爱心"
+    glyph: "💓"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128157"
+    name: "礼物"
+    glyph: "💝"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128164"
+    name: "睡觉"
+    glyph: "💤"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128166"
+    name: "水"
+    glyph: "💦"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128168"
+    name: "吹气"
+    glyph: "💨"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128170"
+    name: "肌肉"
+    glyph: "💪"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128235"
+    name: "邮箱"
+    glyph: "📫"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128293"
+    name: "火"
+    glyph: "🔥"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128513"
+    name: "呲牙"
+    glyph: "😁"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128514"
+    name: "激动"
+    glyph: "😂"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128516"
+    name: "高兴"
+    glyph: "😄"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128522"
+    name: "嘿嘿"
+    glyph: "😊"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128524"
+    name: "羞涩"
+    glyph: "😌"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128527"
+    name: "哼哼"
+    glyph: "😏"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128530"
+    name: "不屑"
+    glyph: "😒"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128531"
+    name: "汗"
+    glyph: "😓"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128532"
+    name: "失落"
+    glyph: "😔"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128536"
+    name: "飞吻"
+    glyph: "😘"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128538"
+    name: "亲亲"
+    glyph: "😚"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128540"
+    name: "淘气"
+    glyph: "😜"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128541"
+    name: "吐舌"
+    glyph: "😝"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128557"
+    name: "大哭"
+    glyph: "😭"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128560"
+    name: "紧张"
+    glyph: "😰"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]
+  - id: "128563"
+    name: "瞪眼"
+    glyph: "😳"
+    family: unicode_emoji
+    sources: [qq-bot-openapi]

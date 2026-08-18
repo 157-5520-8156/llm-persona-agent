@@ -241,6 +241,36 @@ def test_memory_and_sqlite_emit_byte_equivalent_batches(tmp_path: Path) -> None:
         sqlite.close()
 
 
+def test_sticker_summary_reaches_batch_metadata_aligned_with_refs() -> None:
+    store = MemoryQQIngressStore()
+    fragment = normalize_onebot_qq_ingress(
+        {
+            "post_type": "message",
+            "message_type": "private",
+            "user_id": 10001,
+            "message_id": 77,
+            "time": NOW.timestamp(),
+            "message": [
+                {
+                    "type": "mface",
+                    "data": {"emoji_id": "abc", "summary": "[无语]"},
+                }
+            ],
+        }
+    )
+    assert fragment is not None
+    assert fragment.sticker_label == "[无语]"
+    try:
+        submitted = store.submit(fragment, received_at=NOW)
+        batch = store.claim_due(now=submitted.due_at)
+        assert batch is not None
+        assert batch.metadata["sticker_refs"] == [fragment.sticker_ref]
+        assert batch.metadata["sticker_provider_labels"] == ["[无语]"]
+        assert "emoji_id" not in json.dumps(batch.metadata)
+    finally:
+        store.close()
+
+
 @pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
 def test_control_signal_never_triggers_alone_but_joins_nearby_content(
     store_kind: str, tmp_path: Path
