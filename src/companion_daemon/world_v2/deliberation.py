@@ -964,13 +964,18 @@ class TurnAttentionAdvisory(_FrozenModel):
 
 
 class TriggerMessage(_FrozenModel):
-    """Current user text with the exact event evidence that authorizes it.
+    """Current inbound observation with the exact event evidence that authorizes it.
 
     A world snapshot alone is insufficient for a conversational decision: the
-    model must see the message it is answering.  This is intentionally not a
+    model must see the observation it is answering.  This is intentionally not a
     free-form prompt extension.  ``Deliberation`` accepts it only when its
     event reference and immutable hash match the pinned observed-message
     evidence for the capsule's trigger.
+
+    Text is optional.  A reaction, sticker, quote, or attachment is still him
+    addressing her; the host exposes opaque provider identifiers from the
+    committed Observation and never translates them into mood or intent.
+    Empty non-text fields are excluded so a text-only dump stays byte-stable.
     """
 
     event_ref: str = Field(min_length=1, max_length=256)
@@ -989,6 +994,15 @@ class TriggerMessage(_FrozenModel):
     attachment_media_types: tuple[Literal["image", "audio", "video", "file", "unknown"], ...] = (
         Field(default=(), max_length=16)
     )
+    reaction_refs: tuple[str, ...] = Field(
+        default=(), max_length=16, exclude_if=lambda value: not value
+    )
+    sticker_refs: tuple[str, ...] = Field(
+        default=(), max_length=16, exclude_if=lambda value: not value
+    )
+    reply_refs: tuple[str, ...] = Field(
+        default=(), max_length=16, exclude_if=lambda value: not value
+    )
     # The endpoint estimate is current transport evidence, not a response
     # instruction. Keeping it on the verified trigger prevents it from being
     # mistaken for a durable World fact or a host-selected social rule.
@@ -998,11 +1012,18 @@ class TriggerMessage(_FrozenModel):
 
     @model_validator(mode="after")
     def bounded_content_shape(self) -> TriggerMessage:
-        if self.text is None and not self.attachment_refs:
-            raise ValueError("trigger message needs text or attachment evidence")
+        if (
+            self.text is None
+            and not self.attachment_refs
+            and not self.reaction_refs
+            and not self.sticker_refs
+            and not self.reply_refs
+        ):
+            raise ValueError("trigger message needs inbound observation evidence")
         if len(self.attachment_refs) != len(self.attachment_media_types):
             raise ValueError("attachment media metadata does not align with opaque refs")
-        if any(not item or len(item) > 512 for item in self.attachment_refs):
+        opaque_refs = (*self.attachment_refs, *self.reaction_refs, *self.sticker_refs, *self.reply_refs)
+        if any(not item or len(item) > 512 for item in opaque_refs):
             raise ValueError("attachment refs must be bounded opaque tokens")
         return self
 

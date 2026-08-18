@@ -10370,6 +10370,16 @@ class _ExpressionDraftWire:
                 "or supersede from the full pinned context; the advisory never selects that "
                 "posture for you."
             )
+        trigger = request.trigger_message
+        if trigger is not None and (
+            trigger.reaction_refs or trigger.sticker_refs or trigger.reply_refs
+        ) and trigger.text is None:
+            system += (
+                " The current trigger is a non-text inbound observation. "
+                "reaction_refs, sticker_refs, and reply_refs are opaque provider "
+                "identifiers copied from the committed Observation; they are not a "
+                "host translation of mood, intent, or what the face 'means'."
+            )
         if (
             not quick_recovery
             and not provisional

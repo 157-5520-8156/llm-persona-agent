@@ -127,6 +127,11 @@ class FactObservationProposalAdapter:
         evaluated_world_revision: int | None = None,
         current_single_fact_sources: tuple[dict[str, object], ...] = (),
     ) -> FactCommitProposalEnvelopeV2 | FactWithdrawalDraft | None:
+        if observation.text is None:
+            # Fact-v2 retains only explicit verbal assertions. A reaction,
+            # sticker, or attachment has no source substring to ground a value;
+            # skipping the model is the hard boundary, not a mood reading.
+            return None
         try:
             async with asyncio.timeout(self._timeout_seconds):
                 return await self._propose_with_retry(
@@ -168,10 +173,31 @@ class FactObservationProposalAdapter:
                     current_single_fact_sources=current_single_fact_sources,
                 ),
             )
+        decisions: list[FactCommitProposalEnvelopeV2 | FactWithdrawalDraft | None] = [
+            None
+        ] * len(sources)
+        text_indexes = tuple(
+            index
+            for index, source in enumerate(sources)
+            if source.observation.text is not None
+        )
+        if not text_indexes:
+            return tuple(decisions)
+        text_sources = tuple(sources[index] for index in text_indexes)
+        if len(text_sources) == 1:
+            source = text_sources[0]
+            decisions[text_indexes[0]] = await self.propose(
+                observation=source.observation,
+                observation_event=source.event,
+                source_world_revision=source.world_revision,
+                evaluated_world_revision=evaluated_world_revision,
+                current_single_fact_sources=current_single_fact_sources,
+            )
+            return tuple(decisions)
         try:
             async with asyncio.timeout(self._timeout_seconds):
-                return await self._propose_batch_with_retry(
-                    sources=sources,
+                text_decisions = await self._propose_batch_with_retry(
+                    sources=text_sources,
                     evaluated_world_revision=evaluated_world_revision,
                     current_single_fact_sources=current_single_fact_sources,
                 )
@@ -179,6 +205,9 @@ class FactObservationProposalAdapter:
             raise
         except TimeoutError as exc:
             raise FactDraftTechnicalFailure("provider_timeout") from exc
+        for index, decision in zip(text_indexes, text_decisions, strict=True):
+            decisions[index] = decision
+        return tuple(decisions)
 
     async def _propose_batch_with_retry(
         self,
@@ -510,6 +539,22 @@ class FactObservationProposalAdapter:
         ]
 
 
+def _observation_has_committed_ingress(observation: Observation) -> bool:
+    """Whether this Observation carries any exact inbound evidence."""
+
+    metadata = observation.coalescing_metadata
+    refs = []
+    for key in ("reaction_refs", "sticker_refs", "reply_refs"):
+        raw = metadata.get(key)
+        if isinstance(raw, (list, tuple)):
+            refs.extend(item for item in raw if isinstance(item, str) and item)
+    return (
+        observation.text is not None
+        or bool(observation.attachment_refs)
+        or bool(refs)
+    )
+
+
 def materialize_fact_observation_draft(
     *,
     raw: str,
@@ -523,8 +568,8 @@ def materialize_fact_observation_draft(
     if (
         observation_event.event_type != "ObservationRecorded"
         or observation_event.world_id != observation.world_id
-        or observation.text is None
         or source_world_revision < 1
+        or not _observation_has_committed_ingress(observation)
     ):
         raise ValueError("FactDraft requires an exact committed message observation")
     if evaluated_world_revision is None:
@@ -588,6 +633,7 @@ def materialize_fact_observation_draft(
         or predicate not in INSTALLED_FACT_PREDICATE_CARDINALITY
         or not isinstance(value, str)
         or not 1 <= len(value) <= 256
+        or observation.text is None
         or value not in observation.text
         or privacy not in {"public", "shareable", "personal", "private", "withhold"}
         or isinstance(confidence, bool)

@@ -1356,6 +1356,22 @@ class PinnedTurnCompiler:
         target = context.get("target") if isinstance(context, dict) else None
         return target if isinstance(target, str) and target else observation.actor
 
+    @staticmethod
+    def _coalesced_provider_refs(observation: Observation, key: str) -> tuple[str, ...]:
+        """Read opaque ingress refs from committed metadata; never invent labels."""
+
+        raw = observation.coalescing_metadata.get(key)
+        if not isinstance(raw, (list, tuple)):
+            return ()
+        items: list[str] = []
+        for item in raw:
+            if not isinstance(item, str) or not item or len(item) > 512:
+                continue
+            items.append(item)
+            if len(items) >= 16:
+                break
+        return tuple(items)
+
     @classmethod
     def _trigger_message(
         cls,
@@ -1364,9 +1380,18 @@ class PinnedTurnCompiler:
         *,
         source_world_revision: int,
     ) -> TriggerMessage | None:
-        """Expose text and bounded attachment tokens, never fabricated contents."""
+        """Expose committed inbound evidence, never fabricated contents or mood."""
 
-        if observation.text is None and not observation.attachment_refs:
+        reaction_refs = cls._coalesced_provider_refs(observation, "reaction_refs")
+        sticker_refs = cls._coalesced_provider_refs(observation, "sticker_refs")
+        reply_refs = cls._coalesced_provider_refs(observation, "reply_refs")
+        if (
+            observation.text is None
+            and not observation.attachment_refs
+            and not reaction_refs
+            and not sticker_refs
+            and not reply_refs
+        ):
             return None
         reply_context = observation.reply_context or {}
         platform_message_id = reply_context.get("platform_message_id")
@@ -1402,6 +1427,9 @@ class PinnedTurnCompiler:
             attachment_media_types=tuple(
                 cls._attachment_media_type(item) for item in observation.attachment_refs
             ),
+            reaction_refs=reaction_refs,
+            sticker_refs=sticker_refs,
+            reply_refs=reply_refs,
             turn_attention_advisory=attention_advisory,
         )
 

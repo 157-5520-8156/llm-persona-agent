@@ -1526,7 +1526,26 @@ def expression_hard_boundary_manifest(
                 "current_counterpart_report_authority": {
                     "discourse_scope": "current_counterpart_report",
                     "epistemic_status": ("report_only_not_objective_truth_or_companion_experience"),
-                    "reported_text": request.trigger_message.text,
+                    **(
+                        {"reported_text": request.trigger_message.text}
+                        if request.trigger_message.text is not None
+                        else {}
+                    ),
+                    **(
+                        {"reported_reaction_refs": list(request.trigger_message.reaction_refs)}
+                        if request.trigger_message.reaction_refs
+                        else {}
+                    ),
+                    **(
+                        {"reported_sticker_refs": list(request.trigger_message.sticker_refs)}
+                        if request.trigger_message.sticker_refs
+                        else {}
+                    ),
+                    **(
+                        {"reported_reply_refs": list(request.trigger_message.reply_refs)}
+                        if request.trigger_message.reply_refs
+                        else {}
+                    ),
                     "reporter_ref": request.trigger_message.actor,
                     "source_refs": sorted(
                         aliases.alias_for(ref) or ref for ref in current_report_refs
