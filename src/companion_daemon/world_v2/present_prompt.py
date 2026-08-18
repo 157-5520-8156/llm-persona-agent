@@ -636,18 +636,6 @@ _WAIT_UNIT_SECONDS = (
     (("hours", "hour", "hrs", "hr", "小时", "钟头", "h"), 3_600),
     (("days", "day", "天", "d"), 86_400),
 )
-_SLIM_FORBIDDEN_KEYS = frozenset(
-    {
-        "appraisal_draft",
-        "expression_draft",
-        "protocol",
-        "events",
-        "result_kind",
-        "payload_json",
-    }
-)
-
-
 def _clip_text(value: object, limit: int) -> str:
     if not isinstance(value, str):
         return ""
@@ -681,10 +669,27 @@ def _slim_messages(value: object) -> list[str] | None:
 
 
 def is_slim_consider_payload(value: Mapping[str, object]) -> bool:
-    if any(key in value for key in _SLIM_FORBIDDEN_KEYS):
+    """True when she wrote the cheap ``messages`` object.
+
+    A complete event envelope or dual-draft still belongs to those compilers.
+    Extra sibling keys from those envelopes — most commonly ``appraisal_draft``
+    riding next to ``messages`` and ``felt`` — used to poison this detector,
+    so a finished Chinese reply was discarded as if she had written nothing.
+    """
+
+    if "messages" not in value:
         return False
-    known = [key for key in value if key in _SLIM_CONSIDER_KEYS]
-    return bool(known) and "messages" in value
+    if (
+        value.get("protocol") == "character-interior-events.1"
+        and isinstance(value.get("appraisal_draft"), dict)
+        and isinstance(value.get("events"), list)
+    ):
+        return False
+    if isinstance(value.get("expression_draft"), dict) and isinstance(
+        value.get("appraisal_draft"), dict
+    ):
+        return False
+    return True
 
 
 def _clamp_declared_wait_seconds(value: int) -> int:

@@ -511,8 +511,9 @@ def _expand_compact_gate_payload(value: dict[str, object]) -> dict[str, object]:
             or not isinstance(payload.get("events"), list)
         ):
             raise ValueError(
-                f"compact gate {kind} carrier requires the exact event envelope keys="
-                + ",".join(sorted(payload))
+                f"compact gate {kind} carrier requires the exact event envelope "
+                "keys=appraisal_draft,events,protocol "
+                f"got={','.join(sorted(payload))}"
             )
     elif set(payload) != {"private_turn_state", "recall_request"}:
         raise ValueError("compact gate carrier requires the exact Recall envelope")

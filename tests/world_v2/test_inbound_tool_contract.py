@@ -629,6 +629,61 @@ def test_compact_gate_accepts_reproduced_unescaped_dialogue_quotes() -> None:
     assert parsed_first["expression_draft"]["beats"][0]["text"] == "……我知道你是认真的"
 
 
+_OVERNIGHT_MIXED_SLIM_APPRAISAL = {
+    "messages": ["嗯……看到了", "就是刚才那句还没睡", "你倒水干嘛 这么晚还不睡"],
+    "felt": "他大半夜还惦记着看我有没有睡，有点暖，但也有点莫名。",
+    "appraisal_draft": {
+        "appraise": True,
+        "affect": "no_change",
+        "brief_rationale": "他注意到我刚才那句没回完的话，半夜还来问我睡没睡，有点被在意的感觉。",
+        "behavior_tendency": "自然地接话，不刻意追问太多。",
+        "stance": "温和但保持自己的节奏。",
+        "display_strategy": "轻松回两句，不把话题拉太长，毕竟这个点了。",
+        "confidence": 6000,
+        "meanings": [{"meaning": "他半夜还惦记着我没睡，有点暖。", "confidence": 5500}],
+        "attribution": "user",
+        "severity": 2500,
+    },
+}
+
+
+def test_compact_gate_accepts_slim_reply_with_extra_appraisal_draft_sibling() -> None:
+    from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
+        _expand_compact_gate_payload,
+    )
+    from companion_daemon.world_v2.present_prompt import compile_slim_consider_payload
+
+    carrier = {
+        "result_kind": "reply_only",
+        "payload_json": json.dumps(_OVERNIGHT_MIXED_SLIM_APPRAISAL, ensure_ascii=False),
+    }
+    expanded = _expand_compact_gate_payload(carrier)
+    assert expanded["result_kind"] == "reply_only"
+    assert expanded["protocol"] == "character-interior-events.1"
+    head = expanded["events"][0]
+    assert head["beats"][0]["text"] == "嗯……看到了"
+    assert head["beats"][2]["text"] == "你倒水干嘛 这么晚还不睡"
+    compiled = compile_slim_consider_payload(_OVERNIGHT_MIXED_SLIM_APPRAISAL)
+    assert compiled is not None
+    assert compiled["expression_draft"]["beats"][0]["text"] == "嗯……看到了"
+    combined = _parse_combined(json.dumps(carrier, ensure_ascii=False))
+    assert [beat["text"] for beat in combined["expression_draft"]["beats"]] == [
+        "嗯……看到了",
+        "就是刚才那句还没睡",
+        "你倒水干嘛 这么晚还不睡",
+    ]
+    first = json.loads(_stream_first_expression(json.dumps(carrier, ensure_ascii=False)))
+    assert first["expression_draft"]["beats"][0]["text"] == "嗯……看到了"
+
+
+def test_complete_event_envelope_is_not_treated_as_slim() -> None:
+    from companion_daemon.world_v2.present_prompt import compile_slim_consider_payload
+
+    envelope = _reply_only_stream_arguments()
+    envelope["messages"] = ["不该走 slim"]
+    assert compile_slim_consider_payload(envelope) is None
+
+
 def test_compact_gate_ignores_sibling_reasoning_and_merges_outer_slim_fields() -> None:
     from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
         _expand_compact_gate_payload,
