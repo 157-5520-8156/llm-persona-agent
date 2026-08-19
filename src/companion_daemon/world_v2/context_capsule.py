@@ -82,7 +82,15 @@ TruncationReason = Literal[
     "character_budget",
     "source_envelope_budget",
     "global_character_budget",
+    # Required heads (character_core / current_situation) kept their whole
+    # typed CapsuleItem but the model-facing envelope was compacted or
+    # character-truncated so the slice could still compile under its cap.
+    "required_slice_model_fit",
 ]
+
+_REQUIRED_WHOLE_ITEM_SLICES: frozenset[SliceName] = frozenset(
+    {"character_core", "current_situation"}
+)
 
 MAX_INPUT_ITEMS_PER_SLICE = 256
 MAX_RESOLVER_DOMAIN_SCAN_ITEMS = 4_096
@@ -1737,6 +1745,7 @@ def _compile_slice(
     output: list[CapsuleItem] = []
     omitted_fields = 0
     omitted_characters = 0
+    required_kept_over_character_budget = False
     for item, metadata in eligible:
         item_ref = metadata.item_ref
         material = item.model_dump(mode="json")
@@ -1774,6 +1783,13 @@ def _compile_slice(
             model_content_profile=model_content_profile,
         )
         if len(candidate_content) > limit.max_characters:
+            if slice_name in _REQUIRED_WHOLE_ITEM_SLICES:
+                # Required heads must not discard their only typed claim and
+                # then raise. Keep the whole item; fit the model view below.
+                output.append(candidate)
+                remaining_fields -= len(material)
+                required_kept_over_character_budget = True
+                continue
             omitted_characters += 1
             continue
         output.append(candidate)
@@ -1807,6 +1823,39 @@ def _compile_slice(
             "item_source_hashes": tuple(metadata.source_hash for metadata in selected_metadata),
         }
     )
+    if slice_name in _REQUIRED_WHOLE_ITEM_SLICES and values and not output:
+        # Field/item caps emptied a required head before any model-fit path
+        # could run. Fail closed rather than compile an empty situation/core.
+        raise ValueError(f"{slice_name} minimum whole-item budget is not satisfied")
+    if required_kept_over_character_budget or (
+        slice_name in _REQUIRED_WHOLE_ITEM_SLICES
+        and output
+        and len(
+            _slice_model_content(
+                slice_name=slice_name,
+                source_refs=source_refs,
+                source_hash=source_hash,
+                resolver_proof=bound.resolver_proof,
+                items=tuple(output),
+                model_content_profile=model_content_profile,
+            )
+        )
+        > limit.max_characters
+    ):
+        compiled, fit_entry = _fit_required_slice_model_content(
+            slice_name=slice_name,
+            bound=bound,
+            limit=limit,
+            items=tuple(output),
+            source_refs=source_refs,
+            source_hash=source_hash,
+            model_content_profile=model_content_profile,
+        )
+        if fit_entry is not None:
+            log.append(fit_entry)
+        if values and not compiled.items:
+            raise ValueError(f"{slice_name} minimum whole-item budget is not satisfied")
+        return compiled, tuple(log)
     minimum_content = _slice_model_content(
         slice_name=slice_name,
         source_refs=source_refs,
@@ -1816,7 +1865,7 @@ def _compile_slice(
         model_content_profile=model_content_profile,
     )
     if len(minimum_content) > limit.max_characters:
-        if slice_name in {"character_core", "current_situation"}:
+        if slice_name in _REQUIRED_WHOLE_ITEM_SLICES:
             raise ValueError(f"{slice_name} minimum whole-item budget is not satisfied")
         # Optional domains must not make an otherwise valid turn unavailable
         # merely because their resolver proof/source envelope grew beyond a
@@ -1845,7 +1894,7 @@ def _compile_slice(
     )
     if compiled.budget.used_characters > limit.max_characters:
         raise ValueError(f"{slice_name} budget cannot represent its source envelope")
-    if slice_name in {"character_core", "current_situation"} and values and not output:
+    if slice_name in _REQUIRED_WHOLE_ITEM_SLICES and values and not compiled.items:
         raise ValueError(f"{slice_name} minimum whole-item budget is not satisfied")
     return compiled, tuple(log)
 
@@ -2315,6 +2364,128 @@ def _character_truncated_head_view(
     return _replace_model_content(compiled, _canonical_json(material))
 
 
+def _replace_model_content_within_limit(
+    compiled: CapsuleSlice, content: str, *, limit: SliceBudget, truncated: bool
+) -> CapsuleSlice:
+    """Swap only the model-facing bytes while restoring the caller's real caps."""
+
+    return compiled.model_copy(
+        update={
+            "model_content_json": content,
+            "budget": SliceBudgetUsage(
+                max_items=limit.max_items,
+                max_fields=limit.max_fields,
+                max_characters=limit.max_characters,
+                used_items=compiled.budget.used_items,
+                used_fields=compiled.budget.used_fields,
+                used_characters=len(content),
+            ),
+            "truncated": truncated or compiled.truncated,
+        }
+    )
+
+
+def _fit_required_slice_model_content(
+    *,
+    slice_name: SliceName,
+    bound: ResolvedSlice[object],
+    limit: SliceBudget,
+    items: tuple[CapsuleItem, ...],
+    source_refs: tuple[str, ...],
+    source_hash: str,
+    model_content_profile: Literal["general", "proactive_decision"],
+) -> tuple[CapsuleSlice, TruncationEntry | None]:
+    """Keep whole required items; degrade only the model-facing envelope.
+
+    Per-slice character filtering used to omit the sole situation/core item
+    and then raise — an illegal intermediate empty state.  Required heads must
+    either retain their typed claim (possibly with a compacted or preview
+    model view) or fail closed with an explicit budget error.
+    """
+
+    if not items:
+        raise ValueError(f"{slice_name} minimum whole-item budget is not satisfied")
+
+    # Authority package may exceed the real character cap; inflate only while
+    # assembling CapsuleItems so SliceBudgetUsage validation can pass, then
+    # immediately re-fit the model view under the caller's real limit.
+    profiles: tuple[Literal["general", "proactive_decision"], ...]
+    if model_content_profile == "proactive_decision":
+        profiles = ("proactive_decision",)
+    else:
+        profiles = (model_content_profile, "proactive_decision")
+
+    authority: CapsuleSlice | None = None
+    for profile in profiles:
+        content = _slice_model_content(
+            slice_name=slice_name,
+            source_refs=source_refs,
+            source_hash=source_hash,
+            resolver_proof=bound.resolver_proof,
+            items=items,
+            model_content_profile=profile,
+        )
+        if len(content) <= limit.max_characters:
+            compiled = _make_available_slice(
+                slice_name=slice_name,
+                bound=bound,
+                limit=limit,
+                items=items,
+                source_refs=source_refs,
+                source_hash=source_hash,
+                truncated=profile != model_content_profile,
+                model_content_profile=profile,
+            )
+            entry = (
+                TruncationEntry(
+                    slice_name=slice_name,
+                    reason="required_slice_model_fit",
+                    omitted_count=1,
+                )
+                if profile != model_content_profile
+                else None
+            )
+            return compiled, entry
+        if authority is None:
+            inflated = SliceBudget(
+                max_items=limit.max_items,
+                max_fields=limit.max_fields,
+                max_characters=max(limit.max_characters, len(content)),
+            )
+            authority = _make_available_slice(
+                slice_name=slice_name,
+                bound=bound,
+                limit=inflated,
+                items=items,
+                source_refs=source_refs,
+                source_hash=source_hash,
+                truncated=True,
+                model_content_profile=profile,
+            )
+
+    assert authority is not None
+    preview = min(1_024, max(0, limit.max_characters // 2))
+    while True:
+        fitted = _character_truncated_head_view(authority, preview_characters=preview)
+        content = fitted.model_content_json
+        if len(content) <= limit.max_characters:
+            return (
+                _replace_model_content_within_limit(
+                    fitted, content, limit=limit, truncated=True
+                ),
+                TruncationEntry(
+                    slice_name=slice_name,
+                    reason="required_slice_model_fit",
+                    omitted_count=1,
+                ),
+            )
+        if preview == 0:
+            break
+        preview //= 2
+
+    raise ValueError(f"{slice_name} minimum whole-item budget is not satisfied")
+
+
 def _evict_last_item(
     *,
     slice_name: SliceName,
@@ -2398,6 +2569,17 @@ def _compile_resolved_context(
         )
         slices[slice_name] = compiled
         truncation_log.extend(entries)
+        # Guard: a required head with resolved values must never compile to an
+        # empty available slice.  _compile_slice either keeps (possibly
+        # model-fitted) items or raises; this catches regressions that skip
+        # that contract.
+        if (
+            slice_name in _REQUIRED_WHOLE_ITEM_SLICES
+            and bound is not None
+            and _values(bound)
+            and not compiled.items
+        ):
+            raise ValueError(f"{slice_name} minimum whole-item budget is not satisfied")
 
     relationship_evaluation = _relationship_evaluation_context(request)
     model_content = _context_model_content(request, slices, relationship_evaluation)

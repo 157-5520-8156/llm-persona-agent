@@ -387,6 +387,59 @@ def test_required_situation_is_never_reduced_to_a_partial_typed_claim() -> None:
         compile_context_capsule(_request(), policy=policy)
 
 
+def test_required_situation_keeps_whole_item_when_envelope_exceeds_character_budget() -> None:
+    """Required heads must not discard-then-raise when only the model envelope is fat.
+
+    The trusted CapsuleItem stays complete; proof bookkeeping is compacted out of
+    the model-facing view (same strip as proactive_decision) so the slice still
+    compiles under its character cap.
+    """
+
+    # Fixture general envelope is ~2719 chars; proactive compaction is ~1902.
+    tight = SliceBudget(max_items=1, max_fields=96, max_characters=2_300)
+    policy = ContextCapsuleBudgetPolicy(
+        hard_max_characters=80_000,
+        current_situation=tight,
+    )
+
+    capsule = compile_context_capsule(_request(), policy=policy)
+
+    assert len(capsule.current_situation.items) == 1
+    assert capsule.current_situation.items[0].value_hash == canonical_value_hash(
+        _situation()
+    )
+    assert "source_revisions" in json.loads(capsule.current_situation.items[0].payload_json)
+    model_item = json.loads(capsule.current_situation.model_content_json)["items"][0]
+    assert "source_revisions" not in model_item["value"]
+    assert capsule.current_situation.budget.used_characters <= 2_300
+    assert any(
+        entry.slice_name == "current_situation"
+        and entry.reason == "required_slice_model_fit"
+        for entry in capsule.budget.truncation_log
+    )
+
+
+def test_required_slice_with_values_never_compiles_empty() -> None:
+    """Regression guard: values present + empty compiled items is illegal."""
+
+    from companion_daemon.world_v2.context_capsule import _compile_slice, _values
+
+    request = _request(character_core=_character_core_bound())
+    cases = (
+        ("current_situation", request.situation, 2_300),
+        ("character_core", request.character_core, 2_300),
+    )
+    for slice_name, bound, max_characters in cases:
+        assert bound is not None and _values(bound)
+        limit = SliceBudget(max_items=1, max_fields=96, max_characters=max_characters)
+        compiled, _log = _compile_slice(
+            slice_name=slice_name,
+            bound=bound,
+            limit=limit,
+        )
+        assert compiled.items, f"{slice_name} compiled empty despite resolved values"
+
+
 def test_proactive_model_view_compacts_proof_but_keeps_whole_situation_authority() -> None:
     capsule = _compile_resolved_context(
         _request(), model_content_profile="proactive_decision"
