@@ -34,6 +34,7 @@ from ..present_prompt import (
     PRESENT_FACT_ITEM_LIMIT,
     PRESENT_IMPRESSION_ITEM_LIMIT,
     PRESENT_MEMORY_ITEM_LIMIT,
+    PRESENT_PENDING_OUTBOUND_ITEM_LIMIT,
     PRESENT_SHARED_MEDIA_ITEM_LIMIT,
     PRESENT_WEEK_DIARY_DAYS,
     PRESENT_WEEK_DIARY_LINES_PER_DAY,
@@ -53,7 +54,7 @@ from .contracts import (
 )
 
 
-SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.14"
+SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.15"
 
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
@@ -231,6 +232,59 @@ def _photos_i_shared_entry(
     entry["already_in_chat"] = True
     entry["line"] = (
         f"{age}{stamp}已经发给他{about.strip()}，这张已经出现在你们的对话里。{after}"
+    )
+    return entry
+
+
+def _messages_waiting_to_send_entry(
+    item: dict[str, object], *, logical_time: datetime | None
+) -> dict[str, object] | None:
+    """Bind one unsent later followup as a fact she can read."""
+
+    entry = _state_entry(
+        item,
+        fields=(
+            "action_id",
+            "plan_id",
+            "beat_id",
+            "text",
+            "written_at",
+            "send_at",
+            "he_spoke_after",
+            "i_spoke_after",
+        ),
+    )
+    if entry is None:
+        return None
+    text = entry.get("text")
+    if not (isinstance(text, str) and text.strip()):
+        return entry
+    body = text.strip()
+    preview = body if len(body) <= 240 else body[:239] + "…"
+    written_clock = _shared_photo_clock(entry.get("written_at"))
+    send_clock = _shared_photo_clock(entry.get("send_at"))
+    when = _shared_photo_when(entry.get("written_at"), logical_time)
+    written_stamp = f"当地{written_clock}写好" if written_clock else "已经写好"
+    send_stamp = f"定在当地{send_clock}发出" if send_clock else "还没发出"
+    i_spoke = (
+        "写好之后你另外发过话。"
+        if entry.get("i_spoke_after") is True
+        else "写好之后你没另外发过。"
+    )
+    he_spoke = (
+        "写好之后他又开口了。"
+        if entry.get("he_spoke_after") is True
+        else "写好之后他还没回。"
+    )
+    if when:
+        entry["when"] = when
+    if written_clock:
+        entry["written_clock"] = written_clock
+    if send_clock:
+        entry["send_clock"] = send_clock
+    entry["already_in_chat"] = False
+    entry["line"] = (
+        f"{written_stamp}、还没发出，{send_stamp}。正文：「{preview}」{i_spoke}{he_spoke}"
     )
     return entry
 
@@ -1296,6 +1350,13 @@ def compile_inner_life_snapshot(
     ][:PRESENT_SHARED_MEDIA_ITEM_LIMIT]
     if photos_i_shared:
         materials["photos_i_shared"] = photos_i_shared
+    waiting = [
+        entry
+        for item in _slice_items(slices, "pending_outbound")
+        if (entry := _messages_waiting_to_send_entry(item, logical_time=logical_time))
+    ][:PRESENT_PENDING_OUTBOUND_ITEM_LIMIT]
+    if waiting:
+        materials["messages_waiting_to_send"] = waiting
     shareable = _moments_i_can_share(
         slices,
         recent=[
@@ -1320,6 +1381,7 @@ def compile_inner_life_snapshot(
             "relevant_facts",
             "remembered_material",
             "photos_i_shared",
+            "messages_waiting_to_send",
             "moments_i_can_share",
         ),
         "appraisal_affect": ("appraisals", "affect"),
@@ -1338,6 +1400,7 @@ def compile_inner_life_snapshot(
             "recent_dialogue",
             "interaction_acts",
             "photos_i_shared",
+            "messages_waiting_to_send",
             "moments_i_can_share",
         ),
         "aspirations_conflicts": ("situation", "unresolved"),
@@ -1356,6 +1419,7 @@ def compile_inner_life_snapshot(
             "relevant_facts",
             "interaction_acts",
             "photos_i_shared",
+            "messages_waiting_to_send",
             "moments_i_can_share",
         ),
         "expression_stance": (
@@ -1372,6 +1436,7 @@ def compile_inner_life_snapshot(
             "relevant_facts",
             "interaction_acts",
             "photos_i_shared",
+            "messages_waiting_to_send",
             "moments_i_can_share",
         ),
     }

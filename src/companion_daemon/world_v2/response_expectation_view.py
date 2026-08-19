@@ -35,12 +35,10 @@ RESPONSE_EXPECTATION_ADVISORY_VERSION = "response-expectation-view.3"
 # Matches present_prompt open-hope sentinel: wait=86400, expires=172800.
 # A real max wait of 86400 still chases by 60s and is not this marker.
 OPEN_HOPE_CHASE_SECONDS = 86_400
-# Cadence-derived wakeup for waiting_for without wait. Heat is classified at
-# the inbound she answered, using conversation_cadence rhythm-v1 bands
-# (hot ≤90s, warm ≤600s, cold beyond). Delays sit inside those bands so a
-# hot pause is still a pause, and a warm pause is offered before the thread
-# goes cold. Cold does not mint this short lane — spontaneous/ambient keep
-# their relationship floors. Explicit wait_seconds still win.
+# Leftover from the 2026-08-18 optional-wait experiment. H21 does not use
+# these delays: a hope compiled without wait should not exist, and a hope
+# with wait wakes at `not_before`. Kept so living-hope views can still
+# recognize sentinel records already in a ledger.
 OPEN_HOPE_WAKE_SECONDS = {
     "hot": 60,
     "warm": 480,
@@ -294,24 +292,12 @@ def expired_unanswered_expectation(projection) -> ExpiredUnansweredExpectation |
             declared_at = _declared_world_clock(
                 projection, action_id=beat.action.action_id, receipt_ref=declared_ref
             )
-            open_hope = _is_open_hope_expectation(expectation)
-            if open_hope:
-                due = _open_hope_cadence_due_at(
-                    projection,
-                    declared_ref=declared_ref,
-                    declared_at=declared_at,
-                )
-                if due is None or logical_time < due:
-                    continue
-                if _contact_since_hope_declared(
-                    projection, declared_at=declared_at
-                ):
-                    continue
-                not_before = due
-            else:
-                if logical_time < authority_not_before:
-                    continue
-                not_before = authority_not_before
+            # H21: wake at the declared wait (`not_before`). Cadence-derived
+            # short wakes for waiting_for-without-wait conflicted with
+            # "没填 wait 不编译盼头" and are not used here.
+            if logical_time < authority_not_before:
+                continue
+            not_before = authority_not_before
             candidates.append(
                 ExpiredUnansweredExpectation(
                     plan_id=manifest.plan_id,
@@ -323,7 +309,7 @@ def expired_unanswered_expectation(projection) -> ExpiredUnansweredExpectation |
                     receipt_logical_time=delivered_ref.logical_time,
                     declared_world_revision=declared_ref.world_revision,
                     declared_logical_time=declared_at,
-                    is_open_hope=open_hope,
+                    is_open_hope=_is_open_hope_expectation(expectation),
                 )
             )
         if not candidates:
@@ -698,8 +684,8 @@ class LivingUnansweredHope(FrozenModel):
 def living_unanswered_hope(projection) -> LivingUnansweredHope | None:
     """Delivered, unassessed, still-unexpired hope; he has not spoken since.
 
-    Open hopes (waiting_for without wait) hitch here. Cadence may still mint
-    the existing expiry lane once; a filled wait uses her seconds.
+    Open hopes (legacy waiting_for-without-wait sentinel records) hitch here
+    as a fact. H21 timed wake uses only a declared `not_before`.
     """
 
     try:

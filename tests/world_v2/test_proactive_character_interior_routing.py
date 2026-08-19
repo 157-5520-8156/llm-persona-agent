@@ -239,6 +239,8 @@ async def test_proactive_deepseek_transport_uses_strict_beta_tool_contract() -> 
                     "media_source_refs": [],
                     "mood": None,
                     "appraisal_draft": None,
+                    "waiting_for": None,
+                    "wait": None,
                 },
             },
             "recall_query": None,

@@ -298,3 +298,23 @@ def test_draft_keeps_mood_when_attention_overflows_private_turn_state_max() -> N
     assert len(draft.private_turn_state.attended_source_refs) == 8
     assert draft.private_turn_state.attended_source_refs == refs[:8]
     assert draft.beats[0].text == "对了，这个周末我打算去趟旧书市逛逛，你有兴趣一起吗？"
+
+
+def test_proactive_response_expectation_lands_on_the_expression_plan() -> None:
+    proposal = _materialize(
+        _draft(
+            response_expectation={
+                "hoped_response": "你那边下雨了没",
+                "pressure_bp": 5_000,
+                "importance_bp": 5_000,
+                "wait_seconds": 90,
+                "expires_after_seconds": 150,
+            }
+        )
+    )
+    change = next(
+        item for item in proposal.proposed_changes if item.kind == "expression_plan_transition"
+    )
+    payload = change.payload.value()
+    assert payload["response_expectation"]["hoped_response"] == "你那边下雨了没"
+    assert payload["response_expectation"]["wait_seconds"] == 90

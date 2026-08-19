@@ -270,17 +270,14 @@ def test_wait_pair_incomplete_is_explained_in_chinese() -> None:
     assert "结构校验没过" not in text
 
 
-def test_parse_combined_accepts_waiting_for_without_wait() -> None:
+def test_parse_combined_waiting_for_without_wait_does_not_compile_a_hope() -> None:
     raw = (
         '{"result_kind": "reply_only", "payload_json": '
         '"{\\"messages\\":[\\"行 等你\\"],\\"felt\\":\\"先等他回来\\",'
         '\\"waiting_for\\":\\"他倒完水回来\\"}"}'
     )
     parsed = _parse_combined(raw)
-    expectation = parsed["expression_draft"]["response_expectation"]
-    assert expectation["hoped_response"] == "他倒完水回来"
-    assert expectation["wait_seconds"] == 86_400
-    assert expectation["expires_after_seconds"] == 172_800
+    assert parsed["expression_draft"].get("response_expectation") is None
 
 
 def test_parse_combined_rejects_come_back_without_come_back_in() -> None:

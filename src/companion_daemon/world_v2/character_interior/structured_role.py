@@ -1660,6 +1660,9 @@ class StructuredCharacterRoleFaculty:
                 "没有可核对的世界事实时 world_claims 写 []。"
                 "对话 beat 不是 current_world；current_world 只能引用当前生活/世界来源。"
                 "来源只写 citeable_sources 里的 id（如 s0）或原样抄 ref，不要手写拼接。"
+                "waiting_for 与 wait 和入站 slim 相同：两个都写才编译盼头；"
+                "只写短句不编译，也不会按秒叫醒。"
+                "完整 response_expectation 对象也可以写，二者选一。"
                 "response_expectation 若写，pressure_bp 与 importance_bp 是 0 到 10000 的基点，"
                 "不是百分制：5000 才是一半，30 不是百分之三十。"
             )
@@ -2862,9 +2865,11 @@ class StructuredCharacterRoleFaculty:
                     "对话 beat 不是 current_world；current_world 只能引用当前生活/世界来源，"
                     "不能引用她自己上一句对话。"
                 ),
+                "waiting_for": "optional short sentence; compiles a hope only with wait",
+                "wait": "optional seconds 30..86400; only with waiting_for",
                 "response_expectation": (
                     "若写：hoped_response、pressure_bp、importance_bp、wait_seconds、"
-                    "expires_after_seconds。"
+                    "expires_after_seconds。也可改写 waiting_for + wait，规则与入站相同。"
                     "pressure_bp 与 importance_bp 是 0 到 10000 的基点（basis points），"
                     "不是 0 到 100 的百分制：5000=一半，3000=三成，30 不是百分之三十。"
                 ),

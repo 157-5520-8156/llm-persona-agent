@@ -48,6 +48,7 @@ from .perception_result_context import PerceptionResultContextItem
 from .external_perception_events import ExternalPerceptionLifeInfluenceView
 from .present_prompt import (
     PRESENT_CAPSULE_HARD_MAX_CHARACTERS,
+    PRESENT_PENDING_OUTBOUND_ITEM_LIMIT,
     PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
     PRESENT_SHARED_MEDIA_ITEM_LIMIT,
 )
@@ -73,6 +74,7 @@ SliceName = Literal[
     "private_impressions",
     "advisories",
     "media_deliveries",
+    "pending_outbound",
 ]
 TruncationReason = Literal[
     "item_budget",
@@ -248,6 +250,73 @@ def compile_shared_media_delivery_item(
     )
 
 
+class PendingOutboundExpressionItem(_FrozenModel):
+    """World fact that she already wrote a message that has not been sent yet.
+
+    This is the frozen later payload as a fact, not a suggestion to drop or
+    rewrite it. Prompt bytes keep the text and clocks; authority hashes stay
+    off the model-facing view.
+    """
+
+    action_id: str = Field(min_length=1, max_length=256)
+    plan_id: str = Field(min_length=1, max_length=256)
+    beat_id: str = Field(min_length=1, max_length=256)
+    text: str = Field(min_length=1, max_length=4_096)
+    written_at: datetime
+    send_at: datetime
+    he_spoke_after: bool
+    i_spoke_after: bool
+    privacy_class: PrivacyClass
+    authority_event_ref: str = Field(min_length=1)
+    authority_world_revision: int = Field(ge=1)
+    authority_payload_hash: str = Field(min_length=64, max_length=64)
+
+    @field_validator("authority_payload_hash")
+    @classmethod
+    def authority_hash_is_digest(cls, value: str) -> str:
+        return _validate_hex_digest(value, label="pending outbound authority hash")
+
+    @field_validator("written_at", "send_at")
+    @classmethod
+    def pending_times_are_aware(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("pending outbound time must be timezone-aware")
+        return value
+
+
+def compile_pending_outbound_expression_item(
+    *,
+    action_id: str,
+    plan_id: str,
+    beat_id: str,
+    text: str,
+    written_at: datetime,
+    send_at: datetime,
+    he_spoke_after: bool,
+    i_spoke_after: bool,
+    authority_event_ref: str,
+    authority_world_revision: int,
+    authority_payload_hash: str,
+) -> PendingOutboundExpressionItem:
+    """Bind one unsent later followup as a source-closed world fact."""
+
+    body = text.strip()
+    return PendingOutboundExpressionItem(
+        action_id=action_id,
+        plan_id=plan_id,
+        beat_id=beat_id,
+        text=body,
+        written_at=written_at,
+        send_at=send_at,
+        he_spoke_after=he_spoke_after,
+        i_spoke_after=i_spoke_after,
+        privacy_class="private",
+        authority_event_ref=authority_event_ref,
+        authority_world_revision=authority_world_revision,
+        authority_payload_hash=authority_payload_hash,
+    )
+
+
 def _canonical_json(value: object) -> str:
     return json.dumps(
         value,
@@ -286,6 +355,7 @@ RANK_DOMAIN_IMPORTANCE_BP: dict[SliceName, int] = {
     "private_impressions": 8_000,
     "advisories": 5_000,
     "media_deliveries": 8_800,
+    "pending_outbound": 9_200,
 }
 RANK_WEIGHT_BP = {"domain_importance": 4_000, "typed_signal": 4_000, "recency": 2_000}
 RANK_RECENCY_WINDOW_SECONDS = 7 * 24 * 60 * 60
@@ -623,6 +693,13 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
             max_characters=4_000,
         )
     )
+    pending_outbound: SliceBudget = Field(
+        default_factory=lambda: SliceBudget(
+            max_items=PRESENT_PENDING_OUTBOUND_ITEM_LIMIT,
+            max_fields=48,
+            max_characters=4_000,
+        )
+    )
 
 
 class ContextCapsuleRequest(_FrozenModel):
@@ -659,6 +736,7 @@ class ContextCapsuleRequest(_FrozenModel):
     private_impressions: ResolvedSlice[tuple[PrivateImpressionProjection, ...]] | None = None
     advisories: ResolvedSlice[tuple[InnerAdvisoryProjection, ...]] | None = None
     media_deliveries: ResolvedSlice[tuple[SharedMediaDeliveryContextItem, ...]] | None = None
+    pending_outbound: ResolvedSlice[tuple[PendingOutboundExpressionItem, ...]] | None = None
 
     @field_validator("logical_time")
     @classmethod
@@ -899,6 +977,7 @@ class ContextCapsule(_FrozenModel):
     private_impressions: CapsuleSlice
     advisories: CapsuleSlice
     media_deliveries: CapsuleSlice | None = None
+    pending_outbound: CapsuleSlice | None = None
     relationship_evaluation: RelationshipEvaluationContext | None = None
     model_content_json: str
     budget: ContextBudgetAudit
@@ -945,6 +1024,8 @@ class ContextCapsule(_FrozenModel):
             material["perception_results"] = self.perception_results.model_dump(mode="json")
         if self.media_deliveries is not None:
             material["media_deliveries"] = self.media_deliveries.model_dump(mode="json")
+        if self.pending_outbound is not None:
+            material["pending_outbound"] = self.pending_outbound.model_dump(mode="json")
         result_material = dict(material)
         for field in ("provenance_kind", "compiler_result_hash", "compiler_result_tag"):
             result_material.pop(field)
@@ -983,6 +1064,7 @@ _ITEM_IDS: dict[SliceName, str] = {
     "private_impressions": "impression_id",
     "advisories": "advisory_id",
     "media_deliveries": "delivery_id",
+    "pending_outbound": "action_id",
 }
 
 
@@ -1070,6 +1152,7 @@ def derived_privacy_floor(slice_name: SliceName, item: BaseModel) -> PrivacyClas
         "private_impressions": "withhold",
         "advisories": "private",
         "media_deliveries": "personal",
+        "pending_outbound": "private",
     }
     typed: list[PrivacyClass] = [conservative[slice_name]]
     if slice_name == "current_situation":
@@ -1121,6 +1204,8 @@ def derived_privacy_floor(slice_name: SliceName, item: BaseModel) -> PrivacyClas
         )
     if slice_name == "media_deliveries" and isinstance(item, SharedMediaDeliveryContextItem):
         typed.append(item.privacy_class)
+    if slice_name == "pending_outbound" and isinstance(item, PendingOutboundExpressionItem):
+        typed.append(item.privacy_class)
     return _strictest_privacy(tuple(typed))
 
 
@@ -1131,6 +1216,8 @@ def _typed_source_refs(slice_name: SliceName, item: BaseModel) -> tuple[str, ...
     if slice_name == "recent_dialogue" and isinstance(item, RecentDialogueItem):
         return tuple(sorted(claim.authority_event_ref for claim in item.source_claims))
     if slice_name == "media_deliveries" and isinstance(item, SharedMediaDeliveryContextItem):
+        return (item.authority_event_ref,)
+    if slice_name == "pending_outbound" and isinstance(item, PendingOutboundExpressionItem):
         return (item.authority_event_ref,)
     if slice_name == "private_impressions":
         origin = getattr(item, "origin", None)
@@ -1423,6 +1510,19 @@ def _slice_model_content(
                         "authority_payload_hash",
                     }
                 }
+        if slice_name == "pending_outbound":
+            material.pop("source_bindings")
+            if isinstance(value, dict):
+                material["value"] = {
+                    key: field_value
+                    for key, field_value in value.items()
+                    if key
+                    not in {
+                        "authority_event_ref",
+                        "authority_world_revision",
+                        "authority_payload_hash",
+                    }
+                }
         if model_content_profile == "proactive_decision" and slice_name in {
             "character_core",
             "current_situation",
@@ -1458,7 +1558,7 @@ def _slice_model_content(
         "resolver_proof": resolver_proof.model_dump(mode="json"),
         "items": tuple(model_item(item) for item in items),
     }
-    if slice_name in {"recent_dialogue", "media_deliveries"}:
+    if slice_name in {"recent_dialogue", "media_deliveries", "pending_outbound"}:
         # The exact refs remain in CapsuleSlice.source_refs and CapsuleItem;
         # the model-facing packet only needs proof that the verified authority
         # set is fixed. Long provider-generated ids are otherwise repeated at
@@ -1745,6 +1845,8 @@ def _validate_input_contract(request: ContextCapsuleRequest) -> None:
         bound_slices = (*bound_slices, ("perception_results", request.perception_results))
     if request.media_deliveries is not None:
         bound_slices = (*bound_slices, ("media_deliveries", request.media_deliveries))
+    if request.pending_outbound is not None:
+        bound_slices = (*bound_slices, ("pending_outbound", request.pending_outbound))
     if any(
         bound is not None and bound.pinned_world_revision != request.world_revision
         for _, bound in bound_slices
@@ -2245,6 +2347,8 @@ def _compile_resolved_context(
         inputs = (*inputs, ("perception_results", request.perception_results))
     if request.media_deliveries is not None:
         inputs = (*inputs, ("media_deliveries", request.media_deliveries))
+    if request.pending_outbound is not None:
+        inputs = (*inputs, ("pending_outbound", request.pending_outbound))
     slices: dict[str, CapsuleSlice] = {}
     bounds = {name: bound for name, bound in inputs}
     truncation_log: list[TruncationEntry] = []
@@ -2296,6 +2400,7 @@ def _compile_resolved_context(
         # global envelope remains the final safety bound.
         "advisories": len(slices["advisories"].items),
         "media_deliveries": 1,
+        "pending_outbound": 1,
     }
     protected_advisory_present = any(
         json.loads(item.payload_json).get("kind")

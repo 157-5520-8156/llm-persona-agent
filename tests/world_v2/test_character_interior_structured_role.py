@@ -2273,6 +2273,8 @@ async def test_proactive_contact_uses_one_versioned_forced_tool_at_http_boundary
                     "media_source_refs": [],
                     "mood": None,
                     "appraisal_draft": None,
+                    "waiting_for": None,
+                    "wait": None,
                 },
         },
     )

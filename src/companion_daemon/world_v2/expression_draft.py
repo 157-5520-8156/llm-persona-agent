@@ -2158,6 +2158,12 @@ def bind_proactive_expression_wire(value: dict[str, object]) -> dict[str, object
         bound["impulse_summary"] = _clip_authored_text(
             bound.get("impulse_summary"), max_length=240
         )
+    if bound.get("response_expectation") is None and bound.get("timing_choice") != "silent":
+        from .present_prompt import compile_declared_response_expectation
+
+        hitchhiked = compile_declared_response_expectation(value)
+        if hitchhiked is not None:
+            bound["response_expectation"] = hitchhiked
     expectation = bound.get("response_expectation")
     if isinstance(expectation, dict):
         hoped = _clip_authored_text(expectation.get("hoped_response"), max_length=128)

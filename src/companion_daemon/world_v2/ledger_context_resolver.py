@@ -42,6 +42,7 @@ from .context_capsule import (
     RESOLUTION_POLICY_VERSION,
     RESOLVER_ID,
     RESOLVER_VERSION,
+    PendingOutboundExpressionItem,
     ResolvedItemMetadata,
     ResolvedSlice,
     ResolvedSourceBinding,
@@ -50,6 +51,7 @@ from .context_capsule import (
     SliceName,
     authority_refs_digest,
     canonical_value_hash,
+    compile_pending_outbound_expression_item,
     compile_shared_media_delivery_item,
     derived_privacy_floor,
     _shared_media_about,
@@ -73,7 +75,8 @@ from .context_resolver import (
 )
 from .ledger import LedgerPort
 from .memory_retrieval import MemoryRetrievalCompiler, MemoryRetrievalItem
-from .life_content import LifeContentCompiler, RecentExperienceContextItem
+from .later_expression_freshness import queued_later_facts
+from .life_content import LifeContentCompiler, collect_user_channel_limited_content_refs, RecentExperienceContextItem
 from .life_content_store import ImmutableLifeContentStore
 from .life_development_runtime import LifeDevelopmentProposalReader
 from .life_events import NpcRegisteredPayload
@@ -90,7 +93,10 @@ from .external_perception_events import (
 from .expression_payload_store import ImmutableExpressionPayloadStore
 from .media_v2 import MediaDeliverySharedPayload
 from .model_facing_context import CHAT_RECENT_DIALOGUE_ITEM_LIMIT
-from .present_prompt import PRESENT_SHARED_MEDIA_ITEM_LIMIT
+from .present_prompt import (
+    PRESENT_PENDING_OUTBOUND_ITEM_LIMIT,
+    PRESENT_SHARED_MEDIA_ITEM_LIMIT,
+)
 from .recent_dialogue import (
     RecentDialogueCompiler,
     RecentDialogueItem,
@@ -151,6 +157,7 @@ _PRIVACY_FLOOR: dict[SliceName, PrivacyClass] = {
     "private_impressions": "withhold",
     "advisories": "private",
     "media_deliveries": "personal",
+    "pending_outbound": "private",
 }
 _PRIVACY_RANK = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}
 _EXPERIENCE_CONTENT_UNAVAILABLE_REASONS = frozenset(
@@ -192,6 +199,7 @@ _ITEM_ID: dict[SliceName, str] = {
     "private_impressions": "impression_id",
     "advisories": "advisory_id",
     "media_deliveries": "delivery_id",
+    "pending_outbound": "action_id",
 }
 
 
@@ -309,6 +317,8 @@ def _typed_refs(item: BaseModel, *, observation_aliases: dict[str, str]) -> tupl
     if isinstance(item, RecentDialogueItem):
         return tuple(sorted(claim.authority_event_ref for claim in item.source_claims))
     if isinstance(item, SharedMediaDeliveryContextItem):
+        return (item.authority_event_ref,)
+    if isinstance(item, PendingOutboundExpressionItem):
         return (item.authority_event_ref,)
     if isinstance(item, MemoryRetrievalItem):
         return tuple(sorted({source.authority_event_ref for source in item.source_excerpts}))
@@ -449,6 +459,14 @@ def _typed_authority_claims(
             )
         )
     if isinstance(item, SharedMediaDeliveryContextItem):
+        return (
+            (
+                item.authority_event_ref,
+                item.authority_world_revision,
+                item.authority_payload_hash,
+            ),
+        )
+    if isinstance(item, PendingOutboundExpressionItem):
         return (
             (
                 item.authority_event_ref,
@@ -631,6 +649,8 @@ def _recency_bp(item: BaseModel, logical_time: datetime | None) -> int:
         getattr(item, "activated_at", None),
         getattr(item, "occurred_at", None),
         getattr(item, "shared_at", None),
+        getattr(item, "send_at", None),
+        getattr(item, "written_at", None),
     )
     instant = next((value for value in instants if value is not None), None)
     if instant is None:
@@ -923,6 +943,38 @@ def shared_media_delivery_items(
                         candidate=candidate,
                         projection=projection,
                     ),
+                )
+            )
+        except ValueError:
+            continue
+    return tuple(items)
+
+
+def pending_outbound_expression_items(
+    *,
+    projection: LedgerProjection,
+    logical_time: datetime | None,
+) -> tuple[PendingOutboundExpressionItem, ...]:
+    """Bind unsent later followups as source-closed world facts. Failed joins drop the row."""
+
+    items: list[PendingOutboundExpressionItem] = []
+    for fact in queued_later_facts(projection, logical_time=logical_time):
+        if len(items) >= PRESENT_PENDING_OUTBOUND_ITEM_LIMIT:
+            break
+        try:
+            items.append(
+                compile_pending_outbound_expression_item(
+                    action_id=fact.action_id,
+                    plan_id=fact.plan_id,
+                    beat_id=fact.beat_id,
+                    text=fact.text,
+                    written_at=fact.written_at,
+                    send_at=fact.send_at,
+                    he_spoke_after=fact.he_spoke_after,
+                    i_spoke_after=fact.i_spoke_after,
+                    authority_event_ref=fact.authority_event_ref,
+                    authority_world_revision=fact.authority_world_revision,
+                    authority_payload_hash=fact.authority_payload_hash,
                 )
             )
         except ValueError:
@@ -1555,6 +1607,10 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             projection=projection,
             recent_dialogue=recent_dialogue.dialogue,
         )
+        pending_outbound = pending_outbound_expression_items(
+            projection=projection,
+            logical_time=query.logical_time,
+        )
         photo_dialogue = tuple(
             delivered_photo_dialogue_item(
                 delivery_id=item.delivery_id,
@@ -1600,11 +1656,16 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         scoped_threads = tuple(
             item for item in projection.threads if item.values.subject_ref in subject_refs
         )
+        user_channel_limited_content_refs = collect_user_channel_limited_content_refs(
+            ledger=self._ledger,
+            projection=projection,
+        )
         life_content = self._life_content.compile(
             cursor=query.cursor,
             actor_ref=query.actor_ref,
             viewer_privacy_ceiling="private",
             projection=projection,
+            user_channel_limited_content_refs=user_channel_limited_content_refs,
         )
         scoped_experiences = tuple(
             item
@@ -1629,6 +1690,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             actor_ref=query.actor_ref,
             cursor=query.cursor,
             biographical_timeline_source=self._biographical_timeline_source(projection),
+            user_channel_limited_content_refs=user_channel_limited_content_refs,
         )
         world_life_ms = (time.perf_counter() - domain_phase_started) * 1000
         domain_phase_started = time.perf_counter()
@@ -2174,6 +2236,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             ),
             "advisories": None,
             "media_deliveries": media_deliveries,
+            "pending_outbound": pending_outbound,
         }
         if perception_results is not None:
             domains["perception_results"] = perception_results
@@ -2228,6 +2291,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             "private_impressions": "private_impressions",
             "advisories": "advisories",
             "media_deliveries": "media_deliveries",
+            "pending_outbound": "pending_outbound",
         }
         if perception_results is not None:
             request_fields["perception_results"] = "perception_results"

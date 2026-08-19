@@ -16,6 +16,13 @@ from zoneinfo import ZoneInfo
 
 from pydantic import Field, model_validator
 
+from .later_expression_freshness import (
+    LATER_REFRESH_CONSIDERATION_PREFIX,
+    due_stale_later_actions,
+    later_refresh_action_id_matching,
+    later_refresh_consideration_id,
+    later_refresh_is_terminal,
+)
 from .ledger import LedgerPort
 from .random_authority import RandomAuthority, RandomDrawRecordedPayload
 from .response_expectation_view import (
@@ -191,6 +198,7 @@ SocialInitiativeSourceKind = Literal[
     "commitment",
     "revisit_intention",
     "private_impression",
+    "later_expression_refresh",
 ]
 
 PRIVATE_IMPRESSION_OCCASION_REASON = "private_impression:unresolved"
@@ -597,6 +605,15 @@ class SocialInitiativeCompiler:
                         projection, logical_time, adopted
                     )
             return retry
+        later_refresh = await self._later_expression_refresh(
+            projection,
+            logical_time,
+            excluded_consideration_ids=excluded_consideration_ids,
+        )
+        if later_refresh is not None:
+            return await self._hitch_situation_materials(
+                projection, logical_time, later_refresh
+            )
         expired = await self._expired_expectation_contact(
             projection,
             logical_time,
@@ -794,6 +811,17 @@ class SocialInitiativeCompiler:
                     continue
                 source_kind = "private_impression"
                 source_id = impression.impression_id
+                stimulus_event_refs = ()
+            elif (
+                event.event_type == "ExpressionBeatAuthorized"
+                and consideration_id.startswith(LATER_REFRESH_CONSIDERATION_PREFIX)
+            ):
+                source_kind = "later_expression_refresh"
+                source_id = later_refresh_action_id_matching(
+                    projection, consideration_id
+                )
+                if source_id is None:
+                    continue
                 stimulus_event_refs = ()
             elif event.event_type in _SITUATION_STIMULUS_EVENT_TYPES:
                 if not situation_stimulus_is_observable(
@@ -1179,6 +1207,9 @@ class SocialInitiativeCompiler:
             if event.event_type == "ExecutionReceiptRecorded"
             else "private_impression"
             if event.event_type == "PrivateImpressionAccepted"
+            else "later_expression_refresh"
+            if event.event_type == "ExpressionBeatAuthorized"
+            and consideration_id.startswith(LATER_REFRESH_CONSIDERATION_PREFIX)
             else None
         )
         if source_kind is None:
@@ -1215,6 +1246,12 @@ class SocialInitiativeCompiler:
             ):
                 return None
             source_id = impression.impression_id
+        elif source_kind == "later_expression_refresh":
+            source_id = later_refresh_action_id_matching(
+                projection, consideration_id
+            )
+            if source_id is None:
+                return None
         stimulus_event_refs = ()
         if source_kind == "situation_change":
             observable = await self._observable_stimulus_refs(
@@ -1243,6 +1280,78 @@ class SocialInitiativeCompiler:
             cadence_reason_codes=("technical_failure:retry",),
             stimulus_event_refs=stimulus_event_refs,
         )
+
+    async def _later_expression_refresh(
+        self,
+        projection,
+        logical_time: datetime,
+        *,
+        excluded_consideration_ids: frozenset[str],
+    ):
+        from .expression_reconsideration import expression_beat_is_gated
+
+        for action in due_stale_later_actions(projection, logical_time):
+            plan_id = getattr(action, "expression_plan_id", None)
+            beat_id = getattr(action, "expression_beat_id", None)
+            action_id = getattr(action, "action_id", None)
+            if (
+                not isinstance(plan_id, str)
+                or not isinstance(beat_id, str)
+                or not isinstance(action_id, str)
+            ):
+                continue
+            if expression_beat_is_gated(
+                projection=projection, plan_id=plan_id, beat_id=beat_id
+            ):
+                continue
+            consideration_id = later_refresh_consideration_id(action_id)
+            if consideration_id in excluded_consideration_ids:
+                continue
+            if later_refresh_is_terminal(projection, action_id):
+                continue
+            prefix = "proactive-consideration:" + consideration_id
+            existing = next(
+                (
+                    item
+                    for item in getattr(projection, "trigger_processes", ())
+                    if item.process_kind == "proactive_action_deliberation"
+                    and item.trigger_ref == prefix
+                ),
+                None,
+            )
+            if existing is not None:
+                continue
+            beat = next(
+                (
+                    item
+                    for item in getattr(projection, "expression_beats", ())
+                    if getattr(item, "beat_id", None) == beat_id
+                ),
+                None,
+            )
+            event_ref = getattr(beat, "event_ref", None) if beat is not None else None
+            if not isinstance(event_ref, str) or not event_ref:
+                continue
+            committed = next(
+                (
+                    item
+                    for item in getattr(projection, "committed_world_event_refs", ())
+                    if item.event_id == event_ref
+                ),
+                None,
+            )
+            if committed is None:
+                continue
+            return await self._from_source(
+                source_kind="later_expression_refresh",
+                source_id=action_id,
+                source_event_ref=event_ref,
+                source_world_revision=committed.world_revision,
+                consideration_id=consideration_id,
+                scheduled_for=action.not_before,
+                cadence_reason_codes=("later_expression:stale_before_dispatch",),
+            )
+        return None
 
     async def _expired_expectation_contact(
         self,

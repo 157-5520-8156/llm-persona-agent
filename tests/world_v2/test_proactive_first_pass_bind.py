@@ -287,3 +287,27 @@ def test_unsupported_only_claim_still_rejects() -> None:
 
     with pytest.raises(ValueError, match="outside its semantic source lane"):
         bind_proactive_world_claims(draft=draft, request=_request(_context()))
+
+
+def test_waiting_for_and_wait_compile_the_same_hope_as_inbound() -> None:
+    bound = _bind(_payload(waiting_for="你那边下雨了没", wait=90))
+    _validate(_payload(waiting_for="你那边下雨了没", wait=90))
+
+    expectation = bound["response_expectation"]
+    assert expectation["hoped_response"] == "你那边下雨了没"
+    assert expectation["wait_seconds"] == 90
+    assert expectation["expires_after_seconds"] == 150
+
+
+def test_waiting_for_without_wait_does_not_compile_a_hope() -> None:
+    bound = _bind(_payload(waiting_for="你那边下雨了没"))
+    _validate(_payload(waiting_for="你那边下雨了没"))
+
+    assert bound.get("response_expectation") is None
+
+
+def test_wait_without_waiting_for_is_a_visible_failure() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_WAIT_PAIR_INCOMPLETE
+
+    with pytest.raises(ValueError, match=SLIM_WAIT_PAIR_INCOMPLETE):
+        _bind(_payload(wait=90))

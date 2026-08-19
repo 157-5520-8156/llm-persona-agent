@@ -149,32 +149,32 @@ def test_open_hope_without_exchange_history_does_not_mint_short_wake() -> None:
     assert living.is_open_hope is True
 
 
-def test_hot_open_hope_mints_after_one_minute_not_sooner() -> None:
+def test_legacy_sentinel_hope_does_not_mint_before_declared_not_before() -> None:
     early = _open_hope_projection(logical_offset_seconds=30, heat="hot")
-    due = _open_hope_projection(
+    cadence_due = _open_hope_projection(
         logical_offset_seconds=OPEN_HOPE_WAKE_SECONDS["hot"], heat="hot"
     )
+    at_wait = _open_hope_projection(logical_offset_seconds=86_400, heat="hot")
 
     assert expired_unanswered_expectation(early) is None
-    found = expired_unanswered_expectation(due)
+    assert expired_unanswered_expectation(cadence_due) is None
+    found = expired_unanswered_expectation(at_wait)
     assert found is not None
     assert found.hoped_response == WATER
-    assert found.not_before == EVENING + timedelta(seconds=OPEN_HOPE_WAKE_SECONDS["hot"])
+    assert found.not_before == EVENING + timedelta(seconds=86_400)
 
 
-def test_warm_open_hope_waits_eight_minutes() -> None:
+def test_warm_sentinel_hope_does_not_use_cadence_delay() -> None:
     too_soon = _open_hope_projection(logical_offset_seconds=90, heat="warm")
-    due = _open_hope_projection(
+    cadence_due = _open_hope_projection(
         logical_offset_seconds=OPEN_HOPE_WAKE_SECONDS["warm"], heat="warm"
     )
 
     assert expired_unanswered_expectation(too_soon) is None
-    found = expired_unanswered_expectation(due)
-    assert found is not None
-    assert found.not_before == EVENING + timedelta(seconds=OPEN_HOPE_WAKE_SECONDS["warm"])
+    assert expired_unanswered_expectation(cadence_due) is None
 
 
-def test_overnight_open_hope_does_not_mint_short_wake() -> None:
+def test_overnight_sentinel_hope_does_not_mint_before_not_before() -> None:
     projection = _open_hope_projection(
         logical_offset_seconds=90, heat="hot", declared=OVERNIGHT
     )
@@ -223,11 +223,9 @@ def test_open_hope_does_not_remint_after_her_contact() -> None:
     assert living_unanswered_hope(projection) is not None
 
 
-def test_open_hope_cadence_uses_action_world_clock_not_receipt_wall() -> None:
+def test_legacy_sentinel_hope_uses_declared_not_before_not_receipt_wall() -> None:
     wall = datetime(2026, 8, 18, 17, 10, 23, tzinfo=UTC)
-    projection = _open_hope_projection(
-        logical_offset_seconds=OPEN_HOPE_WAKE_SECONDS["hot"], heat="hot"
-    )
+    projection = _open_hope_projection(logical_offset_seconds=86_400, heat="hot")
     shifted = []
     for ref in projection.committed_world_event_refs:
         if ref.event_type == "ExecutionReceiptRecorded":
@@ -260,10 +258,10 @@ def test_open_hope_cadence_uses_action_world_clock_not_receipt_wall() -> None:
     found = expired_unanswered_expectation(projection)
     assert found is not None
     assert found.declared_logical_time == EVENING
-    assert found.not_before == EVENING + timedelta(seconds=OPEN_HOPE_WAKE_SECONDS["hot"])
+    assert found.not_before == EVENING + timedelta(seconds=86_400)
 
 
-def test_multi_beat_same_timestamp_still_counts_as_hot() -> None:
+def test_multi_beat_same_timestamp_does_not_invent_a_cadence_wake() -> None:
     declared = EVENING
     projection = _open_hope_projection(
         logical_offset_seconds=OPEN_HOPE_WAKE_SECONDS["hot"], heat="hot"
@@ -290,8 +288,7 @@ def test_multi_beat_same_timestamp_still_counts_as_hot() -> None:
         projection.execution_receipts[1],
     )
 
-    found = expired_unanswered_expectation(projection)
-    assert found is not None
+    assert expired_unanswered_expectation(projection) is None
 
 
 def test_timed_wait_still_mints_expiry() -> None:
@@ -402,6 +399,7 @@ def test_wakeup_lane_copy_does_not_invent_world_events() -> None:
         "commitment",
         "revisit_intention",
         "private_impression",
+        "later_expression_refresh",
     )
     forbidden = (
         "Hope expired:",

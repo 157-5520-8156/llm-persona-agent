@@ -18,6 +18,7 @@ from typing import Literal, Protocol
 from .errors import ConcurrencyConflict
 from .event_identity import domain_idempotency_key
 from .expression_reconsideration import expression_beat_is_gated
+from .later_expression_freshness import later_dispatch_allowed
 from .ledger import LedgerPort
 from .schema_core import FrozenModel
 from .schemas import (
@@ -284,7 +285,9 @@ class ActionPump:
             (
                 item
                 for item in projection.actions
-                if self._is_eligible(item, target_action_id) and item.state == "scheduled"
+                if self._is_eligible(item, target_action_id)
+                and item.state == "scheduled"
+                and self._expression_dispatch_allowed(item, projection)
             ),
             None,
         )
@@ -579,10 +582,17 @@ class ActionPump:
             or beat.action_id != action.action_id
         ):
             return False
-        return not expression_beat_is_gated(
-            projection=projection,
-            plan_id=action.expression_plan_id,
-            beat_id=beat_id,
+        return (
+            later_dispatch_allowed(
+                projection,
+                action,
+                getattr(projection, "logical_time", None) or action.logical_time,
+            )
+            and not expression_beat_is_gated(
+                projection=projection,
+                plan_id=action.expression_plan_id,
+                beat_id=beat_id,
+            )
         )
 
     async def _recover_dispatch(self, action: Action) -> ActionPumpResult:

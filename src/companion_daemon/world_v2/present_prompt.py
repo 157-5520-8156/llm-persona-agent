@@ -23,6 +23,7 @@ PRESENT_DIALOGUE_SEQUENCE_SCALE = 100
 PRESENT_WEEK_DIARY_DAYS = 7
 PRESENT_WEEK_DIARY_LINES_PER_DAY = 3
 PRESENT_SHARED_MEDIA_ITEM_LIMIT = 8
+PRESENT_PENDING_OUTBOUND_ITEM_LIMIT = 4
 
 _PRESENT_USER_KEY_ORDER = (
     "expression_capabilities",
@@ -53,6 +54,7 @@ _MATERIAL_ORDER = (
     "unresolved",
     "recent_self_experiences",
     "photos_i_shared",
+    "messages_waiting_to_send",
     "moments_i_can_share",
     "remembered_material",
     "recalled_emotional_associations",
@@ -111,7 +113,7 @@ def slim_consider_instruction() -> str:
         "以及可选的 waiting_for、wait、how_it_landed、noticed、"
         "keep_impression、come_back、come_back_in、about_us、why_us、us_deltas、"
         "we_are、calling_it、said_as、matters_bp、mood、declared_display。\n"
-        "waiting_for 是短句，wait 是可选秒数；come_back 加 come_back_in 仍要成对。"
+        "waiting_for 加 wait 才编译盼头；come_back 加 come_back_in 仍要成对。"
         "later 和空 messages（不回）跟 messages 同级，不是藏起来的键。"
         "口头说「我等你」不会变成 waiting_for。宿主从不替你写这些字段。"
         "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
@@ -121,8 +123,12 @@ def slim_consider_instruction() -> str:
         "messages 为空、只有 felt，就是这一轮你选择不说话（silent）；沉默不要和 later 一起用。"
         "选了不回，下一轮处境会带上这个事实；宿主不会替你已读不回。"
         "later 是这些已经想好的话等多少秒再发出去，30 到 86400 的整数，只能和非空 messages 一起写。"
-        "写了 later，宿主会把这些话延到那个秒数再发；不写 later 就是现在发。"
-        "宿主不会替你编一个 later，也不会把写坏的 later 当成现在发。"
+        "写了 later，宿主会把这些话延到那个秒数；到点发出前，如果这期间世界变了"
+        "（你又说过话、他又说过话）或过了这段对话该有的时限，宿主会再给你一次机会"
+        "决定原样发、改写、或不发，并带上这期间发生了什么。"
+        "不写 later 就是现在发。"
+        "宿主不会替你编一个 later，也不会把写坏的 later 当成现在发，"
+        "也不会替你判断两条是不是在重复。"
         "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
         "felt 是这一轮你自己的读法；可见的话里带不带它都行。felt 本身不会开启持续情绪。\n"
         "photo 写 true，意思是你现在想让媒体车道考虑一个可用的候选，这件事不会从你的措辞里被猜出来。"
@@ -144,6 +150,10 @@ def slim_consider_instruction() -> str:
         "提不提由你决定，但这里有一条，就不能再说还没翻相册、还没发、晚点再发、明天再给。"
         "那一条就是已经发出去的那张，不要再发明另一张还躺在相册里的。"
         "那些都和已经发出去的事实打架。\n"
+        "messages_waiting_to_send 是你已经写好、还没发出去的话这一世界事实："
+        "line 是人话：什么时候写的、定在当地几点发、正文是什么、"
+        "写好之后你有没有另外开过口、他有没有回。"
+        "那不是已经出现在对话里的句子。提不提、改不改、发不发，仍由你决定。\n"
         "moments_i_can_share 是你现在手上有没有可发的照片这一世界事实："
         "available_count 是已经打开、现在还能发的候选张数，0 就是一张都没有；"
         "already_sent_count 是已经成功发给他的张数；"
@@ -169,9 +179,10 @@ def slim_consider_instruction() -> str:
         "宿主会保留那次表达，只对那份写坏的 appraisal 记 affect no_change，"
         "这绝不是一个更受偏好的平静默认值。\n"
         "waiting_for 是一个短句：如果你心里确实在等他的下一句，写上你在等什么。"
-        "只写这一句就够，宿主会把它记成你还在等的事实；沉默、自发那些机会到了会把这个事实带给你。"
-        "wait 是可选的整数秒，范围 30 到 86400；只有你想按秒被叫醒时才写，例如 30、60、90。"
-        "写了 wait，宿主会在那个秒数到了、而他还没开口时叫醒你；不写 wait 不会有人按秒叫你。"
+        "wait 是整数秒，范围 30 到 86400，只能和 waiting_for 一起写；例如 30、60、90。"
+        "两个都写了，宿主会在那个秒数到了、而他还没开口时叫醒你一次；expiry 只结束这个盼头。"
+        "只写短句、不写秒数，不会编一个盼头，也不会按秒叫你。"
+        "不写 wait 不会有人按秒叫你。"
         "口头说「我等你」和写下 waiting_for 不是同一件事。"
         "宿主从不从你的标点、问句或「我等你」这类措辞里推断 waiting_for 或 wait，也从不替你写它们。"
         "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
@@ -621,9 +632,9 @@ _SLIM_WAIT_MAX_SECONDS = 86_400
 SLIM_REPLY_ONLY_MAX_TEXT_BEATS = 8
 _SLIM_EXPECTATION_EXPIRES_MAX_SECONDS = 172_800
 _SLIM_EXPECTATION_CHASE_AFTER_WAIT_SECONDS = 60
-# waiting_for without wait is a living hope, not a timer. Sentinel wait is the
-# existing max so the authority shape stays the same; chase equal to that max
-# is what tells expiry minting not to open a clock lane.
+# H21: waiting_for without wait does not compile a hope. These sentinels remain
+# only so leftover ledger records written by the 2026-08-18 optional-wait
+# experiment can still be recognized as "not a seconds-declared wait".
 SLIM_OPEN_HOPE_WAIT_SECONDS = _SLIM_WAIT_MAX_SECONDS
 SLIM_OPEN_HOPE_EXPIRES_AFTER_SECONDS = _SLIM_EXPECTATION_EXPIRES_MAX_SECONDS
 SLIM_OPEN_HOPE_CHASE_SECONDS = (
@@ -737,10 +748,9 @@ def _slim_response_expectation(value: Mapping[str, object]) -> dict[str, object]
         return None
     horizon = _slim_wait_horizon(value)
     if horizon is None:
-        wait_seconds = SLIM_OPEN_HOPE_WAIT_SECONDS
-        expires_after_seconds = SLIM_OPEN_HOPE_EXPIRES_AFTER_SECONDS
-    else:
-        wait_seconds, expires_after_seconds = horizon
+        # H21: 没填 wait 不编译盼头（不定时叫醒）。
+        return None
+    wait_seconds, expires_after_seconds = horizon
     hoped = hoped[:128]
     if not hoped:
         return None
@@ -751,6 +761,19 @@ def _slim_response_expectation(value: Mapping[str, object]) -> dict[str, object]
         "wait_seconds": wait_seconds,
         "expires_after_seconds": expires_after_seconds,
     }
+
+
+def compile_declared_response_expectation(
+    value: Mapping[str, object],
+) -> dict[str, object] | None:
+    """Compile slim waiting_for+wait into a hope, or raise a visible pair error.
+
+    waiting_for without wait is a legal omit: no hope, no timed wake.
+    wait without waiting_for is a half-written pair and must not be eaten.
+    """
+
+    _raise_if_incomplete_wait_pair(value)
+    return _slim_response_expectation(value)
 
 
 def _slim_revisit(value: Mapping[str, object]) -> dict[str, object] | None:

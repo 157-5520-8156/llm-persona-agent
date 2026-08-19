@@ -1597,3 +1597,153 @@ async def test_living_impression_takes_a_due_idle_retry_slot() -> None:
     assert opportunity.source_event_ref == event.event_id
     assert PRIVATE_IMPRESSION_OCCASION_REASON in opportunity.cadence_reason_codes
     assert "technical_failure:retry" in opportunity.cadence_reason_codes
+
+
+def _attach_stale_later(compiler, projection, *, spoken: bool = True, due: bool = True, gated: bool = False):
+    written = NOW
+    not_before = NOW + timedelta(hours=1) if due else NOW + timedelta(hours=3)
+    projection.logical_time = NOW + timedelta(hours=1)
+    later = SimpleNamespace(
+        action_id="action:later:1",
+        kind="followup",
+        state="authorized",
+        logical_time=written,
+        not_before=not_before,
+        expires_at=written + timedelta(hours=2),
+        expression_plan_id="plan:later:1",
+        expression_beat_id="beat:later:1",
+        payload_ref="payload:later:1",
+    )
+    spoken_action = SimpleNamespace(
+        action_id="action:now:1",
+        kind="proactive_message",
+        state="delivered",
+        logical_time=NOW + timedelta(minutes=16),
+        expression_plan_id="plan:now:1",
+        expression_beat_id="beat:now:1",
+    )
+    projection.actions = (later, spoken_action) if spoken else (later,)
+    beat_event_id = "event:beat:later"
+    projection.expression_beats = (
+        SimpleNamespace(
+            beat_id="beat:later:1",
+            event_ref=beat_event_id,
+            payload_ref="payload:later:1",
+        ),
+    )
+    event = SimpleNamespace(
+        event_id=beat_event_id,
+        event_type="ExpressionBeatAuthorized",
+        payload_hash="c" * 64,
+        trace_id="trace:later-refresh",
+        correlation_id="correlation:later-refresh",
+        created_at=written,
+        logical_time=written,
+    )
+    original_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
+    compiler._ledger.lookup_event_commit = lambda event_id: (  # type: ignore[attr-defined]  # noqa: SLF001
+        (event, SimpleNamespace(world_revision=4))
+        if event_id == beat_event_id
+        else original_lookup(event_id)
+    )
+    projection.committed_world_event_refs = (
+        *tuple(projection.committed_world_event_refs),
+        SimpleNamespace(
+            event_id=beat_event_id,
+            event_type="ExpressionBeatAuthorized",
+            logical_time=written,
+            world_revision=4,
+            payload_hash="c" * 64,
+        ),
+    )
+    if gated:
+        from companion_daemon.world_v2.expression_reconsideration import (
+            expression_reconsideration_trigger_ref,
+        )
+
+        projection.trigger_processes = (
+            SimpleNamespace(
+                process_kind="expression_reconsideration",
+                state="open",
+                trigger_ref=expression_reconsideration_trigger_ref(
+                    plan_id="plan:later:1",
+                    beat_id="beat:later:1",
+                    observation_id="message:source",
+                ),
+            ),
+        )
+    return later, event
+
+
+@pytest.mark.asyncio
+async def test_due_stale_later_mints_a_refresh_before_contact_cooldown() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    later, event = _attach_stale_later(compiler, projection)
+    projection.actions = (
+        *projection.actions,
+        SimpleNamespace(
+            kind="proactive_message",
+            state="delivered",
+            logical_time=projection.logical_time - timedelta(minutes=1),
+            expression_plan_id="plan:recent",
+            expression_beat_id="beat:recent",
+            action_id="action:recent",
+        ),
+    )
+
+    opportunity = await compiler.next_opportunity(projection)
+
+    assert opportunity is not None
+    assert opportunity.source_kind == "later_expression_refresh"
+    assert opportunity.source_id == later.action_id
+    assert opportunity.source_event_ref == event.event_id
+    assert "later_expression:stale_before_dispatch" in opportunity.cadence_reason_codes
+
+
+@pytest.mark.asyncio
+async def test_later_refresh_does_not_mint_when_the_frozen_payload_is_still_current() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    _attach_stale_later(compiler, projection, spoken=False)
+
+    opportunity = await compiler.next_opportunity(projection)
+
+    assert opportunity is None or opportunity.source_kind != "later_expression_refresh"
+
+
+@pytest.mark.asyncio
+async def test_later_refresh_does_not_mint_before_due() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    _attach_stale_later(compiler, projection, due=False)
+    projection.actions = (
+        *projection.actions,
+        SimpleNamespace(
+            kind="proactive_message",
+            state="delivered",
+            logical_time=projection.logical_time - timedelta(minutes=1),
+            expression_plan_id="plan:recent",
+            expression_beat_id="beat:recent",
+            action_id="action:recent",
+        ),
+    )
+
+    assert await compiler.next_opportunity(projection) is None
+
+
+@pytest.mark.asyncio
+async def test_later_refresh_yields_when_observation_reconsideration_already_owns_the_beat() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    _attach_stale_later(compiler, projection, gated=True)
+    projection.actions = (
+        *projection.actions,
+        SimpleNamespace(
+            kind="proactive_message",
+            state="delivered",
+            logical_time=projection.logical_time - timedelta(minutes=1),
+            expression_plan_id="plan:recent",
+            expression_beat_id="beat:recent",
+            action_id="action:recent",
+        ),
+    )
+
+    opportunity = await compiler.next_opportunity(projection)
+    assert opportunity is None or opportunity.source_kind != "later_expression_refresh"

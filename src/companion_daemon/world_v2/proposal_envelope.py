@@ -1084,6 +1084,7 @@ class ProactiveExpressionSourceBinding(FrozenModel):
         "expired_expectation",
         "revisit_intention",
         "private_impression",
+        "later_expression_refresh",
     ]
     source_event_ref: BoundedRef
     source_payload_hash: str = Field(pattern=_HASH_PATTERN)
@@ -1112,6 +1113,7 @@ class ProactiveExpressionPlanSourceBindingV2(FrozenModel):
         "expired_expectation",
         "revisit_intention",
         "private_impression",
+        "later_expression_refresh",
     ]
     source_event_ref: BoundedRef
     source_payload_hash: str = Field(pattern=_HASH_PATTERN)
@@ -1158,6 +1160,7 @@ class ProactiveOpportunityDecision(FrozenModel):
         "expired_expectation",
         "revisit_intention",
         "private_impression",
+        "later_expression_refresh",
     ]
     source_event_ref: BoundedRef
     source_payload_hash: str = Field(pattern=_HASH_PATTERN)

@@ -93,6 +93,10 @@ from .social_initiative import (
     situation_stimulus_is_observable,
     technical_failure_point,
 )
+from .later_expression_freshness import (
+    later_refresh_opportunity_context,
+    later_refresh_source_binds_head,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -243,6 +247,8 @@ def _proactive_opportunity_context(
         )
     if kind == "private_impression":
         return _hitch_living_hope(private_impression_opportunity_context(), projection)
+    if kind == "later_expression_refresh":
+        return later_refresh_opportunity_context()
     return "A verified proactive opportunity exists."
 
 
@@ -955,6 +961,14 @@ def _materialize_interior_proactive_draft(
         "ordering_policy": "dependencies",
         "terminal_policy": "settle",
         "beat_drafts": beat_drafts,
+        "response_expectation": (
+            draft.response_expectation.model_dump(mode="json")
+            if draft.response_expectation is not None
+            else None
+        ),
+        "revisit": (
+            draft.revisit.model_dump(mode="json") if draft.revisit is not None else None
+        ),
         "proactive_source_plan_binding_v2": ProactiveExpressionPlanSourceBindingV2(
             source_kind=source_kind,
             source_event_ref=source_evidence.ref_id,
@@ -1133,6 +1147,7 @@ def _proactive_source_frame(model_content_json: str) -> dict[str, object] | None
             "expired_expectation",
             "revisit_intention",
             "private_impression",
+            "later_expression_refresh",
         }:
             candidates = value.get("candidates")
             candidate = (
@@ -1210,6 +1225,7 @@ class ProactiveOpportunity(FrozenModel):
         "expired_expectation",
         "revisit_intention",
         "private_impression",
+        "later_expression_refresh",
     ]
     source_id: str
     source_event_ref: str
@@ -1506,6 +1522,10 @@ class ProactiveDeliberationTurn:
             )
         elif opportunity.source_kind == "private_impression":
             valid_source = private_impression_source_binds_head(
+                projection=projection, event=event, opportunity=opportunity
+            )
+        elif opportunity.source_kind == "later_expression_refresh":
+            valid_source = later_refresh_source_binds_head(
                 projection=projection, event=event, opportunity=opportunity
             )
         else:

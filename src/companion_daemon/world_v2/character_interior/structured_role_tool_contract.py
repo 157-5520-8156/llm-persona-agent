@@ -279,6 +279,12 @@ def _proactive_payload_schema(
     properties["mood"] = _nullable_provider_schema(
         {"type": "string", "enum": list(_PROACTIVE_MOODS)}
     )
+    # Same slim hope pair as inbound. Bind compiles waiting_for+wait into
+    # response_expectation; waiting_for alone does not mint a hope (H21).
+    properties["waiting_for"] = _nullable_provider_schema({"type": "string"})
+    properties["wait"] = _nullable_provider_schema(
+        {"type": "integer", "minimum": 1, "maximum": 86_400}
+    )
     # Keep the canonical appraisal wire, not an open object.  DeepSeek forbids
     # empty objects and ``type: ["object", "null"]``; the host materializer
     # remains the fail-closed owner of appraisal semantics.
@@ -413,6 +419,8 @@ def _proactive_payload_schema(
                 "beats": {**deepcopy(beats), "maxItems": 0},
                 "turn_posture": {"enum": [None, "yield", "continue", "supersede"]},
                 "response_expectation": {"type": "null"},
+                "waiting_for": {"type": "null"},
+                "wait": {"type": "null"},
                 "revisit": {"type": "null"},
                 **no_due_window,
             }

@@ -111,21 +111,13 @@ def test_slim_wait_soon_is_a_visible_failure() -> None:
         )
 
 
-def test_slim_waiting_for_prefix_without_wait_lands_as_open_hope() -> None:
-    from companion_daemon.world_v2.present_prompt import (
-        SLIM_OPEN_HOPE_EXPIRES_AFTER_SECONDS,
-        SLIM_OPEN_HOPE_WAIT_SECONDS,
-    )
-
+def test_slim_waiting_for_prefix_without_wait_does_not_compile_a_hope() -> None:
     compiled = compile_slim_consider_payload(
         _slim_payload(waiting_for="短: 想听你怎么看这件事")
     )
 
     assert compiled is not None
-    expectation = compiled["expression_draft"]["response_expectation"]
-    assert expectation["hoped_response"] == "短: 想听你怎么看这件事"
-    assert expectation["wait_seconds"] == SLIM_OPEN_HOPE_WAIT_SECONDS
-    assert expectation["expires_after_seconds"] == SLIM_OPEN_HOPE_EXPIRES_AFTER_SECONDS
+    assert compiled["expression_draft"].get("response_expectation") is None
 
 
 def test_slim_unknown_wait_is_a_visible_failure() -> None:
@@ -137,21 +129,13 @@ def test_slim_unknown_wait_is_a_visible_failure() -> None:
         )
 
 
-def test_slim_waiting_for_without_wait_lands_as_open_hope() -> None:
-    from companion_daemon.world_v2.present_prompt import (
-        SLIM_OPEN_HOPE_EXPIRES_AFTER_SECONDS,
-        SLIM_OPEN_HOPE_WAIT_SECONDS,
-    )
-
+def test_slim_waiting_for_without_wait_does_not_compile_a_hope() -> None:
     compiled = compile_slim_consider_payload(
         _slim_payload(waiting_for="他回来把那件事说完")
     )
 
     assert compiled is not None
-    expectation = compiled["expression_draft"]["response_expectation"]
-    assert expectation["hoped_response"] == "他回来把那件事说完"
-    assert expectation["wait_seconds"] == SLIM_OPEN_HOPE_WAIT_SECONDS
-    assert expectation["expires_after_seconds"] == SLIM_OPEN_HOPE_EXPIRES_AFTER_SECONDS
+    assert compiled["expression_draft"].get("response_expectation") is None
 
 
 def test_slim_wait_without_waiting_for_is_a_visible_failure() -> None:
