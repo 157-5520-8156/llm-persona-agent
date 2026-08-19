@@ -269,6 +269,10 @@ def _role_faculty_error_from_exception(
     faculty: object,
 ) -> _InteriorTechnicalError:
     status = _http_status_code(exc)
+    # Programming errors in our own path are not "faculty unavailable". Keep
+    # them on the shared role_faculty_unavailable code (closed vocabulary) but
+    # surface the exception type in failure_detail so ops and retry policy can
+    # tell a mid-deploy NameError from a missing provider.
     code = (
         "provider_rejection"
         if status is not None and 400 <= status < 500

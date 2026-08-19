@@ -1786,7 +1786,9 @@ class ProactiveActionRuntime:
             "inventory_invalid",
             "coverage_invalid",
             "required_tool_choice_unsupported",
-            "role_faculty_unavailable",
+            # role_faculty_unavailable stays retryable: host bugs (NameError)
+            # and brief faculty outages must not permanently kill a recorded
+            # post-silent consider. Backoff still applies.
         }
     )
     _SEMANTIC_TERMINAL_OUTCOMES = frozenset(
