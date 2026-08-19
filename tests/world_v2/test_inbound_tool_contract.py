@@ -211,7 +211,9 @@ def test_compact_gate_strict_contract_is_small_and_keeps_role_owned_branches() -
 
     description = function["description"]
     assert isinstance(description, str)
-    assert "the text bubbles you choose to send now, the text bubbles you choose to send later, or silence" in description
+    assert "the text bubbles you choose to send now (optionally with photo/media_request)" in description
+    assert "the text bubbles you choose to send later, or silence" in description
+    assert "with no continuation and no interaction-protocol update" in description
     assert "minimum sufficient branch" in description
     assert "losslessly represents the external effect you choose" in description
     assert "Each messages item or text beat is one bubble" in description

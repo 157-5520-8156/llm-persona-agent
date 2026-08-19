@@ -79,9 +79,10 @@ _MATERIAL_ORDER = (
 
 def reply_only_completion_clause() -> str:
     return (
-        "reply_only is complete when the external effect is pure text with no media "
-        "or continuation: the text bubbles you choose to send now, "
-        "the text bubbles you choose to send later, or silence"
+        "reply_only is complete when the external effect fits its slim surface—"
+        "the text bubbles you choose to send now (optionally with photo/media_request), "
+        "the text bubbles you choose to send later, or silence—"
+        "with no continuation and no interaction-protocol update"
     )
 
 
@@ -134,10 +135,12 @@ def slim_consider_instruction() -> str:
         "photo 写 true，意思是你现在想让媒体车道考虑一个可用的候选，这件事不会从你的措辞里被猜出来。"
         "photo 也可以直接写 Context 里那个你想分享的生活片段的 source_ref，"
         "宿主会先试着编译那一刻再进选片。"
-        "只在文字里说要发图不会打开这条车道。photo true 不能搭 reply_only，"
-        "要发图就用 full_turn（或完整表达路径）。"
+        "只在文字里说要发图不会打开这条车道。"
+        "photo true（或写一个可用候选的 source_ref）可以搭 reply_only，也可以搭 full_turn："
+        "两条格式都能把发图意图送进媒体车道，不必为了发图改 result_kind。"
+        "photo 只能配现在发（非空 messages、不写 later）；later 或沉默不能带 photo。"
         "当 expression_capabilities.media_request_mode 是 candidate_only 时，"
-        "即使 Context 里还没列出候选，photo 在 full_turn 上也是可选的，"
+        "即使 Context 里还没列出候选，photo 也是可选的，"
         "你选了之后宿主可以从已审的已结算生活证据里编译一个。\n"
         "day_sheet 和传记里的习惯是日程底色，不是你此刻真的在那儿的证明；"
         "别把它们当成当前的地点、活动、天气，或者已经发出去的图。"
@@ -1525,10 +1528,15 @@ def compile_slim_interior_envelope(
         return None
     if reply_only:
         timing = expression.get("timing_choice")
-        if (
-            expression.get("media_request") != "none"
-            or expression.get("media_source_refs")
-        ):
+        media_request = expression.get("media_request", "none")
+        media_source_refs = list(expression.get("media_source_refs") or [])
+        if media_request not in {"none", "consider_available_candidate"}:
+            raise ValueError("reply_only slim payload exceeds text-only capability")
+        if media_request == "none" and media_source_refs:
+            raise ValueError("reply_only slim payload exceeds text-only capability")
+        # Media intent is expressible on reply_only, but only with an immediate
+        # send. later/silent still cannot carry photo—that stays a visible reject.
+        if media_request != "none" and timing != "now":
             raise ValueError("reply_only slim payload exceeds text-only capability")
         delay_seconds = expression.get("delay_seconds")
         expires_after_seconds = expression.get("expires_after_seconds")
@@ -1577,8 +1585,8 @@ def compile_slim_interior_envelope(
             ),
             "revisit": expression.get("revisit"),
             "world_claims": [],
-            "media_request": "none",
-            "media_source_refs": [],
+            "media_request": media_request,
+            "media_source_refs": media_source_refs,
         }
         if extra_beats is not None:
             head["beats"] = extra_beats

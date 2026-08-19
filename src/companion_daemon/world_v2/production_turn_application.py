@@ -2594,6 +2594,25 @@ class WorldV2TurnApplication:
                 }:
                     initiative_state = "consideration_due"
                     spontaneous_pending = True
+            else:
+                # peek is None both before the first cadence draw and after
+                # ambient/post-silent are honestly closed.  Clear the parallel
+                # message-formula due only in the latter case so health stops
+                # screaming consideration_overdue, while still reporting due
+                # when drain would mint if allowed to record a draw.
+                if not await self._social_initiative_compiler().unrecorded_cadence_still_open(
+                    projection
+                ):
+                    next_consideration_at = None
+                    spontaneous_candidate_due = False
+                    spontaneous_pending = False
+                    if initiative_state in {
+                        "consideration_due",
+                        "waiting_context",
+                        "model_silent",
+                        "cooldown",
+                    }:
+                        initiative_state = "waiting_context"
         initiative_reliability_24h = _proactive_reliability_health(projection)
         warning_reasons: list[str] = list(initiative_reliability_24h["warning_reasons"])
         if consecutive_technical_failures >= 3:

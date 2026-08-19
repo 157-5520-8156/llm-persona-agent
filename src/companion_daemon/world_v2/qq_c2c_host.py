@@ -2406,10 +2406,12 @@ class QQC2CHost:
                 # separate durable steps. Continue only until that lane has
                 # produced its Action (or the bounded background budget is
                 # spent), then dispatch through the ordinary effect-once path.
+                overdue_drain_units = 0
                 for _ in range(post_tick_background_budget):
                     if self._visible_turn_in_flight():
                         break
                     result, failure_status = await self._drain_direct_background_once()
+                    overdue_drain_units += 1
                     if failure_status is not None:
                         post_tick_background.append(failure_status)
                         background_remaining -= 1
@@ -2419,6 +2421,19 @@ class QQC2CHost:
                     if result is None or (
                         getattr(result, "status", None) == "idle" and work_status is None
                     ):
+                        if initiative_overdue:
+                            _LOG.info(
+                                "initiative overdue drain idle: due_at=%s logical_from=%s "
+                                "priority_actions=%s units=%s",
+                                initiative_due_at.isoformat()
+                                if isinstance(initiative_due_at, datetime)
+                                else None,
+                                logical_from.isoformat()
+                                if isinstance(logical_from, datetime)
+                                else None,
+                                len(priority_action_ids),
+                                overdue_drain_units,
+                            )
                         break
                     post_tick_background.append(str(work_status or "processed"))
                     background_remaining -= 1

@@ -118,7 +118,8 @@ def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None
     assert "不写、不说、维持现状、说出来" in instruction
     assert "photo 写 true，意思是你现在想让媒体车道考虑一个可用的候选" in instruction
     assert "只在文字里说要发图不会打开这条车道" in instruction
-    assert "photo true 不能搭 reply_only" in instruction
+    assert "photo true（或写一个可用候选的 source_ref）可以搭 reply_only" in instruction
+    assert "photo true 不能搭 reply_only" not in instruction
     assert "day_sheet 和传记里的习惯是日程底色" in instruction
     assert "聊天里的颜色是允许的" in instruction
     assert "Fact、Relationship、Media 或持续情绪事件" in instruction
@@ -165,7 +166,7 @@ def test_present_moments_i_can_share_now_is_a_world_fact() -> None:
     assert "生成提示" not in instruction
 
 
-def test_slim_photo_true_binds_media_request_and_cannot_ride_reply_only() -> None:
+def test_slim_photo_true_binds_media_request_and_rides_reply_only() -> None:
     from companion_daemon.world_v2.present_prompt import (
         compile_slim_consider_payload,
         compile_slim_interior_envelope,
@@ -181,14 +182,46 @@ def test_slim_photo_true_binds_media_request_and_cannot_ride_reply_only() -> Non
     compiled = compile_slim_consider_payload(slim)
     assert compiled is not None
     assert compiled["expression_draft"]["media_request"] == "consider_available_candidate"
-    try:
-        compile_slim_interior_envelope(slim, reply_only=True)
-        raise AssertionError("reply_only must reject photo")
-    except ValueError as exc:
-        assert "reply_only" in str(exc)
+    reply_only = compile_slim_interior_envelope(slim, reply_only=True)
+    assert reply_only is not None
+    assert reply_only["events"][0]["media_request"] == "consider_available_candidate"
     envelope = compile_slim_interior_envelope(slim, reply_only=False)
     assert envelope is not None
     assert "consider_available_candidate" in str(envelope)
+
+
+def test_slim_photo_source_ref_survives_reply_only() -> None:
+    from companion_daemon.world_v2.present_prompt import compile_slim_interior_envelope
+
+    slim = {
+        "messages": ["书店那张发你"],
+        "felt": "想分享",
+        "photo": "event:shareable-photo:bookstore",
+    }
+    envelope = compile_slim_interior_envelope(slim, reply_only=True)
+    assert envelope is not None
+    head = envelope["events"][0]
+    assert head["media_request"] == "consider_available_candidate"
+    assert head["media_source_refs"] == ["event:shareable-photo:bookstore"]
+
+
+def test_slim_later_with_photo_still_visible_reject() -> None:
+    from companion_daemon.world_v2.present_prompt import (
+        SLIM_LATER_REQUIRES_TEXT,
+        compile_slim_interior_envelope,
+    )
+
+    slim = {
+        "messages": ["晚点发你"],
+        "felt": "想分享",
+        "later": 60,
+        "photo": True,
+    }
+    try:
+        compile_slim_interior_envelope(slim, reply_only=True)
+        raise AssertionError("later+photo must reject")
+    except ValueError as exc:
+        assert "photo" in str(exc).lower() or SLIM_LATER_REQUIRES_TEXT in str(exc)
 
 
 def test_identity_instruction_allows_color_without_silent_fact_upgrade() -> None:

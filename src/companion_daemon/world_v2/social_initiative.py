@@ -738,6 +738,52 @@ class SocialInitiativeCompiler:
             return None
         return spontaneous.scheduled_for
 
+    async def unrecorded_cadence_still_open(self, projection) -> bool:
+        """True when health may keep a message-formula due without a draw.
+
+        ``peek_next_due`` is None both before the first RandomDraw and after
+        ambient/post-silent are honestly closed.  Only the open-window case
+        should keep health's parallel cadence shadow.
+        """
+
+        logical_time = projection.logical_time
+        if logical_time is None:
+            return False
+        if await self._post_silent_chain_active(projection):
+            return True
+        if is_overnight_local(logical_time):
+            return False
+        if not projection.message_observations:
+            return False
+        latest = projection.message_observations[-1]
+        source = await self._lookup(f"event:observation:{latest.observation_id}")
+        if source is None:
+            ref = next(
+                (
+                    item
+                    for item in projection.committed_world_event_refs
+                    if item.world_revision == latest.world_revision
+                    and item.event_type == "ObservationRecorded"
+                ),
+                None,
+            )
+            source = await self._lookup(ref.event_id) if ref is not None else None
+        if source is None or source[0].event_type != "ObservationRecorded":
+            return False
+        elapsed = (logical_time - source[0].logical_time).total_seconds()
+        if elapsed < self._policy.spontaneous_idle_seconds:
+            return False
+        if elapsed >= self._policy.spontaneous_expiry_seconds:
+            if self._policy.consideration_band_override_seconds is not None:
+                return False
+            if elapsed >= self._policy.spontaneous_expiry_seconds + _AMBIENT_EXPIRY_GRACE_SECONDS:
+                return False
+        try:
+            pending = pending_response_expectation(projection)
+        except (TypeError, ValueError, AttributeError):
+            pending = None
+        return pending is None
+
     async def _pending_consideration(
         self,
         projection,
@@ -926,10 +972,25 @@ class SocialInitiativeCompiler:
         """Keep a role-owned silent cadence from spawning an ambient sibling.
 
         Once a consideration has been answered with ``silent``, its next
-        recorded draw owns the idle cadence until a newer user Observation
-        supersedes it.  This prevents one due Clock from invoking the model
-        twice (post-silent and ambient) in the same background drain.
+        recorded draw owns the idle cadence until that post-silent
+        consideration settles, or a newer user Observation supersedes it.
+        Settled means any terminal outcome on the post-silent process
+        (authorized, silent again, grounding_rejected, deliberation-failed
+        without an open retry).  Holding the chain forever after settlement
+        starved ambient contact while health still reported consideration_due.
         """
+
+        logical_time = projection.logical_time
+        if logical_time is not None:
+            # Outstanding (possibly future) post-silent still owns cadence.
+            outstanding = await self._post_silent_consideration(
+                projection,
+                logical_time,
+                record_draw=False,
+                allow_future=True,
+            )
+            if outstanding is not None:
+                return True
 
         latest_message_revision = (
             projection.message_observations[-1].world_revision
@@ -951,7 +1012,30 @@ class SocialInitiativeCompiler:
             if not isinstance(prior_trigger_id, str) or not prior_trigger_id:
                 continue
             completion_ref = await self._silent_completion_ref(projection, prior_trigger_id)
-            return completion_ref is not None and latest_message_revision <= completion_ref.world_revision
+            if completion_ref is None or latest_message_revision > completion_ref.world_revision:
+                return False
+            # Draw not yet recorded (peek/health path): hold ambient so the
+            # next advance can mint the post-silent draw instead of a sibling.
+            # Once any post-silent process for this silent is terminal, release.
+            saw_post_silent = False
+            for other in getattr(projection, "trigger_processes", ()):
+                if other.process_kind != "proactive_action_deliberation":
+                    continue
+                trigger_ref = getattr(other, "trigger_ref", None)
+                if not isinstance(trigger_ref, str):
+                    continue
+                prefix = "proactive-consideration:" + _POST_SILENT_CONSIDERATION_PREFIX
+                if not trigger_ref.startswith(prefix):
+                    continue
+                consideration_id = trigger_ref.removeprefix("proactive-consideration:")
+                if post_silent_prior_trigger_id(consideration_id) != prior_trigger_id:
+                    continue
+                saw_post_silent = True
+                if other.state != "terminal":
+                    return True
+            if saw_post_silent:
+                return False
+            return True
         return False
 
     async def _post_silent_consideration(

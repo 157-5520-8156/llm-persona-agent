@@ -244,7 +244,10 @@ _VIOLATION_ZH_PREFIXES: tuple[tuple[str, str], ...] = (
     ),
     (
         "reply_only slim payload exceeds text-only capability",
-        "reply_only 不能带照片或媒体。若你这轮真的要动媒体，请改用 result_kind=full_turn，并在 payload 里写 media_request。",
+        "reply_only 这轮装不下你写的字段形状。常见是 later/沉默还带了 photo，"
+        "或者气泡数超了。发图意图本身可以写在 reply_only 上：photo 写成 true "
+        "（或写可用候选的 source_ref），并配非空 messages、现在发；"
+        "later 或 silent 不能带 photo。互动协议、表情/贴图、续写仍要用 full_turn。",
     ),
     (
         "visible span must occur exactly once",
@@ -342,8 +345,10 @@ def _compact_gate_system_content(
         "optional mood is how you open a lasting Affect component, and optional "
         "about_us/why_us/us_deltas are how the relationship itself moves, both "
         "without leaving reply_only. It excludes interaction protocol updates, "
-        "media, typing/reaction, turn supersession, continuation, and more text "
-        "beats than the installed beat limit. If appraisal or affect is incomplete, keep a legal "
+        "typing/reaction, turn supersession, continuation, and more text "
+        "beats than the installed beat limit. Media intent (photo / "
+        "media_request) is allowed on reply_only when you send text now; "
+        "later or silent still cannot carry media. If appraisal or affect is incomplete, keep a legal "
         "now, later, or silent head; the host records affect no_change only for that "
         "broken appraisal rather than inventing later or discarding silence. Choose "
         "result_kind=full_turn only when the external effect you choose actually "
@@ -370,8 +375,9 @@ def _compact_gate_system_content(
         "the host substitutes for you.\n"
         "Only recall transfers control; a full_turn payload contains the complete "
         "decision now. Take the branch your own external effect needs: slim "
-        "reply_only for pure text, full_turn when you also need media, the "
-        "interaction protocol, or the full affect lifecycle surface. The host "
+        "reply_only for ordinary text (and for photo/media_request on a now send), "
+        "full_turn when you also need the interaction protocol, typing/reaction, "
+        "continuation, or the full affect lifecycle surface. The host "
         "validates payload_json and the hard boundaries; it never classifies by "
         "topic, length or keywords, never chooses the branch, never prefers "
         "reply_only as a calm default, and never writes your wording.\n"
@@ -455,7 +461,8 @@ def _compact_gate_voice_close() -> str:
         "这一轮不回就把 messages 写成空数组——那就是 silent；"
         "要声明你们现在是什么关系，才写 we_are、calling_it，并把那一句原话一字不差抄进 said_as，"
         "而且那句话必须真的说出去；"
-        "想让媒体车道考虑一张图才写 photo（reply_only 不能带图，要用 full_turn）；"
+        "想让媒体车道考虑一张图才写 photo（reply_only 和 full_turn 都能写；"
+        "只配现在发的非空 messages，later/沉默不行）；"
         "只在你决定让他看见带性意味的私密照片时才写 declared_display"
         "（reply_only 写在顶层，full_turn 写在 private_turn_state；收件人由宿主绑定）。"
         "都不写也行，那就是这一轮什么都没留下。\n"
@@ -929,7 +936,9 @@ def _compact_reply_only_transport_grammar(
                             else "<role:response_expectation_assessment_or_null>"
                         ),
                         "world_claims": [],
-                        "media_request": "none",
+                        "media_request": "<role:choose:media_request>",
+                        # Keep the empty array literal, matching full_turn: she
+                        # replaces media_request and may fill refs when chosen.
                         "media_source_refs": [],
                     },
                     {"type": "end"},
@@ -953,6 +962,7 @@ def _compact_reply_only_transport_grammar(
             "reply_only_timing": ["now", "later", "silent"],
             "reply_only_turn_posture": [None, "continue", "interject"],
             "cadence": ["conversational", "rapid", "hesitant", "escalating"],
+            "media_request": ["none", "consider_available_candidate"],
             "response_expectation_assessment_status": [
                 "fulfilled",
                 "superseded",
@@ -964,6 +974,7 @@ def _compact_reply_only_transport_grammar(
             "exact_sequence": ["head", "end"],
             "head_is_immediate_text_only": False,
             "head_allows_now_later_or_silent": True,
+            "head_allows_media_request_on_now": True,
             "continuation_allowed": False,
         },
         "appraisal_carrier": {

@@ -7366,7 +7366,12 @@ def _validate_reply_only_appraisal(value: object) -> dict[str, object]:
 
 
 def _validate_reply_only_head(event: object) -> None:
-    """Prove the compact reply-only head stays inside the text-only capability."""
+    """Prove the compact reply-only head stays inside its installed capability.
+
+    Text timing/shape rules stay fail-closed. Media intent is allowed on the
+    immediate (now) head so choosing reply_only cannot silently drop a photo
+    decision she authored; later/silent still cannot carry media.
+    """
 
     if not isinstance(event, dict):
         raise ValueError("reply-only stream head fields are invalid")
@@ -7377,11 +7382,19 @@ def _validate_reply_only_head(event: object) -> None:
     delay = event.get("delay_seconds")
     expires = event.get("expires_after_seconds")
     timing = event.get("timing_choice")
+    media_request = event.get("media_request")
+    media_source_refs = event.get("media_source_refs")
     if (
         event.get("type") != "head"
-        or event.get("media_request") != "none"
-        or event.get("media_source_refs") != []
+        or media_request not in {"none", "consider_available_candidate"}
+        or not isinstance(media_source_refs, list)
+        or (media_request == "none" and media_source_refs)
+        or (media_request != "none" and timing != "now")
         or not isinstance(event.get("world_claims"), list)
+    ):
+        raise ValueError("reply-only stream head exceeds its text-only capability")
+    if media_request != "none" and not all(
+        isinstance(item, str) and item.strip() for item in media_source_refs
     ):
         raise ValueError("reply-only stream head exceeds its text-only capability")
     visible = _reply_only_visible_text_beats(event)

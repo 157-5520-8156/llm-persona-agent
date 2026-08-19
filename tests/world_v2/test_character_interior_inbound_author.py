@@ -2208,7 +2208,9 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "result_kind=reply_only" in provider.messages[0][0]["content"]
     assert "result_kind=full_turn" in provider.messages[0][0]["content"]
     compact_system = provider.messages[0][0]["content"]
-    assert "the text bubbles you choose to send now, the text bubbles you choose to send later, or silence" in compact_system
+    assert "the text bubbles you choose to send now (optionally with photo/media_request)" in compact_system
+    assert "the text bubbles you choose to send later, or silence" in compact_system
+    assert "with no continuation and no interaction-protocol update" in compact_system
     assert "Ordinary QQ private chat" in compact_system
     assert "not as a helpdesk ticket" in compact_system
     assert "CAPABILITY GATE" not in compact_system

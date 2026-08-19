@@ -1747,3 +1747,142 @@ async def test_later_refresh_yields_when_observation_reconsideration_already_own
 
     opportunity = await compiler.next_opportunity(projection)
     assert opportunity is None or opportunity.source_kind != "later_expression_refresh"
+
+
+@pytest.mark.asyncio
+async def test_settled_post_silent_releases_ambient_cadence() -> None:
+    """A completed post-silent epoch must not permanently suppress ambient.
+
+    Production stuck here: silent → post-silent grounding_rejected left
+    ``_post_silent_chain_active`` true forever, so drain stayed idle while
+    health still screamed consideration_due from the parallel message formula.
+    """
+
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    # Morning local so overnight does not hide the ambient release.
+    morning = datetime(2026, 7, 18, 1, 0, tzinfo=UTC)  # 09:00 Asia/Shanghai
+    source = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:observation:message:source",
+        world_id="world:social-context-test",
+        event_type="ObservationRecorded",
+        logical_time=morning,
+        created_at=morning,
+        actor="user:primary",
+        source="test",
+        trace_id="trace:social-context",
+        causation_id="cause:social-context",
+        correlation_id="conversation:social-context",
+        idempotency_key="observation:message:source",
+        payload={"observation_id": "message:source", "text": "source"},
+    )
+    compiler._ledger.lookup_event_commit = (  # type: ignore[attr-defined]
+        lambda event_id: (
+            (source, SimpleNamespace(world_revision=1))
+            if event_id == source.event_id
+            else None
+        )
+    )
+    projection.logical_time = morning + timedelta(minutes=90)
+    compiler._random = SimpleNamespace(  # noqa: SLF001
+        draw=lambda **_kwargs: SimpleNamespace(
+            selected_candidate_ref="delay:3600",
+            draw_id="draw:post-silent-release",
+        )
+    )
+    first = await compiler.next_opportunity(projection)
+    assert first is not None
+    silent_trigger_id = "trigger:proactive:silent-release"
+    completion_at = first.scheduled_for or projection.logical_time
+    completion_event = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:proactive:completed:silent-release",
+        world_id="world:social-context-test",
+        event_type="TriggerProcessCompleted",
+        logical_time=completion_at,
+        created_at=completion_at,
+        actor="worker:proactive",
+        source="test",
+        trace_id="trace:silent-release",
+        causation_id="cause:silent-release",
+        correlation_id="conversation:silent-release",
+        idempotency_key="proactive:completed:silent-release",
+        payload={
+            "trigger_id": silent_trigger_id,
+            "runtime_outcome_ref": "proactive:silent",
+            "attempt_id": "attempt:silent-release",
+        },
+    )
+    from companion_daemon.world_v2.social_initiative import (
+        post_silent_attempt_id,
+        post_silent_consideration_id,
+    )
+
+    attempt_id = post_silent_attempt_id(
+        completion_event_ref=completion_event.event_id,
+        prior_trigger_id=silent_trigger_id,
+        policy_version=SocialInitiativeContextPolicy.version,
+    )
+    post_silent_id = post_silent_consideration_id(
+        attempt_id=attempt_id,
+        delay_seconds=3600,
+        epoch=0,
+        prior_trigger_id=silent_trigger_id,
+    )
+    silent_process = SimpleNamespace(
+        trigger_id=silent_trigger_id,
+        process_kind="proactive_action_deliberation",
+        trigger_ref="proactive-consideration:" + first.consideration_id,
+        source_evidence_ref=first.source_event_ref,
+        state="terminal",
+        runtime_outcome_ref="proactive:silent",
+    )
+    settled_post_silent = SimpleNamespace(
+        trigger_id="trigger:proactive:post-silent-settled",
+        process_kind="proactive_action_deliberation",
+        trigger_ref="proactive-consideration:" + post_silent_id,
+        source_evidence_ref=first.source_event_ref,
+        state="terminal",
+        runtime_outcome_ref="proactive:grounding-rejected",
+    )
+    projection.committed_world_event_refs = (
+        SimpleNamespace(
+            event_id=completion_event.event_id,
+            event_type=completion_event.event_type,
+            logical_time=completion_event.logical_time,
+            world_revision=1,
+        ),
+    )
+    original_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
+
+    def lookup(event_id):  # type: ignore[no-untyped-def]
+        if event_id == completion_event.event_id:
+            return completion_event, SimpleNamespace(world_revision=1)
+        return original_lookup(event_id)
+
+    compiler._ledger.lookup_event_commit = lookup  # type: ignore[attr-defined]
+    compiler._ledger.find_trigger_completion = (  # type: ignore[attr-defined]
+        lambda trigger_id: (
+            SimpleNamespace(
+                event_id=completion_event.event_id,
+                event_type=completion_event.event_type,
+                payload_hash="a" * 64,
+                logical_time=completion_event.logical_time,
+            )
+            if trigger_id == silent_trigger_id
+            else None
+        )
+    )
+    # Hold ambient while post-silent would still be outstanding (no process yet).
+    projection.trigger_processes = (silent_process,)
+    assert await compiler._post_silent_chain_active(projection) is True  # noqa: SLF001
+    # Settled post-silent releases the chain.
+    projection.trigger_processes = (silent_process, settled_post_silent)
+    assert await compiler._post_silent_chain_active(projection) is False  # noqa: SLF001
+    # Next spontaneous epoch (still inside the 12h window, daytime).
+    projection.logical_time = morning + timedelta(hours=2, minutes=30)
+    released = await compiler.next_opportunity(projection)
+    assert released is not None
+    assert released.source_kind == "spontaneous_contact"
+    assert released.consideration_id != first.consideration_id
+    assert released.consideration_epoch == 1

@@ -328,12 +328,12 @@ class ScenarioVerificationError(AssertionError):
 # pricing with production/debug spend accounts, and PrivateImpression user-
 # channel authority limits. Per-case predicates remain enforced; aggregate
 # prompt/policy identities intentionally move.
-# ``.81`` composes turn-completion grounding (companion shared_history /
-# counterpart observation refs, K4 companion window 8) with photo-realism
-# situation-outfit freeze materialization and private-impression daily-cap
-# health quieting. Per-case predicates remain enforced; aggregate prompt /
-# subject-presentation identities intentionally move.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.81"
+# ``.82`` composes reply_only media-intent channel coverage (photo /
+# media_request on now sends), post-silent chain release after settlement, and
+# health shadow-due clearing only when ambient/post-silent are honestly closed.
+# Per-case predicates remain enforced; aggregate prompt / transport identities
+# intentionally move.
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.82"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -515,8 +515,13 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.81"
 # daily-cap no longer marking /health degraded. Two independent complete
 # 120-case processes produced this hash before installation:
 # 987d0d567b78253feb96c09df449a8fae17eb5da76a01e215cbcbada9f0baa12
+# 2026-08-19 3rd: ``.82`` after reply_only media-intent channel (now-only
+# photo/media_request), settled post-silent ambient release, and health
+# shadow-due clear only when cadence is honestly closed. Two independent
+# complete 120-case processes produced this hash before installation:
+# f2a20492a8711d13a02106ae1e8bb3d734c91f76e742caa7dba4505bef84ce82
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "987d0d567b78253feb96c09df449a8fae17eb5da76a01e215cbcbada9f0baa12"
+    "f2a20492a8711d13a02106ae1e8bb3d734c91f76e742caa7dba4505bef84ce82"
 )
 
 

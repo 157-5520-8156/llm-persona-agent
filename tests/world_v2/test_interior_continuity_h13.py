@@ -507,16 +507,14 @@ def test_slim_invalid_how_it_landed_is_a_visible_failure() -> None:
         compile_slim_consider_payload(_slim_payload(how_it_landed="ok"))
 
 
-def test_slim_photo_true_binds_media_request_on_full_turn_not_reply_only() -> None:
+def test_slim_photo_true_binds_media_request_on_reply_only_and_full_turn() -> None:
     payload = _slim_payload(photo=True)
     compiled = compile_slim_consider_payload(payload)
     assert compiled is not None
     assert compiled["expression_draft"]["media_request"] == "consider_available_candidate"
-    try:
-        compile_slim_interior_envelope(payload, reply_only=True)
-        raise AssertionError("reply_only must reject photo true")
-    except ValueError as exc:
-        assert "text-only capability" in str(exc)
+    reply_only = compile_slim_interior_envelope(payload, reply_only=True)
+    assert reply_only is not None
+    assert reply_only["events"][0]["media_request"] == "consider_available_candidate"
     envelope = compile_slim_interior_envelope(payload, reply_only=False)
     assert envelope is not None
     assert envelope["events"][0]["media_request"] == "consider_available_candidate"
