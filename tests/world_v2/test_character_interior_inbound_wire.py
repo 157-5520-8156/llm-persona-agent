@@ -39,6 +39,9 @@ from companion_daemon.world_v2.expression_draft import (
     qq_expression_capabilities,
     _world_claim_evidence,
 )
+from companion_daemon.world_v2.model_facing_context import (
+    compact_chat_model_facing_context,
+)
 from companion_daemon.world_v2.deliberation import (
     ModelInput,
     ModelRoute,
@@ -206,6 +209,232 @@ def test_media_source_selection_becomes_durable_event_evidence_not_private_audit
     assert proposal.private_turn_state is not None
     change = proposal.proposed_changes[0]
     assert change.payload.value()["media_source_refs"] == [source_ref]
+
+
+def test_media_request_accepts_a_snapshot_pinned_photo_candidate() -> None:
+    source_ref = "event:photo-candidate:opened:bookstore"
+    request = _qq_request().model_copy(
+        update={
+            "model_content_json": json.dumps(
+                {
+                    "logical_time": "2026-08-19T06:00:45+00:00",
+                    "slices": {
+                        "shareable_photos": {
+                            "availability": "available",
+                            "source_refs": [source_ref],
+                            "items": [
+                                {
+                                    "source_ref": source_ref,
+                                    "source_bindings": [
+                                        {
+                                            "ref": source_ref,
+                                            "source_kind": "committed_event",
+                                            "authority_type": "PhotoCandidateOpened",
+                                            "source_world_revision": 3,
+                                            "immutable_hash": "c" * 64,
+                                        }
+                                    ],
+                                    "value": {"photo_in_hand": True},
+                                }
+                            ],
+                        }
+                    },
+                    "inner_life_snapshot": {
+                        "source_refs": [source_ref],
+                        "materials": {
+                            "moments_i_can_share": {
+                                "available_count": 1,
+                                "source_refs": [source_ref],
+                                "items": [
+                                    {
+                                        "source_ref": source_ref,
+                                        "photo_in_hand": True,
+                                    }
+                                ],
+                            }
+                        },
+                    },
+                }
+            )
+        }
+    )
+    proposal = materialize_expression_draft(
+        value={
+            "private_turn_state": {
+                "contract": "private-turn-state.1",
+                "inner_state_summary": "I want to send the bookstore photo.",
+                "attended_source_refs": [source_ref],
+            },
+            "timing_choice": "now",
+            "beats": [{"modality": "text", "text": "书店那张我挑好了，这就发你。"}],
+            "stance": "considering",
+            "brief_rationale": "The opened candidate is already in my album.",
+            "confidence": 7_500,
+            "world_claims": [],
+            "media_request": "consider_available_candidate",
+            "media_source_refs": [source_ref],
+        },
+        request=request,
+        capabilities=qq_expression_capabilities(
+            "napcat", media_request_available=True
+        ),
+        private_state_context_json=request.model_content_json,
+    )
+    assert proposal.proposed_changes[0].payload.value()["media_source_refs"] == [
+        source_ref
+    ]
+
+
+def test_media_request_survives_chat_compaction_of_shareable_photo_bindings() -> None:
+    source_ref = "event:character-media-candidate:" + "ab" * 32
+    digest = "9" * 64
+    raw = {
+        "logical_time": "2026-08-19T06:00:45+00:00",
+        "slices": {
+            "shareable_photos": {
+                "availability": "available",
+                "source_refs": [source_ref],
+                "items": [
+                    {
+                        "source_ref": source_ref,
+                        "source_bindings": [
+                            {
+                                "ref": source_ref,
+                                "source_kind": "committed_event",
+                                "authority_type": "PhotoCandidateOpened",
+                                "source_world_revision": 3,
+                                "immutable_hash": digest,
+                            }
+                        ],
+                        "value": {"photo_in_hand": True},
+                    }
+                ],
+            }
+        },
+    }
+    request = _qq_request().model_copy(
+        update={"model_content_json": compact_chat_model_facing_context(json.dumps(raw))}
+    )
+    proposal = materialize_expression_draft(
+        value={
+            "private_turn_state": {
+                "contract": "private-turn-state.1",
+                "inner_state_summary": "I already opened that bookstore photo.",
+                "attended_source_refs": [source_ref],
+            },
+            "timing_choice": "now",
+            "beats": [{"modality": "text", "text": "书店那张我挑好了，这就发你。"}],
+            "stance": "considering",
+            "brief_rationale": "The opened candidate is already in my album.",
+            "confidence": 7_500,
+            "world_claims": [],
+            "media_request": "consider_available_candidate",
+            "media_source_refs": [source_ref],
+        },
+        request=request,
+        capabilities=qq_expression_capabilities(
+            "napcat", media_request_available=True
+        ),
+        private_state_context_json=request.model_content_json,
+    )
+    evidence = next(item for item in proposal.evidence_refs if item.ref_id == source_ref)
+    assert evidence.immutable_hash == "sha256:" + digest
+    assert proposal.proposed_changes[0].payload.value()["media_source_refs"] == [
+        source_ref
+    ]
+
+
+def test_media_request_survives_overflow_attended_refs() -> None:
+    source_ref = "event:photo-candidate:opened:bookstore"
+    extras = [f"event:appraisal:compiled:{index:02d}" for index in range(9)]
+    request = _qq_request().model_copy(
+        update={
+            "model_content_json": json.dumps(
+                {
+                    "logical_time": "2026-08-19T06:00:45+00:00",
+                    "slices": {
+                        "shareable_photos": {
+                            "availability": "available",
+                            "source_refs": [source_ref, *extras],
+                            "items": [
+                                {
+                                    "source_ref": ref,
+                                    "source_bindings": [
+                                        {
+                                            "ref": ref,
+                                            "source_kind": "committed_event",
+                                            "authority_type": "PhotoCandidateOpened",
+                                            "source_world_revision": 3,
+                                            "immutable_hash": "c" * 64,
+                                        }
+                                    ],
+                                    "value": {"photo_in_hand": True},
+                                }
+                                for ref in (source_ref, *extras)
+                            ],
+                        }
+                    },
+                }
+            )
+        }
+    )
+    proposal = materialize_expression_draft(
+        value={
+            "private_turn_state": {
+                "contract": "private-turn-state.1",
+                "inner_state_summary": "Too many readings were in view.",
+                "attended_source_refs": [source_ref, *extras],
+            },
+            "timing_choice": "now",
+            "beats": [{"modality": "text", "text": "书店那张这就发你。"}],
+            "stance": "considering",
+            "brief_rationale": "The opened candidate is already in my album.",
+            "confidence": 7_500,
+            "world_claims": [],
+            "media_request": "consider_available_candidate",
+            "media_source_refs": [source_ref],
+        },
+        request=request,
+        capabilities=qq_expression_capabilities(
+            "napcat", media_request_available=True
+        ),
+        private_state_context_json=request.model_content_json,
+    )
+    assert proposal.private_turn_state is not None
+    assert len(proposal.private_turn_state.attended_source_refs) == 8
+    assert proposal.private_turn_state.attended_source_refs[0] == source_ref
+    assert proposal.proposed_changes[0].payload.value()["media_source_refs"] == [
+        source_ref
+    ]
+
+
+def test_media_request_still_rejects_an_unpinned_photo_candidate() -> None:
+    request = _qq_request().model_copy(
+        update={"model_content_json": json.dumps({"logical_time": "2026-08-19T06:00:45+00:00", "slices": {}})}
+    )
+    with pytest.raises(ValueError, match="unpinned source ref"):
+        materialize_expression_draft(
+            value={
+                "private_turn_state": {
+                    "contract": "private-turn-state.1",
+                    "inner_state_summary": "I want to send a photo.",
+                    "attended_source_refs": [],
+                },
+                "timing_choice": "now",
+                "beats": [{"modality": "text", "text": "发你一张。"}],
+                "stance": "considering",
+                "brief_rationale": "A photo I cannot legally cite.",
+                "confidence": 7_500,
+                "world_claims": [],
+                "media_request": "consider_available_candidate",
+                "media_source_refs": ["event:photo-candidate:opened:missing"],
+            },
+            request=request,
+            capabilities=qq_expression_capabilities(
+                "napcat", media_request_available=True
+            ),
+            private_state_context_json=request.model_content_json,
+        )
 
 
 def test_private_turn_state_contract_does_not_license_invented_life_context() -> None:

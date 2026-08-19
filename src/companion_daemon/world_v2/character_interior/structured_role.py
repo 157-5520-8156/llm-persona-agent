@@ -1082,7 +1082,7 @@ class _WireRoleResult(BaseModel):
 
     status: Literal["transition", "no_change", "decision", "silent", "recall_request"]
     summary: str = Field(min_length=1, max_length=1_024)
-    attended_source_refs: list[str] = Field(default_factory=list, max_length=32)
+    attended_source_refs: list[str] = Field(default_factory=list, max_length=8)
     decision: _WireDecision | None = None
     recall_query: str | None = Field(default=None, min_length=1, max_length=1_024)
     proposals: list[dict[str, Any]] = Field(default_factory=list, max_length=32)

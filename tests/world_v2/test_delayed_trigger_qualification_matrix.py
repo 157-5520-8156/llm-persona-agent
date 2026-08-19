@@ -78,7 +78,10 @@ def test_catalog_is_a_complete_read_only_static_declaration_inventory() -> None:
     assert by_id["expression.reconsideration"].trigger_mode == "event_triggered"
     assert by_id["expression.reconsideration"].projection_due_fields == ()
     assert by_id["relationship.silence_aftermath"].trigger_mode == "derived_formula"
-    assert by_id["relationship.silence_aftermath"].projection_due_fields == ()
+    assert by_id["relationship.silence_aftermath"].projection_due_fields == (
+        "SilenceOpportunity.anchored_at",
+        "SilenceOpportunity.idle_seconds",
+    )
     assert by_id["conversation.thread_expiry"].release_status == "dormant"
     assert by_id["conversation.thread_expiry"].controlled_injection.public_seams == ()
     assert by_id["conversation.thread_expiry"].projection_due_fields == ()

@@ -249,6 +249,28 @@ class QQC2CSchedulerDiagnostics:
         unexplained_initiative_warning = (
             bool(world.get("initiative_warning", False)) and not raw_initiative_warning_reasons
         )
+        overdue_declared_due_kinds: list[str] = []
+        if due_unconsumed:
+            overdue_declared_due_kinds.append("social.initiative.cadence")
+        last_lived_at = None
+        last_lived_raw = world.get("last_lived_at")
+        if isinstance(last_lived_raw, str):
+            try:
+                parsed_last_lived = datetime.fromisoformat(last_lived_raw)
+            except ValueError:
+                parsed_last_lived = None
+            if (
+                parsed_last_lived is not None
+                and parsed_last_lived.tzinfo is not None
+                and parsed_last_lived.utcoffset() is not None
+            ):
+                last_lived_at = parsed_last_lived
+        # Adapter wall clock is authoritative for "living now".  Nested world
+        # diagnostics may already set starved; recompute here so a frozen
+        # logical cursor cannot hide a 12h wall gap.
+        starved = bool(world.get("starved", False))
+        if last_lived_at is not None and (now - last_lived_at) > timedelta(hours=12):
+            starved = True
         return {
             "status": status,
             "task_running": task_running,
@@ -265,9 +287,7 @@ class QQC2CSchedulerDiagnostics:
             "last_error": self.last_error,
             "last_ledger_event_created_at": world.get("last_ledger_event_created_at"),
             "last_ledger_sequence": world.get("last_ledger_sequence"),
-            "overdue_declared_due_kinds": (
-                ["social.initiative.cadence"] if due_unconsumed else []
-            ),
+            "overdue_declared_due_kinds": overdue_declared_due_kinds,
             "initiative": {
                 "last_status": world.get("initiative_last_status"),
                 "last_reason": world.get("initiative_last_reason"),
@@ -329,7 +349,7 @@ class QQC2CSchedulerDiagnostics:
                 "life_event_count": world.get("life_event_count", 0),
                 "occurrence_count": world.get("occurrence_count", 0),
                 "experience_count": world.get("experience_count", 0),
-                "starved": world.get("starved", False),
+                "starved": starved,
                 "last_lived_at": world.get("last_lived_at"),
             },
             "private_impression": world.get("private_impression", {}),

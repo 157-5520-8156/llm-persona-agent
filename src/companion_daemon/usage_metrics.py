@@ -3,8 +3,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, time, timezone
 import math
 from typing import Iterable, Mapping
+from zoneinfo import ZoneInfo
+
+
+# Used only when a price row has no native CNY (OpenAI, historical DeepSeek).
+# DeepSeek from 2026-08-17 bills CNY directly; do not convert those rows.
+CNY_PER_USD = 7.2
+BEIJING_TZ = ZoneInfo("Asia/Shanghai")
+
+# Official peak window: Beijing 09:00-12:00 and 14:00-18:00, half-open.
+# Equivalent UTC 01:00-04:00 and 06:00-10:00.
+# Sources:
+#   https://api-docs.deepseek.com/zh-cn/quick_start/pricing
+#   https://api-docs.deepseek.com/quick_start/pricing/
+#   https://api-docs.deepseek.com/zh-cn/updates  (effective 2026-08-17 00:00 Beijing)
+DEEPSEEK_PEAK_OFFPEAK_EFFECTIVE_FROM = datetime(2026, 8, 17, 0, 0, tzinfo=BEIJING_TZ)
+DEEPSEEK_PEAK_WINDOWS_BEIJING: tuple[tuple[time, time], ...] = (
+    (time(9, 0), time(12, 0)),
+    (time(14, 0), time(18, 0)),
+)
 
 
 @dataclass(frozen=True)
@@ -14,11 +34,31 @@ class ModelPrice:
     cache_hit_usd_per_million: float
     cache_miss_usd_per_million: float
     output_usd_per_million: float
+    cache_hit_cny_per_million: float | None = None
+    cache_miss_cny_per_million: float | None = None
+    output_cny_per_million: float | None = None
+    window: str = "flat"
+
+    @property
+    def has_native_cny(self) -> bool:
+        return (
+            self.cache_hit_cny_per_million is not None
+            and self.cache_miss_cny_per_million is not None
+            and self.output_cny_per_million is not None
+        )
+
+
+@dataclass(frozen=True)
+class ModelCostEstimate:
+    usd: float
+    cny: float
+    pricing_version: str
+    window: str
 
 
 # DeepSeek public price table observed 2026-07-13. Historical rows persist the
 # version and computed USD amount so later price changes do not rewrite history.
-# Source: https://api-docs.deepseek.com/quick_start/pricing/
+# Source: https://api-docs.deepseek.com/quick_start/pricing/ (pre-peak/off-peak)
 DEEPSEEK_V4_FLASH_PRICE = ModelPrice(
     model="deepseek-v4-flash",
     version="deepseek-2026-07-13",
@@ -33,6 +73,60 @@ DEEPSEEK_V4_PRO_PRICE = ModelPrice(
     cache_hit_usd_per_million=0.003625,
     cache_miss_usd_per_million=0.435,
     output_usd_per_million=0.87,
+)
+
+# DeepSeek peak/off-peak, effective Beijing 2026-08-17 00:00.
+# CNY is the billed currency for mainland console balance (do not FX).
+# USD is the official English table, stored for the estimated_cost_usd column.
+# Sources fetched 2026-08-19:
+#   https://api-docs.deepseek.com/zh-cn/quick_start/pricing
+#   https://api-docs.deepseek.com/quick_start/pricing/
+DEEPSEEK_V4_FLASH_OFFPEAK_PRICE = ModelPrice(
+    model="deepseek-v4-flash",
+    version="deepseek-2026-08-17-offpeak",
+    cache_hit_usd_per_million=0.007,
+    cache_miss_usd_per_million=0.22,
+    output_usd_per_million=0.66,
+    cache_hit_cny_per_million=0.05,
+    cache_miss_cny_per_million=1.5,
+    output_cny_per_million=4.5,
+    window="off-peak",
+)
+
+DEEPSEEK_V4_FLASH_PEAK_PRICE = ModelPrice(
+    model="deepseek-v4-flash",
+    version="deepseek-2026-08-17-peak",
+    cache_hit_usd_per_million=0.014,
+    cache_miss_usd_per_million=0.44,
+    output_usd_per_million=1.32,
+    cache_hit_cny_per_million=0.10,
+    cache_miss_cny_per_million=3.0,
+    output_cny_per_million=9.0,
+    window="peak",
+)
+
+DEEPSEEK_V4_PRO_OFFPEAK_PRICE = ModelPrice(
+    model="deepseek-v4-pro",
+    version="deepseek-2026-08-17-offpeak",
+    cache_hit_usd_per_million=0.022,
+    cache_miss_usd_per_million=0.66,
+    output_usd_per_million=1.98,
+    cache_hit_cny_per_million=0.15,
+    cache_miss_cny_per_million=4.5,
+    output_cny_per_million=13.5,
+    window="off-peak",
+)
+
+DEEPSEEK_V4_PRO_PEAK_PRICE = ModelPrice(
+    model="deepseek-v4-pro",
+    version="deepseek-2026-08-17-peak",
+    cache_hit_usd_per_million=0.044,
+    cache_miss_usd_per_million=1.32,
+    output_usd_per_million=3.96,
+    cache_hit_cny_per_million=0.30,
+    cache_miss_cny_per_million=9.0,
+    output_cny_per_million=27.0,
+    window="peak",
 )
 
 # OpenAI public list prices observed 2026-08-13.
@@ -148,9 +242,9 @@ UNPRICED_MODEL_CONSERVATIVE_PRICE = ModelPrice(
     output_usd_per_million=2.40,
 )
 
+# Flat (non-time-varying) current rows. DeepSeek live rows are resolved by
+# ``resolve_model_price`` from the versioned peak/off-peak schedule.
 MODEL_PRICES: Mapping[str, ModelPrice] = {
-    DEEPSEEK_V4_FLASH_PRICE.model: DEEPSEEK_V4_FLASH_PRICE,
-    DEEPSEEK_V4_PRO_PRICE.model: DEEPSEEK_V4_PRO_PRICE,
     GPT_4_1_MINI_PRICE.model: GPT_4_1_MINI_PRICE,
     GPT_4O_MINI_PRICE.model: GPT_4O_MINI_PRICE,
     "openai/gpt-4o-mini": GPT_4O_MINI_PRICE,
@@ -167,7 +261,78 @@ MODEL_PRICES: Mapping[str, ModelPrice] = {
 }
 
 
-def _price_for(model: str) -> ModelPrice:
+def parse_usage_datetime(value: datetime | str | None) -> datetime:
+    """Normalize ledger timestamps (``Z``, ``+00:00``, ``+08:00``, naive) to aware UTC.
+
+    Naive values are treated as UTC: World V2 usage writers emit
+    ``datetime.now(timezone.utc).isoformat()``. Peak/off-peak is applied after
+    converting this instant to Beijing.
+    """
+
+    if value is None:
+        return datetime.now(timezone.utc)
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return datetime.now(timezone.utc)
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def beijing_datetime(value: datetime | str | None) -> datetime:
+    return parse_usage_datetime(value).astimezone(BEIJING_TZ)
+
+
+def is_deepseek_peak(value: datetime | str | None) -> bool:
+    clock = beijing_datetime(value).time()
+    return any(start <= clock < end for start, end in DEEPSEEK_PEAK_WINDOWS_BEIJING)
+
+
+def billed_output_tokens(completion_tokens: int, reasoning_tokens: int = 0) -> int:
+    """Bill output tokens without double-counting thinking.
+
+    DeepSeek reports ``reasoning_tokens`` inside ``completion_tokens_details``.
+    When thinking is already folded into ``completion_tokens``, completion wins.
+    If a payload omits thinking from completion, reasoning is the floor.
+    """
+
+    completion = max(0, int(completion_tokens or 0))
+    reasoning = max(0, int(reasoning_tokens or 0))
+    return max(completion, reasoning)
+
+
+def _deepseek_family(model: str) -> str | None:
+    lowered = (model or "").strip().casefold()
+    if "deepseek" not in lowered:
+        return None
+    if "pro" in lowered and "flash" not in lowered:
+        return "pro"
+    return "flash"
+
+
+def resolve_model_price(
+    model: str,
+    *,
+    at: datetime | str | None = None,
+    conservative_peak: bool = False,
+) -> ModelPrice:
+    """Select the price row that applied at ``at`` (call time)."""
+
+    family = _deepseek_family(model)
+    if family is not None:
+        instant = parse_usage_datetime(at)
+        if beijing_datetime(instant) < DEEPSEEK_PEAK_OFFPEAK_EFFECTIVE_FROM:
+            return DEEPSEEK_V4_PRO_PRICE if family == "pro" else DEEPSEEK_V4_FLASH_PRICE
+        peak = True if conservative_peak else is_deepseek_peak(instant)
+        if family == "pro":
+            return DEEPSEEK_V4_PRO_PEAK_PRICE if peak else DEEPSEEK_V4_PRO_OFFPEAK_PRICE
+        return DEEPSEEK_V4_FLASH_PEAK_PRICE if peak else DEEPSEEK_V4_FLASH_OFFPEAK_PRICE
     keyed = MODEL_PRICES.get(model)
     if keyed is not None:
         return keyed
@@ -177,6 +342,12 @@ def _price_for(model: str) -> ModelPrice:
     if prefixed is not None:
         return prefixed
     return UNPRICED_MODEL_CONSERVATIVE_PRICE
+
+
+def _price_for(model: str) -> ModelPrice:
+    """Current conservative row (DeepSeek peak) for route comparison."""
+
+    return resolve_model_price(model, conservative_peak=True)
 
 
 def billed_model_ids(model: str) -> tuple[str, ...]:
@@ -202,12 +373,167 @@ def billed_model_ids(model: str) -> tuple[str, ...]:
     return (value,)
 
 
+def _component_cost(
+    price: ModelPrice,
+    *,
+    hit: int,
+    miss: int,
+    output: int,
+    cny_per_usd: float,
+) -> tuple[float, float]:
+    usd = (
+        hit * price.cache_hit_usd_per_million
+        + miss * price.cache_miss_usd_per_million
+        + output * price.output_usd_per_million
+    ) / 1_000_000
+    if price.has_native_cny:
+        cny = (
+            hit * float(price.cache_hit_cny_per_million)
+            + miss * float(price.cache_miss_cny_per_million)
+            + output * float(price.output_cny_per_million)
+        ) / 1_000_000
+    else:
+        cny = usd * max(0.0, cny_per_usd)
+    return usd, cny
+
+
+def estimate_model_cost(
+    *,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cache_hit_tokens: int,
+    cache_miss_tokens: int,
+    reasoning_tokens: int = 0,
+    at: datetime | str | None = None,
+    cny_per_usd: float = CNY_PER_USD,
+    conservative_peak: bool = False,
+) -> ModelCostEstimate:
+    hit = max(0, int(cache_hit_tokens or 0))
+    miss = max(0, int(cache_miss_tokens or 0))
+    # Older/partial provider payloads may omit cache details. Conservatively
+    # price all observed prompt tokens as cache misses.
+    if hit + miss == 0:
+        miss = max(0, int(prompt_tokens or 0))
+    output = billed_output_tokens(completion_tokens, reasoning_tokens)
+    usd = 0.0
+    cny = 0.0
+    versions: list[str] = []
+    windows: list[str] = []
+    for component in billed_model_ids(model):
+        price = resolve_model_price(
+            component, at=at, conservative_peak=conservative_peak
+        )
+        part_usd, part_cny = _component_cost(
+            price, hit=hit, miss=miss, output=output, cny_per_usd=cny_per_usd
+        )
+        usd += part_usd
+        cny += part_cny
+        versions.append(price.version)
+        windows.append(price.window)
+    window = windows[0] if len(set(windows)) == 1 else "+".join(windows)
+    return ModelCostEstimate(
+        usd=usd,
+        cny=cny,
+        pricing_version="+".join(versions),
+        window=window,
+    )
+
+
+def estimate_model_cost_usd(
+    *,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cache_hit_tokens: int,
+    cache_miss_tokens: int,
+    reasoning_tokens: int = 0,
+    at: datetime | str | None = None,
+) -> tuple[float, str]:
+    priced = estimate_model_cost(
+        model=model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cache_hit_tokens=cache_hit_tokens,
+        cache_miss_tokens=cache_miss_tokens,
+        reasoning_tokens=reasoning_tokens,
+        at=at,
+    )
+    return priced.usd, priced.pricing_version
+
+
+def estimate_model_cost_cny(
+    *,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cache_hit_tokens: int,
+    cache_miss_tokens: int,
+    reasoning_tokens: int = 0,
+    at: datetime | str | None = None,
+    cny_per_usd: float = CNY_PER_USD,
+    conservative_peak: bool = False,
+) -> tuple[float, str]:
+    priced = estimate_model_cost(
+        model=model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cache_hit_tokens=cache_hit_tokens,
+        cache_miss_tokens=cache_miss_tokens,
+        reasoning_tokens=reasoning_tokens,
+        at=at,
+        cny_per_usd=cny_per_usd,
+        conservative_peak=conservative_peak,
+    )
+    return priced.cny, priced.pricing_version
+
+
+def estimate_legacy_flat_cny(
+    *,
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cache_hit_tokens: int,
+    cache_miss_tokens: int,
+    reasoning_tokens: int = 0,
+    cny_per_usd: float = CNY_PER_USD,
+) -> float:
+    """Recompute the pre-2026-08-17 ledger algorithm (USD × 7.2, no peak)."""
+
+    family = _deepseek_family(model)
+    if family == "pro":
+        price = DEEPSEEK_V4_PRO_PRICE
+    elif family == "flash":
+        price = DEEPSEEK_V4_FLASH_PRICE
+    else:
+        return estimate_model_cost(
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cache_hit_tokens=cache_hit_tokens,
+            cache_miss_tokens=cache_miss_tokens,
+            reasoning_tokens=reasoning_tokens,
+            at=datetime(2026, 7, 15, tzinfo=timezone.utc),
+            cny_per_usd=cny_per_usd,
+        ).cny
+    hit = max(0, int(cache_hit_tokens or 0))
+    miss = max(0, int(cache_miss_tokens or 0))
+    if hit + miss == 0:
+        miss = max(0, int(prompt_tokens or 0))
+    output = billed_output_tokens(completion_tokens, reasoning_tokens)
+    _usd, cny = _component_cost(
+        price, hit=hit, miss=miss, output=output, cny_per_usd=cny_per_usd
+    )
+    return cny
+
+
 def estimate_routed_model_reserve_cny(
     *,
     model: str,
     prompt_characters: int,
     observed_output_tokens: Iterable[int] = (),
-    cny_per_usd: float = 7.2,
+    cny_per_usd: float = CNY_PER_USD,
+    at: datetime | str | None = None,
 ) -> float:
     """Reserve one call from its actual route, prompt scale, and local history.
 
@@ -216,6 +542,9 @@ def estimate_routed_model_reserve_cny(
     prompt's size and the p95 of comparable completed calls rather than a
     single project-wide CNY constant.  When there is no history yet, the
     explicit 256-token output floor prevents a new route from looking free.
+
+    DeepSeek reservations after the 2026-08-17 hike use peak CNY so a call
+    that crosses into Beijing 09:00 cannot look cheaper than it will be.
     """
     # This is a conservative approximation for mixed Chinese/English prompt
     # text.  The provider's returned tokens supersede it in the usage ledger.
@@ -224,14 +553,18 @@ def estimate_routed_model_reserve_cny(
         max(0, int(tokens)) for tokens in observed_output_tokens if int(tokens) > 0
     )
     output_tokens = nearest_rank(observed, 0.95) if observed else 256
-    usd, _pricing_version = estimate_model_cost_usd(
+    conservative = _deepseek_family(model) is not None
+    priced = estimate_model_cost(
         model=model,
         prompt_tokens=prompt_tokens,
         completion_tokens=output_tokens,
         cache_hit_tokens=0,
         cache_miss_tokens=prompt_tokens,
+        at=at,
+        cny_per_usd=cny_per_usd,
+        conservative_peak=conservative,
     )
-    return round(usd * max(0.0, cny_per_usd), 6)
+    return round(priced.cny, 6)
 
 
 def estimate_gpt_image_2_cost_usd(
@@ -305,31 +638,84 @@ def parse_openai_image_usage(payload: Mapping[str, object] | None) -> dict[str, 
     }
 
 
-def estimate_model_cost_usd(
+def _as_usage_mapping(row: Mapping[str, object] | object) -> Mapping[str, object]:
+    if isinstance(row, Mapping):
+        return row
+    keys = getattr(row, "keys", None)
+    if callable(keys):
+        return {str(key): row[key] for key in keys()}
+    return {}
+
+
+def _row_int(row: Mapping[str, object], *names: str) -> int:
+    for name in names:
+        if name in row and row[name] is not None:
+            try:
+                return max(0, int(row[name] or 0))
+            except (TypeError, ValueError):
+                return 0
+    return 0
+
+
+def _row_str(row: Mapping[str, object], *names: str) -> str:
+    for name in names:
+        if name in row and row[name] is not None:
+            return str(row[name] or "")
+    return ""
+
+
+def _row_float(row: Mapping[str, object], *names: str) -> float:
+    for name in names:
+        if name in row and row[name] is not None:
+            try:
+                return float(row[name] or 0.0)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
+
+
+def price_usage_row(
+    row: Mapping[str, object],
     *,
-    model: str,
-    prompt_tokens: int,
-    completion_tokens: int,
-    cache_hit_tokens: int,
-    cache_miss_tokens: int,
-) -> tuple[float, str]:
-    hit = max(0, cache_hit_tokens)
-    miss = max(0, cache_miss_tokens)
-    # Older/partial provider payloads may omit cache details. Conservatively
-    # price all observed prompt tokens as cache misses.
-    if hit + miss == 0:
-        miss = max(0, prompt_tokens)
-    total = 0.0
-    versions: list[str] = []
-    for component in billed_model_ids(model):
-        price = _price_for(component)
-        total += (
-            hit * price.cache_hit_usd_per_million
-            + miss * price.cache_miss_usd_per_million
-            + max(0, completion_tokens) * price.output_usd_per_million
-        ) / 1_000_000
-        versions.append(price.version)
-    return total, "+".join(versions)
+    cny_per_usd: float = CNY_PER_USD,
+) -> ModelCostEstimate:
+    """Reprice one persisted usage mapping from tokens and call time.
+
+    Budget gates use this so already-written ``cost_cny`` / ``estimated_cost_usd``
+    rows from the old half-price table do not understate remaining spend.
+    """
+
+    row = _as_usage_mapping(row)
+    model = _row_str(row, "model")
+    at = _row_str(row, "recorded_at", "created_at") or None
+    priced = estimate_model_cost(
+        model=model or "__unpriced__",
+        prompt_tokens=_row_int(row, "prompt_tokens"),
+        completion_tokens=_row_int(row, "completion_tokens"),
+        cache_hit_tokens=_row_int(row, "cache_hit_tokens"),
+        cache_miss_tokens=_row_int(row, "cache_miss_tokens"),
+        reasoning_tokens=_row_int(row, "reasoning_tokens"),
+        at=at,
+        cny_per_usd=cny_per_usd,
+    )
+    if priced.cny == 0.0 and priced.usd == 0.0:
+        stored_cny = _row_float(row, "estimated_cost_cny", "cost_cny")
+        stored_usd = _row_float(row, "estimated_cost_usd")
+        if stored_cny:
+            return ModelCostEstimate(
+                usd=stored_usd,
+                cny=stored_cny,
+                pricing_version=_row_str(row, "pricing_version") or priced.pricing_version,
+                window=priced.window,
+            )
+        if stored_usd:
+            return ModelCostEstimate(
+                usd=stored_usd,
+                cny=stored_usd * max(0.0, cny_per_usd),
+                pricing_version=_row_str(row, "pricing_version") or priced.pricing_version,
+                window=priced.window,
+            )
+    return priced
 
 
 def nearest_rank(values: Iterable[int], percentile: float) -> int:
@@ -347,7 +733,9 @@ def aggregate_usage_rows(
     calls = len(materialized)
     succeeded = sum(1 for row in materialized if row["status"] == "succeeded")
     latencies = [int(row["latency_ms"] or 0) for row in materialized]
-    usd = sum(float(row["estimated_cost_usd"] or 0.0) for row in materialized)
+    priced_rows = [price_usage_row(row, cny_per_usd=cny_per_usd) for row in materialized]
+    usd = sum(item.usd for item in priced_rows)
+    cny = sum(item.cny for item in priced_rows)
     return {
         "calls": calls,
         "succeeded_calls": succeeded,
@@ -365,5 +753,5 @@ def aggregate_usage_rows(
         "attempts": calls,
         "max_attempt": max((max(1, int(row["attempt"] or 1)) for row in materialized), default=0),
         "estimated_cost_usd": usd,
-        "estimated_cost_cny": usd * max(0.0, cny_per_usd),
+        "estimated_cost_cny": cny,
     }

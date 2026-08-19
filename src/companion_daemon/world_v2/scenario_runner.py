@@ -322,7 +322,13 @@ class ScenarioVerificationError(AssertionError):
 # occasion that offers an already-open candidate when he spoke recently
 # relative to now. Per-case predicates remain enforced; World Author, Open
 # World, and proactive tool identities move.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.79"
+# ``.80`` closes the declared-due clock wake set by construction (projection
+# extractors + three computed peeks; Silence stays non-waking), installs the
+# shareable-photos / living-state inventory paths, DeepSeek peak/off-peak CNY
+# pricing with production/debug spend accounts, and PrivateImpression user-
+# channel authority limits. Per-case predicates remain enforced; aggregate
+# prompt/policy identities intentionally move.
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.80"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -490,12 +496,14 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.79"
 # produced the same aggregate manifest.
 # ``.79`` is installed only after two independent complete 120-case processes
 # produced the same aggregate manifest.
-# 2026-08-19: same ``.79`` version, refreshed aggregate after the workspace
-# composed declared-due clock wakes, user-channel life-prose boundary, and
-# present-moment photo visibility. Two independent complete 120-case
+# ``.80`` is installed only after two independent complete 120-case processes
+# produced the same aggregate manifest.
+# 2026-08-19: ``.80`` aggregate after declared-due closure, shareable-photo /
+# living-state inventory, peak/off-peak DeepSeek CNY pricing + spend accounts,
+# and PrivateImpression user-channel limits. Two independent complete 120-case
 # processes produced this hash before installation.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "ea77178047eccdf36fe8149009117f87f2686b92b6a85af0f0333ee8bbc80c66"
+    "c9db2bb930c58e09be5c0dc8700a5ca41bdb72ec067e5f8778a79ddaedd39ce9"
 )
 
 

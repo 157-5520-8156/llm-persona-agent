@@ -80,6 +80,72 @@ def test_chat_compaction_preserves_interior_view_and_consumed_recall_budget() ->
     assert compact["recall_control"] == {"remaining_character_pulls": 0}
 
 
+def test_chat_compaction_keeps_shareable_photo_event_bindings() -> None:
+    opened = "event:character-media-candidate:" + "ab" * 32
+    digest = "9" * 64
+    compact = json.loads(
+        compact_chat_model_facing_context(
+            json.dumps(
+                {
+                    "world_revision": 2456,
+                    "logical_time": "2026-08-19T06:00:45+00:00",
+                    "slices": {
+                        "shareable_photos": {
+                            "availability": "available",
+                            "items": [
+                                {
+                                    "source_ref": opened,
+                                    "value": {"photo_in_hand": True},
+                                    "source_bindings": [
+                                        {
+                                            "ref": opened,
+                                            "source_kind": "committed_event",
+                                            "authority_type": "PhotoCandidateOpened",
+                                            "source_world_revision": 2456,
+                                            "immutable_hash": digest,
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                        "current_situation": {
+                            "availability": "available",
+                            "items": [
+                                {
+                                    "source_ref": "situation:now",
+                                    "value": {"time_segment": "afternoon"},
+                                    "source_bindings": [
+                                        {
+                                            "ref": "event:clock:1",
+                                            "source_kind": "committed_event",
+                                            "authority_type": "ClockAdvanced",
+                                            "source_world_revision": 1,
+                                            "immutable_hash": "a" * 64,
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                    },
+                }
+            )
+        )
+    )
+    photos = compact["slices"]["shareable_photos"]["items"]
+    assert photos[0]["source_ref"] == opened
+    assert photos[0]["source_bindings"] == [
+        {
+            "ref": opened,
+            "source_kind": "committed_event",
+            "authority_type": "PhotoCandidateOpened",
+            "source_world_revision": 2456,
+            "immutable_hash": digest,
+        }
+    ]
+    situation = compact["slices"]["current_situation"]["items"]
+    assert "source_bindings" not in situation[0]
+
+
 def test_chat_view_pins_authoritative_time_as_a_copyable_replayable_source() -> None:
     raw_context = {
         "world_id": "world:time-source",

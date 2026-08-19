@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 from companion_daemon.db import CompanionStore
 from companion_daemon.usage_metrics import (
+    CNY_PER_USD,
     GPT_IMAGE_2_OUTPUT_USD,
     estimate_gpt_image_2_cost_usd,
 )
@@ -14,7 +15,7 @@ from companion_daemon.usage_metrics import (
 # count for a particular edit request.
 # Sources: https://developers.openai.com/api/docs/pricing
 #          https://developers.openai.com/api/docs/guides/image-generation
-_USD_TO_CNY = 7.2
+_USD_TO_CNY = CNY_PER_USD
 _IMAGE_OUTPUT_USD = dict(GPT_IMAGE_2_OUTPUT_USD)
 
 # Generation-side caps.  Delivery already has max 2/day and a 2h gap; those

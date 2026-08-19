@@ -64,6 +64,18 @@ class PrivateTurnState(FrozenModel):
         exclude_if=lambda value: value is None,
     )
 
+    @field_validator("attended_source_refs", mode="before")
+    @classmethod
+    def keep_first_eight_attended_refs(cls, value: object) -> object:
+        # DeepSeek's strict dialect strips maxItems. Overflow is a typed
+        # field bound, not a reason to discard an already-authored turn.
+        # Keep the first eight in listed order; uniqueness still applies.
+        # Always coerce JSON arrays to a tuple so strict validation still
+        # accepts the ordinary wire shape.
+        if isinstance(value, (list, tuple)):
+            return tuple(value[:8])
+        return value
+
     @field_validator("inner_state_summary")
     @classmethod
     def summary_has_semantic_content(cls, value: str) -> str:

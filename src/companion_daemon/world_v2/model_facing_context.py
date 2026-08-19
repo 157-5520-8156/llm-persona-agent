@@ -38,6 +38,14 @@ _CHAT_ITEM_LIMITS = {
     "advisories": 12,
     "media_deliveries": PRESENT_SHARED_MEDIA_ITEM_LIMIT,
 }
+_SHAREABLE_PHOTO_SLICE = "shareable_photos"
+_EVENT_BINDING_KEYS = (
+    "ref",
+    "source_kind",
+    "authority_type",
+    "source_world_revision",
+    "immutable_hash",
+)
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
         "origin",
@@ -167,6 +175,40 @@ def _pinned_time_view(
             ],
         },
     )
+
+
+def _copy_event_source_bindings(item: dict[str, object]) -> list[dict[str, object]] | None:
+    """Keep the proof envelope a named photo needs after chat compaction.
+
+    Compact strips ``source_bindings`` from ordinary slices so the provider
+    does not pay hash tokens.  ``shareable_photos`` is the exception: she may
+    name an already-opened candidate, and rematerialization binds that cite
+    against this same compact JSON.
+    """
+
+    raw = item.get("source_bindings")
+    if not isinstance(raw, list):
+        return None
+    copied: list[dict[str, object]] = []
+    for binding in raw:
+        if not isinstance(binding, dict):
+            continue
+        ref = binding.get("ref")
+        source_kind = binding.get("source_kind")
+        authority_type = binding.get("authority_type")
+        revision = binding.get("source_world_revision")
+        digest = binding.get("immutable_hash")
+        if (
+            isinstance(ref, str)
+            and isinstance(source_kind, str)
+            and isinstance(authority_type, str)
+            and isinstance(revision, int)
+            and not isinstance(revision, bool)
+            and isinstance(digest, str)
+            and len(digest) == 64
+        ):
+            copied.append({key: binding[key] for key in _EVENT_BINDING_KEYS})
+    return copied or None
 
 
 def _attention_source_refs(
@@ -325,6 +367,10 @@ def compact_model_facing_context(raw: str) -> str:
                     material["privacy_class"] = privacy
                 if item.get("recall_injected") is True:
                     material["recall_injected"] = True
+                if name == _SHAREABLE_PHOTO_SLICE:
+                    bindings = _copy_event_source_bindings(item)
+                    if bindings is not None:
+                        material["source_bindings"] = bindings
                 compact_items.append(material)
         compact_slices[name] = {
             "availability": "available",
@@ -421,6 +467,10 @@ def compact_chat_model_facing_context(raw: str) -> str:
                 retained_attention_refs = [ref for ref in attention_refs if isinstance(ref, str)]
                 if retained_attention_refs:
                     material["attention_source_refs"] = retained_attention_refs
+            if name == _SHAREABLE_PHOTO_SLICE:
+                bindings = _copy_event_source_bindings(item)
+                if bindings is not None:
+                    material["source_bindings"] = bindings
             semantic_items.append(material)
         if semantic_items:
             slices[name] = {"availability": "available", "items": semantic_items}

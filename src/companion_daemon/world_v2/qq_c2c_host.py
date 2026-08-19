@@ -79,11 +79,7 @@ from .external_world_perception.deployment import (
 from .external_world_perception.production_attention import (
     LiveAttentionChannelPort,
 )
-from .declared_due import (
-    collect_projection_declared_dues,
-    computed_due,
-    select_clock_wake,
-)
+from .declared_due import collect_clock_wake_dues, select_clock_wake
 from .expression_episode_lifecycle import (
     ExpressionTechnicalNoticeCandidate,
     expression_episode_technical_notice_candidates,
@@ -113,37 +109,6 @@ _SchedulerResult = TypeVar("_SchedulerResult")
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
-
-
-def _next_action_due_boundary(
-    projection: object,
-    *,
-    after: datetime,
-    through: datetime,
-) -> datetime | None:
-    """Return the next Action boundary strictly after the current world time.
-
-    A due Action remains scheduled until the Action pump claims it, so the
-    projection's absolute ``nearest_due`` can keep returning a boundary the
-    clock has already crossed.  The scheduler needs a cursor-relative view in
-    order to advance several exact boundaries in one pass.
-    """
-
-    candidates: list[datetime] = []
-    for action in getattr(projection, "actions", ()):
-        due = None
-        if getattr(action, "state", None) in {"authorized", "scheduled"}:
-            due = getattr(action, "not_before", None)
-        elif getattr(action, "state", None) in {
-            "claimed",
-            "dispatch_started",
-            "provider_accepted",
-        }:
-            lease = getattr(action, "claim_lease", None)
-            due = getattr(lease, "expires_at", None)
-        if isinstance(due, datetime) and after < due <= through:
-            candidates.append(due)
-    return min(candidates, default=None)
 
 
 class _VisibleTurnReconciliationGate:
@@ -2240,12 +2205,22 @@ class QQC2CHost:
                         pre_background.append("external-perception:" + perception_result.status)
             if callable(due_projection_reader):
                 due_projection = await due_projection_reader()
+
+                def _safe_retry_due(reader: object) -> datetime | None:
+                    if not callable(reader):
+                        return None
+                    try:
+                        value = reader(due_projection)
+                    except AttributeError:
+                        return None
+                    return value if isinstance(value, datetime) else None
+
                 retry_due_before_tick = min(
                     (
                         value
                         for value in (
-                            next_expression_retry_due(due_projection),
-                            next_proactive_retry_due(due_projection),
+                            _safe_retry_due(next_expression_retry_due),
+                            _safe_retry_due(next_proactive_retry_due),
                         )
                         if value is not None
                     ),
@@ -2303,85 +2278,40 @@ class QQC2CHost:
                 due_projection = (
                     await due_projection_reader() if callable(due_projection_reader) else None
                 )
-                # Host-computed dues stay here so existing monkeypatches and
-                # overlay readers remain the authority for those kinds.  The
-                # projection collector supplies every other accepted due so a
-                # new stored deadline cannot sit invisible to the clock.
-                computed_dues = [
-                    item
-                    for item in (
-                        computed_due(
-                            "action.authorized_due",
-                            (
-                                _next_action_due_boundary(
-                                    due_projection,
-                                    after=logical_from,
-                                    through=tick_boundary,
-                                )
-                                if due_projection is not None
-                                else None
-                            ),
+                # Sole wake entry: projection extractors + registered computed
+                # peeks.  Do not rebuild a kind list here — asserted by
+                # assert_host_uses_declared_due_only.
+                wake_dues = collect_clock_wake_dues(
+                    due_projection,
+                    computed={
+                        "social.initiative.cadence": (
+                            await initiative_due_reader()
+                            if callable(initiative_due_reader)
+                            else None
                         ),
-                        computed_due(
-                            "expression.technical_retry",
-                            (
-                                next_expression_retry_due(due_projection)
-                                if due_projection is not None
-                                else None
-                            ),
+                        "private_impression.interval": (
+                            await private_impression_due_reader()
+                            if callable(private_impression_due_reader)
+                            else None
                         ),
-                        computed_due(
-                            "proactive.technical_retry",
-                            (
-                                next_proactive_retry_due(due_projection)
-                                if due_projection is not None
-                                else None
-                            ),
+                        "life.ecology": (
+                            await life_due_reader() if callable(life_due_reader) else None
                         ),
-                        computed_due(
-                            "life.ecology",
-                            await life_due_reader() if callable(life_due_reader) else None,
-                            wake_policy="wall_catchup",
-                        ),
-                        computed_due(
-                            "social.initiative.cadence",
-                            (
-                                await initiative_due_reader()
-                                if callable(initiative_due_reader)
-                                else None
-                            ),
-                        ),
-                        computed_due(
-                            "private_impression.interval",
-                            (
-                                await private_impression_due_reader()
-                                if callable(private_impression_due_reader)
-                                else None
-                            ),
-                        ),
-                    )
-                    if item is not None
-                ]
+                    },
+                )
                 selected_due = select_clock_wake(
                     after=logical_from,
                     through=tick_boundary,
-                    dues=(
-                        *collect_projection_declared_dues(due_projection),
-                        *computed_dues,
-                    ),
+                    dues=wake_dues,
                 )
                 if selected_due is None:
                     break
                 tick_target = selected_due.due_at
                 tick_reason = selected_due.reason
-                action_due_target = next(
-                    (item.due_at for item in computed_dues if item.kind == "action.authorized_due"),
-                    None,
-                )
                 expression_retry_target = next(
                     (
                         item.due_at
-                        for item in computed_dues
+                        for item in wake_dues
                         if item.kind == "expression.technical_retry"
                     ),
                     None,
@@ -2389,7 +2319,7 @@ class QQC2CHost:
                 proactive_retry_target = next(
                     (
                         item.due_at
-                        for item in computed_dues
+                        for item in wake_dues
                         if item.kind == "proactive.technical_retry"
                     ),
                     None,
@@ -2400,7 +2330,7 @@ class QQC2CHost:
                 initiative_due_target = next(
                     (
                         item.due_at
-                        for item in computed_dues
+                        for item in wake_dues
                         if item.kind == "social.initiative.cadence"
                     ),
                     None,

@@ -18,9 +18,11 @@ _HAYSTACK = (
     _SRC / "proactive_action.py",
 )
 
+# ``life_development_novel_origin_review`` is intentionally live again: the
+# optional focused World Author critic (prose / user-channel boundary). H1d
+# still forbids the deleted one-shot closure/proof lanes below.
 _FORBIDDEN = (
     "life_development_source_closure_review",
-    "life_development_novel_origin_review",
     "visible_source_closure_proof_v1",
     "candidate_external_proposition_inventory",
 )

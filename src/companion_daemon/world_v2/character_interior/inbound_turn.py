@@ -53,6 +53,7 @@ from ..validation_failure_codes import (
 from .audit import recorded_character_interior_lineage
 from .inbound_author import _InboundRecallRequested
 from .contracts import (
+    InnerLifeSnapshot,
     InteriorOpportunity,
     _InteriorAuthorLineage,
     _InteriorCapabilityManifest,
@@ -260,6 +261,41 @@ def _sanitized_role_technical_failure(
         rejected_raw_hash=getattr(exc, "rejected_raw_hash", None),
         rejected_raw_excerpt=getattr(exc, "rejected_raw_excerpt", None),
     )
+
+
+def _shareable_photo_binding_slice(snapshot: InnerLifeSnapshot) -> dict[str, object] | None:
+    """Re-pin opened photo candidates into Context slices for media evidence."""
+
+    items: list[dict[str, object]] = []
+    for item in snapshot.source_inventory:
+        if item.scope != "moments_i_can_share" or not item.authority_bindings:
+            continue
+        items.append(
+            {
+                "item_ref": item.source_ref,
+                "source_ref": item.source_ref,
+                "source_bindings": [
+                    {
+                        "ref": binding.ref,
+                        "source_kind": binding.source_kind,
+                        "authority_type": binding.authority_type,
+                        "source_world_revision": binding.source_world_revision,
+                        "immutable_hash": binding.immutable_hash,
+                    }
+                    for binding in item.authority_bindings
+                ],
+                "attention_source_refs": list(
+                    dict.fromkeys(binding.ref for binding in item.authority_bindings)
+                ),
+            }
+        )
+    if not items:
+        return None
+    return {
+        "availability": "available",
+        "source_refs": [item["source_ref"] for item in items],
+        "items": items,
+    }
 
 
 def _logical_time(request: ModelInput) -> datetime:
@@ -569,6 +605,11 @@ class InboundTurnFaculty:
         content = json.loads(model_input.model_content_json)
         if not isinstance(content, dict):
             raise ValueError("inbound CharacterInterior Context is not an object")
+        photo_slice = _shareable_photo_binding_slice(request.snapshot)
+        if photo_slice is not None:
+            slices = dict(content.get("slices") or {})
+            slices["shareable_photos"] = photo_slice
+            content["slices"] = slices
         content["inner_life_snapshot"] = request.snapshot.model_view()
         if request.correction_ordinal == 1:
             # This is a hard-wire failure coordinate, not a semantic hint. It

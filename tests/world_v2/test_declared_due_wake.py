@@ -7,7 +7,10 @@ import pytest
 
 from companion_daemon.world_v2.declared_due import (
     COMPUTED_CLOCK_WAKE_KINDS,
+    NON_WAKING_PROJECTION_DUE_FIELDS,
     assert_declared_due_wake_coverage,
+    assert_host_uses_declared_due_only,
+    collect_clock_wake_dues,
     collect_projection_declared_dues,
     collected_clock_wake_kinds,
     collected_projection_due_fields,
@@ -30,6 +33,7 @@ def test_every_clock_due_kind_and_field_has_a_wake_collector() -> None:
     assert COMPUTED_CLOCK_WAKE_KINDS <= collected_clock_wake_kinds()
     assert required_clock_wake_kinds() <= collected_clock_wake_kinds()
     assert INSTALLED_PROJECTION_DUE_FIELDS <= collected_projection_due_fields()
+    assert NON_WAKING_PROJECTION_DUE_FIELDS <= INSTALLED_PROJECTION_DUE_FIELDS
 
 
 def test_gatekeeper_goes_red_when_a_new_due_kind_is_not_collected(
@@ -48,17 +52,33 @@ def test_gatekeeper_goes_red_when_a_new_due_kind_is_not_collected(
 def test_gatekeeper_goes_red_when_an_installed_field_has_no_extractor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    original = declared_due_module.collected_projection_due_fields
     monkeypatch.setattr(
         declared_due_module,
-        "_FIELD_EXTRACTORS",
-        {
-            name: kind
-            for name, kind in declared_due_module._FIELD_EXTRACTORS.items()
-            if name != "Action.not_before"
-        },
+        "collected_projection_due_fields",
+        lambda: original() - {"Action.not_before"},
     )
     with pytest.raises(AssertionError, match="Action.not_before"):
         assert_declared_due_wake_coverage()
+
+
+def test_gatekeeper_goes_red_when_host_keeps_a_handwritten_due_list() -> None:
+    broken = '''
+class QQC2CHost:
+    async def _scheduler_once_serialized(self):
+        computed_dues = [
+            computed_due("action.authorized_due", None),
+            computed_due("expression.technical_retry", None),
+            computed_due("life.ecology", None),
+        ]
+        select_clock_wake(after=None, through=None, dues=computed_dues)
+'''
+    with pytest.raises(AssertionError, match="collect_clock_wake_dues"):
+        assert_host_uses_declared_due_only(host_source=broken)
+
+
+def test_host_scheduler_computed_peeks_match_registered_kinds() -> None:
+    assert_host_uses_declared_due_only()
 
 
 def test_clock_due_owners_are_not_a_handwritten_scheduler_list() -> None:
@@ -90,6 +110,38 @@ def test_collector_wakes_an_appraisal_expiry_that_was_never_on_the_old_list() ->
     assert selected.due_at == due
 
 
+def test_collect_clock_wake_dues_requires_exact_computed_keys() -> None:
+    with pytest.raises(AssertionError, match="missing computed kinds"):
+        collect_clock_wake_dues(None, computed={"social.initiative.cadence": None})
+
+
+def test_post_silent_delay_enters_wake_set_via_computed_peek() -> None:
+    """Today's accident shape: delay:25200 must wake before Life."""
+
+    post_silent = NOW + timedelta(seconds=25200)
+    life = NOW + timedelta(hours=8)
+    dues = collect_clock_wake_dues(
+        SimpleNamespace(
+            actions=(),
+            life_ecology_schedule=SimpleNamespace(next_consideration_at=life),
+        ),
+        computed={
+            "social.initiative.cadence": post_silent,
+            "private_impression.interval": None,
+            "life.ecology": life,
+        },
+    )
+    selected = select_clock_wake(
+        after=NOW,
+        through=NOW + timedelta(hours=9),
+        dues=dues,
+    )
+    assert selected is not None
+    assert selected.kind == "social.initiative.cadence"
+    assert selected.due_at == post_silent
+    assert selected.reason == "qq_c2c_social_initiative_due_wake"
+
+
 def test_select_clock_wake_does_not_wall_jump_an_already_due_initiative() -> None:
     past = NOW - timedelta(hours=1)
     future = NOW + timedelta(hours=1)
@@ -117,3 +169,23 @@ def test_life_ecology_may_catch_up_to_the_tick_boundary() -> None:
     assert selected is not None
     assert selected.due_at == boundary
     assert selected.reason == "qq_c2c_life_ecology_due_wake"
+
+
+def test_silence_formula_is_explicitly_non_waking() -> None:
+    dues = collect_projection_declared_dues(
+        SimpleNamespace(
+            silence_opportunity=SimpleNamespace(
+                anchored_at=NOW,
+                idle_seconds=3600,
+            ),
+            actions=(),
+        )
+    )
+    assert all(item.kind != "relationship.silence_aftermath" for item in dues)
+    silence = next(
+        owner
+        for owner in DELAYED_TRIGGER_OWNERS
+        if owner.mechanism_id == "relationship.silence_aftermath"
+    )
+    assert silence.trigger_mode == "derived_formula"
+    assert set(silence.projection_due_fields) == set(NON_WAKING_PROJECTION_DUE_FIELDS)

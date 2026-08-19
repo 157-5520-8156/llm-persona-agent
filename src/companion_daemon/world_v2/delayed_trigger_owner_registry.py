@@ -379,6 +379,10 @@ DELAYED_TRIGGER_OWNERS: tuple[DelayedTriggerOwner, ...] = (
         runtime_owner=SilenceAppraisalTriggerOpener.open_once,
         public_seams=_CLOCK_RECEIPT_SEAMS,
         trigger_mode="derived_formula",
+        projection_due_fields=(
+            _field(SilenceOpportunity, "anchored_at"),
+            _field(SilenceOpportunity, "idle_seconds"),
+        ),
         model_contract=_installed_contract("world_stimulus_appraisal"),
     ),
     DelayedTriggerOwner(

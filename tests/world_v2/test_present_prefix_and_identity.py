@@ -150,6 +150,8 @@ def test_present_moments_i_can_share_now_is_a_world_fact() -> None:
     assert "这不是建议你发，也不是建议你去拍" in instruction
     assert "会和这个事实打架" in instruction
     assert "没有候选、现在拍不了，都如实是空的" in instruction
+    assert "条数就是还活着的条数，不是只给你看最近一条" in instruction
+    assert "hold_reason=user_channel_limited" in instruction
     assert "发出去的那张会出现在 conversation 栏里" in instruction
     assert "conversation 栏可能暂时画不出" not in instruction
     assert "你可以给他看看" not in instruction

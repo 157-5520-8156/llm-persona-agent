@@ -1853,20 +1853,24 @@ class DeepSeekChatModel:
             succeeded=usage.status == "succeeded",
         )
         state = _MODEL_CALL_STATE.get()
-        if self.usage_observer is None:
-            if state is not None:
-                state.usage_persisted = False
-            return
+        persisted = False
+        if self.usage_observer is not None:
+            try:
+                self.usage_observer(usage)
+                persisted = True
+            except Exception:
+                persisted = False
         try:
-            self.usage_observer(usage)
-            if state is not None:
-                state.usage_persisted = True
+            from companion_daemon.spend_account import maybe_record_debug_usage
+
+            maybe_record_debug_usage(usage, observer=self.usage_observer)
         except Exception:
-            # Observability must never turn a successful model response into a
-            # failed companion turn.
-            if state is not None:
+            logger.warning("debug spend ledger hook failed", exc_info=True)
+        if state is not None:
+            if self.usage_observer is None:
                 state.usage_persisted = False
-            return
+            else:
+                state.usage_persisted = persisted
 
 
 class OpenAICompatibleChatModel(DeepSeekChatModel):

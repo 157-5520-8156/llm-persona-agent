@@ -111,8 +111,8 @@ def test_model_budget_remaining_uses_persisted_real_token_cost(tmp_path: Path) -
         monthly_audio_limit=60,
     )
 
-    # One million cache-miss input tokens cost USD 0.14, or CNY 1.008 at
-    # the persisted report rate. This must reduce the automatic budget.
+    # One million cache-miss input tokens now cost ¥1.5 off-peak / ¥3 peak,
+    # so they exhaust the ¥1.01 automatic envelope either way.
     assert 0 <= gate.remaining_model_budget_cny(automatic=True) < 0.01
 
 

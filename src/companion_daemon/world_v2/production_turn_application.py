@@ -2679,14 +2679,13 @@ class WorldV2TurnApplication:
                 if last_lived_at is not None
                 else schedule.last_completed_at
             )
-        # "Starved" means not living *now*, not "never lived".  Two Life
-        # cadences (12h) without a lived event is the same empty-loop shape
-        # as today's freeze: the world once moved and then stopped.
+        # "Starved" means not living *now* on the wall clock.  Logical time
+        # alone cannot detect today's freeze: a Life no-op advances both the
+        # cursor and last_lived_at together, so the gap stays zero while wall
+        # time runs away with overdue work unfinished.
         starved_horizon = timedelta(hours=12)
-        living_clock = logical_time or last_lived_at
-        starved = last_lived_at is not None and living_clock is not None and (
-            living_clock - last_lived_at > starved_horizon
-        )
+        wall_now = datetime.now(UTC)
+        starved = last_lived_at is not None and (wall_now - last_lived_at) > starved_horizon
         expression_retry = _expression_retry_health(projection)
         plans_by_status = Counter(item.status for item in projection.plans)
         active_plans = tuple(item for item in projection.plans if item.status == "active")

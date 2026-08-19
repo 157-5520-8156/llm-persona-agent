@@ -182,6 +182,28 @@ def shareable_photo_facts(
     return tuple(facts)
 
 
+def _event_source_binding(projection: object, event_id: str) -> dict[str, object] | None:
+    for item in getattr(projection, "committed_world_event_refs", ()) or ():
+        if getattr(item, "event_id", None) != event_id:
+            continue
+        payload_hash = getattr(item, "payload_hash", None)
+        revision = getattr(item, "world_revision", None)
+        event_type = getattr(item, "event_type", None)
+        if not isinstance(payload_hash, str) or not isinstance(revision, int):
+            return None
+        digest = payload_hash.removeprefix("sha256:")
+        if len(digest) != 64:
+            return None
+        return {
+            "ref": event_id,
+            "source_kind": "committed_event",
+            "authority_type": event_type if isinstance(event_type, str) else "PhotoCandidateOpened",
+            "source_world_revision": revision,
+            "immutable_hash": digest,
+        }
+    return None
+
+
 def shareable_photo_slice_items(
     projection: object, *, logical_time: datetime | None
 ) -> list[dict[str, object]]:
@@ -205,14 +227,17 @@ def shareable_photo_slice_items(
             value["location_ref"] = fact.location_ref
         if fact.expires_at is not None:
             value["expires_at"] = fact.expires_at.isoformat()
-        items.append(
-            {
-                "item_ref": fact.candidate_id or fact.source_ref,
-                "source_ref": fact.source_ref,
-                "privacy_class": fact.privacy_class,
-                "value": value,
-            }
-        )
+        row: dict[str, object] = {
+            "item_ref": fact.candidate_id or fact.source_ref,
+            "source_ref": fact.source_ref,
+            "privacy_class": fact.privacy_class,
+            "value": value,
+        }
+        binding = _event_source_binding(projection, fact.source_ref)
+        if binding is not None:
+            row["source_bindings"] = [binding]
+            row["attention_source_refs"] = [binding["ref"]]
+        items.append(row)
     return items
 
 

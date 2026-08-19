@@ -539,9 +539,9 @@ mechanisms:
     fault_matrix: [provider timeout/invalid, CAS conflict, restart, lease expiry, late result, user reply supersession, bad-trigger starvation]
     vertical_lanes: [silence_appraisal]
     closure_mechanisms: [appraisal-affect-relationship-impression]
-    projection_due_fields: []
+    projection_due_fields: [SilenceOpportunity.anchored_at, SilenceOpportunity.idle_seconds]
     model_contract: {purpose: world_stimulus_appraisal, contract_identity: character-interior-world-stimulus-appraisal-decision.1}
-    activation_note: Active opportunity only; the system never decides disappointment or withdrawal.
+    activation_note: Active opportunity only; the system never decides disappointment or withdrawal. Declared due fields are registered for formula identity but never enter the clock wake set.
 
   - mechanism_id: goal.expiry
     purpose: Replay-compatible expiry of existing V2 Goal heads

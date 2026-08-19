@@ -7,29 +7,45 @@ her decision waited.  Adding one more item would only delay the next miss.
 This module is the construction: projection due fields registered in
 ``delayed_trigger_owner_registry`` plus a small set of compiler-computed
 dues are collected together.  The scheduler takes the next wake from that
-set.  A gatekeeper test fails when a new clock-due owner or installed
-projection field is added without a collector.
+set only — never from a second handwritten kind list in the host.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+import ast
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 WakePolicy = Literal["exact_future", "wall_catchup"]
 
-# Compiler-computed dues that are accepted decisions but do not live as a
-# stored projection field until a process opens.  The gatekeeper requires
-# these kinds to have a collector even though they are not INSTALLED fields.
+# Compiler/host peeks that are accepted decisions but do not live as a stable
+# projection field the collector can read alone.  The host must pass exactly
+# these keys into ``collect_clock_wake_dues``; the AST gatekeeper checks that.
 COMPUTED_CLOCK_WAKE_KINDS = frozenset(
     {
         "social.initiative.cadence",
         "private_impression.interval",
-        "expression.technical_retry",
+        "life.ecology",
     }
 )
+
+# Installed fields that are derived formulas and must never wake the clock.
+# Empty extractors are allowed only for these; they stay registered so a later
+# author cannot silently invent a wake by adding a field name alone.
+NON_WAKING_PROJECTION_DUE_FIELDS = frozenset(
+    {
+        "SilenceOpportunity.anchored_at",
+        "SilenceOpportunity.idle_seconds",
+    }
+)
+
+# Fields whose wake path is a registered computed peek, not a projection read.
+_FIELD_COMPUTED_COVER: Mapping[str, str] = {
+    "ProactiveOpportunity.scheduled_for": "social.initiative.cadence",
+}
 
 # Existing tick-reason strings that tests and ops already depend on.
 _KIND_WAKE_REASONS: Mapping[str, str] = {
@@ -64,6 +80,17 @@ class DeclaredDueTarget:
     field: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _ProjectionExtractor:
+    """One real read path from a projection into wake candidates."""
+
+    name: str
+    kinds: frozenset[str]
+    fields: frozenset[str]
+    extract: Callable[[object], tuple[DeclaredDueTarget, ...]]
+    wake_collects: bool = True
+
+
 def clock_wake_reason(kind: str) -> str:
     """Stable scheduler reason for a collected due kind."""
 
@@ -87,15 +114,17 @@ def required_clock_wake_kinds() -> frozenset[str]:
 
 
 def collected_projection_due_fields() -> frozenset[str]:
-    """Projection field names this collector knows how to read."""
+    """Projection field names this collector knows how to read or explicitly skip."""
 
-    return frozenset(_FIELD_EXTRACTORS)
+    covered = frozenset(field for item in _PROJECTION_EXTRACTORS for field in item.fields)
+    return covered | frozenset(_FIELD_COMPUTED_COVER) | NON_WAKING_PROJECTION_DUE_FIELDS
 
 
 def collected_clock_wake_kinds() -> frozenset[str]:
     """Kinds this collector can emit, including computed extras."""
 
-    return frozenset(_KIND_EXTRACTORS) | COMPUTED_CLOCK_WAKE_KINDS
+    kinds = frozenset(kind for item in _PROJECTION_EXTRACTORS for kind in item.kinds)
+    return kinds | COMPUTED_CLOCK_WAKE_KINDS | frozenset(_FIELD_COMPUTED_COVER.values())
 
 
 def _as_datetime(value: object) -> datetime | None:
@@ -392,23 +421,81 @@ def _extract_trigger_leases(projection: object) -> tuple[DeclaredDueTarget, ...]
     return tuple(found)
 
 
+def _extract_proactive_technical_retry(projection: object) -> tuple[DeclaredDueTarget, ...]:
+    from .proactive_action import next_proactive_retry_due
+
+    try:
+        due = next_proactive_retry_due(projection)
+    except AttributeError:
+        return ()
+    if due is None:
+        return ()
+    return (
+        DeclaredDueTarget(
+            kind="proactive.technical_retry",
+            due_at=due,
+            reason=clock_wake_reason("proactive.technical_retry"),
+            field="ProactiveTechnicalRetryState.next_retry_at",
+        ),
+    )
+
+
+def _extract_expression_technical_retry(projection: object) -> tuple[DeclaredDueTarget, ...]:
+    from .expression_episode_lifecycle import next_expression_retry_due
+
+    try:
+        due = next_expression_retry_due(projection)
+    except AttributeError:
+        return ()
+    if due is None:
+        return ()
+    return (
+        DeclaredDueTarget(
+            kind="expression.technical_retry",
+            due_at=due,
+            reason=clock_wake_reason("expression.technical_retry"),
+            field="ClaimLease.expires_at",
+        ),
+    )
+
+
+def _extract_proactive_scheduled(projection: object) -> tuple[DeclaredDueTarget, ...]:
+    """Read stored opportunity schedules when present on the projection.
+
+    Post-silent / spontaneous cadence usually lives in RandomAuthority draws and
+    enters the wake set via the ``social.initiative.cadence`` computed peek.
+    This extractor covers the same field when a concrete opportunity object is
+    already projected.
+    """
+
+    found: list[DeclaredDueTarget] = []
+    for opportunity in _iter(getattr(projection, "proactive_opportunities", ())):
+        due = _as_datetime(getattr(opportunity, "scheduled_for", None))
+        if due is None:
+            continue
+        found.append(
+            DeclaredDueTarget(
+                kind="social.initiative.cadence",
+                due_at=due,
+                reason=clock_wake_reason("social.initiative.cadence"),
+                field="ProactiveOpportunity.scheduled_for",
+            )
+        )
+    return tuple(found)
+
+
 def _extract_silence_formula(projection: object) -> tuple[DeclaredDueTarget, ...]:
     """Silence aftermath is a derived formula, not a stored due.
 
-    The registry marks it ``derived_formula``.  Collecting last-message +
-    idle would invent a policy constant here.  Inbound already advances the
-    clock; leftover silence rides the next collected wake.
+    Marked ``wake_collects=False``.  Inbound already advances the clock;
+    leftover silence rides the next collected wake.
     """
 
     return ()
 
 
 def _extract_perception_refresh(projection: object) -> tuple[DeclaredDueTarget, ...]:
-    """Perception refresh lives on the hub sidecar, not the world projection.
-
-    A host may pass it as a computed due.  The projection has no
-    ``SourceHealthSnapshot.next_refresh_at``.
-    """
+    """Perception refresh may live on projection snapshots; hub also uses wall."""
 
     snapshots = _iter(getattr(projection, "external_signal_snapshots", ()))
     found: list[DeclaredDueTarget] = []
@@ -426,61 +513,150 @@ def _extract_perception_refresh(projection: object) -> tuple[DeclaredDueTarget, 
     return tuple(found)
 
 
-_FIELD_EXTRACTORS: Mapping[str, str] = {
-    "Action.not_before": "action.authorized_due",
-    "Action.expires_at": "action.authorized_due",
-    "ClaimLease.expires_at": "action.authorized_due",
-    "ProactiveOpportunity.scheduled_for": "social.initiative.cadence",
-    "ProactiveTechnicalRetryState.next_retry_at": "proactive.technical_retry",
-    "LifeEcologyScheduleProjection.next_consideration_at": "life.ecology",
-    "ExpressionPlanManifestBeatRef.not_before": "expression.multibeat",
-    "ExpressionPlanManifestBeatRef.expires_at": "expression.multibeat",
-    "CommitmentValues.due_window": "conversation.commitment_due",
-    "ResponseExpectationAuthority.not_before": "conversation.expectation_expiry",
-    "ResponseExpectationAuthority.expires_at": "conversation.expectation_expiry",
-    "PlanStateProjection.scheduled_window": "life.activity_occurrence",
-    "WorldOccurrenceProjection.time_window": "life.activity_occurrence",
-    "AffectComponentProjection.decay_not_before": "affect.decay",
-    "AppraisalProjection.expires_at": "appraisal.expiry",
-    "SilenceOpportunity.anchored_at": "relationship.silence_aftermath",
-    "SilenceOpportunity.idle_seconds": "relationship.silence_aftermath",
-    "V2GoalValues.due_window": "goal.expiry",
-    "SourceHealthSnapshot.next_refresh_at": "perception.refresh_attention",
-    "MediaOpportunity.expires_at": "media.planning",
-}
-
-_KIND_EXTRACTORS: frozenset[str] = frozenset(_FIELD_EXTRACTORS.values()) | frozenset(
-    {
-        "expression.deferred_reply",
-        "media.execution",
-        "media.delivery",
-        "proactive.event_driven",
-        "proactive.ambient",
-        "proactive.post_silent",
-    }
+_PROJECTION_EXTRACTORS: tuple[_ProjectionExtractor, ...] = (
+    _ProjectionExtractor(
+        name="_extract_action_authorized_due",
+        kinds=frozenset(
+            {
+                "action.authorized_due",
+                "media.execution",
+                "media.delivery",
+                "media.planning",
+            }
+        ),
+        fields=frozenset({"Action.not_before", "Action.expires_at", "ClaimLease.expires_at"}),
+        extract=_extract_action_authorized_due,
+    ),
+    _ProjectionExtractor(
+        name="_extract_trigger_leases",
+        kinds=frozenset({"action.authorized_due", "proactive.technical_retry"}),
+        fields=frozenset({"ClaimLease.expires_at"}),
+        extract=_extract_trigger_leases,
+    ),
+    _ProjectionExtractor(
+        name="_extract_life_ecology",
+        kinds=frozenset({"life.ecology"}),
+        fields=frozenset({"LifeEcologyScheduleProjection.next_consideration_at"}),
+        extract=_extract_life_ecology,
+    ),
+    _ProjectionExtractor(
+        name="_extract_expression_beats",
+        kinds=frozenset(
+            {
+                "expression.multibeat",
+                "expression.deferred_reply",
+                "conversation.expectation_expiry",
+            }
+        ),
+        fields=frozenset(
+            {
+                "ExpressionPlanManifestBeatRef.not_before",
+                "ExpressionPlanManifestBeatRef.expires_at",
+                "ResponseExpectationAuthority.not_before",
+                "ResponseExpectationAuthority.expires_at",
+            }
+        ),
+        extract=_extract_expression_beats,
+    ),
+    _ProjectionExtractor(
+        name="_extract_expression_technical_retry",
+        kinds=frozenset({"expression.technical_retry"}),
+        fields=frozenset({"ClaimLease.expires_at"}),
+        extract=_extract_expression_technical_retry,
+    ),
+    _ProjectionExtractor(
+        name="_extract_commitments",
+        kinds=frozenset({"conversation.commitment_due"}),
+        fields=frozenset({"CommitmentValues.due_window"}),
+        extract=_extract_commitments,
+    ),
+    _ProjectionExtractor(
+        name="_extract_threads",
+        kinds=frozenset({"conversation.commitment_due"}),
+        fields=frozenset({"CommitmentValues.due_window"}),
+        extract=_extract_threads,
+    ),
+    _ProjectionExtractor(
+        name="_extract_plans",
+        kinds=frozenset({"life.activity_occurrence"}),
+        fields=frozenset({"PlanStateProjection.scheduled_window"}),
+        extract=_extract_plans,
+    ),
+    _ProjectionExtractor(
+        name="_extract_occurrences",
+        kinds=frozenset({"life.activity_occurrence"}),
+        fields=frozenset({"WorldOccurrenceProjection.time_window"}),
+        extract=_extract_occurrences,
+    ),
+    _ProjectionExtractor(
+        name="_extract_appraisals",
+        kinds=frozenset({"appraisal.expiry"}),
+        fields=frozenset({"AppraisalProjection.expires_at"}),
+        extract=_extract_appraisals,
+    ),
+    _ProjectionExtractor(
+        name="_extract_affect",
+        kinds=frozenset({"affect.decay"}),
+        fields=frozenset({"AffectComponentProjection.decay_not_before"}),
+        extract=_extract_affect,
+    ),
+    _ProjectionExtractor(
+        name="_extract_goals",
+        kinds=frozenset({"goal.expiry"}),
+        fields=frozenset({"V2GoalValues.due_window"}),
+        extract=_extract_goals,
+    ),
+    _ProjectionExtractor(
+        name="_extract_media_opportunities",
+        kinds=frozenset({"media.planning"}),
+        fields=frozenset({"MediaOpportunity.expires_at"}),
+        extract=_extract_media_opportunities,
+    ),
+    _ProjectionExtractor(
+        name="_extract_proactive_technical_retry",
+        kinds=frozenset({"proactive.technical_retry"}),
+        fields=frozenset({"ProactiveTechnicalRetryState.next_retry_at"}),
+        extract=_extract_proactive_technical_retry,
+    ),
+    _ProjectionExtractor(
+        name="_extract_proactive_scheduled",
+        kinds=frozenset(
+            {
+                "social.initiative.cadence",
+                "proactive.event_driven",
+                "proactive.ambient",
+                "proactive.post_silent",
+            }
+        ),
+        fields=frozenset({"ProactiveOpportunity.scheduled_for"}),
+        extract=_extract_proactive_scheduled,
+    ),
+    _ProjectionExtractor(
+        name="_extract_perception_refresh",
+        kinds=frozenset({"perception.refresh_attention"}),
+        fields=frozenset({"SourceHealthSnapshot.next_refresh_at"}),
+        extract=_extract_perception_refresh,
+    ),
+    _ProjectionExtractor(
+        name="_extract_silence_formula",
+        kinds=frozenset({"relationship.silence_aftermath"}),
+        fields=NON_WAKING_PROJECTION_DUE_FIELDS,
+        extract=_extract_silence_formula,
+        wake_collects=False,
+    ),
 )
 
 
 def collect_projection_declared_dues(projection: object | None) -> tuple[DeclaredDueTarget, ...]:
-    """Read every installed projection due that is still live."""
+    """Read every installed projection due that is still live and waking."""
 
     if projection is None:
         return ()
     collected: list[DeclaredDueTarget] = []
-    collected.extend(_extract_action_authorized_due(projection))
-    collected.extend(_extract_trigger_leases(projection))
-    collected.extend(_extract_life_ecology(projection))
-    collected.extend(_extract_expression_beats(projection))
-    collected.extend(_extract_commitments(projection))
-    collected.extend(_extract_threads(projection))
-    collected.extend(_extract_plans(projection))
-    collected.extend(_extract_occurrences(projection))
-    collected.extend(_extract_appraisals(projection))
-    collected.extend(_extract_affect(projection))
-    collected.extend(_extract_goals(projection))
-    collected.extend(_extract_media_opportunities(projection))
-    collected.extend(_extract_perception_refresh(projection))
-    collected.extend(_extract_silence_formula(projection))
+    for item in _PROJECTION_EXTRACTORS:
+        if not item.wake_collects:
+            continue
+        collected.extend(item.extract(projection))
     return tuple(collected)
 
 
@@ -502,6 +678,34 @@ def computed_due(
         wake_policy=wake_policy or ("wall_catchup" if kind in _WALL_CATCHUP_KINDS else "exact_future"),
         field=field,
     )
+
+
+def collect_clock_wake_dues(
+    projection: object | None,
+    *,
+    computed: Mapping[str, datetime | None],
+) -> tuple[DeclaredDueTarget, ...]:
+    """Sole selection input for the QQ clock: projection dues ∪ computed peeks.
+
+    ``computed`` must contain exactly ``COMPUTED_CLOCK_WAKE_KINDS`` as keys.
+    Values may be ``None`` when that kind has no pending due.
+    """
+
+    missing = COMPUTED_CLOCK_WAKE_KINDS - frozenset(computed)
+    extra = frozenset(computed) - COMPUTED_CLOCK_WAKE_KINDS
+    if missing or extra:
+        problems: list[str] = []
+        if missing:
+            problems.append("missing computed kinds: " + ", ".join(sorted(missing)))
+        if extra:
+            problems.append("unknown computed kinds: " + ", ".join(sorted(extra)))
+        raise AssertionError("; ".join(problems))
+    collected: list[DeclaredDueTarget] = list(collect_projection_declared_dues(projection))
+    for kind in sorted(COMPUTED_CLOCK_WAKE_KINDS):
+        wrapped = computed_due(kind, computed.get(kind))
+        if wrapped is not None:
+            collected.append(wrapped)
+    return tuple(collected)
 
 
 def select_clock_wake(
@@ -542,13 +746,17 @@ def select_clock_wake(
 
 
 def assert_declared_due_wake_coverage() -> None:
-    """Fail closed when a registered due kind has no collector.
+    """Fail closed when a registered due kind has no real collector path.
 
-    Imported by the gatekeeper test.  Production startup does not call this;
-    the test is the tripwire so a new due cannot ship without a wake.
+    Imported by the gatekeeper test and composition checks.  Production
+    startup may call this; the test is the tripwire so a new due cannot ship
+    without a wake.
     """
 
-    from .delayed_trigger_owner_registry import INSTALLED_PROJECTION_DUE_FIELDS
+    from .delayed_trigger_owner_registry import (
+        DELAYED_TRIGGER_OWNERS,
+        INSTALLED_PROJECTION_DUE_FIELDS,
+    )
 
     required = required_clock_wake_kinds()
     collected = collected_clock_wake_kinds()
@@ -557,18 +765,182 @@ def assert_declared_due_wake_coverage() -> None:
         raise AssertionError(
             "declared dues without a clock-wake collector: " + ", ".join(missing_kinds)
         )
-    missing_fields = sorted(INSTALLED_PROJECTION_DUE_FIELDS - collected_projection_due_fields())
+
+    covered_fields = collected_projection_due_fields()
+    missing_fields = sorted(INSTALLED_PROJECTION_DUE_FIELDS - covered_fields)
     if missing_fields:
         raise AssertionError(
             "installed projection due fields without a collector: " + ", ".join(missing_fields)
         )
 
+    # Every waking extractor must be reachable from collect_projection_declared_dues
+    # (registered in _PROJECTION_EXTRACTORS with wake_collects=True).
+    waking = tuple(item for item in _PROJECTION_EXTRACTORS if item.wake_collects)
+    if not waking:
+        raise AssertionError("no waking projection extractors registered")
+
+    for field_name, computed_kind in _FIELD_COMPUTED_COVER.items():
+        if computed_kind not in COMPUTED_CLOCK_WAKE_KINDS:
+            raise AssertionError(
+                f"field {field_name} claims computed cover {computed_kind} "
+                "which is not in COMPUTED_CLOCK_WAKE_KINDS"
+            )
+
+    if not NON_WAKING_PROJECTION_DUE_FIELDS <= INSTALLED_PROJECTION_DUE_FIELDS:
+        raise AssertionError(
+            "NON_WAKING_PROJECTION_DUE_FIELDS must stay inside INSTALLED_PROJECTION_DUE_FIELDS"
+        )
+    silence_owners = tuple(
+        owner
+        for owner in DELAYED_TRIGGER_OWNERS
+        if owner.mechanism_id == "relationship.silence_aftermath"
+    )
+    if len(silence_owners) != 1 or silence_owners[0].trigger_mode != "derived_formula":
+        raise AssertionError(
+            "relationship.silence_aftermath must remain a derived_formula non-wake owner"
+        )
+
+
+def assert_host_uses_declared_due_only(*, host_source: str | None = None) -> None:
+    """AST gate: QQ scheduler must not keep a second handwritten due list.
+
+    Checks that ``_scheduler_once_serialized`` calls ``collect_clock_wake_dues``
+    with a computed-dict whose string keys equal ``COMPUTED_CLOCK_WAKE_KINDS``,
+    and that it does not call ``computed_due`` / ``select_clock_wake`` with an
+    inline due tuple of string kinds.
+    """
+
+    source = host_source
+    if source is None:
+        path = Path(__file__).resolve().parent / "qq_c2c_host.py"
+        source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    scheduler_fn: ast.AsyncFunctionDef | ast.FunctionDef | None = None
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "QQC2CHost":
+            for item in node.body:
+                if (
+                    isinstance(item, (ast.AsyncFunctionDef, ast.FunctionDef))
+                    and item.name == "_scheduler_once_serialized"
+                ):
+                    scheduler_fn = item
+                    break
+    if scheduler_fn is None:
+        raise AssertionError("QQC2CHost._scheduler_once_serialized not found")
+
+    collect_calls: list[ast.Call] = []
+    computed_due_calls = 0
+    forbidden_kind_lists: list[str] = []
+
+    class _Visitor(ast.NodeVisitor):
+        def visit_Call(self, node: ast.Call) -> None:  # noqa: N802
+            nonlocal computed_due_calls
+            name = _call_name(node)
+            if name == "collect_clock_wake_dues":
+                collect_calls.append(node)
+            elif name == "computed_due":
+                computed_due_calls += 1
+            self.generic_visit(node)
+
+        def visit_List(self, node: ast.List) -> None:  # noqa: N802
+            kinds = _string_elements(node.elts)
+            if kinds and kinds <= (
+                COMPUTED_CLOCK_WAKE_KINDS
+                | frozenset(
+                    {
+                        "action.authorized_due",
+                        "expression.technical_retry",
+                        "proactive.technical_retry",
+                    }
+                )
+            ):
+                forbidden_kind_lists.append(", ".join(sorted(kinds)))
+            self.generic_visit(node)
+
+        def visit_Tuple(self, node: ast.Tuple) -> None:  # noqa: N802
+            kinds = _string_elements(node.elts)
+            if len(kinds) >= 3 and kinds <= (
+                COMPUTED_CLOCK_WAKE_KINDS
+                | frozenset(
+                    {
+                        "action.authorized_due",
+                        "expression.technical_retry",
+                        "proactive.technical_retry",
+                        "life.ecology",
+                    }
+                )
+            ):
+                forbidden_kind_lists.append(", ".join(sorted(kinds)))
+            self.generic_visit(node)
+
+    _Visitor().visit(scheduler_fn)
+
+    if len(collect_calls) != 1:
+        raise AssertionError(
+            "QQC2CHost._scheduler_once_serialized must call collect_clock_wake_dues exactly once "
+            f"(found {len(collect_calls)})"
+        )
+    if computed_due_calls:
+        raise AssertionError(
+            "QQC2CHost._scheduler_once_serialized must not call computed_due; "
+            "pass peeks through collect_clock_wake_dues"
+        )
+    if forbidden_kind_lists:
+        raise AssertionError(
+            "handwritten due-kind list in scheduler: " + "; ".join(forbidden_kind_lists)
+        )
+
+    call = collect_calls[0]
+    computed_keys: set[str] = set()
+    for keyword in call.keywords:
+        if keyword.arg != "computed":
+            continue
+        if isinstance(keyword.value, ast.Dict):
+            for key in keyword.value.keys:
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    computed_keys.add(key.value)
+        elif isinstance(keyword.value, ast.Call) and _call_name(keyword.value) == "dict":
+            for kw in keyword.value.keywords:
+                if isinstance(kw.arg, str):
+                    computed_keys.add(kw.arg)
+            for arg in keyword.value.args:
+                if isinstance(arg, ast.Dict):
+                    for key in arg.keys:
+                        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                            computed_keys.add(key.value)
+    if frozenset(computed_keys) != COMPUTED_CLOCK_WAKE_KINDS:
+        raise AssertionError(
+            "scheduler computed peeks must equal COMPUTED_CLOCK_WAKE_KINDS; "
+            f"got {sorted(computed_keys)}, want {sorted(COMPUTED_CLOCK_WAKE_KINDS)}"
+        )
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _string_elements(elts: list[ast.expr]) -> frozenset[str]:
+    values: set[str] = set()
+    for item in elts:
+        if isinstance(item, ast.Constant) and isinstance(item.value, str):
+            values.add(item.value)
+        else:
+            return frozenset()
+    return frozenset(values)
+
 
 __all__ = [
     "COMPUTED_CLOCK_WAKE_KINDS",
+    "NON_WAKING_PROJECTION_DUE_FIELDS",
     "DeclaredDueTarget",
     "assert_declared_due_wake_coverage",
+    "assert_host_uses_declared_due_only",
     "clock_wake_reason",
+    "collect_clock_wake_dues",
     "collect_projection_declared_dues",
     "collected_clock_wake_kinds",
     "collected_projection_due_fields",

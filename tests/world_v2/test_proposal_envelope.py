@@ -249,6 +249,15 @@ def test_private_turn_state_rejects_a_whitespace_only_summary() -> None:
         PrivateTurnState(inner_state_summary=" \t\n ")
 
 
+def test_private_turn_state_keeps_the_first_eight_attended_refs() -> None:
+    refs = tuple(f"event:appraisal:compiled:{index:02d}" for index in range(9))
+    state = PrivateTurnState(
+        inner_state_summary="Sixteen readings were in view; eight is the attention bound.",
+        attended_source_refs=refs,
+    )
+    assert state.attended_source_refs == refs[:8]
+
+
 def test_decision_makes_affect_no_change_or_one_candidate_explicit() -> None:
     no_change = _decision()
     proposal = _decision(

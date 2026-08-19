@@ -18,6 +18,7 @@ from companion_daemon.world_v2.model_usage_budget import (
     VISIBLE_INBOUND_PURPOSES,
     WorldV2UsageStore,
 )
+from companion_daemon.usage_metrics import estimate_model_cost
 
 
 class _Usage:
@@ -59,11 +60,29 @@ def test_usage_store_records_and_aggregates_cost(tmp_path) -> None:
     store.record(
         _Usage(model="deepseek-v4-flash", prompt_tokens=1_000_000, completion_tokens=0)
     )
-    # 1M miss tokens at $0.14/M = $0.14 * 7.2 = 1.008 CNY
+    connection = sqlite3.connect(tmp_path / "usage.sqlite")
+    try:
+        recorded_at, cost_cny, version, account = connection.execute(
+            "SELECT recorded_at, cost_cny, pricing_version, spend_account "
+            "FROM world_v2_model_usage"
+        ).fetchone()
+    finally:
+        connection.close()
+    expected = estimate_model_cost(
+        model="deepseek-v4-flash",
+        prompt_tokens=1_000_000,
+        completion_tokens=0,
+        cache_hit_tokens=0,
+        cache_miss_tokens=1_000_000,
+        at=recorded_at,
+    )
     monthly = store.monthly_cost_cny()
     daily = store.daily_cost_cny()
-    assert monthly == pytest.approx(1.008, abs=0.01)
-    assert daily == pytest.approx(1.008, abs=0.01)
+    assert monthly == pytest.approx(expected.cny, abs=0.01)
+    assert daily == pytest.approx(expected.cny, abs=0.01)
+    assert cost_cny == pytest.approx(expected.cny, abs=0.01)
+    assert version.startswith("deepseek-2026-08-17-")
+    assert account == "debug"
 
 
 def test_usage_store_records_failed_calls_without_raising(tmp_path) -> None:
@@ -82,7 +101,7 @@ def test_usage_store_budget_state_reports_exhaustion(tmp_path) -> None:
     state = store.budget_state(monthly_budget_cny=1.0, daily_budget_cny=1.0)
     assert state["monthly_exhausted"] is True
     assert state["daily_exhausted"] is True
-    assert state["monthly_cost_cny"] == pytest.approx(10.08, abs=0.05)
+    assert state["monthly_cost_cny"] >= 1.0
 
 
 def test_usage_store_missing_budget_never_exhausts(tmp_path) -> None:
@@ -279,8 +298,15 @@ def test_health_reports_cny_per_delivered_message(tmp_path) -> None:
     store.record(
         _Usage(model="deepseek-v4-flash", prompt_tokens=1_000_000, completion_tokens=0)
     )
+    connection = sqlite3.connect(path)
+    try:
+        cost = float(
+            connection.execute("SELECT cost_cny FROM world_v2_model_usage").fetchone()[0]
+        )
+    finally:
+        connection.close()
     state = store.budget_state(monthly_budget_cny=100.0, daily_budget_cny=10.0)
-    assert state["cny_per_delivered_message"] == pytest.approx(0.504, abs=0.01)
+    assert state["cny_per_delivered_message"] == pytest.approx(cost / 2, abs=0.01)
 
 
 def test_http_health_exposes_model_usage_attribution(tmp_path) -> None:
@@ -447,6 +473,48 @@ def test_image_usage_events_count_against_background_cny_cap(tmp_path) -> None:
         soft_daily_budget_cny=3.0,
     )
     UsageEventsLedger(path).record_usage("image_generation", 3.5, note="paid-render")
+    with pytest.raises(BackgroundSpendCapDenied, match="soft_daily_budget_exceeded"):
+        store.admit_provider_call(
+            purpose="private_impression_reflection",
+            actor="agent:companion",
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            prompt_characters=80,
+        )
+
+
+def test_background_cap_reprices_legacy_half_price_rows(tmp_path) -> None:
+    """Stored cost_cny=1.008 (old USD×7.2) must not sneak under a ¥1.2 soft cap.
+
+    1M Flash cache-miss is ¥1.5 off-peak / ¥3.0 peak after 2026-08-17. The old
+    table priced that same row at ¥1.008, which would have admitted the next
+    background call.
+    """
+
+    path = tmp_path / "usage.sqlite"
+    store = WorldV2UsageStore(
+        path=str(path),
+        monthly_budget_cny=100.0,
+        daily_budget_cny=4.0,
+        soft_daily_budget_cny=1.2,
+    )
+    recorded_at = datetime.now(timezone.utc).isoformat()
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute(
+            """
+            INSERT INTO world_v2_model_usage (
+                recorded_at, world_id, turn_id, purpose, model, status,
+                provider, prompt_tokens, completion_tokens, cache_hit_tokens,
+                cache_miss_tokens, total_tokens, error, cost_cny, latency_ms
+            ) VALUES (?, '', '', 'private_impression_reflection', 'deepseek-v4-flash',
+                      'succeeded', 'deepseek', 1000000, 0, 0, 1000000, 1000000, '', 1.008, 10)
+            """,
+            (recorded_at,),
+        )
+        connection.commit()
+    finally:
+        connection.close()
     with pytest.raises(BackgroundSpendCapDenied, match="soft_daily_budget_exceeded"):
         store.admit_provider_call(
             purpose="private_impression_reflection",

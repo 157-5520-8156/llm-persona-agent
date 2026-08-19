@@ -17,11 +17,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..db import ensure_usage_events_schema
-from ..usage_metrics import estimate_model_cost_usd, estimate_routed_model_reserve_cny
+from ..spend_account import classify_spend_account
+from ..usage_metrics import (
+    CNY_PER_USD,
+    estimate_model_cost,
+    estimate_routed_model_reserve_cny,
+    price_usage_row,
+)
 
 _LOG = logging.getLogger(__name__)
 
-_USD_TO_CNY = 7.2
+_USD_TO_CNY = CNY_PER_USD
 
 GENERIC_MODEL_PURPOSES = frozenset(
     {
@@ -94,6 +100,9 @@ _USAGE_COLUMN_MIGRATIONS = (
     ("reservation_id", "TEXT NOT NULL DEFAULT ''"),
     ("estimated_cny", "REAL NOT NULL DEFAULT 0"),
     ("attempt", "INTEGER NOT NULL DEFAULT 1"),
+    ("reasoning_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("pricing_version", "TEXT NOT NULL DEFAULT ''"),
+    ("spend_account", "TEXT NOT NULL DEFAULT ''"),
 )
 
 
@@ -151,6 +160,7 @@ class WorldV2UsageStore:
         self._daily_budget_cny = daily_budget_cny
         self._soft_daily_budget_cny = soft_daily_budget_cny
         self._lock = threading.RLock()
+        self._spend_account = classify_spend_account(database_path=path)
         ensure_usage_events_schema(Path(path))
         connection = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
         try:
@@ -191,20 +201,51 @@ class WorldV2UsageStore:
             return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
+    def _priced_model_spend_cny(
+        self, connection: sqlite3.Connection, *, since: datetime
+    ) -> float:
+        """Sum DeepSeek/OpenAI spend at the price table that applied at call time.
+
+        Stored ``cost_cny`` on rows written before 2026-08-17 peak/off-peak is
+        the old USD×7.2 half-price. Repricing from tokens does not rewrite the
+        ledger and is what the budget gate must see.
+        """
+
+        rows = connection.execute(
+            """
+            SELECT recorded_at, model, prompt_tokens, completion_tokens,
+                   cache_hit_tokens, cache_miss_tokens, cost_cny,
+                   COALESCE(reasoning_tokens, 0)
+            FROM world_v2_model_usage
+            WHERE recorded_at >= ?
+              AND purpose != 'image_generation'
+              AND status != 'budget_denied'
+            """,
+            (since.isoformat(),),
+        ).fetchall()
+        total = 0.0
+        for row in rows:
+            total += price_usage_row(
+                {
+                    "recorded_at": row[0],
+                    "model": row[1],
+                    "prompt_tokens": row[2],
+                    "completion_tokens": row[3],
+                    "cache_hit_tokens": row[4],
+                    "cache_miss_tokens": row[5],
+                    "cost_cny": row[6],
+                    "reasoning_tokens": row[7],
+                },
+                cny_per_usd=self._usd_to_cny,
+            ).cny
+        return total
+
     def _combined_spend_cny(self, *, since: datetime) -> float:
         iso = since.isoformat()
         with self._lock:
             connection = self._connect()
             try:
-                model_row = connection.execute(
-                    """
-                    SELECT COALESCE(SUM(cost_cny), 0) FROM world_v2_model_usage
-                    WHERE recorded_at >= ?
-                      AND purpose != 'image_generation'
-                      AND status != 'budget_denied'
-                    """,
-                    (iso,),
-                ).fetchone()
+                model_total = self._priced_model_spend_cny(connection, since=since)
                 pending_row = connection.execute(
                     """
                     SELECT COALESCE(SUM(estimated_cny), 0)
@@ -224,7 +265,6 @@ class WorldV2UsageStore:
                     images = float(image_row[0] if image_row is not None else 0.0)
                 except sqlite3.DatabaseError:
                     images = 0.0
-                model_total = float(model_row[0] if model_row is not None else 0.0)
                 pending = float(pending_row[0] if pending_row is not None else 0.0)
                 return model_total + pending + images
             finally:
@@ -384,17 +424,21 @@ class WorldV2UsageStore:
         model = str(getattr(usage, "model", "") or "")
         prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
         completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+        reasoning_tokens = int(getattr(usage, "reasoning_tokens", 0) or 0)
         cache_hit_tokens = int(getattr(usage, "cache_hit_tokens", 0) or 0)
         cache_miss_tokens = int(getattr(usage, "cache_miss_tokens", 0) or 0)
-        usd, _version = estimate_model_cost_usd(
+        recorded_at = datetime.now(timezone.utc).isoformat()
+        priced = estimate_model_cost(
             model=model or "__unpriced__",
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             cache_hit_tokens=cache_hit_tokens,
             cache_miss_tokens=cache_miss_tokens,
+            reasoning_tokens=reasoning_tokens,
+            at=recorded_at,
+            cny_per_usd=self._usd_to_cny,
         )
-        cost_cny = round(usd * self._usd_to_cny, 4)
-        recorded_at = datetime.now(timezone.utc).isoformat()
+        cost_cny = round(priced.cny, 4)
         reservation_id = str(
             getattr(usage, "budget_reservation_id", "")
             or getattr(usage, "reservation_id", "")
@@ -427,8 +471,9 @@ class WorldV2UsageStore:
                         recorded_at, world_id, turn_id, purpose, model, status,
                         provider, prompt_tokens, completion_tokens, cache_hit_tokens,
                         cache_miss_tokens, total_tokens, error, cost_cny, latency_ms,
-                        actor, reservation_id, estimated_cny, attempt
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        actor, reservation_id, estimated_cny, attempt,
+                        reasoning_tokens, pricing_version, spend_account
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         recorded_at,
@@ -450,22 +495,20 @@ class WorldV2UsageStore:
                         reservation_id,
                         estimated_cny,
                         attempt,
+                        reasoning_tokens,
+                        priced.pricing_version[:80],
+                        self._spend_account,
                     ),
                 )
             finally:
                 connection.close()
 
     def cost_since(self, *, since: datetime) -> float:
-        """Sum cost_cny for records recorded after ``since`` (UTC)."""
+        """Sum repriced cost_cny for records recorded after ``since`` (UTC)."""
         with self._lock:
             connection = self._connect()
             try:
-                row = connection.execute(
-                    "SELECT COALESCE(SUM(cost_cny), 0) FROM world_v2_model_usage "
-                    "WHERE recorded_at >= ?",
-                    (since.isoformat(),),
-                ).fetchone()
-                return float(row[0] if row is not None else 0.0)
+                return self._priced_model_spend_cny(connection, since=since)
             finally:
                 connection.close()
 

@@ -943,6 +943,11 @@ async def test_qq_scheduler_isolates_direct_post_tick_background_failure(
         lambda _projection: None,
         raising=False,
     )
+    # Wake selection reads expression retry via declared_due's local import.
+    monkeypatch.setattr(
+        "companion_daemon.world_v2.expression_episode_lifecycle.next_expression_retry_due",
+        lambda _projection: retry_due,
+    )
     platform = _FailingPostTickHost()
     host = QQC2CHost(
         host=platform,  # type: ignore[arg-type]
@@ -1275,6 +1280,10 @@ async def test_qq_scheduler_advances_exactly_to_proactive_technical_retry(
         "next_proactive_retry_due",
         lambda _projection: retry_due,
         raising=False,
+    )
+    monkeypatch.setattr(
+        "companion_daemon.world_v2.proactive_action.next_proactive_retry_due",
+        lambda _projection: retry_due,
     )
     platform = _ProactiveRetryHost()
     host = QQC2CHost(

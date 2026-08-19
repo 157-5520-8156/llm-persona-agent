@@ -15,6 +15,7 @@ from companion_daemon.world_v2.photographable_inventory import (
     empty_inventory_material,
     inventory_material,
     settlement_has_available_photo,
+    shareable_photo_slice_items,
 )
 from companion_daemon.world_v2.world_life_context import (
     WorldLifeContextItem,
@@ -461,3 +462,35 @@ def test_installed_empty_album_does_not_inherit_world_life_join() -> None:
     assert inventory["available_count"] == 0
     assert inventory["items"] == []
     assert inventory["availability"] == "available"
+
+
+def test_shareable_photo_items_carry_opened_event_bindings() -> None:
+    opened = "event:photo-candidate:opened:bookstore"
+    projection = SimpleNamespace(
+        logical_time=NOW,
+        photo_candidates=(_opened_candidate(candidate_id="cand:1", refs=(opened, SETTLEMENT)),),
+        media_deliveries=(),
+        media_opportunities=(),
+        media_plans=(),
+        world_occurrences=(),
+        proposal_revisions=(),
+        committed_world_event_refs=(
+            SimpleNamespace(
+                event_id=opened,
+                event_type="PhotoCandidateOpened",
+                world_revision=4,
+                payload_hash="b" * 64,
+            ),
+        ),
+    )
+    items = shareable_photo_slice_items(projection, logical_time=NOW)
+    assert items[0]["source_ref"] == opened
+    assert items[0]["source_bindings"] == [
+        {
+            "ref": opened,
+            "source_kind": "committed_event",
+            "authority_type": "PhotoCandidateOpened",
+            "source_world_revision": 4,
+            "immutable_hash": "b" * 64,
+        }
+    ]

@@ -323,6 +323,8 @@ class CompanionStore:
                   attempt integer not null default 1,
                   pricing_version text not null default '',
                   estimated_cost_usd real not null default 0,
+                  estimated_cost_cny real not null default 0,
+                  spend_account text not null default '',
                   budget_reservation_id text not null default '',
                   thinking_enabled integer not null default 0,
                   reasoning_effort text not null default '',
@@ -559,6 +561,12 @@ class CompanionStore:
             )
             self._ensure_column(
                 conn, "model_usage_events", "estimated_cost_usd", "real not null default 0"
+            )
+            self._ensure_column(
+                conn, "model_usage_events", "estimated_cost_cny", "real not null default 0"
+            )
+            self._ensure_column(
+                conn, "model_usage_events", "spend_account", "text not null default ''"
             )
             self._ensure_column(
                 conn,
@@ -2667,14 +2675,24 @@ class CompanionStore:
         reasoning_effort: str = "",
         billing_state: str = "",
     ) -> None:
-        from companion_daemon.usage_metrics import estimate_model_cost_usd
+        from companion_daemon.spend_account import classify_spend_account
+        from companion_daemon.usage_metrics import CNY_PER_USD, estimate_model_cost
 
-        estimated_cost_usd, pricing_version = estimate_model_cost_usd(
+        created_at = utc_now().isoformat()
+        priced = estimate_model_cost(
             model=model,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             cache_hit_tokens=cache_hit_tokens,
             cache_miss_tokens=cache_miss_tokens,
+            reasoning_tokens=reasoning_tokens,
+            at=created_at,
+        )
+        estimated_cost_usd = priced.usd
+        estimated_cost_cny = priced.cny
+        pricing_version = priced.pricing_version
+        spend_account = classify_spend_account(
+            database_path=self.path, world_id=world_id
         )
         with self.connect() as conn:
             # Usage persistence and a matching preflight reservation must move
@@ -2688,9 +2706,10 @@ class CompanionStore:
                   completion_tokens, reasoning_tokens, cache_hit_tokens,
                   cache_miss_tokens, total_tokens, error, world_id, turn_id,
                   action_id, cadence, attempt, pricing_version,
-                  estimated_cost_usd, budget_reservation_id, thinking_enabled,
+                  estimated_cost_usd, estimated_cost_cny, spend_account,
+                  budget_reservation_id, thinking_enabled,
                   reasoning_effort, created_at
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     purpose[:80],
@@ -2712,10 +2731,12 @@ class CompanionStore:
                     max(1, int(attempt)),
                     pricing_version[:80],
                     max(0.0, float(estimated_cost_usd)),
+                    max(0.0, float(estimated_cost_cny)),
+                    spend_account[:20],
                     budget_reservation_id[:160],
                     int(bool(thinking_enabled)),
                     reasoning_effort[:40],
-                    utc_now().isoformat(),
+                    created_at,
                 ),
             )
             if budget_reservation_id:
@@ -2727,7 +2748,7 @@ class CompanionStore:
                         where reservation_id = ? and status in ('reserved', 'in_flight', 'unknown')
                         """,
                         (
-                            max(0.0, float(estimated_cost_usd)) * 7.2,
+                            max(0.0, float(estimated_cost_cny)),
                             utc_now().isoformat(),
                             budget_reservation_id,
                         ),
@@ -2796,6 +2817,8 @@ class CompanionStore:
                 return (status in {"reserved", "settled"}, "reservation_reused")
 
             def spend(prefix: str) -> tuple[float, float]:
+                from companion_daemon.usage_metrics import CNY_PER_USD, price_usage_row
+
                 fixed = conn.execute(
                     """
                     select coalesce(sum(estimated_cny), 0) as total
@@ -2803,13 +2826,15 @@ class CompanionStore:
                     """,
                     (len(prefix), prefix),
                 ).fetchone()
-                model = conn.execute(
+                model_rows = conn.execute(
                     """
-                    select coalesce(sum(estimated_cost_usd), 0) as total
+                    select model, prompt_tokens, completion_tokens, reasoning_tokens,
+                           cache_hit_tokens, cache_miss_tokens, estimated_cost_usd,
+                           estimated_cost_cny, created_at, pricing_version
                     from model_usage_events where substr(created_at, 1, ?) = ?
                     """,
                     (len(prefix), prefix),
-                ).fetchone()
+                ).fetchall()
                 pending = conn.execute(
                     """
                     select coalesce(sum(estimated_cny), 0) as total
@@ -2820,7 +2845,9 @@ class CompanionStore:
                     (len(prefix), prefix),
                 ).fetchone()
                 fixed_total = float(fixed["total"] or 0.0)
-                model_total = float(model["total"] or 0.0) * 7.2
+                model_total = 0.0
+                for row in model_rows:
+                    model_total += price_usage_row(row, cny_per_usd=CNY_PER_USD).cny
                 return fixed_total + model_total + float(pending["total"] or 0.0), fixed_total + model_total
 
             daily, _ = spend(day_prefix)
