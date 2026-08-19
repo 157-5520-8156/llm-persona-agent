@@ -805,6 +805,7 @@ def _bind_production_character_interior(
     private_reflection_content_reader: Callable[[str], str | None],
     expression_reconsideration_owner: str,
     immediate_emotion_worker: ImmediateEmotionProposalWorker | None,
+    inbound_relationship_worker=None,
     inner_state_settlement_owner: str,
     silence_appraisal_idle_seconds: int | None,
     plan_disruption_appraisal_enabled: bool,
@@ -888,6 +889,7 @@ def _bind_production_character_interior(
                 policy=social_initiative_policy,
             ),
             immediate_emotion_worker=immediate_emotion_worker,
+            inbound_relationship_worker=inbound_relationship_worker,
         )
 
     reconsideration_reviewer = (

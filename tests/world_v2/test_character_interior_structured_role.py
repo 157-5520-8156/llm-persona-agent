@@ -2275,6 +2275,15 @@ async def test_proactive_contact_uses_one_versioned_forced_tool_at_http_boundary
                     "appraisal_draft": None,
                     "waiting_for": None,
                     "wait": None,
+                    "about_us": None,
+                    "why_us": None,
+                    "us_deltas": None,
+                    "we_are": None,
+                    "calling_it": None,
+                    "said_as": None,
+                    "keep_impression": None,
+                    "noticed": None,
+                    "declared_display": None,
                 },
         },
     )
@@ -2419,6 +2428,10 @@ def test_deepseek_strict_proactive_schema_has_no_object_type_arrays() -> None:
     assert "response_expectation" in payload
     assert "response_expectation_assessment" in payload
     assert "revisit" in payload
+    assert "us_deltas" in payload
+    assert "about_us" in payload
+    assert "keep_impression" in payload
+    assert "declared_display" in payload
     appraisal = payload["appraisal_draft"]["anyOf"][0]
     assert "relationship_signal" in appraisal["properties"]
     assert payload["mood"]["anyOf"][0]["enum"] == [
@@ -4717,6 +4730,10 @@ async def test_proactive_contract_copy_keeps_private_state_out_of_payload() -> N
     assert "基点" in instruction
     assert "不是百分制" in instruction
     assert "基点" in contract["response_expectation"]
+    assert "about_us" in contract
+    assert "us_deltas" in contract
+    assert "keep_impression" in contract
+    assert "declared_display" in contract
 
 
 class _PinnedDialogueProjection(_Projection):

@@ -843,6 +843,9 @@ SLIM_COMMITMENT_TRIPLET_INCOMPLETE = "we_are、calling_it、said_as 三个要一
 SLIM_COMMITMENT_WE_ARE_INVALID = (
     "we_are 只能是 acquaintance、friend、close_friend、ambiguous 或 lover"
 )
+SLIM_COMMITMENT_REQUIRES_SPEECH = (
+    "we_are 只能跟这一轮真的说出去的话一起写，沉默这一轮不要写 we_are"
+)
 SLIM_DECLARED_DISPLAY_INVALID = (
     "declared_display 只能是 sexual_suggestive、explicit_adult 或 withdraw"
 )
@@ -1386,6 +1389,109 @@ def attach_hitchhiked_relationship_residue(
     if not changed:
         return dict(value)
     return {**dict(value), "appraisal_draft": next_appraisal}
+
+
+def _proactive_has_visible_speech(bound: Mapping[str, object]) -> bool:
+    if bound.get("timing_choice") == "silent":
+        return False
+    beats = bound.get("beats")
+    if not isinstance(beats, list):
+        return False
+    return any(
+        isinstance(beat, dict) and bool(str(beat.get("text") or "").strip())
+        for beat in beats
+    )
+
+
+def hitchhike_proactive_authored_decisions(
+    bound: dict[str, object],
+    *,
+    authored: Mapping[str, object],
+) -> dict[str, object]:
+    """Copy inbound slim residue onto a proactive ExpressionDraft-shaped dict.
+
+    Incomplete or unreadable pairs raise.  Omission stays omission.  The host
+    never invents a reading, a stage, or a display intent.
+    """
+
+    _raise_if_incomplete_relationship_residue(authored)
+    _raise_if_incomplete_commitment_triplet(authored)
+    _raise_if_invalid_declared_display(authored)
+    if (
+        _slim_field_attempted(authored, "we_are")
+        or _slim_field_attempted(authored, "calling_it")
+        or _slim_field_attempted(authored, "said_as")
+    ) and not _proactive_has_visible_speech(bound):
+        raise ValueError(
+            SLIM_COMMITMENT_REQUIRES_SPEECH
+            + "。宿主不会替你改成开口，也不会把 we_are 丢掉后假装没写。"
+        )
+    state = bound.get("private_turn_state")
+    next_state = dict(state) if isinstance(state, dict) else {}
+    added = False
+    noticed = _clip_text(authored.get("noticed"), 720)
+    if noticed:
+        next_state["noticed"] = noticed
+        added = True
+    keep_impression = authored.get("keep_impression")
+    if keep_impression is True:
+        next_state["keep_impression"] = True
+        added = True
+    elif keep_impression is False:
+        next_state["keep_impression"] = False
+        added = True
+    about_us = _clip_text(authored.get("about_us"), 128)
+    why_us = _clip_text(authored.get("why_us"), 128)
+    if about_us and why_us:
+        next_state["about_us"] = about_us
+        next_state["why_us"] = why_us
+        added = True
+    we_are = authored.get("we_are")
+    calling_it = _clip_text(authored.get("calling_it"), 128)
+    said_as = _clip_text(authored.get("said_as"), 512)
+    if we_are in _SLIM_ORDINARY_STAGES and calling_it and said_as:
+        next_state["we_are"] = we_are
+        next_state["calling_it"] = calling_it
+        next_state["said_as"] = said_as
+        added = True
+    declared_display = _slim_declared_display(authored.get("declared_display"))
+    if declared_display is not None:
+        next_state["declared_display"] = declared_display
+        added = True
+    if isinstance(state, dict) or added:
+        bound["private_turn_state"] = next_state
+    needs_appraisal_anchor = bool(
+        (about_us and why_us)
+        or keep_impression is True
+        or (we_are in _SLIM_ORDINARY_STAGES and calling_it and said_as)
+    )
+    appraisal = bound.get("appraisal_draft")
+    if needs_appraisal_anchor and not isinstance(appraisal, dict):
+        felt = (
+            _clip_text(bound.get("brief_rationale"), 240)
+            or _clip_text(bound.get("impulse_summary"), 240)
+            or _clip_text(bound.get("stance"), 128)
+        )
+        label = _clip_text(bound.get("stance"), 64) or felt[:64]
+        if felt:
+            bound["appraisal_draft"] = _slim_appraisal_draft(
+                felt=felt,
+                authored_felt=felt,
+                label=label or felt[:64],
+                mood=bound.get("mood"),
+                keep_impression=keep_impression is True,
+            )
+            appraisal = bound["appraisal_draft"]
+    if isinstance(appraisal, dict):
+        hitchhiked = attach_hitchhiked_relationship_residue(
+            {
+                "appraisal_draft": appraisal,
+                "expression_draft": {"private_turn_state": next_state},
+            },
+            authored=authored,
+        )
+        bound["appraisal_draft"] = hitchhiked["appraisal_draft"]
+    return bound
 
 
 def compile_slim_interior_envelope(

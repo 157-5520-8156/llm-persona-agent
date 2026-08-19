@@ -702,8 +702,8 @@ def _decision_proposal_from_draft(*, raw: str, request: ModelInput) -> DecisionP
     # Settled-world lanes may omit trigger_message; lasting Affect is still the
     # character's choice when she authors open/update/resolve/supersede.  The
     # host must not silently pin affect=no_change and pretend she chose it.
-    # Illegal episode refs still degrade below; relationship_* still require a
-    # verified message actor.
+    # Illegal episode refs still degrade below; relationship_* bind the
+    # verified counterpart (current message actor, or the unique pinned head).
     meanings = draft.get("meanings")
     attribution = draft.get("attribution")
     severity = draft.get("severity")
@@ -881,7 +881,7 @@ def _decision_proposal_from_draft(*, raw: str, request: ModelInput) -> DecisionP
                 target_id=f"signal:relationship-appraisal-draft:{identity}",
                 expected_entity_revision=0,
                 transition="suggest",
-                evidence_refs=(request.trigger_message.event_ref,),
+                evidence_refs=(_relationship_event_evidence(request).ref_id,),
                 payload=CanonicalTypedPayload.from_value(
                     payload_schema="relationship_signal.v1",
                     value=relationship_signal,
@@ -895,7 +895,7 @@ def _decision_proposal_from_draft(*, raw: str, request: ModelInput) -> DecisionP
                 kind="relationship_commitment",
                 target_id=f"relationship-commitment:appraisal-draft:{identity}",
                 transition="commit",
-                evidence_refs=(request.trigger_message.event_ref,),
+                evidence_refs=(_relationship_event_evidence(request).ref_id,),
                 payload=CanonicalTypedPayload.from_value(
                     payload_schema="relationship_commitment.v1",
                     value=relationship_commitment,
@@ -916,7 +916,7 @@ def _decision_proposal_from_draft(*, raw: str, request: ModelInput) -> DecisionP
                 target_id=target_id,
                 expected_entity_revision=(0 if operation == "declare" else None),
                 transition=operation,
-                evidence_refs=(request.trigger_message.event_ref,),
+                evidence_refs=(_relationship_event_evidence(request).ref_id,),
                 payload=CanonicalTypedPayload.from_value(
                     payload_schema="interaction_act.v1",
                     value={
@@ -933,7 +933,9 @@ def _decision_proposal_from_draft(*, raw: str, request: ModelInput) -> DecisionP
         or relationship_commitment is not None
         or interaction_act is not None
     ):
-        proposal_evidence.append(_relationship_event_evidence(request))
+        extra = _relationship_event_evidence(request)
+        if extra.ref_id not in {item.ref_id for item in proposal_evidence}:
+            proposal_evidence.append(extra)
     proposal = DecisionProposal(
         proposal_id=proposal_id,
         trigger_ref=request.trigger_ref,
@@ -1018,6 +1020,34 @@ def _existing_affect_components(
     return result
 
 
+def _verified_counterpart_actor(request: ModelInput) -> str | None:
+    """The person this reading is about: inbound message actor, else pinned head.
+
+    Inbound turns bind the verified current message.  Proactive and other
+    settled-world lanes have no message; the unique user relationship head
+    is the same counterpart she is contacting.  The host never invents a
+    subject if that head is missing or ambiguous.
+    """
+
+    trigger = request.trigger_message
+    if trigger is not None:
+        return trigger.actor
+    try:
+        context = json.loads(request.model_content_json)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    companion = context.get("actor_ref") if isinstance(context, dict) else None
+    subjects: list[str] = []
+    for item in _pinned_slice_values(request, "relationship_slice"):
+        subject = item.get("subject_ref")
+        if isinstance(subject, str) and subject and subject != companion:
+            subjects.append(subject)
+    unique = tuple(dict.fromkeys(subjects))
+    if len(unique) == 1:
+        return unique[0]
+    return None
+
+
 def _relationship_signal(
     value: object,
     *,
@@ -1031,10 +1061,10 @@ def _relationship_signal(
 
     if value is None:
         return None
-    trigger = request.trigger_message
-    if trigger is None:
+    counterpart = _verified_counterpart_actor(request)
+    if counterpart is None:
         raise ValueError(
-            "AppraisalDraft relationship_signal requires a verified message actor"
+            "AppraisalDraft relationship_signal requires a verified counterpart"
         )
     if not isinstance(value, dict) or set(value) != _RELATIONSHIP_SIGNAL_FIELDS:
         raise ValueError("AppraisalDraft relationship_signal fields are invalid")
@@ -1063,7 +1093,7 @@ def _relationship_signal(
     ):
         raise ValueError("AppraisalDraft relationship_signal is invalid")
     return {
-        "subject_ref": trigger.actor,
+        "subject_ref": counterpart,
         "signal_code": signal_code.strip(),
         "confidence_bp": confidence,
         "persistence": persistence,
@@ -1083,9 +1113,9 @@ def _relationship_commitment(
 
     if value is None:
         return None
-    trigger = request.trigger_message
-    if trigger is None:
-        raise ValueError("relationship commitment requires a verified message actor")
+    counterpart = _verified_counterpart_actor(request)
+    if counterpart is None:
+        raise ValueError("relationship commitment requires a verified counterpart")
     try:
         wire = RelationshipCommitmentWire.model_validate(value, strict=True)
     except ValidationError as exc:
@@ -1093,7 +1123,7 @@ def _relationship_commitment(
     relationship_heads = tuple(
         item
         for item in _pinned_slice_values(request, "relationship_slice")
-        if item.get("subject_ref") == trigger.actor
+        if item.get("subject_ref") == counterpart
     )
     if len(relationship_heads) > 1:
         raise ValueError("relationship commitment pinned head is not exact")
@@ -1112,7 +1142,7 @@ def _relationship_commitment(
             "relationship commitment target stage is not installed from pinned head"
         )
     return {
-        "subject_ref": trigger.actor,
+        "subject_ref": counterpart,
         **wire.model_dump(mode="json"),
     }
 
@@ -1289,14 +1319,16 @@ def _companion_actor_ref(request: ModelInput) -> str:
 
 def _relationship_event_evidence(request: ModelInput) -> ProposalEvidenceRef:
     trigger = request.trigger_message
-    if trigger is None:
-        raise ValueError("relationship signal requires verified event evidence")
-    return ProposalEvidenceRef(
-        ref_id=trigger.event_ref,
-        evidence_kind="committed_world_event",
-        source_world_revision=trigger.source_world_revision,
-        immutable_hash=trigger.event_payload_hash,
-    )
+    if trigger is not None:
+        return ProposalEvidenceRef(
+            ref_id=trigger.event_ref,
+            evidence_kind="committed_world_event",
+            source_world_revision=trigger.source_world_revision,
+            immutable_hash=trigger.event_payload_hash,
+        )
+    if request.trigger_evidence:
+        return request.trigger_evidence[0]
+    raise ValueError("relationship signal requires verified event evidence")
 
 
 def _trigger_binding(request: ModelInput) -> tuple[str, str, "ProposalEvidenceRef"]:
@@ -1407,9 +1439,7 @@ def _no_change_proposal(
     changes: list[TypedChange] = []
     evidence_refs: tuple[ProposalEvidenceRef, ...] = ()
     if relationship_signal is not None:
-        trigger = request.trigger_message
-        if trigger is None:
-            raise ValueError("relationship signal requires a verified message")
+        evidence_ref = _relationship_event_evidence(request).ref_id
         changes.append(
             TypedChange(
                 change_id=f"change:relationship-appraisal-draft:{identity}",
@@ -1417,7 +1447,7 @@ def _no_change_proposal(
                 target_id=f"signal:relationship-appraisal-draft:{identity}",
                 expected_entity_revision=0,
                 transition="suggest",
-                evidence_refs=(trigger.event_ref,),
+                evidence_refs=(evidence_ref,),
                 payload=CanonicalTypedPayload.from_value(
                     payload_schema="relationship_signal.v1",
                     value=relationship_signal,
@@ -1425,16 +1455,14 @@ def _no_change_proposal(
             )
         )
     if relationship_commitment is not None:
-        trigger = request.trigger_message
-        if trigger is None:
-            raise ValueError("relationship commitment requires a verified message")
+        evidence_ref = _relationship_event_evidence(request).ref_id
         changes.append(
             TypedChange(
                 change_id=f"change:relationship-commitment-appraisal-draft:{identity}",
                 kind="relationship_commitment",
                 target_id=f"relationship-commitment:appraisal-draft:{identity}",
                 transition="commit",
-                evidence_refs=(trigger.event_ref,),
+                evidence_refs=(evidence_ref,),
                 payload=CanonicalTypedPayload.from_value(
                     payload_schema="relationship_commitment.v1",
                     value=relationship_commitment,

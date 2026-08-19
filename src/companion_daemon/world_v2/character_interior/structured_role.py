@@ -492,17 +492,10 @@ def _validate_proactive_payload(
 
     if "private_turn_state" in payload:
         raise ValueError("proactive private_turn_state is supplied by the same InnerTurn summary")
-    mood = payload.get("mood")
-    appraisal_draft = payload.get("appraisal_draft")
-    expression_payload = {
-        key: value
-        for key, value in payload.items()
-        if key not in {"mood", "appraisal_draft"}
-    }
     normalized = bind_proactive_expression_wire(
         normalize_expression_draft_wire(
             {
-                **dict(expression_payload),
+                **dict(payload),
                 "private_turn_state": {
                     "inner_state_summary": "structural validation only",
                     "attended_source_refs": [],
@@ -510,10 +503,6 @@ def _validate_proactive_payload(
             }
         )
     )
-    if mood is not None:
-        normalized["mood"] = mood
-    if appraisal_draft is not None:
-        normalized["appraisal_draft"] = appraisal_draft
     ProactiveDraft.model_validate_json(_canonical(normalized), strict=True)
 
 
@@ -1665,6 +1654,12 @@ class StructuredCharacterRoleFaculty:
                 "完整 response_expectation 对象也可以写，二者选一。"
                 "response_expectation 若写，pressure_bp 与 importance_bp 是 0 到 10000 的基点，"
                 "不是百分制：5000 才是一半，30 不是百分之三十。"
+                "about_us 和 why_us 留下这一轮对你们的读法；要动数字就连 us_deltas 一起写。"
+                "半套或读不成的 us_deltas 是可见失败，宿主不会替你补。"
+                "要声明你们现在是什么关系，才写 we_are、calling_it，并把那一句原话抄进 said_as；三个一起才留下。"
+                "keep_impression / noticed / declared_display 可选；"
+                "declared_display 只能是 sexual_suggestive、explicit_adult 或 withdraw。"
+                "这些字段都可以省略。"
             )
         if request.correction_ordinal == 1:
             code = request.correction_failure_code or "role_result_schema_invalid"
@@ -1699,6 +1694,8 @@ class StructuredCharacterRoleFaculty:
                         "payload 里禁止 private_turn_state（这和 inbound 相反）。"
                         "没有世界事实时 world_claims 写 []。对话 beat 不是 current_world。"
                         "pressure_bp / importance_bp 是 0 到 10000 的基点，不是百分制。"
+                        "about_us/why_us/us_deltas、we_are 三件套、keep_impression/"
+                        "noticed/declared_display 与入站 slim 相同：半套可见失败，不写也可以。"
                         if request.purpose == "proactive_contact"
                         else ""
                     )
@@ -2867,6 +2864,20 @@ class StructuredCharacterRoleFaculty:
                 ),
                 "waiting_for": "optional short sentence; compiles a hope only with wait",
                 "wait": "optional seconds 30..86400; only with waiting_for",
+                "about_us": "optional short reading of us; with why_us",
+                "why_us": "optional short reason; with about_us",
+                "us_deltas": (
+                    "optional signed six-axis object; only with about_us and why_us. "
+                    "half-written pairs fail visibly."
+                ),
+                "we_are": "optional stage; only with calling_it and said_as",
+                "calling_it": "optional name for the stage; only with we_are and said_as",
+                "said_as": "optional exact spoken line; only with we_are and calling_it",
+                "keep_impression": "optional bool; true keeps this reading as a private impression",
+                "noticed": "optional short lived moment",
+                "declared_display": (
+                    "optional sexual_suggestive|explicit_adult|withdraw; omit to leave the last declaration"
+                ),
                 "response_expectation": (
                     "若写：hoped_response、pressure_bp、importance_bp、wait_seconds、"
                     "expires_after_seconds。也可改写 waiting_for + wait，规则与入站相同。"

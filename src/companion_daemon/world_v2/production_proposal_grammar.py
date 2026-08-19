@@ -247,8 +247,9 @@ class ProductionProposalGrammar:
             shape = inspect_unified_inbound_decision(proposal)
         except UnifiedInboundDecisionError as exc:
             raise ProductionProposalGrammarError(f"proactive_{exc.code}") from exc
-        if shape.relationship is not None or shape.relationship_commitment is not None:
-            raise ProductionProposalGrammarError("proactive_relationship_not_reachable")
+        # Same hitchhike as inbound slim: us_deltas / we_are land as
+        # relationship_signal / relationship_commitment. interaction_act still
+        # needs his current message, so it stays inbound-only.
         if shape.interaction_act is not None:
             raise ProductionProposalGrammarError("proactive_interaction_act_not_reachable")
         if shape.expression is None:
@@ -483,6 +484,7 @@ _EXPECTED_PRODUCTION_PROPOSAL_GRAMMARS: Mapping[
                 ),
                 _APPRAISAL,
                 _AFFECT,
+                _RELATIONSHIP_SIGNAL,
             ),
             allows_no_change_decision=True,
         ),

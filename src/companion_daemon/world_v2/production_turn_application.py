@@ -3849,6 +3849,7 @@ def build_sqlite_world_v2_turn_application(
             private_reflection_content_reader=read_private_reflection_content,
             expression_reconsideration_owner=config.expression_reconsideration_owner,
             immediate_emotion_worker=immediate_emotion_worker,
+            inbound_relationship_worker=inbound_relationship_worker,
             inner_state_settlement_owner=config.inner_state_settlement_owner,
             silence_appraisal_idle_seconds=config.silence_appraisal_idle_seconds,
             plan_disruption_appraisal_enabled=config.plan_disruption_appraisal_enabled,

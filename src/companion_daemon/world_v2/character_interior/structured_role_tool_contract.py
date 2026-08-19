@@ -285,6 +285,49 @@ def _proactive_payload_schema(
     properties["wait"] = _nullable_provider_schema(
         {"type": "integer", "minimum": 1, "maximum": 86_400}
     )
+    # Same inbound hitchhike keys. Bind copies complete residue onto
+    # private_turn_state / appraisal_draft; half-written pairs fail visibly.
+    properties["about_us"] = _nullable_provider_schema({"type": "string"})
+    properties["why_us"] = _nullable_provider_schema({"type": "string"})
+    properties["us_deltas"] = _nullable_provider_schema(
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                axis: {"type": "integer", "minimum": -10_000, "maximum": 10_000}
+                for axis in (
+                    "trust_bp",
+                    "closeness_bp",
+                    "respect_bp",
+                    "reliability_bp",
+                    "mutuality_bp",
+                    "repair_confidence_bp",
+                )
+            },
+        }
+    )
+    properties["we_are"] = _nullable_provider_schema(
+        {
+            "type": "string",
+            "enum": [
+                "acquaintance",
+                "friend",
+                "close_friend",
+                "ambiguous",
+                "lover",
+            ],
+        }
+    )
+    properties["calling_it"] = _nullable_provider_schema({"type": "string"})
+    properties["said_as"] = _nullable_provider_schema({"type": "string"})
+    properties["keep_impression"] = _nullable_provider_schema({"type": "boolean"})
+    properties["noticed"] = _nullable_provider_schema({"type": "string"})
+    properties["declared_display"] = _nullable_provider_schema(
+        {
+            "type": "string",
+            "enum": ["sexual_suggestive", "explicit_adult", "withdraw"],
+        }
+    )
     # Keep the canonical appraisal wire, not an open object.  DeepSeek forbids
     # empty objects and ``type: ["object", "null"]``; the host materializer
     # remains the fail-closed owner of appraisal semantics.

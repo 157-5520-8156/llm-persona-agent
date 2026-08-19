@@ -12,11 +12,14 @@ from companion_daemon.world_v2.expression_draft import (
     bind_proactive_expression_wire,
     bind_proactive_world_claims,
     normalize_expression_draft_wire,
+    TEXT_ONLY_EXPRESSION_CAPABILITIES,
 )
 from companion_daemon.world_v2.proactive_action import (
     ProactiveDraft,
+    _materialize_interior_proactive_draft,
     _validate_proactive_grounding,
 )
+from companion_daemon.world_v2.proposal_envelope import ProposalEvidenceRef
 
 
 def _payload(**updates: object) -> dict[str, object]:
@@ -311,3 +314,193 @@ def test_wait_without_waiting_for_is_a_visible_failure() -> None:
 
     with pytest.raises(ValueError, match=SLIM_WAIT_PAIR_INCOMPLETE):
         _bind(_payload(wait=90))
+
+
+def test_us_deltas_hitchhike_onto_private_state_and_appraisal() -> None:
+    payload = _payload(
+        about_us="被惦记的感觉",
+        why_us="我自己先开口了",
+        us_deltas={"closeness_bp": 80, "trust_bp": 40},
+        private_turn_state={
+            "inner_state_summary": "想靠近一点",
+            "attended_source_refs": [],
+        },
+    )
+    bound = _bind(payload)
+    _validate(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "private_turn_state"
+        }
+    )
+
+    state = bound["private_turn_state"]
+    assert state["about_us"] == "被惦记的感觉"
+    assert state["why_us"] == "我自己先开口了"
+    signal = bound["appraisal_draft"]["relationship_signal"]
+    assert signal["signal_code"] == "被惦记的感觉"
+    assert signal["suggested_deltas"]["closeness_bp"] == 80
+    assert signal["suggested_deltas"]["trust_bp"] == 40
+    assert signal["suggested_deltas"]["respect_bp"] == 0
+
+
+def test_us_deltas_without_about_us_is_a_visible_failure() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE
+
+    with pytest.raises(ValueError, match=SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE):
+        _bind(_payload(us_deltas={"closeness_bp": 80}))
+    with pytest.raises(ValueError, match=SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE):
+        _validate(_payload(us_deltas={"closeness_bp": 80}))
+
+
+def test_we_are_without_said_as_is_a_visible_failure() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_COMMITMENT_TRIPLET_INCOMPLETE
+
+    with pytest.raises(ValueError, match=SLIM_COMMITMENT_TRIPLET_INCOMPLETE):
+        _bind(_payload(we_are="friend", calling_it="朋友"))
+
+
+def test_invalid_declared_display_is_a_visible_failure() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_DECLARED_DISPLAY_INVALID
+
+    with pytest.raises(ValueError, match=SLIM_DECLARED_DISPLAY_INVALID):
+        _bind(_payload(declared_display="nude"))
+
+
+def test_keep_impression_and_noticed_hitchhike_onto_private_state() -> None:
+    bound = _bind(
+        _payload(
+            noticed="窗外开始下雨了",
+            keep_impression=True,
+            private_turn_state={
+                "inner_state_summary": "雨点打在玻璃上",
+                "attended_source_refs": [],
+            },
+        )
+    )
+    _validate(_payload(noticed="窗外开始下雨了", keep_impression=True))
+
+    state = bound["private_turn_state"]
+    assert state["noticed"] == "窗外开始下雨了"
+    assert state["keep_impression"] is True
+    assert bound["appraisal_draft"]["appraise"] is True
+
+
+def test_we_are_triplet_hitchhikes_commitment() -> None:
+    bound = _bind(
+        _payload(
+            we_are="friend",
+            calling_it="朋友",
+            said_as="我们现在就是朋友吧",
+            private_turn_state={
+                "inner_state_summary": "想把话说清楚",
+                "attended_source_refs": [],
+            },
+        )
+    )
+    _validate(
+        _payload(we_are="friend", calling_it="朋友", said_as="我们现在就是朋友吧")
+    )
+
+    state = bound["private_turn_state"]
+    assert state["we_are"] == "friend"
+    assert state["said_as"] == "我们现在就是朋友吧"
+    commitment = bound["appraisal_draft"]["relationship_commitment"]
+    assert commitment["target_stage"] == "friend"
+    assert commitment["visible_text_span"] == "我们现在就是朋友吧"
+
+
+def test_we_are_on_silence_is_a_visible_failure() -> None:
+    from companion_daemon.world_v2.present_prompt import SLIM_COMMITMENT_REQUIRES_SPEECH
+
+    with pytest.raises(ValueError, match=SLIM_COMMITMENT_REQUIRES_SPEECH):
+        _bind(
+            _payload(
+                timing_choice="silent",
+                beats=[],
+                we_are="friend",
+                calling_it="朋友",
+                said_as="我们现在就是朋友吧",
+            )
+        )
+
+
+def test_hitchhiked_us_deltas_materialize_a_relationship_signal() -> None:
+    rain = "event:life-development:activated:rain"
+    bound = _bind(
+        _payload(
+            about_us="被惦记的感觉",
+            why_us="我自己先开口了",
+            us_deltas={"closeness_bp": 80, "trust_bp": 40},
+            private_turn_state={
+                "inner_state_summary": "想靠近一点",
+                "attended_source_refs": [rain],
+            },
+        )
+    )
+    draft = ProactiveDraft.model_validate_json(json.dumps(bound, ensure_ascii=False), strict=True)
+    context = _context()
+    context["logical_time"] = "2026-08-18T08:58:55.507262+00:00"
+    context["slices"]["advisories"] = {
+        "availability": "available",
+        "items": [
+            {
+                "value": {
+                    "kind": "proactive_opportunity",
+                    "candidate_refs": ["ambient_presence:epoch:1"],
+                    "source_refs": [rain],
+                    "candidates": [{"value": "ambient context"}],
+                }
+            }
+        ],
+    }
+    context["inner_life_snapshot"] = {
+        "materials": {
+            "relationship": [{"subject_ref": "user:primary", "stage": "friend"}]
+        }
+    }
+    request = ModelInput(
+        call_id="call:proactive-bind",
+        attempt_id="attempt:proactive-bind",
+        route=ModelRoute(tier="flash", reason_code="fixture", router_version="fixture.1"),
+        capsule_id="a" * 64,
+        trigger_ref=rain,
+        evaluated_world_revision=3,
+        evaluated_deliberation_revision=2,
+        evaluated_ledger_sequence=9,
+        trigger_evidence=(
+            ProposalEvidenceRef(
+                ref_id=rain,
+                evidence_kind="committed_world_event",
+                source_world_revision=3,
+                immutable_hash="sha256:" + "b" * 64,
+            ),
+        ),
+        model_content_json=json.dumps(context, ensure_ascii=False),
+    )
+
+    proposal = _materialize_interior_proactive_draft(
+        draft=draft,
+        request=request,
+        target="user:primary",
+        expression_capabilities=TEXT_ONLY_EXPRESSION_CAPABILITIES,
+        grounding_outcome="not_required",
+    )
+
+    signals = [
+        item.payload.value()
+        for item in proposal.proposed_changes
+        if item.kind == "relationship_signal"
+    ]
+    assert signals
+    assert signals[0]["subject_ref"] == "user:primary"
+    assert signals[0]["suggested_deltas"]["closeness_bp"] == 80
+    assert proposal.private_turn_state is not None
+    assert proposal.private_turn_state.about_us == "被惦记的感觉"
+
+    from companion_daemon.world_v2.production_proposal_grammar import (
+        production_proposal_grammar,
+    )
+
+    production_proposal_grammar("proactive").validate(proposal)

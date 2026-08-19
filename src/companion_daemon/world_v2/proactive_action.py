@@ -921,7 +921,13 @@ def _materialize_interior_proactive_draft(
         state_changes = tuple(
             item
             for item in appraisal_proposal.proposed_changes
-            if item.kind in {"appraisal_transition", "affect_transition"}
+            if item.kind
+            in {
+                "appraisal_transition",
+                "affect_transition",
+                "relationship_signal",
+                "relationship_commitment",
+            }
         )
         appraisals = appraisal_proposal.appraisals
         affect_tendencies = appraisal_proposal.affect_tendencies
@@ -1311,6 +1317,7 @@ class ProactiveDeliberationTurn:
         self._capsules = capsule_compiler
         self._deliberation = deliberation
         self._actor = companion_actor_ref
+        self._character_interior = character_interior
         self._budget_policy = budget_policy
         self._recorder = ProposalAuditRecorder(ledger=ledger)
 
@@ -1800,6 +1807,7 @@ class ProactiveActionRuntime:
         lease_seconds: int = 120,
         social_initiative: SocialInitiativeCompiler | None = None,
         immediate_emotion_worker=None,
+        inbound_relationship_worker=None,
     ) -> None:
         if not owner_id or lease_seconds <= 0 or policy.category != "proactive":
             raise ValueError("proactive runtime requires owner, lease, and proactive budget policy")
@@ -1811,6 +1819,7 @@ class ProactiveActionRuntime:
         self._lease_seconds = lease_seconds
         self._social_initiative = social_initiative
         self._emotion_worker = immediate_emotion_worker
+        self._relationship_worker = inbound_relationship_worker
 
     async def advance_due_once(self) -> ProactiveActionRunResult:
         projection = await self._project()
@@ -1981,7 +1990,9 @@ class ProactiveActionRuntime:
             None,
         )
         if existing is not None:
-            await self._settle_authored_emotion(proposal=proposal, audit=audit)
+            await self._settle_authored_emotion(
+                proposal=proposal, audit=audit, opportunity=opportunity
+            )
             await self._complete(
                 process=active, opportunity=opportunity, outcome=f"authorized:{existing.action_id}"
             )
@@ -1992,7 +2003,9 @@ class ProactiveActionRuntime:
                 action_id=existing.action_id,
             )
         if proposal.proactive_grounding_outcome == "rejected":
-            await self._settle_authored_emotion(proposal=proposal, audit=audit)
+            await self._settle_authored_emotion(
+                proposal=proposal, audit=audit, opportunity=opportunity
+            )
             await self._complete(
                 process=active,
                 opportunity=opportunity,
@@ -2005,7 +2018,12 @@ class ProactiveActionRuntime:
                 reason_code="proactive.grounding_rejected",
             )
         if proposal.timing_choice == "silent" or not proposal.action_intents:
-            await self._settle_authored_emotion(proposal=proposal, audit=audit)
+            await self._settle_authored_emotion(
+                proposal=proposal, audit=audit, opportunity=opportunity
+            )
+            await self._hitch_paid_proactive_side_effects(
+                proposal=proposal, audit=audit, opportunity=opportunity
+            )
             await self._complete(process=active, opportunity=opportunity, outcome="silent")
             return ProactiveActionRunResult(
                 status="silent",
@@ -2021,7 +2039,9 @@ class ProactiveActionRuntime:
             None,
         )
         if account is None:
-            await self._settle_authored_emotion(proposal=proposal, audit=audit)
+            await self._settle_authored_emotion(
+                proposal=proposal, audit=audit, opportunity=opportunity
+            )
             await self._complete(
                 process=active,
                 opportunity=opportunity,
@@ -2052,7 +2072,9 @@ class ProactiveActionRuntime:
                 "expression_plan_acceptance.budget_unavailable",
                 "expression_plan_acceptance.budget_account_unavailable",
             }:
-                await self._settle_authored_emotion(proposal=proposal, audit=audit)
+                await self._settle_authored_emotion(
+                    proposal=proposal, audit=audit, opportunity=opportunity
+                )
                 await self._complete(
                     process=active, opportunity=opportunity, outcome="budget-exhausted:abandoned"
                 )
@@ -2102,7 +2124,12 @@ class ProactiveActionRuntime:
         )
         # Expression acceptance is pinned to the audited revision.  Appraisal
         # and Affect rebase onto the new head, then this shared trigger closes.
-        await self._settle_authored_emotion(proposal=proposal, audit=audit)
+        await self._settle_authored_emotion(
+            proposal=proposal, audit=audit, opportunity=opportunity
+        )
+        await self._hitch_paid_proactive_side_effects(
+            proposal=proposal, audit=audit, opportunity=opportunity
+        )
         await self._complete(
             process=active, opportunity=opportunity, outcome=f"authorized:{action_id}"
         )
@@ -2118,7 +2145,51 @@ class ProactiveActionRuntime:
 
         return await self.advance_due_once()
 
-    async def _settle_authored_emotion(self, *, proposal: DecisionProposal, audit) -> None:
+    async def _hitch_paid_proactive_side_effects(
+        self,
+        *,
+        proposal: DecisionProposal,
+        audit,
+        opportunity,
+    ) -> None:
+        """Land keep_impression after the same-turn appraisal, matching inbound hitch.
+
+        noticed and declared_display stay on private_turn_state: the world
+        moment hitch and DeclaredDisplayRecorded are sourced from
+        ObservationRecorded, not a proactive opportunity event.
+        """
+
+        state = proposal.private_turn_state
+        if state is None or getattr(state, "keep_impression", None) is not True:
+            return
+        interior = getattr(self._turn, "_character_interior", None)
+        hitch = getattr(interior, "_hitch_paid_inbound_impression", None)
+        if not callable(hitch):
+            return
+        model_result_ref = getattr(audit, "model_result_ref", None)
+        if not isinstance(model_result_ref, str) or not model_result_ref:
+            return
+        located = await self._lookup(opportunity.source_event_ref)
+        if located is None:
+            return
+        source_event = located[0]
+        try:
+            await hitch(
+                keep_impression=True,
+                reflection_summary=state.inner_state_summary,
+                model_result_ref=model_result_ref,
+                source_event=source_event,
+            )
+        except Exception:
+            _LOG.warning(
+                "paid proactive impression hitch failed source=%s",
+                opportunity.source_event_ref,
+                exc_info=True,
+            )
+
+    async def _settle_authored_emotion(
+        self, *, proposal: DecisionProposal, audit, opportunity=None
+    ) -> None:
         """Accept the same-turn appraisal/affect she already authored.
 
         Expression-plan acceptance is pinned to the audited world revision, so
@@ -2129,8 +2200,16 @@ class ProactiveActionRuntime:
 
         worker = self._emotion_worker
         if worker is None:
+            if opportunity is not None:
+                await self._settle_authored_relationship(
+                    proposal=proposal, audit=audit, opportunity=opportunity
+                )
             return
         if not any(item.kind == "appraisal_transition" for item in proposal.proposed_changes):
+            if opportunity is not None:
+                await self._settle_authored_relationship(
+                    proposal=proposal, audit=audit, opportunity=opportunity
+                )
             return
         located = await self._lookup(audit.event_ref)
         if located is None:
@@ -2165,6 +2244,61 @@ class ProactiveActionRuntime:
                 "proactive authored appraisal could not settle proposal=%s error=%s",
                 proposal.proposal_id,
                 exc,
+            )
+        if opportunity is not None:
+            await self._settle_authored_relationship(
+                proposal=proposal, audit=audit, opportunity=opportunity
+            )
+
+    async def _settle_authored_relationship(
+        self, *, proposal: DecisionProposal, audit, opportunity
+    ) -> None:
+        """Land hitchhiked us_deltas through the inbound relationship worker.
+
+        Continuity settlement still requires an ObservationRecorded trigger,
+        which spontaneous_contact has. Other source kinds keep the authored
+        signal on the proposal and skip settlement.
+        """
+
+        worker = self._relationship_worker
+        if worker is None or not any(
+            item.kind == "relationship_signal" for item in proposal.proposed_changes
+        ):
+            return
+        process = getattr(worker, "process", None)
+        if not callable(process):
+            return
+        located = await self._lookup(opportunity.source_event_ref)
+        if located is None:
+            return
+        source_event = located[0]
+        # Continuity settlement is Observation-bound. Ambient/life sources
+        # still let her write us_deltas onto the proposal; they do not open
+        # a message-continuity trigger.
+        if source_event.event_type != "ObservationRecorded":
+            return
+        audit_located = await self._lookup(audit.event_ref)
+        if audit_located is None:
+            return
+        current = await self._project()
+        try:
+            await process(
+                world_id=self.ledger.world_id,
+                audit_cursor=ProjectionCursor(
+                    world_revision=audit_located[1].world_revision,
+                    deliberation_revision=audit_located[1].deliberation_revision,
+                    ledger_sequence=audit_located[1].ledger_sequence,
+                ),
+                current_cursor=self._cursor(current),
+                proposal_id=proposal.proposal_id,
+                source_event=source_event,
+            )
+        except Exception:
+            _LOG.warning(
+                "proactive relationship hitch failed source=%s type=%s",
+                opportunity.source_event_ref,
+                getattr(source_event, "event_type", None),
+                exc_info=True,
             )
 
     def _validate_event_share_acceptance(
