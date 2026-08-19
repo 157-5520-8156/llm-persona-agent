@@ -21,11 +21,12 @@ from .recent_dialogue import RecentDialogueItem
 
 _ACKNOWLEDGED_COMPANION_TAIL = 8
 # ResolverProof proves at most 32 authority refs per slice. Companion beats
-# carry several claims each, so a rank-order fill of that bound keeps only
-# one speaker. Pack a mixed live window that still fits the same 32 refs.
+# used to carry acceptance+payload+delivery(+ack) and starved the live head.
+# Compact claims keep ~2 refs each, so the pack can reserve the same 8-line
+# companion live window the continuity tags and context-truth audit expect.
 WORKING_DIALOGUE_SOURCE_REF_BUDGET = 32
 WORKING_DIALOGUE_ITEM_BUDGET = 16
-WORKING_DIALOGUE_COMPANION_ITEMS = 4
+WORKING_DIALOGUE_COMPANION_ITEMS = 8
 WORKING_DIALOGUE_COUNTERPART_ITEMS = 8
 
 

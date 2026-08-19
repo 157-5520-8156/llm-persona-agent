@@ -328,7 +328,12 @@ class ScenarioVerificationError(AssertionError):
 # pricing with production/debug spend accounts, and PrivateImpression user-
 # channel authority limits. Per-case predicates remain enforced; aggregate
 # prompt/policy identities intentionally move.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.80"
+# ``.81`` composes turn-completion grounding (companion shared_history /
+# counterpart observation refs, K4 companion window 8) with photo-realism
+# situation-outfit freeze materialization and private-impression daily-cap
+# health quieting. Per-case predicates remain enforced; aggregate prompt /
+# subject-presentation identities intentionally move.
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.81"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -498,12 +503,20 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.80"
 # produced the same aggregate manifest.
 # ``.80`` is installed only after two independent complete 120-case processes
 # produced the same aggregate manifest.
+# ``.81`` is installed only after two independent complete 120-case processes
+# produced the same aggregate manifest.
 # 2026-08-19: ``.80`` aggregate after declared-due closure, shareable-photo /
 # living-state inventory, peak/off-peak DeepSeek CNY pricing + spend accounts,
 # and PrivateImpression user-channel limits. Two independent complete 120-case
 # processes produced this hash before installation.
+# 2026-08-19 2nd: ``.81`` aggregate after proactive grounding shared_history /
+# counterpart lanes, companion dialogue window 8, media_local situation-outfit
+# freeze materialization (short role keys in candidates), and private-impression
+# daily-cap no longer marking /health degraded. Two independent complete
+# 120-case processes produced this hash before installation:
+# 987d0d567b78253feb96c09df449a8fae17eb5da76a01e215cbcbada9f0baa12
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "c9db2bb930c58e09be5c0dc8700a5ca41bdb72ec067e5f8778a79ddaedd39ce9"
+    "987d0d567b78253feb96c09df449a8fae17eb5da76a01e215cbcbada9f0baa12"
 )
 
 

@@ -557,7 +557,7 @@ SLOTS: tuple[SlotSpec, ...] = (
             truth.sidecar_processed_count,
         ),
         compare=_compare_sidecar,
-        notes="处理量取 sidecar 里 ingest/attention 表 COUNT 的最大值。不要把历史口头数字（例如 230）写死。",
+        notes="处理量只计 live_outbox（真正排队入世界的）。storage_samples 是小时遥测，不算。",
     ),
     SlotSpec(
         slot_id="private_self.stable_self.present",

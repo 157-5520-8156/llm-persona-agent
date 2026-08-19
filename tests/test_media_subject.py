@@ -61,6 +61,8 @@ def test_catalog_builds_deterministic_coherent_candidates() -> None:
 
 
 def test_dance_and_pilates_default_to_athletic_outfit_role_when_world_has_no_appearance_state() -> None:
+    from companion_daemon.media_subject import materialize_situation_outfit
+
     for activity_kind in ("dance", "pilates"):
         snapshot = _snapshot()
         snapshot["activity"] = {"kind": activity_kind, "description": "训练结束"}
@@ -74,7 +76,100 @@ def test_dance_and_pilates_default_to_athletic_outfit_role_when_world_has_no_app
         )
 
         assert candidates
-        assert {item.presentation.appearance.outfit_role for item in candidates} == {"athletic"}
+        outfits = {item.presentation.appearance.outfit_role for item in candidates}
+        assert outfits == {"athletic"}
+        frozen = materialize_situation_outfit(
+            candidates[0].presentation,
+            snapshot=snapshot,
+            stable_seed=f"op:{activity_kind}:frozen-outfit",
+        )
+        phrase = frozen.appearance.outfit_role
+        assert "athletic" in phrase or "training" in phrase or "sports" in phrase
+        assert "do not reuse identity-reference wardrobe" in phrase
+
+
+def test_media_local_outfit_phrases_vary_by_activity_situation() -> None:
+    from companion_daemon.media_subject import materialize_situation_outfit
+
+    situations = (
+        ("study", "在图书馆自习", "大学图书馆", "campus"),
+        ("walking", "校园散步", "校园主路", "outdoor"),
+        ("workout", "健身后休息", "校园健身房", "athletic"),
+        ("cooking", "煮面", "宿舍厨房", "cooking"),
+    )
+    phrases: list[str] = []
+    roles: list[str] = []
+    for kind, description, place, _token in situations:
+        snapshot = _snapshot()
+        snapshot["activity"] = {"kind": kind, "description": description}
+        snapshot["location"] = {"name": place, "kind": "public", "mirror_available": False}
+        snapshot["environment"] = {"lighting": "available light", "weather": "clear"}
+        snapshot["event"] = {
+            "event_id": f"event:{kind}",
+            "status": "committed",
+            "logical_at": "2026-08-19T15:00:00+08:00",
+            "summary": description,
+            "outcome": "ok",
+        }
+        candidates = build_subject_candidates(
+            snapshot=snapshot,
+            opportunity_id=f"op:outfit:{kind}",
+            capture_mode="character_front_camera",
+            character_visibility="identifiable",
+            config_path=CONFIG,
+            limit=4,
+        )
+        assert candidates
+        role = candidates[0].presentation.appearance.outfit_role
+        roles.append(role)
+        assert " " not in role or role in {
+            "home_cooking",
+            "campus_casual",
+            "outdoor_casual",
+            "athletic",
+            "event_appropriate_casual",
+        }
+        assert "do not reuse identity-reference wardrobe" not in role
+        frozen = materialize_situation_outfit(
+            candidates[0].presentation,
+            snapshot=snapshot,
+            stable_seed=f"op:outfit:{kind}:frozen-outfit",
+        )
+        phrase = frozen.appearance.outfit_role
+        phrases.append(phrase)
+        assert "do not reuse identity-reference wardrobe" in phrase
+        assert place in phrase
+    assert len(set(roles)) == len(roles)
+    assert len(set(phrases)) == len(phrases)
+
+
+def test_world_appearance_reads_sparse_visible_attributes() -> None:
+    candidates = build_subject_candidates(
+        snapshot=_snapshot(
+            appearance_state={
+                "visible_attributes": [
+                    {"aspect": "hair_arrangement", "description": "low_ponytail"},
+                    {
+                        "aspect": "outfit",
+                        "description": "a charcoal zip hoodie over a white tee",
+                    },
+                    {"aspect": "grooming", "description": "natural"},
+                ]
+            }
+        ),
+        opportunity_id="op:sparse-world-look",
+        capture_mode="character_front_camera",
+        character_visibility="identifiable",
+        config_path=CONFIG,
+        limit=8,
+    )
+
+    assert candidates
+    appearance = candidates[0].presentation.appearance
+    assert appearance.source == "world_fact"
+    assert appearance.hair_arrangement == "low_ponytail"
+    assert appearance.outfit_role == "a charcoal zip hoodie over a white tee"
+    assert appearance.grooming == "natural"
 
 
 def test_pre_beat_v1_facial_catalog_uses_bounded_compatibility_matrix(tmp_path: Path) -> None:

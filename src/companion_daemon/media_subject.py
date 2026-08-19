@@ -990,8 +990,9 @@ def presentation_prompt_block(
         )
     identity_guidance = (
         "Identity references and the general identity anchor define identity only. This shot-specific "
-        "appearance overrides their default hairstyle tendencies. Do not copy their head angle, gaze, "
-        "expression, hairstyle, gesture, or framing. Follow this frozen presentation instead."
+        "appearance overrides their default hairstyle and wardrobe. Do not copy their head angle, gaze, "
+        "expression, hairstyle, wardrobe, garment color, silhouette, gesture, or framing. Follow this "
+        "frozen presentation instead."
         if include_identity_reference_guidance
         else "Follow this frozen presentation and the event-supported appearance; do not introduce a generic "
         "identity-reference pose, wardrobe, accessory, or framing."
@@ -1041,16 +1042,45 @@ def capture_hand_feasibility_error(
     return None
 
 
+def _appearance_state_text(value: Mapping[str, object], *keys: str) -> str:
+    """Read flat media fields or sparse world ``visible_attributes`` aspects."""
+
+    for key in keys:
+        raw = value.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    attributes = value.get("visible_attributes")
+    if not isinstance(attributes, list):
+        return ""
+    by_aspect = {
+        str(item.get("aspect") or "").strip(): str(item.get("description") or "").strip()
+        for item in attributes
+        if isinstance(item, Mapping)
+    }
+    for key in keys:
+        found = by_aspect.get(key, "")
+        if found:
+            return found
+    return ""
+
+
 def _world_appearance(value: Mapping[str, object]) -> SubjectAppearance | None:
-    required = ("hair_arrangement", "outfit_role", "grooming")
-    if any(not isinstance(value.get(key), str) or not str(value[key]).strip() for key in required):
+    hair = _appearance_state_text(value, "hair_arrangement", "hair")
+    outfit = _appearance_state_text(value, "outfit_role", "outfit", "wardrobe")
+    grooming = _appearance_state_text(value, "grooming")
+    if not hair or not outfit or not grooming:
         return None
+    accessories_raw = value.get("accessories", []) or []
+    if isinstance(accessories_raw, list):
+        accessories = tuple(str(item) for item in accessories_raw if item)
+    else:
+        accessories = ()
     return SubjectAppearance(
         source="world_fact",
-        hair_arrangement=str(value["hair_arrangement"]).strip(),
-        outfit_role=str(value["outfit_role"]).strip(),
-        grooming=str(value["grooming"]).strip(),
-        accessories=tuple(str(item) for item in value.get("accessories", []) or []),
+        hair_arrangement=hair,
+        outfit_role=outfit,
+        grooming=grooming,
+        accessories=accessories,
         evidence_refs=("/character/appearance_state",),
     )
 
@@ -1063,6 +1093,10 @@ def _media_local_appearance(
     grooming = _stable_choice(choices.get("grooming"), stable_seed + ":grooming", "natural")
     accessory_options = choices.get("accessory_options", [[]])
     accessories = _stable_choice_raw(accessory_options, stable_seed + ":accessories", [])
+    # Keep the catalog role key here.  Candidate disclosure hashes the full
+    # appearance into presentation_candidate_id; a long situation phrase would
+    # reshuffle the balanced 24-candidate set.  Concrete clothing is applied at
+    # freeze via materialize_situation_outfit().
     return SubjectAppearance(
         source="media_local",
         hair_arrangement=str(hair),
@@ -1070,6 +1104,29 @@ def _media_local_appearance(
         grooming=str(grooming),
         accessories=tuple(str(item) for item in accessories if item),
     )
+
+
+def materialize_situation_outfit(
+    presentation: SubjectPresentationPlan,
+    *,
+    snapshot: Mapping[str, object],
+    stable_seed: str,
+) -> SubjectPresentationPlan:
+    """Expand media_local role keys into shot-local clothing for a frozen plan.
+
+    Planning candidates keep short outfit_role keys so disclosure ranking stays
+    stable.  Once a candidate is chosen, replace the key with a concrete
+    situation phrase before prompt compile.  world_fact looks are left alone.
+    """
+
+    appearance = presentation.appearance
+    if appearance.source != "media_local":
+        return presentation
+    role = appearance.outfit_role.strip()
+    if not role or "do not reuse identity-reference wardrobe" in role:
+        return presentation
+    composed = _compose_situation_outfit(snapshot, role=role, stable_seed=stable_seed)
+    return replace(presentation, appearance=replace(appearance, outfit_role=composed))
 
 
 def _infer_outfit_role(snapshot: Mapping[str, object]) -> str:
@@ -1091,6 +1148,91 @@ def _infer_outfit_role(snapshot: Mapping[str, object]) -> str:
         "travel": "travel_casual",
         "walking": "outdoor_casual",
     }.get(kind, "event_appropriate_casual")
+
+
+def _time_of_day_hint(logical_at: str) -> str:
+    if "T" not in logical_at:
+        return ""
+    try:
+        hour = int(logical_at.split("T", 1)[1][:2])
+    except ValueError:
+        return ""
+    if 5 <= hour < 11:
+        return "morning"
+    if 11 <= hour < 17:
+        return "afternoon"
+    if 17 <= hour < 22:
+        return "evening"
+    return "late night"
+
+
+def _compose_situation_outfit(
+    snapshot: Mapping[str, object], *, role: str, stable_seed: str
+) -> str:
+    """Derive shot-local garment classes from structured life context.
+
+    This is deterministic media_local guidance, not her personal wardrobe and
+    not a character decision.  Vague role labels lose to concrete identity-ref
+    clothing; situation phrases must be specific enough to override that pull
+    without inventing a fixed closet inventory.
+    """
+
+    activity = _mapping(snapshot.get("activity"))
+    location = _mapping(snapshot.get("location"))
+    environment = _mapping(snapshot.get("environment"))
+    event = _mapping(snapshot.get("event"))
+    place = str(location.get("name") or location.get("kind") or "the current place").strip()
+    lighting = str(environment.get("lighting") or environment.get("light") or "").strip()
+    weather = str(environment.get("weather") or "").strip()
+    time_hint = _time_of_day_hint(str(event.get("logical_at") or ""))
+    climate_bits = tuple(part for part in (weather, lighting, time_hint) if part)
+    climate = ", ".join(climate_bits) if climate_bits else "the current conditions"
+    kind = str(activity.get("kind") or "").lower()
+    variants: dict[str, tuple[str, ...]] = {
+        "athletic": (
+            "breathable athletic top with practical dark training pants or shorts and sneakers",
+            "fitted sports top with loose sweatpants and gym sneakers",
+        ),
+        "home_cooking": (
+            "soft washable home knit in muted grey or soft blue with sleeves that can be pushed up, and simple trousers",
+            "comfortable non-cream home top with practical sleeves and casual bottoms for kitchen work",
+        ),
+        "campus_casual": (
+            "simple cotton tee under a light navy or grey knit cardigan, with jeans or straight trousers",
+            "understated campus shirt with a soft open cardigan and everyday trousers",
+        ),
+        "outdoor_casual": (
+            "light denim or cotton jacket over a plain non-cream top, with casual trousers for walking outside",
+            "layered outdoor everyday clothes: open shirt or light jacket over a simple tee and jeans",
+        ),
+        "home_rest": (
+            "relaxed modest home lounge top in soft grey or muted color and soft trousers for resting indoors",
+            "plain non-cream home long-sleeve and comfortable bottoms, not outdoor streetwear",
+        ),
+        "travel_casual": (
+            "comfortable layered travel clothes with a practical jacket and easy trousers",
+            "soft travel knit layers and casual bottoms suited to moving between places",
+        ),
+        "swimwear": (
+            "simple functional one-piece or modest swimwear supported by the swimming activity",
+        ),
+        "event_appropriate_casual": (
+            "everyday cafe-or-city casual clothes with a distinct non-reference palette and silhouette",
+            "neat casual top and trousers suited to the place, without copying identity-reference garments",
+        ),
+        "event_appropriate": (
+            "clothing visibly shaped by the frozen event at this place, not by identity-reference wardrobe",
+        ),
+    }
+    pool = variants.get(role) or variants["event_appropriate_casual"]
+    chosen = _stable_choice_raw(list(pool), stable_seed + ":outfit_phrase", pool[0])
+    phrase = str(chosen)
+    # Keep one short situational clause so the provider cannot ignore place/weather.
+    where = f" for {kind or 'this activity'} at {place}" if place else f" for {kind or 'this activity'}"
+    return (
+        f"{phrase}{where}, matching {climate}; "
+        "do not reuse identity-reference wardrobe, hoodie color, or garment silhouette"
+    )
 
 
 def _subject_signature(

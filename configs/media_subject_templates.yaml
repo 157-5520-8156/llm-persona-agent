@@ -374,15 +374,16 @@ render_lexicon:
     clipped_back: front and side strands visibly secured away from the face by a simple, event-supported tie or pin; it must functionally hold the hair rather than merely decorate loose hair
     natural_down: naturally loose shoulder-length hair with no forced symmetry
   outfit_role:
-    home_cooking: ordinary comfortable home clothes suitable for cooking, with practical sleeves
-    event_appropriate_casual: ordinary casual clothes visibly appropriate to the current activity and location
-    campus_casual: understated campus clothes suitable for studying or class
-    athletic: practical exercise clothing supported by the current activity
-    home_rest: relaxed modest clothing suitable for resting at home
-    travel_casual: comfortable layered clothing suitable for travel
-    outdoor_casual: comfortable everyday clothing suitable for walking outdoors
-    event_appropriate: clothing visibly appropriate to the frozen event
+    home_cooking: soft washable home knit in muted grey or soft blue with sleeves that can be pushed up, and simple trousers for cooking
+    event_appropriate_casual: everyday city-casual clothes with a place-appropriate silhouette, not identity-reference wardrobe
+    campus_casual: simple cotton tee under a light navy or grey knit cardigan, with jeans or straight trousers
+    athletic: breathable athletic top with practical dark training pants or shorts and sneakers
+    home_rest: relaxed modest home lounge top in soft grey or muted color and soft trousers for resting indoors
+    travel_casual: comfortable layered travel clothes with a practical jacket and easy trousers
+    outdoor_casual: light denim or cotton jacket over a plain non-cream top, with casual trousers for walking outdoors
+    event_appropriate: clothing visibly shaped by the frozen event, not by identity-reference wardrobe
     navy_cardigan_and_cream_top: a navy cardigan over a cream top
+    swimwear: simple functional swimwear supported by the swimming activity
   grooming:
     natural: natural grooming with real skin texture and no editorial polish
     lightly_put_together: lightly put together while retaining an everyday appearance

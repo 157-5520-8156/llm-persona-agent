@@ -292,6 +292,91 @@ def test_unsupported_only_claim_still_rejects() -> None:
         bind_proactive_world_claims(draft=draft, request=_request(_context()))
 
 
+def test_companion_own_speech_binds_as_shared_history() -> None:
+    library = "dialogue:expression:plan:expression:library-beat:1"
+    draft = _draft_with_claims(
+        {
+            "claim_text": "我说过在图书馆、阴天像要下雨",
+            "scope": "shared_history",
+            "source_refs": [library],
+        },
+        {
+            "claim_text": "我说过晚上会发书店照片",
+            "scope": "current_world",
+            "source_refs": [library],
+        },
+    )
+    request = _request(_context())
+
+    bound = bind_proactive_world_claims(draft=draft, request=request)
+    kept = _validate_proactive_grounding(draft=draft, request=request)
+
+    assert [claim.scope for claim in bound.world_claims] == [
+        "shared_history",
+        "shared_history",
+    ]
+    assert all(claim.source_refs == (library,) for claim in bound.world_claims)
+    assert kept.beats[0].text == "想到你了。"
+
+
+def test_proactive_observation_trigger_binds_without_trigger_message() -> None:
+    trig = (
+        "event:trigger:observation:platform:qq:qq:2759284998:"
+        "qq-coalesced:9b0c93fee624208d21e91a78af8f914ec7362474c4edbe403fb9d58fb2b6a612"
+    )
+    context = {
+        "actor_ref": "agent:companion",
+        "slices": {
+            "recent_dialogue": {
+                "availability": "available",
+                "items": [
+                    {
+                        "item_ref": "dialogue:observation:observation:qq:haodi",
+                        "source_ref": "dialogue:observation:observation:qq:haodi",
+                        "value": {
+                            "speaker": "counterpart",
+                            "speaker_ref": "user:geoff",
+                            "text": "好滴",
+                            "source_refs": [trig, "dialogue:observation:observation:qq:haodi"],
+                        },
+                    }
+                ],
+            }
+        },
+    }
+    request = ModelInput(
+        call_id="call:proactive-obs",
+        attempt_id="attempt:proactive-obs",
+        route=ModelRoute(tier="flash", reason_code="fixture", router_version="fixture.1"),
+        capsule_id="a" * 64,
+        trigger_ref=trig,
+        evaluated_world_revision=3,
+        evaluated_deliberation_revision=2,
+        evaluated_ledger_sequence=9,
+        model_content_json=json.dumps(context, ensure_ascii=False),
+        trigger_evidence=(
+            ProposalEvidenceRef(
+                ref_id=trig,
+                evidence_kind="committed_world_event",
+                source_world_revision=2,
+                immutable_hash="sha256:" + "7" * 64,
+            ),
+        ),
+    )
+    draft = _draft_with_claims(
+        {
+            "claim_text": "他应了句好滴",
+            "scope": "current_world",
+            "source_refs": [trig],
+        }
+    )
+
+    bound = bind_proactive_world_claims(draft=draft, request=request)
+
+    assert [claim.scope for claim in bound.world_claims] == ["counterpart_history"]
+    assert bound.world_claims[0].source_refs == (trig,)
+
+
 def test_waiting_for_and_wait_compile_the_same_hope_as_inbound() -> None:
     bound = _bind(_payload(waiting_for="你那边下雨了没", wait=90))
     _validate(_payload(waiting_for="你那边下雨了没", wait=90))

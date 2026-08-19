@@ -131,7 +131,9 @@ def test_compile_process_health_starved_after_living_is_degraded() -> None:
     assert "world_activity_starved" in verdict.reasons
 
 
-def test_compile_process_health_private_impression_quota_open_is_degraded() -> None:
+def test_compile_process_health_private_impression_quota_open_is_not_degraded() -> None:
+    """Daily-cap hang is expected until midnight; it must not mask real stalls."""
+
     verdict = compile_process_health(
         healthy_status="running",
         character_interior=_ready_interior(),
@@ -145,9 +147,9 @@ def test_compile_process_health_private_impression_quota_open_is_degraded() -> N
             "daily_limit": 3,
         },
     )
-    assert verdict.status == "degraded"
-    assert "private_impression_quota_exhausted_process_open" in verdict.reasons
-
+    assert verdict.status == "running"
+    assert "private_impression_quota_exhausted_process_open" not in verdict.reasons
+    assert verdict.reason == "ok"
 
 def test_compile_process_health_historical_expired_claims_are_not_a_stall() -> None:
     verdict = compile_process_health(

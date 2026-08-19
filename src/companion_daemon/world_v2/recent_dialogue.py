@@ -415,24 +415,12 @@ class RecentDialogueCompiler:
                 )):
                     continue
                 action = actions.get(action_id)
-                receipt = receipts.get(action_id)
                 if action is None:
                     continue
                 first_visible_receipt = first_visible_receipts.get(action_id)
                 if first_visible_receipt is None:
                     continue
                 visible_receipt_event_ref, visible_receipt = first_visible_receipt
-                receipt_event = (
-                    receipt_events.get(receipt.receipt_id)
-                    if receipt is not None
-                    else None
-                )
-                delivery_refs = [visible_receipt_event_ref]
-                if (
-                    receipt_event is not None
-                    and receipt_event[0].event_id != visible_receipt_event_ref.event_id
-                ):
-                    delivery_refs.append(receipt_event[0])
                 if action.state == "delivered":
                     terminal = next(
                         (
@@ -445,7 +433,6 @@ class RecentDialogueCompiler:
                     )
                     if terminal is None or terminal.event_ref not in refs:
                         continue
-                    delivery_refs.append(refs[terminal.event_ref])
                 text: str | None = None
                 payload_ref = stored.get(payload_id)
                 sidecar_ref = sidecar_hash = None
@@ -495,17 +482,16 @@ class RecentDialogueCompiler:
                             world_revision=visible_receipt_event_ref.world_revision,
                             position=position,
                         ),
+                        # Keep the citable closure minimal: acceptance + payload
+                        # prove the spoken line. Delivery receipts and the ack
+                        # observation stay on delivery_state /
+                        # acknowledges_observation_event_refs so the 32-ref
+                        # ResolverProof budget can hold the live companion head.
                         source_claims=tuple(
                             sorted(
                                 (
                                     self._claim(acceptance),
                                     self._claim(payload_event_ref),
-                                    *(self._claim(item) for item in delivery_refs),
-                                    *(
-                                        (self._claim(refs[acknowledged_event_ref]),)
-                                        if acknowledged_event_ref in refs
-                                        else ()
-                                    ),
                                 ),
                                 key=lambda item: item.authority_event_ref,
                             )

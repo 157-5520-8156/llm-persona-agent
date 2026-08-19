@@ -615,10 +615,19 @@ def current_counterpart_report_source_refs(
     identity prevents a burst fragment from becoming ordinary history merely
     because newer input superseded its generation.  This neither makes a
     reported proposition objective truth nor requires the role to answer it.
+
+    Proactive turns often pin an older Observation as the opportunity source
+    without a fresh ``trigger_message`` packet.  The trigger event itself is
+    still counterpart-report authority for that opportunity; without it,
+    citing the source observation cannot bind to ``counterpart_history``.
     """
 
     trigger = request.trigger_message
     if trigger is None:
+        if isinstance(request.trigger_ref, str) and request.trigger_ref.startswith(
+            "event:trigger:observation:"
+        ):
+            return frozenset({request.trigger_ref})
         return frozenset()
     refs = {
         request.trigger_ref,
@@ -1261,9 +1270,12 @@ def _world_claim_source_refs_by_scope(
             epistemic_scope="counterpart_report_only",
         )
         | set(counterpart_message_source_refs),
-        "shared_history": _slice_claim_authority_tokens(
+        "shared_history": _recent_dialogue_authority_tokens(
             context,
-            "recent_dialogue",
+            epistemic_scope="companion_expression_record",
+        )
+        | _slice_claim_authority_tokens(
+            context,
             "recent_experiences",
         )
         | private_shared_history,

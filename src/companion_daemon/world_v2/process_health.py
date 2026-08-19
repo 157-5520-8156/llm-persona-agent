@@ -457,12 +457,24 @@ def _private_impression_findings(
     payload = _as_mapping(private_impression)
     if payload is None:
         return []
+    # Daily-cap exhaustion with the farm process still open is the expected
+    # hang until local midnight (see private_impression_next_due).  Treating it
+    # as degraded made /health permanently noisy and hid real stalls.
     if payload.get("open_process") is True and payload.get("gate_reason") == "daily_cap":
+        return []
+    if payload.get("open_process") is True and payload.get("gate_reason") not in {
+        None,
+        "",
+        "daily_cap",
+        "min_interval",
+        "recent_user_observation",
+        "ask",
+    }:
         return [
             (
                 "degraded",
-                "private_impression_quota_exhausted_process_open",
-                "private impression daily quota is exhausted while a process is still open",
+                "private_impression_process_stuck",
+                "private impression process is open under an unexpected gate",
             )
         ]
     return []

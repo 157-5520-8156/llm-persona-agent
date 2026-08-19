@@ -2871,6 +2871,8 @@ class StructuredCharacterRoleFaculty:
                     "没有可核对的世界事实时 world_claims 写 []。"
                     "对话 beat 不是 current_world；current_world 只能引用当前生活/世界来源，"
                     "不能引用她自己上一句对话。"
+                    "复述自己已经说过的话时，用 shared_history，并引用那条 companion 对话的 "
+                    "item_ref / source_refs；引用他刚说的确认用 counterpart_history。"
                 ),
                 "waiting_for": "optional short sentence; compiles a hope only with wait",
                 "wait": "optional seconds 30..86400; only with waiting_for",

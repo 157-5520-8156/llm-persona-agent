@@ -87,6 +87,7 @@ from companion_daemon.media_subject import (
     build_subject_candidates,
     capture_hand_feasibility_error,
     load_subject_catalog,
+    materialize_situation_outfit,
     presentation_prompt_block,
     select_identity_references,
 )
@@ -2858,8 +2859,10 @@ def _freeze_proposal(
             return NotRenderable(opportunity.opportunity_id, "presentation_intent_conflict")
         if selected.get("character_visibility") != values["character_visibility"]:
             return NotRenderable(opportunity.opportunity_id, "presentation_visibility_conflict")
-        subject_presentation = SubjectPresentationPlan.from_payload(
-            selected["subject_presentation"]
+        subject_presentation = materialize_situation_outfit(
+            SubjectPresentationPlan.from_payload(selected["subject_presentation"]),
+            snapshot=opportunity.event_snapshot,
+            stable_seed=f"{opportunity.opportunity_id}:frozen-outfit",
         )
         embodied_presentation = EmbodiedPresentation.from_payload(selected["embodied_presentation"])
         physical_evidence_refs = {
@@ -3431,7 +3434,11 @@ def _freeze_proposal_v5(
         camera_geometry=geometry,
         identity_reference_selection=identity,
         subject_presentation=(
-            SubjectPresentationPlan.from_payload(subject_payload)
+            materialize_situation_outfit(
+                SubjectPresentationPlan.from_payload(subject_payload),
+                snapshot=opportunity.event_snapshot,
+                stable_seed=f"{opportunity.opportunity_id}:frozen-outfit",
+            )
             if subject_payload is not None
             else None
         ),

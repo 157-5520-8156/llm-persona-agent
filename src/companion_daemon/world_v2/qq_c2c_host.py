@@ -2383,9 +2383,25 @@ class QQC2CHost:
             # already-due model-owned consideration; Clock never supplies its
             # motive, prose, or send decision. Normal budgets and Action
             # recovery still run in ``drain_scheduled_work`` below.
+            #
+            # Life wall-catchup can jump the cursor past an initiative due and
+            # also authorize Actions. Preferring those Actions used to starve
+            # the already-due consider forever (exact_future will not wake a
+            # due behind the cursor). Always give an overdue initiative lane
+            # one drain chance.
             post_tick_background: list[str] = []
             post_tick_background_budget = max(0, background_remaining - held_retry_reserve)
-            if post_tick_background_budget > 0 and not priority_action_ids:
+            initiative_due_at = (
+                await initiative_due_reader() if callable(initiative_due_reader) else None
+            )
+            initiative_overdue = (
+                isinstance(logical_from, datetime)
+                and isinstance(initiative_due_at, datetime)
+                and initiative_due_at <= logical_from
+            )
+            if post_tick_background_budget > 0 and (
+                not priority_action_ids or initiative_overdue
+            ):
                 # Opening, deciding, and authorizing an initiative process are
                 # separate durable steps. Continue only until that lane has
                 # produced its Action (or the bounded background budget is

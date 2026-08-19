@@ -21,8 +21,8 @@ _SIDECAR_PROCESS_TABLES = (
     "external_perception_source_evidence",
     "external_perception_raw_evidence",
     "external_perception_rejected_items",
-    "external_signal_search_documents",
-    "external_perception_storage_samples",
+    # storage_samples is hourly telemetry, not an admitted/pending signal.
+    "external_perception_opportunity_membership",
     "external_perception_attention_exposures",
     "external_perception_attention_opportunities",
     "external_perception_attention_attempts",
@@ -213,12 +213,19 @@ def _sidecar_table_counts(path: Path | None) -> dict[str, int]:
 
 
 def _sidecar_processed_count(counts: dict[str, int]) -> int | None:
+    """Count sidecar work that was actually queued for world admission.
+
+    Hourly storage telemetry and raw index tables are not "processed for her".
+    Live outbox rows are the admission queue; empty outbox with zero admitted
+    events means nothing was owed to the world ledger.
+    """
+
     if not counts:
         return None
-    ranked = [counts[name] for name in _SIDECAR_PROCESS_TABLES if name in counts]
-    if ranked:
-        return max(ranked)
-    return max(counts.values()) if counts else None
+    queued = counts.get("external_perception_live_outbox")
+    if isinstance(queued, int):
+        return queued
+    return 0
 
 
 def collect_ledger_truth(

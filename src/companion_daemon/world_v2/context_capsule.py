@@ -1495,19 +1495,45 @@ def _slice_model_content(
             "value": value,
         }
         if slice_name == "recent_dialogue":
-            # The full cryptographic closure remains on ``CapsuleItem`` and in
-            # the resolver proof. Repeating every acceptance/payload/receipt
-            # hash inside the model prompt made four delivered lines cost more
-            # context than the dialogue itself and could evict two active
-            # memories. The model needs the verified text and stable source
-            # identities, not duplicate hash material.
+            # Drop the heavy binding table from the prompt, but keep a slim
+            # claimable identity: item_ref plus the primary authority event(s).
+            # Without those, proactive world_claims that cite the observation
+            # trigger (or her own spoken line) fail lane binding even though
+            # the line is sitting in the dialogue window.
+            primary_refs = tuple(
+                dict.fromkeys(
+                    (
+                        item.item_ref,
+                        *(
+                            binding.ref
+                            for binding in item.source_bindings
+                            if isinstance(binding.ref, str) and binding.ref
+                        ),
+                    )
+                )
+            )[:4]
+            material["source_ref"] = item.item_ref
             material.pop("source_bindings")
             if isinstance(value, dict):
-                material["value"] = {
+                slim_value = {
                     key: field_value
                     for key, field_value in value.items()
                     if key not in {"source_claims", "sidecar_ref", "sidecar_hash"}
                 }
+                existing = slim_value.get("source_refs")
+                if isinstance(existing, list):
+                    merged = tuple(
+                        dict.fromkeys(
+                            (
+                                *(ref for ref in existing if isinstance(ref, str) and ref),
+                                *primary_refs,
+                            )
+                        )
+                    )[:6]
+                else:
+                    merged = primary_refs
+                slim_value["source_refs"] = list(merged)
+                material["value"] = slim_value
         if slice_name == "media_deliveries":
             material.pop("source_bindings")
             if isinstance(value, dict):

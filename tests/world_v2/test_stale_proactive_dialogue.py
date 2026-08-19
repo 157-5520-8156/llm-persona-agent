@@ -102,7 +102,7 @@ def _production_like_dialogue() -> tuple[list[RecentDialogueItem], list[RecentDi
             speaker="companion",
             text=f"她自己的第 {index} 条 beat，带好几条 claim。",
             sequence=190_000 + index * 1_000,
-            claim_count=4,
+            claim_count=2,
         )
         for index in range(12)
     ]
@@ -151,13 +151,67 @@ def test_without_live_head_eight_item_budget_drops_the_sun_line() -> None:
 
 def test_without_live_head_the_sun_line_loses_the_ref_budget() -> None:
     him, her = _production_like_dialogue()
-    selected = _select_under_ref_budget(_ranked([*him, *her]))
+    # Inflate claim cost so a pure rank fill still starves his live head —
+    # the packed live-window path is what keeps both speakers under 32 refs.
+    heavy_her = [
+        item.model_copy(
+            update={
+                "source_claims": tuple(
+                    DialogueSourceClaim(
+                        authority_event_ref=f"event:{item.dialogue_id}:heavy:{index}",
+                        authority_world_revision=max(1, item.sequence // 100),
+                        authority_payload_hash=_hash(f"{item.dialogue_id}:heavy:{index}"),
+                    )
+                    for index in range(4)
+                )
+            }
+        )
+        for item in her
+    ]
+    selected = _select_under_ref_budget(_ranked([*him, *heavy_her]))
     texts = [item.text for item in selected]
 
     assert SUN not in texts
     assert BUSY not in texts
     assert STRANGE not in texts
     assert any(item.speaker == "companion" for item in selected)
+
+
+def test_packed_live_window_keeps_eight_companion_lines() -> None:
+    him, her = _production_like_dialogue()
+    # Stretch her side past the old 4-seat reserve.
+    extra = []
+    base = her[-1]
+    for index in range(8):
+        extra.append(
+            base.model_copy(
+                update={
+                    "dialogue_id": f"{base.dialogue_id}:extra:{index}",
+                    "text": f"companion-live-{index}",
+                    "sequence": base.sequence + index + 1,
+                    "source_claims": (
+                        DialogueSourceClaim(
+                            authority_event_ref=f"event:accept:{index}",
+                            authority_world_revision=10 + index,
+                            authority_payload_hash="a" * 64,
+                        ),
+                        DialogueSourceClaim(
+                            authority_event_ref=f"event:payload:{index}",
+                            authority_world_revision=10 + index,
+                            authority_payload_hash="b" * 64,
+                        ),
+                    ),
+                }
+            )
+        )
+    marked_him, marked_her = _mark_live_conversation_head(list(him), list(extra))
+    packed = pack_recent_dialogue_under_source_budget((*marked_him, *marked_her))
+    companion_texts = [item.text for item in packed if item.speaker == "companion"]
+    refs = {claim.authority_event_ref for item in packed for claim in item.source_claims}
+
+    assert len(companion_texts) >= 8
+    assert all(f"companion-live-{index}" in companion_texts for index in range(8))
+    assert len(refs) <= 32
 
 
 def test_packed_live_window_keeps_both_speakers() -> None:
