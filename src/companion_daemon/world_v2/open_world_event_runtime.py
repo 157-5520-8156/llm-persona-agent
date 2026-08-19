@@ -553,11 +553,14 @@ class OpenWorldEventRuntime:
                 "role": "system",
                 "content": (
                     "Choose whether one small temporary event happens in an already verified situation. "
-                    "Return exactly JSON. You may choose only an offered situation_token and write one short "
-                    "subjective moment (include moment_scope=subjective). This prose is an impression, not "
-                    "external evidence. Do not invent a person, place, time, fact, action authority, event id, "
-                    "hash, recipient, or policy. Do not narrate a completed send or reply through the user "
-                    "channel; that is Action-ledger territory. If nothing stands out, return {\"decision\":\"no_op\"}."
+                    "Return exactly JSON. Self-life in this situation is allowed: where she went, what "
+                    "she did, what she photographed, and a still-unsent intention. You may choose only an "
+                    "offered situation_token and write one short subjective moment (include "
+                    "moment_scope=subjective and user_channel_completion=none). This prose is an "
+                    "impression, not external evidence. Do not invent a person, place, time, fact, "
+                    "action authority, event id, hash, recipient, or policy. Do not narrate a completed "
+                    "send or reply through the user chat channel; that is Action-ledger territory. If "
+                    "nothing stands out, return {\"decision\":\"no_op\"}."
                 ),
             },
             {

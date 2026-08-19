@@ -1814,6 +1814,8 @@ class StructuredRoleToolContracts:
                 "Return the complete source-bound activity lifecycle choice. The "
                 "character may select one offered opening or explicitly choose no_op; "
                 "optional noticed is a short subjective moment in a verified situation. "
+                "If noticed is present, user_channel_completion must be the const none; "
+                "do not narrate a completed send or reply through the user channel. "
                 "The function constrains capability and transport shape only."
             ),
         )

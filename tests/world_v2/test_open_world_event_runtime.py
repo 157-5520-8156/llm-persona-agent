@@ -52,6 +52,7 @@ def test_open_world_draft_can_choose_an_offered_situation_and_short_moment() -> 
                 "situation_token": "situation-token-cafe-cat",
                 "moment": "她在门口看见一只猫停了一会儿，顺手记下了这个小插曲。",
                 "moment_scope": "subjective",
+                "user_channel_completion": "none",
             },
             ensure_ascii=False,
         ),
@@ -64,6 +65,41 @@ def test_open_world_draft_can_choose_an_offered_situation_and_short_moment() -> 
     assert draft.moment_scope == "subjective"
 
 
+def test_open_world_select_requires_user_channel_completion_none() -> None:
+    with pytest.raises(ValueError, match="user_channel_completion"):
+        parse_open_world_event_draft(
+            raw=json.dumps(
+                {
+                    "decision": "select",
+                    "situation_token": "situation-token-cafe-cat",
+                    "moment": "她在书店坐了一下午，拍了几张角落照片。",
+                    "moment_scope": "subjective",
+                    "user_channel_completion": "sent",
+                },
+                ensure_ascii=False,
+            ),
+            offered=_situations(),
+            model="test-open-world",
+        )
+
+    draft = parse_open_world_event_draft(
+        raw=json.dumps(
+            {
+                "decision": "select",
+                "situation_token": "situation-token-cafe-cat",
+                "moment": "她在书店坐了一下午，拍了几张角落照片，想着晚点发给他。",
+                "moment_scope": "subjective",
+                "user_channel_completion": "none",
+            },
+            ensure_ascii=False,
+        ),
+        offered=_situations(),
+        model="test-open-world",
+    )
+    assert "书店" in (draft.moment or "")
+    assert draft.user_channel_completion == "none"
+
+
 def test_open_world_draft_cannot_invent_identity_location_or_extra_authority_fields() -> None:
     with pytest.raises(ValueError, match="unknown situation"):
         parse_open_world_event_draft(
@@ -73,6 +109,7 @@ def test_open_world_draft_cannot_invent_identity_location_or_extra_authority_fie
                     "situation_token": "invented-place-and-person",
                     "moment": "这里有一个从未出现过的人。",
                     "moment_scope": "subjective",
+                    "user_channel_completion": "none",
                 }
             ),
             offered=_situations(),
@@ -111,6 +148,8 @@ def test_open_world_selected_moment_must_be_explicitly_subjective() -> None:
                     "decision": "select",
                     "situation_token": "situation-token-cafe-cat",
                     "moment": "她看见了一个外部事实。",
+                    "moment_scope": "objective",
+                    "user_channel_completion": "none",
                 },
                 ensure_ascii=False,
             ),
@@ -137,6 +176,7 @@ class _ChoosingEventModel:
                 ),
                 "moment": "她和林因为一件小事拌了两句嘴，后来都停下来重新看了看对方。",
                 "moment_scope": "subjective",
+                "user_channel_completion": "none",
             },
             ensure_ascii=False,
         )

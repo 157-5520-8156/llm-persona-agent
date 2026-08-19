@@ -71,6 +71,121 @@ def test_compile_process_health_is_running_when_all_checks_pass() -> None:
     assert verdict.reasons == ()
 
 
+def test_compile_process_health_ledger_stream_stalled_is_degraded() -> None:
+    verdict = compile_process_health(
+        healthy_status="running",
+        character_interior=_ready_interior(),
+        scheduler_status="running",
+        storage={"status": "ok", "writable": True},
+        ledger_writable=True,
+        initiative={
+            "state": "waiting_context",
+            "warning": True,
+            "warning_reasons": ["consideration_overdue"],
+        },
+        scheduler={
+            "passes_completed": 12,
+            "interval_seconds": 30,
+            "last_completed_at": "2026-08-19T09:30:00+00:00",
+            "last_ledger_event_created_at": "2026-08-19T06:00:45+00:00",
+            "overdue_declared_due_kinds": ["social.initiative.cadence"],
+        },
+    )
+    assert verdict.status == "degraded"
+    assert "ledger_event_stream_stalled" in verdict.reasons
+    assert "social.initiative.cadence" in verdict.reason
+
+
+def test_compile_process_health_idle_without_overdue_work_is_not_a_stall() -> None:
+    verdict = compile_process_health(
+        healthy_status="running",
+        character_interior=_ready_interior(),
+        scheduler_status="running",
+        storage={"status": "ok", "writable": True},
+        ledger_writable=True,
+        scheduler={
+            "passes_completed": 12,
+            "interval_seconds": 30,
+            "last_completed_at": "2026-08-19T09:30:00+00:00",
+            "last_ledger_event_created_at": "2026-08-19T06:00:45+00:00",
+            "overdue_declared_due_kinds": [],
+        },
+    )
+    assert verdict.status == "running"
+    assert verdict.reasons == ()
+
+
+def test_compile_process_health_starved_after_living_is_degraded() -> None:
+    verdict = compile_process_health(
+        healthy_status="running",
+        character_interior=_ready_interior(),
+        scheduler_status="running",
+        storage={"status": "ok", "writable": True},
+        ledger_writable=True,
+        world_activity={
+            "starved": True,
+            "last_lived_at": "2026-08-18T06:00:45+00:00",
+        },
+    )
+    assert verdict.status == "degraded"
+    assert "world_activity_starved" in verdict.reasons
+
+
+def test_compile_process_health_private_impression_quota_open_is_degraded() -> None:
+    verdict = compile_process_health(
+        healthy_status="running",
+        character_interior=_ready_interior(),
+        scheduler_status="running",
+        storage={"status": "ok", "writable": True},
+        ledger_writable=True,
+        private_impression={
+            "open_process": True,
+            "gate_reason": "daily_cap",
+            "daily_calls": 3,
+            "daily_limit": 3,
+        },
+    )
+    assert verdict.status == "degraded"
+    assert "private_impression_quota_exhausted_process_open" in verdict.reasons
+
+
+def test_compile_process_health_historical_expired_claims_are_not_a_stall() -> None:
+    verdict = compile_process_health(
+        healthy_status="running",
+        character_interior=_ready_interior(
+            durable_turn_store={
+                "bound": True,
+                "status": "ready",
+                "expired_claim_count": 24,
+                "recovered_attempt_count": 0,
+            }
+        ),
+        scheduler_status="running",
+        storage={"status": "ok", "writable": True},
+        ledger_writable=True,
+    )
+    assert verdict.status == "running"
+    assert verdict.reasons == ()
+
+
+def test_compile_process_health_consideration_overdue_is_degraded() -> None:
+    verdict = compile_process_health(
+        healthy_status="running",
+        character_interior=_ready_interior(),
+        scheduler_status="running",
+        storage={"status": "ok", "writable": True},
+        ledger_writable=True,
+        initiative={
+            "state": "waiting_context",
+            "warning": True,
+            "warning_reasons": ["consideration_overdue"],
+        },
+    )
+    assert verdict.status == "degraded"
+    assert "initiative_consideration_overdue" in verdict.reasons
+    assert "initiative consideration is overdue" in verdict.reason
+
+
 def test_compile_process_health_uses_ok_for_http_daemon() -> None:
     verdict = compile_process_health(
         healthy_status="ok",

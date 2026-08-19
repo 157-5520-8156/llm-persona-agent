@@ -179,6 +179,7 @@ class NpcActorDecision(FrozenModel):
 class NpcWorldOutcomeDraft(FrozenModel):
     text: str = Field(min_length=1, max_length=4_000)
     privacy: PrivacyClass
+    user_channel_completion: Literal["none"] = "none"
 
 
 class NpcActorProposal(FrozenModel):
@@ -256,6 +257,7 @@ class NpcEcology:
         protagonist_actor_ref: str,
         catalog: ReviewedLifeSeedCatalog | None = None,
         worker_actor: str = "worker:world-v2:npc-ecology",
+        user_channel_critic: NpcEcologyModel | None = None,
     ) -> None:
         if occurrence_content.ledger is not ledger:
             raise ValueError("NPC ecology occurrence coordinator must own the exact ledger")
@@ -266,6 +268,7 @@ class NpcEcology:
         self._occurrence_content = occurrence_content
         self._actor_model = actor_model
         self._world_author = world_author
+        self._user_channel_critic = user_channel_critic
         self._protagonist = protagonist_actor_ref
         self._worker_actor = worker_actor
         self._catalog = catalog
@@ -802,6 +805,8 @@ class NpcEcology:
             "the NPC's own concrete timing (now/later), premise, participants, location, "
             "duration, visibility and, for later, free activity/timing/importance. The World "
             "Author cannot invent these choices. Exact refs must come from the supplied world. "
+            "Do not narrate a completed send or reply through the user's chat channel; that "
+            "is Action-ledger territory. NPC self-life remains allowed. "
             "The following contract controls only JSON shape and authority closure; it does not "
             "prefer no_op, propose, any motive, or any relationship value: "
             + _canonical(output_contract)
@@ -820,7 +825,7 @@ class NpcEcology:
             snapshot=snapshot,
             actor_decision=actor_decision,
         )
-        return await self._run_model_with_one_reselect(
+        decision, raw, attempts = await self._run_model_with_one_reselect(
             model=self._world_author,
             prompt=prompt,
             payload=payload,
@@ -832,6 +837,62 @@ class NpcEcology:
                 actor_decision=actor_decision,
             ),
             failure_reason="npc_ecology.world_invalid_after_repair",
+        )
+        if (
+            self._user_channel_critic is not None
+            and isinstance(decision, NpcWorldDecision)
+            and decision.decision == "accept"
+            and decision.outcomes
+        ):
+            named = await self._review_completed_user_channel_act(decision)
+            if named:
+                decision = NpcWorldDecision(decision="no_op")
+        return decision, raw, attempts
+
+    async def _review_completed_user_channel_act(self, decision: NpcWorldDecision) -> bool:
+        """Ask the focused critic whether any NPC outcome narrates a completed send."""
+
+        from .life_development_source_closure import (
+            LifeDevelopmentSourceClosureError,
+            life_development_novel_origin_correction_message,
+            life_development_novel_origin_messages,
+            parse_life_development_novel_origin_review,
+            possibility_draft_from_outcome_texts,
+        )
+
+        texts = tuple(item.text for item in decision.outcomes)
+        draft, manifest = possibility_draft_from_outcome_texts(
+            texts=texts,
+            owner_actor_ref=self._protagonist,
+        )
+        messages = life_development_novel_origin_messages(
+            context={},
+            manifest=manifest,
+            draft=draft,
+        )
+        critic = self._user_channel_critic
+        if critic is None:
+            return False
+        raw = await complete_json_object(critic, messages, temperature=0.0)
+        try:
+            review = parse_life_development_novel_origin_review(raw=raw, draft=draft)
+        except LifeDevelopmentSourceClosureError as exc:
+            correction = life_development_novel_origin_correction_message(
+                error=exc,
+                draft=draft,
+            )
+            raw = await complete_json_object(
+                critic,
+                [*messages, correction],
+                temperature=0.0,
+            )
+            try:
+                review = parse_life_development_novel_origin_review(raw=raw, draft=draft)
+            except LifeDevelopmentSourceClosureError:
+                return True
+        return any(
+            "completed_user_channel_act" in item.violation_kinds
+            for item in review.unsupported_outcome_prerequisites
         )
 
     def _world_request(self, *, stimulus, snapshot, actor_decision):
@@ -855,7 +916,10 @@ class NpcEcology:
             "rewriting its motive, timing, people, place, activity or importance. Return no_op when "
             "the world does not permit it, or accept. For an immediate proposal, accept must include "
             "2-4 genuinely uncertain possible external outcomes. For a future plan, accept has no "
-            "outcomes because the eventual occurrence remains unsettled. Return only "
+            "outcomes because the eventual occurrence remains unsettled. Each outcome must declare "
+            "user_channel_completion=none and must not narrate a completed send or reply through "
+            "the user's chat channel; that is Action-ledger territory. NPC self-life in this "
+            "situation remains allowed. Return only "
             "NpcWorldDecision JSON with decision and outcomes. The following contract controls "
             "only the JSON wire, not the adjudication: " + _canonical(output_contract)
         )

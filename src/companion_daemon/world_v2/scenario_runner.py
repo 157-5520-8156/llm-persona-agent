@@ -490,8 +490,12 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.79"
 # produced the same aggregate manifest.
 # ``.79`` is installed only after two independent complete 120-case processes
 # produced the same aggregate manifest.
+# 2026-08-19: same ``.79`` version, refreshed aggregate after the workspace
+# composed declared-due clock wakes, user-channel life-prose boundary, and
+# present-moment photo visibility. Two independent complete 120-case
+# processes produced this hash before installation.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "2ea18866f60e3e1c5daf6151a1334e5f1ab595f3f1e83a069f93cd05dd52d480"
+    "ea77178047eccdf36fe8149009117f87f2686b92b6a85af0f0333ee8bbc80c66"
 )
 
 

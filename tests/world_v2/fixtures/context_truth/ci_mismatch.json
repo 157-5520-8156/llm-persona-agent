@@ -1,0 +1,93 @@
+{
+  "seen": {
+    "logical_time": "2026-08-19T09:00:00+08:00",
+    "materials": {
+      "logical_time": "2026-08-19T09:00:00+08:00",
+      "moments_i_can_share": {
+        "availability": "available",
+        "available_count": 0,
+        "already_sent_count": 0,
+        "items": [],
+        "now": {"photographable": false, "reason": "no_active_activity"}
+      },
+      "photos_i_shared": [],
+      "week_diary": [
+        {
+          "date": "2026-08-18",
+          "line": "照片已经发过去了，等他有空再看。",
+          "source_ref": "event:experience:1"
+        }
+      ],
+      "recent_dialogue": [
+        {
+          "speaker": "counterpart",
+          "text": "qq-face:74",
+          "source_ref": "event:obs:1"
+        }
+      ],
+      "conversation": ["他：qq-face:74"],
+      "since_he_last_spoke": {"seconds": 40},
+      "appraisals": [
+        {
+          "source_ref": "event:appraisal:1",
+          "hypotheses": [{"meaning": "他倒完水回来了还不说话"}]
+        }
+      ],
+      "perception": [],
+      "affect": [],
+      "private_impressions": [],
+      "unresolved": [{"source_ref": "t1", "status": "open"}],
+      "aspirations": []
+    }
+  },
+  "ledger": {
+    "logical_time": "2026-08-19T01:00:00+00:00",
+    "available_photo_candidate_ids": ["cand:1", "cand:2", "cand:3"],
+    "media_delivery_ids": [],
+    "last_counterpart": {
+      "event_id": "event:obs:old",
+      "text": "我去倒杯水",
+      "occurred_at": "2026-08-18T12:00:00+00:00",
+      "reaction_refs": []
+    },
+    "counterpart_recent": [
+      {
+        "event_id": "event:obs:1",
+        "text": "qq-face:74",
+        "occurred_at": "2026-08-19T00:59:20+00:00",
+        "reaction_refs": ["qq-face:74"]
+      }
+    ],
+    "companion_recent_settled": [
+      {
+        "payload_ref": "payload:her:1",
+        "text": "那我等你回来。",
+        "state": "settled"
+      }
+    ],
+    "catalog_faces": [
+      {
+        "provider_ref": "qq-face:74",
+        "catalog_name": "太阳",
+        "catalog_glyph": "☀️",
+        "seen_text": "qq-face:74"
+      }
+    ],
+    "external_perception_count": 0,
+    "perception_result_count": 0,
+    "sidecar_processed_count": 230,
+    "active_appraisal_ids": [],
+    "active_affect_ids": [],
+    "active_impression_ids": [],
+    "open_thread_ids": [],
+    "active_aspiration_ids": [],
+    "active_plan_ids": [],
+    "active_life_arc_ids": [],
+    "fact_count": 0,
+    "active_memory_count": 0,
+    "settled_occurrence_count": 0,
+    "experience_count": 0,
+    "has_character_core": false,
+    "active_non_sleep_plan_ids": []
+  }
+}

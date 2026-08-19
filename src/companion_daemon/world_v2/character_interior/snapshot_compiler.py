@@ -54,7 +54,7 @@ from .contracts import (
 )
 
 
-SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.15"
+SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.17"
 
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
@@ -126,6 +126,17 @@ def _media_delivery_dialogue_source(entry: dict[str, object]) -> dict[str, objec
         if delivery_id:
             return {**entry, "source_ref": delivery_id}
     return entry
+
+
+def _living_or_capsule_items(
+    slices: Mapping[str, object], *, living_name: str, capsule_name: str
+) -> list[dict[str, object]]:
+    """Prefer a projection-installed living lane, including a true empty set."""
+
+    living = slices.get(living_name)
+    if isinstance(living, dict) and living.get("availability") == "available":
+        return _slice_items(slices, living_name)
+    return _slice_items(slices, capsule_name)
 
 
 def _slice_items(slices: Mapping[str, object], name: str) -> list[dict[str, object]]:
@@ -608,7 +619,89 @@ def _moment_what_happened(entry: Mapping[str, object]) -> str | None:
             return text.strip()[:240]
     if isinstance(content, str) and content.strip():
         return content.strip()[:240]
+    happened = entry.get("what_happened")
+    if isinstance(happened, str) and happened.strip():
+        return happened.strip()[:240]
     return None
+
+
+_SHAREABLE_HOLD = frozenset(
+    {
+        "expired",
+        "already_shared",
+        "skipped",
+        "unrenderable",
+        "failed",
+        "already_chosen",
+        "not_available",
+    }
+)
+
+
+def _parse_optional_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value:
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
+def _shareable_photo_entry(item: Mapping[str, object]) -> dict[str, object] | None:
+    source_ref = item.get("source_ref")
+    value = item.get("value")
+    if not isinstance(source_ref, str) or not source_ref:
+        return None
+    if not isinstance(value, dict):
+        value = {}
+    privacy = value.get("privacy_class") or item.get("privacy_class")
+    return {
+        "source_ref": source_ref,
+        "privacy_class": privacy,
+        "photo_in_hand": value.get("photo_in_hand") is True,
+        "hold_reason": value.get("hold_reason"),
+        "family": value.get("family"),
+        "candidate_id": value.get("candidate_id"),
+        "taxonomy": value.get("taxonomy"),
+        "location_ref": value.get("location_ref"),
+        "expires_at": value.get("expires_at"),
+        "settled_at": value.get("settled_at"),
+        "content": value.get("content"),
+        "what_happened": value.get("what_happened"),
+    }
+
+
+def _moment_fact_from_entry(
+    entry: Mapping[str, object],
+) -> PhotographableMomentFact | None:
+    source_ref = entry.get("source_ref")
+    if not isinstance(source_ref, str) or not source_ref:
+        return None
+    privacy = entry.get("privacy_class")
+    if privacy not in {"public", "shareable", "personal", "private"}:
+        return None
+    hold = entry.get("hold_reason")
+    if hold not in _SHAREABLE_HOLD:
+        hold = None
+    family = entry.get("family")
+    candidate_id = entry.get("candidate_id")
+    taxonomy = entry.get("taxonomy")
+    location_ref = entry.get("location_ref")
+    return PhotographableMomentFact(
+        source_ref=source_ref,
+        photo_in_hand=entry.get("photo_in_hand") is True,
+        privacy_class=privacy,
+        settled_at=_parse_optional_datetime(entry.get("settled_at")),
+        expires_at=_parse_optional_datetime(entry.get("expires_at")),
+        location_ref=location_ref if isinstance(location_ref, str) else None,
+        what_happened=_moment_what_happened(entry),
+        hold_reason=hold,
+        family=family if isinstance(family, str) else None,
+        candidate_id=candidate_id if isinstance(candidate_id, str) else None,
+        taxonomy=taxonomy if isinstance(taxonomy, str) else None,
+    )
 
 
 def _present_moment_from_situation(slices: Mapping[str, object]) -> dict[str, object]:
@@ -663,36 +756,27 @@ def _moments_i_can_share(
 ) -> dict[str, object] | None:
     """Always state album emptiness.  Never a suggestion to take or send."""
 
+    shareable_lane = slices.get("shareable_photos")
+    using_candidates = (
+        isinstance(shareable_lane, dict)
+        and shareable_lane.get("availability") == "available"
+    )
+    if using_candidates:
+        source_entries = [
+            entry
+            for item in _slice_items(slices, "shareable_photos")
+            if (entry := _shareable_photo_entry(item))
+        ]
+    else:
+        source_entries = recent
     moments: list[PhotographableMomentFact] = []
-    for entry in recent:
-        source_ref = entry.get("source_ref")
-        if not isinstance(source_ref, str) or not source_ref:
-            continue
-        privacy = entry.get("privacy_class")
-        if privacy not in {"public", "shareable", "personal", "private"}:
-            continue
-        settled_at = entry.get("settled_at")
-        parsed_settled = None
-        if isinstance(settled_at, datetime):
-            parsed_settled = settled_at
-        elif isinstance(settled_at, str) and settled_at:
-            try:
-                parsed_settled = datetime.fromisoformat(settled_at.replace("Z", "+00:00"))
-            except ValueError:
-                parsed_settled = None
-        location_ref = entry.get("location_ref")
-        moments.append(
-            PhotographableMomentFact(
-                source_ref=source_ref,
-                photo_in_hand=entry.get("photo_in_hand") is True,
-                privacy_class=privacy,
-                settled_at=parsed_settled,
-                location_ref=location_ref if isinstance(location_ref, str) else None,
-                what_happened=_moment_what_happened(entry),
-            )
-        )
+    for entry in source_entries:
+        fact = _moment_fact_from_entry(entry)
+        if fact is not None:
+            moments.append(fact)
     extra = (
-        _slice_source_refs(slices, "world_life")
+        _slice_source_refs(slices, "shareable_photos")
+        or _slice_source_refs(slices, "world_life")
         or _slice_source_refs(slices, "media_deliveries")
         or _slice_source_refs(slices, "current_situation")
     )
@@ -1214,14 +1298,6 @@ def compile_inner_life_snapshot(
                 "external_outcome",
             ),
         ),
-        ("appraisals", "appraisals", (
-            "subject_ref", "source_cluster_ref", "hypotheses", "evidence_refs",
-            "confidence_bp", "accepted_at", "expires_at",
-        )),
-        ("unresolved", "open_threads", (
-            "kind", "subject_ref", "importance_bp", "due_window",
-            "window_closes_at", "expected_response_ref", "status",
-        )),
         ("advisories", "advisories", (
             "kind", "candidate_refs", "candidates", "confidence_bp", "expiry",
             "producer_version",
@@ -1241,6 +1317,32 @@ def compile_inner_life_snapshot(
         ]
         if entries:
             materials[output] = entries
+    appraisal_fields = (
+        "subject_ref", "source_cluster_ref", "hypotheses", "evidence_refs",
+        "confidence_bp", "accepted_at", "expires_at",
+    )
+    unresolved_fields = (
+        "kind", "subject_ref", "importance_bp", "due_window",
+        "window_closes_at", "expected_response_ref", "status",
+    )
+    appraisals = [
+        entry
+        for item in _living_or_capsule_items(
+            slices, living_name="living_appraisals", capsule_name="appraisals"
+        )
+        if (entry := _state_entry(item, fields=appraisal_fields))
+    ]
+    if appraisals:
+        materials["appraisals"] = appraisals
+    unresolved = [
+        entry
+        for item in _living_or_capsule_items(
+            slices, living_name="living_threads", capsule_name="open_threads"
+        )
+        if (entry := _state_entry(item, fields=unresolved_fields))
+    ]
+    if unresolved:
+        materials["unresolved"] = unresolved
     advisories = materials.get("advisories")
     if isinstance(advisories, list):
         interruption = [item for item in advisories if isinstance(item.get("kind"), str) and item["kind"].startswith("interruption.")]
@@ -1262,7 +1364,9 @@ def compile_inner_life_snapshot(
     if isinstance(compiled_appraisals, list):
         raw_appraisals = {
             item.get("source_ref"): item
-            for item in _slice_items(slices, "appraisals")
+            for item in _living_or_capsule_items(
+                slices, living_name="living_appraisals", capsule_name="appraisals"
+            )
             if isinstance(item.get("source_ref"), str)
         }
         for entry in compiled_appraisals:
@@ -1281,9 +1385,12 @@ def compile_inner_life_snapshot(
     remembered = [entry for item in _slice_items(slices, "active_memory_candidates") if (entry := _state_entry(item))][:PRESENT_MEMORY_ITEM_LIMIT]
     if remembered:
         materials["remembered_material"] = remembered
-    impressions = [entry for item in _slice_items(slices, "private_impressions") if (entry := _state_entry(item, fields=(
+    impressions = [entry for item in _living_or_capsule_items(
+        slices, living_name="living_impressions", capsule_name="private_impressions"
+    ) if (entry := _state_entry(item, fields=(
         "subject_ref", "reflection_summary", "confidence_bp", "first_seen",
         "last_supported", "expiry_condition", "contradiction_refs", "status",
+        "hold_reason",
     )))][:PRESENT_IMPRESSION_ITEM_LIMIT]
     if impressions:
         materials["private_impressions"] = impressions

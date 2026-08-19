@@ -221,11 +221,30 @@ class QQC2CSchedulerDiagnostics:
         # The application projection has no authority to invent a platform
         # polling interval, and wall time lets this warning fire even when a
         # failed scheduler has stopped advancing the World clock itself.
-        if (
-            world.get("initiative_state") == "consideration_due"
-            and due_at is not None
+        last_considered_at = None
+        last_considered_raw = world.get("initiative_last_considered_at")
+        if isinstance(last_considered_raw, str):
+            try:
+                parsed_last_considered = datetime.fromisoformat(last_considered_raw)
+            except ValueError:
+                parsed_last_considered = None
+            if (
+                parsed_last_considered is not None
+                and parsed_last_considered.tzinfo is not None
+                and parsed_last_considered.utcoffset() is not None
+            ):
+                last_considered_at = parsed_last_considered
+        consideration_in_flight = world.get("initiative_state") in {
+            "considering",
+            "action_pending",
+        }
+        due_unconsumed = (
+            due_at is not None
             and now - due_at > timedelta(seconds=self.interval_seconds * 2)
-        ):
+            and not consideration_in_flight
+            and (last_considered_at is None or last_considered_at < due_at)
+        )
+        if due_unconsumed:
             initiative_warning_reasons.append("consideration_overdue")
         unexplained_initiative_warning = (
             bool(world.get("initiative_warning", False)) and not raw_initiative_warning_reasons
@@ -244,6 +263,11 @@ class QQC2CSchedulerDiagnostics:
             "last_success_at": (self.last_success_at.isoformat() if self.last_success_at else None),
             "last_duration_ms": self.last_duration_ms,
             "last_error": self.last_error,
+            "last_ledger_event_created_at": world.get("last_ledger_event_created_at"),
+            "last_ledger_sequence": world.get("last_ledger_sequence"),
+            "overdue_declared_due_kinds": (
+                ["social.initiative.cadence"] if due_unconsumed else []
+            ),
             "initiative": {
                 "last_status": world.get("initiative_last_status"),
                 "last_reason": world.get("initiative_last_reason"),
@@ -305,8 +329,10 @@ class QQC2CSchedulerDiagnostics:
                 "life_event_count": world.get("life_event_count", 0),
                 "occurrence_count": world.get("occurrence_count", 0),
                 "experience_count": world.get("experience_count", 0),
-                "starved": world.get("starved", True),
+                "starved": world.get("starved", False),
+                "last_lived_at": world.get("last_lived_at"),
             },
+            "private_impression": world.get("private_impression", {}),
             "expression_episode": world.get("expression_episode", {}),
             "expression_retry": world.get("expression_retry", {}),
             "character_interior": world.get(
@@ -658,6 +684,16 @@ def create_qq_c2c_onebot_app(
             else None,
             external_perception=scheduler_view.get("external_world_perception")
             if isinstance(scheduler_view.get("external_world_perception"), dict)
+            else None,
+            initiative=scheduler_view.get("initiative")
+            if isinstance(scheduler_view.get("initiative"), dict)
+            else None,
+            scheduler=scheduler_view,
+            world_activity=scheduler_view.get("world_activity")
+            if isinstance(scheduler_view.get("world_activity"), dict)
+            else None,
+            private_impression=scheduler_view.get("private_impression")
+            if isinstance(scheduler_view.get("private_impression"), dict)
             else None,
             ledger_writable=writable,
             diagnostics_error=diagnostics_error,

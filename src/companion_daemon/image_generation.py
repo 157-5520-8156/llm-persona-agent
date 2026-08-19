@@ -392,7 +392,7 @@ def _refuse_unbounded_image_spend(
         return
     raise ImageGenerationProviderError(
         provider="openai_image",
-        kind="invalid_request",
+        kind="spend_cap",
         detail="image_generation_spend_cap:" + decision.reason,
     )
 

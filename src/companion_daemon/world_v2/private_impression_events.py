@@ -13,7 +13,7 @@ import hashlib
 import json
 from typing import Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_core import to_jsonable_python
 
 from .schemas import AppraisalMeaningRef, EvidenceRef, FrozenModel, PrivateImpressionProjection
@@ -313,8 +313,68 @@ class PrivateImpressionAcceptedPayload(PrivateImpressionAuthorizedPayload):
         return self
 
 
+PRIVATE_IMPRESSION_USER_CHANNEL_AUTHORITY_LIMITED = (
+    "PrivateImpressionUserChannelAuthorityLimited"
+)
+
+
+class PrivateImpressionUserChannelAuthorityLimitedPayload(FrozenModel):
+    """Later compensating event: named impressions are not user-channel facts.
+
+    Append-only. Does not rewrite the accepted impression payload. Reader paths
+    simply stop showing those impression ids as present-tense inner material.
+    """
+
+    impression_ids: tuple[str, ...] = Field(min_length=1, max_length=16)
+    limitation: Literal["not_user_channel_authority"] = "not_user_channel_authority"
+    reason_code: Literal["impression_prose_is_not_user_channel_authority"] = (
+        "impression_prose_is_not_user_channel_authority"
+    )
+    inspected_media_delivery_count: int = Field(ge=0)
+    inspected_media_delivery_action_count: int = Field(ge=0)
+
+    @field_validator("impression_ids", mode="before")
+    @classmethod
+    def canonicalize_impression_ids(cls, value: object) -> object:
+        if isinstance(value, (list, tuple)) and all(isinstance(item, str) for item in value):
+            return tuple(sorted({item for item in value if item}))
+        return value
+
+    @field_validator("impression_ids")
+    @classmethod
+    def impression_ids_are_sorted_and_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value or value != tuple(sorted(set(value))) or any(not item for item in value):
+            raise ValueError("user-channel impression limit ids must be sorted unique non-empty")
+        return value
+
+
+def collect_user_channel_limited_impression_ids(*, ledger, projection) -> frozenset[str]:
+    """Read compensating impression limits from the ledger, never from prose."""
+
+    refs: set[str] = set()
+    for item in projection.committed_world_event_refs:
+        if item.event_type != PRIVATE_IMPRESSION_USER_CHANNEL_AUTHORITY_LIMITED:
+            continue
+        located = ledger.lookup_event_commit(item.event_id)
+        if located is None:
+            raise ValueError("user-channel impression limit event is missing from the ledger")
+        event, _commit = located
+        if event.event_type != PRIVATE_IMPRESSION_USER_CHANNEL_AUTHORITY_LIMITED or (
+            event.payload_hash != item.payload_hash
+        ):
+            raise ValueError("user-channel impression limit event does not match its committed ref")
+        payload = PrivateImpressionUserChannelAuthorityLimitedPayload.model_validate(
+            event.payload()
+        )
+        refs.update(payload.impression_ids)
+    return frozenset(refs)
+
+
 PRIVATE_IMPRESSION_PAYLOAD_MODELS = {
     "PrivateImpressionAccepted": PrivateImpressionAcceptedPayload,
+    PRIVATE_IMPRESSION_USER_CHANNEL_AUTHORITY_LIMITED: (
+        PrivateImpressionUserChannelAuthorityLimitedPayload
+    ),
 }
 
 

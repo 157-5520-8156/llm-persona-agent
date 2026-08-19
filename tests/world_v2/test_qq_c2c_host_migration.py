@@ -1300,6 +1300,153 @@ async def test_qq_scheduler_advances_exactly_to_proactive_technical_retry(
 
 
 @pytest.mark.asyncio
+async def test_qq_scheduler_advances_exactly_to_social_initiative_cadence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cadence_due = NOW + timedelta(hours=7)
+
+    class _InitiativeCadenceHost:
+        def __init__(self) -> None:
+            self.logical_time = NOW
+            self.tick_reasons: list[tuple[datetime, str]] = []
+            self.background_logical_times: list[datetime] = []
+
+        async def current_logical_time(self):  # type: ignore[no-untyped-def]
+            return self.logical_time
+
+        async def action_due_projection(self):  # type: ignore[no-untyped-def]
+            return SimpleNamespace(logical_time=self.logical_time, actions=())
+
+        async def social_initiative_next_due(self):  # type: ignore[no-untyped-def]
+            return cadence_due
+
+        async def tick(self, tick):  # type: ignore[no-untyped-def]
+            self.tick_reasons.append((tick.logical_time_to, tick.reason))
+            self.logical_time = tick.logical_time_to
+            return SimpleNamespace(status="observed_only", authorized_action_ids=())
+
+        async def drain_background_once(self):  # type: ignore[no-untyped-def]
+            self.background_logical_times.append(self.logical_time)
+            if self.logical_time < cadence_due:
+                return None
+            return SimpleNamespace(
+                status="opened",
+                work_status="proactive-cadence",
+                authorized_action_ids=(),
+            )
+
+        async def drain_scheduled_work(self, **_kwargs):  # type: ignore[no-untyped-def]
+            return SimpleNamespace(action_statuses=(), background_statuses=())
+
+        def close(self) -> None:
+            return None
+
+    platform = _InitiativeCadenceHost()
+    monkeypatch.setattr(
+        qq_c2c_host_module,
+        "next_expression_retry_due",
+        lambda _projection: None,
+    )
+    monkeypatch.setattr(
+        qq_c2c_host_module,
+        "next_proactive_retry_due",
+        lambda _projection: None,
+        raising=False,
+    )
+    host = QQC2CHost(
+        host=platform,  # type: ignore[arg-type]
+        recipient_id="10001",
+        canonical_user_id="geoff",
+        ingress_store=SQLiteQQIngressStore(tmp_path / "initiative-cadence-wake.sqlite"),
+        ingress_now=lambda: NOW,
+        idle_heartbeat_seconds=3_600,
+    )
+    try:
+        drained = await host.scheduler_once(
+            observed_at=NOW + timedelta(hours=7, minutes=1),
+            max_action_units=0,
+            max_background_units=1,
+        )
+    finally:
+        await host.aclose()
+
+    assert platform.tick_reasons == [(cadence_due, "qq_c2c_social_initiative_due_wake")]
+    assert platform.background_logical_times[-1] == cadence_due
+    assert drained.background_statuses == ("proactive-cadence",)
+
+
+@pytest.mark.asyncio
+async def test_qq_scheduler_wakes_a_projection_due_not_on_the_old_hand_list(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    appraisal_due = NOW + timedelta(hours=2)
+
+    class _AppraisalDueHost:
+        def __init__(self) -> None:
+            self.logical_time = NOW
+            self.tick_reasons: list[tuple[datetime, str]] = []
+
+        async def current_logical_time(self):  # type: ignore[no-untyped-def]
+            return self.logical_time
+
+        async def action_due_projection(self):  # type: ignore[no-untyped-def]
+            return SimpleNamespace(
+                logical_time=self.logical_time,
+                actions=(),
+                appraisals=(SimpleNamespace(status="active", expires_at=appraisal_due),),
+            )
+
+        async def tick(self, tick):  # type: ignore[no-untyped-def]
+            self.tick_reasons.append((tick.logical_time_to, tick.reason))
+            self.logical_time = tick.logical_time_to
+            return SimpleNamespace(status="observed_only", authorized_action_ids=())
+
+        async def drain_background_once(self):  # type: ignore[no-untyped-def]
+            return None
+
+        async def drain_scheduled_work(self, **_kwargs):  # type: ignore[no-untyped-def]
+            return SimpleNamespace(action_statuses=(), background_statuses=())
+
+        def close(self) -> None:
+            return None
+
+    platform = _AppraisalDueHost()
+    monkeypatch.setattr(
+        qq_c2c_host_module,
+        "next_expression_retry_due",
+        lambda _projection: None,
+    )
+    monkeypatch.setattr(
+        qq_c2c_host_module,
+        "next_proactive_retry_due",
+        lambda _projection: None,
+        raising=False,
+    )
+    host = QQC2CHost(
+        host=platform,  # type: ignore[arg-type]
+        recipient_id="10001",
+        canonical_user_id="geoff",
+        ingress_store=SQLiteQQIngressStore(tmp_path / "appraisal-due-wake.sqlite"),
+        ingress_now=lambda: NOW,
+        idle_heartbeat_seconds=3_600,
+    )
+    try:
+        await host.scheduler_once(
+            observed_at=NOW + timedelta(hours=2, minutes=1),
+            max_action_units=0,
+            max_background_units=0,
+        )
+    finally:
+        await host.aclose()
+
+    assert platform.tick_reasons == [
+        (appraisal_due, "qq_c2c_declared_due_wake:appraisal.expiry")
+    ]
+
+
+@pytest.mark.asyncio
 async def test_qq_scheduler_preserves_retry_unit_when_slow_background_crosses_due(
     tmp_path: Path,
 ) -> None:
@@ -4657,7 +4804,8 @@ def test_qq_health_reports_a_running_scheduler_even_when_the_world_is_starved(
         "life_event_count": 0,
         "occurrence_count": 0,
         "experience_count": 0,
-        "starved": True,
+        "starved": False,
+        "last_lived_at": None,
     }
     assert scheduler["mechanisms"]["expression_retry"] == {
         "state": "idle",

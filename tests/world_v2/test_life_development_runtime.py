@@ -2036,7 +2036,7 @@ def _runtime(
     if novel_origin_critic is None and source_closure_reviewer is not None:
         novel_origin_critic = _SequenceModel(
             model=source_closure_reviewer.model,
-            outputs=tuple(_novel_origin_review(decision="supported") for _ in range(8)),
+            outputs=tuple(_novel_origin_review(decision="supported") for _ in range(32)),
         )
     runtime_kwargs: dict[str, object] = {}
     if world_author_source_rewriter is not None:
@@ -2837,6 +2837,83 @@ def test_focused_critic_accepts_only_exact_imported_outcome_prerequisite_coordin
             ),
             draft=draft,
         )
+
+
+def test_focused_critic_accepts_completed_user_channel_act_outcome_finding() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    capability = _location_capability()
+    raw = json.loads(
+        _location_bound_world_draft(
+            wake=wake,
+            capability=capability,
+            timing={"mode": "now", "duration_minutes": 30},
+            privacy_class="shareable",
+        )
+    )
+    raw["outcomes"][0]["text"] = "她挑了一张光线最柔和的照片发给他，然后继续整理剩下的。"
+    draft = parse_world_author_draft(
+        raw=json.dumps(raw, ensure_ascii=False),
+        manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        logical_time=NOW,
+    )
+
+    review = parse_life_development_novel_origin_review(
+        raw=_novel_origin_review(
+            decision="unsupported",
+            unsupported_outcome_prerequisites=(
+                {
+                    "prose_path": "outcomes.0.text",
+                    "violation_kinds": ["completed_user_channel_act"],
+                    "exact_fragments": ["发给他"],
+                },
+            ),
+            reason="Outcome 0 narrates a completed user-channel send.",
+        ),
+        draft=draft,
+    )
+
+    assert review.unsupported_outcome_prerequisites[0].violation_kinds == (
+        "completed_user_channel_act",
+    )
+
+
+def test_focused_critic_rejects_completed_user_channel_act_on_claims() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    capability = _location_capability()
+    raw = json.loads(
+        _location_bound_world_draft(
+            wake=wake,
+            capability=capability,
+            timing={"mode": "now", "duration_minutes": 30},
+            privacy_class="shareable",
+        )
+    )
+    raw["outcomes"][0]["text"] = "她挑了一张光线最柔和的照片发给他，然后继续整理剩下的。"
+    draft = parse_world_author_draft(
+        raw=json.dumps(raw, ensure_ascii=False),
+        manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        logical_time=NOW,
+    )
+
+    with pytest.raises(LifeDevelopmentSourceClosureError) as raised:
+        parse_life_development_novel_origin_review(
+            raw=_novel_origin_review(
+                decision="unsupported",
+                unsupported_claims=(
+                    {
+                        "claim_id": draft.claim_declarations[0].claim_id,
+                        "violation_kinds": ["completed_user_channel_act"],
+                        "exact_fragments": ["发给他"],
+                    },
+                ),
+                reason="Misplaced the user-channel finding onto a claim.",
+            ),
+            draft=draft,
+        )
+
+    assert raised.value.code == "invalid_novel_origin_shape"
 
 
 def test_novel_origin_parser_accepts_strict_transport_envelope_and_legacy_flat_wire() -> None:

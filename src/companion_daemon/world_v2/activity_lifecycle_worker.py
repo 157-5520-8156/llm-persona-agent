@@ -419,7 +419,12 @@ class ActivityLifecycleWorker:
         noticed = payload.get("noticed")
         if noticed is not None and (not isinstance(noticed, str) or not noticed.strip()):
             return None, "character_interior_decision_payload_invalid"
-        keys = {key for key in payload if key != "noticed"}
+        completion = payload.get("user_channel_completion")
+        if noticed is None and completion is not None:
+            return None, "character_interior_decision_payload_invalid"
+        if noticed is not None and completion != "none":
+            return None, "character_interior_decision_payload_invalid"
+        keys = {key for key in payload if key not in {"noticed", "user_channel_completion"}}
         choice = payload.get("decision")
         if choice == "no_op" and keys == {"contract", "decision"}:
             token = None
@@ -531,6 +536,8 @@ class ActivityLifecycleWorker:
             return
         noticed = payload.get("noticed")
         if not isinstance(noticed, str) or not noticed.strip():
+            return
+        if payload.get("user_channel_completion") != "none":
             return
         try:
             runtime.commit_from_paid_moment(

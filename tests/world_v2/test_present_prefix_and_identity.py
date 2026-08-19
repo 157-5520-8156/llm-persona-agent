@@ -145,6 +145,8 @@ def test_present_moments_i_can_share_now_is_a_world_fact() -> None:
     assert "annex_insufficient" in instruction
     assert "already_open" in instruction
     assert "what_happened 是那一刻已接受的原文" in instruction
+    assert "hold_reason 是原因" in instruction
+    assert "already_shared 已经发给他" in instruction
     assert "这不是建议你发，也不是建议你去拍" in instruction
     assert "会和这个事实打架" in instruction
     assert "没有候选、现在拍不了，都如实是空的" in instruction

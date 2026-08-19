@@ -468,8 +468,10 @@ from .relationship_reducers import (
     change_boundary,
 )
 from .private_impression_events import (
+    PRIVATE_IMPRESSION_USER_CHANNEL_AUTHORITY_LIMITED,
     PrivateImpressionAcceptedPayload,
     PrivateImpressionAuthorizedPayload,
+    PrivateImpressionUserChannelAuthorityLimitedPayload,
     offered_private_impression_reflection_bindings,
     private_impression_payload_material,
     private_impression_reflection_digest,
@@ -14002,6 +14004,29 @@ def _private_impression_accepted(state: ReducerState, event: WorldEvent) -> Redu
     )
 
 
+def _private_impression_user_channel_authority_limited(
+    state: ReducerState, event: WorldEvent
+) -> ReducerState:
+    """Record a compensating impression omit without rewriting the original payload."""
+
+    _require_life_time(state, event)
+    payload = PrivateImpressionUserChannelAuthorityLimitedPayload.model_validate_json(
+        event.payload_json
+    )
+    known = {item.impression_id for item in state.private_impressions}
+    missing = tuple(ref for ref in payload.impression_ids if ref not in known)
+    if missing:
+        raise ValueError("user-channel impression limit cites unknown impression ids")
+    if payload.inspected_media_delivery_count != len(state.media_deliveries):
+        raise ValueError("inspected media delivery count does not match projection")
+    media_delivery_actions = tuple(
+        item for item in state.actions if item.kind == "media_delivery"
+    )
+    if payload.inspected_media_delivery_action_count != len(media_delivery_actions):
+        raise ValueError("inspected media delivery action count does not match projection")
+    return state
+
+
 def _relationship_slow_variable_adjusted(
     state: ReducerState,
     event: WorldEvent,
@@ -15398,6 +15423,11 @@ _EVENTS = {
         EventDefinition("AppraisalSuperseded", RevisionClass.WORLD, _appraisal_superseded),
         EventDefinition(
             "PrivateImpressionAccepted", RevisionClass.WORLD, _private_impression_accepted
+        ),
+        EventDefinition(
+            PRIVATE_IMPRESSION_USER_CHANNEL_AUTHORITY_LIMITED,
+            RevisionClass.WORLD,
+            _private_impression_user_channel_authority_limited,
         ),
         EventDefinition("AffectEpisodeOpened", RevisionClass.WORLD, _affect_episode_opened),
         EventDefinition("AffectEpisodeUpdated", RevisionClass.WORLD, _affect_episode_updated),

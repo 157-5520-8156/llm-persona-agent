@@ -595,7 +595,12 @@ def _validate_activity_lifecycle_payload(
     noticed = payload.get("noticed")
     if noticed is not None and (not isinstance(noticed, str) or not noticed.strip()):
         raise ValueError("activity noticed must be non-empty text")
-    keys = {key for key in payload if key != "noticed"}
+    completion = payload.get("user_channel_completion")
+    if noticed is None and completion is not None:
+        raise ValueError("activity user_channel_completion requires noticed")
+    if noticed is not None and completion != "none":
+        raise ValueError("activity noticed requires user_channel_completion=none")
+    keys = {key for key in payload if key not in {"noticed", "user_channel_completion"}}
     decision = payload.get("decision")
     if decision == "no_op":
         if keys != {"decision"}:
@@ -675,6 +680,7 @@ class _ActivityLifecyclePayload(BaseModel):
     decision: Literal["no_op", "select"]
     selected_token: str | None = None
     noticed: str | None = Field(default=None, min_length=1, max_length=720)
+    user_channel_completion: Literal["none"] | None = None
 
     @model_validator(mode="after")
     def choice_shape_is_closed(self) -> "_ActivityLifecyclePayload":
@@ -682,6 +688,10 @@ class _ActivityLifecyclePayload(BaseModel):
             raise ValueError("activity no_op cannot carry a selected token")
         if self.decision == "select" and not self.selected_token:
             raise ValueError("activity select requires a selected token")
+        if self.noticed is None and self.user_channel_completion is not None:
+            raise ValueError("activity user_channel_completion requires noticed")
+        if self.noticed is not None and self.user_channel_completion != "none":
+            raise ValueError("activity noticed requires user_channel_completion=none")
         return self
 
 
@@ -2952,7 +2962,10 @@ class StructuredCharacterRoleFaculty:
                         "and equally valid when she chooses not to keep one"
                     )
                 ),
-                "reflection_summary": "free tentative private reading",
+                "reflection_summary": (
+                    "free tentative private reading; not a completed send or reply "
+                    "through the user channel"
+                ),
                 "confidence_bp": "integer 0..10000",
                 "expiry_condition": "one offered lifecycle condition",
             }
@@ -3110,6 +3123,7 @@ class StructuredCharacterRoleFaculty:
                 "decision": "select|no_op",
                 "selected_token": "select only: one offered activity token",
                 "noticed": "optional short subjective moment in a verified situation",
+                "user_channel_completion": "const none, required when noticed is present",
             }
         if contract.purpose == "outcome_selection":
             view["payload_schema"] = {

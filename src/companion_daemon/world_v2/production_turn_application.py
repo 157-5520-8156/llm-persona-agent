@@ -249,10 +249,15 @@ from .proactive_action import (
 from .proposal_envelope import DecisionProposal, validate_proposal_envelope
 from .social_initiative import (
     SITUATION_STIMULUS_EVENT_TYPES,
+    SocialInitiativeCompiler,
     SocialInitiativeContextPolicy,
     SocialInitiativePolicy,
     social_initiative_attempt_id,
     social_initiative_consideration_id,
+)
+from .private_impression_producer import (
+    PrivateImpressionDrainPolicy,
+    evaluate_private_impression_drain_gate,
 )
 from .random_authority import RandomDrawRecordedPayload
 from .memory_withdrawal_review import (
@@ -2171,6 +2176,106 @@ class WorldV2TurnApplication:
             return schedule.next_consideration_at
         return projection.logical_time
 
+    def _social_initiative_compiler(self) -> SocialInitiativeCompiler:
+        return SocialInitiativeCompiler(
+            ledger=self._ledger,
+            actor_ref=self._companion_actor_ref,
+            policy=self._social_initiative_policy,
+        )
+
+    async def social_initiative_next_due(self):
+        """Return the next recorded initiative cadence instant, if one exists.
+
+        This is a read of already-committed draws and silent completions.  It
+        never records a new RandomAuthority decision; ``drain_proactive_once``
+        remains the only writer of that draw.
+        """
+
+        projection = (
+            await asyncio.to_thread(self._ledger.project)
+            if self._ledger.blocks_event_loop
+            else self._ledger.project()
+        )
+        return await self._social_initiative_compiler().peek_next_due(projection)
+
+    def _private_impression_drain_policy(self) -> PrivateImpressionDrainPolicy:
+        stored = getattr(self._character_interior, "_private_impression_policy", None)
+        if isinstance(stored, PrivateImpressionDrainPolicy):
+            return stored
+        return PrivateImpressionDrainPolicy()
+
+    async def private_impression_next_due(self):
+        """Return when an open private-impression farm may spend its next call.
+
+        Skip reasons are host gates.  ``ask`` means the consider is already
+        due on the current cursor, so the clock must not jump.
+        """
+
+        projection = (
+            await asyncio.to_thread(self._ledger.project)
+            if self._ledger.blocks_event_loop
+            else self._ledger.project()
+        )
+        policy = self._private_impression_drain_policy()
+        decision = evaluate_private_impression_drain_gate(
+            projection, policy=policy, ledger=self._ledger
+        )
+        if decision.action != "skip" or not decision.trigger_id:
+            return None
+        if (
+            decision.reason == "min_interval"
+            and decision.last_background_call_at is not None
+            and policy.min_interval_seconds > 0
+        ):
+            return decision.last_background_call_at + timedelta(
+                seconds=policy.min_interval_seconds
+            )
+        if (
+            decision.reason == "recent_user_observation"
+            and decision.last_user_observation_at is not None
+        ):
+            return decision.last_user_observation_at + timedelta(
+                seconds=policy.idle_after_user_seconds
+            )
+        if decision.reason == "daily_cap" and isinstance(projection.logical_time, datetime):
+            from zoneinfo import ZoneInfo
+
+            try:
+                zone = ZoneInfo(policy.local_timezone)
+            except Exception:
+                zone = ZoneInfo("Asia/Shanghai")
+            local = projection.logical_time.astimezone(zone)
+            next_midnight = (local + timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            return next_midnight.astimezone(UTC)
+        return None
+
+    def _last_ledger_event_created_at(self) -> datetime | None:
+        connection = getattr(self._ledger, "_connection", None)
+        world_id = getattr(self._ledger, "world_id", None)
+        if connection is None or not world_id:
+            return None
+        try:
+            row = connection.execute(
+                "SELECT json_extract(event_json, '$.created_at') AS created_at "
+                "FROM world_v2_events WHERE world_id = ? "
+                "ORDER BY ledger_sequence DESC LIMIT 1",
+                (world_id,),
+            ).fetchone()
+        except Exception:
+            return None
+        raw = row["created_at"] if row is not None else None
+        if not isinstance(raw, str) or not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC)
+        return parsed
+
     async def world_health_diagnostics(self) -> dict[str, object]:
         """Return deterministic read-only liveness evidence for health checks.
 
@@ -2195,13 +2300,12 @@ class WorldV2TurnApplication:
             for item in proactive_processes
             if item.source_evidence_ref is not None
         }
-        opportunity_sources = {
-            item.settlement_event_ref
-            for item in projection.world_occurrences
-            if item.status == "settled"
-            and item.visibility in {"public", "shareable"}
-            and item.settlement_event_ref is not None
-        }
+        # Settled public/shareable occurrences are hitch materials, not a
+        # standalone queue.  V3 reconstructs one only when an open process
+        # still points at that settlement (already counted as a pending
+        # process).  Counting every historical settlement made health look
+        # like a 20-item backlog while the compiler had nothing to mint.
+        opportunity_sources: set[str] = set()
         spontaneous_candidate_due = False
         spontaneous_pending = False
         initiative_state = "waiting_context"
@@ -2473,6 +2577,23 @@ class WorldV2TurnApplication:
                 spontaneous_pending = (
                     logical_time is not None and logical_time >= active_retry.next_retry_at
                 )
+        elif logical_time is not None:
+            peek_due = await self._social_initiative_compiler().peek_next_due(projection)
+            if peek_due is not None:
+                next_consideration_at = peek_due
+                if logical_time < peek_due:
+                    if initiative_state not in {"considering", "action_pending"}:
+                        initiative_state = "waiting_context"
+                    spontaneous_candidate_due = False
+                    spontaneous_pending = False
+                elif initiative_state not in {
+                    "considering",
+                    "action_pending",
+                    "cooldown",
+                    "model_silent",
+                }:
+                    initiative_state = "consideration_due"
+                    spontaneous_pending = True
         initiative_reliability_24h = _proactive_reliability_health(projection)
         warning_reasons: list[str] = list(initiative_reliability_24h["warning_reasons"])
         if consecutive_technical_failures >= 3:
@@ -2527,12 +2648,45 @@ class WorldV2TurnApplication:
             "OutcomeObservationRecorded",
             "OutcomeProposalRecorded",
         }
-        life_event_count = sum(
-            item.event_type in lived_world_event_types
+        lived_event_times = tuple(
+            item.logical_time
             for item in projection.committed_world_event_refs
+            if item.event_type in lived_world_event_types
         )
+        life_event_count = len(lived_event_times)
         occurrence_count = len(projection.world_occurrences)
         experience_count = len(projection.experiences)
+        last_lived_at = max(lived_event_times, default=None)
+        occurrence_times = tuple(
+            item
+            for item in (
+                getattr(occurrence, "settled_at", None)
+                or getattr(occurrence, "activated_at", None)
+                for occurrence in projection.world_occurrences
+            )
+            if isinstance(item, datetime)
+        )
+        if occurrence_times:
+            last_lived_at = (
+                max(last_lived_at, max(occurrence_times))
+                if last_lived_at is not None
+                else max(occurrence_times)
+            )
+        schedule = projection.life_ecology_schedule
+        if schedule is not None and isinstance(schedule.last_completed_at, datetime):
+            last_lived_at = (
+                max(last_lived_at, schedule.last_completed_at)
+                if last_lived_at is not None
+                else schedule.last_completed_at
+            )
+        # "Starved" means not living *now*, not "never lived".  Two Life
+        # cadences (12h) without a lived event is the same empty-loop shape
+        # as today's freeze: the world once moved and then stopped.
+        starved_horizon = timedelta(hours=12)
+        living_clock = logical_time or last_lived_at
+        starved = last_lived_at is not None and living_clock is not None and (
+            living_clock - last_lived_at > starved_horizon
+        )
         expression_retry = _expression_retry_health(projection)
         plans_by_status = Counter(item.status for item in projection.plans)
         active_plans = tuple(item for item in projection.plans if item.status == "active")
@@ -2822,8 +2976,30 @@ class WorldV2TurnApplication:
                 "character_outcome": self._last_character_outcome or "unavailable",
             }
         external_perception_downstream = external_perception_downstream_health(projection)
+        last_event_created_at = self._last_ledger_event_created_at()
+        pi_policy = self._private_impression_drain_policy()
+        pi_decision = evaluate_private_impression_drain_gate(
+            projection, policy=pi_policy, ledger=self._ledger
+        )
+        pi_open = any(
+            item.process_kind == "private_impression_deliberation" and item.state != "terminal"
+            for item in projection.trigger_processes
+        )
         return {
             "character_interior": self._character_interior.runtime_health(),
+            "last_ledger_sequence": projection.ledger_sequence,
+            "last_ledger_event_created_at": (
+                last_event_created_at.isoformat() if last_event_created_at is not None else None
+            ),
+            "last_lived_at": last_lived_at.isoformat() if last_lived_at is not None else None,
+            "private_impression": {
+                "open_process": pi_open,
+                "gate_action": pi_decision.action,
+                "gate_reason": pi_decision.reason,
+                "daily_calls": pi_decision.daily_calls,
+                "daily_limit": pi_decision.daily_limit,
+                "trigger_id": pi_decision.trigger_id or None,
+            },
             "initiative_last_status": last_status,
             "initiative_last_reason": last_reason,
             "pending_proactive_opportunity_count": len(opportunity_sources - processed_sources)
@@ -2864,7 +3040,7 @@ class WorldV2TurnApplication:
             "life_event_count": life_event_count,
             "occurrence_count": occurrence_count,
             "experience_count": experience_count,
-            "starved": not (life_event_count or occurrence_count or experience_count),
+            "starved": starved,
             "expression_episode": self._turns.expression_episode_diagnostics(),
             "expression_retry": expression_retry,
             "recall_semantic": recall_semantic,
@@ -4133,6 +4309,7 @@ def build_sqlite_world_v2_turn_application(
                 protagonist_actor_ref=config.companion_actor_ref,
                 catalog=life_seed_catalog,
                 worker_actor=config.life_ecology.worker_actor,
+                user_channel_critic=life_source_closure_reviewer,
             )
             if (
                 open_life_requested

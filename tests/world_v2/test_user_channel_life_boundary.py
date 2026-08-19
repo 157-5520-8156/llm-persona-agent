@@ -276,3 +276,36 @@ def test_limit_event_is_append_only_and_discoverable_from_the_ledger() -> None:
         item.event_type == LIFE_CONTENT_USER_CHANNEL_AUTHORITY_LIMITED
         for item in projection.committed_world_event_refs
     )
+
+
+def test_npc_outcome_defaults_user_channel_completion_none_and_rejects_sent() -> None:
+    from pydantic import ValidationError
+
+    from companion_daemon.world_v2.npc_ecology import NpcWorldOutcomeDraft
+
+    allowed = NpcWorldOutcomeDraft(text="林在书店坐了一下午，把最卡的一页改清楚了。", privacy="personal")
+    assert allowed.user_channel_completion == "none"
+    with pytest.raises(ValidationError):
+        NpcWorldOutcomeDraft(
+            text="林把照片发给了他。",
+            privacy="personal",
+            user_channel_completion="sent",  # type: ignore[arg-type]
+        )
+
+
+def test_impression_limit_payload_canonicalizes_ids() -> None:
+    from companion_daemon.world_v2.private_impression_events import (
+        PrivateImpressionUserChannelAuthorityLimitedPayload,
+    )
+
+    payload = PrivateImpressionUserChannelAuthorityLimitedPayload(
+        impression_ids=(
+            "impression:bd04c493",
+            "impression:eca0e3bb",
+            "impression:bd04c493",
+        ),
+        inspected_media_delivery_count=0,
+        inspected_media_delivery_action_count=0,
+    )
+    assert payload.impression_ids == ("impression:bd04c493", "impression:eca0e3bb")
+    assert payload.limitation == "not_user_channel_authority"

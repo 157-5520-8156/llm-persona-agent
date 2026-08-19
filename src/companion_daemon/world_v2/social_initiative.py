@@ -679,6 +679,65 @@ class SocialInitiativeCompiler:
             projection, logical_time, adopted or spontaneous
         )
 
+    async def peek_next_due(self, projection) -> datetime | None:
+        """Return the next compiler due instant without recording a draw.
+
+        The QQ scheduler clock only wakes on exact dues.  Initiative cadence
+        (post-silent or spontaneous) must be one of those dues, or a frozen
+        Life interval can leave ``consideration_due`` true in health while
+        ``drain_proactive_once`` stays idle until the next Life tick.
+        """
+
+        logical_time = projection.logical_time
+        if logical_time is None:
+            return None
+        pending = await self._pending_consideration(
+            projection,
+            excluded_consideration_ids=frozenset(),
+        )
+        if pending is not None:
+            return pending.scheduled_for or logical_time
+        recent_contact = max(
+            (
+                item.logical_time
+                for item in projection.actions
+                if item.kind in {"proactive_message", "followup"}
+                and item.state not in {"failed", "cancelled", "expired"}
+            ),
+            default=None,
+        )
+        if recent_contact is not None:
+            cooldown_until = recent_contact + timedelta(
+                seconds=self._policy.contact_cooldown_seconds
+            )
+            if logical_time < cooldown_until:
+                return cooldown_until
+        try:
+            post_silent = await self._post_silent_consideration(
+                projection,
+                logical_time,
+                record_draw=False,
+                allow_future=True,
+            )
+        except ValueError:
+            post_silent = None
+        if post_silent is not None:
+            return post_silent.scheduled_for
+        if await self._post_silent_chain_active(projection):
+            return None
+        try:
+            spontaneous = await self._spontaneous_contact(
+                projection,
+                logical_time,
+                record_draw=False,
+                allow_future=True,
+            )
+        except ValueError:
+            return None
+        if spontaneous is None:
+            return None
+        return spontaneous.scheduled_for
+
     async def _pending_consideration(
         self,
         projection,
@@ -896,7 +955,12 @@ class SocialInitiativeCompiler:
         return False
 
     async def _post_silent_consideration(
-        self, projection, logical_time: datetime
+        self,
+        projection,
+        logical_time: datetime,
+        *,
+        record_draw: bool = True,
+        allow_future: bool = False,
     ) -> SocialInitiativeOpportunity | None:
         """Open the next recorded opportunity after a role-owned silence.
 
@@ -963,6 +1027,8 @@ class SocialInitiativeCompiler:
             )
             draw = await self._recorded_random_draw(projection, attempt_id)
             if draw is None:
+                if not record_draw:
+                    return None
                 draw = (
                     await asyncio.to_thread(self._random.draw, **draw_kwargs)
                     if self._ledger.blocks_event_loop
@@ -992,7 +1058,7 @@ class SocialInitiativeCompiler:
             )
             if current is not None:
                 return None
-            if logical_time < scheduled_for:
+            if logical_time < scheduled_for and not allow_future:
                 return None
             return await self._from_source(
                 source_kind="post_silent",
@@ -1601,7 +1667,14 @@ class SocialInitiativeCompiler:
         )
         return getattr(ref, "world_revision", 1)
 
-    async def _spontaneous_contact(self, projection, logical_time: datetime):
+    async def _spontaneous_contact(
+        self,
+        projection,
+        logical_time: datetime,
+        *,
+        record_draw: bool = True,
+        allow_future: bool = False,
+    ):
         # Hard boundary: do not offer a morning ping before local 07:00.
         # She still chooses now / later / silent once the day starts.
         if is_overnight_local(logical_time):
@@ -1664,18 +1737,22 @@ class SocialInitiativeCompiler:
             trace_id=source[0].trace_id,
             correlation_id=source[0].correlation_id,
         )
-        draw = (
-            await asyncio.to_thread(self._random.draw, **draw_kwargs)
-            if self._ledger.blocks_event_loop
-            else self._random.draw(**draw_kwargs)
-        )
+        draw = await self._recorded_random_draw(projection, attempt_id)
+        if draw is None:
+            if not record_draw:
+                return None
+            draw = (
+                await asyncio.to_thread(self._random.draw, **draw_kwargs)
+                if self._ledger.blocks_event_loop
+                else self._random.draw(**draw_kwargs)
+            )
         try:
             delay_seconds = int(draw.selected_candidate_ref.removeprefix("delay:"))
         except (AttributeError, ValueError):
             raise ValueError("social initiative cadence draw did not select a delay")
         if delay_seconds not in profile.delay_candidates_seconds:
             raise ValueError("social initiative cadence draw selected an unknown delay")
-        if elapsed < delay_seconds:
+        if elapsed < delay_seconds and not allow_future:
             return None
         consideration_epoch = max(0, int(elapsed // delay_seconds) - 1)
         ambient = elapsed >= self._policy.spontaneous_expiry_seconds

@@ -79,6 +79,11 @@ from .external_world_perception.deployment import (
 from .external_world_perception.production_attention import (
     LiveAttentionChannelPort,
 )
+from .declared_due import (
+    collect_projection_declared_dues,
+    computed_due,
+    select_clock_wake,
+)
 from .expression_episode_lifecycle import (
     ExpressionTechnicalNoticeCandidate,
     expression_episode_technical_notice_candidates,
@@ -2200,6 +2205,10 @@ class QQC2CHost:
 
         due_projection_reader = getattr(self._host, "action_due_projection", None)
         life_due_reader = getattr(self._host, "life_ecology_next_due", None)
+        initiative_due_reader = getattr(self._host, "social_initiative_next_due", None)
+        private_impression_due_reader = getattr(
+            self._host, "private_impression_next_due", None
+        )
         retry_due_before_tick = None
         retry_logical_from = None
         # Slow/model-backed work is serialized only with other scheduled work.
@@ -2294,65 +2303,108 @@ class QQC2CHost:
                 due_projection = (
                     await due_projection_reader() if callable(due_projection_reader) else None
                 )
-                action_due_target = (
-                    _next_action_due_boundary(
-                        due_projection,
-                        after=logical_from,
-                        through=tick_boundary,
+                # Host-computed dues stay here so existing monkeypatches and
+                # overlay readers remain the authority for those kinds.  The
+                # projection collector supplies every other accepted due so a
+                # new stored deadline cannot sit invisible to the clock.
+                computed_dues = [
+                    item
+                    for item in (
+                        computed_due(
+                            "action.authorized_due",
+                            (
+                                _next_action_due_boundary(
+                                    due_projection,
+                                    after=logical_from,
+                                    through=tick_boundary,
+                                )
+                                if due_projection is not None
+                                else None
+                            ),
+                        ),
+                        computed_due(
+                            "expression.technical_retry",
+                            (
+                                next_expression_retry_due(due_projection)
+                                if due_projection is not None
+                                else None
+                            ),
+                        ),
+                        computed_due(
+                            "proactive.technical_retry",
+                            (
+                                next_proactive_retry_due(due_projection)
+                                if due_projection is not None
+                                else None
+                            ),
+                        ),
+                        computed_due(
+                            "life.ecology",
+                            await life_due_reader() if callable(life_due_reader) else None,
+                            wake_policy="wall_catchup",
+                        ),
+                        computed_due(
+                            "social.initiative.cadence",
+                            (
+                                await initiative_due_reader()
+                                if callable(initiative_due_reader)
+                                else None
+                            ),
+                        ),
+                        computed_due(
+                            "private_impression.interval",
+                            (
+                                await private_impression_due_reader()
+                                if callable(private_impression_due_reader)
+                                else None
+                            ),
+                        ),
                     )
-                    if due_projection is not None
-                    else None
+                    if item is not None
+                ]
+                selected_due = select_clock_wake(
+                    after=logical_from,
+                    through=tick_boundary,
+                    dues=(
+                        *collect_projection_declared_dues(due_projection),
+                        *computed_dues,
+                    ),
                 )
-                nearest_expression_retry_due = (
-                    next_expression_retry_due(due_projection)
-                    if due_projection is not None
-                    else None
-                )
-                expression_retry_target = (
-                    nearest_expression_retry_due
-                    if nearest_expression_retry_due is not None
-                    and logical_from < nearest_expression_retry_due <= tick_boundary
-                    else None
-                )
-                nearest_proactive_retry_due = (
-                    next_proactive_retry_due(due_projection) if due_projection is not None else None
-                )
-                proactive_retry_target = (
-                    nearest_proactive_retry_due
-                    if nearest_proactive_retry_due is not None
-                    and logical_from < nearest_proactive_retry_due <= tick_boundary
-                    else None
-                )
-                life_due_at = (
-                    await life_due_reader() if callable(life_due_reader) else None
-                )
-                life_due_target = None
-                if isinstance(life_due_at, datetime):
-                    if logical_from < life_due_at <= tick_boundary:
-                        life_due_target = life_due_at
-                    elif life_due_at <= logical_from < tick_boundary:
-                        life_due_target = tick_boundary
-                exact_due_targets = tuple(
-                    value
-                    for value in (
-                        action_due_target,
-                        expression_retry_target,
-                        proactive_retry_target,
-                        life_due_target,
-                    )
-                    if value is not None
-                )
-                if not exact_due_targets:
+                if selected_due is None:
                     break
-                tick_target = min(exact_due_targets)
-                if tick_target == action_due_target:
-                    tick_reason = "qq_c2c_action_due_wake"
-                elif tick_target == expression_retry_target:
-                    tick_reason = "qq_c2c_expression_retry_wake"
-                elif tick_target == proactive_retry_target:
-                    tick_reason = "qq_c2c_proactive_retry_wake"
-                else:
-                    tick_reason = "qq_c2c_life_ecology_due_wake"
+                tick_target = selected_due.due_at
+                tick_reason = selected_due.reason
+                action_due_target = next(
+                    (item.due_at for item in computed_dues if item.kind == "action.authorized_due"),
+                    None,
+                )
+                expression_retry_target = next(
+                    (
+                        item.due_at
+                        for item in computed_dues
+                        if item.kind == "expression.technical_retry"
+                    ),
+                    None,
+                )
+                proactive_retry_target = next(
+                    (
+                        item.due_at
+                        for item in computed_dues
+                        if item.kind == "proactive.technical_retry"
+                    ),
+                    None,
+                )
+                life_due_target = (
+                    tick_target if selected_due.kind == "life.ecology" else None
+                )
+                initiative_due_target = next(
+                    (
+                        item.due_at
+                        for item in computed_dues
+                        if item.kind == "social.initiative.cadence"
+                    ),
+                    None,
+                )
                 tick_id = "tick:qq-c2c-v2:" + tick_target.isoformat()
                 outcome = await self._host.tick(
                     PlatformClockTick(
@@ -2380,6 +2432,7 @@ class QQC2CHost:
                 if tick_target in {
                     expression_retry_target,
                     proactive_retry_target,
+                    initiative_due_target,
                 }:
                     reached_technical_retry = True
                     break

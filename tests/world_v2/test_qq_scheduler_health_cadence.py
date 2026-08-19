@@ -36,6 +36,25 @@ def test_consideration_warning_uses_two_actual_scheduler_cycles() -> None:
     assert overdue["warning_reasons"] == ["consideration_overdue"]
 
 
+def test_consideration_warning_fires_when_clock_has_not_reached_due() -> None:
+    diagnostics = QQC2CSchedulerDiagnostics(interval_seconds=30)
+    waiting = {
+        "initiative_state": "waiting_context",
+        "initiative_next_consideration_at": DUE.isoformat(),
+        "initiative_last_considered_at": (DUE - timedelta(hours=7)).isoformat(),
+        "initiative_warning": False,
+        "initiative_warning_reasons": [],
+    }
+
+    snapshot = diagnostics.snapshot(
+        now=DUE + timedelta(seconds=61),
+        world=waiting,
+    )["initiative"]
+
+    assert snapshot["warning"] is True
+    assert snapshot["warning_reasons"] == ["consideration_overdue"]
+
+
 def test_consideration_warning_recomputes_a_stale_platform_threshold() -> None:
     diagnostics = QQC2CSchedulerDiagnostics(interval_seconds=90)
     stale_world = _due_world(

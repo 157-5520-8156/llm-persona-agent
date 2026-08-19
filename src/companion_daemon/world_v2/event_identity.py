@@ -216,6 +216,8 @@ def _life_identity_components(
         return world_id, payload.get("decision_id")
     if event_type == "LifeContentUserChannelAuthorityLimited":
         return world_id, payload.get("limitation"), payload.get("content_refs")
+    if event_type == "PrivateImpressionUserChannelAuthorityLimited":
+        return world_id, payload.get("limitation"), payload.get("impression_ids")
     if event_type == "MediaSelectionAttemptRecorded":
         return world_id, payload.get("attempt_id")
     if event_type == "MediaSelectionProposalRecorded":

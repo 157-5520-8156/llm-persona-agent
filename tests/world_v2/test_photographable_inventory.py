@@ -284,3 +284,180 @@ def test_snapshot_photo_in_hand_is_counted() -> None:
     materials = __import__("json").loads(typed.materials_json)
     assert materials["moments_i_can_share"]["available_count"] == 1
     assert materials["moments_i_can_share"]["items"][0]["photo_in_hand"] is True
+
+
+def _opened_candidate(
+    *,
+    candidate_id: str,
+    refs: tuple[str, ...],
+    status: str = "available",
+    privacy: str = "personal",
+    family: str = "character_media",
+    taxonomy: str = "character_media:selfie",
+    expires_at: datetime | None = None,
+):
+    return SimpleNamespace(
+        candidate_id=candidate_id,
+        status=status,
+        family=family,
+        privacy_ceiling=privacy,
+        ecology_category=taxonomy,
+        opened_at=NOW - timedelta(hours=3),
+        expires_at=NOW + timedelta(days=2) if expires_at is None else expires_at,
+        source_event_refs=refs,
+        source_events=tuple(SimpleNamespace(event_ref=ref) for ref in refs),
+        opened_event_ref=refs[0],
+        opened_event_payload_hash="a" * 64,
+    )
+
+
+def _empty_projection(*candidates: object) -> SimpleNamespace:
+    return SimpleNamespace(
+        logical_time=NOW,
+        photo_candidates=candidates,
+        media_deliveries=(),
+        media_opportunities=(),
+        media_plans=(),
+        world_occurrences=(),
+        proposal_revisions=(),
+        committed_world_event_refs=(),
+    )
+
+
+def _snapshot_context(slices: dict[str, object]) -> dict[str, object]:
+    return {
+        "world_id": "world:album",
+        "actor_ref": "agent:companion",
+        "world_revision": 12,
+        "deliberation_revision": 2,
+        "ledger_sequence": 12,
+        "logical_time": NOW.isoformat(),
+        "slices": slices,
+    }
+
+
+def test_three_opened_candidates_survive_unavailable_world_life() -> None:
+    from companion_daemon.world_v2.photographable_inventory import (
+        install_shareable_photos_context,
+    )
+
+    projection = _empty_projection(
+        _opened_candidate(
+            candidate_id="photo-candidate:a",
+            refs=("event:image:a", "event:life:bookstore"),
+            privacy="personal",
+        ),
+        _opened_candidate(
+            candidate_id="photo-candidate:b",
+            refs=("event:activity:b", "event:image:b"),
+            privacy="private",
+        ),
+        _opened_candidate(
+            candidate_id="photo-candidate:c",
+            refs=("event:activity:c", "event:image:c"),
+            privacy="private",
+        ),
+    )
+    context = install_shareable_photos_context(
+        _snapshot_context(
+            {
+                "world_life": {"availability": "unavailable"},
+                "current_situation": {
+                    "availability": "available",
+                    "source_refs": ["event:situation:1"],
+                    "items": [
+                        {
+                            "source_ref": "event:situation:1",
+                            "value": {"activity_slices": []},
+                        }
+                    ],
+                },
+            }
+        ),
+        projection,
+    )
+    typed = compile_inner_life_snapshot(context)
+    inventory = __import__("json").loads(typed.materials_json)["moments_i_can_share"]
+    assert inventory["available_count"] == 3
+    assert [item["photo_in_hand"] for item in inventory["items"]] == [True, True, True]
+    assert {item["candidate_id"] for item in inventory["items"]} == {
+        "photo-candidate:a",
+        "photo-candidate:b",
+        "photo-candidate:c",
+    }
+    assert "hold_reason" not in inventory["items"][0]
+
+
+def test_candidate_without_settlement_still_counts() -> None:
+    from companion_daemon.world_v2.photographable_inventory import (
+        install_shareable_photos_context,
+    )
+
+    projection = _empty_projection(
+        _opened_candidate(
+            candidate_id="photo-candidate:activity-only",
+            refs=("event:activity:lifecycle", "event:image:declared"),
+            privacy="private",
+        )
+    )
+    context = install_shareable_photos_context(
+        _snapshot_context({"world_life": {"availability": "unavailable"}}),
+        projection,
+    )
+    typed = compile_inner_life_snapshot(context)
+    inventory = __import__("json").loads(typed.materials_json)["moments_i_can_share"]
+    assert inventory["available_count"] == 1
+    assert inventory["items"][0]["candidate_id"] == "photo-candidate:activity-only"
+    assert inventory["items"][0]["photo_in_hand"] is True
+
+
+def test_held_candidates_are_visible_with_reason() -> None:
+    from companion_daemon.world_v2.photographable_inventory import (
+        install_shareable_photos_context,
+    )
+
+    projection = _empty_projection(
+        _opened_candidate(
+            candidate_id="photo-candidate:live",
+            refs=("event:image:live",),
+        ),
+        _opened_candidate(
+            candidate_id="photo-candidate:old",
+            refs=("event:image:old",),
+            expires_at=NOW - timedelta(seconds=1),
+        ),
+        _opened_candidate(
+            candidate_id="photo-candidate:skip",
+            refs=("event:image:skip",),
+            status="skipped",
+        ),
+    )
+    context = install_shareable_photos_context(
+        _snapshot_context({"world_life": {"availability": "unavailable"}}),
+        projection,
+    )
+    typed = compile_inner_life_snapshot(context)
+    inventory = __import__("json").loads(typed.materials_json)["moments_i_can_share"]
+    by_id = {item["candidate_id"]: item for item in inventory["items"]}
+    assert inventory["available_count"] == 1
+    assert by_id["photo-candidate:live"]["photo_in_hand"] is True
+    assert "hold_reason" not in by_id["photo-candidate:live"]
+    assert by_id["photo-candidate:old"]["photo_in_hand"] is False
+    assert by_id["photo-candidate:old"]["hold_reason"] == "expired"
+    assert by_id["photo-candidate:skip"]["hold_reason"] == "skipped"
+
+
+def test_installed_empty_album_does_not_inherit_world_life_join() -> None:
+    from companion_daemon.world_v2.photographable_inventory import (
+        install_shareable_photos_context,
+    )
+
+    context = install_shareable_photos_context(
+        _snapshot_context({"world_life": _world_life_slice(photo_in_hand=True)}),
+        _empty_projection(),
+    )
+    typed = compile_inner_life_snapshot(context)
+    inventory = __import__("json").loads(typed.materials_json)["moments_i_can_share"]
+    assert inventory["available_count"] == 0
+    assert inventory["items"] == []
+    assert inventory["availability"] == "available"

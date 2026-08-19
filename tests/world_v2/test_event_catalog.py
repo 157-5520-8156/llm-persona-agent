@@ -221,6 +221,17 @@ def test_life_content_user_channel_limit_is_compensating_and_keeps_reducer_bundl
     assert limited.idempotency_identity == "world_id+limitation+content_refs"
 
 
+def test_private_impression_user_channel_limit_is_compensating() -> None:
+    accepted = event_contract("PrivateImpressionAccepted")
+    limited = event_contract("PrivateImpressionUserChannelAuthorityLimited")
+
+    assert "PrivateImpressionUserChannelAuthorityLimited" in accepted.successors
+    assert limited.allowed_predecessors == ("PrivateImpressionAccepted",)
+    assert limited.revision_class == "world"
+    assert limited.reducer_bundle == "world-v2-reducers.56"
+    assert limited.idempotency_identity == "world_id+limitation+impression_ids"
+
+
 def test_character_core_catalog_closes_revision_and_compensation_lifecycle() -> None:
     initialized = event_contract("CharacterCoreInitialized")
     revised = event_contract("CharacterCoreRevised")

@@ -62,6 +62,7 @@ class _OpenWorldModel:
                 "situation_token": selected["token"],
                 "moment": "她在活动间隙注意到一处细小变化，顺手记在了心里。",
                 "moment_scope": "subjective",
+                "user_channel_completion": "none",
             },
             ensure_ascii=False,
         )

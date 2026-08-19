@@ -77,6 +77,7 @@ from .ledger import LedgerPort
 from .memory_retrieval import MemoryRetrievalCompiler, MemoryRetrievalItem
 from .later_expression_freshness import queued_later_facts
 from .life_content import LifeContentCompiler, collect_user_channel_limited_content_refs, RecentExperienceContextItem
+from .private_impression_events import collect_user_channel_limited_impression_ids
 from .life_content_store import ImmutableLifeContentStore
 from .life_development_runtime import LifeDevelopmentProposalReader
 from .life_events import NpcRegisteredPayload
@@ -1660,6 +1661,10 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             ledger=self._ledger,
             projection=projection,
         )
+        user_channel_limited_impression_ids = collect_user_channel_limited_impression_ids(
+            ledger=self._ledger,
+            projection=projection,
+        )
         life_content = self._life_content.compile(
             cursor=query.cursor,
             actor_ref=query.actor_ref,
@@ -2045,6 +2050,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                         if item.status in {"active", "released"}
                         and item.subject_ref in subject_refs
                         and item.origin is not None
+                        and item.impression_id not in user_channel_limited_impression_ids
                     ),
                     npc_identities=npc_identities,
                 )
@@ -2233,6 +2239,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 if item.status == "active"
                 and item.subject_ref in subject_refs
                 and item.origin is not None
+                and item.impression_id not in user_channel_limited_impression_ids
             ),
             "advisories": None,
             "media_deliveries": media_deliveries,

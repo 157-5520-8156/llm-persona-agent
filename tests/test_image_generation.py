@@ -259,6 +259,7 @@ async def test_openai_generator_does_not_retry_http_failures_and_enforces_min_ga
     assert first.path.read_bytes() == b"png"
     assert calls["n"] == 1
     assert not raised.value.retryable
+    assert raised.value.kind == "spend_cap"
     assert "image_generation_spend_cap" in raised.value.detail
 
 

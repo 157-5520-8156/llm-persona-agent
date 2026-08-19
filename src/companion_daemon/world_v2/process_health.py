@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -55,6 +56,10 @@ def compile_process_health(
     storage: Mapping[str, object] | None = None,
     recall_semantic: Mapping[str, object] | None = None,
     external_perception: Mapping[str, object] | None = None,
+    initiative: Mapping[str, object] | None = None,
+    scheduler: Mapping[str, object] | None = None,
+    world_activity: Mapping[str, object] | None = None,
+    private_impression: Mapping[str, object] | None = None,
     ledger_writable: bool | None = None,
     diagnostics_error: str | None = None,
 ) -> ProcessHealth:
@@ -79,6 +84,15 @@ def compile_process_health(
     if diagnostics_error is None:
         findings.extend(_character_interior_findings(character_interior))
     findings.extend(_scheduler_findings(scheduler_status))
+    findings.extend(_initiative_findings(initiative))
+    findings.extend(
+        _ledger_stream_findings(
+            scheduler=scheduler,
+            initiative=initiative,
+        )
+    )
+    findings.extend(_starved_findings(world_activity))
+    findings.extend(_private_impression_findings(private_impression))
     findings.extend(_budget_findings(budget))
     findings.extend(_recall_findings(recall_semantic))
     findings.extend(_external_perception_findings(external_perception))
@@ -361,6 +375,122 @@ def _scheduler_findings(status: str | None) -> list[_Finding]:
             f"scheduler status is {status}",
         )
     ]
+
+
+def _parse_aware_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else None
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed
+
+
+def _ledger_stream_findings(
+    *,
+    scheduler: Mapping[str, object] | None,
+    initiative: Mapping[str, object] | None,
+) -> list[_Finding]:
+    """Empty loop: scheduler keeps finishing passes while the ledger does not.
+
+    Today's freeze was exactly this: ``passes_completed`` climbed and
+    ``created_at`` sat still, with a named overdue consider.  Healthy idle
+    (no pending due) does not alarm.
+    """
+
+    snapshot = _as_mapping(scheduler)
+    if snapshot is None:
+        return []
+    last_event = _parse_aware_datetime(snapshot.get("last_ledger_event_created_at"))
+    last_completed = _parse_aware_datetime(snapshot.get("last_completed_at"))
+    passes = snapshot.get("passes_completed")
+    interval_raw = snapshot.get("interval_seconds")
+    try:
+        interval = float(interval_raw) if interval_raw is not None else 15.0
+    except (TypeError, ValueError):
+        interval = 15.0
+    if last_event is None or last_completed is None or not isinstance(passes, int) or passes < 2:
+        return []
+    gap = (last_completed - last_event).total_seconds()
+    if gap <= max(interval * 2, 120.0):
+        return []
+    initiative_payload = _as_mapping(initiative) or {}
+    reasons = _as_str_list(initiative_payload.get("warning_reasons")) or ()
+    overdue_kinds = _as_str_list(snapshot.get("overdue_declared_due_kinds")) or ()
+    named = overdue_kinds[0] if overdue_kinds else (
+        "initiative_consideration" if "consideration_overdue" in reasons else None
+    )
+    if named is None:
+        return []
+    return [
+        (
+            "degraded",
+            "ledger_event_stream_stalled",
+            f"ledger created_at is stalled while the scheduler keeps completing passes ({named} overdue)",
+        )
+    ]
+
+
+def _starved_findings(world_activity: Mapping[str, object] | None) -> list[_Finding]:
+    payload = _as_mapping(world_activity)
+    if payload is None or payload.get("starved") is not True:
+        return []
+    last_lived = payload.get("last_lived_at")
+    detail = f" (last lived {last_lived})" if isinstance(last_lived, str) and last_lived else ""
+    return [
+        (
+            "degraded",
+            "world_activity_starved",
+            f"world is not living now{detail}",
+        )
+    ]
+
+
+def _private_impression_findings(
+    private_impression: Mapping[str, object] | None,
+) -> list[_Finding]:
+    payload = _as_mapping(private_impression)
+    if payload is None:
+        return []
+    if payload.get("open_process") is True and payload.get("gate_reason") == "daily_cap":
+        return [
+            (
+                "degraded",
+                "private_impression_quota_exhausted_process_open",
+                "private impression daily quota is exhausted while a process is still open",
+            )
+        ]
+    return []
+
+
+def _initiative_findings(initiative: Mapping[str, object] | None) -> list[_Finding]:
+    payload = _as_mapping(initiative)
+    if payload is None:
+        return []
+    reasons = _as_str_list(payload.get("warning_reasons")) or ()
+    findings: list[_Finding] = []
+    if "consideration_overdue" in reasons:
+        findings.append(
+            (
+                "degraded",
+                "initiative_consideration_overdue",
+                "initiative consideration is overdue",
+            )
+        )
+    if "repeated_technical_failures" in reasons:
+        findings.append(
+            (
+                "degraded",
+                "initiative_repeated_technical_failures",
+                "initiative has repeated technical failures",
+            )
+        )
+    return findings
 
 
 def _budget_findings(budget: Mapping[str, object] | None) -> list[_Finding]:

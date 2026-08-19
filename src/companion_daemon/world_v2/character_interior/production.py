@@ -39,6 +39,9 @@ from ..interaction_act_context_builder import (
     install_interaction_act_context,
 )
 from ..occasion import OccasionConsiderGate, occasion_spend_store_for_ledger
+from ..living_state_inventory import install_living_state_context
+from ..photographable_inventory import install_shareable_photos_context
+from ..private_impression_events import collect_user_channel_limited_impression_ids
 from ..response_expectation_view import attach_pending_expectation_advisory
 from ..revisit_intention_view import attach_open_revisit_advisory
 from ..private_impression_producer import (
@@ -172,6 +175,16 @@ class _LedgerCapsuleInteriorProjection:
             cursor=subject.cursor,
         )
         context = install_relationship_context(context, relationship_join)
+        context = install_shareable_photos_context(context, projection)
+        context = install_living_state_context(
+            context,
+            projection,
+            user_channel_limited_impression_ids=(
+                collect_user_channel_limited_impression_ids(
+                    ledger=self.ledger, projection=projection
+                )
+            ),
+        )
         context = install_relationship_authored_residues(context, projection)
         interaction_act_join = await InteractionActContextBuilder(
             ledger=self.ledger

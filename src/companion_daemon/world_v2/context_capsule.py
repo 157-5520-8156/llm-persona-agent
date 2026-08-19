@@ -659,7 +659,18 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
             max_characters=8_000,
         )
     )
-    world_life: SliceBudget = Field(default_factory=SliceBudget)
+    world_life: SliceBudget = Field(
+        # Lived settlements carry full ResolverProof envelopes.  The generic
+        # 8/96/4000 default can reject the whole slice after a few weeks of
+        # aftermath, which also drops photo_in_hand joins that live on those
+        # items.  Photo choosability now has its own installed inventory;
+        # this budget only keeps autobiographical world_life itself visible.
+        default_factory=lambda: SliceBudget(
+            max_items=8,
+            max_fields=192,
+            max_characters=24_000,
+        )
+    )
     perception_results: SliceBudget = Field(
         default_factory=lambda: SliceBudget(max_items=4, max_fields=72, max_characters=4_000)
     )

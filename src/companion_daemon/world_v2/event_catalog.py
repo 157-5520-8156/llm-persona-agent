@@ -729,6 +729,7 @@ _IDEMPOTENCY_IDENTITIES: Mapping[str, str] = MappingProxyType(
         "AppraisalExpired": "appraisal_id+transition_id",
         "AppraisalSuperseded": "appraisal_id+transition_id",
         "PrivateImpressionAccepted": "world_id+impression_id+transition_id",
+        "PrivateImpressionUserChannelAuthorityLimited": "world_id+limitation+impression_ids",
         "RelationshipSignalAccepted": "world_id+signal_semantic_fingerprint",
         "RelationshipCommitmentAccepted": (
             "world_id+commitment_id+expected_entity_revision+transition_id"
@@ -2386,6 +2387,15 @@ _CONTRACTS: Mapping[str, EventContract] = MappingProxyType(
                 "PrivateImpressionAcceptedPayload",
                 allowed_predecessors=("AcceptanceRecorded", "AppraisalAccepted"),
                 evidence_types=("observed_message", "committed_world_event"),
+                successors=("PrivateImpressionUserChannelAuthorityLimited",),
+            ),
+            _contract(
+                "PrivateImpressionUserChannelAuthorityLimited",
+                "life_content_coordinator",
+                "world",
+                "PrivateImpressionUserChannelAuthorityLimitedPayload",
+                allowed_predecessors=("PrivateImpressionAccepted",),
+                evidence_types=("committed_world_event",),
             ),
             _contract(
                 "AffectEpisodeOpened",

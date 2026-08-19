@@ -759,10 +759,43 @@ def _all_context_source_tokens(context: dict[str, object]) -> set[str]:
     )
 
 
+def _inner_life_attention_tokens(context: dict[str, object]) -> set[str]:
+    """Pin snapshot facts the capsule slices may have omitted."""
+
+    tokens: set[str] = set()
+    inner = context.get("inner_life_snapshot")
+    if not isinstance(inner, dict):
+        return tokens
+    refs = inner.get("source_refs")
+    if isinstance(refs, list):
+        tokens.update(ref for ref in refs if isinstance(ref, str) and ref)
+    materials = inner.get("materials")
+    if not isinstance(materials, dict):
+        return tokens
+    inventory = materials.get("moments_i_can_share")
+    if not isinstance(inventory, dict):
+        return tokens
+    extra = inventory.get("source_refs")
+    if isinstance(extra, list):
+        tokens.update(ref for ref in extra if isinstance(ref, str) and ref)
+    items = inventory.get("items")
+    if not isinstance(items, list):
+        return tokens
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for key in ("source_ref", "opened_event_ref"):
+            ref = item.get(key)
+            if isinstance(ref, str) and ref:
+                tokens.add(ref)
+    return tokens
+
+
 def _all_context_attention_tokens(context: dict[str, object]) -> set[str]:
     """Collect provider-visible attention aliases without granting claim authority."""
 
     tokens = _all_context_source_tokens(context)
+    tokens.update(_inner_life_attention_tokens(context))
     slices = context.get("slices")
     if not isinstance(slices, dict):
         return tokens
@@ -773,9 +806,14 @@ def _all_context_attention_tokens(context: dict[str, object]) -> set[str]:
         if not isinstance(items, list):
             continue
         for item in items:
-            refs = item.get("attention_source_refs") if isinstance(item, dict) else None
+            if not isinstance(item, dict):
+                continue
+            refs = item.get("attention_source_refs")
             if isinstance(refs, list):
                 tokens.update(ref for ref in refs if isinstance(ref, str))
+            source_ref = item.get("source_ref")
+            if isinstance(source_ref, str) and source_ref:
+                tokens.add(source_ref)
     return tokens
 
 

@@ -18,14 +18,17 @@ from pydantic import Field, ValidationError, field_validator, model_validator
 from .context_capsule import ResolvedSourceBinding, source_bindings_hash
 from .life_development_draft import (
     LifeDevelopmentCapabilityManifest,
+    LifeDevelopmentClaimDeclaration,
+    LifeDevelopmentOutcomeDraft,
     LifeDevelopmentPossibilityDraft,
+    LifeDevelopmentTimingDraft,
 )
 from .life_review_identity import (
     GENERAL_EVIDENCE_PACKET_CONTRACT as _GENERAL_EVIDENCE_PACKET_CONTRACT,
     NOVEL_EVIDENCE_PACKET_CONTRACT as _NOVEL_EVIDENCE_PACKET_CONTRACT,
 )
 from .schema_core import FrozenModel
-from .schemas import WorldEvent
+from .schemas import ProjectionCursor, WorldEvent
 
 
 _REVIEW_CONTRACT = "life-development-source-closure-review.1"
@@ -131,6 +134,7 @@ class LifeDevelopmentSourceClosureReview(FrozenModel):
 NovelOriginViolationKind = Literal[
     "retroactive_relationship_or_shared_history",
     "completed_character_experience",
+    "completed_user_channel_act",
     "existing_entity_or_fact_masquerading_as_novel",
     "imported_current_or_prior_prerequisite",
     "objective_transition_not_entailed_by_candidate",
@@ -156,6 +160,10 @@ class LifeDevelopmentNovelOriginClaimFinding(FrozenModel):
     def coordinates_are_nonempty(self) -> "LifeDevelopmentNovelOriginClaimFinding":
         if any(not item.strip() for item in self.exact_fragments):
             raise ValueError("novel-origin claim fragments cannot be blank")
+        if "completed_user_channel_act" in self.violation_kinds:
+            raise ValueError(
+                "completed_user_channel_act belongs on outcomes.N.text, not unsupported_claims"
+            )
         return self
 
 
@@ -231,10 +239,14 @@ class LifeDevelopmentOutcomePrerequisiteFinding(FrozenModel):
             "existing_entity_or_fact_masquerading_as_novel",
             "imported_current_or_prior_prerequisite",
         }
-        if not external_origin_kinds.intersection(self.violation_kinds):
+        user_channel_kinds = {"completed_user_channel_act"}
+        if not (
+            external_origin_kinds.intersection(self.violation_kinds)
+            or user_channel_kinds.intersection(self.violation_kinds)
+        ):
             raise ValueError(
                 "outcome-prerequisite findings must identify truth imported from "
-                "outside the current proposal branch"
+                "outside the current proposal branch or a completed user-channel act"
             )
         return self
 
@@ -1587,7 +1599,15 @@ def life_development_novel_origin_messages(
         "an NPC, and a still-unsent intention—remain unsettled and must not be "
         "rejected. A completed user-channel act in that text is different: sending him "
         "a message or photo, his receiving it, or his reply through that channel is "
-        "Action-ledger territory and is not a branch-internal life event. "
+        "Action-ledger territory and is not a branch-internal life event. Put that "
+        "finding only on unsupported_outcome_prerequisites for the exact "
+        "outcomes.N.text path with violation kind completed_user_channel_act "
+        "and a verbatim fragment from that outcome. Do not put "
+        "completed_user_channel_act on unsupported_claims, NPCs, places, or "
+        "objective transitions; claim summaries do not contain the send. "
+        "user_channel_completion=none is a missing Action receipt, not proof "
+        "that the prose is innocent: if that outcome text already states the "
+        "send, his receipt, or his reply as a completed fact, mark it. "
         "Current premise and visual "
         "declaration coverage and typed location belong to the general reviewer, not "
         "this lane. Return only parser-verifiable "
@@ -1741,7 +1761,79 @@ def _novel_origin_coordinate_catalog(
             "copy_verbatim_substrings_from_the_matching_claim_npc_place_transition_"
             "or_outcome_path"
         ),
+        "claim_violation_kinds": [
+            "retroactive_relationship_or_shared_history",
+            "completed_character_experience",
+            "existing_entity_or_fact_masquerading_as_novel",
+        ],
+        "outcome_prerequisite_violation_kinds": [
+            "retroactive_relationship_or_shared_history",
+            "existing_entity_or_fact_masquerading_as_novel",
+            "imported_current_or_prior_prerequisite",
+            "completed_user_channel_act",
+        ],
     }
+
+
+def possibility_draft_from_outcome_texts(
+    *,
+    texts: tuple[str, ...],
+    owner_actor_ref: str,
+) -> tuple[LifeDevelopmentPossibilityDraft, LifeDevelopmentCapabilityManifest]:
+    """Adapter draft so the focused critic can inspect arbitrary outcome prose."""
+
+    padded = list(texts[:4])
+    while len(padded) < 2:
+        padded.append("她待在原地，这段候选变化没有发生。")
+    claim_id = "local:claim:candidate-self-life"
+    draft = LifeDevelopmentPossibilityDraft(
+        decision="propose",
+        authored_subject_ref=owner_actor_ref,
+        causal_authority="world_contingency",
+        outcome_resolution_authority="world_contingency",
+        premise_scope="external_opportunity",
+        premise="一次尚未结算的生活分支出场。",
+        premise_claim_refs=(claim_id,),
+        claim_declarations=(
+            LifeDevelopmentClaimDeclaration(
+                claim_id=claim_id,
+                summary="这一候选分支里她过了一段自己的生活。",
+                scope="novel_world_generation",
+                subject_scope="world_environment",
+                source_refs=(),
+            ),
+        ),
+        timing=LifeDevelopmentTimingDraft(mode="now", duration_minutes=30),
+        anchor_refs=("event:operator:user-channel-prose-review",),
+        privacy_class="personal",
+        outcomes=tuple(
+            LifeDevelopmentOutcomeDraft(
+                experienced_by_ref=owner_actor_ref,
+                text=text,
+                user_channel_completion="none",
+                privacy_class="personal",
+                relative_plausibility_weight=1,
+                claim_refs=(claim_id,),
+            )
+            for text in padded
+        ),
+    )
+    manifest = LifeDevelopmentCapabilityManifest(
+        version="life-development-capability.user-channel-review.1",
+        owner_actor_ref=owner_actor_ref,
+        pinned_cursor=ProjectionCursor(
+            world_revision=1,
+            deliberation_revision=1,
+            ledger_sequence=1,
+        ),
+        anchor_refs=("event:operator:user-channel-prose-review",),
+        grounding_refs=("event:operator:user-channel-prose-review",),
+        location_capabilities=(),
+        entity_refs=(),
+        max_future_days=30,
+        max_window_minutes=12 * 60,
+    )
+    return draft, manifest
 
 
 __all__ = [
@@ -1758,4 +1850,5 @@ __all__ = [
     "life_development_source_closure_messages",
     "parse_life_development_novel_origin_review",
     "parse_life_development_source_closure_review",
+    "possibility_draft_from_outcome_texts",
 ]

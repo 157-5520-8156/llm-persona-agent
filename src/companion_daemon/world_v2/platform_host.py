@@ -399,6 +399,22 @@ class WorldV2PlatformHost:
             return None
         return await reader()
 
+    async def social_initiative_next_due(self):
+        """Read the next recorded social-initiative cadence instant, if any."""
+
+        reader = getattr(self._application, "social_initiative_next_due", None)
+        if not callable(reader):
+            return None
+        return await reader()
+
+    async def private_impression_next_due(self):
+        """Read the next private-impression farm instant, if one is waiting."""
+
+        reader = getattr(self._application, "private_impression_next_due", None)
+        if not callable(reader):
+            return None
+        return await reader()
+
     def export_replay_evidence(self) -> ReplayEvidence:
         """Expose one immutable, cursor-consistent snapshot to offline evaluators."""
 

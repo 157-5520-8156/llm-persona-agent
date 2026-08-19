@@ -1,0 +1,54 @@
+{
+  "seen": {
+    "logical_time": "2026-08-19T09:00:00+08:00",
+    "materials": {
+      "logical_time": "2026-08-19T09:00:00+08:00",
+      "moments_i_can_share": {
+        "availability": "available",
+        "available_count": 0,
+        "already_sent_count": 0,
+        "items": [],
+        "now": {"photographable": false, "reason": "no_active_activity"}
+      },
+      "photos_i_shared": [],
+      "week_diary": [],
+      "recent_dialogue": [],
+      "conversation": [],
+      "perception": [],
+      "appraisals": [],
+      "affect": [],
+      "private_impressions": [],
+      "unresolved": [],
+      "aspirations": [],
+      "relevant_facts": [],
+      "remembered_material": [],
+      "messages_waiting_to_send": [],
+      "relationship": [],
+      "situation": []
+    }
+  },
+  "ledger": {
+    "logical_time": "2026-08-19T01:00:00+00:00",
+    "available_photo_candidate_ids": [],
+    "media_delivery_ids": [],
+    "counterpart_recent": [],
+    "companion_recent_settled": [],
+    "catalog_faces": [],
+    "external_perception_count": 0,
+    "perception_result_count": 0,
+    "sidecar_processed_count": 0,
+    "active_appraisal_ids": [],
+    "active_affect_ids": [],
+    "active_impression_ids": [],
+    "open_thread_ids": [],
+    "active_aspiration_ids": [],
+    "active_plan_ids": [],
+    "active_life_arc_ids": [],
+    "fact_count": 0,
+    "active_memory_count": 0,
+    "settled_occurrence_count": 0,
+    "experience_count": 0,
+    "has_character_core": false,
+    "active_non_sleep_plan_ids": []
+  }
+}
