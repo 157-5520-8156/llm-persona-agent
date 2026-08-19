@@ -76,7 +76,7 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 - 三条通路都已钉住：Open World / NPC ecology / 私人印象（及 life_development 同源闭包）。散文可以描写，不能冒充已投递的 Action/回执。
 
 ### 一致性审计
-- `scripts/audit_context_truth.py`：只读克隆生产账本，31 槽位对照「她看见的」vs「账本事实」（K1–K6 覆盖门）。日常应跑；预期 `finding_count=0`。产物默认 `output/context-audit/`，禁写 `data/`。
+- `scripts/audit_context_truth.py`：只读克隆生产账本，31 槽位对照「她看见的」vs「账本事实」（K1–K6 覆盖门）。日常应跑；预期 `finding_count=0`。产物默认 `output/context-audit/`，禁写 `data/`。**2026-08-19 晚**：seq 5874 克隆仍为 0；当前生产头 seq 5958 在 Path A 编译阶段因 `current_situation minimum whole-item budget is not satisfied` 未能出 finding 表（胶囊整项预算，与相册挤瘦同型坑）。
 
 ### 外部感知
 - `world_v2/external_world_perception/` — RSS/NWS/USGS 源 → `hub.py` 采集/去重/嵌入/聚类 → `attention.py` 影子/实时注意力 → 模型决定 → ExternalPerceptionRecorded → 生活影响。靠 registry off/shadow/live 模式门控，半启用
