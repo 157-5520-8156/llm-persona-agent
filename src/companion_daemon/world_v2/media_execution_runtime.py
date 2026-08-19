@@ -537,6 +537,13 @@ class MediaExecutionWorker:
                 continue
             if action.state in {"failed", "unknown", "expired", "cancelled"}:
                 if action.kind in {"media_render", "media_repair"}:
+                    failed_plan_ids = getattr(projection, "media_failed_plan_ids", ())
+                    if action.intent_ref in (failed_plan_ids or ()):
+                        # The failure is already durable and a failed render
+                        # never gains an artifact, so this Action stays in the
+                        # scan forever.  Reporting it again would starve every
+                        # later inspection and delivery in this world.
+                        continue
                     self._runtime.record_render_failure(
                         action_id=action.action_id,
                         reason_code="provider_" + action.state,

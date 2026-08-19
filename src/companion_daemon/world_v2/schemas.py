@@ -1426,6 +1426,12 @@ class ProposalRevisionRef(FrozenModel):
     # the preceding deliberation was allowed to close.
     candidate_id: str | None = Field(default=None, min_length=1, max_length=256)
     expected_candidate_revision: int | None = Field(default=None, ge=1)
+    # The logical time she authored this media selection.  Media-selection
+    # proposals are DELIBERATION-class, so their event never enters
+    # ``committed_world_event_refs``; without this the conversational send
+    # window has no clock for her decision and falls back to the age of the
+    # photographed moment, which closes the window before she can ever send.
+    decided_at: datetime | None = None
     trigger_ref: str | None = Field(default=None, min_length=1, max_length=512)
     source_evidence_ref: str | None = Field(default=None, min_length=1, max_length=512)
     source_evidence_payload_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")

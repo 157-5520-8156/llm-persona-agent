@@ -205,6 +205,34 @@ def _json_ready_item(item: object) -> object:
     raise LedgerIntegrityError("state tuple element cannot be serialized incrementally")
 
 
+# Nested item fields that joined their model after heads were already
+# written.  A null leftover stays out of the durable bytes so those heads
+# keep reproducing their persisted state hash.
+_LATE_OPTIONAL_ITEM_FIELDS: dict[str, frozenset[str]] = {
+    "proposal_revisions": frozenset({"decided_at"}),
+}
+
+
+def _durable_item_json(field_name: str, dumped: object) -> object:
+    """Apply one tuple field's late-optional omissions to a dumped element.
+
+    The whole-state dump and the incremental per-item fragment path both go
+    through here, because a restart rehashes the reassembled fragments and
+    compares them against the hash the other path wrote.
+    """
+
+    optional = _LATE_OPTIONAL_ITEM_FIELDS.get(field_name)
+    if not optional or not isinstance(dumped, dict):
+        return dumped
+    if all(dumped.get(key) is not None for key in optional):
+        return dumped
+    return {
+        key: value
+        for key, value in dumped.items()
+        if key not in optional or value is not None
+    }
+
+
 def _split_array_fragment_items(fragment: str) -> tuple[str, ...]:
     """Split one canonical JSON array fragment into canonical item fragments."""
 
@@ -1242,9 +1270,18 @@ class SQLiteWorldLedger:
         Nested ``expression_plan_manifests[].revisit`` joined the same way
         inside ``world-v2-reducers.56``: a missing or null leftover is omitted
         so heads persisted before the field existed keep their state hash.
+        ``proposal_revisions[].decided_at`` joined on the same terms: only a
+        media-selection proposal ever carries it, so every other revision --
+        and every head written before the field existed -- stays byte-stable.
         """
 
         dumped = state.model_dump(mode="json")
+        for field_name in _LATE_OPTIONAL_ITEM_FIELDS:
+            items = dumped.get(field_name)
+            if isinstance(items, list):
+                dumped[field_name] = [
+                    _durable_item_json(field_name, item) for item in items
+                ]
         if state.expression_plan_manifests:
             dumped["expression_plan_manifests"] = [
                 {
@@ -1863,7 +1900,9 @@ class SQLiteWorldLedger:
                 new_items = list(old_items[: len(new_value)])
                 new_items.extend([""] * (len(new_value) - len(new_items)))
                 for index in sorted(changed_indexes):
-                    item_fragment = _canonical_fragment(_json_ready_item(new_value[index]))
+                    item_fragment = _canonical_fragment(
+                        _durable_item_json(field_name, _json_ready_item(new_value[index]))
+                    )
                     new_items[index] = item_fragment
                     upserts.append((field_name, index, item_fragment))
                 if len(new_value) < len(old_items):
@@ -1872,7 +1911,14 @@ class SQLiteWorldLedger:
                 fragments[field_name] = "[" + ",".join(new_items) + "]"
                 changed_fields.append(field_name)
             else:
-                fragment = _canonical_fragment(dumped[field_name])
+                dumped_value = dumped[field_name]
+                if field_name in _LATE_OPTIONAL_ITEM_FIELDS and isinstance(
+                    dumped_value, list
+                ):
+                    dumped_value = [
+                        _durable_item_json(field_name, item) for item in dumped_value
+                    ]
+                fragment = _canonical_fragment(dumped_value)
                 if fragments.get(field_name) == fragment:
                     continue
                 # The representation may flip between per-item rows and one

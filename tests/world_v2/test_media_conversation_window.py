@@ -131,6 +131,64 @@ def test_reask_uses_plan_freeze_when_proposal_coords_are_missing() -> None:
     )
 
 
+def _production_shaped_projection(
+    *, decided_at: datetime, moment_at: datetime
+) -> SimpleNamespace:
+    """The shape production actually writes.
+
+    ``MediaSelectionProposalRecorded`` is DELIBERATION-class, so its event is
+    absent from ``committed_world_event_refs``, and ``plan.frozen_at`` is the
+    logical time of the photographed moment rather than of her decision.
+    """
+
+    projection = _projection(decided_at=decided_at)
+    projection.committed_world_event_refs = ()
+    projection.proposal_revisions = (
+        SimpleNamespace(
+            candidate_id=CANDIDATE,
+            proposal_event_ref="event:media-selection:proposal:1",
+            decided_at=decided_at,
+        ),
+    )
+    projection.media_plans = (
+        SimpleNamespace(plan_id="plan:1", opportunity_id="opp:1", frozen_at=moment_at),
+    )
+    return projection
+
+
+def test_she_may_send_a_photo_of_a_moment_that_is_hours_old() -> None:
+    projection = _production_shaped_projection(
+        decided_at=NOW - timedelta(minutes=2),
+        moment_at=NOW - timedelta(hours=11),
+    )
+    assert latest_selection_decided_at(
+        projection, candidate_id=CANDIDATE
+    ) == NOW - timedelta(minutes=2)
+    assert conversation_send_allowed(
+        projection, logical_time=NOW, candidate_id=CANDIDATE
+    )
+    assert not is_reask_eligible(
+        projection,
+        candidate=projection.photo_candidates[0],
+        logical_time=NOW,
+    )
+
+
+def test_an_old_decision_still_closes_the_send_on_a_fresh_moment() -> None:
+    projection = _production_shaped_projection(
+        decided_at=NOW - timedelta(minutes=40),
+        moment_at=NOW - timedelta(minutes=1),
+    )
+    assert not conversation_send_allowed(
+        projection, logical_time=NOW, candidate_id=CANDIDATE
+    )
+    assert is_reask_eligible(
+        projection,
+        candidate=projection.photo_candidates[0],
+        logical_time=NOW,
+    )
+
+
 def test_latest_selection_wins_after_a_second_decision() -> None:
     first = NOW - timedelta(minutes=50)
     second = NOW - timedelta(minutes=2)

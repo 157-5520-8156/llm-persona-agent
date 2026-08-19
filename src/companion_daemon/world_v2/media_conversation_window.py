@@ -34,7 +34,14 @@ REASK_STATUSES = frozenset({"selected", "planned", "generated"})
 def latest_selection_decided_at(
     projection: object, *, candidate_id: str
 ) -> datetime | None:
-    """Latest ``MediaSelectionProposalRecorded`` time for this candidate."""
+    """Latest ``MediaSelectionProposalRecorded`` time for this candidate.
+
+    The revision carries ``decided_at`` because the proposal event is
+    DELIBERATION-class and is therefore absent from
+    ``committed_world_event_refs``.  Revisions written before that field
+    existed still resolve through the world-ref lookup when their proposal
+    happens to be mirrored there.
+    """
 
     if not isinstance(candidate_id, str) or not candidate_id:
         return None
@@ -46,8 +53,10 @@ def latest_selection_decided_at(
     for rev in getattr(projection, "proposal_revisions", ()) or ():
         if getattr(rev, "candidate_id", None) != candidate_id:
             continue
-        committed = refs.get(getattr(rev, "proposal_event_ref", None))
-        at = getattr(committed, "logical_time", None)
+        at = getattr(rev, "decided_at", None)
+        if not isinstance(at, datetime):
+            committed = refs.get(getattr(rev, "proposal_event_ref", None))
+            at = getattr(committed, "logical_time", None)
         if isinstance(at, datetime):
             times.append(at)
     return max(times) if times else None

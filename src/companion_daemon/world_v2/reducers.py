@@ -9084,6 +9084,7 @@ def _media_selection_proposal_recorded(state: ReducerState, event: WorldEvent) -
                     proposal_event_payload_hash=event.payload_hash,
                     proposed_change_hash=payload.proposed_change_hash,
                     selection_hash=payload.selection_hash,
+                    decided_at=event.logical_time,
                     candidate_id=payload.candidate_id,
                     expected_candidate_revision=payload.expected_candidate_revision,
                 ),
