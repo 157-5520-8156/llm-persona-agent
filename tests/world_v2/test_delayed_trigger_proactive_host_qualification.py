@@ -14,7 +14,9 @@ from companion_daemon.world_v2.social_initiative import post_silent_prior_trigge
 from companion_daemon.world_v2.qq_c2c_host import build_qq_c2c_host
 
 
-NOW = datetime.now(UTC).replace(microsecond=0)
+# Shanghai 11:00 so NOW+8h / +12h / +20h all stay at or after local 07:00.
+# Wall-clock now()+12h often lands overnight; ambient then offers nothing.
+NOW = datetime(2026, 8, 19, 3, 0, tzinfo=UTC)
 _CATALOG = Path("configs/delayed_trigger_qualification.v1.yaml")
 
 

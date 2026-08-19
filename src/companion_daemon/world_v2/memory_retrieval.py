@@ -16,6 +16,7 @@ from typing import Literal
 from pydantic import Field
 
 from .ledger import LedgerPort, ObservationEventLocator
+from .life_content import collect_user_channel_limited_content_refs
 from .life_content_store import ImmutableLifeContentStore
 from .memory_reducers import evaluate_memory_retrieval
 from .schema_core import FrozenModel, PrivacyClass
@@ -116,6 +117,10 @@ class MemoryRetrievalCompiler:
             or projection.ledger_sequence != cursor.ledger_sequence
         ):
             raise ValueError("memory retrieval projection does not match its pinned cursor")
+        limited_content_refs = collect_user_channel_limited_content_refs(
+            ledger=self._ledger,
+            projection=projection,
+        )
         decisions = {
             item.candidate_id: item
             for item in evaluate_memory_retrieval(
@@ -202,6 +207,7 @@ class MemoryRetrievalCompiler:
                     excerpt = self._experience_excerpt(
                         binding=binding,
                         projection=projection,
+                        user_channel_limited_content_refs=limited_content_refs,
                     )
                 else:
                     excerpt = None
@@ -242,6 +248,7 @@ class MemoryRetrievalCompiler:
         *,
         binding: MemorySourceBinding,
         projection,
+        user_channel_limited_content_refs: frozenset[str] = frozenset(),
     ) -> MemorySourceExcerpt | None:
         """Read one exact Experience summary through its descriptor and sidecar.
 
@@ -312,6 +319,8 @@ class MemoryRetrievalCompiler:
             None,
         )
         if descriptor is None or descriptor.privacy_class != experience.values.privacy_class:
+            return None
+        if descriptor.content_ref in user_channel_limited_content_refs:
             return None
         descriptor_event = next(
             (

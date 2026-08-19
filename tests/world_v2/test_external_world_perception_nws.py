@@ -130,7 +130,7 @@ async def test_nws_cap_maps_cancel_and_isolates_a_bad_area_sibling() -> None:
 
 @pytest.mark.asyncio
 async def test_nws_adapter_rejects_lookalike_hostname_before_transport() -> None:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         with pytest.raises(ValueError, match="exact endpoint allowlist"):
             NwsAlertsAdapter(
                 http_client=client,

@@ -312,7 +312,17 @@ class ScenarioVerificationError(AssertionError):
 # survives one failed activity cell, family NPC registration, and the same
 # local-07:00 overnight mute on spontaneous contact that open hopes already
 # had. Per-case predicates remain enforced; aggregate identities move.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.78"
+# ``.79`` stops life-outcome prose from completing a user-channel send: World
+# Author outcomes carry ``user_channel_completion=none``, Open World is told
+# the same Action-ledger boundary, and a compensating
+# LifeContentUserChannelAuthorityLimited event can omit forged lived prose
+# from present materials without rewriting history. The same bump also carries
+# the proactive slim hitch (us_deltas / we_are / keep_impression / noticed /
+# declared_display on the contact tool) and the live-conversation media
+# occasion that offers an already-open candidate when he spoke recently
+# relative to now. Per-case predicates remain enforced; World Author, Open
+# World, and proactive tool identities move.
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.79"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -478,8 +488,10 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.78"
 # produced the same aggregate manifest.
 # ``.78`` is installed only after two independent complete 120-case processes
 # produced the same aggregate manifest.
+# ``.79`` is installed only after two independent complete 120-case processes
+# produced the same aggregate manifest.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "dd0e339129b40c5732f5ee183b18779d2806b391963096c0e636cfe93e7ac594"
+    "2ea18866f60e3e1c5daf6151a1334e5f1ab595f3f1e83a069f93cd05dd52d480"
 )
 
 

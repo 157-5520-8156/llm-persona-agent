@@ -263,7 +263,11 @@ from .minimal_reply_events import (
     ExpressionPlanTerminatedPayload,
     MessagePayloadStoredPayload,
 )
-from .life_content_events import LifeContentRecordedPayload
+from .life_content_events import (
+    LIFE_CONTENT_USER_CHANNEL_AUTHORITY_LIMITED,
+    LifeContentRecordedPayload,
+    LifeContentUserChannelAuthorityLimitedPayload,
+)
 from .life_ecology_contract import (
     LIFE_ECOLOGY_WAKE_EVENT_TYPES,
     life_ecology_trigger_id,
@@ -13396,6 +13400,29 @@ def _life_content_recorded(state: ReducerState, event: WorldEvent) -> ReducerSta
     )
 
 
+def _life_content_user_channel_authority_limited(
+    state: ReducerState, event: WorldEvent
+) -> ReducerState:
+    """Record a compensating limit without rewriting the original sidecar."""
+
+    _require_life_time(state, event)
+    payload = LifeContentUserChannelAuthorityLimitedPayload.model_validate_json(
+        event.payload_json
+    )
+    known = {item.content_ref for item in state.life_content_descriptors}
+    missing = tuple(ref for ref in payload.content_refs if ref not in known)
+    if missing:
+        raise ValueError("user-channel authority limit cites unknown life content refs")
+    if payload.inspected_media_delivery_count != len(state.media_deliveries):
+        raise ValueError("inspected media delivery count does not match projection")
+    media_delivery_actions = tuple(
+        item for item in state.actions if item.kind == "media_delivery"
+    )
+    if payload.inspected_media_delivery_action_count != len(media_delivery_actions):
+        raise ValueError("inspected media delivery action count does not match projection")
+    return state
+
+
 def _legacy_experience_committed(state: ReducerState, event: WorldEvent) -> ReducerState:
     payload = LegacyExperienceCommittedPayload.model_validate_json(event.payload_json)
     return state.model_copy(
@@ -15345,6 +15372,11 @@ _EVENTS = {
         ),
         EventDefinition("ExperienceCommitted", RevisionClass.WORLD, _experience_committed),
         EventDefinition("LifeContentRecorded", RevisionClass.WORLD, _life_content_recorded),
+        EventDefinition(
+            LIFE_CONTENT_USER_CHANNEL_AUTHORITY_LIMITED,
+            RevisionClass.WORLD,
+            _life_content_user_channel_authority_limited,
+        ),
         EventDefinition(
             "LegacyExperienceCommitted",
             RevisionClass.WORLD,

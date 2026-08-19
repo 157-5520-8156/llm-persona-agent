@@ -185,6 +185,61 @@ def test_occasion_does_not_inspect_counterpart_wording() -> None:
     assert silent.kind == quiet.kind == "live_conversation_fresh_candidate"
 
 
+def test_live_conversation_offers_an_unexpired_candidate_opened_hours_ago() -> None:
+    """He just spoke. The bookstore candidate opened last night. Offer it."""
+
+    opened = NOW - timedelta(hours=8)
+    candidate = _candidate(opened_at=opened)
+    occasion = compile_candidate_occasion(
+        projection=SimpleNamespace(
+            logical_time=NOW,
+            message_observations=(
+                SimpleNamespace(actor="user:geoff", source_event_id="event:inbound"),
+            ),
+            committed_world_event_refs=(
+                SimpleNamespace(event_id="event:inbound", logical_time=NOW),
+            ),
+            trigger_processes=(),
+            expression_plan_manifests=(),
+            threads=(),
+            conversation_threads=(),
+        ),
+        candidate=candidate,
+        logical_time=NOW,
+        character_actor_ref="agent:companion",
+    )
+    assert occasion is not None
+    assert occasion.kind == "live_conversation_fresh_candidate"
+
+
+def test_stale_speech_does_not_offer_an_old_candidate() -> None:
+    """Last speech was three hours ago; this is not a live conversation."""
+
+    candidate = _candidate(opened_at=NOW - timedelta(hours=8))
+    occasion = compile_candidate_occasion(
+        projection=SimpleNamespace(
+            logical_time=NOW,
+            message_observations=(
+                SimpleNamespace(actor="user:geoff", source_event_id="event:old"),
+            ),
+            committed_world_event_refs=(
+                SimpleNamespace(
+                    event_id="event:old",
+                    logical_time=NOW - timedelta(hours=3),
+                ),
+            ),
+            trigger_processes=(),
+            expression_plan_manifests=(),
+            threads=(),
+            conversation_threads=(),
+        ),
+        candidate=candidate,
+        logical_time=NOW,
+        character_actor_ref="agent:companion",
+    )
+    assert occasion is None
+
+
 def test_lived_facts_keep_source_refs_and_drop_withhold() -> None:
     candidate = _candidate()
     declaration = ImageEvidenceDeclaredPayload(

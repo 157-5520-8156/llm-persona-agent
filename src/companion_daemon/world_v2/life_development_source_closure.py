@@ -1248,6 +1248,7 @@ def _novel_origin_reviewed_surface(
         "outcomes": [
             {
                 "text": outcome.text,
+                "user_channel_completion": outcome.user_channel_completion,
                 "claim_refs": list(outcome.claim_refs),
                 "provisional_npcs": [
                     {
@@ -1393,9 +1394,10 @@ def life_development_source_closure_messages(
         "and provisional-place summaries. Outcome text has no negative coordinate in this general review lane: "
         "do not return an outcome text path or copy an outcome-only fragment into "
         "undeclared_fact_fragments. A separate focused critic reviews only imported "
-        "current/prior prerequisites and retroactive history in outcome text. "
-        "Branch-internal candidate actions, dialogue, feelings, replies, invitations, "
-        "messages, and responses remain unsettled and are not source-closure failures. "
+        "current/prior prerequisites, retroactive history, and completed "
+        "user-channel acts in outcome text. "
+        "Branch-internal candidate self-life, NPC talk, feelings, and still-unsent "
+        "intentions remain unsettled and are not source-closure failures. "
         "If a typed location_ref is "
         "present, it must be the execution coordinate of the proposed Plan or "
         "occurrence; other places may appear only as explicit background, origin, or "
@@ -1445,7 +1447,8 @@ def life_development_source_closure_messages(
                 "focused_novel_origin_critic": (
                     "imported_current_or_prior_prerequisites_and_retroactive_history_only"
                 ),
-                "branch_internal_candidate_action_dialogue_feeling": "allowed",
+                "branch_internal_candidate_self_life": "allowed",
+                "completed_user_channel_act": "not_allowed_without_action_receipt",
             },
             "novel_world_generation": {
                 "proposal_scoped_environment": "allowed",
@@ -1579,9 +1582,13 @@ def life_development_novel_origin_messages(
         "text for facts imported from before that candidate branch: a current/prior "
         "external prerequisite, retroactive relationship or shared history, an "
         "already-completed character experience, or an existing entity/fact relabelled "
-        "as novel. Ordinary events created inside the candidate branch—including "
-        "actions, dialogue, invitations, replies, feelings, and subjective responses—"
-        "remain unsettled and must not be rejected. Current premise and visual "
+        "as novel. Ordinary events created inside the candidate branch—where she went, "
+        "what she did in this World, what she thought, what she photographed, talk with "
+        "an NPC, and a still-unsent intention—remain unsettled and must not be "
+        "rejected. A completed user-channel act in that text is different: sending him "
+        "a message or photo, his receiving it, or his reply through that channel is "
+        "Action-ledger territory and is not a branch-internal life event. "
+        "Current premise and visual "
         "declaration coverage and typed location belong to the general reviewer, not "
         "this lane. Return only parser-verifiable "
         "coordinates: each unsupported novel claim uses its exact claim_id and "
@@ -1629,7 +1636,10 @@ def life_development_novel_origin_messages(
                     "imported_current_or_prior_fact_or_retroactive_history_outside_branch"
                 ),
                 "allow": (
-                    "branch_internal_candidate_action_dialogue_feeling_or_response"
+                    "branch_internal_candidate_self_life_npc_talk_feeling_or_intention"
+                ),
+                "reject_unbound": (
+                    "completed_user_channel_act_message_or_media_delivered_to_him"
                 ),
             },
             "current_premise_coverage": "delegated_to_general_source_reviewer",

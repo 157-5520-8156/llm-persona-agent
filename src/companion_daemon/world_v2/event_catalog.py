@@ -720,6 +720,7 @@ _IDEMPOTENCY_IDENTITIES: Mapping[str, str] = MappingProxyType(
         "WorldOccurrenceSettled": "occurrence_id+result_id+expected_entity_revision",
         "ExperienceCommitted": "world_id+experience_id",
         "LifeContentRecorded": "world_id+content_id+source_event_ref+content_payload_hash",
+        "LifeContentUserChannelAuthorityLimited": "world_id+limitation+content_refs",
         "LegacyExperienceCommitted": "migration-only:original-event-id",
         "WorldOccurrenceCancelled": "occurrence_id+transition_id",
         "WorldOccurrenceExpired": "occurrence_id+transition_id",
@@ -2197,6 +2198,15 @@ _CONTRACTS: Mapping[str, EventContract] = MappingProxyType(
                     "committed_experience",
                     "committed_world_event",
                 ),
+                successors=("LifeContentUserChannelAuthorityLimited",),
+            ),
+            _contract(
+                "LifeContentUserChannelAuthorityLimited",
+                "life_content_coordinator",
+                "world",
+                "LifeContentUserChannelAuthorityLimitedPayload",
+                allowed_predecessors=("LifeContentRecorded",),
+                evidence_types=("committed_world_event",),
             ),
             _contract(
                 "LegacyExperienceCommitted",

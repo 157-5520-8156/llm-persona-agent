@@ -556,7 +556,8 @@ class OpenWorldEventRuntime:
                     "Return exactly JSON. You may choose only an offered situation_token and write one short "
                     "subjective moment (include moment_scope=subjective). This prose is an impression, not "
                     "external evidence. Do not invent a person, place, time, fact, action authority, event id, "
-                    "hash, recipient, or policy. If nothing stands out, return {\"decision\":\"no_op\"}."
+                    "hash, recipient, or policy. Do not narrate a completed send or reply through the user "
+                    "channel; that is Action-ledger territory. If nothing stands out, return {\"decision\":\"no_op\"}."
                 ),
             },
             {

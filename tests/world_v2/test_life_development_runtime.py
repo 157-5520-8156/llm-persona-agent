@@ -1635,6 +1635,52 @@ def test_world_author_parser_accepts_only_the_strict_provider_rewrite_envelope()
         )
 
 
+def test_world_author_outcome_defaults_user_channel_completion_none_for_replay() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    capability = _location_capability()
+    draft = parse_world_author_draft(
+        raw=_location_bound_world_draft(
+            wake=wake,
+            capability=capability,
+            timing={"mode": "now", "duration_minutes": 30},
+            privacy_class="shareable",
+        ),
+        manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        logical_time=NOW,
+    )
+
+    assert {outcome.user_channel_completion for outcome in draft.outcomes} == {"none"}
+
+
+def test_world_author_rejects_non_none_user_channel_completion_as_schema() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    capability = _location_capability()
+    raw = json.loads(
+        _location_bound_world_draft(
+            wake=wake,
+            capability=capability,
+            timing={"mode": "now", "duration_minutes": 30},
+            privacy_class="shareable",
+        )
+    )
+    raw["outcomes"][0]["user_channel_completion"] = "sent"
+
+    with pytest.raises(LifeDevelopmentDraftError) as raised:
+        parse_world_author_draft(
+            raw=json.dumps(raw, ensure_ascii=False),
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+            logical_time=NOW,
+        )
+
+    assert raised.value.code == "invalid_shape"
+    assert any(
+        item["path"].endswith("user_channel_completion")
+        for item in raised.value.violations
+    )
+
+
 def test_legacy_capability_manifest_hash_excludes_decoded_owner_sentinel() -> None:
     manifest = LifeDevelopmentCapabilityManifest(
         version="life-development-capability.production.1",
@@ -4579,6 +4625,8 @@ async def test_invalid_world_draft_gets_one_source_bound_reselection() -> None:
                 "declare_and_reference_every_current_or_prior_external_fact_the_branch_relies_on"
             ),
             "branch_generated_events": ("remain_conditional_and_need_no_existing_world_source"),
+            "user_channel_completion": "none",
+            "must_not_complete_user_channel_act": True,
         },
     }
     assert (
@@ -4776,6 +4824,33 @@ async def test_invalid_world_draft_gets_one_source_bound_reselection() -> None:
             "authority_status": "unsettled_alternative",
             "does_not_establish_completed_experience": True,
             "must_not_author_user_choice_or_action": True,
+            "user_channel_completion": {
+                "required_const": "none",
+                "meaning": "this_branch_does_not_complete_a_user_channel_act",
+                "user_channel_act": [
+                    "message_delivered_to_him",
+                    "media_delivered_to_him",
+                    "he_received_or_replied_through_the_chat_channel",
+                ],
+                "allowed_in_outcome_text": [
+                    "where_she_went",
+                    "what_she_did_in_her_world",
+                    "what_she_thought",
+                    "what_she_photographed",
+                    "npc_talk",
+                    "intention_or_plan_to_send_later",
+                ],
+                "forbidden_as_completed_fact": [
+                    "sending_him_a_message",
+                    "sending_him_a_photo",
+                    "his_receipt_or_reply_through_the_user_channel",
+                ],
+                "those_facts_exist_only_as": [
+                    "ActionAuthorized",
+                    "ActionDelivered",
+                    "MediaDeliveryShared",
+                ],
+            },
         },
         "visual_evidence": {
             "status": "required_when_proposal_is_location_bound_and_outcome_privacy_is_ordinary",
@@ -5186,7 +5261,9 @@ async def test_world_author_reselection_receives_exact_optional_annex_capabiliti
         "visual_evidence. If the proposal is location-bound and the outcome privacy is "
         "public, shareable, personal, or private, supply visual_evidence for that "
         "outcome, including ordinary home life. The system will not supply narrative "
-        "tags, privacy, visual facts, or event text."
+        "tags, privacy, visual facts, or event text. Each outcome must keep "
+        "user_channel_completion=none and must not narrate a completed send or "
+        "reply through the user channel."
     )
 
 
@@ -5423,7 +5500,8 @@ def test_source_closure_contract_delegates_outcome_semantics_to_focused_critic()
         "focused_novel_origin_critic": (
             "imported_current_or_prior_prerequisites_and_retroactive_history_only"
         ),
-        "branch_internal_candidate_action_dialogue_feeling": "allowed",
+        "branch_internal_candidate_self_life": "allowed",
+        "completed_user_channel_act": "not_allowed_without_action_receipt",
     }
     assert all(
         not path.endswith(".text")
@@ -5459,7 +5537,8 @@ def test_source_closure_contract_delegates_outcome_semantics_to_focused_critic()
     ]
     assert focused_request["review_dimensions"]["outcome_prerequisites"] == {
         "reject": ("imported_current_or_prior_fact_or_retroactive_history_outside_branch"),
-        "allow": "branch_internal_candidate_action_dialogue_feeling_or_response",
+        "allow": "branch_internal_candidate_self_life_npc_talk_feeling_or_intention",
+        "reject_unbound": "completed_user_channel_act_message_or_media_delivered_to_him",
     }
 
 

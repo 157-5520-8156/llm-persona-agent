@@ -74,11 +74,19 @@ class MediaPreviewConductor:
             )
         if pending_planning.status != "idle":
             return self._planning_result(planning=pending_planning)
-        selection = await self._select(
-            logical_time=logical_time,
-            trace_id=trace_id,
-            correlation_id=correlation_id,
-        )
+        try:
+            selection = await self._select(
+                logical_time=logical_time,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+        except ConcurrencyConflict:
+            # Deliberation spans a provider round trip, so it is the longest
+            # window in this prefix.  A lost cursor race is retryable work,
+            # never a reason to abandon the rest of the scheduler pass.
+            return MediaPreviewConductorResult(
+                status="blocked", reason_code="media_preview.selection_cursor_stale"
+            )
         if selection.status == "no_op":
             return MediaPreviewConductorResult(
                 status="idle", selection=selection, reason_code=selection.reason_code

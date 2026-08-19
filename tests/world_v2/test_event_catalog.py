@@ -209,6 +209,18 @@ def test_observation_contract_freezes_source_event_identity() -> None:
     assert contract.idempotency_identity == "source+source_event_id"
 
 
+def test_life_content_user_channel_limit_is_compensating_and_keeps_reducer_bundle() -> None:
+    recorded = event_contract("LifeContentRecorded")
+    limited = event_contract("LifeContentUserChannelAuthorityLimited")
+
+    assert "LifeContentUserChannelAuthorityLimited" in recorded.successors
+    assert limited.allowed_predecessors == ("LifeContentRecorded",)
+    assert limited.revision_class == "world"
+    assert limited.reducer_bundle == "world-v2-reducers.56"
+    assert limited.compensations == ()
+    assert limited.idempotency_identity == "world_id+limitation+content_refs"
+
+
 def test_character_core_catalog_closes_revision_and_compensation_lifecycle() -> None:
     initialized = event_contract("CharacterCoreInitialized")
     revised = event_contract("CharacterCoreRevised")

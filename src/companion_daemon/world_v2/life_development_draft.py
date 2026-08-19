@@ -633,8 +633,20 @@ class DynamicLifeDirectionDraft(FrozenModel):
 
 
 class LifeDevelopmentOutcomeDraft(FrozenModel):
+    """One candidate branch of her internal life, not a user-channel Action.
+
+    ``text`` may say where she went, what she did, what she thought, what she
+    photographed, or talk with people who exist in this World. It cannot make a
+    completed user-channel act true: sending him a message or photo, his
+    receiving it, or his reply through that channel. Those facts exist only as
+    authorized Action and receipt events. ``user_channel_completion`` is the
+    structural acknowledgement; this author has no Action authority, so the
+    only legal value is ``none``.
+    """
+
     experienced_by_ref: str = Field(min_length=1, max_length=512)
     text: str = Field(min_length=1, max_length=12_000)
+    user_channel_completion: Literal["none"] = "none"
     privacy_class: PrivacyClass
     relative_plausibility_weight: int = Field(ge=1, le=1_000_000)
     claim_refs: tuple[str, ...] = Field(min_length=1, max_length=16)

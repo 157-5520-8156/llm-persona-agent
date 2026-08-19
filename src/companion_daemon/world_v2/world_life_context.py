@@ -219,6 +219,7 @@ class WorldLifeContextCompiler:
         cursor: ProjectionCursor | None = None,
         viewer_privacy_ceiling: PrivacyClass = "private",
         biographical_timeline_source: WorldLifeSourceBinding | None = None,
+        user_channel_limited_content_refs: frozenset[str] = frozenset(),
     ) -> tuple[WorldLifeModelContextItem, ...]:
         excerpts = {}
         if self._life_content is not None and cursor is not None:
@@ -229,6 +230,7 @@ class WorldLifeContextCompiler:
                     actor_ref=actor_ref,
                     viewer_privacy_ceiling=viewer_privacy_ceiling,
                     projection=projection,
+                    user_channel_limited_content_refs=user_channel_limited_content_refs,
                 ).settled_items
             }
         committed = {
@@ -291,6 +293,8 @@ class WorldLifeContextCompiler:
                 # The owning ledger/reducer normally prevents this.  The
                 # defensive read seam fails closed rather than accepting a
                 # stale or substituted occurrence head.
+                continue
+            if occurrence.result_payload_ref in user_channel_limited_content_refs:
                 continue
             items.append(
                 WorldLifeContextItem(

@@ -7,9 +7,9 @@ host questions:
 2. Which ledger-closed world facts may she see while choosing?
 
 Occasions are built from her own structured ``media_request`` field, open
-threads whose evidence overlaps the candidate, and a live-conversation window
-around a freshly opened candidate.  Counterpart message *text* is never
-inspected.  Lived facts keep ``source_ref`` and a privacy class so they can
+threads whose evidence overlaps the candidate, and a live conversation:
+either he spoke recently relative to *now*, or a candidate opened around
+when he last spoke.  Counterpart message *text* is never inspected.  Lived facts keep ``source_ref`` and a privacy class so they can
 be dropped the same way Inner Life materials are redacted; the host does not
 author a "reason to share".
 """
@@ -225,11 +225,16 @@ def compile_candidate_occasion(
         projection, character_actor_ref=character_actor_ref
     )
     opened_at = getattr(candidate, "opened_at", None)
-    if (
+    live_now = (
+        isinstance(last_spoke, datetime)
+        and abs(logical_time - last_spoke) <= CONVERSATION_OCCASION_WINDOW
+    )
+    opened_around_speech = (
         isinstance(last_spoke, datetime)
         and isinstance(opened_at, datetime)
         and abs(last_spoke - opened_at) <= CONVERSATION_OCCASION_WINDOW
-    ):
+    )
+    if live_now or opened_around_speech:
         spoken_ref = None
         for obs in getattr(projection, "message_observations", ()):
             if not is_counterpart_actor(

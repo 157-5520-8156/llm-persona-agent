@@ -157,6 +157,34 @@ async def test_conductor_reports_acceptance_not_renderable_without_planning() ->
 
 
 @pytest.mark.asyncio
+async def test_conductor_keeps_the_scheduler_pass_when_selection_loses_its_cursor() -> None:
+    async def select(**_kwargs: object) -> MediaSelectionRunResult:
+        raise ConcurrencyConflict("selection stale")
+
+    accepted = False
+
+    async def accept(**_kwargs: object) -> MediaPreviewAcceptanceOutcome:
+        nonlocal accepted
+        accepted = True
+        return MediaPreviewAcceptanceOutcome(
+            disposition="planning_authorized", event_ids=("event:acceptance",)
+        )
+
+    result = await MediaPreviewConductor(
+        select=select, accept=accept,  # type: ignore[arg-type]
+        planning=_Planning(MediaPlanningRunResult(status="idle")),
+    ).advance_once(
+        logical_time=NOW,
+        trace_id="trace:selection-race",
+        correlation_id="correlation:selection-race",
+    )
+
+    assert result.status == "blocked"
+    assert result.reason_code == "media_preview.selection_cursor_stale"
+    assert accepted is False
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("failure", "reason_code"),
     (

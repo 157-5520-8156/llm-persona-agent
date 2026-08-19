@@ -12,9 +12,13 @@ from companion_daemon.budget import admit_image_generation, occupancy_from_media
 from .character_interior import CharacterInterior, InteriorOpportunity
 from .character_interior.audit import recorded_character_interior_model_result
 from .media_selection import MediaSelection
-from .media_selection_acceptance_runtime import MediaSelectionProposalRecorder
+from .media_selection_acceptance_runtime import (
+    MediaSelectionAcceptanceError,
+    MediaSelectionProposalRecorder,
+)
 from .media_selection_proposal import (
     MediaSelectionProposalCompiler,
+    MediaSelectionProposalError,
     MediaSelectionProposalRecordedPayload,
 )
 from .media_selection_attempt import (
@@ -556,22 +560,137 @@ class MediaSelectionWorker:
                 status="blocked",
                 reason_code="media_selection.character_source_closure_invalid",
             )
-        proposal = self._compiler.compile(
+        persisted = self._record_selection_proposal(
             projection=projection,
+            candidate=candidate,
             selection=selections[candidate.candidate_id],
+            actor=actor,
+            created_at=logical_time,
+            trace_id=trace_id,
+            correlation_id=correlation_id,
             model=lineage.model_id,
             raw_output_hash=lineage.response_hash,
             normalized_output_hash=self._decision_hash(value),
             character_interior_model_result=model_result_audit,
         )
-        recorded = self._recorder.record(cursor=cursor, proposal=proposal, actor=actor, source=self._source, created_at=logical_time, trace_id=trace_id, correlation_id=correlation_id)
-        if is_reask_eligible(projection, candidate=candidate, logical_time=logical_time):
+        if persisted is None:
+            return MediaSelectionRunResult(
+                status="blocked", reason_code="media_selection.cursor_stale"
+            )
+        recorded, projection, candidate = persisted
+        if is_reask_eligible(
+            projection, candidate=candidate, logical_time=projection.logical_time
+        ):
             return MediaSelectionRunResult(
                 status="reaffirmed",
                 proposal_event_ref=recorded.proposal_event_ref,
                 reason_code="media_selection.conversation_window_reaffirmed",
             )
         return MediaSelectionRunResult(status="proposed", proposal_event_ref=recorded.proposal_event_ref)
+
+    def _record_selection_proposal(
+        self,
+        *,
+        projection,
+        candidate,
+        selection: MediaSelection,
+        actor: str,
+        created_at: datetime,
+        trace_id: str,
+        correlation_id: str,
+        model: str,
+        raw_output_hash: str,
+        normalized_output_hash: str,
+        character_interior_model_result,
+    ):  # type: ignore[no-untyped-def]
+        """Persist the choice she already authored, re-pinning a moved head.
+
+        Her deliberation costs a provider round trip, and unrelated commits
+        land inside that window as a matter of course: a paced later beat
+        becoming due advances the clock, its receipt settles, Affect decays,
+        he sends another message.  Losing the choice to that race would make
+        the photo unreachable in exactly the conversation that asked for it.
+        Only candidate authority is re-evaluated against the winning cursor;
+        the decision bytes, their source closure and the model audit stay the
+        ones she authored.
+        """
+
+        for _attempt in range(3):
+            cursor = ProjectionCursor(
+                world_revision=projection.world_revision,
+                deliberation_revision=projection.deliberation_revision,
+                ledger_sequence=projection.ledger_sequence,
+            )
+            try:
+                proposal = self._compiler.compile(
+                    projection=projection,
+                    selection=selection,
+                    model=model,
+                    raw_output_hash=raw_output_hash,
+                    normalized_output_hash=normalized_output_hash,
+                    character_interior_model_result=character_interior_model_result,
+                )
+                recorded = self._recorder.record(
+                    cursor=cursor,
+                    proposal=proposal,
+                    actor=actor,
+                    source=self._source,
+                    created_at=created_at,
+                    trace_id=trace_id,
+                    correlation_id=correlation_id,
+                )
+            except ConcurrencyConflict:
+                pass
+            except (MediaSelectionProposalError, MediaSelectionAcceptanceError):
+                # The candidate she chose is no longer current.  Neither this
+                # worker nor the recorder may persist it anyway; report the
+                # race and leave the candidate for a later drain.
+                return None
+            else:
+                return recorded, projection, candidate
+            current = self._reselectable_candidate(
+                candidate_id=candidate.candidate_id,
+                expected_revision=candidate.entity_revision,
+            )
+            if current is None:
+                return None
+            projection, candidate, selection = current
+        return None
+
+    def _reselectable_candidate(self, *, candidate_id: str, expected_revision: int):  # type: ignore[no-untyped-def]
+        """Re-read the exact revision she chose after losing a cursor race."""
+
+        projection = self._ledger.project()
+        if projection.logical_time is None:
+            return None
+        candidate = next(
+            (
+                item
+                for item in projection.photo_candidates
+                if item.candidate_id == candidate_id
+                and item.entity_revision == expected_revision
+            ),
+            None,
+        )
+        if candidate is None:
+            return None
+        if (candidate_id, expected_revision) in {
+            (item.candidate_id, item.entity_revision)
+            for item in getattr(projection, "media_declined_candidate_revisions", ())
+        }:
+            return None
+        if any(
+            getattr(item, "candidate_id", None) == candidate_id
+            and getattr(item, "expected_candidate_revision", None) == expected_revision
+            for item in getattr(projection, "proposal_revisions", ())
+        ):
+            # A competing writer already persisted a proposal for this exact
+            # revision.  Recovery belongs to that proposal, never a second one.
+            return None
+        selection = self._derive_selection(projection=projection, candidate=candidate)
+        if selection is None:
+            return None
+        return projection, candidate, selection
 
     def _candidate_safe_summary(self, *, projection, candidate) -> str:
         """Post-redaction label derived from sourced lived facts."""
@@ -631,12 +750,29 @@ class MediaSelectionWorker:
             ) or "media-selection-attempt:" + attempt_id,
             payload=event_payload,
         )
-        try:
-            self._ledger.commit_at_cursor(
-                (event,), expected_cursor=cursor,
-                commit_id="commit:media-selection-attempt:" + attempt_id,
-            )
-        except ConcurrencyConflict:
+        committed = False
+        for _attempt in range(3):
+            try:
+                self._ledger.commit_at_cursor(
+                    (event,), expected_cursor=cursor,
+                    commit_id="commit:media-selection-attempt:" + attempt_id,
+                )
+            except ConcurrencyConflict:
+                refreshed = self._ledger.project()
+                if refreshed.logical_time != logical_time:
+                    # This attempt's identity is bound to the moment she was
+                    # asked.  A moved clock makes it a different question, so
+                    # her answer cannot be back-stamped onto the new head.
+                    break
+                cursor = ProjectionCursor(
+                    world_revision=refreshed.world_revision,
+                    deliberation_revision=refreshed.deliberation_revision,
+                    ledger_sequence=refreshed.ledger_sequence,
+                )
+                continue
+            committed = True
+            break
+        if not committed:
             return MediaSelectionRunResult(
                 status="blocked", reason_code="media_selection.cursor_stale"
             )

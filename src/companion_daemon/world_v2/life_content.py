@@ -5,11 +5,36 @@ from __future__ import annotations
 from pydantic import Field, model_validator
 
 from .life_content_store import ImmutableLifeContentStore
+from .life_content_events import (
+    LIFE_CONTENT_USER_CHANNEL_AUTHORITY_LIMITED,
+    LifeContentUserChannelAuthorityLimitedPayload,
+)
 from .schema_core import FrozenModel, PrivacyClass
 from .schemas import ExperienceProjection, LedgerProjection, ProjectionCursor
 
 
 _PRIVACY_RANK = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}
+USER_CHANNEL_AUTHORITY_LIMIT_REASON = "user_channel_authority_limited"
+
+
+def collect_user_channel_limited_content_refs(*, ledger, projection) -> frozenset[str]:
+    """Read compensating limit events from the ledger, never from prose."""
+
+    refs: set[str] = set()
+    for item in projection.committed_world_event_refs:
+        if item.event_type != LIFE_CONTENT_USER_CHANNEL_AUTHORITY_LIMITED:
+            continue
+        located = ledger.lookup_event_commit(item.event_id)
+        if located is None:
+            raise ValueError("user-channel authority limit event is missing from the ledger")
+        event, _commit = located
+        if event.event_type != LIFE_CONTENT_USER_CHANNEL_AUTHORITY_LIMITED or (
+            event.payload_hash != item.payload_hash
+        ):
+            raise ValueError("user-channel authority limit event does not match its committed ref")
+        payload = LifeContentUserChannelAuthorityLimitedPayload.model_validate(event.payload())
+        refs.update(payload.content_refs)
+    return frozenset(refs)
 
 
 class LifeContentBudget(FrozenModel):
@@ -113,6 +138,7 @@ class LifeContentCompiler:
         viewer_privacy_ceiling: PrivacyClass,
         budget: LifeContentBudget = LifeContentBudget(),
         projection: LedgerProjection,
+        user_channel_limited_content_refs: frozenset[str] = frozenset(),
     ) -> LifeContentResult:
         if (
             projection.world_revision != cursor.world_revision
@@ -185,6 +211,20 @@ class LifeContentCompiler:
                             content_id=descriptor.content_id,
                             source_entity_id=descriptor.source_entity_id,
                             reason="privacy_ceiling",
+                        ),
+                    )
+                )
+                continue
+            if descriptor.content_ref in user_channel_limited_content_refs:
+                candidate_rows.append(
+                    (
+                        0,
+                        descriptor.content_id,
+                        None,
+                        LifeContentSuppression(
+                            content_id=descriptor.content_id,
+                            source_entity_id=descriptor.source_entity_id,
+                            reason=USER_CHANNEL_AUTHORITY_LIMIT_REASON,
                         ),
                     )
                 )
@@ -398,4 +438,6 @@ __all__ = [
     "LifeContentResult",
     "LifeContentSuppression",
     "RecentExperienceContextItem",
+    "USER_CHANNEL_AUTHORITY_LIMIT_REASON",
+    "collect_user_channel_limited_content_refs",
 ]

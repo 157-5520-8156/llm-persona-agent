@@ -4179,6 +4179,10 @@ class LifeDevelopmentRuntime:
                                 "keep_branch_events_conditional_and_do_not_present_"
                                 "them_as_already_completed"
                             ),
+                            "user_channel_completion": (
+                                "keep_none_and_do_not_narrate_a_completed_send_or_"
+                                "reply_through_the_user_channel"
+                            ),
                         },
                         "replacement_contract": {
                             "allowed_decisions": ["no_op", "propose"],
@@ -4902,6 +4906,17 @@ class LifeDevelopmentRuntime:
                     "in authored_subject. The user and user facts are context that may "
                     "affect that life; never author the user's choices, actions, inner "
                     "state, activities, commitments, or life direction. "
+                    "Outcome text is her internal life in this branch: where she went, "
+                    "what she did, what she thought, what she photographed, and talk "
+                    "with people who exist in this World. It is not the user-channel "
+                    "Action ledger. Do not narrate a completed act that reached him "
+                    "through chat or photo delivery — sending him a message or a photo, "
+                    "his receiving it, or his reply on that channel — as something this "
+                    "branch makes true. Those facts exist only as authorized Action and "
+                    "receipt events. Photographing, choosing a photo, intending to send "
+                    "later, and talking to an NPC remain allowed. Each outcome must set "
+                    "user_channel_completion to none; this author has no Action "
+                    "authority and cannot complete a send. "
                     "A long direction is allowed only when outcome_resolution_authority "
                     "is character_choice, because only her later choice may establish "
                     "it. Do not decide the character's motive or "
@@ -5715,6 +5730,8 @@ def _world_author_claim_classification_contract() -> dict[str, object]:
                 "declare_and_reference_every_current_or_prior_external_fact_the_branch_relies_on"
             ),
             "branch_generated_events": ("remain_conditional_and_need_no_existing_world_source"),
+            "user_channel_completion": "none",
+            "must_not_complete_user_channel_act": True,
         },
     }
 
@@ -5895,6 +5912,33 @@ def _world_author_hard_boundary_contract(
             "authority_status": "unsettled_alternative",
             "does_not_establish_completed_experience": True,
             "must_not_author_user_choice_or_action": True,
+            "user_channel_completion": {
+                "required_const": "none",
+                "meaning": "this_branch_does_not_complete_a_user_channel_act",
+                "user_channel_act": [
+                    "message_delivered_to_him",
+                    "media_delivered_to_him",
+                    "he_received_or_replied_through_the_chat_channel",
+                ],
+                "allowed_in_outcome_text": [
+                    "where_she_went",
+                    "what_she_did_in_her_world",
+                    "what_she_thought",
+                    "what_she_photographed",
+                    "npc_talk",
+                    "intention_or_plan_to_send_later",
+                ],
+                "forbidden_as_completed_fact": [
+                    "sending_him_a_message",
+                    "sending_him_a_photo",
+                    "his_receipt_or_reply_through_the_user_channel",
+                ],
+                "those_facts_exist_only_as": [
+                    "ActionAuthorized",
+                    "ActionDelivered",
+                    "MediaDeliveryShared",
+                ],
+            },
         },
         "visual_evidence": {
             "status": "required_when_proposal_is_location_bound_and_outcome_privacy_is_ordinary",
@@ -5970,6 +6014,7 @@ _WORLD_AUTHOR_COMPLIANT_PROPOSE_EXAMPLE = {
         {
             "experienced_by_ref": "agent:companion",
             "text": "She can take the opening and let it change the next hours.",
+            "user_channel_completion": "none",
             "privacy_class": "shareable",
             "relative_plausibility_weight": 6000,
             "claim_refs": ["local:claim:local-possibility"],
@@ -5991,6 +6036,7 @@ _WORLD_AUTHOR_COMPLIANT_PROPOSE_EXAMPLE = {
         {
             "experienced_by_ref": "agent:companion",
             "text": "She can leave the opening unused and keep her current course.",
+            "user_channel_completion": "none",
             "privacy_class": "shareable",
             "relative_plausibility_weight": 4000,
             "claim_refs": ["local:claim:local-possibility"],
@@ -6027,7 +6073,9 @@ def _world_author_reselection_instruction(*, failure_code: str) -> str:
         "or private, supply visual_evidence for that outcome, including ordinary "
         "home life. The system will not "
         "supply narrative tags, "
-        "privacy, visual facts, or event text."
+        "privacy, visual facts, or event text. Each outcome must keep "
+        "user_channel_completion=none and must not narrate a completed send or "
+        "reply through the user channel."
     )
     if failure_code == "unsupported_location_window":
         instruction += (

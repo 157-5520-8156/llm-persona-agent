@@ -156,7 +156,7 @@ def test_canonical_snapshot_keeps_both_relationship_directions_without_npc_priva
         _context_with_directional_relationships()
     ).model_view()
 
-    assert SNAPSHOT_COMPILER_VERSION == "inner-life-snapshot-compiler.14"
+    assert SNAPSHOT_COMPILER_VERSION == "inner-life-snapshot-compiler.15"
     assert snapshot["materials"]["protagonist_npc_relationships"][0] == {
         "relationship_id": "relationship:npc:lin",
         "direction": "protagonist_to_npc",
