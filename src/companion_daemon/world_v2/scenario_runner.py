@@ -333,7 +333,13 @@ class ScenarioVerificationError(AssertionError):
 # health shadow-due clearing only when ambient/post-silent are honestly closed.
 # Per-case predicates remain enforced; aggregate prompt / transport identities
 # intentionally move.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.82"
+# ``.83`` splits moments_i_can_share into two non-substitutable world facts:
+# on-hand shareable inventory (photo_in_hand / available_count) versus whether
+# she can photograph a new present-moment frame (now.photographable). The old
+# copy bound "send now" to "cannot photograph now", which starved delivery of
+# already-open candidates. Per-case predicates remain enforced; only the
+# present-prompt instruction identity moves.
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.83"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -520,8 +526,13 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.82"
 # shadow-due clear only when cadence is honestly closed. Two independent
 # complete 120-case processes produced this hash before installation:
 # f2a20492a8711d13a02106ae1e8bb3d734c91f76e742caa7dba4505bef84ce82
+# 2026-08-19 4th: ``.83`` after present-prompt inventory vs photographable
+# split (photo-in-hand send no longer tied to cannot-photograph-now). Two
+# independent complete 120-case processes produced this hash before
+# installation:
+# dfc67983b3a7fd3be42a867df85060f265e3db8db893a1decbe2c53699fd6721
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "f2a20492a8711d13a02106ae1e8bb3d734c91f76e742caa7dba4505bef84ce82"
+    "dfc67983b3a7fd3be42a867df85060f265e3db8db893a1decbe2c53699fd6721"
 )
 
 

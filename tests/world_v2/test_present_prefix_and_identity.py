@@ -139,18 +139,23 @@ def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None
 
 def test_present_moments_i_can_share_now_is_a_world_fact() -> None:
     instruction = slim_consider_instruction()
-    assert "now 是此刻能不能拍这一世界事实" in instruction
-    assert "photographable 为 true" in instruction
-    assert "photographable 为 false 就是现在拍不了" in instruction
+    assert "moments_i_can_share 里有两件互不替代的世界事实" in instruction
+    assert "photo_in_hand 为 true 表示这张现在就可以选、就可以发" in instruction
+    assert "和 now.photographable 无关" in instruction
+    assert "now.photographable 为 true" in instruction
+    assert "photographable 为 false 只和「现在新拍一张" in instruction
+    assert "不阻止你发 photo_in_hand 为 true 的存货" in instruction
+    assert "也不等于还在整理、相册是空的、或现在发不了手上的那张" in instruction
+    assert "available_count 为 0 才是现在没有可发的存货" in instruction
     assert "no_active_activity" in instruction
     assert "annex_insufficient" in instruction
     assert "already_open" in instruction
     assert "what_happened 是那一刻已接受的原文" in instruction
     assert "hold_reason 是原因" in instruction
     assert "already_shared 已经发给他" in instruction
-    assert "这不是建议你发，也不是建议你去拍" in instruction
-    assert "会和这个事实打架" in instruction
-    assert "没有候选、现在拍不了，都如实是空的" in instruction
+    assert "这不是建议你发存货，也不是建议你去拍" in instruction
+    assert "说现在拍、现在发、马上给一张此刻的照片，会和这个事实打架" not in instruction
+    assert "没有候选、现在拍不了，都如实是空的" not in instruction
     assert "条数就是还活着的条数，不是只给你看最近一条" in instruction
     assert "hold_reason=user_channel_limited" in instruction
     assert "发出去的那张会出现在 conversation 栏里" in instruction
@@ -159,6 +164,7 @@ def test_present_moments_i_can_share_now_is_a_world_fact() -> None:
     assert "不要答应现在拍" not in instruction
     assert "应该给他看" not in instruction
     assert "试着发一张" not in instruction
+    assert "你应该发了" not in instruction
     lowered = instruction.lower()
     assert "civitai" not in lowered
     assert "lora" not in lowered
