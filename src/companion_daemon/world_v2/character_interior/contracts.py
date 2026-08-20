@@ -745,6 +745,10 @@ _LIVE_STATUSES = frozenset({"active"})
 
 
 def _material_entries(materials: Mapping[str, object], key: str) -> list[Mapping[str, object]]:
+    if key == "affect":
+        from ..present_prompt import affect_material_entries
+
+        return affect_material_entries(materials.get(key))
     value = materials.get(key)
     if isinstance(value, dict):
         value = value.get("items")

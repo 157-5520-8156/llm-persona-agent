@@ -61,12 +61,30 @@ def _entries(materials: Mapping[str, Any], key: str) -> list[dict[str, Any]]:
     value = materials.get(key)
     if key == "appraisals" and isinstance(value, dict):
         rows = value.get("rows")
+        if not isinstance(rows, list):
+            rows = []
+            stable = value.get("stable_rows")
+            volatile = value.get("volatile_last_row")
+            if isinstance(stable, list):
+                rows.extend(stable)
+            if isinstance(volatile, list):
+                rows.append(volatile)
         if isinstance(rows, list):
             return [
                 {"source_ref": row[0]}
                 for row in rows
                 if isinstance(row, list) and row and isinstance(row[0], str)
             ]
+    if key == "affect" and isinstance(value, dict):
+        stable = value.get("stable_entries")
+        volatile = value.get("volatile_last_entry")
+        entries: list[dict[str, Any]] = []
+        if isinstance(stable, list):
+            entries.extend(item for item in stable if isinstance(item, dict))
+        if isinstance(volatile, dict):
+            entries.append(volatile)
+        if entries:
+            return entries
     if isinstance(value, dict):
         value = value.get("items")
     if not isinstance(value, list):

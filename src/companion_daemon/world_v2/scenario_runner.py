@@ -23,6 +23,7 @@ from .activity_plan_runtime import ActivityPlanCommand
 from .character_interior.production import compose_fixture_character_interior
 from .deliberation import ModelRoute, RouteRequest
 from .platform_action_executor import PlatformDispatchReceipt, PlatformDispatchRequest
+from .present_prompt import affect_material_entries
 from .production_turn_application import (
     WorldV2TurnApplicationConfig,
     build_sqlite_world_v2_turn_application,
@@ -355,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.87"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.88"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -569,8 +570,12 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.87"
 # 2026-08-20: refreshed .87 after proactive_contact citeable catalog cap.
 # Complete fake suite hash:
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
+# 2026-08-21: refreshed .88 after cache-stable appraisals/affect provider
+# serialization and appraisal-row ISO temporal bounds for byte-stable prefixes
+# (canonical authority unchanged). Complete fake suite hash:
+# ea65e5e20f89c3f252ffd86b2e483381dcc1a8c9b493173a39325aaca5635064
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c"
+    "ea65e5e20f89c3f252ffd86b2e483381dcc1a8c9b493173a39325aaca5635064"
 )
 
 
@@ -1241,7 +1246,7 @@ class ScenarioRunner:
             supplied = json.loads(model.calls[-1][1]["content"])
             materials = supplied["inner_life_snapshot"]["materials"]
             world_life = materials["recent_self_experiences"]["items"]
-            affect = materials["affect"]
+            affect = affect_material_entries(materials["affect"])
         except (IndexError, KeyError, TypeError, json.JSONDecodeError):
             return False
         occurrence_id = f"occurrence:phase8:{case.entry.scenario_turn_id}"

@@ -93,18 +93,8 @@ def _compact_row(
     if not readings:
         return None
     confidence = entry.get("confidence_bp")
-    accepted = _instant(entry.get("accepted_at"))
-    expires = _instant(entry.get("expires_at"))
-    since = (
-        _elapsed_phrase(accepted, logical_time)
-        if accepted is not None and logical_time is not None
-        else entry.get("accepted_at")
-    )
-    until = (
-        _remaining_phrase(expires, logical_time)
-        if expires is not None and logical_time is not None
-        else entry.get("expires_at")
-    )
+    since = entry.get("accepted_at")
+    until = entry.get("expires_at")
     row: list[object] = [
         source_ref,
         confidence if isinstance(confidence, int) else None,
@@ -159,8 +149,20 @@ def appraisal_meanings(material: object) -> list[str]:
     """Extract every meaning string from either the canonical or compact view."""
 
     meanings: list[str] = []
-    if isinstance(material, dict) and isinstance(material.get("rows"), list):
-        for row in material["rows"]:
+    rows: list[object] = []
+    if isinstance(material, dict):
+        raw_rows = material.get("rows")
+        if isinstance(raw_rows, list):
+            rows = raw_rows
+        else:
+            stable = material.get("stable_rows")
+            volatile = material.get("volatile_last_row")
+            if isinstance(stable, list):
+                rows.extend(stable)
+            if isinstance(volatile, list):
+                rows.append(volatile)
+    if rows:
+        for row in rows:
             if not isinstance(row, list) or len(row) < 5:
                 continue
             readings = row[4]

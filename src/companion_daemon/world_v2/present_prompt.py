@@ -80,6 +80,8 @@ _MATERIAL_ORDER = (
 )
 
 _RECENT_DIALOGUE_CACHE_KEYS = ("stable_turns", "volatile_last_turn")
+_APPRAISAL_CACHE_KEYS = ("stable_rows", "volatile_last_row")
+_AFFECT_CACHE_KEYS = ("stable_entries", "volatile_last_entry")
 
 
 def recent_dialogue_material_entries(value: object) -> list[dict[str, object]]:
@@ -111,6 +113,78 @@ def cache_stable_recent_dialogue(value: object) -> object:
     return {
         "stable_turns": value[:-1],
         "volatile_last_turn": value[-1],
+    }
+
+
+def appraisal_material_rows(value: object) -> list[list[object]]:
+    """Expand cache-split or legacy compact appraisal rows without changing semantics."""
+
+    if isinstance(value, dict):
+        rows = value.get("rows")
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, list)]
+        stable = value.get("stable_rows")
+        volatile = value.get("volatile_last_row")
+        expanded: list[list[object]] = []
+        if isinstance(stable, list):
+            expanded.extend(row for row in stable if isinstance(row, list))
+        if isinstance(volatile, list):
+            expanded.append(volatile)
+        if expanded:
+            return expanded
+    return []
+
+
+def cache_stable_appraisals(value: object) -> object:
+    """Split compact appraisal rows so prior rows stay byte-stable for provider KV cache."""
+
+    if isinstance(value, dict) and isinstance(value.get("rows"), list):
+        rows = [row for row in value["rows"] if isinstance(row, list)]
+        if len(rows) < 2:
+            return value
+        payload = {key: item for key, item in value.items() if key != "rows"}
+        return {
+            **payload,
+            "stable_rows": rows[:-1],
+            "volatile_last_row": rows[-1],
+        }
+    if isinstance(value, list) and len(value) >= 2:
+        return {
+            "stable_entries": value[:-1],
+            "volatile_last_entry": value[-1],
+        }
+    return value
+
+
+def affect_material_entries(value: object) -> list[dict[str, object]]:
+    """Expand cache-split or legacy affect material without changing semantics."""
+
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        stable = value.get("stable_entries")
+        volatile = value.get("volatile_last_entry")
+        entries: list[dict[str, object]] = []
+        if isinstance(stable, list):
+            entries.extend(item for item in stable if isinstance(item, dict))
+        if isinstance(volatile, dict):
+            entries.append(volatile)
+        if entries:
+            return entries
+        legacy_items = value.get("items")
+        if isinstance(legacy_items, list):
+            return [item for item in legacy_items if isinstance(item, dict)]
+    return []
+
+
+def cache_stable_affect(value: object) -> object:
+    """Split affect tail so prior episodes stay byte-stable for provider KV cache."""
+
+    if not isinstance(value, list) or len(value) < 2:
+        return value
+    return {
+        "stable_entries": value[:-1],
+        "volatile_last_entry": value[-1],
     }
 
 
@@ -569,6 +643,12 @@ def present_inner_life(snapshot: dict[str, object]) -> dict[str, object]:
             ordered_materials["recent_dialogue"] = cache_stable_recent_dialogue(
                 ordered_materials["recent_dialogue"]
             )
+        if "appraisals" in ordered_materials:
+            ordered_materials["appraisals"] = cache_stable_appraisals(
+                ordered_materials["appraisals"]
+            )
+        if "affect" in ordered_materials:
+            ordered_materials["affect"] = cache_stable_affect(ordered_materials["affect"])
         ordered_snapshot["materials"] = ordered_materials
     ordered: dict[str, object] = {}
     volatile = set(_SNAPSHOT_VOLATILE_LAST)

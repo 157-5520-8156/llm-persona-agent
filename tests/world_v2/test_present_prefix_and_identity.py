@@ -13,12 +13,17 @@ from companion_daemon.world_v2.companion_identity import (
     companion_identity_source_ref,
 )
 from companion_daemon.world_v2.present_prompt import (
+    affect_material_entries,
+    appraisal_material_rows,
+    cache_stable_affect,
+    cache_stable_appraisals,
     cache_stable_recent_dialogue,
     combined_turn_system_lead,
     order_user_present_payload,
     recent_dialogue_material_entries,
     slim_consider_instruction,
 )
+from companion_daemon.world_v2.character_interior.appraisal_model_view import appraisal_meanings
 
 
 def test_combined_system_lead_does_not_fork_on_recall_availability() -> None:
@@ -445,6 +450,77 @@ def test_recent_dialogue_cache_split_preserves_semantics_and_stable_prefix() -> 
     assert second_dialogue["volatile_last_turn"] == third_turn
     assert cache_stable_recent_dialogue([first_turn]) == [first_turn]
     assert cache_stable_recent_dialogue([first_turn]) == [first_turn]
+
+
+def test_appraisal_cache_split_preserves_semantics_and_stable_prefix() -> None:
+    first_row = ["appraisal:1", 8000, "2026-08-20T12:00:00+08:00", None, [["第一条"]]]
+    second_row = ["appraisal:2", 7000, "2026-08-20T12:05:00+08:00", None, [["第二条"]]]
+    third_row = ["appraisal:3", 6000, "2026-08-20T12:10:00+08:00", None, [["第三条"]]]
+    table = {"columns": ["ref", "conf", "since", "until", "readings"], "rows": [first_row, second_row]}
+    grown = {"columns": ["ref", "conf", "since", "until", "readings"], "rows": [first_row, second_row, third_row]}
+
+    first_payload = order_user_present_payload(
+        {"inner_life_snapshot": {"materials": {"appraisals": table}}}
+    )
+    second_payload = order_user_present_payload(
+        {"inner_life_snapshot": {"materials": {"appraisals": grown}}}
+    )
+    first_view = first_payload["inner_life_snapshot"]["materials"]["appraisals"]
+    second_view = second_payload["inner_life_snapshot"]["materials"]["appraisals"]
+    assert isinstance(first_view, dict)
+    assert isinstance(second_view, dict)
+    assert appraisal_material_rows(first_view) == [first_row, second_row]
+    assert appraisal_material_rows(second_view) == [first_row, second_row, third_row]
+    assert first_view["stable_rows"] == [first_row]
+    assert first_view["volatile_last_row"] == second_row
+    assert second_view["volatile_last_row"] == third_row
+    assert appraisal_meanings(first_view) == ["第一条", "第二条"]
+    assert appraisal_meanings(second_view) == ["第一条", "第二条", "第三条"]
+    assert second_view["stable_rows"][0] == first_view["stable_rows"][0]
+
+    same_table_payload_a = order_user_present_payload(
+        {
+            "expression_hard_boundaries": {"alias_epoch": "a"},
+            "inner_life_snapshot": {"materials": {"appraisals": table}},
+        }
+    )
+    same_table_payload_b = order_user_present_payload(
+        {
+            "expression_hard_boundaries": {"alias_epoch": "b"},
+            "inner_life_snapshot": {"materials": {"appraisals": table}},
+        }
+    )
+    same_a = json.dumps(
+        same_table_payload_a["inner_life_snapshot"]["materials"]["appraisals"],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    same_b = json.dumps(
+        same_table_payload_b["inner_life_snapshot"]["materials"]["appraisals"],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    assert same_a == same_b
+
+
+def test_affect_cache_split_preserves_semantics_and_stable_prefix() -> None:
+    first = {"source_ref": "affect:1", "components": [{"dimension": "warmth", "intensity_bp": 3000}]}
+    second = {"source_ref": "affect:2", "components": [{"dimension": "sadness", "intensity_bp": 2000}]}
+    third = {"source_ref": "affect:3", "components": [{"dimension": "hurt", "intensity_bp": 2500}]}
+
+    first_payload = order_user_present_payload(
+        {"inner_life_snapshot": {"materials": {"affect": [first, second]}}}
+    )
+    second_payload = order_user_present_payload(
+        {"inner_life_snapshot": {"materials": {"affect": [first, second, third]}}}
+    )
+    first_view = first_payload["inner_life_snapshot"]["materials"]["affect"]
+    second_view = second_payload["inner_life_snapshot"]["materials"]["affect"]
+    assert affect_material_entries(first_view) == [first, second]
+    assert affect_material_entries(second_view) == [first, second, third]
+    assert first_view["stable_entries"] == [first]
+    assert first_view["volatile_last_entry"] == second
+    assert second_view["volatile_last_entry"] == third
 
 
 def test_snapshot_keeps_chronological_dialogue_tail_and_delivery_state() -> None:
