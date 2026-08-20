@@ -350,7 +350,12 @@ class ScenarioVerificationError(AssertionError):
 # Background lane provider views now use explicit ``BackgroundContextProfile``
 # slices; canonical snapshots/capsules unchanged. Structured-role request
 # envelopes shrink; offline replay hashes update accordingly.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.86"
+# 2026-08-20: rebaselined to .87 after proactive_contact citeable_sources
+# are capped at eight before the model sees them (attention boundary aligned
+# with attended_source_refs). Complete fake suite hash:
+# 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
+# 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.87"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -561,8 +566,11 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.86"
 # recent_dialogue cache-stable provider serialization (canonical dialogue
 # unchanged). Complete fake suite hash:
 # 2888be28d1168bc02c57f554ba6470f12f984f063c28d86f8977d26956aa9c4e
+# 2026-08-20: refreshed .87 after proactive_contact citeable catalog cap.
+# Complete fake suite hash:
+# 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "2888be28d1168bc02c57f554ba6470f12f984f063c28d86f8977d26956aa9c4e"
+    "9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c"
 )
 
 

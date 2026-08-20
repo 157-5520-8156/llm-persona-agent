@@ -4734,6 +4734,20 @@ async def test_proactive_contract_copy_keeps_private_state_out_of_payload() -> N
     assert "declared_display" in contract
 
 
+@pytest.mark.asyncio
+async def test_proactive_contact_citeable_sources_cap_at_eight() -> None:
+    extra_refs = tuple(f"dialogue:observation:extra:{index}" for index in range(20))
+    model = _RequiredToolQueueModel(json.dumps(_silent_proactive_role_object(), ensure_ascii=False))
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+
+    await role.consider(await _pinned_dialogue_request(extra_refs))
+
+    user = json.loads(model.calls[0][0][1]["content"])
+    items = user["citeable_sources"]["items"]
+    assert len(items) == 8
+    assert "attended_source_refs 最多 8 条" in user["purpose_instruction"]
+
+
 class _PinnedDialogueProjection(_Projection):
     def __init__(self, extra_refs: tuple[str, ...]) -> None:
         self._extra_refs = extra_refs

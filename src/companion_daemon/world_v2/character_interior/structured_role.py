@@ -8,7 +8,7 @@ never discovers a second author or manufactures a character result.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
@@ -57,7 +57,7 @@ from .ports import (
     _InteriorRoleResult,
     _RoleResultContractError,
 )
-from .snapshot_compiler import compile_citeable_source_catalog
+from .snapshot_compiler import citeable_source_labels
 from ..background_context_profile import (
     REGISTERED_BACKGROUND_PURPOSES,
     background_context_profile_for_purpose,
@@ -148,13 +148,61 @@ def _pinned_attended_source_refs(
     return closed
 
 
+_MAX_CITEABLE_SOURCES_FOR_ATTENTION = 8
+
+
+def _unique_refs_in_order(*groups: Iterable[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for group in groups:
+        for ref in group:
+            if not isinstance(ref, str) or not ref or ref in seen:
+                continue
+            ordered.append(ref)
+            seen.add(ref)
+    return tuple(ordered)
+
+
+def _bound_proactive_attended_source_refs(decoded: dict[str, object]) -> None:
+    """Keep proactive attention provenance inside the wire cap.
+
+    ``attended_source_refs`` records what she noticed, not the expression
+    choice itself.  When a provider copies more snapshot refs than the eight
+    allowed attention slots, keep the first eight unique refs in listed order
+    so beats, summary, and decision payload stay intact.
+    """
+
+    raw = decoded.get("attended_source_refs")
+    if not isinstance(raw, list):
+        return
+    bounded: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str) or not item or item in seen:
+            continue
+        bounded.append(item)
+        seen.add(item)
+        if len(bounded) >= _MAX_CITEABLE_SOURCES_FOR_ATTENTION:
+            break
+    decoded["attended_source_refs"] = bounded
+
+
 def _citeable_catalog_for_request(request: _InteriorRoleRequest) -> PinnedSourceCatalog:
     extra: list[str] = []
     if request.capability_manifest is not None:
         extra.extend(request.capability_manifest.source_refs)
     extra.extend(request.subject_source_refs)
     extra.append(request.trigger_ref)
-    return compile_citeable_source_catalog(request.snapshot, extra_refs=extra)
+    refs = _unique_refs_in_order(extra, request.snapshot.source_refs)
+    if request.purpose == "proactive_contact":
+        # The role wire caps attended_source_refs at eight.  Proactive turns
+        # still compile a wider snapshot for replay authority, but the model
+        # must not see more citeable ids than she is allowed to name.
+        refs = refs[:_MAX_CITEABLE_SOURCES_FOR_ATTENTION]
+    return PinnedSourceCatalog.from_refs(
+        refs,
+        labels=citeable_source_labels(request.snapshot),
+    )
 
 
 def _rewrite_unique_source_refs(
@@ -1683,6 +1731,7 @@ class StructuredCharacterRoleFaculty:
             user_payload["purpose_instruction"] = (
                 "对 proactive_contact：私人状态只写在外层 summary 和 attended_source_refs；"
                 "payload 里禁止 private_turn_state（这一点和 inbound 相反，不要照 inbound 的草稿来写）。"
+                "attended_source_refs 最多 8 条，只写 citeable_sources 里你真正注意到的那几条。"
                 "没有可核对的世界事实时 world_claims 写 []。"
                 "对话 beat 不是 current_world；current_world 只能引用当前生活/世界来源。"
                 "来源只写 citeable_sources 里的 id（如 s0）或原样抄 ref，不要手写拼接。"
