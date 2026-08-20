@@ -166,6 +166,7 @@ def _runtime(
         actor_model=actor,
         world_author=world,
         protagonist_actor_ref="actor:companion",
+        decision_opportunity_mass_bp=10_000,
     )
     return ledger, store, actor, world, runtime
 
@@ -385,8 +386,8 @@ async def test_npc_advance_request_contains_only_the_selected_actor_capsule() ->
     assert actor_payload["public_world"]["available_npc_refs"] == ["npc:lin"]
     assert actor_payload["public_world"]["available_location_refs"] == ["room:kitchen"]
     assert "identity:npc:mei" not in actor.calls[0][1]["content"]
-    assert "protagonist_relationship" not in actor_payload["npc_private_capsule"]
-    assert "shared_history_evidence" in actor_payload
+    assert "protagonist_relationship" not in actor_payload["npc_actor_profile"]
+    assert "shared_history_with_her" in actor_payload["npc_actor_profile"]
 
 
 @pytest.mark.asyncio
@@ -620,13 +621,94 @@ async def test_npc_can_form_its_own_future_plan_without_binding_protagonist() ->
         correlation_id="correlation:due",
     )
 
-    assert due_result.status == "occurrence_committed"
+    assert due_result.status == "state_advanced"
+    assert due_result.reason_code == "npc_ecology.due_plan_started"
     projected_plan = next(item for item in ledger.project().plans if item.plan_id == plan.plan_id)
     assert projected_plan.status == "active"
-    occurrence = next(
-        item
-        for item in ledger.project().world_occurrences
-        if item.occurrence_id == due_result.occurrence_id
+    assert len(actor.calls) == 1
+    assert len(world.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_ambient_wake_without_occasion_draw_skips_actor_call() -> None:
+    ledger, _store, actor, _world_model, runtime = _runtime(
+        _actor("no_op"),
+        {"decision": "no_op"},
     )
-    assert occurrence.trigger_ref == plan.plan_id
-    assert occurrence.precondition_refs == (f"plan:{plan.plan_id}",)
+    runtime._decision_opportunity_mass_bp = 0
+
+    result = await runtime.advance_once(
+        wake_event_ref="clock-life",
+        trace_id="trace",
+        correlation_id="correlation",
+    )
+
+    assert result.status == "no_op"
+    assert result.reason_code == "npc_ecology.occasion_not_drawn"
+    assert actor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_weekly_actor_cap_skips_without_queueing() -> None:
+    ledger, _store, actor, _world_model, runtime = _runtime(
+        _actor("no_op"),
+        {"decision": "no_op"},
+    )
+    runtime._weekly_actor_decision_cap = 0
+
+    result = await runtime.advance_once(
+        wake_event_ref="clock-life",
+        trace_id="trace",
+        correlation_id="correlation",
+    )
+
+    assert result.status == "no_op"
+    assert result.reason_code == "npc_ecology.weekly_decision_cap_exceeded"
+    assert actor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_npc_actor_profile_carries_forward_prior_inner_state() -> None:
+    first_inner = "她上次说作品集最卡的一处已经理清了，但还想再核对一遍。"
+    first_payload = _actor("no_op")
+    first_payload["inner_state_summary"] = first_inner
+    ledger, _store, actor, _world_model, runtime = _runtime(
+        first_payload,
+        {"decision": "no_op"},
+    )
+
+    first = await runtime.advance_once(
+        wake_event_ref="clock-life",
+        trace_id="trace",
+        correlation_id="correlation",
+    )
+    assert first.status == "state_advanced"
+
+    next_time = ledger.project().logical_time + timedelta(hours=3)
+    commit(
+        ledger,
+        [
+            event(
+                "clock-life-2",
+                "ClockAdvanced",
+                {
+                    "logical_time_from": ledger.project().logical_time.isoformat(),
+                    "logical_time_to": next_time.isoformat(),
+                },
+                at=next_time,
+            )
+        ],
+    )
+    actor.payload = _actor("no_op")
+    actor.payload["source_refs"] = ["clock-life-2"]
+
+    second = await runtime.advance_once(
+        wake_event_ref="clock-life-2",
+        trace_id="trace:2",
+        correlation_id="correlation:2",
+    )
+    assert second.status == "state_advanced"
+    assert len(actor.calls) == 2
+    second_profile = json.loads(actor.calls[1][1]["content"])["npc_actor_profile"]
+    assert second_profile["my_last_state"] == first_inner
+    assert second_profile["my_goals"] == first_payload["current_goal_summaries"]

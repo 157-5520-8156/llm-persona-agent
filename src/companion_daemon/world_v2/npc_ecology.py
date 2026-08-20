@@ -31,9 +31,15 @@ from .life_events import (
     WorldOccurrenceActivatedPayload,
 )
 from .life_content_events import LifeContentRecordedPayload
+from ..llm import model_call_scope
 from .life_author_seed import ReviewedLifeSeedCatalog
-from .npc_initiative_weight_policy import NOTHING_CANDIDATE_REF, NpcInitiativeWeightPolicy
-from .weighted_table import pick_weighted_token
+from .npc_actor_profile import compile_npc_actor_profile
+from .npc_ecology_occasion import (
+    NPC_DECISION_OPPORTUNITY_MASS_BP,
+    NPC_WEEKLY_ACTOR_DECISION_CAP,
+    draw_npc_decision_occasion,
+    npc_weekly_actor_cap_exceeded,
+)
 from .npc_identity_view import NpcIdentityView, npc_identity_views
 from .npc_relationship_view import (
     npc_relationship_readings,
@@ -258,6 +264,8 @@ class NpcEcology:
         catalog: ReviewedLifeSeedCatalog | None = None,
         worker_actor: str = "worker:world-v2:npc-ecology",
         user_channel_critic: NpcEcologyModel | None = None,
+        decision_opportunity_mass_bp: int = NPC_DECISION_OPPORTUNITY_MASS_BP,
+        weekly_actor_decision_cap: int = NPC_WEEKLY_ACTOR_DECISION_CAP,
     ) -> None:
         if occurrence_content.ledger is not ledger:
             raise ValueError("NPC ecology occurrence coordinator must own the exact ledger")
@@ -272,6 +280,8 @@ class NpcEcology:
         self._protagonist = protagonist_actor_ref
         self._worker_actor = worker_actor
         self._catalog = catalog
+        self._decision_opportunity_mass_bp = int(decision_opportunity_mass_bp)
+        self._weekly_actor_decision_cap = int(weekly_actor_decision_cap)
 
     def snapshot(
         self,
@@ -641,6 +651,18 @@ class NpcEcology:
                 status="already_considered",
                 reason_code="npc_ecology.wake_already_consumed",
             )
+        pending_actor_event_ref = self._pending_actor_event_ref(projection)
+        if pending_actor_event_ref is not None:
+            return await self.advance(
+                NpcEcologyStimulus(
+                    cursor=_cursor(projection),
+                    wake_event_ref=wake_event_ref,
+                    source_event_refs=(wake_event_ref,),
+                    epoch_ref=f"pending:{pending_actor_event_ref}",
+                    focus_npc_ref=None,
+                    focus_plan_ref=None,
+                )
+            )
         active_npc_refs = {
             f"npc:{item.npc_id}" for item in projection.npcs if item.status == "active"
         }
@@ -661,6 +683,31 @@ class NpcEcology:
             ),
             None,
         )
+        if due_plan is not None:
+            if due_plan.authority_origin is None:
+                return NpcEcologyResult(
+                    status="technical_failure",
+                    reason_code="npc_ecology.due_plan_authority_missing",
+                )
+            identity = _digest(
+                {
+                    "plan": due_plan.plan_id,
+                    "revision": due_plan.entity_revision,
+                    "start": wake_event_ref,
+                }
+            )
+            self._transition_npc_plan(
+                wake=wake,
+                plan_id=due_plan.plan_id,
+                target="start",
+                reason_event_ref=due_plan.authority_origin.accepted_event_ref,
+                identity=identity,
+            )
+            return NpcEcologyResult(
+                status="state_advanced",
+                reason_code="npc_ecology.due_plan_started",
+                npc_ref=due_plan.owner_actor_ref,
+            )
         last_considered_at = max(
             (
                 item.subjective_state.evolved_at
@@ -673,32 +720,28 @@ class NpcEcology:
             projection=projection,
             after=last_considered_at,
         )
-        if due_plan is not None:
-            if due_plan.authority_origin is None:
-                return NpcEcologyResult(
-                    status="technical_failure",
-                    reason_code="npc_ecology.due_plan_authority_missing",
-                )
-            refs = tuple(
-                sorted(
-                    {
-                        wake_event_ref,
-                        due_plan.authority_origin.accepted_event_ref,
-                    }
-                )
+        if npc_weekly_actor_cap_exceeded(
+            projection=projection,
+            ledger=self._ledger,
+            logical_time=projection.logical_time,
+            weekly_cap=self._weekly_actor_decision_cap,
+        ):
+            return NpcEcologyResult(
+                status="no_op",
+                reason_code="npc_ecology.weekly_decision_cap_exceeded",
             )
-            epoch = f"due-plan:{due_plan.plan_id}:{due_plan.entity_revision}"
-        elif recent:
-            # Recent material change opens an opportunity, but the actor gets
-            # only the exact clock plus its own source-closed identity capsule.
-            # The digest preserves effect-once scheduling without disclosing
-            # another NPC's or the protagonist's private event refs.
+        if recent:
             refs = (wake_event_ref,)
             epoch = "stimulus:" + _digest(recent)
         else:
-            # LifeEcology already owns the durable, recorded 45m-8h cadence.
-            # The exact wake is therefore this ambient opportunity's identity;
-            # a second fixed gate here would replace that scheduling decision.
+            if not draw_npc_decision_occasion(
+                wake_event_ref=wake_event_ref,
+                opportunity_mass_bp=self._decision_opportunity_mass_bp,
+            ):
+                return NpcEcologyResult(
+                    status="no_op",
+                    reason_code="npc_ecology.occasion_not_drawn",
+                )
             epoch = f"ambient:{wake_event_ref}"
             refs = (wake_event_ref,)
         return await self.advance(
@@ -707,8 +750,8 @@ class NpcEcology:
                 wake_event_ref=wake_event_ref,
                 source_event_refs=refs,
                 epoch_ref=epoch,
-                focus_npc_ref=(due_plan.owner_actor_ref if due_plan is not None else None),
-                focus_plan_ref=(due_plan.plan_id if due_plan is not None else None),
+                focus_npc_ref=None,
+                focus_plan_ref=None,
             )
         )
 
@@ -766,6 +809,8 @@ class NpcEcology:
                 decision, stimulus=stimulus, snapshot=snapshot
             ),
             failure_reason="npc_ecology.actor_invalid_after_repair",
+            purpose="npc_actor_decision",
+            actor_ref=self._selected_npc_ref(stimulus=stimulus, snapshot=snapshot),
         )
 
     def _actor_request(self, *, stimulus, snapshot):
@@ -773,20 +818,23 @@ class NpcEcology:
         selected_identity = next(
             item for item in snapshot.identities if item.npc_ref == selected_npc_ref
         )
-        npc_private_capsule = selected_identity.model_dump(mode="json")
-        # Keep the old deterministic reading available to compatibility
-        # consumers, but do not present it as actor evidence.  The actor gets
-        # neutral shared-history facts instead and keeps its own subjective
-        # relationship state in the private capsule.
-        npc_private_capsule.pop("protagonist_relationship", None)
-        npc_private_capsule.pop("last_shared_at", None)
-        shared_history_evidence = npc_private_capsule.pop(
-            "shared_history_with_protagonist", None
+        projection = self._ledger.project_at(stimulus.cursor)
+        pending_impulse_summary = None
+        for item in getattr(projection, "npcs", ()):
+            if f"npc:{item.npc_id}" != selected_npc_ref:
+                continue
+            subjective = getattr(item, "subjective_state", None)
+            if subjective is not None:
+                pending_impulse_summary = subjective.pending_impulse_summary
+            break
+        npc_actor_profile = compile_npc_actor_profile(
+            identity=selected_identity,
+            logical_time=snapshot.logical_time,
+            pending_impulse_summary=pending_impulse_summary,
         )
         payload = {
             "stimulus": stimulus.model_dump(mode="json"),
-            "npc_private_capsule": npc_private_capsule,
-            "shared_history_evidence": shared_history_evidence,
+            "npc_actor_profile": npc_actor_profile,
             "public_world": {
                 "logical_time": (
                     snapshot.logical_time.isoformat()
@@ -855,6 +903,8 @@ class NpcEcology:
                 actor_decision=actor_decision,
             ),
             failure_reason="npc_ecology.world_invalid_after_repair",
+            purpose="npc_world_adjudication",
+            actor_ref=actor_decision.npc_ref,
         )
         if (
             self._user_channel_critic is not None
@@ -944,7 +994,16 @@ class NpcEcology:
         return prompt, payload
 
     async def _run_model_with_one_reselect(
-        self, *, model, prompt, payload, parser, validator, failure_reason: str
+        self,
+        *,
+        model,
+        prompt,
+        payload,
+        parser,
+        validator,
+        failure_reason: str,
+        purpose: str,
+        actor_ref: str,
     ):
         base = [
             {"role": "system", "content": prompt},
@@ -972,11 +1031,12 @@ class NpcEcology:
             )
             request_json = _canonical(messages)
             try:
-                raw = await complete_json_object(
-                    model,
-                    messages,
-                    temperature=0.75 if ordinal == 0 else 0.55,
-                )
+                with model_call_scope(purpose, actor=actor_ref, attempt=ordinal + 1):
+                    raw = await complete_json_object(
+                        model,
+                        messages,
+                        temperature=0.75 if ordinal == 0 else 0.55,
+                    )
             except (TimeoutError, httpx.TimeoutException):
                 attempts.append(
                     _ModelAttempt(
@@ -1057,173 +1117,6 @@ class NpcEcology:
             failure_code="corrective_invalid",
         )
         raise _NpcModelRunFailed(tuple(attempts), failure_reason)
-
-    def _weighted_actor_decision(
-        self, *, stimulus: NpcEcologyStimulus, snapshot: NpcSocialWorldSnapshot
-    ) -> tuple[NpcActorDecision, str, tuple[_ModelAttempt, ...]] | None:
-        if not isinstance(self._catalog, ReviewedLifeSeedCatalog):
-            return None
-        npc_ref = self._selected_npc_ref(stimulus=stimulus, snapshot=snapshot)
-        identity = next(item for item in snapshot.identities if item.npc_ref == npc_ref)
-        source_refs = self._actor_context_event_refs(
-            stimulus=stimulus,
-            snapshot=snapshot,
-            npc_ref=npc_ref,
-        )
-        if not source_refs:
-            decision = self._table_actor_no_op(
-                npc_ref=npc_ref,
-                identity=identity,
-                source_refs=stimulus.source_event_refs,
-            )
-            return self._table_decision_result(decision)
-        projection = self._ledger.project_at(stimulus.cursor)
-        logical_time = snapshot.logical_time
-        candidates = ()
-        if isinstance(logical_time, datetime):
-            candidates = tuple(
-                item
-                for item in self._catalog.npc_initiative_candidates_at(
-                    instant=logical_time,
-                    npcs=projection.npcs,
-                    life_arcs=getattr(projection, "life_arcs", ()),
-                )
-                if item.npc_ref == npc_ref
-                and item.location_ref in snapshot.available_location_refs
-            )
-        weights = NpcInitiativeWeightPolicy().compile(
-            candidates=candidates,
-            npc_relationships=tuple(
-                item.protagonist_relationship
-                for item in snapshot.identities
-                if item.protagonist_relationship is not None
-            ),
-        )
-        picked = pick_weighted_token(
-            weights,
-            {
-                "lane": "npc_ecology_weighted_table",
-                "wake_event_ref": stimulus.wake_event_ref,
-                "npc_ref": npc_ref,
-                "catalog_hash": self._catalog.catalog_hash,
-                "weights": {key: weights[key] for key in sorted(weights)},
-            },
-        )
-        chosen = next((item for item in candidates if item.token == picked), None)
-        if chosen is None or picked == NOTHING_CANDIDATE_REF:
-            decision = self._table_actor_no_op(
-                npc_ref=npc_ref,
-                identity=identity,
-                source_refs=source_refs,
-            )
-        else:
-            decision = NpcActorDecision(
-                decision="propose",
-                npc_ref=npc_ref,
-                impulse_summary=chosen.event.summary,
-                inner_state_summary=(identity.inner_state or identity.descriptor),
-                source_refs=source_refs,
-                relationship_to_protagonist=(
-                    identity.npc_relationship_to_protagonist or NpcSocialVariables()
-                ),
-                current_goal_summaries=identity.goal_summaries[:4],
-                proposal=NpcActorProposal(
-                    timing="now",
-                    premise=chosen.event.summary,
-                    participant_refs=(npc_ref,),
-                    location_ref=chosen.location_ref,
-                    duration_minutes=chosen.event.duration_minutes,
-                    visibility=chosen.event.privacy,
-                ),
-            )
-        failure = self._validate_actor_decision(
-            decision, stimulus=stimulus, snapshot=snapshot
-        )
-        if failure is not None:
-            decision = self._table_actor_no_op(
-                npc_ref=npc_ref,
-                identity=identity,
-                source_refs=source_refs,
-            )
-        return self._table_decision_result(decision)
-
-    def _weighted_world_decision(
-        self,
-        *,
-        stimulus: NpcEcologyStimulus,
-        snapshot: NpcSocialWorldSnapshot,
-        actor_decision: NpcActorDecision,
-    ) -> tuple[NpcWorldDecision, str, tuple[_ModelAttempt, ...]] | None:
-        if not isinstance(self._catalog, ReviewedLifeSeedCatalog):
-            return None
-        if actor_decision.decision == "no_op" or actor_decision.proposal is None:
-            decision = NpcWorldDecision(decision="no_op")
-        elif actor_decision.proposal.timing == "later":
-            decision = NpcWorldDecision(decision="accept")
-        else:
-            candidate = self._matching_npc_candidate(
-                stimulus=stimulus,
-                snapshot=snapshot,
-                actor_decision=actor_decision,
-            )
-            if candidate is None:
-                decision = NpcWorldDecision(decision="no_op")
-            else:
-                decision = NpcWorldDecision(
-                    decision="accept",
-                    outcomes=tuple(
-                        NpcWorldOutcomeDraft(text=item.text, privacy=item.privacy)
-                        for item in candidate.event.outcomes
-                    ),
-                )
-        failure = self._validate_world_decision(
-            decision,
-            stimulus=stimulus,
-            snapshot=snapshot,
-            actor_decision=actor_decision,
-        )
-        if failure is not None:
-            decision = NpcWorldDecision(decision="no_op")
-        return self._table_decision_result(decision)
-
-    def _matching_npc_candidate(self, *, stimulus, snapshot, actor_decision):
-        proposal = actor_decision.proposal
-        if proposal is None or not isinstance(snapshot.logical_time, datetime):
-            return None
-        projection = self._ledger.project_at(stimulus.cursor)
-        matches = [
-            item
-            for item in self._catalog.npc_initiative_candidates_at(
-                instant=snapshot.logical_time,
-                npcs=projection.npcs,
-                life_arcs=getattr(projection, "life_arcs", ()),
-            )
-            if item.npc_ref == actor_decision.npc_ref
-            and item.location_ref == proposal.location_ref
-            and item.event.duration_minutes == proposal.duration_minutes
-            and item.event.summary == proposal.premise
-        ]
-        matches.sort(key=lambda item: item.token)
-        return matches[0] if matches else None
-
-    @staticmethod
-    def _table_actor_no_op(*, npc_ref: str, identity: NpcIdentityView, source_refs):
-        return NpcActorDecision(
-            decision="no_op",
-            npc_ref=npc_ref,
-            impulse_summary=identity.descriptor[:1_000],
-            inner_state_summary=(identity.inner_state or identity.descriptor),
-            source_refs=tuple(source_refs),
-            relationship_to_protagonist=(
-                identity.npc_relationship_to_protagonist or NpcSocialVariables()
-            ),
-            current_goal_summaries=identity.goal_summaries[:4],
-        )
-
-    @staticmethod
-    def _table_decision_result(decision):
-        raw = _canonical(decision.model_dump(mode="json"))
-        return decision, raw, ()
 
     def _validate_actor_decision(self, decision, *, stimulus, snapshot) -> str | None:
         if decision.npc_ref != self._selected_npc_ref(stimulus=stimulus, snapshot=snapshot):

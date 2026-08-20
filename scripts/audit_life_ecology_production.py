@@ -596,6 +596,7 @@ def _audit(conn: sqlite3.Connection, path: Path) -> dict[str, Any]:
     npc_src = _inspect.getsource(npc_mod.NpcEcology._actor_decide)
     ld_src = _inspect.getsource(ld_mod.LifeDevelopmentRuntime._world_author_draft)
     npc_calls_weighted = "_weighted_actor_decision" in npc_src
+    npc_uses_model_call_scope = "model_call_scope" in npc_src
     ld_short_circuits = "deterministic:weighted-table" in ld_src and "return" in ld_src
     # More precise: does _world_author_draft still return a table no_op?
     ld_returns_table = (
@@ -703,6 +704,7 @@ def _audit(conn: sqlite3.Connection, path: Path) -> dict[str, Any]:
             "open_world_gated_behind_no_life_development": open_world_gated,
             "open_world_uninstalled_when_life_development_composed": open_world_uninstalled_in_prod,
             "npc_actor_decide_calls_weighted": npc_calls_weighted,
+            "npc_actor_decide_uses_model_call_scope": npc_uses_model_call_scope,
             "life_development_world_author_still_short_circuits": ld_returns_table,
             "weighted_methods_still_defined": {
                 "npc_ecology._weighted_actor_decision": hasattr(

@@ -64,6 +64,8 @@ OFFPEAK_PREFERRED_PURPOSES = frozenset(
         "life_development_choice",
         "life_development_novel_origin_review",
         "private_impression_reflection",
+        "npc_actor_decision",
+        "npc_world_adjudication",
     }
 )
 
