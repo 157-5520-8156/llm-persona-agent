@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -253,7 +252,11 @@ from .clock_authority import (
 from .fact_events import FACT_PAYLOAD_MODELS, FactAuthorizedMutationPayload, FactChangedPayload
 from .fact_proposal_audit_v2 import FactCommitProposalAuditRefV2
 from .fact_accepted_contracts import rehydrate_fact_commit_materialized_v2_json
-from .fact_reducers import INSTALLED_FACT_PREDICATE_CARDINALITY, reduce_fact
+from .fact_reducers import (
+    INSTALLED_FACT_PREDICATE_CARDINALITY,
+    REPLAY_GENESIS_FACT_HEAD,
+    reduce_fact,
+)
 from .fact_v2_reducers import materialized_fact_v2_as_projection_change
 from .minimal_reply_events import (
     ExpressionBeatAuthorizedPayload,
@@ -11840,15 +11843,6 @@ def _canonical_model_hash(value: FrozenModel) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-# Replay-only: WorldStarted hydrates many facts under one accepted_event_ref.
-# Unique-evidence rebind can change values_after bytes versus a checkpointed
-# citation, so live commits still require a hash match while cold replay may
-# accept any transition that names the same WorldStarted head.
-_REPLAY_GENESIS_FACT_HEAD: ContextVar[bool] = ContextVar(
-    "world_v2_replay_genesis_fact_head", default=False
-)
-
-
 def _validate_evidence_authority(
     state: ReducerState,
     evidence_refs: tuple[EvidenceRef, ...],
@@ -11893,7 +11887,7 @@ def _validate_evidence_authority(
             )
             if (
                 transition is None
-                and _REPLAY_GENESIS_FACT_HEAD.get()
+                and REPLAY_GENESIS_FACT_HEAD.get()
                 and committed is not None
                 and committed.event_type == "WorldStarted"
                 and candidates
@@ -15669,7 +15663,7 @@ def reduce_event(
     allow_legacy_relationship_policy_digest: bool = False,
 ) -> ReducerState:
     replay_token = (
-        _REPLAY_GENESIS_FACT_HEAD.set(True)
+        REPLAY_GENESIS_FACT_HEAD.set(True)
         if allow_legacy_relationship_policy_digest
         else None
     )
@@ -15684,7 +15678,7 @@ def reduce_event(
         )
     finally:
         if replay_token is not None:
-            _REPLAY_GENESIS_FACT_HEAD.reset(replay_token)
+            REPLAY_GENESIS_FACT_HEAD.reset(replay_token)
 
 
 def _reduce_event_impl(

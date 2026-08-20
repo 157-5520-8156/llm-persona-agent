@@ -639,8 +639,8 @@ def test_genesis_display_name_can_be_corrected_from_a_live_observation(tmp_path)
 
 
 def test_replay_accepts_world_started_fact_head_when_values_hash_drifted() -> None:
+    from companion_daemon.world_v2.fact_reducers import REPLAY_GENESIS_FACT_HEAD
     from companion_daemon.world_v2.reducers import (
-        _REPLAY_GENESIS_FACT_HEAD,
         _canonical_model_hash,
         _validate_evidence_authority,
     )
@@ -731,11 +731,11 @@ def test_replay_accepts_world_started_fact_head_when_values_hash_drifted() -> No
     drifted = matching.model_copy(update={"immutable_hash": "e" * 64})
     with pytest.raises(ValueError, match="committed-fact"):
         _validate_evidence_authority(state, (drifted,), require_all=True)
-    token = _REPLAY_GENESIS_FACT_HEAD.set(True)
+    token = REPLAY_GENESIS_FACT_HEAD.set(True)
     try:
         _validate_evidence_authority(state, (drifted,), require_all=True)
     finally:
-        _REPLAY_GENESIS_FACT_HEAD.reset(token)
+        REPLAY_GENESIS_FACT_HEAD.reset(token)
 
 
 def _thread_with_archive_event() -> ThreadProjection:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from datetime import datetime
 from types import MappingProxyType
 
@@ -15,6 +16,11 @@ from .schemas import (
 
 
 _PRIVACY_RANK = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}
+# Set only by cold replay.  Unique-evidence rebind on WorldStarted can change
+# source_evidence_refs bytes versus a checkpointed FactCorrected before-image.
+REPLAY_GENESIS_FACT_HEAD: ContextVar[bool] = ContextVar(
+    "world_v2_replay_genesis_fact_head", default=False
+)
 # Catalog version 2 (2026-07-20).  Version 1 was the six-predicate identity
 # baseline.  ``reduce_fact`` validates every replayed committed Fact against
 # this mapping, so the catalog is strictly append-only: an entry, once
@@ -143,22 +149,34 @@ def reduce_fact(
         _validate_privacy(after)
         updated = (*facts, after)
     else:
-        if current is None or current != payload.fact_before:
+        if current is None:
             raise ValueError("fact before image does not match current authority")
-        if current.entity_revision != payload.expected_entity_revision:
+        authority = current
+        if current != payload.fact_before:
+            before = payload.fact_before
+            same_slot = (
+                current.fact_id == before.fact_id
+                and current.entity_revision == before.entity_revision
+                and current.values.predicate_code == before.values.predicate_code
+                and current.values.value_hash == before.values.value_hash
+            )
+            if not (REPLAY_GENESIS_FACT_HEAD.get() and same_slot):
+                raise ValueError("fact before image does not match current authority")
+            authority = before
+        if authority.entity_revision != payload.expected_entity_revision:
             raise ValueError("fact entity revision compare-and-swap failed")
-        if current.values.status != "active":
+        if authority.values.status != "active":
             raise ValueError("withdrawn fact cannot reopen or transition")
         if (
-            after.committed_at != current.committed_at
+            after.committed_at != authority.committed_at
             or after.updated_at != logical_time
-            or after.origin.policy_refs != current.origin.policy_refs
+            or after.origin.policy_refs != authority.origin.policy_refs
         ):
             raise ValueError("fact transition changed immutable origin")
         if payload.operation == "compensate":
-            _validate_compensation(history, current, payload)
+            _validate_compensation(history, authority, payload)
         else:
-            _validate_forward(current, after, operation=payload.operation)
+            _validate_forward(authority, after, operation=payload.operation)
         _validate_assertion(after, message_observations, operator_observations)
         _validate_privacy(after)
         if after.values.status == "active":
