@@ -47,6 +47,7 @@ from ..present_prompt import (
     compact_gate_recall_instruction,
     compile_slim_consider_payload,
     forced_tool_recall_instruction,
+    relationship_commitment_usage_specimen,
     reply_only_bubble_clause,
     reply_only_completion_clause,
     slim_consider_instruction,
@@ -344,7 +345,9 @@ def _compact_gate_system_content(
         "confidence; appraise and affect remain your choices. On the slim object, "
         "optional mood is how you open a lasting Affect component, and optional "
         "about_us/why_us/us_deltas are how the relationship itself moves, both "
-        "without leaving reply_only. It excludes interaction protocol updates, "
+        "without leaving reply_only. Optional we_are/calling_it/said_as is how one "
+        "visible line you choose declares the relationship stage, also without "
+        "leaving reply_only. It excludes interaction protocol updates, "
         "typing/reaction, turn supersession, continuation, and more text "
         "beats than the installed beat limit. Media intent (photo / "
         "media_request) is allowed on reply_only when you send text now; "
@@ -373,6 +376,17 @@ def _compact_gate_system_content(
         "Replace every marker with your own scalar, object, or null; never copy "
         "marker text, and a literal null is absence you chose, never a default "
         "the host substitutes for you.\n"
+        "\nRELATIONSHIP DECLARATION USAGE EXAMPLE JSON:\n"
+        + json.dumps(
+            relationship_commitment_usage_specimen(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        + "\nEND RELATIONSHIP DECLARATION USAGE EXAMPLE JSON.\n"
+        "这个例子只说明：如果你自己决定把关系说清楚，we_are、calling_it、said_as "
+        "怎样和同一条可见 message 一起写，才能让账本记住。示例里的判断、语气和原话都不是推荐话术，"
+        "不要照抄；不想声明时就省略这三个字段。只在 messages 里说、没有三件套，"
+        "那句话仍会送达，但关系 stage 不会改变。\n"
         "Only recall transfers control; a full_turn payload contains the complete "
         "decision now. Take the branch your own external effect needs: slim "
         "reply_only for ordinary text (and for photo/media_request on a now send), "

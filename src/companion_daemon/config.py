@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     deepseek_api_key: str | None = Field(default=None, alias="DEEPSEEK_API_KEY")
+    # Clones, scripts and companion-sim must use this key instead of the live
+    # recharge balance.  Non-production ledger paths refuse DEEPSEEK_API_KEY when
+    # this is unset (see spend_account.resolve_deepseek_api_key).
+    deepseek_debug_api_key: str | None = Field(default=None, alias="DEEPSEEK_DEBUG_API_KEY")
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"
     # Historical reply/expression/thinking selectors described separate role

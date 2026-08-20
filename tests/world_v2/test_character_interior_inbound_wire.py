@@ -5549,6 +5549,9 @@ async def test_expression_prompt_exposes_working_self_without_an_engagement_obje
     supplied = json.loads(messages[1]["content"])
     assert "There is no host-defined conversational objective" in system
     assert "No context lane or expression form is privileged by the host" in system
+    assert "background knowledge, not a line to recite" in system
+    assert "Understanding it silently is a valid use" in system
+    assert "do not mention remembered facts" not in system.lower()
     assert "ask fewer questions" not in system.lower()
     assert supplied["inner_life_snapshot"]["materials"]["recent_self_experiences"]["items"][0] == {
         "occurrence_id": "occurrence:morning-walk",

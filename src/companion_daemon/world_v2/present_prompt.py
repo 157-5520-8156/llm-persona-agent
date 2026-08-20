@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import json
 import re
 
 from .companion_identity import CompanionIdentityFrame
@@ -26,13 +27,15 @@ PRESENT_SHARED_MEDIA_ITEM_LIMIT = 8
 PRESENT_PENDING_OUTBOUND_ITEM_LIMIT = 4
 
 _PRESENT_USER_KEY_ORDER = (
+    # Stable prefix first so DeepSeek context cache survives turn-to-turn drift.
     "expression_capabilities",
-    "expression_hard_boundaries",
     "inner_life_snapshot",
+    # Per-turn alias tables change often; keep them after the snapshot stable core.
+    "expression_hard_boundaries",
     "quick_recovery_failure",
     "prior_source_closure_failure",
-    "request",
     "recall_available",
+    "request",
     "current_trigger_message",
 )
 _SNAPSHOT_VOLATILE_LAST = (
@@ -182,7 +185,10 @@ def slim_consider_instruction() -> str:
         "appraisals / unresolved / private_impressions 是账本上仍活着的读法、未完成线程、私下理解，"
         "条数就是还活着的条数，不是只给你看最近一条。"
         "private_impressions 里 hold_reason=user_channel_limited 表示这条不能拿到你们的对话里用，"
-        "不是它不存在。\n"
+        "不是它不存在。relevant_facts 和 appraisals 是你已经知道和理解事情的背景，不是台词清单，"
+        "也不是因为这轮被提供了就需要向他展示的记忆凭证。它们可以改变你怎么读眼前这句话或表情；"
+        "默默读懂也已经是在使用它们。某件事此刻是否真的值得说出来，仍由你按自己的注意与表达决定，"
+        "不是由它有没有出现在 Context 里决定。\n"
         "钉住的来源请从 Context 的 source_ref_aliases 里挑短标识（S1、T1），"
         "或原样抄 source_ref；不要手写拼接不透明字符串。"
         "点名哪些、引不引，仍由你决定；宿主只把短标识还原成权威 ref。\n"
@@ -317,9 +323,6 @@ SLIM_OPTIONAL_SPECIMEN_KEYS = (
     "come_back",
     "come_back_in",
     "later",
-    "we_are",
-    "calling_it",
-    "said_as",
     "us_deltas",
     "about_us",
     "why_us",
@@ -337,6 +340,25 @@ SLIM_OPTIONAL_SPECIMEN_KEYS = (
     "components",
     "resolution_summary",
 )
+
+
+def relationship_commitment_usage_specimen() -> dict[str, object]:
+    """Concrete optional example: one delivered line binds one declaration.
+
+    Keep this separate from the generic null-filled shape.  Showing the
+    triplet as three more nulls taught the provider that it was ordinary
+    omitted residue, while the only useful shape is all three fields together
+    with ``said_as`` copied from a visible message.
+    """
+
+    spoken = "嗯，那我也认了——我们现在算朋友。"
+    return {
+        "messages": [spoken],
+        "felt": "我愿意把这层关系说清楚。",
+        "we_are": "friend",
+        "calling_it": "朋友",
+        "said_as": spoken,
+    }
 
 
 def reply_only_slim_shape_specimen() -> dict[str, object]:
@@ -371,6 +393,12 @@ def slim_consider_json_schema() -> dict[str, object]:
             "come_back_in": {},
             "how_it_landed": {"type": "string"},
             "noticed": {"type": "string"},
+            "we_are": {
+                "type": "string",
+                "enum": ["acquaintance", "friend", "close_friend", "ambiguous", "lover"],
+            },
+            "calling_it": {"type": "string"},
+            "said_as": {"type": "string"},
             "us_deltas": {"type": "object"},
             "matters_bp": {},
             "mood": {"type": "string"},
@@ -459,6 +487,25 @@ def order_user_present_payload(material: dict[str, object]) -> dict[str, object]
         if key not in ordered:
             ordered[key] = value
     return ordered
+
+
+def ordered_mapping(value: Mapping[str, object], *, key_order: tuple[str, ...]) -> dict[str, object]:
+    """Return a shallow-ordered dict for prefix-stable JSON serialization."""
+
+    ordered: dict[str, object] = {}
+    for key in key_order:
+        if key in value:
+            ordered[key] = value[key]
+    for key, item in value.items():
+        if key not in ordered:
+            ordered[key] = item
+    return ordered
+
+
+def ordered_json_dumps(value: object, *, key_order: tuple[str, ...] | None = None) -> str:
+    if isinstance(value, Mapping) and key_order is not None:
+        value = ordered_mapping(value, key_order=key_order)
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 def present_hard_boundary_prompt(manifest: Mapping[str, object]) -> dict[str, object]:

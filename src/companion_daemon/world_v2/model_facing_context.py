@@ -11,7 +11,12 @@ import hashlib
 import json
 
 
-from .present_prompt import PRESENT_RECENT_DIALOGUE_ITEM_LIMIT, PRESENT_SHARED_MEDIA_ITEM_LIMIT
+from .present_prompt import (
+    PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
+    PRESENT_SHARED_MEDIA_ITEM_LIMIT,
+    ordered_json_dumps,
+    ordered_mapping,
+)
 
 _CHAT_OMITTED_SLICES = frozenset({"action_budget", "available_capabilities"})
 CHAT_RECENT_DIALOGUE_ITEM_LIMIT = PRESENT_RECENT_DIALOGUE_ITEM_LIMIT
@@ -39,6 +44,47 @@ _CHAT_ITEM_LIMITS = {
     "media_deliveries": PRESENT_SHARED_MEDIA_ITEM_LIMIT,
 }
 _SHAREABLE_PHOTO_SLICE = "shareable_photos"
+# Stable-first root and slice ordering for DeepSeek prefix cache. Volatile cursor
+# coordinates and truncation metadata trail so turn-to-turn stable prose shares
+# a long byte-identical prefix.
+_CONTEXT_COMPACT_ROOT_ORDER = (
+    "world_id",
+    "actor_ref",
+    "consumer_scope",
+    "context_compiler_version",
+    "viewer_privacy_ceiling",
+    "inner_life_snapshot",
+    "slices",
+    "pinned_time",
+    "recall_control",
+    "relationship_evaluation",
+    "trigger_ref",
+    "world_revision",
+    "deliberation_revision",
+    "ledger_sequence",
+    "logical_time",
+    "truncation",
+)
+_CONTEXT_SLICE_ORDER = (
+    "character_core",
+    "current_situation",
+    "relationship_slice",
+    "relevant_facts",
+    "appraisals",
+    "affect_episodes",
+    "open_threads",
+    "recent_experiences",
+    "world_life",
+    "private_impressions",
+    "active_memory_candidates",
+    "advisories",
+    "perception_results",
+    "media_deliveries",
+    "pending_outbound",
+    "shareable_photos",
+    "recent_dialogue",
+    "pinned_time",
+)
 _EVENT_BINDING_KEYS = (
     "ref",
     "source_kind",
@@ -330,8 +376,15 @@ def compact_model_facing_context(raw: str) -> str:
     if isinstance(recall_control, dict):
         compact["recall_control"] = recall_control
     compact_slices: dict[str, object] = {}
-    for name, slice_value in context["slices"].items():
-        if not isinstance(name, str) or not isinstance(slice_value, dict):
+    raw_slices = context.get("slices")
+    if not isinstance(raw_slices, dict):
+        raw_slices = {}
+    ordered_slice_names = [
+        name for name in _CONTEXT_SLICE_ORDER if name in raw_slices
+    ] + [name for name in raw_slices if name not in _CONTEXT_SLICE_ORDER]
+    for name in ordered_slice_names:
+        slice_value = raw_slices[name]
+        if not isinstance(slice_value, dict):
             continue
         if slice_value.get("availability") != "available":
             compact_slices[name] = {"availability": "unavailable"}
@@ -393,11 +446,8 @@ def compact_model_facing_context(raw: str) -> str:
             )
             if key in relationship and relationship[key] is not None
         }
-    return json.dumps(
-        compact,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
+    return ordered_json_dumps(
+        ordered_mapping(compact, key_order=_CONTEXT_COMPACT_ROOT_ORDER),
     )
 
 

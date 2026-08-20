@@ -7,6 +7,7 @@ from companion_daemon.spend_account import (
     debug_ledger_path,
     observer_writes_production_ledger,
     repo_root,
+    resolve_deepseek_api_key,
 )
 
 
@@ -60,3 +61,26 @@ def test_production_observer_is_detected_from_bound_store() -> None:
     assert observer_writes_production_ledger(debug.record) is False
     assert observer_writes_production_ledger(None) is False
     assert debug_ledger_path().as_posix().endswith("output/debug-spend/model_usage.sqlite")
+
+
+def test_debug_key_is_required_for_non_production_ledgers() -> None:
+    clone = repo_root() / "output" / "clone.sqlite"
+    assert resolve_deepseek_api_key(
+        database_path=clone,
+        production_key="prod-key",
+        debug_key=None,
+    ) is None
+    assert resolve_deepseek_api_key(
+        database_path=clone,
+        production_key="prod-key",
+        debug_key="debug-key",
+    ) == "debug-key"
+
+
+def test_production_ledger_uses_production_key() -> None:
+    production = repo_root() / "data" / "companion.epoch2.sqlite"
+    assert resolve_deepseek_api_key(
+        database_path=production,
+        production_key="prod-key",
+        debug_key="debug-key",
+    ) == "prod-key"

@@ -42,6 +42,42 @@ def debug_ledger_path() -> Path:
     return _DEBUG_LEDGER
 
 
+_DEBUG_KEY_REFUSAL_LOGGED: set[str] = set()
+
+
+def resolve_deepseek_api_key(
+    *,
+    database_path: str | Path | None,
+    production_key: str | None,
+    debug_key: str | None,
+) -> str | None:
+    """Return the DeepSeek key appropriate for ``database_path``.
+
+    Production ledgers use ``DEEPSEEK_API_KEY``.  Every other sqlite path must
+    use ``DEEPSEEK_DEBUG_API_KEY`` when configured.  Without a debug key the
+    production key is **not** used silently — callers see ``None`` and a one-time
+    warning per ledger path.
+    """
+
+    account = classify_spend_account(database_path=database_path)
+    production = (production_key or "").strip() or None
+    debug = (debug_key or "").strip() or None
+    if account == SPEND_ACCOUNT_PRODUCTION:
+        return production
+    if debug:
+        return debug
+    if production:
+        path_label = str(database_path or "<unknown>")
+        if path_label not in _DEBUG_KEY_REFUSAL_LOGGED:
+            _DEBUG_KEY_REFUSAL_LOGGED.add(path_label)
+            _LOG.warning(
+                "refusing DEEPSEEK_API_KEY for non-production ledger %s; "
+                "set DEEPSEEK_DEBUG_API_KEY for clones and scripts",
+                path_label,
+            )
+    return None
+
+
 def classify_spend_account(
     *,
     database_path: str | Path | None,
@@ -122,4 +158,5 @@ __all__ = [
     "maybe_record_debug_usage",
     "observer_writes_production_ledger",
     "repo_root",
+    "resolve_deepseek_api_key",
 ]

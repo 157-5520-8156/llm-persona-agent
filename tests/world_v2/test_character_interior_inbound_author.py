@@ -2241,7 +2241,12 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "请写 wait" not in compact_system
     assert "记得写" not in compact_system
     assert '"wait":30' not in compact_system
-    assert '"we_are":"friend"' not in compact_system
+    assert "RELATIONSHIP DECLARATION USAGE EXAMPLE JSON" in compact_system
+    assert '"we_are":"friend"' in compact_system
+    assert '"calling_it":"朋友"' in compact_system
+    assert '"said_as":"嗯，那我也认了——我们现在算朋友。"' in compact_system
+    assert "示例里的判断、语气和原话都不是推荐话术" in compact_system
+    assert "关系 stage 不会改变" in compact_system
     assert "only when the external effect you choose actually requires" in compact_system
     assert "never classifies by topic, length or keywords" in compact_system
     assert "never chooses the branch" in compact_system

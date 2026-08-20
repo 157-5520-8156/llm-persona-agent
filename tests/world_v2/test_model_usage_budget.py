@@ -404,11 +404,11 @@ def test_background_purpose_is_denied_before_the_provider_call(tmp_path) -> None
     assert row[1] == "soft_daily_budget_exceeded"
 
 
-def test_inbound_purpose_is_never_blocked_by_cny_envelope(tmp_path) -> None:
+def test_inbound_purpose_is_not_blocked_by_soft_daily_cap(tmp_path) -> None:
     store = WorldV2UsageStore(
         path=str(tmp_path / "usage.sqlite"),
-        monthly_budget_cny=0.01,
-        daily_budget_cny=0.01,
+        monthly_budget_cny=100.0,
+        daily_budget_cny=100.0,
         soft_daily_budget_cny=0.01,
     )
     store.record(
@@ -423,6 +423,26 @@ def test_inbound_purpose_is_never_blocked_by_cny_envelope(tmp_path) -> None:
         prompt_characters=100,
     )
     assert reservation
+
+
+def test_inbound_purpose_is_blocked_by_hard_daily_and_monthly_caps(tmp_path) -> None:
+    store = WorldV2UsageStore(
+        path=str(tmp_path / "usage.sqlite"),
+        monthly_budget_cny=0.01,
+        daily_budget_cny=0.01,
+        soft_daily_budget_cny=0.01,
+    )
+    store.record(
+        _Usage(model="deepseek-v4-flash", prompt_tokens=10_000_000, completion_tokens=0)
+    )
+    with pytest.raises(BackgroundSpendCapDenied, match="monthly_budget_exceeded"):
+        store.admit_provider_call(
+            purpose="inbound_turn",
+            actor="agent:companion",
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            prompt_characters=100,
+        )
 
 
 @pytest.mark.asyncio

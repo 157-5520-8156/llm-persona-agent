@@ -13,6 +13,10 @@ them on reply_only must remain a *visible* failure, never a quiet strip.
 
 Media intent is the first closed case: ``photo`` / ``media_request`` must
 survive both reply_only and full_turn when timing is now.
+
+Relationship commitment is the second: ``we_are`` / ``calling_it`` /
+``said_as`` must survive the ordinary reply_only path instead of existing only
+as a full-turn-looking capability.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from typing import Callable
 from .present_prompt import (
     SLIM_OPTIONAL_SPECIMEN_KEYS,
     compile_slim_interior_envelope,
+    relationship_commitment_usage_specimen,
     reply_only_slim_shape_specimen,
     slim_consider_json_schema,
 )
@@ -130,10 +135,90 @@ def _prove_slim_specimen_advertises_photo() -> None:
         raise AssertionError("photo missing from SLIM_OPTIONAL_SPECIMEN_KEYS")
 
 
+def _relationship_slim() -> dict[str, object]:
+    spoken = "我们现在算朋友了。"
+    return {
+        "messages": [spoken],
+        "felt": "我愿意把这层关系说清楚。",
+        "we_are": "friend",
+        "calling_it": "朋友",
+        "said_as": spoken,
+    }
+
+
+def _require_relationship_commitment(envelope: dict[str, object]) -> None:
+    appraisal = envelope.get("appraisal_draft")
+    if not isinstance(appraisal, dict):
+        raise AssertionError("compiled envelope has no appraisal draft")
+    commitment = appraisal.get("relationship_commitment")
+    if not isinstance(commitment, dict):
+        raise AssertionError("relationship commitment was silently dropped")
+    if commitment.get("target_stage") != "friend":
+        raise AssertionError("relationship target stage was rewritten")
+    if commitment.get("commitment_code") != "朋友":
+        raise AssertionError("relationship commitment code was rewritten")
+    if commitment.get("visible_text_span") != "我们现在算朋友了。":
+        raise AssertionError("relationship visible span was rewritten")
+
+    events = envelope.get("events")
+    if not isinstance(events, list) or not events or not isinstance(events[0], dict):
+        raise AssertionError("compiled envelope has no relationship-bearing head")
+    private_state = events[0].get("private_turn_state")
+    if not isinstance(private_state, dict):
+        raise AssertionError("compiled envelope has no private turn state")
+    if (
+        private_state.get("we_are"),
+        private_state.get("calling_it"),
+        private_state.get("said_as"),
+    ) != ("friend", "朋友", "我们现在算朋友了。"):
+        raise AssertionError("relationship triplet did not survive expression format")
+
+
+def _prove_relationship_commitment_reply_only_slim() -> None:
+    envelope = compile_slim_interior_envelope(_relationship_slim(), reply_only=True)
+    if envelope is None:
+        raise AssertionError("reply_only relationship commitment did not compile")
+    _require_relationship_commitment(envelope)
+
+
+def _prove_relationship_commitment_reply_only_events() -> None:
+    envelope = compile_slim_interior_envelope(_relationship_slim(), reply_only=True)
+    if envelope is None:
+        raise AssertionError("reply_only events relationship commitment did not compile")
+    _require_relationship_commitment(envelope)
+
+
+def _prove_relationship_commitment_full_turn() -> None:
+    envelope = compile_slim_interior_envelope(_relationship_slim(), reply_only=False)
+    if envelope is None:
+        raise AssertionError("full_turn relationship commitment did not compile")
+    _require_relationship_commitment(envelope)
+
+
+def _prove_slim_specimen_advertises_relationship_commitment() -> None:
+    properties = slim_consider_json_schema().get("properties")
+    if not isinstance(properties, dict):
+        raise AssertionError("slim schema properties are missing")
+    missing = {"we_are", "calling_it", "said_as"} - set(properties)
+    if missing:
+        raise AssertionError(
+            "slim schema omits relationship commitment fields: "
+            + ", ".join(sorted(missing))
+        )
+    specimen = relationship_commitment_usage_specimen()
+    if specimen.get("we_are") != "friend":
+        raise AssertionError("relationship usage specimen has no concrete stage")
+    if specimen.get("said_as") not in specimen.get("messages", []):
+        raise AssertionError("relationship usage specimen does not bind its visible line")
+
+
 # Decisions that are allowed when their capability is on, and that every listed
 # format must be able to carry without silent drop.  Adding a new role-owned
 # effect here without a prove() that succeeds on each format turns the gate red.
 _MEDIA_FORMATS = frozenset({"reply_only_slim", "reply_only_events", "full_turn"})
+_RELATIONSHIP_FORMATS = frozenset(
+    {"reply_only_slim", "reply_only_events", "full_turn"}
+)
 
 INSTALLED_DECISION_CHANNELS: tuple[DecisionChannel, ...] = (
     DecisionChannel(
@@ -165,6 +250,30 @@ INSTALLED_DECISION_CHANNELS: tuple[DecisionChannel, ...] = (
         formats=frozenset({"reply_only_slim"}),
         prove=_prove_slim_specimen_advertises_photo,
         notes="specimen/schema that advertise photo must not lie",
+    ),
+    DecisionChannel(
+        decision_id="relationship_commitment",
+        formats=_RELATIONSHIP_FORMATS,
+        prove=_prove_relationship_commitment_reply_only_slim,
+        notes="reply_only slim keeps the complete declaration triplet",
+    ),
+    DecisionChannel(
+        decision_id="relationship_commitment",
+        formats=_RELATIONSHIP_FORMATS,
+        prove=_prove_relationship_commitment_reply_only_events,
+        notes="reply_only events keep the complete declaration triplet",
+    ),
+    DecisionChannel(
+        decision_id="relationship_commitment",
+        formats=_RELATIONSHIP_FORMATS,
+        prove=_prove_relationship_commitment_full_turn,
+        notes="full_turn keeps the complete declaration triplet",
+    ),
+    DecisionChannel(
+        decision_id="relationship_commitment_advertised",
+        formats=frozenset({"reply_only_slim"}),
+        prove=_prove_slim_specimen_advertises_relationship_commitment,
+        notes="slim schema and concrete usage specimen advertise the triplet",
     ),
 )
 
@@ -199,6 +308,13 @@ def assert_expression_decision_channel_coverage() -> None:
     if missing:
         raise AssertionError(
             "media_intent missing format coverage: " + ", ".join(sorted(missing))
+        )
+    relationship_formats = formats_covering("relationship_commitment")
+    missing = _RELATIONSHIP_FORMATS - relationship_formats
+    if missing:
+        raise AssertionError(
+            "relationship_commitment missing format coverage: "
+            + ", ".join(sorted(missing))
         )
 
     failures: list[str] = []

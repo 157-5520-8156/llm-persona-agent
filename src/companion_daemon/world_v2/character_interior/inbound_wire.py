@@ -10268,7 +10268,10 @@ class _ExpressionDraftWire:
             "provide task assistance. inner_life_snapshot is a compact, source-bound working "
             "perspective: let it affect what becomes salient as part of being this person, but treat "
             "it as neither a behavior script nor a required topic. No context lane or expression "
-            "form is privileged by the host. In recent_dialogue, current_turn together with "
+            "form is privileged by the host. Treat remembered facts and appraisals as background "
+            "knowledge, not a line to recite or evidence to display just because it was supplied. "
+            "Understanding it silently is a valid use; mention it only when it genuinely belongs in "
+            "the expression you choose, not to demonstrate recall. In recent_dialogue, current_turn together with "
             "pending_interaction forms the bounded current counterpart-message packet: those are "
             "received reports without a later visible acknowledgement. This is report and attention "
             "authority, not an instruction to answer every item; choose what matters yourself, but "
@@ -10277,8 +10280,6 @@ class _ExpressionDraftWire:
             + "Return one raw JSON ExpressionDraft with timing_choice, turn_posture, beats, stance, "
             "brief_rationale, confidence, and world_claims. "
             + expression_draft_shape_contract()
-            + " "
-            + schema
             + " Use only the supplied expression_capabilities. Do not return host IDs, hashes, "
             "Actions, receipts, deliveries, consent, capabilities, or World mutations. "
             "media_request is your own bounded choice, not a host inference from your wording. "
@@ -10435,6 +10436,7 @@ class _ExpressionDraftWire:
                 "If no such source exists, return no invented substitute. Do not mention "
                 "providers, prompts, retries, systems, evidence, or this recovery mode."
             )
+        system += " " + schema
         request_material = request.model_dump(mode="json")
         provider_context_json = (
             compact_recovery_model_facing_context(request.model_content_json)

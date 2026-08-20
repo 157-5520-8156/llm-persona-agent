@@ -920,8 +920,14 @@ def _is_provider_outage(exc: Exception) -> bool:
         return False
     if isinstance(exc, httpx.HTTPStatusError):
         status = exc.response.status_code
-        return status == 408 or status == 429 or status >= 500
+        return status in {402, 408, 429} or status >= 500
     return isinstance(exc, (ConnectionError, httpx.TransportError))
+
+
+def _payment_required_cooldown_seconds(exc: Exception) -> float | None:
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 402:
+        return 3600.0
+    return None
 
 
 def _is_failover_eligible_provider_failure(exc: Exception) -> bool:
@@ -949,26 +955,41 @@ def _provider_completion_may_still_be_running(exc: Exception) -> bool:
 
 
 class ProviderCircuitBreaker:
-    """Bound repeated provider stalls while allowing a timed recovery probe."""
+    """Bound repeated provider stalls while allowing a timed recovery probe.
+
+    Cooldown grows exponentially on consecutive opens (30s → 60s → … capped at
+    ``max_cooldown_seconds``).  Explicit ``cooldown_seconds`` on ``record_failure``
+    (e.g. 402 payment required) can raise the floor without resetting backoff.
+    """
 
     def __init__(
         self,
         *,
         failure_threshold: int = 2,
         cooldown_seconds: float = 30.0,
+        max_cooldown_seconds: float = 3600.0,
         clock: Callable[[], float] = monotonic,
     ) -> None:
         self.failure_threshold = max(1, int(failure_threshold))
         self.cooldown_seconds = max(0.0, float(cooldown_seconds))
+        self.max_cooldown_seconds = max(self.cooldown_seconds, float(max_cooldown_seconds))
         self.clock = clock
         self._failures = 0
         self._opened_at: float | None = None
         self._probe_in_flight = False
+        self._active_cooldown_seconds = self.cooldown_seconds
+        self._consecutive_opens = 0
+
+    def _effective_cooldown_seconds(self) -> float:
+        return min(
+            max(self.cooldown_seconds, self._active_cooldown_seconds),
+            self.max_cooldown_seconds,
+        )
 
     def before_call(self) -> None:
         if self._opened_at is None:
             return
-        if self.clock() - self._opened_at < self.cooldown_seconds:
+        if self.clock() - self._opened_at < self._effective_cooldown_seconds():
             raise ModelCircuitOpenError("model provider circuit is open")
         if self._probe_in_flight:
             raise ModelCircuitOpenError("model provider recovery probe is in flight")
@@ -978,11 +999,28 @@ class ProviderCircuitBreaker:
         self._failures = 0
         self._opened_at = None
         self._probe_in_flight = False
+        self._active_cooldown_seconds = self.cooldown_seconds
+        self._consecutive_opens = 0
 
-    def record_failure(self) -> None:
+    def record_failure(self, *, cooldown_seconds: float | None = None) -> None:
+        failed_probe = self._probe_in_flight
         self._failures += 1
         self._probe_in_flight = False
+        if cooldown_seconds is not None:
+            self._active_cooldown_seconds = max(
+                self._active_cooldown_seconds,
+                max(0.0, float(cooldown_seconds)),
+            )
         if self._failures >= self.failure_threshold:
+            if self._opened_at is None or failed_probe:
+                self._consecutive_opens += 1
+                backoff = self.cooldown_seconds * (
+                    2 ** min(self._consecutive_opens - 1, 10)
+                )
+                self._active_cooldown_seconds = max(
+                    self._active_cooldown_seconds,
+                    min(backoff, self.max_cooldown_seconds),
+                )
             self._opened_at = self.clock()
 
     def release_probe(self) -> None:
@@ -992,9 +1030,23 @@ class ProviderCircuitBreaker:
     def snapshot(self) -> ProviderCircuitState:
         if self._opened_at is None:
             return ProviderCircuitState.closed()
-        if self.clock() - self._opened_at < self.cooldown_seconds:
+        if self.clock() - self._opened_at < self._effective_cooldown_seconds():
             return ProviderCircuitState.open()
         return ProviderCircuitState.half_open()
+
+
+_SHARED_DEEPSEEK_CIRCUIT: ProviderCircuitBreaker | None = None
+_SHARED_DEEPSEEK_CIRCUIT_LOCK = Lock()
+
+
+def shared_deepseek_circuit_breaker() -> ProviderCircuitBreaker:
+    """Process-wide DeepSeek outage breaker shared by every production model client."""
+
+    global _SHARED_DEEPSEEK_CIRCUIT
+    with _SHARED_DEEPSEEK_CIRCUIT_LOCK:
+        if _SHARED_DEEPSEEK_CIRCUIT is None:
+            _SHARED_DEEPSEEK_CIRCUIT = ProviderCircuitBreaker()
+        return _SHARED_DEEPSEEK_CIRCUIT
 
 
 async def complete_with_timeout(
@@ -1081,6 +1133,8 @@ class DeepSeekChatModel:
         self.reasoning_effort = reasoning_effort
         self.transport = transport
         self.usage_observer = usage_observer
+        if circuit_breaker is None and usage_observer is not None:
+            circuit_breaker = shared_deepseek_circuit_breaker()
         self.circuit_breaker = circuit_breaker
         self.capacity_gate = capacity_gate
         self.max_completion_tokens = max_completion_tokens
@@ -1533,7 +1587,11 @@ class DeepSeekChatModel:
                 else:
                     self.capacity_gate.release(capacity_token)
             if self.circuit_breaker is not None and provider_outage:
-                self.circuit_breaker.record_failure()
+                payment_cooldown = _payment_required_cooldown_seconds(exc)
+                if payment_cooldown is not None:
+                    self.circuit_breaker.record_failure(cooldown_seconds=payment_cooldown)
+                else:
+                    self.circuit_breaker.record_failure()
             self._report_usage(
                 ModelCallUsage(
                     purpose=purpose,
@@ -1720,7 +1778,11 @@ class DeepSeekChatModel:
                 else:
                     self.capacity_gate.release(capacity_token)
             if self.circuit_breaker is not None and provider_outage:
-                self.circuit_breaker.record_failure()
+                payment_cooldown = _payment_required_cooldown_seconds(exc)
+                if payment_cooldown is not None:
+                    self.circuit_breaker.record_failure(cooldown_seconds=payment_cooldown)
+                else:
+                    self.circuit_breaker.record_failure()
             if isinstance(exc, (ValueError, TypeError, json.JSONDecodeError)):
                 error = f"schema_error:{exc}"
             elif isinstance(exc, ModelCapacityBusyError):

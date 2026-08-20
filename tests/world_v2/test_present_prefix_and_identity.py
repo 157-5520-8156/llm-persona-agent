@@ -42,6 +42,15 @@ def test_slim_consider_instruction_speaks_her_language() -> None:
     instruction = slim_consider_instruction()
     chinese = sum(1 for char in instruction if "\u4e00" <= char <= "\u9fff")
     assert chinese / len(instruction) > 0.35
+
+
+def test_slim_consider_separates_knowing_from_saying() -> None:
+    instruction = slim_consider_instruction()
+
+    assert "是你已经知道和理解事情的背景" in instruction
+    assert "默默读懂也已经是在使用它们" in instruction
+    assert "不是台词清单" in instruction
+    assert "禁止提起" not in instruction
     for field in (
         "messages",
         "felt",
@@ -324,7 +333,7 @@ def test_user_payload_puts_current_trigger_message_last() -> None:
     parsed = json.loads(encoded)
     assert list(parsed)[0] == "expression_capabilities"
     assert list(parsed)[-1] == "current_trigger_message"
-    assert list(parsed)[-2] == "recall_available"
+    assert list(parsed)[-2] == "request"
 
 
 def test_g5_stable_user_prefix_survives_new_trigger_and_recall_flag() -> None:
@@ -372,7 +381,6 @@ def test_g5_stable_user_prefix_survives_new_trigger_and_recall_flag() -> None:
     right = json.dumps(second, ensure_ascii=False, separators=(",", ":"))
     prefix = _common_prefix(left, right)
     assert '"expression_capabilities"' in prefix
-    assert '"expression_hard_boundaries"' in prefix
     assert '"stable_self"' in prefix
     assert "昨天那杯茶" in prefix
     assert "current_trigger_message" not in prefix
@@ -381,7 +389,6 @@ def test_g5_stable_user_prefix_survives_new_trigger_and_recall_flag() -> None:
     stable = json.dumps(
         {
             "expression_capabilities": first["expression_capabilities"],
-            "expression_hard_boundaries": first["expression_hard_boundaries"],
             "inner_life_snapshot": {
                 key: value
                 for key, value in first["inner_life_snapshot"].items()

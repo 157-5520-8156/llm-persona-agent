@@ -24,6 +24,7 @@ from companion_daemon.llm import (
     ProviderCapacityGate,
     text_endpoint_capacity_marker_path,
 )
+from companion_daemon.spend_account import resolve_deepseek_api_key
 
 from .character_interior import CharacterInterior
 from .character_interior.production import compose_production_character_interior
@@ -810,7 +811,11 @@ def build_semantic_chat_composition(
             "production expression requires a final PrivateTurnState; "
             "legacy_optional is historical replay/test only"
         )
-    if flash_model is None and not settings.deepseek_api_key:
+    if flash_model is None and not resolve_deepseek_api_key(
+        database_path=settings.database_path,
+        production_key=settings.deepseek_api_key,
+        debug_key=settings.deepseek_debug_api_key,
+    ):
         raise ValueError(
             "production CharacterInterior requires an explicit character model "
             "or DEEPSEEK_API_KEY; fixture prose cannot be installed implicitly"
@@ -853,10 +858,15 @@ def build_semantic_chat_composition(
         owned_closeables.append(character_interior_turn_store)
 
     auto_flash = flash_model is None
+    effective_deepseek_key = resolve_deepseek_api_key(
+        database_path=settings.database_path,
+        production_key=settings.deepseek_api_key,
+        debug_key=settings.deepseek_debug_api_key,
+    )
     if flash_model is None:
-        if settings.deepseek_api_key:
+        if effective_deepseek_key:
             provider_flash = DeepSeekChatModel(
-                api_key=settings.deepseek_api_key,
+                api_key=effective_deepseek_key,
                 base_url=settings.deepseek_base_url,
                 model=settings.deepseek_model,
                 thinking_enabled=False,
@@ -870,11 +880,11 @@ def build_semantic_chat_composition(
     if (
         thinking_model is None
         and auto_flash
-        and settings.deepseek_api_key
+        and effective_deepseek_key
         and settings.deepseek_character_thinking_enabled
     ):
         provider_thinking = DeepSeekChatModel(
-            api_key=settings.deepseek_api_key,
+            api_key=effective_deepseek_key,
             base_url=settings.deepseek_base_url,
             model=settings.deepseek_character_thinking_model,
             thinking_enabled=True,
@@ -944,11 +954,11 @@ def build_semantic_chat_composition(
     if (
         background_model is None
         and auto_flash
-        and settings.deepseek_api_key
+        and effective_deepseek_key
         and isinstance(flash_model, DeepSeekChatModel)
     ):
         background_model = DeepSeekChatModel(
-            api_key=settings.deepseek_api_key,
+            api_key=effective_deepseek_key,
             base_url=settings.deepseek_base_url,
             model=settings.deepseek_model,
             thinking_enabled=False,

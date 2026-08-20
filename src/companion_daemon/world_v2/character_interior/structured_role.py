@@ -58,6 +58,7 @@ from .ports import (
     _RoleResultContractError,
 )
 from .snapshot_compiler import compile_citeable_source_catalog
+from ..present_prompt import ordered_json_dumps, present_inner_life
 from .structured_role_tool_contract import (
     StructuredRoleToolContract,
     StructuredRoleToolContracts,
@@ -78,6 +79,19 @@ _FACET_NAMES = (
     "aspirations_conflicts",
     "autonomous_impulses",
     "expression_stance",
+)
+
+_INTERIOR_USER_PAYLOAD_ORDER = (
+    "wire_contract",
+    "purpose_contract",
+    "capability_manifest",
+    "eight_facets",
+    "citeable_sources",
+    "inner_life_snapshot",
+    "selective_recall",
+    "purpose_instruction",
+    "inner_turn",
+    "correction",
 )
 
 _EXPRESSION_RECONSIDERATION_DISPOSITIONS = frozenset(
@@ -1680,6 +1694,9 @@ class StructuredCharacterRoleFaculty:
                 or _FAILURE_DETAILS.get(code, code),
                 "scope": "return_a_complete_new_result_for_the_same_pinned_request",
             }
+        snapshot = user_payload.get("inner_life_snapshot")
+        if isinstance(snapshot, dict):
+            user_payload["inner_life_snapshot"] = present_inner_life(snapshot)
         return [
             {
                 "role": "system",
@@ -1713,11 +1730,9 @@ class StructuredCharacterRoleFaculty:
             },
             {
                 "role": "user",
-                "content": json.dumps(
+                "content": ordered_json_dumps(
                     user_payload,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
+                    key_order=_INTERIOR_USER_PAYLOAD_ORDER,
                 ),
             },
         ]

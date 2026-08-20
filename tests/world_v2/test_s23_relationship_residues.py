@@ -343,16 +343,16 @@ def _slim_request(*, source_event, evaluated_world_revision: int) -> ModelInput:
     )
 
 
-def test_slim_schema_still_fits_g4_without_heavy_relationship_fields() -> None:
+def test_slim_schema_still_fits_g4_with_commitment_triplet() -> None:
     required, total, depth = json_schema_g4_metrics(slim_consider_json_schema())
     assert required <= 3
-    assert total <= 20  # descriptive slim shape; provider G4 is the compact tool
+    assert total <= 24  # descriptive slim shape; provider G4 is the compact tool
     assert depth <= 2
     properties = slim_consider_json_schema()["properties"]
     assert "relationship_signal" not in properties
     assert "relationship_commitment" not in properties
     assert "about_us" not in properties
-    assert "we_are" not in properties
+    assert set(("we_are", "calling_it", "said_as")) <= set(properties)
     assert "declared_display" in properties
     assert "come_back" in properties
     assert "come_back_in" in properties

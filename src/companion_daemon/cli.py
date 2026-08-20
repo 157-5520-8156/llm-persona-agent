@@ -8,6 +8,7 @@ from companion_daemon.llm import (
     DeepSeekChatModel,
     FakeCompanionModel,
 )
+from companion_daemon.spend_account import resolve_deepseek_api_key
 from companion_daemon.world_v2.model_completion import ChatCompletionModel
 from companion_daemon.world_v2.expression_draft import (
     PRODUCTION_TEXT_ONLY_EXPRESSION_CAPABILITIES,
@@ -61,10 +62,17 @@ async def run_simulation(text: str, fake: bool, *, thinking: bool = False) -> No
         flash_model: ChatCompletionModel = FakeCompanionModel()
         thinking_model: ChatCompletionModel | None = FakeCompanionModel() if thinking else None
     else:
-        if not settings.deepseek_api_key:
-            raise ValueError("DEEPSEEK_API_KEY is required unless --fake is used")
+        effective_key = resolve_deepseek_api_key(
+            database_path=settings.database_path,
+            production_key=settings.deepseek_api_key,
+            debug_key=settings.deepseek_debug_api_key,
+        )
+        if not effective_key:
+            raise ValueError(
+                "DEEPSEEK_DEBUG_API_KEY is required for non-production sim unless --fake is used"
+            )
         flash_model = DeepSeekChatModel(
-            api_key=settings.deepseek_api_key,
+            api_key=effective_key,
             base_url=settings.deepseek_base_url,
             model=settings.deepseek_model,
             thinking_enabled=False,
@@ -73,7 +81,7 @@ async def run_simulation(text: str, fake: bool, *, thinking: bool = False) -> No
         thinking_model = None
         if thinking:
             thinking_model = DeepSeekChatModel(
-                api_key=settings.deepseek_api_key,
+                api_key=effective_key,
                 base_url=settings.deepseek_base_url,
                 model=settings.deepseek_character_thinking_model,
                 thinking_enabled=True,

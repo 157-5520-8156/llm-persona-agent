@@ -183,9 +183,13 @@ class WorldV2UsageStore:
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._path, isolation_level=None, check_same_thread=False)
 
-    def _gates_background_cny(self, purpose: str) -> bool:
+    def _gates_cny(self, purpose: str) -> bool:
+        """Return whether this purpose participates in any configured CNY envelope."""
+
         if purpose in VISIBLE_INBOUND_PURPOSES:
-            return False
+            return (
+                self._monthly_budget_cny is not None or self._daily_budget_cny is not None
+            )
         return any(
             limit is not None
             for limit in (
@@ -270,7 +274,7 @@ class WorldV2UsageStore:
             finally:
                 connection.close()
 
-    def _background_spend_cap_reason(self, estimated_cny: float) -> str | None:
+    def _spend_cap_reason(self, estimated_cny: float, *, purpose: str) -> str | None:
         amount = max(0.0, float(estimated_cny))
         monthly = self._combined_spend_cny(since=self._utc_window_start(month=True))
         daily = self._combined_spend_cny(since=self._utc_window_start(month=False))
@@ -281,6 +285,8 @@ class WorldV2UsageStore:
             return "monthly_budget_exceeded"
         if self._daily_budget_cny is not None and daily + amount > self._daily_budget_cny:
             return "daily_budget_exceeded"
+        if purpose in VISIBLE_INBOUND_PURPOSES:
+            return None
         if (
             self._soft_daily_budget_cny is not None
             and daily + amount > self._soft_daily_budget_cny
@@ -365,8 +371,8 @@ class WorldV2UsageStore:
             reserved_cny = float(estimated_cny)
         if reserved_cny < 0:
             raise ModelUsageAdmissionError("world v2 model call estimated CNY is invalid")
-        if self._gates_background_cny(resolved_purpose):
-            reason = self._background_spend_cap_reason(reserved_cny)
+        if self._gates_cny(resolved_purpose):
+            reason = self._spend_cap_reason(reserved_cny, purpose=resolved_purpose)
             if reason is not None:
                 self._record_budget_denial(
                     purpose=resolved_purpose,

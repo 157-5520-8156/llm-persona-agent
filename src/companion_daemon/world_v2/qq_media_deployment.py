@@ -316,7 +316,14 @@ def _missing_private_prompt_author_credentials(settings: Settings) -> tuple[str,
     missing: list[str] = []
     if settings.hermes_private_prompt_enabled and not settings.openrouter_api_key:
         missing.append("OPENROUTER_API_KEY")
-    if not settings.deepseek_api_key:
+    from companion_daemon.spend_account import resolve_deepseek_api_key
+
+    effective_key = resolve_deepseek_api_key(
+        database_path=settings.database_path,
+        production_key=settings.deepseek_api_key,
+        debug_key=settings.deepseek_debug_api_key,
+    )
+    if not effective_key:
         missing.append("DEEPSEEK_API_KEY")
     return tuple(missing)
 
@@ -343,10 +350,17 @@ def _private_prompt_author_model(settings: Settings) -> _PrivatePromptAuthorChoi
             model_name=settings.hermes_private_prompt_model,
             via="hermes_openrouter",
         )
-    if settings.deepseek_api_key:
+    from companion_daemon.spend_account import resolve_deepseek_api_key
+
+    effective_key = resolve_deepseek_api_key(
+        database_path=settings.database_path,
+        production_key=settings.deepseek_api_key,
+        debug_key=settings.deepseek_debug_api_key,
+    )
+    if effective_key:
         return _PrivatePromptAuthorChoice(
             model=DeepSeekChatModel(
-                api_key=settings.deepseek_api_key,
+                api_key=effective_key,
                 base_url=settings.deepseek_base_url,
                 model=settings.deepseek_model,
                 thinking_enabled=False,
@@ -471,7 +485,14 @@ def build_qq_media_preview_deployment(
         missing.append("WORLD_V2_MEDIA_PREVIEW_ENABLED")
     if not settings.allow_auto_image_generation:
         missing.append("ALLOW_AUTO_IMAGE_GENERATION")
-    if not settings.deepseek_api_key:
+    from companion_daemon.spend_account import resolve_deepseek_api_key
+
+    effective_key = resolve_deepseek_api_key(
+        database_path=settings.database_path,
+        production_key=settings.deepseek_api_key,
+        debug_key=settings.deepseek_debug_api_key,
+    )
+    if not effective_key:
         missing.append("DEEPSEEK_API_KEY")
     if not settings.openai_api_key:
         missing.append("OPENAI_API_KEY")
@@ -497,16 +518,28 @@ def build_qq_media_preview_deployment(
 
     from companion_daemon import event_media
     from companion_daemon.image_generation import OpenAIImageGenerator
-    from companion_daemon.llm import DeepSeekChatModel
+    from companion_daemon.llm import DeepSeekChatModel, shared_deepseek_circuit_breaker
+
+    from companion_daemon.spend_account import resolve_deepseek_api_key
+
+    effective_key = resolve_deepseek_api_key(
+        database_path=settings.database_path,
+        production_key=settings.deepseek_api_key,
+        debug_key=settings.deepseek_debug_api_key,
+    )
+    if not effective_key:
+        raise RuntimeError("media planner requires a DeepSeek API key")
 
     def routed_model(*, model: str):
         """Build the objective media-planning provider, never a role author."""
 
         return DeepSeekChatModel(
-            api_key=settings.deepseek_api_key,
+            api_key=effective_key,
             base_url=settings.deepseek_base_url,
             model=model,
             thinking_enabled=False,
+            circuit_breaker=shared_deepseek_circuit_breaker(),
+            usage_observer=_media_usage_observer(settings),
         )
 
     planner_model = routed_model(

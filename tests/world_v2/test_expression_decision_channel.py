@@ -58,6 +58,13 @@ def test_media_intent_covers_all_installed_formats() -> None:
     assert len(INSTALLED_DECISION_CHANNELS) >= 3
 
 
+def test_relationship_commitment_covers_all_installed_formats() -> None:
+    assert "relationship_commitment" in required_decision_ids()
+    assert formats_covering("relationship_commitment") == frozenset(
+        {"reply_only_slim", "reply_only_events", "full_turn"}
+    )
+
+
 def test_gate_reds_when_reply_only_silently_drops_media(monkeypatch: pytest.MonkeyPatch) -> None:
     """Example of what the gate catches: reply_only strips photo again."""
 
@@ -88,6 +95,34 @@ def test_reply_only_photo_compiles_without_silent_strip() -> None:
     )
     assert envelope is not None
     assert envelope["events"][0]["media_request"] == "consider_available_candidate"
+
+
+def test_reply_only_relationship_commitment_compiles_without_silent_strip() -> None:
+    spoken = "我们现在算朋友了。"
+    envelope = compile_slim_interior_envelope(
+        {
+            "messages": [spoken],
+            "felt": "我愿意把这层说清楚。",
+            "we_are": "friend",
+            "calling_it": "朋友",
+            "said_as": spoken,
+        },
+        reply_only=True,
+    )
+    assert envelope is not None
+    commitment = envelope["appraisal_draft"]["relationship_commitment"]
+    assert commitment == {
+        "target_stage": "friend",
+        "commitment_code": "朋友",
+        "persistence": "durable",
+        "visible_text_span": spoken,
+    }
+    private_state = envelope["events"][0]["private_turn_state"]
+    assert (
+        private_state["we_are"],
+        private_state["calling_it"],
+        private_state["said_as"],
+    ) == ("friend", "朋友", spoken)
 
 
 def test_illegal_media_source_ref_still_rejected() -> None:

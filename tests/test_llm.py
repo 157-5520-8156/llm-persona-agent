@@ -1680,6 +1680,99 @@ async def test_non_2xx_records_truncated_response_body_without_secrets(
 
 
 @pytest.mark.asyncio
+async def test_payment_required_trips_outage_circuit_with_long_cooldown() -> None:
+    now = [0.0]
+    requests = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(
+            402,
+            json={"error": {"message": "Insufficient Balance", "code": "invalid_request_error"}},
+        )
+
+    breaker = ProviderCircuitBreaker(failure_threshold=2, cooldown_seconds=30, clock=lambda: now[0])
+    model = DeepSeekChatModel(
+        "key",
+        "https://api.deepseek.com",
+        "deepseek-v4-flash",
+        transport=httpx.MockTransport(handler),
+        circuit_breaker=breaker,
+    )
+
+    for _ in range(2):
+        with pytest.raises(httpx.HTTPStatusError):
+            await model.complete([{"role": "user", "content": "pay"}])
+    assert breaker.snapshot().status == "open"
+    assert requests == 2
+
+    now[0] = 31.0
+    with pytest.raises(ModelCircuitOpenError):
+        await model.complete([{"role": "user", "content": "still blocked"}])
+    assert requests == 2
+
+    now[0] = 3601.0
+    with pytest.raises(httpx.HTTPStatusError):
+        await model.complete([{"role": "user", "content": "probe after hour"}])
+    assert requests == 3
+    await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_shared_deepseek_circuit_breaker_blocks_all_models() -> None:
+    now = [0.0]
+    requests = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(402, json={"error": {"message": "Insufficient Balance"}})
+
+    breaker = ProviderCircuitBreaker(failure_threshold=1, cooldown_seconds=3600, clock=lambda: now[0])
+    first = DeepSeekChatModel(
+        "key",
+        "https://api.deepseek.com",
+        "deepseek-v4-flash",
+        transport=httpx.MockTransport(handler),
+        circuit_breaker=breaker,
+    )
+    second = DeepSeekChatModel(
+        "key",
+        "https://api.deepseek.com",
+        "deepseek-v4-flash",
+        transport=httpx.MockTransport(handler),
+        circuit_breaker=breaker,
+    )
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await first.complete([{"role": "user", "content": "once"}])
+    with pytest.raises(ModelCircuitOpenError):
+        await second.complete([{"role": "user", "content": "blocked"}])
+    assert requests == 1
+    await first.aclose()
+    await second.aclose()
+
+
+def test_provider_circuit_exponential_backoff_on_repeated_opens() -> None:
+    now = [0.0]
+    breaker = ProviderCircuitBreaker(
+        failure_threshold=1,
+        cooldown_seconds=30.0,
+        max_cooldown_seconds=3600.0,
+        clock=lambda: now[0],
+    )
+
+    breaker.record_failure()
+    assert breaker._effective_cooldown_seconds() == pytest.approx(30.0)
+
+    now[0] = 31.0
+    breaker.before_call()
+    breaker.record_failure()
+    assert breaker._effective_cooldown_seconds() == pytest.approx(60.0)
+
+
+@pytest.mark.asyncio
 async def test_provider_server_error_trips_outage_circuit() -> None:
     breaker = ProviderCircuitBreaker(failure_threshold=1, cooldown_seconds=30)
     model = DeepSeekChatModel(
