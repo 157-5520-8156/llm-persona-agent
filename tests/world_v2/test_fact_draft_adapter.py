@@ -15,6 +15,7 @@ from companion_daemon.world_v2.fact_draft_adapter import (
     _PREDICATE_GUIDE,
     materialize_fact_observation_draft,
 )
+from companion_daemon.world_v2.model_usage_budget import BackgroundSpendCapDenied
 from companion_daemon.world_v2.fact_reducers import INSTALLED_FACT_PREDICATE_CARDINALITY
 from companion_daemon.world_v2.schemas import Observation, WorldEvent
 
@@ -50,6 +51,27 @@ def _observation() -> tuple[Observation, WorldEvent]:
         correlation_id=observation.correlation_id, idempotency_key="observation:fact-draft",
         payload=observation.model_dump(mode="json"),
     )
+
+
+@pytest.mark.asyncio
+async def test_fact_draft_maps_soft_daily_budget_denial_to_exact_failure_code() -> None:
+    observation, event = _observation()
+
+    class _BudgetDeniedChat:
+        model = "budget-denied"
+
+        async def complete(self, messages, *, temperature: float = 0.2):  # type: ignore[no-untyped-def]
+            del messages, temperature
+            raise BackgroundSpendCapDenied("soft_daily_budget_exceeded")
+
+    with pytest.raises(FactDraftTechnicalFailure) as failure:
+        await FactObservationProposalAdapter(model=_BudgetDeniedChat()).propose(
+            observation=observation,
+            observation_event=event,
+            source_world_revision=1,
+        )
+
+    assert failure.value.failure_code == "soft_daily_budget_exceeded"
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 import math
 from typing import Iterable, Mapping
 from zoneinfo import ZoneInfo
@@ -289,9 +289,46 @@ def beijing_datetime(value: datetime | str | None) -> datetime:
     return parse_usage_datetime(value).astimezone(BEIJING_TZ)
 
 
-def is_deepseek_peak(value: datetime | str | None) -> bool:
+def is_deepseek_peak(value: datetime | str | None = None) -> bool:
     clock = beijing_datetime(value).time()
     return any(start <= clock < end for start, end in DEEPSEEK_PEAK_WINDOWS_BEIJING)
+
+
+def seconds_until_deepseek_offpeak_start(value: datetime | str | None = None) -> int:
+    """Seconds until the current Beijing peak window ends (0 if already off-peak)."""
+
+    instant = beijing_datetime(value)
+    clock = instant.time()
+    for start, end in DEEPSEEK_PEAK_WINDOWS_BEIJING:
+        if start <= clock < end:
+            end_dt = instant.replace(hour=end.hour, minute=end.minute, second=0, microsecond=0)
+            if end_dt <= instant:
+                end_dt = end_dt + timedelta(days=1)
+            return max(0, int((end_dt - instant).total_seconds()))
+    return 0
+
+
+def interaction_fact_retry_delay_seconds(
+    *,
+    failure_code: str,
+    retry_ordinal: int,
+    default_delays: tuple[int, ...],
+) -> int:
+    """Budget denials should not masquerade as provider outages or retry in peak."""
+
+    normalized = str(failure_code or "").strip()
+    if normalized in {
+        "soft_daily_budget_exceeded",
+        "daily_budget_exceeded",
+        "monthly_budget_exceeded",
+        "deferred_offpeak",
+    }:
+        offpeak_wait = seconds_until_deepseek_offpeak_start()
+        if offpeak_wait > 0:
+            return max(60, offpeak_wait)
+        return max(600, default_delays[min(max(retry_ordinal, 1), len(default_delays)) - 1])
+    index = min(max(retry_ordinal, 1), len(default_delays)) - 1
+    return default_delays[index]
 
 
 def billed_output_tokens(completion_tokens: int, reasoning_tokens: int = 0) -> int:

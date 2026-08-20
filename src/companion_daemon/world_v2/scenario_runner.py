@@ -557,8 +557,12 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.86"
 # on structured-role and life-development provider views (canonical authority
 # unchanged). Complete fake suite hash:
 # 08f5564509466285630a84d571314ad209aa899f3ccdc0ecb462710879b56c7b
+# 2026-08-20: refreshed .86 after fact budget codes, offpeak defer, and
+# recent_dialogue cache-stable provider serialization (canonical dialogue
+# unchanged). Complete fake suite hash:
+# 2888be28d1168bc02c57f554ba6470f12f984f063c28d86f8977d26956aa9c4e
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "08f5564509466285630a84d571314ad209aa899f3ccdc0ecb462710879b56c7b"
+    "2888be28d1168bc02c57f554ba6470f12f984f063c28d86f8977d26956aa9c4e"
 )
 
 

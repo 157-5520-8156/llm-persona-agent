@@ -79,6 +79,40 @@ _MATERIAL_ORDER = (
     "logical_time",
 )
 
+_RECENT_DIALOGUE_CACHE_KEYS = ("stable_turns", "volatile_last_turn")
+
+
+def recent_dialogue_material_entries(value: object) -> list[dict[str, object]]:
+    """Expand cache-split or legacy recent_dialogue without changing semantics."""
+
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        stable = value.get("stable_turns")
+        volatile = value.get("volatile_last_turn")
+        entries: list[dict[str, object]] = []
+        if isinstance(stable, list):
+            entries.extend(item for item in stable if isinstance(item, dict))
+        if isinstance(volatile, dict):
+            entries.append(volatile)
+        if entries:
+            return entries
+        legacy_items = value.get("items")
+        if isinstance(legacy_items, list):
+            return [item for item in legacy_items if isinstance(item, dict)]
+    return []
+
+
+def cache_stable_recent_dialogue(value: object) -> object:
+    """Split dialogue tail so prior turns stay byte-stable for provider KV cache."""
+
+    if not isinstance(value, list) or len(value) < 2:
+        return value
+    return {
+        "stable_turns": value[:-1],
+        "volatile_last_turn": value[-1],
+    }
+
 
 def reply_only_completion_clause() -> str:
     return (
@@ -531,6 +565,10 @@ def present_inner_life(snapshot: dict[str, object]) -> dict[str, object]:
         for key, value in materials.items():
             if key not in ordered_materials:
                 ordered_materials[key] = value
+        if "recent_dialogue" in ordered_materials:
+            ordered_materials["recent_dialogue"] = cache_stable_recent_dialogue(
+                ordered_materials["recent_dialogue"]
+            )
         ordered_snapshot["materials"] = ordered_materials
     ordered: dict[str, object] = {}
     volatile = set(_SNAPSHOT_VOLATILE_LAST)

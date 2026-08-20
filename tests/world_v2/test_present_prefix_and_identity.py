@@ -13,8 +13,10 @@ from companion_daemon.world_v2.companion_identity import (
     companion_identity_source_ref,
 )
 from companion_daemon.world_v2.present_prompt import (
+    cache_stable_recent_dialogue,
     combined_turn_system_lead,
     order_user_present_payload,
+    recent_dialogue_material_entries,
     slim_consider_instruction,
 )
 
@@ -408,6 +410,41 @@ def test_g5_stable_user_prefix_survives_new_trigger_and_recall_flag() -> None:
         separators=(",", ":"),
     )
     assert len(prefix) >= len(stable) - 40
+
+
+def test_recent_dialogue_cache_split_preserves_semantics_and_stable_prefix() -> None:
+    first_turn = {"dialogue_id": "d:1", "speaker": "counterpart", "text": "昨天那杯茶"}
+    second_turn = {"dialogue_id": "d:2", "speaker": "companion", "text": "嗯"}
+    third_turn = {"dialogue_id": "d:3", "speaker": "counterpart", "text": "在吗"}
+
+    first_payload = order_user_present_payload(
+        {
+            "inner_life_snapshot": {
+                "materials": {"recent_dialogue": [first_turn, second_turn]},
+            }
+        }
+    )
+    second_payload = order_user_present_payload(
+        {
+            "inner_life_snapshot": {
+                "materials": {"recent_dialogue": [first_turn, second_turn, third_turn]},
+            }
+        }
+    )
+    first_dialogue = first_payload["inner_life_snapshot"]["materials"]["recent_dialogue"]
+    second_dialogue = second_payload["inner_life_snapshot"]["materials"]["recent_dialogue"]
+    assert isinstance(first_dialogue, dict)
+    assert isinstance(second_dialogue, dict)
+    assert recent_dialogue_material_entries(first_dialogue) == [first_turn, second_turn]
+    assert recent_dialogue_material_entries(second_dialogue) == [
+        first_turn,
+        second_turn,
+        third_turn,
+    ]
+    assert first_dialogue["volatile_last_turn"] == second_turn
+    assert second_dialogue["volatile_last_turn"] == third_turn
+    assert cache_stable_recent_dialogue([first_turn]) == [first_turn]
+    assert cache_stable_recent_dialogue([first_turn]) == [first_turn]
 
 
 def test_snapshot_keeps_chronological_dialogue_tail_and_delivery_state() -> None:

@@ -14,7 +14,10 @@ import hashlib
 import json
 from typing import Protocol
 
-from ..llm import model_call_scope
+import httpx
+
+from ..llm import ModelCircuitOpenError, model_call_scope
+from .model_usage_budget import BackgroundSpendCapDenied, ModelUsageAdmissionError
 
 from .fact_reducers import (
     INSTALLED_FACT_PREDICATE_CARDINALITY,
@@ -67,6 +70,34 @@ def _digest(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+def _fact_draft_provider_failure_code(exc: BaseException) -> str:
+    if isinstance(exc, BackgroundSpendCapDenied):
+        return exc.reason
+    if isinstance(exc, ModelUsageAdmissionError):
+        message = str(exc).strip()
+        if message.startswith("world v2 background model call skipped: "):
+            return message.removeprefix("world v2 background model call skipped: ")[:128]
+        return "budget_denied"
+    if isinstance(exc, ModelCircuitOpenError):
+        return "provider_circuit_open"
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status == 402:
+            return "provider_payment_required"
+        if status == 429:
+            return "provider_rate_limited"
+        if status >= 500:
+            return "provider_server_error"
+        return f"provider_http_{status}"
+    if isinstance(exc, TimeoutError):
+        return "provider_timeout"
+    return "provider_exception"
+
+
+def _raise_fact_draft_provider_failure(exc: BaseException) -> None:
+    raise FactDraftTechnicalFailure(_fact_draft_provider_failure_code(exc)) from exc
 
 
 def _parse(raw: str) -> dict[str, object]:
@@ -227,7 +258,7 @@ class FactObservationProposalAdapter:
         except TimeoutError:
             raise
         except Exception as exc:
-            raise FactDraftTechnicalFailure("provider_exception") from exc
+            _raise_fact_draft_provider_failure(exc)
         try:
             return self._materialize_batch(
                 raw=raw,
@@ -265,7 +296,7 @@ class FactObservationProposalAdapter:
             except ValueError as exc:
                 raise FactDraftTechnicalFailure("invalid_output") from exc
             except Exception as exc:
-                raise FactDraftTechnicalFailure("provider_exception") from exc
+                _raise_fact_draft_provider_failure(exc)
 
     def _materialize_batch(
         self,
@@ -339,7 +370,7 @@ class FactObservationProposalAdapter:
         except TimeoutError:
             raise
         except Exception as exc:
-            raise FactDraftTechnicalFailure("provider_exception") from exc
+            _raise_fact_draft_provider_failure(exc)
         try:
             result = materialize_fact_observation_draft(
                 raw=raw,
@@ -393,7 +424,7 @@ class FactObservationProposalAdapter:
             except ValueError as exc:
                 raise FactDraftTechnicalFailure("invalid_output") from exc
             except Exception as exc:
-                raise FactDraftTechnicalFailure("provider_exception") from exc
+                _raise_fact_draft_provider_failure(exc)
 
     async def _complete(self, messages: list[dict[str, str]]) -> str:
         complete_json = getattr(self._model, "complete_json", None)

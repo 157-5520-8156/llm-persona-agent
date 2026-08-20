@@ -22,6 +22,7 @@ from ..usage_metrics import (
     CNY_PER_USD,
     estimate_model_cost,
     estimate_routed_model_reserve_cny,
+    is_deepseek_peak,
     price_usage_row,
 )
 
@@ -50,6 +51,19 @@ VISIBLE_INBOUND_PURPOSES = frozenset(
         "recall_control_transfer",
         "validation_reselection",
         "qq_attachment_perception",
+    }
+)
+
+# Optional background lanes that may wait for Beijing off-peak pricing without
+# changing what the user sees on the next visible turn.
+OFFPEAK_PREFERRED_PURPOSES = frozenset(
+    {
+        "experience_memory_retention",
+        "fact_memory_retention",
+        "life_development_draft",
+        "life_development_choice",
+        "life_development_novel_origin_review",
+        "private_impression_reflection",
     }
 )
 
@@ -112,6 +126,11 @@ class ModelUsageAdmissionError(ValueError):
 
 class BackgroundSpendCapDenied(ModelUsageAdmissionError):
     """Background model work hit the CNY envelope; do not call the provider."""
+
+    def __init__(self, reason: str, *, message: str | None = None) -> None:
+        normalized = str(reason or "background_spend_cap_denied").strip() or "background_spend_cap_denied"
+        self.reason = normalized[:128]
+        super().__init__(message or f"world v2 background model call skipped: {self.reason}")
 
 
 def _is_invalid_cost(*, purpose: str, attempt: int) -> bool:
@@ -287,6 +306,8 @@ class WorldV2UsageStore:
             return "daily_budget_exceeded"
         if purpose in VISIBLE_INBOUND_PURPOSES:
             return None
+        if purpose in OFFPEAK_PREFERRED_PURPOSES and is_deepseek_peak():
+            return "deferred_offpeak"
         if (
             self._soft_daily_budget_cny is not None
             and daily + amount > self._soft_daily_budget_cny
@@ -384,9 +405,7 @@ class WorldV2UsageStore:
                     world_id=world_id,
                     turn_id=turn_id,
                 )
-                raise BackgroundSpendCapDenied(
-                    f"world v2 background model call skipped: {reason}"
-                )
+                raise BackgroundSpendCapDenied(reason)
         token = reservation_id.strip() or f"reservation:{uuid.uuid4().hex}"
         created_at = datetime.now(timezone.utc).isoformat()
         with self._lock:

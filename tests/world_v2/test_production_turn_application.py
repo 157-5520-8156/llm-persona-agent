@@ -29,6 +29,7 @@ from companion_daemon.world_v2.character_interior.inbound_wire import (
 from companion_daemon.world_v2.character_interior.inbound_author import (
     _InboundCharacterAuthor,
 )
+from companion_daemon.world_v2.present_prompt import recent_dialogue_material_entries
 from companion_daemon.world_v2.deliberation import (
     ModelInput,
     ModelOutput,
@@ -3620,7 +3621,9 @@ async def test_next_turn_context_replays_recent_user_and_delivered_companion_tex
 
     provider_material = json.loads(second_chat.requests[0][1]["content"])
     snapshot = provider_material["inner_life_snapshot"]
-    values = snapshot["materials"]["recent_dialogue"]
+    values = recent_dialogue_material_entries(
+        snapshot["materials"]["recent_dialogue"]
+    )
     assert any(
         item["speaker"] == "counterpart" and item["text"] == "我今天在路上看到一只特别亲人的橘猫。"
         for item in values

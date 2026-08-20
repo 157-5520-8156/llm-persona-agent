@@ -16,6 +16,7 @@ import json
 import logging
 from typing import Literal
 
+from ..usage_metrics import interaction_fact_retry_delay_seconds
 from .errors import ConcurrencyConflict
 from .epoch_migration_source import is_epoch_genesis_fact
 from .event_identity import domain_idempotency_key
@@ -1050,14 +1051,17 @@ class InteractionFactTriggerRuntime:
             process.claim_lease.acquired_at,
         )
         retry_ordinal = len(process.attempt_ids)
-        delay_seconds = INTERACTION_FACT_RETRY_DELAYS_SECONDS[
-            min(max(retry_ordinal, 1), len(INTERACTION_FACT_RETRY_DELAYS_SECONDS)) - 1
-        ]
+        normalized_failure = (failure_code or "unknown_failure")[:128]
+        delay_seconds = interaction_fact_retry_delay_seconds(
+            failure_code=normalized_failure,
+            retry_ordinal=retry_ordinal,
+            default_delays=INTERACTION_FACT_RETRY_DELAYS_SECONDS,
+        )
         payload = InteractionFactTechnicalFailurePayload(
             trigger_id=process.trigger_id,
             attempt_id=process.claim_lease.attempt_id,
             phase=phase,
-            failure_code=(failure_code or "unknown_failure")[:128],
+            failure_code=normalized_failure,
             failed_at=failed_at,
             retry_ordinal=retry_ordinal,
             next_retry_at=failed_at + timedelta(seconds=delay_seconds),

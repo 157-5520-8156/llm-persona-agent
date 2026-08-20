@@ -404,6 +404,27 @@ def test_background_purpose_is_denied_before_the_provider_call(tmp_path) -> None
     assert row[1] == "soft_daily_budget_exceeded"
 
 
+def test_offpeak_preferred_purpose_is_deferred_during_beijing_peak(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "companion_daemon.world_v2.model_usage_budget.is_deepseek_peak",
+        lambda *_args, **_kwargs: True,
+    )
+    store = WorldV2UsageStore(
+        path=str(tmp_path / "usage.sqlite"),
+        monthly_budget_cny=100.0,
+        daily_budget_cny=100.0,
+        soft_daily_budget_cny=100.0,
+    )
+    with pytest.raises(BackgroundSpendCapDenied, match="deferred_offpeak"):
+        store.admit_provider_call(
+            purpose="life_development_draft",
+            actor="agent:companion",
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            prompt_characters=100,
+        )
+
+
 def test_inbound_purpose_is_not_blocked_by_soft_daily_cap(tmp_path) -> None:
     store = WorldV2UsageStore(
         path=str(tmp_path / "usage.sqlite"),
