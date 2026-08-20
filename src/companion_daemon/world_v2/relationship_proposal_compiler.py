@@ -993,7 +993,6 @@ class RelationshipProposalCompiler:
             item
             for item in plan.history
             if item.state == "completed"
-            and item.receipt_id == receipt.receipt_id
             and item.terminal_action_state == "delivered"
         )
         beat_terminal = tuple(
@@ -1003,6 +1002,10 @@ class RelationshipProposalCompiler:
             and item.receipt_id == receipt.receipt_id
             and item.terminal_action_state == "delivered"
         )
+        # A multi-beat plan is completed by its final beat's receipt.  The
+        # relationship sentence may be an earlier delivered beat, whose own
+        # terminal receipt is already bound above.  Requiring both receipt IDs
+        # to be identical made every non-final declaration impossible to land.
         if len(plan_terminal) != 1 or len(beat_terminal) != 1:
             raise RelationshipProposalCompilerError(
                 "commitment_expression_not_delivered"

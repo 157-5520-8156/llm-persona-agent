@@ -199,7 +199,7 @@ def test_slim_waiting_for_is_clipped_instead_of_failing_the_turn() -> None:
     )
 
 
-def test_slim_consider_schema_still_fits_g4_after_waiting_for() -> None:
+def test_slim_consider_schema_still_fits_g4_with_commitment_triplet() -> None:
     from companion_daemon.world_v2.present_prompt import slim_consider_json_schema
 
     required, total, depth = json_schema_g4_metrics(slim_consider_json_schema())
@@ -207,7 +207,7 @@ def test_slim_consider_schema_still_fits_g4_after_waiting_for() -> None:
     # schema.  The real G4 area cap is asserted on compact_gate_for below,
     # where payload_json is one string property.
     assert required <= 3
-    assert total <= 20
+    assert total <= 24
     assert depth <= 2
     compact = InboundToolContracts().compact_gate_for(
         capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,

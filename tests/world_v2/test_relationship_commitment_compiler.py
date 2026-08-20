@@ -615,6 +615,30 @@ def _rewrite_compiled_commitment_event(
     )
 
 
+def test_public_reducer_accepts_commitment_from_a_delivered_nonfinal_beat() -> None:
+    ledger, _source, _audit_cursor, proposal_event = (
+        _compiled_commitment_proposal_event()
+    )
+    plan = ledger._current.expression_plans[0]  # noqa: SLF001 - projection fixture
+    completed = plan.history[-1].model_copy(
+        update={"receipt_id": "receipt:later-final-beat"}
+    )
+    delivery = ledger._current.model_copy(  # noqa: SLF001 - projection fixture
+        update={
+            "expression_plans": (
+                plan.model_copy(update={"history": (plan.history[0], completed)}),
+            )
+        }
+    )
+
+    reduced = reduce_event(
+        _reducer_state_with_delivery(ledger, delivery_projection=delivery),
+        proposal_event,
+    )
+
+    assert len(reduced.relationship_proposals) == 1
+
+
 @pytest.mark.parametrize(
     "coordinate",
     ("target_stage", "commitment_code", "visible_text_span"),
@@ -881,6 +905,36 @@ def test_record_commitment_rebased_requires_delivered_expression_and_records_typ
     )
 
 
+def test_record_commitment_rebased_accepts_a_delivered_nonfinal_beat() -> None:
+    ledger, proposal, audit_cursor, current_cursor = _compiler_fixture()
+    plan = ledger._current.expression_plans[0]  # noqa: SLF001 - projection fixture
+    completed = plan.history[-1].model_copy(
+        update={"receipt_id": "receipt:later-final-beat"}
+    )
+    ledger._current = ledger._current.model_copy(  # noqa: SLF001 - projection fixture
+        update={
+            "expression_plans": (
+                plan.model_copy(update={"history": (plan.history[0], completed)}),
+            )
+        }
+    )
+
+    result = RelationshipProposalCompiler(ledger=ledger).record_commitment_rebased(
+        world_id=WORLD_ID,
+        audit_cursor=audit_cursor,
+        current_cursor=current_cursor,
+        proposal_id=proposal.proposal_id,
+    )
+
+    assert result.status == "candidate_recorded"
+    mutation = RelationshipCommitmentAcceptedPayload.model_validate_json(
+        RelationshipProposalProjection.model_validate_json(
+            ledger.recorded[0].payload_json
+        ).proposed_mutation.payload_json
+    )
+    assert mutation.commitment.delivery_proof.receipt_id == RECEIPT_ID
+
+
 def test_record_commitment_rebased_binds_qq_target_separately_from_subject() -> None:
     ledger, proposal, audit_cursor, current_cursor = _compiler_fixture(
         delivery_target="conversation:qq:c2c:openid"
@@ -1043,9 +1097,12 @@ def test_record_commitment_rebased_counts_overlapping_visible_span_occurrences()
         )
 
 
-def test_record_commitment_rebased_rejects_uninstalled_stage_skip() -> None:
+@pytest.mark.parametrize("target_stage", ("close_friend", "lover"))
+def test_record_commitment_rebased_rejects_uninstalled_stage_skip(
+    target_stage: str,
+) -> None:
     ledger, proposal, audit_cursor, current_cursor = _compiler_fixture(
-        target_stage="close_friend"
+        target_stage=target_stage
     )
 
     with pytest.raises(

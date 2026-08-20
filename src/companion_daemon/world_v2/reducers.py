@@ -5344,7 +5344,6 @@ def _validate_relationship_commitment_delivery_rebase(
         != 1
         or not any(
             item.state == "completed"
-            and item.receipt_id == proof.receipt_id
             and item.terminal_action_state == "delivered"
             for item in plans[0].history
         )
