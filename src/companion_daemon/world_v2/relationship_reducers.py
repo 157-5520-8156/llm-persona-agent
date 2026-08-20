@@ -544,9 +544,15 @@ def adjust_relationship_slow_variables(
     else:
         next_stage, next_hysteresis = _derive_stage(stage, calculated, hysteresis, logical_time)
     if next_stage != payload.stage_after:
-        raise ValueError("relationship stage does not match hysteresis policy")
+        if not allow_legacy_relationship_policy_digest:
+            raise ValueError("relationship stage does not match hysteresis policy")
+        # Replay of a historically accepted adjustment: the recorded stage is
+        # authority.  Live commits still re-derive against the installed ladder.
+        next_stage = payload.stage_after
     if next_hysteresis != payload.hysteresis_after:
-        raise ValueError("relationship hysteresis accumulator does not match policy")
+        if not allow_legacy_relationship_policy_digest:
+            raise ValueError("relationship hysteresis accumulator does not match policy")
+        next_hysteresis = payload.hysteresis_after
     if calculated == before and next_stage == stage and next_hysteresis == hysteresis:
         raise ValueError("relationship adjustment is a semantic no-op")
     updated = RelationshipStateProjection(

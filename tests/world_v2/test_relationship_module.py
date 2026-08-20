@@ -385,6 +385,62 @@ def test_relationship_policy_digest_binds_commitment_transition_graph(
         )
 
 
+def test_replay_keeps_recorded_hysteresis_when_ordinary_ladder_changed() -> None:
+    """Pre-2026-08-20 mean-of-six 2000 would not open acquaintance hysteresis here.
+
+    Four-axis 500 now would.  Historical project_at must keep the recorded
+    accumulator; a live commit with the installed digest must still refuse.
+    """
+    source = signal(
+        "signal:legacy-hysteresis",
+        code="care_observed",
+        contradiction_group_ref="group:legacy-hysteresis",
+    )
+    before = RelationshipVariablesProjection()
+    after = RelationshipVariablesProjection(
+        trust_bp=500,
+        closeness_bp=500,
+        mutuality_bp=500,
+        respect_bp=500,
+    )
+    accepted = RelationshipVariableDeltas(
+        trust_bp=500,
+        closeness_bp=500,
+        mutuality_bp=500,
+        respect_bp=500,
+    )
+    recorded = adjustment_payload(
+        source,
+        adjustment_id="adjustment:legacy-hysteresis",
+        expected_revision=0,
+        before=before,
+        after=after,
+        accepted=accepted,
+    ).model_copy(update={"policy_digest": PRODUCTION_H23_MEAN_SIX_DIGEST})
+    live_mismatch = recorded.model_copy(update={"policy_digest": RELATIONSHIP_POLICY_DIGEST})
+
+    with pytest.raises(ValueError, match="hysteresis accumulator does not match policy"):
+        adjust_relationship_slow_variables(
+            (),
+            (),
+            (source,),
+            live_mismatch,
+            logical_time=NOW,
+        )
+
+    states, history = adjust_relationship_slow_variables(
+        (),
+        (),
+        (source,),
+        recorded,
+        logical_time=NOW,
+        allow_legacy_relationship_policy_digest=True,
+    )
+    assert states[0].stage == "stranger"
+    assert states[0].hysteresis == RelationshipHysteresisProjection()
+    assert history[0].hysteresis_after == RelationshipHysteresisProjection()
+
+
 def test_relationship_signals_accumulate_inside_a_contradiction_group() -> None:
     first = signal("signal:care", code="care_observed", contradiction_group_ref="group:care")
     second = signal(
