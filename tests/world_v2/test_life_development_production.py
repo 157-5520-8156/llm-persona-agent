@@ -39,8 +39,8 @@ NOW = datetime(2026, 7, 29, 10, 0, tzinfo=UTC)
 
 def _force_life_development_draw(monkeypatch: pytest.MonkeyPatch, token: str) -> None:
     monkeypatch.setattr(
-        "companion_daemon.world_v2.life_development_runtime.draw_life_development_opportunity",
-        lambda **_kwargs: token,
+        "companion_daemon.world_v2.life_development_runtime.LifeDevelopmentRuntime._resolve_occasion_draw",
+        lambda self, **_kwargs: token,
     )
 
 

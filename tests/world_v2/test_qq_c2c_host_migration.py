@@ -3350,9 +3350,9 @@ async def test_qq_production_composition_ticks_life_from_plan_through_experience
     import companion_daemon.world_v2.life_development_runtime as life_dev_runtime
 
     monkeypatch.setattr(
-        life_dev_runtime,
-        "draw_life_development_opportunity",
-        lambda **_kwargs: life_dev_runtime.LIFE_DEVELOPMENT_OPPORTUNITY_REF,
+        life_dev_runtime.LifeDevelopmentRuntime,
+        "_resolve_occasion_draw",
+        lambda self, **_kwargs: life_dev_runtime.LIFE_DEVELOPMENT_OPPORTUNITY_REF,
     )
     conversation_reviewer = _NamedCompactReviewNoCallModel(
         "qq-life-vertical-compact-reviewer"

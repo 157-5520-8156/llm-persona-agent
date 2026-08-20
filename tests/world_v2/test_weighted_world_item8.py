@@ -161,15 +161,24 @@ def test_life_capability_compiler_exposes_the_reviewed_catalog(tmp_path: Path) -
 
 def test_life_development_opportunity_draw_is_replay_stable() -> None:
     from companion_daemon.world_v2.life_development_runtime import (
+        LIFE_DEVELOPMENT_DISTURBANCE_REF,
         LIFE_DEVELOPMENT_NOTHING_REF,
         LIFE_DEVELOPMENT_OPPORTUNITY_REF,
         draw_life_development_opportunity,
         life_development_opportunity_weights,
+        occasion_mode_for_draw,
+        outcome_has_durable_world_consequence,
+        validate_disturbance_consequence_closure,
+    )
+    from companion_daemon.world_v2.life_development_draft import (
+        LifeDevelopmentDraftError,
+        LifeDevelopmentOutcomeDraft,
     )
 
     weights = life_development_opportunity_weights()
     assert weights[LIFE_DEVELOPMENT_OPPORTUNITY_REF] == 2_000
-    assert weights[LIFE_DEVELOPMENT_NOTHING_REF] == 8_000
+    assert weights[LIFE_DEVELOPMENT_DISTURBANCE_REF] == 600
+    assert weights[LIFE_DEVELOPMENT_NOTHING_REF] == 7_400
     seed = {
         "catalog_hash": "a" * 64,
         "wake_event_ref": "event:clock:life",
@@ -177,4 +186,39 @@ def test_life_development_opportunity_draw_is_replay_stable() -> None:
     first = draw_life_development_opportunity(**seed)
     second = draw_life_development_opportunity(**seed)
     assert first == second
-    assert first in {LIFE_DEVELOPMENT_NOTHING_REF, LIFE_DEVELOPMENT_OPPORTUNITY_REF}
+    assert first in {
+        LIFE_DEVELOPMENT_NOTHING_REF,
+        LIFE_DEVELOPMENT_OPPORTUNITY_REF,
+        LIFE_DEVELOPMENT_DISTURBANCE_REF,
+    }
+    assert occasion_mode_for_draw(LIFE_DEVELOPMENT_DISTURBANCE_REF) == "disturbance"
+    assert occasion_mode_for_draw(LIFE_DEVELOPMENT_OPPORTUNITY_REF) == "ordinary"
+
+    durable = LifeDevelopmentOutcomeDraft(
+        experienced_by_ref="actor:companion",
+        text="书店临时闭店，她改去图书馆。",
+        privacy_class="shareable",
+        relative_plausibility_weight=1,
+        claim_refs=["local:claim:closed"],
+        dynamic_life_direction={
+            "summary": "书店本周闭店装修。",
+            "context_tags": ["constraint:bookstore-closed"],
+        },
+    )
+    assert outcome_has_durable_world_consequence(durable)
+
+    atmosphere_only = LifeDevelopmentOutcomeDraft(
+        experienced_by_ref="actor:companion",
+        text="风有点凉，她裹了裹外套。",
+        privacy_class="shareable",
+        relative_plausibility_weight=1,
+        claim_refs=["local:claim:wind"],
+    )
+    assert not outcome_has_durable_world_consequence(atmosphere_only)
+
+    from types import SimpleNamespace
+
+    with pytest.raises(LifeDevelopmentDraftError, match="disturbance_missing_consequence"):
+        validate_disturbance_consequence_closure(
+            SimpleNamespace(outcomes=(atmosphere_only, atmosphere_only))
+        )

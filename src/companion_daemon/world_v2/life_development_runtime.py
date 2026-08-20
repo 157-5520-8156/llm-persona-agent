@@ -50,6 +50,7 @@ from .life_development_draft import (
     LifeDevelopmentDraftError,
     LifeDevelopmentLocationCapability,
     LifeDevelopmentNoOpDraft,
+    LifeDevelopmentOutcomeDraft,
     LifeDevelopmentPossibilityDraft,
     LifeDevelopmentVisualEvidenceDraft,
     LifeDevelopmentWorldDraft,
@@ -134,8 +135,10 @@ _WORLD_AUTHOR_SOURCE_REWRITE_PROPOSE_REPAIR_CONTRACT = (
     "world-author-source-rewrite-propose-repair.1"
 )
 LIFE_DEVELOPMENT_OPPORTUNITY_REF = "life-development:opportunity"
+LIFE_DEVELOPMENT_DISTURBANCE_REF = "life-development:disturbance"
 LIFE_DEVELOPMENT_NOTHING_REF = "nothing:life-development"
 LIFE_DEVELOPMENT_OPPORTUNITY_MASS_BP = 2_000
+LIFE_DEVELOPMENT_DISTURBANCE_MASS_BP = 600
 _DYNAMIC_LIFE_DIRECTION_AUTHORITY = {
     "status": "optional_per_outcome",
     "authority": "world_author_event_impact",
@@ -153,9 +156,96 @@ _DYNAMIC_LIFE_DIRECTION_AUTHORITY = {
 
 def life_development_opportunity_weights() -> dict[str, int]:
     return inject_nothing_mass(
-        {LIFE_DEVELOPMENT_OPPORTUNITY_REF: LIFE_DEVELOPMENT_OPPORTUNITY_MASS_BP},
+        {
+            LIFE_DEVELOPMENT_OPPORTUNITY_REF: LIFE_DEVELOPMENT_OPPORTUNITY_MASS_BP,
+            LIFE_DEVELOPMENT_DISTURBANCE_REF: LIFE_DEVELOPMENT_DISTURBANCE_MASS_BP,
+        },
         nothing_ref=LIFE_DEVELOPMENT_NOTHING_REF,
     )
+
+
+def occasion_mode_for_draw(token: str) -> Literal["ordinary", "disturbance"]:
+    if token == LIFE_DEVELOPMENT_DISTURBANCE_REF:
+        return "disturbance"
+    return "ordinary"
+
+
+def outcome_has_durable_world_consequence(outcome: LifeDevelopmentOutcomeDraft) -> bool:
+    if outcome.dynamic_life_direction is not None:
+        return True
+    if outcome.objective_biographical_transition is not None:
+        return True
+    return bool(outcome.provisional_npcs or outcome.provisional_places)
+
+
+def validate_disturbance_consequence_closure(draft: LifeDevelopmentPossibilityDraft) -> None:
+    if not any(outcome_has_durable_world_consequence(item) for item in draft.outcomes):
+        raise LifeDevelopmentDraftError(
+            "disturbance_missing_consequence",
+            "disturbance occasion requires at least one outcome with durable world consequence",
+        )
+
+
+def compile_pressure_surfaces(
+    *,
+    manifest: LifeDevelopmentCapabilityManifest,
+    context: dict[str, object],
+) -> dict[str, object]:
+    """Expose active plans, NPC intents, and open obligations without steering content."""
+
+    active_plans: list[dict[str, object]] = []
+    for item in context.get("plans", ()) if isinstance(context.get("plans"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        status = item.get("status")
+        if status not in {"planned", "active", "paused"}:
+            continue
+        active_plans.append(
+            {
+                "plan_id": item.get("plan_id"),
+                "status": status,
+                "location_ref": item.get("location_ref"),
+                "scheduled_window": item.get("scheduled_window"),
+                "importance_bp": item.get("importance_bp"),
+            }
+        )
+    aspirations = context.get("active_aspirations")
+    aspiration_items = aspirations if isinstance(aspirations, list) else []
+    npc_surfaces = [
+        {
+            "npc_ref": item.npc_ref,
+            "lifecycle_state": item.lifecycle_state,
+            "active_plan_refs": list(item.active_plan_refs),
+            "current_location_ref": item.current_location_ref,
+            "protagonist_closeness_bp": item.protagonist_closeness_bp,
+        }
+        for item in manifest.npc_capabilities
+    ]
+    location_surfaces = [
+        {
+            "location_ref": item.location_ref,
+            "availability_kind": item.availability_kind,
+            "local_windows": list(item.local_windows),
+        }
+        for item in manifest.location_capabilities
+    ]
+    return {
+        "contract": "life-development-pressure-surfaces.1",
+        "authority": "source_bound_advisory",
+        "host_semantic_classification": False,
+        "active_plans": active_plans[:6],
+        "active_aspirations": aspiration_items[:4],
+        "npc_capabilities": npc_surfaces[:6],
+        "location_capabilities": location_surfaces[:8],
+        "biographical_context_tags": list(manifest.biographical_context_tags),
+        "biographical_coordinates": [
+            {
+                "coordinate_ref": item.coordinate_ref,
+                "context_tags": list(item.context_tags),
+            }
+            for item in manifest.biographical_coordinates[:6]
+        ],
+    }
 
 
 def draw_life_development_opportunity(
@@ -1172,6 +1262,17 @@ class LifeDevelopmentRuntime:
             else "deterministic:life-novel-origin"
         )
 
+    def _resolve_occasion_draw(
+        self,
+        *,
+        wake: WorldEvent,
+        manifest: LifeDevelopmentCapabilityManifest,
+    ) -> str:
+        return draw_life_development_opportunity(
+            catalog_hash=manifest.manifest_hash,
+            wake_event_ref=wake.event_id,
+        )
+
     async def advance_once(
         self,
         *,
@@ -1205,6 +1306,7 @@ class LifeDevelopmentRuntime:
                 "world_revision": world_cursor.world_revision,
             }
         )
+        occasion_mode: Literal["ordinary", "disturbance"] = "ordinary"
 
         recovered_world = self._recover_successful_model_run(
             proposal_id=proposal_id,
@@ -1224,11 +1326,17 @@ class LifeDevelopmentRuntime:
                 reason_code="life_development.world_author_unavailable",
             )
         if recovered_world is None:
+            occasion_draw = self._resolve_occasion_draw(
+                wake=wake,
+                manifest=world_manifest,
+            )
+            occasion_mode = occasion_mode_for_draw(occasion_draw)
             world_run = await self._world_author_draft(
                 context=world_context,
                 logical_time=wake.logical_time,
                 manifest=world_manifest,
                 wake_event_ref=wake.event_id,
+                occasion_mode=occasion_mode,
             )
             try:
                 world_audit = self._record_model_run(
@@ -1304,6 +1412,12 @@ class LifeDevelopmentRuntime:
             or raw is None
         ):
             raise ValueError("validated World Author run has no usable draft")
+        if (
+            recovered_world is None
+            and occasion_mode == "disturbance"
+            and isinstance(draft, LifeDevelopmentPossibilityDraft)
+        ):
+            validate_disturbance_consequence_closure(draft)
         source_closed = await self._source_close_world_author_result(
             proposal_id=proposal_id,
             wake=wake,
@@ -4561,6 +4675,7 @@ class LifeDevelopmentRuntime:
         logical_time: datetime,
         manifest: LifeDevelopmentCapabilityManifest,
         wake_event_ref: str,
+        occasion_mode: Literal["ordinary", "disturbance"] = "ordinary",
     ) -> _LifeDevelopmentModelRun:
         # The weighted table used to answer here with `{"decision":"no_op"}` on
         # 80% of wakes without calling anyone, which is a deterministic answer
@@ -4579,6 +4694,7 @@ class LifeDevelopmentRuntime:
             manifest=manifest,
             hard_boundary_contract=hard_boundary_contract,
             model_purpose="life_development_draft",
+            occasion_mode=occasion_mode,
         )
         attempts: list[_LifeDevelopmentAttempt] = []
         for ordinal in range(2):
@@ -4915,6 +5031,7 @@ class LifeDevelopmentRuntime:
         manifest: LifeDevelopmentCapabilityManifest,
         hard_boundary_contract: dict[str, object] | None = None,
         model_purpose: str = "life_development_draft",
+        occasion_mode: Literal["ordinary", "disturbance"] = "ordinary",
     ) -> list[dict[str, str]]:
         hard_boundary_contract = (
             hard_boundary_contract
@@ -4926,6 +5043,24 @@ class LifeDevelopmentRuntime:
         )
         profile = background_context_profile_for_purpose(model_purpose)
         pinned_context = slice_background_capsule_context(context, profile)
+        pressure_surfaces = (
+            compile_pressure_surfaces(manifest=manifest, context=pinned_context)
+            if occasion_mode == "disturbance"
+            else None
+        )
+        disturbance_clause = (
+            " This occasion is a sparse external-disturbance opportunity: the "
+            "pressure_surfaces block lists active plans, NPC intents, open "
+            "aspirations, and coordinate constraints you may use as factual "
+            "input. You may still answer no_op. If you propose, prefer "
+            "causal_authority=world_contingency when the world moves first, and "
+            "at least one outcome must carry durable world consequence through "
+            "dynamic_life_direction, objective_biographical_transition, or a "
+            "provisional NPC/place that would persist beyond the moment. Do not "
+            "write atmosphere that rounds back in the same breath."
+            if occasion_mode == "disturbance"
+            else ""
+        )
         return [
             {
                 "role": "system",
@@ -4949,6 +5084,8 @@ class LifeDevelopmentRuntime:
                     "choose (an invitation, a way to change her situation); prefer it "
                     "over world_contingency when the premise exists to offer her a "
                     "choice rather than to impose an environment. "
+                    + disturbance_clause
+                    + " "
                     "recent_life_texture presents a bounded "
                     "source-bound sample "
                     "of lived history so its semantic texture is visible rather than buried in "
@@ -5069,8 +5206,14 @@ class LifeDevelopmentRuntime:
                 "content": json.dumps(
                     {
                         "logical_time": logical_time.isoformat(),
+                        "occasion_mode": occasion_mode,
                         "pinned_world_context": pinned_context,
                         "recent_life_texture": compile_recent_life_texture(pinned_context),
+                        **(
+                            {"pressure_surfaces": pressure_surfaces}
+                            if pressure_surfaces is not None
+                            else {}
+                        ),
                         "authored_subject": {
                             "owner_actor_ref": self._owner,
                             "user_authority": "context_only",
@@ -6715,5 +6858,11 @@ __all__ = [
     "LifeDevelopmentReadableOutcome",
     "LifeDevelopmentResult",
     "LifeDevelopmentRuntime",
+    "compile_pressure_surfaces",
     "compile_recent_life_texture",
+    "draw_life_development_opportunity",
+    "life_development_opportunity_weights",
+    "occasion_mode_for_draw",
+    "outcome_has_durable_world_consequence",
+    "validate_disturbance_consequence_closure",
 ]
