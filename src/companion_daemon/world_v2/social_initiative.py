@@ -758,6 +758,13 @@ class SocialInitiativeCompiler:
             )
         if await self._post_silent_chain_active(projection):
             return None
+        situation = await self._situation_independent_contact(
+            projection,
+            logical_time,
+            excluded_consideration_ids=excluded_consideration_ids,
+        )
+        if situation is not None:
+            return situation
         spontaneous = await self._spontaneous_contact(projection, logical_time)
         if (
             spontaneous is not None
@@ -773,15 +780,6 @@ class SocialInitiativeCompiler:
             return await self._hitch_situation_materials(
                 projection, logical_time, adopted or spontaneous
             )
-        # Short ambient window closed. Shared-budget S18 lanes: prefer a
-        # fresh observable life event (B) over bare long silence (A).
-        situation = await self._situation_independent_contact(
-            projection,
-            logical_time,
-            excluded_consideration_ids=excluded_consideration_ids,
-        )
-        if situation is not None:
-            return situation
         long_silence = await self._long_silence_contact(
             projection,
             logical_time,
@@ -851,17 +849,6 @@ class SocialInitiativeCompiler:
         if await self._post_silent_chain_active(projection):
             return None
         try:
-            spontaneous = await self._spontaneous_contact(
-                projection,
-                logical_time,
-                record_draw=False,
-                allow_future=True,
-            )
-        except ValueError:
-            spontaneous = None
-        if spontaneous is not None:
-            return spontaneous.scheduled_for
-        try:
             situation = await self._situation_independent_contact(
                 projection,
                 logical_time,
@@ -873,6 +860,17 @@ class SocialInitiativeCompiler:
             situation = None
         if situation is not None:
             return situation.scheduled_for
+        try:
+            spontaneous = await self._spontaneous_contact(
+                projection,
+                logical_time,
+                record_draw=False,
+                allow_future=True,
+            )
+        except ValueError:
+            spontaneous = None
+        if spontaneous is not None:
+            return spontaneous.scheduled_for
         try:
             long_silence = await self._long_silence_contact(
                 projection,
