@@ -58,6 +58,7 @@ from .qq_ingress_policy import (
     QQIngressFragment,
     QQIngressPolicyCatalog,
     QQIngressStore,
+    QQIngressSubmission,
     SQLiteQQIngressStore,
 )
 from .semantic_chat_composition import (
@@ -218,6 +219,15 @@ class QQC2CIngressResult:
     status: str
     action_id: str | None
     canonical_user_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedInboundFragment:
+    fragment: QQIngressFragment
+    received_at: datetime
+    burst_continuation: bool
+    submitted: QQIngressSubmission
+    final_result: QQC2CIngressResult | None
 
 
 def _system_notice_failure_code(outcome: object) -> str | None:
@@ -381,6 +391,10 @@ class QQC2CHost:
         # enters World cognition; SQLite/World CAS remains the cross-process
         # effect-once authority.
         self._ingress_batch_tasks: dict[str, asyncio.Task[QQC2CIngressResult]] = {}
+        # Fast-ack HTTP ingress keeps one process-owned task per durable
+        # fragment until coalesce/rhythm/claim completes.  SQLite submit remains
+        # the cross-restart authority; these tasks are the in-process bridge.
+        self._ingress_fragment_tasks: dict[str, asyncio.Task[QQC2CIngressResult]] = {}
         self._lock = asyncio.Lock()
         # Serialize passive scheduler passes with one another.  A visible
         # turn's *targeted* Action deliberately does not take this mutex:
@@ -690,8 +704,32 @@ class QQC2CHost:
             )
         )
 
+    async def accept_inbound_fragment(self, fragment: QQIngressFragment) -> QQC2CIngressResult:
+        """Durable submit plus immediate HTTP ack; processing continues in background."""
+
+        prepared = await self._prepare_inbound_fragment(fragment)
+        if prepared.final_result is not None:
+            return prepared.final_result
+        self._start_owned_ingress_fragment_task(prepared)
+        return QQC2CIngressResult(
+            status="accepted",
+            action_id=None,
+            canonical_user_id=self._canonical_user_id,
+        )
+
     async def inbound_fragment(self, fragment: QQIngressFragment) -> QQC2CIngressResult:
         """Persist one normalized fragment and join its deterministic batch."""
+
+        prepared = await self._prepare_inbound_fragment(fragment)
+        if prepared.final_result is not None:
+            return prepared.final_result
+        return await self._process_prepared_inbound_fragment(prepared)
+
+    async def _prepare_inbound_fragment(
+        self,
+        fragment: QQIngressFragment,
+    ) -> _PreparedInboundFragment:
+        """Submit one fragment and apply arrival-only side effects."""
 
         if self._closed:
             raise RuntimeError("QQ C2C host is closing")
@@ -710,10 +748,16 @@ class QQC2CHost:
         previous_received_at = self._last_content_received_at
         submitted = self._ingress_store.submit(fragment, received_at=received_at)
         if submitted.state == "committed":
-            return QQC2CIngressResult(
-                status=submitted.outcome_status or "observed_only",
-                action_id=submitted.action_id,
-                canonical_user_id=self._canonical_user_id,
+            return _PreparedInboundFragment(
+                fragment=fragment,
+                received_at=received_at,
+                burst_continuation=burst_continuation,
+                submitted=submitted,
+                final_result=QQC2CIngressResult(
+                    status=submitted.outcome_status or "observed_only",
+                    action_id=submitted.action_id,
+                    canonical_user_id=self._canonical_user_id,
+                ),
             )
         if fragment.content_shape == "control":
             if fragment.control_kind == "typing_started":
@@ -736,10 +780,16 @@ class QQC2CHost:
                 self._last_typing_started_at = None
                 self._typing_signal_event.set()
             self._restart_endpoint_prediction(received_at=received_at)
-            return QQC2CIngressResult(
-                status="deferred",
-                action_id=None,
-                canonical_user_id=self._canonical_user_id,
+            return _PreparedInboundFragment(
+                fragment=fragment,
+                received_at=received_at,
+                burst_continuation=burst_continuation,
+                submitted=submitted,
+                final_result=QQC2CIngressResult(
+                    status="deferred",
+                    action_id=None,
+                    canonical_user_id=self._canonical_user_id,
+                ),
             )
         cancel_streams = getattr(
             self._host,
@@ -776,7 +826,23 @@ class QQC2CHost:
             self._endpoint_fragments.append((fragment.source_event_id, fragment.text))
             self._recent_message_character_counts.append(len(fragment.text))
             self._restart_endpoint_prediction(received_at=received_at)
-        delay = max(0.0, (submitted.due_at - self._ingress_now()).total_seconds())
+        return _PreparedInboundFragment(
+            fragment=fragment,
+            received_at=received_at,
+            burst_continuation=burst_continuation,
+            submitted=submitted,
+            final_result=None,
+        )
+
+    async def _process_prepared_inbound_fragment(
+        self,
+        prepared: _PreparedInboundFragment,
+    ) -> QQC2CIngressResult:
+        fragment = prepared.fragment
+        delay = max(
+            0.0,
+            (prepared.submitted.due_at - self._ingress_now()).total_seconds(),
+        )
         if delay:
             self._coalescing_waits += 1
             try:
@@ -790,8 +856,8 @@ class QQC2CHost:
         await asyncio.sleep(0)
         await self._hold_for_sender_rhythm(
             fragment=fragment,
-            received_at=received_at,
-            burst_continuation=burst_continuation,
+            received_at=prepared.received_at,
+            burst_continuation=prepared.burst_continuation,
         )
         for _ in range(8):
             # The store's short claim transaction is the same-burst join seam.
@@ -827,6 +893,42 @@ class QQC2CHost:
             action_id=None,
             canonical_user_id=self._canonical_user_id,
         )
+
+    def _start_owned_ingress_fragment_task(
+        self,
+        prepared: _PreparedInboundFragment,
+    ) -> None:
+        source_event_id = prepared.fragment.source_event_id
+        existing = self._ingress_fragment_tasks.get(source_event_id)
+        if existing is not None and not existing.done():
+            return
+        task = asyncio.create_task(
+            self._run_owned_ingress_fragment(prepared),
+            name=f"qq-c2c-ingress-fragment:{source_event_id}",
+        )
+        self._ingress_fragment_tasks[source_event_id] = task
+        task.add_done_callback(
+            lambda completed, source_id=source_event_id: self._finish_ingress_fragment_task(
+                source_id,
+                completed,
+            )
+        )
+
+    async def _run_owned_ingress_fragment(
+        self,
+        prepared: _PreparedInboundFragment,
+    ) -> QQC2CIngressResult:
+        return await self._process_prepared_inbound_fragment(prepared)
+
+    def _finish_ingress_fragment_task(
+        self,
+        source_event_id: str,
+        task: asyncio.Task[QQC2CIngressResult],
+    ) -> None:
+        if self._ingress_fragment_tasks.get(source_event_id) is task:
+            self._ingress_fragment_tasks.pop(source_event_id, None)
+        if not task.cancelled():
+            task.exception()
 
     # Provider-local sender-rhythm pacing delays only the *claim*; it never
     # changes batch identity, ledger state, or replay. The durable transport
@@ -1946,7 +2048,7 @@ class QQC2CHost:
                     run_life_ecology=False,
                 )
             )
-        if run_life_ecology:
+        if run_life_ecology and not self._visible_turn_in_flight():
             async with self._scheduled_work_lock:
                 await self._advance_life_ecology_for_committed_tick(
                     tick_id=tick_id,
@@ -2251,6 +2353,8 @@ class QQC2CHost:
                 # Yield the event loop between durable units so a just-arrived
                 # visible turn can claim its batch before the next unit starts.
                 await asyncio.sleep(0)
+                if self._visible_turn_in_flight():
+                    break
                 if result is None:
                     break
                 work_status = getattr(result, "work_status", None)
@@ -2444,7 +2548,7 @@ class QQC2CHost:
                 targeted = await asyncio.shield(self._start_owned_action_drain(priority_action_id))
                 if targeted is not None:
                     post_tick_actions.append(str(getattr(targeted, "status", "processed")))
-            if heartbeat_life_wake is not None:
+            if heartbeat_life_wake is not None and not self._visible_turn_in_flight():
                 await self._advance_life_ecology_for_committed_tick(
                     tick_id=heartbeat_life_wake[0],
                     trace_id=heartbeat_life_wake[1],
@@ -2699,6 +2803,30 @@ class QQC2CHost:
         # The gate was sealed before this task started, so the registry cannot
         # gain another public owner while it is being joined.
         await self._join_owned_scheduler_lane_tasks()
+        fragment_tasks = tuple(self._ingress_fragment_tasks.values())
+        if fragment_tasks:
+            _done, pending_fragments = await asyncio.wait(
+                fragment_tasks,
+                timeout=self._owned_action_close_grace_seconds,
+            )
+            if pending_fragments:
+                _LOG.warning(
+                    "world v2 close grace elapsed; cancelling %d owned "
+                    "ingress fragment task(s) for durable recovery",
+                    len(pending_fragments),
+                )
+                for task in pending_fragments:
+                    task.cancel()
+                _cancelled, still_pending_fragments = await asyncio.wait(
+                    pending_fragments,
+                    timeout=_OWNED_ACTION_DRAIN_CANCEL_GRACE_SECONDS,
+                )
+                if still_pending_fragments:
+                    _LOG.error(
+                        "world v2 owned ingress fragment tasks ignored cancellation "
+                        "during close count=%d",
+                        len(still_pending_fragments),
+                    )
         ingress = tuple(self._ingress_batch_tasks.values())
         if ingress:
             _done, pending_ingress = await asyncio.wait(
@@ -2796,6 +2924,8 @@ class QQC2CHost:
             return 1
         return int(
             getattr(self._host, "shutdown_pending_task_count", 0) > 0
+            or bool(self._ingress_fragment_tasks)
+            or bool(self._ingress_batch_tasks)
             or (
                 self._semantic_chat is not None
                 and getattr(

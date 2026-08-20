@@ -1,6 +1,7 @@
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -709,6 +710,9 @@ async def test_v5_freezes_complete_expression_candidate_without_free_direction_t
         not in replace(result.plan, photographic_authenticity=None).to_payload()
     )
     prompt = compile_media_prompt(result.plan, None)
+    assert prompt.startswith("Render one personal phone photograph of this fictional character.")
+    assert "ordinary personal phone capture rather than a generated beauty portrait" in prompt
+    assert "authenticity must come from optics, light, texture, and an unresolved moment" in prompt
     assert prompt.index("Selected event evidence") < prompt.index("Interaction Bid")
     assert prompt.index("Interaction Bid") < prompt.index("Media Address Strategy")
     assert prompt.index("Media Address Strategy") < prompt.index("Camera Geometry")
@@ -2617,6 +2621,29 @@ async def test_renderer_keeps_references_for_adapter_without_quality_parameter(
 
     assert isinstance(result, RenderedMedia)
     assert generator.references == (reference,)
+
+
+def test_v5_renderer_sends_only_frozen_identity_anchor(tmp_path: Path) -> None:
+    identity = tmp_path / "08-canonical.png"
+    angle = tmp_path / "06-angle.png"
+    identity.write_bytes(b"same established face")
+    angle.write_bytes(b"style-heavy angle support")
+    plan = SimpleNamespace(
+        character_visibility="identifiable",
+        version="event-media-plan-v5",
+        identity_reference_selection=SimpleNamespace(
+            asset_ids=(str(identity), str(angle)),
+            roles=("identity_anchor", "angle_support"),
+        ),
+    )
+    renderer = MediaRenderer(
+        generator=None,  # type: ignore[arg-type]
+        inspector=None,  # type: ignore[arg-type]
+        output_dir=tmp_path,
+        visual_identity_path=None,
+    )
+
+    assert renderer._references(plan) == (identity,)
 
 
 @pytest.mark.asyncio

@@ -5505,6 +5505,18 @@ def test_napcat_v2_branch_never_builds_legacy_engine_and_normalizes_supported_sh
     class _Host:
         inbound_calls: list[dict[str, object]] = []
 
+        async def accept_inbound_fragment(self, fragment):  # type: ignore[no-untyped-def]
+            self.inbound_calls.append({"fragment": fragment})
+            return type(
+                "Result",
+                (),
+                {
+                    "status": "accepted",
+                    "action_id": None,
+                    "canonical_user_id": "geoff",
+                },
+            )()
+
         async def inbound_fragment(self, fragment):  # type: ignore[no-untyped-def]
             self.inbound_calls.append({"fragment": fragment})
             return type(
@@ -5582,12 +5594,12 @@ def test_napcat_v2_branch_never_builds_legacy_engine_and_normalizes_supported_sh
         )
 
     assert text.json() == {
-        "status": "action_authorized",
-        "world_action_id": "action:v2:1",
+        "status": "accepted",
+        "world_action_id": None,
         "canonical_user_id": "geoff",
     }
     assert group.json() == {"status": "ignored_group_v2_unsupported"}
-    assert sticker.json()["status"] == "action_authorized"
+    assert sticker.json()["status"] == "accepted"
     assert oversized.status_code == 400
     assert oversized.json() == {"status": "rejected_invalid_qq_ingress"}
     assert len(host.inbound_calls) == 2

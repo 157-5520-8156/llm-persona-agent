@@ -626,7 +626,7 @@ def create_qq_c2c_onebot_app(
             return {"status": "ignored_private"}
         archive_task = _start_attachment_archive(raw_event)
         try:
-            result = await host.inbound_fragment(fragment)
+            result = await host.accept_inbound_fragment(fragment)
         finally:
             if archive_task is not None:
                 await archive_task

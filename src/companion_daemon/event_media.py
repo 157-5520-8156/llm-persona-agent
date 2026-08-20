@@ -1977,14 +1977,20 @@ class MediaRenderer:
         if plan.character_visibility not in {"identifiable", "body_detail"}:
             return ()
         if plan.version == PLAN_VERSION_V5 and plan.identity_reference_selection:
-            # v5 freezes geometry-matched assets; expression charge never selects a bedroom pose.
-            return tuple(
-                path
-                for path in (
-                    Path(asset_id) for asset_id in plan.identity_reference_selection.asset_ids
+            # The frozen angle support remains useful planning/audit context, but
+            # reference-edit renderers blend its beauty treatment into the face.
+            # Send only the original canonical identity pixels to the provider.
+            paired = tuple(
+                (Path(asset_id), role)
+                for asset_id, role in zip(
+                    plan.identity_reference_selection.asset_ids,
+                    plan.identity_reference_selection.roles,
+                    strict=False,
                 )
-                if path.is_file()
-            )[:2]
+                if Path(asset_id).is_file()
+            )
+            identity_anchors = tuple(path for path, role in paired if role == "identity_anchor")
+            return identity_anchors[:1] or tuple(path for path, _role in paired)[:1]
         if (
             plan.version in QUALITY_PLAN_VERSIONS
             and plan.subject_presentation
@@ -2687,8 +2693,23 @@ def _compile_media_prompt_v5(
             "Keep reflection "
             "direction, hand contact, and phone orientation physically coherent.\n"
         )
+    phone_snapshot_priority = (
+        "Rendering priority: preserve the fictional character's identity, then make the result read as an "
+        "ordinary personal phone capture rather than a generated beauty portrait. Use physically motivated "
+        "light from the evidenced scene; retain visible pore-scale skin variation, fine facial hair, natural "
+        "under-eye and nasolabial variation, and small left-right differences without aging or dirtying her. "
+        "Let framing follow the frozen camera geometry without cosmetically re-centering the face or cleaning "
+        "the room. Keep ordinary phone depth of field and local exposure compromises; do not add cinematic "
+        "key/fill/rim lighting, beauty-filter skin, enlarged or glassy eyes, individually sculpted hair strands, "
+        "portrait-mode cutout blur, or showroom-perfect object placement. This is a clean, competent phone "
+        "image: authenticity must come from optics, light, texture, and an unresolved moment—not blanket grain, "
+        "blur, desaturation, clutter, or damage.\n"
+        if plan.character_visibility in {"identifiable", "body_detail"}
+        else ""
+    )
     return (
-        "Create one believable fictional personal-media photograph. No text or watermark.\n"
+        "Render one personal phone photograph of this fictional character. No text or watermark.\n"
+        f"{phone_snapshot_priority}"
         f"Frozen MediaPlan v5={plan.plan_id}; event={plan.event_id}; family={plan.family}.\n"
         f"Classification and Action: domain={plan.content_domain}; form={plan.visual_form}; "
         f"intent={plan.share_intent}; polish={plan.polish}; tone={plan.tone}; "
