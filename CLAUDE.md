@@ -56,7 +56,7 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 
 ### 生活生态（Life Ecology）
 - `activity_lifecycle_*` — 日常活动：模型从不透明 token 目录选 opening → compiler 派生权威字段 → 原子落账（ActivityStarted/Completed 等）。`activity_timing.py` 是纯规则（完成须 ≥60s 等）
-- `life_ecology_runtime.py` — 调度器：clock tick 后按序跑 biographical→activity→aftermath→life_development→npc_initiative→open_world→visual_evidence→media
+- `life_ecology_runtime.py` — 调度器：clock tick 后按序跑 biographical→activity→aftermath→life_development→npc_initiative→open_world→visual_evidence→media。**2026-08-20**：`life_development_runtime.py` 增加稀疏 disturbance occasion（~6% 质量、可重放纯函数 draw）；disturbance 时 World Author 收到 `pressure_surfaces`，propose 须至少一个 outcome 带 `dynamic_life_direction` / `objective_biographical_transition` / provisional NPC/place；**克隆 2–3 天多样性尚未验收**（见 `output/flat-world/REPORT.md`）。
 - `biographical_lifecycle*` — Life Arc 开/关（从已结算 outcome 提取），驱动 NPC 出现/离场
 - `npc_ecology.py`（2038 行）— NPC 私有决策（actor 模型）+ 世界裁决（world author），产出 NPC Plan/Occurrence 走普通 aftermath 路径被主角消费。种子在 `configs/world_seed.yaml`（38 处 npc）
 - `world_life_context.py` — settled occurrence → 模型上下文（ActiveWorldOccurrencePremise）
@@ -113,10 +113,21 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 ## 测试布局
 
 - `tests/` 顶层 30 文件：适配器、预算、媒体选片契约、房间编译器
-- `tests/world_v2/`：character_interior 最大；含 ledger/sqlite、expression、npc_ecology、life_*、migration golden、formal_evaluation。2026-08-19 新增/加厚：`test_expression_decision_channel`、`test_declared_due_wake`、`test_social_initiative`（post-silent 释放）、相册/散文边界相关断言；离线机制基线 `world-v2-offline-mechanism-baseline.82`
+- `tests/world_v2/`：character_interior 最大；含 ledger/sqlite、expression、npc_ecology、life_*、migration golden、formal_evaluation。2026-08-19 新增/加厚：`test_expression_decision_channel`、`test_declared_due_wake`、`test_social_initiative`（post-silent 释放）、相册/散文边界相关断言；离线机制基线 `world-v2-offline-mechanism-baseline.86`
 - **无直接测试**：`conversation_cadence.py`（间接）、`qq_outbound_owner.py`（间接）、`world_media.py`。`cli.py` 有 `tests/world_v2/test_simulator_cli.py`。顶层 media_* 多数已有对应测试；无独立测试文件的是 `media_moment.py` / `media_interaction.py` / `media_domain.py` / `media_authenticity.py` / `media_camera.py` / `media_facial.py` / `media_address.py`
 - `tests/support/` 是共享 fixture 构造器（非适配层）；`tests/js/` 是房间渲染器 JS 测试
 - 日常运维：`.venv/bin/python scripts/audit_context_truth.py`（31 槽）
+
+## 已验证生产事实（2026-08-20）
+
+- **QQ 宿主延迟**：`af687e9e` 部署后 `/health`（8787）约 **0.3–0.9s**（部署前 >30s）；`launchctl kickstart -k gui/501/com.girl-agent.napcat`。
+- **P0-a 情绪（克隆 `scripts/prove_her_own_feelings.py`，n=12，¥0.56）**：持久 Affect **4/12 propose**（warmth×2、sadness×1/hurt×1）；强度 **3200/3500×2/5500**（非清一色 5000）；**6/12 no_change**（4,5,7,8,9,12）；`my_state` 与读他分离（如 trial 10「心里有点凉…」+ sadness 3200）。**局限**：trial 9 明确高兴 probe 仍 no_change——**模型倾向**，非纯契约问题。证据：`output/her-own-feelings/REPORT.md`。
+- **P0-b 已读不回（克隆 trial 11）**：`timing_choice=silent`、`visible_message_count=0`、无 `ActionAuthorized`；内心「不想纠缠，也不想装作没看见」。证据：`output/her-own-feelings/trial-11/evidence.json`。
+- **P0-c 时间窗/召回**：部署后**无新入站回合**（ledger ~11488 仅 Clock/ModelResult）；语义召回命中率与 text-endpoint `model_success` **未验收**。已接线：`recall_embedding` 宿主 warmup、`text_turn_endpoint` 默认 timeout **550ms**（`ec09eab1`）。
+- **P1 disturbance（`80a0f2c3`）**：代码+单测+基线 `.86` 不变；**生产/克隆尚未证明生活事件主题多样性改善**。
+- **B78 生活→想起他→开口**：`social_initiative` tier B 代码在库；生产账本 **0 mint**；`probe_initiative_lanes --phase life` **未完成**（探针曾挂起 >30min，已中止保预算）。
+- **生产预算**：当日 `soft_daily_exhausted` 仍成立；后台模型车道跳过；**勿改 `.env` 预算数字**。
+- **context audit（部署后）**：`finding_count=3`（非 0；需对照 K 槽位明细，非本次回归引入的断言未逐条归因）。
 
 ## 文档指引
 
