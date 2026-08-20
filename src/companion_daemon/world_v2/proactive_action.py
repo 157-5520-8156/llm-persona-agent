@@ -16,7 +16,7 @@ import json
 import logging
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field
 
 from .accepted_ledger_batch import AcceptedLedgerBatchIssuer
 from .character_interior import CharacterInterior, InteriorOpportunity
@@ -292,36 +292,16 @@ class ProactiveDraft(ExpressionDraft):
     hatch.  A proactive turn chooses the same zero/one/many beat plan as an
     inbound turn; only the causal source binding differs.
 
-    Optional mood / appraisal_draft let her open or update lasting Affect on
-    the same turn as the expression.  Omitting both is her no_change choice;
-    the host never invents affect for a proactive contact.  If she fills both,
-    ``_proactive_appraisal_raw`` already prefers the explicit draft; rejecting
-    the pair used to discard her expression and emotion.
+    Optional appraisal_draft lets her open or update lasting Affect on the
+    same turn as the expression, including her own component target intensity.
+    Omitting it is her no_change choice; the host never invents affect or fills
+    a default intensity for a proactive contact.
     """
 
     impulse_summary: str = Field(min_length=1, max_length=240)
-    mood: str | None = Field(default=None, exclude_if=lambda value: value is None)
     appraisal_draft: dict[str, object] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
-
-    @model_validator(mode="after")
-    def mood_is_an_offered_affect_dimension(self) -> "ProactiveDraft":
-        if self.mood is not None:
-            dimension = self.mood.strip().lower()
-            if dimension not in {
-                "hurt",
-                "anger",
-                "sadness",
-                "loneliness",
-                "anxiety",
-                "resentment",
-                "warmth",
-                "joy",
-            }:
-                raise ValueError("proactive mood is not an offered lasting Affect dimension")
-            object.__setattr__(self, "mood", dimension)
-        return self
 
 
 class _ProactiveGroundingViolation(ValueError):
@@ -808,17 +788,7 @@ def _proactive_appraisal_raw(*, draft: ProactiveDraft) -> str | None:
 
     if draft.appraisal_draft is not None:
         return json.dumps(draft.appraisal_draft, ensure_ascii=False, separators=(",", ":"))
-    if draft.mood is None:
-        return None
-    from .present_prompt import _slim_appraisal_draft
-
-    appraisal = _slim_appraisal_draft(
-        felt=draft.brief_rationale,
-        authored_felt=draft.brief_rationale,
-        label=draft.stance,
-        mood=draft.mood,
-    )
-    return json.dumps(appraisal, ensure_ascii=False, separators=(",", ":"))
+    return None
 
 
 def _materialize_interior_proactive_draft(

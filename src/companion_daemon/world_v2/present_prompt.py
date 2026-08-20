@@ -113,18 +113,23 @@ def slim_consider_instruction() -> str:
     return (
         "一个 slim 对象就够了。跟 messages 同级可见的是 later，"
         "以及把 messages 写成空数组就是这一轮不回。"
-        "felt、stuck_with_me、wants、photo，"
+        "meaning_of_this、my_state、stuck_with_me、wants、photo，"
         "以及可选的 waiting_for、wait、how_it_landed、noticed、"
         "keep_impression、come_back、come_back_in、about_us、why_us、us_deltas、"
-        "we_are、calling_it、said_as、matters_bp、mood、declared_display。\n"
+        "we_are、calling_it、said_as、matters_bp、pressure_bp、importance_bp、"
+        "declared_display。\n"
         "waiting_for 加 wait 才编译盼头；come_back 加 come_back_in 仍要成对。"
         "later 和空 messages（不回）跟 messages 同级，不是藏起来的键。"
         "口头说「我等你」不会变成 waiting_for。宿主从不替你写这些字段。"
         "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
         "messages 是你决定发出去的气泡，一项就是一条；发几条由你定，宿主不替你决定。"
+        "Context 里还活着的 affect 强度和你这轮自己写下的 target_intensity_bp 都是你能看见的状态，"
+        "不是行为指令。真的有很多话时可以连续写多条 messages，也可以只说一句或沉默；"
+        "情绪强度不会命令你发几条，也不会替你决定语气。"
         + reply_only_bubble_clause()
         + "\n"
-        "messages 为空、只有 felt，就是这一轮你选择不说话（silent）；沉默不要和 later 一起用。"
+        "messages 为空、仍分别写 meaning_of_this 和 my_state，就是这一轮你选择不说话（silent）；"
+        "沉默不要和 later 一起用。"
         "选了不回，下一轮处境会带上这个事实；宿主不会替你已读不回。"
         "later 是这些已经想好的话等多少秒再发出去，30 到 86400 的整数，只能和非空 messages 一起写。"
         "写了 later，宿主会把这些话延到那个秒数；到点发出前，如果这期间世界变了"
@@ -134,7 +139,11 @@ def slim_consider_instruction() -> str:
         "宿主不会替你编一个 later，也不会把写坏的 later 当成现在发，"
         "也不会替你判断两条是不是在重复。"
         "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
-        "felt 是这一轮你自己的读法；可见的话里带不带它都行。felt 本身不会开启持续情绪。\n"
+        "meaning_of_this 是你对他这句话或眼前处境的暂定理解：他可能是什么意思、"
+        "这件事对你意味着什么；可以很短，也可以写不确定。"
+        "my_state 是你表达前自己此刻真正是什么感觉、想要什么、抵触什么、身体上或注意里搁着什么；"
+        "可以诚实地写很平静、没什么特别感觉，也可以写复杂或强烈的感受。"
+        "两段都由你各自写，宿主不会用同一段话互相代填；它们不会自动变成可见台词。\n"
         "photo 写 true，意思是你现在想让媒体车道考虑一个可用的候选，这件事不会从你的措辞里被猜出来。"
         "photo 也可以直接写 Context 里那个你想分享的生活片段的 source_ref，"
         "宿主会先试着编译那一刻再进选片。"
@@ -190,12 +199,12 @@ def slim_consider_instruction() -> str:
         "默默读懂也已经是在使用它们。某件事此刻是否真的值得说出来，仍由你按自己的注意与表达决定，"
         "不是由它有没有出现在 Context 里决定。读懂一个表情可能意味着什么，不等于需要在 messages "
         "里把「你现在是什么心情」解释回去；你可以直接从那份理解出发回应。只有当点明这个理解本身"
-        "确实是你此刻想说的，才需要把它说破。felt 里的私人读法也不会自动变成 messages。\n"
+        "确实是你此刻想说的，才需要把它说破。meaning_of_this 和 my_state 都不会自动变成 messages。\n"
         "钉住的来源请从 Context 的 source_ref_aliases 里挑短标识（S1、T1），"
         "或原样抄 source_ref；不要手写拼接不透明字符串。"
         "点名哪些、引不引，仍由你决定；宿主只把短标识还原成权威 ref。\n"
         "聊天里的颜色是允许的：语气、态度、模糊的私人记忆、带愿望的想象，"
-        "都可以出现在 messages、felt 或 stuck_with_me 里。"
+        "都可以出现在 messages、my_state 或 stuck_with_me 里。"
         "宿主不会自己把聊天散文变成 Fact、Relationship、Media 或持续情绪事件。"
         "但要断言一个可核对的外部命题——已经发过图、此刻正在某地、某件事已经发生了——"
         "就需要 Context 里有对应的来源，或者用 photo / media_request 去真的发一次；"
@@ -205,6 +214,9 @@ def slim_consider_instruction() -> str:
         "这绝不是一个更受偏好的平静默认值。\n"
         "waiting_for 是一个短句：如果你心里确实在等他的下一句，写上你在等什么。"
         "wait 是整数秒，范围 30 到 86400，只能和 waiting_for 一起写；例如 30、60、90。"
+        "真的要编译这个盼头时，还要由你写 pressure_bp 和 importance_bp："
+        "pressure_bp 是你此刻多想要他回，importance_bp 是这份回应对这件事有多重要，"
+        "两者都是 0 到 10000 的基点。宿主不会替你填 5000，也不会覆盖你写的值。"
         "两个都写了，宿主会在那个秒数到了、而他还没开口时叫醒你一次；expiry 只结束这个盼头。"
         "只写短句、不写秒数，不会编一个盼头，也不会按秒叫你。"
         "不写 wait 不会有人按秒叫你。"
@@ -233,11 +245,9 @@ def slim_consider_instruction() -> str:
         "以及最近有几个回合什么都没留下。那是事实，不是要求。\n"
         "keep_impression 只在 stuck_with_me 应该留成一条私人印象时写 true；"
         "省略或 false 就是让它散掉。\n"
-        "mood 是可选的，只在你决定这一轮开一段持续情绪时写："
-        "hurt、anger、sadness、loneliness、anxiety、resentment、warmth、joy。"
-        "没有什么东西真的沉下来就别写 mood；宿主永远不会从你的措辞里编出 mood，"
-        "也从不要求你有负面情绪。同样地，它也不偏好那些好受的维度："
-        "对他生气、被他弄伤、心里憋着怨，跟温暖一样都是你可以选的，而且只有你能开。\n"
+        "没有什么东西真的沉下来就不写 affect；宿主永远不会从你的措辞里编出持续情绪，"
+        "也不要求你有负面情绪。同样地，它也不偏好好受的维度："
+        "hurt、anger、sadness、loneliness、anxiety、resentment、warmth、joy 都只是你可选的维度。\n"
         "declared_display 是可选的。只在你决定让现在跟你说话的这个人看见带性意味的"
         "私密照片时才写：sexual_suggestive 是带性暗示、但仍遮着的；"
         "explicit_adult 是更明确的成人向。"
@@ -260,11 +270,11 @@ def slim_consider_instruction() -> str:
         "前提是你同时给出那个操作需要的生命周期字段"
         "（update/resolve/supersede 要 episode_id，open/update/supersede 要 components，"
         "resolve 要 resolution_summary）。"
-        "只写 mood 不写 affect，宿主会把那个维度开在中等强度。"
-        "想要更轻或更重的持续感觉，就把 components 写成"
+        "选择 open、update 或 supersede 时必须把 components 写成"
         '{"dimension":"sadness","target_intensity_bp":3200} 这样的对象；'
         "target_intensity_bp 是 1 到 10000，是你估计它会以多强的程度留在你身上。"
-        "mood 和 affect 都不写，affect 就是 no_change，因为那是你选择不动持续情绪。\n"
+        "宿主不再接受只写 mood 的强度简写，也不会把任何维度统一填成 5000。"
+        "affect 不写就是 no_change，因为那是你选择不动持续情绪。\n"
         "about_us 是关于这一轮你们俩之间的一小段心事，why_us 是这个读法为什么留下来了。"
         "us_deltas 是这一轮关系本身动了多少。要让增量算数，三个得一起写；"
         "只写一半不会生效，宿主也不会替你补上缺的字段，那一轮会作为可见失败让你重选一次。"
@@ -328,8 +338,9 @@ SLIM_OPTIONAL_SPECIMEN_KEYS = (
     "us_deltas",
     "about_us",
     "why_us",
-    "mood",
     "matters_bp",
+    "pressure_bp",
+    "importance_bp",
     "stuck_with_me",
     "keep_impression",
     "photo",
@@ -356,7 +367,8 @@ def relationship_commitment_usage_specimen() -> dict[str, object]:
     spoken = "嗯，那我也认了——我们现在算朋友。"
     return {
         "messages": [spoken],
-        "felt": "我愿意把这层关系说清楚。",
+        "meaning_of_this": "他也在认真确认我们的关系。",
+        "my_state": "我愿意把这层关系说清楚。",
         "we_are": "friend",
         "calling_it": "朋友",
         "said_as": spoken,
@@ -372,7 +384,8 @@ def reply_only_slim_shape_specimen() -> dict[str, object]:
 
     specimen: dict[str, object] = {
         "messages": ["<role:visible_text>"],
-        "felt": "<role:text>",
+        "meaning_of_this": "<role:reading_text>",
+        "my_state": "<role:self_state_text>",
     }
     for key in SLIM_OPTIONAL_SPECIMEN_KEYS:
         specimen[key] = None
@@ -384,7 +397,8 @@ def slim_consider_json_schema() -> dict[str, object]:
         "type": "object",
         "properties": {
             "messages": {"type": "array"},
-            "felt": {"type": "string"},
+            "meaning_of_this": {"type": "string"},
+            "my_state": {"type": "string"},
             "stuck_with_me": {"type": "string"},
             "wants": {"type": "string"},
             "photo": {"type": ["boolean", "string"]},
@@ -403,14 +417,15 @@ def slim_consider_json_schema() -> dict[str, object]:
             "said_as": {"type": "string"},
             "us_deltas": {"type": "object"},
             "matters_bp": {},
-            "mood": {"type": "string"},
+            "pressure_bp": {},
+            "importance_bp": {},
             "declared_display": {"type": "string"},
             "affect": {"type": "string"},
             "episode_id": {"type": "string"},
             "components": {"type": "array"},
             "resolution_summary": {"type": "string"},
         },
-        "required": ["messages"],
+        "required": ["messages", "meaning_of_this", "my_state"],
     }
 
 
@@ -639,7 +654,8 @@ def identity_prose(frame: CompanionIdentityFrame) -> str:
 SLIM_CONSIDER_KEYS = frozenset(
     {
         "messages",
-        "felt",
+        "meaning_of_this",
+        "my_state",
         "stuck_with_me",
         "wants",
         "photo",
@@ -658,7 +674,8 @@ SLIM_CONSIDER_KEYS = frozenset(
         "calling_it",
         "said_as",
         "matters_bp",
-        "mood",
+        "pressure_bp",
+        "importance_bp",
         "declared_display",
         "affect",
         "episode_id",
@@ -682,7 +699,6 @@ _SLIM_AFFECT_DIMENSIONS = frozenset(
         "joy",
     }
 )
-_SLIM_AFFECT_DEFAULT_INTENSITY_BP = 5_000
 # Used only when she does not weigh the reading herself.  It sits below the
 # reflection threshold on purpose: an unweighted reading should not schedule
 # her to think about it again.
@@ -708,7 +724,6 @@ _SLIM_RELATIONSHIP_DELTA_LIMIT_BP = 10_000
 _SLIM_ASSESSMENT_STATUSES = frozenset(
     {"fulfilled", "superseded", "still_pending", "uncertain"}
 )
-_SLIM_EXPECTATION_DEFAULT_BP = 5_000
 _SLIM_WAIT_FLOOR_SECONDS = 30
 _SLIM_WAIT_MAX_SECONDS = 86_400
 # Same hard cap as ExpressionDraftCapabilities.max_beats / max_later_beats.
@@ -767,7 +782,7 @@ def is_slim_consider_payload(value: Mapping[str, object]) -> bool:
 
     A complete event envelope or dual-draft still belongs to those compilers.
     Extra sibling keys from those envelopes — most commonly ``appraisal_draft``
-    riding next to ``messages`` and ``felt`` — used to poison this detector,
+    riding next to ``messages`` and the private self-state — used to poison this detector,
     so a finished Chinese reply was discarded as if she had written nothing.
     """
 
@@ -837,10 +852,14 @@ def _slim_response_expectation(value: Mapping[str, object]) -> dict[str, object]
     hoped = hoped[:128]
     if not hoped:
         return None
+    pressure_bp = _slim_basis_points(value.get("pressure_bp"), allow_zero=True)
+    importance_bp = _slim_basis_points(value.get("importance_bp"), allow_zero=True)
+    if pressure_bp is None or importance_bp is None:
+        return None
     return {
         "hoped_response": hoped,
-        "pressure_bp": _SLIM_EXPECTATION_DEFAULT_BP,
-        "importance_bp": _SLIM_EXPECTATION_DEFAULT_BP,
+        "pressure_bp": pressure_bp,
+        "importance_bp": importance_bp,
         "wait_seconds": wait_seconds,
         "expires_after_seconds": expires_after_seconds,
     }
@@ -856,6 +875,7 @@ def compile_declared_response_expectation(
     """
 
     _raise_if_incomplete_wait_pair(value)
+    _raise_if_incomplete_expectation_strength(value)
     return _slim_response_expectation(value)
 
 
@@ -937,6 +957,13 @@ SLIM_LATER_REQUIRES_TEXT = "later 只能和非空 messages 一起写，不能和
 SLIM_HOW_IT_LANDED_INVALID = (
     "how_it_landed 只能是 fulfilled、superseded、still_pending 或 uncertain"
 )
+SLIM_SELF_STATE_REQUIRED = "slim 必须分别写 meaning_of_this 和 my_state"
+SLIM_AFFECT_TARGET_REQUIRED = (
+    "持续情绪必须用 affect 和 components 明确写出每个 target_intensity_bp"
+)
+SLIM_EXPECTATION_STRENGTH_REQUIRED = (
+    "盼头必须由你同时写 pressure_bp 和 importance_bp"
+)
 
 
 def _slim_field_attempted(value: Mapping[str, object], key: str) -> bool:
@@ -954,6 +981,70 @@ def _slim_field_attempted(value: Mapping[str, object], key: str) -> bool:
     if isinstance(raw, list) and not raw:
         return False
     return True
+
+
+def _slim_basis_points(value: object, *, allow_zero: bool) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    minimum = 0 if allow_zero else 1
+    return value if minimum <= value <= 10_000 else None
+
+
+def _raise_if_invalid_affect_choice(value: Mapping[str, object]) -> None:
+    if _slim_field_attempted(value, "mood"):
+        raise ValueError(
+            SLIM_AFFECT_TARGET_REQUIRED
+            + "。mood 简写不再被接受，因为宿主不能替你把强度填成 5000。"
+            "不想留下持续情绪就省略 affect；想留下就自己写 operation、dimension 和 target_intensity_bp。"
+        )
+    affect = value.get("affect")
+    operation = affect.strip().lower() if isinstance(affect, str) else None
+    if operation is None and not _slim_field_attempted(value, "components"):
+        return
+    if operation not in _SLIM_AFFECT_OPERATIONS:
+        raise ValueError(SLIM_AFFECT_TARGET_REQUIRED + "。affect operation 读不出来。")
+    if operation in {"open", "update", "supersede"}:
+        components = value.get("components")
+        if not isinstance(components, list) or not components:
+            raise ValueError(SLIM_AFFECT_TARGET_REQUIRED + "。这次缺少 components。")
+        for component in components:
+            if not isinstance(component, Mapping):
+                raise ValueError(SLIM_AFFECT_TARGET_REQUIRED + "。components 必须是对象数组。")
+            if _slim_affect_dimension(component.get("dimension")) is None:
+                raise ValueError(SLIM_AFFECT_TARGET_REQUIRED + "。dimension 不在可用维度里。")
+            if _slim_basis_points(
+                component.get("target_intensity_bp"), allow_zero=False
+            ) is None:
+                raise ValueError(
+                    SLIM_AFFECT_TARGET_REQUIRED
+                    + "。每个 component 都必须有 1 到 10000 的 target_intensity_bp。"
+                )
+
+
+def _raise_if_incomplete_expectation_strength(value: Mapping[str, object]) -> None:
+    hoped = _clip_text(value.get("waiting_for"), 160)
+    horizon = _slim_wait_horizon(value)
+    pressure_attempted = _slim_field_attempted(value, "pressure_bp")
+    importance_attempted = _slim_field_attempted(value, "importance_bp")
+    if not hoped or horizon is None:
+        if pressure_attempted or importance_attempted:
+            raise ValueError(
+                SLIM_EXPECTATION_STRENGTH_REQUIRED
+                + "，并和 waiting_for、wait 一起写；否则全部省略。"
+            )
+        return
+    missing: list[str] = []
+    if _slim_basis_points(value.get("pressure_bp"), allow_zero=True) is None:
+        missing.append("pressure_bp")
+    if _slim_basis_points(value.get("importance_bp"), allow_zero=True) is None:
+        missing.append("importance_bp")
+    if missing:
+        raise ValueError(
+            SLIM_EXPECTATION_STRENGTH_REQUIRED
+            + "。这次缺少或写坏了："
+            + "、".join(missing)
+            + "。宿主不会填 5000，也不会覆盖你写的值。"
+        )
 
 
 def _raise_incomplete_pair(
@@ -1171,18 +1262,15 @@ def compile_slim_consider_payload(
     messages = _slim_messages(value.get("messages"))
     if messages is None:
         return None
-    authored_felt = _clip_text(value.get("felt"), 240)
-    felt = (
-        authored_felt
-        or _clip_text(value.get("stuck_with_me"), 240)
-        or _clip_text(value.get("wants"), 240)
-    )
-    if not felt:
-        felt = messages[0][:240] if messages else ""
-    if not felt:
-        return None
-    label = felt[:64]
-    stuck = _clip_text(value.get("stuck_with_me"), 480) or felt
+    meaning_of_this = _clip_text(value.get("meaning_of_this"), 240)
+    my_state = _clip_text(value.get("my_state"), 480)
+    if not meaning_of_this or not my_state:
+        raise ValueError(
+            SLIM_SELF_STATE_REQUIRED
+            + "。meaning_of_this 只写你怎么理解他或处境；my_state 只写你自己此刻的感觉、欲望、抵触、"
+            "注意或平静。宿主不会用 messages、stuck_with_me 或同一段 felt 替你补。"
+        )
+    label = my_state[:64]
     wants = _clip_text(value.get("wants"), 240)
     photo = value.get("photo")
     media_request = "none"
@@ -1207,7 +1295,7 @@ def compile_slim_consider_payload(
         timing = "now" if messages else "silent"
     private_turn_state: dict[str, object] = {
         "contract": "private-turn-state.1",
-        "inner_state_summary": stuck,
+        "inner_state_summary": my_state,
         "attended_source_refs": [],
     }
     noticed = _clip_text(value.get("noticed"), 720)
@@ -1219,11 +1307,13 @@ def compile_slim_consider_payload(
     elif keep_impression is False:
         private_turn_state["keep_impression"] = False
     _raise_if_incomplete_wait_pair(value)
+    _raise_if_incomplete_expectation_strength(value)
     _raise_if_incomplete_come_back_pair(value)
     _raise_if_incomplete_relationship_residue(value)
     _raise_if_incomplete_commitment_triplet(value)
     _raise_if_invalid_declared_display(value)
     _raise_if_invalid_how_it_landed(value)
+    _raise_if_invalid_affect_choice(value)
     about_us = _clip_text(value.get("about_us"), 128)
     why_us = _clip_text(value.get("why_us"), 128)
     if about_us and why_us:
@@ -1245,7 +1335,7 @@ def compile_slim_consider_payload(
         "cadence": "conversational",
         "beats": [{"modality": "text", "text": item} for item in messages],
         "stance": label,
-        "brief_rationale": felt,
+        "brief_rationale": meaning_of_this[:240],
         "confidence": 5000,
         "world_claims": [],
         "media_request": media_request,
@@ -1264,15 +1354,14 @@ def compile_slim_consider_payload(
         leftover = None if timing == "later" else _slim_revisit(value)
         if leftover is not None:
             expression["revisit"] = leftover
-    assessment = _slim_response_expectation_assessment(value, reason=felt)
+    assessment = _slim_response_expectation_assessment(value, reason=my_state)
     if assessment is not None:
         expression["response_expectation_assessment"] = assessment
     return {
         "appraisal_draft": _slim_appraisal_draft(
-            felt=felt,
-            authored_felt=authored_felt,
+            meaning_of_this=meaning_of_this,
+            my_state=my_state,
             label=label,
-            mood=value.get("mood"),
             affect=value.get("affect"),
             episode_id=value.get("episode_id"),
             components=value.get("components"),
@@ -1328,10 +1417,9 @@ def _slim_affect_dimension(value: object) -> str | None:
 
 def _slim_appraisal_draft(
     *,
-    felt: str,
-    authored_felt: str,
+    meaning_of_this: str,
+    my_state: str,
     label: str,
-    mood: object = None,
     affect: object = None,
     episode_id: object = None,
     components: object = None,
@@ -1339,10 +1427,9 @@ def _slim_appraisal_draft(
     matters_bp: object = None,
     keep_impression: bool = False,
 ) -> dict[str, object]:
-    """Keep her authored felt as a reading; lasting Affect only when she chooses it."""
+    """Keep counterpart appraisal and present self-state as distinct role texts."""
 
     weight = _slim_matters_bp(matters_bp)
-    affect_dimension = _slim_affect_dimension(mood)
     affect_operation = (
         affect.strip().lower()
         if isinstance(affect, str) and affect.strip().lower() in _SLIM_AFFECT_OPERATIONS
@@ -1350,7 +1437,7 @@ def _slim_appraisal_draft(
     )
     common: dict[str, object] = {
         "affect": "no_change",
-        "brief_rationale": felt,
+        "brief_rationale": meaning_of_this[:240],
         "behavior_tendency": label,
         "stance": label,
         "display_strategy": label,
@@ -1364,31 +1451,14 @@ def _slim_appraisal_draft(
             common["resolution_summary"] = resolution_summary.strip()[:240]
         if isinstance(components, list) and components:
             common["components"] = components
-        elif affect_operation in {"open", "update", "supersede"} and affect_dimension is not None:
-            common["components"] = [
-                {
-                    "dimension": affect_dimension,
-                    "target_intensity_bp": _SLIM_AFFECT_DEFAULT_INTENSITY_BP,
-                }
-            ]
-    elif affect_dimension is not None:
-        common["affect"] = "open"
-        common["components"] = [
-            {
-                "dimension": affect_dimension,
-                "target_intensity_bp": _SLIM_AFFECT_DEFAULT_INTENSITY_BP,
-            }
-        ]
-    meaning = _clip_text(authored_felt, 128).rstrip()
+    meaning = _clip_text(meaning_of_this, 128).rstrip()
     if not meaning and common["affect"] != "no_change":
-        meaning = _clip_text(felt, 128).rstrip() or (
-            affect_dimension if isinstance(affect_dimension, str) else "affect"
-        )
+        meaning = _clip_text(my_state, 128).rstrip() or "affect"
     if not meaning and keep_impression:
         # Asking to keep this as a private impression is itself a statement that
         # the reading mattered.  Without an appraisal to hang it on, the paid
         # impression lane finds no anchor and her keep decision is dropped.
-        meaning = _clip_text(felt, 128).rstrip()
+        meaning = _clip_text(my_state, 128).rstrip()
     if not meaning:
         return {"appraise": False, **common}
     return {
@@ -1558,10 +1628,9 @@ def hitchhike_proactive_authored_decisions(
         label = _clip_text(bound.get("stance"), 64) or felt[:64]
         if felt:
             bound["appraisal_draft"] = _slim_appraisal_draft(
-                felt=felt,
-                authored_felt=felt,
+                meaning_of_this=felt,
+                my_state=felt,
                 label=label or felt[:64],
-                mood=bound.get("mood"),
                 keep_impression=keep_impression is True,
             )
             appraisal = bound["appraisal_draft"]

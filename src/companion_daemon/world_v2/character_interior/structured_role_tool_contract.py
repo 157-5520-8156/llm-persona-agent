@@ -159,18 +159,6 @@ def _nullable_provider_schema(schema: dict[str, object]) -> dict[str, object]:
     return {"anyOf": [schema, {"type": "null"}]}
 
 
-_PROACTIVE_MOODS = (
-    "hurt",
-    "anger",
-    "sadness",
-    "loneliness",
-    "anxiety",
-    "resentment",
-    "warmth",
-    "joy",
-)
-
-
 def _close_beat_value_choice(beat_schema: dict[str, object]) -> None:
     properties = _required_object_properties(beat_schema)
     branches: list[dict[str, object]] = []
@@ -274,16 +262,20 @@ def _proactive_payload_schema(
         properties.get("impulse_summary"),
         field_name="impulse_summary",
     )
-    # Optional lasting Affect self-select on the same proactive turn.  Omit
-    # both for character-chosen no_change; do not invent mood from wording.
-    properties["mood"] = _nullable_provider_schema(
-        {"type": "string", "enum": list(_PROACTIVE_MOODS)}
-    )
+    # Optional lasting Affect self-select stays in appraisal_draft, whose
+    # component targets require the role-authored target_intensity_bp.  A
+    # one-word mood shortcut would force the host to invent that intensity.
     # Same slim hope pair as inbound. Bind compiles waiting_for+wait into
     # response_expectation; waiting_for alone does not mint a hope (H21).
     properties["waiting_for"] = _nullable_provider_schema({"type": "string"})
     properties["wait"] = _nullable_provider_schema(
         {"type": "integer", "minimum": 1, "maximum": 86_400}
+    )
+    properties["pressure_bp"] = _nullable_provider_schema(
+        {"type": "integer", "minimum": 0, "maximum": 10_000}
+    )
+    properties["importance_bp"] = _nullable_provider_schema(
+        {"type": "integer", "minimum": 0, "maximum": 10_000}
     )
     # Same inbound hitchhike keys. Bind copies complete residue onto
     # private_turn_state / appraisal_draft; half-written pairs fail visibly.
@@ -464,6 +456,8 @@ def _proactive_payload_schema(
                 "response_expectation": {"type": "null"},
                 "waiting_for": {"type": "null"},
                 "wait": {"type": "null"},
+                "pressure_bp": {"type": "null"},
+                "importance_bp": {"type": "null"},
                 "revisit": {"type": "null"},
                 **no_due_window,
             }

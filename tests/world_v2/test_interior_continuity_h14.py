@@ -31,7 +31,8 @@ def test_slim_stuck_with_me_compiles_into_a_private_impression_draft() -> None:
     compiled = compile_slim_consider_payload(
         {
             "messages": ["嗯"],
-            "felt": "心里还搁着刚才那句",
+            "meaning_of_this": "他那句话还没有说透",
+            "my_state": "我心里还搁着刚才那句",
             "stuck_with_me": "他说完我就一直在想他到底怎么看我",
             "wants": "想把这件事慢慢看清楚",
             "photo": False,
@@ -62,7 +63,7 @@ def test_slim_stuck_with_me_compiles_into_a_private_impression_draft() -> None:
     )
     assert draft is not None
     assert draft.decision == "retain"
-    assert draft.reflection_summary == "他说完我就一直在想他到底怎么看我"
+    assert draft.reflection_summary == "我心里还搁着刚才那句"
     assert draft.source_refs == ("event:observation:1", "event:appraisal:1")
     assert draft.predecessor_refs == ()
 

@@ -291,7 +291,8 @@ def test_relationship_commitment_schema_accepts_the_stages_she_declares() -> Non
 def _slim_payload(**extra: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "messages": ["那就当你是我很熟的朋友了"],
-        "felt": "心里还搁着刚才那句",
+        "meaning_of_this": "他在认真问我们是什么关系",
+        "my_state": "我心里还搁着刚才那句",
         "stuck_with_me": "他说完我就一直在想他到底怎么看我",
         "wants": "想把这件事慢慢看清楚",
         "photo": False,
@@ -346,7 +347,7 @@ def _slim_request(*, source_event, evaluated_world_revision: int) -> ModelInput:
 def test_slim_schema_still_fits_g4_with_commitment_triplet() -> None:
     required, total, depth = json_schema_g4_metrics(slim_consider_json_schema())
     assert required <= 3
-    assert total <= 24  # descriptive slim shape; provider G4 is the compact tool
+    assert total <= 25  # descriptive slim shape; provider G4 is the compact tool
     assert depth <= 2
     properties = slim_consider_json_schema()["properties"]
     assert "relationship_signal" not in properties
@@ -384,7 +385,10 @@ def test_slim_compile_keeps_prose_residue_off_appraisal() -> None:
     assert "relationship_commitment" not in compiled["appraisal_draft"]
     assert compiled["appraisal_draft"]["appraise"] is True
     assert compiled["appraisal_draft"]["affect"] == "no_change"
-    assert compiled["appraisal_draft"]["meanings"][0]["meaning"] == "心里还搁着刚才那句"
+    assert (
+        compiled["appraisal_draft"]["meanings"][0]["meaning"]
+        == "他在认真问我们是什么关系"
+    )
 
 
 def test_incomplete_relationship_residue_is_a_visible_failure() -> None:

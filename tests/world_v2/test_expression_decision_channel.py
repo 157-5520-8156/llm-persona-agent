@@ -90,7 +90,12 @@ def test_gate_reds_when_reply_only_silently_drops_media(monkeypatch: pytest.Monk
 
 def test_reply_only_photo_compiles_without_silent_strip() -> None:
     envelope = compile_slim_interior_envelope(
-        {"messages": ["发你"], "felt": "想分享", "photo": True},
+        {
+            "messages": ["发你"],
+            "meaning_of_this": "他在等这张照片",
+            "my_state": "我现在想分享",
+            "photo": True,
+        },
         reply_only=True,
     )
     assert envelope is not None
@@ -102,7 +107,8 @@ def test_reply_only_relationship_commitment_compiles_without_silent_strip() -> N
     envelope = compile_slim_interior_envelope(
         {
             "messages": [spoken],
-            "felt": "我愿意把这层说清楚。",
+            "meaning_of_this": "他在认真确认我们的关系",
+            "my_state": "我愿意把这层说清楚。",
             "we_are": "friend",
             "calling_it": "朋友",
             "said_as": spoken,

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
     InboundToolContracts,
 )
@@ -56,7 +58,8 @@ def test_compact_gate_accepts_slim_payload_json() -> None:
             "payload_json": json.dumps(
                 {
                     "messages": ["嗯，我在听。"],
-                    "felt": "心里还挂着刚才那句话",
+                    "meaning_of_this": "他还没有把刚才那件事说完",
+                    "my_state": "我心里还挂着刚才那句话",
                     "stuck_with_me": "他还没说完",
                     "wants": "想听他继续",
                     "photo": False,
@@ -74,7 +77,8 @@ def test_compact_gate_accepts_slim_payload_json() -> None:
     compiled = compile_slim_consider_payload(
         {
             "messages": ["嗯，我在听。"],
-            "felt": "心里还挂着刚才那句话",
+            "meaning_of_this": "他还没有把刚才那件事说完",
+            "my_state": "我心里还挂着刚才那句话",
             "stuck_with_me": "他好像没把这件事说完",
             "wants": "想听他继续说",
             "photo": False,
@@ -84,7 +88,7 @@ def test_compact_gate_accepts_slim_payload_json() -> None:
     assert compiled["appraisal_draft"]["appraise"] is True
     assert compiled["appraisal_draft"]["affect"] == "no_change"
     assert compiled["appraisal_draft"]["meanings"] == [
-        {"meaning": "心里还挂着刚才那句话", "confidence": 5000}
+        {"meaning": "他还没有把刚才那件事说完", "confidence": 5000}
     ]
     assert compiled["appraisal_draft"]["attribution"] == "unknown"
     assert "relationship_signal" not in compiled["appraisal_draft"]
@@ -92,42 +96,44 @@ def test_compact_gate_accepts_slim_payload_json() -> None:
     assert compiled["expression_draft"]["world_claims"] == []
     assert compiled["expression_draft"]["impulse_summary"] == "想听他继续说"
     assert compiled["expression_draft"]["private_turn_state"]["inner_state_summary"] == (
-        "他好像没把这件事说完"
+        "我心里还挂着刚才那句话"
     )
 
 
-def test_slim_optional_mood_opens_affect_without_host_invention() -> None:
+def test_slim_affect_requires_role_authored_component_intensity() -> None:
     from companion_daemon.world_v2.present_prompt import compile_slim_consider_payload
 
     opened = compile_slim_consider_payload(
         {
             "messages": ["嗯。"],
-            "felt": "心里有点闷",
-            "mood": "sadness",
+            "meaning_of_this": "这句话让我觉得他没有认真听",
+            "my_state": "我心里有点闷",
+            "affect": "open",
+            "components": [{"dimension": "sadness", "target_intensity_bp": 3600}],
         }
     )
     assert opened is not None
     assert opened["appraisal_draft"]["appraise"] is True
     assert opened["appraisal_draft"]["affect"] == "open"
     assert opened["appraisal_draft"]["components"] == [
-        {"dimension": "sadness", "target_intensity_bp": 5000}
+        {"dimension": "sadness", "target_intensity_bp": 3600}
     ]
 
-    ignored = compile_slim_consider_payload(
-        {
-            "messages": ["嗯。"],
-            "felt": "心里有点闷",
-            "mood": "annoyed",
-        }
-    )
-    assert ignored is not None
-    assert ignored["appraisal_draft"]["affect"] == "no_change"
-    assert "components" not in ignored["appraisal_draft"]
+    with pytest.raises(ValueError, match="target_intensity_bp"):
+        compile_slim_consider_payload(
+            {
+                "messages": ["嗯。"],
+                "meaning_of_this": "这句话让我觉得他没有认真听",
+                "my_state": "我心里有点闷",
+                "mood": "sadness",
+            }
+        )
 
     stable = compile_slim_consider_payload(
         {
             "messages": ["嗯。"],
-            "felt": "心里有点闷",
+            "meaning_of_this": "这句话只是普通说明",
+            "my_state": "我现在很平静",
         }
     )
     assert stable is not None

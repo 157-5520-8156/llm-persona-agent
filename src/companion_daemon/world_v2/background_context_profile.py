@@ -8,9 +8,8 @@ and acceptance.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal
 
 from .present_prompt import _MATERIAL_ORDER, ordered_mapping, present_inner_life
 
@@ -293,10 +292,17 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
         capsule_slices=(
             "character_core",
             "current_situation",
+            "relationship_slice",
             "relevant_facts",
             "world_life",
+            "recent_dialogue",
         ),
-        capsule_slice_limits={"world_life": 8, "relevant_facts": 12},
+        capsule_slice_limits={
+            "relationship_slice": 12,
+            "relevant_facts": 12,
+            "world_life": 8,
+            "recent_dialogue": 12,
+        },
     ),
 )
 

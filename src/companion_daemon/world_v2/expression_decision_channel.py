@@ -63,7 +63,8 @@ def _require_media_on_head(envelope: dict[str, object]) -> None:
 def _prove_media_intent_reply_only_slim() -> None:
     slim = {
         "messages": ["这就发你"],
-        "felt": "想分享",
+        "meaning_of_this": "他在等这张照片",
+        "my_state": "我现在想分享",
         "photo": True,
     }
     envelope = compile_slim_interior_envelope(slim, reply_only=True)
@@ -77,7 +78,8 @@ def _prove_media_intent_reply_only_events() -> None:
     # the same slim compiler (events specimen expands through it).
     slim = {
         "messages": ["给你看一张"],
-        "felt": "想分享",
+        "meaning_of_this": "他在等一张照片",
+        "my_state": "我现在想分享",
         "photo": "event:shareable-photo:demo",
     }
     envelope = compile_slim_interior_envelope(slim, reply_only=True)
@@ -96,7 +98,8 @@ def _prove_media_intent_reply_only_events() -> None:
 def _prove_media_intent_full_turn() -> None:
     slim = {
         "messages": ["发你一张"],
-        "felt": "想分享",
+        "meaning_of_this": "他在等这张照片",
+        "my_state": "我现在想分享",
         "photo": True,
     }
     envelope = compile_slim_interior_envelope(slim, reply_only=False)
@@ -108,7 +111,8 @@ def _prove_media_intent_full_turn() -> None:
 def _prove_media_intent_later_is_visible_reject() -> None:
     slim = {
         "messages": ["晚点发你"],
-        "felt": "想分享",
+        "meaning_of_this": "他在等一张照片",
+        "my_state": "我想分享但不是现在",
         "later": 60,
         "photo": True,
     }
@@ -139,7 +143,8 @@ def _relationship_slim() -> dict[str, object]:
     spoken = "我们现在算朋友了。"
     return {
         "messages": [spoken],
-        "felt": "我愿意把这层关系说清楚。",
+        "meaning_of_this": "他也在认真确认我们的关系。",
+        "my_state": "我愿意把这层关系说清楚。",
         "we_are": "friend",
         "calling_it": "朋友",
         "said_as": spoken,

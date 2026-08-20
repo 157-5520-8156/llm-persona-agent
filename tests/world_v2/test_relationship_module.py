@@ -1315,7 +1315,8 @@ def test_us_deltas_without_about_us_why_us_pair_are_a_visible_failure() -> None:
 
     base = {
         "messages": ["我记下了"],
-        "felt": "心里动了一下",
+        "meaning_of_this": "他认真听进去了",
+        "my_state": "我心里动了一下",
         "stuck_with_me": "他认真听了",
         "wants": "把靠近留下来",
         "photo": False,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -18,7 +18,8 @@ from test_social_initiative import NOW, _compiler_fixture
 def _slim_payload(**updates: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "messages": ["那家店我后来又路过一次"],
-        "felt": "还想把那家店的事说完",
+        "meaning_of_this": "那家店的话题还没有说完",
+        "my_state": "我还想把那家店的事说完",
         "stuck_with_me": "那家店还挂着",
         "wants": "想找个时候再提",
         "photo": False,

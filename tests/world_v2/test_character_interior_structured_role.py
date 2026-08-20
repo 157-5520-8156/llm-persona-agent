@@ -2271,10 +2271,11 @@ async def test_proactive_contact_uses_one_versioned_forced_tool_at_http_boundary
                     "world_claims": [],
                     "media_request": "none",
                     "media_source_refs": [],
-                    "mood": None,
                     "appraisal_draft": None,
                     "waiting_for": None,
                     "wait": None,
+                    "pressure_bp": None,
+                    "importance_bp": None,
                     "about_us": None,
                     "why_us": None,
                     "us_deltas": None,
@@ -2434,15 +2435,12 @@ def test_deepseek_strict_proactive_schema_has_no_object_type_arrays() -> None:
     assert "declared_display" in payload
     appraisal = payload["appraisal_draft"]["anyOf"][0]
     assert "relationship_signal" in appraisal["properties"]
-    assert payload["mood"]["anyOf"][0]["enum"] == [
-        "hurt",
-        "anger",
-        "sadness",
-        "loneliness",
-        "anxiety",
-        "resentment",
-        "warmth",
-        "joy",
+    assert "mood" not in payload
+    component = appraisal["properties"]["components"]["anyOf"][0]["items"]
+    assert component["required"] == [
+        "component_id",
+        "dimension",
+        "target_intensity_bp",
     ]
 
 

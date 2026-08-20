@@ -20,7 +20,6 @@ PROACTIVE_NATIVE = frozenset(
         "impulse_summary",
         "confidence",
         "world_claims",
-        "mood",
         "appraisal_draft",
         "response_expectation",
         "response_expectation_assessment",
@@ -46,7 +45,8 @@ PROACTIVE_NATIVE = frozenset(
 # equivalent or a reason it cannot hitch onto a non-message turn.
 INBOUND_ONLY_WITH_REASON = {
     "messages": "beats",
-    "felt": "brief_rationale / impulse_summary",
+    "meaning_of_this": "appraisal_draft.meanings / brief_rationale",
+    "my_state": "private_turn_state.inner_state_summary / impulse_summary",
     "later": "timing_choice=later + delay_seconds",
     "photo": "media_request",
     "come_back": "revisit",
@@ -55,10 +55,12 @@ INBOUND_ONLY_WITH_REASON = {
     "stuck_with_me": "impulse_summary / private summary",
     "wants": "impulse_summary",
     "matters_bp": "appraisal_draft.confidence; full appraisal_draft is already on the proactive wire",
-    "affect": "mood / appraisal_draft.affect",
+    "affect": "appraisal_draft.affect",
     "episode_id": "appraisal_draft",
     "components": "appraisal_draft",
     "resolution_summary": "appraisal_draft",
+    "pressure_bp": "response_expectation.pressure_bp",
+    "importance_bp": "response_expectation.importance_bp",
 }
 
 

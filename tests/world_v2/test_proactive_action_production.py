@@ -872,7 +872,7 @@ class _SequenceDraftModel(_DraftModel):
 
 
 class _WarmthDraftModel(_DraftModel):
-    """Same visible choice as ``now``, plus the lasting mood she actually authored."""
+    """Same visible choice as ``now``, plus her explicit lasting affect."""
 
     def __init__(self, *, reading: str) -> None:
         super().__init__("now")
@@ -880,7 +880,21 @@ class _WarmthDraftModel(_DraftModel):
 
     async def complete(self, messages, *, temperature: float = 0.8):  # type: ignore[no-untyped-def]
         raw = json.loads(await super().complete(messages, temperature=temperature))
-        raw["mood"] = "warmth"
+        raw["appraisal_draft"] = {
+            "appraise": True,
+            "affect": "open",
+            "brief_rationale": self.reading,
+            "behavior_tendency": "reach",
+            "stance": "warm",
+            "display_strategy": "natural",
+            "confidence": 6800,
+            "meanings": [{"meaning": self.reading, "confidence": 6800}],
+            "attribution": "user",
+            "severity": 5200,
+            "components": [
+                {"dimension": "warmth", "target_intensity_bp": 6700}
+            ],
+        }
         raw["brief_rationale"] = self.reading
         raw["impulse_summary"] = self.reading[:240]
         raw["beats"] = [{"modality": "text", "text": "你最近怎么样？雅思还顺利吗。"}]

@@ -2230,7 +2230,7 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert '"waiting_for":null' in compact_system
     assert '"later":null' in compact_system
     assert '"wait":null' not in compact_system
-    assert "messages、felt、later、waiting_for 同级" in compact_system
+    assert "messages、meaning_of_this、my_state、later、waiting_for 同级" in compact_system
     assert "空数组就是这一轮不回" in compact_system
     assert "一句短话就够" in compact_system
     assert "full_turn 写在 private_turn_state" in compact_system

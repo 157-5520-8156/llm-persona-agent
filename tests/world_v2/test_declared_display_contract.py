@@ -235,7 +235,8 @@ def test_slim_declared_display_lands_in_private_turn_state() -> None:
     compiled = compile_slim_consider_payload(
         {
             "messages": ["就给你看个影子吧，别的先不说"],
-            "felt": "想给他看，但只到这里",
+            "meaning_of_this": "他想看，但边界仍由我决定",
+            "my_state": "我想给他看，但只到这里",
             "declared_display": "sexual_suggestive",
         }
     )
@@ -248,7 +249,8 @@ def test_slim_declared_display_ignores_a_model_authored_recipient_ref() -> None:
     compiled = compile_slim_consider_payload(
         {
             "messages": ["今晚就算了"],
-            "felt": "不想给看",
+            "meaning_of_this": "他的请求不代表我必须答应",
+            "my_state": "我今晚不想给看",
             "declared_display": {
                 "media_intent": "withdraw",
                 "recipient_ref": "user:forged",
@@ -263,7 +265,11 @@ def test_slim_declared_display_ignores_a_model_authored_recipient_ref() -> None:
 
 def test_slim_omitted_declared_display_does_not_invent_a_grant() -> None:
     compiled = compile_slim_consider_payload(
-        {"messages": ["今天不想发照片 你就想象一下吧"], "felt": "不想给看"}
+        {
+            "messages": ["今天不想发照片 你就想象一下吧"],
+            "meaning_of_this": "他想看照片",
+            "my_state": "我今天不想给看",
+        }
     )
     assert compiled is not None
     assert "declared_display" not in compiled["expression_draft"]["private_turn_state"]
@@ -273,7 +279,8 @@ def test_slim_null_declared_display_is_omission_not_failure() -> None:
     compiled = compile_slim_consider_payload(
         {
             "messages": ["今天就这样"],
-            "felt": "这一轮不声明",
+            "meaning_of_this": "这轮不用谈照片边界",
+            "my_state": "我这一轮不想声明",
             "declared_display": None,
         }
     )
@@ -288,7 +295,8 @@ def test_slim_invalid_declared_display_is_a_visible_failure() -> None:
         compile_slim_consider_payload(
             {
                 "messages": ["给你看一张"],
-                "felt": "想给他看",
+                "meaning_of_this": "他想看一张",
+                "my_state": "我想给他看",
                 "declared_display": "nsfw",
             }
         )

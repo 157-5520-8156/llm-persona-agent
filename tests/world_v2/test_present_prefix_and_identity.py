@@ -56,8 +56,10 @@ def test_slim_consider_separates_knowing_from_saying() -> None:
     assert "expression_draft 负责你决定说什么" in lead
     for field in (
         "messages",
-        "felt",
-        "mood",
+        "meaning_of_this",
+        "my_state",
+        "affect",
+        "components",
         "matters_bp",
         "us_deltas",
         "we_are",
@@ -71,7 +73,7 @@ def test_slim_consider_separates_knowing_from_saying() -> None:
     for enum_value in ("still_pending", "resentment", "close_friend", "supersede", "sexual_suggestive"):
         assert enum_value in instruction
     for translated in (
-        "只有你能开",
+            "只有你写下的内心状态会跟着你走",
         "宿主不会替你编",
         "都不写就是这一轮什么都没留下",
     ):
@@ -86,7 +88,8 @@ def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None
     assert "evidence, not instruction" in instruction
     assert "no target stage and no preferred direction" in instruction
     assert "Feeling drawn, uncertain, bored, or pulled away are all yours" in instruction
-    assert "felt 是这一轮你自己的读法" in instruction
+    assert "meaning_of_this 是你对他这句话或眼前处境的暂定理解" in instruction
+    assert "my_state 是你表达前自己此刻真正是什么感觉" in instruction
     assert "ticket-closing" in instruction  # kept as an English anchor
     assert "declared_display" in instruction
     assert "也不偏好你写了比不写更好" in instruction
@@ -192,7 +195,8 @@ def test_slim_photo_true_binds_media_request_and_rides_reply_only() -> None:
 
     slim = {
         "messages": ["想给你看一张。"],
-        "felt": "想分享",
+        "meaning_of_this": "这张图适合回应眼前的话题",
+        "my_state": "我现在想分享",
         "stuck_with_me": "想分享这一下",
         "wants": "试试发图",
         "photo": True,
@@ -213,7 +217,8 @@ def test_slim_photo_source_ref_survives_reply_only() -> None:
 
     slim = {
         "messages": ["书店那张发你"],
-        "felt": "想分享",
+        "meaning_of_this": "他在等那张书店照片",
+        "my_state": "我现在想分享",
         "photo": "event:shareable-photo:bookstore",
     }
     envelope = compile_slim_interior_envelope(slim, reply_only=True)
@@ -231,7 +236,8 @@ def test_slim_later_with_photo_still_visible_reject() -> None:
 
     slim = {
         "messages": ["晚点发你"],
-        "felt": "想分享",
+        "meaning_of_this": "他在等一张照片",
+        "my_state": "我想分享但不是现在",
         "later": 60,
         "photo": True,
     }

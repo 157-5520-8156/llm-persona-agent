@@ -273,7 +273,9 @@ def test_wait_pair_incomplete_is_explained_in_chinese() -> None:
 def test_parse_combined_waiting_for_without_wait_does_not_compile_a_hope() -> None:
     raw = (
         '{"result_kind": "reply_only", "payload_json": '
-        '"{\\"messages\\":[\\"行 等你\\"],\\"felt\\":\\"先等他回来\\",'
+        '"{\\"messages\\":[\\"行 等你\\"],'
+        '\\"meaning_of_this\\":\\"他会回来继续说\\",'
+        '\\"my_state\\":\\"我先等他回来\\",'
         '\\"waiting_for\\":\\"他倒完水回来\\"}"}'
     )
     parsed = _parse_combined(raw)
@@ -285,7 +287,9 @@ def test_parse_combined_rejects_come_back_without_come_back_in() -> None:
 
     raw = (
         '{"result_kind": "reply_only", "payload_json": '
-        '"{\\"messages\\":[\\"那家店我回头再说\\"],\\"felt\\":\\"先记下\\",'
+        '"{\\"messages\\":[\\"那家店我回头再说\\"],'
+        '\\"meaning_of_this\\":\\"那家店的话题还没说完\\",'
+        '\\"my_state\\":\\"我想先记下\\",'
         '\\"come_back\\":\\"书店那家店\\"}"}'
     )
     with pytest.raises(ValueError, match=SLIM_COME_BACK_PAIR_INCOMPLETE) as caught:
@@ -298,7 +302,9 @@ def test_parse_combined_rejects_us_deltas_without_about_us() -> None:
 
     raw = (
         '{"result_kind": "reply_only", "payload_json": '
-        '"{\\"messages\\":[\\"嗯\\"],\\"felt\\":\\"近了一点\\",'
+        '"{\\"messages\\":[\\"嗯\\"],'
+        '\\"meaning_of_this\\":\\"他这次认真听了\\",'
+        '\\"my_state\\":\\"我觉得近了一点\\",'
         '\\"us_deltas\\":{\\"closeness_bp\\":40},\\"why_us\\":\\"他认真听\\"}"}'
     )
     with pytest.raises(ValueError, match=SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE) as caught:
@@ -337,8 +343,11 @@ def test_parse_combined_accepts_payload_json_with_trailing_extra_brace() -> None
         '"{\\"messages\\":[\\"是逛完了 那本诗集挺旧的 封面都泛黄了\\",'
         '\\"不过拍出来可能不太好看 光线也一般\\",'
         '\\"你要是真想看 我明天白天拍给你也行\\"],'
-        '\\"felt\\":\\"他还记得我昨天说去旧书市的事 有点意外 但愿意给他看\\",'
-        '\\"mood\\":\\"warmth\\",\\"matters_bp\\":4500,'
+        '\\"meaning_of_this\\":\\"他还记得我昨天说去旧书市的事\\",'
+        '\\"my_state\\":\\"我有点意外，也愿意给他看\\",'
+        '\\"affect\\":\\"open\\",'
+        '\\"components\\":[{\\"dimension\\":\\"warmth\\",\\"target_intensity_bp\\":4500}],'
+        '\\"matters_bp\\":4500,'
         '\\"about_us\\":\\"他主动记得我提过的事，虽然只是让我拍张照片，但这种被记得的感觉有点暖\\",'
         '\\"why_us\\":\\"我们认识没多久，他愿意记这些小事，说明有在认真听我说话\\",'
         '\\"us_deltas\\":{\\"closeness_bp\\":25,\\"trust_bp\\":15}}}"}'
@@ -419,7 +428,9 @@ def test_parse_combined_rejects_illegal_declared_display() -> None:
 
     raw = (
         '{"result_kind": "reply_only", "payload_json": '
-        '"{\\"messages\\":[\\"给你看\\"],\\"felt\\":\\"想给他看\\",'
+        '"{\\"messages\\":[\\"给你看\\"],'
+        '\\"meaning_of_this\\":\\"他想看一张\\",'
+        '\\"my_state\\":\\"我想给他看\\",'
         '\\"declared_display\\":\\"nsfw\\"}"}'
     )
     with pytest.raises(ValueError, match=SLIM_DECLARED_DISPLAY_INVALID):
@@ -452,7 +463,9 @@ def test_parse_combined_rejects_we_are_without_said_as() -> None:
 
     raw = (
         '{"result_kind": "reply_only", "payload_json": '
-        '"{\\"messages\\":[\\"我们算朋友了吧\\"],\\"felt\\":\\"想把关系说清楚\\",'
+        '"{\\"messages\\":[\\"我们算朋友了吧\\"],'
+        '\\"meaning_of_this\\":\\"他也在确认我们的关系\\",'
+        '\\"my_state\\":\\"我想把关系说清楚\\",'
         '\\"we_are\\":\\"friend\\",\\"calling_it\\":\\"friends\\"}"}'
     )
     with pytest.raises(ValueError, match=SLIM_COMMITMENT_TRIPLET_INCOMPLETE) as caught:
@@ -521,8 +534,11 @@ class _HalfWaitThenFixedProvider:
                 "payload_json": json.dumps(
                     {
                         "messages": ["行 等你"],
-                        "felt": "先等他回来",
+                        "meaning_of_this": "他会回来继续说",
+                        "my_state": "我先等他回来",
                         "wait": 60,
+                        "pressure_bp": 4200,
+                        "importance_bp": 5600,
                     },
                     ensure_ascii=False,
                 ),
@@ -622,7 +638,8 @@ class _HalfCommitmentThenFixedProvider:
                 "payload_json": json.dumps(
                     {
                         "messages": ["我们算朋友了吧"],
-                        "felt": "想把关系说清楚",
+                        "meaning_of_this": "他也在认真确认我们的关系",
+                        "my_state": "我想把关系说清楚",
                         "we_are": "friend",
                         "calling_it": "friends",
                     },
@@ -687,15 +704,21 @@ class _HalfWaitThenFixedStreamProvider:
         if self.repair and messages and "结构校验失败" in messages[0]["content"]:
             inner = {
                 "messages": ["行 等你"],
-                "felt": "先等他回来",
+                "meaning_of_this": "他会回来继续说",
+                "my_state": "我先等他回来",
                 "waiting_for": "他倒完水回来",
                 "wait": 60,
+                "pressure_bp": 4200,
+                "importance_bp": 5600,
             }
         else:
             inner = {
                 "messages": ["行 等你"],
-                "felt": "先等他回来",
+                "meaning_of_this": "他会回来继续说",
+                "my_state": "我先等他回来",
                 "wait": 60,
+                "pressure_bp": 4200,
+                "importance_bp": 5600,
             }
         return json.dumps(
             {

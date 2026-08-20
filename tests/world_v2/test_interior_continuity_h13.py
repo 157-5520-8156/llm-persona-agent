@@ -39,12 +39,16 @@ from test_social_initiative import _compiler_fixture
 def _slim_payload(**updates: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "messages": ["那件事后来怎么样了"],
-        "felt": "还挂着他没回的那句",
+        "meaning_of_this": "他还没有接上那件事",
+        "my_state": "我还挂着他没回的那句",
         "stuck_with_me": "我说完就在等他开口",
         "wants": "想听他怎么说",
         "photo": False,
     }
     payload.update(updates)
+    if payload.get("waiting_for") and payload.get("wait") is not None:
+        payload.setdefault("pressure_bp", 5_000)
+        payload.setdefault("importance_bp", 5_000)
     return payload
 
 
@@ -172,7 +176,8 @@ def test_slim_still_pending_with_now_messages_is_an_in_turn_follow_up() -> None:
     compiled = compile_slim_consider_payload(
         _slim_payload(
             messages=["那你到底怎么想的"],
-            felt="他只回了一句哦，这事还没落地",
+            meaning_of_this="他只回了一句哦，这事还没落地",
+            my_state="我还想把这件事问清楚",
             how_it_landed="still_pending",
             waiting_for="想听一句认真的",
             wait=45,
@@ -207,7 +212,7 @@ def test_slim_consider_schema_still_fits_g4_with_commitment_triplet() -> None:
     # schema.  The real G4 area cap is asserted on compact_gate_for below,
     # where payload_json is one string property.
     assert required <= 3
-    assert total <= 24
+    assert total <= 25
     assert depth <= 2
     compact = InboundToolContracts().compact_gate_for(
         capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
@@ -263,7 +268,8 @@ def test_slim_how_it_landed_becomes_an_assessment_on_the_same_inbound() -> None:
     compiled = compile_slim_consider_payload(
         _slim_payload(
             messages=["嗯，我听完了"],
-            felt="他终于把那件事说清楚了",
+            meaning_of_this="他终于把那件事说清楚了",
+            my_state="我听完以后放下心了",
             how_it_landed="fulfilled",
         )
     )
@@ -271,11 +277,12 @@ def test_slim_how_it_landed_becomes_an_assessment_on_the_same_inbound() -> None:
     assert compiled is not None
     assessment = compiled["expression_draft"]["response_expectation_assessment"]
     assert assessment["status"] == "fulfilled"
-    assert assessment["reason"] == "他终于把那件事说清楚了"
+    assert assessment["reason"] == "我听完以后放下心了"
     envelope = compile_slim_interior_envelope(
         _slim_payload(
             messages=["嗯，我听完了"],
-            felt="他终于把那件事说清楚了",
+            meaning_of_this="他终于把那件事说清楚了",
+            my_state="我听完以后放下心了",
             how_it_landed="fulfilled",
         ),
         reply_only=True,
@@ -290,7 +297,8 @@ def test_slim_how_it_landed_becomes_an_assessment_on_the_same_inbound() -> None:
             "payload_json": json.dumps(
                 _slim_payload(
                     messages=["嗯，我听完了"],
-                    felt="他终于把那件事说清楚了",
+                    meaning_of_this="他终于把那件事说清楚了",
+                    my_state="我听完以后放下心了",
                     how_it_landed="fulfilled",
                 ),
                 ensure_ascii=False,
@@ -458,7 +466,8 @@ def test_slim_optional_nulls_are_omission_not_a_form_to_fill() -> None:
 
     payload = reply_only_slim_shape_specimen()
     payload["messages"] = ["嗯"]
-    payload["felt"] = "没事"
+    payload["meaning_of_this"] = "这只是普通的一句"
+    payload["my_state"] = "我没什么特别感觉"
     compiled = compile_slim_consider_payload(payload)
 
     assert compiled is not None
@@ -493,7 +502,14 @@ def test_slim_invalid_later_fails_closed_instead_of_sending_now() -> None:
     with pytest.raises(ValueError, match=SLIM_LATER_REQUIRES_TEXT):
         compile_slim_consider_payload(_slim_payload(later=45, photo=True))
     with pytest.raises(ValueError, match=SLIM_LATER_REQUIRES_TEXT):
-        compile_slim_consider_payload({"messages": [], "felt": "现在不想回", "later": 45})
+        compile_slim_consider_payload(
+            {
+                "messages": [],
+                "meaning_of_this": "这句话可以晚点处理",
+                "my_state": "我现在不想回",
+                "later": 45,
+            }
+        )
 
 
 def test_slim_invalid_how_it_landed_is_a_visible_failure() -> None:
@@ -526,7 +542,11 @@ def test_slim_empty_messages_are_reply_only_silence() -> None:
     assert compiled["expression_draft"]["timing_choice"] == "silent"
     assert compiled["expression_draft"]["beats"] == []
     envelope = compile_slim_interior_envelope(
-        {"messages": [], "felt": "现在不想回"},
+        {
+            "messages": [],
+            "meaning_of_this": "这句话现在不用回应",
+            "my_state": "我现在不想回",
+        },
         reply_only=True,
     )
     assert envelope is not None
@@ -536,7 +556,11 @@ def test_slim_empty_messages_are_reply_only_silence() -> None:
         {
             "result_kind": "reply_only",
             "payload_json": json.dumps(
-                {"messages": [], "felt": "现在不想回"},
+                {
+                    "messages": [],
+                    "meaning_of_this": "这句话现在不用回应",
+                    "my_state": "我现在不想回",
+                },
                 ensure_ascii=False,
             ),
         }
@@ -545,7 +569,11 @@ def test_slim_empty_messages_are_reply_only_silence() -> None:
 
 
 def test_slim_now_allows_multiple_text_beats() -> None:
-    payload = {"messages": ["行", "你去吧"], "felt": "随口应一声"}
+    payload = {
+        "messages": ["行", "你去吧"],
+        "meaning_of_this": "他要先去处理自己的事",
+        "my_state": "我随口应一声",
+    }
     envelope = compile_slim_interior_envelope(payload, reply_only=True)
     assert envelope is not None
     head = envelope["events"][0]
@@ -571,7 +599,11 @@ def test_slim_now_allows_multiple_text_beats() -> None:
         )
     )
     assert [item["text"] for item in first["expression_draft"]["beats"]] == ["行", "你去吧"]
-    four = {"messages": ["一", "二", "三", "四"], "felt": "连发四句"}
+    four = {
+        "messages": ["一", "二", "三", "四"],
+        "meaning_of_this": "这件事值得分开说",
+        "my_state": "我有四句想连着讲",
+    }
     four_envelope = compile_slim_interior_envelope(four, reply_only=True)
     assert four_envelope is not None
     assert len(four_envelope["events"][0]["beats"]) == 4
@@ -580,7 +612,8 @@ def test_slim_now_allows_multiple_text_beats() -> None:
 def test_slim_now_rejects_more_text_beats_than_the_installed_limit() -> None:
     payload = {
         "messages": [f"第{index}句" for index in range(SLIM_REPLY_ONLY_MAX_TEXT_BEATS + 1)],
-        "felt": "太多了",
+        "meaning_of_this": "这件事值得展开",
+        "my_state": "我想说很多句",
     }
     with pytest.raises(ValueError, match="exceeds text-only capability"):
         compile_slim_interior_envelope(payload, reply_only=True)
@@ -599,14 +632,14 @@ def test_slim_later_allows_multiple_text_beats() -> None:
     assert [item["text"] for item in head["beats"]] == ["先这条", "再这条"]
 
 
-def test_slim_authored_felt_is_kept_as_her_reading() -> None:
+def test_slim_authored_meaning_is_kept_as_her_reading() -> None:
     compiled = compile_slim_consider_payload(_slim_payload())
     assert compiled is not None
     appraisal = compiled["appraisal_draft"]
     assert appraisal["appraise"] is True
     assert appraisal["affect"] == "no_change"
     assert appraisal["meanings"] == [
-        {"meaning": "还挂着他没回的那句", "confidence": 5000}
+        {"meaning": "他还没有接上那件事", "confidence": 5000}
     ]
     assert appraisal["attribution"] == "unknown"
     assert "hurt" not in json.dumps(appraisal, ensure_ascii=False)
@@ -618,14 +651,16 @@ def test_slim_authored_felt_is_kept_as_her_reading() -> None:
 
     canonical = canonicalize_appraisal_draft_wire(envelope["appraisal_draft"])
     assert canonical["appraise"] is True
-    assert canonical["meanings"][0]["meaning"] == "还挂着他没回的那句"
+    assert canonical["meanings"][0]["meaning"] == "他还没有接上那件事"
 
 
-def test_slim_does_not_invent_a_reading_when_she_omits_felt() -> None:
-    compiled = compile_slim_consider_payload(
-        {"messages": ["嗯"], "stuck_with_me": "他好像没说完", "photo": False}
-    )
-    assert compiled is not None
-    assert compiled["appraisal_draft"]["appraise"] is False
-    assert compiled["appraisal_draft"]["affect"] == "no_change"
-    assert "meanings" not in compiled["appraisal_draft"]
+def test_slim_does_not_invent_a_reading_when_she_omits_meaning() -> None:
+    with pytest.raises(ValueError, match="meaning_of_this"):
+        compile_slim_consider_payload(
+            {
+                "messages": ["嗯"],
+                "my_state": "我现在没什么特别感觉",
+                "stuck_with_me": "他好像没说完",
+                "photo": False,
+            }
+        )

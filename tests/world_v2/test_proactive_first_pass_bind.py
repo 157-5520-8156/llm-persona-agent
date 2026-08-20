@@ -378,11 +378,19 @@ def test_proactive_observation_trigger_binds_without_trigger_message() -> None:
 
 
 def test_waiting_for_and_wait_compile_the_same_hope_as_inbound() -> None:
-    bound = _bind(_payload(waiting_for="你那边下雨了没", wait=90))
-    _validate(_payload(waiting_for="你那边下雨了没", wait=90))
+    authored = _payload(
+        waiting_for="你那边下雨了没",
+        wait=90,
+        pressure_bp=7200,
+        importance_bp=6100,
+    )
+    bound = _bind(authored)
+    _validate(authored)
 
     expectation = bound["response_expectation"]
     assert expectation["hoped_response"] == "你那边下雨了没"
+    assert expectation["pressure_bp"] == 7200
+    assert expectation["importance_bp"] == 6100
     assert expectation["wait_seconds"] == 90
     assert expectation["expires_after_seconds"] == 150
 
@@ -392,6 +400,15 @@ def test_waiting_for_without_wait_does_not_compile_a_hope() -> None:
     _validate(_payload(waiting_for="你那边下雨了没"))
 
     assert bound.get("response_expectation") is None
+
+
+def test_complete_hope_without_authored_strength_is_a_visible_failure() -> None:
+    from companion_daemon.world_v2.present_prompt import (
+        SLIM_EXPECTATION_STRENGTH_REQUIRED,
+    )
+
+    with pytest.raises(ValueError, match=SLIM_EXPECTATION_STRENGTH_REQUIRED):
+        _bind(_payload(waiting_for="你那边下雨了没", wait=90))
 
 
 def test_wait_without_waiting_for_is_a_visible_failure() -> None:

@@ -302,7 +302,8 @@ def _compact_slim_peer_specimen() -> dict[str, object]:
 
     return {
         "messages": ["<role:visible_text>"],
-        "felt": "<role:text>",
+        "meaning_of_this": "<role:reading_text>",
+        "my_state": "<role:self_state_text>",
         "later": None,
         "waiting_for": None,
     }
@@ -343,7 +344,8 @@ def _compact_gate_system_content(
         "reply_only may still carry appraisal and affect fields you choose: "
         "brief_rationale, behavior_tendency, stance, display_strategy, and "
         "confidence; appraise and affect remain your choices. On the slim object, "
-        "optional mood is how you open a lasting Affect component, and optional "
+        "meaning_of_this and my_state keep your reading of the situation separate "
+        "from your own present feeling, and optional "
         "about_us/why_us/us_deltas are how the relationship itself moves, both "
         "without leaving reply_only. Optional we_are/calling_it/said_as is how one "
         "visible line you choose declares the relationship stage, also without "
@@ -368,7 +370,7 @@ def _compact_gate_system_content(
             separators=(",", ":"),
         )
         + "\nEND REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON.\n"
-        "messages、felt、later、waiting_for 同级。"
+        "messages、meaning_of_this、my_state、later、waiting_for 同级。"
         "messages 为空数组就是这一轮不回（silent）。"
         "later 是已经想好的话延后多少秒。"
         "waiting_for 是你在等什么的短句；wait 是秒数，两个一起才编译盼头，不在这个范本里。"

@@ -548,7 +548,8 @@ def test_compact_gate_accepts_payload_json_already_parsed_as_an_object() -> None
                 "result_kind": "reply_only",
                 "payload_json": {
                     "messages": ["桂花乌龙啊，我也想喝"],
-                    "felt": "懒得动但嘴馋",
+                    "meaning_of_this": "这杯茶听起来很诱人",
+                    "my_state": "我懒得动但嘴馋",
                 },
             },
             ensure_ascii=False,
@@ -557,15 +558,17 @@ def test_compact_gate_accepts_payload_json_already_parsed_as_an_object() -> None
     assert decoded["result_kind"] == "reply_only"
     assert decoded["events"][0]["beat"]["text"] == "桂花乌龙啊，我也想喝"
     assert decoded["appraisal_draft"]["appraise"] is True
-    assert decoded["appraisal_draft"]["meanings"][0]["meaning"] == "懒得动但嘴馋"
+    assert decoded["appraisal_draft"]["meanings"][0]["meaning"] == "这杯茶听起来很诱人"
 
 
 _REPRODUCED_QUOTED_DIALOGUE_PAYLOAD_JSON = (
     '{"messages":["……我知道你是认真的"],'
-    '"felt":"他连着追问，语气很认真，我有点慌，但也不想躲。'
+    '"meaning_of_this":"他连着追问，语气很认真。",'
+    '"my_state":"他说"我是认真问的"，让我有点慌，但也不想躲。'
     '我们认识确实不算久，可被他这样认真地问，我心里也不是完全没感觉。",'
     '"stuck_with_me":"他说"我是认真问的"，这句话让我有点不知道怎么接。",'
-    '"keep_impression":true,"matters_bp":6500,"mood":"warmth",'
+    '"keep_impression":true,"matters_bp":6500,"affect":"open",'
+    '"components":[{"dimension":"warmth","target_intensity_bp":6200}],'
     '"about_us":"他认真问我们算什么，我嘴上说了朋友，但心里其实有点动摇。",'
     '"why_us":"认识不算久，但他这样认真地问，让我觉得这段关系可能比我想的更重。",'
     '"us_deltas":{"closeness_bp":30,"trust_bp":20}}'
@@ -577,7 +580,7 @@ def test_compact_gate_accepts_missing_inner_wrapper_brace() -> None:
         _expand_compact_gate_payload,
     )
 
-    inner = '{"messages":["嗯"],"felt":"先接住"'
+    inner = '{"messages":["嗯"],"meaning_of_this":"他还想说","my_state":"我先接住"'
     expanded = _expand_compact_gate_payload(
         {"result_kind": "reply_only", "payload_json": inner}
     )
@@ -585,7 +588,14 @@ def test_compact_gate_accepts_missing_inner_wrapper_brace() -> None:
 
 
 def test_completed_compact_gate_stream_repairs_missing_outer_brace() -> None:
-    inner = json.dumps({"messages": ["嗯"], "felt": "先接住"}, ensure_ascii=False)
+    inner = json.dumps(
+        {
+            "messages": ["嗯"],
+            "meaning_of_this": "他还想说",
+            "my_state": "我先接住",
+        },
+        ensure_ascii=False,
+    )
     raw = json.dumps(
         {"result_kind": "reply_only", "payload_json": inner},
         ensure_ascii=False,
@@ -597,7 +607,14 @@ def test_completed_compact_gate_stream_repairs_missing_outer_brace() -> None:
 
 
 def test_incremental_compact_gate_does_not_close_a_partial_object() -> None:
-    inner = json.dumps({"messages": ["嗯"], "felt": "先接住"}, ensure_ascii=False)
+    inner = json.dumps(
+        {
+            "messages": ["嗯"],
+            "meaning_of_this": "他还想说",
+            "my_state": "我先接住",
+        },
+        ensure_ascii=False,
+    )
     raw = json.dumps(
         {"result_kind": "reply_only", "payload_json": inner},
         ensure_ascii=False,
@@ -633,7 +650,8 @@ def test_compact_gate_accepts_reproduced_unescaped_dialogue_quotes() -> None:
 
 _OVERNIGHT_MIXED_SLIM_APPRAISAL = {
     "messages": ["嗯……看到了", "就是刚才那句还没睡", "你倒水干嘛 这么晚还不睡"],
-    "felt": "他大半夜还惦记着看我有没有睡，有点暖，但也有点莫名。",
+    "meaning_of_this": "他大半夜还惦记着看我有没有睡。",
+    "my_state": "我有点暖，但也有点莫名。",
     "appraisal_draft": {
         "appraise": True,
         "affect": "no_change",
@@ -695,7 +713,11 @@ def test_compact_gate_ignores_sibling_reasoning_and_merges_outer_slim_fields() -
         {
             "result_kind": "reply_only",
             "payload_json": json.dumps(
-                {"messages": ["朋友吧"], "felt": "被问到我们算什么"},
+                {
+                    "messages": ["朋友吧"],
+                    "meaning_of_this": "他在问我们算什么",
+                    "my_state": "我被问得有点犹豫",
+                },
                 ensure_ascii=False,
             ),
             "reasoning": "provider sibling, not a role choice",
@@ -724,7 +746,11 @@ def test_compact_gate_still_rejects_nonempty_foreign_capability_siblings() -> No
             {
                 "result_kind": "reply_only",
                 "payload_json": json.dumps(
-                    {"messages": ["嗯"], "felt": "先接住"},
+                    {
+                        "messages": ["嗯"],
+                        "meaning_of_this": "他还想说",
+                        "my_state": "我先接住",
+                    },
                     ensure_ascii=False,
                 ),
                 "recall_request": {"query": "what did he say last week"},

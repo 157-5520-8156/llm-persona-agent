@@ -101,6 +101,26 @@ def _draft(**updates: object) -> ProactiveDraft:
     return ProactiveDraft.model_validate_json(json.dumps(payload, ensure_ascii=False), strict=True)
 
 
+def _warmth_appraisal(*, affect: str = "open") -> dict[str, object]:
+    value: dict[str, object] = {
+        "appraise": True,
+        "affect": affect,
+        "brief_rationale": "被轻轻接住的感觉还在。",
+        "behavior_tendency": "reach",
+        "stance": "warm",
+        "display_strategy": "light_invite",
+        "confidence": 6400,
+        "meanings": [{"meaning": "被在意", "confidence": 6400}],
+        "attribution": "user",
+        "severity": 4200,
+    }
+    if affect == "open":
+        value["components"] = [
+            {"dimension": "warmth", "target_intensity_bp": 6200}
+        ]
+    return value
+
+
 def _materialize(draft: ProactiveDraft) -> DecisionProposal:
     return _materialize_interior_proactive_draft(
         draft=draft,
@@ -113,7 +133,9 @@ def _materialize(draft: ProactiveDraft) -> DecisionProposal:
 
 def test_json_dump_of_appraisal_proposal_is_lists_and_strict_python_rejects_them() -> None:
     dumped = _proposal_from_draft(
-        raw=_proactive_appraisal_raw(draft=_draft(mood="warmth")),
+        raw=_proactive_appraisal_raw(
+            draft=_draft(appraisal_draft=_warmth_appraisal())
+        ),
         request=_request(),
     )
 
@@ -127,7 +149,9 @@ def test_json_dump_of_appraisal_proposal_is_lists_and_strict_python_rejects_them
 
     envelope = validate_proposal_envelope(dumped)
     typed = _decision_proposal_from_draft(
-        raw=_proactive_appraisal_raw(draft=_draft(mood="warmth")),
+        raw=_proactive_appraisal_raw(
+            draft=_draft(appraisal_draft=_warmth_appraisal())
+        ),
         request=_request(),
     )
     assert isinstance(envelope, DecisionProposal)
@@ -135,8 +159,8 @@ def test_json_dump_of_appraisal_proposal_is_lists_and_strict_python_rejects_them
     assert typed.proposed_changes == envelope.proposed_changes
 
 
-def test_mood_appraisal_branch_keeps_her_words_and_affect() -> None:
-    proposal = _materialize(_draft(mood="warmth"))
+def test_explicit_affect_appraisal_branch_keeps_her_words_and_intensity() -> None:
+    proposal = _materialize(_draft(appraisal_draft=_warmth_appraisal()))
 
     kinds = tuple(item.kind for item in proposal.proposed_changes)
     assert kinds[:2] == ("appraisal_transition", "affect_transition")
@@ -144,7 +168,7 @@ def test_mood_appraisal_branch_keeps_her_words_and_affect() -> None:
     assert proposal.affect_decision == "propose"
     assert proposal.affect_tendencies == ("warmth",)
     assert proposal.appraisals
-    assert proposal.appraisals[0].summary == "他刚回了个简短的嗯，对话有点停在原地。"
+    assert proposal.appraisals[0].summary == "被轻轻接住的感觉还在。"
     texts = [
         draft.get("inline_text")
         for change in proposal.proposed_changes
@@ -158,22 +182,10 @@ def test_mood_appraisal_branch_keeps_her_words_and_affect() -> None:
     assert _proactive_expression_plan_change(proposal).kind == "expression_plan_transition"
 
 
-def test_mood_plus_explicit_appraisal_draft_keeps_the_explicit_reading() -> None:
+def test_explicit_no_change_appraisal_draft_keeps_the_authored_reading() -> None:
     proposal = _materialize(
         _draft(
-            mood="warmth",
-            appraisal_draft={
-                "appraise": True,
-                "affect": "no_change",
-                "brief_rationale": "被轻轻接住的感觉还在。",
-                "behavior_tendency": "reach",
-                "stance": "warm",
-                "display_strategy": "light_invite",
-                "confidence": 6400,
-                "meanings": [{"meaning": "被在意", "confidence": 6400}],
-                "attribution": "user",
-                "severity": 4200,
-            },
+            appraisal_draft=_warmth_appraisal(affect="no_change"),
         )
     )
 
@@ -211,10 +223,10 @@ def test_explicit_appraisal_draft_branch_keeps_her_authored_reading() -> None:
     assert proposal.appraisals[0].summary == "被轻轻接住的感觉还在。"
 
 
-def test_later_mood_appraisal_branch_keeps_her_words_and_affect() -> None:
+def test_later_explicit_affect_branch_keeps_her_words_and_affect() -> None:
     proposal = _materialize(
         _draft(
-            mood="warmth",
+            appraisal_draft=_warmth_appraisal(),
             timing_choice="later",
             delay_seconds=600,
             expires_after_seconds=3600,
@@ -250,7 +262,7 @@ def test_no_mood_and_no_appraisal_still_authorizes_the_message() -> None:
     assert proposal.action_intents[0].kind == "proactive_message"
 
 
-def test_draft_keeps_mood_when_attention_overflows_private_turn_state_max() -> None:
+def test_draft_keeps_appraisal_when_attention_overflows_private_turn_state_max() -> None:
     from types import SimpleNamespace
 
     from companion_daemon.world_v2.proactive_action import (
@@ -286,14 +298,15 @@ def test_draft_keeps_mood_when_attention_overflows_private_turn_state_max() -> N
                 "impulse_summary": "想轻轻延续一下话题。",
                 "confidence": 6000,
                 "world_claims": [],
-                "mood": "warmth",
+                "appraisal_draft": _warmth_appraisal(),
             },
         },
     )
 
     draft = transport._draft(decision=decision)
 
-    assert draft.mood == "warmth"
+    assert draft.appraisal_draft is not None
+    assert draft.appraisal_draft["components"][0]["target_intensity_bp"] == 6200
     assert draft.private_turn_state is not None
     assert len(draft.private_turn_state.attended_source_refs) == 8
     assert draft.private_turn_state.attended_source_refs == refs[:8]

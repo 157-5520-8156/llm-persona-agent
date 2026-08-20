@@ -232,9 +232,13 @@ def test_her_own_weight_is_what_makes_a_wound_revisitable() -> None:
     weighed = compile_slim_consider_payload(
         {
             "messages": ["行吧。"],
-            "felt": "他这么说我心里堵着",
+            "meaning_of_this": "他说得像是不把这件事当回事",
+            "my_state": "我心里堵着",
             "matters_bp": 7_000,
-            "mood": "resentment",
+            "affect": "open",
+            "components": [
+                {"dimension": "resentment", "target_intensity_bp": 7100}
+            ],
         }
     )
     assert weighed is not None
@@ -242,7 +246,11 @@ def test_her_own_weight_is_what_makes_a_wound_revisitable() -> None:
     assert weighed["appraisal_draft"]["confidence"] > REFLECTION_UNWEIGHTED_BP
 
     unweighed = compile_slim_consider_payload(
-        {"messages": ["嗯。"], "felt": "没什么特别的"}
+        {
+            "messages": ["嗯。"],
+            "meaning_of_this": "这只是一句普通回应",
+            "my_state": "我没什么特别的感觉",
+        }
     )
     assert unweighed is not None
     assert unweighed["appraisal_draft"]["confidence"] == REFLECTION_UNWEIGHTED_BP
