@@ -356,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.88"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.90"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -574,8 +574,17 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.88"
 # serialization and appraisal-row ISO temporal bounds for byte-stable prefixes
 # (canonical authority unchanged). Complete fake suite hash:
 # ea65e5e20f89c3f252ffd86b2e483381dcc1a8c9b493173a39325aaca5635064
+# 2026-08-21: refreshed .89 after life-content sidecar accepts identical bytes
+# across candidate/result lanes so clone aftermath settlement can replay.
+# Complete fake suite hash:
+# b73ba660527ddbadd91c23a61918d3dc8d4dd9c142c30c4afc240c6207090b0b
+# 2026-08-21: refreshed .90 after optional-field usage specimens moved ahead of
+# the null canonical wall in compact gate (+ proactive/disturbance wording).
+# Complete fake suite hash:
+# 6eea0795067e1a33df0e51ca54639883259b2659ab886d16d354253c3199bf95
+# 617dbe0c3d15a303c73f9e584cd46283dcc47ad61f3970fd52bb2e07ec52ae8f
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "ea65e5e20f89c3f252ffd86b2e483381dcc1a8c9b493173a39325aaca5635064"
+    "617dbe0c3d15a303c73f9e584cd46283dcc47ad61f3970fd52bb2e07ec52ae8f"
 )
 
 

@@ -57,6 +57,42 @@ def test_sqlite_life_content_store_survives_restart(tmp_path) -> None:
         reader.close()
 
 
+@pytest.mark.parametrize("adapter", ("memory", "sqlite"))
+def test_same_ref_accepts_identical_bytes_across_content_lanes(
+    adapter: str, tmp_path
+) -> None:
+    text = "雨把窗玻璃敲得发闷。"
+    shared_hash = life_content_payload_hash(text)
+    candidate = StoredLifeContent(
+        content_ref="content:open-world-result:shared:1",
+        content_kind="outcome_candidate",
+        content_payload_hash=shared_hash,
+        text=text,
+    )
+    settled = StoredLifeContent(
+        content_ref="content:open-world-result:shared:1",
+        content_kind="occurrence_result",
+        content_payload_hash=shared_hash,
+        text=text,
+    )
+    store = (
+        InMemoryImmutableLifeContentStore()
+        if adapter == "memory"
+        else SQLiteImmutableLifeContentStore(
+            path=str(tmp_path / "lane-idempotent.sqlite"),
+            world_id="world:1",
+        )
+    )
+    try:
+        store.put_if_absent(candidate)
+        store.put_if_absent(settled)
+        assert store.read_exact(content_ref=candidate.content_ref) == candidate
+    finally:
+        close = getattr(store, "close", None)
+        if close is not None:
+            close()
+
+
 def test_life_content_rejects_a_hash_that_does_not_bind_the_text() -> None:
     with pytest.raises(ValueError, match="hash does not match"):
         StoredLifeContent(

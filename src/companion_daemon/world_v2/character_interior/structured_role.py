@@ -64,7 +64,11 @@ from ..background_context_profile import (
     profile_audit_record,
     slice_background_inner_life_snapshot,
 )
-from ..present_prompt import ordered_json_dumps, present_inner_life
+from ..present_prompt import (
+    ordered_json_dumps,
+    present_inner_life,
+    proactive_contact_usage_specimens,
+)
 from .structured_role_tool_contract import (
     StructuredRoleToolContract,
     StructuredRoleToolContracts,
@@ -1745,7 +1749,10 @@ class StructuredCharacterRoleFaculty:
                 "要声明你们现在是什么关系，才写 we_are、calling_it，并把那一句原话抄进 said_as；三个一起才留下。"
                 "keep_impression / noticed / declared_display 可选；"
                 "declared_display 只能是 sexual_suggestive、explicit_adult 或 withdraw。"
-                "这些字段都可以省略。"
+                "需要时就写，不需要时留空。"
+            )
+            user_payload["proactive_contact_usage_specimens"] = (
+                proactive_contact_usage_specimens()
             )
         if background_profile is not None:
             user_payload["background_context_profile"] = profile_audit_record(

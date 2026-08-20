@@ -45,12 +45,9 @@ from ..present_prompt import (
     attach_hitchhiked_relationship_residue,
     combined_turn_system_lead,
     compact_gate_recall_instruction,
+    compact_gate_usage_specimens_prompt,
     compile_slim_consider_payload,
     forced_tool_recall_instruction,
-    affect_usage_specimen,
-    calm_affect_usage_specimen,
-    relationship_commitment_usage_specimen,
-    silent_usage_specimen,
     reply_only_bubble_clause,
     reply_only_completion_clause,
     slim_consider_instruction,
@@ -366,6 +363,7 @@ def _compact_gate_system_content(
         "private_turn_state plus recall_request object for recall. "
         + compact_gate_recall_instruction()
         + slim_consider_instruction()
+        + compact_gate_usage_specimens_prompt()
         + "\n\nREPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON:\n"
         + json.dumps(
             _compact_slim_peer_specimen(),
@@ -418,7 +416,8 @@ def _compact_gate_system_content(
         + "\nEND FULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON.\n"
         "full_turn 的 events[].private_turn_state 里，contract / inner_state_summary / "
         "attended_source_refs 之外的键在范本里写成 null，只是让你看见它们存在。"
-        "null 就是这一轮不用；省略这些键和写成 null 完全一样。看见键名不是建议你填。省略是常态。"
+        "null 就是这一轮不用；省略这些键和写成 null 完全一样，都表示你这一轮选择不用。"
+        "看见键名不是建议你填。上面的 USAGE EXAMPLE 展示需要时怎么写；不需要时留空。"
         "declared_display 在 reply_only 写在 slim 顶层，在 full_turn 写在 private_turn_state；"
         "收件人由宿主绑定，不要自己写 recipient_ref。\n"
         "For result_kind=full_turn, the decoded payload_json object copies this "
@@ -435,45 +434,6 @@ def _compact_gate_system_content(
         "Neither instruction metadata block is part of payload_json; do not copy "
         "grammar_id or any other instruction-metadata field into it. "
         "This required compact function is the sole outer return transport.\n"
-        "\nRELATIONSHIP DECLARATION USAGE EXAMPLE JSON:\n"
-        + json.dumps(
-            relationship_commitment_usage_specimen(),
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
-        + "\nEND RELATIONSHIP DECLARATION USAGE EXAMPLE JSON.\n"
-        "这个例子只说明：如果你自己决定把关系说清楚，we_are、calling_it、said_as "
-        "怎样和同一条可见 message 一起写，才能让账本记住；reply_only 直接写在 slim 顶层，"
-        "full_turn 则把同一组三件套写进 head 的 private_turn_state。"
-        "示例里的判断、语气和原话都不是推荐话术，不要照抄；不想声明时就省略这三个字段。"
-        "只在 messages 或 beats 里说、没有三件套，那句话仍会送达，但关系 stage 不会改变。\n"
-        "\nAFFECT USAGE EXAMPLE JSON:\n"
-        + json.dumps(
-            affect_usage_specimen(),
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
-        + "\nEND AFFECT USAGE EXAMPLE JSON.\n"
-        "\nCALM AFFECT OMISSION EXAMPLE JSON:\n"
-        + json.dumps(
-            calm_affect_usage_specimen(),
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
-        + "\nEND CALM AFFECT OMISSION EXAMPLE JSON.\n"
-        "这两个例子只说明：my_state 写你此刻的感觉，不等于自动留下持续情绪。"
-        "真的想让它跟着你走，就写 affect 和 components[].target_intensity_bp；"
-        "平静或不想留就省略 affect，宿主不会替你补。"
-        "示例里的维度、强度和原话都不是推荐话术，不要照抄。\n"
-        "\nSILENT USAGE EXAMPLE JSON:\n"
-        + json.dumps(
-            silent_usage_specimen(),
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
-        + "\nEND SILENT USAGE EXAMPLE JSON.\n"
-        "这个例子只说明：看到了但不想回，就把 messages 写成空数组，"
-        "仍分别写 meaning_of_this 和 my_state；宿主不会替你已读不回，也不会替你开口。\n"
         + _compact_gate_voice_close()
     )
 

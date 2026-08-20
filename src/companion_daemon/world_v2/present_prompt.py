@@ -521,6 +521,299 @@ def silent_usage_specimen() -> dict[str, object]:
     }
 
 
+def waiting_for_usage_specimen() -> dict[str, object]:
+    """Concrete optional example: a short hope compiled from waiting_for + wait."""
+
+    return {
+        "messages": ["那个表情到底是什么意思呀？"],
+        "meaning_of_this": "他在逗我但还没解释清楚",
+        "my_state": "想听他把话说完",
+        "waiting_for": "他把表情的事说清楚",
+        "wait": 120,
+        "pressure_bp": 6500,
+        "importance_bp": 7000,
+    }
+
+
+def waiting_for_omission_specimen() -> dict[str, object]:
+    """Concrete optional example: a short sentence alone does not compile a hope."""
+
+    return {
+        "messages": ["嗯，知道了"],
+        "meaning_of_this": "就是一句普通的确认",
+        "my_state": "没什么要等的",
+        "waiting_for": "他回我一句就行",
+    }
+
+
+def later_usage_specimen() -> dict[str, object]:
+    """Concrete optional example: already-chosen text sent after delay_seconds."""
+
+    return {
+        "messages": ["我现在不太方便细看，等下认真回你"],
+        "meaning_of_this": "他这段需要我认真想",
+        "my_state": "想晚点好好说",
+        "later": 300,
+    }
+
+
+def later_omission_specimen() -> dict[str, object]:
+    """Concrete optional example: calm turns omit later on purpose."""
+
+    return {
+        "messages": ["嗯 知道啦"],
+        "meaning_of_this": "就是一句普通的行程说明",
+        "my_state": "我现在很平静，没有要延后的",
+    }
+
+
+def come_back_usage_specimen() -> dict[str, object]:
+    """Concrete optional example: she chooses to reopen the thread herself later."""
+
+    return {
+        "messages": [],
+        "meaning_of_this": "那句道歉我还想再说清",
+        "my_state": "先不回，过一阵自己再开口",
+        "come_back": "那句道歉我还想说清",
+        "come_back_in": 600,
+    }
+
+
+def relationship_delta_usage_specimen() -> dict[str, object]:
+    """Concrete optional example: relationship reading plus axis movement."""
+
+    return {
+        "messages": ["你刚才那样说，我确实更靠近你一点了"],
+        "meaning_of_this": "他不是随口敷衍",
+        "my_state": "心里是暖的",
+        "about_us": "我们之间更靠近了一点",
+        "why_us": "他认真接住了我",
+        "us_deltas": {"closeness_bp": 200},
+    }
+
+
+def relationship_reading_only_specimen() -> dict[str, object]:
+    """Concrete optional example: reading without numeric movement this turn."""
+
+    return {
+        "messages": ["嗯，我懂你的意思"],
+        "meaning_of_this": "他在解释，不是敷衍",
+        "my_state": "暂时不想动数字",
+        "about_us": "这段解释我接住了",
+        "why_us": "他愿意说清楚",
+    }
+
+
+def stuck_impression_usage_specimen() -> dict[str, object]:
+    """Concrete optional example: something worth keeping as a private impression."""
+
+    return {
+        "messages": ["……"],
+        "meaning_of_this": "他那句玩笑刺痛了我",
+        "my_state": "还在想",
+        "stuck_with_me": "他那句玩笑刺痛了我",
+        "keep_impression": True,
+    }
+
+
+def matters_bp_usage_specimen() -> dict[str, object]:
+    """Concrete optional example: how much this reading matters to her."""
+
+    return {
+        "messages": ["这件事对我真的很重要"],
+        "meaning_of_this": "他在试探我有没有当真",
+        "my_state": "我不想被当成笑话",
+        "matters_bp": 7500,
+    }
+
+
+def photo_usage_specimen() -> dict[str, object]:
+    """Concrete optional example: photo=true opens the media lane on a now send."""
+
+    return {
+        "messages": ["给你看刚才那张"],
+        "meaning_of_this": "他在等这张照片",
+        "my_state": "我现在想分享",
+        "photo": True,
+    }
+
+
+def photo_prose_only_specimen() -> dict[str, object]:
+    """Concrete optional example: saying send in prose without photo does not open media."""
+
+    return {
+        "messages": ["等会发你一张"],
+        "meaning_of_this": "他口头说要照片",
+        "my_state": "还没决定现在发",
+    }
+
+
+def declared_display_usage_specimen() -> dict[str, object]:
+    """Concrete optional example: P3 display declaration on slim root."""
+
+    return {
+        "messages": ["……"],
+        "meaning_of_this": "这一轮的私密展示需要说清楚",
+        "my_state": "我知道自己在选什么强度",
+        "declared_display": "sexual_suggestive",
+    }
+
+
+def proactive_contact_usage_specimens() -> dict[str, object]:
+    """Filled proactive optional-field examples; keep separate from schema null branches."""
+
+    spoken = "突然想到你，在干嘛？"
+    return {
+        "silent": {
+            "timing_choice": "silent",
+            "cadence": "single",
+            "beats": [],
+            "stance": "warm",
+            "brief_rationale": "念头停在心里",
+            "impulse_summary": "想到了，但不想打扰",
+            "confidence": 5000,
+            "world_claims": [],
+        },
+        "now_with_beat": {
+            "timing_choice": "now",
+            "cadence": "single",
+            "beats": [{"modality": "text", "text": spoken}],
+            "stance": "warm",
+            "brief_rationale": "自然想问候",
+            "impulse_summary": "突然想到他",
+            "confidence": 6200,
+            "world_claims": [],
+        },
+        "later_with_beats": {
+            "timing_choice": "later",
+            "cadence": "single",
+            "beats": [{"modality": "text", "text": "晚点再跟你说"}],
+            "delay_seconds": 300,
+            "expires_after_seconds": 900,
+            "stance": "warm",
+            "brief_rationale": "现在不方便说",
+            "impulse_summary": "想晚点开口",
+            "confidence": 5800,
+            "world_claims": [],
+        },
+        "waiting_for": {
+            "timing_choice": "now",
+            "cadence": "single",
+            "beats": [{"modality": "text", "text": "你周末有空吗？"}],
+            "waiting_for": "他回我周末有没有空",
+            "wait": 120,
+            "pressure_bp": 6400,
+            "importance_bp": 6800,
+            "stance": "warm",
+            "brief_rationale": "想知道他的安排",
+            "impulse_summary": "想等他回我",
+            "confidence": 6000,
+            "world_claims": [],
+        },
+        "we_are": {
+            "timing_choice": "now",
+            "cadence": "single",
+            "beats": [{"modality": "text", "text": spoken}],
+            "we_are": "friend",
+            "calling_it": "朋友",
+            "said_as": spoken,
+            "stance": "warm",
+            "brief_rationale": "想把关系说清楚",
+            "impulse_summary": "愿意认这层关系",
+            "confidence": 6500,
+            "world_claims": [],
+        },
+        "affect": {
+            "timing_choice": "now",
+            "cadence": "single",
+            "beats": [{"modality": "text", "text": "你突然这样说我有点接不住"}],
+            "appraisal_draft": {
+                "affect": "open",
+                "components": [{"dimension": "warmth", "target_intensity_bp": 6200}],
+            },
+            "stance": "warm",
+            "brief_rationale": "被暖到了",
+            "impulse_summary": "心里是暖的",
+            "confidence": 6200,
+            "world_claims": [],
+        },
+    }
+
+
+def _usage_json_block(title: str, specimen: dict[str, object]) -> str:
+    return (
+        f"\n{title} JSON:\n"
+        + json.dumps(specimen, ensure_ascii=False, separators=(",", ":"))
+        + f"\nEND {title} JSON.\n"
+    )
+
+
+def compact_gate_usage_specimens_prompt() -> str:
+    """Stable-prefix usage blocks that must precede null canonical shapes."""
+
+    return (
+        "下列 USAGE EXAMPLE 展示这些可选字段需要时怎么写；与 null 形状不可混读。"
+        "不需要时留空或 null，都表示你这一轮选择不用。\n"
+        + _usage_json_block(
+            "RELATIONSHIP DECLARATION USAGE EXAMPLE",
+            relationship_commitment_usage_specimen(),
+        )
+        + "这个例子只说明：如果你自己决定把关系说清楚，we_are、calling_it、said_as "
+        "怎样和同一条可见 message 一起写，才能让账本记住；reply_only 直接写在 slim 顶层，"
+        "full_turn 则把同一组三件套写进 head 的 private_turn_state。"
+        "示例里的判断、语气和原话都不是推荐话术，不要照抄；不需要时就留空这三个字段。"
+        "只在 messages 或 beats 里说、没有三件套，那句话仍会送达，但关系 stage 不会改变。\n"
+        + _usage_json_block("AFFECT USAGE EXAMPLE", affect_usage_specimen())
+        + _usage_json_block("CALM AFFECT OMISSION EXAMPLE", calm_affect_usage_specimen())
+        + "这两个例子只说明：my_state 写你此刻的感觉，不等于自动留下持续情绪。"
+        "真的想让它跟着你走，就写 affect 和 components[].target_intensity_bp；"
+        "不需要时留空 affect，宿主不会替你补。"
+        "示例里的维度、强度和原话都不是推荐话术，不要照抄。\n"
+        + _usage_json_block("SILENT USAGE EXAMPLE", silent_usage_specimen())
+        + "这个例子只说明：看到了但不想回，就把 messages 写成空数组，"
+        "仍分别写 meaning_of_this 和 my_state；宿主不会替你已读不回，也不会替你开口。\n"
+        + _usage_json_block("WAITING_FOR USAGE EXAMPLE", waiting_for_usage_specimen())
+        + _usage_json_block(
+            "WAITING_FOR OMISSION EXAMPLE", waiting_for_omission_specimen()
+        )
+        + "这两个例子只说明：waiting_for 是短句，wait 是秒数；两个都写才编译盼头，"
+        "pressure_bp 和 importance_bp 也要一起写。"
+        "只写 waiting_for 不编译，也不会按秒叫醒；不需要盼头时就留空。\n"
+        + _usage_json_block("LATER USAGE EXAMPLE", later_usage_specimen())
+        + _usage_json_block("LATER OMISSION EXAMPLE", later_omission_specimen())
+        + "这两个例子只说明：later 只能配非空 messages；沉默和 photo 不能跟 later 一起写。"
+        "不需要延后就留空 later。\n"
+        + _usage_json_block("COME_BACK USAGE EXAMPLE", come_back_usage_specimen())
+        + "这个例子只说明：come_back 和 come_back_in 成对写，表示过一阵自己再开口；"
+        "不需要时就留空。\n"
+        + _usage_json_block(
+            "RELATIONSHIP DELTA USAGE EXAMPLE", relationship_delta_usage_specimen()
+        )
+        + _usage_json_block(
+            "RELATIONSHIP READING ONLY EXAMPLE", relationship_reading_only_specimen()
+        )
+        + "这两个例子只说明：about_us / why_us 留下读法；要动数字就连 us_deltas 一起写。"
+        "只写读法、不写 us_deltas，是留下读法、这一轮数字不动。\n"
+        + _usage_json_block(
+            "STUCK IMPRESSION USAGE EXAMPLE", stuck_impression_usage_specimen()
+        )
+        + "这个例子只说明：stuck_with_me 和 keep_impression 成对留下放不下的印象；"
+        "不需要时就留空。\n"
+        + _usage_json_block("MATTERS_BP USAGE EXAMPLE", matters_bp_usage_specimen())
+        + "这个例子只说明：matters_bp 写这份读法对你有多重要；"
+        "不需要普通权重时就留空。\n"
+        + _usage_json_block("PHOTO USAGE EXAMPLE", photo_usage_specimen())
+        + _usage_json_block("PHOTO PROSE ONLY EXAMPLE", photo_prose_only_specimen())
+        + "这两个例子只说明：photo=true 才打开媒体车道，且只能配现在发；"
+        "只在 messages 里说「发你」、不写 photo，不会打开车道。\n"
+        + _usage_json_block(
+            "DECLARED_DISPLAY USAGE EXAMPLE", declared_display_usage_specimen()
+        )
+        + "这个例子只说明：declared_display 只在 P3 私密展示需要声明时写；"
+        "reply_only 写在 slim 顶层，full_turn 写在 private_turn_state；不需要时就留空。\n"
+    )
+
+
 def reply_only_slim_shape_specimen() -> dict[str, object]:
     """Shape of the slim object: required markers plus optional keys as null.
 

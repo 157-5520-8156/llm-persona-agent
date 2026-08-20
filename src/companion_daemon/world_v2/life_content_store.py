@@ -85,6 +85,18 @@ class StoredLifeContent:
             raise ValueError("life content hash does not match exact UTF-8 text")
 
 
+def _accept_existing_or_raise(existing: StoredLifeContent, record: StoredLifeContent) -> None:
+    if (
+        existing.content_payload_hash == record.content_payload_hash
+        and existing.text == record.text
+    ):
+        # Open-world and aftermath settlement share one ref across candidate and
+        # result lanes; retries must not fail when bytes already match.
+        return
+    if existing != record:
+        raise ValueError("life content ref is already bound to different immutable bytes")
+
+
 class ImmutableLifeContentStore(Protocol):
     """Append-only content seam; a duplicate must be byte-for-byte identical."""
 
@@ -105,8 +117,8 @@ class InMemoryImmutableLifeContentStore:
             existing = self._records.get(record.content_ref)
             if existing is None:
                 self._records[record.content_ref] = record
-            elif existing != record:
-                raise ValueError("life content ref is already bound to different immutable bytes")
+            else:
+                _accept_existing_or_raise(existing, record)
 
     def read_exact(self, *, content_ref: str) -> StoredLifeContent | None:
         with self._lock:
@@ -165,10 +177,7 @@ class SQLiteImmutableLifeContentStore:
                     content_payload_hash=row[1],
                     text=row[2],
                 )
-                if existing != record:
-                    raise ValueError(
-                        "life content ref is already bound to different immutable bytes"
-                    )
+                _accept_existing_or_raise(existing, record)
                 return
             self._connection.execute(
                 """

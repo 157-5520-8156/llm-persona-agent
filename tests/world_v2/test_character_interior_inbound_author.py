@@ -2242,6 +2242,15 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "记得写" not in compact_system
     assert '"wait":30' not in compact_system
     assert "RELATIONSHIP DECLARATION USAGE EXAMPLE JSON" in compact_system
+    usage_pos = compact_system.index("RELATIONSHIP DECLARATION USAGE EXAMPLE JSON")
+    slim_peer_pos = compact_system.index("REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON")
+    canonical_pos = compact_system.index("REPLY_ONLY PAYLOAD_JSON CANONICAL SPECIMEN JSON")
+    assert usage_pos < slim_peer_pos < canonical_pos
+    assert "WAITING_FOR USAGE EXAMPLE JSON" in compact_system
+    assert "LATER USAGE EXAMPLE JSON" in compact_system
+    assert "PHOTO USAGE EXAMPLE JSON" in compact_system
+    assert "MATTERS_BP USAGE EXAMPLE JSON" in compact_system
+    assert "省略是常态" not in compact_system
     assert '"we_are":"friend"' in compact_system
     assert '"calling_it":"朋友"' in compact_system
     assert '"said_as":"嗯，那我也认了——我们现在算朋友。"' in compact_system
@@ -2380,9 +2389,9 @@ async def test_compact_full_turn_keeps_full_stream_in_one_physical_character_cal
             separators=(",", ":"),
         ).encode()
     )
-    # ec09eab1 added affect/silent usage specimens (~+461 B) to teach optional
-    # affect lifecycle and read-without-reply; keep headroom for specimen drift.
-    assert compact_request_bytes <= 41_000
+    # ec09eab1 added affect/silent usage specimens (~+461 B); 2026-08-21 lifted
+    # six more usage blocks ahead of the null canonical wall (~+4k B stable prefix).
+    assert compact_request_bytes <= 46_000
     assert compact_request_bytes < legacy_request_bytes * 0.45
 
 

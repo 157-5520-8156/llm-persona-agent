@@ -1243,8 +1243,9 @@ class StructuredRoleToolContracts:
                 "semantic field remain the character's choice. "
                 "Optional affect with components[].target_intensity_bp opens lasting "
                 "Affect this turn; optional appraisal_draft authors the full "
-                "appraisal/affect lifecycle instead. Omit both when nothing lasting "
-                "shifted—the host never invents affect. "
+                "appraisal/affect lifecycle instead. Only include affect with components "
+                "when something lasting shifted; otherwise leave them out or null—the "
+                "host never invents affect. "
                 + (
                     "Return the complete role result under the transport-only result key. "
                     "Use JSON null, never the string 'null'."
