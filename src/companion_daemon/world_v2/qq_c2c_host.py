@@ -94,7 +94,7 @@ from .system_notice import (
     SystemNoticeAuthority,
 )
 from .life_development_model_adapter import RoleBoundLifeDevelopmentModelAdapter
-from .recall_embedding import configured_recall_embedding
+from .recall_embedding import configured_recall_embedding, warm_semantic_recall_embedding
 from .recall_index import RecallEmbedding
 from .replay_evidence import ReplayEvidence
 
@@ -3087,6 +3087,7 @@ def build_qq_c2c_host(
     resolved_recall_embedding = semantic_recall_embedding
     if resolved_recall_embedding is None and use_configured_recall_embedding:
         resolved_recall_embedding = configured_recall_embedding(settings)
+    warm_semantic_recall_embedding(resolved_recall_embedding)
     dashboard_plan = plan_dashboard_projection_lane(
         world_id=world_id,
         lane="qq-c2c-v2",

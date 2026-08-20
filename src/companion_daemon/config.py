@@ -217,7 +217,7 @@ class Settings(BaseSettings):
         alias="WORLD_V2_TEXT_ENDPOINT_ENABLED",
     )
     world_v2_text_endpoint_timeout_seconds: float = Field(
-        default=0.20,
+        default=0.55,
         alias="WORLD_V2_TEXT_ENDPOINT_TIMEOUT_SECONDS",
         ge=0.01,
         le=1.0,

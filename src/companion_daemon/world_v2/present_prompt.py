@@ -375,6 +375,44 @@ def relationship_commitment_usage_specimen() -> dict[str, object]:
     }
 
 
+def affect_usage_specimen() -> dict[str, object]:
+    """Concrete optional example: a felt shift worth keeping as lasting Affect.
+
+    Keep this separate from the generic null-filled shape.  Showing affect as
+    null beside my_state taught the provider that inner prose alone was enough,
+    while the only useful shape pairs a self-state with affect + components when
+    something should persist beyond this turn.
+    """
+
+    return {
+        "messages": ["你突然这样说……我反而有点接不住"],
+        "meaning_of_this": "他在认真夸我，不是开玩笑",
+        "my_state": "心里是暖的，但不想表现得太明显",
+        "affect": "open",
+        "components": [{"dimension": "warmth", "target_intensity_bp": 6200}],
+    }
+
+
+def calm_affect_usage_specimen() -> dict[str, object]:
+    """Concrete optional example: calm turns omit affect on purpose."""
+
+    return {
+        "messages": ["嗯 知道啦"],
+        "meaning_of_this": "就是一句普通的行程说明",
+        "my_state": "我现在很平静，没有特别的情绪要留下",
+    }
+
+
+def silent_usage_specimen() -> dict[str, object]:
+    """Concrete optional example: read but choose not to reply this turn."""
+
+    return {
+        "messages": [],
+        "meaning_of_this": "他这句我不想接",
+        "my_state": "看到了，但现在不想说，给他一点空间",
+    }
+
+
 def reply_only_slim_shape_specimen() -> dict[str, object]:
     """Shape of the slim object: required markers plus optional keys as null.
 

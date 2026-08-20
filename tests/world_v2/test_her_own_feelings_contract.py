@@ -3,8 +3,11 @@ from __future__ import annotations
 import pytest
 
 from companion_daemon.world_v2.present_prompt import (
+    affect_usage_specimen,
+    calm_affect_usage_specimen,
     compile_slim_consider_payload,
     reply_only_slim_shape_specimen,
+    silent_usage_specimen,
     slim_consider_instruction,
     slim_consider_json_schema,
 )
@@ -122,3 +125,24 @@ def test_contract_exposes_strength_without_mapping_it_to_message_count() -> None
     assert intense is not None and restrained is not None
     assert len(intense["expression_draft"]["beats"]) == 3
     assert len(restrained["expression_draft"]["beats"]) == 1
+
+
+def test_usage_specimens_show_affect_and_silent_shapes() -> None:
+    affect = affect_usage_specimen()
+    calm = calm_affect_usage_specimen()
+    silent = silent_usage_specimen()
+
+    assert affect["affect"] == "open"
+    assert affect["components"][0]["dimension"] == "warmth"
+    assert "affect" not in calm
+    assert silent["messages"] == []
+
+    compiled_affect = compile_slim_consider_payload(affect)
+    compiled_calm = compile_slim_consider_payload(calm)
+    compiled_silent = compile_slim_consider_payload(silent)
+    assert compiled_affect is not None
+    assert compiled_affect["appraisal_draft"]["components"] == affect["components"]
+    assert compiled_calm is not None
+    assert compiled_calm["appraisal_draft"]["affect"] == "no_change"
+    assert compiled_silent is not None
+    assert compiled_silent["expression_draft"]["timing_choice"] == "silent"

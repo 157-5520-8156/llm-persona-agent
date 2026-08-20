@@ -1241,9 +1241,10 @@ class StructuredRoleToolContracts:
                 "The function constrains transport shape only; whether to act now, "
                 "act later, stay silent, request recall, and every private or visible "
                 "semantic field remain the character's choice. "
-                "Optional mood opens one lasting Affect component this turn; optional "
-                "appraisal_draft authors the full appraisal/affect lifecycle instead. "
-                "Omit both when nothing lasting shifted—the host never invents affect. "
+                "Optional affect with components[].target_intensity_bp opens lasting "
+                "Affect this turn; optional appraisal_draft authors the full "
+                "appraisal/affect lifecycle instead. Omit both when nothing lasting "
+                "shifted—the host never invents affect. "
                 + (
                     "Return the complete role result under the transport-only result key. "
                     "Use JSON null, never the string 'null'."

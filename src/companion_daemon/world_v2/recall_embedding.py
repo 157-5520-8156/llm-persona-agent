@@ -860,6 +860,26 @@ def configured_recall_embedding(
     )
 
 
+def warm_semantic_recall_embedding(embedding: RecallEmbedding | None) -> bool:
+    """Best-effort one-shot warmup so first-turn prefetch join can succeed.
+
+    Cold local embedding servers often need ~1.7s on the first request.  Paying
+    that once at host bootstrap keeps the bounded first-pass join usable without
+    adding the same latency to every inbound turn.
+    """
+
+    if embedding is None:
+        return False
+    embed = getattr(embedding, "embed", None)
+    if not callable(embed):
+        return False
+    try:
+        embed(("warmup",))
+    except RecallEmbeddingUnavailable:
+        return False
+    return True
+
+
 def _conservative_token_estimate(texts: tuple[str, ...]) -> int:
     # UTF-8 bytes are a safe upper planning bound for the languages used in
     # the project. Provider-reported usage replaces it after the call.
@@ -870,4 +890,5 @@ __all__ = [
     "OpenAICompatibleRecallEmbedding",
     "SQLiteCachedRecallEmbedding",
     "configured_recall_embedding",
+    "warm_semantic_recall_embedding",
 ]

@@ -229,7 +229,7 @@ class TextTurnEndpointController:
         self,
         *,
         model: SemanticEndpointModel | None,
-        timeout_seconds: float = 0.20,
+        timeout_seconds: float = 0.55,
     ) -> None:
         if not 0.01 <= timeout_seconds <= 1.0:
             raise ValueError("endpoint timeout must be between 10ms and one second")

@@ -47,7 +47,10 @@ from ..present_prompt import (
     compact_gate_recall_instruction,
     compile_slim_consider_payload,
     forced_tool_recall_instruction,
+    affect_usage_specimen,
+    calm_affect_usage_specimen,
     relationship_commitment_usage_specimen,
+    silent_usage_specimen,
     reply_only_bubble_clause,
     reply_only_completion_clause,
     slim_consider_instruction,
@@ -444,6 +447,33 @@ def _compact_gate_system_content(
         "full_turn 则把同一组三件套写进 head 的 private_turn_state。"
         "示例里的判断、语气和原话都不是推荐话术，不要照抄；不想声明时就省略这三个字段。"
         "只在 messages 或 beats 里说、没有三件套，那句话仍会送达，但关系 stage 不会改变。\n"
+        "\nAFFECT USAGE EXAMPLE JSON:\n"
+        + json.dumps(
+            affect_usage_specimen(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        + "\nEND AFFECT USAGE EXAMPLE JSON.\n"
+        "\nCALM AFFECT OMISSION EXAMPLE JSON:\n"
+        + json.dumps(
+            calm_affect_usage_specimen(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        + "\nEND CALM AFFECT OMISSION EXAMPLE JSON.\n"
+        "这两个例子只说明：my_state 写你此刻的感觉，不等于自动留下持续情绪。"
+        "真的想让它跟着你走，就写 affect 和 components[].target_intensity_bp；"
+        "平静或不想留就省略 affect，宿主不会替你补。"
+        "示例里的维度、强度和原话都不是推荐话术，不要照抄。\n"
+        "\nSILENT USAGE EXAMPLE JSON:\n"
+        + json.dumps(
+            silent_usage_specimen(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        + "\nEND SILENT USAGE EXAMPLE JSON.\n"
+        "这个例子只说明：看到了但不想回，就把 messages 写成空数组，"
+        "仍分别写 meaning_of_this 和 my_state；宿主不会替你已读不回，也不会替你开口。\n"
         + _compact_gate_voice_close()
     )
 
@@ -467,8 +497,9 @@ def _compact_gate_voice_close() -> str:
         "范本只把跟 messages 同级的决定摊开：现在说、延后说、或者不回。"
         "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
         "还有一件事同样是你的：说出去的话这一轮就过去了，只有你写下的内心状态"
-        "会留到下一次。真的高兴、真的烦、真的被冒犯、真的想他，就用 mood 把它"
-        "留成一段持续的情绪（生气和温暖一样是可选项）；这件事对你有多重要用 "
+        "会留到下一次。真的高兴、真的烦、真的被冒犯、真的想他，就写 affect 和 "
+        "components[].target_intensity_bp 把它留成一段持续的情绪（生气和温暖一样是可选项）；"
+        "不想留就省略 affect。这件事对你有多重要用 "
         "matters_bp 说，够重你才会被再叫醒想起它；一直放不下的那句话写进 "
         "stuck_with_me 并把 keep_impression 设成 true；你们之间真的变了就写 "
         "about_us / why_us / us_deltas；"
