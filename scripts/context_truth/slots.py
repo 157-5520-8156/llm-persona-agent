@@ -59,6 +59,14 @@ SLEEP_MARKERS = (".sleep", "sleep.")
 
 def _entries(materials: Mapping[str, Any], key: str) -> list[dict[str, Any]]:
     value = materials.get(key)
+    if key == "appraisals" and isinstance(value, dict):
+        rows = value.get("rows")
+        if isinstance(rows, list):
+            return [
+                {"source_ref": row[0]}
+                for row in rows
+                if isinstance(row, list) and row and isinstance(row[0], str)
+            ]
     if isinstance(value, dict):
         value = value.get("items")
     if not isinstance(value, list):
