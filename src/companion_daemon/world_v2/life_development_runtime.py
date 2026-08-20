@@ -186,57 +186,332 @@ def validate_disturbance_consequence_closure(draft: LifeDevelopmentPossibilityDr
         )
 
 
+def _plan_pressure_surface(plan: PlanStateProjection) -> dict[str, object]:
+    window: dict[str, str] | None = None
+    if plan.scheduled_window is not None:
+        window = {
+            "opens_at": plan.scheduled_window.opens_at.isoformat(),
+            "closes_at": plan.scheduled_window.closes_at.isoformat(),
+        }
+    return {
+        "plan_id": plan.plan_id,
+        "owner_actor_ref": plan.owner_actor_ref,
+        "status": plan.status,
+        "activity_kind": plan.activity_kind,
+        "location_ref": plan.location_ref,
+        "scheduled_window": window,
+        "importance_bp": plan.importance_bp,
+        "participant_refs": list(plan.participant_refs),
+    }
+
+
+def _plans_from_projection(
+    projection: object,
+    *,
+    owner_actor_ref: str | None,
+) -> tuple[list[dict[str, object]], list[dict[str, object]], list[dict[str, object]]]:
+    """Return protagonist plans, NPC plans, and time-bound constraints from ledger truth."""
+
+    live_status = {"planned", "active", "paused"}
+    protagonist: list[dict[str, object]] = []
+    npc_plans: list[dict[str, object]] = []
+    time_constraints: list[dict[str, object]] = []
+    for plan in getattr(projection, "plans", ()) or ():
+        if getattr(plan, "status", None) not in live_status:
+            continue
+        surface = _plan_pressure_surface(plan)
+        owner = getattr(plan, "owner_actor_ref", None)
+        if owner_actor_ref and owner == owner_actor_ref:
+            protagonist.append(surface)
+        elif isinstance(owner, str) and owner.startswith("npc:"):
+            npc_plans.append(surface)
+        elif any(
+            isinstance(participant, str) and participant.startswith("npc:")
+            for participant in getattr(plan, "participant_refs", ())
+        ):
+            npc_plans.append(surface)
+    return protagonist, npc_plans, time_constraints
+
+
+def _aspiration_surfaces(projection: object) -> list[dict[str, object]]:
+    items: list[dict[str, object]] = []
+    for item in getattr(projection, "aspirations", ()) or ():
+        if getattr(item, "status", None) != "active":
+            continue
+        row: dict[str, object] = {
+            "aspiration_id": item.aspiration_id,
+            "text": item.text,
+            "planted_event_ref": item.planted_event_ref,
+            "reinforcement_count": item.reinforcement_count,
+        }
+        if item.tension_summary is not None:
+            row["tension_summary"] = item.tension_summary
+        items.append(row)
+    return items
+
+
+def _npc_pressure_surfaces(
+    *,
+    manifest: LifeDevelopmentCapabilityManifest,
+    projection: object,
+    plan_by_id: dict[str, PlanStateProjection],
+    content_store: ImmutableLifeContentStore | None,
+) -> list[dict[str, object]]:
+    npc_by_ref = {
+        f"npc:{item.npc_id}": item
+        for item in getattr(projection, "npcs", ()) or ()
+        if getattr(item, "status", None) == "active"
+    }
+    identity_by_ref: dict[str, object] = {}
+    if content_store is not None:
+        from .npc_identity_view import npc_identity_views
+        from .npc_relationship_view import npc_relationship_readings
+
+        for view in npc_identity_views(
+            projection,
+            content_store=content_store,
+            relationships=npc_relationship_readings(
+                projection,
+                protagonist_actor_ref=manifest.owner_actor_ref,
+            ),
+        ):
+            identity_by_ref[view.npc_ref] = view
+
+    surfaces: list[dict[str, object]] = []
+    for item in manifest.npc_capabilities:
+        npc = npc_by_ref.get(item.npc_ref)
+        identity = identity_by_ref.get(item.npc_ref)
+        resolved_plans = [
+            _plan_pressure_surface(plan_by_id[plan_id])
+            for plan_id in item.active_plan_refs
+            if plan_id in plan_by_id
+        ]
+        row: dict[str, object] = {
+            "npc_ref": item.npc_ref,
+            "lifecycle_state": item.lifecycle_state,
+            "identity_summary": item.identity_summary,
+            "active_plan_refs": list(item.active_plan_refs),
+            "active_plans": resolved_plans,
+            "current_location_ref": item.current_location_ref,
+            "protagonist_closeness_bp": item.protagonist_closeness_bp,
+        }
+        subjective = getattr(npc, "subjective_state", None) if npc is not None else None
+        if subjective is not None:
+            if subjective.pending_impulse_summary:
+                row["pending_impulse_summary"] = subjective.pending_impulse_summary
+            if subjective.pending_actor_event_ref:
+                row["pending_actor_event_ref"] = subjective.pending_actor_event_ref
+        if identity is not None:
+            if getattr(identity, "goal_summaries", ()):
+                row["goal_summaries"] = list(identity.goal_summaries)
+            if getattr(identity, "shared_experience_summaries", ()):
+                row["shared_experience_summaries"] = list(identity.shared_experience_summaries)
+        surfaces.append(row)
+    return surfaces
+
+
+def _coordinate_constraint_surfaces(
+    *,
+    manifest: LifeDevelopmentCapabilityManifest,
+    projection: object,
+    logical_time: datetime | None,
+) -> list[dict[str, object]]:
+    constraints: list[dict[str, object]] = []
+    horizon = timedelta(hours=48)
+    for item in manifest.location_capabilities:
+        if item.availability_kind != "accepted_plan":
+            continue
+        if item.available_to is None:
+            continue
+        row: dict[str, object] = {
+            "location_ref": item.location_ref,
+            "availability_kind": item.availability_kind,
+            "available_to": item.available_to.isoformat(),
+            "authority_refs": list(item.authority_refs),
+        }
+        if logical_time is not None and item.available_to <= logical_time + horizon:
+            row["closes_within_horizon"] = True
+        constraints.append(row)
+    for plan in getattr(projection, "plans", ()) or ():
+        if getattr(plan, "status", None) not in {"planned", "active", "paused"}:
+            continue
+        window = getattr(plan, "scheduled_window", None)
+        if window is None:
+            continue
+        if logical_time is not None and window.closes_at <= logical_time + horizon:
+            constraints.append(
+                {
+                    "plan_id": plan.plan_id,
+                    "owner_actor_ref": plan.owner_actor_ref,
+                    "closes_at": window.closes_at.isoformat(),
+                    "importance_bp": plan.importance_bp,
+                }
+            )
+    return constraints[:8]
+
+
+def _open_world_residue_surfaces(projection: object) -> list[dict[str, object]]:
+    residue: list[dict[str, object]] = []
+    for item in getattr(projection, "biographical_coordinates", ()) or ():
+        residue.append(
+            {
+                "kind": "biographical_coordinate",
+                "coordinate_ref": item.coordinate_ref,
+                "summary": item.summary,
+                "context_tags": list(item.context_tags),
+                "settled_at": item.settled_at.isoformat(),
+                "settlement_event_ref": item.settlement_event_ref,
+            }
+        )
+    occurrences = sorted(
+        (
+            item
+            for item in getattr(projection, "world_occurrences", ()) or ()
+            if getattr(item, "status", None) == "settled"
+        ),
+        key=lambda value: getattr(value, "settled_at", None) or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )
+    for item in occurrences[:4]:
+        row: dict[str, object] = {
+            "kind": "settled_occurrence",
+            "occurrence_id": item.occurrence_id,
+            "location_ref": item.location_ref,
+            "settled_at": (
+                item.settled_at.isoformat() if item.settled_at is not None else None
+            ),
+            "settlement_event_ref": item.settlement_event_ref,
+            "participant_refs": list(item.participant_refs),
+        }
+        if item.settled_dynamic_life_direction_adopted:
+            row["dynamic_life_direction_adopted"] = True
+        residue.append(row)
+    for item in getattr(projection, "world_occurrences", ()) or ():
+        if getattr(item, "status", None) not in {"committed", "active"}:
+            continue
+        residue.append(
+            {
+                "kind": "open_occurrence",
+                "occurrence_id": item.occurrence_id,
+                "status": item.status,
+                "location_ref": item.location_ref,
+                "time_window": {
+                    "opens_at": item.time_window.opens_at.isoformat(),
+                    "closes_at": item.time_window.closes_at.isoformat(),
+                },
+                "participant_refs": list(item.participant_refs),
+            }
+        )
+    return residue[:10]
+
+
 def compile_pressure_surfaces(
     *,
     manifest: LifeDevelopmentCapabilityManifest,
     context: dict[str, object],
+    projection: object | None = None,
+    logical_time: datetime | None = None,
+    owner_actor_ref: str | None = None,
+    content_store: ImmutableLifeContentStore | None = None,
 ) -> dict[str, object]:
     """Expose active plans, NPC intents, and open obligations without steering content."""
 
-    active_plans: list[dict[str, object]] = []
-    for item in context.get("plans", ()) if isinstance(context.get("plans"), list) else []:
-        if not isinstance(item, dict):
-            continue
-        status = item.get("status")
-        if status not in {"planned", "active", "paused"}:
-            continue
-        active_plans.append(
-            {
-                "plan_id": item.get("plan_id"),
-                "status": status,
-                "location_ref": item.get("location_ref"),
-                "scheduled_window": item.get("scheduled_window"),
-                "importance_bp": item.get("importance_bp"),
-            }
-        )
-    aspirations = context.get("active_aspirations")
-    aspiration_items = aspirations if isinstance(aspirations, list) else []
-    npc_surfaces = [
-        {
-            "npc_ref": item.npc_ref,
-            "lifecycle_state": item.lifecycle_state,
-            "active_plan_refs": list(item.active_plan_refs),
-            "current_location_ref": item.current_location_ref,
-            "protagonist_closeness_bp": item.protagonist_closeness_bp,
+    protagonist_plans: list[dict[str, object]] = []
+    npc_owned_plans: list[dict[str, object]] = []
+    plan_by_id: dict[str, PlanStateProjection] = {}
+    if projection is not None:
+        plan_by_id = {
+            plan.plan_id: plan
+            for plan in getattr(projection, "plans", ()) or ()
+            if getattr(plan, "status", None) in {"planned", "active", "paused"}
         }
-        for item in manifest.npc_capabilities
-    ]
+        protagonist_plans, npc_owned_plans, _ = _plans_from_projection(
+            projection,
+            owner_actor_ref=owner_actor_ref or manifest.owner_actor_ref,
+        )
+    else:
+        for item in context.get("plans", ()) if isinstance(context.get("plans"), list) else []:
+            if not isinstance(item, dict):
+                continue
+            status = item.get("status")
+            if status not in {"planned", "active", "paused"}:
+                continue
+            protagonist_plans.append(
+                {
+                    "plan_id": item.get("plan_id"),
+                    "status": status,
+                    "location_ref": item.get("location_ref"),
+                    "scheduled_window": item.get("scheduled_window"),
+                    "importance_bp": item.get("importance_bp"),
+                }
+            )
+
+    aspiration_items = (
+        _aspiration_surfaces(projection)
+        if projection is not None
+        else (
+            context.get("active_aspirations")
+            if isinstance(context.get("active_aspirations"), list)
+            else []
+        )
+    )
+    npc_surfaces = (
+        _npc_pressure_surfaces(
+            manifest=manifest,
+            projection=projection,
+            plan_by_id=plan_by_id,
+            content_store=content_store,
+        )
+        if projection is not None
+        else [
+            {
+                "npc_ref": item.npc_ref,
+                "lifecycle_state": item.lifecycle_state,
+                "active_plan_refs": list(item.active_plan_refs),
+                "current_location_ref": item.current_location_ref,
+                "protagonist_closeness_bp": item.protagonist_closeness_bp,
+            }
+            for item in manifest.npc_capabilities
+        ]
+    )
     location_surfaces = [
         {
             "location_ref": item.location_ref,
             "availability_kind": item.availability_kind,
             "local_windows": list(item.local_windows),
+            **(
+                {"available_to": item.available_to.isoformat()}
+                if item.available_to is not None
+                else {}
+            ),
         }
         for item in manifest.location_capabilities
     ]
+    coordinate_constraints = (
+        _coordinate_constraint_surfaces(
+            manifest=manifest,
+            projection=projection,
+            logical_time=logical_time,
+        )
+        if projection is not None
+        else []
+    )
+    open_world_residue = (
+        _open_world_residue_surfaces(projection) if projection is not None else []
+    )
+    active_plans = protagonist_plans + npc_owned_plans
     return {
-        "contract": "life-development-pressure-surfaces.1",
+        "contract": "life-development-pressure-surfaces.2",
         "authority": "source_bound_advisory",
         "host_semantic_classification": False,
-        "active_plans": active_plans[:6],
+        "active_plans": active_plans[:8],
+        "protagonist_plans": protagonist_plans[:6],
+        "npc_owned_plans": npc_owned_plans[:6],
         "active_aspirations": aspiration_items[:4],
         "npc_capabilities": npc_surfaces[:6],
         "location_capabilities": location_surfaces[:8],
+        "coordinate_constraints": coordinate_constraints,
+        "open_world_residue": open_world_residue,
         "biographical_context_tags": list(manifest.biographical_context_tags),
         "biographical_coordinates": [
             {
@@ -263,6 +538,42 @@ def draw_life_development_opportunity(
             "weights": {key: weights[key] for key in sorted(weights)},
         },
     )
+
+
+def disturbance_consequence_usage_specimen() -> dict[str, object]:
+    """Concrete disturbance example: one outcome carries durable world consequence.
+
+    Keep this separate from ``_WORLD_AUTHOR_COMPLIANT_PROPOSE_EXAMPLE``, which
+    omits ``dynamic_life_direction``, ``objective_biographical_transition``, and
+    provisional NPC/place fields entirely. That compliant example teaches the
+    provider that prose-only outcomes are the mirror shape — the same failure
+    mode as ``we_are: null``, ``affect: null``, and photo on a cold branch.
+    """
+
+    return {
+        "when_required": "disturbance occasion: at least one outcome must carry one of these",
+        "outcome_text": (
+            "停电后父亲决定今晚提前关店，她帮忙收档；接下来几天书店都不营业。"
+        ),
+        "dynamic_life_direction": {
+            "summary": "家庭书店因线路检修临时闭店数日，她的日常会围着这次停业安排。",
+            "context_tags": ["constraint:bookstore-temporary-closure"],
+            "duration_days": 4,
+            "privacy_class": "personal",
+        },
+        "objective_biographical_transition_example": {
+            "coordinate_ref": "biography:bookstore-evening-closed",
+            "summary": "家庭书店今晚提前打烊，接下来几天不营业。",
+            "context_tags": ["place:bookstore-closed"],
+            "replaces_context_tag_prefixes": ["place:bookstore-open"],
+            "privacy_class": "personal",
+        },
+        "provisional_npc_example": {
+            "local_ref": "local:npc:electrician",
+            "summary": "来查线路的电工师傅，说话简短。",
+            "privacy_class": "shareable",
+        },
+    }
 
 
 def compile_recent_life_texture(context: dict[str, object]) -> dict[str, object]:
@@ -5044,7 +5355,14 @@ class LifeDevelopmentRuntime:
         profile = background_context_profile_for_purpose(model_purpose)
         pinned_context = slice_background_capsule_context(context, profile)
         pressure_surfaces = (
-            compile_pressure_surfaces(manifest=manifest, context=pinned_context)
+            compile_pressure_surfaces(
+                manifest=manifest,
+                context=pinned_context,
+                projection=self._ledger.project(),
+                logical_time=logical_time,
+                owner_actor_ref=self._owner,
+                content_store=self._store,
+            )
             if occasion_mode == "disturbance"
             else None
         )
@@ -5056,7 +5374,9 @@ class LifeDevelopmentRuntime:
             "causal_authority=world_contingency when the world moves first, and "
             "at least one outcome must carry durable world consequence through "
             "dynamic_life_direction, objective_biographical_transition, or a "
-            "provisional NPC/place that would persist beyond the moment. Do not "
+            "provisional NPC/place that would persist beyond the moment. "
+            "disturbance_consequence_usage_specimen shows the only useful filled "
+            "shape; prose-only outcomes fail disturbance closure. Do not "
             "write atmosphere that rounds back in the same breath."
             if occasion_mode == "disturbance"
             else ""
@@ -5210,7 +5530,12 @@ class LifeDevelopmentRuntime:
                         "pinned_world_context": pinned_context,
                         "recent_life_texture": compile_recent_life_texture(pinned_context),
                         **(
-                            {"pressure_surfaces": pressure_surfaces}
+                            {
+                                "pressure_surfaces": pressure_surfaces,
+                                "disturbance_consequence_usage_specimen": (
+                                    disturbance_consequence_usage_specimen()
+                                ),
+                            }
                             if pressure_surfaces is not None
                             else {}
                         ),
@@ -6860,6 +7185,7 @@ __all__ = [
     "LifeDevelopmentRuntime",
     "compile_pressure_surfaces",
     "compile_recent_life_texture",
+    "disturbance_consequence_usage_specimen",
     "draw_life_development_opportunity",
     "life_development_opportunity_weights",
     "occasion_mode_for_draw",
