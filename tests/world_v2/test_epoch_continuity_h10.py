@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import hashlib
 from types import SimpleNamespace
 
 from companion_daemon.world_v2.affect_live import live_component_intensity_bp
@@ -9,6 +10,9 @@ from companion_daemon.world_v2.epoch_continuity import (
     compile_continuity_snapshot,
 )
 from companion_daemon.world_v2.epoch_genesis import archive_sqlite_file, write_epoch_ledger
+from companion_daemon.world_v2.event_identity import domain_idempotency_key
+from companion_daemon.world_v2.fact_accepted_contracts import FactCommitIntentV2
+from companion_daemon.world_v2.fact_correction_lifecycle import FactCorrectionLifecycle
 from companion_daemon.world_v2.reducers import ReducerState, make_projection
 from companion_daemon.world_v2.ledger_context_resolver import _typed_refs
 from companion_daemon.world_v2.relationship_reducers import RELATIONSHIP_POLICY_DIGEST
@@ -18,6 +22,7 @@ from companion_daemon.world_v2.schemas import (
     FactOrigin,
     FactProjection,
     FactValues,
+    Observation,
     PrivateImpressionOrigin,
     PrivateImpressionProjection,
     RelationshipStateOrigin,
@@ -449,6 +454,186 @@ def test_observed_message_fact_rebinds_binding_and_preserves_archive_observation
     assert len(imported.values.source_evidence_refs) == len(
         {(item.evidence_type, item.ref_id) for item in imported.values.source_evidence_refs}
     )
+
+
+def test_genesis_display_name_can_be_corrected_from_a_live_observation(tmp_path) -> None:
+    archive_observation = "observation:qq:2759284998:qq-coalesced:archive-name"
+    binding = FactAssertionBinding(
+        source_kind="observed_message",
+        source_ref=archive_observation,
+        asserted_subject_ref="user:geoff",
+        actor_ref="user:geoff",
+        channel="qq",
+        payload_ref="ingress:qq:2759284998:qq-coalesced:archive-name",
+        content_payload_hash="a" * 64,
+    )
+    observation_evidence = EvidenceRef(
+        ref_id=archive_observation,
+        evidence_type="observed_message",
+        claim_purpose="current_fact",
+        immutable_hash="a" * 64,
+    )
+    commit_evidence = EvidenceRef(
+        ref_id="event:old-fact-commit",
+        evidence_type="committed_world_event",
+        claim_purpose="current_fact",
+        immutable_hash="a" * 64,
+        source_world_revision=88,
+    )
+    values = FactValues(
+        subject_ref="user:geoff",
+        predicate_code="profile.display_name",
+        cardinality="single",
+        conflict_key=fact_conflict_key(
+            subject_ref="user:geoff", predicate_code="profile.display_name"
+        ),
+        value_ref="value:observation:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        value_hash="c" * 64,
+        assertion_binding=binding,
+        anchor_evidence_refs=(commit_evidence,),
+        source_evidence_refs=(observation_evidence, commit_evidence),
+        confidence_bp=9000,
+        privacy_class="private",
+        status="active",
+    )
+    origin = FactOrigin(
+        change_id="change:transition:fact:name:1",
+        transition_id="transition:fact:name:1",
+        policy_refs=POLICY,
+        accepted_event_ref="event:old-fact-commit",
+    )
+    genesis_fact = FactProjection(
+        fact_id="fact:user-name",
+        entity_revision=1,
+        semantic_fingerprint=fact_semantic_fingerprint(
+            subject_ref=values.subject_ref,
+            predicate_code=values.predicate_code,
+            cardinality=values.cardinality,
+            conflict_key=values.conflict_key,
+            value_hash=values.value_hash,
+            assertion_binding=values.assertion_binding,
+            anchor_evidence_refs=values.anchor_evidence_refs,
+            policy_refs=origin.policy_refs,
+        ),
+        values=values,
+        origin=origin,
+        committed_at=NOW,
+        updated_at=NOW,
+    )
+    snapshot = compile_continuity_snapshot(
+        SimpleNamespace(
+            world_id=WORLD,
+            world_revision=88,
+            semantic_hash="e" * 64,
+            logical_time=NOW,
+            facts=(genesis_fact,),
+            memory_candidates=(),
+            relationship_states=(),
+            affect_episodes=(),
+            appraisals=(),
+            threads=(),
+            commitments=(),
+            experiences=(),
+            life_arcs=(),
+            npcs=(),
+            private_impressions=(),
+            character_core=None,
+        ),
+        epoch_id="epoch:2",
+    )
+    ledger = write_epoch_ledger(
+        path=tmp_path / "epoch-name.sqlite",
+        world_id=WORLD,
+        now=NOW,
+        snapshot=snapshot,
+    )
+    try:
+        text = "丁奥轩✅"
+        observation = Observation(
+            schema_version="world-v2.1",
+            observation_id="observation:live-name",
+            world_id=WORLD,
+            logical_time=NOW,
+            created_at=NOW,
+            trace_id="trace:live-name",
+            causation_id="cause:live-name",
+            correlation_id="correlation:live-name",
+            source="test:live-name",
+            source_event_id="source:live-name",
+            actor="user:geoff",
+            channel="qq",
+            payload_ref="payload:live-name",
+            payload_hash=hashlib.sha256(text.encode()).hexdigest(),
+            text=text,
+            received_at=NOW,
+        )
+        payload = observation.model_dump(mode="json")
+        observation_event = WorldEvent.from_payload(
+            schema_version="world-v2.1",
+            event_id="event:live-name",
+            world_id=WORLD,
+            event_type="ObservationRecorded",
+            logical_time=NOW,
+            created_at=NOW,
+            actor=observation.actor,
+            source=observation.source,
+            trace_id=observation.trace_id,
+            causation_id=observation.causation_id,
+            correlation_id=observation.correlation_id,
+            idempotency_key=domain_idempotency_key(
+                event_type="ObservationRecorded", world_id=WORLD, payload=payload
+            )
+            or "identity:event-live-name",
+            payload=payload,
+        )
+        head = ledger.project()
+        ledger.commit(
+            (observation_event,),
+            expected_world_revision=head.world_revision,
+            expected_deliberation_revision=head.deliberation_revision,
+        )
+        stored = ledger.lookup_event_commit(observation_event.event_id)
+        assert stored is not None
+        before = next(
+            item
+            for item in ledger.project().facts
+            if item.values.predicate_code == "profile.display_name"
+        )
+        digest = hashlib.sha256("丁奥轩".encode()).hexdigest()
+        after = FactCorrectionLifecycle(
+            ledger=ledger,
+            actor="operator:test",
+            source="world-v2:operator-fact-correction",
+        ).correct(
+            before=before,
+            intent=FactCommitIntentV2.model_validate(
+                {
+                    "subject_ref": "user:geoff",
+                    "predicate_code": "profile.display_name",
+                    "value_ref": f"value:observation:{digest}",
+                    "value_hash": f"sha256:{digest}",
+                    "assertion_source_ref": observation.observation_id,
+                    "evidence_uses": (
+                        {
+                            "evidence_ref": observation.observation_id,
+                            "purpose": "current_fact",
+                            "anchor": True,
+                        },
+                    ),
+                    "confidence_bp": 9500,
+                    "privacy_class": "private",
+                }
+            ),
+            observation=observation,
+            observation_event=stored[0],
+            observation_world_revision=stored[1].world_revision,
+            logical_time=ledger.project().logical_time,
+            created_at=NOW,
+        )
+        assert after.values.value_hash == digest
+        assert after.values.assertion_binding.source_ref == observation.observation_id
+    finally:
+        ledger.close()
 
 
 def _thread_with_archive_event() -> ThreadProjection:

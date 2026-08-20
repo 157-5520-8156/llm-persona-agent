@@ -11878,7 +11878,8 @@ def _validate_evidence_authority(
             )
             if (
                 committed is None
-                or committed.event_type not in {*FACT_PAYLOAD_MODELS, "FactCommittedV2"}
+                or committed.event_type
+                not in {*FACT_PAYLOAD_MODELS, "FactCommittedV2", "WorldStarted"}
                 or transition is None
                 or evidence.source_world_revision != committed.world_revision
                 or evidence.immutable_hash != _canonical_model_hash(transition.values_after)
@@ -11895,7 +11896,22 @@ def _validate_evidence_authority(
                 None,
             )
             if message is None:
-                raise ValueError("observed-message evidence does not resolve to authority")
+                admitted = next(
+                    (
+                        item
+                        for fact in state.facts
+                        for item in fact.values.source_evidence_refs
+                        if item.evidence_type == "observed_message"
+                        and item.ref_id == evidence.ref_id
+                    ),
+                    None,
+                )
+                if (
+                    admitted is None
+                    or evidence.immutable_hash != admitted.immutable_hash
+                ):
+                    raise ValueError("observed-message evidence does not resolve to authority")
+                continue
             if (
                 evidence.source_world_revision != message.world_revision
                 or evidence.immutable_hash != message.event_payload_hash

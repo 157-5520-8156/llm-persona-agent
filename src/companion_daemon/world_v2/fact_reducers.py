@@ -305,6 +305,7 @@ def _validate_privacy(fact: FactProjection) -> None:
         "observed_message": 2,
         "operator_observation": 3,
         "committed_fact": 2,
+        "committed_world_event": 2,
     }
     purpose_minimum = {
         "current_fact": 2,
