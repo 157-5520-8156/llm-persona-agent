@@ -42,6 +42,15 @@ _VARIABLE_NAMES = (
     "mutuality_bp",
     "repair_confidence_bp",
 )
+# Everyday chat moves trust/closeness/mutuality/respect.  reliability and
+# repair_confidence stay at 0 until a rupture or repair episode is written;
+# they must not drag the ordinary ladder down to stranger forever.
+_PRIMARY_LADDER_AXES = (
+    "trust_bp",
+    "closeness_bp",
+    "mutuality_bp",
+    "respect_bp",
+)
 _STAGES = ("stranger", "acquaintance", "friend", "close_friend")
 # Stages nobody can reach by accumulating closeness.  Becoming something more
 # than close friends is not a higher score on the same ladder: it is a reading
@@ -67,12 +76,15 @@ _POLICY = {
     # if they stay at 0 it is because she has not written them, not because
     # the ladder is unreachable.  Four-axis saturation is 6666 and must not
     # be "fixed" by lowering this number.
-    "enter_bp": {"acquaintance": 2_000, "friend": 4_500, "close_friend": 7_000},
-    "exit_bp": {"acquaintance": 1_500, "friend": 3_800, "close_friend": 6_200},
+    # Ordinary ladder (stranger/acquaintance/friend) scores four primary axes.
+    # close_friend enter/exit still uses mean-of-six at 7000/6200; that stage is
+    # also reachable via we_are, which remains the main road.
+    "enter_bp": {"acquaintance": 500, "friend": 1_800, "close_friend": 7_000},
+    "exit_bp": {"acquaintance": 400, "friend": 1_500, "close_friend": 6_200},
     "required_confirmations": 2,
     "minimum_dwell_seconds": 86_400,
     "stage_step_limit": 1,
-    "aggregation": "mean-six-variables-floor",
+    "aggregation": "mean-four-primary-for-ordinary-ladder-mean-six-for-close-friend",
 }
 
 
@@ -119,6 +131,9 @@ RETIRED_RELATIONSHIP_POLICY_DIGESTS = frozenset(
         # 2026-08-18 same-day close_friend 6000/5400 lowering.  Restored to
         # 7000/6200: four-axis saturation is not a reason to move the ladder.
         "374b96bb36fac6dfb607622075e40f1ae7fbb4dc30c802f6267727805f4fa912",
+        # Pre-2026-08-20: mean-of-six at 2000/4500/7000.  Ordinary ladder now
+        # uses four primary axes at 500/1800; close_friend threshold unchanged.
+        "2ec7c0874f219a2fa2c7800d3679c393705905130a9007b2833148cb1df9b8de",
     }
 )
 
@@ -658,6 +673,15 @@ def _validate_adjustment_deltas(
             raise ValueError("accepted relationship delta does not refine proposal")
 
 
+def _stage_ladder_score(
+    variables: RelationshipVariablesProjection,
+    *,
+    use_six_axis: bool,
+) -> int:
+    names = _VARIABLE_NAMES if use_six_axis else _PRIMARY_LADDER_AXES
+    return sum(getattr(variables, name) for name in names) // len(names)
+
+
 def _derive_stage(
     current: str,
     variables: RelationshipVariablesProjection,
@@ -670,14 +694,24 @@ def _derive_stage(
         return current, RelationshipHysteresisProjection()
     if current not in _STAGES:
         raise ValueError("relationship stage requires an installed commitment protocol")
-    score = sum(getattr(variables, name) for name in _VARIABLE_NAMES) // len(_VARIABLE_NAMES)
     index = _STAGES.index(current)
     candidate = None
     direction = None
-    if index < len(_STAGES) - 1 and score >= _POLICY["enter_bp"][_STAGES[index + 1]]:
-        candidate, direction = _STAGES[index + 1], "promote"
-    elif index > 0 and score < _POLICY["exit_bp"][_STAGES[index]]:
-        candidate, direction = _STAGES[index - 1], "demote"
+    if index < len(_STAGES) - 1:
+        next_stage = _STAGES[index + 1]
+        promote_score = _stage_ladder_score(
+            variables,
+            use_six_axis=next_stage == "close_friend",
+        )
+        if promote_score >= _POLICY["enter_bp"][next_stage]:
+            candidate, direction = next_stage, "promote"
+    if candidate is None and index > 0:
+        demote_score = _stage_ladder_score(
+            variables,
+            use_six_axis=current == "close_friend",
+        )
+        if demote_score < _POLICY["exit_bp"][current]:
+            candidate, direction = _STAGES[index - 1], "demote"
     if candidate is None:
         return current, RelationshipHysteresisProjection()
     if hysteresis.candidate_stage == candidate and hysteresis.direction == direction:

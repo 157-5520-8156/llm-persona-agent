@@ -339,7 +339,14 @@ class ScenarioVerificationError(AssertionError):
 # copy bound "send now" to "cannot photograph now", which starved delivery of
 # already-open candidates. Per-case predicates remain enforced; only the
 # present-prompt instruction identity moves.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.83"
+# ``.84`` composes five production lines that share capsule/resolver identity:
+# S18 long-silence/situation-independent outreach with a shared daily cap,
+# first-visible response-expectation wake, four-axis stranger→friend ladder
+# at 500/1800, epoch-1 archive Fact recall plus stable-before-episodic
+# ranking and compact relevant_facts, and character voice that unbinds
+# joking from a relationship-stage gate. Per-case predicates remain
+# enforced; prompt, policy, recall, and replay identities move together.
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.84"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -531,8 +538,13 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.83"
 # independent complete 120-case processes produced this hash before
 # installation:
 # dfc67983b3a7fd3be42a867df85060f265e3db8db893a1decbe2c53699fd6721
+# 2026-08-20: ``.84`` after S18 long-silence, first-visible expectation
+# wake, four-axis ladder 500/1800, epoch-1 Fact archive recall, stable
+# relevant_facts retention, and character-voice unbinding. Two independent
+# complete 120-case processes produced this hash before installation:
+# 3aadf7237e64237987c910036dc4b7653752e5e2884e7099c8392e8608bdc684
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "dfc67983b3a7fd3be42a867df85060f265e3db8db893a1decbe2c53699fd6721"
+    "3aadf7237e64237987c910036dc4b7653752e5e2884e7099c8392e8608bdc684"
 )
 
 

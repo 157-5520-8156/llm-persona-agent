@@ -379,7 +379,7 @@ def test_background_purpose_is_denied_before_the_provider_call(tmp_path) -> None
     store.record(
         _Usage(
             model="deepseek-v4-flash",
-            prompt_tokens=10_000_000,
+            prompt_tokens=1_000_000,
             completion_tokens=0,
             purpose="private_impression_reflection",
         )
@@ -444,7 +444,7 @@ async def test_background_cny_cap_does_not_emit_http(tmp_path) -> None:
     store.record(
         _Usage(
             model="deepseek-v4-flash",
-            prompt_tokens=10_000_000,
+            prompt_tokens=1_000_000,
             completion_tokens=0,
             purpose="proactive_contact",
         )

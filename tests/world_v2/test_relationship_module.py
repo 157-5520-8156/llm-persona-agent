@@ -52,6 +52,8 @@ PRODUCTION_EPOCH2_POST_H22_DIGEST = (
 PRODUCTION_H23_DIGEST = (
     "2ec7c0874f219a2fa2c7800d3679c393705905130a9007b2833148cb1df9b8de"
 )
+# Pre-2026-08-20 mean-of-six ordinary ladder at 2000/4500; close_friend 7000 unchanged.
+PRODUCTION_H23_MEAN_SIX_DIGEST = PRODUCTION_H23_DIGEST
 # Same-day 2026-08-18 close_friend 6000/5400 lowering; restored to 7000/6200.
 LOWERED_CLOSE_FRIEND_6000_DIGEST = (
     "374b96bb36fac6dfb607622075e40f1ae7fbb4dc30c802f6267727805f4fa912"
@@ -246,11 +248,13 @@ def test_production_epoch2_policy_stamps_are_readable_as_models_and_mappings() -
     assert PRODUCTION_EPOCH2_GENESIS_DIGEST in RETIRED_RELATIONSHIP_POLICY_DIGESTS
     assert PRODUCTION_EPOCH2_POST_H22_DIGEST in RETIRED_RELATIONSHIP_POLICY_DIGESTS
     assert LOWERED_CLOSE_FRIEND_6000_DIGEST in RETIRED_RELATIONSHIP_POLICY_DIGESTS
-    assert PRODUCTION_H23_DIGEST == RELATIONSHIP_POLICY_DIGEST
+    assert PRODUCTION_H23_MEAN_SIX_DIGEST in RETIRED_RELATIONSHIP_POLICY_DIGESTS
+    assert PRODUCTION_H23_MEAN_SIX_DIGEST != RELATIONSHIP_POLICY_DIGEST
     for digest in (
         PRODUCTION_EPOCH2_GENESIS_DIGEST,
         PRODUCTION_EPOCH2_POST_H22_DIGEST,
         LOWERED_CLOSE_FRIEND_6000_DIGEST,
+        PRODUCTION_H23_MEAN_SIX_DIGEST,
         RELATIONSHIP_POLICY_DIGEST,
     ):
         state = RelationshipStateProjection(
@@ -648,6 +652,12 @@ def test_compensation_inverts_effective_clamped_delta() -> None:
     source = signal("signal:clamped-repair", code="repair", contradiction_group_ref="group:clamp")
     before = RelationshipVariablesProjection(trust_bp=9_900)
     after = RelationshipVariablesProjection(trust_bp=10_000)
+    stage_after, hysteresis_after = relationship_reducers._derive_stage(
+        "stranger",
+        after,
+        RelationshipHysteresisProjection(),
+        NOW,
+    )
     original = adjustment_payload(
         source,
         adjustment_id="adjustment:clamped-original",
@@ -655,6 +665,8 @@ def test_compensation_inverts_effective_clamped_delta() -> None:
         before=before,
         after=after,
         accepted=RelationshipVariableDeltas(trust_bp=300),
+        stage_after=stage_after,
+        hysteresis_after=hysteresis_after,
     )
     existing = RelationshipStateProjection(
         relationship_id="relationship:user:geoff",
@@ -681,9 +693,9 @@ def test_compensation_inverts_effective_clamped_delta() -> None:
         accepted_deltas=RelationshipVariableDeltas(trust_bp=-100),
         variables_before=after,
         variables_after=before,
-        stage_before="stranger",
+        stage_before=stage_after,
         stage_after="stranger",
-        hysteresis_before=RelationshipHysteresisProjection(),
+        hysteresis_before=hysteresis_after,
         hysteresis_after=RelationshipHysteresisProjection(),
         confidence_bp=10_000,
         persistence="durable",
@@ -772,7 +784,7 @@ def test_adjustment_rejects_stale_revision_reused_signal_and_clamp_noop() -> Non
         after=capped,
         accepted=RelationshipVariableDeltas(trust_bp=300),
     )
-    with pytest.raises(ValueError, match="semantic no-op"):
+    with pytest.raises(ValueError, match="semantic no-op|hysteresis accumulator"):
         adjust_relationship_slow_variables(
             (capped_state,), (), (capped_source,), noop, logical_time=NOW
         )
@@ -992,14 +1004,14 @@ def test_compensation_restores_hysteresis_without_counting_as_confirmation() -> 
 def test_stage_gap_is_stable_and_declared_stages_ignore_thresholds() -> None:
     source = signal("signal:gap", code="gap", contradiction_group_ref="group:gap")
     gap = RelationshipVariablesProjection(
-        trust_bp=1_800,
-        closeness_bp=1_800,
-        respect_bp=1_800,
-        reliability_bp=1_800,
-        mutuality_bp=1_800,
-        repair_confidence_bp=1_800,
+        trust_bp=1_200,
+        closeness_bp=1_200,
+        respect_bp=1_200,
+        reliability_bp=1_200,
+        mutuality_bp=1_200,
+        repair_confidence_bp=1_200,
     )
-    gap_after = gap.model_copy(update={"trust_bp": 1_801})
+    gap_after = gap.model_copy(update={"trust_bp": 1_201})
     state = RelationshipStateProjection(
         relationship_id="relationship:user:geoff",
         subject_ref="user:geoff",
@@ -1035,7 +1047,7 @@ def test_stage_gap_is_stable_and_declared_stages_ignore_thresholds() -> None:
             (declared,), (), (source,), declared_payload, logical_time=NOW
         )
         assert held[0].stage == declared_stage
-        assert held[0].variables.trust_bp == 1_801
+        assert held[0].variables.trust_bp == 1_201
 
 
 def test_boundary_lifecycle_is_independent_of_relationship_stage() -> None:

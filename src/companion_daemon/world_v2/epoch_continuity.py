@@ -17,6 +17,7 @@ from .character_core_reducers import (
     CHARACTER_CORE_POLICY_VERSION,
 )
 from .schema_core import FrozenModel
+from .epoch_migration_source import is_epoch_genesis_fact
 from .schemas import (
     AffectEpisodeProjection,
     AppraisalProjection,
@@ -26,6 +27,7 @@ from .schemas import (
     CommitmentTransitionProjection,
     EvidenceRef,
     ExperienceProjection,
+    FactAssertionBinding,
     FactProjection,
     FactTransitionProjection,
     LifeArcProjection,
@@ -244,11 +246,30 @@ def _rebind_fact(
             "change_id": _genesis_change_id("fact", fact.fact_id),
         }
     )
+    binding = fact.values.assertion_binding
+    archive_observation_evidence: tuple[EvidenceRef, ...] = ()
+    if binding.source_kind == "observed_message":
+        archive_observation_evidence = (
+            EvidenceRef(
+                ref_id=binding.source_ref,
+                evidence_type="observed_message",
+                claim_purpose="current_fact",
+                immutable_hash=binding.content_payload_hash,
+            ),
+        )
+        binding = FactAssertionBinding(
+            source_kind="operator_observation",
+            source_ref=genesis_event_id,
+            asserted_subject_ref=binding.asserted_subject_ref,
+            content_payload_hash=fact.values.value_hash,
+        )
+    source_evidence_refs = archive_observation_evidence + _rebind_evidence(
+        fact.values.source_evidence_refs, genesis=genesis
+    )
     values = fact.values.model_copy(
         update={
-            "source_evidence_refs": _rebind_evidence(
-                fact.values.source_evidence_refs, genesis=genesis
-            ),
+            "assertion_binding": binding,
+            "source_evidence_refs": source_evidence_refs,
             "anchor_evidence_refs": _rebind_evidence(
                 fact.values.anchor_evidence_refs, genesis=genesis
             ),

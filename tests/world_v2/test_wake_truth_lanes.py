@@ -15,6 +15,7 @@ from companion_daemon.world_v2.response_expectation_view import (
     expired_hope_advisory_value,
     expired_unanswered_expectation,
     living_unanswered_hope,
+    next_response_expectation_wake_at,
 )
 from test_expectation_feelings import NOW as EXPECTATION_NOW
 
@@ -289,6 +290,62 @@ def test_multi_beat_same_timestamp_does_not_invent_a_cadence_wake() -> None:
     )
 
     assert expired_unanswered_expectation(projection) is None
+
+
+def test_late_terminal_delivery_does_not_revive_answered_hope() -> None:
+    """Production bug: provider_accepted then he replies, then late `delivered`.
+
+    Comparing message revisions to the *latest* receipt made the hope look
+    unanswered after a delayed delivery ack and minted a false chase.
+    """
+
+    declared = EXPECTATION_NOW
+    first_visible = SimpleNamespace(
+        event_id="event:receipt:invite-accepted",
+        event_type="ExecutionReceiptRecorded",
+        world_revision=2,
+        logical_time=declared,
+    )
+    his_reply_obs = SimpleNamespace(
+        observation_id="obs:he-replied",
+        world_revision=5,
+    )
+    late_delivered = SimpleNamespace(
+        event_id="event:receipt:invite-delivered",
+        event_type="ExecutionReceiptRecorded",
+        world_revision=9,
+        logical_time=declared + timedelta(seconds=120),
+    )
+    projection = SimpleNamespace(
+        logical_time=declared + timedelta(seconds=130),
+        message_observations=(his_reply_obs,),
+        committed_world_event_refs=(first_visible, late_delivered),
+        execution_receipts=(
+            SimpleNamespace(action_id="action:invite", observed_state="provider_accepted"),
+            SimpleNamespace(action_id="action:invite", observed_state="delivered"),
+        ),
+        response_expectation_assessments=(),
+        expression_plan_manifests=(
+            SimpleNamespace(
+                plan_id="plan:invite",
+                beats=(
+                    SimpleNamespace(
+                        beat_id="beat:invite",
+                        action=SimpleNamespace(action_id="action:invite"),
+                    ),
+                ),
+                response_expectation=SimpleNamespace(
+                    source_beat_id="beat:invite",
+                    hoped_response=WATER,
+                    not_before=declared + timedelta(seconds=60),
+                    expires_at=declared + timedelta(seconds=120),
+                ),
+            ),
+        ),
+    )
+
+    assert expired_unanswered_expectation(projection) is None
+    assert next_response_expectation_wake_at(projection) is None
 
 
 def test_timed_wait_still_mints_expiry() -> None:

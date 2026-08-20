@@ -367,7 +367,13 @@ def test_expired_expectation_context_does_not_state_the_hope_as_fact(monkeypatch
     assert len(value) <= 256
 
 
-def test_late_verified_receipt_still_mints_expired_hope_after_he_spoke() -> None:
+def test_late_verified_receipt_does_not_revive_answered_hope() -> None:
+    """He replied after provider_accepted; a later delivered ack must not chase.
+
+    Production (2026-08-18): comparing against the latest receipt revision made
+    a hope look unanswered after a delayed delivery verification.
+    """
+
     compiler, projection, _committed = _compiler_fixture(receptive=True)
     _expired_projection(
         projection,
@@ -375,6 +381,33 @@ def test_late_verified_receipt_still_mints_expired_hope_after_he_spoke() -> None
         extra_obs=(
             SimpleNamespace(observation_id="message:sun", world_revision=8),
         ),
+    )
+    first_visible = SimpleNamespace(
+        event_id="event:receipt:invite:accepted",
+        event_type="ExecutionReceiptRecorded",
+        world_revision=2,
+        logical_time=EXPECTATION_NOW,
+    )
+    late_verified = SimpleNamespace(
+        event_id="event:receipt:invite",
+        event_type="ExecutionReceiptRecorded",
+        world_revision=10,
+        logical_time=EXPECTATION_NOW + timedelta(minutes=2),
+    )
+    projection.execution_receipts = (
+        SimpleNamespace(action_id="action:invite", observed_state="provider_accepted"),
+        SimpleNamespace(action_id="action:invite", observed_state="delivered"),
+    )
+    projection.committed_world_event_refs = (first_visible, late_verified)
+
+    assert expired_unanswered_expectation(projection) is None
+
+
+def test_late_verified_receipt_still_mints_when_he_never_spoke() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    _expired_projection(
+        projection,
+        expires_at=projection.logical_time - timedelta(minutes=5),
     )
     first_visible = SimpleNamespace(
         event_id="event:receipt:invite:accepted",

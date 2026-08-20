@@ -388,7 +388,9 @@ def test_expired_advisory_attaches_when_pending_hope_has_already_expired() -> No
     snapshot = compile_inner_life_snapshot(attached)
     advisories = snapshot.materials.get("advisories")
 
-    assert expired_unanswered_expectation(projection) is not None
+    # He spoke after first visible leave, so the chase lane must not mint.
+    # The expired-hope advisory still attaches: that is timing evidence.
+    assert expired_unanswered_expectation(projection) is None
     assert seconds == 90
     assert spoken_since is True
     assert isinstance(advisories, list)

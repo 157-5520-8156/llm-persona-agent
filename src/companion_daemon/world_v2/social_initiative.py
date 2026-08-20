@@ -29,6 +29,7 @@ from .response_expectation_view import (
     expired_expectation_consideration_id,
     expired_unanswered_expectation,
     is_overnight_local,
+    next_response_expectation_wake_at,
     pending_response_expectation,
 )
 from .revisit_intention_view import (
@@ -82,6 +83,19 @@ _ACTOR_SCOPED_SITUATION_EVENT_TYPES = frozenset(
         "ExternalPerceptionRecorded",
         "LifeArcChanged",
         "NpcStatusChanged",
+    }
+)
+# Tier B: only these may independently mint a consider after the short ambient
+# window closes. Pause/resume, affect churn, relationship internals, and
+# thread/commitment leftovers stay hitch-only (they have their own lanes or
+# are too noisy to wake him).
+_INDEPENDENT_SITUATION_MINT_EVENT_TYPES = frozenset(
+    {
+        "ActivityCompleted",
+        "WorldOccurrenceSettled",
+        "ExperienceCommitted",
+        "ExternalPerceptionRecorded",
+        "LifeArcChanged",
     }
 )
 
@@ -170,10 +184,27 @@ _AMBIENT_EXPIRY_GRACE_SECONDS = 60
 
 class SocialInitiativePolicy(FrozenModel):
     spontaneous_idle_seconds: int = Field(default=1_800, ge=60, le=172_800)
+    # Quiet-gap TTL for the short spontaneous/ambient lane (not the delay
+    # ceiling). Delay candidates max out near 8h; this expiry is 12h.
     spontaneous_expiry_seconds: int = Field(default=43_200, ge=120, le=604_800)
     contact_cooldown_seconds: int = Field(default=900, ge=60, le=86_400)
     local_timezone: str = Field(default="Asia/Shanghai", min_length=1, max_length=64)
     consideration_band_override_seconds: tuple[int, int] | None = None
+    # Shared daily budget for S18 long_silence (A) + post-ambient situation
+    # independent mint (B). One shared cap keeps "惦记" from becoming 话痨.
+    shared_outreach_daily_limit: int = Field(default=1, ge=0, le=4)
+    shared_outreach_min_interval_seconds: int = Field(
+        default=21_600, ge=3_600, le=172_800
+    )
+    # After ambient closes, draw a further delay so the first ask lands ~18–36h
+    # after his last message (12h expiry + 6–24h), not on a fixed clock.
+    long_silence_delay_band_seconds: tuple[int, int] = (21_600, 86_400)
+    # Soft respect for consecutive silents on shared-budget lanes: after this
+    # many, add one extra day of cooldown. Cap is intentional — never mute forever.
+    shared_outreach_silent_streak_threshold: int = Field(default=2, ge=1, le=8)
+    shared_outreach_silent_extra_cooldown_seconds: int = Field(
+        default=86_400, ge=0, le=604_800
+    )
 
     @model_validator(mode="after")
     def expiry_follows_opening(self) -> "SocialInitiativePolicy":
@@ -185,6 +216,9 @@ class SocialInitiativePolicy(FrozenModel):
                 raise ValueError(
                     "social initiative cadence override must fit the spontaneous window"
                 )
+        delay_low, delay_high = self.long_silence_delay_band_seconds
+        if not 3_600 <= delay_low <= delay_high <= 172_800:
+            raise ValueError("long silence delay band must stay within 1h–48h")
         return self
 
 
@@ -192,6 +226,7 @@ SocialInitiativeSourceKind = Literal[
     "spontaneous_contact",
     "ambient_presence",
     "post_silent",
+    "long_silence",
     "situation_change",
     "expired_expectation",
     "thread",
@@ -205,10 +240,65 @@ PRIVATE_IMPRESSION_OCCASION_REASON = "private_impression:unresolved"
 _PRIVATE_IMPRESSION_CONSIDERATION_PREFIX = (
     "consideration:social-initiative:private-impression:"
 )
+_LONG_SILENCE_CONSIDERATION_PREFIX = (
+    "consideration:social-initiative:long-silence:"
+)
+_SITUATION_INDEPENDENT_CONSIDERATION_PREFIX = (
+    "consideration:social-initiative:situation-independent:"
+)
+SHARED_OUTREACH_BUDGET_REASON = "budget:shared_outreach"
+LONG_SILENCE_OCCASION_REASON = "occasion:long_silence"
+SITUATION_INDEPENDENT_OCCASION_REASON = "occasion:situation_independent"
 PRIVATE_IMPRESSION_OPPORTUNITY_CONTEXT = (
     "An unresolved private impression is eligible for consideration. "
     "Timing evidence only; she still decides whether to speak, wait, or stay silent."
 )
+LONG_SILENCE_OPPORTUNITY_CONTEXT = (
+    "The short ambient contact window after his last message has closed. "
+    "A sparse long-silence consideration is due. Verified idle duration, "
+    "open leftovers, and recent life materials are timing and attention "
+    "evidence only; she still decides whether to speak, wait, or stay silent."
+)
+
+
+def long_silence_consideration_id(
+    *, observation_id: str, local_day: str, delay_seconds: int
+) -> str:
+    """One effect-once long-silence identity per observation day and delay draw."""
+
+    return _LONG_SILENCE_CONSIDERATION_PREFIX + hashlib.sha256(
+        json.dumps(
+            {
+                "observation_id": observation_id,
+                "local_day": local_day,
+                "delay_seconds": delay_seconds,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+
+def situation_independent_consideration_id(*, stimulus_anchor_event_id: str) -> str:
+    """One effect-once identity for an independently minted situation window."""
+
+    return _SITUATION_INDEPENDENT_CONSIDERATION_PREFIX + hashlib.sha256(
+        json.dumps(
+            {"stimulus_anchor_event_id": stimulus_anchor_event_id},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+
+def is_shared_outreach_consideration_id(consideration_id: str) -> bool:
+    return consideration_id.startswith(_LONG_SILENCE_CONSIDERATION_PREFIX) or (
+        consideration_id.startswith(_SITUATION_INDEPENDENT_CONSIDERATION_PREFIX)
+    )
+
+
+def long_silence_opportunity_context() -> str:
+    return LONG_SILENCE_OPPORTUNITY_CONTEXT
 
 
 def private_impression_consideration_id(impression_id: str) -> str:
@@ -470,6 +560,10 @@ def social_initiative_consideration_id(
 _POST_SILENT_CONSIDERATION_PREFIX = "consideration:social-initiative:post-silent:"
 
 
+def _local_day_key(instant: datetime, *, timezone_name: str) -> str:
+    return instant.astimezone(ZoneInfo(timezone_name)).date().isoformat()
+
+
 def post_silent_consideration_id(
     *,
     attempt_id: str,
@@ -594,6 +688,7 @@ class SocialInitiativeCompiler:
                 "spontaneous_contact",
                 "ambient_presence",
                 "post_silent",
+                "long_silence",
             }:
                 adopted = await self._adopt_private_impression(
                     projection,
@@ -648,6 +743,7 @@ class SocialInitiativeCompiler:
             "spontaneous_contact",
             "ambient_presence",
             "post_silent",
+            "long_silence",
         }:
             return None
         post_silent = await self._post_silent_consideration(projection, logical_time)
@@ -668,15 +764,38 @@ class SocialInitiativeCompiler:
             and spontaneous.consideration_id in excluded_consideration_ids
         ):
             return None
-        if spontaneous is None:
+        if spontaneous is not None:
+            adopted = await self._adopt_private_impression(
+                projection,
+                excluded_consideration_ids=excluded_consideration_ids,
+                timing=spontaneous,
+            )
+            return await self._hitch_situation_materials(
+                projection, logical_time, adopted or spontaneous
+            )
+        # Short ambient window closed. Shared-budget S18 lanes: prefer a
+        # fresh observable life event (B) over bare long silence (A).
+        situation = await self._situation_independent_contact(
+            projection,
+            logical_time,
+            excluded_consideration_ids=excluded_consideration_ids,
+        )
+        if situation is not None:
+            return situation
+        long_silence = await self._long_silence_contact(
+            projection,
+            logical_time,
+            excluded_consideration_ids=excluded_consideration_ids,
+        )
+        if long_silence is None:
             return None
         adopted = await self._adopt_private_impression(
             projection,
             excluded_consideration_ids=excluded_consideration_ids,
-            timing=spontaneous,
+            timing=long_silence,
         )
         return await self._hitch_situation_materials(
-            projection, logical_time, adopted or spontaneous
+            projection, logical_time, adopted or long_silence
         )
 
     async def peek_next_due(self, projection) -> datetime | None:
@@ -712,6 +831,7 @@ class SocialInitiativeCompiler:
             )
             if logical_time < cooldown_until:
                 return cooldown_until
+        expectation_due = next_response_expectation_wake_at(projection)
         try:
             post_silent = await self._post_silent_consideration(
                 projection,
@@ -722,7 +842,12 @@ class SocialInitiativeCompiler:
         except ValueError:
             post_silent = None
         if post_silent is not None:
-            return post_silent.scheduled_for
+            due = post_silent.scheduled_for
+            if expectation_due is not None and (due is None or expectation_due <= due):
+                return expectation_due
+            return due
+        if expectation_due is not None:
+            return expectation_due
         if await self._post_silent_chain_active(projection):
             return None
         try:
@@ -733,10 +858,34 @@ class SocialInitiativeCompiler:
                 allow_future=True,
             )
         except ValueError:
+            spontaneous = None
+        if spontaneous is not None:
+            return spontaneous.scheduled_for
+        try:
+            situation = await self._situation_independent_contact(
+                projection,
+                logical_time,
+                excluded_consideration_ids=frozenset(),
+                record_draw=False,
+                allow_future=True,
+            )
+        except ValueError:
+            situation = None
+        if situation is not None:
+            return situation.scheduled_for
+        try:
+            long_silence = await self._long_silence_contact(
+                projection,
+                logical_time,
+                excluded_consideration_ids=frozenset(),
+                record_draw=False,
+                allow_future=True,
+            )
+        except ValueError:
             return None
-        if spontaneous is None:
+        if long_silence is None:
             return None
-        return spontaneous.scheduled_for
+        return long_silence.scheduled_for
 
     async def unrecorded_cadence_still_open(self, projection) -> bool:
         """True when health may keep a message-formula due without a draw.
@@ -840,6 +989,9 @@ class SocialInitiativeCompiler:
                 if prior_trigger_id is not None:
                     source_kind = "post_silent"
                     source_id = prior_trigger_id
+                elif consideration_id.startswith(_LONG_SILENCE_CONSIDERATION_PREFIX):
+                    source_kind = "long_silence"
+                    source_id = f"long-silence:recovery:{source_ref.world_revision}"
                 else:
                     source_kind = "ambient_presence"
                     source_id = f"ambient:recovery:{source_ref.world_revision}"
@@ -936,7 +1088,12 @@ class SocialInitiativeCompiler:
                 ):
                     continue
                 source_kind = "situation_change"
-                source_id = "situation-window:" + source_ref.event_id
+                if consideration_id.startswith(
+                    _SITUATION_INDEPENDENT_CONSIDERATION_PREFIX
+                ):
+                    source_id = "situation-independent:" + source_ref.event_id
+                else:
+                    source_id = "situation-window:" + source_ref.event_id
                 stimulus_event_refs = tuple(
                     item.event_id
                     for item in await self._observable_stimulus_refs(
@@ -1344,6 +1501,9 @@ class SocialInitiativeCompiler:
         source_kind = (
             "post_silent"
             if event.event_type == "ClockAdvanced" and prior_trigger_id is not None
+            else "long_silence"
+            if event.event_type == "ClockAdvanced"
+            and consideration_id.startswith(_LONG_SILENCE_CONSIDERATION_PREFIX)
             else "ambient_presence"
             if event.event_type == "ClockAdvanced"
             else "spontaneous_contact"
@@ -1751,6 +1911,360 @@ class SocialInitiativeCompiler:
         )
         return getattr(ref, "world_revision", 1)
 
+    def _ambient_window_closed(self, *, elapsed_seconds: float) -> bool:
+        return (
+            elapsed_seconds
+            >= self._policy.spontaneous_expiry_seconds + _AMBIENT_EXPIRY_GRACE_SECONDS
+        )
+
+    def _shared_outreach_processes(self, projection):
+        for process in getattr(projection, "trigger_processes", ()):
+            if process.process_kind != "proactive_action_deliberation":
+                continue
+            if not process.trigger_ref.startswith("proactive-consideration:"):
+                continue
+            consideration_id = process.trigger_ref.removeprefix(
+                "proactive-consideration:"
+            )
+            if not is_shared_outreach_consideration_id(consideration_id):
+                continue
+            yield process, consideration_id
+
+    def _shared_outreach_uses_on_local_day(
+        self, projection, logical_time: datetime
+    ) -> int:
+        day = _local_day_key(
+            logical_time, timezone_name=self._policy.local_timezone
+        )
+        count = 0
+        for process, _consideration_id in self._shared_outreach_processes(projection):
+            source_ref = next(
+                (
+                    item
+                    for item in projection.committed_world_event_refs
+                    if item.event_id == process.source_evidence_ref
+                ),
+                None,
+            )
+            if source_ref is None:
+                continue
+            if _local_day_key(
+                source_ref.logical_time, timezone_name=self._policy.local_timezone
+            ) == day:
+                count += 1
+        return count
+
+    def _last_shared_outreach_at(self, projection) -> datetime | None:
+        latest: datetime | None = None
+        for process, _consideration_id in self._shared_outreach_processes(projection):
+            source_ref = next(
+                (
+                    item
+                    for item in projection.committed_world_event_refs
+                    if item.event_id == process.source_evidence_ref
+                ),
+                None,
+            )
+            if source_ref is None:
+                continue
+            if latest is None or source_ref.logical_time > latest:
+                latest = source_ref.logical_time
+        return latest
+
+    def _shared_outreach_silent_streak(self, projection) -> int:
+        streak = 0
+        for process, _consideration_id in reversed(
+            tuple(self._shared_outreach_processes(projection))
+        ):
+            if process.state != "terminal":
+                continue
+            if process.runtime_outcome_ref == "proactive:silent":
+                streak += 1
+                continue
+            break
+        return streak
+
+    def _shared_outreach_budget_allows(
+        self, projection, logical_time: datetime
+    ) -> bool:
+        if self._policy.shared_outreach_daily_limit <= 0:
+            return False
+        if (
+            self._shared_outreach_uses_on_local_day(projection, logical_time)
+            >= self._policy.shared_outreach_daily_limit
+        ):
+            return False
+        last_at = self._last_shared_outreach_at(projection)
+        if last_at is not None:
+            required = self._policy.shared_outreach_min_interval_seconds
+            streak = self._shared_outreach_silent_streak(projection)
+            if streak >= self._policy.shared_outreach_silent_streak_threshold:
+                required += self._policy.shared_outreach_silent_extra_cooldown_seconds
+            if (logical_time - last_at).total_seconds() < required:
+                return False
+        return True
+
+    async def _latest_user_observation_source(self, projection):
+        if not projection.message_observations:
+            return None
+        latest = projection.message_observations[-1]
+        source = await self._lookup(f"event:observation:{latest.observation_id}")
+        if source is None:
+            ref = next(
+                (
+                    item
+                    for item in projection.committed_world_event_refs
+                    if item.world_revision == latest.world_revision
+                    and item.event_type == "ObservationRecorded"
+                ),
+                None,
+            )
+            source = await self._lookup(ref.event_id) if ref is not None else None
+        if source is None or source[0].event_type != "ObservationRecorded":
+            return None
+        return latest, source
+
+    async def _situation_independent_contact(
+        self,
+        projection,
+        logical_time: datetime,
+        *,
+        excluded_consideration_ids: frozenset[str],
+        record_draw: bool = True,
+        allow_future: bool = False,
+    ):
+        """Mint a situation_change consider after ambient closes (tier B).
+
+        Inside the short spontaneous window situation materials only hitch.
+        After that window, a protagonist-observable life beat may open one
+        shared-budget consider. She still chooses now/later/silent.
+        """
+
+        del record_draw  # No delay table; due at the stimulus cluster time.
+        if is_overnight_local(logical_time):
+            return None
+        if self._policy.consideration_band_override_seconds is not None:
+            # Qualification fixtures pin the short window only.
+            return None
+        if not self._shared_outreach_budget_allows(projection, logical_time):
+            return None
+        observed = await self._latest_user_observation_source(projection)
+        if observed is None:
+            return None
+        _latest, source = observed
+        elapsed = (logical_time - source[0].logical_time).total_seconds()
+        if not self._ambient_window_closed(elapsed_seconds=elapsed):
+            return None
+        refs = await self._recent_observable_situation_refs(projection, logical_time)
+        if not refs:
+            return None
+        has_mintable = False
+        for event_id in refs:
+            located = await self._lookup(event_id)
+            if located is None:
+                continue
+            if located[0].event_type in _INDEPENDENT_SITUATION_MINT_EVENT_TYPES:
+                has_mintable = True
+                break
+        if not has_mintable:
+            return None
+        anchor_id = refs[0]
+        anchor_located = await self._lookup(anchor_id)
+        if anchor_located is None:
+            return None
+        anchor = anchor_located[0]
+        if logical_time < anchor.logical_time and not allow_future:
+            return None
+        consideration_id = situation_independent_consideration_id(
+            stimulus_anchor_event_id=anchor.event_id
+        )
+        if consideration_id in excluded_consideration_ids:
+            return None
+        if self._terminal_consideration(projection, consideration_id):
+            return None
+        return await self._from_source(
+            source_kind="situation_change",
+            source_id="situation-independent:" + anchor.event_id,
+            source_event_ref=anchor.event_id,
+            source_world_revision=self._source_world_revision(
+                projection, anchor.event_id
+            ),
+            consideration_id=consideration_id,
+            scheduled_for=anchor.logical_time,
+            cadence_reason_codes=(
+                SHARED_OUTREACH_BUDGET_REASON,
+                SITUATION_INDEPENDENT_OCCASION_REASON,
+                "stimulus:situation_change",
+            ),
+            stimulus_event_refs=refs,
+        )
+
+    async def _long_silence_contact(
+        self,
+        projection,
+        logical_time: datetime,
+        *,
+        excluded_consideration_ids: frozenset[str],
+        record_draw: bool = True,
+        allow_future: bool = False,
+    ):
+        """Sparse long-silence consider after ambient closes (tier A / S18).
+
+        Randomness chooses whether/when the opportunity appears. Once due,
+        deliberation is a full proactive consider: she may speak, wait, or
+        stay silent. No timer writes prose.
+        """
+
+        if is_overnight_local(logical_time):
+            return None
+        if self._policy.consideration_band_override_seconds is not None:
+            return None
+        if not self._shared_outreach_budget_allows(projection, logical_time):
+            return None
+        observed = await self._latest_user_observation_source(projection)
+        if observed is None:
+            return None
+        latest, source = observed
+        elapsed = (logical_time - source[0].logical_time).total_seconds()
+        if not self._ambient_window_closed(elapsed_seconds=elapsed):
+            return None
+        try:
+            pending = pending_response_expectation(projection)
+        except (TypeError, ValueError, AttributeError):
+            pending = None
+        if pending is not None:
+            return None
+        delay_low, delay_high = self._policy.long_silence_delay_band_seconds
+        mid = (delay_low + delay_high) // 2
+        candidates = tuple(dict.fromkeys((delay_low, mid, delay_high)))
+        earliest_possible = source[0].logical_time + timedelta(
+            seconds=self._policy.spontaneous_expiry_seconds + delay_low
+        )
+        if logical_time < earliest_possible and not allow_future:
+            return None
+        weights = {f"delay:{seconds}": 3_333 for seconds in candidates}
+        if len(candidates) == 3:
+            weights = {
+                f"delay:{candidates[0]}": 2_500,
+                f"delay:{candidates[1]}": 5_000,
+                f"delay:{candidates[2]}": 2_500,
+            }
+        attempt_id = (
+            "social-initiative:long-silence:"
+            + hashlib.sha256(
+                json.dumps(
+                    {
+                        "source_event_ref": source[0].event_id,
+                        "delay_candidates_seconds": candidates,
+                        "policy": "long-silence.1",
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest()
+        )
+        draw = await self._recorded_random_draw(projection, attempt_id)
+        if draw is None and not record_draw:
+            # Peek only: expose the soonest possible due without recording.
+            earliest = source[0].logical_time + timedelta(
+                seconds=self._policy.spontaneous_expiry_seconds + delay_low
+            )
+            if logical_time < earliest and not allow_future:
+                return None
+            local_day = _local_day_key(
+                earliest, timezone_name=self._policy.local_timezone
+            )
+            consideration_id = long_silence_consideration_id(
+                observation_id=latest.observation_id,
+                local_day=local_day,
+                delay_seconds=delay_low,
+            )
+            if consideration_id in excluded_consideration_ids:
+                return None
+            if self._terminal_consideration(projection, consideration_id):
+                return None
+            return SocialInitiativeOpportunity(
+                source_kind="long_silence",
+                source_id=f"long-silence:peek:{local_day}",
+                source_event_ref=source[0].event_id,
+                source_event_hash=source[0].payload_hash,
+                source_world_revision=latest.world_revision,
+                trace_id=source[0].trace_id,
+                correlation_id=source[0].correlation_id,
+                created_at=source[0].created_at,
+                consideration_id=consideration_id,
+                scheduled_for=earliest,
+                cadence_reason_codes=(
+                    SHARED_OUTREACH_BUDGET_REASON,
+                    LONG_SILENCE_OCCASION_REASON,
+                ),
+            )
+        if draw is None:
+            draw_kwargs = dict(
+                attempt_id=attempt_id,
+                candidate_refs=tuple(f"delay:{seconds}" for seconds in candidates),
+                candidate_weights=weights,
+                weight_policy_version="long-silence.1",
+                catalog_version="social-initiative-long-silence.1",
+                logical_time=logical_time,
+                seed_instant=source[0].logical_time,
+                actor="system:social-initiative",
+                trace_id=source[0].trace_id,
+                correlation_id=source[0].correlation_id,
+            )
+            draw = (
+                await asyncio.to_thread(self._random.draw, **draw_kwargs)
+                if self._ledger.blocks_event_loop
+                else self._random.draw(**draw_kwargs)
+            )
+        try:
+            delay_seconds = int(draw.selected_candidate_ref.removeprefix("delay:"))
+        except (AttributeError, ValueError):
+            raise ValueError("long silence cadence draw did not select a delay")
+        if delay_seconds not in candidates:
+            raise ValueError("long silence cadence draw selected an unknown delay")
+        scheduled_for = source[0].logical_time + timedelta(
+            seconds=self._policy.spontaneous_expiry_seconds + delay_seconds
+        )
+        if logical_time < scheduled_for and not allow_future:
+            return None
+        local_day = _local_day_key(
+            scheduled_for, timezone_name=self._policy.local_timezone
+        )
+        consideration_id = long_silence_consideration_id(
+            observation_id=latest.observation_id,
+            local_day=local_day,
+            delay_seconds=delay_seconds,
+        )
+        if consideration_id in excluded_consideration_ids:
+            return None
+        if self._terminal_consideration(projection, consideration_id):
+            return None
+        clock_ref = min(
+            (
+                item
+                for item in projection.committed_world_event_refs
+                if item.event_type == "ClockAdvanced"
+                and scheduled_for <= item.logical_time <= logical_time
+            ),
+            key=lambda item: (item.logical_time, item.event_id),
+            default=None,
+        )
+        if clock_ref is None:
+            return None
+        return await self._from_source(
+            source_kind="long_silence",
+            source_id=f"long-silence:{local_day}",
+            source_event_ref=clock_ref.event_id,
+            source_world_revision=clock_ref.world_revision,
+            consideration_id=consideration_id,
+            scheduled_for=scheduled_for,
+            cadence_reason_codes=(
+                SHARED_OUTREACH_BUDGET_REASON,
+                LONG_SILENCE_OCCASION_REASON,
+            ),
+        )
+
     async def _spontaneous_contact(
         self,
         projection,
@@ -1981,18 +2495,26 @@ def technical_failure_point(*, projection, process) -> tuple[int | None, datetim
 
 
 __all__ = [
+    "LONG_SILENCE_OCCASION_REASON",
+    "LONG_SILENCE_OPPORTUNITY_CONTEXT",
     "PRIVATE_IMPRESSION_OCCASION_REASON",
     "PRIVATE_IMPRESSION_OPPORTUNITY_CONTEXT",
+    "SHARED_OUTREACH_BUDGET_REASON",
+    "SITUATION_INDEPENDENT_OCCASION_REASON",
     "SocialInitiativeCompiler",
     "SocialInitiativeContextPolicy",
     "SocialInitiativeDecisionProfile",
     "SocialInitiativeOpportunity",
     "SocialInitiativePolicy",
     "SocialInitiativeSourceKind",
+    "is_shared_outreach_consideration_id",
     "living_private_impression",
+    "long_silence_consideration_id",
+    "long_silence_opportunity_context",
     "private_impression_consideration_id",
     "private_impression_opportunity_context",
     "private_impression_source_binds_head",
+    "situation_independent_consideration_id",
     "situation_stimulus_is_observable",
     "social_initiative_attempt_id",
     "social_initiative_consideration_id",

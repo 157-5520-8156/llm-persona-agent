@@ -538,7 +538,7 @@ RSS/NWS/USGS → hub 采集/去重/嵌入/聚类 → attention 影子/实时注�
 | 打断重考虑 | 新用户消息使未分发 Beat 失效，直到专属 worker 记录显式继续决定（gate 而非策略） | [active] | `expression_reconsideration.py`、`expression_reconsideration_runtime.py` |
 | 延迟回复（reply_later） | "现在不回，晚点回"的持久责任生命周期 | [active] | `deferred_reply_runtime.py` |
 | 对话主动性机会 | 人类式对话主动机会（权威编译，只产生机会不产生动机） | [active] | `social_initiative.py`（被 `proactive_action.py`/`production.py` 消费） |
-| 主动联系 | 有来源的主动/脉冲审议，持久终态（2/15/45 分钟窗口；无新事件时 45 分钟~8 小时的环境机会；夜间/忙碌/低亲密只调权重不调许可） | [active] | `proactive_action.py`、`character_interior/production.py` |
+| 主动联系 | 有来源的主动/脉冲审议，持久终态（短窗：idle 后 delay 候选约 45 分钟~8 小时；quiet-gap TTL **12 小时**后短窗关闭；之后走 S18 稀疏长静默/可观测生活事件共享日上限） | [active] | `proactive_action.py`、`character_interior/production.py`、`social_initiative.py` |
 | 静默（silent） | 角色选择不回复（关闭该次考虑，不是技术失败） | [active] | 事件流 + `production.py` |
 | 延迟注意力回复接口 | 保留的"错过没看到"能力 | **[disconnected]**：disabled，生产路由不选择它（CONTEXT.md 明示） | `expression_episode.py` 引用 |
 
@@ -835,8 +835,10 @@ RSS/NWS/USGS → hub 采集/去重/嵌入/聚类 → attention 影子/实时注�
 
 - **场景描述**：不是每次都是你开话题。她会因为想你了、今天发生了一件值得说的事、或者单纯无聊，主动来找你说话。
 - **期望表现**：消息不是对上一句的回应，而是她生活的自然溢出。
-- **依赖机制链**：clock/生活事件 → 主动窗口（2/15/45 分钟；无新事件时 45 分钟~8 小时环境机会）→ `proactive_action`（持久终态的审议）→ `social_initiative` → 角色决定 now/later/silent。
-- **现状**：机制 [active]，但"效果未验证"（`companion-experience-roadmap` 现状表 #1）——频率、时机、内容质量没有实测数据。
+- **依赖机制链**：clock/生活事件 → 主动窗口 → `proactive_action`（持久终态的审议）→ `social_initiative` → 角色决定 now/later/silent。
+  - **短窗（会话余温）**：距上次用户消息 idle≥30 分钟后，关系感知的 delay 抽签（候选约 45 分钟~8 小时，上限低于 quiet-gap TTL）；`spontaneous_expiry_seconds=43200`（**12 小时**）后短窗关闭。文档旧称「8 小时环境机会」指的是 **delay 候选上限**，不是 quiet-gap TTL——以代码 12h 为准。
+  - **长静默（S18）**：短窗关闭后，稀疏 `long_silence` / 可观测生活事件独立 mint，与短窗分开计数，见 S18。
+- **现状**：短窗 [active]，生产账本已有窗内 `proactive_message`/`followup`；长静默见 S18。
 - 每次 `silent` 只结束当前考虑，不消费未来机会；持久化的沉默终态会产生下一次独立、可重放的
   `post_silent` 考虑时间。恢复时必须保留该来源身份，不能把同一机会误并入 ambient，也不能把它改写成强制发送。
 - **修复要点**：记录主动消息的实际频率/时机/被回应的比例（§5.2 的评测思路可复用）；`inner-life-coverage-plan` 指出"主动联络之前无'想找人说话'的 durable 状态"——孤独/分享欲这类动机材料是否在快照中充分呈现，是内容质量的根因。
@@ -988,14 +990,16 @@ RSS/NWS/USGS → hub 采集/去重/嵌入/聚类 → attention 影子/实时注�
 - **修复要点**：§5.2 的评测与校准；评估开启语义召回的收益/成本；验证 recall 结果真的被模型使用（而非取回即弃）。
 - 来源：`companion-experience-roadmap` #8、用户聊天记录（"想起很久以前聊过的东西再触景生情"）。
 
-#### S18 独处/无聊 → 内省 [disconnected]
+#### S18 独处/无聊 → 内省 → 可能联系 [active]
 
-- **场景描述**：长时间没有事件和消息时，她不是静止的——会无聊、会胡思乱想、会给自己找点事（也可能只是发呆）。
-- **期望表现**：低概率的内省类 Appraisal（"今天好像没什么特别的"）；独处可能催生主动联系（S2）或新计划（S13）。
-- **依赖机制链**：clock 长静默 → 内省评估机会（低概率）→ Appraisal/Private Impression → 可能触发主动联系/计划。
-- **现状**：**断链**——`inner-life-coverage-plan` 感受空白表明示"独处/无聊：时钟只做衰减"，长时间无事件无内省通道。
-- **修复要点**：设计"独处内省"评估机会（低频、可 no_change、预算受限），与 silence 通道区分（S6 是被晾着，S18 是无人说话）。
-- 来源：`world-v2-inner-life-coverage-plan` 感受空白表。
+- **场景描述**：长时间没有消息时，她不是静止的——可能惦记、可能触景生情、也可能只是发呆不联系。
+- **期望表现**：短窗（S2）关闭后，系统只给**稀疏机会与来源清楚的事实**（他多久没说话、未兑现承诺/活印象资格、可观测生活事件）；开不开口由她选 now/later/silent。禁止定时硬发、禁止关键词/模板替她说话。
+- **依赖机制链**：
+  - **档 A `long_silence`**：ambient/spontaneous 关窗后，在 quiet-gap TTL（12h）之上再抽 6–24h delay（首问约落在他消失后 18–36h），Clock 只作时机权威。
+  - **档 B 可观测生活事件独立 mint**：关窗后，`ActivityCompleted` / `WorldOccurrenceSettled` / `ExperienceCommitted` / `ExternalPerceptionRecorded` / `LifeArcChanged` 且通过 `situation_stimulus_is_observable` 的事件可独立打开 `situation_change` consider（窗内仍只 hitch）。
+  - **合并日上限 1**（本地日历日）+ 最小间隔 6h；连续两次 shared-lane `silent` 后额外 +24h 冷却（有上限，不永久静音）。
+- **现状**：[active]（2026-08-19 接线）。与 silence 通道区分：S6 是她发出后被晾；S18 是他先长时间不说话时的稀疏考虑。
+- 来源：`world-v2-inner-life-coverage-plan` 感受空白表；用户核心诉求「惦记着某事 / 触景生情来找用户」。
 
 #### S19 心愿的萌芽与淡去 [disconnected]
 

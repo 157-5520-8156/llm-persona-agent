@@ -345,6 +345,102 @@ def test_committed_world_event_fact_rebinds_to_genesis_and_recomputes_fingerprin
     assert imported.semantic_fingerprint != fact.semantic_fingerprint
 
 
+def test_observed_message_fact_rebinds_binding_and_preserves_archive_observation() -> None:
+    archive_observation = "observation:qq:2759284998:qq-coalesced:archive-name"
+    binding = FactAssertionBinding(
+        source_kind="observed_message",
+        source_ref=archive_observation,
+        asserted_subject_ref="user:geoff",
+        actor_ref="user:geoff",
+        channel="qq",
+        payload_ref="ingress:qq:2759284998:qq-coalesced:archive-name",
+        content_payload_hash="a" * 64,
+    )
+    anchors = (
+        EvidenceRef(
+            ref_id="event:old-fact-commit",
+            evidence_type="committed_world_event",
+            claim_purpose="current_fact",
+            immutable_hash="a" * 64,
+            source_world_revision=88,
+        ),
+    )
+    values = FactValues(
+        subject_ref="user:geoff",
+        predicate_code="profile.display_name",
+        cardinality="single",
+        conflict_key=fact_conflict_key(
+            subject_ref="user:geoff", predicate_code="profile.display_name"
+        ),
+        value_ref="value:observation:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        value_hash="c" * 64,
+        assertion_binding=binding,
+        anchor_evidence_refs=anchors,
+        source_evidence_refs=anchors,
+        confidence_bp=9000,
+        privacy_class="private",
+        status="active",
+    )
+    origin = FactOrigin(
+        change_id="change:transition:fact:name:1",
+        transition_id="transition:fact:name:1",
+        policy_refs=POLICY,
+        accepted_event_ref="event:old-fact-commit",
+    )
+    fact = FactProjection(
+        fact_id="fact:user-name",
+        entity_revision=1,
+        semantic_fingerprint=fact_semantic_fingerprint(
+            subject_ref=values.subject_ref,
+            predicate_code=values.predicate_code,
+            cardinality=values.cardinality,
+            conflict_key=values.conflict_key,
+            value_hash=values.value_hash,
+            assertion_binding=values.assertion_binding,
+            anchor_evidence_refs=values.anchor_evidence_refs,
+            policy_refs=origin.policy_refs,
+        ),
+        values=values,
+        origin=origin,
+        committed_at=NOW,
+        updated_at=NOW,
+    )
+    hydrated = apply_continuity_snapshot(
+        compile_continuity_snapshot(
+            SimpleNamespace(
+                world_id=WORLD,
+                world_revision=88,
+                semantic_hash="e" * 64,
+                logical_time=NOW,
+                facts=(fact,),
+                memory_candidates=(),
+                relationship_states=(),
+                affect_episodes=(),
+                appraisals=(),
+                threads=(),
+                commitments=(),
+                experiences=(),
+                life_arcs=(),
+                npcs=(),
+                private_impressions=(),
+                character_core=None,
+            ),
+            epoch_id="epoch:2",
+        ),
+        genesis_event_id="event:world-v2-epoch:epoch:2:WorldStarted:abc",
+        genesis_payload_hash="f" * 64,
+        logical_time=NOW,
+    )
+    imported = hydrated["facts"][0]
+    assert imported.values.assertion_binding.source_kind == "operator_observation"
+    assert imported.values.assertion_binding.source_ref.endswith("WorldStarted:abc")
+    assert imported.values.assertion_binding.actor_ref is None
+    assert any(
+        item.ref_id == archive_observation and item.evidence_type == "observed_message"
+        for item in imported.values.source_evidence_refs
+    )
+
+
 def _thread_with_archive_event() -> ThreadProjection:
     archive = EvidenceRef(
         ref_id="event:appraisal-mutation:old-thread",

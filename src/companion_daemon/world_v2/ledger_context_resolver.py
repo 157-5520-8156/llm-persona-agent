@@ -64,6 +64,8 @@ from .conversation_continuity import (
     pack_recent_dialogue_under_source_budget,
 )
 from .associative_recall import lexical_relevance_bp
+from .epoch_migration_source import epoch_migration_source_excerpt, is_epoch_genesis_fact
+from .fact_predicate_stability import STABLE_FACT_RECENCY_BP, fact_predicate_is_stable
 from .fact_accepted_contracts import rehydrate_fact_commit_materialized_v2_json
 from .fact_events import FactChangedPayload
 from .context_resolver import (
@@ -250,6 +252,7 @@ def context_capsule_compiler_from_ledger(
     biographical_timezone_name: str | None = None,
     biographical_timeline: BiographicalTimelineConfiguredPayload | None = None,
     reviewed_npc_identity_summaries: dict[str, str] | None = None,
+    archive_ledger: LedgerPort | None = None,
 ) -> ContextCapsuleCompiler:
     """Composition-root factory for the production ledger-backed seam."""
 
@@ -266,6 +269,7 @@ def context_capsule_compiler_from_ledger(
             biographical_timezone_name=biographical_timezone_name,
             biographical_timeline=biographical_timeline,
             reviewed_npc_identity_summaries=reviewed_npc_identity_summaries,
+            archive_ledger=archive_ledger,
         ),
         policy=policy,
     )
@@ -312,6 +316,13 @@ def _observation_event_aliases(projection: LedgerProjection) -> dict[str, str]:
         if len(candidates) == 1:
             aliases[observation.observation_id] = candidates[0].event_id
     return aliases
+
+
+def _genesis_carried_fact_recall(item: FactRecallItem) -> bool:
+    return (
+        "WorldStarted" in item.accepted_fact_event_ref
+        and item.accepted_fact_world_revision == 1
+    )
 
 
 def _typed_refs(item: BaseModel, *, observation_aliases: dict[str, str]) -> tuple[str, ...] | None:
@@ -361,6 +372,8 @@ def _typed_refs(item: BaseModel, *, observation_aliases: dict[str, str]) -> tupl
         # Same as appraisals: AffectEpisodeOpened is the Context authority.
         return (item.origin.accepted_event_ref,)
     if isinstance(item, FactRecallItem):
+        if _genesis_carried_fact_recall(item):
+            return (item.accepted_fact_event_ref,)
         return tuple(sorted((item.accepted_fact_event_ref, item.observation_event_ref)))
     if isinstance(item, PrivateImpressionProjection):
         # Only accepted impressions are a valid Context source.  Their source
@@ -486,6 +499,14 @@ def _typed_authority_claims(
         # proves those acceptances; it does not re-prove observation envelopes.
         return ()
     if isinstance(item, FactRecallItem):
+        if _genesis_carried_fact_recall(item):
+            return (
+                (
+                    item.accepted_fact_event_ref,
+                    item.accepted_fact_world_revision,
+                    item.accepted_fact_payload_hash,
+                ),
+            )
         return tuple(
             sorted(
                 (
@@ -747,8 +768,12 @@ def _rank(
     query_text: str = "",
 ) -> int:
     if slice_name in _READ_SCORE_SLICES:
+        recency_bp = _recency_bp(item, logical_time)
+        if slice_name == "relevant_facts" and isinstance(item, FactRecallItem):
+            if fact_predicate_is_stable(item.predicate_code):
+                recency_bp = STABLE_FACT_RECENCY_BP
         return memory_read_score_bp(
-            recency_bp=_recency_bp(item, logical_time),
+            recency_bp=recency_bp,
             importance_bp=_signal_bp(slice_name, item),
             relevance_bp=memory_relevance_bp(query_text, item),
         )
@@ -758,6 +783,49 @@ def _rank(
         + _signal_bp(slice_name, item) * RANK_WEIGHT_BP["typed_signal"]
         + _recency_bp(item, logical_time) * RANK_WEIGHT_BP["recency"]
     ) // total_weight
+
+
+def _bounded_relevant_facts(
+    items: tuple[BaseModel, ...],
+    logical_time: datetime | None,
+    rank_overrides: frozenset[tuple[str, str]],
+    query_text: str,
+) -> tuple[BaseModel, ...]:
+    """Stable single-slot Facts precede episodic set Facts.
+
+    Identity and residence slots must not compete on recency with
+    ``situation.recent`` entries from the same conversation week.
+    """
+
+    slice_name: SliceName = "relevant_facts"
+    stable: list[BaseModel] = []
+    episodic: list[BaseModel] = []
+    for item in items:
+        if isinstance(item, FactRecallItem) and fact_predicate_is_stable(item.predicate_code):
+            stable.append(item)
+        else:
+            episodic.append(item)
+
+    def episodic_key(item: BaseModel) -> tuple[int, str]:
+        override = (slice_name, _item_ref(slice_name, item)) in rank_overrides
+        score = (
+            max(9_900, _rank(slice_name, item, logical_time, query_text))
+            if override
+            else _rank(slice_name, item, logical_time, query_text)
+        )
+        return (-score, _item_ref(slice_name, item))
+
+    stable_sorted = sorted(
+        stable,
+        key=lambda item: (
+            -getattr(item, "confidence_bp", 0),
+            getattr(item, "predicate_code", ""),
+            _item_ref(slice_name, item),
+        ),
+    )
+    episodic_sorted = sorted(episodic, key=episodic_key)
+    merged = (*stable_sorted, *episodic_sorted)
+    return merged[:MAX_INPUT_ITEMS_PER_SLICE]
 
 
 def _bounded_domain_items(
@@ -771,6 +839,8 @@ def _bounded_domain_items(
 
     if len(items) > MAX_RESOLVER_DOMAIN_SCAN_ITEMS:
         return None
+    if slice_name == "relevant_facts":
+        return _bounded_relevant_facts(items, logical_time, rank_overrides, query_text)
     return tuple(
         sorted(
             items,
@@ -983,11 +1053,63 @@ def pending_outbound_expression_items(
     return tuple(items)
 
 
+def _epoch_genesis_fact_recall_item(
+    *,
+    fact: FactProjection,
+    ledger: LedgerPort,
+    projection: LedgerProjection,
+    archive_ledger: LedgerPort | None,
+) -> FactRecallItem | None:
+    if not is_epoch_genesis_fact(fact):
+        return None
+    fact_ref = next(
+        (
+            item
+            for item in projection.committed_world_event_refs
+            if item.event_id == fact.origin.accepted_event_ref
+        ),
+        None,
+    )
+    if fact_ref is None or fact_ref.world_revision > projection.world_revision:
+        return None
+    migrated = epoch_migration_source_excerpt(fact, archive_ledger=archive_ledger)
+    if migrated is None:
+        return None
+    source_excerpt, observation, source_event, observation_world_revision = migrated
+    if (
+        observation.world_id != projection.world_id
+        or not source_excerpt
+        or fact.values.assertion_binding.asserted_subject_ref != fact.values.subject_ref
+    ):
+        return None
+    return FactRecallItem(
+        fact_id=fact.fact_id,
+        subject_ref=fact.values.subject_ref,
+        predicate_code=fact.values.predicate_code,
+        source_excerpt=source_excerpt,
+        confidence_bp=fact.values.confidence_bp,
+        privacy_class=fact.values.privacy_class,
+        occurred_at=observation.logical_time,
+        committed_at=fact.committed_at,
+        updated_at=fact.updated_at,
+        accepted_fact_event_ref=fact_ref.event_id,
+        accepted_fact_world_revision=fact_ref.world_revision,
+        accepted_fact_payload_hash=fact_ref.payload_hash,
+        observation_event_ref=source_event.event_id,
+        observation_world_revision=observation_world_revision,
+        observation_event_payload_hash=source_event.payload_hash,
+        source_observation_id=observation.observation_id,
+        assertion_payload_ref=observation.payload_ref,
+        assertion_payload_hash=observation.payload_hash,
+    )
+
+
 def fact_recall_items(
     *,
     ledger: LedgerPort,
     projection: LedgerProjection,
     facts: tuple[FactProjection, ...],
+    archive_ledger: LedgerPort | None = None,
 ) -> tuple[FactRecallItem, ...]:
     """Close active Facts over the exact messages which asserted them.
 
@@ -1002,6 +1124,15 @@ def fact_recall_items(
         observations_by_id.setdefault(item.observation_id, []).append(item)
     output: list[FactRecallItem] = []
     for fact in facts:
+        genesis_item = _epoch_genesis_fact_recall_item(
+            fact=fact,
+            ledger=ledger,
+            projection=projection,
+            archive_ledger=archive_ledger,
+        )
+        if genesis_item is not None:
+            output.append(genesis_item)
+            continue
         binding = fact.values.assertion_binding
         if binding.source_kind != "observed_message" or binding.payload_ref is None:
             continue
@@ -1206,6 +1337,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         biographical_timezone_name: str | None = None,
         biographical_timeline: BiographicalTimelineConfiguredPayload | None = None,
         reviewed_npc_identity_summaries: dict[str, str] | None = None,
+        archive_ledger: LedgerPort | None = None,
     ) -> None:
         super().__init__()
         if (biographical_catalog is None) != (biographical_timezone_name is None):
@@ -1225,6 +1357,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         ):
             raise ValueError("biographical Context catalog does not match its timeline authority")
         self._ledger = ledger
+        self._archive_ledger = archive_ledger
         self._situation_compiler = situation_compiler
         self._relevance_scope = relevance_scope
         self._memory_retrieval = MemoryRetrievalCompiler(
@@ -1646,6 +1779,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             ledger=self._ledger,
             projection=projection,
             facts=scoped_facts,
+            archive_ledger=self._archive_ledger,
         )
         historical_facts = historical_fact_recall_items(
             ledger=self._ledger,

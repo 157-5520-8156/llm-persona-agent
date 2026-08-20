@@ -461,6 +461,7 @@ def _compact_gate_voice_close() -> str:
         "这一轮不回就把 messages 写成空数组——那就是 silent；"
         "要声明你们现在是什么关系，才写 we_are、calling_it，并把那一句原话一字不差抄进 said_as，"
         "而且那句话必须真的说出去；"
+        "只在 messages 里说了朋友、却没写这三件套，账本上的 stage 不会跟着变。"
         "想让媒体车道考虑一张图才写 photo（reply_only 和 full_turn 都能写；"
         "只配现在发的非空 messages，later/沉默不行）；"
         "只在你决定让他看见带性意味的私密照片时才写 declared_display"

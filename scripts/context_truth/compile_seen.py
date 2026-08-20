@@ -36,6 +36,7 @@ from companion_daemon.world_v2.perception_result_context import PerceptionResult
 from companion_daemon.world_v2.present_prompt import PRESENT_CAPSULE_HARD_MAX_CHARACTERS
 from companion_daemon.world_v2.schemas import ProjectionCursor
 from companion_daemon.world_v2.situation_compiler import SituationCompiler
+from companion_daemon.world_v2.epoch_migration_source import default_epoch_archive_path
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
 
 from .types import SeenView
@@ -130,6 +131,14 @@ def _seed_npc_summaries(
     return summaries or None
 
 
+@dataclass(frozen=True)
+class ArchiveLedgerReader:
+    """Read-only archive handle for epoch migration source closure."""
+
+    _database_path: Path
+    _world_id: str
+
+
 async def compile_seen_at_head(
     *,
     database: Path,
@@ -138,9 +147,16 @@ async def compile_seen_at_head(
     counterpart_actor_ref: str,
     timezone_name: str,
     seed_path: Path,
+    archive_database: Path | None = None,
 ) -> CompiledSeen:
     started = time.perf_counter()
     ledger = SQLiteWorldLedger(path=database, world_id=world_id)
+    archive_path = archive_database or default_epoch_archive_path(live_database=database)
+    archive_ledger = (
+        ArchiveLedgerReader(_database_path=archive_path.resolve(), _world_id=world_id)
+        if archive_path is not None
+        else None
+    )
     life_store = SQLiteImmutableLifeContentStore(path=str(database), world_id=world_id)
     expression_store = SQLiteImmutableExpressionPayloadStore(
         path=str(database), world_id=world_id
@@ -174,6 +190,7 @@ async def compile_seen_at_head(
         biographical_timezone_name=timezone_name if biographical_catalog is not None else None,
         biographical_timeline=biographical_timeline,
         reviewed_npc_identity_summaries=npc_summaries,
+        archive_ledger=archive_ledger,
     )
     projector = _LedgerCapsuleInteriorProjection(
         ledger=ledger,

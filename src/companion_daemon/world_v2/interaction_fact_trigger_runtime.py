@@ -17,6 +17,7 @@ import logging
 from typing import Literal
 
 from .errors import ConcurrencyConflict
+from .epoch_migration_source import is_epoch_genesis_fact
 from .event_identity import domain_idempotency_key
 from .fact_accepted_contracts import rehydrate_fact_commit_intent_v2_json
 from .fact_correction_lifecycle import FactCorrectionLifecycle
@@ -1293,7 +1294,11 @@ class InteractionFactTriggerRuntime:
                 ),
                 None,
             )
-            if authority is None or authority.world_revision > source.world_revision:
+            if authority is None:
+                if is_epoch_genesis_fact(fact):
+                    continue
+                return False
+            if authority.world_revision > source.world_revision:
                 return False
         return True
 

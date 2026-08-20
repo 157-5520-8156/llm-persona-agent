@@ -157,13 +157,15 @@ def pending_response_expectation(
             declared_seconds_ago=int((logical_time - anchor_ref.logical_time).total_seconds()),
         )
 
-    delivered_by_action: dict[str, object] = {}
+    # First visible leave per action — late terminal delivery must not push
+    # the hope "after" an inbound that already answered it.
+    first_visible_by_action: dict[str, object] = {}
     for ref, receipt in pairs:
         if receipt.observed_state not in _ANSWERABLE_RECEIPT_STATES:
             continue
-        existing = delivered_by_action.get(receipt.action_id)
-        if existing is None or ref.world_revision > existing.world_revision:
-            delivered_by_action[receipt.action_id] = ref
+        existing = first_visible_by_action.get(receipt.action_id)
+        if existing is None or ref.world_revision < existing.world_revision:
+            first_visible_by_action[receipt.action_id] = ref
     candidates = []
     for manifest in projection.expression_plan_manifests:
         expectation = manifest.response_expectation
@@ -179,24 +181,24 @@ def pending_response_expectation(
         )
         if beat is None:
             continue
-        delivered_ref = delivered_by_action.get(beat.action.action_id)
-        if delivered_ref is None:
+        declared_ref = first_visible_by_action.get(beat.action.action_id)
+        if declared_ref is None:
             continue
         if (
             before_world_revision is not None
-            and delivered_ref.world_revision >= before_world_revision
+            and declared_ref.world_revision >= before_world_revision
         ):
             continue
-        candidates.append((delivered_ref, manifest))
+        candidates.append((declared_ref, manifest))
     if not candidates:
         return None
-    delivered_ref, manifest = max(
+    declared_ref, manifest = max(
         candidates, key=lambda item: (item[0].world_revision, item[1].acceptance_event_ref)
     )
     return _view(
         manifest.response_expectation,
         declared_seconds_ago=max(
-            0, int((logical_time - delivered_ref.logical_time).total_seconds())
+            0, int((logical_time - declared_ref.logical_time).total_seconds())
         ),
     )
 
@@ -223,11 +225,17 @@ def expired_expectation_consideration_id(plan_id: str) -> str:
     return "consideration:social-initiative:expectation-expiry:" + _digest(plan_id)
 
 
-def expired_unanswered_expectation(projection) -> ExpiredUnansweredExpectation | None:
+def expired_unanswered_expectation(
+    projection,
+    *,
+    require_unanswered: bool = True,
+) -> ExpiredUnansweredExpectation | None:
     """One declared hope whose wait ran out.
 
-    Whether he has spoken since she declared it is a fact for the advisory,
-    not a host decision to suppress the opportunity.
+    Chase minting (the default) skips hopes he already answered after the
+    first visible leave.  Feeling advisories pass ``require_unanswered=False``
+    so she still sees that the hope expired and whether he has spoken; that
+    is timing evidence, not a host decision to chase or stay silent.
     """
 
     try:
@@ -287,7 +295,13 @@ def expired_unanswered_expectation(projection) -> ExpiredUnansweredExpectation |
             if delivered_ref is None:
                 continue
             declared_ref = first_visible_by_action.get(beat.action.action_id, delivered_ref)
-            if latest_message_revision > delivered_ref.world_revision:
+            # Compare against first visible leave (provider_accepted/delivered),
+            # never the latest receipt: a late terminal `delivered` ack can land
+            # after he already replied and must not rewrite "unanswered".
+            if (
+                require_unanswered
+                and latest_message_revision > declared_ref.world_revision
+            ):
                 continue
             declared_at = _declared_world_clock(
                 projection, action_id=beat.action.action_id, receipt_ref=declared_ref
@@ -315,6 +329,83 @@ def expired_unanswered_expectation(projection) -> ExpiredUnansweredExpectation |
         if not candidates:
             return None
         return max(candidates, key=lambda item: (item.receipt_world_revision, item.plan_id))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def next_response_expectation_wake_at(projection) -> datetime | None:
+    """Soonest declared ``not_before`` that should wake the social-initiative clock.
+
+    ``expired_unanswered_expectation`` only appears once the wait has already
+    elapsed.  The scheduler needs the future instant so Clock can open that
+    lane exactly — not whenever the next Life tick happens to fire.
+    """
+
+    try:
+        logical_time = projection.logical_time
+        if logical_time is None:
+            return None
+        receipt_refs = tuple(
+            item
+            for item in projection.committed_world_event_refs
+            if item.event_type == "ExecutionReceiptRecorded"
+        )
+        if len(receipt_refs) != len(projection.execution_receipts):
+            return None
+        latest_message_revision = (
+            projection.message_observations[-1].world_revision
+            if projection.message_observations
+            else 0
+        )
+        terminal_plan_ids = {
+            item.source_plan_id
+            for item in getattr(projection, "response_expectation_assessments", ())
+            if item.status in _TERMINAL_ASSESSMENT_STATES
+        }
+        first_visible_by_action: dict[str, object] = {}
+        answerable_action_ids: set[str] = set()
+        for ref, receipt in zip(receipt_refs, projection.execution_receipts, strict=True):
+            if receipt.observed_state not in _ANSWERABLE_RECEIPT_STATES:
+                continue
+            answerable_action_ids.add(receipt.action_id)
+            visible = first_visible_by_action.get(receipt.action_id)
+            if visible is None or ref.world_revision < visible.world_revision:
+                first_visible_by_action[receipt.action_id] = ref
+        dues: list[datetime] = []
+        for manifest in projection.expression_plan_manifests:
+            expectation = manifest.response_expectation
+            authority_not_before = getattr(expectation, "not_before", None)
+            if (
+                expectation is None
+                or authority_not_before is None
+                or manifest.plan_id in terminal_plan_ids
+                or logical_time >= expectation.expires_at + EXPIRED_EXPECTATION_GRACE
+            ):
+                continue
+            beat = next(
+                (
+                    item
+                    for item in manifest.beats
+                    if item.beat_id == expectation.source_beat_id
+                ),
+                None,
+            )
+            if beat is None:
+                continue
+            if beat.action.action_id not in answerable_action_ids:
+                continue
+            declared_ref = first_visible_by_action.get(beat.action.action_id)
+            if declared_ref is None:
+                continue
+            if latest_message_revision > declared_ref.world_revision:
+                continue
+            if authority_not_before <= logical_time:
+                # Already due — peek_next_due's pending path owns it.
+                continue
+            dues.append(authority_not_before)
+        if not dues:
+            return None
+        return min(dues)
     except (TypeError, ValueError, AttributeError):
         return None
 
@@ -909,7 +1000,9 @@ def attach_pending_expectation_advisory(
     if logical_time is None:
         return context
     try:
-        expired = expired_unanswered_expectation(projection)
+        expired = expired_unanswered_expectation(
+            projection, require_unanswered=False
+        )
     except (TypeError, ValueError):
         return context
     if expired is None or expired.receipt_event_id != anchor_event_ref:
@@ -976,6 +1069,7 @@ __all__ = [
     "expired_unanswered_expectation",
     "living_hope_hitch_clause",
     "living_unanswered_hope",
+    "next_response_expectation_wake_at",
     "pending_response_expectation",
     "pending_response_expectation_manifest",
     "response_expectation_advisory",

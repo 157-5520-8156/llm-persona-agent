@@ -1886,3 +1886,292 @@ async def test_settled_post_silent_releases_ambient_cadence() -> None:
     assert released.source_kind == "spontaneous_contact"
     assert released.consideration_id != first.consideration_id
     assert released.consideration_epoch == 1
+
+
+def _advance_past_ambient(compiler, projection, *, hours: float = 40.0):
+    """Move logical time past the short ambient window with a ClockAdvanced."""
+
+    clock_at = NOW + timedelta(hours=hours)
+    clock = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id=f"event:clock:long-silence:{hours}",
+        world_id=projection.world_id,
+        event_type="ClockAdvanced",
+        logical_time=clock_at,
+        created_at=clock_at,
+        actor="system:clock",
+        source="test",
+        trace_id="trace:long-silence",
+        causation_id="cause:long-silence",
+        correlation_id="conversation:long-silence",
+        idempotency_key=f"clock:long-silence:{hours}",
+        payload={
+            "logical_time_from": NOW.isoformat(),
+            "logical_time_to": clock_at.isoformat(),
+        },
+    )
+    original_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
+
+    def lookup(event_id):  # type: ignore[no-untyped-def]
+        if event_id == clock.event_id:
+            return clock, SimpleNamespace(world_revision=3)
+        return original_lookup(event_id)
+
+    compiler._ledger.lookup_event_commit = lookup  # type: ignore[attr-defined]
+    projection.logical_time = clock_at
+    existing = tuple(projection.committed_world_event_refs)
+    projection.committed_world_event_refs = existing + (
+        SimpleNamespace(
+            event_id=clock.event_id,
+            event_type=clock.event_type,
+            logical_time=clock.logical_time,
+            world_revision=3,
+        ),
+    )
+    return clock
+
+
+@pytest.mark.asyncio
+async def test_long_silence_mints_after_ambient_closes() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    _advance_past_ambient(compiler, projection, hours=40)
+    compiler._random = SimpleNamespace(  # noqa: SLF001
+        draw=lambda **_kwargs: SimpleNamespace(
+            selected_candidate_ref="delay:21600",
+            draw_id="draw:long-silence",
+        )
+    )
+
+    opportunity = await compiler.next_opportunity(projection)
+
+    assert opportunity is not None
+    assert opportunity.source_kind == "long_silence"
+    assert "budget:shared_outreach" in opportunity.cadence_reason_codes
+    assert opportunity.consideration_id.startswith(
+        "consideration:social-initiative:long-silence:"
+    )
+
+
+@pytest.mark.asyncio
+async def test_situation_independent_mints_after_ambient_closes() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    clock = _advance_past_ambient(compiler, projection, hours=20)
+    occurred_at = clock.logical_time - timedelta(minutes=5)
+    stimulus = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:experience:post-ambient",
+        world_id=projection.world_id,
+        event_type="ExperienceCommitted",
+        logical_time=occurred_at,
+        created_at=occurred_at,
+        actor="actor:companion",
+        source="test",
+        trace_id="trace:post-ambient",
+        causation_id="cause:post-ambient",
+        correlation_id="conversation:post-ambient",
+        idempotency_key="experience:post-ambient",
+        payload=COMPANION_EXPERIENCE_STIMULUS,
+    )
+    original_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
+
+    def lookup(event_id):  # type: ignore[no-untyped-def]
+        if event_id == stimulus.event_id:
+            return stimulus, SimpleNamespace(world_revision=2)
+        return original_lookup(event_id)
+
+    compiler._ledger.lookup_event_commit = lookup  # type: ignore[attr-defined]
+    projection.committed_world_event_refs = (
+        SimpleNamespace(
+            event_id=stimulus.event_id,
+            event_type=stimulus.event_type,
+            logical_time=stimulus.logical_time,
+            world_revision=2,
+        ),
+        *projection.committed_world_event_refs,
+    )
+    draws: list[dict[str, object]] = []
+    compiler._random = SimpleNamespace(  # noqa: SLF001
+        draw=lambda **kwargs: (
+            draws.append(kwargs)
+            or (_ for _ in ()).throw(AssertionError("situation mint must not draw"))
+        )
+    )
+
+    opportunity = await compiler.next_opportunity(projection)
+
+    assert opportunity is not None
+    assert opportunity.source_kind == "situation_change"
+    assert opportunity.source_id.startswith("situation-independent:")
+    assert "occasion:situation_independent" in opportunity.cadence_reason_codes
+    assert draws == []
+
+
+@pytest.mark.asyncio
+async def test_shared_outreach_daily_limit_blocks_second_mint() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    clock = _advance_past_ambient(compiler, projection, hours=40)
+    compiler._random = SimpleNamespace(  # noqa: SLF001
+        draw=lambda **_kwargs: SimpleNamespace(
+            selected_candidate_ref="delay:21600",
+            draw_id="draw:long-silence-limit",
+        )
+    )
+    first = await compiler.next_opportunity(projection)
+    assert first is not None
+    assert first.source_kind == "long_silence"
+    projection.trigger_processes = (
+        SimpleNamespace(
+            process_kind="proactive_action_deliberation",
+            trigger_ref="proactive-consideration:" + first.consideration_id,
+            source_evidence_ref=first.source_event_ref,
+            state="terminal",
+            runtime_outcome_ref="proactive:silent",
+        ),
+    )
+    # Different delay would mint a new consideration_id unless the shared
+    # daily budget blocks it.
+    compiler._random = SimpleNamespace(  # noqa: SLF001
+        draw=lambda **_kwargs: SimpleNamespace(
+            selected_candidate_ref="delay:86400",
+            draw_id="draw:long-silence-limit-2",
+        )
+    )
+    # Need a recorded draw for the new attempt_id — clear by using a fresh
+    # attempt (same observation, different catalog selection). Also jump far
+    # enough that delay:86400 is due (12h+24h=36h; we are at 40h).
+    blocked = await compiler.next_opportunity(projection)
+
+    assert blocked is None
+    assert compiler._shared_outreach_uses_on_local_day(  # noqa: SLF001
+        projection, clock.logical_time
+    ) == 1
+
+
+@pytest.mark.asyncio
+async def test_situation_change_still_does_not_mint_inside_ambient_window() -> None:
+    """Regression: within 12h, situation materials hitch only — no dedicated mint."""
+
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    occurred_at = NOW + timedelta(minutes=5)
+    stimulus = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:experience:inside-window",
+        world_id="world:social-context-test",
+        event_type="ExperienceCommitted",
+        logical_time=occurred_at,
+        created_at=occurred_at,
+        actor="actor:companion",
+        source="test",
+        trace_id="trace:inside-window",
+        causation_id="cause:inside-window",
+        correlation_id="conversation:inside-window",
+        idempotency_key="experience:inside-window",
+        payload=COMPANION_EXPERIENCE_STIMULUS,
+    )
+    original_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
+    compiler._ledger.lookup_event_commit = lambda event_id: (  # type: ignore[attr-defined]
+        (stimulus, SimpleNamespace(world_revision=2))
+        if event_id == stimulus.event_id
+        else original_lookup(event_id)
+    )
+    projection.committed_world_event_refs = (
+        SimpleNamespace(
+            event_id=stimulus.event_id,
+            event_type=stimulus.event_type,
+            logical_time=stimulus.logical_time,
+            world_revision=2,
+        ),
+    )
+    projection.logical_time = occurred_at + timedelta(minutes=3)
+    draws: list[dict[str, object]] = []
+    compiler._random = SimpleNamespace(  # noqa: SLF001
+        draw=lambda **kwargs: (
+            draws.append(kwargs)
+            or (_ for _ in ()).throw(
+                AssertionError("situation_change must not draw a delay")
+            )
+        )
+    )
+
+    opportunity = await compiler.next_opportunity(projection)
+
+    assert opportunity is None
+    assert draws == []
+
+
+@pytest.mark.asyncio
+async def test_consecutive_silents_add_extra_cooldown() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    day1 = _advance_past_ambient(compiler, projection, hours=40)
+    first_id = (
+        "consideration:social-initiative:long-silence:" + "b" * 64
+    )
+    second_id = (
+        "consideration:social-initiative:long-silence:" + "c" * 64
+    )
+    projection.trigger_processes = (
+        SimpleNamespace(
+            process_kind="proactive_action_deliberation",
+            trigger_ref="proactive-consideration:" + first_id,
+            source_evidence_ref=day1.event_id,
+            state="terminal",
+            runtime_outcome_ref="proactive:silent",
+        ),
+        SimpleNamespace(
+            process_kind="proactive_action_deliberation",
+            trigger_ref="proactive-consideration:" + second_id,
+            source_evidence_ref=day1.event_id,
+            state="terminal",
+            runtime_outcome_ref="proactive:silent",
+        ),
+    )
+    # Same local day already at limit; move to next day but only 12h later —
+    # silent streak adds +24h, so 12h is still blocked.
+    later = day1.logical_time + timedelta(hours=12)
+    clock2 = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:clock:silent-backoff",
+        world_id=projection.world_id,
+        event_type="ClockAdvanced",
+        logical_time=later,
+        created_at=later,
+        actor="system:clock",
+        source="test",
+        trace_id="trace:silent-backoff",
+        causation_id="cause:silent-backoff",
+        correlation_id="conversation:silent-backoff",
+        idempotency_key="clock:silent-backoff",
+        payload={
+            "logical_time_from": day1.logical_time.isoformat(),
+            "logical_time_to": later.isoformat(),
+        },
+    )
+    original_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
+
+    def lookup(event_id):  # type: ignore[no-untyped-def]
+        if event_id == clock2.event_id:
+            return clock2, SimpleNamespace(world_revision=4)
+        return original_lookup(event_id)
+
+    compiler._ledger.lookup_event_commit = lookup  # type: ignore[attr-defined]
+    projection.logical_time = later
+    projection.committed_world_event_refs = projection.committed_world_event_refs + (
+        SimpleNamespace(
+            event_id=clock2.event_id,
+            event_type=clock2.event_type,
+            logical_time=clock2.logical_time,
+            world_revision=4,
+        ),
+    )
+    compiler._random = SimpleNamespace(  # noqa: SLF001
+        draw=lambda **_kwargs: SimpleNamespace(
+            selected_candidate_ref="delay:21600",
+            draw_id="draw:silent-backoff",
+        )
+    )
+
+    assert compiler._shared_outreach_silent_streak(projection) == 2  # noqa: SLF001
+    assert compiler._shared_outreach_budget_allows(projection, later) is False  # noqa: SLF001
+    # After min interval (6h) + silent extra (24h) = 30h from last shared source.
+    far = day1.logical_time + timedelta(hours=31)
+    assert compiler._shared_outreach_budget_allows(projection, far) is True  # noqa: SLF001

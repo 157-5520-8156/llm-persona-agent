@@ -16,6 +16,7 @@ from typing import Generic, Literal, TypeVar
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .associative_recall import ASSOCIATIVE_PREFETCH_POLICY_VERSION
+from .fact_predicate_stability import fact_predicate_is_stable
 from .context_resolver import (
     ContextCompileQuery,
     TrustedInternalContextResolver,
@@ -143,7 +144,12 @@ class FactRecallItem(_FrozenModel):
         if self.accepted_fact_event_ref == self.observation_event_ref:
             raise ValueError("Fact recall requires distinct Fact and Observation events")
         if self.observation_world_revision >= self.accepted_fact_world_revision:
-            raise ValueError("Fact recall Observation must precede its accepted Fact")
+            genesis_carried = (
+                "WorldStarted" in self.accepted_fact_event_ref
+                and self.accepted_fact_world_revision == 1
+            )
+            if not genesis_carried:
+                raise ValueError("Fact recall Observation must precede its accepted Fact")
         return self
 
 
@@ -651,7 +657,14 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
         # probe missed.  24k holds four fully sourced recalls; the global
         # hard cap still bounds the whole capsule, and provider-facing
         # compaction strips the proof envelopes before the prompt.
-        default_factory=lambda: SliceBudget(max_items=16, max_fields=192, max_characters=24_000)
+        default_factory=lambda: SliceBudget(
+            max_items=16,
+            # Each FactRecallItem exposes ~18 typed keys. 192 fields kept only
+            # ~10 items before episodic selection could evict stable profile
+            # Facts that must remain visible regardless of recency.
+            max_fields=320,
+            max_characters=24_000,
+        )
     )
     recent_experiences: SliceBudget = Field(
         # A source-closed Experience includes the committed Experience and
@@ -1273,6 +1286,11 @@ def _typed_source_refs(slice_name: SliceName, item: BaseModel) -> tuple[str, ...
         # projection.  Its observation id stays an internal Fact anchor.
         return (item.origin.accepted_event_ref,)
     if slice_name == "relevant_facts" and isinstance(item, FactRecallItem):
+        if (
+            "WorldStarted" in item.accepted_fact_event_ref
+            and item.accepted_fact_world_revision == 1
+        ):
+            return (item.accepted_fact_event_ref,)
         return tuple(sorted((item.accepted_fact_event_ref, item.observation_event_ref)))
     if slice_name == "appraisals" and isinstance(item, AppraisalProjection):
         # AppraisalAccepted seals stimulus evidence; observation ids stay anchors.
@@ -1332,6 +1350,18 @@ def _typed_source_authorities(item: BaseModel) -> tuple[tuple[str, str, int, str
         # the accepted psychological event, not a second Context authority.
         return ()
     if isinstance(item, FactRecallItem):
+        if (
+            "WorldStarted" in item.accepted_fact_event_ref
+            and item.accepted_fact_world_revision == 1
+        ):
+            return (
+                (
+                    "committed_event",
+                    item.accepted_fact_event_ref,
+                    item.accepted_fact_world_revision,
+                    item.accepted_fact_payload_hash,
+                ),
+            )
         return tuple(
             sorted(
                 (
@@ -1568,6 +1598,29 @@ def _slice_model_content(
                         "authority_payload_hash",
                     }
                 }
+        if slice_name == "relevant_facts":
+            # Keep exact typed FactRecall authority on the CapsuleItem, but ship
+            # a compact semantic view to the model.  Full proof envelopes made
+            # each recall ~3k characters and let global compaction drop stable
+            # identity Facts before episodic circumstances.
+            material.pop("source_bindings")
+            material["source_ref"] = item.item_ref
+            if isinstance(value, dict):
+                material["value"] = {
+                    key: field_value
+                    for key, field_value in value.items()
+                    if key
+                    in {
+                        "fact_id",
+                        "subject_ref",
+                        "predicate_code",
+                        "source_excerpt",
+                        "confidence_bp",
+                        "privacy_class",
+                        "occurred_at",
+                        "updated_at",
+                    }
+                }
         if model_content_profile == "proactive_decision" and slice_name in {
             "character_core",
             "current_situation",
@@ -1720,6 +1773,10 @@ def _compile_slice(
     resolved.sort(
         key=lambda pair: (
             0
+            if slice_name == "relevant_facts"
+            and isinstance(pair[0], FactRecallItem)
+            and fact_predicate_is_stable(pair[0].predicate_code)
+            else 0
             if slice_name == "advisories"
             and isinstance(pair[0], InnerAdvisoryProjection)
             and pair[0].kind
@@ -2584,6 +2641,15 @@ def _compile_resolved_context(
     relationship_evaluation = _relationship_evaluation_context(request)
     model_content = _context_model_content(request, slices, relationship_evaluation)
     global_omissions: dict[SliceName, int] = {}
+    stable_relevant_fact_floor = 0
+    if request.relevant_facts is not None and request.relevant_facts.value:
+        stable_relevant_fact_floor = sum(
+            1
+            for item in request.relevant_facts.value
+            if isinstance(item, FactRecallItem)
+            and fact_predicate_is_stable(item.predicate_code)
+        )
+    relevant_fact_floor = max(2, stable_relevant_fact_floor)
     # Preserve one unit of the state that gives an otherwise capable reply its
     # interpersonal continuity.  Treating these like ordinary ranked items
     # allowed a large capability/budget/advisory envelope to evict the sole
@@ -2599,11 +2665,10 @@ def _compile_resolved_context(
         "appraisals": 1,
         "affect_episodes": 1,
         "open_threads": 1,
-        # Two independently sourced durable facts are the minimum useful unit
-        # for ordinary compound recall (for example identity + preference).
-        # Without this floor the global envelope kept only the first Fact even
-        # when the fact slice itself had ample budget.
-        "relevant_facts": 2,
+        # Stable single-slot Facts (name, residence, timezone) must survive
+        # global compaction ahead of episodic circumstances.  The floor is the
+        # resolved stable count, not a host-chosen subset of predicates.
+        "relevant_facts": relevant_fact_floor,
         # A companion with committed autobiographical history must keep at
         # least one exact, source-bound recent Experience in the model packet.
         # Otherwise emergency global compaction can make a healthy ledger look
@@ -2705,13 +2770,17 @@ def _compile_resolved_context(
             for name, slice_ in slices.items()
             if name not in {"character_core", "current_situation"}
             and name != "advisories"
-            # Keep a two-fact compound recall intact while other duplicated
-            # continuity lanes are reduced to one.  Fact and Memory commonly
-            # describe the same authorities; reducing both independently to
-            # one made their identity tie-breaks occasionally retain the same
-            # source twice and omit the other accepted fact.
+            # Keep stable Fact recall intact while other duplicated continuity
+            # lanes are reduced to one.  Fact and Memory commonly describe the
+            # same authorities; reducing both independently to one made their
+            # identity tie-breaks occasionally retain the same source twice and
+            # omit the other accepted fact.
             and len(slice_.items)
-            > (2 if name == "relevant_facts" else max(1, terminal_minimum_items.get(name, 0)))
+            > (
+                relevant_fact_floor
+                if name == "relevant_facts"
+                else max(1, terminal_minimum_items.get(name, 0))
+            )
         ]
         if candidates:
             return min(candidates, key=lambda item: (item[0], item[1]))[1]

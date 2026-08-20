@@ -88,6 +88,7 @@ from .revisit_intention_view import due_unfinished_revisit
 from .social_initiative import (
     SITUATION_STIMULUS_EVENT_TYPES,
     SocialInitiativeCompiler,
+    long_silence_opportunity_context,
     private_impression_opportunity_context,
     private_impression_source_binds_head,
     situation_stimulus_is_observable,
@@ -174,6 +175,21 @@ def _proactive_opportunity_context(
             "relationship, current life, affect, commitments, and remembered context remain available "
             "as non-directive context."
         )
+        if opportunity.stimulus_event_refs:
+            text = (
+                text
+                + " Committed situation changes are readable materials, not a wakeup: "
+                + _canonical(opportunity.stimulus_event_refs)
+            )
+        return _hitch_living_hope(text, projection)
+    if kind == "long_silence":
+        seconds, _spoken = counterpart_last_spoke_facts(projection)
+        text = long_silence_opportunity_context()
+        if seconds is not None:
+            text = (
+                f"He has not spoken for {seconds}s since the last verified inbound. "
+                + text
+            )
         if opportunity.stimulus_event_refs:
             text = (
                 text
@@ -1148,6 +1164,7 @@ def _proactive_source_frame(model_content_json: str) -> dict[str, object] | None
             "commitment",
             "spontaneous_contact",
             "ambient_presence",
+            "long_silence",
             "post_silent",
             "situation_change",
             "expired_expectation",
@@ -1226,6 +1243,7 @@ class ProactiveOpportunity(FrozenModel):
         "commitment",
         "spontaneous_contact",
         "ambient_presence",
+        "long_silence",
         "post_silent",
         "situation_change",
         "expired_expectation",
@@ -1451,6 +1469,8 @@ class ProactiveDeliberationTurn:
                 and leftover.receipt_event_id == opportunity.source_event_ref
             )
         elif opportunity.source_kind == "ambient_presence":
+            valid_source = event.event_type == "ClockAdvanced"
+        elif opportunity.source_kind == "long_silence":
             valid_source = event.event_type == "ClockAdvanced"
         elif opportunity.source_kind == "post_silent":
             prior_process = next(
