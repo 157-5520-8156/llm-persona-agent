@@ -10,7 +10,7 @@ normal ExpressionPlan -> Budget -> Action chain.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 import logging
@@ -110,6 +110,54 @@ def _canonical(value: object) -> str:
 
 def _digest(value: object) -> str:
     return hashlib.sha256(_canonical(value).encode()).hexdigest()
+
+
+_EXPIRED_EXPECTATION_CONSIDERATION_PREFIX = (
+    "consideration:social-initiative:expectation-expiry:"
+)
+
+
+def consecutive_unanswered_expired_chase_count(projection: object) -> int:
+    """Count consecutive expired-hope outbound chases since the last inbound."""
+
+    observations = getattr(projection, "message_observations", ())
+    if not observations:
+        return 0
+    latest_inbound_at = observations[-1].logical_time
+    processes = sorted(
+        (
+            item
+            for item in getattr(projection, "trigger_processes", ())
+            if item.process_kind == "proactive_action_deliberation"
+            and item.state == "terminal"
+            and item.trigger_ref.startswith(
+                "proactive-consideration:" + _EXPIRED_EXPECTATION_CONSIDERATION_PREFIX
+            )
+        ),
+        key=lambda item: (
+            getattr(item, "completed_at", None)
+            or getattr(item, "opened_at", None)
+            or datetime.min.replace(tzinfo=UTC),
+            item.trigger_ref,
+        ),
+    )
+    streak = 0
+    for process in processes:
+        completed_at = getattr(process, "completed_at", None) or getattr(
+            process, "opened_at", None
+        )
+        if completed_at is not None and completed_at <= latest_inbound_at:
+            continue
+        outcome = str(getattr(process, "runtime_outcome_ref", "") or "")
+        if outcome == "proactive:silent":
+            streak = 0
+            continue
+        if outcome.startswith("proactive:authorized:") or outcome in {
+            "proactive:message",
+            "proactive:followup",
+        }:
+            streak += 1
+    return streak
 
 
 _ADVISORY_VALUE_MAX = 256
@@ -224,15 +272,23 @@ def _proactive_opportunity_context(
             seconds, spoken_since = counterpart_last_spoke_facts(
                 projection, since_world_revision=expired.declared_world_revision
             )
+        chase_count = consecutive_unanswered_expired_chase_count(projection)
+        chase_clause = ""
+        if chase_count > 0:
+            chase_clause = (
+                f" You have already been woken {chase_count} time(s) for this hope "
+                "without a verified reply from him."
+            )
         if hope_text:
             return expired_hope_advisory_value(
                 hoped_response=hope_text,
                 seconds_since_he_last_spoke=seconds,
                 spoken_since_declared=spoken_since,
-            )
+            ) + chase_clause
         return (
             "A reply she hoped for did not arrive before that hope expired. "
             "Timing evidence only; she still decides."
+            + chase_clause
         )
     if kind == "thread":
         return _hitch_living_hope(
