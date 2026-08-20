@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -11839,6 +11840,15 @@ def _canonical_model_hash(value: FrozenModel) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+# Replay-only: WorldStarted hydrates many facts under one accepted_event_ref.
+# Unique-evidence rebind can change values_after bytes versus a checkpointed
+# citation, so live commits still require a hash match while cold replay may
+# accept any transition that names the same WorldStarted head.
+_REPLAY_GENESIS_FACT_HEAD: ContextVar[bool] = ContextVar(
+    "world_v2_replay_genesis_fact_head", default=False
+)
+
+
 def _validate_evidence_authority(
     state: ReducerState,
     evidence_refs: tuple[EvidenceRef, ...],
@@ -11868,16 +11878,27 @@ def _validate_evidence_authority(
             continue
         if kind == "committed_fact":
             committed = authority.get(evidence.ref_id)
+            candidates = tuple(
+                item
+                for item in state.fact_transitions
+                if item.accepted_event_ref == evidence.ref_id
+            )
             transition = next(
                 (
                     item
-                    for item in state.fact_transitions
-                    if item.accepted_event_ref == evidence.ref_id
-                    and _canonical_model_hash(item.values_after)
-                    == evidence.immutable_hash
+                    for item in candidates
+                    if _canonical_model_hash(item.values_after) == evidence.immutable_hash
                 ),
                 None,
             )
+            if (
+                transition is None
+                and _REPLAY_GENESIS_FACT_HEAD.get()
+                and committed is not None
+                and committed.event_type == "WorldStarted"
+                and candidates
+            ):
+                transition = candidates[0]
             if (
                 committed is None
                 or committed.event_type
@@ -15646,6 +15667,34 @@ def reduce_event(
     allow_legacy_clock_drift: bool = False,
     allow_legacy_activity_opening: bool = False,
     allow_legacy_relationship_policy_digest: bool = False,
+) -> ReducerState:
+    replay_token = (
+        _REPLAY_GENESIS_FACT_HEAD.set(True)
+        if allow_legacy_relationship_policy_digest
+        else None
+    )
+    try:
+        return _reduce_event_impl(
+            state,
+            event,
+            allow_legacy_plan_owner=allow_legacy_plan_owner,
+            allow_legacy_clock_drift=allow_legacy_clock_drift,
+            allow_legacy_activity_opening=allow_legacy_activity_opening,
+            allow_legacy_relationship_policy_digest=allow_legacy_relationship_policy_digest,
+        )
+    finally:
+        if replay_token is not None:
+            _REPLAY_GENESIS_FACT_HEAD.reset(replay_token)
+
+
+def _reduce_event_impl(
+    state: ReducerState,
+    event: WorldEvent,
+    *,
+    allow_legacy_plan_owner: bool,
+    allow_legacy_clock_drift: bool,
+    allow_legacy_activity_opening: bool,
+    allow_legacy_relationship_policy_digest: bool,
 ) -> ReducerState:
     event_contract(event.event_type).validate_payload(event.payload())
     definition = event_definition(event.event_type)

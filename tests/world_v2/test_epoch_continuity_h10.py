@@ -4,6 +4,8 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 from types import SimpleNamespace
 
+import pytest
+
 from companion_daemon.world_v2.affect_live import live_component_intensity_bp
 from companion_daemon.world_v2.epoch_continuity import (
     apply_continuity_snapshot,
@@ -634,6 +636,106 @@ def test_genesis_display_name_can_be_corrected_from_a_live_observation(tmp_path)
         assert after.values.assertion_binding.source_ref == observation.observation_id
     finally:
         ledger.close()
+
+
+def test_replay_accepts_world_started_fact_head_when_values_hash_drifted() -> None:
+    from companion_daemon.world_v2.reducers import (
+        _REPLAY_GENESIS_FACT_HEAD,
+        _canonical_model_hash,
+        _validate_evidence_authority,
+    )
+    from companion_daemon.world_v2.schemas import (
+        CommittedWorldEventRef,
+        FactTransitionProjection,
+    )
+
+    genesis_id = "event:world-started"
+    first = _fact().model_copy(
+        update={
+            "origin": _fact().origin.model_copy(update={"accepted_event_ref": genesis_id}),
+        }
+    )
+    name_values = first.values.model_copy(
+        update={
+            "predicate_code": "profile.display_name",
+            "conflict_key": fact_conflict_key(
+                subject_ref="subject:user", predicate_code="profile.display_name"
+            ),
+            "value_ref": "value:observation:name",
+            "value_hash": "d" * 64,
+        }
+    )
+    name_origin = FactOrigin(
+        change_id="change:transition:fact:name:1",
+        transition_id="transition:fact:name:1",
+        policy_refs=POLICY,
+        accepted_event_ref=genesis_id,
+    )
+    name_fact = first.model_copy(
+        update={
+            "fact_id": "fact:user-name",
+            "values": name_values,
+            "origin": name_origin,
+            "semantic_fingerprint": fact_semantic_fingerprint(
+                subject_ref=name_values.subject_ref,
+                predicate_code=name_values.predicate_code,
+                cardinality=name_values.cardinality,
+                conflict_key=name_values.conflict_key,
+                value_hash=name_values.value_hash,
+                assertion_binding=name_values.assertion_binding,
+                anchor_evidence_refs=name_values.anchor_evidence_refs,
+                policy_refs=name_origin.policy_refs,
+            ),
+        }
+    )
+
+    def _transition(fact: FactProjection) -> FactTransitionProjection:
+        return FactTransitionProjection(
+            transition_id=fact.origin.transition_id,
+            fact_id=fact.fact_id,
+            entity_revision=fact.entity_revision,
+            operation="commit",
+            values_before=None,
+            values_after=fact.values,
+            semantic_fingerprint_after=fact.semantic_fingerprint,
+            change_id=fact.origin.change_id,
+            policy_refs=POLICY,
+            accepted_event_ref=genesis_id,
+            accepted_at=NOW,
+        )
+
+    state = ReducerState(
+        committed_world_event_refs=(
+            CommittedWorldEventRef(
+                event_id=genesis_id,
+                event_type="WorldStarted",
+                world_revision=1,
+                payload_hash="b" * 64,
+                logical_time=NOW,
+            ),
+        ),
+        facts=(first, name_fact),
+        fact_transitions=(
+            _transition(first),
+            _transition(name_fact),
+        ),
+    )
+    matching = EvidenceRef(
+        ref_id=genesis_id,
+        evidence_type="committed_fact",
+        claim_purpose="current_fact",
+        source_world_revision=1,
+        immutable_hash=_canonical_model_hash(name_values),
+    )
+    _validate_evidence_authority(state, (matching,), require_all=True)
+    drifted = matching.model_copy(update={"immutable_hash": "e" * 64})
+    with pytest.raises(ValueError, match="committed-fact"):
+        _validate_evidence_authority(state, (drifted,), require_all=True)
+    token = _REPLAY_GENESIS_FACT_HEAD.set(True)
+    try:
+        _validate_evidence_authority(state, (drifted,), require_all=True)
+    finally:
+        _REPLAY_GENESIS_FACT_HEAD.reset(token)
 
 
 def _thread_with_archive_event() -> ThreadProjection:
