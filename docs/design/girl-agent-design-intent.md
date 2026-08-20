@@ -436,7 +436,7 @@ Appraisal / Affect / Aspiration / Relationship / Private Impression / Commitment
 |---|---|---|---|
 | Appraisal（事件意味着什么） | 事件/消息 → 结构化解读（care/pressure/offence/repair…） | [active] | `appraisal_proposal_compiler.py`、`appraisal_acceptance_runtime.py`、`character_interior/inbound_appraisal_wire.py` |
 | Affect（持续情绪） | 有版本化衰减/残迹/生命周期的情绪成分；表达不自动解决它 | [active]（慢一拍是断链点） | `affect_proposal_compiler.py`、`affect_reducers.py` |
-| Relationship（慢变量） | 结算互动历史的慢投影；影响选择与代价。梯子是六轴均值慢路（close_friend 7000/6200）；主路是已投递的 `we_are` 声明 | [active] | `relationship_proposal_compiler.py`、`relationship_reducers.py` |
+| Relationship（慢变量） | 结算互动历史的慢投影；影响选择与代价。ordinary 梯子为**四主元轴**均值慢路（acquaintance **500** / friend **1800**）；`close_friend` 仍为六轴均值 **7000/6200**；主路是已投递的 `we_are` 声明 | [active] | `relationship_proposal_compiler.py`、`relationship_reducers.py` |
 | Private Impression（私密想法） | 角色对用户/关系/事件的易错解读，带置信度与反证。独立农场 2026-08-18 在日上限下打开 | [active] | `private_impression_producer.py`（后台生产者；`daily_model_call_limit=0` 仍关农场） |
 | Aspiration（低兑现度心愿） | planted → reinforced → faded/crystallized 状态机 | [disconnected]（旧 Runtime 已退役，驱动弱，见 §5） | `aspiration_events.py`、`aspiration_reducers.py` |
 | Private Commitment（私密承诺） | "要记住/以后要做"的内在决定，可开 Thread 或提 Action | [active] | `commitment_reducers.py`、`deferred_reply_runtime.py` |
@@ -998,7 +998,7 @@ RSS/NWS/USGS → hub 采集/去重/嵌入/聚类 → attention 影子/实时注�
   - **档 A `long_silence`**：ambient/spontaneous 关窗后，在 quiet-gap TTL（12h）之上再抽 6–24h delay（首问约落在他消失后 18–36h），Clock 只作时机权威。
   - **档 B 可观测生活事件独立 mint**：关窗后，`ActivityCompleted` / `WorldOccurrenceSettled` / `ExperienceCommitted` / `ExternalPerceptionRecorded` / `LifeArcChanged` 且通过 `situation_stimulus_is_observable` 的事件可独立打开 `situation_change` consider（窗内仍只 hitch）。
   - **合并日上限 1**（本地日历日）+ 最小间隔 6h；连续两次 shared-lane `silent` 后额外 +24h 冷却（有上限，不永久静音）。
-- **现状**：[active]（2026-08-19 接线）。与 silence 通道区分：S6 是她发出后被晾；S18 是他先长时间不说话时的稀疏考虑。
+- **现状**：[active]（2026-08-20 接线深化）。`76e1fc0e`：长静默 lane + 关系/名字事实 reclaim；`39d0a36a`：有可观测生活事件时 tier-B `situation_change` 优先于 ambient。与 silence 通道区分：S6 是她发出后被晾；S18 是他先长时间不说话时的稀疏考虑。**生产 tier-B mint 仍待实证**（见执行计划 §17 2026-08-20）。
 - 来源：`world-v2-inner-life-coverage-plan` 感受空白表；用户核心诉求「惦记着某事 / 触景生情来找用户」。
 
 #### S19 心愿的萌芽与淡去 [disconnected]
@@ -1759,7 +1759,7 @@ prompt 稳定前缀改造（缓存命中价是未命中价的 1/50，实测命�
 这些是当天用生产账本与克隆实证钉死的判断，细节与证据在执行计划 H27–H32。
 
 1. **私人印象独立农场重新打开，但是有界的。** 覆盖 2026-08-15 裁决 10 的「独立车道保持停用」。默认本地日 3 次、间隔 4h、距他上次说话 30min；`WORLD_V2_PRIVATE_IMPRESSION_DAILY_MODEL_CALL_LIMIT=0` 仍是关农场。活着的印象可以领养一次**已经到期**的空闲 consider，不读印象正文，开口与否仍由她选。
-2. **关系梯子维持六轴均值 close_friend 7000 / 退出 6200。** 同日把门槛降到 6000 是修错了地方：reliability/repair=0 不是接线失败，声明才是主路。不要再为四轴饱和改数字。
+2. **关系梯子：ordinary 四主元轴 500/1800；close_friend 维持六轴 7000/6200。** 声明仍是主路。2026-08-18 把 close_friend 降到 6000 是修错地方，已回退（见 `relationship_reducers.py` 退役摘要注释）。
 3. **成人媒体强度只认她的 `declared_display`。** owner 的 capability/consent 只开可能性；关系阶段是地板。P3 走 `specialized_private_workflow_direct`、跳过视觉审查——owner 明确保持，不要当漏做的审查车道补回去。
 4. **账本 `cost_actual` 不是人民币。** 那是 Action 预约结算整数（`settled_cost` / `cost_delta`）。生图花费权威在 `usage_events`。不要当漏记去改。
 5. **生成与投递共用日 2 / 间隔 2h。** 无投递槽不问选片。选片时机看结构化 `media_request`、线程相交、时间邻近，不读他的措辞。

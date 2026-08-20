@@ -31,7 +31,9 @@
 
 ## 消息管线（核心流程）
 
-QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `world_turn_runtime.py`（`WorldTurnRuntime.respond`，转 Observation）→ `world_v2/runtime.py` `WorldRuntime.ingest`：
+QQ → `qq_c2c_onebot_app.py`（`POST /onebot/event`）→ `qq_c2c_host.py` → `platform_host.py` → `world_turn_runtime.py`（`WorldTurnRuntime.respond`，转 Observation）→ `world_v2/runtime.py` `WorldRuntime.ingest`：
+
+**入站 fast ack（2026-08-20，`af687e9e`）**：OneBot 路由走 `accept_inbound_fragment`——fragment 落盘后 HTTP 立即返回 `status=accepted`（200）；`ingest`/模型/表达在 `_start_owned_ingress_fragment_task` 后台继续。`/health` 与 scheduler drain 与可见回合隔离，部署后 napcat `/health` 从 >30s 降到约 0.3–0.9s（8787，同 commit 证据）。
 
 1. 提交 ObservationRecorded（触发 TriggerProcess，CAS）
 2. `pinned_turn.py` `PinnedTurnCompiler` 钉 cursor + 编译 Context Capsule
@@ -48,7 +50,7 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 ### Character Interior（角色内心，`world_v2/character_interior/`）
 - `contracts.py` — 全部公开契约（InnerLifeSnapshot/InnerTransition/InnerDecision）
 - `core.py`（118KB）— `CharacterInterior` 深模块，仅 `project`/`experience`/`consider` 三入口
-- `inbound_author.py`（218KB）/ `inbound_wire.py`（521KB）/ `structured_role.py` — 模型输出物化 + 表达校验
+- `inbound_author.py`（218KB）/ `inbound_wire.py`（521KB）/ `structured_role.py` — 模型输出物化 + 表达校验。**2026-08-20（`c1a8140b`）**：slim 必填 `meaning_of_this`（怎么理解他/处境）与 `my_state`（我此刻什么感觉）；宿主不再接受 `mood` 简写，也不再把 Affect/expectation 硬填 5000（`present_prompt.py` 指令 + `structured_role.py` 校验）。compact appraisal 走 `appraisal_model_view.py` 行表视图（`2fbf8087`）。
 - `snapshot_compiler.py` — 从 Capsule 确定性编译 8-facet 快照
 - `world_stimulus.py`（123KB）— 已提交世界事件 → 内心刺激 → `experience()` → InnerTransition
 - `production.py` — 生产组装 + 后台驱动（proactive/private impression/silence/reconsideration）。`drain_private_impression_once` 在 `WORLD_V2_PRIVATE_IMPRESSION_DAILY_MODEL_CALL_LIMIT>0` 时打开农场（默认 3/日）；0 仍是 H14 的关农场
@@ -58,7 +60,7 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 - `activity_lifecycle_*` — 日常活动：模型从不透明 token 目录选 opening → compiler 派生权威字段 → 原子落账（ActivityStarted/Completed 等）。`activity_timing.py` 是纯规则（完成须 ≥60s 等）
 - `life_ecology_runtime.py` — 调度器：clock tick 后按序跑 biographical→activity→aftermath→life_development→npc_initiative→open_world→visual_evidence→media。**2026-08-20**：`life_development_runtime.py` 增加稀疏 disturbance occasion（~6% 质量、可重放纯函数 draw）；disturbance 时 World Author 收到 `pressure_surfaces`，propose 须至少一个 outcome 带 `dynamic_life_direction` / `objective_biographical_transition` / provisional NPC/place；**克隆 2–3 天多样性尚未验收**（见 `output/flat-world/REPORT.md`）。
 - `biographical_lifecycle*` — Life Arc 开/关（从已结算 outcome 提取），驱动 NPC 出现/离场
-- `npc_ecology.py`（2038 行）— NPC 私有决策（actor 模型）+ 世界裁决（world author），产出 NPC Plan/Occurrence 走普通 aftermath 路径被主角消费。种子在 `configs/world_seed.yaml`（38 处 npc）
+- `npc_ecology.py`（2038 行）— NPC 私有决策（actor 模型）+ 世界裁决（world author），产出 NPC Plan/Occurrence 走普通 aftermath 路径被主角消费。种子在 `configs/world_seed.yaml`（38 处 npc）。**2026-08-20（`9e574380`）**：`life_ecology_runtime.py` 在 `aftermath_status=="settled"` 时若 `NpcEcology.has_stimulus()` 为真仍跑 NPC lane——此前 settled 永远挡住 NPC，是全项目 NPC 产出 0 的直接门控之一（生产是否开始 mint 仍待回采）。
 - `world_life_context.py` — settled occurrence → 模型上下文（ActiveWorldOccurrencePremise）
 
 ### 媒体系统（图片机）
@@ -67,16 +69,35 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 - 隐私分层：`media_eligibility.py` `MediaEligibilityRouter` 划 ordinary/personal/intimate。P3 强度由她的 `declared_display` 决定（`declared_display_contract.py`），owner grant 只开可能性；close_friend 是关系地板。
 - `image_generation.py` 里 VolcArk/ComfyUI/Fallback **无实例化调用点**（本地 ComfyUI 可行性 2026-08-18 仍在测，结论未定）。Civitai Krea2 仅 P3 车道在 `qq_media_deployment` 有条件安装；缺密钥或模板 fail-closed，不降级 OpenAI。**现网（2026-08-18）** key 与模板齐全，身份 LoRA AIR `urn:air:krea2:lora:civitai:2868686@3240992`；克隆上已出 JPEG。普通生产仍接 OpenAI `gpt-image-2`。Civitai 异步对账、永不二次 POST；AIR 404 预检拒 POST。账本 `cost_actual` 是 Action 预约整数，生图花费在 `usage_events`。
 
-### 调度与健康（2026-08-19）
+### 调度与健康（2026-08-20）
 - **统一到期登记**：`declared_due.collect_clock_wake_dues` 是 QQ 调度器唯一选型入口（`qq_c2c_host._scheduler_once_serialized` 必须恰好调用一次）；AST 守门测试在 `tests/world_v2/test_declared_due_wake.py`。宿主不得再手写 dues 清单。
-- **主动车道**：`social_initiative._post_silent_chain_active` 在 post-silent 进程 terminal 后释放 ambient（此前永久占位会饿死触景生情）。健康影子 due：仅当 `peek_next_due is None` **且** `unrecorded_cadence_still_open` 为假时清空（窗内尚未落盘 draw 仍报 `consideration_due`；ambient 过期 / 已结算链不再假 overdue，避免级联 `ledger_event_stream_stalled`）。
+- **主动车道**：`social_initiative._post_silent_chain_active` 在 post-silent 进程 terminal 后释放 ambient（此前永久占位会饿死触景生情）。**S18 tier 顺序（`39d0a36a`）**：有可观测生活事件时 tier-B `situation_change` mint 优先于 ambient backfill。**连发未答盼头（`0a55f4e7`/`b7d5fcbc`）**：`proactive_action.consecutive_unanswered_expired_chase_count()` 投影连发次数进 proactive advisory；事实层，无硬顶。健康影子 due：仅当 `peek_next_due is None` **且** `unrecorded_cadence_still_open` 为假时清空（窗内尚未落盘 draw 仍报 `consideration_due`；ambient 过期 / 已结算链不再假 overdue，避免级联 `ledger_event_stream_stalled`）。
 
 ### 散文边界（2026-08-19）
 - 生活作者写「发出去了」≠ 用户通道完成。权威字段：`user_channel_completion=none`（noticed 时必填）+ 恢复的 LLM 评论家 + 违规种 `completed_user_channel_act`。
 - 三条通路都已钉住：Open World / NPC ecology / 私人印象（及 life_development 同源闭包）。散文可以描写，不能冒充已投递的 Action/回执。
 
-### 一致性审计
-- `scripts/audit_context_truth.py`：只读克隆生产账本，31 槽位对照「她看见的」vs「账本事实」（K1–K6 覆盖门）。日常应跑；预期 `finding_count=0`。产物默认 `output/context-audit/`，禁写 `data/`。**2026-08-19 晚**：seq 5874 克隆仍为 0；当前生产头 seq 5958 在 Path A 编译阶段因 `current_situation minimum whole-item budget is not satisfied` 未能出 finding 表（胶囊整项预算，与相册挤瘦同型坑）。
+### 成本与控制（2026-08-20）
+- **`BackgroundContextProfile`（`8f3b49bb`）**：7 套 profile（`life_ecology_core` / `stimulus_appraisal` / `private_impression` / `proactive_contact` / `memory_retention` / `interaction_background` / `novel_origin_review`）按 purpose 切片后台 snapshot/capsule；canonical 快照不变。守门 `assert_background_context_profile_coverage`（`tests/world_v2/test_background_context_profile.py`）。生产头实测相对 8/13 后台 prompt 均值约 **89%** token 降幅（`scripts/audit_background_context_slicing.py` 逻辑；完整脚本因 capsule 索引 reader 缺口可能 fail-closed，降幅数字来自同脚本 estimator + 生产头 snapshot）。
+- **DeepSeek 前缀缓存（`2694cd1a` 等）**：`present_prompt.py` stable→volatile 排序；`recent_dialogue` / appraisal / affect 拆 `stable_*` + `volatile_last_*`；`fact_predicate_stability.py` 稳定事实 recency 乘子固定为 `STABLE_FACT_RECENCY_BP`；`context_capsule.py` `minimum_retained_items` 为关系/affect/线程/稳定 fact 设整项保留地板（`4a2f79d9`）。
+- **关系慢路（`relationship_reducers.py`）**：ordinary 梯子改 **四主元轴**均值，阈值 **500/1800**（acquaintance/friend）；`close_friend` 仍 **7000/6200**（六轴均值）。旧摘要 `2ec7c087…` 进退役集。
+- **预算拒绝**：`model_usage_budget.py` 返回真实 `spend_cap` / `soft_daily_budget_exceeded`，不再伪装成别的错误码。克隆/脚本走 `DEEPSEEK_DEBUG_API_KEY` + `spend_account.py` debug 分账（`output/debug-spend/model_usage.sqlite`）。
+- **Text Turn Endpoint**：8188 服务活跃；默认 timeout **550ms**（`text_turn_endpoint.py`，`ec09eab1`）。200ms 时代曾 100% fallback 到词法合批。
+- **语义召回**：本地 embedding（8190）正常；`.env` 已开 embedding，生产自主 `recall` 命中仍 **0**（部署后无新入站验收，`ec09eab1` 前状态）。
+
+### 一致性审计（日常运维）
+| 脚本 | 用途 |
+|---|---|
+| `scripts/audit_context_truth.py` | 31 槽位「她看见的」vs 账本事实（K1–K6）；**生产头 seq 12956：`finding_count=0`**（`753f7792` 补 dialogue/photo/affect 槽）。产物 `output/context-audit/`，禁写 `data/` |
+| `scripts/audit_human_chat_behavior.py` | 80 条真人行为基线（`docs/design/human-chat-behavior-coverage.md`）；`--update-coverage` 回写文档。当前汇总 **✅21 / 🟡51 / 🔴8** |
+| `scripts/audit_background_context_slicing.py` | 后台 lane profile 切片 token 降幅 |
+| `scripts/audit_turn_latency.py` | QQ 入站→首气泡延迟 |
+| `scripts/audit_deepseek_spend.py` | DeepSeek 峰谷计价 + debug/production 分账 |
+| `scripts/audit_facts_reaching_her.py` | Fact 是否进 Present |
+| `scripts/audit_counterpart_identity.py` | 对方名字/昵称 Fact 链 |
+| `scripts/audit_lived_experience.py` | 关系动量、负面 Affect、复燃、文风（H22） |
+
+提案态成本规格（非权威）：`output/cost-standards/SPEC.md`。
 
 ### 外部感知
 - `world_v2/external_world_perception/` — RSS/NWS/USGS 源 → `hub.py` 采集/去重/嵌入/聚类 → `attention.py` 影子/实时注意力 → 模型决定 → ExternalPerceptionRecorded → 生活影响。靠 registry off/shadow/live 模式门控，半启用
@@ -98,12 +119,14 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 - Producer-First Authority：新 authority 必须和第一个生产者同批落地（见 CONTEXT.md）
 - `configs/mechanism_closure.yaml` 标记 dormant 机制（如 resource_authority 四权威、v16 harness）
 
-## 已确认的死代码/未接线（2026-08-19 晚复核）
+## 已确认的死代码/未接线（2026-08-20 复核）
 
 - `world_v2/scenario_runner.py` — 仅测试与 `scripts/verify_world_v2_scenarios.py` 引用，生产 runtime 不导入
 - `world_v2/scenario_corpus.py` — 被 `scenario_runner.py` 与离线 `formal_evaluation_pipeline.py` 引用，生产 ingest 路径不导入
 - `aspiration_seed_policy.py` — 仅测试引用；`src/` 无生产 import
 - `npc_initiative_weight_policy.py` — `npc_ecology.py` 仍 import，且 `_weighted_actor_decision` / `_weighted_world_decision` **仍定义**，生产路径无调用点（H23 拆除短路后的残留）
+- **`local-appraisal`（8188 旁路）** — launchd plist 已于 2026-08-07 清除（`tests/test_text_endpoint_deployment.py` 断言 installer 不再 load）；`config.py` 仅保留 `removed_local_appraisal_*` 迁移 Field
+- **`sillytavern`** — `config.py` 有 `SILLYTAVERN_BASE_URL` 与 launchd 可选 plist；**`src/` 无 import**，不是生产路径
 - `appearance_state` / `visible_physical_state` 记录者 — 宿主 seam 存在（`production_turn_application.record_*`），`src` 内无生产调用者，仅测试调用 `record_appearance_state`。投影读取已被 media snapshot 使用；2026-08-18 P3 `private_transition` 会冻已有 `appearance_state`，仍不产生 record 调用
 - `resource_authority_*` 四权威 — 官方 DORMANT（`mechanism_closure.yaml` 的 v16-situation-constituents）
 - `expression_decision_channel.py` — 守门断言，**仅测试/探针调用**；生产启动不跑（与 `assert_bounded_vertical_coverage` 不同）
@@ -113,21 +136,27 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 ## 测试布局
 
 - `tests/` 顶层 30 文件：适配器、预算、媒体选片契约、房间编译器
-- `tests/world_v2/`：character_interior 最大；含 ledger/sqlite、expression、npc_ecology、life_*、migration golden、formal_evaluation。2026-08-19 新增/加厚：`test_expression_decision_channel`、`test_declared_due_wake`、`test_social_initiative`（post-silent 释放）、相册/散文边界相关断言；离线机制基线 `world-v2-offline-mechanism-baseline.86`
+- `tests/world_v2/`：character_interior 最大；含 ledger/sqlite、expression、npc_ecology、life_*、migration golden、formal_evaluation。2026-08-19 新增/加厚：`test_expression_decision_channel`、`test_declared_due_wake`、`test_social_initiative`（post-silent 释放）、相册/散文边界相关断言；2026-08-20：`test_background_context_profile`、`test_declared_due_wake`、disturbance/self-state 相关；离线机制基线 **`world-v2-offline-mechanism-baseline.87`**（`.86` disturbance + `.87` proactive citeable cap，`scenario_runner.py`）
 - **无直接测试**：`conversation_cadence.py`（间接）、`qq_outbound_owner.py`（间接）、`world_media.py`。`cli.py` 有 `tests/world_v2/test_simulator_cli.py`。顶层 media_* 多数已有对应测试；无独立测试文件的是 `media_moment.py` / `media_interaction.py` / `media_domain.py` / `media_authenticity.py` / `media_camera.py` / `media_facial.py` / `media_address.py`
 - `tests/support/` 是共享 fixture 构造器（非适配层）；`tests/js/` 是房间渲染器 JS 测试
-- 日常运维：`.venv/bin/python scripts/audit_context_truth.py`（31 槽）
+- 日常运维：`.venv/bin/python scripts/audit_context_truth.py`（31 槽）；`.venv/bin/python scripts/audit_human_chat_behavior.py`（80 条行为）
 
-## 已验证生产事实（2026-08-20）
+## 已验证生产事实（2026-08-20 晚）
 
 - **QQ 宿主延迟**：`af687e9e` 部署后 `/health`（8787）约 **0.3–0.9s**（部署前 >30s）；`launchctl kickstart -k gui/501/com.girl-agent.napcat`。
-- **P0-a 情绪（克隆 `scripts/prove_her_own_feelings.py`，n=12，¥0.56）**：持久 Affect **4/12 propose**（warmth×2、sadness×1/hurt×1）；强度 **3200/3500×2/5500**（非清一色 5000）；**6/12 no_change**（4,5,7,8,9,12）；`my_state` 与读他分离（如 trial 10「心里有点凉…」+ sadness 3200）。**局限**：trial 9 明确高兴 probe 仍 no_change——**模型倾向**，非纯契约问题。证据：`output/her-own-feelings/REPORT.md`。
-- **P0-b 已读不回（克隆 trial 11）**：`timing_choice=silent`、`visible_message_count=0`、无 `ActionAuthorized`；内心「不想纠缠，也不想装作没看见」。证据：`output/her-own-feelings/trial-11/evidence.json`。
-- **P0-c 时间窗/召回**：部署后**无新入站回合**（ledger ~11488 仅 Clock/ModelResult）；语义召回命中率与 text-endpoint `model_success` **未验收**。已接线：`recall_embedding` 宿主 warmup、`text_turn_endpoint` 默认 timeout **550ms**（`ec09eab1`）。
-- **P1 disturbance（`80a0f2c3`）**：代码+单测+基线 `.86` 不变；**生产/克隆尚未证明生活事件主题多样性改善**。
-- **B78 生活→想起他→开口**：`social_initiative` tier B 代码在库；生产账本 **0 mint**；`probe_initiative_lanes --phase life` **未完成**（探针曾挂起 >30min，已中止保预算）。
+- **P0-a 情绪（克隆 `scripts/prove_her_own_feelings.py`，n=12，¥0.56）**：持久 Affect **4/12 propose**（warmth×2、sadness×1/hurt×1）；强度 **3200/3500×2/5500**（非清一色 5000）；**6/12 no_change**；`my_state` 与读他分离。**局限**：trial 9 明确高兴 probe 仍 no_change——模型倾向。证据：`output/her-own-feelings/REPORT.md`。
+- **P0-b 已读不回（克隆 trial 11）**：`timing_choice=silent`、`visible_message_count=0`、无 `ActionAuthorized`。证据：`output/her-own-feelings/trial-11/evidence.json`。
+- **P0-c 时间窗/召回**：部署后**无新入站回合**；语义召回与 text-endpoint `model_success` **未验收**。已接线：`recall_embedding` warmup、endpoint timeout **550ms**（`ec09eab1`）。
+- **P1 disturbance（`80a0f2c3`）**：600/10000 质量 + `validate_disturbance_consequence_closure`；代码+单测+基线 `.86`。**生活事件主题多样性 A/B 未验收**（`output/flat-world/REPORT.md` 仍缺克隆 2–3 天证据）。
+- **context audit**：生产头 seq **12956**，**`finding_count=0`**（`753f7792` 后，2026-08-20 本地跑通）。
+- **后台 prompt 切片**：生产头相对 8/13 后台 purpose 均值约 **89%** token 降幅（`BackgroundContextProfile`，见上）。
 - **生产预算**：当日 `soft_daily_exhausted` 仍成立；后台模型车道跳过；**勿改 `.env` 预算数字**。
-- **context audit（部署后）**：`finding_count=3`（非 0；需对照 K 槽位明细，非本次回归引入的断言未逐条归因）。
+
+## 进行中，待验证（勿写成已完成）
+
+1. **B78 生活→想起他→开口**：tier-B `situation_change` + `39d0a36a` 顺序已接线；`dbf72df1` 将 proactive `citeable_sources` 上限对齐 8。生产 **`situation_change` mint 0**；`probe_initiative_lanes --phase life` 未完成。
+2. **缓存尾拆**：`present_prompt.py` 已拆 dialogue/appraisal/affect 的 stable/volatile；**全 lane 缓存命中率与 G5 目标未验收**。
+3. **扰动 A/B**：`80a0f2c3` 机制在库；克隆/生产生活主题多样性**未证明改善**。
 
 ## 文档指引
 
@@ -136,3 +165,4 @@ QQ → `qq_c2c_onebot_app.py` → `qq_c2c_host.py` → `platform_host.py` → `w
 - 历史施工记录（L0–L3 期，可查证但不产生任务）：`docs/design/root-causes-and-long-coupling-luna-plan.md`
 - ADR：`docs/adr/0010-controlled-high-variance-character-agency.md` 必读
 - 其余 `docs/design/` 文件、成本与形象文档均是可追溯的历史或专项证据，只能由上述两份权威文档按需引用，不能成为并列路线图。
+- 真人聊天行为验收基线（非权威路线图）：`docs/design/human-chat-behavior-coverage.md`（80 条，机器源 `output/behavior-coverage/coverage.json`）。

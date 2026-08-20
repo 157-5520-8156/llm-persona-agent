@@ -704,6 +704,55 @@ this boundary fails startup before provider clients are allocated.
 _Avoid_: Configuration as evidence, timeout as schema success, Inventory as a
 source verdict, dormant Coverage reported as active
 
+## Background Context Profile
+
+A purpose-specific, auditable declaration of which Inner Life Snapshot
+materials and Context Capsule slices may enter one background model call's
+provider view. Undeclared content is withheld from the provider payload only;
+the canonical snapshot and capsule remain unchanged for replay and acceptance.
+Seven profiles cover life ecology, stimulus appraisal, private impression,
+proactive contact, memory retention, interaction background, and novel-origin
+review. Startup tests enforce complete purpose coverage via
+`assert_background_context_profile_coverage`.
+_Avoid_: Second truth store, lane-specific ledger rewrite
+
+## Dual Self-State Fields
+
+The slim expression contract's required pair `meaning_of_this` and `my_state`.
+`meaning_of_this` records how she provisionally reads his message or the
+immediate situation; `my_state` records her own felt state, desire, resistance,
+or pull at this moment. They are separate from visible `messages` and from
+durable Affect proposals. The host no longer accepts a `mood` shorthand or
+fills default 5000 basis-point weights on her behalf.
+_Avoid_: Single fused `felt`, host-authored intensity
+
+## Fact Predicate Stability
+
+A deterministic classification of fact predicates as stable or episodic for
+context ranking. Stable predicates use a fixed recency multiplier
+(`STABLE_FACT_RECENCY_BP`) instead of time-decaying recency, so identity and
+coordinate facts are not evicted ahead of transient circumstances during capsule
+compaction.
+_Avoid_: Keyword-based fact pinning, host-chosen fact subsets
+
+## Life Development Disturbance Occasion
+
+A sparse, replayable draw (600 basis points mass in a 10 000 total table beside
+ordinary opportunity and nothing) that opens a life-development beat in
+`disturbance` mode. The World Author must propose at least one outcome carrying
+a durable world consequence validated by
+`validate_disturbance_consequence_closure`. Cloned multi-day thematic diversity
+from this mechanism remains unverified production evidence.
+_Avoid_: Deterministic plot injection, disturbance without closure
+
+## Consecutive Unanswered Expired Chase Count
+
+A projection-derived count of how many consecutive proactive or expectation
+follow-ups ended with expired hope while the counterpart still had not replied.
+It surfaces only as advisory input to proactive deliberation; it does not
+hard-cap outreach or choose wording.
+_Avoid_: Keyword chase limit, automatic follow-up script
+
 ## Private Impression
 
 The companion's fallible, source-bound interpretation of a user, relationship, or event. The character authors its tentative `reflection_summary`; deterministic authority binds that reading to accepted appraisal sources, confidence, possible counter-evidence, and an expiry or settlement condition. It is never a User Fact, and legacy impressions without authored prose continue to resolve through their exact appraisal references.

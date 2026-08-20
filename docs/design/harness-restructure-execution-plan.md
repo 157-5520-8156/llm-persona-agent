@@ -754,10 +754,10 @@ purpose `life_development_source_closure_review`、`life_development_novel_origi
 | H22–H26 | 生产账本反证与成批修复（关系增量、世界作者、文风、复燃门槛、出图闸） | 见 §17 各条 | 见 §17；H26 剩余缺口已于同日傍晚回写 |
 | H27 | 主动联系首次授权发出：strict schema、JSON 修补、钉源还原、第四堵墙、流式重选、drain 隔离 | 历史上 `proactive_message` 送达 0；受约束重选在生产流式路径上未真正调模型 | 克隆上 `ActionAuthorized` `proactive_message`；同 Occasion 校正会再调模型 |
 | H28 | 她看得见自己能写哪些决定：范本列全键、半套可见失败 + 一次重选 | compact 范本只有 `messages`+`felt`；半套静默丢 | wait 成对从 0/6 升到 3/6；`come_back`/`later`/`we_are` 看得见后选择不用；可见回复 12/12 |
-| H29 | 关系：梯子是慢路，声明是主路；门槛改回 7000/6200 | 生产 stranger / 六轴均值 85；按现频率爬到 friend 约 6.4 年 | 克隆上已投递承诺 stranger→friend→close_friend；friend 考虑带抽中 3h |
+| H29 | 关系：梯子是慢路，声明是主路；ordinary 四轴 **500/1800**，close_friend **7000/6200** | 生产 stranger / 旧窗六轴均值 85 | 克隆上已投递承诺 stranger→friend→close_friend；friend 考虑带抽中 3h |
 | H30 | 媒体：生成有界、选片贴对话、成人车道真出图 | 生成无日上限；身份 LoRA 404；`declared_display` 未接线 | 生成与投递对齐日 2/间隔 2h；P3 克隆出 JPEG 253651 字节 |
 | H31 | 私人印象农场打开，惦记可变成一次开口机会 | H14 后 drain 恒 `None` | 配置化日上限 3；活印象领养到期空闲 consider；3/3 授权 |
-| H32 | 工程卫生与仍开放项 | 见该条 | `cost_actual` 不是 CNY；`.safetensors` 忽略；两条时序断言与本地出图结论未定 |
+| H32 | 工程卫生与仍开放项 | 见该条 | `cost_actual` 不是 CNY；`.safetensors` 忽略；缓存命中率/G5、扰动 A/B、B78 生产 mint 仍待验证 |
 
 ### 13.1 代码坐标（行号以 2026-08-13 的 HEAD 为准，改动前必须先确认）
 
@@ -1427,8 +1427,43 @@ H14 把 `drain_private_impression_once` 改成恒 `return None`，是成本取�
   2. 两条 500ms 时序断言在红（观测曾到 0.6–0.87s）。是否为真回归**正在对照测量中**，结论未定——待 `output/ingress-perf/`（该目录写本文时仍空）。
   3. 本地出图（ComfyUI + Krea2 Turbo GGUF）可行性**正在实测中**。`output/local-render/` 已有两张 1024×1536 PNG；run1 墙钟 3655s、峰值约 18GB、daemon 存活。结论未定，不以这两张图宣称可替代 Civitai。
   4. `inbound_author._parse_combined`：失败路径已回落 `loads_one_json_object`，主路径仍自剥围栏 + `json.loads`。别名 / slim / hitchhike 应留在 author。未把围栏/引号/补括号收成单一入口。
-  5. 外部感知与 NPC 生态仍是半启用（本次未动）。`npc_ecology.py` 仍定义 `_weighted_actor_decision` / `_weighted_world_decision`，生产路径无调用点。
+  5. 外部感知与 NPC 生态仍是半启用。**2026-08-20（`9e574380`）**：NPC lane 在 settled aftermath 有 fresh stimulus 时可跑；生产 mint 是否 >0 仍待回采。`npc_ecology.py` 仍定义 `_weighted_actor_decision` / `_weighted_world_decision`，生产路径无调用点。
   6. H26 仍开放：`week_diary` / `day_sheet` 无 `source_ref`；复燃频率未回采；embedding 常驻内存。
-- **产品裁决（已记录，勿再重开）**：P3 `specialized_private_workflow_direct` 跳过视觉审查，owner 保持；close_friend 门槛维持六轴 7000/6200，不因 reliability/repair=0 再降；成人强度只认她的 `declared_display`。
+- **产品裁决（已记录，勿再重开）**：P3 `specialized_private_workflow_direct` 跳过视觉审查，owner 保持；close_friend 门槛维持六轴 **7000/6200**（ordinary 梯子为四主元 **500/1800**，`a5c0e618`）；成人强度只认她的 `declared_display`。
 
+### 2026-08-20 成本与控制批次（`8f3b49bb` → `b7d5fcbc`）
+
+单日多 commit；下列为已落地且可指向代码/审计的事实，**不是**全部已生产验收。
+
+- **BackgroundContextProfile（`8f3b49bb`）**：7 套 profile + `assert_background_context_profile_coverage`；离线基线 `.86`。生产头相对 8/13 后台 prompt 字符/token 均值约 **89%** 降幅（同 repo `audit_background_context_slicing.py` estimator；完整脚本 capsule 段需 indexed projection reader，否则 fail-closed）。
+- **前缀缓存与胶囊地板（`2694cd1a`、`2fbf8087`、`4a2f79d9`）**：stable-first 排序；`recent_dialogue`/appraisal/affect stable/volatile 拆分；`fact_predicate_stability`；`minimum_retained_items`；appraisal compact model view。
+- **双自我状态（`c1a8140b`）**：slim 必填 `meaning_of_this`/`my_state`；取消 `mood` 简写与宿主默认 Affect/expectation **5000**。
+- **QQ fast ack（`af687e9e`）**：`/onebot/event` → `accept_inbound_fragment` 落盘即 200；ingest 后台化。部署后 `/health` ~0.3–0.9s。
+- **稀疏扰动（`80a0f2c3`）**：`LIFE_DEVELOPMENT_DISTURBANCE_MASS_BP=600` / 10000 表 + 后果闭包校验；基线 `.86`。**克隆 2–3 天主题多样性 A/B 未验收**。
+- **关系慢路（`a5c0e618` 一带）**：ordinary 四主元 **500/1800**；close_friend **7000/6200** 不变；摘要 `2ec7c087…` 退役。
+- **NPC 门控（`9e574380`）**：settled aftermath + `has_stimulus()` 仍跑 NPC。**全项目历史 NPC mint≈0 的部分根因已修**；生产新产出待回采。
+- **S18 顺序（`76e1fc0e`、`39d0a36a`）**：长静默 + 生活事件 tier-B 优先 ambient；`consecutive_unanswered_expired_chase_count` advisory（`0a55f4e7`/`b7d5fcbc`）。
+- **Proactive citeable cap（`dbf72df1`）**：`citeable_sources` 对齐 `attended_source_refs` 八条；基线 `.87`。
+- **Context audit（`753f7792`）**：补 dialogue/photo/affect 槽；生产头 seq 12956 **`finding_count=0`**（2026-08-20 本地 `audit_context_truth.py`）。
+- **Endpoint / 召回（`ec09eab1`）**：text-endpoint timeout **550ms**；affect/silent usage specimens；部署后无新入站，召回命中率未验收。
+- **预算语义**：`spend_cap` / `soft_daily_budget_exceeded` 如实返回；`DEEPSEEK_DEBUG_API_KEY` debug 分账。
+- **commits（按时间）**：`af687e9e` `ec09eab1` `80a0f2c3` `8f3b49bb` `2694cd1a` `2fbf8087` `c1a8140b` `76e1fc0e` `a5c0e618` `753f7792` `4a2f79d9` `9e574380` `39d0a36a` `0a55f4e7` `dbf72df1` `b7d5fcbc`
+
+**进行中，待验证（登记缺口，勿标完成）**：
+
+1. **B78 生活→开口**：tier-B + citeable cap 已接线；生产 **`situation_change` mint 0**；`probe_initiative_lanes --phase life` 未完成。
+2. **G5 缓存命中率**：stable/volatile 与 profile 切片已落地；**≥50% 目标未用生产流量验收**。
+3. **扰动 A/B**：机制+单测在库；`output/flat-world/REPORT.md` 仍缺多样性改善证据。
+
+**文档冲突（旧描述害人，已在本批文档中改正）**：
+
+| 旧描述 | 事实 |
+|---|---|
+| context audit 部署后 `finding_count=3` | `753f7792` 后生产头 **0**（seq 12956） |
+| 关系 ordinary 梯子六轴 2000/4500 | 2026-08-20 起四主元 **500/1800**（close_friend 仍 7000/6200） |
+| S18 `[disconnected]` | 2026-08-19 起 `[active]`；2026-08-20 tier 顺序与 long_silence 深化 |
+| text-endpoint 200ms | 默认 **550ms**（`ec09eab1`） |
+| `local-appraisal` launchd 活跃 | 2026-08-07 已清 plist |
+| `drain_private_impression_once` 恒 None | H31 已打开（默认日 3）；limit=0 才 None |
+| NPC 生态「半启用但代码在跑」 | settled 门控曾 **100% 挡死**；`9e574380` 才放行有 stimulus 的 settled |
 
