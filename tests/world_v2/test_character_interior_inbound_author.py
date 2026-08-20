@@ -2380,7 +2380,9 @@ async def test_compact_full_turn_keeps_full_stream_in_one_physical_character_cal
             separators=(",", ":"),
         ).encode()
     )
-    assert compact_request_bytes <= 40_000
+    # ec09eab1 added affect/silent usage specimens (~+461 B) to teach optional
+    # affect lifecycle and read-without-reply; keep headroom for specimen drift.
+    assert compact_request_bytes <= 41_000
     assert compact_request_bytes < legacy_request_bytes * 0.45
 
 
