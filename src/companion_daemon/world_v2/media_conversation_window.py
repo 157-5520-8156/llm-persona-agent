@@ -182,6 +182,85 @@ def _plan_for_candidate(projection: object, *, candidate_id: str) -> object | No
     return None
 
 
+_CROSS_LANE_CLAUSE_MAX = 220
+
+
+def _delivery_count(projection: object) -> int:
+    deliveries = getattr(projection, "media_deliveries", ()) or ()
+    actions = getattr(projection, "actions", ()) or ()
+    action_deliveries = sum(
+        1
+        for item in actions
+        if getattr(item, "kind", None) == "media_delivery"
+        and getattr(item, "state", None) in {"provider_accepted", "delivered"}
+    )
+    return max(len(deliveries), action_deliveries)
+
+
+def media_cross_lane_timing_clause(
+    projection: object,
+    *,
+    logical_time: datetime | None = None,
+    max_chars: int = _CROSS_LANE_CLAUSE_MAX,
+) -> str:
+    """Neutral media send-window facts for text/expiry lanes. She still decides."""
+
+    at = logical_time or getattr(projection, "logical_time", None)
+    if at is None:
+        return ""
+    clauses: list[str] = []
+    delivered = _delivery_count(projection)
+    if delivered:
+        noun = "photo" if delivered == 1 else "photos"
+        clauses.append(
+            f"{delivered} {noun} already reached him on the ledger (MediaDeliveryShared)."
+        )
+    for candidate in getattr(projection, "photo_candidates", ()) or ():
+        candidate_id = getattr(candidate, "candidate_id", None)
+        if not isinstance(candidate_id, str) or not candidate_id:
+            continue
+        if candidate_has_delivery(projection, candidate_id=candidate_id):
+            continue
+        expires_at = getattr(candidate, "expires_at", None)
+        if isinstance(expires_at, datetime) and expires_at <= at:
+            clauses.append(
+                "A photo candidate she opened has expired and is no longer choosable."
+            )
+            continue
+        decided = selection_decision_at(
+            projection, candidate_id=candidate_id, plan=_plan_for_candidate(
+                projection, candidate_id=candidate_id
+            ),
+        )
+        if decided is None:
+            continue
+        if conversation_send_allowed(
+            projection, logical_time=at, candidate_id=candidate_id
+        ):
+            minutes = max(0, int((at - decided).total_seconds()) // 60)
+            clauses.append(
+                "A photo send decision is still inside the same-sitting auto-send window"
+                + (f" (about {minutes} minutes since she chose it)." if minutes else ".")
+            )
+        elif is_reask_eligible(projection, candidate=candidate, logical_time=at):
+            minutes = max(0, int((at - decided).total_seconds()) // 60)
+            clauses.append(
+                "A photo send decision is no longer auto-sending"
+                + (
+                    f" (about {minutes} minutes since she chose it); "
+                    "the candidate may still be choosable."
+                    if minutes
+                    else "; the candidate may still be choosable."
+                )
+            )
+    if not clauses:
+        return ""
+    body = " ".join(dict.fromkeys(clauses))
+    suffix = " Timing evidence only; she still decides."
+    room = max(0, max_chars - len(suffix))
+    return (body[:room].rstrip() + suffix) if room else suffix[:max_chars]
+
+
 __all__ = [
     "CONVERSATION_SELECTION_TTL",
     "REASK_STATUSES",
@@ -190,5 +269,6 @@ __all__ = [
     "conversation_window_expires_at",
     "is_reask_eligible",
     "latest_selection_decided_at",
+    "media_cross_lane_timing_clause",
     "selection_decision_at",
 ]

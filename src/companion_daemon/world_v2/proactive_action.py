@@ -200,6 +200,7 @@ def _hitch_living_hope(text: str, projection: object) -> str:
     clause = living_hope_hitch_clause(
         hoped_response=hope.hoped_response,
         seconds_since_he_last_spoke=seconds,
+        projection=projection,
     )
     return clause + " " + text
 
@@ -306,6 +307,7 @@ def _proactive_opportunity_context(
                 hoped_response=hope_text,
                 seconds_since_he_last_spoke=seconds,
                 spoken_since_declared=spoken_since,
+                projection=projection,
             ) + chase_clause
         return (
             "A reply she hoped for did not arrive before that hope expired. "
@@ -342,7 +344,7 @@ def _proactive_opportunity_context(
     if kind == "private_impression":
         return _hitch_living_hope(private_impression_opportunity_context(), projection)
     if kind == "later_expression_refresh":
-        return later_refresh_opportunity_context()
+        return later_refresh_opportunity_context(projection)
     return "A verified proactive opportunity exists."
 
 

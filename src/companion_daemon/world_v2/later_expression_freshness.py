@@ -68,6 +68,20 @@ LATER_REFRESH_OPPORTUNITY_CONTEXT = (
     "to send it, change it, or stay silent."
 )
 
+
+def later_refresh_opportunity_context(projection: object | None = None) -> str:
+    """Context for a stale later followup refresh consider."""
+
+    from .media_conversation_window import media_cross_lane_timing_clause
+
+    base = LATER_REFRESH_OPPORTUNITY_CONTEXT
+    if projection is None:
+        return base
+    clause = media_cross_lane_timing_clause(projection)
+    if not clause:
+        return base
+    return f"{base} {clause}"[:512]
+
 _SHANGHAI = ZoneInfo("Asia/Shanghai")
 _HASH = 64
 
@@ -114,10 +128,6 @@ def later_refresh_consideration_id(action_id: str) -> str:
             separators=(",", ":"),
         ).encode()
     ).hexdigest()
-
-
-def later_refresh_opportunity_context() -> str:
-    return LATER_REFRESH_OPPORTUNITY_CONTEXT
 
 
 def later_refresh_process(projection: object, *, action_id: str):

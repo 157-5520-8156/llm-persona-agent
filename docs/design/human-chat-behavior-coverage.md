@@ -25,9 +25,9 @@
 |---|---|---|---|---|---|---|
 | B01 | 他刚发来一个可接的话头 | 自然接入，不先寒暄 | 直接接内容，如“那还挺早的呀 是去学校有事吗” | 有一点好奇，顺着问即可 | 全 | ✅ 生产 seq 11025 原话；`inbound_turn.py` → Expression |
 | B02 | 半天到一天没聊，她想起未完话题 | 主动续场 | 不说“您好”，直接续上一句或抛近况 | 还惦记，想看看他在不在 | A/F/C/M/L；S谨慎 | ✅ 生产窗内主动外发 3 次；`long-silence-outreach/REPORT.md` |
-| B03 | 一段话自然说完 | 不强行追问，允许停住 | 最后一条是陈述/反应，没有“你呢” | 没有新问题，聊天停一下也正常 | 全 | ✅ 生产 seq 120 原话「在图书馆看书呢，今天有点闷，靠窗的位置凉快些」；审计 94/110；rate 94/110 delivered turns end without question mark |
+| B03 | 一段话自然说完 | 不强行追问，允许停住 | 最后一条是陈述/反应，没有“你呢” | 没有新问题，聊天停一下也正常 | 全 | ✅ 生产 seq 120 原话「在图书馆看书呢，今天有点闷，靠窗的位置凉快些」；审计 97/113；rate 97/113 delivered turns end without question mark |
 | B04 | 夜深、双方准备睡 | 主动收尾 | “那你早点休息”后不再追加新话题 | 累了或觉得该结束，不是拒绝关系 | 全 | 🟡 seq 1340 原话「嗯，本来是要睡了的。」；审计 3/145；closing phrase match is necessary but not sufficient; human checks chain stop |
-| B05 | 聊到没话说 | 用表情/短句收尾或沉默 | “哈哈”“行吧”/单表情/不再发 | 不尴尬，也不想硬撑 | 全 | ✅ 生产 seq 1089 原话「不拍。」；审计 9/110；0 reaction deliveries, 9 short texts |
+| B05 | 聊到没话说 | 用表情/短句收尾或沉默 | “哈哈”“行吧”/单表情/不再发 | 不尴尬，也不想硬撑 | 全 | ✅ 生产 seq 1089 原话「不拍。」；审计 9/113；0 reaction deliveries, 9 short texts |
 | B06 | 刚说完“晚安”又想起一件小事 | 过几分钟补一句 | 新气泡是相关小尾巴，可被对方插话取消 | 话题在脑里留了余韵 | F/C/M/L；S/A少 | 🟡 多 Beat 与主动 followup 存在；旧 afterthought 已退役，未见这种生产样本 |
 
 ### B. 回应粒度、节奏与打断（B07–B14）
@@ -36,8 +36,8 @@
 |---|---|---|---|---|---|---|
 | B07 | 正在热聊，内容简单 | 较快回复 | 约 2–4 秒出现第一气泡 | 注意力在聊天上 | 全 | ✅ 8/16–17 生产中位 3.5s、最快 2.2s；`latency-regression/REGRESSION.md` |
 | B08 | 普通回复需要组织 | 隔几秒再回 | 先有自然空档，再发一两条 | 在想怎么接，不是故障 | 全 | ✅ epoch2 全窗干净样本中位 4.7s；同报告 |
-| B09 | 她看到了但现在不想回 | 选择已读不回 | 有合法 `silent` 终态，无角色消息且与技术失败可区分 | 生气、没想好或单纯不想说 | 全 | 🟡 生产窗内 0 次 silent 终态送达；克隆 `prove_her_own_feelings` trial 11 已证 silent 合法（`output/her-own-feelings/trial-11/evidence.json`） |
-| B10 | 她想晚点认真回 | 声明 later | 当前不发；到 `delay_seconds` 后刷新上下文再发 | 想回，但此刻不合适 | 全 | 🟡 seq 5841 原话「想兑现那个安静的分享，也想让这句问候自然落地，不逼他回太多。」；审计 1/319；ledger later field often empty; channel fact is timing_choice=later |
+| B09 | 她看到了但现在不想回 | 选择已读不回 | 有合法 `silent` 终态，无角色消息且与技术失败可区分 | 生气、没想好或单纯不想说 | 全 | 🟡 审计：opportunity_no_occurrence；机会 130、发生 0；114 qq inbound windows; 0 end as silent-with-zero-delivery; 16 silent proposals all eventually deliver |
+| B10 | 她想晚点认真回 | 声明 later | 当前不发；到 `delay_seconds` 后刷新上下文再发 | 想回，但此刻不合适 | 全 | 🟡 seq 5841 原话「想兑现那个安静的分享，也想让这句问候自然落地，不逼他回太多。」；审计 1/325；ledger later field often empty; channel fact is timing_choice=later |
 | B11 | 她根本没注意到消息，之后才看到 | 延迟注意后回复 | 整个认知/typing 发生在之后，不是假装忙 | 当时手机不在手边 | 全 | 🔴 Delayed Attention Reply 明示 disabled；现有 later 只能表达“看见后决定晚回” |
 | B12 | 情绪或叙事内容较多 | 连发 2–4 条 | 短气泡分段，不是一大段报告 | 一口气有几层反应 | 全 | ✅ 34 个生产回合：14 个 2 beat、7 个 3 beat、2 个 4 beat；`emotional-flatness/REPORT.md` |
 | B13 | 特别兴奋、着急或委屈 | 连发 5–8 条 | rapid/escalating，允许对方中途打断 | 情绪满出来，顾不上收着 | F/C/M/L；S/A也可偶发 | 🟡 上限 8 已开放，但生产 5–8 beat 为 0；历史生产 Affect 曾 warmth@5000 压平（2026-08-20 起宿主不再硬填 5000，生产分布待重审） |
@@ -50,7 +50,7 @@
 | B15 | 他提到一个具体安排 | 主动问细节 | “是去学校有事吗”而非泛泛“怎么了” | 真好奇，想多知道一点 | 全 | ✅ 生产 seq 11025 |
 | B16 | 她刚问了悬着的问题，他 30–120 秒没答 | 再考虑要不要追一句 | “那我更好奇了，到底是啥表情啊” | 期待没落地，仍想知道 | A/F/C/M/L；S谨慎 | ✅ 生产 seq 4324，距上一 inbound 92.7s；`short-followup/REPORT.md` |
 | B17 | 他先回了她期待的内容 | 不再追问，结案 | 新输入把 expectation 标 fulfilled | 已经接到了，不需要追 | 全 | ✅ 生产 ResponseExpectation assessments：2 fulfilled；`long-silence-wired/expectation_production_audit.json` |
-| B18 | 他含糊其辞 | 追问一次而非替他解释 | “你这是什么意思”/给两种可能 | 不确定，不想装懂 | 全 | 🟡 主审计窗 seq>=6200 仍无实例；更早 seq 38 原话「哈哈你怎么连发这么多条 我记得你是说过我喜欢书，记性还挺好 这应该是……第三次吧？你倒问我了」；审计 2/113；phrase gate is audit-only, not production behavior gate |
+| B18 | 他含糊其辞 | 追问一次而非替他解释 | “你这是什么意思”/给两种可能 | 不确定，不想装懂 | 全 | 🟡 主审计窗 seq>=6200 仍无实例；更早 seq 38 原话「哈哈你怎么连发这么多条 我记得你是说过我喜欢书，记性还挺好 这应该是……第三次吧？你倒问我了」；审计 2/115；phrase gate is audit-only, not production behavior gate |
 | B19 | 她不想回答这个问题 | 装作没看见其中一部分 | 只接别的气泡，不解释为什么略过 | 有边界或不想暴露 | 全 | 🟡 seq 38 原话「哈哈你怎么连发这么多条 我记得你是说过我喜欢书，记性还挺好 这应该是……第三次吧？你倒问我了」；审计 1/4；4 coalesced observations in full history |
 | B20 | 原话题让她不舒服/无聊 | 主动岔开 | 简短收掉后抛自己的近况，不用助手式过渡 | 想夺回聊天方向 | 全 | 🟡 角色有 stance/多 Beat；生产 private state 34/34 围着“他”转，主动转题能力未显现 |
 

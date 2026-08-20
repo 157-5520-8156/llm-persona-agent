@@ -528,6 +528,81 @@ def compile_lived_facts(
                 "media_request": "consider_available_candidate",
             }
         )
+
+    for fact in compile_text_cross_lane_facts(
+        projection,
+        logical_time=logical_time if isinstance(logical_time, datetime) else None,
+    ):
+        add(fact)
+
+    return tuple(facts)
+
+
+def compile_text_cross_lane_facts(
+    projection: object,
+    *,
+    logical_time: datetime | None,
+) -> tuple[dict[str, object], ...]:
+    """Text-lane timing facts visible while she chooses a photo.
+
+    Source-closed excerpts only; the host does not infer intent from wording.
+    """
+
+    from .later_expression_freshness import queued_later_facts
+    from .response_expectation_view import (
+        living_unanswered_hope,
+        pending_response_expectation,
+    )
+
+    facts: list[dict[str, object]] = []
+    at = logical_time or getattr(projection, "logical_time", None)
+    try:
+        hope = living_unanswered_hope(projection)
+    except (TypeError, ValueError, AttributeError):
+        hope = None
+    if hope is not None:
+        excerpt = clip_fact_text(hope.hoped_response, limit=96)
+        if excerpt:
+            facts.append(
+                {
+                    "kind": "text_lane_hope",
+                    "source_ref": f"hope:wr:{hope.declared_world_revision}",
+                    "privacy": "private",
+                    "hoped_response": excerpt,
+                    "declared_seconds_ago": hope.declared_seconds_ago,
+                }
+            )
+    try:
+        pending = pending_response_expectation(projection)
+    except (TypeError, ValueError, AttributeError):
+        pending = None
+    if pending is not None and hope is None:
+        excerpt = clip_fact_text(pending.hoped_response, limit=96)
+        if excerpt:
+            facts.append(
+                {
+                    "kind": "text_lane_expectation",
+                    "source_ref": "response-expectation:pending",
+                    "privacy": "private",
+                    "hoped_response": excerpt,
+                    "declared_seconds_ago": pending.declared_seconds_ago,
+                }
+            )
+    for item in queued_later_facts(projection, logical_time=at):
+        excerpt = clip_fact_text(item.text, limit=120)
+        if not excerpt:
+            continue
+        facts.append(
+            {
+                "kind": "text_lane_queued_message",
+                "source_ref": item.authority_event_ref,
+                "privacy": "private",
+                "text": excerpt,
+                "send_at": item.send_at.isoformat(),
+                "he_spoke_after": item.he_spoke_after,
+                "i_spoke_after": item.i_spoke_after,
+            }
+        )
     return tuple(facts)
 
 
@@ -557,6 +632,7 @@ __all__ = [
     "clip_fact_text",
     "compile_candidate_occasion",
     "compile_lived_facts",
+    "compile_text_cross_lane_facts",
     "counterpart_last_spoke_at",
     "is_counterpart_actor",
     "privacy_allows",

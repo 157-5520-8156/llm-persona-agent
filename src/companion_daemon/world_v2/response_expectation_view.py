@@ -28,6 +28,7 @@ from pydantic import Field
 from companion_daemon.conversation_cadence import derive_conversation_cadence
 
 from .context_capsule import InnerAdvisoryCandidate, InnerAdvisoryProjection
+from .media_conversation_window import media_cross_lane_timing_clause
 from .schema_core import FrozenModel
 
 
@@ -859,10 +860,21 @@ def living_unanswered_hope(projection) -> LivingUnansweredHope | None:
         return None
 
 
+def _append_media_cross_lane_clause(text: str, projection: object | None) -> str:
+    if projection is None:
+        return text
+    clause = media_cross_lane_timing_clause(projection)
+    if not clause:
+        return text
+    combined = f"{text} {clause}".strip()
+    return combined[:256]
+
+
 def living_hope_hitch_clause(
     *,
     hoped_response: str,
     seconds_since_he_last_spoke: int | None,
+    projection: object | None = None,
 ) -> str:
     """Fact for existing wakeup lanes: she is waiting, he has not replied."""
 
@@ -874,7 +886,8 @@ def living_hope_hitch_clause(
             f"He last spoke {seconds_since_he_last_spoke}s ago; "
             "he has not spoken since she declared that hope."
         )
-    return f"She is waiting for (her words, not a world event): {hope}. {timing}"
+    base = f"She is waiting for (her words, not a world event): {hope}. {timing}"
+    return _append_media_cross_lane_clause(base, projection)
 
 
 def expired_hope_advisory_value(
@@ -882,6 +895,7 @@ def expired_hope_advisory_value(
     hoped_response: str,
     seconds_since_he_last_spoke: int | None,
     spoken_since_declared: bool,
+    projection: object | None = None,
 ) -> str:
     """Neutral timing facts for an expired hope.  She still decides.
 
@@ -899,10 +913,11 @@ def expired_hope_advisory_value(
             else "he has not spoken since she declared a hope"
         )
         timing = f"He last spoke {seconds_since_he_last_spoke}s ago; {spoken}."
-    return (
+    base = (
         f"{timing} What she hoped for (her words, not a world event): {hope}. "
         "Timing evidence only; she still decides."
-    )[:256]
+    )
+    return _append_media_cross_lane_clause(base, projection)
 
 
 def expired_expectation_advisory(
@@ -911,6 +926,7 @@ def expired_expectation_advisory(
     logical_time: datetime,
     seconds_since_he_last_spoke: int | None,
     spoken_since_declared: bool,
+    projection: object | None = None,
 ) -> InnerAdvisoryProjection:
     """Wrap expired-hope timing facts in the ordinary advisory envelope."""
 
@@ -919,6 +935,7 @@ def expired_expectation_advisory(
         hoped_response=expired.hoped_response,
         seconds_since_he_last_spoke=seconds_since_he_last_spoke,
         spoken_since_declared=spoken_since_declared,
+        projection=projection,
     )
     return InnerAdvisoryProjection(
         advisory_id="advisory:expired-expectation:" + _digest(source_ref),
@@ -1017,6 +1034,7 @@ def attach_pending_expectation_advisory(
             logical_time=logical_time,
             seconds_since_he_last_spoke=seconds,
             spoken_since_declared=spoken_since,
+            projection=projection,
         ),
     )
 
