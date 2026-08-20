@@ -4748,6 +4748,24 @@ async def test_proactive_contact_citeable_sources_cap_at_eight() -> None:
     assert "attended_source_refs 最多 8 条" in user["purpose_instruction"]
 
 
+@pytest.mark.asyncio
+async def test_proactive_contact_overflowing_attended_refs_bound_without_reselection() -> None:
+    extra_refs = tuple(f"dialogue:observation:extra:{index}" for index in range(20))
+    payload = _silent_proactive_role_object()
+    payload["attended_source_refs"] = [
+        "source:private_self",
+        *list(extra_refs),
+    ]
+    model = _RequiredToolQueueModel(json.dumps(payload, ensure_ascii=False))
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+
+    result = await role.consider(await _pinned_dialogue_request(extra_refs))
+
+    assert len(result["attended_source_refs"]) == 8
+    assert result["attended_source_refs"][0] == "source:private_self"
+    assert len(model.calls) == 1
+
+
 class _PinnedDialogueProjection(_Projection):
     def __init__(self, extra_refs: tuple[str, ...]) -> None:
         self._extra_refs = extra_refs

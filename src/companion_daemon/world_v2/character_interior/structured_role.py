@@ -1931,6 +1931,8 @@ class StructuredCharacterRoleFaculty:
                 normalized,
                 catalog=_citeable_catalog_for_request(request),
             )
+            if request.purpose == "proactive_contact":
+                _bound_proactive_attended_source_refs(normalized)
         if contract.purpose == "private_impression_reflection":
             # Reflection evidence is exposed to the provider through short
             # tokens.  Translate an attended token only when both its semantic
