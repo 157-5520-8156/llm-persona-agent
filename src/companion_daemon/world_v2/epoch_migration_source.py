@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
+from typing import Mapping
 
 from .schemas import FactProjection, Observation, WorldEvent
 
@@ -34,42 +34,75 @@ def lookup_archive_observation(
 ) -> tuple[Observation, WorldEvent, int] | None:
     """Return observation, its ObservationRecorded event, and world revision."""
 
+    return lookup_archive_observations(
+        archive_ledger,
+        observation_ids=(observation_id,),
+    ).get(observation_id)
+
+
+def lookup_archive_observations(
+    archive_ledger: object,
+    *,
+    observation_ids: tuple[str, ...],
+) -> dict[str, tuple[Observation, WorldEvent, int]]:
+    """Resolve archive observations with one locator-backed read.
+
+    The locator rows are immutable consequences of the archived accepted
+    events.  We still validate each complete WorldEvent and Observation below,
+    so batching changes only access cost, not source-closure authority.
+    """
+
     database_path = getattr(archive_ledger, "_database_path", None)
     world_id = getattr(archive_ledger, "_world_id", None)
-    if database_path is None or not world_id:
-        return None
+    ordered_ids = tuple(dict.fromkeys(item for item in observation_ids if item))
+    if database_path is None or not world_id or not ordered_ids:
+        return {}
     connection = sqlite3.connect(f"file:{Path(database_path)}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     try:
+        placeholders = ",".join("?" for _ in ordered_ids)
         rows = connection.execute(
-            """
-            SELECT ledger_sequence, world_revision, event_json
-            FROM world_v2_events
-            WHERE world_id = ?
-              AND json_extract(event_json, '$.event_type') = 'ObservationRecorded'
-              AND event_json LIKE ?
-            ORDER BY ledger_sequence
-            LIMIT 8
-            """,
-            (world_id, f"%{observation_id}%"),
+            f"""
+            SELECT locator.observation_id, event.world_revision, event.event_json
+            FROM world_v2_prefix_locator_values AS locator
+            JOIN world_v2_events AS event
+              ON event.world_id = locator.world_id
+             AND event.event_id = locator.event_id
+            WHERE locator.world_id = ?
+              AND locator.event_type = 'ObservationRecorded'
+              AND locator.observation_id IN ({placeholders})
+            ORDER BY locator.ledger_sequence
+            """,  # noqa: S608 - placeholders are generated only from argument count.
+            (world_id, *ordered_ids),
         ).fetchall()
     finally:
         connection.close()
+    wanted = set(ordered_ids)
+    resolved: dict[str, tuple[Observation, WorldEvent, int]] = {}
     for item in rows:
-        event = WorldEvent.model_validate_json(item["event_json"])
+        try:
+            event = WorldEvent.model_validate_json(item["event_json"])
+        except ValueError:
+            continue
         if event.event_type != "ObservationRecorded":
             continue
         try:
             observation = Observation.model_validate_json(event.payload_json)
         except ValueError:
             continue
-        if observation.observation_id != observation_id or not observation.text:
+        observation_id = observation.observation_id
+        if (
+            observation_id not in wanted
+            or observation_id != item["observation_id"]
+            or not observation.text
+            or observation_id in resolved
+        ):
             continue
-        return observation, event, int(item["world_revision"])
-    return None
+        resolved[observation_id] = (observation, event, int(item["world_revision"]))
+    return resolved
 
 
-def _archive_observation_ids(fact: FactProjection) -> tuple[str, ...]:
+def archive_observation_ids(fact: FactProjection) -> tuple[str, ...]:
     binding = fact.values.assertion_binding
     candidates: list[str] = []
     for evidence in fact.values.source_evidence_refs:
@@ -91,15 +124,20 @@ def epoch_migration_source_excerpt(
     fact: FactProjection,
     *,
     archive_ledger: object | None,
+    archive_observations: Mapping[str, tuple[Observation, WorldEvent, int]] | None = None,
 ) -> tuple[str, Observation, WorldEvent, int] | None:
     """Close a genesis-carried Fact over its archive observation when possible."""
 
     if not is_epoch_genesis_fact(fact) or archive_ledger is None:
         return None
-    for observation_id in _archive_observation_ids(fact):
-        resolved = lookup_archive_observation(
-            archive_ledger,
-            observation_id=observation_id,
+    for observation_id in archive_observation_ids(fact):
+        resolved = (
+            archive_observations.get(observation_id)
+            if archive_observations is not None
+            else lookup_archive_observation(
+                archive_ledger,
+                observation_id=observation_id,
+            )
         )
         if resolved is None:
             continue
@@ -110,8 +148,10 @@ def epoch_migration_source_excerpt(
 
 __all__ = [
     "EPOCH_GENESIS_TRANSITION_PREFIX",
+    "archive_observation_ids",
     "default_epoch_archive_path",
     "epoch_migration_source_excerpt",
     "is_epoch_genesis_fact",
     "lookup_archive_observation",
+    "lookup_archive_observations",
 ]

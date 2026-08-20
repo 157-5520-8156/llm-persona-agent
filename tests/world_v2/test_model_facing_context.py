@@ -688,8 +688,10 @@ def test_chat_view_derives_a_source_bound_inner_life_snapshot_without_flattening
     assert current["authority"] == "derived_from_verified_context"
     assert current["cursor"]["logical_time"] == "2026-07-28T08:00:00+08:00"
     assert materials["relationship"][0]["source_ref"] == "relationship:user"
-    assert materials["appraisals"][0]["source_ref"] == "appraisal:current"
-    assert materials["appraisals"][0]["source_cluster_ref"] == "cluster:repair"
+    appraisals = materials["appraisals"]
+    assert isinstance(appraisals, dict)
+    assert appraisals["rows"][0][0] == "appraisal:current"
+    assert "source_cluster_ref" not in json.dumps(appraisals, ensure_ascii=False)
     assert materials["affect"][0]["source_ref"] == "affect:mixed"
     assert [item["dimension"] for item in materials["affect"][0]["components"]] == [
         "hurt",

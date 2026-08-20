@@ -102,6 +102,7 @@ async def test_simulator_cli_does_not_construct_a_life_source_reviewer(
             database_path=tmp_path / "companion.sqlite",
             PRIMARY_USER_ID="sim-user",
             DEEPSEEK_API_KEY="deepseek-test-key",
+            DEEPSEEK_DEBUG_API_KEY="deepseek-test-debug-key",
             DEEPSEEK_BASE_URL="https://deepseek.example.invalid",
             DEEPSEEK_MODEL="deepseek-v4-flash",
             OPENAI_API_KEY="openai-test-key",

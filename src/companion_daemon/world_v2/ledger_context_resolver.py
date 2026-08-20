@@ -14,7 +14,7 @@ import hashlib
 import json
 import logging
 import time
-from typing import Iterable
+from typing import Iterable, Mapping
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -64,7 +64,12 @@ from .conversation_continuity import (
     pack_recent_dialogue_under_source_budget,
 )
 from .associative_recall import lexical_relevance_bp
-from .epoch_migration_source import epoch_migration_source_excerpt, is_epoch_genesis_fact
+from .epoch_migration_source import (
+    archive_observation_ids,
+    epoch_migration_source_excerpt,
+    is_epoch_genesis_fact,
+    lookup_archive_observations,
+)
 from .fact_predicate_stability import STABLE_FACT_RECENCY_BP, fact_predicate_is_stable
 from .fact_accepted_contracts import rehydrate_fact_commit_materialized_v2_json
 from .fact_events import FactChangedPayload
@@ -1059,6 +1064,7 @@ def _epoch_genesis_fact_recall_item(
     ledger: LedgerPort,
     projection: LedgerProjection,
     archive_ledger: LedgerPort | None,
+    archive_observations: Mapping[str, tuple[Observation, WorldEvent, int]] | None = None,
 ) -> FactRecallItem | None:
     if not is_epoch_genesis_fact(fact):
         return None
@@ -1072,7 +1078,11 @@ def _epoch_genesis_fact_recall_item(
     )
     if fact_ref is None or fact_ref.world_revision > projection.world_revision:
         return None
-    migrated = epoch_migration_source_excerpt(fact, archive_ledger=archive_ledger)
+    migrated = epoch_migration_source_excerpt(
+        fact,
+        archive_ledger=archive_ledger,
+        archive_observations=archive_observations,
+    )
     if migrated is None:
         return None
     source_excerpt, observation, source_event, observation_world_revision = migrated
@@ -1122,6 +1132,20 @@ def fact_recall_items(
     observations_by_id: dict[str, list[object]] = {}
     for item in projection.message_observations:
         observations_by_id.setdefault(item.observation_id, []).append(item)
+    genesis_observation_ids = tuple(
+        observation_id
+        for fact in facts
+        if is_epoch_genesis_fact(fact)
+        for observation_id in archive_observation_ids(fact)
+    )
+    archive_observations = (
+        lookup_archive_observations(
+            archive_ledger,
+            observation_ids=genesis_observation_ids,
+        )
+        if archive_ledger is not None and genesis_observation_ids
+        else {}
+    )
     output: list[FactRecallItem] = []
     for fact in facts:
         genesis_item = _epoch_genesis_fact_recall_item(
@@ -1129,6 +1153,7 @@ def fact_recall_items(
             ledger=ledger,
             projection=projection,
             archive_ledger=archive_ledger,
+            archive_observations=archive_observations,
         )
         if genesis_item is not None:
             output.append(genesis_item)

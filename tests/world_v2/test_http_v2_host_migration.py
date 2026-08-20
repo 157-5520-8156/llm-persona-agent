@@ -754,6 +754,7 @@ def test_real_http_asgi_factory_carries_complete_media_deployment_to_conductor(
         settings=Settings(
             database_path=tmp_path / "http-v2-asgi-media.sqlite",
             DEEPSEEK_API_KEY="composition-test-key",
+            DEEPSEEK_DEBUG_API_KEY="composition-test-debug-key",
         ),
         media_preview=deployment,
         media_transport=_DurableMediaTransport(),
@@ -1111,6 +1112,7 @@ def test_real_http_asgi_factory_defaults_media_to_unavailable_and_rejects_partia
             database_path=tmp_path / "http-v2-asgi-default.sqlite",
             DELIVERY_RECONCILIATION_TOKEN="isolated-http-token",
             DEEPSEEK_API_KEY="composition-test-key",
+            DEEPSEEK_DEBUG_API_KEY="composition-test-debug-key",
         ),
     )
     with TestClient(configured) as client:

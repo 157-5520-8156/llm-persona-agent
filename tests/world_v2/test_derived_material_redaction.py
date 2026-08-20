@@ -349,9 +349,10 @@ def test_hidden_dialogue_does_not_leak_through_stimulus_excerpts() -> None:
     serialized = json.dumps(view, ensure_ascii=False)
 
     assert _SECRET_MESSAGE not in serialized
-    appraisal = view["materials"]["appraisals"][0]
-    assert "stimulus_excerpts" not in appraisal
-    assert appraisal["hypotheses"][0]["meaning"] == "他在往后推"
+    appraisals = view["materials"]["appraisals"]
+    row = appraisals["rows"][0]
+    assert len(row) == 5
+    assert row[4][0][0] == "他在往后推"
     assert _VISIBLE_MESSAGE in serialized
 
 

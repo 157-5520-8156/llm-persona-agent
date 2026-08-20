@@ -11,6 +11,8 @@ import hashlib
 import json
 from datetime import datetime
 from types import MappingProxyType
+
+from .appraisal_model_view import compact_appraisals_for_model_view
 from typing import Annotated, Any, Literal, Mapping
 from zoneinfo import ZoneInfo
 
@@ -1505,6 +1507,12 @@ class InnerLifeSnapshot(FrozenModel):
         lived = _rendered_lived_moment(materials, self.logical_time)
         if lived:
             materials = {**materials, LIVED_MOMENT_MATERIAL_KEY: lived}
+        compact_appraisals = compact_appraisals_for_model_view(
+            materials.get("appraisals"),
+            logical_time=self.logical_time,
+        )
+        if compact_appraisals is not materials.get("appraisals"):
+            materials = {**materials, "appraisals": compact_appraisals}
         faculties: dict[str, object] = {}
         for facet in self.facet_views:
             raw_keys = facet.content.get("material_keys")

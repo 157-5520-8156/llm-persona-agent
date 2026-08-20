@@ -188,7 +188,9 @@ def slim_consider_instruction() -> str:
         "不是它不存在。relevant_facts 和 appraisals 是你已经知道和理解事情的背景，不是台词清单，"
         "也不是因为这轮被提供了就需要向他展示的记忆凭证。它们可以改变你怎么读眼前这句话或表情；"
         "默默读懂也已经是在使用它们。某件事此刻是否真的值得说出来，仍由你按自己的注意与表达决定，"
-        "不是由它有没有出现在 Context 里决定。\n"
+        "不是由它有没有出现在 Context 里决定。读懂一个表情可能意味着什么，不等于需要在 messages "
+        "里把「你现在是什么心情」解释回去；你可以直接从那份理解出发回应。只有当点明这个理解本身"
+        "确实是你此刻想说的，才需要把它说破。felt 里的私人读法也不会自动变成 messages。\n"
         "钉住的来源请从 Context 的 source_ref_aliases 里挑短标识（S1、T1），"
         "或原样抄 source_ref；不要手写拼接不透明字符串。"
         "点名哪些、引不引，仍由你决定；宿主只把短标识还原成权威 ref。\n"
@@ -413,6 +415,18 @@ def slim_consider_json_schema() -> dict[str, object]:
 
 
 def combined_turn_system_lead(*, private_turn_state_required: bool) -> str:
+    epistemic_expression_clause = (
+        "appraisal_draft 负责你私下怎么理解，expression_draft 负责你决定说什么；"
+        "后者不需要复述、解释或证明前者，让那份理解改变回应方式就已经够了。"
+        "先从你已经知道的事实和私下理解出发读懂这一轮，再决定自然回应什么。"
+        "知道、认出或推断了一个意思，并不要求你在可见消息里把那个意思解释给他听；"
+        "理解可以只体现在你的回应方式里。是否点破仍是你的表达决定，"
+        "不要为了证明你记得或看懂了而复述 Context。"
+        "如果眼前是你已经理解的表情、暗号或习惯用法，就把它当作你们之间的语言本身来接住，"
+        "而不是把释义当成一条新消息解释回去；只有当你此刻确实想谈那个含义时才需要点明。"
+        "如果同一层意思在 recent_dialogue 里已经说过，它再次出现也不会自动成为一个新话题；"
+        "你仍可以接住、转开、逗他或沉默，不需要靠重复释义来表示你看见了。"
+    )
     if private_turn_state_required:
         return (
             "Return either one JSON object with exactly two keys, appraisal_draft "
@@ -420,6 +434,7 @@ def combined_turn_system_lead(*, private_turn_state_required: bool) -> str:
             "private_turn_state and recall_request in either serialization order "
             "when the occasion (last user object) says recall is available. "
             "If recall is unavailable, return only the two-draft envelope. "
+            + epistemic_expression_clause
             + slim_consider_instruction()
         )
     return (
@@ -427,6 +442,7 @@ def combined_turn_system_lead(*, private_turn_state_required: bool) -> str:
         "appraisal_draft and expression_draft, or the single recall_request "
         "object described below when the occasion says recall is available. "
         "If recall is unavailable, return only the two-draft envelope. "
+        + epistemic_expression_clause
         + slim_consider_instruction()
     )
 

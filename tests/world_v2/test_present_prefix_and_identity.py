@@ -51,6 +51,9 @@ def test_slim_consider_separates_knowing_from_saying() -> None:
     assert "默默读懂也已经是在使用它们" in instruction
     assert "不是台词清单" in instruction
     assert "禁止提起" not in instruction
+    lead = combined_turn_system_lead(private_turn_state_required=True)
+    assert "appraisal_draft 负责你私下怎么理解" in lead
+    assert "expression_draft 负责你决定说什么" in lead
     for field in (
         "messages",
         "felt",
@@ -673,9 +676,10 @@ def test_appraisal_keeps_original_observed_stimulus() -> None:
             },
         }
     ).model_view()
-    appraisal = snapshot["materials"]["appraisals"][0]
-    assert appraisal["stimulus_excerpts"] == ["今晚可能不去了"]
-    assert appraisal["hypotheses"][0]["meaning"] == "他在往后推"
+    appraisals = snapshot["materials"]["appraisals"]
+    row = appraisals["rows"][0]
+    assert row[5] == ["今晚可能不去了"]
+    assert row[4][0][0] == "他在往后推"
 
 
 def test_lived_moment_carries_today_and_an_unfinished_reading() -> None:

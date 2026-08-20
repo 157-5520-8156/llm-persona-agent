@@ -100,6 +100,7 @@ def _settings(tmp_path: Path, **overrides: object) -> Settings:
         "WORLD_V2_MEDIA_PREVIEW_ENABLED": "1",
         "ALLOW_AUTO_IMAGE_GENERATION": "1",
         "DEEPSEEK_API_KEY": "test-deepseek",
+        "DEEPSEEK_DEBUG_API_KEY": "test-deepseek-debug",
         "OPENAI_API_KEY": "test-openai",
         "OPENROUTER_API_KEY": None,
         "CIVITAI_API_KEY": None,
@@ -494,6 +495,7 @@ def test_compose_fail_closes_high_private_when_author_credentials_are_missing(
         CIVITAI_KREA2_ENABLED="1",
         CIVITAI_API_KEY="test-civitai",
         DEEPSEEK_API_KEY=None,
+        DEEPSEEK_DEBUG_API_KEY=None,
         OPENROUTER_API_KEY=None,
     )
     with caplog.at_level(logging.WARNING, logger="companion_daemon.world_v2.qq_media_deployment"):

@@ -86,6 +86,7 @@ def _dashboard_app(
             DELIVERY_RECONCILIATION_TOKEN=DELIVERY_TOKEN,
             WORLD_V2_DASHBOARD_OPERATOR_TOKEN=OPERATOR_TOKEN,
             DEEPSEEK_API_KEY="dashboard-test-key",
+            DEEPSEEK_DEBUG_API_KEY="dashboard-test-debug-key",
         ),
         dashboard_home_source=source,
     )

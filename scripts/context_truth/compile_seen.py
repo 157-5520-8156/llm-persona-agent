@@ -81,6 +81,7 @@ class CompiledSeen:
     seen: SeenView
     model_view: dict[str, Any]
     materials: dict[str, Any]
+    snapshot: Any
     cursor: ProjectionCursor
     trigger_ref: str
     compile_ms: float
@@ -225,6 +226,7 @@ async def compile_seen_at_head(
         seen=SeenView.from_model_view(view),
         model_view=view,
         materials=dict(materials),
+        snapshot=snapshot,
         cursor=cursor,
         trigger_ref=trigger_ref,
         compile_ms=compile_ms,

@@ -346,7 +346,10 @@ class ScenarioVerificationError(AssertionError):
 # ranking and compact relevant_facts, and character voice that unbinds
 # joking from a relationship-stage gate. Per-case predicates remain
 # enforced; prompt, policy, recall, and replay identities move together.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.84"
+# ``.85`` compacts provider-facing appraisals into a row table in
+# ``InnerLifeSnapshot.model_view`` while the canonical snapshot materials keep
+# the full resolver envelope. Prompt/cache order from ``.84`` is unchanged.
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.85"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -543,8 +546,18 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.84"
 # relevant_facts retention, and character-voice unbinding. Two independent
 # complete 120-case processes produced this hash before installation:
 # 3aadf7237e64237987c910036dc4b7653752e5e2884e7099c8392e8608bdc684
+# 2026-08-20: ``.85`` after appraisal model-view compaction (canonical
+# materials unchanged; provider table drops audit envelopes only). Two
+# independent complete 120-case processes produced this hash before
+# installation:
+# de3f3f5812724305eff3c76c92301f6afcaa3b74ac808d78fc29d045982d235a
+# 2026-08-20: ``.85`` after appraisal model-view compaction (canonical
+# materials unchanged; provider table drops audit envelopes only). Two
+# independent complete 120-case processes under pytest produced this hash
+# before installation:
+# f5b295e791e2dd2117d628b64eefb07439980a71b37373e7a13b3c9159e3a839
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "3aadf7237e64237987c910036dc4b7653752e5e2884e7099c8392e8608bdc684"
+    "f5b295e791e2dd2117d628b64eefb07439980a71b37373e7a13b3c9159e3a839"
 )
 
 
