@@ -28,6 +28,10 @@ from .life_context import (
     LifeContextCapsuleCompiler,
     compile_life_decision_context,
 )
+from .background_context_profile import (
+    background_context_profile_for_purpose,
+    slice_background_capsule_context,
+)
 from .life_content_store import (
     ImmutableLifeContentStore,
     LifeContentKind,
@@ -4574,6 +4578,7 @@ class LifeDevelopmentRuntime:
             logical_time=logical_time,
             manifest=manifest,
             hard_boundary_contract=hard_boundary_contract,
+            model_purpose="life_development_draft",
         )
         attempts: list[_LifeDevelopmentAttempt] = []
         for ordinal in range(2):
@@ -4909,6 +4914,7 @@ class LifeDevelopmentRuntime:
         logical_time: datetime,
         manifest: LifeDevelopmentCapabilityManifest,
         hard_boundary_contract: dict[str, object] | None = None,
+        model_purpose: str = "life_development_draft",
     ) -> list[dict[str, str]]:
         hard_boundary_contract = (
             hard_boundary_contract
@@ -4918,6 +4924,8 @@ class LifeDevelopmentRuntime:
                 owner_actor_ref=self._owner,
             )
         )
+        profile = background_context_profile_for_purpose(model_purpose)
+        pinned_context = slice_background_capsule_context(context, profile)
         return [
             {
                 "role": "system",
@@ -5061,8 +5069,8 @@ class LifeDevelopmentRuntime:
                 "content": json.dumps(
                     {
                         "logical_time": logical_time.isoformat(),
-                        "pinned_world_context": context,
-                        "recent_life_texture": compile_recent_life_texture(context),
+                        "pinned_world_context": pinned_context,
+                        "recent_life_texture": compile_recent_life_texture(pinned_context),
                         "authored_subject": {
                             "owner_actor_ref": self._owner,
                             "user_authority": "context_only",

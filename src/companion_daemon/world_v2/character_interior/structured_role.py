@@ -58,6 +58,12 @@ from .ports import (
     _RoleResultContractError,
 )
 from .snapshot_compiler import compile_citeable_source_catalog
+from ..background_context_profile import (
+    REGISTERED_BACKGROUND_PURPOSES,
+    background_context_profile_for_purpose,
+    profile_audit_record,
+    slice_background_inner_life_snapshot,
+)
 from ..present_prompt import ordered_json_dumps, present_inner_life
 from .structured_role_tool_contract import (
     StructuredRoleToolContract,
@@ -85,6 +91,7 @@ _INTERIOR_USER_PAYLOAD_ORDER = (
     "wire_contract",
     "purpose_contract",
     "capability_manifest",
+    "background_context_profile",
     "eight_facets",
     "citeable_sources",
     "inner_life_snapshot",
@@ -1575,7 +1582,13 @@ class StructuredCharacterRoleFaculty:
         contract: PurposeDecisionContract,
     ) -> list[dict[str, str]]:
         allowed_statuses = sorted(self._allowed_statuses(request, contract=contract))
-        snapshot = request.snapshot.model_view()
+        full_snapshot = request.snapshot.model_view()
+        if request.purpose in REGISTERED_BACKGROUND_PURPOSES:
+            background_profile = background_context_profile_for_purpose(request.purpose)
+            snapshot = slice_background_inner_life_snapshot(full_snapshot, background_profile)
+        else:
+            background_profile = None
+            snapshot = full_snapshot
         capability = self._capability_view(request.capability_manifest)
         user_payload: dict[str, object] = {
             "inner_turn": {
@@ -1684,6 +1697,10 @@ class StructuredCharacterRoleFaculty:
                 "keep_impression / noticed / declared_display 可选；"
                 "declared_display 只能是 sexual_suggestive、explicit_adult 或 withdraw。"
                 "这些字段都可以省略。"
+            )
+        if background_profile is not None:
+            user_payload["background_context_profile"] = profile_audit_record(
+                background_profile
             )
         if request.correction_ordinal == 1:
             code = request.correction_failure_code or "role_result_schema_invalid"

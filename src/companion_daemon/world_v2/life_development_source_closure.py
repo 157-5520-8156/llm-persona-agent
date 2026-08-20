@@ -15,6 +15,10 @@ from typing import Literal
 
 from pydantic import Field, ValidationError, field_validator, model_validator
 
+from .background_context_profile import (
+    background_context_profile_for_purpose,
+    slice_background_capsule_context,
+)
 from .context_capsule import ResolvedSourceBinding, source_bindings_hash
 from .life_development_draft import (
     LifeDevelopmentCapabilityManifest,
@@ -1567,6 +1571,8 @@ def life_development_novel_origin_messages(
 ) -> list[dict[str, str]]:
     """Compile an independent hard-boundary review of novel fact origin."""
 
+    profile = background_context_profile_for_purpose("life_development_novel_origin_review")
+    context = slice_background_capsule_context(context, profile)
     system = (
         "You are an independent focused novel-origin critic, not the general "
         "source reviewer, World Author, or Character Model. Review only hard truth "
