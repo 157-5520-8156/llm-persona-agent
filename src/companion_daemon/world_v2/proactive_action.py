@@ -117,13 +117,35 @@ _EXPIRED_EXPECTATION_CONSIDERATION_PREFIX = (
 )
 
 
+def _latest_inbound_logical_time(projection: object) -> datetime | None:
+    observations = getattr(projection, "message_observations", ())
+    if not observations:
+        return None
+    latest = observations[-1]
+    refs = getattr(projection, "committed_world_event_refs", ())
+    source_event_id = getattr(latest, "source_event_id", None)
+    if isinstance(source_event_id, str) and source_event_id:
+        for ref in refs:
+            if getattr(ref, "event_id", None) == source_event_id:
+                return ref.logical_time
+    world_revision = getattr(latest, "world_revision", None)
+    if isinstance(world_revision, int):
+        for ref in refs:
+            if (
+                ref.world_revision == world_revision
+                and getattr(ref, "event_type", None) == "ObservationRecorded"
+            ):
+                return ref.logical_time
+    logical_time = getattr(projection, "logical_time", None)
+    return logical_time if isinstance(logical_time, datetime) else None
+
+
 def consecutive_unanswered_expired_chase_count(projection: object) -> int:
     """Count consecutive expired-hope outbound chases since the last inbound."""
 
-    observations = getattr(projection, "message_observations", ())
-    if not observations:
+    latest_inbound_at = _latest_inbound_logical_time(projection)
+    if latest_inbound_at is None:
         return 0
-    latest_inbound_at = observations[-1].logical_time
     processes = sorted(
         (
             item
