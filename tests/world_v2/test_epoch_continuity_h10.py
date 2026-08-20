@@ -356,15 +356,20 @@ def test_observed_message_fact_rebinds_binding_and_preserves_archive_observation
         payload_ref="ingress:qq:2759284998:qq-coalesced:archive-name",
         content_payload_hash="a" * 64,
     )
-    anchors = (
-        EvidenceRef(
-            ref_id="event:old-fact-commit",
-            evidence_type="committed_world_event",
-            claim_purpose="current_fact",
-            immutable_hash="a" * 64,
-            source_world_revision=88,
-        ),
+    observation_evidence = EvidenceRef(
+        ref_id=archive_observation,
+        evidence_type="observed_message",
+        claim_purpose="current_fact",
+        immutable_hash="a" * 64,
     )
+    commit_evidence = EvidenceRef(
+        ref_id="event:old-fact-commit",
+        evidence_type="committed_world_event",
+        claim_purpose="current_fact",
+        immutable_hash="a" * 64,
+        source_world_revision=88,
+    )
+    anchors = (commit_evidence,)
     values = FactValues(
         subject_ref="user:geoff",
         predicate_code="profile.display_name",
@@ -376,7 +381,7 @@ def test_observed_message_fact_rebinds_binding_and_preserves_archive_observation
         value_hash="c" * 64,
         assertion_binding=binding,
         anchor_evidence_refs=anchors,
-        source_evidence_refs=anchors,
+        source_evidence_refs=(observation_evidence, commit_evidence),
         confidence_bp=9000,
         privacy_class="private",
         status="active",
@@ -435,9 +440,14 @@ def test_observed_message_fact_rebinds_binding_and_preserves_archive_observation
     assert imported.values.assertion_binding.source_kind == "operator_observation"
     assert imported.values.assertion_binding.source_ref.endswith("WorldStarted:abc")
     assert imported.values.assertion_binding.actor_ref is None
-    assert any(
-        item.ref_id == archive_observation and item.evidence_type == "observed_message"
+    observation_refs = [
+        item
         for item in imported.values.source_evidence_refs
+        if item.ref_id == archive_observation and item.evidence_type == "observed_message"
+    ]
+    assert len(observation_refs) == 1
+    assert len(imported.values.source_evidence_refs) == len(
+        {(item.evidence_type, item.ref_id) for item in imported.values.source_evidence_refs}
     )
 
 

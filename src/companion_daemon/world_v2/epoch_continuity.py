@@ -263,16 +263,19 @@ def _rebind_fact(
             asserted_subject_ref=binding.asserted_subject_ref,
             content_payload_hash=fact.values.value_hash,
         )
-    source_evidence_refs = archive_observation_evidence + _rebind_evidence(
-        fact.values.source_evidence_refs, genesis=genesis
+    # Keep rebound originals first: a newly built archive EvidenceRef can
+    # share (type, ref_id) with a richer original and would otherwise drop
+    # the object that anchors still point at.
+    rebound_sources = _rebind_evidence(fact.values.source_evidence_refs, genesis=genesis)
+    rebound_anchors = _rebind_evidence(fact.values.anchor_evidence_refs, genesis=genesis)
+    source_evidence_refs = _unique_evidence(
+        rebound_sources + rebound_anchors + archive_observation_evidence
     )
     values = fact.values.model_copy(
         update={
             "assertion_binding": binding,
             "source_evidence_refs": source_evidence_refs,
-            "anchor_evidence_refs": _rebind_evidence(
-                fact.values.anchor_evidence_refs, genesis=genesis
-            ),
+            "anchor_evidence_refs": rebound_anchors,
         }
     )
     fingerprint = fact_semantic_fingerprint(
@@ -293,6 +296,18 @@ def _rebind_fact(
             "entity_revision": 1,
         }
     )
+
+
+def _unique_evidence(refs: tuple[EvidenceRef, ...]) -> tuple[EvidenceRef, ...]:
+    unique: list[EvidenceRef] = []
+    seen: set[tuple[str, str]] = set()
+    for item in refs:
+        key = (item.evidence_type, item.ref_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return tuple(unique)
 
 
 def _rebind_evidence(
