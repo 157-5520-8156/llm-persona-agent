@@ -8,6 +8,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from companion_daemon.world_v2.ledger_context_resolver import shared_media_delivery_items
 from companion_daemon.world_v2.photographable_inventory import shareable_photo_facts
 from companion_daemon.world_v2.present_moment_candidate import activity_kind_is_sleep
 from companion_daemon.world_v2.qq_face_render_catalog import lookup_face_render
@@ -228,6 +229,30 @@ def _sidecar_processed_count(counts: dict[str, int]) -> int | None:
     return 0
 
 
+def _media_delivery_companion_lines(
+    ledger: Any, projection: LedgerProjection
+) -> tuple[CompanionLine, ...]:
+    """Companion chat lines for delivered photos, matching recent_dialogue text."""
+
+    rows: list[CompanionLine] = []
+    for item in shared_media_delivery_items(
+        ledger=ledger,
+        projection=projection,
+        recent_dialogue=(),
+    ):
+        label = item.about.strip()
+        if not label:
+            continue
+        rows.append(
+            CompanionLine(
+                payload_ref=item.delivery_id,
+                text=f"[{label}]",
+                state="settled",
+            )
+        )
+    return tuple(rows)
+
+
 def collect_ledger_truth(
     *,
     ledger: Any,
@@ -267,6 +292,8 @@ def collect_ledger_truth(
             settled.append(row)
         elif beat.state == "authorized":
             waiting.append(row)
+    media_companion = _media_delivery_companion_lines(ledger, projection)
+    settled_with_media = (*settled, *media_companion)
     logical = projection.logical_time
     active_appraisals = tuple(
         item.appraisal_id
@@ -314,8 +341,8 @@ def collect_ledger_truth(
         last_counterpart=counterpart[-1] if counterpart else None,
         counterpart_all=tuple(counterpart),
         counterpart_recent=tuple(counterpart[-RECENT_WINDOW:]),
-        companion_all_settled=tuple(settled),
-        companion_recent_settled=tuple(settled[-RECENT_WINDOW:]),
+        companion_all_settled=tuple(settled_with_media),
+        companion_recent_settled=tuple(settled_with_media[-RECENT_WINDOW:]),
         companion_waiting=tuple(waiting),
         catalog_faces=_catalog_faces(tuple(counterpart)),
         external_perception_count=len(projection.external_perceptions),

@@ -158,6 +158,33 @@ def living_thread_slice_items(projection: object) -> list[dict[str, object]]:
     return items
 
 
+def living_affect_slice_items(projection: object) -> list[dict[str, object]]:
+    items: list[dict[str, object]] = []
+    for episode in getattr(projection, "affect_episodes", ()) or ():
+        if getattr(episode, "status", None) != "active":
+            continue
+        episode_id = getattr(episode, "episode_id", None)
+        if not isinstance(episode_id, str) or not episode_id:
+            continue
+        origin = getattr(episode, "origin", None)
+        origin_ref = getattr(origin, "accepted_event_ref", None) if origin is not None else None
+        dumped = episode.model_dump(mode="json") if hasattr(episode, "model_dump") else {}
+        if not isinstance(dumped, dict):
+            continue
+        attention = [origin_ref] if isinstance(origin_ref, str) and origin_ref else []
+        items.append(
+            {
+                "item_ref": episode_id,
+                "source_ref": episode_id,
+                "privacy_class": "private",
+                "attention_source_refs": attention,
+                "value": dumped,
+            }
+        )
+    items.sort(key=lambda item: str(item["source_ref"]))
+    return items
+
+
 def living_impression_slice_items(
     projection: object,
     *,
@@ -238,6 +265,7 @@ def install_living_state_context(
             user_channel_limited_ids=user_channel_limited_impression_ids,
         )
     )
+    slices["living_affect"] = _available_slice(living_affect_slice_items(projection))
     result["slices"] = slices
     return result
 
@@ -245,6 +273,7 @@ def install_living_state_context(
 __all__ = [
     "LivingHoldReason",
     "install_living_state_context",
+    "living_affect_slice_items",
     "living_appraisal_slice_items",
     "living_impression_slice_items",
     "living_thread_slice_items",

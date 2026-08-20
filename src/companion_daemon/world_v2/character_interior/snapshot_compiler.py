@@ -1379,7 +1379,13 @@ def compile_inner_life_snapshot(
             if excerpts:
                 entry["stimulus_excerpts"] = excerpts
 
-    affect = [entry for item in _slice_items(slices, "affect_episodes") if (entry := _affect_entry(item))]
+    affect = [
+        entry
+        for item in _living_or_capsule_items(
+            slices, living_name="living_affect", capsule_name="affect_episodes"
+        )
+        if (entry := _affect_entry(item))
+    ]
     if affect:
         materials["affect"] = affect
     remembered = [entry for item in _slice_items(slices, "active_memory_candidates") if (entry := _state_entry(item))][:PRESENT_MEMORY_ITEM_LIMIT]

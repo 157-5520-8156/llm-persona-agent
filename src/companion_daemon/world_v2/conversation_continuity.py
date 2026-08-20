@@ -250,6 +250,13 @@ def pack_recent_dialogue_under_source_budget(
     for item in items:
         if has_reason(item, "pending_interaction"):
             try_add(item)
+    counterpart_live = sorted(
+        (item for item in items if item.speaker == "counterpart"),
+        key=lambda item: (item.sequence, item.occurred_at, item.dialogue_id),
+        reverse=True,
+    )[:WORKING_DIALOGUE_COUNTERPART_ITEMS]
+    for item in counterpart_live:
+        try_add(item)
 
     newest_first = sorted(
         items,
