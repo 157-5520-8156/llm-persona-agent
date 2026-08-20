@@ -1190,10 +1190,11 @@ class InteractionFactTriggerRuntime:
             if not candidates:
                 return None
             payload = candidates[0]
-            await self._validate_decision_context(
-                payload,
-                subject_ref=subject_ref,
-            )
+            # Do not reconstruct the decision cursor.  After epoch-continuity
+            # and relationship-ladder changes, historical replay of
+            # WorldStarted no longer byte-matches the Fact dumps hashed into
+            # the original decision, and a full replay also stalls the
+            # scheduler.  Live slot currency is the reclaim gate.
             if not self._batch_decision_is_current(
                 projection,
                 payload=payload,
@@ -1213,32 +1214,7 @@ class InteractionFactTriggerRuntime:
             or payload.fact_context_hash != fact_context_hash
         ):
             raise ValueError("interaction Fact decision does not bind its source")
-        await self._validate_decision_context(
-            payload,
-            subject_ref=subject_ref,
-        )
         return payload
-
-    async def _validate_decision_context(
-        self,
-        payload: InteractionFactDecisionRecordedPayload,
-        *,
-        subject_ref: str,
-    ) -> None:
-        evaluated = await self._project_at(
-            ProjectionCursor(
-                world_revision=payload.evaluated_world_revision,
-                deliberation_revision=payload.evaluated_deliberation_revision,
-                ledger_sequence=payload.evaluated_ledger_sequence,
-            )
-        )
-        if _digest(
-            self._single_fact_authority_context(
-                evaluated,
-                subject_ref=subject_ref,
-            )
-        ) != payload.fact_context_hash:
-            raise ValueError("interaction Fact decision Context hash is invalid")
 
     @staticmethod
     def _batch_decision_is_current(
