@@ -11873,6 +11873,8 @@ def _validate_evidence_authority(
                     item
                     for item in state.fact_transitions
                     if item.accepted_event_ref == evidence.ref_id
+                    and _canonical_model_hash(item.values_after)
+                    == evidence.immutable_hash
                 ),
                 None,
             )
@@ -11882,7 +11884,6 @@ def _validate_evidence_authority(
                 not in {*FACT_PAYLOAD_MODELS, "FactCommittedV2", "WorldStarted"}
                 or transition is None
                 or evidence.source_world_revision != committed.world_revision
-                or evidence.immutable_hash != _canonical_model_hash(transition.values_after)
             ):
                 raise ValueError("committed-fact evidence does not resolve to transition authority")
             continue
