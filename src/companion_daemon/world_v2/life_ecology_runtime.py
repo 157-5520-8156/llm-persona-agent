@@ -552,13 +552,19 @@ class LifeEcologyRuntime:
         # writes a plan whenever it is due; treating that as "the wake is
         # taken" starved NPC of every ambient consideration.
         npc_has_due_work = False
+        npc_has_stimulus = False
         if self._npc_initiative_followup is not None:
             due_reader = getattr(self._npc_initiative_followup, "has_due_work", None)
             if callable(due_reader):
                 npc_has_due_work = bool(due_reader(projection=projection))
+            stimulus_reader = getattr(
+                self._npc_initiative_followup, "has_stimulus", None
+            )
+            if callable(stimulus_reader):
+                npc_has_stimulus = bool(stimulus_reader(projection=projection))
         if (
             self._npc_initiative_followup is not None
-            and (development_due or npc_has_due_work)
+            and (development_due or npc_has_due_work or npc_has_stimulus)
             and activity_status != "transitioned"
             and life_development_status
             not in {
@@ -566,7 +572,7 @@ class LifeEcologyRuntime:
                 "plan_completed",
             }
             and aftermath_status
-            not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}
+            not in {"occurrence_opened", "recovered_experience", "recovered_memory"}
         ):
             try:
                 npc_result = await self._npc_initiative_followup.advance_once(

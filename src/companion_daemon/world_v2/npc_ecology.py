@@ -445,6 +445,24 @@ class NpcEcology:
             for item in getattr(projection, "plans", ())
         )
 
+    def has_stimulus(self, *, projection: object) -> bool:
+        """Return whether a fresh NPC-visible settlement landed since last consider."""
+
+        last_considered_at = max(
+            (
+                item.subjective_state.evolved_at
+                for item in getattr(projection, "npcs", ())
+                if item.subjective_state is not None
+            ),
+            default=None,
+        )
+        return bool(
+            self._npc_observable_recent_event_refs(
+                projection=projection,
+                after=last_considered_at,
+            )
+        )
+
     async def advance(self, stimulus: NpcEcologyStimulus) -> NpcEcologyResult:
         projection = self._ledger.project()
         if _cursor(projection) != stimulus.cursor:

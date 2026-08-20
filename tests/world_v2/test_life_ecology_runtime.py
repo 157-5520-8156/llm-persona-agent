@@ -173,12 +173,22 @@ class _LifeDevelopment:
         reason_code: str | None = None,
         commit_plan_on_ledger: object | None = None,
         raises: Exception | None = None,
+        has_stimulus: bool = False,
+        has_due_work: bool = False,
     ) -> None:
         self.status = status
         self.reason_code = reason_code
         self.commit_plan_on_ledger = commit_plan_on_ledger
         self.raises = raises
+        self._has_stimulus_flag = has_stimulus
+        self._has_due_work_flag = has_due_work
         self.calls = []
+
+    def has_due_work(self, *, projection: object) -> bool:  # noqa: ARG002
+        return self._has_due_work_flag
+
+    def has_stimulus(self, *, projection: object) -> bool:  # noqa: ARG002
+        return self._has_stimulus_flag
 
     async def advance_once(self, **kwargs):  # type: ignore[no-untyped-def]
         self.calls.append(kwargs)
@@ -1112,6 +1122,43 @@ async def test_npc_ecology_does_not_spend_tokens_before_shared_schedule_is_due()
     assert development.calls == []
     assert npc_ecology.calls == []
     assert trigger_store.completed[0][2] == "cooldown"
+
+
+@pytest.mark.asyncio
+async def test_npc_ecology_runs_after_aftermath_settled_when_stimulus_present() -> None:
+    event = _event("clock-aftermath-settled-npc-stimulus")
+    ledger = _Ledger(event)
+    ledger._projection.life_ecology_schedule = LifeEcologyScheduleProjection(
+        last_trigger_id="trigger:prior",
+        last_wake_event_ref="event:prior",
+        last_outcome_ref="life-ecology:idle",
+        last_completed_at=NOW - timedelta(minutes=10),
+        next_consideration_at=NOW + timedelta(minutes=20),
+        consecutive_failures=0,
+        last_failure_code=None,
+    )
+    trigger_store, media = _TriggerStore(), _Media()
+    aftermath = _Aftermath(status="settled")
+    npc_ecology = _LifeDevelopment("no_op", reason_code="npc_idle", has_stimulus=True)
+    runtime = LifeEcologyRuntime(
+        ledger=ledger,
+        trigger_store=trigger_store,
+        media_followup=media,
+        aftermath_followup=aftermath,
+        life_development_followup=_LifeDevelopment("no_op", reason_code="quiet"),
+        npc_initiative_followup=npc_ecology,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:aftermath-settled-npc",
+        correlation_id="correlation:aftermath-settled-npc",
+    )
+
+    assert result.aftermath_followup_status == "settled"
+    assert result.npc_initiative_followup_status == "no_op"
+    assert len(npc_ecology.calls) == 1
 
 
 @pytest.mark.asyncio
