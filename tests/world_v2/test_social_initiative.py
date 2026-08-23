@@ -2007,44 +2007,91 @@ async def test_situation_independent_mints_after_ambient_closes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_shared_outreach_daily_limit_blocks_second_mint() -> None:
+async def test_shared_outreach_daily_limit_blocks_third_mint() -> None:
     compiler, projection, _committed = _compiler_fixture(receptive=True)
     clock = _advance_past_ambient(compiler, projection, hours=40)
-    compiler._random = SimpleNamespace(  # noqa: SLF001
-        draw=lambda **_kwargs: SimpleNamespace(
-            selected_candidate_ref="delay:21600",
-            draw_id="draw:long-silence-limit",
-        )
-    )
-    first = await compiler.next_opportunity(projection)
-    assert first is not None
-    assert first.source_kind == "long_silence"
+    # The refreshed shared budget allows two life-driven considers per local
+    # day.  Two long-silence considerations already ran on this day, so a
+    # third mint must be blocked even with a fresh delay draw.
     projection.trigger_processes = (
         SimpleNamespace(
             process_kind="proactive_action_deliberation",
-            trigger_ref="proactive-consideration:" + first.consideration_id,
-            source_evidence_ref=first.source_event_ref,
+            trigger_ref="proactive-consideration:consideration:social-initiative:long-silence:"
+            + "a" * 64,
+            source_evidence_ref=clock.event_id,
+            state="terminal",
+            runtime_outcome_ref="proactive:silent",
+        ),
+        SimpleNamespace(
+            process_kind="proactive_action_deliberation",
+            trigger_ref="proactive-consideration:consideration:social-initiative:long-silence:"
+            + "b" * 64,
+            source_evidence_ref=clock.event_id,
             state="terminal",
             runtime_outcome_ref="proactive:silent",
         ),
     )
-    # Different delay would mint a new consideration_id unless the shared
-    # daily budget blocks it.
     compiler._random = SimpleNamespace(  # noqa: SLF001
         draw=lambda **_kwargs: SimpleNamespace(
             selected_candidate_ref="delay:86400",
-            draw_id="draw:long-silence-limit-2",
+            draw_id="draw:long-silence-limit-3",
         )
     )
-    # Need a recorded draw for the new attempt_id — clear by using a fresh
-    # attempt (same observation, different catalog selection). Also jump far
-    # enough that delay:86400 is due (12h+24h=36h; we are at 40h).
+
     blocked = await compiler.next_opportunity(projection)
 
     assert blocked is None
     assert compiler._shared_outreach_uses_on_local_day(  # noqa: SLF001
         projection, clock.logical_time
-    ) == 1
+    ) == 2
+
+
+@pytest.mark.asyncio
+async def test_affect_episode_high_point_mints_situation_independent() -> None:
+    """A life-authored emotional high point may open a shared-budget consider."""
+
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    clock = _advance_past_ambient(compiler, projection, hours=20)
+    occurred_at = clock.logical_time - timedelta(minutes=5)
+    stimulus = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:affect:post-ambient",
+        world_id=projection.world_id,
+        event_type="AffectEpisodeOpened",
+        logical_time=occurred_at,
+        created_at=occurred_at,
+        actor="actor:companion",
+        source="test",
+        trace_id="trace:post-ambient-affect",
+        causation_id="cause:post-ambient-affect",
+        correlation_id="conversation:post-ambient-affect",
+        idempotency_key="affect:post-ambient",
+        payload={"episode": {"status": "active"}},
+    )
+    original_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
+
+    def lookup(event_id):  # type: ignore[no-untyped-def]
+        if event_id == stimulus.event_id:
+            return stimulus, SimpleNamespace(world_revision=2)
+        return original_lookup(event_id)
+
+    compiler._ledger.lookup_event_commit = lookup  # type: ignore[attr-defined]
+    projection.committed_world_event_refs = (
+        SimpleNamespace(
+            event_id=stimulus.event_id,
+            event_type=stimulus.event_type,
+            logical_time=stimulus.logical_time,
+            world_revision=2,
+        ),
+        *projection.committed_world_event_refs,
+    )
+
+    opportunity = await compiler.next_opportunity(projection)
+
+    assert opportunity is not None
+    assert opportunity.source_kind == "situation_change"
+    assert opportunity.source_id.startswith("situation-independent:")
+    assert "occasion:situation_independent" in opportunity.cadence_reason_codes
 
 
 @pytest.mark.asyncio

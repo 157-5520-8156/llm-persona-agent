@@ -996,8 +996,8 @@ RSS/NWS/USGS → hub 采集/去重/嵌入/聚类 → attention 影子/实时注�
 - **期望表现**：短窗（S2）关闭后，系统只给**稀疏机会与来源清楚的事实**（他多久没说话、未兑现承诺/活印象资格、可观测生活事件）；开不开口由她选 now/later/silent。禁止定时硬发、禁止关键词/模板替她说话。
 - **依赖机制链**：
   - **档 A `long_silence`**：ambient/spontaneous 关窗后，在 quiet-gap TTL（12h）之上再抽 6–24h delay（首问约落在他消失后 18–36h），Clock 只作时机权威。
-  - **档 B 可观测生活事件独立 mint**：关窗后，`ActivityCompleted` / `WorldOccurrenceSettled` / `ExperienceCommitted` / `ExternalPerceptionRecorded` / `LifeArcChanged` 且通过 `situation_stimulus_is_observable` 的事件可独立打开 `situation_change` consider（窗内仍只 hitch）。
-  - **合并日上限 1**（本地日历日）+ 最小间隔 6h；连续两次 shared-lane `silent` 后额外 +24h 冷却（有上限，不永久静音）。
+  - **档 B 可观测生活事件独立 mint**：关窗后，`ActivityCompleted` / `WorldOccurrenceSettled` / `ExperienceCommitted` / `ExternalPerceptionRecorded` / `LifeArcChanged` / `AffectEpisodeOpened` / `AffectEpisodeUpdated` 且通过 `situation_stimulus_is_observable` 的事件可独立打开 `situation_change` consider（窗内仍只 hitch）。Affect 事件入档 B 是 2026-08-23 的补漏：心情高点（"心情不好想找人说话"）是她的正当联系理由，此前被误判为 hitch-only。
+  - **合并日上限 2**（本地日历日）+ 最小间隔 3h；连续两次 shared-lane `silent` 后额外 +24h 冷却（有上限，不永久静音）。2026-08-23 从 1/日+6h 放宽：生活驱动的唤醒是主要唤醒者，1/日的稀疏参数让她的自产闹钟（hope lane）成为事实上的唯一开口理由。
 - **现状**：[active]（2026-08-20 接线深化）。`76e1fc0e`：长静默 lane + 关系/名字事实 reclaim；`39d0a36a`：有可观测生活事件时 tier-B `situation_change` 优先于 ambient。与 silence 通道区分：S6 是她发出后被晾；S18 是他先长时间不说话时的稀疏考虑。**生产 tier-B mint 仍待实证**（见执行计划 §17 2026-08-20）。
 - 来源：`world-v2-inner-life-coverage-plan` 感受空白表；用户核心诉求「惦记着某事 / 触景生情来找用户」。
 

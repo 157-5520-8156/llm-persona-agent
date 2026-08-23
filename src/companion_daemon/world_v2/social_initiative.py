@@ -86,9 +86,11 @@ _ACTOR_SCOPED_SITUATION_EVENT_TYPES = frozenset(
     }
 )
 # Tier B: only these may independently mint a consider after the short ambient
-# window closes. Pause/resume, affect churn, relationship internals, and
-# thread/commitment leftovers stay hitch-only (they have their own lanes or
-# are too noisy to wake him).
+# window closes. Pause/resume, relationship internals, and thread/commitment
+# leftovers stay hitch-only (they have their own lanes or are too noisy to
+# wake him).  Affect high points — a new episode or an authored intensity
+# change ("心情不好想找人说话") — may mint: life-driven sharing is meant to
+# be the main waker, and the shared outreach budget still bounds the total.
 _INDEPENDENT_SITUATION_MINT_EVENT_TYPES = frozenset(
     {
         "ActivityCompleted",
@@ -96,6 +98,8 @@ _INDEPENDENT_SITUATION_MINT_EVENT_TYPES = frozenset(
         "ExperienceCommitted",
         "ExternalPerceptionRecorded",
         "LifeArcChanged",
+        "AffectEpisodeOpened",
+        "AffectEpisodeUpdated",
     }
 )
 
@@ -192,9 +196,11 @@ class SocialInitiativePolicy(FrozenModel):
     consideration_band_override_seconds: tuple[int, int] | None = None
     # Shared daily budget for S18 long_silence (A) + post-ambient situation
     # independent mint (B). One shared cap keeps "惦记" from becoming 话痨.
-    shared_outreach_daily_limit: int = Field(default=1, ge=0, le=4)
+    # Two life-driven considers per day (3h apart) make life the main waker
+    # instead of her own hope-expiry alarm clocks.
+    shared_outreach_daily_limit: int = Field(default=2, ge=0, le=4)
     shared_outreach_min_interval_seconds: int = Field(
-        default=21_600, ge=3_600, le=172_800
+        default=10_800, ge=3_600, le=172_800
     )
     # After ambient closes, draw a further delay so the first ask lands ~18–36h
     # after his last message (12h expiry + 6–24h), not on a fixed clock.

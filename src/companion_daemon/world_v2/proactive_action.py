@@ -184,6 +184,209 @@ def consecutive_unanswered_expired_chase_count(projection: object) -> int:
 
 _ADVISORY_VALUE_MAX = 256
 _ADVISORY_CHOICE_PREFIX = " Choose freely: now, later, or silent; kind="
+_SELF_HISTORY_CANDIDATE_MAX = 256
+_SELF_HISTORY_OUTBOUND_MIN = 2
+_SELF_HISTORY_TEXTS_SHOWN = 4
+_SELF_HISTORY_HOPES_SHOWN = 3
+_SELF_HISTORY_ADVISORY_VERSION = "proactive-self-history.1"
+
+
+def _unanswered_outbound_message_facts(projection: object) -> tuple[tuple[str, str], ...]:
+    """Her delivered text beats since his last inbound, oldest first.
+
+    Each entry pairs the payload's committed event ref with its exact text.
+    First visible delivery per action decides membership, so a late terminal
+    receipt never rewrites what she has already sent.  Pure projection facts:
+    no behavioural verdict lives here.
+    """
+
+    try:
+        observations = getattr(projection, "message_observations", ())
+        latest_inbound_revision = (
+            observations[-1].world_revision if observations else 0
+        )
+        receipt_refs = tuple(
+            item
+            for item in getattr(projection, "committed_world_event_refs", ())
+            if item.event_type == "ExecutionReceiptRecorded"
+        )
+        receipts = tuple(getattr(projection, "execution_receipts", ()))
+        if len(receipt_refs) != len(receipts):
+            return ()
+        first_visible_by_action: dict[str, object] = {}
+        for ref, receipt in zip(receipt_refs, receipts, strict=True):
+            if getattr(receipt, "observed_state", None) not in {
+                "provider_accepted",
+                "delivered",
+            }:
+                continue
+            existing = first_visible_by_action.get(receipt.action_id)
+            if existing is None or ref.world_revision < existing.world_revision:
+                first_visible_by_action[receipt.action_id] = ref
+        if not first_visible_by_action:
+            return ()
+        payload_facts = {
+            item.payload_ref: (item.event_ref, item.text)
+            for item in getattr(projection, "stored_message_payloads", ())
+        }
+        delivered: list[tuple[object, object]] = []
+        for beat in getattr(projection, "expression_beats", ()):
+            action_id = getattr(beat, "action_id", None)
+            ref = first_visible_by_action.get(action_id) if action_id else None
+            if ref is None or ref.world_revision <= latest_inbound_revision:
+                continue
+            delivered.append((ref, beat))
+        delivered.sort(key=lambda pair: (pair[0].world_revision, pair[0].event_id))
+        facts: list[tuple[str, str]] = []
+        for _ref, beat in delivered:
+            entry = payload_facts.get(getattr(beat, "payload_ref", None))
+            if entry is None:
+                continue
+            event_ref, text = entry
+            if (
+                isinstance(event_ref, str)
+                and event_ref
+                and isinstance(text, str)
+                and text.strip()
+            ):
+                facts.append((event_ref, text.strip()))
+        return tuple(facts)
+    except (TypeError, ValueError, AttributeError):
+        return ()
+
+
+def _living_hope_facts(
+    projection: object,
+) -> tuple[tuple[str, str, datetime, datetime], ...]:
+    """Living declared hopes without a terminal assessment, soonest wake first."""
+
+    try:
+        logical_time = projection.logical_time
+        if logical_time is None:
+            return ()
+        terminal_plan_ids = {
+            item.source_plan_id
+            for item in getattr(projection, "response_expectation_assessments", ())
+            if getattr(item, "status", None)
+            in {"fulfilled", "superseded", "still_pending"}
+        }
+        facts: list[tuple[str, str, datetime, datetime]] = []
+        for manifest in getattr(projection, "expression_plan_manifests", ()):
+            expectation = getattr(manifest, "response_expectation", None)
+            if expectation is None or getattr(manifest, "plan_id", "") in terminal_plan_ids:
+                continue
+            not_before = getattr(expectation, "not_before", None)
+            expires_at = getattr(expectation, "expires_at", None)
+            hoped = getattr(expectation, "hoped_response", None)
+            acceptance_ref = getattr(manifest, "acceptance_event_ref", None)
+            if (
+                not isinstance(not_before, datetime)
+                or not isinstance(expires_at, datetime)
+                or not isinstance(hoped, str)
+                or not hoped.strip()
+                or not isinstance(acceptance_ref, str)
+                or not acceptance_ref
+                or logical_time >= expires_at
+            ):
+                continue
+            facts.append((acceptance_ref, hoped.strip(), not_before, expires_at))
+        facts.sort(key=lambda item: (item[2], item[0]))
+        return tuple(facts)
+    except (TypeError, ValueError, AttributeError):
+        return ()
+
+
+def compile_proactive_self_history_advisories(
+    projection: object,
+) -> tuple[InnerAdvisoryProjection, ...]:
+    """Fact-only view of her own unanswered outreach and living hopes.
+
+    A flash-tier model can sit inside a long dialogue slice without
+    aggregating it: near-identical greetings went out for a whole day while
+    every single deliberation believed itself the first.  This compiles the
+    aggregate as source-bound facts — count, exact texts, repeat count,
+    living wake timers — so her own trajectory stays legible without the
+    host deciding anything about what she should do with it.
+    """
+
+    logical_time = getattr(projection, "logical_time", None)
+    if not isinstance(logical_time, datetime):
+        return ()
+    outbound = _unanswered_outbound_message_facts(projection)
+    hopes = _living_hope_facts(projection)
+    candidates: list[InnerAdvisoryCandidate] = []
+    candidate_refs: list[str] = []
+    source_refs: list[str] = []
+    if len(outbound) >= _SELF_HISTORY_OUTBOUND_MIN:
+        texts = [text for _ref, text in outbound]
+        repeats = len(texts) - len(set(texts))
+        shown_texts = texts[-_SELF_HISTORY_TEXTS_SHOWN:]
+        shown = " | ".join(f"'{text[:32]}'" for text in shown_texts)
+        if len(texts) > len(shown_texts):
+            shown = "… " + shown
+        repeat_clause = (
+            f", {repeats} of them exact repeats" if repeats > 0 else ""
+        )
+        value = (
+            f"Since his last inbound you have sent {len(outbound)} delivered "
+            f"messages with no verified reply{repeat_clause}: {shown}. "
+            "Facts only; she still decides."
+        )[:_SELF_HISTORY_CANDIDATE_MAX]
+        candidates.append(
+            InnerAdvisoryCandidate(
+                candidate_ref="self-history:unanswered_outbound",
+                value=value,
+                weight_bp=10_000,
+                confidence_bp=10_000,
+            )
+        )
+        candidate_refs.append("self-history:unanswered_outbound")
+        source_refs.extend(ref for ref, _text in outbound)
+    if hopes:
+        shown_hopes: list[str] = []
+        for _ref, hoped, not_before, _expires_at in hopes[:_SELF_HISTORY_HOPES_SHOWN]:
+            wait_seconds = int((not_before - logical_time).total_seconds())
+            wake_clause = (
+                f"wakes in ~{max(0, wait_seconds) // 60}m"
+                if wait_seconds > 0
+                else "wait already ran out"
+            )
+            shown_hopes.append(f"'{hoped[:48]}' ({wake_clause})")
+        value = (
+            f"You are holding {len(hopes)} waiting hope(s): "
+            + "; ".join(shown_hopes)
+            + ". Each unmet hope wakes you once more when its wait runs out. "
+            "Facts only; she still decides."
+        )[:_SELF_HISTORY_CANDIDATE_MAX]
+        candidates.append(
+            InnerAdvisoryCandidate(
+                candidate_ref="self-history:living_hopes",
+                value=value,
+                weight_bp=10_000,
+                confidence_bp=10_000,
+            )
+        )
+        candidate_refs.append("self-history:living_hopes")
+        source_refs.extend(ref for ref, _hoped, _nb, _exp in hopes)
+    if not candidates:
+        return ()
+    deduped_refs = tuple(dict.fromkeys(ref for ref in source_refs if ref))
+    if not deduped_refs:
+        return ()
+    return (
+        InnerAdvisoryProjection(
+            advisory_id="advisory:proactive:self-history:" + _digest(
+                [item.value for item in candidates]
+            ),
+            kind="proactive_self_history",
+            source_refs=deduped_refs,
+            candidate_refs=tuple(candidate_refs),
+            candidates=tuple(candidates),
+            confidence_bp=10_000,
+            expiry=logical_time + timedelta(days=1),
+            producer_version=_SELF_HISTORY_ADVISORY_VERSION,
+        ),
+    )
 
 
 def _hitch_living_hope(text: str, projection: object) -> str:
@@ -1674,10 +1877,17 @@ class ProactiveDeliberationTurn:
             invitation_advisories = pending_shared_private_invitation_advisories(projection)
         except (TypeError, ValueError):
             invitation_advisories = ()
+        # Her own trajectory — unanswered outbound count/texts and living
+        # hopes — rides along as source-bound facts.  Fact supply only: the
+        # character stays the sole author of what to do with them.
+        try:
+            self_history_advisories = compile_proactive_self_history_advisories(projection)
+        except (TypeError, ValueError, AttributeError):
+            self_history_advisories = ()
         capsule = await asyncio.to_thread(
             self._capsules.compile_for_deliberation_with_advisories,
             query,
-            (advisory, *invitation_advisories),
+            (advisory, *self_history_advisories, *invitation_advisories),
             model_content_profile="proactive_decision",
         )
         resolved_attempt_id = attempt_id or "attempt:proactive:" + _digest(

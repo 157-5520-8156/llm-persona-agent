@@ -445,3 +445,155 @@ def test_expired_hope_is_not_unanswered_after_a_later_user_message() -> None:
     )
 
     assert expired_unanswered_expectation(projection) is None
+
+
+def _self_history_projection(*, inbound_revision: int = 1):
+    """Projection with her unanswered outbound beats and living hopes."""
+
+    logical_time = EXPECTATION_NOW + timedelta(hours=3)
+    receipts = []
+    receipt_refs = []
+    beats = []
+    payloads = []
+    texts = ("突然想到你，在干嘛呀？", "突然想到你，在干嘛呢？", "突然想到你，在干嘛呀？")
+    for index, text in enumerate(texts, start=2):
+        action_id = f"action:proactive:{index}"
+        payload_ref = f"payload:proactive:{index}"
+        receipts.append(
+            SimpleNamespace(action_id=action_id, observed_state="delivered")
+        )
+        receipt_refs.append(
+            SimpleNamespace(
+                event_id=f"event:receipt:{index}",
+                event_type="ExecutionReceiptRecorded",
+                world_revision=index,
+                logical_time=EXPECTATION_NOW + timedelta(minutes=5 * index),
+            )
+        )
+        beats.append(
+            SimpleNamespace(action_id=action_id, payload_ref=payload_ref)
+        )
+        payloads.append(
+            SimpleNamespace(
+                payload_ref=payload_ref,
+                event_ref=f"event:payload:{index}",
+                text=text,
+            )
+        )
+    return SimpleNamespace(
+        logical_time=logical_time,
+        message_observations=(
+            SimpleNamespace(observation_id="message:source", world_revision=inbound_revision),
+        ),
+        execution_receipts=tuple(receipts),
+        committed_world_event_refs=tuple(receipt_refs),
+        expression_beats=tuple(beats),
+        stored_message_payloads=tuple(payloads),
+        expression_plan_manifests=(),
+        response_expectation_assessments=(),
+    )
+
+
+def test_self_history_advisory_lists_unanswered_outbound_facts() -> None:
+    from companion_daemon.world_v2.proactive_action import (
+        compile_proactive_self_history_advisories,
+    )
+
+    advisories = compile_proactive_self_history_advisories(_self_history_projection())
+
+    assert len(advisories) == 1
+    advisory = advisories[0]
+    assert advisory.kind == "proactive_self_history"
+    values = {item.candidate_ref: item.value for item in advisory.candidates}
+    outbound = values["self-history:unanswered_outbound"]
+    assert "you have sent 3 delivered messages" in outbound
+    assert "1 of them exact repeats" in outbound
+    assert "在干嘛呀" in outbound
+    assert "Facts only; she still decides" in outbound
+    for candidate in advisory.candidates:
+        assert len(candidate.value) <= 256
+    # Every listed text's payload event binds the advisory to committed sources.
+    assert set(advisory.source_refs) == {
+        "event:payload:2",
+        "event:payload:3",
+        "event:payload:4",
+    }
+
+
+def test_self_history_advisory_lists_living_hopes_with_wake_facts() -> None:
+    from companion_daemon.world_v2.proactive_action import (
+        compile_proactive_self_history_advisories,
+    )
+
+    projection = _self_history_projection()
+    projection.expression_plan_manifests = (
+        SimpleNamespace(
+            plan_id="plan:hope:1",
+            acceptance_event_ref="event:acceptance:hope:1",
+            response_expectation=SimpleNamespace(
+                hoped_response="他回我一句在干嘛",
+                not_before=projection.logical_time + timedelta(minutes=47),
+                expires_at=projection.logical_time + timedelta(hours=2),
+            ),
+        ),
+        SimpleNamespace(
+            plan_id="plan:hope:2",
+            acceptance_event_ref="event:acceptance:hope:2",
+            response_expectation=SimpleNamespace(
+                hoped_response="他聊聊近况",
+                not_before=projection.logical_time - timedelta(minutes=5),
+                expires_at=projection.logical_time + timedelta(hours=1),
+            ),
+        ),
+        # Dead hope: expiry already passed.
+        SimpleNamespace(
+            plan_id="plan:hope:dead",
+            acceptance_event_ref="event:acceptance:hope:dead",
+            response_expectation=SimpleNamespace(
+                hoped_response="过期的盼头",
+                not_before=projection.logical_time - timedelta(hours=2),
+                expires_at=projection.logical_time - timedelta(hours=1),
+            ),
+        ),
+        # Assessed hope: still_pending closed its consideration cycle.
+        SimpleNamespace(
+            plan_id="plan:hope:assessed",
+            acceptance_event_ref="event:acceptance:hope:assessed",
+            response_expectation=SimpleNamespace(
+                hoped_response="已评估的盼头",
+                not_before=projection.logical_time + timedelta(minutes=10),
+                expires_at=projection.logical_time + timedelta(hours=1),
+            ),
+        ),
+    )
+    projection.response_expectation_assessments = (
+        SimpleNamespace(
+            source_plan_id="plan:hope:assessed", status="still_pending"
+        ),
+    )
+
+    advisories = compile_proactive_self_history_advisories(projection)
+
+    values = {item.candidate_ref: item.value for item in advisories[0].candidates}
+    hopes = values["self-history:living_hopes"]
+    assert "You are holding 2 waiting hope(s)" in hopes
+    assert "他回我一句在干嘛" in hopes
+    assert "wakes in ~47m" in hopes
+    assert "wait already ran out" in hopes
+    assert "过期的盼头" not in hopes
+    assert "已评估的盼头" not in hopes
+    assert "Each unmet hope wakes you once more" in hopes
+
+
+def test_self_history_advisory_stays_silent_below_threshold() -> None:
+    from companion_daemon.world_v2.proactive_action import (
+        compile_proactive_self_history_advisories,
+    )
+
+    projection = _self_history_projection()
+    projection.execution_receipts = projection.execution_receipts[:1]
+    projection.committed_world_event_refs = projection.committed_world_event_refs[:1]
+    projection.expression_beats = projection.expression_beats[:1]
+    projection.stored_message_payloads = projection.stored_message_payloads[:1]
+
+    assert compile_proactive_self_history_advisories(projection) == ()
