@@ -27,7 +27,7 @@ EXPECTED_UNAVAILABLE_LIFE_SOURCE_AUTHORITY_HEALTH = {
             "parser_fail_closed": True,
             "release_qualified": False,
         },
-        "life-development-novel-origin-review.3": {
+        "life-development-novel-origin-review.4": {
             "schema_installed": False,
             "parser_fail_closed": True,
             "release_qualified": False,

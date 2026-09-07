@@ -17,9 +17,12 @@ GENERAL_EVIDENCE_PACKET_CONTRACT = (
     "life-development-general-source-review-evidence-packet.3"
 )
 NOVEL_ORIGIN_REVIEW_SUBJECT_CONTRACT = (
-    "life-development-novel-origin-review-subject.3"
+    "life-development-novel-origin-review-subject.4"
 )
 NOVEL_EVIDENCE_PACKET_CONTRACT = (
+    "life-development-novel-origin-review-evidence-packet.5"
+)
+PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT = (
     "life-development-novel-origin-review-evidence-packet.4"
 )
 
@@ -94,10 +97,19 @@ def current_novel_origin_review_subject_hash(
     wake_event_ref: str,
     wake_world_id: str,
     wake_logical_time: str,
+    evidence_packet_contract: str = NOVEL_EVIDENCE_PACKET_CONTRACT,
 ) -> str:
+    # Historical records lacking an explicit packet marker keep the original
+    # formula; a previous verdict never acquires today's larger reviewed surface.
+    contracts = {
+        PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT: "life-development-novel-origin-review-subject.3",
+        NOVEL_EVIDENCE_PACKET_CONTRACT: NOVEL_ORIGIN_REVIEW_SUBJECT_CONTRACT,
+    }
+    if not isinstance(evidence_packet_contract, str) or evidence_packet_contract not in contracts:
+        raise ValueError("unknown novel-origin evidence packet contract")
     return _current_review_subject_hash(
-        subject_contract=NOVEL_ORIGIN_REVIEW_SUBJECT_CONTRACT,
-        evidence_packet_contract=NOVEL_EVIDENCE_PACKET_CONTRACT,
+        subject_contract=contracts[evidence_packet_contract],
+        evidence_packet_contract=evidence_packet_contract,
         review_request_hashes=review_request_hashes,
         world_author_raw_output_hash=world_author_raw_output_hash,
         capability_manifest_hash=capability_manifest_hash,
@@ -145,6 +157,7 @@ __all__ = [
     "GENERAL_EVIDENCE_PACKET_CONTRACT",
     "NOVEL_EVIDENCE_PACKET_CONTRACT",
     "NOVEL_ORIGIN_REVIEW_SUBJECT_CONTRACT",
+    "PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT",
     "SOURCE_REVIEW_SUBJECT_CONTRACT",
     "current_novel_origin_review_subject_hash",
     "current_source_review_subject_hash",

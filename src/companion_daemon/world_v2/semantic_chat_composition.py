@@ -55,7 +55,7 @@ _FULL_SOURCE_REVIEW_CONTRACT = "source-closure-review.7"
 _REPORT_RELATIVE_REVIEW_CONTRACT = "report-relative-entailment-adjudication.3"
 _LIFE_SOURCE_REVIEW_CONTRACTS = (
     "life-development-source-closure-review.1",
-    "life-development-novel-origin-review.3",
+    "life-development-novel-origin-review.4",
 )
 
 

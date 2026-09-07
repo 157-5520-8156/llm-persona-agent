@@ -6212,7 +6212,7 @@ def test_novel_origin_packet_keeps_source_bound_truth_but_ignores_budget_noise()
         ]
     }
     assert life_development_review_packet_identity(first)[0] == (
-        "life-development-novel-origin-review-evidence-packet.4"
+        "life-development-novel-origin-review-evidence-packet.5"
     )
     assert "Inspect each exact outcome Opaque" not in first[0]["content"]
     assert "Opaque entity/location refs prove identity coordinates only" in first[0]["content"]

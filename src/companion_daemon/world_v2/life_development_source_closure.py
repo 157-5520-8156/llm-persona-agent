@@ -36,7 +36,7 @@ from .schemas import ProjectionCursor, WorldEvent
 
 
 _REVIEW_CONTRACT = "life-development-source-closure-review.1"
-_NOVEL_ORIGIN_CONTRACT = "life-development-novel-origin-review.3"
+_NOVEL_ORIGIN_CONTRACT = "life-development-novel-origin-review.4"
 _MANIFEST_BINDING_CONTRACT = "life-development-review-manifest-binding.2"
 _EXISTING_WORLD_EVIDENCE_CONTRACT = (
     "life-development-novel-origin-existing-world-evidence.1"
@@ -285,6 +285,38 @@ class LifeDevelopmentObjectiveTransitionFinding(FrozenModel):
         return self
 
 
+class LifeDevelopmentDynamicLifeDirectionFinding(FrozenModel):
+    """An exact authored durable-context string, never a local semantic verdict."""
+
+    prose_path: str = Field(
+        pattern=(
+            r"^outcomes\.(0|[1-9][0-9]*)\.dynamic_life_direction\."
+            r"(summary|(context_tags|supersedes_context_tag_prefixes|"
+            r"narrative_tags)\.(0|[1-9][0-9]*))$"
+        ),
+        max_length=256,
+    )
+    violation_kinds: tuple[
+        Literal[
+            "imported_current_or_prior_prerequisite",
+            "durable_context_not_entailed_by_candidate",
+            "character_interior_authorship",
+        ], ...
+    ] = Field(min_length=1, max_length=3)
+    exact_fragments: tuple[str, ...] = Field(min_length=1, max_length=8)
+
+    @field_validator("violation_kinds", "exact_fragments", mode="before")
+    @classmethod
+    def canonicalize_coordinates(cls, value: object) -> object:
+        return _canonicalize_unique_string_set(value)
+
+    @model_validator(mode="after")
+    def fragments_are_nonempty(self) -> "LifeDevelopmentDynamicLifeDirectionFinding":
+        if any(not item.strip() for item in self.exact_fragments):
+            raise ValueError("dynamic-life-direction fragments cannot be blank")
+        return self
+
+
 class LifeDevelopmentNovelOriginReview(FrozenModel):
     """Independent model verdict over novel fact origin, not story quality."""
 
@@ -309,6 +341,9 @@ class LifeDevelopmentNovelOriginReview(FrozenModel):
         LifeDevelopmentObjectiveTransitionFinding,
         ...,
     ] = Field(default=(), max_length=8)
+    unsupported_dynamic_life_directions: tuple[
+        LifeDevelopmentDynamicLifeDirectionFinding, ...,
+    ] = Field(default=(), max_length=32, exclude_if=lambda value: not value)
     # Reuse the historical slot without changing supported review payloads.
     # `.3` admits exact premise fragments for unsupported truth or character
     # authorship: the installed general closure checks refs, not prose meaning.
@@ -321,6 +356,7 @@ class LifeDevelopmentNovelOriginReview(FrozenModel):
         "unsupported_provisional_places",
         "unsupported_outcome_prerequisites",
         "unsupported_objective_transitions",
+        "unsupported_dynamic_life_directions",
         mode="before",
     )
     @classmethod
@@ -347,6 +383,9 @@ class LifeDevelopmentNovelOriginReview(FrozenModel):
         transition_paths = tuple(
             item.prose_path for item in self.unsupported_objective_transitions
         )
+        direction_paths = tuple(
+            item.prose_path for item in self.unsupported_dynamic_life_directions
+        )
         if len(claim_ids) != len(set(claim_ids)):
             raise ValueError("novel-origin claim findings must be unique")
         if len(npc_refs) != len(set(npc_refs)):
@@ -357,12 +396,15 @@ class LifeDevelopmentNovelOriginReview(FrozenModel):
             raise ValueError("outcome-prerequisite findings must use unique paths")
         if len(transition_paths) != len(set(transition_paths)):
             raise ValueError("objective-transition findings must use unique paths")
+        if len(direction_paths) != len(set(direction_paths)):
+            raise ValueError("dynamic-life-direction findings must use unique paths")
         coordinates = (
             self.unsupported_claims,
             self.unsupported_provisional_npcs,
             self.unsupported_provisional_places,
             self.unsupported_outcome_prerequisites,
             self.unsupported_objective_transitions,
+            self.unsupported_dynamic_life_directions,
             self.undeclared_premise_fragments,
         )
         if self.decision == "supported" and any(coordinates):
@@ -737,7 +779,36 @@ def parse_life_development_novel_origin_review(
                 "unknown_objective_transition_fragment",
                 "focused critic transition fragment is absent from the exact summary",
             )
+    direction_strings = _dynamic_life_direction_coordinates(draft)
+    for finding in review.unsupported_dynamic_life_directions:
+        text = direction_strings.get(finding.prose_path)
+        if text is None:
+            raise LifeDevelopmentSourceClosureError(
+                "unknown_dynamic_life_direction_path",
+                "focused critic direction path is absent from the reviewed draft",
+            )
+        if any(fragment not in text for fragment in finding.exact_fragments):
+            raise LifeDevelopmentSourceClosureError(
+                "unknown_dynamic_life_direction_fragment",
+                "focused critic fragment is absent from the exact direction field",
+            )
     return review
+
+
+def _dynamic_life_direction_coordinates(
+    draft: LifeDevelopmentPossibilityDraft,
+) -> dict[str, str]:
+    coordinates: dict[str, str] = {}
+    for index, outcome in enumerate(draft.outcomes):
+        direction = outcome.dynamic_life_direction
+        if direction is None:
+            continue
+        prefix = f"outcomes.{index}.dynamic_life_direction"
+        coordinates[f"{prefix}.summary"] = direction.summary
+        for field in ("context_tags", "supersedes_context_tag_prefixes", "narrative_tags"):
+            for item_index, text in enumerate(getattr(direction, field)):
+                coordinates[f"{prefix}.{field}.{item_index}"] = text
+    return coordinates
 
 
 def _general_source_prose_coordinates(
@@ -1277,6 +1348,11 @@ def _novel_origin_reviewed_surface(
             {
                 "text": outcome.text,
                 "user_channel_completion": outcome.user_channel_completion,
+                "dynamic_life_direction": (
+                    outcome.dynamic_life_direction.model_dump(mode="json")
+                    if outcome.dynamic_life_direction is not None
+                    else None
+                ),
                 "claim_refs": list(outcome.claim_refs),
                 "provisional_npcs": [
                     {
@@ -1655,7 +1731,13 @@ def life_development_novel_origin_messages(
         "exact local_ref and verbatim fragments from its summary; each objective "
         "transition uses its exact supplied summary path and verbatim fragments; each imported "
         "outcome prerequisite uses an exact supplied outcomes.N.text prose_path and "
-        "verbatim fragments from that one outcome. Return exactly one JSON object "
+        "verbatim fragments from that one outcome. Each dynamic_life_direction is "
+        "a proposed durable world effect: inspect its entire object, including "
+        "summary, tags, supersession and duration, against that exact branch and "
+        "pinned authority. It may not import prior facts or establish the character's "
+        "motives, desires or subjective direction. Report unsupported authored "
+        "strings in unsupported_dynamic_life_directions using the supplied field "
+        "path and verbatim fragments from that field. Return exactly one JSON object "
         "matching the supplied contract, with the complete verdict inside its required "
         "review envelope."
     )
@@ -1690,6 +1772,12 @@ def life_development_novel_origin_messages(
                 "present_objective_coordinate_semantically_entailed_by_exact_"
                 "candidate_text_and_branch_only"
             ),
+            "dynamic_life_direction": {
+                "surface": "complete_durable_context_object",
+                "authority": "world_author_event_impact_entailed_by_exact_branch",
+                "reject": "imported_history_unentailed_context_or_character_interior_authorship",
+                "coordinates": "exact_summary_or_tag_field_paths",
+            },
             "outcome_prerequisites": {
                 "reject": (
                     "imported_current_or_prior_fact_or_retroactive_history_outside_branch"
@@ -1761,7 +1849,9 @@ def life_development_novel_origin_correction_message(
                     "text are not imported prerequisites. The current premise is "
                     "different: it cannot invent past activity or author the "
                     "character's present reaction. Copy premise findings exactly "
-                    "from premise into undeclared_premise_fragments."
+                    "from premise into undeclared_premise_fragments. Durable-context "
+                    "findings use unsupported_dynamic_life_directions and exact "
+                    "fragments from their supplied summary or tag field path."
                 ),
             },
             ensure_ascii=False,
@@ -1808,6 +1898,7 @@ def _novel_origin_coordinate_catalog(
             for index, outcome in enumerate(draft.outcomes)
             if outcome.objective_biographical_transition is not None
         ],
+        "dynamic_life_direction_paths": list(_dynamic_life_direction_coordinates(draft)),
         "fragment_rule": (
             "copy_verbatim_substrings_from_the_matching_claim_npc_place_transition_"
             "or_outcome_path_or_premise"

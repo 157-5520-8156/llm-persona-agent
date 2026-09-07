@@ -3505,6 +3505,15 @@ def _validate_life_development_deliberation_binding(
     ):
         raise ValueError("life-development Proposal changed its audited capability manifest")
 
+    for field, role in (
+        ("world_author_source_closure_deliberation", "world_author_source_reviewer"),
+        ("world_author_novel_origin_deliberation", "world_author_novel_origin_critic"),
+    ):
+        if proposal.get(field) is not None:
+            _validate_one_life_development_deliberation(
+                state, proposal=proposal, field=field, expected_role=role,
+            )
+
     character_interior_value = proposal.get("character_interior_decision")
     if character_interior_value is not None:
         if (

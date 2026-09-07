@@ -107,6 +107,7 @@ from .life_development_draft import (
     LifeDevelopmentLocationCapability,
 )
 from .life_review_identity import (
+    PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT,
     current_novel_origin_review_subject_hash,
     current_source_review_subject_hash,
     legacy_novel_origin_review_subject_hashes,
@@ -1224,6 +1225,7 @@ def _validate_life_development_location_authority_batch(
                     or novel_review.get("unsupported_provisional_npcs") != []
                     or novel_review.get("unsupported_provisional_places") != []
                     or novel_review.get("unsupported_objective_transitions") != []
+                    or novel_review.get("unsupported_dynamic_life_directions", []) != []
                     or novel_review.get(
                         "unsupported_outcome_prerequisites",
                         [],
@@ -1282,6 +1284,10 @@ def _validate_life_development_location_authority_batch(
                         )
                     expected_novel_subjects = {
                         current_novel_origin_review_subject_hash(
+                            evidence_packet_contract=proposal.get(
+                                "world_author_novel_origin_evidence_packet_contract",
+                                PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT,
+                            ),
                             review_request_hashes=tuple(novel_request_hashes),
                             world_author_raw_output_hash=raw_output_hash,
                             capability_manifest_hash=manifest_hash,

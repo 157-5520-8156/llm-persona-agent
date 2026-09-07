@@ -93,6 +93,7 @@ from .life_events import (
 from .life_review_identity import (
     GENERAL_EVIDENCE_PACKET_CONTRACT,
     NOVEL_EVIDENCE_PACKET_CONTRACT,
+    PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT,
     current_novel_origin_review_subject_hash,
     current_source_review_subject_hash,
     legacy_novel_origin_review_subject_hashes,
@@ -1633,6 +1634,7 @@ class LifeDevelopmentProposalReader:
             or parsed_novel.unsupported_provisional_places
             or parsed_novel.unsupported_outcome_prerequisites
             or parsed_novel.unsupported_objective_transitions
+            or parsed_novel.unsupported_dynamic_life_directions
             or parsed_novel.undeclared_premise_fragments
             or proposal.get("world_author_novel_origin_review_hash") != _digest(novel_review)
             or proposal.get("world_author_novel_origin_deliberation_hash")
@@ -1654,6 +1656,10 @@ class LifeDevelopmentProposalReader:
             and isinstance(trigger_id, str)
         ):
             current_novel_subject = current_novel_origin_review_subject_hash(
+                evidence_packet_contract=proposal.get(
+                    "world_author_novel_origin_evidence_packet_contract",
+                    PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT,
+                ),
                 review_request_hashes=tuple(novel_request_hashes),
                 world_author_raw_output_hash=raw_output_hash,
                 capability_manifest_hash=manifest_hash,
@@ -5953,6 +5959,10 @@ class LifeDevelopmentRuntime:
         )
         payload = {
             "proposal_id": proposal_id,
+            **(
+                {"world_author_novel_origin_evidence_packet_contract": NOVEL_EVIDENCE_PACKET_CONTRACT}
+                if novel_origin_deliberation is not None else {}
+            ),
             "proposal_kind": "life_development",
             "trigger_id": wake.event_id,
             "evaluated_world_revision": context_cursor.world_revision,
@@ -7440,6 +7450,12 @@ def _world_author_rejection_coordinates(
             item.model_dump(mode="json") for item in review.unsupported_objective_transitions
         ],
         "undeclared_premise_fragments": list(review.undeclared_premise_fragments),
+        **(
+            {"unsupported_dynamic_life_directions": [
+                item.model_dump(mode="json") for item in review.unsupported_dynamic_life_directions
+            ]}
+            if review.unsupported_dynamic_life_directions else {}
+        ),
     }
 
 
