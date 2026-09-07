@@ -129,7 +129,7 @@ from .recall_index import (
     RecallEmbedding,
     SQLiteRecallIndex,
 )
-from .recall_embedding import SQLiteCachedRecallEmbedding
+from .recall_embedding import SQLiteCachedRecallEmbedding, warm_semantic_recall_embedding
 from .recall_runtime import RecallCoordinator
 from .media_evidence_snapshot import MediaEvidenceSnapshotCompiler
 from .event_ecology_media import (
@@ -3537,6 +3537,7 @@ def build_sqlite_world_v2_turn_application(
     proactive_source_closure_model: ChatCompletionModel | None = None,
     proactive_candidate_external_proposition_inventory_model: ChatCompletionModel | None = None,
     semantic_recall_embedding: RecallEmbedding | None = None,
+    warm_semantic_recall: bool = False,
     now: datetime,
     projection_authority: ProjectionAuthority | None = None,
     latency_recorder: ProductionLatencyRecorder | None = None,
@@ -3621,6 +3622,9 @@ def build_sqlite_world_v2_turn_application(
         if semantic_recall_embedding is not None
         else None
     )
+    if warm_semantic_recall:
+        # Optional bootstrap work uses the same durable budget/cache as recall.
+        warm_semantic_recall_embedding(cached_semantic_embedding)
     recall_coordinator = RecallCoordinator(
         index=recall_index,
         semantic_embedding=cached_semantic_embedding,
