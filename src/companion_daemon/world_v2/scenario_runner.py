@@ -356,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.94"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.95"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -603,8 +603,14 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.94"
 # old schema function restores every old manifest field. See the independent
 # comparison in docs/audits/longitudinal-real-testing-2026-09-08.md. This does
 # not qualify real-model behavior or rewrite historical ledger events.
+# 2026-09-08: .95 separates habitual windows and future participants from
+# current-life authority (snapshot compiler .18, Situation policy .16.1).
+# All 120 complete run exports differ from .94 only in replay_hash. Fixed
+# predicates, visible output, event types, model counts, Actions and room
+# projections remain unchanged. See context-factual-authority-2026-09-08.md
+# for the preserved comparison and separate real-model counterexample.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "df9dc32773b742730dfc0ab77156a04c225d9d6f5e3f163722f13d2dd76fb88a"
+    "3104974d5d94237c7db8e817d0f23039028b1db915c41fec70dcf589130a708e"
 )
 
 
