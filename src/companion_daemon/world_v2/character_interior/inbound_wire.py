@@ -7299,6 +7299,10 @@ def _reply_only_fallback_appraisal(
         "display_strategy": label,
         "confidence": confidence,
     }
+    if isinstance(authored, dict) and authored.get("life_intent") is not None:
+        # Preserve the explicit action proposal even if another appraisal field
+        # needs transport repair; it must still pass its own strict validator.
+        fallback["life_intent"] = authored["life_intent"]
     salvaged = _salvaged_authored_affect(authored)
     if salvaged is not None:
         fallback.update(salvaged)
@@ -7461,6 +7465,10 @@ def _reply_only_character_interior_event_envelope(
     _validate_reply_only_head(events[0])
     if events[1] != {"type": "end"}:
         raise ValueError("reply-only stream must terminate after its single text head")
+    authored_appraisal = value.get("appraisal_draft")
+    if isinstance(authored_appraisal, dict) and authored_appraisal.get("life_intent") is not None:
+        from ..chat_life_intent_contract import LifeIntentDraft
+        LifeIntentDraft.model_validate_json(json.dumps(authored_appraisal["life_intent"]))
     try:
         appraisal = _validate_reply_only_appraisal(value.get("appraisal_draft"))
     except ValueError as exc:
@@ -10874,8 +10882,8 @@ def _require_explicit_authored_expression_fields(
     internal construction. A newly authored provider wire is different:
     timing, visible/silent shape, and confidence must be the role's explicit
     output. Cadence is likewise explicit whenever recorded cadence is enabled.
-    ``world_claims=[]`` remains a safe wire default because it grants no fact
-    authority and cannot create a visible or external effect by omission.
+    ``world_claims=[]`` grants no declared fact-source authority. This legacy
+    default does not prove that the visible prose omitted no factual claims.
     A live turn-attention advisory additionally requires the role to state its
     own conversational posture explicitly; absent that advisory old wires stay
     byte-compatible.

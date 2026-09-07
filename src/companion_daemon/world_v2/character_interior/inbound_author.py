@@ -181,6 +181,7 @@ _APPRAISAL_COMMON_FIELDS = frozenset(
         "relationship_signal",
         "relationship_commitment",
         "interaction_act",
+        "life_intent",
     }
 )
 _APPRAISAL_EVENT_FIELDS = frozenset({"meanings", "attribution", "severity"})
@@ -1682,6 +1683,7 @@ def _merge_cognition_outputs(
     if isinstance(expression_proposal, DecisionProposal):
         merged = expression_proposal.model_copy(
             update={
+                "schema_registry_version": appraisal_proposal.schema_registry_version,
                 "evidence_refs": evidence,
                 "proposed_changes": (*state_changes, *expression_changes),
                 "appraisals": appraisal_proposal.appraisals,
@@ -1692,6 +1694,7 @@ def _merge_cognition_outputs(
         merged = DecisionProposal.model_validate(merged.model_dump(mode="python"))
     elif isinstance(expression_proposal, MinimalProposal):
         merged = DecisionProposal(
+            schema_registry_version=appraisal_proposal.schema_registry_version,
             proposal_id=expression_proposal.proposal_id,
             trigger_ref=expression_proposal.trigger_ref,
             evaluated_world_revision=expression_proposal.evaluated_world_revision,
@@ -1730,6 +1733,7 @@ def _cognition_state_changes(appraisal_proposal: DecisionProposal) -> tuple[Any,
         if change.kind
         in {
             "appraisal_transition",
+            "life_intent",
             "affect_transition",
             "relationship_signal",
             "relationship_commitment",

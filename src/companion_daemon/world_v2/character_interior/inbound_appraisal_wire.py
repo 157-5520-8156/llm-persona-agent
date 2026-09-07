@@ -23,6 +23,7 @@ from ..affect_target_bounds import (
     validate_model_authored_targets,
 )
 from ..deliberation import ModelInput
+from ..chat_life_intent_contract import LifeIntentDraft
 from ..interaction_act_identity import interaction_act_overlapping_occurrence_count
 from ..model_facing_context import compact_model_facing_context
 from ..proposal_envelope import (
@@ -224,6 +225,7 @@ class AppraisalDraftWire(FrozenModel):
     relationship_signal: RelationshipSignalWire | None = None
     relationship_commitment: RelationshipCommitmentWire | None = None
     interaction_act: InteractionActWire | None = None
+    life_intent: LifeIntentDraft | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def appraisal_fields_match_selected_lifecycle(self) -> "AppraisalDraftWire":
@@ -640,6 +642,44 @@ def _proposal_from_draft(*, raw: str, request: ModelInput) -> dict[str, object]:
 
 
 def _decision_proposal_from_draft(*, raw: str, request: ModelInput) -> DecisionProposal:
+    proposal = _base_decision_proposal_from_draft(raw=raw, request=request)
+    draft = _parse_object(raw)
+    if isinstance(draft.get("AppraisalDraft"), dict) and len(draft) == 1:
+        draft = draft["AppraisalDraft"]
+    if draft.get("life_intent") is None:
+        return proposal
+    intent = LifeIntentDraft.model_validate_json(json.dumps(draft["life_intent"]))
+    if request.trigger_message is None:
+        raise ValueError("life_intent requires a verified inbound observation")
+    source_ref, _, evidence = _trigger_binding(request)
+    payload = {
+        **intent.model_dump(mode="json"),
+        "actor_ref": _companion_actor_ref(request),
+        "source_observation_ref": request.trigger_message.observation_ref,
+    }
+    identity = hashlib.sha256(json.dumps(
+        [request.trigger_ref, payload], ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"),
+    ).encode()).hexdigest()
+    change = TypedChange(
+        change_id="change:chat-life-intent:" + identity,
+        target_id="intent:chat-life-intent:" + identity,
+        kind="life_intent", transition="plan", expected_entity_revision=0,
+        evidence_refs=(source_ref,),
+        payload=CanonicalTypedPayload.from_value(payload_schema="life_intent.v1", value=payload),
+    )
+    refs = proposal.evidence_refs
+    if evidence.ref_id not in {item.ref_id for item in refs}:
+        refs = (*refs, evidence)
+    return DecisionProposal.model_validate(proposal.model_copy(update={
+        "schema_registry_version": "world-v2-proposals.3",
+        "proposal_id": proposal.proposal_id + ":life:" + identity[:24],
+        "proposed_changes": (*proposal.proposed_changes, change),
+        "evidence_refs": refs,
+    }).model_dump())
+
+
+def _base_decision_proposal_from_draft(*, raw: str, request: ModelInput) -> DecisionProposal:
     draft = _parse_object(raw)
     # Some local instruction-tuned checkpoints copy the contract name as a
     # wrapper even when asked for one object. Accept only that single, exact

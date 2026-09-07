@@ -564,7 +564,7 @@ def _validate_audit(
         proposal.proposal_id != audit.proposal_id
         or proposal.proposal_hash != audit.proposal_hash
         or proposal.evaluated_world_revision != cursor.world_revision
-        or proposal.schema_registry_version != "world-v2-proposals.1"
+        or proposal.schema_registry_version not in {"world-v2-proposals.1", "world-v2-proposals.3"}
     ):
         raise ExpressionPlanAcceptanceError("authority_mismatch")
 

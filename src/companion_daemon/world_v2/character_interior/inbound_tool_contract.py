@@ -24,6 +24,7 @@ from ..expression_draft import (
 )
 from ..json_wire_repair import loads_one_json_object
 from ..private_turn_state import PrivateTurnState
+from ..chat_life_intent_contract import LifeIntentDraft
 from ..recall_audit import CharacterRecallRequest
 from .inbound_appraisal_wire import AppraisalDraftWire
 from ..present_prompt import (
@@ -517,6 +518,9 @@ def _expand_compact_gate_payload(value: dict[str, object]) -> dict[str, object]:
             )
     elif set(payload) != {"private_turn_state", "recall_request"}:
         raise ValueError("compact gate carrier requires the exact Recall envelope")
+    appraisal = payload.get("appraisal_draft")
+    if isinstance(appraisal, dict) and appraisal.get("life_intent") is not None:
+        LifeIntentDraft.model_validate_json(json.dumps(appraisal["life_intent"]))
     if kind == "full_turn":
         if not isinstance(payload_json, str) or not payload_json:
             payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

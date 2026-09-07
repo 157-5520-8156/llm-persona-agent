@@ -27,6 +27,7 @@ from .action_pump import (
     ActionPumpResult,
     ProviderAcceptedReconciliationGate,
 )
+from .chat_life_intent_runtime import ChatLifeIntentRuntime, CompositeActivityPlanMaterialReader
 from .activity_plan_runtime import (
     ActivityPlanCommand,
     ActivityPlanRuntime,
@@ -4076,6 +4077,7 @@ def build_sqlite_world_v2_turn_application(
             else None
         )
         runtime = WorldRuntime(
+            chat_life_intent=ChatLifeIntentRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref),
             world_id=config.world_id,
             ledger=ledger,
             projection_authority=projection_authority,
@@ -4274,9 +4276,9 @@ def build_sqlite_world_v2_turn_application(
                     ledger=ledger, batch_issuer=issuer
                 ),
                 ecology_catalog_version=config.life_ecology.catalog_version,
-                plan_material_reader=LifeDevelopmentProposalReader(
-                    ledger=ledger,
-                    content_store=life_content_store,
+                plan_material_reader=CompositeActivityPlanMaterialReader(
+                    ChatLifeIntentRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref),
+                    LifeDevelopmentProposalReader(ledger=ledger, content_store=life_content_store),
                 ),
             )
             if config.life_ecology is not None

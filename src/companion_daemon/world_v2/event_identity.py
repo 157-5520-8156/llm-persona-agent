@@ -369,6 +369,8 @@ def _life_identity_components(
             payload.get("attempt_id"),
             "technical_failure",
         )
+    if event_type == "ChatLifeIntentAcceptanceFailed":
+        return world_id, payload.get("proposal_event_ref"), payload.get("change_id"), payload.get("retry_ordinal")
     if event_type == "ContextualLifeTechnicalFailureRecorded":
         return (
             world_id,

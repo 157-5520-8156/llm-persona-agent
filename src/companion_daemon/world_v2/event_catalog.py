@@ -7,6 +7,8 @@ It deliberately does not decide behavior or reduce state.
 
 from __future__ import annotations
 
+from .chat_life_intent_contract import ChatLifeIntentFailure
+
 from dataclasses import dataclass
 from datetime import datetime
 import json
@@ -457,6 +459,7 @@ _PAYLOAD_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType(
         ),
         "InteractionFactTechnicalFailureRecorded": InteractionFactTechnicalFailurePayload,
         "ContextualLifeTechnicalFailureRecorded": (ContextualLifeTechnicalFailureRecordedPayload),
+        "ChatLifeIntentAcceptanceFailed": ChatLifeIntentFailure,
         "ContextualLifeSourceDispositionRecorded": (ContextualLifeSourceDispositionRecordedPayload),
         "InteractionFactDecisionRecorded": InteractionFactDecisionRecordedPayload,
         "FactMemoryDecisionRecorded": FactMemoryDecisionRecordedPayload,
@@ -612,6 +615,7 @@ _IDEMPOTENCY_IDENTITIES: Mapping[str, str] = MappingProxyType(
             "world_id+trigger_id+attempt_id+technical_failure"
         ),
         "ContextualLifeTechnicalFailureRecorded": ("world_id+lane+source_event_ref+retry_ordinal"),
+        "ChatLifeIntentAcceptanceFailed": "world_id+proposal_event_ref+change_id+retry_ordinal",
         "ContextualLifeSourceDispositionRecorded": ("world_id+source_event_ref+disposition"),
         "InteractionFactDecisionRecorded": ("world_id+trigger_id+fact_context_hash+decision_id"),
         "FactMemoryDecisionRecorded": ("world_id+trigger_id+fact_authority_event_ref+decision_id"),
@@ -1083,6 +1087,12 @@ _CONTRACTS: Mapping[str, EventContract] = MappingProxyType(
                 ),
                 evidence_types=("model_failure", "retry_schedule"),
                 successors=("TriggerProcessReclaimed",),
+            ),
+            _contract(
+                "ChatLifeIntentAcceptanceFailed", "chat_life_intent", "deliberation", "ChatLifeIntentFailure",
+                allowed_predecessors=("ProposalRecorded",),
+                evidence_types=("proposal_audit", "typed_change", "technical_failure"),
+                successors=("ChatLifeIntentAcceptanceFailed", "ActivityPlanned"),
             ),
             _contract(
                 "ContextualLifeTechnicalFailureRecorded",

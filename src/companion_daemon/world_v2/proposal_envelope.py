@@ -16,6 +16,7 @@ from typing import Annotated, Any, ClassVar, Literal, Self
 from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_validator
 
 from .private_turn_state import PrivateTurnState
+from .chat_life_intent_contract import LifeIntentPayload
 from .schema_core import FrozenModel, PrivacyClass
 
 
@@ -28,7 +29,7 @@ ActionLayer = Literal[
     "read_only_tool",
     "perception_tool",
 ]
-PROPOSAL_SCHEMA_REGISTRY_VERSION = "world-v2-proposals.1"
+PROPOSAL_SCHEMA_REGISTRY_VERSION = "world-v2-proposals.3"
 _HASH_PATTERN = r"^sha256:[0-9a-f]{64}$"
 _MAX_PAYLOAD_JSON_BYTES = 65_536
 _MAX_PAYLOAD_JSON_DEPTH = 32
@@ -80,6 +81,7 @@ CHANGE_TRANSITION_REGISTRY: dict[str, frozenset[str]] = {
     ),
     "resource_transition": frozenset({"adjust", "clock_adjust", "compensate"}),
     "attention_transition": frozenset({"change", "expire", "compensate"}),
+    "life_intent": frozenset({"plan"}),
     "activity_transition": frozenset({"plan", "start", "pause", "resume", "complete", "abandon"}),
     "location_transition": frozenset({"change", "compensate"}),
     "world_occurrence_transition": frozenset({"commit", "cancel", "expire"}),
@@ -225,6 +227,11 @@ PAYLOAD_CONTRACTS: dict[str, _PayloadContract] = {
         },
         {"expiry": (str, type(None)), "clock_binding": dict},
     ),
+    "life_intent": _PayloadContract({
+        "execution_scope": str, "intention": str, "start_after_seconds": int,
+        "duration_seconds": int, "importance_bp": int, "actor_ref": str,
+        "source_observation_ref": str,
+    }),
     "activity_transition": _PayloadContract(
         {"activity_id": str, "plan_ref": str, "phase": str, "participants": list, "location": str}
     ),
@@ -1374,6 +1381,7 @@ PAYLOAD_MODEL_REGISTRY: dict[str, type[FrozenModel]] = {
     "v2_goal_transition": V2GoalIntentPayload,
     "resource_transition": ResourcePayload,
     "attention_transition": AttentionPayload,
+    "life_intent": LifeIntentPayload,
     "activity_transition": ActivityPayload,
     "location_transition": LocationPayload,
     "world_occurrence_transition": WorldOccurrencePayload,
@@ -1539,7 +1547,9 @@ class ProposalEnvelope(FrozenModel):
     proposal_kind: ProposalKind
     trigger_ref: str = Field(min_length=1, max_length=_MAX_REF_LENGTH)
     evaluated_world_revision: int = Field(ge=0)
-    schema_registry_version: Literal["world-v2-proposals.1"] = PROPOSAL_SCHEMA_REGISTRY_VERSION
+    # Legacy generic writes keep .1 bytes; explicit chat life intents opt into .3.
+    # .2 belongs to the separate FactCommitProposalEnvelopeV2 grammar.
+    schema_registry_version: Literal["world-v2-proposals.1", "world-v2-proposals.3"] = "world-v2-proposals.1"
     evidence_refs: tuple[ProposalEvidenceRef, ...] = Field(default=(), max_length=128)
     proposed_changes: tuple[TypedChange, ...] = Field(default=(), max_length=64)
     action_intents: tuple[ProposalActionIntent, ...] = Field(default=(), max_length=64)
@@ -1793,6 +1803,10 @@ class DecisionProposal(ProposalEnvelope):
 
     @model_validator(mode="after")
     def summary_views_reference_their_typed_changes(self) -> Self:
+        if self.schema_registry_version == "world-v2-proposals.1" and any(
+            change.kind == "life_intent" for change in self.proposed_changes
+        ):
+            raise ValueError("life_intent requires proposal registry .3")
         kinds = {change.change_id: change.kind for change in self.proposed_changes}
         if len({summary.change_ref for summary in self.appraisals}) != len(self.appraisals):
             raise ValueError("appraisal summary change refs must be unique")

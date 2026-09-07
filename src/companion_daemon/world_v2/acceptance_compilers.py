@@ -54,7 +54,7 @@ class AcceptanceCompilerError(ValueError):
 
 
 class DomainCompilerKey(FrozenModel):
-    proposal_schema_registry: Literal["world-v2-proposals.1"]
+    proposal_schema_registry: Literal["world-v2-proposals.1", "world-v2-proposals.3"]
     change_kind: str = Field(min_length=1, max_length=64)
     transition: str = Field(min_length=1, max_length=64)
     payload_schema: str = Field(min_length=1, max_length=128)

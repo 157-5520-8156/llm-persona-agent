@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from pydantic import Field
+
+from .chat_life_intent_contract import ChatLifeIntentFailure
+
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -1071,6 +1075,7 @@ class ReducerState(FrozenModel):
     life_ecology_schedule: LifeEcologyScheduleProjection | None = None
     pending_contextual_life_sources: tuple[PendingContextualLifeSourceProjection, ...] = ()
     contextual_life_retries: tuple[ContextualLifeRetryProjection, ...] = ()
+    chat_life_intent_failures: tuple[ChatLifeIntentFailure, ...] = Field(default=(), exclude_if=lambda value: not value)
     pending_biographical_settlements: tuple[PendingBiographicalSettlementProjection, ...] = ()
     pending_external_observations: tuple[ExternalObservation, ...] = ()
     execution_receipts: tuple[ExecutionReceipt, ...] = ()
@@ -10742,6 +10747,11 @@ def _interaction_fact_technical_failure_recorded(
     return state
 
 
+def _chat_life_intent_acceptance_failed(state, event):
+    from .chat_life_intent_retry import reduce_acceptance_failure
+    return reduce_acceptance_failure(state, event)
+
+
 def _contextual_life_technical_failure_recorded(
     state: ReducerState, event: WorldEvent
 ) -> ReducerState:
@@ -12558,6 +12568,8 @@ def _activity_planned(
 ) -> ReducerState:
     logical_time = _require_life_time(state, event)
     payload = _validated_life_payload(state, event, ActivityPlannedPayload)
+    from .chat_life_intent_runtime import validate_chat_life_plan_event
+    validate_chat_life_plan_event(state=state, event=event, payload=payload)
     return state.model_copy(
         update={
             "plans": plan_activity(
@@ -15283,6 +15295,9 @@ _EVENTS = {
             _interaction_fact_technical_failure_recorded,
         ),
         EventDefinition(
+            "ChatLifeIntentAcceptanceFailed", RevisionClass.DELIBERATION, _chat_life_intent_acceptance_failed,
+        ),
+        EventDefinition(
             "ContextualLifeTechnicalFailureRecorded",
             RevisionClass.DELIBERATION,
             _contextual_life_technical_failure_recorded,
@@ -16165,6 +16180,7 @@ def make_projection(
         life_ecology_schedule=state.life_ecology_schedule,
         pending_contextual_life_sources=state.pending_contextual_life_sources,
         contextual_life_retries=state.contextual_life_retries,
+        chat_life_intent_failures=state.chat_life_intent_failures,
         pending_biographical_settlements=state.pending_biographical_settlements,
         pending_external_observations=state.pending_external_observations,
         execution_receipts=state.execution_receipts,

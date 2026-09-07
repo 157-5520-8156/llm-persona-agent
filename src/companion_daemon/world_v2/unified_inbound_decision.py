@@ -31,6 +31,7 @@ class UnifiedInboundDecisionShape:
     relationship: TypedChange | None
     relationship_commitment: TypedChange | None
     interaction_act: TypedChange | None
+    life_intent: TypedChange | None
 
 
 def inspect_unified_inbound_decision(
@@ -44,6 +45,7 @@ def inspect_unified_inbound_decision(
     relationships: list[TypedChange] = []
     relationship_commitments: list[TypedChange] = []
     interaction_acts: list[TypedChange] = []
+    life_intents: list[TypedChange] = []
     for change in proposal.proposed_changes:
         if change.kind == "expression_plan_transition" and change.transition == "accept":
             expressions.append(change)
@@ -68,9 +70,13 @@ def inspect_unified_inbound_decision(
             "revise",
         }:
             interaction_acts.append(change)
+        elif change.kind == "life_intent" and change.transition == "plan":
+            life_intents.append(change)
         else:
             raise UnifiedInboundDecisionError("change_not_reachable")
 
+    if len(life_intents) > 1:
+        raise UnifiedInboundDecisionError("life_intent_count_invalid")
     if len(expressions) > 1:
         raise UnifiedInboundDecisionError("expression_count_invalid")
     if len(appraisals) > 1:
@@ -150,6 +156,7 @@ def inspect_unified_inbound_decision(
         relationship=relationship,
         relationship_commitment=relationship_commitment,
         interaction_act=interaction_act,
+        life_intent=life_intents[0] if life_intents else None,
     )
 
 

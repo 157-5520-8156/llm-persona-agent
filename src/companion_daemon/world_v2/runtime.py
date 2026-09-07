@@ -127,6 +127,8 @@ from .memory_withdrawal_review import (
 from .proposal_audit import ProposalAuditCommit
 from .proposal_envelope import DecisionProposal, MinimalProposal, validate_proposal_envelope
 from .unified_inbound_decision import inspect_unified_inbound_decision
+from .chat_life_intent_runtime import ChatLifeIntentRuntime, chat_life_plan_id
+from .chat_life_intent_retry import acceptance_is_due
 from .response_expectation_view import pending_response_expectation_manifest
 from .schemas import (
     ClockObservation,
@@ -228,6 +230,12 @@ def _observation_ingress_payload_hash(observation: Observation) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+class _InboundSettlementTechnicalFailure(RuntimeOutcome):
+    @property
+    def work_status(self) -> str:
+        return "technical_failure"
+
+
 class WorldRuntime:
     """World v2's only application-facing runtime seam.
 
@@ -255,6 +263,7 @@ class WorldRuntime:
         appraisal_worker: AppraisalProposalWorker | None = None,
         immediate_emotion_worker: ImmediateEmotionProposalWorker | None = None,
         inbound_relationship_worker: InboundRelationshipSignalWorker | None = None,
+        chat_life_intent: ChatLifeIntentRuntime | None = None,
         relationship_commitment_worker: RelationshipCommitmentWorker | None = None,
         interaction_act_worker: InteractionActWorker | None = None,
         outcome_deliberation_turn: OutcomeDeliberationTurn | None = None,
@@ -348,6 +357,9 @@ class WorldRuntime:
         ):
             raise ValueError("inbound relationship worker must own this exact ledger")
         self._inbound_relationship_worker = inbound_relationship_worker
+        if chat_life_intent is not None and chat_life_intent.ledger is not self._ledger:
+            raise ValueError("chat life intent runtime must own this exact ledger")
+        self._chat_life_intent = chat_life_intent
         if (
             relationship_commitment_worker is not None
             and relationship_commitment_worker.ledger is not self._ledger
@@ -1653,7 +1665,21 @@ class WorldRuntime:
         shape = inspect_unified_inbound_decision(proposal)
         deferred: list[str] = []
 
-        if shape.appraisal is None:
+        appraisal_process = next((
+            item for item in projection.trigger_processes
+            if item.process_kind == "interaction_appraisal"
+            and item.source_evidence_ref == observation.observation_id
+        ), None)
+        appraisal_rejected = (
+            shape.appraisal is not None and appraisal_process is not None
+            and appraisal_process.state == "terminal"
+            and not any(item.origin.change_id == shape.appraisal.change_id for item in projection.appraisals)
+        )
+        if appraisal_rejected:
+            # This facet already ended without a mutation. Its rejection must
+            # neither be reinterpreted nor block a separately accepted intent.
+            pass
+        elif shape.appraisal is None:
             await self._finish_inline_appraisal_trigger(
                 observation=observation,
                 observation_event=observation_event,
@@ -1762,6 +1788,35 @@ class WorldRuntime:
                         deferred.append(
                             "character_interior.inbound_relationship.owned_elsewhere"
                         )
+        life_projection = await self._project_for_write()
+        if shape.life_intent is not None and acceptance_is_due(life_projection, proposal_id):
+            if self._chat_life_intent is None:
+                deferred.append("chat_life_intent.authority_unavailable")
+            else:
+                try:
+                    if self._ledger.blocks_event_loop:
+                        await asyncio.to_thread(
+                            self._chat_life_intent.accept, world_id=self._world_id,
+                            audit_cursor=audit_cursor, proposal_id=proposal_id,
+                        )
+                    else:
+                        self._chat_life_intent.accept(
+                            world_id=self._world_id, audit_cursor=audit_cursor,
+                            proposal_id=proposal_id,
+                        )
+                except (ConcurrencyConflict, ValueError) as exc:
+                    code = (
+                        "chat_life_intent.cursor_conflict" if isinstance(exc, ConcurrencyConflict)
+                        else str(getattr(exc, "code", "chat_life_intent.validation_failure"))
+                    )
+                    deferred.append(code)
+                    try:
+                        if self._ledger.blocks_event_loop:
+                            await asyncio.to_thread(self._chat_life_intent.record_failure, proposal_id=proposal_id, failure_code=code)
+                        else:
+                            self._chat_life_intent.record_failure(proposal_id=proposal_id, failure_code=code)
+                    except ConcurrencyConflict:
+                        deferred.append("chat_life_intent.failure_journal_cursor_conflict")
         return tuple(dict.fromkeys(deferred))
 
     async def _renew_inline_appraisal_claim_for_retry(
@@ -2240,8 +2295,9 @@ class WorldRuntime:
         """
 
         if (
-            self._appraisal_worker is None
-            or self._immediate_emotion_worker is None
+            (self._chat_life_intent is None and (
+                self._appraisal_worker is None or self._immediate_emotion_worker is None
+            ))
             or self._lock.locked()
         ):
             return None
@@ -2254,7 +2310,6 @@ class WorldRuntime:
         for selected in reversed(projection.proposal_audits):
             if (
                 selected.proposal_kind != "decision"
-                or selected.proposal_id in terminal_proposal_ids
                 or selected.proposal_id.startswith(
                     _HISTORICAL_QUICK_REACTION_PROPOSAL_PREFIX
                 )
@@ -2267,6 +2322,8 @@ class WorldRuntime:
                 if not isinstance(proposal, DecisionProposal):
                     continue
                 shape = inspect_unified_inbound_decision(proposal)
+                if selected.proposal_id in terminal_proposal_ids and shape.life_intent is None:
+                    continue
             except (TypeError, ValueError):
                 continue
             located_observation = await self._lookup_event_commit(
@@ -2300,21 +2357,22 @@ class WorldRuntime:
                 item.origin.change_id == shape.appraisal.change_id
                 for item in projection.appraisals
             )
-            if (
+            appraisal_rejected = (
                 shape.appraisal is not None
                 and not appraisal_accepted
                 and appraisal_process is not None
                 and appraisal_process.state == "terminal"
-            ):
-                # A terminal source without its mutation is a durable
-                # rejection/fold, not retry authority.
-                continue
+            )
+            if appraisal_rejected:
+                # Terminal rejection closes only this facet. Other explicit
+                # same-turn intentions still own their independent work journal.
+                appraisal_accepted = True
             # Affect/relationship proposals vanish from their pending
             # projections once accepted, so acceptance must be judged from
             # the settled state (components reference the appraisal change;
             # signals keep their semantic identity), never from the pending
             # proposal list.
-            affect_accepted = shape.affect is None or (
+            affect_accepted = appraisal_rejected or shape.affect is None or (
                 shape.appraisal is not None
                 and any(
                     ref.accepted_change_id == shape.appraisal.change_id
@@ -2333,7 +2391,11 @@ class WorldRuntime:
                     and signal.rationale_code == relationship_payload["rationale_code"]
                     for signal in projection.relationship_signals
                 )
-            if appraisal_accepted and affect_accepted and relationship_accepted:
+            life_accepted = shape.life_intent is None or not acceptance_is_due(projection, selected.proposal_id) or any(
+                item.plan_id == chat_life_plan_id(self._world_id, proposal)
+                for item in projection.plans
+            )
+            if appraisal_accepted and affect_accepted and relationship_accepted and life_accepted:
                 continue
             located = await self._lookup_event_commit(selected.event_ref)
             if located is None or located[0].event_type != "ProposalRecorded":
@@ -2370,7 +2432,8 @@ class WorldRuntime:
                 else f"character-interior-settlement:{selected.proposal_id}"
             )
             terminal = current_process is not None and current_process.state == "terminal"
-            return RuntimeOutcome(
+            outcome_type = _InboundSettlementTechnicalFailure if any(ref.startswith("chat_life_intent.") for ref in deferred) else RuntimeOutcome
+            return outcome_type(
                 outcome_id=f"outcome:character-interior-settlement:{selected.proposal_id}",
                 trigger_id=trigger_id,
                 observation_ref=observation.observation_id,
@@ -4368,7 +4431,7 @@ class WorldRuntime:
 
         async def settle_recovered_inbound_state(audit) -> None:
             if (
-                self._appraisal_worker is None
+                (self._appraisal_worker is None and self._chat_life_intent is None)
                 or audit.proposal_kind != "decision"
             ):
                 return

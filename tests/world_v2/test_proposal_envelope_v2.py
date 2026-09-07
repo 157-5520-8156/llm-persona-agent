@@ -361,7 +361,7 @@ def test_preflight_rejects_collision_between_model_fields_and_extras() -> None:
         validate_fact_commit_proposal_v2(hostile, world_id="world:1")
 
 
-def test_v1_contract_is_unchanged_and_v1_v2_are_mutually_rejected() -> None:
+def test_legacy_fact_contract_is_unchanged_and_generic_and_fact_v2_are_mutually_rejected() -> None:
     from companion_daemon.world_v2.proposal_envelope import (
         CanonicalTypedPayload,
         DecisionProposal,
@@ -371,7 +371,7 @@ def test_v1_contract_is_unchanged_and_v1_v2_are_mutually_rejected() -> None:
         validate_proposal_envelope,
     )
 
-    assert PROPOSAL_SCHEMA_REGISTRY_VERSION == "world-v2-proposals.1"
+    assert PROPOSAL_SCHEMA_REGISTRY_VERSION == "world-v2-proposals.3"
     assert PAYLOAD_MODEL_REGISTRY["fact_transition"] is FactPayload
     assert "fact_commit_intent.v2" not in PAYLOAD_MODEL_REGISTRY
     assert set(FactPayload.model_fields) == {
@@ -424,6 +424,8 @@ def test_v1_contract_is_unchanged_and_v1_v2_are_mutually_rejected() -> None:
         conversation_thread_changes=(),
     )
     assert validate_proposal_envelope(legal_v1) == legal_v1
+    old_without_registry = legal_v1.model_dump(exclude={"schema_registry_version"})
+    assert DecisionProposal.model_validate(old_without_registry).schema_registry_version == "world-v2-proposals.1"
     with pytest.raises((ValidationError, ValueError)):
         validate_fact_commit_proposal_v2(legal_v1, world_id="world:1")
 

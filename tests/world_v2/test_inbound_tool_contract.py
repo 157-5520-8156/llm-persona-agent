@@ -84,6 +84,8 @@ def _reply_only_stream_arguments() -> dict[str, object]:
 
 def _fill_strict_private_turn_state(payload: dict[str, object]) -> dict[str, object]:
     cloned = json.loads(json.dumps(payload))
+    if isinstance(cloned.get("appraisal_draft"), dict):
+        cloned["appraisal_draft"].setdefault("life_intent", None)
 
     def walk(value: object) -> None:
         if isinstance(value, dict):
@@ -128,6 +130,7 @@ def _strip_none_hitch_fields(value: object) -> object:
                 }
                 and item is None
             )
+            and not (key == "life_intent" and item is None)
         }
         return stripped
     if isinstance(value, list):

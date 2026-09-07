@@ -231,6 +231,9 @@ def slim_consider_instruction() -> str:
         "waiting_for 加 wait 才编译盼头；come_back 加 come_back_in 仍要成对。"
         "later 和空 messages（不回）跟 messages 同级，不是藏起来的键。"
         "口头说「我等你」不会变成 waiting_for。宿主从不替你写这些字段。"
+        "life_intent={execution_scope:self_directed,intention:future,start_after_seconds:0,duration_seconds:600,"
+        "importance_bp:0};full:appraisal_draft. Context-time plan, "
+        "no place/NPC/event/results. Prose/wants: no action. "
         "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
         "messages 是你决定发出去的气泡，一项就是一条；发几条由你定，宿主不替你决定。"
         "事实来源是硬边界：messages 陈述外部事件、地点、行为或既往经历时，"
@@ -454,6 +457,7 @@ SLIM_OPTIONAL_SPECIMEN_KEYS = (
     "photo",
     "declared_display",
     "wants",
+    "life_intent",
     "how_it_landed",
     "noticed",
     "affect",
@@ -858,6 +862,7 @@ def slim_consider_json_schema() -> dict[str, object]:
             "world_claims": {"type": "array"},
             "stuck_with_me": {"type": "string"},
             "wants": {"type": "string"},
+            "life_intent": {"type": ["object", "null"]},
             "photo": {"type": ["boolean", "string"]},
             "waiting_for": {"type": "string"},
             "wait": {},
@@ -1833,7 +1838,7 @@ def compile_slim_consider_payload(
     assessment = _slim_response_expectation_assessment(value, reason=my_state)
     if assessment is not None:
         expression["response_expectation_assessment"] = assessment
-    return {
+    compiled = {
         "appraisal_draft": _slim_appraisal_draft(
             meaning_of_this=meaning_of_this,
             my_state=my_state,
@@ -1847,6 +1852,9 @@ def compile_slim_consider_payload(
         ),
         "expression_draft": expression,
     }
+    if value.get("life_intent") is not None:
+        compiled["appraisal_draft"]["life_intent"] = value["life_intent"]
+    return compiled
 
 
 def _slim_declared_display(value: object) -> str | None:

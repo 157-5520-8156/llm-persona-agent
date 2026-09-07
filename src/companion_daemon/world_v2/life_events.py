@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from .activity_lifecycle_contract import ActivityLifecycleProposalRecordedPayload
+from .chat_life_intent_contract import ChatLifeIntentOrigin
 from .schemas import (
     BiographicalCoordinateReplacement,
     EvidenceRef,
@@ -112,6 +113,9 @@ class NpcStateChangedPayload(DomainMutationPayload):
 
 class ActivityPlannedPayload(DomainMutationPayload):
     plan: PlanStateProjection
+    chat_intent_origin: ChatLifeIntentOrigin | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def creates_planned_activity(self) -> ActivityPlannedPayload:

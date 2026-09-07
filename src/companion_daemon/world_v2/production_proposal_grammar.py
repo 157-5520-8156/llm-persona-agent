@@ -43,6 +43,8 @@ from .media_thread_acceptance_manifest import MediaDeliveryThreadAcceptanceManif
 from .media_thread_acceptance_runtime import MediaDeliveryThreadAcceptanceRuntime
 from .media_thread_proposal_compiler import MediaDeliveryThreadProposalCompiler
 
+from .chat_life_intent_contract import ChatLifeIntentOrigin
+from .chat_life_intent_runtime import derive_chat_life_plan, validate_chat_life_plan_event
 from .proposal_envelope import (
     CHANGE_TRANSITION_REGISTRY,
     DecisionProposal,
@@ -341,9 +343,19 @@ _MEDIA_DELIVERY_THREAD_UPDATE = SpecializedProposalCapability(
 )
 
 
+_LIFE_INTENT = SpecializedProposalCapability(
+    change_kind="life_intent", transition="plan",
+    compiler_ref="chat-life-intent-compiler.1", manifest_ref="chat-life-intent-origin.1",
+    reverse_verifier_ref="chat-life-intent-reverse-verifier.1",
+)
+
 _SPECIALIZED_AUTHORITY_SEAMS: Mapping[tuple[str, str, str], SpecializedAuthoritySeam] = (
     MappingProxyType(
         {
+            (_LIFE_INTENT.compiler_ref, _LIFE_INTENT.manifest_ref, _LIFE_INTENT.reverse_verifier_ref): SpecializedAuthoritySeam(
+                compiler=derive_chat_life_plan, manifest=ChatLifeIntentOrigin,
+                reverse_verifier=validate_chat_life_plan_event,
+            ),
             (
                 _EXPRESSION.compiler_ref,
                 _EXPRESSION.manifest_ref,
@@ -419,7 +431,7 @@ _EXPECTED_PRODUCTION_PROPOSAL_GRAMMARS: Mapping[
     {
         "chat_reply": ProductionProposalGrammar(
             lane_id="chat_reply",
-            capabilities=(_EXPRESSION, _APPRAISAL, _AFFECT, _RELATIONSHIP_SIGNAL),
+            capabilities=(_EXPRESSION, _APPRAISAL, _AFFECT, _RELATIONSHIP_SIGNAL, _LIFE_INTENT),
             allows_no_change_decision=False,
             allows_minimal_reply=True,
         ),
