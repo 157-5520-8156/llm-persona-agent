@@ -76,6 +76,30 @@ def test_real_provider_trial_uses_one_budget_and_isolated_debug_key(tmp_path, mo
     assert settings.world_v2_text_endpoint_enabled is False
 
 
+@pytest.mark.parametrize("self_review", [False, True])
+def test_real_life_review_profile_reports_configuration_without_enabling_it(
+    tmp_path,
+    monkeypatch,
+    self_review,
+):
+    monkeypatch.setenv("DEEPSEEK_DEBUG_API_KEY", "fixture-debug-key")
+    monkeypatch.setenv("WORLD_V2_LIFE_SOURCE_REVIEW_ENABLED", "true")
+    monkeypatch.setenv("WORLD_V2_LIFE_SELF_REVIEW_ALLOWED", str(self_review).lower())
+    cli = _cli()
+    settings = cli.experiment_settings(
+        database=tmp_path / "world.sqlite",
+        synthetic=False,
+        max_cost_cny=0.5,
+    )
+    profile = cli.life_review_profile(settings, synthetic=False)
+    assert settings.world_v2_life_self_review_allowed is self_review
+    assert profile["status"] == ("configured_self_review" if self_review else "unavailable")
+    assert profile["model"] == (settings.deepseek_model if self_review else None)
+    if not self_review:
+        assert profile["richness_coverage"] == "missing_reviewer_excludes_life_richness_comparison"
+    assert "fixture-debug-key" not in json.dumps(profile)
+
+
 @pytest.mark.asyncio
 async def test_fixture_factory_constructs_real_host_without_external_clients(tmp_path, monkeypatch):
     import companion_daemon.world_v2.longitudinal_journey as runner

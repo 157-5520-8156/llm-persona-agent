@@ -132,6 +132,29 @@ def model_identity(settings, *, synthetic: bool) -> dict:
     }
 
 
+def life_review_profile(settings, *, synthetic: bool) -> dict:
+    if synthetic:
+        from companion_daemon.world_v2.longitudinal_fixture_model import LongitudinalFixtureModel
+
+        return {
+            "status": "offline_fixture",
+            "model": LongitudinalFixtureModel.model,
+            "richness_coverage": "fixture_cannot_assess_life_richness",
+        }
+    available = (
+        settings.world_v2_life_source_review_enabled and settings.world_v2_life_self_review_allowed
+    )
+    return {
+        "status": "configured_self_review" if available else "unavailable",
+        "model": settings.deepseek_model if available else None,
+        "richness_coverage": (
+            "requires_manual_evaluation"
+            if available
+            else "missing_reviewer_excludes_life_richness_comparison"
+        ),
+    }
+
+
 async def run(options: argparse.Namespace) -> dict:
     from companion_daemon.world_v2.longitudinal_journey import (
         Journey,
@@ -197,6 +220,7 @@ async def run(options: argparse.Namespace) -> dict:
             "scenario_sha256": hashlib.sha256(scenario_bytes).hexdigest(),
             "code": code_identity(),
             "models": model_identity(configured, synthetic=synthetic),
+            "life_source_review": life_review_profile(configured, synthetic=synthetic),
             "max_cost_cny": options.max_cost_cny,
             "billing_clock": "real_utc_not_virtual",
             "context_input_verification": "unverified",
