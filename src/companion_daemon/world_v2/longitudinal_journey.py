@@ -9,6 +9,7 @@ the supplied clock. Real provider time cannot be accelerated.
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 import hashlib
@@ -241,6 +242,62 @@ def model_failures(events: list[dict]) -> list[dict]:
                 }
             )
     return failures
+
+
+def read_provider_usage_evidence(database: Path) -> dict:
+    """Snapshot the isolated primary ledger without migrating or repricing it.
+
+    A successful World ModelResult may follow an earlier failed provider call.
+    These records are independent evidence, not inferred links to those events
+    or a claim that every row represents an emitted HTTP request. The raw rows
+    remain private artifacts; only status counts enter the review summary.
+    """
+    result = {"contract": "longitudinal-provider-usage.1"}
+    scope = "world_v2_model_usage_and_reservations"
+    unavailable = {"status": "unavailable", "scope": scope, "world_event_linkage": "unverified"}
+    try:
+        connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("BEGIN")
+            tables = {
+                row[0] for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            if not {"world_v2_model_usage", "world_v2_model_reservations"} <= tables:
+                return {**result, "summary": {**unavailable, "reason": "missing_usage_tables"}}
+            usage = [dict(row) for row in connection.execute(
+                "SELECT * FROM world_v2_model_usage ORDER BY id"
+            )]
+            reservations = [dict(row) for row in connection.execute(
+                "SELECT * FROM world_v2_model_reservations ORDER BY reservation_id"
+            )]
+        finally:
+            connection.close()
+    except sqlite3.Error:
+        return {**result, "summary": {**unavailable, "reason": "usage_database_unreadable"}}
+
+    def counts(rows: list[dict], key: str) -> dict:
+        # Older rows can predate billing metadata. Missing values are unknown,
+        # never a synthetic known/not_billed or a successful provider attempt.
+        return dict(sorted(Counter(str(row.get(key) or "unavailable") for row in rows).items()))
+
+    return {
+        **result,
+        "summary": {
+            "status": "captured",
+            "scope": scope,
+            "usage_record_count": len(usage),
+            "usage_status_counts": counts(usage, "status"),
+            "billing_state_counts": counts(usage, "billing_state"),
+            "reservation_record_count": len(reservations),
+            "reservation_status_counts": counts(reservations, "status"),
+            "world_event_linkage": "unverified",
+        },
+        "usage_records": usage,
+        "reservation_records": reservations,
+    }
 
 
 def budget_was_denied(database: Path) -> bool:
@@ -651,6 +708,8 @@ async def run_journey(
             except Exception as exc:
                 stop_reason = f"technical_failure:final_evidence:{type(exc).__name__}"
 
+    provider_usage_evidence = read_provider_usage_evidence(database)
+    (output / "provider-usage.json").write_text(_json(provider_usage_evidence) + "\n")
     manifest = {
         "contract": CONTRACT,
         "scenario_id": journey.scenario_id,
@@ -669,6 +728,7 @@ async def run_journey(
             max(0, (end - final_logical_time).total_seconds()) if final_logical_time else None
         ),
         "model_failures": model_failures(evidence),
+        "provider_usage_evidence": provider_usage_evidence["summary"],
         "due_snapshot_sequence_before": due_snapshot_sequence_before,
         "due_snapshot_sequence_after": due_snapshot_sequence_after,
         "final_ledger_sequence": sequence,
@@ -706,6 +766,7 @@ async def run_journey(
                 "evidence.jsonl",
                 "model-inputs.jsonl",
                 "operator-commands.jsonl",
+                "provider-usage.json",
             )
             if (output / name).exists()
         },

@@ -413,3 +413,23 @@ unknown 没有导入；没有手工补写历史账本。
 确认它与 `.98` 候选完全一致。部分 final/表达修正测试只验证参数协商，未增加或证明
 原本被合同禁止的第二次 HTTP。之前 27.94 秒的真实 thinking probe 也不证明此版本的
 真实时延、World 接受或 QQ 交付合格；这些资格仍未完成。
+
+## 旅程报告保留原始用量尝试
+
+旅程最终报告增加一份独立的 `provider-usage.json` 私有证据：在 host 和 provider 资源
+shutdown/quiescence 之后，以同一只读 SQLite 事务采集主账模型用量表及预约原行，
+不初始化/迁移账本，不重算费用，不合并成最终 World ModelResult。manifest 绑定该文件
+hash，并把状态与 billing state 计数送入 review；详细原始错误只留在私有材料中。
+缺失/不可读表为 unavailable，真实空表才报告零条；预算拒绝、未知费用、已知账单保持
+各自状态。行数不证明 HTTP 发出，也不自动建立与 World 事件的对应关系。
+固定 scope 明确仅含 `world_v2_model_usage` 及预约，不包括独立 `usage_events` 外部
+调用账单或全局镜像；零模型行不代表零媒体费用，既有总费用 health 仍单独呈现。
+
+公共 runner 回归先复现“最终成功事件不含失败、关闭时才收到用量”丢失报告字段，再验证
+同轮 1 failed/unknown 与 1 succeeded/known 都进入原行证据及 hash 绑定摘要。配套
+只读、缺表、损坏文件、空账本与预算拒绝用例通过；全部纵向评估相关 **115 项通过**。
+
+同一个新 reader 对原 trial-05 主账另做只读核验，得到 11 行、10 known + 1 unknown，
+10 settled + 1 billing_unknown，原数据库 hash 不变；未重写原 trial 的 manifest 或报告。
+这份附加证据在 `output/private-audits/trial05-usage-evidence-akv5cit5/`。新的报告能力
+不补齐已经丢失的供应商用量尾帧，也不证明费用总额或语义质量已经合格。

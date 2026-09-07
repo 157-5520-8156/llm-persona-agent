@@ -59,6 +59,7 @@ _MANIFEST_FIELDS = (
     "safety",
     "exclusions",
     "model_failures",
+    "provider_usage_evidence",
     "profile_differences",
     "life_source_review",
     "quiet_tail_seconds",
@@ -344,6 +345,11 @@ def render_longitudinal_report(
         [
             "",
             "费用中的 settled、pending、unknown 按采集值原样列出；缺项不视作零，预测不等于实付。",
+            "World 模型失败事件与主账用量记录分开呈现；成功恢复不会抹掉原尝试。",
+            "用量状态及预约的原始记录见私有 provider-usage.json；budget_denied 不是已发出的 HTTP，"
+            "记录与 World 事件的逐次关联仍未验证。旧报告没有这份材料时为 unavailable。",
+            "此证据只含模型用量表及预约，不含独立 usage_events 外部调用账单或全局镜像；"
+            "零模型记录不等于零媒体费用，费用 health 仍由 usage 字段单列。",
             "",
             "## 证据边界",
             "",

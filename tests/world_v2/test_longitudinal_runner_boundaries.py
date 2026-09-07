@@ -604,3 +604,64 @@ async def test_final_artifacts_include_close_and_quiescence_tail_events(
     assert manifest["replay"]["world_revision"] == 2
     assert manifest["completed"] is False
     assert manifest["stop_reason"] == "completion_unverified_after_state_change"
+
+
+@pytest.mark.asyncio
+async def test_provider_attempt_evidence_includes_shutdown_bills_without_model_failure_events(
+    tmp_path, monkeypatch,
+):
+    from companion_daemon.llm import ModelCallUsage
+    from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
+
+    fixture = _RunnerFixture(monkeypatch)
+
+    class BillingHost(_BoundaryHost):
+        def __init__(self, fixture, database):
+            super().__init__(fixture, database)
+            self.store = WorldV2UsageStore(path=str(database))
+
+        async def wait_for_shutdown_quiescence(self):
+            await super().wait_for_shutdown_quiescence()
+            # The first provider attempt failed; the World only recorded the
+            # successful semantic turn. A final usage observer runs at shutdown.
+            for status, billing in (("failed", "unknown"), ("succeeded", "known")):
+                reservation = self.store.admit_provider_call(
+                    purpose="inbound_turn", actor="agent:companion", provider="deepseek",
+                    model="deepseek-v4-flash", prompt_characters=100, estimated_cny=0.25,
+                )
+                self.store.record(ModelCallUsage(
+                    purpose="inbound_turn", model="deepseek-v4-flash", provider="deepseek",
+                    status=status, billing_state=billing, latency_ms=20,
+                    error="caller_cancelled" if status == "failed" else "",
+                    budget_reservation_id=reservation,
+                    prompt_tokens=100 if billing == "known" else 0,
+                    cache_miss_tokens=100 if billing == "known" else 0,
+                    total_tokens=100 if billing == "known" else 0,
+                ))
+
+    def factory(database, clock, delivery):
+        host = BillingHost(fixture, database)
+        fixture.hosts.append(host)
+        return host
+
+    output = tmp_path / "journey"
+    manifest = await run_journey(
+        journey=_journey(), output=output, host_factory=factory, synthetic=True,
+    )
+    assert manifest["model_failures"] == []
+    assert manifest["provider_usage_evidence"]["usage_status_counts"] == {
+        "failed": 1, "succeeded": 1,
+    }
+    path = output / "provider-usage.json"
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == manifest["artifacts"][path.name]
+    captured = json.loads(path.read_text())
+    assert captured["usage_records"][0]["error"] == "caller_cancelled"
+    assert captured["summary"]["reservation_status_counts"] == {
+        "billing_unknown": 1, "settled": 1,
+    }
+    packet = json.loads((output / "review.json").read_text())
+    assert packet["run_summary"]["provider_usage_evidence"] == captured["summary"]
+    report = (output / "report.md").read_text()
+    assert '"failed": 1' in report and '"unknown": 1' in report
+    assert "成功恢复不会抹掉原尝试" in report
+    assert "caller_cancelled" not in report  # detailed private evidence stays in the artifact
