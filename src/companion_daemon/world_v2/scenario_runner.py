@@ -356,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.93"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.94"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -597,8 +597,14 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.93"
 # scenario predicates are unchanged. Request identity changes propagate to
 # model-result, acceptance and expression audit identities. Historical stored
 # events are not rewritten. See docs/audits/living-continuity-2026-09-07.md.
+# 2026-09-08: .94 follows equivalent world-stimulus schema deduplication.
+# All 120 business manifests are unchanged; only npc_world_impact.01 replay
+# identity changes, starting at its recorded request hash. Restoring only the
+# old schema function restores every old manifest field. See the independent
+# comparison in docs/audits/longitudinal-real-testing-2026-09-08.md. This does
+# not qualify real-model behavior or rewrite historical ledger events.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "92ec85bce2396318298ac53bdd5cd19b72a6ddd04e388cbef69358a1471353c3"
+    "df9dc32773b742730dfc0ab77156a04c225d9d6f5e3f163722f13d2dd76fb88a"
 )
 
 
