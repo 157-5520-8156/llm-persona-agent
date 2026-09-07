@@ -11,6 +11,9 @@ from dataclasses import dataclass
 
 from .action_pump import ActionPump
 from .activity_lifecycle_worker import ActivityLifecycleWorker
+from .chat_life_intent_contract import ChatLifeIntentFailure
+from .chat_life_intent_retry import RETRY_DELAYS_SECONDS as CHAT_LIFE_INTENT_RETRY_DELAYS
+from .chat_life_intent_runtime import ChatLifeIntentRuntime
 from .deferred_reply_runtime import DeferredReplyRuntime
 from .expression_reconsideration import expression_reconsideration_events_for_observation
 from .external_world_perception.hub import SQLiteWorldPerceptionHub
@@ -113,6 +116,7 @@ INSTALLED_PROJECTION_DUE_FIELDS = frozenset(
         _field(ClaimLease, "expires_at"),
         _field(ProactiveOpportunity, "scheduled_for"),
         _field(ProactiveTechnicalRetryState, "next_retry_at"),
+        _field(ChatLifeIntentFailure, "next_retry_at"),
         _field(LifeEcologyScheduleProjection, "next_consideration_at"),
         _field(ExpressionPlanManifestBeatRef, "not_before"),
         _field(ExpressionPlanManifestBeatRef, "expires_at"),
@@ -211,6 +215,14 @@ DELAYED_TRIGGER_OWNERS: tuple[DelayedTriggerOwner, ...] = (
         action_kinds=("proactive_message",),
         model_contract=_PROACTIVE_CONTRACT,
         retry_policy=_TECHNICAL_RETRY,
+    ),
+    DelayedTriggerOwner(
+        mechanism_id="life.chat_intent_acceptance",
+        runtime_owner=ChatLifeIntentRuntime.accept,
+        supporting_runtime_owners=(WorldRuntime.drain_background_once,),
+        public_seams=_CLOCK_SEAMS,
+        projection_due_fields=(_field(ChatLifeIntentFailure, "next_retry_at"),),
+        retry_policy=("chat-life-intent-acceptance-retry.1", CHAT_LIFE_INTENT_RETRY_DELAYS),
     ),
     DelayedTriggerOwner(
         mechanism_id="life.ecology",

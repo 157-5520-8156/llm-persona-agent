@@ -453,6 +453,24 @@ def _extract_trigger_leases(projection: object) -> tuple[DeclaredDueTarget, ...]
     return tuple(found)
 
 
+def _extract_chat_life_intent_retry(projection: object) -> tuple[DeclaredDueTarget, ...]:
+    """Wake a recorded technical retry without selecting a character action."""
+
+    accepted = {getattr(plan, "plan_id", None) for plan in _iter(getattr(projection, "plans", ()))}
+    found: list[DeclaredDueTarget] = []
+    kind = "life.chat_intent_acceptance"
+    for failure in _iter(getattr(projection, "chat_life_intent_failures", ())):
+        if getattr(failure, "terminal", True) or getattr(failure, "plan_id", None) in accepted:
+            continue
+        due = _as_datetime(getattr(failure, "next_retry_at", None))
+        if due is not None:
+            found.append(DeclaredDueTarget(
+                kind=kind, due_at=due, reason=clock_wake_reason(kind),
+                field="ChatLifeIntentFailure.next_retry_at",
+            ))
+    return tuple(found)
+
+
 def _extract_proactive_technical_retry(projection: object) -> tuple[DeclaredDueTarget, ...]:
     from .proactive_action import next_proactive_retry_due
 
@@ -643,6 +661,12 @@ _PROJECTION_EXTRACTORS: tuple[_ProjectionExtractor, ...] = (
         kinds=frozenset({"media.planning"}),
         fields=frozenset({"MediaOpportunity.expires_at"}),
         extract=_extract_media_opportunities,
+    ),
+    _ProjectionExtractor(
+        name="_extract_chat_life_intent_retry",
+        kinds=frozenset({"life.chat_intent_acceptance"}),
+        fields=frozenset({"ChatLifeIntentFailure.next_retry_at"}),
+        extract=_extract_chat_life_intent_retry,
     ),
     _ProjectionExtractor(
         name="_extract_proactive_technical_retry",
