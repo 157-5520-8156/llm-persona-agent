@@ -36,7 +36,7 @@ from .schemas import ProjectionCursor, WorldEvent
 
 
 _REVIEW_CONTRACT = "life-development-source-closure-review.1"
-_NOVEL_ORIGIN_CONTRACT = "life-development-novel-origin-review.2"
+_NOVEL_ORIGIN_CONTRACT = "life-development-novel-origin-review.3"
 _MANIFEST_BINDING_CONTRACT = "life-development-review-manifest-binding.2"
 _EXISTING_WORLD_EVIDENCE_CONTRACT = (
     "life-development-novel-origin-existing-world-evidence.1"
@@ -309,10 +309,10 @@ class LifeDevelopmentNovelOriginReview(FrozenModel):
         LifeDevelopmentObjectiveTransitionFinding,
         ...,
     ] = Field(default=(), max_length=8)
-    # Kept as an explicit empty legacy slot so committed `.1` supported reviews
-    # remain decodable. Current-premise coverage belongs exclusively to the
-    # general source reviewer in `.2`.
-    undeclared_premise_fragments: tuple[str, ...] = Field(default=(), max_length=0)
+    # Reuse the historical slot without changing supported review payloads.
+    # `.3` admits exact premise fragments for unsupported truth or character
+    # authorship: the installed general closure checks refs, not prose meaning.
+    undeclared_premise_fragments: tuple[str, ...] = Field(default=(), max_length=32)
     reason: str = Field(min_length=1, max_length=2_000)
 
     @field_validator(
@@ -334,6 +334,8 @@ class LifeDevelopmentNovelOriginReview(FrozenModel):
 
     @model_validator(mode="after")
     def decision_matches_coordinates(self) -> "LifeDevelopmentNovelOriginReview":
+        if any(not item.strip() for item in self.undeclared_premise_fragments):
+            raise ValueError("premise fragments cannot be blank")
         claim_ids = tuple(item.claim_id for item in self.unsupported_claims)
         npc_refs = tuple(item.local_ref for item in self.unsupported_provisional_npcs)
         place_refs = tuple(
@@ -361,6 +363,7 @@ class LifeDevelopmentNovelOriginReview(FrozenModel):
             self.unsupported_provisional_places,
             self.unsupported_outcome_prerequisites,
             self.unsupported_objective_transitions,
+            self.undeclared_premise_fragments,
         )
         if self.decision == "supported" and any(coordinates):
             raise ValueError("supported novel-origin review cannot carry coordinates")
@@ -636,6 +639,12 @@ def parse_life_development_novel_origin_review(
             detail[:8_000],
             violations=structured,
         ) from exc
+
+    if any(fragment not in draft.premise for fragment in review.undeclared_premise_fragments):
+        raise LifeDevelopmentSourceClosureError(
+            "unknown_novel_origin_premise_fragment",
+            "focused critic premise fragment is absent from the exact premise",
+        )
 
     novel_claims = {
         item.claim_id: item.summary
@@ -1254,9 +1263,12 @@ def _general_reviewed_surface(
 def _novel_origin_reviewed_surface(
     draft: LifeDevelopmentPossibilityDraft,
 ) -> dict[str, object]:
-    """Expose only exact origin coordinates owned by the focused critic."""
+    """Expose the whole current premise as well as exact novel coordinates."""
 
     return {
+        "authored_subject_ref": draft.authored_subject_ref,
+        "premise": draft.premise,
+        "premise_claim_refs": list(draft.premise_claim_refs),
         "claim_declarations": [
             item.model_dump(mode="json") for item in draft.claim_declarations
         ],
@@ -1614,9 +1626,23 @@ def life_development_novel_origin_messages(
         "user_channel_completion=none is a missing Action receipt, not proof "
         "that the prose is innocent: if that outcome text already states the "
         "send, his receipt, or his reply as a completed fact, mark it. "
-        "Current premise and visual "
-        "declaration coverage and typed location belong to the general reviewer, not "
-        "this lane. Return only parser-verifiable "
+        "Inspect the COMPLETE premise independently of its claim declarations: "
+        "declarations may omit assertions made only in the prose. The installed "
+        "general closure checks source-ref existence; it does not establish premise "
+        "meaning or the World Author's permission. A premise may create an external "
+        "opportunity, but cannot invent prior/current character activity, memory or "
+        "relationships, nor author her present motives, emotions, attention or "
+        "reaction. A character_core preference or habit does not prove current "
+        "presence, completed experience or reaction. Exact source-bound historical "
+        "character material may be cited as existing context, never upgraded to a "
+        "new reaction to this proposal. Even declaring invented interior state as "
+        "novel does not grant character authorship. Put each unsupported premise "
+        "assertion in undeclared_premise_fragments as a verbatim substring of "
+        "premise; explain the missing truth or authorship authority in reason. "
+        "Do not reject a neutral environmental opportunity merely because it could "
+        "evoke feelings: the Character Model decides any response later. Visual "
+        "declaration coverage and typed location remain outside this focused lane. "
+        "Return only parser-verifiable "
         "coordinates: each unsupported novel claim uses its exact claim_id and "
         "verbatim fragments from that claim summary; each provisional NPC or place uses its "
         "exact local_ref and verbatim fragments from its summary; each objective "
@@ -1668,8 +1694,13 @@ def life_development_novel_origin_messages(
                     "completed_user_channel_act_message_or_media_delivered_to_him"
                 ),
             },
-            "current_premise_coverage": "delegated_to_general_source_reviewer",
-            "character_behavior": "out_of_scope",
+            "current_premise_coverage": {
+                "surface": "complete_premise_independent_of_claim_declarations",
+                "truth": "each_current_or_prior_assertion_needs_matching_authority",
+                "character_interior": "cannot_author_new_state_or_reaction",
+                "coordinate": "undeclared_premise_fragments_verbatim_from_premise",
+            },
+            "character_behavior": "choice_and_evaluation_out_of_scope",
         },
         "parser_coordinate_catalog": _novel_origin_coordinate_catalog(draft),
         "output_contract": _review_output_contract(
@@ -1719,8 +1750,11 @@ def life_development_novel_origin_correction_message(
                     "and pinned authority. Preserve the focused truth-origin boundary, "
                     "use only exact parser-verifiable coordinates from the supplied "
                     "catalogue, and do not judge or change the story. Branch-internal "
-                    "candidate actions, dialogue, feelings, or responses are not "
-                    "imported prerequisites."
+                    "candidate actions, dialogue, feelings, or responses in outcome "
+                    "text are not imported prerequisites. The current premise is "
+                    "different: it cannot invent past activity or author the "
+                    "character's present reaction. Copy premise findings exactly "
+                    "from premise into undeclared_premise_fragments."
                 ),
             },
             ensure_ascii=False,
@@ -1735,6 +1769,10 @@ def _novel_origin_coordinate_catalog(
     """Expose exact focused-review coordinates without assigning a verdict."""
 
     return {
+        "undeclared_premise_fragments": {
+            "prose_path": "premise",
+            "authority": "unsupported_truth_or_character_authorship",
+        },
         "novel_claim_ids": [
             item.claim_id
             for item in draft.claim_declarations
@@ -1765,7 +1803,7 @@ def _novel_origin_coordinate_catalog(
         ],
         "fragment_rule": (
             "copy_verbatim_substrings_from_the_matching_claim_npc_place_transition_"
-            "or_outcome_path"
+            "or_outcome_path_or_premise"
         ),
         "claim_violation_kinds": [
             "retroactive_relationship_or_shared_history",

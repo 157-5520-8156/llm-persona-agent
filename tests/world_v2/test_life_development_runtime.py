@@ -6861,3 +6861,169 @@ async def test_character_programming_error_also_propagates() -> None:
     assert len(ledger.project().model_result_audits) == 3
     assert ledger.project().plans == ()
     assert ledger.project().world_occurrences == ()
+
+
+def test_focused_review_transports_complete_premise_and_binds_its_identity() -> None:
+    """The existing paid critic must see prose omitted from claim summaries."""
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    manifest = _manifest(wake, pinned_cursor=_projection_cursor(ledger))
+    value = _novel_book_exchange_draft(wake=wake)
+    value["premise"] += (
+        " She has been writing in her notebook lately, and the idea of reading "
+        "aloud in front of strangers both stirs and frightens her."
+    )
+    draft = parse_world_author_draft(
+        raw=json.dumps(value, ensure_ascii=False), manifest=manifest, logical_time=NOW
+    )
+    messages = life_development_novel_origin_messages(
+        context={}, manifest=manifest, draft=draft
+    )
+    request = json.loads(messages[-1]["content"])
+    assert request["reviewed_surface"]["premise"] == value["premise"]
+    assert request["reviewed_surface"]["premise_claim_refs"] == value["premise_claim_refs"]
+    assert request["reviewed_surface"]["authored_subject_ref"] == OWNER
+    changed = draft.model_copy(update={"premise": "街角出现一个旧书交换摊。"})
+    changed_messages = life_development_novel_origin_messages(
+        context={}, manifest=manifest, draft=changed
+    )
+    assert life_development_review_packet_identity(messages) != (
+        life_development_review_packet_identity(changed_messages)
+    )
+
+
+@pytest.mark.asyncio
+async def test_focused_premise_rejection_stops_before_character_and_is_reused() -> None:
+    """A supplied semantic verdict rejects; the test does not simulate model judgement."""
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    value = _novel_book_exchange_draft(wake=wake)
+    fragment = "She has been writing in her notebook lately"
+    value["premise"] += f" {fragment}; the idea both stirs and frightens her."
+    author = _SequenceModel(
+        model="test-world-author", outputs=(json.dumps(value, ensure_ascii=False),)
+    )
+    critic = _SequenceModel(
+        model="test-novel-critic",
+        outputs=(
+            _novel_origin_review(
+                decision="unsupported",
+                undeclared_premise_fragments=(fragment, "both stirs and frightens her"),
+                reason="Premise imports unsourced past activity and authors her reaction.",
+            ),
+        ) * 2,
+    )
+    character = _SequenceModel(model="character", outputs=())
+    runtime, _store = _runtime(
+        ledger=ledger,
+        wake=wake,
+        world_author=author,
+        character_interior=character,
+        novel_origin_critic=critic,
+    )
+    for _ in range(2):
+        result = await runtime.advance_once(
+            wake_event_ref=wake.event_id,
+            trace_id="trace:premise-authority",
+            correlation_id="correlation:premise-authority",
+        )
+        assert result.status == "technical_failure"
+        assert result.reason_code == "life_development.source_closure_rejected"
+    assert author.calls == critic.calls == 1
+    assert character.consider_calls == character.calls == 0
+    assert not ledger.project().plans
+    assert not ledger.project().world_occurrences
+
+
+@pytest.mark.parametrize(
+    "fragment",
+    ["她现在非常紧张", "她在摊位前翻到一本有前任主人批注的旧诗集。"],
+)
+def test_focused_premise_finding_must_copy_premise_not_outcome(fragment: str) -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    draft = parse_world_author_draft(
+        raw=json.dumps(_novel_book_exchange_draft(wake=wake), ensure_ascii=False),
+        manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        logical_time=NOW,
+    )
+    with pytest.raises(
+        LifeDevelopmentSourceClosureError,
+        match="unknown_novel_origin_premise_fragment",
+    ):
+        parse_life_development_novel_origin_review(
+            raw=_novel_origin_review(
+                decision="unsupported", undeclared_premise_fragments=(fragment,)
+            ),
+            draft=draft,
+        )
+
+
+@pytest.mark.asyncio
+async def test_bad_premise_coordinate_gets_only_existing_wire_correction() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    value = _novel_book_exchange_draft(wake=wake)
+    fragment = "She has been writing in her notebook lately"
+    value["premise"] += f" {fragment}."
+    author = _SequenceModel(
+        model="test-world-author", outputs=(json.dumps(value, ensure_ascii=False),)
+    )
+    bad_review = _novel_origin_review(
+        decision="unsupported", undeclared_premise_fragments=("absent from premise",)
+    )
+    critic = _SequenceModel(model="test-novel-critic", outputs=(bad_review,) * 2)
+    character = _SequenceModel(model="character", outputs=())
+    runtime, _store = _runtime(
+        ledger=ledger,
+        wake=wake,
+        world_author=author,
+        character_interior=character,
+        novel_origin_critic=critic,
+    )
+    result = await runtime.advance_once(
+        wake_event_ref=wake.event_id,
+        trace_id="trace:bad-premise-coordinate",
+        correlation_id="correlation:bad-premise-coordinate",
+    )
+    assert result.status == "technical_failure"
+    assert result.reason_code == "life_development.novel_origin_critic_invalid_contract"
+    assert critic.calls == 2
+    assert author.calls == 1
+    assert character.consider_calls == character.calls == 0
+    assert critic.messages[1][:-2] == critic.messages[0]
+    correction = json.loads(critic.messages[1][-1]["content"])
+    assert correction["validation_failure"]["code"] == (
+        "unknown_novel_origin_premise_fragment"
+    )
+    assert correction["parser_coordinate_catalog"]["undeclared_premise_fragments"] == {
+        "prose_path": "premise",
+        "authority": "unsupported_truth_or_character_authorship",
+    }
+    assert not ledger.project().plans
+    assert not ledger.project().world_occurrences
+
+
+def test_existing_supported_origin_review_retains_its_canonical_payload() -> None:
+    """Activating the old empty slot must not change accepted review hashes."""
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    draft = parse_world_author_draft(
+        raw=json.dumps(_novel_book_exchange_draft(wake=wake), ensure_ascii=False),
+        manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        logical_time=NOW,
+    )
+    old_payload = {
+        "decision": "supported",
+        "unsupported_claims": [],
+        "unsupported_provisional_npcs": [],
+        "unsupported_provisional_places": [],
+        "unsupported_outcome_prerequisites": [],
+        "unsupported_objective_transitions": [],
+        "undeclared_premise_fragments": [],
+        "reason": "Novel origin and imported outcome prerequisites are closed.",
+    }
+    parsed = parse_life_development_novel_origin_review(
+        raw=json.dumps(old_payload), draft=draft
+    )
+    assert parsed.model_dump(mode="json") == old_payload
