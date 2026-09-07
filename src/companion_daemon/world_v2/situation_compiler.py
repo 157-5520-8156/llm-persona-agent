@@ -137,7 +137,7 @@ _VIEWER_POLICY_DIGEST = _digest(_VIEWER_POLICY)
 
 
 class SituationPolicy(FrozenModel):
-    situation_policy_version: Literal["situation-policy.16.0"] = "situation-policy.16.0"
+    situation_policy_version: Literal["situation-policy.16.1"] = "situation-policy.16.1"
     time_segment_catalog_digest: str = Field(min_length=64, max_length=64)
     resource_pressure_policy_digest: str = Field(min_length=64, max_length=64)
     privacy_policy_digest: str = Field(min_length=64, max_length=64)
@@ -155,7 +155,7 @@ def default_situation_policy() -> SituationPolicy:
     # model_construct avoids recursive validation while still returning the
     # exact frozen installed artifact.
     return SituationPolicy.model_construct(
-        situation_policy_version="situation-policy.16.0",
+        situation_policy_version="situation-policy.16.1",
         time_segment_catalog_digest=_digest(_TIME_SEGMENT_CATALOG),
         resource_pressure_policy_digest=_digest(_RESOURCE_PRESSURE_CATALOG),
         privacy_policy_digest=_digest(_PRIVACY_POLICY),
@@ -605,6 +605,8 @@ class SituationAuthoritySnapshot(FrozenModel):
             owner = item.head.owner_actor_ref
             if origin is None or owner is None or owner == "legacy:unknown-owner":
                 raise ValueError("Situation Plan lacks current owner authority")
+            if self.logical_time is None or origin.accepted_at > self.logical_time:
+                raise ValueError("Plan authority is ahead of authoritative logical time")
             if item.actor_ref != owner:
                 raise ValueError("Plan wrapper does not bind its authoritative owner")
             if item.source.event_ref != origin.accepted_event_ref:
@@ -1218,11 +1220,9 @@ class SituationCompiler:
         ]
         active.sort(key=lambda item: (-item.head.importance_bp, item.head.plan_id))
         activities: list[ActivitySlice] = []
-        participants: set[str] = set()
         for item in active:
             head = item.head
             canonical_participants = tuple(sorted(set(head.participant_refs)))
-            participants.update(canonical_participants)
             activities.append(
                 ActivitySlice(
                     plan_id=head.plan_id,
@@ -1256,21 +1256,42 @@ class SituationCompiler:
                     semantic_fingerprint=item.projection_hash,
                 )
             )
-        if not active:
-            social = SocialEnvironmentSlice(
-                availability="unavailable", reason="no_authority"
-            )
-            relation = PlanRelationSlice(availability="unavailable", reason="no_authority")
-        else:
-            strictest_privacy = max(
-                (item.head.privacy_class for item in active), key=_PRIVACY_RANK.__getitem__
-            )
+        # A scheduled or paused activity keeps its participants in the Plan
+        # slice, but cannot establish who is with the actor right now.  Only
+        # an accepted, ongoing activity can supply that current authority;
+        # its scheduled end is not a substitute for an actual end transition.
+        current_company = [
+            item
+            for item in active
+            if item.head.status == "active"
+            and item.head.authority_origin is not None
+            and snapshot.logical_time is not None
+            and item.head.authority_origin.accepted_at <= snapshot.logical_time
+            and any(ref != snapshot.actor_ref for ref in item.head.participant_refs)
+        ]
+        social = SocialEnvironmentSlice(availability="unavailable", reason="no_authority")
+        if current_company:
             social = SocialEnvironmentSlice(
                 availability="available",
-                relation="with_others" if participants else "alone",
-                participant_refs=tuple(sorted(participants)),
-                privacy_class=strictest_privacy,
+                relation="with_others",
+                participant_refs=tuple(
+                    sorted(
+                        {
+                            ref
+                            for item in current_company
+                            for ref in item.head.participant_refs
+                            if ref != snapshot.actor_ref
+                        }
+                    )
+                ),
+                privacy_class=max(
+                    (item.head.privacy_class for item in current_company),
+                    key=_PRIVACY_RANK.__getitem__,
+                ),
             )
+        if not active:
+            relation = PlanRelationSlice(availability="unavailable", reason="no_authority")
+        else:
             primary = active[0].head
             if primary.status == "active":
                 relation_value = "active"
