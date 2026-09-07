@@ -1564,6 +1564,7 @@ class DeepSeekChatModel:
                     provider=self.provider,
                     latency_ms=max(0, int((monotonic() - started) * 1000)),
                     error="provider_timeout" if provider_timeout else "caller_cancelled",
+                    **_model_usage_token_counts(usage),
                     world_id=str(call_meta.get("world_id") or ""),
                     turn_id=str(call_meta.get("turn_id") or ""),
                     action_id=str(call_meta.get("action_id") or ""),
@@ -1572,7 +1573,7 @@ class DeepSeekChatModel:
                     budget_reservation_id=str(call_meta.get("budget_reservation_id") or ""),
                     thinking_enabled=self.thinking_enabled,
                     reasoning_effort=(self.reasoning_effort if self.thinking_enabled else ""),
-                    billing_state="unknown",
+                    billing_state="known" if _provider_usage_complete(usage) else "unknown",
                 )
             )
             raise
@@ -1602,6 +1603,7 @@ class DeepSeekChatModel:
                     error=_redact_provider_secrets(
                         f"stream_error:{type(exc).__name__}:{exc}"
                     )[:_USAGE_ERROR_LIMIT],
+                    **_model_usage_token_counts(usage),
                     world_id=str(call_meta.get("world_id") or ""),
                     turn_id=str(call_meta.get("turn_id") or ""),
                     action_id=str(call_meta.get("action_id") or ""),
@@ -1610,7 +1612,7 @@ class DeepSeekChatModel:
                     budget_reservation_id=str(call_meta.get("budget_reservation_id") or ""),
                     thinking_enabled=self.thinking_enabled,
                     reasoning_effort=(self.reasoning_effort if self.thinking_enabled else ""),
-                    billing_state="unknown",
+                    billing_state="known" if _provider_usage_complete(usage) else "unknown",
                 )
             )
             raise
@@ -1620,12 +1622,7 @@ class DeepSeekChatModel:
             self.circuit_breaker.record_success()
         details = usage.get("completion_tokens_details")
         details = details if isinstance(details, dict) else {}
-        usage_is_complete = all(
-            isinstance(usage.get(key), int)
-            and not isinstance(usage.get(key), bool)
-            and int(usage[key]) >= 0
-            for key in ("prompt_tokens", "completion_tokens")
-        )
+        usage_is_complete = _provider_usage_complete(usage)
         self._report_usage(
             ModelCallUsage(
                 purpose=purpose,
@@ -1633,12 +1630,7 @@ class DeepSeekChatModel:
                 status="succeeded",
                 provider=self.provider,
                 latency_ms=max(0, int((monotonic() - started) * 1000)),
-                prompt_tokens=_usage_int(usage, "prompt_tokens"),
-                completion_tokens=_usage_int(usage, "completion_tokens"),
-                reasoning_tokens=_usage_int(details, "reasoning_tokens"),
-                cache_hit_tokens=_usage_int(usage, "prompt_cache_hit_tokens"),
-                cache_miss_tokens=_usage_int(usage, "prompt_cache_miss_tokens"),
-                total_tokens=_usage_int(usage, "total_tokens"),
+                **_model_usage_token_counts(usage),
                 world_id=str(call_meta.get("world_id") or ""),
                 turn_id=str(call_meta.get("turn_id") or ""),
                 action_id=str(call_meta.get("action_id") or ""),
@@ -1686,6 +1678,7 @@ class DeepSeekChatModel:
         if reservation_id:
             call_meta = {**call_meta, "budget_reservation_id": reservation_id}
         capacity_token: str | None = None
+        usage: dict[str, object] = {}
         try:
             if self.capacity_gate is not None:
                 capacity_token = self.capacity_gate.acquire()
@@ -1719,6 +1712,9 @@ class DeepSeekChatModel:
                 mark_model_request_completed(request_span)
             _raise_for_provider_status(response)
             payload = response.json()
+            payload_usage = payload.get("usage") if isinstance(payload, dict) else None
+            if isinstance(payload_usage, dict):
+                usage = payload_usage
             choices = payload.get("choices") if isinstance(payload, dict) else None
             if not isinstance(choices, list) or not choices:
                 raise ValueError("model response choices must be a non-empty list")
@@ -1755,6 +1751,7 @@ class DeepSeekChatModel:
                     provider=self.provider,
                     latency_ms=max(0, int((monotonic() - started) * 1000)),
                     error="provider_timeout" if provider_timeout else "caller_cancelled",
+                    **_model_usage_token_counts(usage),
                     world_id=str(call_meta.get("world_id") or ""),
                     turn_id=str(call_meta.get("turn_id") or ""),
                     action_id=str(call_meta.get("action_id") or ""),
@@ -1763,7 +1760,7 @@ class DeepSeekChatModel:
                     budget_reservation_id=str(call_meta.get("budget_reservation_id") or ""),
                     thinking_enabled=self.thinking_enabled,
                     reasoning_effort=(self.reasoning_effort if self.thinking_enabled else ""),
-                    billing_state="unknown",
+                    billing_state="known" if _provider_usage_complete(usage) else "unknown",
                 )
             )
             raise
@@ -1793,16 +1790,16 @@ class DeepSeekChatModel:
                 error = f"provider_rejection:{exc}"
             else:
                 error = f"unexpected_error:{exc}"
-            billing_state = (
-                "not_billed"
-                if isinstance(exc, ModelCircuitOpenError)
-                or (
-                    isinstance(exc, httpx.HTTPStatusError)
-                    and exc.response.status_code not in {408, 429}
-                    and exc.response.status_code < 500
-                )
-                else "unknown"
-            )
+            if _provider_usage_complete(usage):
+                billing_state = "known"
+            elif isinstance(exc, ModelCircuitOpenError) or (
+                isinstance(exc, httpx.HTTPStatusError)
+                and exc.response.status_code not in {408, 429}
+                and exc.response.status_code < 500
+            ):
+                billing_state = "not_billed"
+            else:
+                billing_state = "unknown"
             self._report_usage(
                 ModelCallUsage(
                     purpose=purpose,
@@ -1811,6 +1808,7 @@ class DeepSeekChatModel:
                     provider=self.provider,
                     latency_ms=max(0, int((monotonic() - started) * 1000)),
                     error=_redact_provider_secrets(error)[:_USAGE_ERROR_LIMIT],
+                    **_model_usage_token_counts(usage),
                     world_id=str(call_meta.get("world_id") or ""),
                     turn_id=str(call_meta.get("turn_id") or ""),
                     action_id=str(call_meta.get("action_id") or ""),
@@ -1827,8 +1825,6 @@ class DeepSeekChatModel:
             self.capacity_gate.release(capacity_token)
         if self.circuit_breaker is not None:
             self.circuit_breaker.record_success()
-        usage = payload.get("usage")
-        usage = usage if isinstance(usage, dict) else {}
         details = usage.get("completion_tokens_details")
         details = details if isinstance(details, dict) else {}
         self._report_usage(
@@ -1838,12 +1834,7 @@ class DeepSeekChatModel:
                 status="succeeded",
                 provider=self.provider,
                 latency_ms=max(0, int((monotonic() - started) * 1000)),
-                prompt_tokens=_usage_int(usage, "prompt_tokens"),
-                completion_tokens=_usage_int(usage, "completion_tokens"),
-                reasoning_tokens=_usage_int(details, "reasoning_tokens"),
-                cache_hit_tokens=_usage_int(usage, "prompt_cache_hit_tokens"),
-                cache_miss_tokens=_usage_int(usage, "prompt_cache_miss_tokens"),
-                total_tokens=_usage_int(usage, "total_tokens"),
+                **_model_usage_token_counts(usage),
                 world_id=str(call_meta.get("world_id") or ""),
                 turn_id=str(call_meta.get("turn_id") or ""),
                 action_id=str(call_meta.get("action_id") or ""),
@@ -1852,7 +1843,7 @@ class DeepSeekChatModel:
                 budget_reservation_id=str(call_meta.get("budget_reservation_id") or ""),
                 thinking_enabled=self.thinking_enabled,
                 reasoning_effort=(self.reasoning_effort if self.thinking_enabled else ""),
-                billing_state="known",
+                billing_state="known" if _provider_usage_complete(usage) else "unknown",
             )
         )
         if include_usage:
@@ -2244,6 +2235,32 @@ class FailoverChatModel:
             close = getattr(model, "aclose", None)
             if callable(close):
                 await close()
+
+
+def _provider_usage_complete(usage: dict[str, object]) -> bool:
+    """A successful response alone is not evidence of a known provider charge."""
+
+    return all(
+        isinstance(usage.get(key), int)
+        and not isinstance(usage.get(key), bool)
+        and int(usage[key]) >= 0
+        for key in ("prompt_tokens", "completion_tokens")
+    )
+
+
+def _model_usage_token_counts(usage: dict[str, object]) -> dict[str, int]:
+    """Keep reported billing evidence even if response validation later fails."""
+
+    details = usage.get("completion_tokens_details")
+    details = details if isinstance(details, dict) else {}
+    return {
+        "prompt_tokens": _usage_int(usage, "prompt_tokens"),
+        "completion_tokens": _usage_int(usage, "completion_tokens"),
+        "reasoning_tokens": _usage_int(details, "reasoning_tokens"),
+        "cache_hit_tokens": _usage_int(usage, "prompt_cache_hit_tokens"),
+        "cache_miss_tokens": _usage_int(usage, "prompt_cache_miss_tokens"),
+        "total_tokens": _usage_int(usage, "total_tokens"),
+    }
 
 
 def _usage_int(source: dict[str, object], key: str) -> int:
