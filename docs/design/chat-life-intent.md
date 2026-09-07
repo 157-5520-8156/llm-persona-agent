@@ -70,8 +70,21 @@ InnerTurn、snapshot 与选择时间。生产接受与 reducer 重放使用同�
 CAS/重启、表达重新生成的 effect-once、原选择时间和启动后的可读来源与最终交付。
 这些证明机械链条，不能证明角色会自然选择该能力或穷尽正文未声明的事实。
 
-活动完成仅证明生命周期结束，不证明摄影内容、遇到的人或任何其他结果；本实现不创建
-WorldOccurrence 或 Experience。完成后结果生成和可读的完成来源仍需独立能力闭合。
+已完成的聊天自主活动现在通过 `recently_ended_activities` 提供最近最多 3 条可读材料，
+每条保留原先接受的意图（最多 480 字符）与实际 `ActivityCompleted` 结束来源。
+读者校验同一角色、隐私、当前 cursor 和原计划来源；仅精确的结束事件可在 `past_world`
+引用，原 ActivityPlanned、意图正文或哈希不因此成为过去事实权限。planned / paused
+不能冒充完成；这项视图不进入 World Author 的私有意图材料，也不进入经历摘要或长期 Recall。
+
+`completion_scope=activity_lifecycle_ended_not_intention_fulfilled` 明确表示生命周期结束，
+不证明目标实现、摄影内容、遇到的人或任何其他结果。本实现不创建 WorldOccurrence 或
+Experience；结果生成仍需要独立、来源闭合的能力。来源范围校验不能检测任意正文把意图
+改写成成果的语义漏洞，也不能证明模型没有漏声明事实。
+
+已验证的本地 HTTP 五分钟场景包含计划接受、启动、结束、重启和下一轮回答：最终
+Proposal 仅引用该轮 Observation 与精确 ActivityCompleted，随后产生 ActionAuthorized。
+第二条本地捕获回执为 `provider_accepted`、`is_terminal=false`，不能声称终端交付。
+场景及冷启动重放通过，但本次完成来源能力没有真实模型或真实 QQ 验收。
 
 当前保留一个实际 HTTP 红测：两次 CAS 后 150 秒才接受的计划仍保持原选择时刻的
 开窗，接受成功后需要可靠的“新计划”生活机会。现有追加
