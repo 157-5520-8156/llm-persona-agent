@@ -2304,15 +2304,9 @@ class QQC2CHost:
         heartbeat_life_wake: tuple[str, str, str] | None = None
         # Import after composition: the registry itself names this host's
         # public seams. Use its actual owner, not another scheduler kind list.
-        from .delayed_trigger_owner_registry import DELAYED_TRIGGER_OWNERS
-        from .life_ecology_runtime import LifeEcologyRuntime
+        from .delayed_trigger_owner_registry import life_ecology_clock_wake_kinds
 
-        life_wake_kinds = {
-            owner.mechanism_id
-            for owner in DELAYED_TRIGGER_OWNERS
-            if owner.runtime_owner is LifeEcologyRuntime.advance_once
-            and owner.trigger_mode == "clock_due"
-        }
+        life_wake_kinds = life_ecology_clock_wake_kinds()
 
         def remember_priority_actions(result: object) -> bool:
             candidates: list[str] = []

@@ -21,6 +21,7 @@ from .present_prompt import (
     declared_display_usage_specimen,
     later_omission_specimen,
     later_usage_specimen,
+    life_intent_usage_specimen,
     matters_bp_usage_specimen,
     photo_prose_only_specimen,
     photo_usage_specimen,
@@ -104,6 +105,11 @@ def _prove_proactive_affect() -> None:
 
 
 OPTIONAL_FIELD_SPECS: tuple[OptionalFieldSpec, ...] = (
+    OptionalFieldSpec(
+        "life_intent",
+        lambda: _require_non_null(life_intent_usage_specimen, "life_intent"),
+        notes="future self-directed choice; not an accepted event or result",
+    ),
     OptionalFieldSpec(
         "we_are",
         lambda: _require_non_null(relationship_commitment_usage_specimen, "we_are"),

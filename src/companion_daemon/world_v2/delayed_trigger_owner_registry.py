@@ -155,6 +155,16 @@ def _installed_contract(purpose: str) -> tuple[str, str]:
     return purpose, matches[0].payload_contract
 
 
+def life_ecology_clock_wake_kinds() -> frozenset[str]:
+    """Expose registered clock ownership without importing a domain into QQ."""
+    return frozenset(
+        owner.mechanism_id
+        for owner in DELAYED_TRIGGER_OWNERS
+        if owner.runtime_owner is LifeEcologyRuntime.advance_once
+        and owner.trigger_mode == "clock_due"
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class DelayedTriggerOwner:
     mechanism_id: str

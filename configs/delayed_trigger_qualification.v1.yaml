@@ -197,6 +197,23 @@ mechanisms:
     retry_policy: {policy_id: technical-retry-10-30-120.1, seconds: [600, 1800, 7200]}
     activation_note: Technical failure is never represented as character silence.
 
+  - mechanism_id: life.chat_intent_acceptance
+    purpose: Resume the exact audited chat life intent after acceptance CAS failure
+    release_status: limited
+    upstream_authority: [original role Proposal audit, exact life_intent TypedChange, persisted acceptance failure]
+    due_identity: {coordinates: [world_id, proposal_event_ref, change_id, retry_ordinal], logical_deadline: next_retry_at, merge_dedup_key: chat_life_intent_acceptance_attempt}
+    controlled_injection: {public_seams: [QQC2CHost.tick, QQC2CHost.drain], upstream_material: [real audited role intent, acceptance CAS failure, logical Clock advance]}
+    expected_path: [declared due discovery, original proposal recovery, exact authority validation, Plan commit or technical terminal]
+    legal_terminals: [plan accepted, already accepted effect joined, authority invalid, cursor retries exhausted]
+    visible_effect: none
+    observability: [proposal and change hashes, retry ordinal, technical reason, Plan origin, ledger refs]
+    fault_matrix: [CAS conflict, restart, repeated expression audit, authority mismatch, late acceptance, sibling facet rejection]
+    vertical_lanes: []
+    closure_mechanisms: [life-npc-outcome-continuity]
+    projection_due_fields: [ChatLifeIntentFailure.next_retry_at]
+    retry_policy: {policy_id: chat-life-intent-acceptance-retry.1, seconds: [30, 120]}
+    activation_note: Provider-free acceptance recovery only; it does not itself begin or complete an activity, establish results, or qualify real character behavior.
+
   - mechanism_id: life.ecology
     purpose: Deterministic event-driven or idle-heartbeat Life Ecology wake orchestration
     release_status: active

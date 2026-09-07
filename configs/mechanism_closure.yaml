@@ -207,7 +207,7 @@ mechanisms:
       - tests/world_v2/test_affect_module.py::test_resolve_is_explicit_sourced_and_terminal
 
   - id: life-npc-outcome-continuity
-    delayed_trigger_ids: [life.ecology, npc.ecology, life.activity_occurrence, life.activity_lifecycle, life.aftermath_outcome, life.aftermath_memory, life.development]
+    delayed_trigger_ids: [life.ecology, npc.ecology, life.activity_occurrence, life.activity_lifecycle, life.aftermath_outcome, life.aftermath_memory, life.development, life.chat_intent_acceptance]
     phase: 2
     status: closed
     runtime_activation: default

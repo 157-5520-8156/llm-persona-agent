@@ -347,7 +347,7 @@ def _slim_request(*, source_event, evaluated_world_revision: int) -> ModelInput:
 def test_slim_schema_still_fits_g4_with_commitment_triplet() -> None:
     required, total, depth = json_schema_g4_metrics(slim_consider_json_schema())
     assert required <= 3
-    assert total <= 26  # Includes fact declarations; actual compact tool remains unchanged.
+    assert total <= 27  # Includes fact declarations and life_intent; compact tool is unchanged.
     assert depth <= 2
     properties = slim_consider_json_schema()["properties"]
     assert "relationship_signal" not in properties

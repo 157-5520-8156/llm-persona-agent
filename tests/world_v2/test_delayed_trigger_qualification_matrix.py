@@ -649,4 +649,4 @@ def test_repository_cli_verifies_static_declarations_without_claiming_host_quali
     )
 
     assert completed.returncode == 0, completed.stderr
-    assert completed.stdout.strip() == "static declarations verified: 29 delayed trigger mechanisms"
+    assert completed.stdout.strip() == "static declarations verified: 30 delayed trigger mechanisms"

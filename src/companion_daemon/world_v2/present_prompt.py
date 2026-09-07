@@ -766,6 +766,19 @@ def world_claim_usage_specimen() -> dict[str, object]:
     }
 
 
+def life_intent_usage_specimen() -> dict[str, object]:
+    """Show an optional future choice without supplying an external history."""
+    return {
+        "life_intent": {
+            "execution_scope": "self_directed",
+            "intention": "安静想一会儿接下来要做的事情",
+            "start_after_seconds": 300,
+            "duration_seconds": 1200,
+            "importance_bp": 3500,
+        }
+    }
+
+
 def compact_gate_usage_specimens_prompt() -> str:
     """Stable-prefix usage blocks that must precede null canonical shapes."""
 
@@ -774,37 +787,36 @@ def compact_gate_usage_specimens_prompt() -> str:
         + "这里只示范声明格式，不是事实、台词或来源。替换占位符；没有外部事实时 world_claims=[]。\n"
         "下列 USAGE EXAMPLE 展示这些可选字段需要时怎么写；与 null 形状不可混读。"
         "不需要时留空或 null，都表示你这一轮选择不用。\n"
+        + _usage_json_block("LIFE INTENT USAGE EXAMPLE", life_intent_usage_specimen())
+        + "这里只演示未来私人计划的字段配合；活动与时间由你另选，不是现成日程或经历。\n"
         + _usage_json_block(
             "RELATIONSHIP DECLARATION USAGE EXAMPLE",
             relationship_commitment_usage_specimen(),
         )
-        + "这个例子只说明：如果你自己决定把关系说清楚，we_are、calling_it、said_as "
-        "怎样和同一条可见 message 一起写，才能让账本记住；reply_only 直接写在 slim 顶层，"
-        "full_turn 则把同一组三件套写进 head 的 private_turn_state。"
-        "示例里的判断、语气和原话都不是推荐话术，不要照抄；不需要时就留空这三个字段。"
-        "只在 messages 或 beats 里说、没有三件套，那句话仍会送达，但关系 stage 不会改变。\n"
+        + "若你决定明确关系，we_are、calling_it、said_as 与同一条可见 message 一起写："
+        "reply_only 在 slim 顶层，full_turn 写在 private_turn_state（head）；不用就留空。"
+        "仅发言、不写三字段会送达，但关系 stage 不会改变。"
+        "示例里的判断、语气和原话都不是推荐话术，勿照抄。\n"
         + _usage_json_block("AFFECT USAGE EXAMPLE", affect_usage_specimen())
         + _usage_json_block("CALM AFFECT OMISSION EXAMPLE", calm_affect_usage_specimen())
-        + "这两个例子只说明：my_state 写你此刻的感觉，不等于自动留下持续情绪。"
-        "真的想让它跟着你走，就写 affect 和 components[].target_intensity_bp；"
-        "不需要时留空 affect，宿主不会替你补。"
-        "示例里的维度、强度和原话都不是推荐话术，不要照抄。\n"
+        + "my_state 是此刻感觉；你决定保留持续情绪时才写 affect 和 "
+        "components[].target_intensity_bp，不用则留空，宿主不补。示例的维度、强度和话语勿照抄。\n"
         + _usage_json_block("SILENT USAGE EXAMPLE", silent_usage_specimen())
-        + "这个例子只说明：看到了但不想回，就把 messages 写成空数组，"
+        + "看到了但不想回，就把 messages 写成空数组，"
         "仍分别写 meaning_of_this 和 my_state；宿主不会替你已读不回，也不会替你开口。\n"
         + _usage_json_block("WAITING_FOR USAGE EXAMPLE", waiting_for_usage_specimen())
         + _usage_json_block(
             "WAITING_FOR OMISSION EXAMPLE", waiting_for_omission_specimen()
         )
-        + "这两个例子只说明：waiting_for 是短句，wait 是秒数；两个都写才编译盼头，"
+        + "waiting_for 是短句，wait 是秒数；两个都写才编译盼头，"
         "pressure_bp 和 importance_bp 也要一起写。"
         "只写 waiting_for 不编译，也不会按秒叫醒；不需要盼头时就留空。\n"
         + _usage_json_block("LATER USAGE EXAMPLE", later_usage_specimen())
         + _usage_json_block("LATER OMISSION EXAMPLE", later_omission_specimen())
-        + "这两个例子只说明：later 只能配非空 messages；沉默和 photo 不能跟 later 一起写。"
+        + "later 只能配非空 messages；沉默和 photo 不能跟 later 一起写。"
         "不需要延后就留空 later。\n"
         + _usage_json_block("COME_BACK USAGE EXAMPLE", come_back_usage_specimen())
-        + "这个例子只说明：come_back 和 come_back_in 成对写，表示过一阵自己再开口；"
+        + "come_back 和 come_back_in 成对写，表示过一阵自己再开口；"
         "不需要时就留空。\n"
         + _usage_json_block(
             "RELATIONSHIP DELTA USAGE EXAMPLE", relationship_delta_usage_specimen()
@@ -812,24 +824,24 @@ def compact_gate_usage_specimens_prompt() -> str:
         + _usage_json_block(
             "RELATIONSHIP READING ONLY EXAMPLE", relationship_reading_only_specimen()
         )
-        + "这两个例子只说明：about_us / why_us 留下读法；要动数字就连 us_deltas 一起写。"
+        + "about_us / why_us 留下读法；要动数字就连 us_deltas 一起写。"
         "只写读法、不写 us_deltas，是留下读法、这一轮数字不动。\n"
         + _usage_json_block(
             "STUCK IMPRESSION USAGE EXAMPLE", stuck_impression_usage_specimen()
         )
-        + "这个例子只说明：stuck_with_me 和 keep_impression 成对留下放不下的印象；"
+        + "stuck_with_me 和 keep_impression 成对留下放不下的印象；"
         "不需要时就留空。\n"
         + _usage_json_block("MATTERS_BP USAGE EXAMPLE", matters_bp_usage_specimen())
-        + "这个例子只说明：matters_bp 写这份读法对你有多重要；"
+        + "matters_bp 写这份读法对你有多重要；"
         "不需要普通权重时就留空。\n"
         + _usage_json_block("PHOTO USAGE EXAMPLE", photo_usage_specimen())
         + _usage_json_block("PHOTO PROSE ONLY EXAMPLE", photo_prose_only_specimen())
-        + "这两个例子只说明：photo=true 才打开媒体车道，且只能配现在发；"
+        + "photo=true 才打开媒体车道，且只能配现在发；"
         "只在 messages 里说「发你」、不写 photo，不会打开车道。\n"
         + _usage_json_block(
             "DECLARED_DISPLAY USAGE EXAMPLE", declared_display_usage_specimen()
         )
-        + "这个例子只说明：declared_display 只在 P3 私密展示需要声明时写；"
+        + "declared_display 只在 P3 私密展示需要声明时写；"
         "reply_only 写在 slim 顶层，full_turn 写在 private_turn_state；不需要时就留空。\n"
     )
 

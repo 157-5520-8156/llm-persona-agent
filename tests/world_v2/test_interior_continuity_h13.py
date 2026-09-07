@@ -212,7 +212,7 @@ def test_slim_consider_schema_still_fits_g4_with_commitment_triplet() -> None:
     # schema.  The real G4 area cap is asserted on compact_gate_for below,
     # where payload_json is one string property.
     assert required <= 3
-    assert total <= 26  # Include the already-supported world_claims in the descriptive shape.
+    assert total <= 27  # Descriptive world_claims and life_intent; provider carrier is unchanged.
     assert depth <= 2
     compact = InboundToolContracts().compact_gate_for(
         capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
