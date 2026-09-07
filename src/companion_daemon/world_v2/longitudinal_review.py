@@ -58,6 +58,10 @@ _MANIFEST_FIELDS = (
     "usage",
     "safety",
     "exclusions",
+    "model_failures",
+    "profile_differences",
+    "life_source_review",
+    "quiet_tail_seconds",
 )
 _PROVENANCE_FIELDS = {
     "version",
@@ -188,6 +192,7 @@ def build_review_packet(
                 "deliveries": _blind(row.get("deliveries", []), refs),
                 "status": row.get("status", "unknown"),
                 "errors": _blind(row.get("errors", []), refs),
+                "model_failures": _blind(row.get("model_failures", []), refs),
                 "terminal_outcome": _terminal_outcome(row),
                 "terminal_outcomes": _blind(row.get("terminal_outcomes", []), refs),
                 "context_evidence": _blind(row.get("context_evidence"), refs),
@@ -274,6 +279,7 @@ def _quiet_scheduler(row: dict) -> bool:
         and row["user_text"] is None
         and not row["deliveries"]
         and not row["errors"]
+        and not row["model_failures"]
         and row["terminal_outcome"] not in {"technical_failure", "conflicting_evidence"}
     )
 
@@ -367,6 +373,9 @@ def render_longitudinal_report(
         if row["errors"]:
             lines.append("技术错误：")
             lines.extend(_quoted(_json(row["errors"])))
+        if row["model_failures"]:
+            lines.append("模型尝试的技术失败（之后成功恢复也保留）：")
+            lines.extend(_quoted(_json(row["model_failures"])))
         if row["context_evidence"]:
             lines.append("Context 采集材料及内容哈希见 review.json 的本步骤。")
         lines.append("")

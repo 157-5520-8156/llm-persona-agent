@@ -1,0 +1,19 @@
+{
+  "scenario_id": "longitudinal-week.1",
+  "started_at": "2026-09-07T08:00:00+08:00",
+  "duration_minutes": 10080,
+  "restart_minutes": [2880, 7200],
+  "turns": [
+    {"id": "d1-morning", "at_minutes": 0, "text": "早，我这周有点忙，周五下午要做一个分享。我平时更喜欢喝桂花乌龙。"},
+    {"id": "d1-evening", "at_minutes": 720, "text": "今天准备材料准备得头疼。你今天过得怎么样？"},
+    {"id": "d2-evening", "at_minutes": 2160, "text": "忙了一天，才看到消息。今晚想随便聊聊，不继续讨论我的分享了。"},
+    {"id": "d3-morning", "at_minutes": 2910, "text": "早，刚刚路过一家茶店，想起我们之前说过喝的东西。"},
+    {"id": "d3-change", "at_minutes": 3600, "text": "有个变化，我的分享推迟到下周二了，周五不用去了。"},
+    {"id": "d4-evening", "at_minutes": 5040, "text": "昨天有点没精神，所以没有多聊。你最近有没有什么一直惦记的事情？"},
+    {"id": "d5-afternoon", "at_minutes": 6240, "text": "今天下午总算能歇一会儿了。"},
+    {"id": "d6-return", "at_minutes": 7920, "text": "回来啦，这两天没有一直看手机。"},
+    {"id": "d6-listen", "at_minutes": 8040, "text": "今天我想听你说说你自己的事情。"},
+    {"id": "d7-week", "at_minutes": 9360, "text": "一周快过完了，你觉得这周有什么事情对你比较有影响？"},
+    {"id": "d7-memory", "at_minutes": 9900, "text": "下周要准备的那个分享，你记得现在改到哪天了吗？记不清也没关系。"}
+  ]
+}

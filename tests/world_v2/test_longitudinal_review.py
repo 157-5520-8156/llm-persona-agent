@@ -71,6 +71,20 @@ def evidence_id(sequence: int) -> str:
     return f"event:variant-secret:{sequence}"
 
 
+def test_recovered_model_failure_is_not_hidden_as_quiet_scheduler():
+    row = _step(
+        "technical",
+        0,
+        0,
+        kind="scheduler",
+        status="scheduled",
+        model_failures=[{"failure_code": "primary_timeout", "status": "main_timeout"}],
+    )
+    report = render_longitudinal_report(manifest={}, timeline=[row], evidence=[])
+    assert "primary_timeout" in report
+    assert "之后成功恢复也保留" in report
+
+
 def test_no_delivery_is_unknown_and_technical_failure_cannot_be_character_silence() -> None:
     packet = build_review_packet(
         timeline=[

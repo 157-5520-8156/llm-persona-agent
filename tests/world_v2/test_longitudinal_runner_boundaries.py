@@ -129,25 +129,29 @@ class _RunnerFixture:
 
     def append_event(self, event_id: str) -> None:
         payload_json = json.dumps({"runtime_outcome_ref": "expression-episode:model-silent"})
-        self.events.append({
-            "event_id": event_id,
-            "event_type": "TriggerProcessCompleted",
-            "logical_time": self.hosts[-1].logical_time.isoformat(),
-            "ledger_sequence": len(self.events) + 1,
-            "payload_json": payload_json,
-            "payload_hash": hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
-        })
+        self.events.append(
+            {
+                "event_id": event_id,
+                "event_type": "TriggerProcessCompleted",
+                "logical_time": self.hosts[-1].logical_time.isoformat(),
+                "ledger_sequence": len(self.events) + 1,
+                "payload_json": payload_json,
+                "payload_hash": hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
+            }
+        )
 
 
 def _journey(*, with_due_input: bool = False) -> Journey:
-    return Journey.parse({
-        "scenario_id": "runner-boundaries",
-        "started_at": NOW.isoformat(),
-        "duration_minutes": 3 if with_due_input else 1,
-        "turns": [{"id": "at-due", "at_minutes": 2, "text": "fixture input"}]
-        if with_due_input
-        else [],
-    })
+    return Journey.parse(
+        {
+            "scenario_id": "runner-boundaries",
+            "started_at": NOW.isoformat(),
+            "duration_minutes": 3 if with_due_input else 1,
+            "turns": [{"id": "at-due", "at_minutes": 2, "text": "fixture input"}]
+            if with_due_input
+            else [],
+        }
+    )
 
 
 def _read_jsonl(path: Path) -> list[dict[str, object]]:
@@ -156,13 +160,16 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
 
 @pytest.mark.asyncio
 async def test_same_time_input_observes_due_environment_after_settlement(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixture = _RunnerFixture(monkeypatch)
     fixture.due_at = NOW + timedelta(minutes=2)
     manifest = await run_journey(
-        journey=_journey(with_due_input=True), output=tmp_path / "journey",
-        host_factory=fixture.factory, synthetic=True,
+        journey=_journey(with_due_input=True),
+        output=tmp_path / "journey",
+        host_factory=fixture.factory,
+        synthetic=True,
         limits=JourneyLimits(heartbeat_seconds=120),
     )
     assert fixture.inbound_contexts == [(NOW + timedelta(minutes=2), True)]
@@ -171,13 +178,17 @@ async def test_same_time_input_observes_due_environment_after_settlement(
 
 @pytest.mark.asyncio
 async def test_replay_error_cannot_be_reported_as_completed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixture = _RunnerFixture(monkeypatch)
     fixture.replay_error = True
     output = tmp_path / "journey"
     manifest = await run_journey(
-        journey=_journey(), output=output, host_factory=fixture.factory, synthetic=True,
+        journey=_journey(),
+        output=output,
+        host_factory=fixture.factory,
+        synthetic=True,
     )
     assert manifest["replay"]["replay_hash_matches"] is False
     assert manifest["completed"] is False
@@ -188,13 +199,16 @@ async def test_replay_error_cannot_be_reported_as_completed(
 
 @pytest.mark.asyncio
 async def test_final_step_exceeding_wall_deadline_cannot_report_completed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixture = _RunnerFixture(monkeypatch)
     fixture.scheduler_delay = 1.1
     manifest = await run_journey(
-        journey=_journey(), output=tmp_path / "journey",
-        host_factory=fixture.factory, synthetic=True,
+        journey=_journey(),
+        output=tmp_path / "journey",
+        host_factory=fixture.factory,
+        synthetic=True,
         limits=JourneyLimits(max_wall_seconds=1),
     )
     assert manifest["completed"] is False
@@ -202,8 +216,56 @@ async def test_final_step_exceeding_wall_deadline_cannot_report_completed(
 
 
 @pytest.mark.asyncio
+async def test_provider_timeout_is_not_an_experiment_deadline(tmp_path, monkeypatch):
+    fixture = _RunnerFixture(monkeypatch)
+
+    async def provider_timeout(self):
+        raise TimeoutError("fixture transport timed out")
+
+    monkeypatch.setattr(_BoundaryHost, "scheduler_wake_snapshot", provider_timeout)
+    manifest = await run_journey(
+        journey=_journey(),
+        output=tmp_path / "journey",
+        host_factory=fixture.factory,
+        synthetic=True,
+        limits=JourneyLimits(max_wall_seconds=30),
+    )
+    assert manifest["completed"] is False
+    assert manifest["stop_reason"] == "technical_failure:TimeoutError"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unprocessed_due", [False, True])
+async def test_quiet_tail_needs_no_empty_clock_event_but_cannot_skip_due(
+    tmp_path,
+    monkeypatch,
+    unprocessed_due,
+):
+    fixture = _RunnerFixture(monkeypatch)
+    if unprocessed_due:
+        fixture.due_at = NOW + timedelta(seconds=30)
+
+    async def quiet_scheduler(self, **kwargs):
+        return SimpleNamespace(action_statuses=(), background_statuses=())
+
+    monkeypatch.setattr(_BoundaryHost, "scheduler_once", quiet_scheduler)
+    manifest = await run_journey(
+        journey=_journey(),
+        output=tmp_path / "journey",
+        host_factory=fixture.factory,
+        synthetic=True,
+    )
+    assert manifest["completed"] is not unprocessed_due
+    assert manifest["quiet_tail_seconds"] == 60
+    assert manifest["stop_reason"] == (
+        "unprocessed_due_before_end" if unprocessed_due else "completed"
+    )
+
+
+@pytest.mark.asyncio
 async def test_existing_output_is_preserved_without_constructing_a_host(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixture = _RunnerFixture(monkeypatch)
     output = tmp_path / "existing"
@@ -212,7 +274,10 @@ async def test_existing_output_is_preserved_without_constructing_a_host(
     retained.write_bytes(b"preserve existing evidence")
     with pytest.raises(FileExistsError):
         await run_journey(
-            journey=_journey(), output=output, host_factory=fixture.factory, synthetic=True,
+            journey=_journey(),
+            output=output,
+            host_factory=fixture.factory,
+            synthetic=True,
         )
     assert retained.read_bytes() == b"preserve existing evidence"
     assert list(output.iterdir()) == [retained]
@@ -221,16 +286,21 @@ async def test_existing_output_is_preserved_without_constructing_a_host(
 
 @pytest.mark.asyncio
 async def test_final_artifacts_include_close_and_quiescence_tail_events(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixture = _RunnerFixture(monkeypatch)
     fixture.close_tail = True
     output = tmp_path / "journey"
     manifest = await run_journey(
-        journey=_journey(), output=output, host_factory=fixture.factory, synthetic=True,
+        journey=_journey(),
+        output=output,
+        host_factory=fixture.factory,
+        synthetic=True,
     )
     assert [event["event_id"] for event in _read_jsonl(output / "evidence.jsonl")] == [
-        "event:close-tail", "event:quiescence-tail",
+        "event:close-tail",
+        "event:quiescence-tail",
     ]
     final = [row for row in _read_jsonl(output / "timeline.jsonl") if row["kind"] == "final"]
     assert final[-1]["ledger_end_sequence"] == 2
