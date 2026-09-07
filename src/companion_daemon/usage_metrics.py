@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta, timezone
+import json
 import math
 from typing import Iterable, Mapping
 from zoneinfo import ZoneInfo
@@ -602,6 +603,65 @@ def estimate_routed_model_reserve_cny(
         conservative_peak=conservative,
     )
     return round(priced.cny, 6)
+
+
+class ProviderRequestPricingUnavailable(ValueError):
+    """An outbound request has no supported pre-emission cost envelope."""
+
+
+def estimate_provider_request_reserve_cny(
+    *,
+    request_payload: Mapping[str, object],
+    cny_per_usd: float = CNY_PER_USD,
+) -> float:
+    """Reserve the final text request, including tools and its output ceiling.
+
+    This admission envelope deliberately does not reuse a historical p95 or
+    the character/token heuristic used for forecasting. UTF-8 wire bytes bound
+    text tokenization conservatively; an additional framing allowance covers
+    provider message/tool separators. Returned provider usage still settles the
+    bill. Unknown pricing and non-text inputs require their own priced route.
+    """
+    model = str(request_payload.get("model") or "")
+    price = resolve_model_price(model, conservative_peak=True)
+    if price is UNPRICED_MODEL_CONSERVATIVE_PRICE:
+        raise ProviderRequestPricingUnavailable("provider request model has no installed price")
+    if _deepseek_family(model) is not None and model not in {
+        "deepseek-chat",
+        "deepseek-reasoner",
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
+    }:
+        raise ProviderRequestPricingUnavailable("provider request model has no installed price")
+    output_limit = request_payload.get("max_completion_tokens", request_payload.get("max_tokens"))
+    if type(output_limit) is not int or output_limit <= 0:
+        raise ProviderRequestPricingUnavailable("provider request requires a positive output ceiling")
+    count = request_payload.get("n", 1)
+    if type(count) is not int or count <= 0:
+        raise ProviderRequestPricingUnavailable("provider request completion count is invalid")
+    messages = request_payload.get("messages", ())
+    if not isinstance(messages, (list, tuple)):
+        raise ProviderRequestPricingUnavailable("provider request messages are not text-priced")
+    for message in messages:
+        if not isinstance(message, Mapping):
+            raise ProviderRequestPricingUnavailable("provider request messages are not text-priced")
+        content = message.get("content")
+        if isinstance(content, (list, tuple)) and any(
+            not isinstance(part, Mapping) or part.get("type") != "text" for part in content
+        ):
+            raise ProviderRequestPricingUnavailable("provider request contains non-text input")
+    wire = json.dumps(request_payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    prompt_tokens = len(wire.encode("utf-8")) + 1024
+    priced = estimate_model_cost(
+        model=model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=output_limit * count,
+        cache_hit_tokens=0,
+        cache_miss_tokens=prompt_tokens,
+        cny_per_usd=cny_per_usd,
+        conservative_peak=True,
+    )
+    return math.ceil(priced.cny * 1_000_000) / 1_000_000
 
 
 def estimate_gpt_image_2_cost_usd(

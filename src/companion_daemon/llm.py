@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from companion_daemon.model_call_policy import ProviderCircuitState
+from companion_daemon.usage_metrics import CNY_PER_USD, estimate_provider_request_reserve_cny
 
 
 _T = TypeVar("_T")
@@ -1149,24 +1150,33 @@ class DeepSeekChatModel:
         *,
         purpose: str,
         call_meta: Mapping[str, object],
-        prompt_characters: int,
+        request_payload: Mapping[str, object],
     ) -> str:
         admit_turn_provider_call(
             world_id=str(call_meta.get("world_id") or ""),
             turn_id=str(call_meta.get("turn_id") or ""),
         )
-        admit = getattr(getattr(self.usage_observer, "__self__", None), "admit_provider_call", None)
+        usage_store = getattr(self.usage_observer, "__self__", None)
+        admit = getattr(usage_store, "admit_provider_call", None)
         if not callable(admit):
             return str(call_meta.get("budget_reservation_id") or "")
         estimated = call_meta.get("estimated_cny")
-        estimated_cny = float(estimated) if isinstance(estimated, (int, float)) else None
+        required_cny = estimate_provider_request_reserve_cny(
+            request_payload=request_payload,
+            cny_per_usd=float(getattr(usage_store, "_usd_to_cny", CNY_PER_USD)),
+        )
+        estimated_cny = (
+            max(required_cny, float(estimated))
+            if isinstance(estimated, (int, float))
+            else required_cny
+        )
         return str(
             admit(
                 purpose=purpose,
                 actor=str(call_meta.get("actor") or ""),
                 provider=self.provider,
                 model=self.model,
-                prompt_characters=prompt_characters,
+                prompt_characters=len(json.dumps(request_payload, ensure_ascii=False)),
                 estimated_cny=estimated_cny,
                 world_id=str(call_meta.get("world_id") or ""),
                 turn_id=str(call_meta.get("turn_id") or ""),
@@ -1354,14 +1364,8 @@ class DeepSeekChatModel:
         started = monotonic()
         purpose = _MODEL_CALL_PURPOSE.get()
         call_meta = _MODEL_CALL_META.get()
-        reservation_id = self._admit_world_v2_model_call(
-            purpose=purpose,
-            call_meta=call_meta,
-            prompt_characters=len(json.dumps(messages, ensure_ascii=False, default=str)),
-        )
-        if reservation_id:
-            call_meta = {**call_meta, "budget_reservation_id": reservation_id}
         capacity_token: str | None = None
+        admission_in_progress = False
         request_emitted = False
         response_payload: dict[str, object] = {}
         usage: dict[str, object] = {}
@@ -1382,6 +1386,13 @@ class DeepSeekChatModel:
             )
             request_payload["stream"] = True
             request_payload["stream_options"] = {"include_usage": True}
+            admission_in_progress = True
+            reservation_id = self._admit_world_v2_model_call(
+                purpose=purpose, call_meta=call_meta, request_payload=request_payload,
+            )
+            admission_in_progress = False
+            if reservation_id:
+                call_meta = {**call_meta, "budget_reservation_id": reservation_id}
             capture_identity_headers = self._test_only_capture_identity_headers(
                 messages=messages,
                 temperature=temperature,
@@ -1544,6 +1555,8 @@ class DeepSeekChatModel:
             if not content or not content.strip():
                 raise ValueError("model stream content must be a non-empty string")
         except asyncio.CancelledError as exc:
+            if admission_in_progress:
+                raise
             cancellation_kind = str(exc.args[0]) if exc.args else "caller_cancelled"
             provider_timeout = cancellation_kind == "provider_timeout"
             if self.capacity_gate is not None and capacity_token is not None:
@@ -1585,6 +1598,8 @@ class DeepSeekChatModel:
             )
             raise
         except Exception as exc:
+            if admission_in_progress:
+                raise
             provider_outage = _is_provider_outage(exc)
             if self.capacity_gate is not None and capacity_token is not None:
                 if request_emitted and _provider_completion_may_still_be_running(exc):
@@ -1679,21 +1694,11 @@ class DeepSeekChatModel:
         started = monotonic()
         purpose = _MODEL_CALL_PURPOSE.get()
         call_meta = _MODEL_CALL_META.get()
-        reservation_id = self._admit_world_v2_model_call(
-            purpose=purpose,
-            call_meta=call_meta,
-            prompt_characters=len(json.dumps(messages, ensure_ascii=False, default=str)),
-        )
-        if reservation_id:
-            call_meta = {**call_meta, "budget_reservation_id": reservation_id}
         capacity_token: str | None = None
+        admission_in_progress = False
         request_emitted = False
         usage: dict[str, object] = {}
         try:
-            if self.capacity_gate is not None:
-                capacity_token = self.capacity_gate.acquire()
-            if self.circuit_breaker is not None:
-                self.circuit_breaker.before_call()
             request_payload = self.request_payload(
                 messages,
                 temperature=temperature,
@@ -1701,6 +1706,17 @@ class DeepSeekChatModel:
                 tools=tools,
                 tool_choice=tool_choice,
             )
+            admission_in_progress = True
+            reservation_id = self._admit_world_v2_model_call(
+                purpose=purpose, call_meta=call_meta, request_payload=request_payload,
+            )
+            admission_in_progress = False
+            if reservation_id:
+                call_meta = {**call_meta, "budget_reservation_id": reservation_id}
+            if self.capacity_gate is not None:
+                capacity_token = self.capacity_gate.acquire()
+            if self.circuit_breaker is not None:
+                self.circuit_breaker.before_call()
             capture_identity_headers = self._test_only_capture_identity_headers(
                 messages=messages,
                 temperature=temperature,
@@ -1740,6 +1756,8 @@ class DeepSeekChatModel:
             if not isinstance(content, str) or not content.strip():
                 raise ValueError("model response content must be a non-empty string")
         except asyncio.CancelledError as exc:
+            if admission_in_progress:
+                raise
             cancellation_kind = str(exc.args[0]) if exc.args else "caller_cancelled"
             provider_timeout = cancellation_kind == "provider_timeout"
             if self.capacity_gate is not None and capacity_token is not None:
@@ -1781,6 +1799,8 @@ class DeepSeekChatModel:
             )
             raise
         except Exception as exc:
+            if admission_in_progress:
+                raise
             provider_outage = _is_provider_outage(exc)
             if self.capacity_gate is not None and capacity_token is not None:
                 if request_emitted and _provider_completion_may_still_be_running(exc):
