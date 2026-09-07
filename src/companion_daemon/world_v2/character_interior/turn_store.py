@@ -799,20 +799,28 @@ class _SQLiteCharacterInteriorTurnStore:
     ) -> tuple[_TurnCoordinationRecord, ...]:
         if world_id != self._world_id:
             return ()
+        found = []
         with self._thread_lock:
-            rows = self._connection.execute(
+            cursor = self._connection.execute(
                 """SELECT * FROM world_v2_character_interior_turns
                    WHERE world_id = ? AND actor_ref = ? AND purpose = ?
                      AND phase = 'consider' AND state = 'terminal'
-                     AND EXISTS (SELECT 1 FROM json_each(terminal_result_json, '$.decision.source_refs')
-                                 WHERE value = ?)
-                   ORDER BY inner_turn_id LIMIT 65""",
-                (world_id, actor_ref, purpose, source_ref),
-            ).fetchall()
-            found = tuple(self._record(row) for row in rows)
-        if len(found) > 64:
-            raise ValueError("completed_consideration.source_not_bounded")
-        return tuple(row for row in found if _terminal_has_source(row, source_ref))
+                   ORDER BY inner_turn_id""",
+                (world_id, actor_ref, purpose),
+            )
+            try:
+                # Validate immutable bytes before trusting their source list.
+                # Stream all scoped rows so historical count cannot hide a
+                # matching or damaged terminal; only returned matches are capped.
+                for row in cursor:
+                    record = self._record(row)
+                    if _terminal_has_source(record, source_ref):
+                        found.append(record)
+                        if len(found) > 64:
+                            raise ValueError("completed_consideration.source_not_bounded")
+            finally:
+                cursor.close()
+        return tuple(found)
 
     def health(
         self,

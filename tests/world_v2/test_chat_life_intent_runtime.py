@@ -900,3 +900,59 @@ async def test_no_op_terminal_survives_crash_before_domain_consideration_journal
                 requests.append(material)
     assert len(requests) == 1
     assert not any(x["event_type"] in {"ActivityStarted", "ActivityAbandoned"} for x in rows)
+
+
+@pytest.mark.asyncio
+async def test_corrupt_terminal_sources_cannot_reopen_a_completed_no_op(tmp_path, monkeypatch):
+    import sqlite3
+    from datetime import datetime, timezone
+    import companion_daemon.world_v2.activity_lifecycle_worker as worker
+
+    original = worker.record_consideration
+    corrupted = []
+
+    def lose_and_corrupt(**kwargs):
+        if not corrupted:
+            connection = sqlite3.connect(tmp_path / "journey" / "world.sqlite")
+            try:
+                row = connection.execute(
+                    "SELECT inner_turn_id, terminal_result_json FROM world_v2_character_interior_turns WHERE purpose = 'activity_lifecycle_choice' AND state = 'terminal'"
+                ).fetchone()
+                raw = json.loads(row[1])
+                raw["decision"]["source_refs"] = ["fixture:corrupted-source"]
+                connection.execute(
+                    "UPDATE world_v2_character_interior_turns SET terminal_result_json = ? WHERE inner_turn_id = ?",
+                    (json.dumps(raw, ensure_ascii=False), row[0]),
+                )
+                connection.commit()
+                corrupted.append(row[0])
+            finally:
+                connection.close()
+        if kwargs["ledger"].project().logical_time < datetime(
+            2026, 9, 8, 2, 2, tzinfo=timezone.utc
+        ):
+            raise RuntimeError("fixture interrupted before journal")
+        return original(**kwargs)
+
+    monkeypatch.setattr(worker, "record_consideration", lose_and_corrupt)
+    _, rows, bodies, _, _ = await _run_http_journey(
+        tmp_path,
+        monkeypatch,
+        no_appraisal=True,
+        initial_lifecycle_decision="no_op",
+        duration_minutes=5,
+    )
+    assert corrupted
+    requests = []
+    for body in bodies:
+        for message in body["messages"]:
+            try:
+                material = json.loads(message["content"])
+            except (TypeError, ValueError):
+                continue
+            if isinstance(material, dict) and material.get("capability_manifest", {}).get(
+                "payload", {}
+            ).get("accepted_plan_opportunity"):
+                requests.append(material)
+    assert len(requests) == 1
+    assert not any(x["event_type"] == "ChatLifePlanConsiderationRecorded" for x in rows)
