@@ -10549,20 +10549,30 @@ class _ExpressionDraftWire:
         if self._identity_frame is None:
             return ""
         prose = identity_prose(self._identity_frame)
+        identity_value = self._identity_frame.model_dump(
+            mode="json",
+            exclude={
+                "role", "not_an_assistant", "base_prompt", "appearance",
+                "background", "daily_life", "first_message",
+            },
+            exclude_none=True,
+        )
+        # This only deduplicates presentation. Keep the source frame and its
+        # scoped hashes intact, and retain an entire field unless every exact
+        # nonempty string already appears in this turn's prose. In particular,
+        # do not normalize whitespace or infer semantic equivalence here.
+        for field in (
+            "personality_frame", "speech_frame", "speech_examples",
+            "style_rules", "values", "boundaries",
+        ):
+            value = identity_value.get(field)
+            texts = [value] if isinstance(value, str) else value
+            if isinstance(texts, list) and texts and all(
+                isinstance(text, str) and text.strip() and text in prose for text in texts
+            ):
+                del identity_value[field]
         identity = json.dumps(
-            self._identity_frame.model_dump(
-                mode="json",
-                exclude={
-                    "role",
-                    "not_an_assistant",
-                    "base_prompt",
-                    "appearance",
-                    "background",
-                    "daily_life",
-                    "first_message",
-                },
-                exclude_none=True,
-            ),
+            identity_value,
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
