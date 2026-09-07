@@ -1,7 +1,8 @@
 """World V2 model usage recording and CNY budget gating.
 
-The legacy daemon ``BudgetGate`` never covered World V2 text calls.  Visible
-inbound turns still must not go silent because of money; background workers
+The legacy daemon ``BudgetGate`` never covered World V2 text calls.  Explicit hard spend caps also gate visible inbound work; the CNY100 design
+target is a separate forecast and never a reason to invent character silence.
+Optional background workers
 (private impressions, proactive contact, life ecology) share the same
 monthly/daily/soft-daily envelope and are skipped before the provider call.
 Image CNY still lives in ``usage_events`` on this same sqlite path.
@@ -14,7 +15,7 @@ import math
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..db import ensure_usage_events_schema
@@ -25,6 +26,8 @@ from ..usage_metrics import (
     estimate_routed_model_reserve_cny,
     price_usage_row,
 )
+
+from .cost_forecast import forecast_monthly_cost
 
 _LOG = logging.getLogger(__name__)
 
@@ -133,6 +136,7 @@ def usage_store_for_settings(settings: object) -> WorldV2UsageStore:
 
     return WorldV2UsageStore(
         path=str(getattr(settings, "database_path")),
+        monthly_cost_target_cny=float(getattr(settings, "world_v2_monthly_cost_target_cny", 100.0)),
         monthly_budget_cny=_optional_float(getattr(settings, "monthly_budget_cny", None)),
         daily_budget_cny=_optional_float(getattr(settings, "daily_budget_cny", None)),
         soft_daily_budget_cny=_optional_float(
@@ -155,12 +159,16 @@ class WorldV2UsageStore:
         *,
         path: str,
         usd_to_cny: float = _USD_TO_CNY,
+        monthly_cost_target_cny: float = 100.0,
         monthly_budget_cny: float | None = None,
         daily_budget_cny: float | None = None,
         soft_daily_budget_cny: float | None = None,
     ) -> None:
         if not path:
             raise ValueError("world v2 usage store requires a database path")
+        if not math.isfinite(monthly_cost_target_cny) or monthly_cost_target_cny <= 0:
+            raise ValueError("monthly cost target must be finite and positive")
+        self._monthly_cost_target_cny = monthly_cost_target_cny
         self._path = path
         self._usd_to_cny = usd_to_cny
         self._monthly_budget_cny = monthly_budget_cny
@@ -171,9 +179,22 @@ class WorldV2UsageStore:
         ensure_usage_events_schema(Path(path))
         connection = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
         try:
+            connection.execute("BEGIN IMMEDIATE")
             connection.execute(_SCHEMA)
             connection.execute(_RESERVATION_SCHEMA)
             self._migrate_usage_columns(connection)
+            external_columns = {row[1] for row in connection.execute("PRAGMA table_info(usage_events)")}
+            for name, declaration in (
+                ("reservation_id", "TEXT NOT NULL DEFAULT ''"),
+                ("billing_state", "TEXT NOT NULL DEFAULT 'legacy'"),
+            ):
+                if name not in external_columns:
+                    connection.execute(f"ALTER TABLE usage_events ADD COLUMN {name} {declaration}")
+            connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS usage_event_reservation "
+                "ON usage_events(reservation_id) WHERE reservation_id != ''"
+            )
+            connection.commit()
         finally:
             connection.close()
 
@@ -266,6 +287,15 @@ class WorldV2UsageStore:
             "SELECT COALESCE(SUM(estimated_cny), 0) FROM usage_events WHERE created_at >= ?",
             (iso,),
         ).fetchone()[0])
+        embedding = 0.0
+        if self._has_table(connection, "world_recall_embedding_usage_daily"):
+            # Embedding intentionally folds requests into conservative day
+            # buckets. A partial-day query is an upper bound, not exact 24h usage.
+            embedding = float(connection.execute(
+                "SELECT COALESCE(SUM(estimated_cost_cny), 0) "
+                "FROM world_recall_embedding_usage_daily WHERE usage_day >= ?",
+                (since.date().isoformat(),),
+            ).fetchone()[0])
         pending = 0.0
         unknown = 0.0
         for amount, status, accounted in connection.execute(
@@ -285,8 +315,96 @@ class WorldV2UsageStore:
                 pending += remainder
         return {"model_cny": model, "external_cny": external,
                 "pending_cny": pending, "unknown_cny": unknown,
-                "settled_cny": model + external,
-                "committed_cny": model + external + pending + unknown}
+                "embedding_cny": embedding,
+                "settled_cny": model + external + embedding,
+                "committed_cny": model + external + embedding + pending + unknown}
+
+    @staticmethod
+    def _has_table(connection: sqlite3.Connection, name: str) -> bool:
+        return connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,),
+        ).fetchone() is not None
+
+    def _cost_health(self) -> dict[str, object]:
+        now = datetime.now(timezone.utc)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        with self._lock:
+            connection = self._connect()
+            try:
+                connection.execute("BEGIN")
+                month = self._spend_snapshot(connection, since=month_start)
+                day = self._spend_snapshot(
+                    connection, since=now.replace(hour=0, minute=0, second=0, microsecond=0)
+                )
+                recent = self._spend_snapshot(connection, since=now - timedelta(hours=24))
+                times = [row[0] for row in connection.execute(
+                    "SELECT MIN(recorded_at) FROM world_v2_model_usage WHERE status != 'budget_denied' "
+                    "UNION ALL SELECT MIN(created_at) FROM world_v2_model_reservations "
+                    "UNION ALL SELECT MIN(created_at) FROM usage_events"
+                ) if row[0]]
+                if self._has_table(connection, "world_recall_embedding_usage_daily"):
+                    times.extend(row[0] for row in connection.execute(
+                        "SELECT MIN(usage_day) || 'T00:00:00+00:00' "
+                        "FROM world_recall_embedding_usage_daily"
+                    ) if row[0])
+                observed = [datetime.fromisoformat(value) for value in times]
+                observed = [value for value in observed if value.tzinfo is not None and value <= now]
+                unresolved_count = connection.execute(
+                    "SELECT COUNT(*) FROM world_v2_model_reservations WHERE status = 'billing_unknown'"
+                ).fetchone()[0]
+                unpriced_external_count = connection.execute(
+                    "SELECT COUNT(*) FROM usage_events WHERE kind = 'civitai_buzz' AND created_at >= ?",
+                    (month_start.isoformat(),),
+                ).fetchone()[0]
+                # Purpose breakdown uses the same repricing as admission; image
+                # mirror telemetry is excluded because usage_events owns its CNY.
+                purpose_costs: dict[str, float] = {}
+                connection.row_factory = sqlite3.Row
+                for row in connection.execute(
+                    "SELECT * FROM world_v2_model_usage WHERE recorded_at >= ? "
+                    "AND status != 'budget_denied' AND purpose != 'image_generation'",
+                    (month_start.isoformat(),),
+                ):
+                    label = row["purpose"]
+                    purpose_costs[label] = purpose_costs.get(label, 0.0) + price_usage_row(
+                        dict(row), cny_per_usd=self._usd_to_cny
+                    ).cny
+                for row in connection.execute(
+                    "SELECT kind, SUM(estimated_cny) amount FROM usage_events "
+                    "WHERE created_at >= ? GROUP BY kind", (month_start.isoformat(),),
+                ):
+                    purpose_costs[row["kind"]] = purpose_costs.get(row["kind"], 0.0) + row["amount"]
+                if month["embedding_cny"]:
+                    purpose_costs["recall_embedding"] = month["embedding_cny"]
+            finally:
+                connection.close()
+        forecast = forecast_monthly_cost(
+            now=now, observed_since=min(observed) if observed else None,
+            month_settled_cny=month["settled_cny"],
+            pending_cny=month["pending_cny"] + month["unknown_cny"],
+            last24h_settled_cny=recent["model_cny"] + recent["external_cny"],
+            target_monthly_cny=self._monthly_cost_target_cny,
+        )
+        warnings = []
+        if forecast["forecast_pressure_threshold_percent"]:
+            warnings.append("monthly_cost_forecast_pressure")
+        if unresolved_count:
+            warnings.append("provider_billing_unknown")
+        if unpriced_external_count:
+            warnings.append("external_usage_unpriced")
+        return {
+            "month": month, "day": day,
+            "cost_forecast": forecast,
+            "monthly_purpose_cost_cny": {key: round(value, 6) for key, value in purpose_costs.items()},
+            "unresolved_billing_count": unresolved_count,
+            "unpriced_external_usage_count": unpriced_external_count,
+            "recent_embedding_cost_upper_bound_cny": recent["embedding_cny"],
+            "cost_observation_scope": "current_database_recorded_usage",
+            # A numeric forecast never certifies unmetered vision, remote warmup,
+            # debug/qualification accounts in other databases, or missing bills.
+            "instance_cost_qualification": "incomplete",
+            "warning_reasons": warnings,
+        }
 
     def _combined_spend_cny(self, *, since: datetime) -> float:
         with self._lock:
@@ -436,6 +554,61 @@ class WorldV2UsageStore:
                 connection.close()
         return token
 
+    def record_external_usage(
+        self, *, reservation_id: str, kind: str, estimated_cny: float | None,
+        billing_state: str, note: str = "",
+    ) -> None:
+        """Settle one reserved external call and its CNY row atomically.
+
+        Unknown billing keeps the whole reserve; it is not a zero-cost usage
+        event. Only provider evidence can finalize it. This method intentionally
+        raises on persistence failure so callers retain a retryable bill.
+        """
+        if billing_state not in {"known", "unknown", "not_billed"}:
+            raise ModelUsageAdmissionError("invalid external billing state")
+        if billing_state == "known":
+            if estimated_cny is None or not math.isfinite(estimated_cny) or estimated_cny < 0:
+                raise ModelUsageAdmissionError("known external bill requires finite nonnegative CNY")
+        elif estimated_cny not in {None, 0.0}:
+            raise ModelUsageAdmissionError("unconfirmed external bill cannot supply charged CNY")
+        with self._lock:
+            connection = self._connect()
+            connection.row_factory = sqlite3.Row
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                reservation = connection.execute(
+                    "SELECT * FROM world_v2_model_reservations WHERE reservation_id = ?",
+                    (reservation_id,),
+                ).fetchone()
+                if reservation is None or reservation["purpose"] != kind:
+                    raise ModelUsageAdmissionError("external bill has no matching purpose reservation")
+                existing = connection.execute(
+                    "SELECT * FROM usage_events WHERE reservation_id = ?", (reservation_id,),
+                ).fetchone()
+                if existing is not None:
+                    if existing["billing_state"] != billing_state or existing["estimated_cny"] != estimated_cny:
+                        raise ModelUsageAdmissionError("conflicting final external bill")
+                    return
+                if reservation["status"] == "settled":
+                    if billing_state == "not_billed":
+                        return
+                    raise ModelUsageAdmissionError("external bill conflicts with completed reservation")
+                if billing_state == "known":
+                    connection.execute(
+                        "INSERT INTO usage_events "
+                        "(kind, estimated_cny, note, created_at, reservation_id, billing_state) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        (kind, estimated_cny, note[:2400], reservation["created_at"],
+                         reservation_id, billing_state),
+                    )
+                connection.execute(
+                    "UPDATE world_v2_model_reservations SET status = ? WHERE reservation_id = ?",
+                    ("billing_unknown" if billing_state == "unknown" else "settled", reservation_id),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
     def record(self, usage: object) -> None:
         """usage_observer-compatible callback; never raises on telemetry gaps."""
         try:
@@ -571,10 +744,14 @@ class WorldV2UsageStore:
             daily_budget_cny = self._daily_budget_cny
         if soft_daily_budget_cny is None:
             soft_daily_budget_cny = self._soft_daily_budget_cny
-        monthly = self.monthly_cost_cny()
-        daily = self.daily_cost_cny()
+        cost_health = self._cost_health()
+        month = cost_health.pop("month")
+        day = cost_health.pop("day")
+        monthly = month["committed_cny"]
+        daily = day["committed_cny"]
         attribution = self._daily_attribution()
         warning_reasons = list(attribution["warning_reasons"])
+        warning_reasons.extend(cost_health.pop("warning_reasons"))
         monthly_exhausted = (
             monthly_budget_cny is not None and monthly >= monthly_budget_cny
         )
@@ -589,10 +766,15 @@ class WorldV2UsageStore:
         if soft_daily_exhausted:
             warning_reasons.append("soft_daily_exhausted")
         return {
-            "monthly_cost_cny": round(monthly, 2),
+            **cost_health,
+            "monthly_cost_cny": round(month["settled_cny"], 4),
+            "monthly_committed_cny": round(monthly, 4),
+            "pending_cost_cny": round(month["pending_cny"], 4),
+            "unknown_cost_hold_cny": round(month["unknown_cny"], 4),
             "monthly_budget_cny": monthly_budget_cny,
             "monthly_exhausted": monthly_exhausted,
-            "daily_cost_cny": round(daily, 2),
+            "daily_cost_cny": round(day["settled_cny"], 4),
+            "daily_committed_cny": round(daily, 4),
             "daily_budget_cny": daily_budget_cny,
             "daily_exhausted": daily_exhausted,
             "soft_daily_budget_cny": soft_daily_budget_cny,

@@ -709,6 +709,10 @@ class Settings(BaseSettings):
         default=Path("configs/visual_identity.yaml"),
         alias="VISUAL_IDENTITY_PATH",
     )
+    world_v2_monthly_cost_target_cny: float = Field(
+        default=100.0, gt=0, allow_inf_nan=False, alias="WORLD_V2_MONTHLY_COST_TARGET_CNY",
+        description="Instance API cost design target for forecasts, distinct from hard spend caps.",
+    )
     monthly_budget_cny: float = Field(default=80.0, alias="MONTHLY_BUDGET_CNY")
     daily_budget_cny: float = Field(default=3.0, alias="DAILY_BUDGET_CNY")
     soft_daily_budget_cny: float = Field(default=2.0, alias="SOFT_DAILY_BUDGET_CNY")

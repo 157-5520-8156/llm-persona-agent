@@ -483,7 +483,10 @@ def _model_usage_health(asgi_app: FastAPI) -> dict[str, object]:
             return snapshot
     try:
         settings = _http_v2_settings(asgi_app)
-        store = WorldV2UsageStore(path=str(settings.database_path))
+        store = WorldV2UsageStore(
+            path=str(settings.database_path),
+            monthly_cost_target_cny=settings.world_v2_monthly_cost_target_cny,
+        )
         return store.budget_state(
             monthly_budget_cny=settings.monthly_budget_cny,
             daily_budget_cny=settings.daily_budget_cny,
