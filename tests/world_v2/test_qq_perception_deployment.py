@@ -325,6 +325,42 @@ async def test_factory_composes_when_provisioned(
 
 
 @pytest.mark.asyncio
+async def test_factory_caption_uses_configured_shared_cny_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from companion_daemon.world_v2.model_usage_budget import BackgroundSpendCapDenied
+
+    monkeypatch.setenv("WORLD_V2_ENABLE_INSECURE_TEST_ROOT", "1")
+    settings = _settings(tmp_path, MONTHLY_BUDGET_CNY=0.0000001)
+    config = WorldV2TurnApplicationConfig(
+        world_id=WORLD_ID, companion_actor_ref="agent:companion",
+        reply_target="user:primary", action_pump_owner="pump:qq-perception",
+    )
+    await _provisioned_world(Path(settings.database_path), config)
+    bundle = build_qq_perception_deployment(
+        settings=settings, world_id=WORLD_ID, api_url="http://127.0.0.1:3000",
+    )
+    assert bundle is not None
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        raise AssertionError("factory budget rejection must precede HTTP")
+
+    bundle.transport._transport = httpx.MockTransport(handler)
+    try:
+        with pytest.raises(BackgroundSpendCapDenied):
+            await bundle.transport.analyze(
+                analysis_kind="vision", input_ref=IMAGE_REF,
+                input_hash="sha256:" + "a" * 64,
+                body="data:image/png;base64,cG5n", idempotency_key="perception:budget",
+            )
+        assert calls == []
+    finally:
+        bundle.close()
+
+
+@pytest.mark.asyncio
 async def test_real_pieces_compose_into_next_turn_context_exactly_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

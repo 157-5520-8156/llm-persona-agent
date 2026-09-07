@@ -20,16 +20,28 @@ import logging
 from pathlib import Path
 import sqlite3
 import threading
+from time import monotonic
 from typing import Any
 
 import httpx
 
+from companion_daemon.llm import ModelCallUsage
+from companion_daemon.usage_metrics import estimate_model_cost
+
+from .model_usage_budget import WorldV2UsageStore
 from .perception_result_context import PerceptionResultContent
 
 
 _LOG = logging.getLogger(__name__)
 
 _MAX_RESULT_CHARACTERS = 2_000
+_MAX_OUTPUT_TOKENS = 300
+# One Qwen3-VL image has at most 16,384 visual tokens. Reserve the full
+# supported image envelope without changing image detail or counting base64
+# bytes as text. Provider-reported usage replaces this planning estimate.
+# https://www.alibabacloud.com/help/zh/model-studio/vision (checked 2026-09-07)
+_IMAGE_TOKEN_RESERVE = 16_384
+_PERCEPTION_USAGE_PURPOSE = "qq_attachment_perception"
 
 # The provider text is her *view* of an image, never proof of who is in it.
 # Mirror the v1 multimodal guard: a summary that asserts the person is the
@@ -77,6 +89,8 @@ class SQLiteDurableVisionPerceptionTransport:
         timeout_seconds: float = 45.0,
         transport: httpx.AsyncBaseTransport | None = None,
         thinking_disabled: bool = True,
+        usage_store: WorldV2UsageStore | None = None,
+        world_id: str = "",
     ) -> None:
         if not api_key or not base_url or not model:
             raise ValueError("vision perception transport requires provider credentials")
@@ -87,6 +101,8 @@ class SQLiteDurableVisionPerceptionTransport:
         self._timeout = timeout_seconds
         self._transport = transport
         self._thinking_disabled = thinking_disabled
+        self._world_id = world_id
+        self._usage_store = usage_store or WorldV2UsageStore(path=str(path))
         self._lock = threading.RLock()
         self._connection = sqlite3.connect(str(path), isolation_level=None, check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
@@ -158,7 +174,7 @@ class SQLiteDurableVisionPerceptionTransport:
             if (stored["input_ref"], stored["input_hash"]) != (input_ref, input_hash):
                 raise ValueError("perception idempotency key was rebound to another input")
             return self._tuple(stored)
-        text, provider_ref = await self._call_provider(body)
+        text, provider_ref = await self._call_provider(body, idempotency_key=idempotency_key)
         received_at = datetime.now(UTC)
         result_ref = "perception-vision:" + _digest(
             {"key": idempotency_key, "input_hash": input_hash, "text": text}
@@ -195,9 +211,7 @@ class SQLiteDurableVisionPerceptionTransport:
         assert final is not None
         return self._tuple(final)
 
-    async def lookup(
-        self, *, idempotency_key: str
-    ) -> tuple[str, str, str, int, datetime] | None:
+    async def lookup(self, *, idempotency_key: str) -> tuple[str, str, str, int, datetime] | None:
         stored = self._stored(idempotency_key)
         return self._tuple(stored) if stored is not None else None
 
@@ -225,7 +239,7 @@ class SQLiteDurableVisionPerceptionTransport:
 
     # -- provider call -----------------------------------------------------------
 
-    async def _call_provider(self, body: str) -> tuple[str, str]:
+    async def _call_provider(self, body: str, *, idempotency_key: str) -> tuple[str, str]:
         options: dict[str, Any] = {"timeout": self._timeout, "trust_env": False}
         if self._proxy_url:
             options["proxy"] = self._proxy_url
@@ -243,22 +257,99 @@ class SQLiteDurableVisionPerceptionTransport:
                     ],
                 },
             ],
-            "max_tokens": 300,
-            "max_completion_tokens": 300,
+            "max_tokens": _MAX_OUTPUT_TOKENS,
+            "max_completion_tokens": _MAX_OUTPUT_TOKENS,
         }
         if self._thinking_disabled:
             payload["enable_thinking"] = False
-        async with httpx.AsyncClient(**options) as client:
-            response = await client.post(
-                f"{self._base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
+        prompt_tokens = (
+            _IMAGE_TOKEN_RESERVE + len((_SYSTEM_PROMPT + _USER_PROMPT).encode("utf-8")) + 256
+        )  # Conservative text/framing allowance; never includes image bytes.
+        estimate = estimate_model_cost(
+            model=self._model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=_MAX_OUTPUT_TOKENS,
+            cache_hit_tokens=0,
+            cache_miss_tokens=prompt_tokens,
+        )
+        reservation_id = self._usage_store.admit_provider_call(
+            purpose=_PERCEPTION_USAGE_PURPOSE,
+            actor="agent:companion",
+            provider=self.provider,
+            model=self._model,
+            prompt_characters=len(_SYSTEM_PROMPT + _USER_PROMPT),
+            estimated_cny=estimate.cny,
+            world_id=self._world_id,
+            # The transport receives the accepted Action's effect-once key,
+            # not its chat-turn or Action ID. Keep that exact correlation.
+            turn_id=idempotency_key,
+        )
+        started = monotonic()
+        emitted = False
+        failure: BaseException | None = None
+        usage: dict[str, object] = {}
+        try:
+            async with httpx.AsyncClient(**options) as client:
+                emitted = True
+                response = await client.post(
+                    f"{self._base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self._api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                reported_usage = payload.get("usage") if isinstance(payload, dict) else None
+                if isinstance(reported_usage, dict):
+                    usage = reported_usage
+            return self._caption_result(payload)
+        except BaseException as exc:
+            failure = exc
+            raise
+        finally:
+            complete = all(
+                isinstance(usage.get(key), int)
+                and not isinstance(usage.get(key), bool)
+                and int(usage[key]) >= 0
+                for key in ("prompt_tokens", "completion_tokens")
             )
-            response.raise_for_status()
-            payload = response.json()
+            rejected = isinstance(failure, httpx.HTTPStatusError) and (
+                failure.response.status_code < 500
+                and failure.response.status_code not in {408, 429}
+            )
+            billing_state = (
+                "known" if complete else ("not_billed" if not emitted or rejected else "unknown")
+            )
+            prompt_count = _token_count(usage, "prompt_tokens")
+            prompt_details = usage.get("prompt_tokens_details")
+            cached = min(prompt_count, _token_count(prompt_details, "cached_tokens"))
+            self._usage_store.record(
+                ModelCallUsage(
+                    purpose=_PERCEPTION_USAGE_PURPOSE,
+                    model=self._model,
+                    provider=self.provider,
+                    status="failed" if failure else "succeeded",
+                    latency_ms=max(0, int((monotonic() - started) * 1000)),
+                    prompt_tokens=prompt_count,
+                    completion_tokens=_token_count(usage, "completion_tokens"),
+                    reasoning_tokens=_token_count(
+                        usage.get("completion_tokens_details"), "reasoning_tokens"
+                    ),
+                    cache_hit_tokens=cached,
+                    cache_miss_tokens=prompt_count - cached,
+                    total_tokens=_token_count(usage, "total_tokens"),
+                    world_id=self._world_id,
+                    turn_id=idempotency_key,
+                    budget_reservation_id=reservation_id,
+                    thinking_enabled=not self._thinking_disabled,
+                    billing_state=billing_state,
+                    error=f"vision_error:{type(failure).__name__}" if failure else "",
+                )
+            )
+
+    def _caption_result(self, payload: object) -> tuple[str, str]:
         choices = payload.get("choices") if isinstance(payload, dict) else None
         message = choices[0].get("message") if isinstance(choices, list) and choices else None
         content = message.get("content") if isinstance(message, dict) else None
@@ -293,6 +384,11 @@ class SQLiteDurableVisionPerceptionTransport:
             int(row["cost"]),
             datetime.fromisoformat(row["received_at"]),
         )
+
+
+def _token_count(source: object, key: str) -> int:
+    value = source.get(key) if isinstance(source, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
 __all__ = ["SQLiteDurableVisionPerceptionTransport"]

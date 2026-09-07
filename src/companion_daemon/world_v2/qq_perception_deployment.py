@@ -25,6 +25,7 @@ import sqlite3
 
 from companion_daemon.config import Settings
 
+from .model_usage_budget import usage_store_for_settings
 from .perception_authority_provisioning import (
     PERCEPTION_CONSENT_ID,
     PERCEPTION_PRIVACY_POLICY_ID,
@@ -127,6 +128,8 @@ def build_qq_perception_deployment(
         base_url=settings.qwen_base_url,
         model=settings.vision_model,
         thinking_disabled=True,
+        usage_store=usage_store_for_settings(settings),
+        world_id=world_id,
     )
     archiver = QQOneBotAttachmentArchiver(
         archive=archive, api_url=api_url, access_token=access_token
