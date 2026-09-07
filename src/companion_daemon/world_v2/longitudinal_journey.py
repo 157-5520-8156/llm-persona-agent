@@ -21,7 +21,6 @@ from typing import Callable
 
 from .replay_evaluator import ReplayEvaluator
 from .sqlite_ledger import SQLiteWorldLedger
-from .declared_due import select_clock_wake
 
 
 CONTRACT = "longitudinal-journey.1"
@@ -306,6 +305,8 @@ async def run_journey(
     usage: dict = {}
     final_logical_time: datetime | None = None
     final_wake_snapshot = None
+    due_snapshot_sequence_before: int | None = None
+    due_snapshot_sequence_after: int | None = None
     row: dict = {}
 
     async def bounded(awaitable):
@@ -482,7 +483,9 @@ async def run_journey(
             if row["errors"]:
                 stop_reason = row["errors"][0]
                 break
+        due_snapshot_sequence_before = sequence + len(read_events(database, sequence))
         final_wake_snapshot = await bounded(host.scheduler_wake_snapshot())
+        due_snapshot_sequence_after = sequence + len(read_events(database, sequence))
     except Exception as exc:
         stop_reason = (
             "wall_time_limit"
@@ -511,15 +514,12 @@ async def run_journey(
                         stop_reason = "wall_time_limit"
                     elif final_logical_time is None or final_wake_snapshot is None:
                         stop_reason = "logical_time_did_not_reach_end"
-                    elif (
-                        final_logical_time < end
-                        and select_clock_wake(
-                            after=final_logical_time,
-                            through=end,
-                            dues=final_wake_snapshot.dues,
-                        )
-                        is not None
+                    elif due_snapshot_sequence_before != due_snapshot_sequence_after or (
+                        due_snapshot_sequence_after
+                        != sequence + len(read_events(database, sequence))
                     ):
+                        stop_reason = "completion_unverified_after_state_change"
+                    elif any(item.due_at <= end for item in final_wake_snapshot.dues):
                         stop_reason = "unprocessed_due_before_end"
                 usage = host.usage_budget_health()
                 capture({"kind": "final", "status": stop_reason, "errors": []})
@@ -544,6 +544,9 @@ async def run_journey(
             max(0, (end - final_logical_time).total_seconds()) if final_logical_time else None
         ),
         "model_failures": model_failures(evidence),
+        "due_snapshot_sequence_before": due_snapshot_sequence_before,
+        "due_snapshot_sequence_after": due_snapshot_sequence_after,
+        "final_ledger_sequence": sequence,
         "wall_seconds": time.monotonic() - wall_started,
         "stop_reason": stop_reason,
         "turns_consumed": turn_index,

@@ -263,6 +263,27 @@ async def test_quiet_tail_needs_no_empty_clock_event_but_cannot_skip_due(
 
 
 @pytest.mark.asyncio
+async def test_clock_at_end_does_not_prove_overdue_work_was_processed(tmp_path, monkeypatch):
+    fixture = _RunnerFixture(monkeypatch)
+    fixture.due_at = NOW + timedelta(seconds=30)
+
+    async def skip_environment(self, *, observed_at, **kwargs):
+        self.logical_time = observed_at
+        return SimpleNamespace(action_statuses=(), background_statuses=())
+
+    monkeypatch.setattr(_BoundaryHost, "scheduler_once", skip_environment)
+    manifest = await run_journey(
+        journey=_journey(),
+        output=tmp_path / "journey",
+        host_factory=fixture.factory,
+        synthetic=True,
+    )
+    assert manifest["elapsed_logical_seconds"] == 60
+    assert manifest["completed"] is False
+    assert manifest["stop_reason"] == "unprocessed_due_before_end"
+
+
+@pytest.mark.asyncio
 async def test_existing_output_is_preserved_without_constructing_a_host(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -305,3 +326,5 @@ async def test_final_artifacts_include_close_and_quiescence_tail_events(
     final = [row for row in _read_jsonl(output / "timeline.jsonl") if row["kind"] == "final"]
     assert final[-1]["ledger_end_sequence"] == 2
     assert manifest["replay"]["world_revision"] == 2
+    assert manifest["completed"] is False
+    assert manifest["stop_reason"] == "completion_unverified_after_state_change"
