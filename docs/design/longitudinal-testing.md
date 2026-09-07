@@ -47,7 +47,7 @@ HTTP 超时、实验运行期限和 API 账期仍按实际时间计算，不缩�
 PYTHONPATH=src python scripts/run_world_v2_longitudinal_audit.py \
   --output output/longitudinal/fixture-week-01
 
-# 真模型试跑：环境中配置独立 DEEPSEEK_DEBUG_API_KEY；开关明确表示会调用供应商。
+# 真模型试跑：环境中配置 DEEPSEEK_DEBUG_API_KEY；开关明确表示会调用供应商。
 # 0.5 元是实验共享预算，不是跑完七天的价格承诺。到额度不足时保存部分结果。
 PYTHONPATH=src python scripts/run_world_v2_longitudinal_audit.py \
   --output output/longitudinal/model-week-01 \
@@ -55,6 +55,9 @@ PYTHONPATH=src python scripts/run_world_v2_longitudinal_audit.py \
 ```
 
 `--scenario` 可指定同格式 JSON。调整 `duration_minutes`、输入和重启点可做数小时的短旅程。
+仓库提供 `fixtures/world_v2/longitudinal_two_days.json`，包含六条输入和一次重启点；其两天是请求范围，
+不是默认预算可完成的承诺。CLI 不读取 `.env`，也不验证 debug key 与生产 key 是否不同；隔离数据库
+不等于隔离供应商账户。若使用同一账户，实验费用必须计入该实例总账。
 `--heartbeat-seconds` 默认 300，最大 900；粗粒度 heartbeat 不是生产几秒一次 scheduler 的逐次重放。
 `--max-wall-seconds` 默认 1800，是停止实验新工作及等待调用的期限；已经发出的持久任务关闭时需收尾。
 越限、回放不符、后台无法推进、预算拒绝或目标区间仍有应处理的 due，均不得标为完整旅程。
@@ -74,6 +77,8 @@ focused-origin 检查，配置 reviewer 后才使用该模型路径。缺少 rev
 - `timeline.jsonl`：每个输入/调度步骤、捕获消息、状态与对应账本闭区间。
 - `evidence.jsonl`：新世界真实事件的增量导出；`manifest.json` 绑定文件 hash、回放检查、运行范围与限制。
 - `review.json`：保留顺序的评审包，去除已知运行版本/供应商管理标签；六维默认 `insufficient`。
+- `model-inputs.jsonl`：真实模型模式在客户端 transport 边界捕获完整 JSON 请求字节及 SHA-256；
+  包含 messages、tools、schema 与输出参数，不记录鉴权头、请求地址或响应正文。文件权限为 0600。
 - `checkpoint-*.sqlite`：关闭并等待后台收尾后的保存点。供本地进一步取证，不包含真实用户生产数据。
 
 `validate_review_annotations` 要求六维完整、理由和有效证据引用；`assessed` 表示有依据地做过判断，
@@ -83,10 +88,13 @@ focused-origin 检查，配置 reviewer 后才使用该模型路径。缺少 rev
 没有可见消息不等于沉默。报告保留实际 `TriggerProcessCompleted.runtime_outcome_ref`，角色的
 `model-silent`、Action 授权、供应商接受、技术失败及未知各自保留。捕获器的确认只是模拟回执，不能
 称真实 QQ 送达证明。当前重启 hash 验证状态连续性，异步恢复是否重发仍单列未验证。
+模型输出合法之后仍可能发生提交失败；报告将 Life ecology 的 `failed_safe` 和技术失败终态单独显示，
+不把这些调度步骤折叠成安静时段，也不把它们解释成角色选择沉默。
 
-目前输出包含 model audit、来源引用、回忆呈现 trace（若原路径有记录），**不保证包含实际发送给模型的
-完整 Context 字节**。因此 Context 可见性默认 `unverified`，不能从“事实存入库”推导“模型已经看到”，
-更不能从“模型看到了”推导“后续变化一定由该事实导致”。这是下一步增强取证的明确边界。
+捕获成功标为 `captured_client_requests`；写入失败、不可读取的请求或部分覆盖会保留不完整状态，不能
+伪报成功。捕获器不缓冲响应流，记录故障不阻断模型调用；必须联合 usage 和 capture health 核对覆盖。
+捕获区间不证明请求属于同一 pinned turn；发送字节不证明供应商接受、模型关注或后续变化的因果关系。
+导出的模型原文可能包含身份和供应商名称，管理字段隐藏不等于严格盲评。这些私人产物不进入版本控制。
 
 ## 费用与时间
 
@@ -97,4 +105,6 @@ focused-origin 检查，配置 reviewer 后才使用该模型路径。缺少 rev
 每实例约 ¥100/月的目标包含测试调用。设计总纲给真实资格化/对聊 canary 的初始信封是 ¥6/月，
 因此不应每改一行就重复付费跑完整周。先做短回归、复用保存点、只对有信息价值的问题扩大真实样本。
 当前预算门在本实验 SQLite 内共享，跨实验目录与生产实例的总费用仍需汇总，不能各开目录重新获得额度。
+HTTP 发出前按完整请求（包括工具 schema）与实际输出上限保守预约；按供应商 usage 结算，未知价格
+不发请求。因此可能在已结算费用低于预算时拒绝下一次调用，拒绝金额不能当作实际花费。
 虚拟周压缩在同一个真实账期内，不能把 production health 的“每真实日花费”直接当成模拟日均成本预测。
