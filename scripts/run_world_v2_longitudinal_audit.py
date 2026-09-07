@@ -342,17 +342,15 @@ def main(argv: list[str] | None = None) -> int:
         # Settings/provider errors can include private input values; print only type.
         print(f"Longitudinal audit setup failed: {type(exc).__name__}", file=sys.stderr)
         return 2
-    print(
-        json.dumps(
-            {
-                "output": str(options.output),
-                "completed": manifest["completed"],
-                "stop_reason": manifest["stop_reason"],
-                "synthetic": manifest["synthetic"],
-            },
-            ensure_ascii=False,
-        )
-    )
+    summary = {
+        "output": str(options.output),
+        "completed": manifest["completed"],
+        "stop_reason": manifest["stop_reason"],
+        "synthetic": manifest["synthetic"],
+    }
+    if "operator_final_observation" in manifest:
+        summary["operator_final_observation"] = manifest["operator_final_observation"]
+    print(json.dumps(summary, ensure_ascii=False))
     return 0 if manifest["completed"] else 1
 
 

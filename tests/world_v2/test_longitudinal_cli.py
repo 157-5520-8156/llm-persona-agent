@@ -3,7 +3,9 @@ from __future__ import annotations
 import importlib.util
 import hashlib
 import json
+import os
 from pathlib import Path
+import sys
 import time
 
 import httpx
@@ -226,6 +228,49 @@ async def test_adaptive_dialogue_reads_delivered_reply_before_next_input_and_can
     ]
     assert commands[1]["command"] == {"wait_until_minutes": 2}
     assert "operator-commands.jsonl" in manifest["artifacts"]
+
+
+@pytest.mark.parametrize("interactive", [True, False])
+def test_cli_prints_a_final_observation_only_for_adaptive_runs(
+    tmp_path, monkeypatch, capsys, interactive
+):
+    scenario = tmp_path / "adaptive-end.json"
+    scenario.write_text(
+        json.dumps(
+            {
+                "scenario_id": "adaptive-end",
+                "started_at": "2026-09-08T10:00:00+08:00",
+                "duration_minutes": 2,
+                "turns": [],
+            }
+        )
+    )
+    read_fd, write_fd = os.pipe()
+    os.write(write_fd, b'{"wait_until_minutes":2}\n')
+    os.close(write_fd)
+    output = tmp_path / "run"
+    with os.fdopen(read_fd, "rb") as stream:
+        monkeypatch.setattr(sys, "stdin", stream)
+        exit_code = _cli().main(
+            ["--scenario", str(scenario), "--output", str(output)]
+            + (["--interactive"] if interactive else [])
+        )
+        os.fstat(stream.fileno())
+
+    printed = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert exit_code == 0
+    saved = json.loads((output / "manifest.json").read_text())
+    if not interactive:
+        assert len(printed) == 1
+        assert "operator_final_observation" not in printed[0]
+        assert "operator_final_observation" not in saved
+        return
+    assert len(printed) == 2  # Initial command request, then a terminal summary.
+    assert printed[0]["operator_observation"]["elapsed_minutes"] == 0
+    final = printed[-1]["operator_final_observation"]
+    assert final["elapsed_minutes"] == 2
+    assert final["steps"][-1]["kind"] == "final"
+    assert saved["operator_final_observation"] == final
 
 
 @pytest.mark.asyncio

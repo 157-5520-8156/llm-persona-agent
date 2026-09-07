@@ -402,6 +402,32 @@ async def run_journey(
         with (output / "timeline.jsonl").open("a") as stream:
             stream.write(_json(row) + "\n")
 
+    def operator_observation() -> dict:
+        return {
+            "virtual_at": clock.now().isoformat(),
+            "elapsed_minutes": (clock.now() - journey.started_at).total_seconds() / 60,
+            "steps": [
+                {
+                    key: value
+                    for key, value in step.items()
+                    if key
+                    in {
+                        "step_id",
+                        "kind",
+                        "status",
+                        "virtual_at",
+                        "user_text",
+                        "turn_id",
+                        "deliveries",
+                        "terminal_outcomes",
+                        "model_failures",
+                        "errors",
+                    }
+                }
+                for step in timeline[observation_offset:]
+            ],
+        }
+
     async def drain() -> tuple[list[str], bool]:
         statuses: list[str] = []
         for _ in range(limits.drain_passes):
@@ -436,33 +462,15 @@ async def run_journey(
                 stop_reason = "billing_day_boundary"
                 break
             if next_command is not None and turn_index == len(turns) and checkpoint is None:
-                observation = {
-                    "virtual_at": clock.now().isoformat(),
-                    "elapsed_minutes": (clock.now() - journey.started_at).total_seconds() / 60,
-                    "steps": [
-                        {
-                            key: value
-                            for key, value in step.items()
-                            if key
-                            in {
-                                "step_id",
-                                "kind",
-                                "status",
-                                "virtual_at",
-                                "user_text",
-                                "turn_id",
-                                "deliveries",
-                                "terminal_outcomes",
-                                "model_failures",
-                                "errors",
-                            }
-                        }
-                        for step in timeline[observation_offset:]
-                    ],
-                }
+                observation = operator_observation()
                 # Give the operator a detached view, never mutable ledger/timeline objects.
                 command = await bounded(next_command(json.loads(_json(observation))))
                 observation_offset = len(timeline)
+                # Operator thinking time is real wall time.  A day/month reset
+                # must not admit a new provider call against a fresh allowance.
+                if datetime.now(UTC).date() != billing_day:
+                    stop_reason = "billing_day_boundary"
+                    break
                 if command is not None:
                     if not isinstance(command, dict):
                         raise ValueError(
@@ -702,6 +710,10 @@ async def run_journey(
             if (output / name).exists()
         },
     }
+    if next_command is not None:
+        # Final settlement/shutdown can deliver after the last operator read.
+        # Expose that unread tail without opening another command or model call.
+        manifest["operator_final_observation"] = operator_observation()
     (output / "manifest.json").write_text(_json(manifest) + "\n")
     from .longitudinal_review import build_review_packet, render_longitudinal_report
 

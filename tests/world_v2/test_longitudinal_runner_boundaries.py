@@ -191,6 +191,98 @@ async def test_adaptive_commands_cannot_script_character_or_skip_clock_bounds(
 
 
 @pytest.mark.asyncio
+async def test_adaptive_wait_cannot_start_a_turn_in_a_new_billing_period(tmp_path, monkeypatch):
+    fixture = _RunnerFixture(monkeypatch)
+    wall_time = datetime(2026, 8, 31, 23, 59, tzinfo=UTC)
+
+    class BillingClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return wall_time
+
+    monkeypatch.setattr(journey_module, "datetime", BillingClock)
+
+    async def decide(_observation):
+        nonlocal wall_time
+        wall_time += timedelta(minutes=2)
+        return {"id": "next-month", "at_minutes": 0, "text": "新一轮"}
+
+    manifest = await run_journey(
+        journey=_journey(),
+        output=tmp_path / "run",
+        host_factory=fixture.factory,
+        synthetic=True,
+        next_command=decide,
+    )
+
+    assert manifest["stop_reason"] == "billing_day_boundary"
+    assert manifest["turns_consumed"] == 0
+    assert fixture.inbound_contexts == []
+    assert manifest["elapsed_virtual_seconds"] == 0
+    assert fixture.hosts[-1].closed and fixture.hosts[-1].quiescent
+
+
+@pytest.mark.asyncio
+async def test_adaptive_final_observation_contains_only_the_unread_delivery_tail(
+    tmp_path, monkeypatch
+):
+    fixture = _RunnerFixture(monkeypatch)
+    observations = []
+
+    def factory(database, _clock, delivery):
+        class DeliveryHost(_BoundaryHost):
+            async def scheduler_once(self, *, observed_at, **kwargs):
+                result = await super().scheduler_once(observed_at=observed_at, **kwargs)
+                text = (
+                    "first seen delivery"
+                    if observed_at == NOW + timedelta(minutes=1)
+                    else "unread tail delivery"
+                )
+                await delivery.send_text("fixture:operator", text)
+                return result
+
+        host = DeliveryHost(fixture, database)
+        fixture.hosts.append(host)
+        return host
+
+    async def decide(observation):
+        observations.append(observation)
+        assert len(observations) <= 2, "The final observation must not request another command"
+        return {"wait_until_minutes": len(observations)}
+
+    scenario = Journey.parse(
+        {
+            "scenario_id": "adaptive-final-observation",
+            "started_at": NOW.isoformat(),
+            "duration_minutes": 2,
+            "turns": [],
+        }
+    )
+    output = tmp_path / "run"
+    manifest = await run_journey(
+        journey=scenario,
+        output=output,
+        host_factory=factory,
+        synthetic=True,
+        next_command=decide,
+    )
+
+    final = manifest["operator_final_observation"]
+    assert manifest["completed"]
+    assert len(observations) == 2
+    assert final["elapsed_minutes"] == 2
+    assert final["virtual_at"] == (NOW + timedelta(minutes=2)).isoformat()
+    assert [
+        record["text"] for step in final["steps"] for record in step["deliveries"]
+    ] == ["unread tail delivery"]
+    observed_ids = {step["step_id"] for item in observations for step in item["steps"]}
+    assert observed_ids.isdisjoint(step["step_id"] for step in final["steps"])
+    assert final["steps"][-1]["kind"] == "final"
+    assert all("context_evidence" not in step for step in final["steps"])
+    assert json.loads((output / "manifest.json").read_text())["operator_final_observation"] == final
+
+
+@pytest.mark.asyncio
 async def test_adaptive_operator_wait_is_cancellable_and_closes_owned_resources(
     tmp_path, monkeypatch
 ):
