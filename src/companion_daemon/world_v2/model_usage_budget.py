@@ -10,6 +10,7 @@ Image CNY still lives in ``usage_events`` on this same sqlite path.
 from __future__ import annotations
 
 import logging
+import math
 import sqlite3
 import threading
 import uuid
@@ -22,7 +23,6 @@ from ..usage_metrics import (
     CNY_PER_USD,
     estimate_model_cost,
     estimate_routed_model_reserve_cny,
-    is_deepseek_peak,
     price_usage_row,
 )
 
@@ -51,21 +51,6 @@ VISIBLE_INBOUND_PURPOSES = frozenset(
         "recall_control_transfer",
         "validation_reselection",
         "qq_attachment_perception",
-    }
-)
-
-# Optional background lanes that may wait for Beijing off-peak pricing without
-# changing what the user sees on the next visible turn.
-OFFPEAK_PREFERRED_PURPOSES = frozenset(
-    {
-        "experience_memory_retention",
-        "fact_memory_retention",
-        "life_development_draft",
-        "life_development_choice",
-        "life_development_novel_origin_review",
-        "private_impression_reflection",
-        "npc_actor_decision",
-        "npc_world_adjudication",
     }
 )
 
@@ -119,6 +104,7 @@ _USAGE_COLUMN_MIGRATIONS = (
     ("reasoning_tokens", "INTEGER NOT NULL DEFAULT 0"),
     ("pricing_version", "TEXT NOT NULL DEFAULT ''"),
     ("spend_account", "TEXT NOT NULL DEFAULT ''"),
+    ("billing_state", "TEXT NOT NULL DEFAULT 'legacy'"),
 )
 
 
@@ -265,55 +251,68 @@ class WorldV2UsageStore:
             ).cny
         return total
 
-    def _combined_spend_cny(self, *, since: datetime) -> float:
+    def _spend_snapshot(
+        self, connection: sqlite3.Connection, *, since: datetime
+    ) -> dict[str, float]:
+        """One connection/snapshot for admission and health, including open bills.
+
+        An unknown bill retains only the part of its reserve not already
+        represented by usage. Unresolved calls survive calendar rollover: they
+        could still settle in this window and must not become fresh capacity.
+        """
         iso = since.isoformat()
+        model = self._priced_model_spend_cny(connection, since=since)
+        external = float(connection.execute(
+            "SELECT COALESCE(SUM(estimated_cny), 0) FROM usage_events WHERE created_at >= ?",
+            (iso,),
+        ).fetchone()[0])
+        pending = 0.0
+        unknown = 0.0
+        for amount, status, accounted in connection.execute(
+            """
+            SELECT r.estimated_cny, r.status,
+                COALESCE((SELECT SUM(u.cost_cny) FROM world_v2_model_usage u
+                          WHERE u.reservation_id = r.reservation_id
+                          AND u.recorded_at >= ? AND u.purpose != 'image_generation'), 0)
+            FROM world_v2_model_reservations r
+            WHERE r.status IN ('pending', 'billing_unknown')
+            """, (iso,),
+        ):
+            remainder = max(0.0, float(amount) - float(accounted))
+            if status == 'billing_unknown':
+                unknown += remainder
+            else:
+                pending += remainder
+        return {"model_cny": model, "external_cny": external,
+                "pending_cny": pending, "unknown_cny": unknown,
+                "settled_cny": model + external,
+                "committed_cny": model + external + pending + unknown}
+
+    def _combined_spend_cny(self, *, since: datetime) -> float:
         with self._lock:
             connection = self._connect()
             try:
-                model_total = self._priced_model_spend_cny(connection, since=since)
-                pending_row = connection.execute(
-                    """
-                    SELECT COALESCE(SUM(estimated_cny), 0)
-                    FROM world_v2_model_reservations
-                    WHERE created_at >= ? AND status = 'pending'
-                    """,
-                    (iso,),
-                ).fetchone()
-                try:
-                    image_row = connection.execute(
-                        """
-                        SELECT COALESCE(SUM(estimated_cny), 0) FROM usage_events
-                        WHERE created_at >= ?
-                        """,
-                        (iso,),
-                    ).fetchone()
-                    images = float(image_row[0] if image_row is not None else 0.0)
-                except sqlite3.DatabaseError:
-                    images = 0.0
-                pending = float(pending_row[0] if pending_row is not None else 0.0)
-                return model_total + pending + images
+                connection.execute("BEGIN")
+                return self._spend_snapshot(connection, since=since)["committed_cny"]
             finally:
                 connection.close()
 
-    def _spend_cap_reason(self, estimated_cny: float, *, purpose: str) -> str | None:
-        amount = max(0.0, float(estimated_cny))
-        monthly = self._combined_spend_cny(since=self._utc_window_start(month=True))
-        daily = self._combined_spend_cny(since=self._utc_window_start(month=False))
-        if (
-            self._monthly_budget_cny is not None
-            and monthly + amount > self._monthly_budget_cny
-        ):
+    def _spend_cap_reason(
+        self, connection: sqlite3.Connection, estimated_cny: float, *, purpose: str
+    ) -> str | None:
+        monthly = self._spend_snapshot(
+            connection, since=self._utc_window_start(month=True)
+        )["committed_cny"]
+        daily = self._spend_snapshot(
+            connection, since=self._utc_window_start(month=False)
+        )["committed_cny"]
+        if self._monthly_budget_cny is not None and monthly + estimated_cny > self._monthly_budget_cny:
             return "monthly_budget_exceeded"
-        if self._daily_budget_cny is not None and daily + amount > self._daily_budget_cny:
+        if self._daily_budget_cny is not None and daily + estimated_cny > self._daily_budget_cny:
             return "daily_budget_exceeded"
         if purpose in VISIBLE_INBOUND_PURPOSES:
             return None
-        if purpose in OFFPEAK_PREFERRED_PURPOSES and is_deepseek_peak():
-            return "deferred_offpeak"
-        if (
-            self._soft_daily_budget_cny is not None
-            and daily + amount > self._soft_daily_budget_cny
-        ):
+        if self._soft_daily_budget_cny is not None and daily + estimated_cny > self._soft_daily_budget_cny:
             return "soft_daily_budget_exceeded"
         return None
 
@@ -392,27 +391,28 @@ class WorldV2UsageStore:
             )
         else:
             reserved_cny = float(estimated_cny)
-        if reserved_cny < 0:
+        if not math.isfinite(reserved_cny) or reserved_cny < 0:
             raise ModelUsageAdmissionError("world v2 model call estimated CNY is invalid")
-        if self._gates_cny(resolved_purpose):
-            reason = self._spend_cap_reason(reserved_cny, purpose=resolved_purpose)
-            if reason is not None:
-                self._record_budget_denial(
-                    purpose=resolved_purpose,
-                    actor=resolved_actor,
-                    provider=resolved_provider,
-                    model=model or "",
-                    reason=reason,
-                    estimated_cny=reserved_cny,
-                    world_id=world_id,
-                    turn_id=turn_id,
-                )
-                raise BackgroundSpendCapDenied(reason)
         token = reservation_id.strip() or f"reservation:{uuid.uuid4().hex}"
         created_at = datetime.now(timezone.utc).isoformat()
         with self._lock:
             connection = self._connect()
             try:
+                # SQLite's write lease coordinates all stores/processes sharing
+                # this ledger. No await or provider operation occurs in it.
+                connection.execute("BEGIN IMMEDIATE")
+                if self._gates_cny(resolved_purpose):
+                    reason = self._spend_cap_reason(
+                        connection, reserved_cny, purpose=resolved_purpose
+                    )
+                    if reason is not None:
+                        connection.rollback()
+                        self._record_budget_denial(
+                            purpose=resolved_purpose, actor=resolved_actor,
+                            provider=resolved_provider, model=model or "", reason=reason,
+                            estimated_cny=reserved_cny, world_id=world_id, turn_id=turn_id,
+                        )
+                        raise BackgroundSpendCapDenied(reason)
                 connection.execute(
                     """
                     INSERT INTO world_v2_model_reservations (
@@ -431,6 +431,7 @@ class WorldV2UsageStore:
                         turn_id,
                     ),
                 )
+                connection.commit()
             finally:
                 connection.close()
         return token
@@ -448,85 +449,93 @@ class WorldV2UsageStore:
             )
 
     def _record_usage(self, usage: object) -> None:
+        reservation_id = str(getattr(usage, "budget_reservation_id", "")
+                             or getattr(usage, "reservation_id", "") or "")
         model = str(getattr(usage, "model", "") or "")
-        prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
-        completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
-        reasoning_tokens = int(getattr(usage, "reasoning_tokens", 0) or 0)
-        cache_hit_tokens = int(getattr(usage, "cache_hit_tokens", 0) or 0)
-        cache_miss_tokens = int(getattr(usage, "cache_miss_tokens", 0) or 0)
-        recorded_at = datetime.now(timezone.utc).isoformat()
-        priced = estimate_model_cost(
-            model=model or "__unpriced__",
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            cache_hit_tokens=cache_hit_tokens,
-            cache_miss_tokens=cache_miss_tokens,
-            reasoning_tokens=reasoning_tokens,
-            at=recorded_at,
-            cny_per_usd=self._usd_to_cny,
-        )
-        cost_cny = round(priced.cny, 4)
-        reservation_id = str(
-            getattr(usage, "budget_reservation_id", "")
-            or getattr(usage, "reservation_id", "")
-            or ""
-        )
-        actor = str(getattr(usage, "actor", "") or "")
-        attempt = int(getattr(usage, "attempt", 1) or 1)
-        estimated_cny = 0.0
+        tokens = {name: int(getattr(usage, name, 0) or 0) for name in (
+            "prompt_tokens", "completion_tokens", "reasoning_tokens", "cache_hit_tokens",
+            "cache_miss_tokens", "total_tokens",
+        )}
+        billing = str(getattr(usage, "billing_state", "legacy") or "unknown")
+        if billing not in {"known", "unknown", "not_billed", "legacy"}:
+            raise ModelUsageAdmissionError("invalid provider billing state")
+        if any(value < 0 for value in tokens.values()):
+            raise ModelUsageAdmissionError("negative provider usage")
+        if billing == "not_billed" and any(tokens.values()):
+            raise ModelUsageAdmissionError("not_billed usage carries charged tokens")
+        values = {
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "world_id": str(getattr(usage, "world_id", "") or ""),
+            "turn_id": str(getattr(usage, "turn_id", "") or ""),
+            "purpose": str(getattr(usage, "purpose", "") or ""),
+            "model": model, "status": str(getattr(usage, "status", "") or ""),
+            "provider": str(getattr(usage, "provider", "") or ""), **tokens,
+            "error": str(getattr(usage, "error", "") or "")[:2_400],
+            "latency_ms": int(getattr(usage, "latency_ms", 0) or 0),
+            "actor": str(getattr(usage, "actor", "") or ""),
+            "reservation_id": reservation_id, "estimated_cny": 0.0,
+            "attempt": int(getattr(usage, "attempt", 1) or 1),
+            "spend_account": self._spend_account, "billing_state": billing,
+        }
         with self._lock:
             connection = self._connect()
+            connection.row_factory = sqlite3.Row
             try:
+                connection.execute("BEGIN IMMEDIATE")
+                previous = None
                 if reservation_id:
-                    row = connection.execute(
-                        "SELECT actor, estimated_cny FROM world_v2_model_reservations "
-                        "WHERE reservation_id = ?",
+                    reservation = connection.execute(
+                        "SELECT * FROM world_v2_model_reservations WHERE reservation_id = ?",
                         (reservation_id,),
                     ).fetchone()
-                    if row is not None:
-                        if not actor:
-                            actor = str(row[0] or "")
-                        estimated_cny = float(row[1] or 0.0)
-                    connection.execute(
-                        "UPDATE world_v2_model_reservations SET status = 'settled' "
-                        "WHERE reservation_id = ?",
+                    if reservation is None:
+                        raise ModelUsageAdmissionError("usage has no matching reservation")
+                    for key in ("purpose", "provider", "actor", "world_id", "turn_id"):
+                        if reservation[key] and values[key] and reservation[key] != values[key]:
+                            raise ModelUsageAdmissionError(f"usage reservation {key} mismatch")
+                        values[key] = reservation[key] or values[key]
+                    values["estimated_cny"] = float(reservation["estimated_cny"])
+                    # Reconciliation uses the original call's pricing/time,
+                    # never the time a delayed observer or bill arrives.
+                    values["recorded_at"] = reservation["created_at"]
+                    previous = connection.execute(
+                        "SELECT * FROM world_v2_model_usage WHERE reservation_id = ? ORDER BY id LIMIT 1",
                         (reservation_id,),
-                    )
-                connection.execute(
-                    """
-                    INSERT INTO world_v2_model_usage (
-                        recorded_at, world_id, turn_id, purpose, model, status,
-                        provider, prompt_tokens, completion_tokens, cache_hit_tokens,
-                        cache_miss_tokens, total_tokens, error, cost_cny, latency_ms,
-                        actor, reservation_id, estimated_cny, attempt,
-                        reasoning_tokens, pricing_version, spend_account
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        recorded_at,
-                        str(getattr(usage, "world_id", "") or ""),
-                        str(getattr(usage, "turn_id", "") or ""),
-                        str(getattr(usage, "purpose", "") or ""),
-                        model,
-                        str(getattr(usage, "status", "") or ""),
-                        str(getattr(usage, "provider", "") or ""),
-                        prompt_tokens,
-                        completion_tokens,
-                        cache_hit_tokens,
-                        cache_miss_tokens,
-                        int(getattr(usage, "total_tokens", 0) or 0),
-                        str(getattr(usage, "error", "") or "")[:2_400],
-                        cost_cny,
-                        int(getattr(usage, "latency_ms", 0) or 0),
-                        actor,
-                        reservation_id,
-                        estimated_cny,
-                        attempt,
-                        reasoning_tokens,
-                        priced.pricing_version[:80],
-                        self._spend_account,
-                    ),
+                    ).fetchone()
+                    if previous is not None and previous["billing_state"] != "unknown":
+                        if any(previous[key] != values[key] for key in (
+                            "model", "billing_state", *tokens,
+                        )):
+                            raise ModelUsageAdmissionError("conflicting final provider bill")
+                        return  # Same completed bill is effect-once.
+                    if previous is not None and billing == "unknown":
+                        # Partial telemetry can improve a lower bound, not erase it.
+                        for key in tokens:
+                            values[key] = max(values[key], previous[key])
+                priced = estimate_model_cost(
+                    model=model or "__unpriced__", at=values["recorded_at"],
+                    cny_per_usd=self._usd_to_cny,
+                    **{key: values[key] for key in tokens if key != "total_tokens"},
                 )
+                values["cost_cny"] = round(priced.cny, 4)
+                values["pricing_version"] = priced.pricing_version[:80]
+                columns = tuple(values)
+                if previous is None:
+                    connection.execute(
+                        f"INSERT INTO world_v2_model_usage ({', '.join(columns)}) "
+                        f"VALUES ({', '.join('?' for _ in columns)})", tuple(values.values()),
+                    )
+                else:
+                    connection.execute(
+                        f"UPDATE world_v2_model_usage SET {', '.join(key + ' = ?' for key in columns)} "
+                        "WHERE id = ?", (*values.values(), previous["id"]),
+                    )
+                if reservation_id:
+                    connection.execute(
+                        "UPDATE world_v2_model_reservations SET status = ? WHERE reservation_id = ?",
+                        ("billing_unknown" if billing == "unknown" else "settled", reservation_id),
+                    )
+                connection.commit()
             finally:
                 connection.close()
 
@@ -613,7 +622,7 @@ class WorldV2UsageStore:
                     """
                     SELECT purpose, attempt, cost_cny, prompt_tokens, cache_hit_tokens
                     FROM world_v2_model_usage
-                    WHERE recorded_at >= ?
+                    WHERE recorded_at >= ? AND status != 'budget_denied'
                     """,
                     (day_start.isoformat(),),
                 ).fetchall()

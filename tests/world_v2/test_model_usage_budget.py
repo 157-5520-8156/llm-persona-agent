@@ -21,20 +21,6 @@ from companion_daemon.world_v2.model_usage_budget import (
 from companion_daemon.usage_metrics import estimate_model_cost
 
 
-@pytest.fixture
-def offpeak_background_admission(monkeypatch) -> None:
-    """Exercise spend caps independently of the wall-clock admission window.
-
-    Peak deferral has its own explicit test. These cases must reach the soft
-    cap even when the suite happens to run during Beijing afternoon hours.
-    """
-
-    monkeypatch.setattr(
-        "companion_daemon.world_v2.model_usage_budget.is_deepseek_peak",
-        lambda *_args, **_kwargs: False,
-    )
-
-
 class _Usage:
     def __init__(
         self,
@@ -247,7 +233,11 @@ def test_health_alerts_when_each_user_message_costs_more_than_three_calls(
                 prompt_tokens=100,
                 completion_tokens=10,
                 purpose="private_impression_reflection",
-                reservation_id=f"res:{index}",
+                reservation_id=store.admit_provider_call(
+                    purpose="private_impression_reflection", actor="agent:companion",
+                    provider="deepseek", model="deepseek-v4-flash", prompt_characters=100,
+                    reservation_id=f"res:{index}",
+                ),
             )
         )
     state = store.budget_state(monthly_budget_cny=100.0, daily_budget_cny=10.0)
@@ -384,7 +374,7 @@ def test_budget_state_reports_soft_daily_exhaustion(tmp_path) -> None:
 
 
 def test_background_purpose_is_denied_before_the_provider_call(
-    tmp_path, offpeak_background_admission,
+    tmp_path,
 ) -> None:
     store = WorldV2UsageStore(
         path=str(tmp_path / "usage.sqlite"),
@@ -420,25 +410,18 @@ def test_background_purpose_is_denied_before_the_provider_call(
     assert row[1] == "soft_daily_budget_exceeded"
 
 
-def test_offpeak_preferred_purpose_is_deferred_during_beijing_peak(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(
-        "companion_daemon.world_v2.model_usage_budget.is_deepseek_peak",
-        lambda *_args, **_kwargs: True,
+@pytest.mark.parametrize("hour", [2, 7, 12])
+def test_background_opportunity_is_not_delayed_for_provider_pricing(tmp_path, monkeypatch, hour):
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 7, hour, tzinfo=timezone.utc).astimezone(tz)
+    monkeypatch.setattr("companion_daemon.world_v2.model_usage_budget.datetime", Clock)
+    store = WorldV2UsageStore(path=str(tmp_path / "usage.sqlite"), monthly_budget_cny=100)
+    assert store.admit_provider_call(
+        purpose="life_development_draft", actor="agent:companion", provider="deepseek",
+        model="deepseek-v4-flash", prompt_characters=100,
     )
-    store = WorldV2UsageStore(
-        path=str(tmp_path / "usage.sqlite"),
-        monthly_budget_cny=100.0,
-        daily_budget_cny=100.0,
-        soft_daily_budget_cny=100.0,
-    )
-    with pytest.raises(BackgroundSpendCapDenied, match="deferred_offpeak"):
-        store.admit_provider_call(
-            purpose="life_development_draft",
-            actor="agent:companion",
-            provider="deepseek",
-            model="deepseek-v4-flash",
-            prompt_characters=100,
-        )
 
 
 def test_inbound_purpose_is_not_blocked_by_soft_daily_cap(tmp_path) -> None:
@@ -520,7 +503,7 @@ async def test_background_cny_cap_does_not_emit_http(tmp_path) -> None:
 
 
 def test_image_usage_events_count_against_background_cny_cap(
-    tmp_path, offpeak_background_admission,
+    tmp_path,
 ) -> None:
     from companion_daemon.db import UsageEventsLedger
 
@@ -543,7 +526,7 @@ def test_image_usage_events_count_against_background_cny_cap(
 
 
 def test_background_cap_reprices_legacy_half_price_rows(
-    tmp_path, offpeak_background_admission,
+    tmp_path,
 ) -> None:
     """Stored cost_cny=1.008 (old USD×7.2) must not sneak under a ¥1.2 soft cap.
 
