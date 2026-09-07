@@ -3317,7 +3317,7 @@ async def test_new_cadence_epoch_cannot_bypass_a_social_technical_backoff(
     ],
 )
 @pytest.mark.asyncio
-async def test_newer_semantic_consideration_resets_older_technical_retry(
+async def test_newer_semantic_consideration_does_not_settle_another_threads_retry(
     tmp_path,
     semantic_draft: dict[str, object],
     expected_status: str,
@@ -3327,6 +3327,7 @@ async def test_newer_semantic_consideration_resets_older_technical_retry(
     proactive = _ProactiveReplySequence(
         [
             TimeoutError("proactive provider window exhausted"),
+            semantic_draft,
             semantic_draft,
         ]
     )
@@ -3392,20 +3393,34 @@ async def test_newer_semantic_consideration_resets_older_technical_retry(
         )
         assert len(proactive_technical_retry_states(reverse_completion)) == 1
         assert next_proactive_retry_due(reverse_completion) == retry_due
-        assert next_proactive_retry_due(projection) is None
-        assert proactive_technical_retry_states(projection) == ()
+        assert next_proactive_retry_due(projection) == retry_due
+        assert len(proactive_technical_retry_states(projection)) == 1
         replayed = app._ledger.rebuild()  # noqa: SLF001 - verify immutable completion order
-        assert proactive_technical_retry_states(replayed) == ()
-        assert next_proactive_retry_due(replayed) is None
+        assert len(proactive_technical_retry_states(replayed)) == 1
+        assert next_proactive_retry_due(replayed) == retry_due
 
         health = await app.world_health_diagnostics()
 
-        assert health["initiative_next_consideration_at"] != retry_due.isoformat()
-        assert health["initiative_consecutive_technical_failures"] == 0
-        assert health["initiative_retry_ordinal"] == 0
-        assert health["initiative_last_failure_code"] is None
+        assert health["initiative_next_consideration_at"] == retry_due.isoformat()
+        assert health["initiative_consecutive_technical_failures"] == 1
+        assert health["initiative_retry_ordinal"] == 1
+        assert health["initiative_last_failure_code"] == "authored_subcall_timeout"
         assert health["initiative_last_model_decision"] == expected_decision
         assert await interior._drain_proactive_once() is None  # noqa: SLF001
+        _commit(app._ledger, _event(  # noqa: SLF001 - real clock transition
+            "event:clock:independent-thread-retry", "ClockAdvanced",
+            {"logical_time_from": failed_at.isoformat(), "logical_time_to": retry_due.isoformat()},
+            at=retry_due,
+        ))
+        assert (await interior._drain_proactive_once()).status == "opened"  # noqa: SLF001
+        assert (await interior._drain_proactive_once()).status == expected_status  # noqa: SLF001
+        completed = app._ledger.rebuild()  # noqa: SLF001
+        assert proactive_technical_retry_states(completed) == ()
+        assert next_proactive_retry_due(completed) is None
+        processes = [item for item in completed.trigger_processes
+                     if item.process_kind == ProactiveActionRuntime.PROCESS_KIND]
+        assert processes[-1].trigger_ref == proactive_processes[0].trigger_ref
+        assert processes[-1].source_evidence_ref == proactive_processes[0].source_evidence_ref
     finally:
         app.close()
 

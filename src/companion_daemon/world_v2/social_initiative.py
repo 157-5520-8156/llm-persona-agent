@@ -634,6 +634,44 @@ def post_silent_prior_trigger_id(consideration_id: str) -> str | None:
     return decoded or None
 
 
+def scheduled_domain_consideration_kind(event_type: str, consideration_id: str) -> str | None:
+    """Recognize declared domain work without reclassifying situation stimuli."""
+
+    if event_type in {"ThreadOpened", "ThreadUpdated"} and consideration_id.startswith((
+        "consideration:social-initiative:due-thread:", "consideration:proactive:",
+    )):
+        return "thread"
+    if event_type in {"PrivateCommitmentOpened", "PrivateCommitmentDue"} and consideration_id.startswith((
+        "consideration:social-initiative:due-commitment:", "consideration:proactive:",
+    )):
+        return "commitment"
+    return None
+
+
+def current_scheduled_domain_source_id(projection, *, source_kind: str, source_event_ref: str):
+    """Bind a consideration to the still-unfinished accepted domain intention."""
+
+    if source_kind == "thread":
+        return next((
+            item.thread_id for item in projection.threads
+            if item.values.status == "open"
+            and source_event_ref in thread_due_schedule_sources(projection, thread=item)
+        ), None)
+    if source_kind == "commitment":
+        return next((
+            item.commitment_id for item in projection.commitments
+            if item.values.status in {"open", "due"}
+            and any(
+                transition.commitment_id == item.commitment_id
+                and transition.accepted_event_ref == source_event_ref
+                and transition.values_after.due_window == item.values.due_window
+                and transition.values_after.status in {"open", "due"}
+                for transition in projection.commitment_transitions
+            )
+        ), None)
+    return None
+
+
 class SocialInitiativeCompiler:
     """Find one eligible source without interpreting words or inventing facts."""
 
@@ -683,6 +721,16 @@ class SocialInitiativeCompiler:
         # technical failure whose stable retry lineage is still valid. The
         # retry reader itself remains fail-closed on a newer user Observation.
         retry = await self._failed_consideration_retry(projection)
+        if (
+            retry is not None
+            and retry.source_kind in {"thread", "commitment"}
+            and retry.consideration_id in excluded_consideration_ids
+        ):
+            # Independent intentions keep independent backoffs. Cadence
+            # retries still occupy their original idle slot below.
+            retry = await self._failed_consideration_retry(
+                projection, excluded_consideration_ids=excluded_consideration_ids,
+            )
         if (
             retry is not None
             and retry.consideration_id not in excluded_consideration_ids
@@ -996,6 +1044,7 @@ class SocialInitiativeCompiler:
             )
             if (
                 not consideration_is_revisit
+                and scheduled_domain_consideration_kind(event.event_type, consideration_id) is None
                 and latest_message_revision > source_ref.world_revision
             ):
                 continue
@@ -1459,7 +1508,7 @@ class SocialInitiativeCompiler:
         )
 
     async def _failed_consideration_retry(
-        self, projection
+        self, projection, *, excluded_consideration_ids: frozenset[str] = frozenset(),
     ) -> SocialInitiativeOpportunity | None:
         settled_considerations = {
             item.trigger_ref
@@ -1470,23 +1519,28 @@ class SocialInitiativeCompiler:
                 "proactive:deliberation-failed:"
             )
         }
-        process = next(
-            (
-                item
-                for item in reversed(getattr(projection, "trigger_processes", ()))
-                if item.process_kind == "proactive_action_deliberation"
-                and item.state == "terminal"
-                and str(item.runtime_outcome_ref).startswith(
+        seen = settled_considerations | {
+            "proactive-consideration:" + identity for identity in excluded_consideration_ids
+        }
+        for process in reversed(getattr(projection, "trigger_processes", ())):
+            if (
+                process.process_kind != "proactive_action_deliberation"
+                or process.state != "terminal"
+                or not str(process.runtime_outcome_ref).startswith(
                     "proactive:deliberation-failed:"
                 )
-                and item.trigger_ref not in settled_considerations
-                and item.trigger_ref.startswith("proactive-consideration:")
-                and item.source_evidence_ref is not None
-            ),
-            None,
-        )
-        if process is None:
-            return None
+                or process.trigger_ref in seen
+                or not process.trigger_ref.startswith("proactive-consideration:")
+                or process.source_evidence_ref is None
+            ):
+                continue
+            seen.add(process.trigger_ref)
+            retry = await self._retry_from_failed_process(projection, process=process)
+            if retry is not None:
+                return retry
+        return None
+
+    async def _retry_from_failed_process(self, projection, *, process):
         source_ref = next(
             (
                 item
@@ -1523,12 +1577,8 @@ class SocialInitiativeCompiler:
         consideration_id = process.trigger_ref.removeprefix(
             "proactive-consideration:"
         )
-        if latest_message_revision > failed_audit.evaluated_world_revision and not (
-            event.event_type == "ExecutionReceiptRecorded"
-            and consideration_id.startswith("consideration:social-initiative:revisit:")
-        ):
-            return None
         prior_trigger_id = post_silent_prior_trigger_id(consideration_id)
+        domain_kind = scheduled_domain_consideration_kind(event.event_type, consideration_id)
         source_kind = (
             "post_silent"
             if event.event_type == "ClockAdvanced" and prior_trigger_id is not None
@@ -1539,16 +1589,8 @@ class SocialInitiativeCompiler:
             if event.event_type == "ClockAdvanced"
             else "spontaneous_contact"
             if event.event_type == "ObservationRecorded"
-            else "thread"
-            if event.event_type in {"ThreadOpened", "ThreadUpdated"}
-            and consideration_id.startswith((
-                "consideration:social-initiative:due-thread:", "consideration:proactive:",
-            ))
-            else "commitment"
-            if event.event_type in {"PrivateCommitmentOpened", "PrivateCommitmentDue"}
-            and consideration_id.startswith((
-                "consideration:social-initiative:due-commitment:", "consideration:proactive:",
-            ))
+            else domain_kind
+            if domain_kind is not None
             else "situation_change"
             if event.event_type in _SITUATION_STIMULUS_EVENT_TYPES
             else "revisit_intention"
@@ -1564,6 +1606,11 @@ class SocialInitiativeCompiler:
             else None
         )
         if source_kind is None:
+            return None
+        if (
+            latest_message_revision > failed_audit.evaluated_world_revision
+            and source_kind not in {"thread", "commitment", "revisit_intention"}
+        ):
             return None
         if source_kind == "situation_change" and not situation_stimulus_is_observable(
             projection=projection,
@@ -1584,38 +1631,14 @@ class SocialInitiativeCompiler:
             if message is None:
                 return None
             source_id = message.observation_id
-        elif source_kind == "thread":
-            head = next(
-                (
-                    item for item in projection.threads
-                    if item.values.status == "open"
-                    and source_ref.event_id in thread_due_schedule_sources(projection, thread=item)
-                ),
-                None,
+        elif source_kind in {"thread", "commitment"}:
+            source_id = current_scheduled_domain_source_id(
+                projection, source_kind=source_kind, source_event_ref=source_ref.event_id,
             )
-            if head is None:
+            if source_id is None:
                 # A newer accepted schedule supersedes this failed attempt;
                 # its new opportunity must not resurrect the former window.
                 return None
-            source_id = head.thread_id
-        elif source_kind == "commitment":
-            head = next(
-                (
-                    item for item in projection.commitments
-                    if item.values.status in {"open", "due"}
-                    and any(
-                        transition.commitment_id == item.commitment_id
-                        and transition.accepted_event_ref == source_ref.event_id
-                        and transition.values_after.due_window == item.values.due_window
-                        and transition.values_after.status in {"open", "due"}
-                        for transition in projection.commitment_transitions
-                    )
-                ),
-                None,
-            )
-            if head is None:
-                return None
-            source_id = head.commitment_id
         elif source_kind == "expired_expectation":
             source_id = next(
                 (

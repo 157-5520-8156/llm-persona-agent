@@ -9,7 +9,7 @@ from companion_daemon.world_v2.revisit_intention_view import (
     due_commitment_consideration_id,
     due_thread_consideration_id,
 )
-from companion_daemon.world_v2.schemas import DueWindow
+from companion_daemon.world_v2.schemas import DueWindow, thread_semantic_fingerprint
 from companion_daemon.world_v2.social_initiative import (
     SocialInitiativeCompiler,
     SocialInitiativePolicy,
@@ -27,11 +27,15 @@ def _commit(ledger, events):
     )
 
 
-def _accept_thread(ledger, before, *, due, importance=6500, duration=timedelta(minutes=10)):
+def _accept_thread(
+    ledger, before, *, due, importance=6500, duration=timedelta(minutes=10), thread_id=None,
+):
     revision = 1 if before is None else before.entity_revision + 1
-    after = thread(revision=revision, updated_at=ledger.project().logical_time)
+    thread_id = before.thread_id if before is not None else thread_id or "thread:1"
+    after = thread(thread_id=thread_id, revision=revision, updated_at=ledger.project().logical_time)
     after = after.model_copy(
         update={
+            "opened_at": before.opened_at if before is not None else ledger.project().logical_time,
             "values": after.values.model_copy(
                 update={
                     "due_window": DueWindow(opens_at=due, closes_at=due + duration),
@@ -40,12 +44,25 @@ def _accept_thread(ledger, before, *, due, importance=6500, duration=timedelta(m
             )
         }
     )
+    if thread_id != "thread:1":
+        values = after.values.model_copy(update={"subject_ref": f"subject:{thread_id}"})
+        after = after.model_copy(update={
+            "values": values,
+            "semantic_fingerprint": thread_semantic_fingerprint(
+                kind=values.kind, subject_ref=values.subject_ref,
+                conversation_ref=values.conversation_ref,
+                anchor_evidence_refs=values.anchor_evidence_refs,
+                resolution_contract_ref=values.resolution_contract_ref,
+                policy_refs=after.origin.policy_refs,
+            ),
+        })
     value = payload(
         operation="open" if before is None else "update",
         before=before,
         after=after,
         expected=revision - 1,
-        proposal_id=f"proposal:revision:{revision}",
+        proposal_id=(f"proposal:revision:{revision}" if thread_id == "thread:1"
+                     else f"proposal:{thread_id}:revision:{revision}"),
     )
     raw = value.model_dump()
     raw["evaluated_world_revision"] = ledger.project().world_revision

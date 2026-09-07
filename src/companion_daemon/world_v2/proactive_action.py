@@ -88,9 +88,11 @@ from .revisit_intention_view import due_unfinished_revisit, thread_due_schedule_
 from .social_initiative import (
     SITUATION_STIMULUS_EVENT_TYPES,
     SocialInitiativeCompiler,
+    current_scheduled_domain_source_id,
     long_silence_opportunity_context,
     private_impression_opportunity_context,
     private_impression_source_binds_head,
+    scheduled_domain_consideration_kind,
     situation_stimulus_is_observable,
     technical_failure_point,
 )
@@ -2822,9 +2824,9 @@ class ProactiveActionRuntime:
 
         A terminal process alone is not retry authority.  Every ordinal must
         bind the deterministic trigger and model-attempt identities to the
-        exact top-level durable technical-failure audit.  A newer user
-        Observation supersedes the lineage, while an opened next ordinal or a
-        semantic terminal outcome means there is no pending retry deadline.
+        exact top-level durable technical-failure audit. New user context may
+        supersede contextual retries, but accepted domain intentions survive
+        until their own schedule changes or the domain settles them.
         """
 
         trigger_ref = "proactive-consideration:" + consideration_id
@@ -2917,6 +2919,13 @@ class ProactiveActionRuntime:
             retry_ordinal += 1
         if not failures or not source_evidence_ref:
             return None
+        source_ref = refs.get(source_evidence_ref)
+        domain_kind = (
+            scheduled_domain_consideration_kind(source_ref.event_type, consideration_id)
+            if source_ref is not None
+            and consideration_id.startswith("consideration:social-initiative:")
+            else None
+        )
         # A later completed role decision proves that the proactive model lane
         # recovered. Technical failures belong to attempts, not permanently
         # to the social scheduler: carrying an older retry past a newer
@@ -2926,7 +2935,10 @@ class ProactiveActionRuntime:
             outcome = str(process.runtime_outcome_ref)
             completion_position = completion_positions.get(process.trigger_id)
             if (
-                last_failure_completion_position is not None
+                # Completing another consideration cannot settle this
+                # independently accepted, still-unfinished intention.
+                domain_kind is None
+                and last_failure_completion_position is not None
                 and completion_position is not None
                 and completion_position > last_failure_completion_position
                 and process.process_kind == cls.PROCESS_KIND
@@ -2951,7 +2963,11 @@ class ProactiveActionRuntime:
             if projection.message_observations
             else 0
         )
-        if latest_message_revision > last_failure_revision:
+        if domain_kind is not None and current_scheduled_domain_source_id(
+            projection, source_kind=domain_kind, source_event_ref=source_evidence_ref,
+        ) is None:
+            return None
+        if latest_message_revision > last_failure_revision and domain_kind is None:
             return None
         delay = (
             0
@@ -3471,20 +3487,29 @@ def proactive_technical_retry_states(projection) -> tuple[ProactiveTechnicalRetr
 
 
 def next_proactive_retry_due(projection) -> datetime | None:  # type: ignore[no-untyped-def]
-    """Return the deadline for the newest unresolved proactive consideration.
+    """Wake for the earliest valid domain retry or latest contextual retry.
 
-    Historical situation failures can coexist in an immutable ledger.  The
-    social compiler intentionally resumes only the newest unresolved context;
-    choosing the global minimum here would let an old, already-overdue failure
-    mask every newer retry forever.
+    Independent accepted intentions retain separate deadlines. Historical
+    situation failures still follow their newest unresolved context instead
+    of reviving every old cadence attempt.
     """
 
     states = proactive_technical_retry_states(projection)
     current = states[-1] if states else None
-    return (
-        current.next_retry_at
-        if current is not None and current.retry_process_state == "pending"
-        else None
+    return min(
+        (
+            item.next_retry_at
+            for item in states
+            if item.retry_process_state == "pending"
+            and (
+                item is current
+                or item.consideration_id.startswith((
+                    "consideration:social-initiative:due-thread:",
+                    "consideration:social-initiative:due-commitment:",
+                ))
+            )
+        ),
+        default=None,
     )
 
 
