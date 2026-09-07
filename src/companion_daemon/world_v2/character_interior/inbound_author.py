@@ -304,6 +304,7 @@ def _compact_slim_peer_specimen() -> dict[str, object]:
         "messages": ["<role:visible_text>"],
         "meaning_of_this": "<role:reading_text>",
         "my_state": "<role:self_state_text>",
+        "world_claims": [],
         "later": None,
         "waiting_for": None,
     }

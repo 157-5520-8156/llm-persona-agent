@@ -226,12 +226,16 @@ def slim_consider_instruction() -> str:
         "以及可选的 waiting_for、wait、how_it_landed、noticed、"
         "keep_impression、come_back、come_back_in、about_us、why_us、us_deltas、"
         "we_are、calling_it、said_as、matters_bp、pressure_bp、importance_bp、"
-        "declared_display、world_claims。\n"
+        "declared_display。\n"
         "waiting_for 加 wait 才编译盼头；come_back 加 come_back_in 仍要成对。"
         "later 和空 messages（不回）跟 messages 同级，不是藏起来的键。"
         "口头说「我等你」不会变成 waiting_for。宿主从不替你写这些字段。"
         "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
         "messages 是你决定发出去的气泡，一项就是一条；发几条由你定，宿主不替你决定。"
+        "事实来源是硬边界：messages 陈述外部事件、地点、行为或既往经历时，"
+        "须在同级 world_claims 逐条写 claim_text、scope、source_refs，"
+        "仅用 expression_hard_boundaries 中相应时态的来源。"
+        "day_sheet 和传记习惯不能证明当前或刚才发生了什么；没有来源的经历不能补写。"
         "Context 里还活着的 affect 强度和你这轮自己写下的 target_intensity_bp 都是你能看见的状态，"
         "不是行为指令。真的有很多话时可以连续写多条 messages，也可以只说一句或沉默；"
         "情绪强度不会命令你发几条，也不会替你决定语气。"
@@ -263,12 +267,6 @@ def slim_consider_instruction() -> str:
         "当 expression_capabilities.media_request_mode 是 candidate_only 时，"
         "即使 Context 里还没列出候选，photo 也是可选的，"
         "你选了之后宿主可以从已审的已结算生活证据里编译一个。\n"
-        "day_sheet 和传记里的习惯是日程底色，不是你此刻真的在那儿的证明；"
-        "别把它们当成当前的地点、活动、天气，或者已经发出去的图。"
-        "要说现在正在发生的外部生活，优先用 situation / 进行中的 occurrence / "
-        "已提交的 experience 这些 token。"
-        "messages 陈述外部事实时，须在同级 world_claims 逐条写 claim_text、scope、source_refs；"
-        "时态和来源见 expression_hard_boundaries。未发生的事仍只是想法或计划。"
         "photos_i_shared 是你已经成功发给他的照片这一世界事实："
         "line 是人话：什么时候发出、哪一类、已经出现在你们的对话里没有；"
         "when 是相对此刻的时间，local_clock 是当地钟点。"
@@ -313,13 +311,9 @@ def slim_consider_instruction() -> str:
         "确实是你此刻想说的，才需要把它说破。meaning_of_this 和 my_state 都不会自动变成 messages。\n"
         "钉住的来源请从 Context 的 source_ref_aliases 里挑短标识（S1、T1），"
         "或原样抄 source_ref；不要手写拼接不透明字符串。"
-        "点名哪些、引不引，仍由你决定；宿主只把短标识还原成权威 ref。\n"
-        "聊天里的颜色是允许的：语气、态度、模糊的私人记忆、带愿望的想象，"
-        "都可以出现在 messages、my_state 或 stuck_with_me 里。"
-        "宿主不会自己把聊天散文变成 Fact、Relationship、Media 或持续情绪事件。"
-        "但要断言一个可核对的外部命题——已经发过图、此刻正在某地、某件事已经发生了——"
-        "就需要 Context 里有对应的来源，或者用 photo / media_request 去真的发一次；"
-        "没有来源就把它留成感觉、猜测或私下的愿望，不要说成已经成立的世界事实。\n"
+        "是否谈起某件事由你决定；选择陈述外部事实后，来源不能省略。"
+        "宿主只还原短标识，不补事实。语气、态度、记忆的不确定感和愿望由你写，"
+        "它们不会自动变成已发生的事实或持续状态。\n"
         "appraisal 写坏了不会连带丢掉一个合法的 now、later 或沉默；"
         "宿主会保留那次表达，只对那份写坏的 appraisal 记 affect no_change，"
         "这绝不是一个更受偏好的平静默认值。\n"
@@ -753,10 +747,26 @@ def _usage_json_block(title: str, specimen: dict[str, object]) -> str:
     )
 
 
+def world_claim_usage_specimen() -> dict[str, object]:
+    """A source mapping shape, never a sample episode to adopt as lived fact."""
+    return {
+        "messages": ["<要陈述的事实片段>"],
+        "world_claims": [
+            {
+                "claim_text": "<要陈述的事实片段>",
+                "scope": "past_world",
+                "source_refs": ["<Context内past_world的可用来源>"],
+            }
+        ],
+    }
+
+
 def compact_gate_usage_specimens_prompt() -> str:
     """Stable-prefix usage blocks that must precede null canonical shapes."""
 
     return (
+        _usage_json_block("WORLD CLAIM SOURCE MAPPING EXAMPLE", world_claim_usage_specimen())
+        + "这里只示范声明格式，不是事实、台词或来源。替换占位符；没有外部事实时 world_claims=[]。\n"
         "下列 USAGE EXAMPLE 展示这些可选字段需要时怎么写；与 null 形状不可混读。"
         "不需要时留空或 null，都表示你这一轮选择不用。\n"
         + _usage_json_block(
@@ -830,6 +840,7 @@ def reply_only_slim_shape_specimen() -> dict[str, object]:
         "messages": ["<role:visible_text>"],
         "meaning_of_this": "<role:reading_text>",
         "my_state": "<role:self_state_text>",
+        "world_claims": [],
     }
     for key in SLIM_OPTIONAL_SPECIMEN_KEYS:
         specimen[key] = None
@@ -843,6 +854,7 @@ def slim_consider_json_schema() -> dict[str, object]:
             "messages": {"type": "array"},
             "meaning_of_this": {"type": "string"},
             "my_state": {"type": "string"},
+            "world_claims": {"type": "array"},
             "stuck_with_me": {"type": "string"},
             "wants": {"type": "string"},
             "photo": {"type": ["boolean", "string"]},

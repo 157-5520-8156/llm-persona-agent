@@ -129,6 +129,17 @@ async def test_real_host_http_input_and_authored_current_life_sources(
         if json.loads(line)["kind"] == "request"
     ]
     assert len(requests) == len(bodies) > 0
+    system = bodies[0]["messages"][0]["content"]
+    # Assert what the provider actually receives, not a disconnected schema helper.
+    shape = json.loads(
+        system.split("REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON:\n", 1)[1].split("\nEND", 1)[0]
+    )
+    mapping = json.loads(
+        system.split("WORLD CLAIM SOURCE MAPPING EXAMPLE JSON:\n", 1)[1].split("\nEND", 1)[0]
+    )
+    assert shape["world_claims"] == []
+    assert mapping["world_claims"][0]["claim_text"] == mapping["messages"][0]
+    assert mapping["world_claims"][0]["source_refs"]
     assert all(
         json.loads(record["model_content_json"]) == body
         for record, body in zip(requests, bodies, strict=True)
