@@ -11,7 +11,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from .present_prompt import _MATERIAL_ORDER, ordered_mapping, present_inner_life
+from .present_prompt import (
+    _MATERIAL_ORDER,
+    appraisal_material_rows,
+    ordered_mapping,
+    present_inner_life,
+    recent_dialogue_material_entries,
+)
 
 BackgroundPurpose = str
 
@@ -50,15 +56,30 @@ class BackgroundContextProfile:
     capsule_slice_limits: Mapping[str, int] = ()
 
 
-def _limit_material_items(value: object, limit: int) -> object:
+def _limit_material_items(value: object, limit: int, *, key: str) -> object:
     if limit <= 0 or not isinstance(limit, int):
         return value
+    if key == "appraisals" and isinstance(value, dict) and "columns" in value:
+        # The provider view uses a compact table, sometimes already split for
+        # prefix caching.  Its rows have the same upstream ranking as the
+        # canonical items and must obey the same budget and source closure.
+        rows = appraisal_material_rows(value)
+        return {
+            **{k: v for k, v in value.items()
+               if k not in {"rows", "stable_rows", "volatile_last_row"}},
+            "rows": rows[:limit],
+        }
+    if key == "recent_dialogue" and isinstance(value, dict) and "stable_turns" in value:
+        return recent_dialogue_material_entries(value)[-limit:]
+    # Dialogue is chronological, unlike ranked facts/experiences.  Taking its
+    # first N items erased the most recent answer while retaining the question.
+    keep_tail = key in {"recent_dialogue", "folded_dialogue"}
     if isinstance(value, dict):
         items = value.get("items")
         if isinstance(items, list) and len(items) > limit:
-            return {**value, "items": items[:limit]}
+            return {**value, "items": items[-limit:] if keep_tail else items[:limit]}
     if isinstance(value, list) and len(value) > limit:
-        return value[:limit]
+        return value[-limit:] if keep_tail else value[:limit]
     return value
 
 
@@ -70,6 +91,12 @@ def _material_source_refs(materials: Mapping[str, object]) -> set[str]:
             source_ref = value.get("source_ref")
             if isinstance(source_ref, str) and source_ref:
                 refs.add(source_ref)
+            columns = value.get("columns")
+            if isinstance(columns, list) and "ref" in columns:
+                index = columns.index("ref")
+                for row in appraisal_material_rows(value):
+                    if len(row) > index and isinstance(row[index], str):
+                        refs.add(row[index])
             for item in value.values():
                 walk(item)
         elif isinstance(value, list):
@@ -140,19 +167,68 @@ _LIFE_ECOLOGY_CAPSULE_SLICES = (
     "open_threads",
 )
 
+# The protagonist keeps the same life, memories and unfinished concerns when
+# the purpose changes.  A transport budget may bound these materials, but must
+# not turn life choices into an amnesiac scheduler or contact into a separate
+# chat-only self.  These are her source-bound context, never behavior rules.
+# World Author and source-review profiles deliberately do not inherit this:
+# access to the protagonist's private readings is actor-scoped.
+_CHARACTER_CONTINUITY_MATERIALS = (
+    "stable_self",
+    "biographical_context",
+    "day_sheet",
+    "week_diary",
+    "situation",
+    "relationship",
+    "protagonist_npc_relationships",
+    "npc_observable_attitudes",
+    "unresolved",
+    "aspirations",
+    "recent_self_experiences",
+    "remembered_material",
+    "recalled_emotional_associations",
+    "private_impressions",
+    "relevant_facts",
+    "appraisals",
+    "affect",
+    "change_phase",
+    "interruption",
+    "perception",
+    "interaction_acts",
+    "messages_waiting_to_send",
+    "folded_dialogue",
+    "recent_dialogue",
+    "since_he_last_spoke",
+    "logical_time",
+)
+_CHARACTER_CONTINUITY_LIMITS = {
+    "recent_dialogue": 12,
+    "folded_dialogue": 2,
+    "recent_self_experiences": 4,
+    "remembered_material": 4,
+    "appraisals": 4,
+    "private_impressions": 8,
+    "relevant_facts": 8,
+}
+
 _PROFILES: tuple[BackgroundContextProfile, ...] = (
     BackgroundContextProfile(
         profile_id="life_ecology_core",
         purposes=frozenset(
             {
-                "life_development_draft",
                 "life_development_choice",
                 "activity_lifecycle_choice",
                 "outcome_selection",
             }
         ),
+        snapshot_material_keys=_CHARACTER_CONTINUITY_MATERIALS,
+        snapshot_material_limits=_CHARACTER_CONTINUITY_LIMITS,
+    ),
+    BackgroundContextProfile(
+        profile_id="life_world_author",
+        purposes=frozenset({"life_development_draft"}),
         snapshot_material_keys=_LIFE_ECOLOGY_MATERIALS,
-        snapshot_material_limits={"recent_self_experiences": 1, "relevant_facts": 8},
+        snapshot_material_limits={"recent_self_experiences": 4, "relevant_facts": 8},
         capsule_slices=_LIFE_ECOLOGY_CAPSULE_SLICES,
         capsule_slice_limits={
             "recent_experiences": 4,
@@ -164,75 +240,20 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
     BackgroundContextProfile(
         profile_id="stimulus_appraisal",
         purposes=frozenset({"world_stimulus_appraisal"}),
-        snapshot_material_keys=(
-            "stable_self",
-            "situation",
-            "relationship",
-            "protagonist_npc_relationships",
-            "npc_observable_attitudes",
-            "affect",
-            "change_phase",
-            "interruption",
-            "unresolved",
-            "relevant_facts",
-            "recent_self_experiences",
-            "recent_dialogue",
-            "folded_dialogue",
-            "interaction_acts",
-            "perception",
-        ),
-        snapshot_material_limits={
-            "recent_dialogue": 2,
-            "folded_dialogue": 1,
-            "recent_self_experiences": 2,
-            "relevant_facts": 8,
-        },
+        snapshot_material_keys=_CHARACTER_CONTINUITY_MATERIALS,
+        snapshot_material_limits=_CHARACTER_CONTINUITY_LIMITS,
     ),
     BackgroundContextProfile(
         profile_id="private_impression",
         purposes=frozenset({"private_impression_reflection"}),
-        snapshot_material_keys=(
-            "stable_self",
-            "biographical_context",
-            "situation",
-            "relationship",
-            "private_impressions",
-            "affect",
-            "recent_dialogue",
-            "folded_dialogue",
-            "relevant_facts",
-            "recent_self_experiences",
-            "since_he_last_spoke",
-        ),
-        snapshot_material_limits={
-            "recent_dialogue": 4,
-            "private_impressions": 8,
-            "relevant_facts": 8,
-        },
+        snapshot_material_keys=_CHARACTER_CONTINUITY_MATERIALS,
+        snapshot_material_limits=_CHARACTER_CONTINUITY_LIMITS,
     ),
     BackgroundContextProfile(
         profile_id="proactive_contact",
         purposes=frozenset({"proactive_contact"}),
-        snapshot_material_keys=(
-            "stable_self",
-            "situation",
-            "relationship",
-            "affect",
-            "appraisals",
-            "private_impressions",
-            "recent_dialogue",
-            "folded_dialogue",
-            "relevant_facts",
-            "messages_waiting_to_send",
-            "since_he_last_spoke",
-            "interaction_acts",
-        ),
-        snapshot_material_limits={
-            "recent_dialogue": 8,
-            "appraisals": 4,
-            "private_impressions": 8,
-            "relevant_facts": 8,
-        },
+        snapshot_material_keys=_CHARACTER_CONTINUITY_MATERIALS,
+        snapshot_material_limits=_CHARACTER_CONTINUITY_LIMITS,
     ),
     BackgroundContextProfile(
         profile_id="memory_retention",
@@ -354,7 +375,7 @@ def slice_background_inner_life_snapshot(
         value = materials[key]
         limit = profile.snapshot_material_limits.get(key)
         if limit is not None:
-            value = _limit_material_items(value, limit)
+            value = _limit_material_items(value, limit, key=key)
         filtered[key] = value
 
     visible_refs = _material_source_refs(filtered)

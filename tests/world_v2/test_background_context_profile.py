@@ -14,6 +14,10 @@ from companion_daemon.world_v2.background_context_profile import (
     slice_background_capsule_context,
     slice_background_inner_life_snapshot,
 )
+from companion_daemon.world_v2.present_prompt import (
+    appraisal_material_rows,
+    recent_dialogue_material_entries,
+)
 
 
 def _sample_snapshot(*, include_chat: bool = True) -> dict[str, object]:
@@ -105,32 +109,52 @@ def test_background_context_profile_coverage_gate() -> None:
     assert "world_stimulus_appraisal" in required_background_context_purposes()
 
 
-def test_life_ecology_profile_drops_chat_and_appraisals_but_keeps_facts() -> None:
+def test_life_choice_keeps_her_prior_readings_and_relationship_history() -> None:
     profile = background_context_profile_for_purpose("activity_lifecycle_choice")
     sliced = slice_background_inner_life_snapshot(_sample_snapshot(), profile)
     materials = sliced["materials"]
     assert isinstance(materials, dict)
     assert "relevant_facts" in materials
     assert "situation" in materials
-    assert "appraisals" not in materials
-    assert "recent_dialogue" not in materials
-    assert "private_impressions" not in materials
+    assert "appraisals" in materials
+    assert "recent_dialogue" in materials
+    assert "private_impressions" in materials
     assert sliced["background_context_profile"] == "life_ecology_core"
     experiences = materials.get("recent_self_experiences")
     assert isinstance(experiences, dict)
-    assert len(experiences["items"]) == 1
+    assert len(experiences["items"]) >= 2
 
 
-def test_stimulus_profile_keeps_short_dialogue_not_full_appraisals() -> None:
+def test_proactive_choice_keeps_her_life_and_unfinished_matters() -> None:
+    snapshot = _sample_snapshot()
+    snapshot["materials"].update({
+        "day_sheet": {"today": "The interview is this afternoon."},
+        "week_diary": {"Monday": ["The bookshop closed."]},
+        "unresolved": [{"source_ref": "thread:interview", "status": "active"}],
+        "aspirations": [{"source_ref": "event:wish", "text": "Try editorial work."}],
+        "remembered_material": [{"source_ref": "memory:promise", "text": "I wanted to try."}],
+    })
+    original = json.dumps(snapshot, sort_keys=True)
+    sliced = slice_background_inner_life_snapshot(
+        snapshot, background_context_profile_for_purpose("proactive_contact")
+    )
+    materials = sliced["materials"]
+    for key in ("day_sheet", "week_diary", "unresolved", "aspirations", "remembered_material"):
+        assert materials.get(key) == snapshot["materials"][key]
+    assert materials["recent_self_experiences"]["items"]
+    assert json.dumps(snapshot, sort_keys=True) == original
+
+
+def test_stimulus_profile_keeps_prior_readings_as_revisable_context() -> None:
     profile = background_context_profile_for_purpose("world_stimulus_appraisal")
     sliced = slice_background_inner_life_snapshot(_sample_snapshot(), profile)
     materials = sliced["materials"]
     assert isinstance(materials, dict)
     assert "recent_dialogue" in materials
-    assert "appraisals" not in materials
+    assert "appraisals" in materials
     dialogue = materials["recent_dialogue"]
     assert isinstance(dialogue, dict)
-    assert len(dialogue["items"]) == 2
+    assert len(dialogue["items"]) == 12
 
 
 def test_life_development_capsule_profile_trims_slices() -> None:
@@ -142,7 +166,48 @@ def test_life_development_capsule_profile_trims_slices() -> None:
     assert "appraisals" not in slices
     assert "relevant_facts" in slices
     assert len(slices["world_life"]["items"]) == 6
-    assert sliced["background_context_profile"] == "life_ecology_core"
+    assert sliced["background_context_profile"] == "life_world_author"
+
+
+@pytest.mark.parametrize("cache_split", [False, True])
+def test_background_dialogue_budget_keeps_the_latest_exchange(cache_split: bool) -> None:
+    snapshot = _sample_snapshot()
+    entries = [
+        {"source_ref": f"dlg:{index}", "text": f"message {index}"}
+        for index in range(24)
+    ]
+    snapshot["materials"]["recent_dialogue"] = (
+        {"stable_turns": entries[:-1], "volatile_last_turn": entries[-1]}
+        if cache_split else entries
+    )
+    snapshot["source_refs"] = [item["source_ref"] for item in entries]
+    sliced = slice_background_inner_life_snapshot(
+        snapshot, background_context_profile_for_purpose("proactive_contact")
+    )
+    delivered = recent_dialogue_material_entries(sliced["materials"]["recent_dialogue"])
+    assert [item["text"] for item in delivered] == [f"message {i}" for i in range(12, 24)]
+    assert sliced["source_refs"] == [f"dlg:{i}" for i in range(12, 24)]
+
+
+@pytest.mark.parametrize("cache_split", [False, True])
+def test_compact_appraisals_keep_a_bounded_source_inventory(cache_split: bool) -> None:
+    snapshot = _sample_snapshot(include_chat=False)
+    rows = [[f"appraisal:{i}", 5000, None, None, [[f"reading {i}"]]] for i in range(10)]
+    snapshot["materials"]["appraisals"] = {
+        "columns": ["ref", "conf", "since", "until", "readings"],
+        **({"stable_rows": rows[:-1], "volatile_last_row": rows[-1]}
+           if cache_split else {"rows": rows}),
+    }
+    snapshot["source_refs"] = [f"appraisal:{i}" for i in range(10)]
+    snapshot["source_inventory"] = [
+        {"source_ref": ref, "scope": "appraisals"} for ref in snapshot["source_refs"]
+    ]
+    sliced = slice_background_inner_life_snapshot(
+        snapshot, background_context_profile_for_purpose("proactive_contact")
+    )
+    assert appraisal_material_rows(sliced["materials"]["appraisals"]) == rows[:4]
+    assert sliced["source_refs"] == [f"appraisal:{i}" for i in range(4)]
+    assert len(sliced["source_inventory"]) == 4
 
 
 def test_profile_audit_record_is_stable_json() -> None:
