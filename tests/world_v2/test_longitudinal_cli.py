@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 
@@ -118,6 +119,13 @@ async def test_fixture_factory_constructs_real_host_without_external_clients(tmp
     assert captured["synthetic"] is True
     assert captured["provenance"]["context_input_verification"] == "unverified"
     assert "no generated rich life" in captured["provenance"]["fixture_limitations"]
+    assert (
+        captured["provenance"]["scenario_sha256"]
+        == hashlib.sha256(scenario.read_bytes()).hexdigest()
+    )
+    assert len(captured["provenance"]["code"]["head"]) == 40
+    assert type(captured["provenance"]["code"]["tracked_dirty"]) is bool
+    assert captured["provenance"]["models"]["character"] == "longitudinal-fixture.1"
 
 
 @pytest.mark.asyncio
@@ -177,3 +185,43 @@ async def test_fixture_fact_batch_decides_each_supplied_observation():
             {"observation_id": "observation:second", "result": {"retain": False}},
         ]
     }
+
+
+@pytest.mark.asyncio
+async def test_fixture_required_tool_checks_selected_name_and_preserves_role_schema():
+    from companion_daemon.world_v2.character_interior.structured_role import _WireRoleResult
+    from companion_daemon.world_v2.longitudinal_fixture_model import LongitudinalFixtureModel
+
+    model = LongitudinalFixtureModel()
+    payload = {
+        "inner_turn": {"purpose": "private_impression_reflection"},
+        "wire_contract": {"allowed_statuses": ["no_change", "transition"]},
+    }
+    messages = [{"role": "user", "content": json.dumps(payload)}]
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "fixture_role_contract",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "result": _WireRoleResult.model_json_schema(),
+                    },
+                },
+            },
+        }
+    ]
+    with pytest.raises(ValueError, match="does not match"):
+        await model.complete_json(messages, tools=tools, tool_choice="auto")
+    raw = await model.complete_json(
+        messages,
+        tools=tools,
+        tool_choice={
+            "type": "function",
+            "function": {"name": "fixture_role_contract"},
+        },
+    )
+    result = _WireRoleResult.model_validate(json.loads(raw)["result"])
+    assert result.status == "no_change"
+    assert result.proposals == []

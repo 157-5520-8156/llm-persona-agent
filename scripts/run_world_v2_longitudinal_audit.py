@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import math
 from pathlib import Path
+import subprocess
 import sys
 
 
@@ -79,6 +81,57 @@ def experiment_settings(*, database: Path, synthetic: bool, max_cost_cny: float)
     return settings
 
 
+def code_identity() -> dict:
+    """Record only the commit and a tracked-change flag, never diff contents."""
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        dirty = subprocess.run(
+            ["git", "diff", "--quiet", "HEAD", "--"],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {"head": None, "tracked_dirty": None}
+    commit = head.stdout.strip()
+    valid = len(commit) in {40, 64} and all(char in "0123456789abcdef" for char in commit)
+    return {
+        "head": commit if head.returncode == 0 and valid else None,
+        "tracked_dirty": bool(dirty.returncode) if dirty.returncode in {0, 1} else None,
+    }
+
+
+def model_identity(settings, *, synthetic: bool) -> dict:
+    """Allowlist model names without serializing settings or credentials."""
+    if synthetic:
+        from companion_daemon.world_v2.longitudinal_fixture_model import LongitudinalFixtureModel
+
+        return {
+            "character": LongitudinalFixtureModel.model,
+            "thinking_character": LongitudinalFixtureModel.model,
+            "world_support": LongitudinalFixtureModel.model,
+        }
+    return {
+        "character": settings.deepseek_model,
+        "thinking_character": (
+            settings.deepseek_character_thinking_model
+            if settings.deepseek_character_thinking_enabled
+            else None
+        ),
+        "world_support": settings.deepseek_model,
+    }
+
+
 async def run(options: argparse.Namespace) -> dict:
     from companion_daemon.world_v2.longitudinal_journey import (
         Journey,
@@ -88,7 +141,8 @@ async def run(options: argparse.Namespace) -> dict:
     )
     from companion_daemon.world_v2.qq_c2c_host import build_qq_c2c_host
 
-    journey = Journey.parse(json.loads(options.scenario.read_text(encoding="utf-8")))
+    scenario_bytes = options.scenario.read_bytes()
+    journey = Journey.parse(json.loads(scenario_bytes))
     limits = JourneyLimits(
         heartbeat_seconds=options.heartbeat_seconds,
         max_steps=options.max_steps,
@@ -98,16 +152,14 @@ async def run(options: argparse.Namespace) -> dict:
     )
     synthetic = options.model_mode == "fixture"
     # Validate provider configuration before creating the experiment directory.
-    experiment_settings(
+    configured = experiment_settings(
         database=options.output / "world.sqlite",
         synthetic=synthetic,
         max_cost_cny=options.max_cost_cny,
     )
 
     def host_factory(database, clock, delivery):
-        settings = experiment_settings(
-            database=database, synthetic=synthetic, max_cost_cny=options.max_cost_cny
-        )
+        settings = configured.model_copy(update={"database_path": database})
         injected = {}
         if synthetic:
             from companion_daemon.world_v2.longitudinal_fixture_model import (
@@ -142,6 +194,9 @@ async def run(options: argparse.Namespace) -> dict:
         limits=limits,
         provenance={
             "model_mode": options.model_mode,
+            "scenario_sha256": hashlib.sha256(scenario_bytes).hexdigest(),
+            "code": code_identity(),
+            "models": model_identity(configured, synthetic=synthetic),
             "max_cost_cny": options.max_cost_cny,
             "billing_clock": "real_utc_not_virtual",
             "context_input_verification": "unverified",

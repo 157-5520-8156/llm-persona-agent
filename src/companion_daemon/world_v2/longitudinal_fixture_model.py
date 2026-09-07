@@ -15,6 +15,7 @@ from companion_daemon.llm import FakeCompanionModel
 class LongitudinalFixtureModel(FakeCompanionModel):
     model = "longitudinal-fixture.1"
     provider = "offline-fixture"
+    supports_required_tool_choice = True
 
     async def complete(self, messages, *, temperature: float = 0.8) -> str:
         payload = {}
@@ -78,14 +79,47 @@ class LongitudinalFixtureModel(FakeCompanionModel):
             )
         return await super().complete(messages, temperature=temperature)
 
+    async def complete_json(
+        self,
+        messages,
+        *,
+        temperature: float = 0.8,
+        tools=None,
+        tool_choice=None,
+    ):
+        raw = await self.complete(messages, temperature=temperature)
+        if tools is None:
+            if tool_choice is not None:
+                raise ValueError("fixture tool choice requires an offered tool")
+            return raw
+        if len(tools) != 1:
+            raise ValueError("fixture requires exactly one declared tool")
+        function = tools[0]["function"]
+        expected = {"type": "function", "function": {"name": function["name"]}}
+        if tool_choice != expected:
+            raise ValueError("fixture tool choice does not match the declared tool")
+        properties = function["parameters"].get("properties", {})
+        if "payload_json" in properties:
+            return json.dumps({"result_kind": "reply_only", "payload_json": raw})
+        if "result" in properties:
+            return json.dumps({"result": json.loads(raw)})
+        return raw
+
     async def complete_json_stream_with_usage(
         self,
         messages,
         *,
         temperature: float = 0.8,
         on_text_delta=None,
+        tools=None,
+        tool_choice=None,
     ):
-        raw = await self.complete(messages, temperature=temperature)
+        raw = await self.complete_json(
+            messages,
+            temperature=temperature,
+            tools=tools,
+            tool_choice=tool_choice,
+        )
         if on_text_delta is not None:
             on_text_delta(raw)
         usage = {
