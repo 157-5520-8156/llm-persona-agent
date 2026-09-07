@@ -133,7 +133,23 @@ def maybe_record_debug_usage(usage: object, *, observer: object | None = None) -
         return
     try:
         store = _debug_usage_store()
-        store.record(usage)
+        reservation_id = str(
+            getattr(usage, "budget_reservation_id", "")
+            or getattr(usage, "reservation_id", "")
+            or ""
+        )
+        if reservation_id:
+            from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
+
+            source = getattr(observer, "__self__", None)
+            if not isinstance(source, WorldV2UsageStore) or not store.import_settled_provider_usage(
+                source=source, reservation_id=reservation_id
+            ):
+                _LOG.warning("debug spend mirror has no settled source provider bill")
+        else:
+            # Standalone callers without a budget observer retain their direct
+            # debug telemetry path; never invent an admission for foreign IDs.
+            store.record(usage)
     except Exception:
         _LOG.warning("debug spend ledger write failed", exc_info=True)
 

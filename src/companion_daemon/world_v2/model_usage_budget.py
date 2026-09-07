@@ -9,6 +9,8 @@ Image CNY remains in ``usage_events`` on the same SQLite path.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import math
 import sqlite3
@@ -31,6 +33,7 @@ from .cost_forecast import forecast_monthly_cost
 _LOG = logging.getLogger(__name__)
 
 _USD_TO_CNY = CNY_PER_USD
+_PROVIDER_IMPORT_PREFIX = "usage-import:"
 
 GENERIC_MODEL_PURPOSES = frozenset(
     {
@@ -181,6 +184,18 @@ class WorldV2UsageStore:
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(_SCHEMA)
             connection.execute(_RESERVATION_SCHEMA)
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS world_v2_model_usage_imports (
+                    import_id TEXT PRIMARY KEY,
+                    source_ledger_path TEXT NOT NULL,
+                    source_reservation_id TEXT NOT NULL,
+                    source_usage_id INTEGER NOT NULL,
+                    source_usage_hash TEXT NOT NULL,
+                    target_usage_id INTEGER NOT NULL UNIQUE,
+                    imported_at TEXT NOT NULL,
+                    UNIQUE(source_ledger_path, source_reservation_id)
+                )"""
+            )
             self._migrate_usage_columns(connection)
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS model_usage_time ON world_v2_model_usage(recorded_at)"
@@ -554,6 +569,8 @@ class WorldV2UsageStore:
         if not math.isfinite(reserved_cny) or reserved_cny < 0:
             raise ModelUsageAdmissionError("world v2 model call estimated CNY is invalid")
         token = reservation_id.strip() or f"reservation:{uuid.uuid4().hex}"
+        if token.startswith(_PROVIDER_IMPORT_PREFIX):
+            raise ModelUsageAdmissionError("provider import identity cannot become an admission")
         created_at = datetime.now(timezone.utc).isoformat()
         with self._lock:
             connection = self._connect()
@@ -710,6 +727,121 @@ class WorldV2UsageStore:
                 getattr(usage, "purpose", ""),
                 getattr(usage, "provider", ""),
             )
+
+    def import_settled_provider_usage(
+        self, *, source: WorldV2UsageStore, reservation_id: str
+    ) -> bool:
+        """Mirror a persisted debug bill without creating a local admission.
+
+        The source reservation and its known provider bill are the receipt;
+        callback success is not proof that ``record`` persisted anything.
+        Unknown/legacy/non-billed callbacks cannot create a settled mirror.
+        The source call time and bill bytes survive delayed or repeated imports.
+        """
+        if self._spend_account != "debug" or source._spend_account != "debug":
+            raise ModelUsageAdmissionError("provider bill imports require debug ledgers")
+        if not reservation_id:
+            return False
+        with source._lock:
+            connection = source._connect()
+            connection.row_factory = sqlite3.Row
+            try:
+                rows = connection.execute(
+                    """SELECT u.*, r.created_at AS reservation_created_at,
+                              r.purpose AS reservation_purpose,
+                              r.provider AS reservation_provider,
+                              r.actor AS reservation_actor,
+                              r.world_id AS reservation_world_id,
+                              r.turn_id AS reservation_turn_id
+                       FROM world_v2_model_usage u
+                       JOIN world_v2_model_reservations r
+                         ON r.reservation_id = u.reservation_id
+                       WHERE r.reservation_id = ? AND r.status = 'settled'
+                         AND u.billing_state = 'known'
+                         AND NOT EXISTS (
+                             SELECT 1 FROM usage_events e
+                             WHERE e.reservation_id = r.reservation_id
+                         )
+                       LIMIT 2""",
+                    (reservation_id,),
+                ).fetchall()
+            finally:
+                connection.close()
+        if len(rows) != 1:
+            return False
+        bill = dict(rows[0])
+        if bill.pop("reservation_created_at") != bill["recorded_at"]:
+            raise ModelUsageAdmissionError("source provider bill call time mismatch")
+        for key in ("purpose", "provider", "actor", "world_id", "turn_id"):
+            reserved_value = bill.pop(f"reservation_{key}")
+            # Admission may omit attribution which the final provider bill
+            # supplies; preserve the primary store's existing validation rule.
+            if reserved_value and reserved_value != bill[key]:
+                raise ModelUsageAdmissionError(f"source provider bill {key} mismatch")
+        source_path = str(Path(source._path).resolve())
+        if Path(self._path).samefile(source_path):
+            return True  # The original bill already occupies this physical ledger.
+        if source._usd_to_cny != self._usd_to_cny:
+            # Aggregate readers reprice USD models using their configured rate.
+            # Copying a rounded CNY cell would not preserve the source's bill.
+            raise ModelUsageAdmissionError("provider bill import exchange rate mismatch")
+        source_hash = hashlib.sha256(
+            json.dumps(bill, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        import_id = (
+            _PROVIDER_IMPORT_PREFIX
+            + hashlib.sha256(
+                json.dumps([source_path, reservation_id], separators=(",", ":")).encode()
+            ).hexdigest()
+        )
+        source_usage_id = bill.pop("id")
+        # Imported tokens must never join a target-local reservation with the
+        # same source token. The original identity remains in the import receipt.
+        bill["reservation_id"] = import_id
+        bill["spend_account"] = self._spend_account
+        with self._lock:
+            connection = self._connect()
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                previous = connection.execute(
+                    "SELECT source_usage_hash FROM world_v2_model_usage_imports "
+                    "WHERE import_id = ?",
+                    (import_id,),
+                ).fetchone()
+                if previous is not None:
+                    if previous[0] != source_hash:
+                        raise ModelUsageAdmissionError("conflicting imported provider bill")
+                    return True
+                if (
+                    connection.execute(
+                        "SELECT 1 FROM world_v2_model_reservations WHERE reservation_id = ?",
+                        (import_id,),
+                    ).fetchone()
+                    is not None
+                ):
+                    raise ModelUsageAdmissionError("provider import collides with local admission")
+                columns = tuple(bill)
+                cursor = connection.execute(
+                    f"INSERT INTO world_v2_model_usage ({', '.join(columns)}) "
+                    f"VALUES ({', '.join('?' for _ in columns)})",
+                    tuple(bill.values()),
+                )
+                connection.execute(
+                    "INSERT INTO world_v2_model_usage_imports VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        import_id,
+                        source_path,
+                        reservation_id,
+                        source_usage_id,
+                        source_hash,
+                        cursor.lastrowid,
+                        datetime.now(timezone.utc).isoformat(),
+                    ),
+                )
+                connection.commit()
+                return True
+            finally:
+                connection.close()
 
     def _record_usage(self, usage: object) -> None:
         reservation_id = str(
