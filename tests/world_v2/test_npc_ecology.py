@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -12,6 +13,7 @@ from companion_daemon.world_v2.ledger import WorldLedger
 from companion_daemon.world_v2.life_aftermath_runtime import LifeAftermathRuntime
 from companion_daemon.world_v2.life_content_store import (
     InMemoryImmutableLifeContentStore,
+    SQLiteImmutableLifeContentStore,
     StoredLifeContent,
     life_content_payload_hash,
 )
@@ -20,6 +22,7 @@ from companion_daemon.world_v2.occurrence_content_coordinator import (
     OccurrenceContentCoordinator,
 )
 from companion_daemon.world_v2.schemas import ProjectionCursor
+from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
 from test_life_projection import (
     WORLD_ID,
     commit,
@@ -88,6 +91,23 @@ class _LedgerRejectingPrivateAffectReads:
         return getattr(self._ledger, name)
 
 
+class _FailOnceLedger:
+    """Fail one durable write at the storage boundary, then permit recovery."""
+
+    def __init__(self, ledger, event_type: str) -> None:
+        self._ledger = ledger
+        self._event_type = event_type
+
+    def commit_at_cursor(self, events, **kwargs):
+        if any(item.event_type == self._event_type for item in events):
+            self._event_type = ""
+            raise OSError("injected ledger write failure")
+        return self._ledger.commit_at_cursor(events, **kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._ledger, name)
+
+
 def _actor(decision: str) -> dict[str, object]:
     payload: dict[str, object] = {
         "decision": decision,
@@ -141,13 +161,21 @@ def _runtime(
     world_payload: dict[str, object],
     *,
     actor_model: _Model | None = None,
+    ledger_path: Path | None = None,
 ):
-    ledger = WorldLedger.in_memory(
-        world_id=WORLD_ID,
-        accepted_batch_issuer=AcceptedLedgerBatchIssuer(),
+    ledger = (
+        WorldLedger.in_memory(world_id=WORLD_ID, accepted_batch_issuer=AcceptedLedgerBatchIssuer())
+        if ledger_path is None
+        else SQLiteWorldLedger(
+            path=ledger_path, world_id=WORLD_ID, accepted_batch_issuer=AcceptedLedgerBatchIssuer()
+        )
     )
     seed_through_proposal(ledger, event_visibility="personal")
-    store = InMemoryImmutableLifeContentStore()
+    store = (
+        InMemoryImmutableLifeContentStore()
+        if ledger_path is None
+        else SQLiteImmutableLifeContentStore(path=str(ledger_path), world_id=WORLD_ID)
+    )
     descriptor = "林，角色在当前生活里认识的人。"
     store.put_if_absent(
         StoredLifeContent(
@@ -561,7 +589,11 @@ async def test_world_author_gets_one_exact_reselection_then_technical_failure() 
 
 
 @pytest.mark.asyncio
-async def test_npc_can_form_its_own_future_plan_without_binding_protagonist() -> None:
+@pytest.mark.parametrize("ambient_mass, actor_cap", [(0, 0), (10_000, 8)])
+@pytest.mark.parametrize("crash_event_type", [None, "WorldOccurrenceCommitted", "WorldOccurrenceActivated"])
+async def test_npc_can_form_its_own_future_plan_without_binding_protagonist(
+    tmp_path, ambient_mass: int, actor_cap: int, crash_event_type: str | None
+) -> None:
     actor_payload = _actor("propose")
     actor_payload["proposal"] = {
         "timing": "later",
@@ -574,7 +606,11 @@ async def test_npc_can_form_its_own_future_plan_without_binding_protagonist() ->
         "scheduled_start_after_minutes": 180,
         "importance_bp": 7200,
     }
-    ledger, _store, actor, world, runtime = _runtime(actor_payload, _world_plan())
+    ledger_path = tmp_path / "npc-plan.sqlite"
+    ledger, store, actor, world, runtime = _runtime(
+        actor_payload, _world_plan(), ledger_path=ledger_path
+    )
+    commit(ledger, settlement_batch())
 
     result = await runtime.advance_once(
         wake_event_ref="clock-life", trace_id="trace", correlation_id="correlation"
@@ -583,6 +619,7 @@ async def test_npc_can_form_its_own_future_plan_without_binding_protagonist() ->
     assert result.status == "plan_committed"
     assert len(actor.calls) == 1
     assert len(world.calls) == 1
+
     plan = ledger.project().plans[-1]
     assert plan.owner_actor_ref == "npc:lin"
     assert plan.participant_refs == ("npc:lin",)
@@ -627,6 +664,130 @@ async def test_npc_can_form_its_own_future_plan_without_binding_protagonist() ->
     assert projected_plan.status == "active"
     assert len(actor.calls) == 1
     assert len(world.calls) == 1
+    rejected = await runtime.advance_once(
+        wake_event_ref=projected_plan.authority_origin.accepted_event_ref,
+        trace_id="trace:invalid-wake", correlation_id="correlation:invalid-wake",
+    )
+    assert rejected.reason_code == "npc_ecology.wake_not_exact_clock"
+    assert len(world.calls) == 1
+
+    # Restart at the accepted, active plan. Its existing intent must reach a
+    # World-authored consequence without asking the NPC to invent another plan.
+    before_restart = ledger.project()
+    store.close()
+    ledger.close()
+    ledger = SQLiteWorldLedger(
+        path=ledger_path, world_id=WORLD_ID, accepted_batch_issuer=AcceptedLedgerBatchIssuer()
+    )
+    store = SQLiteImmutableLifeContentStore(path=str(ledger_path), world_id=WORLD_ID)
+    assert ledger.project() == before_restart
+    restarted = NpcEcology(
+        ledger=ledger,
+        content_store=store,
+        occurrence_content=OccurrenceContentCoordinator(ledger=ledger, store=store),
+        actor_model=actor,
+        world_author=world,
+        protagonist_actor_ref="actor:companion",
+        decision_opportunity_mass_bp=ambient_mass,
+        weekly_actor_decision_cap=actor_cap,
+    )
+    assert restarted.has_due_work(projection=ledger.project())
+    resolution_wake_ref = "clock-plan-due"
+    if crash_event_type is not None:
+        storage = _FailOnceLedger(ledger, crash_event_type)
+        interrupted = NpcEcology(
+            ledger=storage, content_store=store,
+            occurrence_content=OccurrenceContentCoordinator(ledger=storage, store=store),
+            actor_model=actor, world_author=world, protagonist_actor_ref="actor:companion",
+        )
+        with pytest.raises(OSError, match="injected ledger write failure"):
+            await interrupted.advance_once(
+                wake_event_ref="clock-plan-due", trace_id="trace:interrupt", correlation_id="correlation:interrupt"
+            )
+        assert len(world.calls) == 2
+        store.close()
+        ledger.close()
+        ledger = SQLiteWorldLedger(
+            path=ledger_path, world_id=WORLD_ID, accepted_batch_issuer=AcceptedLedgerBatchIssuer()
+        )
+        store = SQLiteImmutableLifeContentStore(path=str(ledger_path), world_id=WORLD_ID)
+        resumed_at = due + timedelta(hours=2)
+        resolution_wake_ref = "clock-plan-recovery"
+        commit(ledger, [event(
+            resolution_wake_ref, "ClockAdvanced",
+            {"logical_time_from": ledger.project().logical_time.isoformat(),
+             "logical_time_to": resumed_at.isoformat()}, at=resumed_at,
+        )])
+        restarted = NpcEcology(
+            ledger=ledger, content_store=store,
+            occurrence_content=OccurrenceContentCoordinator(ledger=ledger, store=store),
+            actor_model=actor, world_author=world, protagonist_actor_ref="actor:companion",
+            decision_opportunity_mass_bp=ambient_mass, weekly_actor_decision_cap=actor_cap,
+        )
+    opened = await restarted.advance_once(
+        wake_event_ref=resolution_wake_ref, trace_id="trace:resolve", correlation_id="correlation:resolve"
+    )
+    assert opened.status == ("occurrence_committed" if crash_event_type is None else "recovered"), opened
+    occurrence = next(
+        item for item in ledger.project().world_occurrences
+        if item.occurrence_id == opened.occurrence_id
+    )
+    assert occurrence.trigger_ref == plan.plan_id
+    assert occurrence.time_window.opens_at == due
+    assert occurrence.time_window.closes_at == due + timedelta(minutes=90)
+    assert occurrence.activated_at == due
+    assert occurrence.participant_refs == ("npc:lin",)
+    assert all(item.causal_authority == "world_contingency" for item in occurrence.candidate_outcomes)
+    assert len(actor.calls) == 1
+    assert len(world.calls) == 2
+    resolution = json.loads(world.calls[-1][1]["content"])
+    assert resolution["active_plan"]["plan_id"] == plan.plan_id
+    assert resolution["npc_actor_decision"]["proposal"]["timing"] == "later"
+    assert resolution["npc_actor_decision"]["proposal"]["premise"] == "林想周末留一段完整时间整理作品集。"
+
+    await restarted.advance_once(
+        wake_event_ref=resolution_wake_ref, trace_id="trace:duplicate", correlation_id="correlation:duplicate"
+    )
+    assert len(actor.calls) == 1
+    assert len(world.calls) == 2
+
+    settled_at = max(occurrence.time_window.closes_at, ledger.project().logical_time) + timedelta(seconds=1)
+    commit(ledger, [event(
+        "clock-plan-finished", "ClockAdvanced",
+        {"logical_time_from": ledger.project().logical_time.isoformat(),
+         "logical_time_to": settled_at.isoformat()}, at=settled_at,
+    )])
+
+    class MustNotConsider:
+        async def consider(self, _opportunity):
+            raise AssertionError("the protagonist did not witness this NPC plan")
+
+    aftermath = LifeAftermathRuntime(
+        ledger=ledger, catalog=SimpleNamespace(), content_store=store,
+        occurrence_content=OccurrenceContentCoordinator(ledger=ledger, store=store),
+        owner_actor_ref="actor:companion", character_interior=MustNotConsider(),
+        experience_memory_lifecycle=SimpleNamespace(_ledger=ledger),
+    )
+    settled = await aftermath.advance_once(
+        wake_event_ref="clock-plan-finished", trace_id="trace:settle", correlation_id="correlation:settle"
+    )
+    assert settled.status == "settled"
+    completed = await restarted.advance_once(
+        wake_event_ref="clock-plan-finished", trace_id="trace:complete", correlation_id="correlation:complete"
+    )
+    assert completed.status == "plan_completed"
+    assert next(item for item in ledger.project().plans if item.plan_id == plan.plan_id).status == "completed"
+    assert len(actor.calls) == 1
+    assert len(world.calls) == 2
+    assert ledger.export_replay_evidence().replay == ledger.project()
+    repeated = await restarted.advance_once(
+        wake_event_ref="clock-plan-finished", trace_id="trace:repeat", correlation_id="correlation:repeat"
+    )
+    assert repeated.status == "already_considered"
+    assert len(actor.calls) == 1
+    assert len(world.calls) == 2
+    store.close()
+    ledger.close()
 
 
 @pytest.mark.asyncio
@@ -646,6 +807,61 @@ async def test_ambient_wake_without_occasion_draw_skips_actor_call() -> None:
     assert result.status == "no_op"
     assert result.reason_code == "npc_ecology.occasion_not_drawn"
     assert actor.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rejection_kind", ["critic", "world_changed"])
+async def test_rejected_plan_consequence_remains_retryable(rejection_kind: str) -> None:
+    actor_payload = _actor("propose")
+    actor_payload["proposal"].update({
+        "timing": "later", "activity_kind": "整理作品集",
+        "scheduled_start_after_minutes": 30, "importance_bp": 5000,
+    })
+    ledger, store, actor, world, runtime = _runtime(actor_payload, _world_plan())
+    await runtime.advance_once(wake_event_ref="clock-life", trace_id="trace", correlation_id="correlation")
+    plan = ledger.project().plans[-1]
+    due = plan.scheduled_window.opens_at
+    commit(ledger, [event(
+        "clock-rejected-result", "ClockAdvanced",
+        {"logical_time_from": ledger.project().logical_time.isoformat(),
+         "logical_time_to": due.isoformat()}, at=due,
+    )])
+    await runtime.advance_once(
+        wake_event_ref="clock-rejected-result", trace_id="trace:start", correlation_id="correlation:start"
+    )
+    world.payload = _world()
+    critic = _Model({})  # Two invalid critic responses reject the candidate.
+
+    class ChangesWorld(_Model):
+        async def complete_json(self, messages, *, temperature=0.2):
+            changed_at = due + timedelta(minutes=1)
+            commit(ledger, [event(
+                "clock-world-changed", "ClockAdvanced",
+                {"logical_time_from": ledger.project().logical_time.isoformat(),
+                 "logical_time_to": changed_at.isoformat()}, at=changed_at,
+            )])
+            return await super().complete_json(messages, temperature=temperature)
+
+    guarded = NpcEcology(
+        ledger=ledger, content_store=store,
+        occurrence_content=OccurrenceContentCoordinator(ledger=ledger, store=store),
+        actor_model=actor,
+        world_author=world if rejection_kind == "critic" else ChangesWorld(_world()),
+        protagonist_actor_ref="actor:companion",
+        user_channel_critic=critic if rejection_kind == "critic" else None,
+    )
+    rejected = await guarded.advance_once(
+        wake_event_ref="clock-rejected-result", trace_id="trace:rejected", correlation_id="correlation:rejected"
+    )
+    assert rejected.status == ("technical_failure" if rejection_kind == "critic" else "stale_prefix")
+    assert not any(item.trigger_ref == plan.plan_id for item in ledger.project().world_occurrences)
+    assert next(item for item in ledger.project().plans if item.plan_id == plan.plan_id).status == "active"
+    recovered = await runtime.advance_once(
+        wake_event_ref="clock-rejected-result" if rejection_kind == "critic" else "clock-world-changed",
+        trace_id="trace:retry", correlation_id="correlation:retry"
+    )
+    assert recovered.status == "occurrence_committed"
+    assert len(actor.calls) == 1
 
 
 @pytest.mark.asyncio

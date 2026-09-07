@@ -439,6 +439,19 @@ class NpcEcology:
 
         if self._pending_actor_event_ref(projection) is not None:
             return True
+        if self._unresolved_active_plan(projection) is not None:
+            return True
+        if any(
+            plan.status == "active"
+            and isinstance(plan.owner_actor_ref, str)
+            and plan.owner_actor_ref.startswith("npc:")
+            and any(
+                occurrence.trigger_ref == plan.plan_id and occurrence.status == "settled"
+                for occurrence in getattr(projection, "world_occurrences", ())
+            )
+            for plan in getattr(projection, "plans", ())
+        ):
+            return True
         logical_time = getattr(projection, "logical_time", None)
         if logical_time is None:
             return False
@@ -634,12 +647,25 @@ class NpcEcology:
         )
         if wake is None or projection.logical_time is None:
             return NpcEcologyResult(status="rejected", reason_code="npc_ecology.wake_missing")
+        if wake.event_type != "ClockAdvanced":
+            return NpcEcologyResult(
+                status="rejected", reason_code="npc_ecology.wake_not_exact_clock"
+            )
         completed_plan = self._complete_settled_npc_plan(projection=projection, wake=wake)
         if completed_plan is not None:
             return NpcEcologyResult(
                 status="plan_completed",
                 reason_code="npc_ecology.settled_plan_completed",
                 npc_ref=completed_plan.owner_actor_ref,
+            )
+        active_plan = self._unresolved_active_plan(projection)
+        if active_plan is not None:
+            return await self._resolve_active_plan(
+                projection=projection, wake=wake, plan=active_plan
+            )
+        if self._plan_work_consumed_wake(projection=projection, wake_event_ref=wake.event_id):
+            return NpcEcologyResult(
+                status="already_considered", reason_code="npc_ecology.plan_wake_already_consumed"
             )
         if self._pending_actor_event_ref(projection) is None and any(
             item.subjective_state is not None
@@ -753,6 +779,99 @@ class NpcEcology:
                 focus_npc_ref=None,
                 focus_plan_ref=None,
             )
+        )
+
+    @staticmethod
+    def _unresolved_active_plan(projection) -> PlanStateProjection | None:
+        """Find a previously accepted NPC intent still missing its consequence."""
+
+        occurrences = {item.trigger_ref: item for item in projection.world_occurrences}
+        return next(
+            (
+                plan for plan in projection.plans
+                if plan.status == "active"
+                and plan.plan_id.startswith("plan:npc-ecology:")
+                and isinstance(plan.owner_actor_ref, str)
+                and plan.owner_actor_ref.startswith("npc:")
+                and (
+                    plan.plan_id not in occurrences
+                    or occurrences[plan.plan_id].status == "committed"
+                )
+            ),
+            None,
+        )
+
+    def _plan_work_consumed_wake(self, *, projection, wake_event_ref: str) -> bool:
+        for plan in projection.plans:
+            if not plan.plan_id.startswith("plan:npc-ecology:"):
+                continue
+            identity = _digest({"world": self._ledger.world_id, "plan_consequence": plan.plan_id})
+            located = self._ledger.lookup_event_commit("event:npc-ecology:world:" + identity)
+            if located is not None and located[0].payload().get("resolution_wake_event_ref") == wake_event_ref:
+                return True
+            activated = self._ledger.lookup_event_commit("event:npc-ecology:activated:" + identity)
+            if activated is not None and any(
+                item.get("ref_id") == wake_event_ref
+                for item in activated[0].payload().get("evidence_refs", ())
+            ):
+                return True
+            if plan.status == "completed" and plan.authority_origin is not None:
+                located = self._ledger.lookup_event_commit(plan.authority_origin.accepted_event_ref)
+                if located is not None and any(
+                    item.get("ref_id") == wake_event_ref
+                    for item in located[0].payload().get("evidence_refs", ())
+                ):
+                    return True
+        return False
+
+    async def _resolve_active_plan(self, *, projection, wake, plan) -> NpcEcologyResult:
+        # The NPC already chose this intent. Its opening was a deterministic
+        # time transition; only the World Author now owns the uncertain result.
+        original_identity = plan.plan_id.removeprefix("plan:npc-ecology:")
+        located = self._ledger.lookup_event_commit(
+            "event:npc-ecology:plan:" + original_identity
+        )
+        try:
+            if located is None or plan.authority_origin is None:
+                raise ValueError("accepted NPC plan is unavailable")
+            planned_event = located[0]
+            planned = ActivityPlannedPayload.model_validate_json(planned_event.payload_json).plan
+            if planned_event.event_type != "ActivityPlanned" or any(
+                getattr(planned, field) != getattr(plan, field)
+                for field in (
+                    "plan_id", "activity_id", "owner_actor_ref", "activity_kind",
+                    "participant_refs", "location_ref", "scheduled_window", "privacy_class",
+                )
+            ):
+                raise ValueError("accepted NPC plan binding changed")
+            world_event = self._ledger.lookup_event_commit(planned_event.causation_id)
+            if world_event is None:
+                raise ValueError("NPC plan adjudication is unavailable")
+            actor_event_ref = world_event[0].payload()["actor_decision_event_ref"]
+            actor_event = self._ledger.lookup_event_commit(actor_event_ref)
+            if actor_event is None:
+                raise ValueError("NPC plan intent is unavailable")
+            decision = NpcActorDecision.model_validate_json(_canonical(actor_event[0].payload()["decision_payload"]))
+            if decision.npc_ref != plan.owner_actor_ref or decision.proposal is None:
+                raise ValueError("NPC plan intent belongs to another actor")
+        except (KeyError, TypeError, ValueError):
+            return NpcEcologyResult(
+                status="technical_failure", reason_code="npc_ecology.active_plan_authority_missing",
+                npc_ref=plan.owner_actor_ref,
+            )
+        identity = _digest({"world": self._ledger.world_id, "plan_consequence": plan.plan_id})
+        stimulus = NpcEcologyStimulus(
+            cursor=_cursor(projection), wake_event_ref=wake.event_id,
+            source_event_refs=tuple(sorted({
+                wake.event_id, planned_event.event_id, plan.authority_origin.accepted_event_ref,
+            })),
+            epoch_ref="plan-consequence:" + plan.plan_id,
+            focus_npc_ref=plan.owner_actor_ref, focus_plan_ref=plan.plan_id,
+        )
+        snapshot = self.snapshot(stimulus.cursor, focus_npc_ref=plan.owner_actor_ref)
+        return await self._materialize(
+            stimulus=stimulus, snapshot=snapshot, wake=wake,
+            actor_event_id=actor_event_ref, actor_decision=decision, identity=identity,
         )
 
     @staticmethod
@@ -976,15 +1095,28 @@ class NpcEcology:
                 "location_refs": snapshot.available_location_refs,
             },
         }
+        if stimulus.focus_plan_ref is not None:
+            projection = self._ledger.project_at(stimulus.cursor)
+            plan = next(item for item in projection.plans if item.plan_id == stimulus.focus_plan_ref)
+            payload["active_plan"] = plan.model_dump(mode="json")
         output_contract = {
             "json_schema": NpcWorldDecision.model_json_schema(mode="validation"),
         }
         prompt = (
             "You are World Author, not the NPC. Adjudicate the exact NPC-owned proposal without "
-            "rewriting its motive, timing, people, place, activity or importance. Return no_op when "
-            "the world does not permit it, or accept. For an immediate proposal, accept must include "
-            "2-4 genuinely uncertain possible external outcomes. For a future plan, accept has no "
-            "outcomes because the eventual occurrence remains unsettled. Each outcome must declare "
+            "rewriting its motive, timing, people, place, activity or importance. "
+            + (
+                "Resolve the supplied accepted active_plan. The original NPC intent remains "
+                "unchanged; its planned time has arrived and ActivityStarted is committed. "
+                "Return accept with 2-4 possible external outcomes of that active activity. "
+                "No material change is a valid outcome; no_op leaves a real activity unresolved. "
+                "Do not invent a new NPC choice, another plan, or protagonist participation. "
+                if stimulus.focus_plan_ref is not None else
+                "Return no_op when the world does not permit it, or accept. For an immediate "
+                "proposal, accept must include 2-4 genuinely uncertain possible external outcomes. "
+                "For a future plan, accept has no outcomes because its occurrence remains unsettled. "
+            )
+            + "Each outcome must declare "
             "user_channel_completion=none and must not narrate a completed send or reply through "
             "the user's chat channel; that is Action-ledger territory. NPC self-life in this "
             "situation remains allowed. Return only "
@@ -1619,7 +1751,26 @@ class NpcEcology:
                 wake=wake,
                 npc_ref=actor_decision.npc_ref,
             )
+            if stimulus.focus_plan_ref is not None and world_decision.decision != "accept":
+                # A rejected candidate is not the permanent outcome of an
+                # accepted activity. Keep the plan open for technical retry.
+                return NpcEcologyResult(
+                    status="technical_failure",
+                    reason_code="npc_ecology.active_plan_outcomes_rejected",
+                    npc_ref=actor_decision.npc_ref,
+                    decision_event_ref=actor_event_id,
+                )
             projection = self._ledger.project()
+            if (
+                stimulus.focus_plan_ref is not None
+                and projection.world_revision != stimulus.cursor.world_revision
+            ):
+                return NpcEcologyResult(
+                    status="stale_prefix",
+                    reason_code="npc_ecology.active_plan_world_changed",
+                    npc_ref=actor_decision.npc_ref,
+                    decision_event_ref=actor_event_id,
+                )
             payload = {
                 "proposal_id": "proposal:npc-ecology-world:" + identity,
                 "proposal_kind": "npc_ecology_world_adjudication",
@@ -1630,6 +1781,9 @@ class NpcEcology:
                 "model": self._model_id(self._world_author),
                 "raw_output_hash": "sha256:" + hashlib.sha256(raw.encode()).hexdigest(),
             }
+            if stimulus.focus_plan_ref is not None:
+                payload["resolution_plan_ref"] = stimulus.focus_plan_ref
+                payload["resolution_wake_event_ref"] = wake.event_id
             event = self._event(
                 event_id=world_event_id,
                 event_type="ProposalRecorded",
@@ -1658,7 +1812,7 @@ class NpcEcology:
                 npc_ref=actor_decision.npc_ref,
                 decision_event_ref=actor_event_id,
             )
-        if proposal.timing == "later":
+        if proposal.timing == "later" and stimulus.focus_plan_ref is None:
             plan_id = "plan:npc-ecology:" + identity
             existed = any(item.plan_id == plan_id for item in self._ledger.project().plans)
             if not existed:
@@ -1708,7 +1862,17 @@ class NpcEcology:
                 identity=identity,
                 focus_plan_ref=stimulus.focus_plan_ref,
             )
-        self._activate(wake=wake, occurrence_id=occurrence_id, identity=identity)
+        activation_time = None
+        if stimulus.focus_plan_ref is not None:
+            plan = next(
+                item for item in self._ledger.project().plans
+                if item.plan_id == stimulus.focus_plan_ref
+            )
+            activation_time = plan.last_transitioned_at
+        self._activate(
+            wake=wake, occurrence_id=occurrence_id, identity=identity,
+            activated_at=activation_time,
+        )
         return NpcEcologyResult(
             status=("recovered" if existing_world else "occurrence_committed"),
             reason_code="npc_ecology.occurrence_entered_event_machine",
@@ -1718,6 +1882,10 @@ class NpcEcology:
         )
 
     def _validate_world_decision(self, decision, *, stimulus, snapshot, actor_decision):
+        if stimulus.focus_plan_ref is not None:
+            if decision.decision != "accept" or len(decision.outcomes) < 2:
+                return "npc_ecology.active_plan_outcomes_missing"
+            return None
         if decision.decision == "no_op":
             return None
         proposal = actor_decision.proposal
@@ -1776,11 +1944,14 @@ class NpcEcology:
         evidence = self._evidence(projection, reason_event_ref).model_copy(
             update={"claim_purpose": "life_transition"}
         )
+        evidence_refs = (evidence,)
+        if target == "complete" and reason_event_ref != wake.event_id:
+            evidence_refs += (self._evidence(projection, wake.event_id),)
         payload = ActivityTransitionPayload(
             change_id=f"change:npc-ecology:plan:{target}:" + identity,
             transition_id=f"transition:npc-ecology:plan:{target}:" + identity,
             expected_entity_revision=plan.entity_revision,
-            evidence_refs=(evidence,),
+            evidence_refs=evidence_refs,
             policy_refs=(_POLICY,),
             plan_id=plan.plan_id,
             transitioned_at=wake.logical_time,
@@ -1872,6 +2043,19 @@ class NpcEcology:
         identity,
         focus_plan_ref=None,
     ) -> None:
+        opens_at = wake.logical_time
+        evidence_refs = (self._evidence(projection, wake.event_id),)
+        if focus_plan_ref is not None:
+            plan = next(item for item in projection.plans if item.plan_id == focus_plan_ref)
+            if (
+                plan.status != "active" or plan.last_transitioned_at is None
+                or plan.authority_origin is None
+            ):
+                raise ValueError("NPC consequence requires an accepted activity start")
+            # A delayed worker observes an already-started activity. Recovery
+            # must not move the NPC's life forward by the worker's downtime.
+            opens_at = plan.last_transitioned_at
+            evidence_refs += (self._evidence(projection, plan.authority_origin.accepted_event_ref),)
         candidates = tuple(
             OutcomeCandidateContent(
                 candidate_result_ref=f"candidate:npc-ecology:{identity}:{index}",
@@ -1895,8 +2079,8 @@ class NpcEcology:
             participant_refs=actor_proposal.participant_refs,
             location_ref=actor_proposal.location_ref,
             time_window=DueWindow(
-                opens_at=wake.logical_time,
-                closes_at=wake.logical_time + timedelta(minutes=actor_proposal.duration_minutes),
+                opens_at=opens_at,
+                closes_at=opens_at + timedelta(minutes=actor_proposal.duration_minutes),
             ),
             precondition_refs=((f"plan:{focus_plan_ref}",) if focus_plan_ref is not None else ()),
             candidate_outcome_refs=tuple(item.candidate_result_ref for item in candidates),
@@ -1910,7 +2094,7 @@ class NpcEcology:
                 candidate_contents=candidates,
                 change_id="change:npc-ecology:occurrence:" + identity,
                 transition_id="transition:npc-ecology:occurrence:" + identity,
-                evidence_refs=(self._evidence(projection, wake.event_id),),
+                evidence_refs=evidence_refs,
                 policy_refs=(_POLICY,),
                 logical_time=wake.logical_time,
                 created_at=wake.logical_time,
@@ -1922,21 +2106,30 @@ class NpcEcology:
             )
         )
 
-    def _activate(self, *, wake, occurrence_id: str, identity: str) -> None:
+    def _activate(
+        self, *, wake, occurrence_id: str, identity: str,
+        activated_at: datetime | None = None,
+    ) -> None:
         projection = self._ledger.project()
         occurrence = next(
             item for item in projection.world_occurrences if item.occurrence_id == occurrence_id
         )
         if occurrence.status != "committed":
             return
+        evidence_refs = (self._evidence(projection, wake.event_id),)
+        if activated_at is not None:
+            plan = next(item for item in projection.plans if item.plan_id == occurrence.trigger_ref)
+            if plan.last_transitioned_at != activated_at or plan.authority_origin is None:
+                raise ValueError("NPC occurrence activation lacks its exact accepted start")
+            evidence_refs += (self._evidence(projection, plan.authority_origin.accepted_event_ref),)
         payload = WorldOccurrenceActivatedPayload(
             change_id="change:npc-ecology:activate:" + identity,
             transition_id="transition:npc-ecology:activate:" + identity,
             expected_entity_revision=occurrence.entity_revision,
-            evidence_refs=(self._evidence(projection, wake.event_id),),
+            evidence_refs=evidence_refs,
             policy_refs=(_POLICY,),
             occurrence_id=occurrence_id,
-            activated_at=wake.logical_time,
+            activated_at=activated_at or wake.logical_time,
             satisfied_precondition_refs=occurrence.precondition_refs,
         ).model_dump(mode="json")
         event_id = "event:npc-ecology:activated:" + identity
