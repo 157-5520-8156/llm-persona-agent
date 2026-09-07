@@ -35,7 +35,6 @@ from .expression_episode import (
 )
 from .expression_cadence import CadenceDraw
 from .proposal_envelope import (
-    CanonicalTypedPayload,
     MinimalProposal,
     ProposalEvidenceRef,
     ProposalInput,
@@ -848,61 +847,6 @@ def _checked_output(value: object) -> ModelOutput:
         raw = value.get("raw_proposal") if isinstance(value, dict) else None
     _bounded_raw(material, label="model output")
     return ModelOutput.model_validate(material)
-
-
-def _strip_unbound_expression_evidence(
-    proposal: ProposalInput,
-    unbound_refs: set[str],
-) -> ProposalInput:
-    """Drop expression-plan claims that cite evidence the Capsule does not bind.
-
-    Returns the same object when nothing was strippable (non-expression
-    proposals keep failing closed).
-    """
-
-    if not isinstance(proposal, MinimalProposal) and not hasattr(
-        proposal, "proposed_changes"
-    ):
-        return proposal
-    modified = False
-    stripped_changes: list[object] = []
-    for change in proposal.proposed_changes:  # type: ignore[attr-defined]
-        if change.kind != "expression_plan_transition":
-            # Non-expression changes keep their evidence untouched: their
-            # refs are functional bindings, not strippable claims.
-            stripped_changes.append(change)
-            continue
-        payload = change.payload.value()
-        claims = payload.get("world_claims", [])
-        remaining = [
-            claim
-            for claim in claims
-            if not set(claim.get("source_refs", [])).intersection(unbound_refs)
-        ]
-        if len(remaining) == len(claims):
-            stripped_changes.append(change)
-            continue
-        modified = True
-        stripped_changes.append(
-            change.model_copy(
-                update={
-                    "payload": CanonicalTypedPayload.from_value(
-                        payload_schema=change.payload.payload_schema,
-                        value={**payload, "world_claims": remaining},
-                    ),
-                }
-            )
-        )
-    if not modified:
-        return proposal
-    return proposal.model_copy(  # type: ignore[attr-defined]
-        update={
-            "proposed_changes": tuple(stripped_changes),
-            "evidence_refs": tuple(
-                ref for ref in proposal.evidence_refs if ref.ref_id not in unbound_refs
-            ),
-        }
-    )
 
 
 def _checked_route(value: object) -> ModelRoute:
@@ -4129,47 +4073,14 @@ class Deliberation:
             if not exact or evidence.evidence_kind not in allowed_kinds:
                 unbound_refs.add(evidence.ref_id)
         if unbound_refs:
-            # The author model can cite a well-formed ref that the frozen
-            # Capsule does not bind (e.g. the observation trigger event
-            # instead of the clock-tick trigger event). The lane-closure
-            # strip at materialization cannot see this, so degrade here:
-            # drop the claims that cite the unbound evidence and keep the
-            # reply. A fabricated fact never reaches the World ledger.
-            stripped = _strip_unbound_expression_evidence(proposal, unbound_refs)
-            if stripped is not proposal:
-                import logging
-
-                logging.getLogger(__name__).warning(
-                    "stripped %d unbound evidence claim(s) to keep the reply refs=%s",
-                    len(proposal.evidence_refs) - len(stripped.evidence_refs),
-                    sorted(unbound_refs)[:5],
-                )
-                return self._validated_proposal(
-                    output.model_copy(
-                        update={
-                            "raw_proposal": stripped.model_dump(mode="json"),
-                        }
-                    ),
-                    capsule,
-                    minimal_only=minimal_only,
-                    trigger_evidence=trigger_evidence,
-                    proposal_grammar_override=proposal_grammar_override,
-                    trigger_message=trigger_message,
-                )
-            import logging as _lg2
-
-            _lg2.getLogger("evprobe").warning(
-                "strip noop kind=%s unbound=%s claim_refs=%s",
-                proposal.proposal_kind,
-                sorted(unbound_refs)[:5],
-                [
-                    set(claim.get("source_refs", []))
-                    for change in getattr(proposal, "proposed_changes", ())
-                    if change.kind == "expression_plan_transition"
-                    for claim in change.payload.value().get("world_claims", [])
-                ][:5],
+            # Evidence is part of the author's candidate. Removing it while
+            # retaining the assertion would fabricate a claim-free success.
+            # The existing role recovery boundary receives the exact failed
+            # coordinates; this validator neither rewrites nor retries it.
+            raise ValueError(
+                "proposal evidence authority is absent from the frozen Capsule: "
+                + ", ".join(sorted(unbound_refs))
             )
-            raise ValueError("proposal evidence authority is absent from the frozen Capsule")
         grammar = proposal_grammar_override or self._proposal_grammar
         if grammar is not None:
             grammar.validate(proposal)

@@ -4192,3 +4192,94 @@ async def test_superseded_tail_cancellation_join_is_bounded_and_observed() -> No
         if not returned_promptly:
             await asyncio.wait_for(cancellation, timeout=0.1)
         await deliberation.aclose()
+
+
+def _expression_with_unbound_claim_raw() -> dict[str, object]:
+    from companion_daemon.world_v2.proposal_envelope import CanonicalTypedPayload
+
+    raw = _decision_raw()
+    text = "我刚在图书馆看书"
+    change = _minimal_expression_change(text).model_copy(
+        update={"evidence_refs": ("event:source:1",)}
+    )
+    raw["proposed_changes"] = (change.model_dump(mode="python"),)
+    raw["action_intents"] = (_minimal_reply_intent(text).model_dump(mode="python"),)
+    unbound_ref = "event:unaccepted-library-visit"
+    raw["evidence_refs"] = (
+        *raw["evidence_refs"],
+        _authority_evidence(unbound_ref).model_dump(mode="python"),
+    )
+    payload = raw["proposed_changes"][0]["payload"]
+    value = json.loads(payload["canonical_json"])
+    value["world_claims"] = [
+        {
+            "claim_text": "我刚在图书馆看书",
+            "scope": "past_world",
+            "source_refs": [unbound_ref],
+        }
+    ]
+    raw["proposed_changes"][0]["payload"] = CanonicalTypedPayload.from_value(
+        payload_schema=payload["payload_schema"], value=value
+    ).model_dump(mode="python")
+    return raw
+
+
+@pytest.mark.asyncio
+async def test_unbound_expression_evidence_cannot_be_erased_to_validate_a_reply() -> None:
+    raw = _expression_with_unbound_claim_raw()
+    main = _Main(raw)
+    result = await Deliberation(
+        router=_Router(), main_model=main, technical_recovery_enabled=False
+    ).deliberate(_capsule(), attempt_id="attempt:unbound-claim-must-not-strip")
+
+    assert result.proposal is None
+    assert result.audit.status == "main_invalid"
+    assert len(main.requests) == 1
+    assert json.loads(raw["proposed_changes"][0]["payload"]["canonical_json"])[
+        "world_claims"
+    ][0]["source_refs"] == ["event:unaccepted-library-visit"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("repair_is_valid", [False, True])
+async def test_unbound_expression_evidence_uses_existing_role_recovery_only(
+    repair_is_valid: bool,
+) -> None:
+    class Role(_Main):
+        def __init__(self):
+            super().__init__(_expression_with_unbound_claim_raw())
+            self.recovery_requests = []
+            self.failure_codes = []
+
+        async def recover(self, request, failure_code):
+            self.recovery_requests.append(request)
+            self.failure_codes.append(failure_code)
+            return ModelOutput(
+                model_id="main",
+                model_version="v1",
+                raw_proposal=(
+                    _decision_raw() if repair_is_valid else _expression_with_unbound_claim_raw()
+                ),
+            )
+
+    role = Role()
+    result = await Deliberation(
+        router=_Router(),
+        main_model=role,
+        quick_recovery=role,
+        recovery_mode="proposal_grammar",
+    ).deliberate(_capsule(), attempt_id="attempt:unbound-claim-role-recovery")
+
+    assert len(role.requests) == len(role.recovery_requests) == 1
+    assert "event:unaccepted-library-visit" in role.failure_codes[0]
+    assert role.requests[0].model_content_json == role.recovery_requests[0].model_content_json
+    assert result.attempt_audits[0].status == "main_invalid"
+    if repair_is_valid:
+        assert result.proposal is not None
+        assert result.audit.status == "main_invalid_recovered"
+        assert result.proposal.proposed_changes[0].payload.value()["beat_drafts"][0][
+            "payload_hash"
+        ] == "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    else:
+        assert result.proposal is None
+        assert result.audit.status == "recovery_failed"
