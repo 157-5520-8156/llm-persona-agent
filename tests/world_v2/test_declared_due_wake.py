@@ -110,6 +110,25 @@ def test_collector_wakes_an_appraisal_expiry_that_was_never_on_the_old_list() ->
     assert selected.due_at == due
 
 
+def test_active_occurrence_wakes_at_its_complete_outcome_boundary() -> None:
+    opens = datetime(2026, 9, 7, 1, 12, tzinfo=UTC)
+    now = datetime(2026, 9, 7, 1, 27, tzinfo=UTC)
+    closes = datetime(2026, 9, 7, 4, 0, tzinfo=UTC)
+    dues = collect_projection_declared_dues(SimpleNamespace(
+        world_occurrences=(SimpleNamespace(
+            status="active",
+            time_window=SimpleNamespace(opens_at=opens, closes_at=closes),
+        ),),
+    ))
+
+    selected = select_clock_wake(after=now, through=closes, dues=dues)
+
+    assert selected is not None
+    assert selected.kind == "life.activity_occurrence"
+    assert selected.due_at == closes
+    assert [item.due_at for item in dues] == [closes]
+
+
 def test_collect_clock_wake_dues_requires_exact_computed_keys() -> None:
     with pytest.raises(AssertionError, match="missing computed kinds"):
         collect_clock_wake_dues(None, computed={"social.initiative.cadence": None})

@@ -1032,7 +1032,8 @@ async def test_long_lived_outcome_is_atomic_and_restart_does_not_repeat_the_mode
         ledger=ledger,
         clock=first_clock,
     )
-    wake_at = started_at + timedelta(minutes=10)
+    # Complete frozen outcomes become eligible only at the accepted window end.
+    wake_at = occurrence.time_window.closes_at
     wake = _event(
         world_id=world_id,
         event_id="clock:consequential:settle",
@@ -1209,7 +1210,8 @@ async def test_character_adoption_is_the_only_gate_for_a_dynamic_life_arc(
         include_reviewed_life_arc_effect=False,
         dynamic_life_arc_context=arc,
     )
-    wake_at = started_at + timedelta(minutes=10)
+    # Complete frozen outcomes become eligible only at the accepted window end.
+    wake_at = occurrence.time_window.closes_at
     wake = _event(
         world_id=world_id,
         event_id="clock:adopt-dynamic:settle",
@@ -1342,7 +1344,8 @@ async def test_world_contingency_draw_does_not_adopt_a_dynamic_life_arc(
         causal_authority="world_contingency",
         dynamic_life_arc_on_every_candidate=True,
     )
-    wake_at = started_at + timedelta(minutes=10)
+    # Complete frozen outcomes become eligible only at the accepted window end.
+    wake_at = occurrence.time_window.closes_at
     wake = _event(
         world_id=world_id,
         event_id="clock:contingency-no-auto-adopt:settle",
@@ -1454,7 +1457,8 @@ async def test_character_choice_true_still_adopts_a_proposed_life_direction(
         include_reviewed_life_arc_effect=False,
         dynamic_life_arc_context=arc,
     )
-    wake_at = started_at + timedelta(minutes=10)
+    # Complete frozen outcomes become eligible only at the accepted window end.
+    wake_at = occurrence.time_window.closes_at
     wake = _event(
         world_id=world_id,
         event_id="clock:character-choice-still-adopts:settle",
@@ -1594,7 +1598,7 @@ async def test_long_lived_model_failure_retries_on_a_later_wake_without_a_second
         world_id=world_id,
         event_id="clock:consequential-retry:failed",
         origin=started_at,
-        target=started_at + timedelta(minutes=10),
+        target=occurrence.time_window.closes_at,
     )
     _commit_event(ledger, failed_wake)
 
@@ -1621,8 +1625,8 @@ async def test_long_lived_model_failure_retries_on_a_later_wake_without_a_second
     early_wake = _clock_advance(
         world_id=world_id,
         event_id="clock:consequential-retry:early",
-        origin=started_at + timedelta(minutes=10),
-        target=started_at + timedelta(minutes=19),
+        origin=occurrence.time_window.closes_at,
+        target=occurrence.time_window.closes_at + timedelta(minutes=9),
     )
     _commit_event(ledger, early_wake)
     early = await runtime.advance_once(
@@ -1636,8 +1640,8 @@ async def test_long_lived_model_failure_retries_on_a_later_wake_without_a_second
     retry_wake = _clock_advance(
         world_id=world_id,
         event_id="clock:consequential-retry:success",
-        origin=started_at + timedelta(minutes=19),
-        target=started_at + timedelta(minutes=20),
+        origin=occurrence.time_window.closes_at + timedelta(minutes=9),
+        target=occurrence.time_window.closes_at + timedelta(minutes=10),
     )
     _commit_event(ledger, retry_wake)
     result = await runtime.advance_once(
@@ -1723,15 +1727,15 @@ async def test_outcome_retry_lane_backs_off_ten_thirty_then_one_twenty_minutes(
         )
 
     with pytest.raises(LifeAftermathModelFailure):
-        await advance_at(10, origin_minute=0)
-    assert (await advance_at(19, origin_minute=10)).status == "retry_wait"
+        await advance_at(60, origin_minute=0)
+    assert (await advance_at(69, origin_minute=60)).status == "retry_wait"
     with pytest.raises(LifeAftermathModelFailure):
-        await advance_at(20, origin_minute=19)
-    assert (await advance_at(49, origin_minute=20)).status == "retry_wait"
+        await advance_at(70, origin_minute=69)
+    assert (await advance_at(99, origin_minute=70)).status == "retry_wait"
     with pytest.raises(LifeAftermathModelFailure):
-        await advance_at(50, origin_minute=49)
-    assert (await advance_at(169, origin_minute=50)).status == "retry_wait"
-    settled = await advance_at(170, origin_minute=169)
+        await advance_at(100, origin_minute=99)
+    assert (await advance_at(219, origin_minute=100)).status == "retry_wait"
+    settled = await advance_at(220, origin_minute=219)
 
     assert settled.status == "settled"
     assert model.calls == 4
@@ -2404,6 +2408,7 @@ def _commit_active_long_lived_occurrence(
     dynamic_life_arc_context: DynamicLifeArcContextDescriptor | None = None,
     causal_authority: str = "character_choice",
     dynamic_life_arc_on_every_candidate: bool = False,
+    time_window: DueWindow | None = None,
 ) -> tuple[WorldOccurrenceProjection, tuple[str, ...]]:
     occurrence_id = "occurrence:life-aftermath:consequential"
     texts = (
@@ -2452,7 +2457,7 @@ def _commit_active_long_lived_occurrence(
         trigger_ref="plan:consequential",
         participant_refs=("actor:companion",),
         location_ref="location:test",
-        time_window=DueWindow(
+        time_window=time_window or DueWindow(
             opens_at=clock.logical_time - timedelta(minutes=1),
             closes_at=clock.logical_time + timedelta(hours=1),
         ),

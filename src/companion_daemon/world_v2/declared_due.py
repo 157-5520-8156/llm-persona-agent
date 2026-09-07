@@ -311,9 +311,18 @@ def _extract_plans(projection: object) -> tuple[DeclaredDueTarget, ...]:
 def _extract_occurrences(projection: object) -> tuple[DeclaredDueTarget, ...]:
     found: list[DeclaredDueTarget] = []
     for occurrence in _iter(getattr(projection, "world_occurrences", ())):
-        if getattr(occurrence, "status", None) not in _LIVE_OCCURRENCE_STATUSES:
+        status = getattr(occurrence, "status", None)
+        if status not in _LIVE_OCCURRENCE_STATUSES:
             continue
-        due = _window_open(getattr(occurrence, "time_window", None))
+        window = getattr(occurrence, "time_window", None)
+        # Admission still wakes committed occurrences at the window opening.
+        # An active occurrence cannot realize its complete frozen outcome
+        # before the same accepted window ends (LifeAftermathRuntime).
+        due = (
+            _as_datetime(getattr(window, "closes_at", None))
+            if status == "active"
+            else _window_open(window)
+        )
         if due is not None:
             found.append(
                 DeclaredDueTarget(

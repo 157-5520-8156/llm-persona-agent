@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import timedelta
 import json
 from types import SimpleNamespace
 
@@ -473,7 +472,7 @@ async def test_companion_and_npc_lived_experience_enters_context_and_recall() ->
     settle_wake = _seed_clock(
         ledger,
         event_id="event:clock:settle-shared-experience",
-        logical_time=NOW + timedelta(minutes=10),
+        logical_time=ledger.project().world_occurrences[0].time_window.closes_at,
         logical_time_from=NOW,
     )
     aftermath = LifeAftermathRuntime(

@@ -355,15 +355,30 @@ class LifeAftermathRuntime:
                 experience_id=experience_id,
             )
 
+        terminal_plan_ref = None
+        if wake.event_type in {"ActivityCompleted", "ActivityAbandoned"}:
+            located = self._ledger.lookup_event_commit(wake.event_id)
+            if located is None or located[0].payload_hash != wake.payload_hash:
+                return LifeAftermathResult(
+                    status="no_op", reason_code="life_aftermath.wake_unavailable"
+                )
+            terminal_plan_ref = located[0].payload().get("plan_id")
+
         active = next(
             (
                 item
                 for item in projection.world_occurrences
                 if item.status == "active"
                 and item.activated_at is not None
+                # Frozen candidates describe complete outcomes, without a typed
+                # per-candidate duration or partial-completion boundary.  The
+                # accepted window end is therefore the earliest safe time to
+                # turn any one of them into a settled past Experience.  An
+                # earlier activity completion/abandonment does not shorten it.
+                and item.time_window.closes_at <= wake.logical_time
                 and (
-                    item.activated_at < wake.logical_time
-                    or wake.event_type in {"ActivityCompleted", "ActivityAbandoned"}
+                    wake.event_type == "ClockAdvanced"
+                    or item.trigger_ref == terminal_plan_ref
                 )
             ),
             None,
