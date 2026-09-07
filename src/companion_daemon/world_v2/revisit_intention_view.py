@@ -42,8 +42,45 @@ def due_revisit_consideration_id(plan_id: str) -> str:
     return "consideration:social-initiative:revisit:" + _digest(plan_id)
 
 
-def due_thread_consideration_id(thread_id: str) -> str:
-    return "consideration:social-initiative:due-thread:" + _digest(thread_id)
+def due_thread_consideration_id(
+    thread_id: str, *, schedule_event_ref: str | None = None
+) -> str:
+    """Bind new opportunities to an accepted schedule; preserve legacy identities."""
+
+    material = (
+        thread_id
+        if schedule_event_ref is None
+        else {"thread_id": thread_id, "schedule_event_ref": schedule_event_ref}
+    )
+    return "consideration:social-initiative:due-thread:" + _digest(material)
+
+
+def thread_due_schedule_sources(projection, *, thread) -> tuple[str, ...]:
+    """Accepted transitions belonging to this exact uninterrupted due window.
+
+    A character-accepted changed window creates a new opportunity identity.
+    Updating importance or other material without changing that window does
+    not mint another consideration. Sources also let old entity-only process
+    identities consume exactly the schedule they actually considered.
+    """
+
+    window = object()
+    sources: list[str] = []
+    for transition in sorted(
+        (
+            item
+            for item in getattr(projection, "thread_transitions", ())
+            if item.thread_id == thread.thread_id
+            and item.entity_revision <= thread.entity_revision
+        ),
+        key=lambda item: item.entity_revision,
+    ):
+        accepted_window = transition.values_after.due_window
+        if accepted_window != window:
+            sources = []
+            window = accepted_window
+        sources.append(transition.accepted_event_ref)
+    return tuple(sources) if window == thread.values.due_window else ()
 
 
 def due_commitment_consideration_id(commitment_id: str) -> str:

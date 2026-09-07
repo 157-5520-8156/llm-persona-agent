@@ -36,6 +36,7 @@ from .revisit_intention_view import (
     due_revisit_consideration_id,
     due_thread_consideration_id,
     revisit_source_plan_id,
+    thread_due_schedule_sources,
     unfinished_revisits,
 )
 from .schema_core import FrozenModel
@@ -1802,10 +1803,24 @@ class SocialInitiativeCompiler:
             )
             if latest is None:
                 continue
-            consideration_id = due_thread_consideration_id(thread.thread_id)
+            schedule_sources = thread_due_schedule_sources(projection, thread=thread)
+            if not schedule_sources:
+                continue
+            consideration_id = due_thread_consideration_id(
+                thread.thread_id, schedule_event_ref=schedule_sources[0]
+            )
             if consideration_id in excluded_consideration_ids:
                 continue
             if self._terminal_consideration(projection, consideration_id):
+                continue
+            # Old ledgers keyed a due process by entity alone. Its original
+            # source still identifies which accepted schedule was considered;
+            # it cannot consume a later character-accepted reschedule.
+            if self._terminal_consideration(
+                projection,
+                due_thread_consideration_id(thread.thread_id),
+                source_event_refs=frozenset(schedule_sources),
+            ):
                 continue
             opportunity = await self._from_source(
                 source_kind="thread",
@@ -1896,7 +1911,13 @@ class SocialInitiativeCompiler:
         candidates.sort(key=lambda item: (item[0], item[1].source_id))
         return candidates[0][1]
 
-    def _terminal_consideration(self, projection, consideration_id: str) -> bool:
+    def _terminal_consideration(
+        self,
+        projection,
+        consideration_id: str,
+        *,
+        source_event_refs: frozenset[str] | None = None,
+    ) -> bool:
         prefix = "proactive-consideration:" + consideration_id
         existing = next(
             (
@@ -1904,6 +1925,10 @@ class SocialInitiativeCompiler:
                 for item in getattr(projection, "trigger_processes", ())
                 if item.process_kind == "proactive_action_deliberation"
                 and item.trigger_ref == prefix
+                and (
+                    source_event_refs is None
+                    or item.source_evidence_ref in source_event_refs
+                )
             ),
             None,
         )
