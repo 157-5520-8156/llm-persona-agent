@@ -1078,18 +1078,25 @@ def private_impression_opportunity(projection) -> tuple[str, str] | None:
         for ref in impression.interpretation_refs
     }
     existing_triggers = {item.trigger_id for item in projection.trigger_processes}
-    # A paid role choice is already semantic authority, including while its
-    # storage completion is pending or technically rejected. Do not turn that
-    # failure into an independent reflection ask on the same accepted reading.
-    paid_change_ids = {
-        change["change_id"]
-        for audit in getattr(projection, "proposal_audits", ())
-        for proposal in (json.loads(audit.proposal_json),)
-        if (proposal.get("private_turn_state") or {}).get("keep_impression") is True
-        and (proposal.get("private_turn_state") or {}).get("stuck_with_me")
-        for change in proposal.get("proposed_changes", ())
-        if change.get("kind") == "appraisal_transition"
-    }
+    paid_choices: dict[str, bool] = {}
+
+    def already_authored_paid_retention(change_id: str | None) -> bool:
+        if change_id is None:
+            return False
+        if change_id in paid_choices:
+            return paid_choices[change_id]
+        # Resolve only the otherwise eligible candidate's accepted change.
+        # Quiet ticks and already interpreted sources never parse old prose.
+        for audit in reversed(getattr(projection, "proposal_audits", ())):
+            proposal = json.loads(audit.proposal_json)
+            if any(change.get("kind") == "appraisal_transition"
+                   and change.get("change_id") == change_id
+                   for change in proposal.get("proposed_changes", ())):
+                state = proposal.get("private_turn_state") or {}
+                paid_choices[change_id] = state.get("keep_impression") is True and bool(state.get("stuck_with_me"))
+                return paid_choices[change_id]
+        paid_choices[change_id] = False
+        return False
 
     def eligible(appraisal: object) -> str | None:
         origin = getattr(appraisal, "origin", None)
@@ -1101,7 +1108,7 @@ def private_impression_opportunity(projection) -> tuple[str, str] | None:
         ):
             return None
         trigger_id = private_impression_trigger_identity(projection.world_id, source_ref)
-        if trigger_id in existing_triggers or getattr(origin, "change_id", None) in paid_change_ids:
+        if trigger_id in existing_triggers:
             return None
         # Match exact emitted identities only for the candidate under review;
         # finding the newest opportunity does not require every old hypothesis.
@@ -1110,6 +1117,10 @@ def private_impression_opportunity(projection) -> tuple[str, str] | None:
             in interpretation_refs
             for hypothesis in appraisal.hypotheses
         ):
+            return None
+        # Its paid choice may still be pending or technically rejected. That
+        # does not authorize a new semantic ask on this same accepted reading.
+        if already_authored_paid_retention(getattr(origin, "change_id", None)):
             return None
         return source_ref
 
@@ -1434,6 +1445,8 @@ class PrivateImpressionTriggerRuntime:
         self._paid_finished: set[str] = set()
         self._paid_pending: dict[str, tuple[str, str]] = {}
         self._paid_retry_after: dict[str, datetime] = {}
+        self._paid_model_audit_count = 0
+        self._paid_failure_index: dict[str, list[tuple[str, str]]] = {}
 
     async def recover_paid_once(self) -> PrivateImpressionRunResult:
         """Finish one persisted paid choice before any independent model gate.
@@ -1460,30 +1473,37 @@ class PrivateImpressionTriggerRuntime:
                 if state.get("keep_impression") is True and isinstance(summary, str) and summary.strip():
                     self._paid_pending[audit.model_result_ref] = (audit.trigger_ref, summary)
             remaining -= stop - batch_start
+        # Model results are append-only. Index each new paid technical result
+        # once instead of reparsing the entire history for every pending item.
+        for audit in projection.model_result_audits[self._paid_model_audit_count:]:
+            if not audit.attempt_id.startswith("attempt:paid-inbound-impression:"):
+                continue
+            failure = json.loads(audit.audit_json).get("failure_code")
+            if failure in {
+                _PAID_RECOVERY_REJECTED, _PAID_RECOVERY_PREFIX_CHANGED,
+                _PAID_RECOVERY_STORAGE_FAILED,
+            }:
+                base_attempt = audit.attempt_id.partition(":recovery:")[0]
+                self._paid_failure_index.setdefault(base_attempt, []).append((failure, audit.event_ref))
+        self._paid_model_audit_count = len(projection.model_result_audits)
         now = _paid_recovery_now()
         for model_ref, (source_ref, summary) in tuple(self._paid_pending.items())[:_PAID_RECOVERY_SCAN_LIMIT]:
             if model_ref in self._paid_finished:
                 self._paid_pending.pop(model_ref)
                 continue
             attempt_id = _paid_retention_attempt_id(source_ref, model_ref)
-            failures = []
-            terminal = False
-            for audit in projection.model_result_audits:
-                if not audit.attempt_id.startswith(attempt_id):
-                    continue
-                failure = json.loads(audit.audit_json).get("failure_code")
-                if failure in {_PAID_RECOVERY_REJECTED, _PAID_RECOVERY_PREFIX_CHANGED}:
-                    terminal = True
-                    break
-                if failure == _PAID_RECOVERY_STORAGE_FAILED:
-                    failures.append(audit)
+            indexed = self._paid_failure_index.get(attempt_id, ())
+            terminal = any(failure in {_PAID_RECOVERY_REJECTED, _PAID_RECOVERY_PREFIX_CHANGED}
+                           for failure, _ in indexed)
+            failures = [event_ref for failure, event_ref in indexed
+                        if failure == _PAID_RECOVERY_STORAGE_FAILED]
             if terminal:
                 self._paid_finished.add(model_ref)
                 self._paid_pending.pop(model_ref)
                 continue
             retry_after = self._paid_retry_after.get(model_ref)
             if failures:
-                located = await _lookup(self._ledger, failures[-1].event_ref)
+                located = await _lookup(self._ledger, failures[-1])
                 if located is not None:
                     durable_due = located[0].created_at + timedelta(
                         seconds=min(3600, 60 * 2 ** min(len(failures) - 1, 6))

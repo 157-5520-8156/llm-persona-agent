@@ -399,3 +399,106 @@ async def test_two_recovery_owners_complete_one_paid_choice_once(tmp_path, monke
     finally:
         for ledger in ledgers:
             ledger.close()
+
+
+class UnreadableOldAudit:
+    @property
+    def proposal_json(self):
+        raise AssertionError("ineligible or already resolved source must not parse historical proposals")
+
+
+def opportunity_projection():
+    from types import SimpleNamespace
+
+    appraisal = SimpleNamespace(
+        appraisal_id="appraisal:paid-source", status="active",
+        origin=SimpleNamespace(accepted_event_ref="event:paid-appraisal", change_id="change:paid-appraisal"),
+        hypotheses=(SimpleNamespace(hypothesis_id="hypothesis:paid-reading"),),
+    )
+    return SimpleNamespace(
+        logical_time=NOW, world_id="world:lazy-paid-ownership",
+        appraisals=(appraisal,), private_impressions=(), trigger_processes=(),
+        # Ordinary current clocks bury the source below the head shortcut.
+        committed_world_event_refs=(SimpleNamespace(event_type="ClockAdvanced", event_id="event:clock"),),
+        proposal_audits=(UnreadableOldAudit(),),
+    )
+
+
+@pytest.mark.parametrize("unavailable", ["empty", "expired", "claimed", "interpreted"])
+def test_no_eligible_appraisal_never_reads_historical_paid_proposals(unavailable):
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.batch_invariants import private_impression_trigger_identity
+    from companion_daemon.world_v2.private_impression_producer import private_impression_opportunity
+
+    projection = opportunity_projection()
+    if unavailable == "empty":
+        projection.appraisals = ()
+    elif unavailable == "expired":
+        projection.appraisals[0].status = "expired"
+    elif unavailable == "claimed":
+        projection.trigger_processes = (SimpleNamespace(
+            process_kind="private_impression_deliberation", state="terminal",
+            trigger_id=private_impression_trigger_identity(projection.world_id, "event:paid-appraisal"),
+        ),)
+    else:
+        projection.private_impressions = (SimpleNamespace(
+            interpretation_refs=("appraisal:appraisal:paid-source:hypothesis:paid-reading",),
+        ),)
+    assert private_impression_opportunity(projection) is None
+
+
+@pytest.mark.parametrize("keep", [True, False])
+def test_buried_opportunity_checks_only_its_exact_paid_change(keep):
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.private_impression_producer import private_impression_opportunity
+
+    def audit(change_id, keep):
+        return SimpleNamespace(proposal_json=json.dumps({
+            "proposed_changes": [{"kind": "appraisal_transition", "change_id": change_id}],
+            "private_turn_state": {"keep_impression": keep, "stuck_with_me": "她写下的读法"},
+        }))
+
+    projection = opportunity_projection()
+    projection.proposal_audits = (
+        UnreadableOldAudit(), audit("change:paid-appraisal", keep), audit("change:unrelated", True),
+    )
+    result = private_impression_opportunity(projection)
+    if keep:
+        assert result is None
+    else:
+        assert result is not None
+        assert result[1] == "event:paid-appraisal"
+
+
+@pytest.mark.asyncio
+async def test_paid_failure_index_reads_each_immutable_audit_once():
+    from types import SimpleNamespace
+    from test_private_impression_producer import _Model, _private_runtime
+
+    class ReadOnceFailure:
+        attempt_id = "attempt:paid-inbound-impression:original:recovery:1"
+        event_ref = "event:paid-recovery-failure"
+
+        def __init__(self):
+            self.reads = 0
+
+        @property
+        def audit_json(self):
+            self.reads += 1
+            assert self.reads == 1, "quiet recovery reparsed an immutable failure audit"
+            return json.dumps({"failure_code": "private_impression_paid_retention_recovery_storage_failed"})
+
+    first = ReadOnceFailure()
+    projection = SimpleNamespace(proposal_audits=(), model_result_audits=(first,))
+    ledger = SimpleNamespace(world_id="world:incremental-failure-index", blocks_event_loop=False,
+                             project=lambda: projection)
+    model = _Model([])
+    runtime, _ = _private_runtime(ledger, model)
+    assert (await runtime.recover_paid_once()).status == "idle"
+    assert (await runtime.recover_paid_once()).status == "idle"
+    second = ReadOnceFailure()
+    projection.model_result_audits += (second,)
+    assert (await runtime.recover_paid_once()).status == "idle"
+    assert (await runtime.recover_paid_once()).status == "idle"
+    assert first.reads == second.reads == 1
+    assert model.calls == []
