@@ -482,7 +482,13 @@ def test_keep_impression_and_noticed_hitchhike_onto_private_state() -> None:
             },
         )
     )
-    _validate(_payload(noticed="窗外开始下雨了", keep_impression=True))
+    _validate(
+        _payload(
+            noticed="窗外开始下雨了",
+            keep_impression=True,
+            stuck_with_me="她说过下雨的时候会想家，我还记着这句话",
+        )
+    )
 
     state = bound["private_turn_state"]
     assert state["noticed"] == "窗外开始下雨了"

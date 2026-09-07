@@ -50,6 +50,7 @@ from ..present_prompt import (
     order_user_present_payload,
     present_hard_boundary_prompt,
 )
+from ..private_turn_state import validate_authored_impression_retention
 from ..deliberation import (
     AuthoredCandidateInvocationAudit,
     ModelInput,
@@ -11210,6 +11211,9 @@ def _proposal_from_model_text(
         was_wrapped = True
     if was_wrapped and "proposal_id" in value:
         raise ValueError("wrapped expression draft cannot contain a complete proposal")
+    private_state = value.get("private_turn_state")
+    if isinstance(private_state, dict):
+        validate_authored_impression_retention(private_state)
     if "proposal_id" in value:
         if capabilities.private_turn_state_mode == "required":
             raise ValueError(

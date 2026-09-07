@@ -7,6 +7,7 @@ import json
 import re
 
 from .companion_identity import CompanionIdentityFrame
+from .private_turn_state import validate_authored_impression_retention
 
 PRESENT_RECENT_DIALOGUE_ITEM_LIMIT = 240
 PRESENT_COMPANION_DIALOGUE_ITEM_LIMIT = 120
@@ -341,17 +342,17 @@ def slim_consider_instruction() -> str:
         "fulfilled、superseded、still_pending 或 uncertain。still_pending 意思是这次回应没落地、"
         "那个盼头就此结束；重新写一个 waiting_for 就是一个新的盼头。"
         "如果你选择现在开口，这同一个对象里的可见 messages 就是你的追问。\n"
-        "noticed 是你在一个已核实的情境里真的经历到的一个主观瞬间；"
-        "宁可不写，也不要编一个地点、一个人或一件事实。"
-        "写了 noticed，就要同时写 user_channel_completion=none："
-        "这只是你自己的生活瞬间，不是已经发给他、他已经收到、或他已经在这条通道上回了。"
-        "拍了、坐了一下午、挑好想晚点发，都合法。\n"
+        "noticed 只记录这一回合你注意到的主观细节，留在本次私有回合记录里；"
+        "它不会新增世界事实、已发生的经历，也不能完成聊天约定或证明他已经收到。"
+        "已经发生什么仍由已有生活来源证明，不要借 noticed 编一个地点、一个人或一件事实。"
+        "如果你决定让某段理解留到以后，用 stuck_with_me 写下它并把 keep_impression 设为 true。\n"
         "下面这些字段决定这一轮有什么会留到下一次。说出去的话这一轮就过去了，"
         "只有你写下的内心状态会跟着你走；写不写都由你，都不写就是这一轮什么都没留下。"
         "Context 里的「我最近留下的」就是你自己过去这么选的结果——"
         "还活着的持续情绪、还在的私人印象、最近这些读法各自的分量，"
         "以及最近有几个回合什么都没留下。那是事实，不是要求。\n"
-        "keep_impression 只在 stuck_with_me 应该留成一条私人印象时写 true；"
+        "keep_impression 只在 stuck_with_me 应该留成一条私人印象时写 true，"
+        "这时 stuck_with_me 必须有非空文字；宿主不会用 my_state 代填。"
         "省略或 false 就是让它散掉。\n"
         "没有什么东西真的沉下来就不写 affect；宿主永远不会从你的措辞里编出持续情绪，"
         "也不要求你有负面情绪。同样地，它也不偏好好受的维度："
@@ -1708,6 +1709,7 @@ def compile_slim_consider_payload(
 
     if not is_slim_consider_payload(value):
         return None
+    validate_authored_impression_retention(value)
     messages = _slim_messages(value.get("messages"))
     if messages is None:
         return None

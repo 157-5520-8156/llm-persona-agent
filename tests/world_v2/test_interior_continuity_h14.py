@@ -120,10 +120,10 @@ def test_legacy_private_state_round_trips_without_inventing_a_retained_residue()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("stuck_with_me", ["他说只是忙，不等于我对他不重要", None])
 async def test_inbound_keeps_only_the_authored_residue_not_the_momentary_state(
-    tmp_path, stuck_with_me: str | None,
+    tmp_path,
 ) -> None:
+    stuck_with_me = "他说只是忙，不等于我对他不重要"
     class RoleModel:
         model = "test-paid-residue"
 
@@ -167,8 +167,99 @@ async def test_inbound_keeps_only_the_authored_residue_not_the_momentary_state(
 
     assert outcome.status == "action_authorized"
     assert [item.reflection_summary for item in evidence.projection.private_impressions] == (
-        [stuck_with_me] if stuck_with_me is not None else []
+        [stuck_with_me]
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("wire_shape", ["slim", "full"])
+@pytest.mark.parametrize("correction_choice", ["keep", "discard", "invalid"])
+async def test_new_inbound_retention_without_text_gets_one_precise_reselection(
+    tmp_path, wire_shape, correction_choice,
+) -> None:
+    requests: list[list[dict[str, str]]] = []
+
+    class RoleModel:
+        model = "test-retention-reselection"
+
+        async def complete(self, messages, *, temperature=0.8):
+            requests.append(messages)
+            state = {
+                "inner_state_summary": "我此刻有些疲倦",
+                "attended_source_refs": [],
+                "keep_impression": True,
+            }
+            if len(requests) > 1 and correction_choice == "keep":
+                state["stuck_with_me"] = "我仍想记着他这次认真解释过"
+            elif len(requests) > 1 and correction_choice == "discard":
+                state["keep_impression"] = False
+            if wire_shape == "slim":
+                return json.dumps(
+                    {
+                        "messages": ["嗯，我听到了。"],
+                        "meaning_of_this": "他在解释忙碌",
+                        "my_state": state["inner_state_summary"],
+                        "keep_impression": state["keep_impression"],
+                        "stuck_with_me": state.get("stuck_with_me"),
+                    }, ensure_ascii=False,
+                )
+            return json.dumps(
+                {
+                    "appraisal_draft": {
+                        "appraise": False,
+                        "brief_rationale": "我想先听他解释。",
+                        "behavior_tendency": "继续听",
+                        "stance": "平静",
+                        "display_strategy": "直接表达",
+                        "confidence": 5000,
+                    },
+                    "expression_draft": {
+                        "timing_choice": "now",
+                        "beats": [{"modality": "text", "text": "嗯，我听到了。"}],
+                        "stance": "平静",
+                        "brief_rationale": "我想先听他解释。",
+                        "confidence": 5000,
+                        "private_turn_state": state,
+                        "world_claims": [],
+                    },
+                }, ensure_ascii=False,
+            )
+
+    app = build_sqlite_world_v2_test_application(
+        path=tmp_path / "retention-reselection.sqlite",
+        config=_config(),
+        identities=_Identities(),
+        router=_Router(),
+        character_interior=compose_fixture_character_interior(
+            inbound_author=_InboundCharacterAuthor(flash_model=RoleModel()),
+        ),
+        transport=_DeliveredTransport(),
+        now=NOW,
+    )
+    try:
+        outcome = await app.respond(
+            InboundTurn(
+                platform="test", platform_user_id="user.1",
+                platform_message_id=f"message:retention:{wire_shape}",
+                text="这两天有点忙。", observed_at=NOW,
+                trace_id="trace:retention-reselection",
+            )
+        )
+        evidence = app.export_replay_evidence()
+    finally:
+        app.close()
+    if correction_choice == "invalid":
+        assert outcome.status == "deferred"
+        assert evidence.projection.actions == ()
+        assert "retained_text_required" in json.dumps(
+            [item.audit_json for item in evidence.projection.model_result_audits],
+            ensure_ascii=False,
+        )
+    else:
+        assert outcome.status == "action_authorized"
+    assert len(requests) == 2
+    assert "stuck_with_me" in json.dumps(requests[1], ensure_ascii=False)
+    assert "retained_text_required" in json.dumps(requests[1], ensure_ascii=False)
 
 
 def test_stuck_with_me_is_dropped_unless_she_keeps_the_impression() -> None:
@@ -190,7 +281,10 @@ def test_stuck_with_me_is_dropped_unless_she_keeps_the_impression() -> None:
 
 
 @pytest.mark.asyncio
-async def test_proactive_paid_residue_reaches_the_next_projection(tmp_path) -> None:
+@pytest.mark.parametrize("needs_correction", [False, True])
+async def test_proactive_paid_residue_reaches_the_next_projection(
+    tmp_path, needs_correction: bool,
+) -> None:
     from test_proactive_action_production import (
         NOW as PROACTIVE_NOW,
         WORLD,
@@ -209,7 +303,8 @@ async def test_proactive_paid_residue_reaches_the_next_projection(tmp_path) -> N
         async def complete(self, messages, *, temperature=0.8):
             payload = json.loads(await super().complete(messages, temperature=temperature))
             payload["keep_impression"] = True
-            payload["stuck_with_me"] = kept_text
+            if not needs_correction or len(self.messages) > 1:
+                payload["stuck_with_me"] = kept_text
             return json.dumps(payload, ensure_ascii=False)
 
     model = RoleModel(reading="这件没说完的事仍然让我在意")
@@ -253,6 +348,9 @@ async def test_proactive_paid_residue_reaches_the_next_projection(tmp_path) -> N
     assert [item.reflection_summary for item in evidence.projection.private_impressions] == [
         kept_text
     ]
+    assert len(model.messages) == (2 if needs_correction else 1)
+    if needs_correction:
+        assert "retained_text_required" in json.dumps(model.messages[1], ensure_ascii=False)
 
 
 @pytest.mark.asyncio

@@ -9,11 +9,27 @@ PrivateImpression, Thread, Commitment, and Memory acceptance paths.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
 from .schema_core import FrozenModel
+
+
+def validate_authored_impression_retention(value: Mapping[str, object]) -> None:
+    """Check fresh role output without changing historical state decoding."""
+
+    residue = value.get("stuck_with_me")
+    if value.get("keep_impression") is True and (
+        not isinstance(residue, str) or not residue.strip()
+    ):
+        raise ValueError(
+            "private_turn_state.retained_text_required。"
+            "keep_impression=true 时必须在 stuck_with_me 写下你选择保留的非空文字；"
+            "如果不想保留，可以省略 keep_impression 或写 false。"
+            "宿主不会用 my_state 或 summary 代填，也不会悄悄忽略保留请求。"
+        )
 
 
 class PrivateTurnState(FrozenModel):
@@ -116,5 +132,6 @@ def validate_private_turn_state_sources(
 
 __all__ = [
     "PrivateTurnState",
+    "validate_authored_impression_retention",
     "validate_private_turn_state_sources",
 ]

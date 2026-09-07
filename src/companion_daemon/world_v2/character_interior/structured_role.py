@@ -562,7 +562,9 @@ def _validate_proactive_payload(
         normalize_expression_draft_wire,
     )
     from ..proactive_action import ProactiveDraft
+    from ..private_turn_state import validate_authored_impression_retention
 
+    validate_authored_impression_retention(payload)
     if "private_turn_state" in payload:
         raise ValueError("proactive private_turn_state is supplied by the same InnerTurn summary")
     normalized = bind_proactive_expression_wire(
@@ -1751,7 +1753,10 @@ class StructuredCharacterRoleFaculty:
                 "stranger→acquaintance/friend、acquaintance→friend、friend→close_friend、"
                 "close_friend→ambiguous、ambiguous→lover/close_friend、lover→ambiguous；"
                 "写了走不到的阶段，这一轮会被整轮拒绝。"
-                "keep_impression / noticed / declared_display 可选；"
+                "keep_impression / stuck_with_me / noticed / declared_display 可选；"
+                "keep_impression=true 必须同时写非空 stuck_with_me，才保留你选中的那段理解；"
+                "外层 summary 不会替代 stuck_with_me。noticed 仅留在本次私有回合记录，"
+                "不会新增世界事实、已发生的经历或完成聊天约定。"
                 "declared_display 只能是 sexual_suggestive、explicit_adult 或 withdraw。"
                 "需要时就写，不需要时留空。"
             )
@@ -1798,7 +1803,7 @@ class StructuredCharacterRoleFaculty:
                         "payload 里禁止 private_turn_state（这和 inbound 相反）。"
                         "没有世界事实时 world_claims 写 []。对话 beat 不是 current_world。"
                         "pressure_bp / importance_bp 是 0 到 10000 的基点，不是百分制。"
-                        "about_us/why_us/us_deltas、we_are 三件套、keep_impression/"
+                        "about_us/why_us/us_deltas、we_are 三件套、keep_impression/stuck_with_me、"
                         "noticed/declared_display 与入站 slim 相同：半套可见失败，不写也可以。"
                         if request.purpose == "proactive_contact"
                         else ""
@@ -2979,8 +2984,9 @@ class StructuredCharacterRoleFaculty:
                 "we_are": "optional stage; only with calling_it and said_as",
                 "calling_it": "optional name for the stage; only with we_are and said_as",
                 "said_as": "optional exact spoken line; only with we_are and calling_it",
-                "keep_impression": "optional bool; true keeps this reading as a private impression",
-                "noticed": "optional short lived moment",
+                "keep_impression": "optional bool; true requires non-empty stuck_with_me",
+                "stuck_with_me": "exact private understanding she chooses to retain with keep_impression=true",
+                "noticed": "optional turn-local subjective attention; audit only, no World fact or completed Action",
                 "declared_display": (
                     "optional sexual_suggestive|explicit_adult|withdraw; omit to leave the last declaration"
                 ),
@@ -3218,7 +3224,7 @@ class StructuredCharacterRoleFaculty:
             view["payload_schema"] = {
                 "decision": "select|no_op",
                 "selected_token": "select only: one offered activity token",
-                "noticed": "optional short subjective moment in a verified situation",
+                "noticed": "optional turn-local subjective attention; audit only, no World fact or completed Action",
                 "user_channel_completion": "const none, required when noticed is present",
             }
         if contract.purpose == "outcome_selection":

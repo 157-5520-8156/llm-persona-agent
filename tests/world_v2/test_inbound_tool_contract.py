@@ -89,6 +89,7 @@ def _fill_strict_private_turn_state(payload: dict[str, object]) -> dict[str, obj
         if isinstance(value, dict):
             if value.get("contract") == "private-turn-state.1":
                 value.setdefault("keep_impression", None)
+                value.setdefault("stuck_with_me", None)
                 value.setdefault("noticed", None)
                 value.setdefault("about_us", None)
                 value.setdefault("why_us", None)
@@ -116,6 +117,7 @@ def _strip_none_hitch_fields(value: object) -> object:
                 and key
                 in {
                     "keep_impression",
+                    "stuck_with_me",
                     "noticed",
                     "about_us",
                     "why_us",

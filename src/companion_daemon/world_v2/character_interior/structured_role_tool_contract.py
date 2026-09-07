@@ -314,7 +314,16 @@ def _proactive_payload_schema(
     properties["said_as"] = _nullable_provider_schema({"type": "string"})
     properties["keep_impression"] = _nullable_provider_schema({"type": "boolean"})
     properties["stuck_with_me"] = _nullable_provider_schema({"type": "string"})
-    properties["noticed"] = _nullable_provider_schema({"type": "string"})
+    properties["noticed"] = _nullable_provider_schema(
+        {
+            "type": "string",
+            "description": (
+                "Turn-local subjective attention, audit only. Does not establish "
+                "a World fact, committed experience or completed user-channel Action. "
+                "Use stuck_with_me with keep_impression=true for chosen lasting residue."
+            ),
+        }
+    )
     properties["declared_display"] = _nullable_provider_schema(
         {
             "type": "string",
@@ -1810,7 +1819,8 @@ class StructuredRoleToolContracts:
             description=(
                 "Return the complete source-bound activity lifecycle choice. The "
                 "character may select one offered opening or explicitly choose no_op; "
-                "optional noticed is a short subjective moment in a verified situation. "
+                "optional noticed records only this turn's subjective attention in the audit; "
+                "it never creates a World fact, committed experience or lasting private impression. "
                 "If noticed is present, user_channel_completion must be the const none; "
                 "do not narrate a completed send or reply through the user channel. "
                 "The function constrains capability and transport shape only."
