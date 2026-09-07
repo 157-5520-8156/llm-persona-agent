@@ -2440,6 +2440,35 @@ class QQC2CHost:
                     dues=wake_dues,
                 )
                 if selected_due is None:
+                    if heartbeat_life_wake is None and callable(due_projection_reader):
+                        # Clock commits survive visible-turn preemption and
+                        # restart. Recover the original crossing, never mint a
+                        # replacement wake for an overdue activity. The Life
+                        # trigger store joins already-consumed clock sources.
+                        recovery_projection = await due_projection_reader()
+                        for transition in reversed(getattr(
+                            recovery_projection, "clock_transition_history", ()
+                        )):
+                            if (
+                                transition.logical_time_to <= logical_from
+                                and transition.clock_event_ref.startswith("event:trigger:clock:")
+                                and any(
+                                    item.kind in life_wake_kinds
+                                    and item.wake_policy == "exact_future"
+                                    and transition.logical_time_from < item.due_at
+                                    <= transition.logical_time_to
+                                    for item in wake_dues
+                                )
+                            ):
+                                recovered_tick_id = transition.clock_event_ref.removeprefix(
+                                    "event:trigger:clock:"
+                                )
+                                heartbeat_life_wake = (
+                                    recovered_tick_id,
+                                    f"trace:qq-c2c-v2:{recovered_tick_id}",
+                                    f"clock:qq-c2c-v2:{self._recipient_id}",
+                                )
+                                break
                     break
                 tick_target = selected_due.due_at
                 tick_reason = selected_due.reason
