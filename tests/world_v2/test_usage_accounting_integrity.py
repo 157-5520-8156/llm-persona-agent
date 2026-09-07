@@ -312,3 +312,38 @@ def test_external_bill_cannot_replace_a_token_bill(tmp_path):
             billing_state="known",
         )
     assert store.budget_state()["unknown_cost_hold_cny"] == 0.7
+
+
+def test_provisional_image_estimate_can_be_reconciled_without_double_count(tmp_path):
+    from companion_daemon.db import UsageEventsLedger
+
+    path = tmp_path / "usage.sqlite"
+    store = WorldV2UsageStore(path=str(path))
+    token = _image_reserve(store)
+    store.record_external_usage(
+        reservation_id=token,
+        kind="image_generation",
+        estimated_cny=0.8,
+        billing_state="unknown",
+        note="render_estimate",
+    )
+    state = store.budget_state()
+    assert state["monthly_cost_cny"] == 0
+    assert state["unknown_cost_hold_cny"] == 0.8  # Reserve was only 0.7.
+    assert state["monthly_committed_cny"] == 0.8
+    assert (
+        UsageEventsLedger(path).usage_count("image_generation", "month", datetime.now(timezone.utc))
+        == 1
+    )
+    restarted = WorldV2UsageStore(path=str(path))
+    restarted.record_external_usage(
+        reservation_id=token, kind="image_generation", estimated_cny=0.9, billing_state="known"
+    )
+    restarted.record_external_usage(
+        reservation_id=token, kind="image_generation", estimated_cny=0.9, billing_state="known"
+    )
+    state = restarted.budget_state()
+    assert state["monthly_cost_cny"] == 0.9
+    assert state["unknown_cost_hold_cny"] == 0
+    assert state["monthly_committed_cny"] == 0.9
+    assert _rows(path, "SELECT COUNT(*) FROM usage_events") == [(1,)]

@@ -288,7 +288,8 @@ class WorldV2UsageStore:
         model = self._priced_model_spend_cny(connection, since=since)
         external = float(
             connection.execute(
-                "SELECT COALESCE(SUM(estimated_cny), 0) FROM usage_events WHERE created_at >= ?",
+                "SELECT COALESCE(SUM(estimated_cny), 0) FROM usage_events "
+                "WHERE created_at >= ? AND billing_state != 'unknown'",
                 (iso,),
             ).fetchone()[0]
         )
@@ -307,7 +308,10 @@ class WorldV2UsageStore:
         unknown = 0.0
         for amount, status, accounted in connection.execute(
             """
-            SELECT r.estimated_cny, r.status,
+            SELECT MAX(r.estimated_cny, COALESCE((
+                       SELECT estimated_cny FROM usage_events e
+                       WHERE e.reservation_id = r.reservation_id AND e.billing_state = 'unknown'
+                   ), 0)), r.status,
                 COALESCE((SELECT SUM(u.cost_cny) FROM world_v2_model_usage u
                           WHERE u.reservation_id = r.reservation_id
                           AND u.recorded_at >= ? AND u.purpose != 'image_generation'), 0)
@@ -398,7 +402,7 @@ class WorldV2UsageStore:
                     )
                 for row in connection.execute(
                     "SELECT kind, SUM(estimated_cny) amount FROM usage_events "
-                    "WHERE created_at >= ? GROUP BY kind",
+                    "WHERE created_at >= ? AND billing_state != 'unknown' GROUP BY kind",
                     (month_start.isoformat(),),
                 ):
                     purpose_costs[row["kind"]] = purpose_costs.get(row["kind"], 0.0) + row["amount"]
@@ -608,19 +612,21 @@ class WorldV2UsageStore:
     ) -> None:
         """Settle one reserved external call and its CNY row atomically.
 
-        Unknown billing keeps the whole reserve; it is not a zero-cost usage
-        event. Only provider evidence can finalize it. This method intentionally
+        Unknown billing keeps the reserve (or a larger provisional estimate).
+        An optional provisional row preserves delivered-image counts but is
+        excluded from settled CNY. Only provider evidence can finalize it. This method intentionally
         raises on persistence failure so callers retain a retryable bill.
         """
         if billing_state not in {"known", "unknown", "not_billed"}:
             raise ModelUsageAdmissionError("invalid external billing state")
-        if billing_state == "known":
-            if estimated_cny is None or not math.isfinite(estimated_cny) or estimated_cny < 0:
-                raise ModelUsageAdmissionError(
-                    "known external bill requires finite nonnegative CNY"
-                )
-        elif estimated_cny not in {None, 0.0}:
-            raise ModelUsageAdmissionError("unconfirmed external bill cannot supply charged CNY")
+        if estimated_cny is not None and (not math.isfinite(estimated_cny) or estimated_cny < 0):
+            raise ModelUsageAdmissionError("external CNY must be finite and nonnegative")
+        if billing_state == "known" and estimated_cny is None:
+            raise ModelUsageAdmissionError("known external bill requires CNY")
+        if billing_state == "not_billed" and estimated_cny not in {None, 0.0}:
+            raise ModelUsageAdmissionError("not_billed cannot carry charged CNY")
+        if billing_state == "not_billed":
+            estimated_cny = 0.0
         with self._lock:
             connection = self._connect()
             connection.row_factory = sqlite3.Row
@@ -646,7 +652,7 @@ class WorldV2UsageStore:
                     "SELECT * FROM usage_events WHERE reservation_id = ?",
                     (reservation_id,),
                 ).fetchone()
-                if existing is not None:
+                if existing is not None and existing["billing_state"] != "unknown":
                     if (
                         existing["billing_state"] != billing_state
                         or existing["estimated_cny"] != estimated_cny
@@ -659,7 +665,16 @@ class WorldV2UsageStore:
                     raise ModelUsageAdmissionError(
                         "external bill conflicts with completed reservation"
                     )
-                if billing_state == "known":
+                if existing is not None:
+                    amount = estimated_cny
+                    if billing_state == "unknown":
+                        amount = max(float(existing["estimated_cny"]), amount or 0.0)
+                    connection.execute(
+                        "UPDATE usage_events SET estimated_cny = ?, billing_state = ?, note = ? "
+                        "WHERE reservation_id = ?",
+                        (amount or 0.0, billing_state, note[:2400], reservation_id),
+                    )
+                elif estimated_cny is not None and billing_state != "not_billed":
                     connection.execute(
                         "INSERT INTO usage_events "
                         "(kind, estimated_cny, note, created_at, reservation_id, billing_state) "
