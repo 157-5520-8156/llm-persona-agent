@@ -147,3 +147,42 @@ receipt 和 cold replay；反向要求原 pinned Context 的一次纠错后仍�
 全部业务字段、字段集合及顺序一致，仅 replay hash 改变。候选保存在
 `output/adaptive-companionship-2026-09-08/baseline-current-activities/`，没有据此更新安装的
 冻结基线。最终组合仍需重新验证；本地固定模型与模拟回执不证明真实模型会自发完整引用。
+
+## 继续集成：聊天意图、完成来源与真实调度入口
+
+`bf66fa98` 将角色同一次聊天中显式提交的 `life_intent` 接到已审计 Proposal、
+ActivityPlanned 和原生命周期选择。普通聊天文字和 `wants` 不会被代码解释为计划；
+表达/Appraisal 的失败不会抹掉独立的合法意图。计划只授权本人的私人活动，不授权地点、
+NPC、外部结果或既往经历。原选择时间、原模型来源、同一 Observation 的 effect-once
+以及接受 CAS 的 30/120 秒有限恢复均有持久绑定。具体契约见
+[`chat-life-intent.md`](../design/chat-life-intent.md)。
+
+公共 host 测试继续找到了三个仅修领域函数不能解决的问题：
+
+- `fe4cc782`：调度器原先只在 `life.ecology` 调用生活 owner；活动开关窗虽然推进 Clock，
+  却未交给 owner。现在根据已注册的 owner 元数据处理边界，包括与 Action 同时到期。
+- `f1fb95f2`：Clock 已提交但被可见聊天抢占时，重启从原 Clock transition 找回尚未处理的
+  边界。复用原时钟与机会身份，不补造新的角色考虑机会。
+- `58cdc37e`：生活 owner 已把下次处理时间推迟，通用 collector 却还保留 projection 中的
+  旧时间，造成多余唤醒和 `unprocessed_due_before_end`。现在 owner 的有效时间覆盖同类
+  静态投影时间，显式 `None` 也表示该 owner 没有待办。其他 owner 的到期项保留。
+
+`7334b49e` 进一步安装最近三条已结束的聊天活动读取。它逐项校验原计划和模型意图、
+当前 actor/cursor/隐私以及真实 ActivityCompleted 的事件/hash/revision。可用的 past
+来源只证明生命周期结束，既不证明目标完成，也不证明意图文字内嵌的旧事、照片内容或
+任何其他结果。没有生成 Experience，也没有把该私有材料交给 World Author。
+
+五分钟本地 HTTP 旅程覆盖计划、开始、完成、重启、第二次聊天引用和冷重放；修复过期
+cadence 后 manifest 才真正 `completed=true`，没有缩短场景消除红测。第二次表达获得
+`provider_accepted` 且 `is_terminal=false`，因此只能称本地捕获接受，不能称终态送达。
+root 合入后的完成/当前活动、来源、后台隔离及入站契约定向检查 **379 项通过**。
+
+在较早 `bf66fa98` 上进行的一次完整回归为 **6436 passed / 24 failed / 19 skipped**。
+其中旧 compiler 默认被新的 registry 版本错误抬升的问题已由 `11e6b93d` 修复；
+机制资格表、可选字段说明、平台反向依赖和 slim 描述字段数量由 `1d33635d` 修复。
+通用 Proposal 默认 `.1`、显式生活意图 `.3`、FactCommit v2 的独立 `.2` 保持分开。
+实际 provider carrier 仍是两个字段，原 **46,000 字节**请求上限未提高。
+这一轮完整回归不能记为通过；最终组合仍须重新跑完整回归和严格 120 场景基线比较。
+
+两次 CAS 后晚于开窗才接受的新聊天计划，还需要来源明确的初次生活考虑及原决定的
+中断恢复；该修复正在独立分支验收，尚未用新的真实对话证明其自然使用效果。
