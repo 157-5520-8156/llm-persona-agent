@@ -124,3 +124,26 @@ reviewer。生活 runtime/production 的 118 项本地回归通过，只验证�
 关窗唤醒。已先用公共 collector/clock selector 复现红测，再让 active/paused 使用既有
 `closes_at`；planned 保留开窗，completed/abandoned 无待办唤醒。代码不决定角色是否参与或
 如何结束，既有生命周期仍负责合法转换；没有放宽审计终态、缩短计划或补造完成经历。
+
+## 已合入的当前活动读取与证据传递
+
+`8d89f9d7` 合入 `a033bfe2`：读者逐项验证当前 cursor、actor、隐私、已接受计划及最新
+ActivityStarted/Resumed，再通过 Proposal 与 sidecar 哈希取回角色当时接受的意图。当前快照
+`.19` 增加 `current_activities`，边界 `.9` 增加当前活动来源；意图明确标为仅证明接受的
+打算，不证明内嵌旧事或未结算结果。新增视图不收 planned/paused/其他角色/withhold 项；
+暂停后的可读连续性仍是限制。后台 profile `.2` 将此私人意图排除在 World Author 输入外，
+角色生活、主动联系及内省保留它。
+
+实际 HTTP 回归进一步发现，两个 compact context 入口原先只为照片保留来源封套，丢掉了
+world_life bindings。修复后仅将模型实际选中声明的事件带入 Proposal evidence；不把整份
+Context 证据复制到每条消息。该改变也覆盖旧 world_life 来源的共同通路，不只修新活动字段。
+
+相关子集 593 项通过；加强后的 HTTP active/resumed/非法 past 三场景另行复验通过。根分支
+集成后 33 项活动/HTTP/clock/one-shot 检查通过，调度相关另有 72 项 lifecycle/ecology 检查
+通过。HTTP 正向要求准确的事件 id、world revision、hash、Action delivered、terminal
+receipt 和 cold replay；反向要求原 pinned Context 的一次纠错后仍非法则无 Action。
+
+在还未合入聊天生活意图能力的干净 `8d89f9d7` 上，另跑完固定 120 场景：与 `.96` 的
+全部业务字段、字段集合及顺序一致，仅 replay hash 改变。候选保存在
+`output/adaptive-companionship-2026-09-08/baseline-current-activities/`，没有据此更新安装的
+冻结基线。最终组合仍需重新验证；本地固定模型与模拟回执不证明真实模型会自发完整引用。
