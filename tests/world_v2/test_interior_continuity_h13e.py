@@ -304,8 +304,8 @@ async def test_expired_expectation_opportunity_reaches_her_instead_of_failing_sa
     monkeypatch.setattr(
         proactive_action_module,
         "expired_unanswered_expectation",
-        lambda _projection: SimpleNamespace(
-            plan_id="plan:invite",
+        lambda _projection, *, source_plan_id: SimpleNamespace(
+            plan_id=source_plan_id,
             receipt_event_id=receipt.event_id,
             receipt_world_revision=receipt_ref.world_revision,
             declared_world_revision=receipt_ref.world_revision,
@@ -330,7 +330,7 @@ def test_expired_expectation_context_does_not_state_the_hope_as_fact(monkeypatch
     monkeypatch.setattr(
         proactive_action_module,
         "expired_unanswered_expectation",
-        lambda _projection: SimpleNamespace(
+        lambda _projection, *, source_plan_id: SimpleNamespace(
             hoped_response=HOPED,
             declared_world_revision=2,
         ),
@@ -343,6 +343,7 @@ def test_expired_expectation_context_does_not_state_the_hope_as_fact(monkeypatch
     context = _proactive_opportunity_context(
         opportunity=SimpleNamespace(
             source_kind="expired_expectation",
+            source_id="plan:invite",
             stimulus_event_refs=(),
         ),
         event=SimpleNamespace(event_id="event:receipt", payload_hash="0" * 64),

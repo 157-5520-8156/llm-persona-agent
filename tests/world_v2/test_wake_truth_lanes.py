@@ -469,6 +469,7 @@ def test_wakeup_lane_copy_does_not_invent_world_events() -> None:
         context = _proactive_opportunity_context(
             opportunity=SimpleNamespace(
                 source_kind=kind,
+                source_id="plan:source",
                 stimulus_event_refs=("event:stimulus",),
             ),
             event=SimpleNamespace(payload=lambda: {"text": "等我一下哈，我去倒杯水"}),

@@ -27,17 +27,16 @@ from .ledger import LedgerPort
 from .random_authority import RandomAuthority, RandomDrawRecordedPayload
 from .response_expectation_view import (
     expired_expectation_consideration_id,
-    expired_unanswered_expectation,
     is_overnight_local,
-    next_response_expectation_wake_at,
     pending_response_expectation,
+    unanswered_response_expectations,
 )
 from .revisit_intention_view import (
     due_commitment_consideration_id,
     due_revisit_consideration_id,
     due_thread_consideration_id,
-    due_unfinished_revisit,
     revisit_source_plan_id,
+    unfinished_revisits,
 )
 from .schema_core import FrozenModel
 from .schemas import CommittedWorldEventRef, WorldEvent
@@ -715,23 +714,14 @@ class SocialInitiativeCompiler:
             return await self._hitch_situation_materials(
                 projection, logical_time, later_refresh
             )
-        expired = await self._expired_expectation_contact(
+        declared = await self._declared_attention_opportunity(
             projection,
             logical_time,
             excluded_consideration_ids=excluded_consideration_ids,
         )
-        if expired is not None:
+        if declared is not None:
             return await self._hitch_situation_materials(
-                projection, logical_time, expired
-            )
-        leftover = await self._due_leftover_contact(
-            projection,
-            logical_time,
-            excluded_consideration_ids=excluded_consideration_ids,
-        )
-        if leftover is not None:
-            return await self._hitch_situation_materials(
-                projection, logical_time, leftover
+                projection, logical_time, declared
             )
         if recent_contact is not None and (
             logical_time - recent_contact
@@ -820,6 +810,22 @@ class SocialInitiativeCompiler:
         )
         if pending is not None:
             return pending.scheduled_for or logical_time
+        declared = await self._declared_attention_opportunity(
+            projection,
+            logical_time,
+            excluded_consideration_ids=frozenset(),
+            allow_future=True,
+        )
+        declared_due = declared.scheduled_for if declared is not None else None
+
+        def earliest(other: datetime | None) -> datetime | None:
+            return min(
+                (due for due in (declared_due, other) if due is not None),
+                default=None,
+            )
+
+        if declared_due is not None and declared_due <= logical_time:
+            return declared_due
         recent_contact = max(
             (
                 item.logical_time
@@ -834,8 +840,7 @@ class SocialInitiativeCompiler:
                 seconds=self._policy.contact_cooldown_seconds
             )
             if logical_time < cooldown_until:
-                return cooldown_until
-        expectation_due = next_response_expectation_wake_at(projection)
+                return earliest(cooldown_until)
         try:
             post_silent = await self._post_silent_consideration(
                 projection,
@@ -847,13 +852,9 @@ class SocialInitiativeCompiler:
             post_silent = None
         if post_silent is not None:
             due = post_silent.scheduled_for
-            if expectation_due is not None and (due is None or expectation_due <= due):
-                return expectation_due
-            return due
-        if expectation_due is not None:
-            return expectation_due
+            return earliest(due)
         if await self._post_silent_chain_active(projection):
-            return None
+            return declared_due
         try:
             situation = await self._situation_independent_contact(
                 projection,
@@ -865,7 +866,7 @@ class SocialInitiativeCompiler:
         except ValueError:
             situation = None
         if situation is not None:
-            return situation.scheduled_for
+            return earliest(situation.scheduled_for)
         try:
             spontaneous = await self._spontaneous_contact(
                 projection,
@@ -876,7 +877,7 @@ class SocialInitiativeCompiler:
         except ValueError:
             spontaneous = None
         if spontaneous is not None:
-            return spontaneous.scheduled_for
+            return earliest(spontaneous.scheduled_for)
         try:
             long_silence = await self._long_silence_contact(
                 projection,
@@ -886,10 +887,10 @@ class SocialInitiativeCompiler:
                 allow_future=True,
             )
         except ValueError:
-            return None
+            return declared_due
         if long_silence is None:
-            return None
-        return long_silence.scheduled_for
+            return declared_due
+        return earliest(long_silence.scheduled_for)
 
     async def unrecorded_cadence_still_open(self, projection) -> bool:
         """True when health may keep a message-formula due without a draw.
@@ -1051,13 +1052,29 @@ class SocialInitiativeCompiler:
                 stimulus_event_refs = ()
             elif event.event_type == "ExecutionReceiptRecorded":
                 if consideration_is_revisit:
-                    leftover = due_unfinished_revisit(projection)
+                    leftover = next(
+                        (
+                            item
+                            for item in unfinished_revisits(projection)
+                            if due_revisit_consideration_id(item.plan_id) == consideration_id
+                            and item.receipt_event_id == source_ref.event_id
+                        ),
+                        None,
+                    )
                     if leftover is None:
                         continue
                     source_kind = "revisit_intention"
                     source_id = leftover.plan_id
                 else:
-                    expired = expired_unanswered_expectation(projection)
+                    expired = next(
+                        (
+                            item
+                            for item in unanswered_response_expectations(projection)
+                            if expired_expectation_consideration_id(item.plan_id) == consideration_id
+                            and item.receipt_event_id == source_ref.event_id
+                        ),
+                        None,
+                    )
                     if expired is None:
                         continue
                     source_kind = "expired_expectation"
@@ -1547,6 +1564,17 @@ class SocialInitiativeCompiler:
             if message is None:
                 return None
             source_id = message.observation_id
+        elif source_kind == "expired_expectation":
+            source_id = next(
+                (
+                    manifest.plan_id
+                    for manifest in projection.expression_plan_manifests
+                    if expired_expectation_consideration_id(manifest.plan_id) == consideration_id
+                ),
+                None,
+            )
+            if source_id is None:
+                return None
         elif source_kind == "revisit_intention":
             source_id = (
                 revisit_source_plan_id(projection, consideration_id)
@@ -1667,43 +1695,66 @@ class SocialInitiativeCompiler:
             )
         return None
 
+    async def _declared_attention_opportunity(
+        self,
+        projection,
+        logical_time: datetime,
+        *,
+        excluded_consideration_ids: frozenset[str],
+        allow_future: bool = False,
+    ) -> SocialInitiativeOpportunity | None:
+        """One shared read for scheduling and draining her declared attention.
+
+        No draw or model call occurs here. A future opening is returned only
+        for scheduler inspection; drain selects already-due declarations.
+        """
+
+        expectation = await self._expired_expectation_contact(
+            projection,
+            logical_time,
+            excluded_consideration_ids=excluded_consideration_ids,
+            allow_future=allow_future,
+        )
+        leftover = await self._due_leftover_contact(
+            projection,
+            logical_time,
+            excluded_consideration_ids=excluded_consideration_ids,
+            allow_future=allow_future,
+        )
+        return min(
+            (item for item in (expectation, leftover) if item is not None),
+            key=lambda item: (item.scheduled_for or logical_time, item.consideration_id),
+            default=None,
+        )
+
     async def _expired_expectation_contact(
         self,
         projection,
         logical_time: datetime,
         *,
         excluded_consideration_ids: frozenset[str],
+        allow_future: bool = False,
     ):
-        expired = expired_unanswered_expectation(projection)
-        if expired is None:
-            return None
-        consideration_id = expired_expectation_consideration_id(expired.plan_id)
-        if consideration_id in excluded_consideration_ids:
-            return None
-        prefix = "proactive-consideration:" + consideration_id
-        existing = next(
-            (
-                item
-                for item in getattr(projection, "trigger_processes", ())
-                if item.process_kind == "proactive_action_deliberation"
-                and item.trigger_ref == prefix
-            ),
-            None,
-        )
-        # One consideration per plan_id. A terminal process means she already
-        # had this offer and chose now / later / silent; cadence wakeup must
-        # not open a second farm or a second short wake for the same hope.
-        if existing is not None and existing.state == "terminal":
-            return None
-        return await self._from_source(
-            source_kind="expired_expectation",
-            source_id=expired.plan_id,
-            source_event_ref=expired.receipt_event_id,
-            source_world_revision=expired.receipt_world_revision,
-            consideration_id=consideration_id,
-            scheduled_for=expired.not_before,
-            cadence_reason_codes=("expectation:expired_unanswered",),
-        )
+        for expired in unanswered_response_expectations(projection, due_only=not allow_future):
+            consideration_id = expired_expectation_consideration_id(expired.plan_id)
+            if consideration_id in excluded_consideration_ids:
+                continue
+            # Every plan retains one opportunity. Considering a newer plan
+            # does not spend the opportunities of other declared hopes.
+            if self._terminal_consideration(projection, consideration_id):
+                continue
+            opportunity = await self._from_source(
+                source_kind="expired_expectation",
+                source_id=expired.plan_id,
+                source_event_ref=expired.receipt_event_id,
+                source_world_revision=expired.receipt_world_revision,
+                consideration_id=consideration_id,
+                scheduled_for=expired.not_before,
+                cadence_reason_codes=("expectation:expired_unanswered",),
+            )
+            if opportunity is not None:
+                return opportunity
+        return None
 
     def _leftover_already_materialized(self, projection, *, thread) -> bool:
         values = thread.values
@@ -1725,6 +1776,7 @@ class SocialInitiativeCompiler:
         logical_time: datetime,
         *,
         excluded_consideration_ids: frozenset[str],
+        allow_future: bool = False,
     ):
         candidates: list[tuple[datetime, object]] = []
         for thread in getattr(projection, "threads", ()):
@@ -1733,7 +1785,7 @@ class SocialInitiativeCompiler:
             if (
                 getattr(values, "status", None) != "open"
                 or due is None
-                or logical_time < due.opens_at
+                or (not allow_future and logical_time < due.opens_at)
                 or logical_time >= due.closes_at
                 or self._leftover_already_materialized(projection, thread=thread)
             ):
@@ -1787,7 +1839,7 @@ class SocialInitiativeCompiler:
             if (
                 getattr(values, "status", None) not in {"open", "due"}
                 or due is None
-                or logical_time < due.opens_at
+                or (not allow_future and logical_time < due.opens_at)
                 or logical_time >= due.closes_at
                 or bound_action is not None
             ):
@@ -1822,8 +1874,7 @@ class SocialInitiativeCompiler:
             )
             if opportunity is not None:
                 candidates.append((due.opens_at, opportunity))
-        leftover = due_unfinished_revisit(projection)
-        if leftover is not None:
+        for leftover in unfinished_revisits(projection, due_only=not allow_future):
             consideration_id = due_revisit_consideration_id(leftover.plan_id)
             if (
                 consideration_id not in excluded_consideration_ids

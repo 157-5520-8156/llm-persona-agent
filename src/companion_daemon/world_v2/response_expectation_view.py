@@ -226,30 +226,30 @@ def expired_expectation_consideration_id(plan_id: str) -> str:
     return "consideration:social-initiative:expectation-expiry:" + _digest(plan_id)
 
 
-def expired_unanswered_expectation(
+def unanswered_response_expectations(
     projection,
     *,
     require_unanswered: bool = True,
-) -> ExpiredUnansweredExpectation | None:
-    """One declared hope whose wait ran out.
+    due_only: bool = True,
+) -> tuple[ExpiredUnansweredExpectation, ...]:
+    """All source-bound hopes eligible for their declared consideration window.
 
-    Chase minting (the default) skips hopes he already answered after the
-    first visible leave.  Feeling advisories pass ``require_unanswered=False``
-    so she still sees that the hope expired and whether he has spoken; that
-    is timing evidence, not a host decision to chase or stay silent.
+    The scheduler may read future openings without minting an opportunity.
+    Selection and process recovery must retain each plan's identity instead
+    of letting the newest hope hide another eligible one.
     """
 
     try:
         logical_time = projection.logical_time
         if logical_time is None:
-            return None
+            return ()
         receipt_refs = tuple(
             item
             for item in projection.committed_world_event_refs
             if item.event_type == "ExecutionReceiptRecorded"
         )
         if len(receipt_refs) != len(projection.execution_receipts):
-            return None
+            return ()
         latest_message_revision = (
             projection.message_observations[-1].world_revision
             if projection.message_observations
@@ -310,7 +310,7 @@ def expired_unanswered_expectation(
             # H21: wake at the declared wait (`not_before`). Cadence-derived
             # short wakes for waiting_for-without-wait conflicted with
             # "没填 wait 不编译盼头" and are not used here.
-            if logical_time < authority_not_before:
+            if due_only and logical_time < authority_not_before:
                 continue
             not_before = authority_not_before
             candidates.append(
@@ -328,87 +328,49 @@ def expired_unanswered_expectation(
                 )
             )
         if not candidates:
-            return None
-        return max(candidates, key=lambda item: (item.receipt_world_revision, item.plan_id))
+            return ()
+        return tuple(
+            sorted(
+                candidates,
+                key=lambda item: (item.not_before, item.receipt_world_revision, item.plan_id),
+            )
+        )
     except (TypeError, ValueError, AttributeError):
-        return None
+        return ()
+
+
+def expired_unanswered_expectation(
+    projection,
+    *,
+    require_unanswered: bool = True,
+    source_plan_id: str | None = None,
+) -> ExpiredUnansweredExpectation | None:
+    """Read one exact due hope, or the latest for an unanchored feeling view."""
+
+    candidates = unanswered_response_expectations(
+        projection, require_unanswered=require_unanswered
+    )
+    if source_plan_id is not None:
+        return next((item for item in candidates if item.plan_id == source_plan_id), None)
+    return max(
+        candidates, key=lambda item: (item.receipt_world_revision, item.plan_id), default=None
+    )
 
 
 def next_response_expectation_wake_at(projection) -> datetime | None:
-    """Soonest declared ``not_before`` that should wake the social-initiative clock.
+    """Soonest future declared opening, using the same receipt evidence as minting."""
 
-    ``expired_unanswered_expectation`` only appears once the wait has already
-    elapsed.  The scheduler needs the future instant so Clock can open that
-    lane exactly — not whenever the next Life tick happens to fire.
-    """
-
-    try:
-        logical_time = projection.logical_time
-        if logical_time is None:
-            return None
-        receipt_refs = tuple(
-            item
-            for item in projection.committed_world_event_refs
-            if item.event_type == "ExecutionReceiptRecorded"
-        )
-        if len(receipt_refs) != len(projection.execution_receipts):
-            return None
-        latest_message_revision = (
-            projection.message_observations[-1].world_revision
-            if projection.message_observations
-            else 0
-        )
-        terminal_plan_ids = {
-            item.source_plan_id
-            for item in getattr(projection, "response_expectation_assessments", ())
-            if item.status in _TERMINAL_ASSESSMENT_STATES
-        }
-        first_visible_by_action: dict[str, object] = {}
-        answerable_action_ids: set[str] = set()
-        for ref, receipt in zip(receipt_refs, projection.execution_receipts, strict=True):
-            if receipt.observed_state not in _ANSWERABLE_RECEIPT_STATES:
-                continue
-            answerable_action_ids.add(receipt.action_id)
-            visible = first_visible_by_action.get(receipt.action_id)
-            if visible is None or ref.world_revision < visible.world_revision:
-                first_visible_by_action[receipt.action_id] = ref
-        dues: list[datetime] = []
-        for manifest in projection.expression_plan_manifests:
-            expectation = manifest.response_expectation
-            authority_not_before = getattr(expectation, "not_before", None)
-            if (
-                expectation is None
-                or authority_not_before is None
-                or manifest.plan_id in terminal_plan_ids
-                or logical_time >= expectation.expires_at + EXPIRED_EXPECTATION_GRACE
-            ):
-                continue
-            beat = next(
-                (
-                    item
-                    for item in manifest.beats
-                    if item.beat_id == expectation.source_beat_id
-                ),
-                None,
-            )
-            if beat is None:
-                continue
-            if beat.action.action_id not in answerable_action_ids:
-                continue
-            declared_ref = first_visible_by_action.get(beat.action.action_id)
-            if declared_ref is None:
-                continue
-            if latest_message_revision > declared_ref.world_revision:
-                continue
-            if authority_not_before <= logical_time:
-                # Already due — peek_next_due's pending path owns it.
-                continue
-            dues.append(authority_not_before)
-        if not dues:
-            return None
-        return min(dues)
-    except (TypeError, ValueError, AttributeError):
+    logical_time = getattr(projection, "logical_time", None)
+    if logical_time is None:
         return None
+    return min(
+        (
+            item.not_before
+            for item in unanswered_response_expectations(projection, due_only=False)
+            if item.not_before > logical_time
+        ),
+        default=None,
+    )
 
 
 def pending_response_expectation_manifest(
@@ -1091,4 +1053,5 @@ __all__ = [
     "pending_response_expectation",
     "pending_response_expectation_manifest",
     "response_expectation_advisory",
+    "unanswered_response_expectations",
 ]

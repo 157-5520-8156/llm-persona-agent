@@ -489,7 +489,9 @@ def _proactive_opportunity_context(
             + _canonical(opportunity.stimulus_event_refs)
         )
     if kind == "expired_expectation":
-        expired = expired_unanswered_expectation(projection)
+        expired = expired_unanswered_expectation(
+            projection, source_plan_id=opportunity.source_id
+        )
         hoped = getattr(expired, "hoped_response", None) if expired is not None else None
         hope_text = hoped.strip()[:128] if isinstance(hoped, str) and hoped.strip() else ""
         seconds = None
@@ -531,7 +533,9 @@ def _proactive_opportunity_context(
             "she still decides whether to speak, wait, or stay silent."
         )
     if kind == "revisit_intention":
-        leftover = due_unfinished_revisit(projection)
+        leftover = due_unfinished_revisit(
+            projection, source_plan_id=opportunity.source_id
+        )
         thought = getattr(leftover, "thought", None) if leftover is not None else None
         text = thought.strip()[:160] if isinstance(thought, str) and thought.strip() else ""
         if text:
@@ -1706,7 +1710,9 @@ class ProactiveDeliberationTurn:
             # reply that arrived in the meantime silently retires the
             # opportunity instead of prompting her to chase an answer she
             # already has.
-            expired = expired_unanswered_expectation(projection)
+            expired = expired_unanswered_expectation(
+                projection, source_plan_id=opportunity.source_id
+            )
             valid_source = (
                 event.event_type == "ExecutionReceiptRecorded"
                 and expired is not None
@@ -1714,7 +1720,9 @@ class ProactiveDeliberationTurn:
                 and expired.receipt_event_id == opportunity.source_event_ref
             )
         elif opportunity.source_kind == "revisit_intention":
-            leftover = due_unfinished_revisit(projection)
+            leftover = due_unfinished_revisit(
+                projection, source_plan_id=opportunity.source_id
+            )
             valid_source = (
                 event.event_type == "ExecutionReceiptRecorded"
                 and leftover is not None

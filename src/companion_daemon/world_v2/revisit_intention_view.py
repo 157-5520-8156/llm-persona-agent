@@ -113,16 +113,31 @@ def _unfinished_revisits(projection, *, due_only: bool) -> list[DueUnfinishedRev
     return candidates
 
 
-def due_unfinished_revisit(projection) -> DueUnfinishedRevisit | None:
-    """One leftover whose declared wait has opened and has not yet expired."""
+def unfinished_revisits(projection, *, due_only: bool = True) -> tuple[DueUnfinishedRevisit, ...]:
+    """Read every eligible declared leftover without selecting its fate."""
 
     try:
-        candidates = _unfinished_revisits(projection, due_only=True)
-        if not candidates:
-            return None
-        return max(candidates, key=lambda item: (item.receipt_world_revision, item.plan_id))
+        return tuple(
+            sorted(
+                _unfinished_revisits(projection, due_only=due_only),
+                key=lambda item: (item.not_before, item.receipt_world_revision, item.plan_id),
+            )
+        )
     except (TypeError, ValueError, AttributeError):
-        return None
+        return ()
+
+
+def due_unfinished_revisit(
+    projection, *, source_plan_id: str | None = None
+) -> DueUnfinishedRevisit | None:
+    """One exact due leftover, or the latest for an unanchored feeling view."""
+
+    candidates = unfinished_revisits(projection)
+    if source_plan_id is not None:
+        return next((item for item in candidates if item.plan_id == source_plan_id), None)
+    return max(
+        candidates, key=lambda item: (item.receipt_world_revision, item.plan_id), default=None
+    )
 
 
 def open_unfinished_revisit(projection) -> DueUnfinishedRevisit | None:
