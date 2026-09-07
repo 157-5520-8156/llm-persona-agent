@@ -308,3 +308,24 @@ primary 记录为 not_billed、零 token、预约 settled；尚未产生可比�
 工具描述还存在实际契约漂移：持续情绪错误地指向 `mood`，同段又笼统排除 media，与已安装
 即时照片能力冲突。描述现在使用 `affect/components`，只排除超出已安装即时照片能力的
 media；没有新增能力、改变 payload parser 或恢复第二审查模型。原工具契约 **61 项通过**。
+
+## 机会可用窗口与本人活动时长分离
+
+`0f7cac67` 合入角色时间选择修复。新的 life-development choice payload `.2`、tool v2
+及 authority `.2` 要求 accept 同次明确 opens_at / closes_at；no_op 仍无时间要求。工具
+与硬边界材料把外部时段明确作为可用范围，角色自己选择起止，系统只验证范围和先后关系。
+Plan 与 canonical choice 必须精确等于原 InnerDecision 的时间，不只检查仍落在可用范围内。
+
+实际 Core→StructuredRole→DeepSeek MockTransport→LifeDevelopment→Plan 的两个回归
+先复现了时间缺失/null 被直接接受为完整 60 分钟窗口；修复后同一角色只纠错一次，选择
+第 7–19 分钟，最终 Plan 精确为 12 分钟。没有本地默认时长、随机分钟或额外模型 lane。
+协调篡改 Plan 和 canonical choice、却仍在可用范围内的负例也被原作者时间证据拒绝。
+
+新决定的 subject 包含当前契约。只有旧 subject 加原 ModelResult、Proposal 和 hash-bound
+InnerDecision 才能走冻结 `.1` 恢复，保留历史 null 继承语义；新输出在写入可恢复审计前验证，
+不能先发 `.1` 再靠重启降级。SQLite 关闭重开分别验证新 12 分钟和旧 60 分钟恢复，篡改原
+sidecar 则失败。历史字节没有重写；真实供应商是否自然选择合理时长还须单列试聊结果。
+
+作者侧 327 个不同定向用例通过并经独立审查；根分支与位置读取组合的 **275 项通过**。
+现有 80% 完成资格门槛及机会地点继承尚未改变，它们仍是独立待审问题。冻结 `.97` 的
+120 场景业务字段与新审计 hash 需在最后组合完成后再核对，不能直接用新版本覆盖差异。
