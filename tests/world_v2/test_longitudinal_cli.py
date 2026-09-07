@@ -4,6 +4,7 @@ import importlib.util
 import hashlib
 import json
 from pathlib import Path
+import time
 
 import httpx
 import pytest
@@ -118,6 +119,12 @@ async def test_fixture_factory_constructs_real_host_without_external_clients(tmp
         delivery = runner.CaptureDelivery(clock)
         host = kwargs["host_factory"](kwargs["output"] / "world.sqlite", clock, delivery)
         try:
+            policy = host._interactive_turn_budget_policy
+            assert policy.clock is time.monotonic
+            assert policy.wall_clock == clock.presentation_now
+            assert policy.total_seconds == 12
+            budget = policy.start(processing_started_at=clock.presentation_now())
+            assert 10 < budget.author_remaining() <= 11
             assert host.export_replay_evidence() is not None
         finally:
             await host.aclose()
@@ -150,6 +157,57 @@ async def test_fixture_factory_constructs_real_host_without_external_clients(tmp
     assert len(captured["provenance"]["code"]["head"]) == 40
     assert type(captured["provenance"]["code"]["tracked_dirty"]) is bool
     assert captured["provenance"]["models"]["character"] == "longitudinal-fixture.1"
+
+
+@pytest.mark.asyncio
+async def test_fixture_public_journey_does_not_expire_virtual_ingress_deadline(
+    tmp_path, monkeypatch
+):
+    import companion_daemon.world_v2.longitudinal_journey  # noqa: F401
+
+    def reject_client(*args, **kwargs):
+        raise AssertionError("fixture must not construct external HTTP clients")
+
+    monkeypatch.setattr(httpx, "AsyncClient", reject_client)
+    monkeypatch.setattr(httpx, "Client", reject_client)
+    scenario = tmp_path / "scenario.json"
+    scenario.write_text(
+        json.dumps(
+            {
+                "scenario_id": "fixture-deadline",
+                "started_at": "2026-09-01T00:00:00+00:00",
+                "duration_minutes": 3,
+                "restart_minutes": [],
+                "turns": [{"id": "first", "at_minutes": 0, "text": "早，今天想随便聊聊。"}],
+            }
+        )
+    )
+    output = tmp_path / "run"
+    cli = _cli()
+    result = await cli.run(
+        cli.parse_options(
+            [
+                "--scenario",
+                str(scenario),
+                "--output",
+                str(output),
+                "--max-wall-seconds",
+                "30",
+            ]
+        )
+    )
+    assert result["completed"] is True
+    events = [json.loads(line) for line in (output / "evidence.jsonl").read_text().splitlines()]
+    audits = [
+        json.loads(json.loads(event["payload_json"])["audit_json"])
+        for event in events
+        if event["event_type"] == "ModelResultRecorded"
+    ]
+    assert audits
+    assert all(audit.get("failure_code") is None for audit in audits)
+    assert any(audit["status"] == "provider_completed" for audit in audits)
+    rows = [json.loads(line) for line in (output / "timeline.jsonl").read_text().splitlines()]
+    assert sum(delivery["kind"] == "text" for row in rows for delivery in row["deliveries"]) == 1
 
 
 @pytest.mark.asyncio

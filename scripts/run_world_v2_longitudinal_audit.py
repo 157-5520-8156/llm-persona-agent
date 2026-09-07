@@ -156,6 +156,7 @@ def life_review_profile(settings, *, synthetic: bool) -> dict:
 
 
 async def run(options: argparse.Namespace) -> dict:
+    from companion_daemon.world_v2.interactive_turn_budget import InteractiveTurnBudgetPolicy
     from companion_daemon.world_v2.longitudinal_journey import (
         Journey,
         JourneyLimits,
@@ -205,6 +206,9 @@ async def run(options: argparse.Namespace) -> dict:
             ingress_sleep=clock.presentation_sleep,
             action_due_now=clock.now,
             action_due_sleep=clock.timer_sleep,
+            interactive_turn_budget_policy=InteractiveTurnBudgetPolicy(
+                wall_clock=clock.presentation_now,
+            ),
             use_configured_recall_embedding=False,
             **injected,
         )
