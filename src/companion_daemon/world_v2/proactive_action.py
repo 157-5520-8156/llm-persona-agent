@@ -2923,7 +2923,6 @@ class ProactiveActionRuntime:
         domain_kind = (
             scheduled_domain_consideration_kind(source_ref.event_type, consideration_id)
             if source_ref is not None
-            and consideration_id.startswith("consideration:social-initiative:")
             else None
         )
         # A later completed role decision proves that the proactive model lane
@@ -3244,14 +3243,6 @@ class ProactiveActionRuntime:
             )
             if committed_ref is None or committed_ref.payload_hash != event.payload_hash:
                 raise ValueError("proactive projection source lacks exact committed authority")
-            if (
-                event_ref in failed_source_revisions
-                and latest_message_revision > failed_source_revisions[event_ref]
-            ):
-                # A technical retry is scoped to the context it failed in.
-                # Fresh user interaction supersedes it; it must not revive an
-                # old proactive draft after the conversation has moved on.
-                continue
             allowed = (
                 source_kind == "settled_world_event"
                 and event.event_type == "WorldOccurrenceSettled"
@@ -3272,7 +3263,16 @@ class ProactiveActionRuntime:
                 correlation_id=event.correlation_id,
                 created_at=event.created_at,
             )
-            if self._consideration_id(opportunity) in excluded_consideration_ids:
+            consideration_id = self._consideration_id(opportunity)
+            if (
+                event_ref in failed_source_revisions
+                and latest_message_revision > failed_source_revisions[event_ref]
+                and scheduled_domain_consideration_kind(event.event_type, consideration_id) is None
+            ):
+                # Fresh conversation supersedes a contextual retry, while an
+                # accepted domain intention retains its own recovery authority.
+                continue
+            if consideration_id in excluded_consideration_ids:
                 continue
             return opportunity
         return None

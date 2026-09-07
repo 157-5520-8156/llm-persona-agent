@@ -3034,7 +3034,7 @@ async def test_invalid_proactive_source_after_claim_is_terminal_not_a_scheduler_
 
 
 @pytest.mark.asyncio
-async def test_new_user_observation_supersedes_an_old_technical_retry() -> None:
+async def test_new_user_observation_keeps_an_unfinished_legacy_threads_retry() -> None:
     ledger, _model, _runtime_value, _turn = _runtime(choice="silent")
     timed_out = _TimeoutProactiveModel()
     runtime, _ = _make_proactive_runtime(
@@ -3092,10 +3092,10 @@ async def test_new_user_observation_supersedes_an_old_technical_retry() -> None:
 
     result = await runtime.drain_one()
 
-    assert result.status == "idle"
+    assert result.status == "retry_wait"
     assert timed_out.calls == 1
-    assert proactive_technical_retry_states(ledger.project()) == ()
-    assert next_proactive_retry_due(ledger.project()) is None
+    assert len(proactive_technical_retry_states(ledger.project())) == 1
+    assert next_proactive_retry_due(ledger.project()) == current + timedelta(minutes=10)
 
 
 @pytest.mark.asyncio

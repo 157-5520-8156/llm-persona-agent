@@ -9,6 +9,7 @@ from companion_daemon.world_v2.accepted_ledger_batch import AcceptedLedgerBatchI
 from companion_daemon.world_v2.deferred_reply_runtime import DeferredReplyRuntime
 from companion_daemon.world_v2.event_identity import domain_idempotency_key
 from companion_daemon.world_v2.proactive_action import next_proactive_retry_due
+from companion_daemon.world_v2.social_initiative import SocialInitiativeCompiler, SocialInitiativePolicy
 from test_commitment_authority import (
     DUE,
     accept,
@@ -76,21 +77,21 @@ def _declared_domain(source_type):
     return ledger, current
 
 
-def _record_user_message(ledger):
+def _record_user_message(ledger, *, message_id="new-user-context"):
     now = ledger.project().logical_time
     observation = Observation(
         schema_version="world-v2.1", world_id=ledger.world_id,
-        observation_id="new-user-context", logical_time=now, created_at=now,
+        observation_id=message_id, logical_time=now, created_at=now,
         trace_id="trace:recovery", causation_id="cause:recovery",
         correlation_id="conversation:recovery", source="test",
-        source_event_id="message:new-user-context", actor="system:test", channel="test",
-        payload_ref="payload:new-user-context", payload_hash="sha256:" + "9" * 64,
+        source_event_id=f"message:{message_id}", actor="system:test", channel="test",
+        payload_ref=f"payload:{message_id}", payload_hash="sha256:" + "9" * 64,
         text="刚才我在吃饭，现在回来了。", received_at=now,
-        reply_context={"target": "actor:companion", "platform_message_id": "new-user-context"},
+        reply_context={"target": "actor:companion", "platform_message_id": message_id},
     )
     _commit(ledger, [WorldEvent.from_payload(
         schema_version="world-v2.1", world_id=ledger.world_id,
-        event_id="event:observation:new-user-context", event_type="ObservationRecorded",
+        event_id=f"event:observation:{message_id}", event_type="ObservationRecorded",
         logical_time=now, created_at=now, actor="system:test", source="test",
         trace_id=observation.trace_id, causation_id=observation.causation_id,
         correlation_id=observation.correlation_id,
@@ -241,6 +242,61 @@ async def test_installing_social_initiative_recovers_a_legacy_commitment_once(so
     assert model.calls == 1
     assert ledger.project().trigger_processes[-1].trigger_id == original.trigger_id
     assert (await installed.drain_one()).status == "idle"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("install_social", [False, True])
+@pytest.mark.parametrize("source_type", ["thread_open", "commitment_open"])
+async def test_legacy_domain_failure_keeps_its_retry_after_new_user_context(source_type, install_social):
+    ledger, _current = _declared_domain(source_type)
+    legacy, _ = _make_proactive_runtime(
+        ledger=ledger, issuer=AcceptedLedgerBatchIssuer(), model=_TimeoutProactiveModel(),
+    )
+    assert (await legacy.drain_one()).status == "opened"
+    original = ledger.project().trigger_processes[-1]
+    assert (await legacy.drain_one()).status == "failed_safe"
+    model = _DraftModel("silent")
+    runtime = (_runtime(ledger, model) if install_social else _make_proactive_runtime(
+        ledger=ledger, issuer=AcceptedLedgerBatchIssuer(), model=model,
+    )[0])
+    waiting = await runtime.drain_one()
+    assert waiting.status == "retry_wait"
+    _record_user_message(ledger)
+    assert (await runtime.drain_one()).status == "retry_wait"
+    assert next_proactive_retry_due(ledger.project()) == waiting.next_retry_at
+    _advance_clock(ledger, waiting.next_retry_at)
+    assert (await runtime.drain_one()).status == "opened"
+    retry = ledger.project().trigger_processes[-1]
+    assert retry.trigger_ref == original.trigger_ref
+    assert retry.source_evidence_ref == original.source_evidence_ref
+    assert (await runtime.drain_one()).status == "silent"
+    assert (await runtime.drain_one()).status == "idle"
+    assert model.calls == 1
+    assert next_proactive_retry_due(ledger.project()) is None
+
+
+@pytest.mark.asyncio
+async def test_new_user_context_still_supersedes_a_contextual_contact_retry():
+    ledger = initialized()
+    _record_user_message(ledger)
+    _advance_clock(ledger, ledger.project().logical_time + timedelta(seconds=61))
+    model = _TimeoutProactiveModel()
+    runtime, _ = _make_proactive_runtime(
+        ledger=ledger, issuer=AcceptedLedgerBatchIssuer(), model=model,
+        social_initiative=SocialInitiativeCompiler(
+            ledger=ledger, actor_ref="actor:companion", policy=SocialInitiativePolicy(
+                spontaneous_idle_seconds=60, spontaneous_expiry_seconds=3600,
+                consideration_band_override_seconds=(60, 60),
+            ),
+        ),
+    )
+    assert (await runtime.drain_one()).status == "opened"
+    assert (await runtime.drain_one()).status == "failed_safe"
+    assert (await runtime.drain_one()).status == "retry_wait"
+    _record_user_message(ledger, message_id="newer-user-context")
+    assert (await runtime.drain_one()).status == "idle"
+    assert model.calls == 1
+    assert next_proactive_retry_due(ledger.project()) is None
 
 
 @pytest.mark.asyncio
