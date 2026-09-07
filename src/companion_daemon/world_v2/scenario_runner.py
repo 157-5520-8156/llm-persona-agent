@@ -356,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.92"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.93"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -590,8 +590,15 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.92"
 # cap, deterministic due-plan start, npc_actor_profile, and weighted-table removal.
 # Complete fake suite hash:
 # a966e3570832d6c5de1ac44257193b35a0252dd05b1df43726906efb1d7faf44
+# 2026-09-07: .93 records the authored retention/subjective-attention request
+# contract and shared character continuity changes. Complete 120-case exports
+# from clean da8aae88 and this implementation differ only in replay_hash;
+# output, event types, terminal Actions, model counts, room view and all
+# scenario predicates are unchanged. Request identity changes propagate to
+# model-result, acceptance and expression audit identities. Historical stored
+# events are not rewritten. See docs/audits/living-continuity-2026-09-07.md.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "a966e3570832d6c5de1ac44257193b35a0252dd05b1df43726906efb1d7faf44"
+    "92ec85bce2396318298ac53bdd5cd19b72a6ddd04e388cbef69358a1471353c3"
 )
 
 

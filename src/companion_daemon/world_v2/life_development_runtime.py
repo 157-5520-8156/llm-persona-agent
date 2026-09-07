@@ -67,7 +67,6 @@ from .life_development_deterministic_closure import (
     evaluate_focused_origin,
     evaluate_general_source_closure,
 )
-from .life_author_seed import ReviewedLifeSeedCatalog
 from .weighted_table import inject_nothing_mass, pick_weighted_token
 from .life_development_source_closure import (
     LifeDevelopmentNovelOriginReview,

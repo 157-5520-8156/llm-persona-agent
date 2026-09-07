@@ -227,8 +227,8 @@ mechanisms:
     delayed_trigger_ids: [life.activity_occurrence, life.aftermath_outcome, life.development, life.open_world_generation]
     phase: 2
     status: closed
-    runtime_activation: legacy-recovery-only
-    limitations: [new-subjective-attention-occurrences-retired, historical-proposals-and-occurrences-remain-replayable, new-environmental-events-use-life-development-world-author]
+    runtime_activation: limited-production
+    limitations: [legacy-recovery-only, new-subjective-attention-occurrences-retired, historical-proposals-and-occurrences-remain-replayable, new-environmental-events-use-life-development-world-author]
     sources: [historically-recorded-open-world-proposal, committed-life-wake]
     events: [ProposalRecorded, WorldOccurrenceCommitted, WorldOccurrenceActivated]
     reducers: [src/companion_daemon/world_v2/reducers.py]

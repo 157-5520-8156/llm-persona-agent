@@ -21,6 +21,20 @@ from companion_daemon.world_v2.model_usage_budget import (
 from companion_daemon.usage_metrics import estimate_model_cost
 
 
+@pytest.fixture
+def offpeak_background_admission(monkeypatch) -> None:
+    """Exercise spend caps independently of the wall-clock admission window.
+
+    Peak deferral has its own explicit test. These cases must reach the soft
+    cap even when the suite happens to run during Beijing afternoon hours.
+    """
+
+    monkeypatch.setattr(
+        "companion_daemon.world_v2.model_usage_budget.is_deepseek_peak",
+        lambda *_args, **_kwargs: False,
+    )
+
+
 class _Usage:
     def __init__(
         self,
@@ -369,7 +383,9 @@ def test_budget_state_reports_soft_daily_exhaustion(tmp_path) -> None:
     assert "soft_daily_exhausted" in state["warning_reasons"]
 
 
-def test_background_purpose_is_denied_before_the_provider_call(tmp_path) -> None:
+def test_background_purpose_is_denied_before_the_provider_call(
+    tmp_path, offpeak_background_admission,
+) -> None:
     store = WorldV2UsageStore(
         path=str(tmp_path / "usage.sqlite"),
         monthly_budget_cny=100.0,
@@ -503,7 +519,9 @@ async def test_background_cny_cap_does_not_emit_http(tmp_path) -> None:
     assert requested == []
 
 
-def test_image_usage_events_count_against_background_cny_cap(tmp_path) -> None:
+def test_image_usage_events_count_against_background_cny_cap(
+    tmp_path, offpeak_background_admission,
+) -> None:
     from companion_daemon.db import UsageEventsLedger
 
     path = tmp_path / "usage.sqlite"
@@ -524,7 +542,9 @@ def test_image_usage_events_count_against_background_cny_cap(tmp_path) -> None:
         )
 
 
-def test_background_cap_reprices_legacy_half_price_rows(tmp_path) -> None:
+def test_background_cap_reprices_legacy_half_price_rows(
+    tmp_path, offpeak_background_admission,
+) -> None:
     """Stored cost_cny=1.008 (old USD×7.2) must not sneak under a ¥1.2 soft cap.
 
     1M Flash cache-miss is ¥1.5 off-peak / ¥3.0 peak after 2026-08-17. The old
