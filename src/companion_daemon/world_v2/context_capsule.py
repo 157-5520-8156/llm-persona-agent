@@ -40,6 +40,7 @@ from .schemas import (
 )
 from .situation_compiler import SituationProjection
 from .world_life_context import (
+    ActiveActivityContextItem,
     ActiveWorldOccurrenceContextItem,
     BiographicalWorldContextItem,
     WorldLifeContextItem,
@@ -1109,7 +1110,9 @@ def _values(bound: ResolvedSlice[object]) -> tuple[BaseModel, ...]:
 
 def _identity(slice_name: SliceName, item: BaseModel) -> str:
     field = (
-        "biography_id"
+        "activity_event_ref"
+        if slice_name == "world_life" and isinstance(item, ActiveActivityContextItem)
+        else "biography_id"
         if slice_name == "world_life" and isinstance(item, BiographicalWorldContextItem)
         else "influence_id"
         if slice_name == "perception_results"
@@ -1222,7 +1225,7 @@ def derived_privacy_floor(slice_name: SliceName, item: BaseModel) -> PrivacyClas
             typed.append(item.content.privacy_class)
     if slice_name == "world_life" and isinstance(
         item,
-        (WorldLifeContextItem, ActiveWorldOccurrenceContextItem),
+        (WorldLifeContextItem, ActiveWorldOccurrenceContextItem, ActiveActivityContextItem),
     ):
         typed.append(item.privacy_class)
     if slice_name == "relevant_facts":
@@ -1264,7 +1267,9 @@ def _typed_source_refs(slice_name: SliceName, item: BaseModel) -> tuple[str, ...
         if item.content is not None:
             refs.add(item.content.descriptor_event_ref)
         return tuple(sorted(refs))
-    if slice_name == "world_life" and isinstance(item, ActiveWorldOccurrenceContextItem):
+    if slice_name == "world_life" and isinstance(
+        item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem)
+    ):
         return tuple(sorted(binding.authority_event_ref for binding in item.source_bindings))
     if slice_name == "world_life" and isinstance(item, BiographicalWorldContextItem):
         return tuple(sorted(binding.authority_event_ref for binding in item.source_bindings))
@@ -1418,7 +1423,7 @@ def _typed_source_authorities(item: BaseModel) -> tuple[tuple[str, str, int, str
                 )
             )
         return tuple(sorted(authorities))
-    if isinstance(item, ActiveWorldOccurrenceContextItem):
+    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem)):
         return tuple(
             sorted(
                 (

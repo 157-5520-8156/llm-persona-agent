@@ -54,6 +54,7 @@ class BackgroundContextProfile:
     snapshot_material_limits: Mapping[str, int] = ()
     capsule_slices: tuple[str, ...] = ()
     capsule_slice_limits: Mapping[str, int] = ()
+    capsule_item_exclusions: Mapping[str, frozenset[str]] = ()
 
 
 def _limit_material_items(value: object, limit: int, *, key: str) -> object:
@@ -179,6 +180,7 @@ _CHARACTER_CONTINUITY_MATERIALS = (
     "day_sheet",
     "week_diary",
     "situation",
+    "current_activities",
     "relationship",
     "protagonist_npc_relationships",
     "npc_observable_attitudes",
@@ -230,6 +232,9 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
         snapshot_material_keys=_LIFE_ECOLOGY_MATERIALS,
         snapshot_material_limits={"recent_self_experiences": 4, "relevant_facts": 8},
         capsule_slices=_LIFE_ECOLOGY_CAPSULE_SLICES,
+        # This typed item carries the protagonist's accepted inner intention.
+        # Her own continuity may read it; an external World Author may not.
+        capsule_item_exclusions={"world_life": frozenset({"active_activity"})},
         capsule_slice_limits={
             "recent_experiences": 4,
             "world_life": 6,
@@ -267,6 +272,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
         snapshot_material_keys=(
             "stable_self",
             "situation",
+            "current_activities",
             "relationship",
             "relevant_facts",
             "remembered_material",
@@ -291,6 +297,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
         snapshot_material_keys=(
             "stable_self",
             "situation",
+            "current_activities",
             "relationship",
             "affect",
             "relevant_facts",
@@ -426,6 +433,21 @@ def slice_background_capsule_context(
         lane = slices.get(name)
         if not isinstance(lane, dict):
             continue
+        excluded_kinds = dict(profile.capsule_item_exclusions).get(name, frozenset())
+        items = lane.get("items")
+        if excluded_kinds and isinstance(items, list):
+            lane = {
+                **lane,
+                "items": [
+                    item
+                    for item in items
+                    if not (
+                        isinstance(item, dict)
+                        and isinstance(item.get("value"), dict)
+                        and item["value"].get("context_kind") in excluded_kinds
+                    )
+                ],
+            }
         limit = profile.capsule_slice_limits.get(name)
         if (
             limit is not None
@@ -473,12 +495,15 @@ def assert_background_context_profile_coverage() -> None:
 
 def profile_audit_record(profile: BackgroundContextProfile) -> dict[str, object]:
     return {
-        "contract": "background-context-profile.1",
+        "contract": "background-context-profile.2",
         "profile_id": profile.profile_id,
         "snapshot_material_keys": list(profile.snapshot_material_keys),
         "snapshot_material_limits": dict(profile.snapshot_material_limits),
         "capsule_slices": list(profile.capsule_slices),
         "capsule_slice_limits": dict(profile.capsule_slice_limits),
+        "capsule_item_exclusions": {
+            key: sorted(kinds) for key, kinds in dict(profile.capsule_item_exclusions).items()
+        },
     }
 
 

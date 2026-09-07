@@ -224,12 +224,12 @@ def _pinned_time_view(
 
 
 def _copy_event_source_bindings(item: dict[str, object]) -> list[dict[str, object]] | None:
-    """Keep the proof envelope a named photo needs after chat compaction.
+    """Keep immutable proof for selected photos and actual life statements.
 
-    Compact strips ``source_bindings`` from ordinary slices so the provider
-    does not pay hash tokens.  ``shareable_photos`` is the exception: she may
-    name an already-opened candidate, and rematerialization binds that cite
-    against this same compact JSON.
+    Most slices omit proof metadata from their compact model view. Photos and
+    world-life material retain it because expression rematerialization uses
+    this same JSON to bind the character's selected citations. Keeping the
+    envelope does not add unselected Context refs to a Proposal.
     """
 
     raw = item.get("source_bindings")
@@ -420,7 +420,7 @@ def compact_model_facing_context(raw: str) -> str:
                     material["privacy_class"] = privacy
                 if item.get("recall_injected") is True:
                     material["recall_injected"] = True
-                if name == _SHAREABLE_PHOTO_SLICE:
+                if name in {_SHAREABLE_PHOTO_SLICE, "world_life"}:
                     bindings = _copy_event_source_bindings(item)
                     if bindings is not None:
                         material["source_bindings"] = bindings
@@ -517,7 +517,7 @@ def compact_chat_model_facing_context(raw: str) -> str:
                 retained_attention_refs = [ref for ref in attention_refs if isinstance(ref, str)]
                 if retained_attention_refs:
                     material["attention_source_refs"] = retained_attention_refs
-            if name == _SHAREABLE_PHOTO_SLICE:
+            if name in {_SHAREABLE_PHOTO_SLICE, "world_life"}:
                 bindings = _copy_event_source_bindings(item)
                 if bindings is not None:
                     material["source_bindings"] = bindings

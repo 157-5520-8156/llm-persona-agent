@@ -139,6 +139,7 @@ from .schemas import (
 )
 from .situation_compiler import SituationCompiler, request_from_ledger_projection
 from .world_life_context import (
+    ActiveActivityContextItem,
     ActiveWorldOccurrenceContextItem,
     BiographicalWorldContextItem,
     WorldLifeContextCompiler,
@@ -285,7 +286,9 @@ def _item_ref(slice_name: SliceName, item: BaseModel) -> str:
         getattr(
             item,
             (
-                "biography_id"
+                "activity_event_ref"
+                if slice_name == "world_life" and isinstance(item, ActiveActivityContextItem)
+                else "biography_id"
                 if slice_name == "world_life" and isinstance(item, BiographicalWorldContextItem)
                 else "influence_id"
                 if slice_name == "perception_results"
@@ -348,7 +351,7 @@ def _typed_refs(item: BaseModel, *, observation_aliases: dict[str, str]) -> tupl
                 )
             )
         )
-    if isinstance(item, ActiveWorldOccurrenceContextItem):
+    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem)):
         return tuple(sorted(binding.authority_event_ref for binding in item.source_bindings))
     if isinstance(item, WorldLifeContextItem):
         refs = {item.source.authority_event_ref}
@@ -545,7 +548,7 @@ def _typed_authority_claims(
                 )
             )
         )
-    if isinstance(item, ActiveWorldOccurrenceContextItem):
+    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem)):
         return tuple(
             sorted(
                 (
@@ -1398,6 +1401,11 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         self._reviewed_npc_identity_summaries = reviewed_npc_identity_summaries or {}
         self._world_life = WorldLifeContextCompiler(
             life_content=self._life_content,
+            active_activity_reader=(
+                LifeDevelopmentProposalReader(ledger=ledger, content_store=life_content_store)
+                if life_content_store is not None
+                else None
+            ),
             active_occurrence_reader=(
                 LifeDevelopmentProposalReader(
                     ledger=ledger,

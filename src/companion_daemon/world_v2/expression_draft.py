@@ -64,10 +64,12 @@ _EVENT_EVIDENCE_KIND = {
     "FactWithdrawn": "committed_fact",
     "ExperienceCommitted": "committed_experience",
     "WorldOccurrenceSettled": "settled_world_event",
-    "ActivityPlanned": "active_plan",
-    "ActivityStarted": "active_plan",
-    "ActivityPaused": "active_plan",
-    "ActivityResumed": "active_plan",
+    # These Context bindings address immutable events. ``active_plan``
+    # evidence instead addresses a plan_id plus its current projection hash.
+    "ActivityPlanned": "committed_world_event",
+    "ActivityStarted": "committed_world_event",
+    "ActivityPaused": "committed_world_event",
+    "ActivityResumed": "committed_world_event",
 }
 
 
@@ -695,7 +697,8 @@ def _world_life_occurrence_source_tokens(
             include_active
             or not (
                 isinstance(item.get("value"), dict)
-                and item["value"].get("context_kind") == "active_world_occurrence"
+                and item["value"].get("context_kind")
+                in {"active_world_occurrence", "active_activity"}
             )
         )
         for token in _context_item_source_tokens(item)
@@ -739,6 +742,21 @@ def _biographical_coordinate_source_tokens(
         for item in biographical_coordinate_authorities(context)
         if item.scope == scope
     }
+
+
+def _active_activity_source_tokens(context: dict[str, object]) -> set[str]:
+    slices = context.get("slices")
+    lane = slices.get("world_life") if isinstance(slices, dict) else None
+    if not isinstance(lane, dict) or lane.get("availability") != "available":
+        return set()
+    return {
+        token
+        for item in lane.get("items", ())
+        if isinstance(item, dict)
+        and isinstance(item.get("value"), dict)
+        and item["value"].get("context_kind") == "active_activity"
+        for token in _context_item_source_tokens(item)
+    } - _context_entity_identity_tokens(context)
 
 
 def world_claim_source_tokens(context: dict[str, object], *slice_names: str) -> set[str]:
@@ -1492,7 +1510,7 @@ def expression_hard_boundary_manifest(
 
     coordinate_authorities = biographical_coordinate_authorities(context)
     return {
-        "contract": "expression-hard-boundaries.8",
+        "contract": "expression-hard-boundaries.9",
         "private_turn_state": {
             "attended_source_refs": {
                 "maximum_items": 8,
@@ -1554,6 +1572,9 @@ def expression_hard_boundary_manifest(
             "active_occurrence_source_refs": present_claim_refs(
                 _active_world_occurrence_source_tokens(context)
             ),
+            "active_activity_source_refs": present_claim_refs(
+                _active_activity_source_tokens(context)
+            ),
             "committed_experience_source_refs": present_claim_refs(
                 _slice_claim_authority_tokens(context, "recent_experiences")
             ),
@@ -1597,10 +1618,12 @@ def expression_hard_boundary_manifest(
                         else {}
                     ),
                     **(
-                        {"reported_inbound_surfaces": [
-                            item.model_dump(mode="json")
-                            for item in request.trigger_message.inbound_surfaces
-                        ]}
+                        {
+                            "reported_inbound_surfaces": [
+                                item.model_dump(mode="json")
+                                for item in request.trigger_message.inbound_surfaces
+                            ]
+                        }
                         if request.trigger_message.inbound_surfaces
                         else {}
                     ),

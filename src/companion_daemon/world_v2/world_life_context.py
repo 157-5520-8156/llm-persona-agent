@@ -3,9 +3,11 @@
 ``WorldOccurrenceProjection`` is ledger authority, but it is intentionally not
 model input on its own.  This module is the narrow read seam between the two:
 it selects settled occurrences that can be attributed to the companion and,
-when an exact Life Development proposal reader is installed, exposes only the
-already-established premise of an active occurrence.  Candidate outcomes stay
-hidden until settlement.  This module never writes or advances an occurrence.
+when an exact Life Development proposal reader is installed, exposes the
+established premise of an active occurrence or the accepted intention of a
+started/resumed activity. Candidate outcomes stay hidden until settlement;
+an intention never proves its embedded backstory. This module never writes or
+advances life state.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from .schemas import DueWindow, LedgerProjection, ProjectionCursor
 
 
 class WorldLifeSourceBinding(FrozenModel):
-    """Exact settled-occurrence authority consumed by a Context item."""
+    """Exact committed life-event authority consumed by a Context item."""
 
     authority_event_ref: str = Field(min_length=1)
     authority_world_revision: int = Field(ge=1)
@@ -109,6 +111,51 @@ class ActiveWorldOccurrenceReader(Protocol):
     ) -> ActiveWorldOccurrenceContextItem | None: ...
 
 
+class AcceptedActivityIntention(FrozenModel):
+    """What she accepted as an intention, not proof of its embedded backstory."""
+
+    content_ref: str = Field(min_length=1, max_length=512)
+    content_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    text: str = Field(min_length=1, max_length=480)
+    truncated: bool
+    epistemic_scope: Literal["accepted_intention_only_not_embedded_history_or_outcome"] = (
+        "accepted_intention_only_not_embedded_history_or_outcome"
+    )
+
+
+class ActiveActivityContextItem(FrozenModel):
+    """A started/resumed Plan and its accepted intention at this exact cursor."""
+
+    context_kind: Literal["active_activity"] = "active_activity"
+    activity_event_ref: str = Field(min_length=1)
+    plan_id: str = Field(min_length=1)
+    plan_entity_revision: int = Field(ge=2)
+    owner_actor_ref: str = Field(min_length=1)
+    activity_kind: str = Field(min_length=1)
+    status: Literal["active"] = "active"
+    participant_refs: tuple[str, ...]
+    location_ref: str | None = None
+    active_since: datetime
+    privacy_class: PrivacyClass
+    accepted_intention: AcceptedActivityIntention
+    proposal_source: ActiveWorldOccurrenceProposalBinding
+    source_bindings: tuple[
+        WorldLifeSourceBinding,
+        WorldLifeSourceBinding,
+    ]
+
+
+class ActiveActivityReader(Protocol):
+    def read_active_plan(
+        self,
+        *,
+        plan_id: str,
+        expected_cursor: ProjectionCursor,
+        actor_ref: str,
+        viewer_privacy_ceiling: PrivacyClass,
+    ) -> ActiveActivityContextItem | None: ...
+
+
 class ActiveLifeArcContext(FrozenModel):
     """The model-visible, non-narrative coordinates of one active Life Arc."""
 
@@ -191,23 +238,26 @@ class BiographicalWorldContextItem(FrozenModel):
 WorldLifeModelContextItem = (
     WorldLifeContextItem
     | ActiveWorldOccurrenceContextItem
+    | ActiveActivityContextItem
     | BiographicalWorldContextItem
 )
 
 
 class WorldLifeContextCompiler:
-    """Compile settled world state, optionally attaching descriptor-bound prose."""
+    """Read settled and current life without promoting proposals into history."""
 
     def __init__(
         self,
         *,
         life_content: LifeContentCompiler | None = None,
         active_occurrence_reader: ActiveWorldOccurrenceReader | None = None,
+        active_activity_reader: ActiveActivityReader | None = None,
         biography: BiographicalLifecycleCatalog | None = None,
         biography_timezone: ZoneInfo | None = None,
     ) -> None:
         self._life_content = life_content
         self._active_occurrence_reader = active_occurrence_reader
+        self._active_activity_reader = active_activity_reader
         self._biography = biography
         self._biography_timezone = biography_timezone
 
@@ -336,7 +386,36 @@ class WorldLifeContextCompiler:
                 ),
             )
         )
-        return ((biography,) if biography is not None else ()) + active + settled
+        activities: list[ActiveActivityContextItem] = []
+        if cursor is not None and self._active_activity_reader is not None:
+            for plan in projection.plans:
+                if plan.status != "active" or plan.owner_actor_ref != actor_ref:
+                    continue
+                current = self._active_activity_reader.read_active_plan(
+                    plan_id=plan.plan_id,
+                    expected_cursor=cursor,
+                    actor_ref=actor_ref,
+                    viewer_privacy_ceiling=viewer_privacy_ceiling,
+                )
+                if current is not None and (
+                    plan.authority_origin is not None
+                    and current.plan_id == plan.plan_id
+                    and current.plan_entity_revision == plan.entity_revision
+                    and current.owner_actor_ref == actor_ref
+                    and current.activity_event_ref == plan.authority_origin.accepted_event_ref
+                    and current.active_since == plan.authority_origin.accepted_at
+                    and current.activity_kind == plan.activity_kind
+                    and current.location_ref == plan.location_ref
+                    and current.participant_refs == plan.participant_refs
+                    and current.privacy_class == plan.privacy_class
+                    and current.accepted_intention.content_ref
+                    not in user_channel_limited_content_refs
+                ):
+                    activities.append(current)
+        activities.sort(key=lambda item: (-item.active_since.timestamp(), item.activity_event_ref))
+        return (
+            ((biography,) if biography is not None else ()) + tuple(activities) + active + settled
+        )
 
     def _biographical_item(
         self,

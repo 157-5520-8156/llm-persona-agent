@@ -674,10 +674,10 @@ _EVENT_EVIDENCE_KIND: dict[str, str] = {
     "FactWithdrawn": "committed_fact",
     "ExperienceCommitted": "committed_experience",
     "WorldOccurrenceSettled": "settled_world_event",
-    "ActivityPlanned": "active_plan",
-    "ActivityStarted": "active_plan",
-    "ActivityPaused": "active_plan",
-    "ActivityResumed": "active_plan",
+    "ActivityPlanned": "committed_world_event",
+    "ActivityStarted": "committed_world_event",
+    "ActivityPaused": "committed_world_event",
+    "ActivityResumed": "committed_world_event",
 }
 
 
@@ -3932,6 +3932,7 @@ class Deliberation:
                 "open_threads",
                 "relevant_facts",
                 "recent_experiences",
+                "world_life",
                 "active_memory_candidates",
                 "available_capabilities",
                 "action_budget",

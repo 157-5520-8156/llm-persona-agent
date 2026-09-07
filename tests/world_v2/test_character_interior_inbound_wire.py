@@ -8978,6 +8978,7 @@ def test_empty_companion_life_authority_is_not_a_negative_world_fact() -> None:
         "empty_semantics": "no_pinned_authority_available_not_event_did_not_happen",
         "current_situation_source_refs": [],
         "active_occurrence_source_refs": [],
+        "active_activity_source_refs": [],
         "committed_experience_source_refs": [],
     }
 

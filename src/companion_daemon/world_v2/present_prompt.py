@@ -52,6 +52,7 @@ _MATERIAL_ORDER = (
     "day_sheet",
     "week_diary",
     "situation",
+    "current_activities",
     "relationship",
     "protagonist_npc_relationships",
     "npc_observable_attitudes",

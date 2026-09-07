@@ -120,8 +120,11 @@ from .schemas import (
     ProvisionalPlaceIntroductionDescriptor,
     WorldEvent,
     WorldOccurrenceProjection,
+    validate_plan_authority_state,
 )
 from .world_life_context import (
+    AcceptedActivityIntention,
+    ActiveActivityContextItem,
     ActiveWorldOccurrenceContextItem,
     ActiveWorldOccurrencePremise,
     ActiveWorldOccurrenceProposalBinding,
@@ -896,6 +899,191 @@ class LifeDevelopmentProposalReader:
     def __init__(self, *, ledger, content_store: ImmutableLifeContentStore) -> None:
         self._ledger = ledger
         self._store = content_store
+
+    def read_active_plan(
+        self,
+        *,
+        plan_id: str,
+        expected_cursor: ProjectionCursor,
+        actor_ref: str,
+        viewer_privacy_ceiling: PrivacyClass,
+    ) -> ActiveActivityContextItem | None:
+        """Read an accepted intention through the exact current activity chain.
+
+        Unlike read_for_plan, this foreground seam never reads candidate
+        outcomes or their prose. The intention is role-authored mental
+        material; its embedded history and external assertions gain no proof.
+        """
+        try:
+            return self._read_active_plan(
+                plan_id=plan_id,
+                expected_cursor=expected_cursor,
+                actor_ref=actor_ref,
+                viewer_privacy_ceiling=viewer_privacy_ceiling,
+            )
+        except Exception:
+            # Optional life evidence must fail closed without replacing an
+            # otherwise answerable conversation with a storage failure.
+            return None
+
+    def _read_active_plan(
+        self,
+        *,
+        plan_id: str,
+        expected_cursor: ProjectionCursor,
+        actor_ref: str,
+        viewer_privacy_ceiling: PrivacyClass,
+    ) -> ActiveActivityContextItem | None:
+        projection = self._ledger.project()
+        if ProjectionCursor(
+            world_revision=projection.world_revision,
+            deliberation_revision=projection.deliberation_revision,
+            ledger_sequence=projection.ledger_sequence,
+        ) != expected_cursor or not plan_id.startswith("plan:life-development:"):
+            return None
+        plan = next((item for item in projection.plans if item.plan_id == plan_id), None)
+        privacy_rank = {
+            "public": 0,
+            "shareable": 1,
+            "personal": 2,
+            "private": 3,
+            "withhold": 4,
+        }
+        if (
+            plan is None
+            or plan.status != "active"
+            or plan.owner_actor_ref != actor_ref
+            or plan.authority_origin is None
+            or plan.privacy_class == "withhold"
+            or privacy_rank[plan.privacy_class] > privacy_rank[viewer_privacy_ceiling]
+        ):
+            return None
+        validate_plan_authority_state(
+            (plan,),
+            projection.committed_world_event_refs,
+            logical_time=projection.logical_time,
+        )
+        committed = {item.event_id: item for item in projection.committed_world_event_refs}
+
+        def exact_event(event_ref, event_type):
+            authority = committed.get(event_ref)
+            located = self._ledger.lookup_event_commit(event_ref)
+            if (
+                authority is None
+                or authority.event_type != event_type
+                or located is None
+                or located[0].world_id != projection.world_id
+                or located[0].event_type != event_type
+                or located[0].payload_hash != authority.payload_hash
+                or located[0].logical_time != authority.logical_time
+                or located[0].event_id not in located[1].event_ids
+                or located[1].world_revision < authority.world_revision
+                or located[1].world_revision > expected_cursor.world_revision
+                or located[1].ledger_sequence > expected_cursor.ledger_sequence
+            ):
+                raise ValueError("current activity source is not exact")
+            return authority, located[0], located[1]
+
+        origin = plan.authority_origin
+        active_ref, active_event, _ = exact_event(
+            origin.accepted_event_ref, origin.accepted_event_type
+        )
+        if active_event.payload().get("plan_id") != plan_id:
+            return None
+        suffix = plan_id.removeprefix("plan:life-development:")
+        planned_ref, planned_event, planned_commit = exact_event(
+            "event:life-development:plan:" + suffix, "ActivityPlanned"
+        )
+        original = ActivityPlannedPayload.model_validate_json(planned_event.payload_json).plan
+        if (
+            planned_event.source != "world-v2:life-development"
+            or original.plan_id != plan_id
+            or original.owner_actor_ref != actor_ref
+            or original.activity_kind != plan.activity_kind
+            or original.location_ref != plan.location_ref
+            or original.participant_refs != plan.participant_refs
+            or original.privacy_class != plan.privacy_class
+        ):
+            return None
+        located = self._ledger.lookup_event_commit(planned_event.causation_id)
+        if (
+            located is None
+            or located[0].event_type != "ProposalRecorded"
+            or located[0].source != "world-v2:life-development"
+            or located[0].world_id != projection.world_id
+            or located[0].event_id not in planned_commit.event_ids
+            or located[1].event_ids != planned_commit.event_ids
+            or located[1].ledger_sequence > expected_cursor.ledger_sequence
+        ):
+            return None
+        proposal_event, proposal_commit = located
+        proposal = proposal_event.payload()
+        possibility = proposal.get("possibility_authority")
+        choice = proposal.get("character_choice")
+        if (
+            proposal.get("proposal_kind") != "life_development"
+            or proposal.get("effect_kind") != "character_plan"
+            or proposal.get("effect_ref") != plan_id
+            or proposal.get("possibility_authority_version")
+            not in _LIFE_DEVELOPMENT_POSSIBILITY_VERSIONS
+            or not isinstance(possibility, dict)
+            or proposal.get("possibility_authority_hash") != _digest(possibility)
+            or possibility.get("causal_authority") != "character_choice"
+            or possibility.get("authored_subject_ref") != actor_ref
+            or not isinstance(choice, dict)
+            or choice.get("decision") != "accept"
+            or proposal.get("character_choice_hash") != _digest(choice)
+        ):
+            return None
+        descriptor = choice.get("intention")
+        bindings = proposal.get("content_bindings")
+        if not isinstance(descriptor, dict) or not isinstance(bindings, list):
+            return None
+        expected = {"role": "character_intention", **descriptor}
+        if [
+            item
+            for item in bindings
+            if isinstance(item, dict) and item.get("role") == "character_intention"
+        ] != [expected]:
+            return None
+        stored = self._store.read_exact(content_ref=descriptor.get("content_ref", ""))
+        if (
+            stored is None
+            or stored.content_kind != "outcome_candidate"
+            or stored.content_payload_hash != descriptor.get("content_payload_hash")
+            or life_content_payload_hash(stored.text) != stored.content_payload_hash
+        ):
+            return None
+        return ActiveActivityContextItem(
+            activity_event_ref=active_ref.event_id,
+            plan_id=plan_id,
+            plan_entity_revision=plan.entity_revision,
+            owner_actor_ref=actor_ref,
+            activity_kind=plan.activity_kind,
+            participant_refs=plan.participant_refs,
+            location_ref=plan.location_ref,
+            active_since=origin.accepted_at,
+            privacy_class=plan.privacy_class,
+            accepted_intention=AcceptedActivityIntention(
+                content_ref=stored.content_ref,
+                content_payload_hash=stored.content_payload_hash,
+                text=stored.text[:480],
+                truncated=len(stored.text) > 480,
+            ),
+            proposal_source=ActiveWorldOccurrenceProposalBinding(
+                authority_event_ref=proposal_event.event_id,
+                authority_ledger_sequence=proposal_commit.ledger_sequence,
+                authority_payload_hash=proposal_event.payload_hash,
+            ),
+            source_bindings=tuple(
+                WorldLifeSourceBinding(
+                    authority_event_ref=ref.event_id,
+                    authority_world_revision=ref.world_revision,
+                    authority_payload_hash=ref.payload_hash,
+                )
+                for ref in (planned_ref, active_ref)
+            ),
+        )
 
     def read_for_occurrence(
         self, *, occurrence: object

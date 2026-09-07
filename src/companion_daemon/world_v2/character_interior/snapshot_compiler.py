@@ -54,7 +54,7 @@ from .contracts import (
 )
 
 
-SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.18"
+SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.19"
 
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
@@ -521,9 +521,7 @@ def _recalled_entry(
     }
 
 
-def _experience_entry(
-    item: dict[str, object], *, lane: str
-) -> dict[str, object] | None:
+def _experience_entry(item: dict[str, object], *, lane: str) -> dict[str, object] | None:
     recalled = _recalled_entry(item, kinds=frozenset({"episodic"}))
     if recalled is not None:
         return recalled
@@ -532,7 +530,7 @@ def _experience_entry(
     if not isinstance(source_ref, str) or not isinstance(value, dict):
         return None
     if lane == "world_life":
-        if value.get("context_kind") == "biographical_context":
+        if value.get("context_kind") in {"biographical_context", "active_activity"}:
             return None
         fields = (
             (
@@ -1266,6 +1264,31 @@ def compile_inner_life_snapshot(
     if biography:
         materials["biographical_context"] = biography
 
+    current_activities = [
+        entry
+        for item in _slice_items(slices, "world_life")
+        if isinstance(item.get("value"), dict)
+        and item["value"].get("context_kind") == "active_activity"
+        and (
+            entry := _state_entry(
+                item,
+                fields=(
+                    "plan_id",
+                    "plan_entity_revision",
+                    "owner_actor_ref",
+                    "activity_kind",
+                    "status",
+                    "participant_refs",
+                    "location_ref",
+                    "active_since",
+                    "accepted_intention",
+                ),
+            )
+        )
+    ]
+    if current_activities:
+        materials["current_activities"] = current_activities
+
     lanes = (
         ("situation", "current_situation", (
             "logical_time", "time_segment", "activity_slices", "goal_slices",
@@ -1649,8 +1672,18 @@ def compile_inner_life_snapshot(
         if capabilities
         else _InteriorBinding.unavailable("capability_scope_unavailable")
     )
-    situation = _view(materials, ("logical_time", "biographical_context", "situation"))
-    continuity = _view(materials, tuple(key for key in materials if key not in {"logical_time", "biographical_context", "situation"}))
+    situation = _view(
+        materials, ("logical_time", "biographical_context", "situation", "current_activities")
+    )
+    continuity = _view(
+        materials,
+        tuple(
+            key
+            for key in materials
+            if key
+            not in {"logical_time", "biographical_context", "situation", "current_activities"}
+        ),
+    )
     world_id = context.get("world_id") if isinstance(context.get("world_id"), str) else None
     actor_ref = context.get("actor_ref") if isinstance(context.get("actor_ref"), str) else None
     cursor = _cursor(context)
