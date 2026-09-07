@@ -455,3 +455,27 @@ hash，并把状态与 billing state 计数送入 review；详细原始错误只
 运输可记 succeeded/known，而角色载体依然非法，两个结果不可混为一谈。等待尾帧可能
 消耗原剩余时间，没有保证每次都能及时取得用量；原 trial-05 的 unknown 保持原状。
 尚未进行新的真实供应商复测，不能用 mock 账单结算代替该项资格。
+
+## 正文与依据同段的私有协议原型
+
+只读分析实际请求确认：18 个含 `messages` 的可解析示例中，16 个省略 `world_claims`；
+slim schema 没有将它列为 required，缺失/null 又会补成空数组。但真实反例已经显式发出
+`[]`，所以单独补 required 或修改示例不能证明修复。也不能靠来源编号合法，推导正文中
+的蓝皮诗集或未读历史受到该来源支持。
+
+另在 `Girl-Agent-typed-text-segments-prototype` 的被忽略私有目录
+`output/private-prototypes/typed-text-segments/` 实现一次性纯解码原型。角色自己为每段
+文字选择 World 来源、当前用户报告承接或非外部断言；气泡只从片段精确拼接，claim_text
+机械取同一段文字，再接已有来源 scope 和 ExpressionDraft materializer。没有额外模型、
+关键词分类、默认片段类型或另一份可以漏关联的正文载体；没有接入生产。
+
+作者与 root 分别运行 **35 项原型测试通过**，验证同字 Proposal evidence、Unicode、
+错误来源/分类形状及附加正文拒绝。刻意保留三个可通过的语义反例：把事实误标为非外部
+断言、用合法来源支持不蕴含的正文、从当前用户报告增加未报告的旧事。结构覆盖因此不能
+当作事实真实性闭包。当前 canonical draft 还会丢失 report/nonworld 分类，正式迁移必须
+保留作者原载体及版本、实际 alias/Context/source 身份，不能只存拼接结果。
+
+真实 trial-05 首句只作同口径载体比较，固定原私态与外层：空 claims 的 430 字节变为
+typed 分类的 606 字节（+176）；双方都显式声明同一事实时为 601→651（+50）。这只是
+UTF-8 字节，不是 token、费用、模型正确率或流式兼容测试。原型及 comparison.json
+保留为下一次有界协议对照的材料；当前未改变生产表达格式或宣称事实漏洞已关闭。
