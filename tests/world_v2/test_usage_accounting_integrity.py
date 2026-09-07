@@ -8,23 +8,36 @@ import pytest
 
 from companion_daemon.llm import ModelCallUsage
 from companion_daemon.world_v2.model_usage_budget import (
-    BackgroundSpendCapDenied, ModelUsageAdmissionError, WorldV2UsageStore,
+    BackgroundSpendCapDenied,
+    ModelUsageAdmissionError,
+    WorldV2UsageStore,
 )
 
 
 def _reserve(store, *, amount=0.7):
     return store.admit_provider_call(
-        purpose="proactive_contact", actor="agent:companion", provider="deepseek",
-        model="deepseek-v4-flash", prompt_characters=100, estimated_cny=amount,
+        purpose="proactive_contact",
+        actor="agent:companion",
+        provider="deepseek",
+        model="deepseek-v4-flash",
+        prompt_characters=100,
+        estimated_cny=amount,
     )
 
 
 def _usage(reservation, **changes):
-    return replace(ModelCallUsage(
-        purpose="proactive_contact", model="deepseek-v4-flash", status="failed",
-        latency_ms=10, provider="deepseek", budget_reservation_id=reservation,
-        billing_state="unknown",
-    ), **changes)
+    return replace(
+        ModelCallUsage(
+            purpose="proactive_contact",
+            model="deepseek-v4-flash",
+            status="failed",
+            latency_ms=10,
+            provider="deepseek",
+            budget_reservation_id=reservation,
+            billing_state="unknown",
+        ),
+        **changes,
+    )
 
 
 def _rows(path, query):
@@ -54,14 +67,18 @@ def test_usage_write_failure_does_not_release_reservation(tmp_path):
     store = WorldV2UsageStore(path=str(path))
     token = _reserve(store)
     with sqlite3.connect(path) as connection:
-        connection.execute("CREATE TRIGGER fail_usage BEFORE INSERT ON world_v2_model_usage "
-                           "BEGIN SELECT RAISE(ABORT, 'storage cut'); END")
+        connection.execute(
+            "CREATE TRIGGER fail_usage BEFORE INSERT ON world_v2_model_usage "
+            "BEGIN SELECT RAISE(ABORT, 'storage cut'); END"
+        )
     store.record(_usage(token, billing_state="known", prompt_tokens=100))
     assert _rows(path, "SELECT status FROM world_v2_model_reservations") == [("pending",)]
     assert _rows(path, "SELECT COUNT(*) FROM world_v2_model_usage") == [(0,)]
     with sqlite3.connect(path) as connection:
         connection.execute("DROP TRIGGER fail_usage")
-    WorldV2UsageStore(path=str(path)).record(_usage(token, billing_state="known", prompt_tokens=100))
+    WorldV2UsageStore(path=str(path)).record(
+        _usage(token, billing_state="known", prompt_tokens=100)
+    )
     assert _rows(path, "SELECT status FROM world_v2_model_reservations") == [("settled",)]
 
 
@@ -73,12 +90,16 @@ def test_unknown_bill_survives_restart_until_real_usage_arrives(tmp_path):
     restarted = WorldV2UsageStore(path=str(path), monthly_budget_cny=1)
     with pytest.raises(BackgroundSpendCapDenied):
         _reserve(restarted)
-    assert _rows(path, "SELECT billing_state FROM world_v2_model_usage WHERE status != 'budget_denied'") == [("unknown",)]
+    assert _rows(
+        path, "SELECT billing_state FROM world_v2_model_usage WHERE status != 'budget_denied'"
+    ) == [("unknown",)]
     # A provider reconciliation completes the SAME bill, not a second charge.
     final = _usage(token, billing_state="known", prompt_tokens=100)
     restarted.record(final)
     restarted.record(final)
-    assert _rows(path, "SELECT COUNT(*) FROM world_v2_model_usage WHERE status != 'budget_denied'") == [(1,)]
+    assert _rows(
+        path, "SELECT COUNT(*) FROM world_v2_model_usage WHERE status != 'budget_denied'"
+    ) == [(1,)]
     assert _reserve(restarted)
 
 
@@ -124,6 +145,7 @@ def test_nonfinite_or_negative_estimate_cannot_bypass_budget(tmp_path, amount):
 
 def test_health_counts_images_and_open_bills_without_mirror_double_count(tmp_path):
     from companion_daemon.db import UsageEventsLedger
+
     path = tmp_path / "usage.sqlite"
     store = WorldV2UsageStore(path=str(path), monthly_budget_cny=1)
     UsageEventsLedger(path).record_usage("image_generation", 0.2)
@@ -152,6 +174,7 @@ def test_health_does_not_treat_budget_denials_as_model_calls(tmp_path):
 
 def test_unpriced_currency_is_a_coverage_warning_not_a_free_call(tmp_path):
     from companion_daemon.db import UsageEventsLedger
+
     path = tmp_path / "usage.sqlite"
     store = WorldV2UsageStore(path=str(path))
     UsageEventsLedger(path).record_usage("civitai_buzz", 0, note="currency evidence")
@@ -164,10 +187,12 @@ def test_unpriced_currency_is_a_coverage_warning_not_a_free_call(tmp_path):
 def test_monthly_forecast_is_connected_to_the_same_accounting_snapshot(tmp_path, monkeypatch):
     from companion_daemon.db import UsageEventsLedger
     from companion_daemon.world_v2 import model_usage_budget
+
     class Clock(datetime):
         @classmethod
         def now(cls, tz=None):
             return datetime(2026, 9, 16, tzinfo=timezone.utc).astimezone(tz)
+
     monkeypatch.setattr(model_usage_budget, "datetime", Clock)
     path = tmp_path / "usage.sqlite"
     store = WorldV2UsageStore(path=str(path))
@@ -186,10 +211,14 @@ def test_embedding_day_book_is_included_in_total_admission(tmp_path):
     path = tmp_path / "usage.sqlite"
     store = WorldV2UsageStore(path=str(path), monthly_budget_cny=1)
     with sqlite3.connect(path) as connection:
-        connection.execute("CREATE TABLE world_recall_embedding_usage_daily "
-                           "(usage_day TEXT, estimated_cost_cny REAL)")
-        connection.execute("INSERT INTO world_recall_embedding_usage_daily VALUES (?, ?)",
-                           (datetime.now(timezone.utc).date().isoformat(), 0.5))
+        connection.execute(
+            "CREATE TABLE world_recall_embedding_usage_daily "
+            "(usage_day TEXT, estimated_cost_cny REAL)"
+        )
+        connection.execute(
+            "INSERT INTO world_recall_embedding_usage_daily VALUES (?, ?)",
+            (datetime.now(timezone.utc).date().isoformat(), 0.5),
+        )
     with pytest.raises(BackgroundSpendCapDenied):
         _reserve(store)
     state = store.budget_state()
@@ -200,8 +229,12 @@ def test_embedding_day_book_is_included_in_total_admission(tmp_path):
 
 def _image_reserve(store):
     return store.admit_provider_call(
-        purpose="image_generation", actor="agent:companion", provider="openai",
-        model="gpt-image-2", prompt_characters=100, estimated_cny=0.7,
+        purpose="image_generation",
+        actor="agent:companion",
+        provider="openai",
+        model="gpt-image-2",
+        prompt_characters=100,
+        estimated_cny=0.7,
     )
 
 
@@ -209,10 +242,14 @@ def test_external_bill_and_reservation_settle_once_in_one_transaction(tmp_path):
     path = tmp_path / "usage.sqlite"
     store = WorldV2UsageStore(path=str(path), monthly_budget_cny=1)
     token = _image_reserve(store)
-    kwargs = dict(reservation_id=token, kind="image_generation", estimated_cny=0.5, billing_state="known")
+    kwargs = dict(
+        reservation_id=token, kind="image_generation", estimated_cny=0.5, billing_state="known"
+    )
     with sqlite3.connect(path) as connection:
-        connection.execute("CREATE TRIGGER fail_external BEFORE UPDATE ON world_v2_model_reservations "
-                           "BEGIN SELECT RAISE(ABORT, 'storage cut'); END")
+        connection.execute(
+            "CREATE TRIGGER fail_external BEFORE UPDATE ON world_v2_model_reservations "
+            "BEGIN SELECT RAISE(ABORT, 'storage cut'); END"
+        )
     with pytest.raises(sqlite3.IntegrityError):
         store.record_external_usage(**kwargs)
     assert _rows(path, "SELECT COUNT(*) FROM usage_events") == [(0,)]
@@ -232,16 +269,46 @@ def test_external_unknown_bill_can_be_reconciled_but_not_rebound(tmp_path):
     path = tmp_path / "usage.sqlite"
     store = WorldV2UsageStore(path=str(path), monthly_budget_cny=1)
     token = _image_reserve(store)
-    store.record_external_usage(reservation_id=token, kind="image_generation",
-                                estimated_cny=None, billing_state="unknown")
+    store.record_external_usage(
+        reservation_id=token, kind="image_generation", estimated_cny=None, billing_state="unknown"
+    )
     assert store.budget_state()["unknown_cost_hold_cny"] == 0.7
     assert _rows(path, "SELECT COUNT(*) FROM usage_events") == [(0,)]
     with pytest.raises(ModelUsageAdmissionError):
-        store.record_external_usage(reservation_id=token, kind="other",
-                                    estimated_cny=0.1, billing_state="known")
-    store.record_external_usage(reservation_id=token, kind="image_generation",
-                                estimated_cny=0.5, billing_state="known")
+        store.record_external_usage(
+            reservation_id=token, kind="other", estimated_cny=0.1, billing_state="known"
+        )
+    store.record_external_usage(
+        reservation_id=token, kind="image_generation", estimated_cny=0.5, billing_state="known"
+    )
     with pytest.raises(ModelUsageAdmissionError):
-        store.record_external_usage(reservation_id=token, kind="image_generation",
-                                    estimated_cny=0.1, billing_state="known")
+        store.record_external_usage(
+            reservation_id=token, kind="image_generation", estimated_cny=0.1, billing_state="known"
+        )
     assert store.budget_state()["monthly_committed_cny"] == 0.5
+
+
+def test_token_bill_cannot_reopen_an_external_settlement(tmp_path):
+    path = tmp_path / "usage.sqlite"
+    store = WorldV2UsageStore(path=str(path))
+    token = _image_reserve(store)
+    store.record_external_usage(
+        reservation_id=token, kind="image_generation", estimated_cny=0.5, billing_state="known"
+    )
+    store.record(_usage(token, purpose="image_generation", provider="openai"))
+    assert _rows(path, "SELECT COUNT(*) FROM world_v2_model_usage") == [(0,)]
+    assert store.budget_state()["monthly_committed_cny"] == 0.5
+
+
+def test_external_bill_cannot_replace_a_token_bill(tmp_path):
+    store = WorldV2UsageStore(path=str(tmp_path / "usage.sqlite"))
+    token = _reserve(store)
+    store.record(_usage(token))
+    with pytest.raises(ModelUsageAdmissionError):
+        store.record_external_usage(
+            reservation_id=token,
+            kind="proactive_contact",
+            estimated_cny=0.01,
+            billing_state="known",
+        )
+    assert store.budget_state()["unknown_cost_hold_cny"] == 0.7
