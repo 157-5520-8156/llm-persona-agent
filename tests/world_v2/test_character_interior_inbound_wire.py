@@ -4704,11 +4704,17 @@ async def test_private_identity_shared_history_ref_cannot_authorize_counterpart_
         )
     )
 
-    accepted = await _ExpressionDraftWire(
-        model=model,
-        identity_frame=identity,
-    ).propose(_qq_request())
-    assert accepted.raw_proposal["action_intents"][0]["kind"] == "reply"
+    # The retired wire correction reports its historical failure code without
+    # issuing another model call; it must not erase the invalid declaration.
+    with pytest.raises(
+        ValidationTechnicalFailure, match="authored_expression_reselection_invalid"
+    ):
+        await _ExpressionDraftWire(
+            model=model,
+            identity_frame=identity,
+        ).propose(_qq_request())
+
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -4738,14 +4744,18 @@ async def test_static_counterpart_history_ref_cannot_authorize_a_current_locatio
         )
     )
 
-    accepted = await _ExpressionDraftWire(
-        model=model,
-        identity_frame=identity,
-    ).propose(_qq_request())
-    assert accepted.raw_proposal["action_intents"][0]["kind"] == "reply"
+    with pytest.raises(
+        ValidationTechnicalFailure, match="authored_expression_reselection_invalid"
+    ):
+        await _ExpressionDraftWire(
+            model=model,
+            identity_frame=identity,
+        ).propose(_qq_request())
+
 
     assert history_ref not in model.calls[0][0][0]["content"]
     assert "historical context only" in model.calls[0][0][0]["content"]
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -4805,7 +4815,7 @@ async def test_current_location_claim_accepts_a_pinned_supersedable_user_fact() 
 
 
 @pytest.mark.asyncio
-async def test_private_identity_frame_rejects_a_forged_source_ref_after_one_retry() -> None:
+async def test_private_identity_frame_rejects_a_forged_source_ref_without_another_call() -> None:
     identity = CompanionIdentityFrame(
         companion_name="沈知栀",
         counterpart_name="geoff",
@@ -4831,8 +4841,12 @@ async def test_private_identity_frame_rejects_a_forged_source_ref_after_one_retr
     )
     adapter = _ExpressionDraftWire(model=model, identity_frame=identity)
 
-    accepted = await adapter.propose(_qq_request())
-    assert accepted.raw_proposal["action_intents"][0]["kind"] == "reply"
+    with pytest.raises(
+        ValidationTechnicalFailure, match="authored_expression_reselection_invalid"
+    ):
+        await adapter.propose(_qq_request())
+
+    assert len(model.calls) == 1
 
 
 
@@ -5924,21 +5938,11 @@ async def test_expression_world_claim_must_cite_its_semantic_context_lane() -> N
         ],
     }
     forged_model = _Model(json.dumps(forged, ensure_ascii=False))
-    assert accepted.raw_proposal["action_intents"][0]["kind"] == "reply"
-
-    forged = {
-        **reply,
-        "world_claims": [
-            {
-                "claim_text": "我刚才去图书馆看书",
-                "scope": "past_world",
-                "source_refs": ["occurrence:library:invented"],
-            }
-        ],
-    }
-    forged_model = _Model(json.dumps(forged, ensure_ascii=False))
-    accepted = await _ExpressionDraftWire(model=forged_model).propose(request)
-    assert accepted.raw_proposal["action_intents"][0]["kind"] == "reply"
+    with pytest.raises(
+        ValidationTechnicalFailure, match="authored_expression_reselection_invalid"
+    ):
+        await _ExpressionDraftWire(model=forged_model).propose(request)
+    assert len(forged_model.calls) == 1
 
 
 def _biographical_claim_evidence_context(*, clock_hash: str = "b" * 64) -> dict[str, object]:
@@ -7893,13 +7897,17 @@ async def test_recent_dialogue_attention_alias_does_not_authorize_a_world_claim(
         }
     )
 
-    accepted = await _ExpressionDraftWire(
-        model=model,
-        expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
-            update={"private_turn_state_mode": "required"}
-        ),
-    ).propose(request)
-    assert accepted.raw_proposal["action_intents"][0]["kind"] == "reply"
+    with pytest.raises(
+        ValidationTechnicalFailure, match="authored_expression_reselection_invalid"
+    ):
+        await _ExpressionDraftWire(
+            model=model,
+            expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
+                update={"private_turn_state_mode": "required"}
+            ),
+        ).propose(request)
+
+    assert len(model.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -8068,7 +8076,20 @@ async def test_subject_omitted_shared_history_is_allowed_with_recent_dialogue_au
                             "items": [
                                 {
                                     "item_ref": source_ref,
-                                    "value": {"speaker": "user", "text": "群里那件事挺有意思。"},
+                                    "value": {
+                                        "dialogue_id": source_ref,
+                                        "speaker": "companion",
+                                        "speaker_ref": "agent:companion",
+                                        "text": "刚在群里和你聊的那本书，我也很喜欢。",
+                                        "delivery_state": "delivered",
+                                        "source_claims": [
+                                            {
+                                                "authority_event_ref": "event:group-expression:accepted",
+                                                "authority_world_revision": 2,
+                                                "authority_payload_hash": "a" * 64,
+                                            }
+                                        ],
+                                    },
                                 }
                             ],
                         },
@@ -8082,10 +8103,16 @@ async def test_subject_omitted_shared_history_is_allowed_with_recent_dialogue_au
     output = await adapter.propose(request)
 
     assert output.raw_proposal["action_intents"][0]["kind"] == "reply"
+    change = output.raw_proposal["proposed_changes"][0]
+    payload = json.loads(change["payload"]["canonical_json"])
+    assert payload["world_claims"][0]["source_refs"] == [source_ref]
 
 
 @pytest.mark.asyncio
-async def test_visible_prose_is_not_reclassified_beyond_declared_claims() -> None:
+async def test_deterministic_validator_preserves_prose_beyond_declared_claims() -> None:
+    # This deterministic boundary validates authored declarations. It cannot
+    # discover the undeclared weekend visit; that remains a semantic gap, not
+    # evidence that the visit happened or that the full production chain passed.
     adapter = _ExpressionDraftWire(
         model=_Model(
             json.dumps(
@@ -8102,7 +8129,7 @@ async def test_visible_prose_is_not_reclassified_beyond_declared_claims() -> Non
                     "world_claims": [
                         {
                             "claim_text": "你提过那家店",
-                            "scope": "shared_history",
+                            "scope": "counterpart_history",
                             "source_refs": ["dialogue:bookshop:1"],
                         }
                     ],
@@ -8136,6 +8163,10 @@ async def test_visible_prose_is_not_reclassified_beyond_declared_claims() -> Non
 
     output = await adapter.propose(request)
     assert output.raw_proposal["action_intents"]
+    change = output.raw_proposal["proposed_changes"][0]
+    payload = json.loads(change["payload"]["canonical_json"])
+    assert payload["world_claims"][0]["scope"] == "counterpart_history"
+    assert payload["world_claims"][0]["source_refs"] == ["dialogue:bookshop:1"]
 
 
 @pytest.mark.asyncio
@@ -8288,8 +8319,11 @@ async def test_family_background_rejects_a_forged_character_core_ref() -> None:
         )
     )
 
-    accepted = await adapter.propose(_qq_request())
-    assert accepted.raw_proposal["action_intents"][0]["kind"] == "reply"
+    with pytest.raises(
+        ValidationTechnicalFailure, match="authored_expression_reselection_invalid"
+    ):
+        await adapter.propose(_qq_request())
+
 
 
 @pytest.mark.asyncio
@@ -9005,8 +9039,11 @@ async def test_companion_expression_cannot_source_counterpart_history_claim() ->
         ensure_ascii=False,
     )
 
-    accepted = await _ExpressionDraftWire(model=_Model(draft)).propose(request)
-    assert accepted.raw_proposal["action_intents"][0]["kind"] == "reply"
+    with pytest.raises(
+        ValidationTechnicalFailure, match="authored_expression_reselection_invalid"
+    ):
+        await _ExpressionDraftWire(model=_Model(draft)).propose(request)
+
 
 
 @pytest.mark.asyncio
