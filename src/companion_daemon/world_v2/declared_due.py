@@ -741,10 +741,12 @@ def collect_clock_wake_dues(
     *,
     computed: Mapping[str, datetime | None],
 ) -> tuple[DeclaredDueTarget, ...]:
-    """Sole selection input for the QQ clock: projection dues ∪ computed peeks.
+    """Sole selection input: projection dues plus effective owner peeks.
 
     ``computed`` must contain exactly ``COMPUTED_CLOCK_WAKE_KINDS`` as keys.
-    Values may be ``None`` when that kind has no pending due.
+    Each peek supersedes its kind's projection value, including ``None`` for
+    no pending due. Life's quiet completions can move the effective cadence
+    in its sidecar while leaving the last semantic schedule unchanged.
     """
 
     missing = COMPUTED_CLOCK_WAKE_KINDS - frozenset(computed)
@@ -756,7 +758,10 @@ def collect_clock_wake_dues(
         if extra:
             problems.append("unknown computed kinds: " + ", ".join(sorted(extra)))
         raise AssertionError("; ".join(problems))
-    collected: list[DeclaredDueTarget] = list(collect_projection_declared_dues(projection))
+    collected: list[DeclaredDueTarget] = [
+        due for due in collect_projection_declared_dues(projection)
+        if due.kind not in computed
+    ]
     for kind in sorted(COMPUTED_CLOCK_WAKE_KINDS):
         wrapped = computed_due(kind, computed.get(kind))
         if wrapped is not None:
