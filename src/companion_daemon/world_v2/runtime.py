@@ -279,7 +279,6 @@ class WorldRuntime:
         perception_owner: str | None = None,
         perception_trigger_runtime: PerceptionTriggerRuntime | None = None,
         latency_recorder: ProductionLatencyRecorder | None = None,
-        open_world_event=None,
     ) -> None:
         if not world_id:
             raise ValueError("world_id must not be empty")
@@ -398,7 +397,6 @@ class WorldRuntime:
         ):
             raise ValueError("CharacterInterior must own this exact ledger")
         self._character_interior = character_interior
-        self._open_world_event = open_world_event
         self._reflection_scheduler = reflection_scheduler
         if relationship_adjustment_owner is not None and not relationship_adjustment_owner:
             raise ValueError("relationship adjustment owner must not be empty")
@@ -1024,30 +1022,8 @@ class WorldRuntime:
         state = getattr(proposal, "private_turn_state", None)
         if state is None:
             return
-        noticed = getattr(state, "noticed", None)
-        # A lived moment is a world claim, so it stays tied to a turn that
-        # actually completed; a private impression is hers either way.
-        if (
-            external_effect_landed
-            and isinstance(noticed, str)
-            and noticed.strip()
-            and self._open_world_event is not None
-        ):
-            try:
-                self._open_world_event.commit_from_paid_moment(
-                    moment=noticed.strip(),
-                    wake_event_ref=observation_event.event_id,
-                    model="paid-turn:inbound",
-                    raw_output=noticed.strip(),
-                    trace_id=observation_event.trace_id,
-                    correlation_id=observation_event.correlation_id,
-                )
-            except Exception:
-                _LOG.warning(
-                    "paid inbound noticed hitch failed wake=%s",
-                    observation_event.event_id,
-                    exc_info=True,
-                )
+        # Subjective attention stays in this authored turn.  Only an accepted
+        # World Author proposal can introduce a new objective life occurrence.
         keep = getattr(state, "keep_impression", None)
         summary = getattr(state, "inner_state_summary", "") or ""
         if keep is True and self._character_interior is not None:

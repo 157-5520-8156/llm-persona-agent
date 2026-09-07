@@ -227,9 +227,9 @@ mechanisms:
     delayed_trigger_ids: [life.activity_occurrence, life.aftermath_outcome, life.development, life.open_world_generation]
     phase: 2
     status: closed
-    runtime_activation: default
-    limitations: [requires-life-ecology-and-an-injected-background-model, model-chooses-only-among-verified-active-plan-situations, no-op-is-a-first-class-durable-decision]
-    sources: [verified-active-plan-situation, bounded-model-draft, committed-life-wake]
+    runtime_activation: legacy-recovery-only
+    limitations: [new-subjective-attention-occurrences-retired, historical-proposals-and-occurrences-remain-replayable, new-environmental-events-use-life-development-world-author]
+    sources: [historically-recorded-open-world-proposal, committed-life-wake]
     events: [ProposalRecorded, WorldOccurrenceCommitted, WorldOccurrenceActivated]
     reducers: [src/companion_daemon/world_v2/reducers.py]
     projections: [world-occurrences, life-content]
@@ -239,8 +239,9 @@ mechanisms:
     adapters: [qq-c2c-v2, offline-harness]
     tests:
       - tests/world_v2/test_open_world_event_runtime.py::test_open_world_draft_cannot_invent_identity_location_or_extra_authority_fields
-      - tests/world_v2/test_open_world_event_runtime.py::test_open_world_event_is_accepted_into_occurrence_and_replayed_without_recalling_model
-      - tests/world_v2/test_open_world_event_production.py::test_production_open_world_model_turns_active_plan_into_replayable_occurrence
+      - tests/world_v2/test_open_world_event_runtime.py::test_paid_subjective_attention_cannot_create_world_occurrences
+      - tests/world_v2/test_open_world_event_runtime.py::test_legacy_paid_attention_occurrence_remains_replayable
+      - tests/world_v2/test_open_world_event_production.py::test_production_paid_attention_does_not_bypass_world_authority
 
   - id: proposal-acceptance-manifests
     phase: 4

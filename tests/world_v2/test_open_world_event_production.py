@@ -113,7 +113,7 @@ class _OutcomeModel:
 
 
 @pytest.mark.asyncio
-async def test_production_open_world_model_turns_active_plan_into_replayable_occurrence(
+async def test_production_paid_attention_does_not_bypass_world_authority(
     tmp_path: Path,
 ) -> None:
     seed = tmp_path / "open-world-seed.yaml"
@@ -213,7 +213,7 @@ life_author_catalog:
             trace_id="trace:open-world-hitch",
             correlation_id="correlation:open-world",
         )
-        assert hitch.status == "committed"
+        assert hitch.status == "rejected"
 
         result = await app.advance_life_ecology_once(
             wake_event_ref=started.event_ids[-1],
@@ -221,50 +221,14 @@ life_author_catalog:
             correlation_id="correlation:open-world",
         )
 
-        assert result.status == "advanced"
-        assert result.open_world_followup_status == "recovered"
-        projection = app._ledger.project()  # noqa: SLF001 - production replay evidence
-        assert len(projection.world_occurrences) == 1
-        occurrence = projection.world_occurrences[0]
-        assert occurrence.status == "active"
-        assert occurrence.location_ref == "location:park"
-        assert any(
+        assert result.status == "idle"
+        assert result.open_world_followup_status == "no_op"
+        projection = app._ledger.project()  # noqa: SLF001
+        assert projection.world_occurrences == ()
+        assert not any(
             item.event.event_type == "ProposalRecorded"
             and item.event.payload().get("proposal_kind") == "open_world_event"
             for item in app._ledger.export_replay_evidence().events  # noqa: SLF001
         )
-
-        # A later wake must settle the model-authored occurrence through the
-        # ordinary aftermath/experience path; the candidate hash must remain
-        # the exact immutable sidecar hash rather than a synthetic placeholder.
-        later = NOW.replace(minute=20)
-        await app.tick(
-            tick_id="open-world:settle",
-            logical_time_from=NOW,
-            logical_time_to=later,
-            observed_at=later,
-            trace_id="trace:open-world-settle",
-            causation_id="scheduler:open-world",
-            correlation_id="correlation:open-world",
-            reason="open-world-settlement",
-        )
-        recovery_at = later.replace(minute=31)
-        await app.tick(
-            tick_id="open-world:experience",
-            logical_time_from=later,
-            logical_time_to=recovery_at,
-            observed_at=recovery_at,
-            trace_id="trace:open-world-experience",
-            causation_id="scheduler:open-world",
-            correlation_id="correlation:open-world",
-            reason="open-world-experience-recovery",
-        )
-        settled = app._ledger.project()  # noqa: SLF001
-        assert settled.world_occurrences[0].status == "settled"
-        assert len(settled.experiences) == 1
-        result_ref = settled.world_occurrences[0].result_payload_ref
-        result = app._life_content_store.read_exact(content_ref=result_ref)  # noqa: SLF001
-        assert result is not None
-        assert result.content_payload_hash == settled.world_occurrences[0].result_payload_hash
     finally:
         app.close()

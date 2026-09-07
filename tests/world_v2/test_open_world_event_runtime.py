@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import json
+from pathlib import Path
 
 import pytest
 
@@ -19,6 +20,53 @@ from test_life_projection import WORLD_ID, commit, event, mutation
 
 
 NOW = datetime(2026, 7, 19, 12, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stop_after_proposal", [False, True])
+async def test_legacy_paid_attention_occurrence_remains_replayable(stop_after_proposal) -> None:
+    from companion_daemon.world_v2.life_content_store import (
+        InMemoryImmutableLifeContentStore,
+        StoredLifeContent,
+    )
+    from companion_daemon.world_v2.schemas import WorldEvent
+
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures/legacy_paid_attention_occurrence.json").read_text()
+    )
+    ledger = WorldLedger.in_memory(world_id=fixture["world_id"])
+    frozen = {
+        item["event_id"]: WorldEvent.model_validate_json(json.dumps(item))
+        for item in fixture["events"]
+    }
+    for batch in fixture["batches"]:
+        if stop_after_proposal and frozen[batch[0]].event_type == "WorldOccurrenceCommitted":
+            break
+        commit(ledger, [frozen[ref] for ref in batch])
+    store = InMemoryImmutableLifeContentStore()
+    for item in fixture["content"]:
+        store.put_if_absent(StoredLifeContent(**item))
+    runtime = OpenWorldEventRuntime(
+        ledger=ledger, content_store=store,
+        situation_source=ActivePlanSituationSource(owner_actor_ref="actor:companion"),
+        owner_actor_ref="actor:companion",
+    )
+    for _ in range(2):
+        result = await runtime.advance_once(
+            wake_event_ref="open-world-start", trace_id="trace:legacy-paid-attention",
+            correlation_id="corr:legacy-paid-attention",
+        )
+        assert result.status == "recovered"
+    occurrence = ledger.project().world_occurrences[0]
+    assert occurrence.status == "active"
+    assert occurrence.location_ref == "location:cafe"
+    assert len(ledger.project().world_occurrences) == 1
+    # History keeps its exact payloads; recovering a pre-existing decision
+    # cannot be used as permission to author another moment today.
+    for item in ledger.export_replay_evidence().events:
+        assert item.event.payload_hash == frozen[item.event.event_id].payload_hash
+    exported = ledger.export_replay_evidence()
+    assert exported.replay == exported.projection
 
 
 def _situations() -> tuple[OpenWorldEventSituation, ...]:
@@ -307,7 +355,7 @@ async def test_open_world_scheduler_does_not_consult_the_model() -> None:
 
 
 @pytest.mark.asyncio
-async def test_open_world_event_is_accepted_into_occurrence_and_replayed_without_recalling_model() -> None:
+async def test_paid_subjective_attention_cannot_create_world_occurrences() -> None:
     ledger = _active_plan_ledger()
     from companion_daemon.world_v2.life_content_store import InMemoryImmutableLifeContentStore
 
@@ -320,6 +368,7 @@ async def test_open_world_event_is_accepted_into_occurrence_and_replayed_without
         owner_actor_ref="actor:companion",
     )
 
+    before = ledger.project()
     first = runtime.commit_from_paid_moment(
         moment="她在门口看见一只猫停了一会儿，顺手记下了这个小插曲。",
         wake_event_ref="open-world-start",
@@ -328,20 +377,17 @@ async def test_open_world_event_is_accepted_into_occurrence_and_replayed_without
         trace_id="trace:open-world",
         correlation_id="corr:open-world",
     )
-    assert first.status == "committed"
+    assert first.status == "rejected"
+    assert first.reason_code == "open_world_event.subjective_attention_not_world_authority"
     assert model.calls == 0
-    occurrence = ledger.project().world_occurrences[-1]
-    assert occurrence.status == "active"
-    assert occurrence.location_ref == "location:cafe"
-    assert occurrence.participant_refs == ("actor:companion", "npc:lin")
-    assert first.proposal_id in ledger.project().proposal_ids
+    assert ledger.project() == before
 
     second = await runtime.advance_once(
         wake_event_ref="open-world-start", trace_id="trace:open-world", correlation_id="corr:open-world"
     )
-    assert second.status == "recovered"
+    assert second.status == "no_op"
     assert model.calls == 0
-    assert len(ledger.project().world_occurrences) == 1
+    assert len(ledger.project().world_occurrences) == 0
 
 
 @pytest.mark.asyncio
@@ -380,8 +426,8 @@ async def test_open_world_paid_moment_without_a_verified_situation_does_not_inve
         correlation_id="corr:open-world",
     )
 
-    assert result.status == "no_op"
-    assert result.reason_code == "open_world_event.no_verified_situation"
+    assert result.status == "rejected"
+    assert result.reason_code == "open_world_event.subjective_attention_not_world_authority"
     assert len(ledger.project().world_occurrences) == 0
 
 

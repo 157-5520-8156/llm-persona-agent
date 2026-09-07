@@ -1,10 +1,7 @@
-"""LLM-authored but authority-bounded temporary world events.
+"""Historical recovery for the retired paid-attention occurrence path.
 
-This is the missing bridge between a living situation and the existing
-occurrence/aftermath pipeline.  The source adapter exposes only currently
-verified situations.  The model chooses one opaque situation and writes a
-short subjective moment; the runtime owns every identity, time, participant,
-location, privacy and ledger mutation.
+New environmental events use LifeDevelopment's World Author proposals.
+Character-authored attention cannot grant objective event authority.
 """
 
 from __future__ import annotations
@@ -16,7 +13,7 @@ import logging
 from typing import Protocol
 
 from .event_identity import domain_idempotency_key
-from .life_content_store import ImmutableLifeContentStore, StoredLifeContent, life_content_payload_hash
+from .life_content_store import ImmutableLifeContentStore, life_content_payload_hash
 from .life_events import WorldOccurrenceActivatedPayload, WorldOccurrenceCommittedPayload
 from .occurrence_content_coordinator import OutcomeCandidateContent
 from .open_world_event_draft import (
@@ -217,188 +214,27 @@ class OpenWorldEventRuntime:
         trace_id: str,
         correlation_id: str,
     ) -> OpenWorldEventRunResult:
-        """Land one hitchhiked subjective moment without a new model call."""
+        """Reject the retired subjective-attention-to-world-authority shortcut.
 
-        clipped = moment.strip()
-        if not clipped or "\n" in clipped or "\r" in clipped:
-            return OpenWorldEventRunResult(
-                status="no_op", reason_code="open_world_event.noticed_unusable"
-            )
-        projection = self._ledger.project()
-        wake = self._paid_wake(projection, wake_event_ref)
-        if wake is None:
-            return OpenWorldEventRunResult(
-                status="rejected", reason_code="open_world_event.wake_unavailable"
-            )
-        situations = self._source.situations(projection=projection, wake_event_ref=wake_event_ref)
-        selected = next(
-            (item for item in situations if item.event_kind == "noticed_small_thing"),
-            situations[0] if situations else None,
-        )
-        if selected is None:
-            return OpenWorldEventRunResult(
-                status="no_op", reason_code="open_world_event.no_verified_situation"
-            )
-        proposal_id = "proposal:open-world-event:" + _digest(
-            {"world": self._ledger.world_id, "wake": wake_event_ref}
-        )
-        existing = self._proposal_event(proposal_id)
-        if existing is None:
-            existing = self._record_proposal(
-                projection=projection,
-                wake=wake,
-                proposal_id=proposal_id,
-                selected=selected,
-                moment=clipped[:720],
-                model=model or self._model_id,
-                raw_output=raw_output,
-                trace_id=trace_id,
-                correlation_id=correlation_id,
-            )
-            recovered = False
-        else:
-            if existing.payload().get("decision") == "no_op":
-                return OpenWorldEventRunResult(
-                    status="no_op",
-                    reason_code="open_world_event.model_declined_recovered",
-                    proposal_id=proposal_id,
-                )
-            selected = next(
-                (
-                    item
-                    for item in situations
-                    if item.token == existing.payload().get("situation_token")
-                ),
-                selected,
-            )
-            recovered = True
-        occurrence_id = "occurrence:open-world:" + _digest(
-            {"world": self._ledger.world_id, "proposal": proposal_id}
-        )
-        occurrence = self._existing_occurrence(occurrence_id)
-        if occurrence is None:
-            stored_moment = self._proposal_moment(existing)
-            occurrence = self._commit_occurrence(
-                projection=self._ledger.project(),
-                wake=wake,
-                proposal_event=existing,
-                occurrence_id=occurrence_id,
-                situation=selected,
-                moment=stored_moment,
-                trace_id=trace_id,
-                correlation_id=correlation_id,
-            )
-        if occurrence.status == "committed":
-            self._activate(
-                occurrence=occurrence, wake=wake, trace_id=trace_id, correlation_id=correlation_id
-            )
+        ``noticed`` is the character's report of what occupied her attention.
+        It is neither a World Author proposal nor a settled objective event.
+        Existing recorded occurrences remain replayable through ``advance_once``;
+        new environmental events use LifeDevelopment's source-bound authority.
+        """
+
+        del moment, wake_event_ref, model, raw_output, trace_id, correlation_id
         return OpenWorldEventRunResult(
-            status="recovered" if recovered else "committed",
-            reason_code="open_world_event.accepted",
-            proposal_id=proposal_id,
-            occurrence_id=occurrence_id,
+            status="rejected",
+            reason_code="open_world_event.subjective_attention_not_world_authority",
         )
-
-    def _record_proposal(
-        self, *, projection, wake: WorldEvent, proposal_id: str,
-        selected: OpenWorldEventSituation, moment: str, model: str,
-        raw_output: str, trace_id: str, correlation_id: str,
-    ) -> WorldEvent:
-        moment_ref = "content:open-world-moment:" + _digest({"proposal": proposal_id})
-        moment_hash = life_content_payload_hash(moment)
-        self._store.put_if_absent(
-            StoredLifeContent(
-                content_ref=moment_ref,
-                content_kind="outcome_candidate",
-                content_payload_hash=moment_hash,
-                text=moment,
-            )
-        )
-        payload = {
-            "proposal_id": proposal_id,
-            "proposal_kind": "open_world_event",
-            "trigger_id": wake.event_id,
-            "evaluated_world_revision": projection.world_revision,
-            "wake_event_ref": wake.event_id,
-            "wake_event_payload_hash": wake.payload_hash,
-            "situation_token": selected.token,
-            "event_kind": selected.event_kind,
-            "participant_tokens": list(selected.participant_tokens),
-            "location_token": selected.location_token,
-            "privacy": selected.privacy,
-            "moment_ref": moment_ref,
-            "moment_hash": moment_hash,
-            "moment_scope": "subjective",
-            "model": model,
-            "raw_output_hash": "sha256:" + hashlib.sha256(raw_output.encode()).hexdigest(),
-        }
-        event = WorldEvent.from_payload(
-            schema_version="world-v2.1",
-            event_id="event:open-world-event:proposal:" + _digest(proposal_id),
-            event_type="ProposalRecorded",
-            world_id=self._ledger.world_id,
-            logical_time=wake.logical_time,
-            created_at=wake.created_at,
-            actor=self._actor,
-            source="world-v2:open-world-event",
-            trace_id=trace_id or wake.trace_id,
-            causation_id=wake.event_id,
-            correlation_id=correlation_id or wake.correlation_id,
-            idempotency_key=domain_idempotency_key(
-                event_type="ProposalRecorded", world_id=self._ledger.world_id, payload=payload
-            ) or "open-world-event-proposal:" + _digest(proposal_id),
-            payload=payload,
-        )
-        cursor = _cursor(projection)
-        self._ledger.commit_at_cursor(
-            (event,), expected_cursor=cursor,
-            commit_id="commit:open-world-event:proposal:" + _digest(proposal_id),
-        )
-        return event
-
-    def _record_no_op(
-        self, *, projection, wake: WorldEvent, proposal_id: str, model: str,
-        raw_output: str, trace_id: str, correlation_id: str,
-    ) -> WorldEvent:
-        payload = {
-            "proposal_id": proposal_id,
-            "proposal_kind": "open_world_event",
-            "decision": "no_op",
-            "trigger_id": wake.event_id,
-            "evaluated_world_revision": projection.world_revision,
-            "wake_event_ref": wake.event_id,
-            "wake_event_payload_hash": wake.payload_hash,
-            "model": model,
-            "raw_output_hash": "sha256:" + hashlib.sha256(raw_output.encode()).hexdigest(),
-        }
-        event = WorldEvent.from_payload(
-            schema_version="world-v2.1",
-            event_id="event:open-world-event:proposal:" + _digest(proposal_id),
-            event_type="ProposalRecorded",
-            world_id=self._ledger.world_id,
-            logical_time=wake.logical_time,
-            created_at=wake.created_at,
-            actor=self._actor,
-            source="world-v2:open-world-event",
-            trace_id=trace_id or wake.trace_id,
-            causation_id=wake.event_id,
-            correlation_id=correlation_id or wake.correlation_id,
-            idempotency_key=domain_idempotency_key(
-                event_type="ProposalRecorded", world_id=self._ledger.world_id, payload=payload
-            ) or "open-world-event-proposal:" + _digest(proposal_id),
-            payload=payload,
-        )
-        self._ledger.commit_at_cursor(
-            (event,), expected_cursor=_cursor(projection),
-            commit_id="commit:open-world-event:proposal:" + _digest(proposal_id),
-        )
-        return event
 
     def _commit_occurrence(
         self, *, projection, wake: WorldEvent, proposal_event: WorldEvent,
         occurrence_id: str, situation: OpenWorldEventSituation, moment: str,
         trace_id: str, correlation_id: str,
     ) -> WorldOccurrenceProjection:
+        # Historical recovery only.  These frozen legacy branches must retain
+        # their original bytes; new production proposals cannot reach this path.
         suffix = _digest({"occurrence": occurrence_id, "moment": moment})
         texts = (
             moment,

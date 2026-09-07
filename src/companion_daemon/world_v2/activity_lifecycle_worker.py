@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from datetime import datetime
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -103,7 +102,6 @@ class ActivityLifecycleWorker:
         daily_occasions: DailyOccasionStore | None = None,
         occasion_spends: OccasionSpendStore | None = None,
         local_timezone_name: str = DEFAULT_LOCAL_TIMEZONE,
-        open_world_event=None,
         plan_material_reader=None,
     ) -> None:
         if not ecology_catalog_version or not source or not owner_actor_ref:
@@ -123,7 +121,6 @@ class ActivityLifecycleWorker:
         self._daily_occasions = daily_occasions or daily_occasion_store_for_ledger(ledger)
         self._occasion_spends = occasion_spends or occasion_spend_store_for_ledger(ledger)
         self._local_timezone = ZoneInfo(local_timezone_name)
-        self._open_world_event = open_world_event
         self._plan_material_reader = plan_material_reader
 
     async def advance_once(
@@ -177,12 +174,6 @@ class ActivityLifecycleWorker:
                 if draft.model is None
                 else "activity_lifecycle.model_declined"
             )
-            self._hitch_paid_noticed(
-                draft=draft,
-                wake_event_ref=wake_event_ref,
-                trace_id=trace_id,
-                correlation_id=correlation_id,
-            )
             return ActivityLifecycleFollowupResult(
                 status="no_op",
                 reason_code=reason,
@@ -210,12 +201,6 @@ class ActivityLifecycleWorker:
             source=self._source,
             logical_time=logical_time,
             created_at=logical_time,
-            trace_id=trace_id,
-            correlation_id=correlation_id,
-        )
-        self._hitch_paid_noticed(
-            draft=draft,
-            wake_event_ref=wake_event_ref,
             trace_id=trace_id,
             correlation_id=correlation_id,
         )
@@ -515,43 +500,3 @@ class ActivityLifecycleWorker:
             ).encode("utf-8")
         ).hexdigest()
         return "closed-window-abandon:" + digest
-
-    def _hitch_paid_noticed(
-        self,
-        *,
-        draft: ActivityLifecycleModelDraft,
-        wake_event_ref: str,
-        trace_id: str,
-        correlation_id: str,
-    ) -> None:
-        runtime = self._open_world_event
-        raw = draft.normalized_json or draft.raw_output
-        if runtime is None or not raw:
-            return
-        try:
-            payload = json.loads(raw)
-        except (TypeError, json.JSONDecodeError):
-            return
-        if not isinstance(payload, dict):
-            return
-        noticed = payload.get("noticed")
-        if not isinstance(noticed, str) or not noticed.strip():
-            return
-        if payload.get("user_channel_completion") != "none":
-            return
-        try:
-            runtime.commit_from_paid_moment(
-                moment=noticed.strip(),
-                wake_event_ref=wake_event_ref,
-                model=draft.model or "paid-turn:day_open",
-                raw_output=raw,
-                trace_id=trace_id,
-                correlation_id=correlation_id,
-            )
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "paid noticed hitch failed wake=%s", wake_event_ref, exc_info=True
-            )
-
-
-__all__ = ["ActivityLifecycleFollowupResult", "ActivityLifecycleWorker"]

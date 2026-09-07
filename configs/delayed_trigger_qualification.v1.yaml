@@ -477,13 +477,13 @@ mechanisms:
     activation_note: Limited because the installed world-author and source-review stages are custom model contracts without independent host evidence.
 
   - mechanism_id: life.open_world_generation
-    purpose: Legacy bounded open-world event generation followup
+    purpose: Recovery of historically recorded open-world event proposals
     release_status: limited
     trigger_mode: event_triggered
     upstream_authority: [owned Life Ecology wake and active Plan context]
     due_identity: {coordinates: [world_id, actor_ref, wake_event_ref, event_epoch], logical_deadline: owned Life Ecology wake, merge_dedup_key: open_world_wake_epoch}
     controlled_injection: {public_seams: [QQC2CHost.tick, QQC2CHost.drain], upstream_material: [real active Plan, logical Clock advance]}
-    expected_path: [Life Ecology wake, custom open-world model, typed proposal or no-change]
+    expected_path: [Life Ecology wake, existing recorded proposal, exact occurrence recovery or no-change]
     legal_terminals: [accepted, no-change, superseded, technical failure]
     visible_effect: conditional
     observability: [health, causal lineage, model attempt, usage/cost, ledger refs]
@@ -491,7 +491,7 @@ mechanisms:
     vertical_lanes: [life_ecology]
     closure_mechanisms: [open-world-temporary-events]
     projection_due_fields: []
-    activation_note: Limited and mutually exclusive with open-life development; its custom model protocol has no installed StructuredRole contract.
+    activation_note: Legacy recovery only; new paid subjective attention cannot create occurrences. New environmental events belong to LifeDevelopment World Author. No live model is invoked by this path.
 
   - mechanism_id: appraisal.expiry
     purpose: Execute an accepted appraisal's recorded expires_at

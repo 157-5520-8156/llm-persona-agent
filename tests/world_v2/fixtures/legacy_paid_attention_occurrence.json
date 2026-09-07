@@ -1,0 +1,182 @@
+{
+  "origin_commit": "da8aae88c1245dbd41f763d5c0df50025fb76c2e",
+  "world_id": "world-v2-life-test",
+  "events": [
+    {
+      "schema_version": "world-v2.1",
+      "event_id": "open-world-clock",
+      "world_id": "world-v2-life-test",
+      "event_type": "ClockAdvanced",
+      "logical_time": "2026-07-19T11:59:00Z",
+      "created_at": "2026-07-19T11:59:00Z",
+      "actor": "system:life-test",
+      "source": "life-test",
+      "trace_id": "trace:life",
+      "causation_id": "cause:open-world-clock",
+      "correlation_id": "correlation:life",
+      "idempotency_key": "identity:open-world-clock",
+      "payload_json": "{\"logical_time_from\":\"2026-07-19T11:58:00+00:00\",\"logical_time_to\":\"2026-07-19T11:59:00+00:00\"}",
+      "payload_hash": "32dddc4d570b8f52d1573846b4a498c3faf86356ab0dc44da6f6e2a15271f40a"
+    },
+    {
+      "schema_version": "world-v2.1",
+      "event_id": "open-world-npc-observation",
+      "world_id": "world-v2-life-test",
+      "event_type": "OperatorObservationRecorded",
+      "logical_time": "2026-07-19T11:59:00Z",
+      "created_at": "2026-07-19T11:59:00Z",
+      "actor": "system:life-test",
+      "source": "life-test",
+      "trace_id": "trace:life",
+      "causation_id": "cause:open-world-npc-observation",
+      "correlation_id": "correlation:life",
+      "idempotency_key": "world-v2:OperatorObservationRecorded:96cd3eca941614f5fafc51311f6490cf3556ba14f00b7871541923e978c1b617",
+      "payload_json": "{\"observation_hash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"observation_id\":\"operator:open-world-npc\"}",
+      "payload_hash": "f79c6f1610600b65f7819d180644565d53524052983dcc7b3fd5cc83b98d4f8b"
+    },
+    {
+      "schema_version": "world-v2.1",
+      "event_id": "open-world-npc",
+      "world_id": "world-v2-life-test",
+      "event_type": "NpcRegistered",
+      "logical_time": "2026-07-19T11:59:00Z",
+      "created_at": "2026-07-19T11:59:00Z",
+      "actor": "system:life-test",
+      "source": "life-test",
+      "trace_id": "trace:life",
+      "causation_id": "cause:open-world-npc",
+      "correlation_id": "correlation:life",
+      "idempotency_key": "world-v2:NpcRegistered:18747029e68d73cd5c63667ed0aea999c555b2d514db66ec644938698b64ffd7",
+      "payload_json": "{\"change_id\":\"change:open-world-npc\",\"evidence_refs\":[{\"claim_purpose\":\"current_fact\",\"evidence_type\":\"operator_observation\",\"immutable_hash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"ref_id\":\"operator:open-world-npc\",\"source_world_revision\":null}],\"expected_entity_revision\":0,\"npc\":{\"accepted_event_ref\":null,\"current_location_ref\":null,\"effect_descriptor_hash\":null,\"entity_revision\":1,\"known_trait_refs\":[],\"npc_id\":\"lin\",\"privacy_class\":\"personal\",\"source_event_ref\":null,\"stable_identity_ref\":\"identity:lin\",\"status\":\"active\"},\"policy_refs\":[\"policy:life-v1\"],\"transition_id\":\"transition:open-world-npc\"}",
+      "payload_hash": "87b82d5a456d35f1cf8672e31c44fe7db99c96505f1fe5acbd41fe04514bb1cd"
+    },
+    {
+      "schema_version": "world-v2.1",
+      "event_id": "open-world-plan",
+      "world_id": "world-v2-life-test",
+      "event_type": "ActivityPlanned",
+      "logical_time": "2026-07-19T11:59:00Z",
+      "created_at": "2026-07-19T11:59:00Z",
+      "actor": "system:life-test",
+      "source": "life-test",
+      "trace_id": "trace:life",
+      "causation_id": "cause:open-world-plan",
+      "correlation_id": "correlation:life",
+      "idempotency_key": "world-v2:ActivityPlanned:5092cfaf7726aa00292e12e46bcf16fb91139354f2fc26b11ad1fdd2c2608000",
+      "payload_json": "{\"change_id\":\"change:open-world-plan\",\"evidence_refs\":[{\"claim_purpose\":\"future_plan\",\"evidence_type\":\"committed_world_event\",\"immutable_hash\":\"32dddc4d570b8f52d1573846b4a498c3faf86356ab0dc44da6f6e2a15271f40a\",\"ref_id\":\"open-world-clock\",\"source_world_revision\":1}],\"expected_entity_revision\":0,\"plan\":{\"activity_id\":\"activity:open-world\",\"activity_kind\":\"social:coffee\",\"authority_origin\":null,\"entity_revision\":1,\"evidence_refs\":[{\"claim_purpose\":\"future_plan\",\"evidence_type\":\"committed_world_event\",\"immutable_hash\":\"32dddc4d570b8f52d1573846b4a498c3faf86356ab0dc44da6f6e2a15271f40a\",\"ref_id\":\"open-world-clock\",\"source_world_revision\":1}],\"goal_ref\":null,\"importance_bp\":3000,\"last_transitioned_at\":null,\"location_ref\":\"location:cafe\",\"owner_actor_ref\":\"actor:companion\",\"participant_refs\":[\"npc:lin\"],\"plan_id\":\"plan:open-world\",\"privacy_class\":\"personal\",\"scheduled_window\":{\"closes_at\":\"2026-07-19T12:30:00Z\",\"opens_at\":\"2026-07-19T11:59:00Z\"},\"status\":\"planned\",\"supersedes_plan_id\":null,\"terminal_reason_ref\":null},\"policy_refs\":[\"policy:life-v1\"],\"transition_id\":\"transition:open-world-plan\"}",
+      "payload_hash": "dc013f2f8260533ef74500aac66769f0073203858fc8e4f9f715cc61567bd514"
+    },
+    {
+      "schema_version": "world-v2.1",
+      "event_id": "open-world-start",
+      "world_id": "world-v2-life-test",
+      "event_type": "ActivityStarted",
+      "logical_time": "2026-07-19T11:59:00Z",
+      "created_at": "2026-07-19T11:59:00Z",
+      "actor": "system:life-test",
+      "source": "life-test",
+      "trace_id": "trace:life",
+      "causation_id": "cause:open-world-start",
+      "correlation_id": "correlation:life",
+      "idempotency_key": "world-v2:ActivityStarted:77ad218a4349c73be3d37a2121d4c031616d656efb8b0a6e194013e48445729f",
+      "payload_json": "{\"change_id\":\"change:open-world-start\",\"evidence_refs\":[{\"claim_purpose\":\"future_plan\",\"evidence_type\":\"committed_world_event\",\"immutable_hash\":\"32dddc4d570b8f52d1573846b4a498c3faf86356ab0dc44da6f6e2a15271f40a\",\"ref_id\":\"open-world-clock\",\"source_world_revision\":1}],\"expected_entity_revision\":1,\"plan_id\":\"plan:open-world\",\"policy_refs\":[\"policy:life-v1\"],\"reason_ref\":\"activity:started\",\"transition_id\":\"transition:open-world-start\",\"transitioned_at\":\"2026-07-19T11:59:00+00:00\"}",
+      "payload_hash": "9b00aba7463e4aa248225a9a482bf7ad4d6de1e6e30833dc3e902f53a8b572a6"
+    },
+    {
+      "schema_version": "world-v2.1",
+      "event_id": "event:open-world-event:proposal:05d6692c160b6ddebc573f89df87d9f4249dc709283073651097a3c4821ff275",
+      "world_id": "world-v2-life-test",
+      "event_type": "ProposalRecorded",
+      "logical_time": "2026-07-19T11:59:00Z",
+      "created_at": "2026-07-19T11:59:00Z",
+      "actor": "worker:world-v2:open-world-event",
+      "source": "world-v2:open-world-event",
+      "trace_id": "trace:legacy-paid-attention",
+      "causation_id": "open-world-start",
+      "correlation_id": "corr:legacy-paid-attention",
+      "idempotency_key": "open-world-event-proposal:05d6692c160b6ddebc573f89df87d9f4249dc709283073651097a3c4821ff275",
+      "payload_json": "{\"evaluated_world_revision\":4,\"event_kind\":\"noticed_small_thing\",\"location_token\":\"location:cafe\",\"model\":\"paid-turn:test\",\"moment_hash\":\"9025ae5cd8f694b2c50949e6cbb6c504b3023a4f9b90e66217ff61cdb05a9295\",\"moment_ref\":\"content:open-world-moment:9083d5c101ac0b1c1214973a223dfe8c86e2e37796297d46149ada733bb33f31\",\"moment_scope\":\"subjective\",\"participant_tokens\":[\"npc:lin\"],\"privacy\":\"personal\",\"proposal_id\":\"proposal:open-world-event:f937dbf2fea6dcbedef97c749c3376ff322d50f9577fdf1e1791c6178ff9e7d2\",\"proposal_kind\":\"open_world_event\",\"raw_output_hash\":\"sha256:cb6299c02d74eae6eab621fd6ae59623b38909fd841cc5a19cc2a25ceb60a1e7\",\"situation_token\":\"situation:b12d67bbd1a3b99aaf431fe63188f5ab8624aeded2eeec391c4b43a4b1c1304e\",\"trigger_id\":\"open-world-start\",\"wake_event_payload_hash\":\"9b00aba7463e4aa248225a9a482bf7ad4d6de1e6e30833dc3e902f53a8b572a6\",\"wake_event_ref\":\"open-world-start\"}",
+      "payload_hash": "c59ae60cf5d36620bca1a1579eeb4e2f5566009bc9fc927e490a2423de404697"
+    },
+    {
+      "schema_version": "world-v2.1",
+      "event_id": "event:open-world-event:committed:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b",
+      "world_id": "world-v2-life-test",
+      "event_type": "WorldOccurrenceCommitted",
+      "logical_time": "2026-07-19T11:59:00Z",
+      "created_at": "2026-07-19T11:59:00Z",
+      "actor": "worker:world-v2:open-world-event",
+      "source": "world-v2:open-world-event",
+      "trace_id": "trace:legacy-paid-attention",
+      "causation_id": "event:open-world-event:proposal:05d6692c160b6ddebc573f89df87d9f4249dc709283073651097a3c4821ff275",
+      "correlation_id": "corr:legacy-paid-attention",
+      "idempotency_key": "world-v2:WorldOccurrenceCommitted:97bb7a428782a7b0db1cc18092a80deea751339eb567bc492cc5621589380f00",
+      "payload_json": "{\"change_id\":\"change:open-world-event:commit:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b\",\"evidence_refs\":[{\"claim_purpose\":\"current_fact\",\"evidence_type\":\"committed_world_event\",\"immutable_hash\":\"9b00aba7463e4aa248225a9a482bf7ad4d6de1e6e30833dc3e902f53a8b572a6\",\"ref_id\":\"open-world-start\",\"source_world_revision\":4}],\"expected_entity_revision\":0,\"occurrence\":{\"activated_at\":null,\"candidate_outcome_refs\":[\"candidate:open-world:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:1\",\"candidate:open-world:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:2\",\"candidate:open-world:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:3\"],\"candidate_outcomes\":[{\"candidate_result_ref\":\"candidate:open-world:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:1\",\"causal_authority\":\"character_choice\",\"content_payload_hash\":\"9025ae5cd8f694b2c50949e6cbb6c504b3023a4f9b90e66217ff61cdb05a9295\",\"content_ref\":\"content:open-world-result:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:1\",\"dynamic_life_arc_context\":null,\"life_arc_effect\":null,\"objective_biographical_transition\":null,\"privacy_class\":\"personal\",\"provisional_npc_introductions\":[],\"relative_plausibility_weight\":1,\"result_id\":\"result:open-world:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:1\",\"result_payload_hash\":\"9025ae5cd8f694b2c50949e6cbb6c504b3023a4f9b90e66217ff61cdb05a9295\",\"result_payload_ref\":\"content:open-world-result:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:1\"},{\"candidate_result_ref\":\"candidate:open-world:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:2\",\"causal_authority\":\"character_choice\",\"content_payload_hash\":\"b116110011aa9a6bfdc540573be2c47177b5577b5c77d12c6d26f517a30a0d07\",\"content_ref\":\"content:open-world-result:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:2\",\"dynamic_life_arc_context\":null,\"life_arc_effect\":null,\"objective_biographical_transition\":null,\"privacy_class\":\"personal\",\"provisional_npc_introductions\":[],\"relative_plausibility_weight\":1,\"result_id\":\"result:open-world:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:2\",\"result_payload_hash\":\"b116110011aa9a6bfdc540573be2c47177b5577b5c77d12c6d26f517a30a0d07\",\"result_payload_ref\":\"content:open-world-result:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:2\"},{\"candidate_result_ref\":\"candidate:open-world:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:3\",\"causal_authority\":\"character_choice\",\"content_payload_hash\":\"1cce812d8965bf1857258aa8dce4973193f28ad6e3062332bce299583780a441\",\"content_ref\":\"content:open-world-result:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:3\",\"dynamic_life_arc_context\":null,\"life_arc_effect\":null,\"objective_biographical_transition\":null,\"privacy_class\":\"personal\",\"provisional_npc_introductions\":[],\"relative_plausibility_weight\":1,\"result_id\":\"result:open-world:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:3\",\"result_payload_hash\":\"1cce812d8965bf1857258aa8dce4973193f28ad6e3062332bce299583780a441\",\"result_payload_ref\":\"content:open-world-result:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:3\"}],\"entity_revision\":1,\"location_ref\":\"location:cafe\",\"observation_refs\":[],\"occurrence_id\":\"occurrence:open-world:25c78cb8b55dd0bfcb0bcd99e3f4c7e0acc752e473199f83c862e0b6100ffbe1\",\"participant_refs\":[\"actor:companion\",\"npc:lin\"],\"precondition_refs\":[],\"result_id\":null,\"result_payload_hash\":null,\"result_payload_ref\":null,\"satisfied_precondition_refs\":[],\"settled_at\":null,\"settled_dynamic_life_direction_adopted\":null,\"settled_outcome_ref\":null,\"settlement_event_ref\":null,\"settlement_payload_hash\":null,\"settlement_world_revision\":null,\"status\":\"committed\",\"terminal_reason_ref\":null,\"time_window\":{\"closes_at\":\"2026-07-19T12:14:00Z\",\"opens_at\":\"2026-07-19T11:59:00Z\"},\"trigger_ref\":\"open-world:open-world-start\",\"visibility\":\"personal\"},\"policy_refs\":[\"policy:open-world-event-v1\",\"event-kind:noticed_small_thing\",\"proposal:event:open-world-event:proposal:05d6692c160b6ddebc573f89df87d9f4249dc709283073651097a3c4821ff275\"],\"transition_id\":\"transition:open-world-event:commit:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b\"}",
+      "payload_hash": "2d66931c3a54f991792e785360d14e5e8528576c5bd54ab9b8f3f8206fa6e21c"
+    },
+    {
+      "schema_version": "world-v2.1",
+      "event_id": "event:open-world-event:activated:fcaf4eae4849e7d26ac85cf39bcef5fadc58233dbd908a6f0cf268caf2224481",
+      "world_id": "world-v2-life-test",
+      "event_type": "WorldOccurrenceActivated",
+      "logical_time": "2026-07-19T11:59:00Z",
+      "created_at": "2026-07-19T11:59:00Z",
+      "actor": "worker:world-v2:open-world-event",
+      "source": "world-v2:open-world-event",
+      "trace_id": "trace:legacy-paid-attention",
+      "causation_id": "occurrence:open-world:25c78cb8b55dd0bfcb0bcd99e3f4c7e0acc752e473199f83c862e0b6100ffbe1",
+      "correlation_id": "corr:legacy-paid-attention",
+      "idempotency_key": "world-v2:WorldOccurrenceActivated:89a102da864b94f74c7fe38a5645380cb1d5ad4210c1759851ea63fc83dfa0a6",
+      "payload_json": "{\"activated_at\":\"2026-07-19T11:59:00Z\",\"change_id\":\"change:open-world-event:activate:fcaf4eae4849e7d26ac85cf39bcef5fadc58233dbd908a6f0cf268caf2224481\",\"evidence_refs\":[{\"claim_purpose\":\"current_fact\",\"evidence_type\":\"committed_world_event\",\"immutable_hash\":\"9b00aba7463e4aa248225a9a482bf7ad4d6de1e6e30833dc3e902f53a8b572a6\",\"ref_id\":\"open-world-start\",\"source_world_revision\":4}],\"expected_entity_revision\":1,\"occurrence_id\":\"occurrence:open-world:25c78cb8b55dd0bfcb0bcd99e3f4c7e0acc752e473199f83c862e0b6100ffbe1\",\"policy_refs\":[\"policy:open-world-event-v1\"],\"satisfied_precondition_refs\":[],\"transition_id\":\"transition:open-world-event:activate:fcaf4eae4849e7d26ac85cf39bcef5fadc58233dbd908a6f0cf268caf2224481\"}",
+      "payload_hash": "a620e17466080c3eccf17743f6f519cd13f14cf4a98d011284a12b3fa66fa7c5"
+    }
+  ],
+  "content": [
+    {
+      "content_ref": "content:open-world-moment:9083d5c101ac0b1c1214973a223dfe8c86e2e37796297d46149ada733bb33f31",
+      "content_kind": "outcome_candidate",
+      "content_payload_hash": "9025ae5cd8f694b2c50949e6cbb6c504b3023a4f9b90e66217ff61cdb05a9295",
+      "text": "她在门口看见一只猫停了一会儿，顺手记下了这个小插曲。"
+    },
+    {
+      "content_ref": "content:open-world-result:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:1",
+      "content_kind": "outcome_candidate",
+      "content_payload_hash": "9025ae5cd8f694b2c50949e6cbb6c504b3023a4f9b90e66217ff61cdb05a9295",
+      "text": "她在门口看见一只猫停了一会儿，顺手记下了这个小插曲。"
+    },
+    {
+      "content_ref": "content:open-world-result:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:2",
+      "content_kind": "outcome_candidate",
+      "content_payload_hash": "b116110011aa9a6bfdc540573be2c47177b5577b5c77d12c6d26f517a30a0d07",
+      "text": "这件事没有继续扩大，后来很快恢复了原本的节奏。"
+    },
+    {
+      "content_ref": "content:open-world-result:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b:3",
+      "content_kind": "outcome_candidate",
+      "content_payload_hash": "1cce812d8965bf1857258aa8dce4973193f28ad6e3062332bce299583780a441",
+      "text": "她没有马上处理，但在晚些时候还会想起这个小插曲。"
+    }
+  ],
+  "batches": [
+    [
+      "open-world-clock"
+    ],
+    [
+      "open-world-npc-observation",
+      "open-world-npc"
+    ],
+    [
+      "open-world-plan",
+      "open-world-start"
+    ],
+    [
+      "event:open-world-event:proposal:05d6692c160b6ddebc573f89df87d9f4249dc709283073651097a3c4821ff275"
+    ],
+    [
+      "event:open-world-event:committed:a100ee2e5e705785904100ba6c8038f65528a65fa6dc0bef9f127159ade8e31b"
+    ],
+    [
+      "event:open-world-event:activated:fcaf4eae4849e7d26ac85cf39bcef5fadc58233dbd908a6f0cf268caf2224481"
+    ]
+  ]
+}

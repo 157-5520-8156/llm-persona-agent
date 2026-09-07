@@ -4165,7 +4165,6 @@ def build_sqlite_world_v2_turn_application(
                 config.perception_worker_owner if perception_trigger_runtime is not None else None
             ),
             perception_trigger_runtime=perception_trigger_runtime,
-            open_world_event=open_world_event,
         )
         media_execution = MediaExecutionRuntime(
             ledger=ledger,
@@ -4271,7 +4270,6 @@ def build_sqlite_world_v2_turn_application(
                     ledger=ledger, batch_issuer=issuer
                 ),
                 ecology_catalog_version=config.life_ecology.catalog_version,
-                open_world_event=open_world_event,
                 plan_material_reader=LifeDevelopmentProposalReader(
                     ledger=ledger,
                     content_store=life_content_store,
