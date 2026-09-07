@@ -2302,6 +2302,17 @@ class QQC2CHost:
         background_remaining = max_background_units
         priority_action_ids: list[str] = []
         heartbeat_life_wake: tuple[str, str, str] | None = None
+        # Import after composition: the registry itself names this host's
+        # public seams. Use its actual owner, not another scheduler kind list.
+        from .delayed_trigger_owner_registry import DELAYED_TRIGGER_OWNERS
+        from .life_ecology_runtime import LifeEcologyRuntime
+
+        life_wake_kinds = {
+            owner.mechanism_id
+            for owner in DELAYED_TRIGGER_OWNERS
+            if owner.runtime_owner is LifeEcologyRuntime.advance_once
+            and owner.trigger_mode == "clock_due"
+        }
 
         def remember_priority_actions(result: object) -> bool:
             candidates: list[str] = []
@@ -2448,8 +2459,14 @@ class QQC2CHost:
                     ),
                     None,
                 )
-                life_due_target = (
-                    tick_target if selected_due.kind == "life.ecology" else None
+                life_due_reached = any(
+                    item.kind in life_wake_kinds
+                    and item.due_at <= tick_target
+                    and (
+                        item.wake_policy == "wall_catchup"
+                        or item.due_at > logical_from
+                    )
+                    for item in wake_dues
                 )
                 initiative_due_target = next(
                     (
@@ -2477,7 +2494,7 @@ class QQC2CHost:
                     raise RuntimeError("QQ C2C scheduler clock was not accepted")
                 remember_priority_actions(outcome)
                 logical_from = tick_target
-                if tick_target == life_due_target:
+                if life_due_reached:
                     heartbeat_life_wake = (
                         tick_id,
                         f"trace:qq-c2c-v2:{tick_id}",
@@ -2489,6 +2506,10 @@ class QQC2CHost:
                     initiative_due_target,
                 }:
                     reached_technical_retry = True
+                    break
+                if life_due_reached:
+                    # Let the owner consume this exact boundary before the
+                    # next clock advance can pass another activity opening.
                     break
         # Re-enter the scheduled-work lane only after releasing ``_lock``.
         # ``priority_action_ids`` are immutable hints from committed outcomes,
