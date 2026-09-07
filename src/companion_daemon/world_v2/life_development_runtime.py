@@ -50,6 +50,7 @@ from .life_development_draft import (
     LifeDevelopmentDraftError,
     LifeDevelopmentLocationCapability,
     LifeDevelopmentNoOpDraft,
+    LifeDevelopmentNpcPrivacyFloor,
     LifeDevelopmentOutcomeDraft,
     LifeDevelopmentPossibilityDraft,
     LifeDevelopmentVisualEvidenceDraft,
@@ -1850,6 +1851,7 @@ class LifeDevelopmentRuntime:
             character_decision = await self._character_initial_choice(
                 draft=draft,
                 offered_window=offered_window,
+                npc_privacy_floors=world_manifest.npc_privacy_floors,
                 active_aspiration_source_refs=(world_manifest.active_aspiration_source_refs),
                 purpose_context=InteriorPurposeContext(
                     inner_turn_ref=f"life-development:{proposal_id}:initial",
@@ -5206,6 +5208,7 @@ class LifeDevelopmentRuntime:
         draft: LifeDevelopmentPossibilityDraft,
         offered_window: DueWindow,
         active_aspiration_source_refs: tuple[str, ...],
+        npc_privacy_floors: tuple[LifeDevelopmentNpcPrivacyFloor, ...] | None = None,
     ) -> dict[str, object]:
         output_contract = {
             "no_op": {"decision": "no_op"},
@@ -5221,6 +5224,18 @@ class LifeDevelopmentRuntime:
                 "opens_at": offered_window.opens_at.isoformat(),
                 "closes_at": offered_window.closes_at.isoformat(),
                 "participant_refs": list(draft.entity_refs),
+                **(
+                    {
+                        "npc_privacy_floors": [
+                            item.model_dump(mode="json")
+                            for item in npc_privacy_floors
+                            if item.npc_ref in draft.entity_refs
+                        ],
+                        "privacy_class": draft.privacy_class,
+                    }
+                    if npc_privacy_floors is not None
+                    else {}
+                ),
             },
             "active_aspiration_source_refs": list(active_aspiration_source_refs),
             "output_contract": output_contract,
@@ -5235,11 +5250,13 @@ class LifeDevelopmentRuntime:
         offered_window: DueWindow,
         active_aspiration_source_refs: tuple[str, ...],
         purpose_context: InteriorPurposeContext,
+        npc_privacy_floors: tuple[LifeDevelopmentNpcPrivacyFloor, ...] | None = None,
     ) -> InnerDecision:
         capability = self._character_choice_capability(
             draft=draft,
             offered_window=offered_window,
             active_aspiration_source_refs=active_aspiration_source_refs,
+            npc_privacy_floors=npc_privacy_floors,
         )
         return await self._consider_character_choice(
             capability=capability,
@@ -6374,7 +6391,11 @@ def _world_author_hard_boundary_contract(
         capability.model_dump(mode="json") for capability in manifest.location_capabilities
     ]
     return {
-        "contract_version": "life-development-world-author-authority.6",
+        "contract_version": (
+            "life-development-world-author-authority.7"
+            if manifest.npc_privacy_floors is not None
+            else "life-development-world-author-authority.6"
+        ),
         "canonical_reference_arrays": {
             "duplicates": "discarded_as_set_equivalent",
             "normal_form": "lexicographic_ascending",
@@ -6450,6 +6471,18 @@ def _world_author_hard_boundary_contract(
         "privacy_lattice": {
             "ordered_least_to_most_restrictive": privacy_order,
             "requirements": [
+                *(
+                    [
+                        {
+                            "when": "proposal.entity_refs contains an NPC ref",
+                            "left": "proposal.privacy_class",
+                            "relation": "rank_greater_than_or_equal",
+                            "right": "each referenced NPC's pinned privacy_class",
+                        }
+                    ]
+                    if manifest.npc_privacy_floors is not None
+                    else []
+                ),
                 {
                     "when": "proposal.location_capability_ref is present",
                     "left": "proposal.privacy_class",
@@ -6479,6 +6512,15 @@ def _world_author_hard_boundary_contract(
             "allowed_outcome_privacy_by_proposal_privacy": allowed_outcomes,
             "allowed_visual_outcome_privacy_by_proposal_privacy": (allowed_visual_outcomes),
             "location_capability_privacy_envelopes": location_privacy_envelopes,
+            **(
+                {
+                    "npc_privacy_floors": [
+                        item.model_dump(mode="json") for item in manifest.npc_privacy_floors
+                    ],
+                }
+                if manifest.npc_privacy_floors is not None
+                else {}
+            ),
             "recipient_unbound_visual_compatibility": {
                 "compatible_proposal_privacy": list(ORDINARY_LIFE_PHOTO_PRIVACY),
                 "compatible_location_capability_privacy": list(ORDINARY_LIFE_PHOTO_PRIVACY),

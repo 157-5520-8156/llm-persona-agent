@@ -283,6 +283,13 @@ class LifeDevelopmentNpcCapability(FrozenModel):
         return self
 
 
+class LifeDevelopmentNpcPrivacyFloor(FrozenModel):
+    """Pinned NPC privacy, available even without an identity descriptor."""
+
+    npc_ref: str = Field(pattern=r"^npc:")
+    privacy_class: PrivacyClass
+
+
 class LifeDevelopmentCapabilityManifest(FrozenModel):
     """Pinned-input capability facts, never a menu of story choices."""
 
@@ -299,6 +306,11 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
     entity_refs: tuple[str, ...] = ()
     npc_capabilities: tuple[LifeDevelopmentNpcCapability, ...] = Field(
         default=(), exclude_if=lambda value: not value
+    )
+    # None preserves the exact identity of historical manifests that did not
+    # carry this authority. New compilers supply every offered NPC's floor.
+    npc_privacy_floors: tuple[LifeDevelopmentNpcPrivacyFloor, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
     )
     biographical_context_tags: tuple[str, ...] = Field(
         default=(), exclude_if=lambda value: not value
@@ -354,6 +366,11 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
             raise ValueError("NPC capability refs must be unique")
         if any(ref not in self.entity_refs for ref in npc_refs):
             raise ValueError("NPC capability must remain inside entity authority")
+        if self.npc_privacy_floors is not None:
+            floor_refs = tuple(item.npc_ref for item in self.npc_privacy_floors)
+            offered_npcs = tuple(ref for ref in self.entity_refs if ref.startswith("npc:"))
+            if floor_refs != offered_npcs:
+                raise ValueError("NPC privacy floors must exactly cover the offered NPC refs")
         return self
 
     @property
@@ -1152,6 +1169,30 @@ def parse_world_author_draft(
         raise LifeDevelopmentDraftError(
             "unsupported_entity_ref",
             "entity_refs contains a ref absent from the pinned capability manifest",
+        )
+    weaker_npc_floors = tuple(
+        item
+        for item in manifest.npc_privacy_floors or ()
+        if item.npc_ref in draft.entity_refs
+        and _PRIVACY_RANK[draft.privacy_class] < _PRIVACY_RANK[item.privacy_class]
+    )
+    if weaker_npc_floors:
+        raise LifeDevelopmentDraftError(
+            "npc_privacy_weakened",
+            "proposal privacy is weaker than a referenced NPC's pinned privacy floor",
+            violations=(
+                {
+                    "path": "privacy_class",
+                    "message": "proposal privacy must preserve every referenced NPC's privacy",
+                    "type": "npc_privacy_weakened",
+                },
+            ),
+            failure_context={
+                "proposal_privacy_class": draft.privacy_class,
+                "npc_privacy_floors": [
+                    item.model_dump(mode="json") for item in weaker_npc_floors
+                ],
+            },
         )
     if (
         draft.outcome_resolution_authority == "external_observation"

@@ -24,6 +24,7 @@ from companion_daemon.world_v2.life_development_draft import (
     LifeDevelopmentCapabilityManifest,
     LifeDevelopmentDraftError,
     LifeDevelopmentLocationCapability,
+    LifeDevelopmentNpcPrivacyFloor,
     LifeDevelopmentPossibilityDraft,
     parse_character_choice,
     parse_world_author_draft,
@@ -1615,6 +1616,116 @@ def _manifest(
     )
 
 
+def test_world_author_rejects_weaker_npc_privacy_before_review_or_character_choice() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    manifest = _manifest(wake, pinned_cursor=_projection_cursor(ledger)).model_copy(
+        update={
+            "entity_refs": ("npc:friend",),
+            "npc_privacy_floors": (
+                LifeDevelopmentNpcPrivacyFloor(npc_ref="npc:friend", privacy_class="personal"),
+            ),
+        }
+    )
+    raw = json.loads(
+        _location_bound_world_draft(
+            wake=wake,
+            capability=_location_capability(),
+            timing={"mode": "now", "duration_minutes": 30},
+            privacy_class="shareable",
+            causal_authority="character_choice",
+            outcome_resolution_authority="character_choice",
+        )
+    )
+    raw["entity_refs"] = ["npc:friend"]
+
+    with pytest.raises(LifeDevelopmentDraftError) as raised:
+        parse_world_author_draft(raw=json.dumps(raw), manifest=manifest, logical_time=NOW)
+
+    assert raised.value.code == "npc_privacy_weakened"
+    assert raised.value.failure_context["npc_privacy_floors"] == [
+        {"npc_ref": "npc:friend", "privacy_class": "personal"}
+    ]
+    assert raised.value.violations[0]["path"] == "privacy_class"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("replacement", ["private", "no_op", "shareable"])
+async def test_npc_privacy_failure_gets_one_author_reselection_with_visible_floors(
+    replacement: str,
+) -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    floors = (LifeDevelopmentNpcPrivacyFloor(npc_ref="npc:friend", privacy_class="personal"),)
+
+    class Compiler(_StaticManifestCompiler):
+        def compile(self, **kwargs):
+            manifest = super().compile(**kwargs)
+            return manifest.model_copy(
+                update={"entity_refs": ("npc:friend",), "npc_privacy_floors": floors}
+            )
+
+    def draft(privacy):
+        raw = json.loads(
+            _location_bound_world_draft(
+                wake=wake,
+                capability=_location_capability(),
+                timing={"mode": "now", "duration_minutes": 30},
+                privacy_class=privacy,
+                causal_authority="character_choice",
+                outcome_resolution_authority="character_choice",
+            )
+        )
+        raw["entity_refs"] = ["npc:friend"]
+        return json.dumps(raw)
+
+    world_author = _SequenceModel(
+        model="world-author",
+        outputs=(
+            draft("shareable"),
+            '{"decision":"no_op"}' if replacement == "no_op" else draft(replacement),
+        ),
+    )
+    character = _SequenceModel(model="character", outputs=('{"decision":"no_op"}',))
+    critic = _SequenceModel(
+        model="independent-critic", outputs=(_novel_origin_review(decision="supported"),)
+    )
+    runtime = LifeDevelopmentRuntime(
+        ledger=ledger,
+        content_store=InMemoryImmutableLifeContentStore(),
+        world_author=world_author,
+        character_interior=character,
+        novel_origin_critic=critic,
+        capsule_compiler=_PinnedCapsuleCompiler(ledger=ledger),
+        capability_manifest_compiler=Compiler(wake=wake),
+        owner_actor_ref=OWNER,
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=wake.event_id,
+        trace_id="trace:npc-privacy",
+        correlation_id="correlation:npc-privacy",
+    )
+
+    assert result.status == ("technical_failure" if replacement == "shareable" else "no_op")
+    assert world_author.calls == 2
+    assert character.consider_calls == int(replacement == "private")
+    assert critic.calls == int(replacement == "private")
+    initial = json.loads(world_author.messages[0][-1]["content"])
+    repair = json.loads(world_author.messages[1][-1]["content"])
+    assert repair["validation_failure"]["code"] == "npc_privacy_weakened"
+    assert initial["cross_field_authority"]["privacy_lattice"]["npc_privacy_floors"] == [
+        {"npc_ref": "npc:friend", "privacy_class": "personal"}
+    ]
+    if replacement == "private":
+        choice = json.loads(character.messages[0][-1]["content"])
+        assert choice["executable_envelope"]["npc_privacy_floors"] == [
+            {"npc_ref": "npc:friend", "privacy_class": "personal"}
+        ]
+        assert choice["external_opportunity"]["privacy_class"] == "private"
+    assert ledger.project().plans == ()
+
+
 def test_world_author_parser_accepts_only_the_strict_provider_rewrite_envelope() -> None:
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
     wake = _seed_clock(ledger)
@@ -1696,6 +1807,8 @@ def test_legacy_capability_manifest_hash_excludes_decoded_owner_sentinel() -> No
     )
 
     assert manifest.owner_actor_ref == "legacy:unknown-owner"
+    assert "npc_privacy_floors" not in manifest.model_dump(mode="json")
+    assert manifest.manifest_hash == "5efedbf6f99070a79ebd0149c30eacb41cfedae475041bf9fc7ffcca7bbe2eef"
     assert manifest.manifest_hash == _hash_json(
         manifest.model_dump(mode="json", exclude={"owner_actor_ref"})
     )

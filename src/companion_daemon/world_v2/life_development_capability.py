@@ -11,6 +11,7 @@ from .life_development_draft import (
     LifeDevelopmentCapabilityManifest,
     LifeDevelopmentLocationCapability,
     LifeDevelopmentNpcCapability,
+    LifeDevelopmentNpcPrivacyFloor,
 )
 from .npc_identity_view import npc_identity_views
 from .npc_relationship_view import npc_relationship_readings
@@ -264,7 +265,7 @@ class ProjectionLifeCapabilityManifestCompiler:
             )
         )
         return LifeDevelopmentCapabilityManifest(
-            version="life-development-capability.production.1",
+            version="life-development-capability.production.2",
             owner_actor_ref=self._owner,
             pinned_cursor=ProjectionCursor(
                 world_revision=getattr(projection, "world_revision"),
@@ -284,6 +285,14 @@ class ProjectionLifeCapabilityManifestCompiler:
                 )
             ),
             entity_refs=tuple(sorted(entity_refs)),
+            npc_privacy_floors=tuple(
+                LifeDevelopmentNpcPrivacyFloor(
+                    npc_ref=f"npc:{item.npc_id}",
+                    privacy_class=item.privacy_class,
+                )
+                for item in sorted(getattr(projection, "npcs", ()), key=lambda npc: npc.npc_id)
+                if f"npc:{item.npc_id}" in entity_refs
+            ),
             npc_capabilities=tuple(
                 LifeDevelopmentNpcCapability(
                     npc_ref=item.npc_ref,

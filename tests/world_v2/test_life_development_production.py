@@ -405,7 +405,11 @@ def test_projection_manifest_compiler_exposes_facts_and_affordances_without_stor
                 accepted_at=NOW,
             ),
         ),
-        npcs=(SimpleNamespace(npc_id="friend", status="active"),),
+        npcs=(
+            SimpleNamespace(npc_id="friend", status="active", privacy_class="personal"),
+            SimpleNamespace(npc_id="acquaintance", status="active", privacy_class="private"),
+            SimpleNamespace(npc_id="retired", status="retired", privacy_class="withhold"),
+        ),
         plans=(
             SimpleNamespace(
                 owner_actor_ref="actor:companion",
@@ -491,7 +495,11 @@ def test_projection_manifest_compiler_exposes_facts_and_affordances_without_stor
             closes_at=NOW + timedelta(days=2, hours=1),
         ),
     )
-    assert manifest.entity_refs == ("npc:friend",)
+    assert manifest.entity_refs == ("npc:acquaintance", "npc:friend")
+    assert manifest.model_dump(mode="json")["npc_privacy_floors"] == [
+        {"npc_ref": "npc:acquaintance", "privacy_class": "private"},
+        {"npc_ref": "npc:friend", "privacy_class": "personal"},
+    ]
 
     without_identity = ProjectionLifeCapabilityManifestCompiler(
         owner_actor_ref="actor:companion",
