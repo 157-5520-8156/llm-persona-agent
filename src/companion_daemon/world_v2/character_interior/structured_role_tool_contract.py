@@ -1353,26 +1353,27 @@ class StructuredRoleToolContracts:
             },
         }
 
-        branches: list[dict[str, object]] = []
-        for status in ("no_change", "transition"):
-            branches.append(
-                {
-                    "type": "object",
-                    "properties": {
-                        "status": {"type": "string", "enum": [status]},
-                        **deepcopy(proposal_branch_properties),
-                    },
-                    "required": [
-                        "status",
-                        "summary",
-                        "attended_source_refs",
-                        "decision",
-                        "recall_query",
-                        "proposals",
-                    ],
-                    "additionalProperties": False,
-                }
-            )
+        # Both statuses carry exactly the same complete proposal language.
+        # One enum preserves that union without transmitting its large Affect,
+        # relationship, aspiration, and experience schemas twice per request.
+        branches: list[dict[str, object]] = [
+            {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": ["no_change", "transition"]},
+                    **proposal_branch_properties,
+                },
+                "required": [
+                    "status",
+                    "summary",
+                    "attended_source_refs",
+                    "decision",
+                    "recall_query",
+                    "proposals",
+                ],
+                "additionalProperties": False,
+            }
+        ]
         if recall_allowed:
             branches.append(
                 {

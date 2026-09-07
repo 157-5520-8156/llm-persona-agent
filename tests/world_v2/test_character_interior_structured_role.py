@@ -2237,7 +2237,7 @@ def test_world_stimulus_tool_schema_keeps_no_change_and_transition_open() -> Non
     proposal_items = next(
         branch["properties"]["proposals"]["items"]
         for branch in branches
-        if branch["properties"]["status"]["enum"] == ["no_change"]
+        if "no_change" in branch["properties"]["status"]["enum"]
     )
     assert proposal_items["properties"]["proposal_type"]["const"] == (
         "world_stimulus_appraisal_result"
