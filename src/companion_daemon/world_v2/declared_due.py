@@ -81,6 +81,19 @@ class DeclaredDueTarget:
 
 
 @dataclass(frozen=True, slots=True)
+class SchedulerWakeSnapshot:
+    """Read-only clock and pending wakes, without claiming an atomic cursor.
+
+    Due owners are peeked independently, as in the production scheduler. A
+    caller must re-read after advancing or draining; only normal tick/claim
+    CAS authorizes work. Overdue targets retain their original wake policy.
+    """
+
+    logical_time: datetime | None
+    dues: tuple[DeclaredDueTarget, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _ProjectionExtractor:
     """One real read path from a projection into wake candidates."""
 
@@ -804,10 +817,9 @@ def assert_declared_due_wake_coverage() -> None:
 def assert_host_uses_declared_due_only(*, host_source: str | None = None) -> None:
     """AST gate: QQ scheduler must not keep a second handwritten due list.
 
-    Checks that ``_scheduler_once_serialized`` calls ``collect_clock_wake_dues``
-    with a computed-dict whose string keys equal ``COMPUTED_CLOCK_WAKE_KINDS``,
-    and that it does not call ``computed_due`` / ``select_clock_wake`` with an
-    inline due tuple of string kinds.
+    Checks that the public snapshot and scheduler use the same reader, whose
+    sole ``collect_clock_wake_dues`` call supplies the registered computed
+    keys. Neither caller may maintain an independent handwritten due list.
     """
 
     source = host_source
@@ -815,16 +827,13 @@ def assert_host_uses_declared_due_only(*, host_source: str | None = None) -> Non
         path = Path(__file__).resolve().parent / "qq_c2c_host.py"
         source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
-    scheduler_fn: ast.AsyncFunctionDef | ast.FunctionDef | None = None
+    methods: dict[str, ast.AsyncFunctionDef | ast.FunctionDef] = {}
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == "QQC2CHost":
             for item in node.body:
-                if (
-                    isinstance(item, (ast.AsyncFunctionDef, ast.FunctionDef))
-                    and item.name == "_scheduler_once_serialized"
-                ):
-                    scheduler_fn = item
-                    break
+                if isinstance(item, (ast.AsyncFunctionDef, ast.FunctionDef)):
+                    methods[item.name] = item
+    scheduler_fn = methods.get("_scheduler_once_serialized")
     if scheduler_fn is None:
         raise AssertionError("QQC2CHost._scheduler_once_serialized not found")
 
@@ -874,15 +883,34 @@ def assert_host_uses_declared_due_only(*, host_source: str | None = None) -> Non
             self.generic_visit(node)
 
     _Visitor().visit(scheduler_fn)
+    snapshot_fn = methods.get("scheduler_wake_snapshot")
+    reader_fn = methods.get("_read_scheduler_wake_snapshot")
+    if snapshot_fn is None or reader_fn is None:
+        raise AssertionError("scheduler and snapshot must share a collect_clock_wake_dues reader")
+    for caller in (scheduler_fn, snapshot_fn):
+        reader_calls = sum(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "self"
+            and node.func.attr == "_read_scheduler_wake_snapshot"
+            for node in ast.walk(caller)
+        )
+        if reader_calls != 1:
+            raise AssertionError(f"{caller.name} must call the shared wake reader exactly once")
+    _Visitor().visit(snapshot_fn)
+    if collect_calls:
+        raise AssertionError("collect_clock_wake_dues must live only in the shared wake reader")
+    _Visitor().visit(reader_fn)
 
     if len(collect_calls) != 1:
         raise AssertionError(
-            "QQC2CHost._scheduler_once_serialized must call collect_clock_wake_dues exactly once "
+            "QQC2CHost._read_scheduler_wake_snapshot must call collect_clock_wake_dues exactly once "
             f"(found {len(collect_calls)})"
         )
     if computed_due_calls:
         raise AssertionError(
-            "QQC2CHost._scheduler_once_serialized must not call computed_due; "
+            "QQC2CHost wake callers and reader must not call computed_due; "
             "pass peeks through collect_clock_wake_dues"
         )
     if forbidden_kind_lists:
@@ -937,6 +965,7 @@ __all__ = [
     "COMPUTED_CLOCK_WAKE_KINDS",
     "NON_WAKING_PROJECTION_DUE_FIELDS",
     "DeclaredDueTarget",
+    "SchedulerWakeSnapshot",
     "assert_declared_due_wake_coverage",
     "assert_host_uses_declared_due_only",
     "clock_wake_reason",

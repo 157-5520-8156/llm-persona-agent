@@ -80,7 +80,7 @@ from .external_world_perception.deployment import (
 from .external_world_perception.production_attention import (
     LiveAttentionChannelPort,
 )
-from .declared_due import collect_clock_wake_dues, select_clock_wake
+from .declared_due import SchedulerWakeSnapshot, collect_clock_wake_dues, select_clock_wake
 from .expression_episode_lifecycle import (
     ExpressionTechnicalNoticeCandidate,
     expression_episode_technical_notice_candidates,
@@ -2229,6 +2229,52 @@ class QQC2CHost:
             await self._action_due_wake.refresh()
         return result
 
+    async def scheduler_wake_snapshot(self) -> SchedulerWakeSnapshot:
+        """Peek the production wake set without advancing or draining work.
+
+        The ingress mutex keeps this read outside local clock commits. Owner
+        peeks remain independent ledger reads, not an authorization or an
+        atomic cross-process cursor; callers should re-read after each step.
+        """
+
+        self._require_open()
+        async with self._lock:
+            self._require_open()
+            logical_time = await self._host.current_logical_time()
+            return await self._read_scheduler_wake_snapshot(logical_time=logical_time)
+
+    async def _read_scheduler_wake_snapshot(
+        self, *, logical_time: datetime | None
+    ) -> SchedulerWakeSnapshot:
+        # Both callers own the short ingress/clock mutex. Already-admitted
+        # scheduler work may finish during close, so admission stays public.
+        due_projection_reader = getattr(self._host, "action_due_projection", None)
+        initiative_due_reader = getattr(self._host, "social_initiative_next_due", None)
+        private_impression_due_reader = getattr(self._host, "private_impression_next_due", None)
+        life_due_reader = getattr(self._host, "life_ecology_next_due", None)
+        due_projection = (
+            await due_projection_reader() if callable(due_projection_reader) else None
+        )
+        # Sole wake entry: projection extractors plus registered computed
+        # peeks, shared by public inspection and production scheduling.
+        dues = collect_clock_wake_dues(
+            due_projection,
+            computed={
+                "social.initiative.cadence": (
+                    await initiative_due_reader() if callable(initiative_due_reader) else None
+                ),
+                "private_impression.interval": (
+                    await private_impression_due_reader()
+                    if callable(private_impression_due_reader)
+                    else None
+                ),
+                "life.ecology": (
+                    await life_due_reader() if callable(life_due_reader) else None
+                ),
+            },
+        )
+        return SchedulerWakeSnapshot(logical_time=logical_time, dues=dues)
+
     async def _scheduler_once_serialized(
         self,
         *,
@@ -2271,11 +2317,7 @@ class QQC2CHost:
             return bool(candidates)
 
         due_projection_reader = getattr(self._host, "action_due_projection", None)
-        life_due_reader = getattr(self._host, "life_ecology_next_due", None)
         initiative_due_reader = getattr(self._host, "social_initiative_next_due", None)
-        private_impression_due_reader = getattr(
-            self._host, "private_impression_next_due", None
-        )
         retry_due_before_tick = None
         retry_logical_from = None
         # Slow/model-backed work is serialized only with other scheduled work.
@@ -2379,30 +2421,8 @@ class QQC2CHost:
             for _ in range(_MAX_EXACT_DUE_ADVANCES):
                 if logical_from is None:
                     break
-                due_projection = (
-                    await due_projection_reader() if callable(due_projection_reader) else None
-                )
-                # Sole wake entry: projection extractors + registered computed
-                # peeks.  Do not rebuild a kind list here — asserted by
-                # assert_host_uses_declared_due_only.
-                wake_dues = collect_clock_wake_dues(
-                    due_projection,
-                    computed={
-                        "social.initiative.cadence": (
-                            await initiative_due_reader()
-                            if callable(initiative_due_reader)
-                            else None
-                        ),
-                        "private_impression.interval": (
-                            await private_impression_due_reader()
-                            if callable(private_impression_due_reader)
-                            else None
-                        ),
-                        "life.ecology": (
-                            await life_due_reader() if callable(life_due_reader) else None
-                        ),
-                    },
-                )
+                wake_snapshot = await self._read_scheduler_wake_snapshot(logical_time=logical_from)
+                wake_dues = wake_snapshot.dues
                 selected_due = select_clock_wake(
                     after=logical_from,
                     through=tick_boundary,
