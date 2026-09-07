@@ -40,7 +40,7 @@ def test_present_hard_boundary_prompt_drops_mechanism_essays() -> None:
             "single_report_epistemic_scope": {"cannot_authorize": ["class_wide_assertion"]},
         }
     )
-    assert stub["contract"] == "expression-hard-boundaries.present.1"
+    assert stub["contract"] == "expression-hard-boundaries.present.2"
     assert stub["authority"] == "checked_after_expression"
     assert "private_turn_state" not in stub
     assert "single_report_epistemic_scope" not in stub

@@ -1027,7 +1027,7 @@ def ordered_json_dumps(value: object, *, key_order: tuple[str, ...] | None = Non
 
 
 def present_hard_boundary_prompt(manifest: Mapping[str, object]) -> dict[str, object]:
-    """Keep copyable tokens; drop the 6.5k mechanism essays from the model prompt."""
+    """Keep copyable tokens and their exact biography coordinates, without mechanism essays."""
 
     allowed = (
         "world_claim_source_refs",
@@ -1035,12 +1035,14 @@ def present_hard_boundary_prompt(manifest: Mapping[str, object]) -> dict[str, ob
         "companion_life_authority_availability",
     )
     stub: dict[str, object] = {
-        "contract": "expression-hard-boundaries.present.1",
+        "contract": "expression-hard-boundaries.present.2",
         "authority": "checked_after_expression",
     }
     for key in allowed:
         if key in manifest:
             stub[key] = manifest[key]
+    if manifest.get("biographical_coordinate_authority"):
+        stub["biographical_coordinate_authority"] = manifest["biographical_coordinate_authority"]
     return stub
 
 

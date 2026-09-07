@@ -8829,11 +8829,17 @@ def test_expression_prompt_exposes_machine_readable_hard_boundary_manifest() -> 
     user = json.loads(messages[1]["content"])
     boundary = user["expression_hard_boundaries"]
 
-    assert boundary["contract"] == "expression-hard-boundaries.present.1"
+    assert boundary["contract"] == "expression-hard-boundaries.present.2"
     assert boundary["authority"] == "checked_after_expression"
     assert "single_report_epistemic_scope" not in boundary
     assert "private_turn_state" not in boundary
-    assert "biographical_coordinate_authority" not in boundary
+    assert boundary["biographical_coordinate_authority"] == [{
+        "source_ref": "S1",
+        "scope": "current_world",
+        "field_path": "/age",
+        "logical_at": "2026-07-30T06:00:00+00:00",
+        "value": 21,
+    }]
     assert "response_expectation" not in boundary
     assert boundary["world_claim_source_refs"]["current_world"] == [
         "S1",
