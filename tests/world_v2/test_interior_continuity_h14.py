@@ -448,7 +448,12 @@ async def test_proactive_paid_residue_reaches_the_next_projection(
 async def test_production_private_impression_drain_does_not_call_the_model() -> None:
     called: list[str] = []
     driver = object.__new__(_CharacterInteriorBackgroundDriver)
+    async def recover_paid():
+        called.append("recover_paid")
+        return SimpleNamespace(status="idle")
+
     driver._private_impression = SimpleNamespace(
+        recover_paid_once=recover_paid,
         advance_due_once=lambda: called.append("advance") or SimpleNamespace(status="accepted")
     )
     driver._private_impression_opener = SimpleNamespace(
@@ -458,7 +463,7 @@ async def test_production_private_impression_drain_does_not_call_the_model() -> 
     result = await driver.drain_private_impression_once()
 
     assert result is None
-    assert called == []
+    assert called == ["recover_paid"]
 
 
 @pytest.mark.asyncio
@@ -599,6 +604,10 @@ async def test_paid_retention_resumes_its_persisted_proposal_after_storage_failu
         nonlocal failed
         if not failed and any(item.event_type == "PrivateImpressionAccepted" for item in events):
             failed = True
+            # Preserve an actual historical partial authority chain. Current
+            # paid writes are atomic; older ledgers still need this recovery.
+            from test_paid_retention_recovery import persist_legacy_prefix
+            persist_legacy_prefix(original_commit, ledger, events, 3, kwargs)
             raise OSError("storage failed before accepting the retained impression")
         return original_commit(ledger, events, **kwargs)
 

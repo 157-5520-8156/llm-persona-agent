@@ -294,7 +294,7 @@ def validate_commit_batch(
         reject_social_deferred_manifest_without_recorder(events)
         reject_external_perception_manifest_without_recorder(events)
     _reject_new_private_impression_without_role_reflection(events)
-    _validate_deliberation_audit_transaction(events)
+    atomic_paid_retention = _validate_deliberation_audit_transaction(events) == "paid_retention"
     _validate_life_development_location_authority_batch(events)
     _validate_npc_state_content_batch(events)
     _validate_acceptance_manifest_v2_batch(events)
@@ -420,7 +420,7 @@ def validate_commit_batch(
         typed_proposals.append((family, binding))
     if any(family.requires_separate_deliberation_commit for family, _ in typed_proposals) and any(
         event.event_type != "ProposalRecorded" for event in events
-    ):
+    ) and not atomic_paid_retention:
         raise ValueError("typed proposal requires a separate deliberation commit")
     authorized_appraisal_models = {
         "AppraisalAccepted": AppraisalAcceptedPayload,
@@ -686,7 +686,7 @@ def _validate_expression_receipt_lifecycle_batch(events: Sequence[WorldEvent]) -
             raise ValueError("expression_lifecycle.termination_cancellation_source_invalid")
 
 
-def _validate_deliberation_audit_transaction(events: Sequence[WorldEvent]) -> None:
+def _validate_deliberation_audit_transaction(events: Sequence[WorldEvent]) -> str | None:
     """Keep Phase-4A provider lineage and its optional Proposal indivisible."""
 
     if any(
@@ -866,7 +866,7 @@ def _validate_deliberation_audit_transaction(events: Sequence[WorldEvent]) -> No
         return
 
     proposal_index = len(model_indexes)
-    if len(events) not in {proposal_index + 1, proposal_index + 5} or v2_proposal_indexes != [
+    if len(events) not in {proposal_index + 1, proposal_index + 4, proposal_index + 5} or v2_proposal_indexes != [
         proposal_index
     ]:
         raise ValueError("validated model audit transaction requires one adjacent Proposal")
@@ -883,6 +883,45 @@ def _validate_deliberation_audit_transaction(events: Sequence[WorldEvent]) -> No
         or proposal.proposal_hash != final.proposal_hash
     ):
         raise ValueError("ProposalRecorded v2 does not bind the final model attempt")
+    if len(events) == proposal_index + 4:
+        typed_event, acceptance_event, accepted_event = events[proposal_index + 1 :]
+        if tuple(item.event_type for item in (typed_event, acceptance_event, accepted_event)) != (
+            "ProposalRecorded", "AcceptanceRecorded", "PrivateImpressionAccepted",
+        ):
+            raise ValueError("atomic paid retention transaction has invalid domain ordering")
+        typed = typed_event.payload()
+        acceptance = acceptance_event.payload()
+        accepted = accepted_event.payload()
+        recorded = RecordedModelResultAudit.model_validate_json(final.audit_json)
+        lineage = recorded.character_interior_lineage
+        if (
+            len(attempts) != 1
+            or not final.model_call_id.startswith("paid-inbound-impression:")
+            or final.parent_model_call_id is None
+            or lineage is None
+            or lineage.purpose != "private_impression_reflection"
+            or typed.get("proposal_kind") != "private_impression_transition"
+            or typed.get("source_model_result") != final.model_result_ref
+            or typed.get("source_capsule_id") != final.capsule_id
+            or typed.get("evaluated_world_revision") != final.evaluated_world_revision
+            or typed.get("reflection_contract") != "character-interior-private-impression-transition.1"
+            or typed.get("transition_kind") != "open"
+            or (typed.get("proposed_mutation") or {}).get("event_type") != "PrivateImpressionAccepted"
+            or (typed.get("proposed_mutation") or {}).get("payload_json") != accepted_event.payload_json
+            or acceptance.get("status") != "accepted"
+            or acceptance.get("proposal_id") != typed.get("proposal_id")
+            or acceptance.get("acceptance_id") != accepted.get("acceptance_id")
+            or acceptance.get("accepted_change_id") != typed.get("change_id")
+            or acceptance.get("accepted_change_hash") != typed.get("proposed_change_hash")
+            or acceptance.get("evaluated_world_revision") != final.evaluated_world_revision
+            or (accepted.get("impression") or {}).get("origin", {}).get("accepted_event_ref")
+            != accepted_event.event_id
+            or any(item.causation_id != final.trigger_ref
+                   for item in (typed_event, acceptance_event, accepted_event))
+            or not (typed_event.logical_time == acceptance_event.logical_time == accepted_event.logical_time)
+        ):
+            raise ValueError("atomic paid retention transaction is not fully pinned")
+        return "paid_retention"
     if len(events) == proposal_index + 5:
         outcome_event, acceptance_event, settlement_event, trigger_event = events[
             proposal_index + 1 :

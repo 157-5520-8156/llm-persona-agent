@@ -748,6 +748,11 @@ class _CharacterInteriorBackgroundDriver:
     async def drain_private_impression_once(self) -> object | None:
         if self._private_impression is None:
             return None
+        # Completing a persisted paid choice spends no model call and must
+        # survive disabled, idle-only, off-peak, or exhausted reflection gates.
+        recovery = await self._private_impression.recover_paid_once()
+        if recovery.status != "idle":
+            return recovery
         policy = getattr(self, "_private_impression_policy", None)
         if policy is None:
             policy = PrivateImpressionDrainPolicy(daily_model_call_limit=0)

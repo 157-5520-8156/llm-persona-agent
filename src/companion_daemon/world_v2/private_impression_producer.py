@@ -124,6 +124,25 @@ DEFAULT_PRIVATE_IMPRESSION_MIN_INTERVAL_SECONDS = 14_400
 DEFAULT_PRIVATE_IMPRESSION_IDLE_AFTER_USER_SECONDS = 1_800
 _PAID_INBOUND_MODEL_CALL_PREFIX = "paid-inbound-impression:"
 _PAID_TURN_MODEL_ID_PREFIX = "paid-turn:"
+_PAID_RECOVERY_REJECTED = "private_impression_paid_retention_recovery_rejected"
+_PAID_RECOVERY_PREFIX_CHANGED = "private_impression_paid_retention_recovery_prefix_changed"
+
+
+class _PaidRetentionPrefixChanged(ValueError):
+    """A historical partial write cannot reuse its old evaluation authority."""
+
+_PAID_RECOVERY_STORAGE_FAILED = "private_impression_paid_retention_recovery_storage_failed"
+_PAID_RECOVERY_SCAN_LIMIT = 64
+
+
+def _paid_recovery_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _paid_retention_attempt_id(source_ref: str, model_result_ref: str) -> str:
+    return "attempt:paid-inbound-impression:" + _digest(
+        {"source_event": source_ref, "model_result_ref": model_result_ref}
+    )
 _GATE_REASONS = (
     "daily_cap",
     "min_interval",
@@ -1059,6 +1078,18 @@ def private_impression_opportunity(projection) -> tuple[str, str] | None:
         for ref in impression.interpretation_refs
     }
     existing_triggers = {item.trigger_id for item in projection.trigger_processes}
+    # A paid role choice is already semantic authority, including while its
+    # storage completion is pending or technically rejected. Do not turn that
+    # failure into an independent reflection ask on the same accepted reading.
+    paid_change_ids = {
+        change["change_id"]
+        for audit in getattr(projection, "proposal_audits", ())
+        for proposal in (json.loads(audit.proposal_json),)
+        if (proposal.get("private_turn_state") or {}).get("keep_impression") is True
+        and (proposal.get("private_turn_state") or {}).get("stuck_with_me")
+        for change in proposal.get("proposed_changes", ())
+        if change.get("kind") == "appraisal_transition"
+    }
 
     def eligible(appraisal: object) -> str | None:
         origin = getattr(appraisal, "origin", None)
@@ -1070,7 +1101,7 @@ def private_impression_opportunity(projection) -> tuple[str, str] | None:
         ):
             return None
         trigger_id = private_impression_trigger_identity(projection.world_id, source_ref)
-        if trigger_id in existing_triggers:
+        if trigger_id in existing_triggers or getattr(origin, "change_id", None) in paid_change_ids:
             return None
         # Match exact emitted identities only for the candidate under review;
         # finding the newest opportunity does not require every old hypothesis.
@@ -1396,6 +1427,130 @@ class PrivateImpressionTriggerRuntime:
             contract_version=CAUSAL_OPPORTUNITY_CONTRACT_VERSION,
         )
         self._source = source
+        # These are accelerators over immutable ledger records, never a second
+        # source of work. A fresh runtime rebuilds them without a provider call.
+        self._paid_proposal_count = 0
+        self._paid_unscanned_ranges: list[tuple[int, int]] = []
+        self._paid_finished: set[str] = set()
+        self._paid_pending: dict[str, tuple[str, str]] = {}
+        self._paid_retry_after: dict[str, datetime] = {}
+
+    async def recover_paid_once(self) -> PrivateImpressionRunResult:
+        """Finish one persisted paid choice before any independent model gate.
+
+        The paid DecisionProposal itself is the outbox. No separate enqueue
+        write can be lost after the visible turn commits or during shutdown.
+        Old and newly appended audits are scanned incrementally, newest first.
+        """
+        projection = await _project(self._ledger)
+        count = len(projection.proposal_audits)
+        if count > self._paid_proposal_count:
+            self._paid_unscanned_ranges.append((self._paid_proposal_count, count))
+            self._paid_proposal_count = count
+        remaining = _PAID_RECOVERY_SCAN_LIMIT
+        while self._paid_unscanned_ranges and remaining:
+            start, stop = self._paid_unscanned_ranges.pop()
+            batch_start = max(start, stop - remaining)
+            if batch_start > start:
+                self._paid_unscanned_ranges.append((start, batch_start))
+            for audit in reversed(projection.proposal_audits[batch_start:stop]):
+                value = json.loads(audit.proposal_json)
+                state = value.get("private_turn_state") or {}
+                summary = state.get("stuck_with_me")
+                if state.get("keep_impression") is True and isinstance(summary, str) and summary.strip():
+                    self._paid_pending[audit.model_result_ref] = (audit.trigger_ref, summary)
+            remaining -= stop - batch_start
+        now = _paid_recovery_now()
+        for model_ref, (source_ref, summary) in tuple(self._paid_pending.items())[:_PAID_RECOVERY_SCAN_LIMIT]:
+            if model_ref in self._paid_finished:
+                self._paid_pending.pop(model_ref)
+                continue
+            attempt_id = _paid_retention_attempt_id(source_ref, model_ref)
+            failures = []
+            terminal = False
+            for audit in projection.model_result_audits:
+                if not audit.attempt_id.startswith(attempt_id):
+                    continue
+                failure = json.loads(audit.audit_json).get("failure_code")
+                if failure in {_PAID_RECOVERY_REJECTED, _PAID_RECOVERY_PREFIX_CHANGED}:
+                    terminal = True
+                    break
+                if failure == _PAID_RECOVERY_STORAGE_FAILED:
+                    failures.append(audit)
+            if terminal:
+                self._paid_finished.add(model_ref)
+                self._paid_pending.pop(model_ref)
+                continue
+            retry_after = self._paid_retry_after.get(model_ref)
+            if failures:
+                located = await _lookup(self._ledger, failures[-1].event_ref)
+                if located is not None:
+                    durable_due = located[0].created_at + timedelta(
+                        seconds=min(3600, 60 * 2 ** min(len(failures) - 1, 6))
+                    )
+                    retry_after = max(retry_after or durable_due, durable_due)
+            if retry_after is not None and now < retry_after:
+                # Round-robin infrastructure work; one delayed write must not
+                # starve another paid result behind it.
+                self._paid_pending[model_ref] = self._paid_pending.pop(model_ref)
+                continue
+            source = await _lookup(self._ledger, source_ref)
+            if source is None:
+                # Proposal audit authority already guarantees this immutable
+                # event. Missing physical storage must not become role silence.
+                raise ValueError("paid retention recovery source is unavailable")
+            # A paid audit can become visible before the same turn's typed
+            # appraisal transaction lands. It remains pending across that cut;
+            # absence at this instant is not a final authority rejection.
+            if await self._paid_appraisal_authority(
+                projection=projection, model_result_ref=model_ref,
+                source_event=source[0], reflection_summary=summary,
+            ) is None:
+                self._paid_pending[model_ref] = self._paid_pending.pop(model_ref)
+                continue
+            try:
+                accepted = await self.record_paid_inbound(
+                    keep_impression=True, reflection_summary=summary,
+                    model_result_ref=model_ref, source_event=source[0],
+                )
+            except ValueError as exc:
+                await self._record_failure_audit(
+                    source_event=source[0], attempt_id=attempt_id,
+                    failure_code=(
+                        _PAID_RECOVERY_PREFIX_CHANGED
+                        if isinstance(exc, _PaidRetentionPrefixChanged)
+                        else _PAID_RECOVERY_REJECTED
+                    ),
+                )
+                self._paid_finished.add(model_ref)
+                self._paid_pending.pop(model_ref)
+                return PrivateImpressionRunResult(
+                    trigger_id=source_ref, status="processed", work_status="technical_failure",
+                )
+            except Exception:
+                # Backoff uses host time because paid storage recovery must not
+                # require advancing the pinned World's clock to become due.
+                self._paid_retry_after[model_ref] = now + timedelta(
+                    seconds=min(3600, 60 * 2 ** min(len(failures), 6))
+                )
+                try:
+                    await self._record_failure_audit(
+                        source_event=source[0],
+                        attempt_id=f"{attempt_id}:recovery:{len(failures) + 1}",
+                        failure_code=_PAID_RECOVERY_STORAGE_FAILED, created_at=now,
+                    )
+                except Exception:
+                    _LOG.warning("paid retention recovery audit storage failed", exc_info=True)
+                return PrivateImpressionRunResult(
+                    trigger_id=source_ref, status="processed", work_status="technical_failure",
+                )
+            self._paid_finished.add(model_ref)
+            self._paid_pending.pop(model_ref)
+            if accepted is not None:
+                return PrivateImpressionRunResult(
+                    trigger_id=source_ref, status="processed", work_status="accepted",
+                )
+        return PrivateImpressionRunResult(trigger_id="", status="idle")
 
     async def record_paid_inbound(
         self,
@@ -1415,9 +1570,7 @@ class PrivateImpressionTriggerRuntime:
         if keep_impression is not True:
             return None
         projection = await _project(self._ledger)
-        attempt_id = "attempt:paid-inbound-impression:" + _digest(
-            {"source_event": source_event.event_id, "model_result_ref": model_result_ref}
-        )
+        attempt_id = _paid_retention_attempt_id(source_event.event_id, model_result_ref)
         bound = await self._paid_appraisal_authority(
             projection=projection, model_result_ref=model_result_ref,
             source_event=source_event, reflection_summary=reflection_summary,
@@ -1464,12 +1617,10 @@ class PrivateImpressionTriggerRuntime:
             # Accepted proposals leave the pending projection. Read immutable
             # acceptance history only on recovery, including later-released
             # impressions, rather than authoring the same decision again.
-            for ref in reversed(projection.committed_world_event_refs):
-                if ref.event_type != "PrivateImpressionAccepted":
-                    continue
-                prior = await _lookup(self._ledger, ref.event_id)
-                if prior is not None and prior[0].payload().get("source_model_result") == derived_ref:
-                    return ref.event_id
+            accepted_ref = await self._accepted_paid_impression(projection, derived_ref)
+            if accepted_ref is not None:
+                self._paid_finished.add(model_result_ref)
+                return accepted_ref
         if appraisal.status != "active":
             failure_code = "private_impression_paid_retention_appraisal_inactive"
             await self._record_failure_audit(
@@ -1484,11 +1635,37 @@ class PrivateImpressionTriggerRuntime:
             if len(pending) > 1:
                 raise ValueError("paid retention has ambiguous pending proposal authority")
             if pending:
-                return await self._accept_recorded_impression(
+                accepted_ref = await self._accept_recorded_impression(
                     payload=json.loads(pending[0].proposed_mutation.payload_json),
                     source_event=accepted[0],
                 )
-            return await self._accept(
+                self._paid_finished.add(model_result_ref)
+                return accepted_ref
+            existing_audit = next((item for item in projection.model_result_audits
+                                   if item.model_result_ref == derived_ref), None)
+            if existing_audit is not None:
+                # The reflection audit and semantic proposal were one atomic
+                # deliberation-only commit. Rebuild its *original* capsule;
+                # extra technical audits must not silently replace that pin.
+                located = await _lookup(self._ledger, existing_audit.event_ref)
+                if located is None or len(located[1].event_ids) != 2:
+                    raise ValueError("paid retention reflection audit commit is unavailable")
+                commit = located[1]
+                pinned = await _project_at(self._ledger, ProjectionCursor(
+                    world_revision=commit.world_revision,
+                    deliberation_revision=commit.deliberation_revision - 2,
+                    ledger_sequence=commit.ledger_sequence - 2,
+                ))
+                capsule = compile_private_impression_reflection_capsule(
+                    projection=pinned, appraisal=appraisal,
+                    identity_frame=self._identity_frame, world_id=self._ledger.world_id,
+                    content_reader=self._content_reader,
+                )
+                if (capsule.capsule_id != existing_audit.capsule_id
+                        or pinned.world_revision != projection.world_revision
+                        or pinned.logical_time != projection.logical_time):
+                    raise _PaidRetentionPrefixChanged("paid retention recorded reflection prefix changed")
+            accepted_ref = await self._accept(
                 appraisal=appraisal,
                 draft=draft,
                 capsule=capsule,
@@ -1498,13 +1675,33 @@ class PrivateImpressionTriggerRuntime:
                 attempt_id=attempt_id,
                 author_lineage=lineage,
                 character_interior_lineage=interior_lineage,
+                preserve_reflection_audit_cursor=True,
             )
+            self._paid_finished.add(model_result_ref)
+            return accepted_ref
         except Exception:
+            # The commit may have succeeded before its acknowledgement was
+            # lost, or a concurrent recovery may already be the CAS winner.
+            # Resolve that uncertainty from immutable effect authority first.
+            current = await _project(self._ledger)
+            accepted_ref = await self._accepted_paid_impression(current, derived_ref)
+            if accepted_ref is not None:
+                self._paid_finished.add(model_result_ref)
+                return accepted_ref
             await self._record_failure_audit(
                 source_event=source_event, attempt_id=attempt_id,
                 failure_code="private_impression_paid_retention_acceptance_failed",
             )
             raise
+
+    async def _accepted_paid_impression(self, projection, derived_ref: str) -> str | None:
+        for ref in reversed(projection.committed_world_event_refs):
+            if ref.event_type != "PrivateImpressionAccepted":
+                continue
+            prior = await _lookup(self._ledger, ref.event_id)
+            if prior is not None and prior[0].payload().get("source_model_result") == derived_ref:
+                return ref.event_id
+        return None
 
     async def _paid_appraisal_authority(
         self, *, projection, model_result_ref, source_event, reflection_summary,
@@ -2110,12 +2307,13 @@ class PrivateImpressionTriggerRuntime:
         author_lineage: _InteriorAuthorLineage | None = None,
         character_interior_lineage: RecordedCharacterInteriorTurnLineage | None = None,
         reflection_contract: str = "character-interior-private-impression-transition.1",
+        preserve_reflection_audit_cursor: bool = False,
     ) -> str:
         """Record the typed proposal, then drive the existing acceptance seam."""
 
         if author_lineage is None or character_interior_lineage is None:
             raise ValueError("private impression acceptance requires author lineage")
-        before = await self._record_character_interior_reflection_audit(
+        audited = await self._record_character_interior_reflection_audit(
             draft=draft,
             capsule=capsule,
             source_event=source_event,
@@ -2123,8 +2321,35 @@ class PrivateImpressionTriggerRuntime:
             attempt_id=attempt_id,
             author_lineage=author_lineage,
             character_interior_lineage=character_interior_lineage,
+            defer_commit=preserve_reflection_audit_cursor,
         )
+        paid_audit_events: tuple[WorldEvent, ...] = ()
+        if preserve_reflection_audit_cursor:
+            before, paid_audit_events = audited
+        else:
+            before = audited
         cursor = _cursor(before)
+        identity_cursor = cursor
+        if paid_audit_events:
+            # Preserve the historical identity formula while committing the
+            # complete new materialization atomically. Both audit events are
+            # deliberation-only and precede the typed mutation in the batch.
+            identity_cursor = ProjectionCursor(
+                world_revision=cursor.world_revision,
+                deliberation_revision=cursor.deliberation_revision + len(paid_audit_events),
+                ledger_sequence=cursor.ledger_sequence + len(paid_audit_events),
+            )
+        elif preserve_reflection_audit_cursor:
+            recorded = await _lookup(
+                self._ledger, f"event:private-impression:model-result:{model_result_ref}"
+            )
+            if recorded is None:
+                raise ValueError("paid retention requires its persisted reflection audit")
+            identity_cursor = ProjectionCursor(
+                world_revision=recorded[1].world_revision,
+                deliberation_revision=recorded[1].deliberation_revision,
+                ledger_sequence=recorded[1].ledger_sequence,
+            )
         logical_time = before.logical_time
         if logical_time is None:
             raise ValueError("private impression acceptance requires authoritative time")
@@ -2150,7 +2375,7 @@ class PrivateImpressionTriggerRuntime:
                 "transition_kind": transition_kind,
                 "predecessor_refs": list(draft.predecessor_refs),
                 "reflection_source_refs": list(draft.source_refs),
-                "evaluated_cursor": cursor.model_dump(mode="json"),
+                "evaluated_cursor": identity_cursor.model_dump(mode="json"),
                 "source_capsule_id": capsule.capsule_id,
                 "source_model_result": model_result_ref,
                 "reflection_digest": _reflection_draft_digest(draft),
@@ -2303,6 +2528,19 @@ class PrivateImpressionTriggerRuntime:
                 payload=proposal_payload,
                 fallback_identity="private-impression-proposal:" + identity,
             )
+            if paid_audit_events:
+                # This already-paid choice has no reason to expose a partial
+                # audit/proposal between writes. Keep all derived authority in
+                # one effect-once CAS transaction; the paid source audit remains
+                # the recoverable outbox if this transaction never commits.
+                await _commit_at_cursor(
+                    self._ledger,
+                    (*paid_audit_events, proposal_event,
+                     *self._impression_acceptance_events(payload=payload, source_event=source_event)),
+                    cursor=cursor,
+                    commit_id="commit:private-impression:paid-accepted:" + identity,
+                )
+                return accepted_event_id
             await _commit_at_cursor(
                 self._ledger,
                 (proposal_event,),
@@ -2320,38 +2558,43 @@ class PrivateImpressionTriggerRuntime:
             logical_time = datetime.fromisoformat(payload["impression"]["last_supported"])
             if (after_proposal.world_revision != payload["evaluated_world_revision"]
                     or after_proposal.logical_time != logical_time):
-                raise ValueError("paid retention pending proposal prefix changed")
+                raise _PaidRetentionPrefixChanged("paid retention pending proposal prefix changed")
             identity = payload["proposal_id"].removeprefix("proposal:private-impression:")
-            acceptance_event = self._event(
-                event_id="event:private-impression:acceptance:" + identity,
-                event_type="AcceptanceRecorded",
-                logical_time=logical_time,
-                source_event=source_event,
-                payload={
-                    "status": "accepted",
-                    "acceptance_id": payload["acceptance_id"],
-                    "proposal_id": payload["proposal_id"],
-                    "evaluated_world_revision": payload["evaluated_world_revision"],
-                    "accepted_change_id": payload["change_id"],
-                    "accepted_change_hash": payload["accepted_change_hash"],
-                },
-                fallback_identity="private-impression-acceptance:" + identity,
-            )
-            accepted_event = self._event(
-                event_id=accepted_event_id,
-                event_type="PrivateImpressionAccepted",
-                logical_time=logical_time,
-                source_event=source_event,
-                payload=payload,
-                fallback_identity="private-impression-accepted:" + identity,
-            )
             await _commit_at_cursor(
                 self._ledger,
-                (acceptance_event, accepted_event),
+                self._impression_acceptance_events(payload=payload, source_event=source_event),
                 cursor=_cursor(after_proposal),
                 commit_id="commit:private-impression:accepted:" + identity,
             )
         return accepted_event_id
+
+    def _impression_acceptance_events(self, *, payload, source_event) -> tuple[WorldEvent, ...]:
+        logical_time = datetime.fromisoformat(payload["impression"]["last_supported"])
+        identity = payload["proposal_id"].removeprefix("proposal:private-impression:")
+        acceptance_event = self._event(
+            event_id="event:private-impression:acceptance:" + identity,
+            event_type="AcceptanceRecorded",
+            logical_time=logical_time,
+            source_event=source_event,
+            payload={
+                "status": "accepted",
+                "acceptance_id": payload["acceptance_id"],
+                "proposal_id": payload["proposal_id"],
+                "evaluated_world_revision": payload["evaluated_world_revision"],
+                "accepted_change_id": payload["change_id"],
+                "accepted_change_hash": payload["accepted_change_hash"],
+            },
+            fallback_identity="private-impression-acceptance:" + identity,
+        )
+        accepted_event = self._event(
+            event_id=payload["impression"]["origin"]["accepted_event_ref"],
+            event_type="PrivateImpressionAccepted",
+            logical_time=logical_time,
+            source_event=source_event,
+            payload=payload,
+            fallback_identity="private-impression-accepted:" + identity,
+        )
+        return acceptance_event, accepted_event
 
     async def _record_character_interior_reflection_audit(
         self,
@@ -2363,8 +2606,9 @@ class PrivateImpressionTriggerRuntime:
         attempt_id: str,
         author_lineage: _InteriorAuthorLineage,
         character_interior_lineage: RecordedCharacterInteriorTurnLineage,
+        defer_commit: bool = False,
     ):
-        """Persist the unified role lineage required by immutable V2 authority."""
+        """Prepare or persist the role lineage required by immutable V2 authority."""
 
         reflection_digest = _reflection_draft_digest(draft)
         decision = DecisionProposal(
@@ -2393,7 +2637,8 @@ class PrivateImpressionTriggerRuntime:
             }
         )
         if await _lookup(self._ledger, f"event:private-impression:model-result:{model_result_ref}") is not None:
-            return await _project(self._ledger)
+            current = await _project(self._ledger)
+            return (current, ()) if defer_commit else current
         audit = RecordedModelResultAudit(
             model_call_id=author_lineage.model_call_id,
             parent_model_call_id=author_lineage.parent_model_call_id,
@@ -2475,6 +2720,8 @@ class PrivateImpressionTriggerRuntime:
                 fallback_identity=f"private-impression-model-proposal:{decision.proposal_id}",
             ),
         )
+        if defer_commit:
+            return before, events
         await _commit_at_cursor(
             self._ledger,
             events,
@@ -2687,6 +2934,7 @@ class PrivateImpressionTriggerRuntime:
 
     async def _record_failure_audit(
         self, *, source_event: WorldEvent, attempt_id: str, failure_code: str,
+        created_at: datetime | None = None,
     ) -> None:
         current = await _project(self._ledger)
         model_payload = technical_character_interior_model_result(
@@ -2714,7 +2962,7 @@ class PrivateImpressionTriggerRuntime:
             world_id=self._ledger.world_id,
             event_type="ModelResultRecorded",
             logical_time=at,
-            created_at=max(source_event.created_at, at),
+            created_at=max(source_event.created_at, at, created_at or at),
             actor=self._owner_id,
             source=self._source,
             trace_id=source_event.trace_id,
