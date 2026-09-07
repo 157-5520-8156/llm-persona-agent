@@ -1467,3 +1467,32 @@ H14 把 `drain_private_impression_once` 改成恒 `return None`，是成本取�
 | `drain_private_impression_once` 恒 None | H31 已打开（默认日 3）；limit=0 才 None |
 | NPC 生态「半启用但代码在跑」 | settled 门控曾 **100% 挡死**；`9e574380` 才放行有 stimulus 的 settled |
 
+### 2026-09-07 连续性生活修复：从真实输入追到下一次后果
+
+基线 `da8aae88`，集成分支 `codex/living-continuity`。这是本执行计划下的一批代码修复，
+不建立新的并行路线图，也不把之前的模型审查方案或旧剧情规则恢复为生产要求。
+详细证据、测试与余项见[审查记录](../audits/living-continuity-2026-09-07.md)。
+
+本批处理以下断点：
+
+1. 后台不同 purpose 丢失同一角色的生活、愿望、解释与近期聊天：共享有界的主体背景；
+   World Author 单列 profile。修正对话取旧不取新、compact appraisal 来源识别与日记来源保留。
+2. `keep_impression` 实际保存 `my_state` 而非 `stuck_with_me`：原文保留角色选择的残留；
+   新结果缺少保留文本走同角色一次精确重选，历史 payload 兼容。
+3. paid `noticed` 绕过 World Author，反复把内心文本结算为客观生活：退休新增事件路径，
+   保留冻结旧事件的恢复与重放。新生活事实继续由 LifeDevelopment 的世界作者产生。
+4. 自己声明的短期 revisit/expectation 被普通主动冷却遮住，最新计划挡住旧未决计划：
+   peek、drain、恢复和模型材料统一采用各计划身份及声明时间。
+5. Thread 真正改期被旧考虑终态永久覆盖：按接受的排期来源赋予新考虑身份；
+   同一排期的材料更新仍是原考虑，恢复时通过真实 source gate 验证。
+6. 愿望修订后的文字绑定种植来源：当前含义使用修订来源和时间，稳定身份保留原 planting ref。
+7. NPC 选择 later 后停在 active：从原计划意图进入世界作者、客观结果、既有余波与计划结束；
+   覆盖中断恢复、延迟唤醒、重复 tick、预算已尽和主角不可凭空知情。
+
+以上是源码与离线验证范围。没有重启生产、调用真实 provider、投递 QQ 或完成多日真人感验收。
+NPC 独立通信、角色主动放下某些等待、无发送情况下的私有 revisit 等仍需补充明确的生产能力；
+不能把这些缺失解释成她自己的拒绝或沉默，也不能用本地社交规则代替后续能力设计。
+
+代码验证截至 `93620579`：整库 **6082 passed / 19 skipped / 0 failed**；冻结场景 `.93`
+完整 120 项、机制目录和平台架构边界通过。formal-eval 合成产物结构通过，评估状态仍为 `blocked`。
+paid 留存的自动恢复调度及早于 typed Proposal 的保存中断仍未闭合，审查记录已明确其恢复证据范围。

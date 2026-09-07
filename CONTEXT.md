@@ -476,6 +476,14 @@ semantic truth review. Any external material later selected into visible text,
 a World claim, an Action payload, Memory, Relationship, or another durable
 effect must establish source closure again at that effect-bearing boundary and
 cannot inherit authority from this private state.
+`stuck_with_me` is the optional wording she explicitly chooses to retain;
+it is distinct from her momentary `inner_state_summary`. New paid retention
+requires both that authored text and an accepted, causally bound Appraisal;
+missing authored prerequisites enter same-role correction, while acceptance
+failures remain technical failures. The PrivateImpression boundary establishes
+the durable source and subject; it must not borrow the latest unrelated
+Appraisal. `noticed` remains subjective attention audit and cannot authorize
+a new WorldOccurrence. Historical absent optional fields remain readable.
 When the character chooses bounded Recall, she forms one Private Turn State
 before requesting it and a new one from the augmented Inner Life Snapshot
 before the final Expression. New ExpressionDrafts must carry the same final
@@ -710,9 +718,15 @@ A purpose-specific, auditable declaration of which Inner Life Snapshot
 materials and Context Capsule slices may enter one background model call's
 provider view. Undeclared content is withheld from the provider payload only;
 the canonical snapshot and capsule remain unchanged for replay and acceptance.
-Seven profiles cover life ecology, stimulus appraisal, private impression,
-proactive contact, memory retention, interaction background, and novel-origin
-review. Startup tests enforce complete purpose coverage via
+Eight profiles cover protagonist life choices, World Author, stimulus appraisal,
+private impression, proactive contact, memory retention, interaction background,
+and novel-origin review. Protagonist life, contact, appraisal and reflection
+choices share bounded, source-bound continuity material: her life, aspirations,
+memories, prior interpretations and latest dialogue remain available when the
+purpose changes. Chronological dialogue budgets preserve the newest exchange;
+compact appraisal tables retain the same budget and source inventory as their
+canonical form. World Author does not inherit protagonist-private material.
+Startup tests enforce complete purpose coverage via
 `assert_background_context_profile_coverage`.
 _Avoid_: Second truth store, lane-specific ledger rewrite
 
