@@ -1362,21 +1362,7 @@ class DeepSeekChatModel:
         if reservation_id:
             call_meta = {**call_meta, "budget_reservation_id": reservation_id}
         capacity_token: str | None = None
-        request_payload = self.request_payload(
-            messages,
-            temperature=temperature,
-            json_object=not tools,
-            tools=tools,
-            tool_choice=tool_choice,
-        )
-        request_payload["stream"] = True
-        request_payload["stream_options"] = {"include_usage": True}
-        capture_identity_headers = self._test_only_capture_identity_headers(
-            messages=messages,
-            temperature=temperature,
-            tools=tools,
-            tool_choice=tool_choice,
-        )
+        request_emitted = False
         response_payload: dict[str, object] = {}
         usage: dict[str, object] = {}
         pieces: list[str] = []
@@ -1387,11 +1373,27 @@ class DeepSeekChatModel:
         expected_tool_name = _forced_tool_name(tool_choice)
         forced_tool_head_released = False
         try:
+            request_payload = self.request_payload(
+                messages,
+                temperature=temperature,
+                json_object=not tools,
+                tools=tools,
+                tool_choice=tool_choice,
+            )
+            request_payload["stream"] = True
+            request_payload["stream_options"] = {"include_usage": True}
+            capture_identity_headers = self._test_only_capture_identity_headers(
+                messages=messages,
+                temperature=temperature,
+                tools=tools,
+                tool_choice=tool_choice,
+            )
             if self.capacity_gate is not None:
                 capacity_token = self.capacity_gate.acquire()
             if self.circuit_breaker is not None:
                 self.circuit_breaker.before_call()
             request_span = mark_model_request_emitted()
+            request_emitted = True
             try:
                 async with self.client.stream(
                     "POST",
@@ -1545,12 +1547,15 @@ class DeepSeekChatModel:
             cancellation_kind = str(exc.args[0]) if exc.args else "caller_cancelled"
             provider_timeout = cancellation_kind == "provider_timeout"
             if self.capacity_gate is not None and capacity_token is not None:
-                self.capacity_gate.abandon(
-                    capacity_token,
-                    reason=(
-                        "provider_timeout" if provider_timeout else "cancelled_may_still_be_running"
-                    ),
-                )
+                if request_emitted:
+                    self.capacity_gate.abandon(
+                        capacity_token,
+                        reason=(
+                            "provider_timeout" if provider_timeout else "cancelled_may_still_be_running"
+                        ),
+                    )
+                else:
+                    self.capacity_gate.release(capacity_token)
             if self.circuit_breaker is not None:
                 if provider_timeout:
                     self.circuit_breaker.record_failure()
@@ -1573,14 +1578,16 @@ class DeepSeekChatModel:
                     budget_reservation_id=str(call_meta.get("budget_reservation_id") or ""),
                     thinking_enabled=self.thinking_enabled,
                     reasoning_effort=(self.reasoning_effort if self.thinking_enabled else ""),
-                    billing_state="known" if _provider_usage_complete(usage) else "unknown",
+                    billing_state=_failed_call_billing_state(
+                        usage, request_emitted=request_emitted, error=exc,
+                    ),
                 )
             )
             raise
         except Exception as exc:
             provider_outage = _is_provider_outage(exc)
             if self.capacity_gate is not None and capacity_token is not None:
-                if _provider_completion_may_still_be_running(exc):
+                if request_emitted and _provider_completion_may_still_be_running(exc):
                     self.capacity_gate.abandon(
                         capacity_token,
                         reason=f"transport_ambiguous:{type(exc).__name__}",
@@ -1612,7 +1619,9 @@ class DeepSeekChatModel:
                     budget_reservation_id=str(call_meta.get("budget_reservation_id") or ""),
                     thinking_enabled=self.thinking_enabled,
                     reasoning_effort=(self.reasoning_effort if self.thinking_enabled else ""),
-                    billing_state="known" if _provider_usage_complete(usage) else "unknown",
+                    billing_state=_failed_call_billing_state(
+                        usage, request_emitted=request_emitted, error=exc,
+                    ),
                 )
             )
             raise
@@ -1678,6 +1687,7 @@ class DeepSeekChatModel:
         if reservation_id:
             call_meta = {**call_meta, "budget_reservation_id": reservation_id}
         capacity_token: str | None = None
+        request_emitted = False
         usage: dict[str, object] = {}
         try:
             if self.capacity_gate is not None:
@@ -1698,6 +1708,7 @@ class DeepSeekChatModel:
                 tool_choice=tool_choice,
             )
             request_span = mark_model_request_emitted()
+            request_emitted = True
             try:
                 response = await self.client.post(
                     f"{self._completion_base_url(tools)}/chat/completions",
@@ -1732,12 +1743,15 @@ class DeepSeekChatModel:
             cancellation_kind = str(exc.args[0]) if exc.args else "caller_cancelled"
             provider_timeout = cancellation_kind == "provider_timeout"
             if self.capacity_gate is not None and capacity_token is not None:
-                self.capacity_gate.abandon(
-                    capacity_token,
-                    reason=(
-                        "provider_timeout" if provider_timeout else "cancelled_may_still_be_running"
-                    ),
-                )
+                if request_emitted:
+                    self.capacity_gate.abandon(
+                        capacity_token,
+                        reason=(
+                            "provider_timeout" if provider_timeout else "cancelled_may_still_be_running"
+                        ),
+                    )
+                else:
+                    self.capacity_gate.release(capacity_token)
             if self.circuit_breaker is not None:
                 if provider_timeout:
                     self.circuit_breaker.record_failure()
@@ -1760,14 +1774,16 @@ class DeepSeekChatModel:
                     budget_reservation_id=str(call_meta.get("budget_reservation_id") or ""),
                     thinking_enabled=self.thinking_enabled,
                     reasoning_effort=(self.reasoning_effort if self.thinking_enabled else ""),
-                    billing_state="known" if _provider_usage_complete(usage) else "unknown",
+                    billing_state=_failed_call_billing_state(
+                        usage, request_emitted=request_emitted, error=exc,
+                    ),
                 )
             )
             raise
         except Exception as exc:
             provider_outage = _is_provider_outage(exc)
             if self.capacity_gate is not None and capacity_token is not None:
-                if _provider_completion_may_still_be_running(exc):
+                if request_emitted and _provider_completion_may_still_be_running(exc):
                     self.capacity_gate.abandon(
                         capacity_token,
                         reason=f"transport_ambiguous:{type(exc).__name__}",
@@ -1790,16 +1806,6 @@ class DeepSeekChatModel:
                 error = f"provider_rejection:{exc}"
             else:
                 error = f"unexpected_error:{exc}"
-            if _provider_usage_complete(usage):
-                billing_state = "known"
-            elif isinstance(exc, ModelCircuitOpenError) or (
-                isinstance(exc, httpx.HTTPStatusError)
-                and exc.response.status_code not in {408, 429}
-                and exc.response.status_code < 500
-            ):
-                billing_state = "not_billed"
-            else:
-                billing_state = "unknown"
             self._report_usage(
                 ModelCallUsage(
                     purpose=purpose,
@@ -1817,7 +1823,9 @@ class DeepSeekChatModel:
                     budget_reservation_id=str(call_meta.get("budget_reservation_id") or ""),
                     thinking_enabled=self.thinking_enabled,
                     reasoning_effort=(self.reasoning_effort if self.thinking_enabled else ""),
-                    billing_state=billing_state,
+                    billing_state=_failed_call_billing_state(
+                        usage, request_emitted=request_emitted, error=exc,
+                    ),
                 )
             )
             raise
@@ -2235,6 +2243,28 @@ class FailoverChatModel:
             close = getattr(model, "aclose", None)
             if callable(close):
                 await close()
+
+
+def _failed_call_billing_state(
+    usage: dict[str, object], *, request_emitted: bool, error: BaseException,
+) -> str:
+    """Release only concrete non-emission or a definite provider rejection.
+
+    Emission belongs to this invocation, not the enclosing call scope: a
+    primary request may have been sent before its fallback is rejected locally.
+    """
+
+    if _provider_usage_complete(usage):
+        return "known"
+    if not request_emitted:
+        return "not_billed"
+    if (
+        isinstance(error, httpx.HTTPStatusError)
+        and error.response.status_code not in {408, 429}
+        and error.response.status_code < 500
+    ):
+        return "not_billed"
+    return "unknown"
 
 
 def _provider_usage_complete(usage: dict[str, object]) -> bool:

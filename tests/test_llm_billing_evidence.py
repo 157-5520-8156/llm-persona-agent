@@ -4,7 +4,14 @@ import json
 import httpx
 import pytest
 
-from companion_daemon.llm import DeepSeekChatModel, ProviderCircuitBreaker
+from companion_daemon.llm import (
+    DeepSeekChatModel,
+    ModelCapacityBusyError,
+    ModelCircuitOpenError,
+    ProviderCapacityGate,
+    ProviderCircuitBreaker,
+    model_call_scope,
+)
 
 
 @pytest.mark.asyncio
@@ -184,3 +191,138 @@ async def test_nonstream_invalid_content_still_records_provider_usage() -> None:
     assert captured[0].billing_state == "known"
     assert captured[0].prompt_tokens == 11
     assert captured[0].completion_tokens == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("failure", ["circuit", "capacity", "payload", "cancelled"])
+async def test_local_rejection_without_emission_is_not_billed(
+    streaming: bool,
+    failure: str,
+) -> None:
+    captured = []
+    requests = []
+    circuit = ProviderCircuitBreaker(failure_threshold=1)
+    capacity = ProviderCapacityGate()
+    occupied = capacity.acquire() if failure == "capacity" else None
+    if failure == "circuit":
+        circuit.record_failure()
+
+    class LocalFailureModel(DeepSeekChatModel):
+        def request_payload(self, *args, **kwargs):
+            if failure == "payload":
+                raise ValueError("fixture payload construction failed")
+            if failure == "cancelled":
+                raise asyncio.CancelledError()
+            return super().request_payload(*args, **kwargs)
+
+    def handler(request):
+        requests.append(request)
+        raise AssertionError("local rejection must not call transport")
+
+    model = LocalFailureModel(
+        "fixture-key",
+        "https://fixture.invalid",
+        "deepseek-chat",
+        thinking_enabled=False,
+        circuit_breaker=circuit,
+        capacity_gate=capacity,
+        transport=httpx.MockTransport(handler),
+        usage_observer=captured.append,
+    )
+    expected = {
+        "circuit": ModelCircuitOpenError,
+        "capacity": ModelCapacityBusyError,
+        "payload": ValueError,
+        "cancelled": asyncio.CancelledError,
+    }[failure]
+    try:
+        with model_call_scope("inbound_turn") as scope, pytest.raises(expected):
+            if streaming:
+                await model.complete_json_stream_with_usage([{"role": "user", "content": "hi"}])
+            else:
+                await model.complete([{"role": "user", "content": "hi"}])
+    finally:
+        if occupied:
+            capacity.release(occupied)
+        await model.aclose()
+    assert scope.request_emitted is False
+    assert requests == []
+    assert len(captured) == 1
+    assert captured[0].status == "failed"
+    assert captured[0].billing_state == "not_billed"
+    assert capacity.snapshot().status == "idle"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize(
+    "error", [httpx.ReadTimeout, asyncio.CancelledError, ModelCircuitOpenError]
+)
+async def test_after_emission_failure_without_usage_keeps_unknown_billing(streaming, error):
+    captured = []
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        raise error("fixture interruption after request emission")
+
+    model = DeepSeekChatModel(
+        "fixture-key",
+        "https://fixture.invalid",
+        "deepseek-chat",
+        thinking_enabled=False,
+        circuit_breaker=ProviderCircuitBreaker(),
+        transport=httpx.MockTransport(handler),
+        usage_observer=captured.append,
+    )
+    try:
+        with model_call_scope("inbound_turn") as scope, pytest.raises(error):
+            if streaming:
+                await model.complete_json_stream_with_usage([{"role": "user", "content": "hi"}])
+            else:
+                await model.complete([{"role": "user", "content": "hi"}])
+    finally:
+        await model.aclose()
+    assert scope.request_emitted is True
+    assert len(requests) == 1
+    assert len(captured) == 1
+    assert captured[0].billing_state == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_second_request_rejection_does_not_inherit_first_request_emission():
+    captured = []
+    requests = []
+    circuit = ProviderCircuitBreaker(failure_threshold=1)
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 1},
+            },
+        )
+
+    model = DeepSeekChatModel(
+        "fixture-key",
+        "https://fixture.invalid",
+        "deepseek-chat",
+        thinking_enabled=False,
+        circuit_breaker=circuit,
+        transport=httpx.MockTransport(handler),
+        usage_observer=captured.append,
+    )
+    try:
+        with model_call_scope("inbound_turn") as scope:
+            await model.complete([{"role": "user", "content": "hi"}])
+            circuit.record_failure()
+            with pytest.raises(ModelCircuitOpenError):
+                await model.complete_json_stream_with_usage([{"role": "user", "content": "hi"}])
+    finally:
+        await model.aclose()
+    assert scope.request_emitted is True
+    assert len(requests) == 1
+    assert [usage.billing_state for usage in captured] == ["known", "not_billed"]
