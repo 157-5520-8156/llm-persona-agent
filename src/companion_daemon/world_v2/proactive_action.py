@@ -84,7 +84,7 @@ from .response_expectation_view import (
     living_hope_hitch_clause,
     living_unanswered_hope,
 )
-from .revisit_intention_view import due_unfinished_revisit
+from .revisit_intention_view import due_unfinished_revisit, thread_due_schedule_sources
 from .social_initiative import (
     SITUATION_STIMULUS_EVENT_TYPES,
     SocialInitiativeCompiler,
@@ -1659,7 +1659,10 @@ class ProactiveDeliberationTurn:
                 and head is not None
                 and head.values.status == "open"
                 and transition is not None
-                and transition.accepted_event_ref == event.event_id
+                # A pending consideration keeps its original source while
+                # same-schedule material updates enter the current snapshot.
+                # An accepted reschedule starts a different source lineage.
+                and event.event_id in thread_due_schedule_sources(projection, thread=head)
             )
         elif opportunity.source_kind == "commitment":
             head = next(
@@ -1676,11 +1679,16 @@ class ProactiveDeliberationTurn:
                     for item in reversed(projection.commitment_transitions)
                     if head is not None
                     and item.commitment_id == head.commitment_id
-                    and item.entity_revision == head.entity_revision
-                    and item.values_after == head.values
+                    and item.accepted_event_ref == event.event_id
+                    and item.entity_revision <= head.entity_revision
+                    and item.values_after.due_window == head.values.due_window
+                    and item.values_after.status in {"open", "due"}
                 ),
                 None,
             )
+            # The immutable commitment is the same intention after the clock
+            # marks it due. Its opening still anchors an unfinished process;
+            # terminal commitments remain ineligible at the current head.
             valid_source = (
                 event.event_type in {"PrivateCommitmentOpened", "PrivateCommitmentDue"}
                 and head is not None
@@ -3116,7 +3124,10 @@ class ProactiveActionRuntime:
                         occurrence.settlement_event_ref,
                     )
                 )
-        if logical_time is not None:
+        # Once installed, SocialInitiative owns Thread/Commitment opportunity
+        # identity and consumption. Its no-op cannot fall through to a second
+        # producer keyed by the latest entity update instead of the schedule.
+        if logical_time is not None and self._social_initiative is None:
             for thread in projection.threads:
                 values = thread.values
                 if (

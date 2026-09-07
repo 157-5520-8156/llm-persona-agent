@@ -27,14 +27,14 @@ def _commit(ledger, events):
     )
 
 
-def _accept_thread(ledger, before, *, due, importance=6500):
+def _accept_thread(ledger, before, *, due, importance=6500, duration=timedelta(minutes=10)):
     revision = 1 if before is None else before.entity_revision + 1
     after = thread(revision=revision, updated_at=ledger.project().logical_time)
     after = after.model_copy(
         update={
             "values": after.values.model_copy(
                 update={
-                    "due_window": DueWindow(opens_at=due, closes_at=due + timedelta(minutes=10)),
+                    "due_window": DueWindow(opens_at=due, closes_at=due + duration),
                     "importance_bp": importance,
                 }
             )

@@ -956,7 +956,10 @@ class SocialInitiativeCompiler:
                 or process.state not in {"open", "claimed"}
                 or process.source_evidence_ref is None
                 or not process.trigger_ref.startswith(
-                    "proactive-consideration:consideration:social-initiative:"
+                    (
+                        "proactive-consideration:consideration:social-initiative:",
+                        "proactive-consideration:consideration:proactive:",
+                    )
                 )
             ):
                 continue
@@ -979,6 +982,12 @@ class SocialInitiativeCompiler:
             if located is None:
                 continue
             event = located[0]
+            if consideration_id.startswith("consideration:proactive:") and event.event_type not in {
+                "ThreadOpened", "ThreadUpdated", "PrivateCommitmentOpened", "PrivateCommitmentDue",
+            }:
+                # The runtime retains separate recovery of legacy settlements.
+                # This reader adopts only already-open domain considerations.
+                continue
             consideration_is_revisit = (
                 event.event_type == "ExecutionReceiptRecorded"
                 and consideration_id.startswith(
@@ -1530,6 +1539,16 @@ class SocialInitiativeCompiler:
             if event.event_type == "ClockAdvanced"
             else "spontaneous_contact"
             if event.event_type == "ObservationRecorded"
+            else "thread"
+            if event.event_type in {"ThreadOpened", "ThreadUpdated"}
+            and consideration_id.startswith((
+                "consideration:social-initiative:due-thread:", "consideration:proactive:",
+            ))
+            else "commitment"
+            if event.event_type in {"PrivateCommitmentOpened", "PrivateCommitmentDue"}
+            and consideration_id.startswith((
+                "consideration:social-initiative:due-commitment:", "consideration:proactive:",
+            ))
             else "situation_change"
             if event.event_type in _SITUATION_STIMULUS_EVENT_TYPES
             else "revisit_intention"
@@ -1565,6 +1584,38 @@ class SocialInitiativeCompiler:
             if message is None:
                 return None
             source_id = message.observation_id
+        elif source_kind == "thread":
+            head = next(
+                (
+                    item for item in projection.threads
+                    if item.values.status == "open"
+                    and source_ref.event_id in thread_due_schedule_sources(projection, thread=item)
+                ),
+                None,
+            )
+            if head is None:
+                # A newer accepted schedule supersedes this failed attempt;
+                # its new opportunity must not resurrect the former window.
+                return None
+            source_id = head.thread_id
+        elif source_kind == "commitment":
+            head = next(
+                (
+                    item for item in projection.commitments
+                    if item.values.status in {"open", "due"}
+                    and any(
+                        transition.commitment_id == item.commitment_id
+                        and transition.accepted_event_ref == source_ref.event_id
+                        and transition.values_after.due_window == item.values.due_window
+                        and transition.values_after.status in {"open", "due"}
+                        for transition in projection.commitment_transitions
+                    )
+                ),
+                None,
+            )
+            if head is None:
+                return None
+            source_id = head.commitment_id
         elif source_kind == "expired_expectation":
             source_id = next(
                 (
@@ -1822,6 +1873,10 @@ class SocialInitiativeCompiler:
                 source_event_refs=frozenset(schedule_sources),
             ):
                 continue
+            if self._terminal_legacy_domain_consideration(
+                projection, source_kind="thread", source_event_refs=schedule_sources,
+            ):
+                continue
             opportunity = await self._from_source(
                 source_kind="thread",
                 source_id=thread.thread_id,
@@ -1876,6 +1931,18 @@ class SocialInitiativeCompiler:
                 continue
             if self._terminal_consideration(projection, consideration_id):
                 continue
+            if self._terminal_legacy_domain_consideration(
+                projection,
+                source_kind="commitment",
+                source_event_refs=tuple(
+                    item.accepted_event_ref
+                    for item in projection.commitment_transitions
+                    if item.commitment_id == commitment.commitment_id
+                    and item.values_after.due_window == due
+                    and item.values_after.status in {"open", "due"}
+                ),
+            ):
+                continue
             opportunity = await self._from_source(
                 source_kind="commitment",
                 source_id=commitment.commitment_id,
@@ -1910,6 +1977,25 @@ class SocialInitiativeCompiler:
             return None
         candidates.sort(key=lambda item: (item[0], item[1].source_id))
         return candidates[0][1]
+
+    def _terminal_legacy_domain_consideration(
+        self, projection, *, source_kind: str, source_event_refs: tuple[str, ...],
+    ) -> bool:
+        # Frozen pre-SocialInitiative identity. Read consumed historical work;
+        # never mint a second opportunity through this compatibility formula.
+        return any(
+            self._terminal_consideration(
+                projection,
+                "consideration:proactive:" + hashlib.sha256(
+                    json.dumps(
+                        {"source": ref, "kind": source_kind},
+                        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                    ).encode()
+                ).hexdigest(),
+                source_event_refs=frozenset({ref}),
+            )
+            for ref in source_event_refs
+        )
 
     def _terminal_consideration(
         self,
