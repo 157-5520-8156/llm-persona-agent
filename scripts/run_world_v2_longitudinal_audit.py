@@ -25,6 +25,11 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model-mode", choices=("fixture", "real-provider"), default="fixture")
     parser.add_argument("--allow-real-provider", action="store_true")
     parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Read adaptive user turns, {wait_until_minutes: N}, or null from stdin JSON lines.",
+    )
+    parser.add_argument(
         "--max-cost-cny",
         type=float,
         default=0.5,
@@ -162,7 +167,14 @@ def life_review_profile(settings, *, synthetic: bool) -> dict:
     }
 
 
-async def run(options: argparse.Namespace) -> dict:
+async def run(options: argparse.Namespace, *, next_command=None) -> dict:
+    if options.interactive and next_command is None:
+        from companion_daemon.world_v2.longitudinal_stdio import StdioJourneyCommands
+
+        async with StdioJourneyCommands() as operator:
+            return await run(options, next_command=operator.next_command)
+    if next_command is not None and not options.interactive:
+        raise ValueError("adaptive input requires --interactive")
     from companion_daemon.world_v2.interactive_turn_budget import InteractiveTurnBudgetPolicy
     from companion_daemon.world_v2.longitudinal_journey import (
         Journey,
@@ -289,6 +301,7 @@ async def run(options: argparse.Namespace) -> dict:
         limits=limits,
         model_input_capture=capture,
         close_resources=close_models,
+        next_command=next_command,
         provenance={
             "model_mode": options.model_mode,
             "scenario_sha256": hashlib.sha256(scenario_bytes).hexdigest(),

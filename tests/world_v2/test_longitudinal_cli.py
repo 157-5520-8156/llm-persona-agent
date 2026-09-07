@@ -165,6 +165,70 @@ async def test_fixture_factory_constructs_real_host_without_external_clients(tmp
 
 
 @pytest.mark.asyncio
+async def test_adaptive_dialogue_reads_delivered_reply_before_next_input_and_can_wait(tmp_path):
+    cli = _cli()
+    scenario = tmp_path / "adaptive.json"
+    scenario.write_text(
+        json.dumps(
+            {
+                "scenario_id": "adaptive-dialogue",
+                "started_at": "2026-09-08T10:00:00+08:00",
+                "duration_minutes": 10,
+                "turns": [],
+            }
+        )
+    )
+    observations = []
+
+    async def decide(observation):
+        observations.append(observation)
+        if len(observations) == 1:
+            return {"id": "first", "at_minutes": 0, "text": "今天怎么样？"}
+        if len(observations) == 2:
+            return {"wait_until_minutes": 2}
+        if len(observations) == 3:
+            visible = [
+                record["text"]
+                for seen in observations
+                for row in seen["steps"]
+                for record in row["deliveries"]
+                if record["kind"] == "text"
+            ]
+            assert visible, "The next input must be chosen after reading an actual delivery"
+            assert observation["elapsed_minutes"] == 2
+            return {"id": "follow-up", "at_minutes": 2, "text": "刚才看到你说：" + visible[-1]}
+        return None
+
+    output = tmp_path / "run"
+    manifest = await cli.run(
+        cli.parse_options(
+            [
+                "--scenario",
+                str(scenario),
+                "--output",
+                str(output),
+                "--interactive",
+            ]
+        ),
+        next_command=decide,
+    )
+    assert manifest["stop_reason"] == "operator_stopped"
+    assert not manifest["completed"]
+    assert manifest["turns_consumed"] == manifest["turns_requested"] == 2
+    assert manifest["interaction_mode"] == "adaptive"
+    assert manifest["replay"]["replay_hash_matches"]
+    rows = [json.loads(line) for line in (output / "timeline.jsonl").read_text().splitlines()]
+    inputs = [row for row in rows if row["kind"] == "inbound"]
+    assert [row["turn_id"] for row in inputs] == ["first", "follow-up"]
+    assert inputs[-1]["user_text"].startswith("刚才看到你说：")
+    commands = [
+        json.loads(line) for line in (output / "operator-commands.jsonl").read_text().splitlines()
+    ]
+    assert commands[1]["command"] == {"wait_until_minutes": 2}
+    assert "operator-commands.jsonl" in manifest["artifacts"]
+
+
+@pytest.mark.asyncio
 async def test_fixture_public_journey_does_not_expire_virtual_ingress_deadline(
     tmp_path, monkeypatch
 ):

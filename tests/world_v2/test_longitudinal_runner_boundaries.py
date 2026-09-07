@@ -159,6 +159,65 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "command",
+    [
+        {"wait_until_minutes": 0},
+        {"wait_until_minutes": True},
+        {"wait_until_minutes": 2},
+        {"id": "script", "at_minutes": 0, "text": "早", "must_reply": True},
+        {"id": "outside", "at_minutes": 2, "text": "早"},
+    ],
+)
+async def test_adaptive_commands_cannot_script_character_or_skip_clock_bounds(
+    tmp_path, monkeypatch, command
+):
+    fixture = _RunnerFixture(monkeypatch)
+
+    async def decide(_observation):
+        return command
+
+    manifest = await run_journey(
+        journey=_journey(),
+        output=tmp_path / "run",
+        host_factory=fixture.factory,
+        synthetic=True,
+        next_command=decide,
+    )
+    assert manifest["stop_reason"] == "technical_failure:ValueError"
+    assert manifest["turns_consumed"] == 0
+    assert not fixture.inbound_contexts
+    assert fixture.hosts[-1].closed and fixture.hosts[-1].quiescent
+
+
+@pytest.mark.asyncio
+async def test_adaptive_operator_wait_is_cancellable_and_closes_owned_resources(
+    tmp_path, monkeypatch
+):
+    fixture = _RunnerFixture(monkeypatch)
+    entered = asyncio.Event()
+
+    async def decide(_observation):
+        entered.set()
+        await asyncio.Event().wait()
+
+    task = asyncio.create_task(
+        run_journey(
+            journey=_journey(),
+            output=tmp_path / "run",
+            host_factory=fixture.factory,
+            synthetic=True,
+            next_command=decide,
+        )
+    )
+    await entered.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert fixture.hosts[-1].closed and fixture.hosts[-1].quiescent
+
+
+@pytest.mark.asyncio
 async def test_injected_provider_clients_close_after_host_quiescence_at_each_restart(
     tmp_path, monkeypatch
 ):

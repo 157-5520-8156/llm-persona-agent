@@ -17,7 +17,7 @@ import math
 from pathlib import Path
 import sqlite3
 import time
-from typing import Callable
+from typing import Awaitable, Callable
 
 from .longitudinal_review import context_evidence_visibility
 from .replay_evaluator import ReplayEvaluator
@@ -282,12 +282,15 @@ async def run_journey(
     provenance: dict | None = None,
     model_input_capture=None,
     close_resources: Callable | None = None,
+    next_command: Callable[[dict], Awaitable[dict | None]] | None = None,
 ) -> dict:
     """Create a fresh world and retain reviewable evidence even on early stop.
 
     host_factory(database, clock, delivery) must construct the installed host.
     A nonempty/existing output is never removed or reused. The production DB
     cannot enter this interface. Limits stop the experiment, not the character.
+    next_command observes settled steps and supplies a user turn, a future
+    wait_until_minutes checkpoint, or None to stop. It cannot author World state.
     """
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     database = output / "world.sqlite"
@@ -305,6 +308,9 @@ async def run_journey(
     delivery_offset = 0
     capture_offset = 0
     turn_index = restart_index = 0
+    turns = list(journey.turns)
+    observation_offset = 0
+    checkpoint: datetime | None = None
     stop_reason = "completed"
     replay: dict = {}
     usage: dict = {}
@@ -419,7 +425,7 @@ async def run_journey(
     try:
         host = host_factory(database, clock, delivery)
         capture({"kind": "bootstrap", "status": "ready", "errors": []})
-        while clock.now() < end or turn_index < len(journey.turns):
+        while clock.now() < end or turn_index < len(turns):
             if len(timeline) >= limits.max_steps:
                 stop_reason = "step_limit"
                 break
@@ -429,6 +435,67 @@ async def run_journey(
             if datetime.now(UTC).date() != billing_day:
                 stop_reason = "billing_day_boundary"
                 break
+            if next_command is not None and turn_index == len(turns) and checkpoint is None:
+                observation = {
+                    "virtual_at": clock.now().isoformat(),
+                    "elapsed_minutes": (clock.now() - journey.started_at).total_seconds() / 60,
+                    "steps": [
+                        {
+                            key: value
+                            for key, value in step.items()
+                            if key
+                            in {
+                                "step_id",
+                                "kind",
+                                "status",
+                                "virtual_at",
+                                "user_text",
+                                "turn_id",
+                                "deliveries",
+                                "terminal_outcomes",
+                                "model_failures",
+                                "errors",
+                            }
+                        }
+                        for step in timeline[observation_offset:]
+                    ],
+                }
+                # Give the operator a detached view, never mutable ledger/timeline objects.
+                command = await bounded(next_command(json.loads(_json(observation))))
+                observation_offset = len(timeline)
+                if command is not None:
+                    if not isinstance(command, dict):
+                        raise ValueError(
+                            "operator command must be a turn, wait checkpoint, or null"
+                        )
+                    if set(command) == {"wait_until_minutes"}:
+                        minute = command["wait_until_minutes"]
+                        if type(minute) is not int or not (
+                            observation["elapsed_minutes"] < minute <= journey.duration_minutes
+                        ):
+                            raise ValueError(
+                                "wait checkpoint must be future and inside the journey"
+                            )
+                        checkpoint = journey.started_at + timedelta(minutes=minute)
+                    else:
+                        validated = Journey.parse(
+                            {
+                                "scenario_id": journey.scenario_id,
+                                "started_at": journey.started_at.isoformat(),
+                                "duration_minutes": journey.duration_minutes,
+                                "turns": [*turns, command],
+                            }
+                        )
+                        if command["at_minutes"] < observation["elapsed_minutes"]:
+                            raise ValueError("operator input cannot move time backward")
+                        turns = list(validated.turns)
+                with (output / "operator-commands.jsonl").open("a") as stream:
+                    stream.write(
+                        _json({"virtual_at": clock.now().isoformat(), "command": command}) + "\n"
+                    )
+                if command is None:
+                    stop_reason = "operator_stopped"
+                    break
             row = {"kind": "scheduler", "errors": []}
             started = time.monotonic()
             # Re-read accepted due instants after every turn and settlement.
@@ -439,8 +506,8 @@ async def run_journey(
                 future.append(timer)
             target = min(end, clock.now() + timedelta(seconds=limits.heartbeat_seconds), *future)
             next_turn = (
-                journey.started_at + timedelta(minutes=journey.turns[turn_index]["at_minutes"])
-                if turn_index < len(journey.turns)
+                journey.started_at + timedelta(minutes=turns[turn_index]["at_minutes"])
+                if turn_index < len(turns)
                 else None
             )
             next_restart = (
@@ -448,7 +515,7 @@ async def run_journey(
                 if restart_index < len(journey.restart_minutes)
                 else None
             )
-            target = min(target, next_turn or end, next_restart or end)
+            target = min(target, next_turn or end, next_restart or end, checkpoint or end)
             clock.advance(max(clock.now(), target))
             await asyncio.sleep(0)
             # Environment deadlines at the same instant are settled before
@@ -499,7 +566,7 @@ async def run_journey(
                 if not restart["same_state"] or restart["construction_delivery_delta"]:
                     row["errors"].append("restart_continuity_mismatch")
             elif next_turn is not None and next_turn <= clock.now():
-                turn = journey.turns[turn_index]
+                turn = turns[turn_index]
                 row.update(kind="inbound", user_text=turn["text"], turn_id=turn["id"])
                 result = await bounded(
                     host.inbound_text(
@@ -529,6 +596,8 @@ async def run_journey(
             if row["errors"]:
                 stop_reason = row["errors"][0]
                 break
+            if checkpoint is not None and clock.now() >= checkpoint:
+                checkpoint = None
         due_snapshot_sequence_before = sequence + len(read_events(database, sequence))
         final_wake_snapshot = await bounded(host.scheduler_wake_snapshot())
         due_snapshot_sequence_after = sequence + len(read_events(database, sequence))
@@ -598,7 +667,8 @@ async def run_journey(
         "wall_seconds": time.monotonic() - wall_started,
         "stop_reason": stop_reason,
         "turns_consumed": turn_index,
-        "turns_requested": len(journey.turns),
+        "turns_requested": len(turns),
+        "interaction_mode": "adaptive" if next_command is not None else "scripted",
         "limits": asdict(limits),
         "restarts": restarts,
         "replay": replay,
@@ -623,7 +693,12 @@ async def run_journey(
         ],
         "artifacts": {
             name: hashlib.sha256((output / name).read_bytes()).hexdigest()
-            for name in ("timeline.jsonl", "evidence.jsonl", "model-inputs.jsonl")
+            for name in (
+                "timeline.jsonl",
+                "evidence.jsonl",
+                "model-inputs.jsonl",
+                "operator-commands.jsonl",
+            )
             if (output / name).exists()
         },
     }
