@@ -210,6 +210,66 @@ def test_compact_appraisals_keep_a_bounded_source_inventory(cache_split: bool) -
     assert len(sliced["source_inventory"]) == 4
 
 
+@pytest.mark.parametrize("hidden_ref", [None, "experience:5"])
+def test_rendered_diary_keeps_exact_sources_after_background_budgeting(hidden_ref) -> None:
+    from companion_daemon.world_v2.character_interior.snapshot_compiler import (
+        compile_inner_life_snapshot,
+    )
+
+    entries = [
+        (f"experience:{i}", f"2026-08-{11 + i:02d}", f"DAY-{i} happened")
+        for i in range(6)
+    ] + [("experience:old", "2026-08-09", "EXCLUDED TOO OLD")]
+    snapshot = compile_inner_life_snapshot({
+        "world_id": "world:diary-background",
+        "actor_ref": "agent:companion",
+        "world_revision": 4,
+        "deliberation_revision": 2,
+        "ledger_sequence": 4,
+        "logical_time": "2026-08-16T16:00:00+08:00",
+        "slices": {
+            "recent_experiences": {
+                "availability": "available",
+                "items": [
+                    {
+                        "item_ref": ref,
+                        "source_ref": ref,
+                        "privacy_class": "private",
+                        "value": {
+                            "experience_id": ref,
+                            "values": {
+                                "occurred_from": day + "T11:00:00+08:00",
+                                "occurred_to": day + "T11:00:00+08:00",
+                                "participant_refs": ["agent:companion"],
+                                "privacy_class": "private",
+                            },
+                            "content": {"text": text},
+                        },
+                    }
+                    for ref, day, text in entries
+                ],
+            },
+        },
+    })
+    view = snapshot.model_view(
+        visible_source_refs=frozenset(snapshot.source_refs) - {hidden_ref}
+    )
+    sliced = slice_background_inner_life_snapshot(
+        view, background_context_profile_for_purpose("proactive_contact")
+    )
+
+    expected_refs = ["experience:0", "experience:1", "experience:2", "experience:3", "experience:4"]
+    if hidden_ref is None:
+        expected_refs.append("experience:5")
+    assert sliced["source_refs"] == expected_refs
+    assert {item["source_ref"] for item in sliced["source_inventory"]} == set(expected_refs)
+    assert len(sliced["materials"]["recent_self_experiences"]["items"]) == 4
+    assert "DAY-4 happened" in json.dumps(sliced)
+    assert "EXCLUDED TOO OLD" not in json.dumps(sliced)
+    if hidden_ref is not None:
+        assert "DAY-5 happened" not in json.dumps(sliced)
+
+
 def test_profile_audit_record_is_stable_json() -> None:
     profile = background_context_profile_for_purpose("fact_memory_retention")
     record = profile_audit_record(profile)

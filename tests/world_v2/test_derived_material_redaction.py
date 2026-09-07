@@ -242,8 +242,13 @@ def test_hidden_experience_does_not_leak_through_week_diary() -> None:
 
     assert _SECRET_DIARY not in serialized
     assert view["materials"]["week_diary"] == [
-        {"date": "2026-08-16", "lines": [_VISIBLE_DIARY]}
+        {
+            "date": "2026-08-16",
+            "lines": [_VISIBLE_DIARY],
+            "line_sources": [{"line_index": 0, "source_ref": "experience:visible"}],
+        }
     ]
+    assert "line_sources" not in typed.materials_json
     assert _VISIBLE_DIARY in view["materials"][LIVED_MOMENT_MATERIAL_KEY]
 
 

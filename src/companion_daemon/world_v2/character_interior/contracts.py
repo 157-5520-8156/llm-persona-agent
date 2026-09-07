@@ -589,26 +589,38 @@ def _rendered_day_sheet(
 
 
 def _regroup_week_diary(value: object) -> list[dict[str, object]]:
-    """Present sourced diary rows as the date-grouped reading she already had."""
+    """Group already-redacted diary lines without discarding their provenance."""
 
     if not isinstance(value, list):
         return []
-    grouped: dict[str, list[str]] = {}
-    order: list[str] = []
+    grouped: dict[str, dict[str, str]] = {}
     for item in value:
         if not isinstance(item, dict):
             continue
         day = item.get("date")
         line = item.get("line")
-        if not isinstance(day, str) or not day or not isinstance(line, str) or not line.strip():
+        source_ref = item.get("source_ref")
+        if (
+            not isinstance(day, str) or not day
+            or not isinstance(line, str) or not line.strip()
+            or not isinstance(source_ref, str) or not source_ref
+        ):
             continue
-        if day not in grouped:
-            order.append(day)
-            grouped[day] = []
-        text = line.strip()
-        if text not in grouped[day]:
-            grouped[day].append(text)
-    return [{"date": day, "lines": grouped[day]} for day in order if grouped[day]]
+        grouped.setdefault(day, {}).setdefault(line.strip(), source_ref)
+    return [
+        {
+            "date": day,
+            "lines": list(lines),
+            # Keep the familiar reading plus an exact source for each line.
+            # Background budgets may drop the full experience while keeping
+            # this diary; its visible source must survive that later slicing.
+            "line_sources": [
+                {"line_index": index, "source_ref": source_ref}
+                for index, source_ref in enumerate(lines.values())
+            ],
+        }
+        for day, lines in grouped.items()
+    ]
 
 
 def _regroup_folded_dialogue(value: object) -> list[dict[str, object]]:
