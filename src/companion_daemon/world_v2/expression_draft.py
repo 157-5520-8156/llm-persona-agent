@@ -1676,48 +1676,6 @@ def invalid_world_claim_source_indexes(
     )
 
 
-def strip_unpinned_world_claims(
-    *,
-    draft: ExpressionDraft,
-    request: ModelInput,
-    stable_identity_source_refs: frozenset[str] = frozenset(),
-) -> ExpressionDraft:
-    """Drop world claims whose source refs fall outside their semantic lane.
-
-    The author model sometimes cites a plausible-looking ref that the frozen
-    Capsule does not bind (a fabricated ref). Without this deterministic
-    strip the whole turn fails closed and the character goes silent. Stripping
-    keeps the reply and still honors the truth boundary: an unpinned claim is
-    never committed to the World ledger. Only lane-invalid claims are
-    dropped; all other claim validation stays strict.
-    """
-
-    invalid_indexes = frozenset(
-        invalid_world_claim_source_indexes(
-            draft=draft,
-            request=request,
-            stable_identity_source_refs=stable_identity_source_refs,
-        )
-    )
-    if not invalid_indexes:
-        return draft
-    remaining = [
-        claim for index, claim in enumerate(draft.world_claims) if index not in invalid_indexes
-    ]
-    import logging
-
-    logging.getLogger("world_v2.claim_strip").warning(
-        "stripped %d unpinned world claim(s) (fabricated refs): %s",
-        len(draft.world_claims) - len(remaining),
-        [
-            claim.claim_text[:60]
-            for claim in draft.world_claims
-            if draft.world_claims.index(claim) in invalid_indexes
-        ][:5],
-    )
-    return draft.model_copy(update={"world_claims": tuple(remaining)})
-
-
 def _validate_world_claims(
     *,
     draft: ExpressionDraft,
@@ -2432,14 +2390,8 @@ def materialize_expression_draft(
     stable_identity_source_refs: frozenset[str] = frozenset(),
     private_state_context_json: str | None = None,
     source_ref_aliases: SourceRefAliasTable | None = None,
-    strip_unpinned_claims: bool = False,
 ) -> DecisionProposal:
-    """Bind one model choice to the verified trigger and immutable effects.
-
-    ``strip_unpinned_claims`` enables the deterministic fabricated-ref
-    degradation: lane-invalid world claims are dropped so the reply survives
-    instead of failing closed (see ``strip_unpinned_world_claims``).
-    """
+    """Bind one model choice to the verified trigger and immutable effects."""
 
     trigger = request.trigger_message
     if trigger is None:
@@ -2468,12 +2420,6 @@ def materialize_expression_draft(
         outside = set(draft.media_source_refs) - allowed_media_refs
         if outside:
             raise ValueError("media request cites an unpinned source ref")
-    if strip_unpinned_claims:
-        draft = strip_unpinned_world_claims(
-            draft=draft,
-            request=request,
-            stable_identity_source_refs=stable_identity_source_refs,
-        )
     _validate_world_claims(
         draft=draft,
         request=request,
