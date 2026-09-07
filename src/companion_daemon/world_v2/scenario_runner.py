@@ -356,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.97"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.98"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -622,7 +622,7 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.97"
 # Only replay identity changes; no scenario predicate or byte limit moves.
 # See adaptive-companionship-2026-09-08.md and baseline-life-links-clock.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "f4a4a4bed998d37de4122f41eec99d3377e1c53b1dba8d8d6927737d21c385f9"
+    "c554344cc79b35a870db771d3ca5d666b985b6b1caf8d7d87b8776411505da26"
 )
 
 
