@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import plistlib
+import shutil
 import subprocess
+import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-INSTALLER = ROOT / "scripts" / "install_launchd.sh"
 BASE_LABELS = {
     "com.girl-agent.daemon",
     "com.girl-agent.napcat",
@@ -34,6 +36,51 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(0o755)
 
 
+def _installer_source_repository(tmp_path: Path) -> Path:
+    """Relocate deployment inputs while exercising the unchanged installer."""
+
+    source_root = (tmp_path / "source-repository").resolve()
+    scripts = source_root / "scripts"
+    scripts.mkdir(parents=True)
+    for name in (
+        "install_launchd.sh", "run_daemon.sh", "run_napcat_adapter.sh",
+        "run_rsshub.sh", "run_text_endpoint.sh", "run_sillytavern.sh",
+        "text_endpoint_watchdog.sh",
+    ):
+        shutil.copy2(ROOT / "scripts" / name, scripts / name)
+
+    # Preflight imports the real Settings implementation without reading a
+    # checkout's .env or relying on its local virtualenv or import path.
+    package = source_root / "src" / "companion_daemon"
+    package.mkdir(parents=True)
+    for name in ("__init__.py", "config.py"):
+        shutil.copy2(ROOT / "src" / "companion_daemon" / name, package / name)
+
+    plists = source_root / "launchd"
+    plists.mkdir()
+    deployment_root = plistlib.loads(
+        (ROOT / "launchd" / "com.girl-agent.daemon.plist").read_bytes()
+    )["WorkingDirectory"]
+
+    def relocated(value):
+        if isinstance(value, str) and (
+            value == deployment_root or value.startswith(deployment_root + "/")
+        ):
+            return str(source_root) + value[len(deployment_root):]
+        if isinstance(value, list):
+            return [relocated(item) for item in value]
+        if isinstance(value, dict):
+            return {key: relocated(item) for key, item in value.items()}
+        return value
+
+    # Only remap the deployment root. Labels, commands, flags, and all other
+    # plist fields remain the production inputs to the strict contract check.
+    for path in (ROOT / "launchd").glob("*.plist"):
+        payload = relocated(plistlib.loads(path.read_bytes()))
+        (plists / path.name).write_bytes(plistlib.dumps(payload, sort_keys=False))
+    return source_root
+
+
 def _installer_environment(
     tmp_path: Path,
     *,
@@ -42,6 +89,7 @@ def _installer_environment(
     fail_bootstrap_label: str | None = None,
     daemon_health_payload: dict[str, object] | None = None,
 ) -> tuple[dict[str, str], Path, Path, Path]:
+    source_root = _installer_source_repository(tmp_path)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     state = tmp_path / "launchctl-state"
@@ -151,9 +199,10 @@ esac
     environment.update(
         {
             "PATH": f"{fake_bin}:{environment['PATH']}",
+            "PYTHONPATH": str(source_root / "src"),
             "GIRL_AGENT_INSTALL_ENV_FILE": str(env_file),
             "GIRL_AGENT_LAUNCH_AGENTS_DIR": str(launch_agents),
-            "GIRL_AGENT_INSTALL_PYTHON": str(ROOT / ".venv/bin/python"),
+            "GIRL_AGENT_INSTALL_PYTHON": sys.executable,
             "GIRL_AGENT_INSTALL_HEALTH_TIMEOUT_SECONDS": "0",
             "GIRL_AGENT_DAEMON_HEALTH_URL": "http://127.0.0.1:18765/health",
             "INSTALLER_TEST_LAUNCH_LOG": str(launch_log),
@@ -166,6 +215,7 @@ esac
             ),
             "INSTALLER_TEST_FAIL_BOOTSTRAP_LABEL": fail_bootstrap_label or "",
             "INSTALLER_TEST_FAILURE_USED": str(tmp_path / "failure-used"),
+            "INSTALLER_TEST_SOURCE_ROOT": str(source_root),
         }
     )
     return environment, launch_agents, state, launch_log
@@ -190,9 +240,10 @@ def _seed_installation(
 
 
 def _run_installer(environment: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    source_root = Path(environment["INSTALLER_TEST_SOURCE_ROOT"])
     return subprocess.run(
-        [str(INSTALLER)],
-        cwd=ROOT,
+        [str(source_root / "scripts" / "install_launchd.sh")],
+        cwd=source_root,
         env=environment,
         check=False,
         capture_output=True,
@@ -287,7 +338,7 @@ def test_installer_switches_exact_labels_and_verifies_both_health_endpoints(
     } == desired
     for label in desired:
         assert (launch_agents / f"{label}.plist").read_bytes() == (
-            ROOT / "launchd" / f"{label}.plist"
+            Path(environment["INSTALLER_TEST_SOURCE_ROOT"]) / "launchd" / f"{label}.plist"
         ).read_bytes()
     curl_calls = (tmp_path / "curl.log").read_text()
     assert "http://127.0.0.1:18765/health" in curl_calls
