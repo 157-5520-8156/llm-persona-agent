@@ -207,8 +207,9 @@ class OpenAIImageGenerator:
                 spend_store=self.spend_store,
                 usage_store=self.usage_store,
             )
-            billed = False
+            http_succeeded = False
             request_emitted = False
+            provider_rejected = False
             usage_payload: dict[str, object] | None = None
             try:
                 async with _openai_client(
@@ -263,8 +264,12 @@ class OpenAIImageGenerator:
                     request_emitted = True
                     response = await client.send(request)
                     if response.status_code != 200:
+                        provider_rejected = (
+                            400 <= response.status_code < 500
+                            and response.status_code not in {408, 429}
+                        )
                         raise openai_provider_error(response, provider="openai_image")
-                    billed = True
+                    http_succeeded = True
                     try:
                         payload = response.json()
                     except (ValueError, json.JSONDecodeError):
@@ -278,7 +283,7 @@ class OpenAIImageGenerator:
                     provider="openai", kind="transport", detail=type(exc).__name__
                 ) from exc
             finally:
-                if billed:
+                if http_succeeded:
                     _record_paid_image_generation(
                         model=self.model,
                         size=size,
@@ -294,7 +299,9 @@ class OpenAIImageGenerator:
                         reservation_id=token,
                         kind="image_generation",
                         estimated_cny=None,
-                        billing_state="unknown" if request_emitted else "not_billed",
+                        billing_state=(
+                            "not_billed" if provider_rejected or not request_emitted else "unknown"
+                        ),
                     )
             try:
                 if not isinstance(usage_payload, dict):
@@ -449,6 +456,42 @@ def _refuse_unbounded_image_spend(
     return usage_store, token
 
 
+def _complete_openai_image_usage(payload: dict[str, object] | None) -> dict[str, int] | None:
+    """Accept a final token bill only when every priced component is evidenced."""
+
+    usage = payload.get("usage") if isinstance(payload, dict) else None
+    if not isinstance(usage, dict):
+        return None
+    details = usage.get("input_tokens_details")
+    if not isinstance(details, dict):
+        return None
+    counts = (
+        usage.get("input_tokens"),
+        usage.get("output_tokens"),
+        usage.get("total_tokens"),
+        details.get("text_tokens"),
+        details.get("image_tokens"),
+    )
+    validated: list[int] = []
+    for value in counts:
+        if type(value) is not int or value < 0:
+            return None
+        validated.append(value)
+    input_tokens, output_tokens, total_tokens, text_tokens, image_tokens = validated
+    if (
+        output_tokens == 0
+        or input_tokens != text_tokens + image_tokens
+        or total_tokens != input_tokens + output_tokens
+    ):
+        return None
+    return {
+        "text_input_tokens": text_tokens,
+        "image_input_tokens": image_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
+
+
 def _record_paid_image_generation(
     *,
     model: str,
@@ -459,7 +502,7 @@ def _record_paid_image_generation(
     spend_store: object | None,
     reservation: "tuple[WorldV2UsageStore, str] | None" = None,
 ) -> None:
-    """Record spend after HTTP 200, even when the image bytes cannot be parsed."""
+    """HTTP 200 without complete usage records a revisable render estimate."""
 
     from companion_daemon.usage_metrics import (
         CNY_PER_USD,
@@ -467,11 +510,11 @@ def _record_paid_image_generation(
         parse_openai_image_usage,
     )
 
-    try:
-        parsed = parse_openai_image_usage(usage_payload)
-    except (ValueError, TypeError, OverflowError):
-        # A malformed usage block cannot erase an HTTP-successful paid render.
-        # Keep the existing render-table estimate when token evidence is unusable.
+    parsed = _complete_openai_image_usage(usage_payload)
+    usage_complete = parsed is not None
+    if parsed is None:
+        # Keep the paid-image count and estimate without finalizing missing or
+        # malformed billing evidence. A later real bill may reconcile this call.
         parsed = parse_openai_image_usage(None)
     usd, pricing_version = estimate_gpt_image_2_cost_usd(
         size=size,
@@ -485,7 +528,7 @@ def _record_paid_image_generation(
     note = (
         f"gpt-image:{model}:{size}:{quality}:refs={reference_count}"
         f":pricing={pricing_version}"
-        f":cost_basis={'reported_tokens' if parsed['output_tokens'] else 'render_estimate'}"
+        f":cost_basis={'reported_tokens' if usage_complete else 'render_estimate'}"
     )
     if reservation is not None:
         usage_store, token = reservation
@@ -493,7 +536,7 @@ def _record_paid_image_generation(
             reservation_id=token,
             kind="image_generation",
             estimated_cny=cny,
-            billing_state="known",
+            billing_state="known" if usage_complete else "unknown",
             note=note,
         )
     else:
