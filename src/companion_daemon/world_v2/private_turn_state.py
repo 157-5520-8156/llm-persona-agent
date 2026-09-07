@@ -23,6 +23,14 @@ class PrivateTurnState(FrozenModel):
     inner_state_summary: str = Field(min_length=1, max_length=480)
     attended_source_refs: tuple[str, ...] = Field(default=(), max_length=8)
     keep_impression: bool | None = Field(default=None, exclude_if=lambda value: value is None)
+    # Separate the wording she chose to retain from her momentary self-state.
+    # Omit absent values so historical audit payloads keep their exact shape.
+    stuck_with_me: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=1_200,
+        exclude_if=lambda value: value is None,
+    )
     noticed: str | None = Field(
         default=None,
         min_length=1,

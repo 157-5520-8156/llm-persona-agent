@@ -249,6 +249,7 @@ async def test_proactive_deepseek_transport_uses_strict_beta_tool_contract() -> 
                     "calling_it": None,
                     "said_as": None,
                     "keep_impression": None,
+                    "stuck_with_me": None,
                     "noticed": None,
                     "declared_display": None,
                 },

@@ -475,6 +475,7 @@ def test_keep_impression_and_noticed_hitchhike_onto_private_state() -> None:
         _payload(
             noticed="窗外开始下雨了",
             keep_impression=True,
+            stuck_with_me="她说过下雨的时候会想家，我还记着这句话",
             private_turn_state={
                 "inner_state_summary": "雨点打在玻璃上",
                 "attended_source_refs": [],
@@ -486,6 +487,7 @@ def test_keep_impression_and_noticed_hitchhike_onto_private_state() -> None:
     state = bound["private_turn_state"]
     assert state["noticed"] == "窗外开始下雨了"
     assert state["keep_impression"] is True
+    assert state["stuck_with_me"] == "她说过下雨的时候会想家，我还记着这句话"
     assert bound["appraisal_draft"]["appraise"] is True
 
 

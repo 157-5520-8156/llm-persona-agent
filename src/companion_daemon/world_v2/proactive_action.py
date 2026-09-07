@@ -2444,6 +2444,9 @@ class ProactiveActionRuntime:
         state = proposal.private_turn_state
         if state is None or getattr(state, "keep_impression", None) is not True:
             return
+        summary = getattr(state, "stuck_with_me", None)
+        if not isinstance(summary, str) or not summary.strip():
+            return
         interior = getattr(self._turn, "_character_interior", None)
         hitch = getattr(interior, "_hitch_paid_inbound_impression", None)
         if not callable(hitch):
@@ -2458,7 +2461,7 @@ class ProactiveActionRuntime:
         try:
             await hitch(
                 keep_impression=True,
-                reflection_summary=state.inner_state_summary,
+                reflection_summary=summary,
                 model_result_ref=model_result_ref,
                 source_event=source_event,
             )

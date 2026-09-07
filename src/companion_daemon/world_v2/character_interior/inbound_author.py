@@ -740,6 +740,7 @@ def _role_result_correction_instruction(correction: Mapping[str, object]) -> str
 # skeleton keys; a missing name here is a capability she cannot see.
 PRIVATE_TURN_STATE_OPTIONAL_SPECIMEN_KEYS = (
     "keep_impression",
+    "stuck_with_me",
     "noticed",
     "about_us",
     "why_us",

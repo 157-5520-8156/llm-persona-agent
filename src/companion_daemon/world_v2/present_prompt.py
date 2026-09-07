@@ -1747,6 +1747,9 @@ def compile_slim_consider_payload(
         "inner_state_summary": my_state,
         "attended_source_refs": [],
     }
+    stuck_with_me = _clip_text(value.get("stuck_with_me"), 1_200)
+    if stuck_with_me:
+        private_turn_state["stuck_with_me"] = stuck_with_me
     noticed = _clip_text(value.get("noticed"), 720)
     if noticed:
         private_turn_state["noticed"] = noticed
@@ -2031,6 +2034,10 @@ def hitchhike_proactive_authored_decisions(
     state = bound.get("private_turn_state")
     next_state = dict(state) if isinstance(state, dict) else {}
     added = False
+    stuck_with_me = _clip_text(authored.get("stuck_with_me"), 1_200)
+    if stuck_with_me:
+        next_state["stuck_with_me"] = stuck_with_me
+        added = True
     noticed = _clip_text(authored.get("noticed"), 720)
     if noticed:
         next_state["noticed"] = noticed

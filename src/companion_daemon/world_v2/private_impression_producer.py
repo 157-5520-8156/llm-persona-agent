@@ -1053,11 +1053,21 @@ def private_impression_opportunity(projection) -> tuple[str, str] | None:
         return None
     if pending_private_impression_trigger_id(projection):
         return None
-    interpreted = {
-        ref.split(":", 2)[1]
+    interpretation_refs = {
+        ref
         for impression in projection.private_impressions
         for ref in impression.interpretation_refs
-        if ref.startswith("appraisal:")
+    }
+    # Appraisal and hypothesis IDs themselves contain colons. Match the
+    # source identity we emitted instead of guessing its delimiter boundary.
+    interpreted = {
+        appraisal.appraisal_id
+        for appraisal in projection.appraisals
+        if any(
+            f"appraisal:{appraisal.appraisal_id}:{hypothesis.hypothesis_id}"
+            in interpretation_refs
+            for hypothesis in appraisal.hypotheses
+        )
     }
     existing_triggers = {item.trigger_id for item in projection.trigger_processes}
 

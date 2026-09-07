@@ -2283,6 +2283,7 @@ async def test_proactive_contact_uses_one_versioned_forced_tool_at_http_boundary
                     "calling_it": None,
                     "said_as": None,
                     "keep_impression": None,
+                    "stuck_with_me": None,
                     "noticed": None,
                     "declared_display": None,
                 },

@@ -1025,8 +1025,13 @@ class WorldRuntime:
         # Subjective attention stays in this authored turn.  Only an accepted
         # World Author proposal can introduce a new objective life occurrence.
         keep = getattr(state, "keep_impression", None)
-        summary = getattr(state, "inner_state_summary", "") or ""
-        if keep is True and self._character_interior is not None:
+        summary = getattr(state, "stuck_with_me", None)
+        if (
+            keep is True
+            and isinstance(summary, str)
+            and summary.strip()
+            and self._character_interior is not None
+        ):
             try:
                 await self._character_interior._hitch_paid_inbound_impression(  # noqa: SLF001
                     keep_impression=True,

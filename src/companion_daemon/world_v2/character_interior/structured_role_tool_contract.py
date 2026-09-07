@@ -313,6 +313,7 @@ def _proactive_payload_schema(
     properties["calling_it"] = _nullable_provider_schema({"type": "string"})
     properties["said_as"] = _nullable_provider_schema({"type": "string"})
     properties["keep_impression"] = _nullable_provider_schema({"type": "boolean"})
+    properties["stuck_with_me"] = _nullable_provider_schema({"type": "string"})
     properties["noticed"] = _nullable_provider_schema({"type": "string"})
     properties["declared_display"] = _nullable_provider_schema(
         {

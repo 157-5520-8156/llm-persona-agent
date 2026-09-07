@@ -36,6 +36,7 @@ PROACTIVE_NATIVE = frozenset(
         "calling_it",
         "said_as",
         "keep_impression",
+        "stuck_with_me",
         "noticed",
         "declared_display",
     }
@@ -52,7 +53,6 @@ INBOUND_ONLY_WITH_REASON = {
     "come_back": "revisit",
     "come_back_in": "revisit.wait_seconds",
     "how_it_landed": "response_expectation_assessment; also inbound-only because it reads his reply",
-    "stuck_with_me": "impulse_summary / private summary",
     "wants": "impulse_summary",
     "matters_bp": "appraisal_draft.confidence; full appraisal_draft is already on the proactive wire",
     "affect": "appraisal_draft.affect",
@@ -80,6 +80,7 @@ def test_proactive_has_inbound_relationship_and_impression_slim_keys() -> None:
         "calling_it",
         "said_as",
         "keep_impression",
+        "stuck_with_me",
         "noticed",
         "declared_display",
     ):
