@@ -433,3 +433,25 @@ hash，并把状态与 billing state 计数送入 review；详细原始错误只
 10 settled + 1 billing_unknown，原数据库 hash 不变；未重写原 trial 的 manifest 或报告。
 这份附加证据在 `output/private-audits/trial05-usage-evidence-akv5cit5/`。新的报告能力
 不补齐已经丢失的供应商用量尾帧，也不证明费用总额或语义质量已经合格。
+
+## 非法首帧的计费尾流修复
+
+`e5e98399` 修正了上述提前释放时序：首帧解析错误后不再向上层交出非法载体，继续在
+原请求既有 deadline/cancellation 下读取响应，结束后才进入既有的一次同角色纠错。
+没有加模型车道、提高时限或修改 `llm.py`；合法首帧仍可在用量尾帧之前交付。
+
+公共回归经过真实 CharacterInterior、DeepSeek MockTransport、异步分隔的 SSE 用量
+尾帧、主账、capture 与 Action 交付。旧代码在原尾帧尚未放行时已经发第二次 HTTP；
+修复后第一条非法文字没有交付，两笔原 token 账单均 known/settled，且第二次角色调用
+使用同一快照并带精确失败原因。deadline 和外部取消仍产生 unknown，并在重开账本后
+保留预约；没有收到的尾帧不会因测试放行一个已取消的 peer 而被补造。
+
+作者侧相关 387 项通过，独立 Standards/Spec 审查无具体问题。合并报告功能后的
+**431 项定向测试通过**。干净 `e5e98399` 的完整 120 场景再次通过；root 逐字段对比
+`.98` 候选并重算 SHA256，完全一致，证据为 `baseline-usage-tail.json` 及
+`baseline-usage-tail-verification.json`，因此没有提高冻结版本。
+
+此片只处理尚未释放首帧的结构错误；已释放后的尾段问题不在该证据范围内。原请求的
+运输可记 succeeded/known，而角色载体依然非法，两个结果不可混为一谈。等待尾帧可能
+消耗原剩余时间，没有保证每次都能及时取得用量；原 trial-05 的 unknown 保持原状。
+尚未进行新的真实供应商复测，不能用 mock 账单结算代替该项资格。
