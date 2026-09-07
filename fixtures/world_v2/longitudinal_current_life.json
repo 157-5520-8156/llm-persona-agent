@@ -1,0 +1,11 @@
+{
+  "scenario_id": "longitudinal-current-life.1",
+  "started_at": "2026-09-08T10:00:00+08:00",
+  "duration_minutes": 120,
+  "restart_minutes": [],
+  "turns": [
+    {"id": "current", "at_minutes": 0, "text": "早，刚歇下来。你今天怎么样？"},
+    {"id": "future", "at_minutes": 30, "text": "我下午没什么安排。你今天后面有什么打算吗？"},
+    {"id": "elapsed", "at_minutes": 90, "text": "忙完回来啦。你刚才那阵子过得怎么样？"}
+  ]
+}

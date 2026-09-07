@@ -54,7 +54,7 @@ from .contracts import (
 )
 
 
-SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.17"
+SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.18"
 
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
