@@ -678,6 +678,7 @@ _EVENT_EVIDENCE_KIND: dict[str, str] = {
     "ActivityStarted": "committed_world_event",
     "ActivityPaused": "committed_world_event",
     "ActivityResumed": "committed_world_event",
+    "ActivityCompleted": "committed_world_event",
 }
 
 

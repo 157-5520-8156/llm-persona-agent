@@ -87,7 +87,7 @@ from .life_content import LifeContentCompiler, collect_user_channel_limited_cont
 from .private_impression_events import collect_user_channel_limited_impression_ids
 from .life_content_store import ImmutableLifeContentStore
 from .life_development_runtime import LifeDevelopmentProposalReader
-from .chat_life_intent_runtime import ChatLifeIntentActiveReader, CompositeActiveActivityReader
+from .chat_life_intent_runtime import ChatLifeIntentActiveReader, ChatLifeIntentCompletedReader, CompositeActiveActivityReader
 from .life_events import NpcRegisteredPayload
 from .npc_identity_view import npc_identity_views
 from .perception_result_context import (
@@ -141,6 +141,7 @@ from .schemas import (
 from .situation_compiler import SituationCompiler, request_from_ledger_projection
 from .world_life_context import (
     ActiveActivityContextItem,
+    CompletedActivityContextItem,
     ActiveWorldOccurrenceContextItem,
     BiographicalWorldContextItem,
     WorldLifeContextCompiler,
@@ -288,7 +289,7 @@ def _item_ref(slice_name: SliceName, item: BaseModel) -> str:
             item,
             (
                 "activity_event_ref"
-                if slice_name == "world_life" and isinstance(item, ActiveActivityContextItem)
+                if slice_name == "world_life" and isinstance(item, (ActiveActivityContextItem, CompletedActivityContextItem))
                 else "biography_id"
                 if slice_name == "world_life" and isinstance(item, BiographicalWorldContextItem)
                 else "influence_id"
@@ -352,7 +353,7 @@ def _typed_refs(item: BaseModel, *, observation_aliases: dict[str, str]) -> tupl
                 )
             )
         )
-    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem)):
+    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem)):
         return tuple(sorted(binding.authority_event_ref for binding in item.source_bindings))
     if isinstance(item, WorldLifeContextItem):
         refs = {item.source.authority_event_ref}
@@ -549,7 +550,7 @@ def _typed_authority_claims(
                 )
             )
         )
-    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem)):
+    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem)):
         return tuple(
             sorted(
                 (
@@ -677,6 +678,7 @@ def _recency_bp(item: BaseModel, logical_time: datetime | None) -> int:
         getattr(item, "opened_at", None),
         getattr(getattr(item, "values", None), "occurred_to", None),
         getattr(item, "settled_at", None),
+        getattr(item, "ended_at", None),
         getattr(item, "activated_at", None),
         getattr(item, "occurred_at", None),
         getattr(item, "shared_at", None),
@@ -1402,6 +1404,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         self._reviewed_npc_identity_summaries = reviewed_npc_identity_summaries or {}
         self._world_life = WorldLifeContextCompiler(
             life_content=self._life_content,
+            completed_activity_reader=ChatLifeIntentCompletedReader(ledger=ledger),
             active_activity_reader=CompositeActiveActivityReader(
                 ChatLifeIntentActiveReader(ledger=ledger),
                 LifeDevelopmentProposalReader(ledger=ledger, content_store=life_content_store)

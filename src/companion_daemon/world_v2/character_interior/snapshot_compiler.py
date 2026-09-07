@@ -54,7 +54,7 @@ from .contracts import (
 )
 
 
-SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.19"
+SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.20"
 
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
@@ -530,7 +530,7 @@ def _experience_entry(item: dict[str, object], *, lane: str) -> dict[str, object
     if not isinstance(source_ref, str) or not isinstance(value, dict):
         return None
     if lane == "world_life":
-        if value.get("context_kind") in {"biographical_context", "active_activity"}:
+        if value.get("context_kind") in {"biographical_context", "active_activity", "completed_activity"}:
             return None
         fields = (
             (
@@ -1288,6 +1288,19 @@ def compile_inner_life_snapshot(
     ]
     if current_activities:
         materials["current_activities"] = current_activities
+
+    recently_ended = [
+        entry
+        for item in _slice_items(slices, "world_life")
+        if isinstance(item.get("value"), dict)
+        and item["value"].get("context_kind") == "completed_activity"
+        and (entry := _state_entry(item, fields=(
+            "plan_id", "plan_entity_revision", "owner_actor_ref", "activity_kind",
+            "status", "ended_at", "completion_scope", "accepted_intention",
+        )))
+    ]
+    if recently_ended:
+        materials["recently_ended_activities"] = recently_ended
 
     lanes = (
         ("situation", "current_situation", (

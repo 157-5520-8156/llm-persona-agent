@@ -242,7 +242,7 @@ def test_pinned_time_alias_is_declared_attention_only_not_world_claim_authority(
         source_ref_aliases=aliases,
     )
 
-    assert manifest["contract"] == "expression-hard-boundaries.9"
+    assert manifest["contract"] == "expression-hard-boundaries.10"
     assert manifest["private_turn_state"]["attended_source_refs"] == {
         "maximum_items": 8,
         "unique": True,

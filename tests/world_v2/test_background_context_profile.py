@@ -273,7 +273,7 @@ def test_rendered_diary_keeps_exact_sources_after_background_budgeting(hidden_re
 def test_profile_audit_record_is_stable_json() -> None:
     profile = background_context_profile_for_purpose("fact_memory_retention")
     record = profile_audit_record(profile)
-    assert record["contract"] == "background-context-profile.2"
+    assert record["contract"] == "background-context-profile.3"
     assert record["profile_id"] == "memory_retention"
     json.dumps(record, ensure_ascii=False, sort_keys=True)
 

@@ -156,6 +156,37 @@ class ActiveActivityReader(Protocol):
     ) -> ActiveActivityContextItem | None: ...
 
 
+class CompletedActivityContextItem(FrozenModel):
+    """An accepted lifecycle ending, never proof that its intention succeeded."""
+
+    context_kind: Literal["completed_activity"] = "completed_activity"
+    activity_event_ref: str = Field(min_length=1)
+    plan_id: str = Field(min_length=1)
+    plan_entity_revision: int = Field(ge=3)
+    owner_actor_ref: str = Field(min_length=1)
+    activity_kind: str = Field(min_length=1)
+    status: Literal["completed"] = "completed"
+    ended_at: datetime
+    completion_scope: Literal["activity_lifecycle_ended_not_intention_fulfilled"] = (
+        "activity_lifecycle_ended_not_intention_fulfilled"
+    )
+    privacy_class: PrivacyClass
+    accepted_intention: AcceptedActivityIntention
+    proposal_source: ActiveWorldOccurrenceProposalBinding
+    source_bindings: tuple[WorldLifeSourceBinding, WorldLifeSourceBinding]
+
+
+class CompletedActivityReader(Protocol):
+    def read_completed_plan(
+        self,
+        *,
+        plan_id: str,
+        expected_cursor: ProjectionCursor,
+        actor_ref: str,
+        viewer_privacy_ceiling: PrivacyClass,
+    ) -> CompletedActivityContextItem | None: ...
+
+
 class ActiveLifeArcContext(FrozenModel):
     """The model-visible, non-narrative coordinates of one active Life Arc."""
 
@@ -239,6 +270,7 @@ WorldLifeModelContextItem = (
     WorldLifeContextItem
     | ActiveWorldOccurrenceContextItem
     | ActiveActivityContextItem
+    | CompletedActivityContextItem
     | BiographicalWorldContextItem
 )
 
@@ -252,12 +284,14 @@ class WorldLifeContextCompiler:
         life_content: LifeContentCompiler | None = None,
         active_occurrence_reader: ActiveWorldOccurrenceReader | None = None,
         active_activity_reader: ActiveActivityReader | None = None,
+        completed_activity_reader: CompletedActivityReader | None = None,
         biography: BiographicalLifecycleCatalog | None = None,
         biography_timezone: ZoneInfo | None = None,
     ) -> None:
         self._life_content = life_content
         self._active_occurrence_reader = active_occurrence_reader
         self._active_activity_reader = active_activity_reader
+        self._completed_activity_reader = completed_activity_reader
         self._biography = biography
         self._biography_timezone = biography_timezone
 
@@ -413,8 +447,39 @@ class WorldLifeContextCompiler:
                 ):
                     activities.append(current)
         activities.sort(key=lambda item: (-item.active_since.timestamp(), item.activity_event_ref))
+        completed_activities: list[CompletedActivityContextItem] = []
+        if cursor is not None and self._completed_activity_reader is not None:
+            candidates = sorted(
+                (
+                    plan for plan in projection.plans
+                    if plan.status == "completed" and plan.owner_actor_ref == actor_ref
+                    and plan.authority_origin is not None
+                ),
+                key=lambda plan: (-plan.authority_origin.accepted_at.timestamp(), plan.plan_id),
+            )
+            for plan in candidates:
+                ended = self._completed_activity_reader.read_completed_plan(
+                    plan_id=plan.plan_id,
+                    expected_cursor=cursor,
+                    actor_ref=actor_ref,
+                    viewer_privacy_ceiling=viewer_privacy_ceiling,
+                )
+                if ended is not None and (
+                    ended.plan_id == plan.plan_id
+                    and ended.plan_entity_revision == plan.entity_revision
+                    and ended.owner_actor_ref == actor_ref
+                    and ended.activity_event_ref == plan.authority_origin.accepted_event_ref
+                    and ended.ended_at == plan.authority_origin.accepted_at
+                    and ended.activity_kind == plan.activity_kind
+                    and ended.privacy_class == plan.privacy_class
+                    and ended.accepted_intention.content_ref not in user_channel_limited_content_refs
+                ):
+                    completed_activities.append(ended)
+                    if len(completed_activities) == 3:
+                        break
         return (
-            ((biography,) if biography is not None else ()) + tuple(activities) + active + settled
+            ((biography,) if biography is not None else ())
+            + tuple(activities) + tuple(completed_activities) + active + settled
         )
 
     def _biographical_item(
@@ -649,6 +714,8 @@ class WorldLifeContextCompiler:
 
 __all__ = [
     "ActiveLifeArcContext",
+    "CompletedActivityContextItem",
+    "CompletedActivityReader",
     "ActiveWorldOccurrenceContextItem",
     "ActiveWorldOccurrencePremise",
     "ActiveWorldOccurrenceProposalBinding",

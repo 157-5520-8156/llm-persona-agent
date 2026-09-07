@@ -338,15 +338,16 @@ class CompositeActivityPlanMaterialReader:
         return None
 
 
-class ChatLifeIntentActiveReader:
-    """Expose only accepted intent and exact active coordinates, never results."""
+class _ChatLifeIntentActivityReader:
+    """Expose accepted intent and its exact lifecycle state, never results."""
 
     def __init__(self, *, ledger) -> None:
         self._ledger = ledger
 
-    def read_active_plan(self, *, plan_id, expected_cursor, actor_ref, viewer_privacy_ceiling):
+    def _read(self, *, plan_id, expected_cursor, actor_ref, viewer_privacy_ceiling, status):
         try:
-            return self._read_active_plan(
+            return self._read_context(
+                status=status,
                 plan_id=plan_id,
                 expected_cursor=expected_cursor,
                 actor_ref=actor_ref,
@@ -355,11 +356,12 @@ class ChatLifeIntentActiveReader:
         except (ValueError, TypeError, KeyError):
             return None
 
-    def _read_active_plan(self, *, plan_id, expected_cursor, actor_ref, viewer_privacy_ceiling):
+    def _read_context(self, *, plan_id, expected_cursor, actor_ref, viewer_privacy_ceiling, status):
         from .schemas import validate_plan_authority_state
         from .world_life_context import (
             AcceptedActivityIntention,
             ActiveActivityContextItem,
+            CompletedActivityContextItem,
             ActiveWorldOccurrenceProposalBinding,
             WorldLifeSourceBinding,
         )
@@ -378,7 +380,7 @@ class ChatLifeIntentActiveReader:
         if cursor != expected_cursor:
             return None
         plan = next((x for x in projection.plans if x.plan_id == plan_id), None)
-        if plan is None or plan.status != "active" or plan.owner_actor_ref != actor_ref:
+        if plan is None or plan.status != status or plan.owner_actor_ref != actor_ref:
             return None
         validate_plan_authority_state(
             (plan,), projection.committed_world_event_refs, logical_time=projection.logical_time
@@ -453,7 +455,7 @@ class ChatLifeIntentActiveReader:
             owner_actor_ref=actor_ref,
         )
         # A concurrent advance invalidates this foreground read rather than
-        # leaking a once-active Plan into a newer paused/completed snapshot.
+        # reading a lifecycle head from a different snapshot.
         head = self._ledger.project()
         if (head.world_revision, head.deliberation_revision, head.ledger_sequence) != (
             cursor.world_revision,
@@ -461,15 +463,25 @@ class ChatLifeIntentActiveReader:
             cursor.ledger_sequence,
         ):
             return None
-        return ActiveActivityContextItem(
+        item_type = (
+            ActiveActivityContextItem if status == "active" else CompletedActivityContextItem
+        )
+        state_coordinates = (
+            {
+                "participant_refs": plan.participant_refs,
+                "location_ref": plan.location_ref,
+                "active_since": plan.authority_origin.accepted_at,
+            }
+            if status == "active"
+            else {"ended_at": plan.authority_origin.accepted_at}
+        )
+        return item_type(
+            **state_coordinates,
             activity_event_ref=plan.authority_origin.accepted_event_ref,
             plan_id=plan_id,
             plan_entity_revision=plan.entity_revision,
             owner_actor_ref=actor_ref,
             activity_kind=plan.activity_kind,
-            participant_refs=plan.participant_refs,
-            location_ref=plan.location_ref,
-            active_since=plan.authority_origin.accepted_at,
             privacy_class=plan.privacy_class,
             accepted_intention=AcceptedActivityIntention(
                 content_ref=origin.proposal_event_ref + "#" + origin.change_id,
@@ -484,6 +496,18 @@ class ChatLifeIntentActiveReader:
             ),
             source_bindings=tuple(bindings),
         )
+
+
+class ChatLifeIntentActiveReader(_ChatLifeIntentActivityReader):
+    def read_active_plan(self, **kwargs):
+        return self._read(**kwargs, status="active")
+
+
+class ChatLifeIntentCompletedReader(_ChatLifeIntentActivityReader):
+    """Read a completed lifecycle; the accepted intention need not have succeeded."""
+
+    def read_completed_plan(self, **kwargs):
+        return self._read(**kwargs, status="completed")
 
 
 class CompositeActiveActivityReader:

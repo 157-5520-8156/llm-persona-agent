@@ -70,6 +70,7 @@ _EVENT_EVIDENCE_KIND = {
     "ActivityStarted": "committed_world_event",
     "ActivityPaused": "committed_world_event",
     "ActivityResumed": "committed_world_event",
+    "ActivityCompleted": "committed_world_event",
 }
 
 
@@ -685,24 +686,58 @@ def _world_life_occurrence_source_tokens(
     items = world_life.get("items")
     if not isinstance(items, list):
         return set()
+    tokens: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        value = item.get("value")
+        kind = value.get("context_kind") if isinstance(value, dict) else None
+        if kind == "biographical_context":
+            continue
+        if kind == "completed_activity":
+            # The accepted intention and its original Plan binding remain
+            # readable audit material; only the actual ending is a past fact.
+            if not include_active:
+                tokens.update(_completed_activity_item_source_tokens(item))
+            continue
+        if not include_active and kind in {"active_world_occurrence", "active_activity"}:
+            continue
+        tokens.update(_context_item_source_tokens(item))
+    return tokens - _context_entity_identity_tokens(context)
+
+
+def _completed_activity_item_source_tokens(item: dict[str, object]) -> set[str]:
+    source_ref = item.get("source_ref", item.get("item_ref"))
+    bindings = item.get("source_bindings")
+    if not isinstance(source_ref, str) or not isinstance(bindings, list):
+        return set()
+    return {
+        source_ref
+        for binding in bindings
+        if isinstance(binding, dict)
+        and binding.get("ref") == source_ref
+        and binding.get("source_kind") == "committed_event"
+        and binding.get("authority_type") == "ActivityCompleted"
+        and isinstance(binding.get("source_world_revision"), int)
+        and binding["source_world_revision"] > 0
+        and isinstance(binding.get("immutable_hash"), str)
+        and len(binding["immutable_hash"]) == 64
+    }
+
+
+def _completed_activity_source_tokens(context: dict[str, object]) -> set[str]:
+    slices = context.get("slices")
+    lane = slices.get("world_life") if isinstance(slices, dict) else None
+    if not isinstance(lane, dict) or lane.get("availability") != "available":
+        return set()
     return {
         token
-        for item in items
+        for item in lane.get("items", ())
         if isinstance(item, dict)
-        and not (
-            isinstance(item.get("value"), dict)
-            and item["value"].get("context_kind") == "biographical_context"
-        )
-        and (
-            include_active
-            or not (
-                isinstance(item.get("value"), dict)
-                and item["value"].get("context_kind")
-                in {"active_world_occurrence", "active_activity"}
-            )
-        )
-        for token in _context_item_source_tokens(item)
-    } - _context_entity_identity_tokens(context)
+        and isinstance(item.get("value"), dict)
+        and item["value"].get("context_kind") == "completed_activity"
+        for token in _completed_activity_item_source_tokens(item)
+    }
 
 
 def _active_world_occurrence_source_tokens(context: dict[str, object]) -> set[str]:
@@ -1510,7 +1545,7 @@ def expression_hard_boundary_manifest(
 
     coordinate_authorities = biographical_coordinate_authorities(context)
     return {
-        "contract": "expression-hard-boundaries.9",
+        "contract": "expression-hard-boundaries.10",
         "private_turn_state": {
             "attended_source_refs": {
                 "maximum_items": 8,
@@ -1574,6 +1609,11 @@ def expression_hard_boundary_manifest(
             ),
             "active_activity_source_refs": present_claim_refs(
                 _active_activity_source_tokens(context)
+            ),
+            **(
+                {"completed_activity_source_refs": present_claim_refs(completed_sources)}
+                if (completed_sources := _completed_activity_source_tokens(context))
+                else {}
             ),
             "committed_experience_source_refs": present_claim_refs(
                 _slice_claim_authority_tokens(context, "recent_experiences")
