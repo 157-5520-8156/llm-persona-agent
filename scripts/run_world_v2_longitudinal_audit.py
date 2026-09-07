@@ -350,7 +350,9 @@ def main(argv: list[str] | None = None) -> int:
     }
     if "operator_final_observation" in manifest:
         summary["operator_final_observation"] = manifest["operator_final_observation"]
-    print(json.dumps(summary, ensure_ascii=False))
+    from companion_daemon.world_v2.longitudinal_stdio import write_json_line
+
+    asyncio.run(write_json_line(summary))
     return 0 if manifest["completed"] else 1
 
 
