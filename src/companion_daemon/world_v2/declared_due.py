@@ -292,6 +292,10 @@ def _extract_threads(projection: object) -> tuple[DeclaredDueTarget, ...]:
 
 def _extract_plans(projection: object) -> tuple[DeclaredDueTarget, ...]:
     found: list[DeclaredDueTarget] = []
+    considered = {
+        item.opportunity.plan_id
+        for item in _iter(getattr(projection, "chat_life_plan_considerations", ()))
+    }
     for plan in _iter(getattr(projection, "plans", ())):
         status = getattr(plan, "status", None)
         if status not in _LIVE_PLAN_STATUSES:
@@ -300,10 +304,12 @@ def _extract_plans(projection: object) -> tuple[DeclaredDueTarget, ...]:
         # Starting consumes the opening. Active/paused activities retain the
         # accepted end boundary; replaying their past opening would both miss
         # completion wakes and falsely report already-started work as overdue.
-        # The lifecycle owner still decides the legal transition at that wake.
+        # An initial chat-plan decision (including technical terminal) also
+        # consumes that opening opportunity, without changing Plan status.
+        # The lifecycle owner still decides the legal transition at close.
         due = (
             _window_open(window)
-            if status == "planned"
+            if status == "planned" and getattr(plan, "plan_id", None) not in considered
             else _as_datetime(getattr(window, "closes_at", None))
         )
         if due is not None:

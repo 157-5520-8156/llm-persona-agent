@@ -2161,21 +2161,36 @@ class WorldV2TurnApplication:
 
         if self._life_ecology is None:
             return None
+        from .chat_life_plan_consideration import pending_opportunities
+
         trigger_store = getattr(self._life_ecology, "_trigger_store", None)
         reader = getattr(trigger_store, "next_consideration_at", None)
-        if callable(reader):
-            due = reader()
-            if due is not None:
-                return due
+        due = reader() if callable(reader) else None
         projection = (
             await asyncio.to_thread(self._ledger.project)
             if self._ledger.blocks_event_loop
             else self._ledger.project()
         )
-        schedule = getattr(projection, "life_ecology_schedule", None)
-        if schedule is not None:
-            return schedule.next_consideration_at
-        return projection.logical_time
+        if due is None:
+            schedule = getattr(projection, "life_ecology_schedule", None)
+            due = (
+                schedule.next_consideration_at if schedule is not None else projection.logical_time
+            )
+        pending = (
+            await asyncio.to_thread(
+                pending_opportunities,
+                self._ledger,
+                owner_actor_ref=self._companion_actor_ref,
+                projection=projection,
+            )
+            if self._ledger.blocks_event_loop
+            else pending_opportunities(
+                self._ledger, owner_actor_ref=self._companion_actor_ref, projection=projection
+            )
+        )
+        return min(
+            (x for x in (due, *(item.due_at for item in pending)) if x is not None), default=None
+        )
 
     def _social_initiative_compiler(self) -> SocialInitiativeCompiler:
         return SocialInitiativeCompiler(

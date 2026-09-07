@@ -8,6 +8,7 @@ It deliberately does not decide behavior or reduce state.
 from __future__ import annotations
 
 from .chat_life_intent_contract import ChatLifeIntentFailure
+from .chat_life_plan_consideration_contract import ChatLifePlanConsideration
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -460,6 +461,7 @@ _PAYLOAD_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "InteractionFactTechnicalFailureRecorded": InteractionFactTechnicalFailurePayload,
         "ContextualLifeTechnicalFailureRecorded": (ContextualLifeTechnicalFailureRecordedPayload),
         "ChatLifeIntentAcceptanceFailed": ChatLifeIntentFailure,
+        "ChatLifePlanConsiderationRecorded": ChatLifePlanConsideration,
         "ContextualLifeSourceDispositionRecorded": (ContextualLifeSourceDispositionRecordedPayload),
         "InteractionFactDecisionRecorded": InteractionFactDecisionRecordedPayload,
         "FactMemoryDecisionRecorded": FactMemoryDecisionRecordedPayload,
@@ -616,6 +618,7 @@ _IDEMPOTENCY_IDENTITIES: Mapping[str, str] = MappingProxyType(
         ),
         "ContextualLifeTechnicalFailureRecorded": ("world_id+lane+source_event_ref+retry_ordinal"),
         "ChatLifeIntentAcceptanceFailed": "world_id+proposal_event_ref+change_id+retry_ordinal",
+        "ChatLifePlanConsiderationRecorded": "world_id+opportunity.plan_event_ref+opportunity.attempt_ordinal",
         "ContextualLifeSourceDispositionRecorded": ("world_id+source_event_ref+disposition"),
         "InteractionFactDecisionRecorded": ("world_id+trigger_id+fact_context_hash+decision_id"),
         "FactMemoryDecisionRecorded": ("world_id+trigger_id+fact_authority_event_ref+decision_id"),
@@ -1087,6 +1090,12 @@ _CONTRACTS: Mapping[str, EventContract] = MappingProxyType(
                 ),
                 evidence_types=("model_failure", "retry_schedule"),
                 successors=("TriggerProcessReclaimed",),
+            ),
+            _contract(
+                "ChatLifePlanConsiderationRecorded", "activity_lifecycle", "deliberation",
+                "ChatLifePlanConsideration",
+                allowed_predecessors=("ActivityPlanned", "ClockAdvanced"),
+                evidence_types=("accepted_plan", "role_decision", "technical_failure"),
             ),
             _contract(
                 "ChatLifeIntentAcceptanceFailed", "chat_life_intent", "deliberation", "ChatLifeIntentFailure",

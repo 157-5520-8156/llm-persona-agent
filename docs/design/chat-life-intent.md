@@ -86,9 +86,28 @@ Proposal 仅引用该轮 Observation 与精确 ActivityCompleted，随后产生 
 第二条本地捕获回执为 `provider_accepted`、`is_terminal=false`，不能声称终端交付。
 场景及冷启动重放通过，但本次完成来源能力没有真实模型或真实 QQ 验收。
 
-当前保留一个实际 HTTP 红测：两次 CAS 后 150 秒才接受的计划仍保持原选择时刻的
-开窗，接受成功后需要可靠的“新计划”生活机会。现有追加
-`renewed_plan_catalog` 路径只在 Life Development 的同一个 ecology wake 内，不能
-仅从聊天重复调用已结束的 wake 来冒认该权限。该测试没有改窗口、延长场景或放宽
-`completed`，直到独立的已接受计划唤醒路径补齐。普通准时接受的计划已经验证启动、
-读取、引用交付，以及选择 complete 后只有 ActivityCompleted 而不产生虚构经历。
+迟到接受计划的公共 HTTP 红测已闭合：两次 CAS 后 150 秒才接受的计划保留原窗口，
+接受事件使现有 `life.ecology` 的下一次考虑提前到接受后 1 秒（若开窗更晚则等开窗）。
+宿主提交真实 ClockAdvanced，原 ActivityLifecycleWorker 将接受事件及其原审计来源
+加入该次能力与因果来源；角色仍通过已有 select/no_op 选择，未复制生活执行器。
+
+`ChatLifePlanConsiderationRecorded` 在 Deliberation 中记录该计划初始机会的结论。
+它绑定接受 Plan 的 event/hash、原聊天选择来源、当前真实 Clock，以及完整原角色结果
+及模型审计；select 还绑定原生命周期提案。原 Plan 窗口和状态由原生命周期事件负责。
+合法 no_op 只表示这次新计划机会已考虑；关窗仍能成为后续合法机会，不自动放弃计划。
+
+技术失败与角色 no_op 分开：同一来源最多三次尝试，每次仍由原角色获得一次
+精确纠错；失败按 30 / 120 秒退避，attempt_ordinal 和 next_retry_at 落入同一
+journal。已有 life.ecology 到期读取汇入该证据，未到期不调用模型，重启保留次数。
+次数用尽或下一次已超过合法活动窗口时，明确记录技术耗尽或窗口过期；不写角色拒绝。
+
+若 Core 已持久化合法 no_op，而进程在生活 journal 提交前中断，恢复通过
+CharacterInterior 的窄只读终态入口校验原 terminal / prepared 字节 hash、typed
+snapshot、作者与 private lineage、原能力 ref/hash/source binding，并补原 declined。
+原角色 Clock 与当前记录 Clock 分别绑定，不从 spent 标记猜测决定，也不在新 Clock
+重问角色。原 snapshot 没有完整能力 payload，这里不声称恢复了不存在的原文。
+一个已选择但尚未物化的原生命周期结果则仍是消费技术失败，进入有界恢复尝试。
+公共 HTTP 崩溃加重启测试验证只有一次原 no_op 模型请求、没有第二次生活选择。
+
+新路径不增加聊天模型调用或审查模型；新接受计划提供一个已有生活角色机会（仅技术失败按上述次数重试），
+仍受原角色调用和预算机制约束。机械测试不证明每月 100 元预算或真人感达标。

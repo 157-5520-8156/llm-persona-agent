@@ -61,6 +61,7 @@ async def _run_http_journey(
     duration_minutes=None,
     vary_reply=False,
     prefer_complete=False,
+    initial_lifecycle_decision="select",
 ):
     import importlib.util
     from pathlib import Path
@@ -156,6 +157,18 @@ async def _run_http_journey(
                         if prefer_complete
                         else openings[0]
                     )
+                    choice = {"decision": "select", "selected_token": selected["opening_token"]}
+                    if capability["payload"].get("accepted_plan_opportunity"):
+                        if initial_lifecycle_decision == "no_op":
+                            choice = {"decision": "no_op"}
+                        elif initial_lifecycle_decision == "invalid" or (
+                            initial_lifecycle_decision == "recover"
+                            and capability["payload"]["accepted_plan_opportunity"][
+                                "attempt_ordinal"
+                            ]
+                            == 1
+                        ):
+                            choice["selected_token"] = "fixture-invalid-token"
                     raw = json.dumps(
                         {
                             "status": "decision",
@@ -165,10 +178,7 @@ async def _run_http_journey(
                             "proposals": [],
                             "decision": {
                                 "source_refs": capability["source_refs"],
-                                "payload": {
-                                    "decision": "select",
-                                    "selected_token": selected["opening_token"],
-                                },
+                                "payload": choice,
                             },
                         }
                     )
@@ -564,6 +574,14 @@ async def test_acceptance_failure_journal_survives_restart_and_stops_busy_retry(
     assert len(plans) == (0 if fail_forever else 1)
     if plans:
         assert plans[0]["payload"]["chat_intent_origin"]["selected_at"] == "2026-09-08T02:00:00Z"
+        assert plans[0]["payload"]["plan"]["scheduled_window"]["opens_at"] == "2026-09-08T02:00:00Z"
+        starts = [x for x in rows if x["event_type"] == "ActivityStarted"]
+        assert len(starts) == 1
+        considered = [x for x in rows if x["event_type"] == "ChatLifePlanConsiderationRecorded"]
+        assert len(considered) == 1
+        assert considered[0]["payload"]["status"] == "selected"
+        assert considered[0]["payload"]["considered_at"] == "2026-09-08T02:02:31Z"
+        assert considered[0]["payload"]["opportunity"]["plan_event_ref"] == plans[0]["event_id"]
     ledger = SQLiteWorldLedger(path=output / "world.sqlite", world_id=rows[0]["world_id"])
     try:
         before = ledger.project()
@@ -682,3 +700,203 @@ async def test_failure_journal_replay_rejects_actor_source_and_change_tampering(
         )
         with pytest.raises(ValueError, match="chat_life_intent"):
             reduce_event(state, forged)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("choice", ["no_op", "invalid"])
+async def test_initial_plan_consideration_bounds_retries_and_distinguishes_role_decline(
+    tmp_path, monkeypatch, choice
+):
+    from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
+
+    result, rows, bodies, output, calls = await _run_http_journey(
+        tmp_path,
+        monkeypatch,
+        no_appraisal=True,
+        duration_minutes=5,
+        initial_lifecycle_decision=choice,
+    )
+    assert result["completed"], result["stop_reason"]
+    assert calls == 1
+    records = [x for x in rows if x["event_type"] == "ChatLifePlanConsiderationRecorded"]
+    assert len(records) == (1 if choice == "no_op" else 3)
+    value = records[-1]["payload"]
+    assert value["terminal"]
+    assert value["terminal_reason"] == (
+        "role_decision" if choice == "no_op" else "attempts_exhausted"
+    )
+    if choice == "invalid":
+        assert [x["payload"]["opportunity"]["attempt_ordinal"] for x in records] == [1, 2, 3]
+        from datetime import datetime, timedelta
+
+        for earlier, following, seconds in zip(records, records[1:], (30, 120), strict=False):
+            due = datetime.fromisoformat(earlier["payload"]["next_retry_at"])
+            assert due == datetime.fromisoformat(earlier["payload"]["recorded_at"]) + timedelta(
+                seconds=seconds
+            )
+            assert following["payload"]["considered_at"] == earlier["payload"]["next_retry_at"]
+        assert records[-1]["payload"]["next_retry_at"] is None
+    assert value["status"] == ("declined" if choice == "no_op" else "technical_failure")
+    assert bool(value["failure_code"]) is (choice == "invalid")
+    assert (value["character_interior_model_result"] is None) is (choice == "invalid")
+    assert not any(x["event_type"] in {"ActivityStarted", "ActivityAbandoned"} for x in rows)
+    initial_requests = []
+    for body in bodies:
+        for message in body["messages"]:
+            try:
+                material = json.loads(message["content"])
+            except (TypeError, ValueError):
+                continue
+            if isinstance(material, dict) and material.get("capability_manifest", {}).get(
+                "payload", {}
+            ).get("accepted_plan_opportunity"):
+                initial_requests.append(material)
+    assert len(initial_requests) == (1 if choice == "no_op" else 6)
+    assert all(
+        x["capability_manifest"]["payload"]["accepted_plan_opportunity"]["plan_event_ref"]
+        == value["opportunity"]["plan_event_ref"]
+        for x in initial_requests
+    )
+    ledger = SQLiteWorldLedger(path=output / "world.sqlite", world_id=rows[0]["world_id"])
+    try:
+        projection = ledger.project()
+        assert projection.plans[0].status == "planned"
+        assert len(projection.chat_life_plan_considerations) == (1 if choice == "no_op" else 3)
+        assert ledger.rebuild().semantic_hash == projection.semantic_hash
+        assert (
+            ledger.rebuild().chat_life_plan_considerations
+            == projection.chat_life_plan_considerations
+        )
+    finally:
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_initial_plan_consideration_replay_requires_original_plan_clock_and_role_result(
+    tmp_path, monkeypatch
+):
+    from companion_daemon.world_v2.reducers import ReducerState, reduce_event
+    from companion_daemon.world_v2.schemas import WorldEvent
+
+    result, rows, _, _, _ = await _run_http_journey(
+        tmp_path, monkeypatch, no_appraisal=True, initial_lifecycle_decision="no_op"
+    )
+    assert result["completed"]
+    state = ReducerState()
+    for row in rows:
+        event = WorldEvent.model_validate_json(
+            json.dumps({k: v for k, v in row.items() if k not in {"ledger_sequence", "payload"}})
+        )
+        if event.event_type == "ChatLifePlanConsiderationRecorded":
+            break
+        state = reduce_event(state, event)
+    assert event.event_type == "ChatLifePlanConsiderationRecorded"
+    assert len(reduce_event(state, event).chat_life_plan_considerations) == 1
+    opportunity = event.payload()["opportunity"]
+    original_decision = json.loads(event.payload()["character_decision_json"])
+    for edits, actor in [
+        ({}, "agent:other"),
+        ({"clock_payload_hash": "0" * 64}, event.actor),
+        (
+            {
+                "character_decision_json": json.dumps(
+                    {**original_decision, "actor_ref": "agent:other"}
+                )
+            },
+            event.actor,
+        ),
+        (
+            {
+                "character_decision_json": json.dumps(
+                    {**original_decision, "inner_turn_id": "inner-turn:forged"}
+                )
+            },
+            event.actor,
+        ),
+        ({"opportunity": {**opportunity, "plan_payload_hash": "0" * 64}}, event.actor),
+        (
+            {
+                "opportunity": {
+                    **opportunity,
+                    "origin": {**opportunity["origin"], "proposal_payload_hash": "0" * 64},
+                }
+            },
+            event.actor,
+        ),
+        ({"character_interior_model_result": None}, event.actor),
+        ({"status": "selected"}, event.actor),
+        ({"lifecycle_proposal_json": "{}"}, event.actor),
+    ]:
+        envelope = event.model_dump(exclude={"payload_json", "payload_hash"})
+        forged = WorldEvent.from_payload(
+            **{**envelope, "actor": actor}, payload={**event.payload(), **edits}
+        )
+        with pytest.raises(ValueError):
+            reduce_event(state, forged)
+
+
+@pytest.mark.asyncio
+async def test_initial_plan_retry_can_recover_into_a_valid_lifecycle_choice(tmp_path, monkeypatch):
+    result, rows, _, _, calls = await _run_http_journey(
+        tmp_path,
+        monkeypatch,
+        no_appraisal=True,
+        initial_lifecycle_decision="recover",
+        duration_minutes=5,
+    )
+    assert result["completed"], result["stop_reason"]
+    assert calls == 1
+    records = [x["payload"] for x in rows if x["event_type"] == "ChatLifePlanConsiderationRecorded"]
+    assert [x["status"] for x in records] == ["technical_failure", "selected"]
+    assert records[1]["considered_at"] == records[0]["next_retry_at"]
+    assert records[1]["terminal"] and records[1]["next_retry_at"] is None
+    assert len([x for x in rows if x["event_type"] == "ActivityStarted"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_no_op_terminal_survives_crash_before_domain_consideration_journal(
+    tmp_path, monkeypatch
+):
+    import companion_daemon.world_v2.activity_lifecycle_worker as worker
+    from datetime import datetime, timezone
+
+    original = worker.record_consideration
+    interrupted = []
+
+    def crash_before_restart(**kwargs):
+        if kwargs["ledger"].project().logical_time < datetime(
+            2026, 9, 8, 2, 2, tzinfo=timezone.utc
+        ):
+            interrupted.append(kwargs["status"])
+            raise RuntimeError("fixture lost process before journal commit")
+        return original(**kwargs)
+
+    monkeypatch.setattr(worker, "record_consideration", crash_before_restart)
+    result, rows, bodies, _, calls = await _run_http_journey(
+        tmp_path,
+        monkeypatch,
+        no_appraisal=True,
+        initial_lifecycle_decision="no_op",
+        duration_minutes=5,
+    )
+    assert result["completed"], result["stop_reason"]
+    assert interrupted and calls == 1
+    records = [x["payload"] for x in rows if x["event_type"] == "ChatLifePlanConsiderationRecorded"]
+    assert len(records) == 1
+    assert records[0]["status"] == "declined"
+    assert records[0]["opportunity"]["attempt_ordinal"] == 1
+    assert records[0]["considered_at"] < records[0]["recorded_at"]
+    assert records[0]["clock_event_ref"] != records[0]["recording_clock_event_ref"]
+    requests = []
+    for body in bodies:
+        for message in body["messages"]:
+            try:
+                material = json.loads(message["content"])
+            except (TypeError, ValueError):
+                continue
+            if isinstance(material, dict) and material.get("capability_manifest", {}).get(
+                "payload", {}
+            ).get("accepted_plan_opportunity"):
+                requests.append(material)
+    assert len(requests) == 1
+    assert not any(x["event_type"] in {"ActivityStarted", "ActivityAbandoned"} for x in rows)

@@ -992,6 +992,56 @@ class CharacterInterior:
             raise _InteriorTechnicalError("durable_turn_identity_mismatch")
         return result
 
+    def completed_considerations_for_source(
+        self, *, world_id: str, actor_ref: str, purpose: str, source_ref: str
+    ) -> tuple[InnerDecision, ...]:
+        """Read original terminal choices for domain recovery without authoring.
+
+        These are coordination evidence, not new domain authority. The domain
+        consumer must still bind its source events and the original decision.
+        """
+        reader = getattr(self._turn_store, "terminal_records_for_source", None)
+        if not callable(reader):
+            return ()
+        records = reader(
+            world_id=world_id, actor_ref=actor_ref, purpose=purpose, source_ref=source_ref
+        )
+        restored = []
+        for record in records:
+            result = InnerDecision.model_validate_json(record.terminal_result_json)
+            request = record.request
+            prepared, snapshot, private, _ = _restore_prepared_turn(
+                record.authored_state_json or ""
+            )
+            decision = result.decision
+            binding = snapshot.capability_scope.value
+            if (
+                request.world_id != world_id
+                or request.actor_ref != actor_ref
+                or request.purpose != purpose
+                or request.phase != "consider"
+                or result.actor_ref != actor_ref
+                or result.inner_turn_id != request.inner_turn_id
+                or result.opportunity_ref != request.subject_ref
+                or result.cursor != ProjectionCursor.model_validate_json(request.cursor_json)
+                or result.snapshot_id != snapshot.snapshot_id
+                or result.snapshot_hash != snapshot.snapshot_hash
+                or result.author_lineage != prepared.author_lineage
+                or result.private_self_lineage != private
+                or result.decision != prepared.decision
+                or result.status != "decided"
+                or not isinstance(decision, dict)
+                or decision.get("purpose") != purpose
+                or not isinstance(binding, dict)
+                or decision.get("capability_ref") != binding.get("capability_ref")
+                or decision.get("capability_payload_hash") != binding.get("payload_hash")
+                or tuple(decision.get("source_refs", ())) != tuple(binding.get("source_refs", ()))
+                or source_ref not in decision.get("source_refs", ())
+            ):
+                raise ValueError("completed_consideration.identity_mismatch")
+            restored.append(result)
+        return tuple(restored)
+
     async def _drain_reconsideration_once(self):
         driver = self._background_driver
         if driver is None:

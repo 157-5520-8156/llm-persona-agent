@@ -82,6 +82,7 @@ class ActivityLifecycleModelDraft(FrozenModel):
     normalized_json: str | None = None
     normalized_output_hash: str | None = None
     character_interior_model_result: ModelResultRecordedPayload | None = None
+    character_decision_json: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def choice_and_audit_shape_are_closed(self) -> "ActivityLifecycleModelDraft":

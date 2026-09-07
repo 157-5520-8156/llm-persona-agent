@@ -3,6 +3,7 @@ from __future__ import annotations
 from pydantic import Field
 
 from .chat_life_intent_contract import ChatLifeIntentFailure
+from .chat_life_plan_consideration_contract import ChatLifePlanConsideration
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -1076,6 +1077,9 @@ class ReducerState(FrozenModel):
     pending_contextual_life_sources: tuple[PendingContextualLifeSourceProjection, ...] = ()
     contextual_life_retries: tuple[ContextualLifeRetryProjection, ...] = ()
     chat_life_intent_failures: tuple[ChatLifeIntentFailure, ...] = Field(default=(), exclude_if=lambda value: not value)
+    chat_life_plan_considerations: tuple[ChatLifePlanConsideration, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
     pending_biographical_settlements: tuple[PendingBiographicalSettlementProjection, ...] = ()
     pending_external_observations: tuple[ExternalObservation, ...] = ()
     execution_receipts: tuple[ExecutionReceipt, ...] = ()
@@ -10747,6 +10751,12 @@ def _interaction_fact_technical_failure_recorded(
     return state
 
 
+def _chat_life_plan_consideration_recorded(state, event):
+    from .chat_life_plan_consideration import reduce_consideration
+
+    return reduce_consideration(state, event)
+
+
 def _chat_life_intent_acceptance_failed(state, event):
     from .chat_life_intent_retry import reduce_acceptance_failure
     return reduce_acceptance_failure(state, event)
@@ -15295,6 +15305,10 @@ _EVENTS = {
             _interaction_fact_technical_failure_recorded,
         ),
         EventDefinition(
+            "ChatLifePlanConsiderationRecorded", RevisionClass.DELIBERATION,
+            _chat_life_plan_consideration_recorded,
+        ),
+        EventDefinition(
             "ChatLifeIntentAcceptanceFailed", RevisionClass.DELIBERATION, _chat_life_intent_acceptance_failed,
         ),
         EventDefinition(
@@ -16181,6 +16195,7 @@ def make_projection(
         pending_contextual_life_sources=state.pending_contextual_life_sources,
         contextual_life_retries=state.contextual_life_retries,
         chat_life_intent_failures=state.chat_life_intent_failures,
+        chat_life_plan_considerations=state.chat_life_plan_considerations,
         pending_biographical_settlements=state.pending_biographical_settlements,
         pending_external_observations=state.pending_external_observations,
         execution_receipts=state.execution_receipts,

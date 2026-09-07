@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .chat_life_intent_contract import ChatLifeIntentFailure
+from .chat_life_plan_consideration_contract import ChatLifePlanConsideration
 
 from datetime import datetime
 from enum import StrEnum
@@ -6014,6 +6015,9 @@ class LedgerProjection(FrozenModel):
     pending_contextual_life_sources: tuple[PendingContextualLifeSourceProjection, ...] = ()
     contextual_life_retries: tuple[ContextualLifeRetryProjection, ...] = ()
     chat_life_intent_failures: tuple[ChatLifeIntentFailure, ...] = Field(default=(), exclude_if=lambda value: not value)
+    chat_life_plan_considerations: tuple[ChatLifePlanConsideration, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
     pending_biographical_settlements: tuple[PendingBiographicalSettlementProjection, ...] = ()
     pending_external_observations: tuple[ExternalObservation, ...] = ()
     execution_receipts: tuple[ExecutionReceipt, ...] = ()

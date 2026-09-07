@@ -7,6 +7,8 @@ events, reducer heads, prefix proofs, or domain authority projections.
 from __future__ import annotations
 
 import sqlite3
+import hashlib
+import json
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -99,6 +101,10 @@ class _CharacterInteriorTurnStore(Protocol):
         now: datetime,
     ) -> _TurnCoordinationRecord | None: ...
 
+    def terminal_records_for_source(
+        self, *, world_id: str, actor_ref: str, purpose: str, source_ref: str
+    ) -> tuple[_TurnCoordinationRecord, ...]: ...
+
     def health(
         self,
         *,
@@ -107,11 +113,30 @@ class _CharacterInteriorTurnStore(Protocol):
         now: datetime | None = None,
     ) -> dict[str, object]: ...
 
-    def prune_terminal(
-        self, *, world_id: str, before: datetime, limit: int = 256
-    ) -> int: ...
+    def prune_terminal(self, *, world_id: str, before: datetime, limit: int = 256) -> int: ...
 
     async def aclose(self) -> None: ...
+
+
+def _terminal_has_source(record: _TurnCoordinationRecord, source_ref: str) -> bool:
+    # Match only explicit typed sources. This is never a search in authored prose.
+    raw = record.terminal_result_json
+    authored = record.authored_state_json
+    for material, expected in (
+        (raw, record.terminal_result_hash),
+        (authored, record.authored_state_hash),
+    ):
+        if (
+            material is None
+            or hashlib.sha256(
+                json.dumps(material, ensure_ascii=False, separators=(",", ":")).encode()
+            ).hexdigest()
+            != expected
+        ):
+            raise ValueError("completed_consideration.stored_hash_mismatch")
+    value = json.loads(raw)
+    decision = value.get("decision") if isinstance(value, dict) else None
+    return isinstance(decision, dict) and source_ref in decision.get("source_refs", ())
 
 
 def _utc(value: datetime) -> datetime:
@@ -120,9 +145,7 @@ def _utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
-def _same_request(
-    left: _TurnCoordinationRequest, right: _TurnCoordinationRequest
-) -> bool:
+def _same_request(left: _TurnCoordinationRequest, right: _TurnCoordinationRequest) -> bool:
     return left == right
 
 
@@ -350,6 +373,24 @@ class _InMemoryCharacterInteriorTurnStore:
             raise RuntimeError("CharacterInterior turn lease is no longer owned")
         return row
 
+    def terminal_records_for_source(
+        self, *, world_id: str, actor_ref: str, purpose: str, source_ref: str
+    ) -> tuple[_TurnCoordinationRecord, ...]:
+        with self._lock:
+            found = tuple(
+                row
+                for row in self._rows.values()
+                if row.state == "terminal"
+                and row.request.world_id == world_id
+                and row.request.actor_ref == actor_ref
+                and row.request.purpose == purpose
+                and row.request.phase == "consider"
+                and _terminal_has_source(row, source_ref)
+            )
+        if len(found) > 64:
+            raise ValueError("completed_consideration.source_not_bounded")
+        return found
+
     def health(
         self,
         *,
@@ -362,8 +403,7 @@ class _InMemoryCharacterInteriorTurnStore:
             rows = tuple(
                 row
                 for key, row in self._rows.items()
-                if (not world_id or key[0] == world_id)
-                and (not actor_ref or key[1] == actor_ref)
+                if (not world_id or key[0] == world_id) and (not actor_ref or key[1] == actor_ref)
             )
         return _health_payload(
             rows,
@@ -753,6 +793,26 @@ class _SQLiteCharacterInteriorTurnStore:
             except Exception:
                 self._connection.rollback()
                 raise
+
+    def terminal_records_for_source(
+        self, *, world_id: str, actor_ref: str, purpose: str, source_ref: str
+    ) -> tuple[_TurnCoordinationRecord, ...]:
+        if world_id != self._world_id:
+            return ()
+        with self._thread_lock:
+            rows = self._connection.execute(
+                """SELECT * FROM world_v2_character_interior_turns
+                   WHERE world_id = ? AND actor_ref = ? AND purpose = ?
+                     AND phase = 'consider' AND state = 'terminal'
+                     AND EXISTS (SELECT 1 FROM json_each(terminal_result_json, '$.decision.source_refs')
+                                 WHERE value = ?)
+                   ORDER BY inner_turn_id LIMIT 65""",
+                (world_id, actor_ref, purpose, source_ref),
+            ).fetchall()
+            found = tuple(self._record(row) for row in rows)
+        if len(found) > 64:
+            raise ValueError("completed_consideration.source_not_bounded")
+        return tuple(row for row in found if _terminal_has_source(row, source_ref))
 
     def health(
         self,

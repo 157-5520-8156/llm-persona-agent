@@ -36,6 +36,8 @@ from .life_ecology_activity import ActivityOpeningCatalog
 from .schema_core import FrozenModel
 from .proposal_audit_schemas import ModelResultRecordedPayload
 from .schemas import ProjectionCursor
+from pydantic import Field
+from .chat_life_plan_consideration import pending_opportunities, record_consideration
 
 _TIMING_MODEL = "world-v2:activity-timing"
 _OCCASION_CONSUMED_FAILURES = frozenset(
@@ -77,6 +79,15 @@ class ActivityLifecycleFollowupResult(FrozenModel):
     reason_code: str | None = None
     proposal_event_ref: str | None = None
     character_interior_model_result: ModelResultRecordedPayload | None = None
+    character_decision_json: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
+class _InitialChatPlanTechnicalFailure(ValueError):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
 
 
 class ActivityLifecycleWorker:
@@ -126,6 +137,143 @@ class ActivityLifecycleWorker:
     async def advance_once(
         self,
         *,
+        wake_event_ref,
+        trigger_id,
+        logical_time,
+        actor,
+        trace_id,
+        correlation_id,
+        renewed_plan_catalog=False,
+    ):
+        pending = pending_opportunities(self._ledger, owner_actor_ref=self._owner_actor_ref)
+        selected = next((x for x in pending if x.due_at <= logical_time), None)
+        recovered = self._recover_initial_choice(selected) if selected is not None else None
+        if recovered is not None:
+            original_clock, original_result, model_result = recovered
+            if original_result.decision["payload"].get("decision") == "no_op":
+                raw = json.dumps(
+                    original_result.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                # A failure while recording a known terminal choice must not
+                # become a new role attempt. Recovery reuses these same bytes.
+                record_consideration(
+                    ledger=self._ledger,
+                    opportunity=selected,
+                    clock_event_ref=original_clock,
+                    status="declined",
+                    model_result=model_result,
+                    decision_json=raw,
+                )
+                return ActivityLifecycleFollowupResult(
+                    status="no_op",
+                    reason_code="activity_lifecycle.model_declined",
+                    character_interior_model_result=model_result,
+                    character_decision_json=raw,
+                )
+        try:
+            if recovered is not None:
+                raise _InitialChatPlanTechnicalFailure(
+                    "activity_lifecycle.prior_selection_unsettled"
+                )
+            result = await self._advance_once(
+                wake_event_ref=wake_event_ref,
+                trigger_id=trigger_id,
+                logical_time=logical_time,
+                actor=actor,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+                renewed_plan_catalog=renewed_plan_catalog or selected is not None,
+                new_plan_opportunity=selected,
+            )
+        except (ValueError, RuntimeError) as exc:
+            if selected is None:
+                raise
+            record_consideration(
+                ledger=self._ledger,
+                opportunity=selected,
+                clock_event_ref=wake_event_ref,
+                status="technical_failure",
+                failure_code=str(getattr(exc, "code", type(exc).__name__))[:128],
+            )
+            return ActivityLifecycleFollowupResult(
+                status="technical_failure",
+                reason_code="chat_life_plan.initial_consideration_failed",
+            )
+        if selected is None:
+            return result
+        if (
+            result.status in {"transitioned", "no_op"}
+            and result.character_interior_model_result is not None
+            and result.character_decision_json is not None
+        ):
+            record_consideration(
+                ledger=self._ledger,
+                opportunity=selected,
+                clock_event_ref=wake_event_ref,
+                status="selected" if result.status == "transitioned" else "declined",
+                model_result=result.character_interior_model_result,
+                decision_json=result.character_decision_json,
+                lifecycle_proposal_ref=result.proposal_event_ref,
+            )
+            return result
+        record_consideration(
+            ledger=self._ledger,
+            opportunity=selected,
+            clock_event_ref=wake_event_ref,
+            status="technical_failure",
+            failure_code=(result.reason_code or "activity_lifecycle.result_unavailable")[:128],
+        )
+        return ActivityLifecycleFollowupResult(
+            status="technical_failure", reason_code="chat_life_plan.initial_consideration_failed"
+        )
+
+    def _recover_initial_choice(self, opportunity):
+        reader = getattr(self._character_interior, "completed_considerations_for_source", None)
+        if not callable(reader):
+            return None
+        consumed = {
+            item.clock_event_ref
+            for item in self._ledger.project().chat_life_plan_considerations
+            if item.opportunity.plan_id == opportunity.plan_id
+        }
+        recovered = []
+        for result in reader(
+            world_id=self._ledger.world_id,
+            actor_ref=self._owner_actor_ref,
+            purpose="activity_lifecycle_choice",
+            source_ref=opportunity.plan_event_ref,
+        ):
+            sources = result.decision["source_refs"]
+            clocks = tuple(x for x in sources if x != opportunity.plan_event_ref)
+            if len(clocks) != 1 or clocks[0] in consumed:
+                continue
+            identity = CausalOpportunityRuntime(
+                world_id=self._ledger.world_id,
+                actor_ref=self._owner_actor_ref,
+                purpose="activity_lifecycle_choice",
+            ).identity_for_refs(tuple(sources), epoch=clocks[0])
+            model_result = recorded_character_interior_model_result(
+                result,
+                purpose="activity_lifecycle_choice",
+                subject_ref=result.opportunity_ref,
+                trigger_ref=clocks[0],
+                capability_ref=result.decision["capability_ref"],
+                route_tier="flash",
+                route_reason_code="activity_lifecycle.character_choice",
+                router_version="character-interior-activity-lifecycle-capability.2",
+                causal_opportunity=identity,
+            )
+            recovered.append((clocks[0], result, model_result))
+        if len(recovered) > 1:
+            raise ValueError("activity_lifecycle.multiple_unsettled_choices")
+        return recovered[0] if recovered else None
+
+    async def _advance_once(
+        self,
+        *,
         wake_event_ref: str,
         trigger_id: str,
         logical_time: datetime,
@@ -133,6 +281,7 @@ class ActivityLifecycleWorker:
         trace_id: str,
         correlation_id: str,
         renewed_plan_catalog: bool = False,
+        new_plan_opportunity=None,
     ) -> ActivityLifecycleFollowupResult:
         projection = self._ledger.project()
         if projection.logical_time != logical_time:
@@ -156,6 +305,7 @@ class ActivityLifecycleWorker:
             wake_event_ref=wake_event_ref,
             trigger_id=trigger_id,
             renewed_plan_catalog=renewed_plan_catalog,
+            new_plan_opportunity=new_plan_opportunity,
         )
         if draft is None:
             return ActivityLifecycleFollowupResult(
@@ -178,6 +328,7 @@ class ActivityLifecycleWorker:
                 status="no_op",
                 reason_code=reason,
                 character_interior_model_result=draft.character_interior_model_result,
+                character_decision_json=draft.character_decision_json,
             )
         recorded = self._proposal_recorder.record(
             cursor=cursor,
@@ -205,7 +356,12 @@ class ActivityLifecycleWorker:
             correlation_id=correlation_id,
         )
         return ActivityLifecycleFollowupResult(
-            status="transitioned", proposal_event_ref=recorded.proposal_event_ref
+            status="transitioned",
+            proposal_event_ref=recorded.proposal_event_ref,
+            character_interior_model_result=draft.character_interior_model_result
+            if new_plan_opportunity
+            else None,
+            character_decision_json=draft.character_decision_json,
         )
 
     async def _character_choice(
@@ -216,6 +372,7 @@ class ActivityLifecycleWorker:
         wake_event_ref: str,
         trigger_id: str,
         renewed_plan_catalog: bool = False,
+        new_plan_opportunity=None,
     ) -> tuple[ActivityLifecycleModelDraft | None, str | None]:
         """Ask the sole protagonist author to choose one already-legal token.
 
@@ -230,27 +387,17 @@ class ActivityLifecycleWorker:
         first_chance_spent = self._daily_occasions.spent(
             "day_open", day_key
         ) or self._occasion_spends.spent(first_occasion_id)
-        cause_bound = tuple(
-            item for item in openings if item.opening_kind != "ordinary"
-        )
+        cause_bound = tuple(item for item in openings if item.opening_kind != "ordinary")
         completes = tuple(item for item in openings if item.operation == "complete")
         if not openings:
             return ActivityLifecycleModelDraft(decision="no_op"), None
-        if (
-            len(completes) == 1
-            and all(item.operation == "complete" for item in openings)
-        ):
+        if len(completes) == 1 and all(item.operation == "complete" for item in openings):
             return _timing_closure_draft(completes[0].opening_token), None
         # day_open is the one ordinary first-chance of a local day.  It must
         # not also be the last chance: a plan committed later the same wake,
         # or an activity that has become legally completable, is new catalog
         # material.  She still picks or no_ops; this only asks again.
-        if (
-            first_chance_spent
-            and not cause_bound
-            and not renewed_plan_catalog
-            and not completes
-        ):
+        if first_chance_spent and not cause_bound and not renewed_plan_catalog and not completes:
             self._daily_occasions.mark("day_open", day_key)
             return ActivityLifecycleModelDraft(decision="no_op"), None
         # Cause-bound openings (an observed user interruption, a clock
@@ -259,8 +406,14 @@ class ActivityLifecycleWorker:
         # can react on the same local day instead of being forced toward the
         # single complete token.
         closed_window_abandon_only = _openings_are_closed_window_abandons(openings)
-        use_day_open = not first_chance_spent and not closed_window_abandon_only
-        if closed_window_abandon_only:
+        use_day_open = (
+            not first_chance_spent
+            and not closed_window_abandon_only
+            and new_plan_opportunity is None
+        )
+        if new_plan_opportunity is not None:
+            occasion_merge_key = f"accepted-chat-plan:{new_plan_opportunity.plan_payload_hash}:{new_plan_opportunity.attempt_ordinal}"
+        elif closed_window_abandon_only:
             occasion_merge_key = self._closed_window_abandon_merge_key(
                 projection=projection,
                 catalog=catalog,
@@ -290,6 +443,10 @@ class ActivityLifecycleWorker:
             # same-day complete set) already had its one consider.  Re-asking
             # every clock wake would burn a model call; a later start/complete
             # entering the catalog changes the merge key.
+            if new_plan_opportunity is not None:
+                raise _InitialChatPlanTechnicalFailure(
+                    "activity_lifecycle.initial_occasion_already_consumed"
+                )
             return ActivityLifecycleModelDraft(decision="no_op"), None
         opening_summaries = []
         for item in openings:
@@ -301,9 +458,7 @@ class ActivityLifecycleWorker:
             )
             if resolved is not None and self._plan_material_reader is not None:
                 try:
-                    material = self._plan_material_reader.read_for_plan(
-                        plan_id=resolved.plan_id
-                    )
+                    material = self._plan_material_reader.read_for_plan(plan_id=resolved.plan_id)
                     intention = getattr(material, "character_intention", None)
                     if isinstance(intention, str) and intention.strip():
                         clipped = " ".join(intention.strip().split())[:96]
@@ -326,6 +481,10 @@ class ActivityLifecycleWorker:
             "offered_tokens": [item.opening_token for item in openings],
             "openings": opening_summaries,
         }
+        source_refs = (wake_event_ref,)
+        if new_plan_opportunity is not None:
+            source_refs = tuple(sorted((wake_event_ref, new_plan_opportunity.plan_event_ref)))
+            capability["accepted_plan_opportunity"] = new_plan_opportunity.model_dump(mode="json")
         payload_json = json.dumps(
             capability,
             ensure_ascii=False,
@@ -341,13 +500,13 @@ class ActivityLifecycleWorker:
             capability_kind="activity_lifecycle_choice",
             payload_json=payload_json,
             payload_hash=capability_hash,
-            source_refs=(wake_event_ref,),
+            source_refs=source_refs,
         )
         opportunity_identity = CausalOpportunityRuntime(
             world_id=self._ledger.world_id,
             actor_ref=self._owner_actor_ref,
             purpose="activity_lifecycle_choice",
-        ).identity_for_refs((wake_event_ref,), epoch=wake_event_ref)
+        ).identity_for_refs(source_refs, epoch=wake_event_ref)
         cursor = ProjectionCursor(
             world_revision=projection.world_revision,
             deliberation_revision=projection.deliberation_revision,
@@ -363,7 +522,7 @@ class ActivityLifecycleWorker:
                 cursor=cursor,
                 logical_time=projection.logical_time,
                 purpose="activity_lifecycle_choice",
-                source_refs=(wake_event_ref,),
+                source_refs=source_refs,
                 capability_manifest=manifest,
                 context_note=(
                     "One exact clock wake offers already-authorized activity transitions. "
@@ -376,6 +535,8 @@ class ActivityLifecycleWorker:
         )
         if result.status == "technical_failure":
             failure_code = result.failure_code or "character_interior_technical_failure"
+            if new_plan_opportunity is not None:
+                raise _InitialChatPlanTechnicalFailure(failure_code)
             if failure_code in _OCCASION_CONSUMED_FAILURES:
                 if use_day_open:
                     self._daily_occasions.mark("day_open", day_key)
@@ -457,6 +618,14 @@ class ActivityLifecycleWorker:
                 normalized_json=normalized,
                 normalized_output_hash=digest,
                 character_interior_model_result=model_result_audit,
+                character_decision_json=json.dumps(
+                    result.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                if new_plan_opportunity is not None
+                else None,
             ),
             None,
         )
@@ -483,9 +652,7 @@ class ActivityLifecycleWorker:
                 opening_token=item.opening_token,
             )
             if resolved is None:
-                parts.append(
-                    f"{item.operation}:{item.opening_kind}:{item.cause_kind or ''}"
-                )
+                parts.append(f"{item.operation}:{item.opening_kind}:{item.cause_kind or ''}")
             else:
                 parts.append(
                     f"{resolved.plan_id}:{resolved.plan_revision}:"
