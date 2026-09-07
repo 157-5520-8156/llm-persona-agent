@@ -13,12 +13,15 @@ import time
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Protocol
+from typing import TYPE_CHECKING, Any, Iterable, Protocol
 
 import httpx
 
 from companion_daemon.image_requests import detect_style_tags
 from companion_daemon.visual_identity import load_visual_identity
+
+if TYPE_CHECKING:
+    from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
 
 
 _LOG = logging.getLogger(__name__)
@@ -174,6 +177,7 @@ class OpenAIImageGenerator:
         proxy_url: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         spend_store: object | None = None,
+        usage_store: "WorldV2UsageStore | None" = None,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -181,6 +185,7 @@ class OpenAIImageGenerator:
         self.proxy_url = proxy_url
         self.transport = transport
         self.spend_store = spend_store
+        self.usage_store = usage_store
 
     async def generate(
         self,
@@ -194,15 +199,16 @@ class OpenAIImageGenerator:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         references = tuple(reference_images)
         async with _PAID_GENERATE_LOCK:
-            _refuse_unbounded_image_spend(
+            reservation = _refuse_unbounded_image_spend(
                 model=self.model,
                 size=size,
                 quality=quality,
                 reference_count=len(references),
                 spend_store=self.spend_store,
+                usage_store=self.usage_store,
             )
-            started = time.perf_counter()
             billed = False
+            request_emitted = False
             usage_payload: dict[str, object] | None = None
             try:
                 async with _openai_client(
@@ -217,12 +223,14 @@ class OpenAIImageGenerator:
                                 (
                                     path.name,
                                     path.read_bytes(),
-                                    mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                                    mimetypes.guess_type(path.name)[0]
+                                    or "application/octet-stream",
                                 ),
                             )
                             for path in references
                         ]
-                        response = await client.post(
+                        request = client.build_request(
+                            "POST",
                             f"{self.base_url}/images/edits",
                             headers={"Authorization": f"Bearer {self.api_key}"},
                             data={
@@ -235,7 +243,8 @@ class OpenAIImageGenerator:
                             files=files,
                         )
                     else:
-                        response = await client.post(
+                        request = client.build_request(
+                            "POST",
                             f"{self.base_url}/images/generations",
                             headers={
                                 "Authorization": f"Bearer {self.api_key}",
@@ -249,7 +258,11 @@ class OpenAIImageGenerator:
                                 "output_format": "png",
                             },
                         )
-                    if response.is_error:
+                    # Once send starts, absence of a response does not prove
+                    # that the provider did no paid work. Preserve that exposure.
+                    request_emitted = True
+                    response = await client.send(request)
+                    if response.status_code != 200:
                         raise openai_provider_error(response, provider="openai_image")
                     billed = True
                     try:
@@ -271,10 +284,17 @@ class OpenAIImageGenerator:
                         size=size,
                         quality=quality,
                         reference_count=len(references),
-                        prompt=prompt,
                         usage_payload=usage_payload,
-                        latency_ms=int((time.perf_counter() - started) * 1000),
                         spend_store=self.spend_store,
+                        reservation=reservation,
+                    )
+                elif reservation is not None:
+                    usage_store, token = reservation
+                    usage_store.record_external_usage(
+                        reservation_id=token,
+                        kind="image_generation",
+                        estimated_cny=None,
+                        billing_state="unknown" if request_emitted else "not_billed",
                     )
             try:
                 if not isinstance(usage_payload, dict):
@@ -354,11 +374,14 @@ def _refuse_unbounded_image_spend(
     quality: str,
     reference_count: int,
     spend_store: object | None,
-) -> None:
+    usage_store: "WorldV2UsageStore | None" = None,
+) -> "tuple[WorldV2UsageStore, str] | None":
     store = _image_spend_store(spend_store)
-    if store is None or not hasattr(store, "usage_count"):
-        return
     from companion_daemon.budget import BudgetGate, image_render_estimate
+    from companion_daemon.world_v2.model_usage_budget import (
+        BackgroundSpendCapDenied,
+        WorldV2UsageStore,
+    )
 
     monthly, daily, soft, monthly_images = 80.0, 3.0, 2.0, 20
     vision_limit, audio_limit = 120, 60
@@ -375,26 +398,55 @@ def _refuse_unbounded_image_spend(
             audio_limit = int(settings.monthly_audio_limit)
         except Exception:
             pass
-    gate = BudgetGate(
-        store,  # type: ignore[arg-type]
-        monthly_budget_cny=monthly,
-        daily_budget_cny=daily,
-        soft_daily_budget_cny=soft,
-        monthly_image_limit=monthly_images,
-        monthly_vision_limit=vision_limit,
-        monthly_audio_limit=audio_limit,
-    )
     estimate = image_render_estimate(
         reference_count=reference_count, size=size, quality=quality, attempts=1
     )
-    decision = gate.check(estimate, automatic=True)
-    if decision.allowed:
-        return
-    raise ImageGenerationProviderError(
-        provider="openai_image",
-        kind="spend_cap",
-        detail="image_generation_spend_cap:" + decision.reason,
-    )
+    shared_spend = usage_store is not None or getattr(store, "path", None) is not None
+    if store is not None and hasattr(store, "usage_count"):
+        # This existing gate owns image counts/gaps only. Money is admitted
+        # atomically against both text and image exposure by the shared store.
+        gate = BudgetGate(
+            store,  # type: ignore[arg-type]
+            monthly_budget_cny=float("inf") if shared_spend else monthly,
+            daily_budget_cny=float("inf") if shared_spend else daily,
+            soft_daily_budget_cny=float("inf") if shared_spend else soft,
+            monthly_image_limit=monthly_images,
+            monthly_vision_limit=vision_limit,
+            monthly_audio_limit=audio_limit,
+        )
+        decision = gate.check(estimate, automatic=True)
+        if not decision.allowed:
+            raise ImageGenerationProviderError(
+                provider="openai_image",
+                kind="spend_cap",
+                detail="image_generation_spend_cap:" + decision.reason,
+            )
+    if usage_store is None:
+        db_path = getattr(store, "path", None)
+        if db_path is None:
+            return None
+        usage_store = WorldV2UsageStore(
+            path=str(db_path),
+            monthly_budget_cny=monthly,
+            daily_budget_cny=daily,
+            soft_daily_budget_cny=soft,
+        )
+    try:
+        token = usage_store.admit_provider_call(
+            purpose="image_generation",
+            actor="agent:companion",
+            provider="openai",
+            model=model,
+            prompt_characters=0,
+            estimated_cny=estimate.cny,
+        )
+    except BackgroundSpendCapDenied as exc:
+        raise ImageGenerationProviderError(
+            provider="openai_image",
+            kind="spend_cap",
+            detail="image_generation_spend_cap:" + str(exc),
+        ) from exc
+    return usage_store, token
 
 
 def _record_paid_image_generation(
@@ -403,19 +455,24 @@ def _record_paid_image_generation(
     size: str,
     quality: str,
     reference_count: int,
-    prompt: str,
     usage_payload: dict[str, object] | None,
-    latency_ms: int,
     spend_store: object | None,
+    reservation: "tuple[WorldV2UsageStore, str] | None" = None,
 ) -> None:
     """Record spend after HTTP 200, even when the image bytes cannot be parsed."""
 
     from companion_daemon.usage_metrics import (
+        CNY_PER_USD,
         estimate_gpt_image_2_cost_usd,
         parse_openai_image_usage,
     )
 
-    parsed = parse_openai_image_usage(usage_payload)
+    try:
+        parsed = parse_openai_image_usage(usage_payload)
+    except (ValueError, TypeError, OverflowError):
+        # A malformed usage block cannot erase an HTTP-successful paid render.
+        # Keep the existing render-table estimate when token evidence is unusable.
+        parsed = parse_openai_image_usage(None)
     usd, pricing_version = estimate_gpt_image_2_cost_usd(
         size=size,
         quality=quality,
@@ -424,44 +481,25 @@ def _record_paid_image_generation(
         image_input_tokens=parsed["image_input_tokens"] or None,
         output_tokens=parsed["output_tokens"] or None,
     )
-    cny = round(usd * 7.2, 4)
+    cny = round(usd * CNY_PER_USD, 4)
     note = (
         f"gpt-image:{model}:{size}:{quality}:refs={reference_count}"
         f":pricing={pricing_version}"
+        f":cost_basis={'reported_tokens' if parsed['output_tokens'] else 'render_estimate'}"
     )
-    store = _image_spend_store(spend_store)
-    if store is not None and hasattr(store, "record_usage"):
-        try:
+    if reservation is not None:
+        usage_store, token = reservation
+        usage_store.record_external_usage(
+            reservation_id=token,
+            kind="image_generation",
+            estimated_cny=cny,
+            billing_state="known",
+            note=note,
+        )
+    else:
+        store = _image_spend_store(spend_store)
+        if store is not None and hasattr(store, "record_usage"):
             store.record_usage("image_generation", cny, note=note)
-        except Exception:
-            _LOG.exception("image generation usage_events record failed")
-    db_path = getattr(store, "path", None) if store is not None else None
-    if db_path is None and not os.environ.get("PYTEST_CURRENT_TEST"):
-        raw = os.environ.get("DATABASE_PATH", "").strip()
-        db_path = raw or None
-    if db_path:
-        try:
-            from companion_daemon.llm import ModelCallUsage
-            from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
-
-            WorldV2UsageStore(path=str(db_path)).record(
-                ModelCallUsage(
-                    purpose="image_generation",
-                    model=model or "gpt-image-2",
-                    status="succeeded",
-                    latency_ms=max(0, latency_ms),
-                    prompt_tokens=parsed["text_input_tokens"] + parsed["image_input_tokens"],
-                    completion_tokens=parsed["output_tokens"],
-                    cache_hit_tokens=0,
-                    cache_miss_tokens=parsed["image_input_tokens"]
-                    + parsed["text_input_tokens"],
-                    total_tokens=parsed["total_tokens"],
-                    provider="openai",
-                )
-            )
-        except Exception:
-            _LOG.exception("image generation world-v2 usage record failed")
-    del prompt  # prompt is not persisted; length is not billed as a secret.
 
 
 class VolcArkImageGenerator:

@@ -519,6 +519,7 @@ def build_qq_media_preview_deployment(
     from companion_daemon import event_media
     from companion_daemon.image_generation import OpenAIImageGenerator
     from companion_daemon.llm import DeepSeekChatModel, shared_deepseek_circuit_breaker
+    from .model_usage_budget import usage_store_for_settings
 
     from companion_daemon.spend_account import resolve_deepseek_api_key
 
@@ -569,6 +570,7 @@ def build_qq_media_preview_deployment(
             model=settings.image_model,
             proxy_url=settings.openai_proxy_url,
             spend_store=spend_store,
+            usage_store=usage_store_for_settings(settings),
         ),
         recorder=diagnostic_recorder,
         endpoint=settings.openai_base_url,
