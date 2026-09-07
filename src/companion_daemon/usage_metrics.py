@@ -174,6 +174,22 @@ GPT_5_6_LUNA_PRICE = ModelPrice(
     output_usd_per_million=1.20,
 )
 
+# Public unauthenticated GET observed 2026-09-07:
+# https://openrouter.ai/api/v1/models/nousresearch/hermes-4-70b/endpoints
+# Exactly one endpoint, Nebius (nebius/fp8), quoted $0.13/M prompt and
+# $0.40/M completion; no separate request/image or discounted-cache price.
+# Its status was -5: this price snapshot does not qualify availability.
+# The ceiling covers every endpoint in that snapshot, not a cheapest-route
+# estimate. OpenRouter request max_price pins these rates against later route
+# changes; usage settlement conservatively assumes no cache discount.
+HERMES_4_70B_PRICE = ModelPrice(
+    model="nousresearch/hermes-4-70b",
+    version="openrouter-hermes-2026-09-07",
+    cache_hit_usd_per_million=0.13,
+    cache_miss_usd_per_million=0.13,
+    output_usd_per_million=0.40,
+)
+
 # Alibaba Model Studio international list, Qwen-Plus ≤256K, verified 2026-07-15.
 QWEN_PLUS_PRICE = ModelPrice(
     model="qwen/qwen-plus",
@@ -254,6 +270,7 @@ MODEL_PRICES: Mapping[str, ModelPrice] = {
     GPT_5_4_NANO_PRICE.model: GPT_5_4_NANO_PRICE,
     "openai/gpt-5.4-nano": GPT_5_4_NANO_PRICE,
     GPT_5_6_LUNA_PRICE.model: GPT_5_6_LUNA_PRICE,
+    HERMES_4_70B_PRICE.model: HERMES_4_70B_PRICE,
     QWEN_PLUS_PRICE.model: QWEN_PLUS_PRICE,
     QWEN3_VL_FLASH_PRICE.model: QWEN3_VL_FLASH_PRICE,
     "qwen/qwen3-vl-flash": QWEN3_VL_FLASH_PRICE,

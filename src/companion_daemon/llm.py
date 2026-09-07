@@ -19,7 +19,11 @@ from urllib.parse import urlsplit
 import httpx
 
 from companion_daemon.model_call_policy import ProviderCircuitState
-from companion_daemon.usage_metrics import CNY_PER_USD, estimate_provider_request_reserve_cny
+from companion_daemon.usage_metrics import (
+    CNY_PER_USD,
+    HERMES_4_70B_PRICE,
+    estimate_provider_request_reserve_cny,
+)
 
 
 _T = TypeVar("_T")
@@ -2019,6 +2023,20 @@ class OpenAICompatibleChatModel(DeepSeekChatModel):
             # latency/tokens exploring prose that the materializer will reject.
             "max_completion_tokens": self.max_completion_tokens,
         }
+        if self.model == HERMES_4_70B_PRICE.model and (
+            self.provider == "openrouter" or urlsplit(self.base_url).hostname == "openrouter.ai"
+        ):
+            # Official USD/M max_price filter bounds all routes, including
+            # newly added endpoints, to the installed Hermes price envelope.
+            # https://openrouter.ai/docs/guides/routing/provider-selection#max-price
+            payload["provider"] = {
+                "max_price": {
+                    "prompt": HERMES_4_70B_PRICE.cache_miss_usd_per_million,
+                    "completion": HERMES_4_70B_PRICE.output_usd_per_million,
+                    "request": 0,
+                    "image": 0,
+                }
+            }
         # GPT-4.1/4o Chat Completions reject the reasoning parameter rather
         # than accepting an empty/disabled value.  An empty configured value
         # means the route deliberately omits this optional capability.
