@@ -356,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.96"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.97"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -615,8 +615,14 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.96"
 # Both candidate runs preserve all 17 non-replay fields across 120 scenarios;
 # the final after-wire candidate changes only replay identities from .95.
 # See adaptive-companionship-2026-09-08.md and its preserved comparisons.
+# 2026-09-08: .97 records current/completed activity source views, explicit
+# chat life intent and the existing temporal-premise review clarification.
+# Three complete clean-code exports (including the final scheduler/recovery
+# fixes) preserve all 17 non-replay fields in all 120 ordered cases from .96.
+# Only replay identity changes; no scenario predicate or byte limit moves.
+# See adaptive-companionship-2026-09-08.md and baseline-life-links-clock.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "d8aeb2b0fda24b7ea974a749349f99f2d9c875859dadb7a1a31eff8debde91e9"
+    "f4a4a4bed998d37de4122f41eec99d3377e1c53b1dba8d8d6927737d21c385f9"
 )
 
 
