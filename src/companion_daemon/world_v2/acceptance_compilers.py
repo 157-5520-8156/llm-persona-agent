@@ -24,7 +24,6 @@ from .acceptance_manifest import (
 from .proposal_audit_schemas import ProposalAuditProjection
 from .proposal_envelope import (
     CHANGE_TRANSITION_REGISTRY,
-    PROPOSAL_SCHEMA_REGISTRY_VERSION,
     ProposalInput,
     TypedChange,
 )
@@ -54,7 +53,9 @@ class AcceptanceCompilerError(ValueError):
 
 
 class DomainCompilerKey(FrozenModel):
-    proposal_schema_registry: Literal["world-v2-proposals.1", "world-v2-proposals.3"]
+    proposal_schema_registry: Literal["world-v2-proposals.1", "world-v2-proposals.3"] = (
+        "world-v2-proposals.1"
+    )
     change_kind: str = Field(min_length=1, max_length=64)
     transition: str = Field(min_length=1, max_length=64)
     payload_schema: str = Field(min_length=1, max_length=128)
@@ -62,6 +63,8 @@ class DomainCompilerKey(FrozenModel):
 
     @model_validator(mode="after")
     def binds_exact_proposal_contract(self) -> DomainCompilerKey:
+        if self.change_kind == "life_intent" and self.proposal_schema_registry != "world-v2-proposals.3":
+            raise ValueError("life_intent compiler key requires proposal registry .3")
         transitions = CHANGE_TRANSITION_REGISTRY.get(self.change_kind)
         if transitions is None or self.transition not in transitions:
             raise ValueError("compiler key does not name a registered change transition")
@@ -543,7 +546,7 @@ _KNOWN_EVENT_OWNERSHIP: dict[tuple[str, str], tuple[str, ...]] = {
 DOMAIN_COMPILER_COVERAGE_CATALOG = tuple(
     DomainCompilerCoverage(
         key=DomainCompilerKey(
-            proposal_schema_registry=PROPOSAL_SCHEMA_REGISTRY_VERSION,
+            proposal_schema_registry=registry_version,
             change_kind=kind,
             transition=transition,
             payload_schema=f"{kind}.v1",
@@ -552,8 +555,13 @@ DOMAIN_COMPILER_COVERAGE_CATALOG = tuple(
         status="unsupported",
         reason_code="adapter_not_installed",
     )
+    # Ordinary proposals retain .1; a mixed chat life proposal explicitly
+    # selects .3 for all of its changes. FactCommitProposalEnvelopeV2's .2
+    # grammar is separate from this generic compiler registry.
+    for registry_version in ("world-v2-proposals.1", "world-v2-proposals.3")
     for kind in sorted(CHANGE_TRANSITION_REGISTRY)
     for transition in sorted(CHANGE_TRANSITION_REGISTRY[kind])
+    if registry_version != "world-v2-proposals.1" or kind != "life_intent"
 )
 _CATALOG_KEYS = frozenset(item.key for item in DOMAIN_COMPILER_COVERAGE_CATALOG)
 DOMAIN_COMPILER_OWNERSHIP_CONTRACTS = tuple(

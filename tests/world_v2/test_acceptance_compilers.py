@@ -56,12 +56,37 @@ def _key(
     *, kind: str = "fact_transition", transition: str = "commit"
 ) -> DomainCompilerKey:
     return DomainCompilerKey(
-        proposal_schema_registry=PROPOSAL_SCHEMA_REGISTRY_VERSION,
         change_kind=kind,
         transition=transition,
         payload_schema=f"{kind}.v1",
         payload_version=1,
     )
+
+
+def test_legacy_compiler_key_defaults_to_legacy_proposal_coverage() -> None:
+    key = _key()
+
+    assert key.proposal_schema_registry == "world-v2-proposals.1"
+    assert DomainCompilerRegistry().coverage_for(key).status == "unsupported"
+
+
+@pytest.mark.parametrize("registry_version", [None, "world-v2-proposals.1", "world-v2-proposals.2"])
+def test_life_compiler_key_requires_explicit_generic_v3(registry_version) -> None:
+    fields = {
+        "change_kind": "life_intent",
+        "transition": "plan",
+        "payload_schema": "life_intent.v1",
+    }
+    if registry_version is not None:
+        fields["proposal_schema_registry"] = registry_version
+
+    with pytest.raises(ValidationError):
+        DomainCompilerKey.model_validate(fields)
+
+    key = DomainCompilerKey.model_validate({
+        **fields, "proposal_schema_registry": "world-v2-proposals.3",
+    })
+    assert DomainCompilerRegistry().coverage_for(key).status == "unsupported"
 
 
 def _context(
@@ -252,9 +277,11 @@ def _change(index: int = 1) -> TypedChange:
 
 
 def _audit(
-    change: TypedChange | None = None, *, proposal_id: str = "proposal:1"
+    change: TypedChange | None = None, *, proposal_id: str = "proposal:1",
+    schema_registry_version: str = "world-v2-proposals.1",
 ) -> ProposalAuditProjection:
     proposal = DecisionProposal(
+        schema_registry_version=schema_registry_version,
         proposal_id=proposal_id,
         trigger_ref="trigger:1",
         evaluated_world_revision=12,
@@ -562,6 +589,38 @@ def test_registry_rejects_authority_from_another_deliberation_cursor() -> None:
     with pytest.raises(AcceptanceCompilerError) as captured:
         registry.compile(_key(), authority=authority, change=change, context=_context())
     assert captured.value.code == "acceptance_compiler.authority_mismatch"
+
+
+@pytest.mark.parametrize("compiler_version", ["world-v2-proposals.1", "world-v2-proposals.3"])
+@pytest.mark.parametrize("audit_version", ["world-v2-proposals.1", "world-v2-proposals.3"])
+def test_registry_requires_exact_proposal_version_for_each_compiler(
+    compiler_version, audit_version
+) -> None:
+    key = DomainCompilerKey(
+        proposal_schema_registry=compiler_version,
+        change_kind="fact_transition",
+        transition="commit",
+        payload_schema="fact_transition.v1",
+    )
+    registry = DomainCompilerRegistry._for_test((  # noqa: SLF001
+        _registration(key=key, mutation_event_types=("NpcRegistered",), adapter=_Adapter()),
+    ))
+    change = _change()
+    authority = registry._pin_test_authority(  # noqa: SLF001
+        audit=_audit(change, schema_registry_version=audit_version),
+        cursor=_context().cursor,
+        world_id="world:1",
+    )
+
+    if compiler_version != audit_version:
+        with pytest.raises(AcceptanceCompilerError) as captured:
+            registry.compile(key, authority=authority, change=change, context=_context())
+        assert captured.value.code == "acceptance_compiler.authority_mismatch"
+        return
+
+    compiled = registry.compile(key, authority=authority, change=change, context=_context())
+    assert compiled.payload.compiler_key == key
+    registry.reverse_verify(compiled, authority=authority, change=change, context=_context())
 
 
 def test_adapter_reverse_failure_is_a_stable_registry_error() -> None:
