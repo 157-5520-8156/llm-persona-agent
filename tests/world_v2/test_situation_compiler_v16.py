@@ -69,6 +69,13 @@ from companion_daemon.world_v2.schemas import (
 )
 import companion_daemon.world_v2.situation_compiler as situation_module
 from companion_daemon.world_v2.ledger import WorldLedger
+from companion_daemon.world_v2.character_interior.snapshot_compiler import (
+    compile_inner_life_snapshot,
+)
+from companion_daemon.world_v2.model_facing_context import (
+    compact_chat_model_facing_context,
+    compact_recovery_model_facing_context,
+)
 
 
 NOW = datetime(2026, 7, 14, 11, 30, tzinfo=UTC)
@@ -397,6 +404,49 @@ def test_compile_expresses_current_time_and_daypart_in_local_chronology() -> Non
     assert result.internal is not None
     assert result.internal.logical_time.isoformat() == "2026-07-14T19:30:00+08:00"
     assert result.internal.time_segment == "evening"
+
+
+@pytest.mark.parametrize("location_state", ["available", "redacted", "unavailable"])
+@pytest.mark.parametrize(
+    "compactor", [compact_chat_model_facing_context, compact_recovery_model_facing_context]
+)
+def test_compiled_location_reaches_character_without_inventing_an_activity(
+    location_state, compactor
+) -> None:
+    request = _request()
+    if location_state == "redacted":
+        request = request.model_copy(update={"viewer_scope": viewer_scope(
+            viewer_ref="viewer:public",
+            allowed_privacy_classes=("public", "shareable"),
+            max_items_per_collection=8,
+        )})
+    elif location_state == "unavailable":
+        request = request.model_copy(update={"authority_snapshot":
+            request.authority_snapshot.model_copy(update={"location": None})})
+    compiled = SituationCompiler().compile(request)
+    value = (compiled.internal or compiled.viewer_projection).model_dump(mode="json")
+    expected_location = value["location_slice"]
+    assert expected_location["availability"] == location_state
+    raw = json.dumps({
+        "world_id": request.world_id,
+        "world_revision": request.pinned_world_revision,
+        "logical_time": NOW.isoformat(),
+        "slices": {"current_situation": {
+            "availability": "available",
+            "items": [{"source_ref": "situation:verified-current", "value": value}],
+        }},
+    })
+    compact = json.loads(compactor(raw))
+    snapshot = compile_inner_life_snapshot(compact).model_view()
+    situation = snapshot["materials"]["situation"][0]
+    assert situation["location_slice"] == expected_location
+    assert situation["source_ref"] == "situation:verified-current"
+    assert situation["activity_slices"] == []
+    assert "current_activities" not in snapshot["materials"]
+    if location_state == "available":
+        assert situation["location_slice"]["location_ref"] == "location:studio"
+    else:
+        assert "location:studio" not in json.dumps(snapshot["materials"])
 
 
 def test_snapshot_rejects_cross_world_future_and_wrong_actor_heads() -> None:

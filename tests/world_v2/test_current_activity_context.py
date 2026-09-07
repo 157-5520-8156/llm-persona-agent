@@ -186,7 +186,7 @@ async def test_current_activity_projection_is_rebuildable_without_mutating_histo
     assert rebuilt.snapshot_id == before.snapshot_id
     assert rebuilt.materials_json == before.materials_json
     assert current_ref in rebuilt.source_refs
-    assert rebuilt.snapshot_compiler.value == "inner-life-snapshot-compiler.20"
+    assert rebuilt.snapshot_compiler.value == "inner-life-snapshot-compiler.21"
 
 
 @pytest.mark.asyncio

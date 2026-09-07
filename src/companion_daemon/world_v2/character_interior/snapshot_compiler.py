@@ -54,7 +54,7 @@ from .contracts import (
 )
 
 
-SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.20"
+SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.21"
 
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
@@ -1304,7 +1304,7 @@ def compile_inner_life_snapshot(
 
     lanes = (
         ("situation", "current_situation", (
-            "logical_time", "time_segment", "activity_slices", "goal_slices",
+            "logical_time", "time_segment", "location_slice", "activity_slices", "goal_slices",
             "resource_pressure", "attention_slice", "social_environment",
             "plan_relation", "commitment_slices",
         )),
