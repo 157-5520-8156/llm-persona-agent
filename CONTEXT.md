@@ -484,6 +484,12 @@ failures remain technical failures. The PrivateImpression boundary establishes
 the durable source and subject; it must not borrow the latest unrelated
 Appraisal. `noticed` remains subjective attention audit and cannot authorize
 a new WorldOccurrence. Historical absent optional fields remain readable.
+The persisted paid DecisionProposal is also the durable source of unfinished
+retention work. Its exact authored text and accepted Appraisal may be
+materialized without another model call, before independent reflection budget
+gates. New materialization commits its derived role audit, private proposal
+and acceptance atomically; it never invents a new choice on storage failure.
+Historical partial writes remain subject to their original World/clock pin.
 When the character chooses bounded Recall, she forms one Private Turn State
 before requesting it and a new one from the augmented Inner Life Snapshot
 before the final Expression. New ExpressionDrafts must carry the same final

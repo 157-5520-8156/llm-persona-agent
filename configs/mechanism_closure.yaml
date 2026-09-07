@@ -201,6 +201,9 @@ mechanisms:
       - tests/world_v2/test_appraisal_authority.py::test_typed_affect_acceptance_replays_and_decays
       - tests/world_v2/test_character_interior_inbound_appraisal_wire.py::test_materializer_binds_same_turn_appraisal_and_affect
       - tests/world_v2/test_private_impression_authority.py::test_private_impression_is_appraisal_bound_and_visible_only_to_internal_context
+      - tests/world_v2/test_paid_retention_recovery.py::test_background_recovers_paid_choice_after_restart_without_reflection_budget
+      - tests/world_v2/test_paid_retention_recovery.py::test_atomic_paid_batch_rejects_unrelated_authority_and_extra_effects
+      - tests/world_v2/test_paid_retention_recovery.py::test_two_recovery_owners_complete_one_paid_choice_once
       - tests/world_v2/test_affect_module.py::test_resolve_is_explicit_sourced_and_terminal
 
   - id: life-npc-outcome-continuity
