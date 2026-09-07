@@ -536,10 +536,12 @@ pinned role author may receive its one precise source/shape correction, but an
 invalid corrected candidate is retried later through its durable 10/30/120-
 minute lifecycle rather than immediately reauthored as a new intention. For
 proactive contact, the role includes factual permission metadata in that same
-structured Character Decision; production must not insert a second synchronous
-claim-binding model between a valid `now` decision and independent truth
-review. Local source-lane closure and the independently qualified truth
-reviewer remain mandatory, but neither may author or replace the expression.
+structured Character Decision. The installed one-shot composition does not
+insert a second synchronous claim-binding or general truth-review model.
+Local source-lane closure remains mandatory and cannot author or replace the
+expression. It verifies declared references and scopes, not whether free prose
+omitted a factual assertion; that semantic gap must remain visible in testing
+and qualification.
 _Avoid_: Forced reply, failure fallback text, silence inference
 
 The provider-visible request may include a compact hard-boundary manifest that
@@ -695,28 +697,31 @@ _Avoid_: Unlogged model answer, replay-time inference
 
 ## Source Review Qualification
 
-An endpoint/model may enter a strict source-review lane only when its exact
-schema digest has response evidence; sending a request or configuring an
-OpenAI-compatible URL is not qualification. As of 2026-08-01, Inventory V5 is
-release-qualified on both the OpenRouter `openai/gpt-5.4-nano` route (13/14
-exact wires) and the direct `gpt-5.4-mini` route (11/12 exact wires; 10/10
-semantic boundary cases). A qualified topology may therefore use them as one
-serial availability role with 3-second and 8-second attempts and 600-second
-route suppression. Coverage V5 remains dormant and unqualified. The active
-non-exhaustive path is `inventory_v5_guard_then_full_source_review.7`:
-Inventory contributes semantic decomposition only, and the independent RR.3 /
-V7 authority receives those locators and still owns every factual verdict. If
-Inventory is unavailable, the system falls back to full V7 and reports the
-degraded route rather than treating a technical failure as a semantic result.
-Production composition must prove that the character-author lane
-has a different exact semantic authority for source review before startup.
-An unqualified or self-reviewing ordinary route is a deployment error, not a
-per-message fallback. Reviewer transport redundancy is availability protection
-for a non-authoring truth boundary, never a backup character model. The old
-role-reversal topology is no longer production-admissible; inability to prove
-this boundary fails startup before provider clients are allocated.
-_Avoid_: Configuration as evidence, timeout as schema success, Inventory as a
-source verdict, dormant Coverage reported as active
+Evidence that one installed review lane, exact request/schema contract and
+provider route performed its bounded responsibility. Configuration, successful
+transport, valid JSON and local reference checks are distinct from semantic
+coverage. None proves another lane qualified or gives the reviewer authority
+to choose character behavior.
+
+The current one-shot composition has removed the general chat truth-review,
+external-proposition inventory and general Life model-review lanes. The older
+2026-08-01 Inventory V5 / full V7 topology and its route measurements are
+historical evidence, not installed routing or a startup requirement. See the
+2026-08-13 H1d record in
+`docs/design/harness-restructure-execution-plan.md`. Its deterministic
+replacement checks declared source coordinates; an empty declaration is not
+proof that the message contains no external facts.
+
+Life Development may separately install the optional focused novel-origin
+critic. It reviews World Author truth-origin and authorship boundaries, not
+visible dialogue or all semantic source coverage. Its exact request, enabled
+state, self-review setting and real semantic counterexamples must be reported
+independently; it does not restore the retired general topology. The
+2026-09-08 real-dialogue audit still records both undeclared chat facts and a
+focused-critic false acceptance. Those are open limitations, not qualification
+success: `docs/audits/adaptive-companionship-2026-09-08.md`.
+_Avoid_: Configuration as evidence, timeout as schema success, local checks as
+complete semantic coverage, retired reviewer topology reported as active
 
 ## Background Context Profile
 
