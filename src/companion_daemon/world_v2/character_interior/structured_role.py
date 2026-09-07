@@ -38,6 +38,7 @@ from ..proposal_envelope import AspirationTransitionPayload
 from ..schema_core import canonicalize_json_value
 from ..structured_completion import complete_json_object
 from ..schemas import MemoryCueKind, MemoryRetentionRationale
+from .single_tool_transport import SingleToolTransport, resolve_single_tool_transport
 from .author_identity import character_semantic_author_identity
 from .contracts import (
     InteriorAffectOpenTransition,
@@ -1365,6 +1366,7 @@ class StructuredCharacterRoleFaculty:
         contract = self._resolve_contract(request)
         messages = self._messages(request, contract=contract)
         tool_contract = self._tool_contract(request)
+        transport = self._single_tool_transport(tool_contract=tool_contract)
         request_hash = self._provider_request_hash(
             messages=messages,
             tool_contract=tool_contract,
@@ -1383,7 +1385,7 @@ class StructuredCharacterRoleFaculty:
                 temperature=self._temperature,
                 tools=(list(tool_contract.provider_tools) if tool_contract is not None else None),
                 tool_choice=(
-                    tool_contract.provider_tool_choice if tool_contract is not None else None
+                    transport.tool_choice if transport is not None else None
                 ),
             )
         raw = provider_raw
@@ -1604,16 +1606,30 @@ class StructuredCharacterRoleFaculty:
                 detail=f"{request.purpose} forced-tool contract is invalid: {exc}",
             ) from exc
 
-    @staticmethod
+    def _single_tool_transport(
+        self,
+        *,
+        tool_contract: StructuredRoleToolContract | None,
+    ) -> SingleToolTransport | None:
+        if tool_contract is None:
+            return None
+        return resolve_single_tool_transport(
+            provider=self._model,
+            tools=tool_contract.provider_tools,
+            tool_choice=tool_contract.provider_tool_choice,
+            identity=tool_contract.identity.request_identity_material(),
+        )
+
     def _provider_identity_extras(
+        self,
         *,
         tool_contract: StructuredRoleToolContract | None,
     ) -> dict[str, object] | None:
         if tool_contract is None:
             return None
-        return {
-            "tool_contract_identity": (tool_contract.identity.request_identity_material()),
-        }
+        transport = self._single_tool_transport(tool_contract=tool_contract)
+        assert transport is not None
+        return {"tool_contract_identity": dict(transport.identity)}
 
     def _provider_request_hash(
         self,
@@ -1621,13 +1637,12 @@ class StructuredCharacterRoleFaculty:
         messages: list[dict[str, str]],
         tool_contract: StructuredRoleToolContract | None,
     ) -> str:
+        transport = self._single_tool_transport(tool_contract=tool_contract)
         digest = provider_invocation_request_hash(
             messages=messages,
             temperature=self._temperature,
             tools=(list(tool_contract.provider_tools) if tool_contract is not None else None),
-            tool_choice=(
-                tool_contract.provider_tool_choice if tool_contract is not None else None
-            ),
+            tool_choice=(transport.tool_choice if transport is not None else None),
             identity_extras=self._provider_identity_extras(tool_contract=tool_contract),
         )
         return "sha256:" + digest

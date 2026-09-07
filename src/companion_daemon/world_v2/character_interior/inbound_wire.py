@@ -30,6 +30,7 @@ from companion_daemon.llm import (
     model_turn_scope,
     provider_invocation_request_hash,
 )
+from .single_tool_transport import resolve_single_tool_transport
 from ..qq_face_render_catalog import (
     INBOUND_SURFACE_PROMPT_CLAUSE,
     INBOUND_SURFACE_PROMPT_CLAUSE_ZH,
@@ -8236,10 +8237,16 @@ def _expression_tool_reselection_kwargs(
         combined=False,
     )
     compiled = expression_reselection_tool_contract(output_contract)
+    transport = resolve_single_tool_transport(
+        provider=provider,
+        tools=compiled.provider_tools,
+        tool_choice=compiled.provider_tool_choice,
+        identity=compiled.identity.request_identity_material(),
+    )
     return {
         "tools": list(compiled.provider_tools),
-        "tool_choice": compiled.provider_tool_choice,
-        "tool_contract_identity": compiled.identity.request_identity_material(),
+        "tool_choice": transport.tool_choice,
+        "tool_contract_identity": dict(transport.identity),
         "unwrap_tool_result": compiled.unwrap,
         # The provider request hash deliberately keeps this local identity
         # out of the wire.  This compact typed carrier is the corresponding

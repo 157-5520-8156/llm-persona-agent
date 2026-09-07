@@ -1149,6 +1149,12 @@ class DeepSeekChatModel:
             transport=transport,
         )
 
+    @property
+    def single_tool_selection_mode(self) -> str:
+        """Advertise the wire selection mode before callers bind request identity."""
+
+        return "auto" if self.thinking_enabled else "forced"
+
     def _admit_world_v2_model_call(
         self,
         *,
@@ -1378,9 +1384,9 @@ class DeepSeekChatModel:
         tool_arg_deltas: dict[int, list[str]] = {}
         tool_arg_delivered: dict[int, int] = {}
         tool_names: dict[int, str] = {}
-        expected_tool_name = _forced_tool_name(tool_choice)
         forced_tool_head_released = False
         try:
+            expected_tool_name = _expected_tool_name(tools, tool_choice)
             request_payload = self.request_payload(
                 messages,
                 temperature=temperature,
@@ -1422,7 +1428,8 @@ class DeepSeekChatModel:
                 ) as response:
                     await _raise_for_provider_status_async(response)
                     content_type = response.headers.get("content-type", "").lower()
-                    if "text/event-stream" not in content_type:
+                    is_event_stream = "text/event-stream" in content_type
+                    if not is_event_stream:
                         # A few OpenAI-compatible gateways accept ``stream``
                         # but answer with the ordinary JSON completion shape.
                         # Preserve correctness and one-call accounting; this
@@ -1447,7 +1454,7 @@ class DeepSeekChatModel:
                             calls = message.get("tool_calls") if isinstance(message, dict) else None
                             content = _arguments_content(
                                 calls,
-                                expected_tool_name=_forced_tool_name(tool_choice),
+                                expected_tool_name=expected_tool_name,
                             )
                         if not isinstance(content, str) or not content:
                             raise ValueError("model response content must be non-empty")
@@ -1490,6 +1497,10 @@ class DeepSeekChatModel:
                                 delta.get("tool_calls") if isinstance(delta, dict) else None
                             )
                             if isinstance(tool_calls, list):
+                                if tools and len(tool_calls) > 1:
+                                    raise ValueError(
+                                        "model response must contain exactly one tool call"
+                                    )
                                 if not tool_args:
                                     mark_model_request_first_token(request_span)
                                 for call in tool_calls:
@@ -1543,7 +1554,7 @@ class DeepSeekChatModel:
             finally:
                 mark_model_request_completed(request_span)
             content = "".join(pieces)
-            if tools:
+            if tools and is_event_stream:
                 content = _arguments_content(
                     [
                         {
@@ -1554,7 +1565,7 @@ class DeepSeekChatModel:
                         }
                         for index in sorted(set(tool_names) | set(tool_args))
                     ],
-                    expected_tool_name=_forced_tool_name(tool_choice),
+                    expected_tool_name=expected_tool_name,
                 )
             if not content or not content.strip():
                 raise ValueError("model stream content must be a non-empty string")
@@ -1703,6 +1714,7 @@ class DeepSeekChatModel:
         request_emitted = False
         usage: dict[str, object] = {}
         try:
+            expected_tool_name = _expected_tool_name(tools, tool_choice)
             request_payload = self.request_payload(
                 messages,
                 temperature=temperature,
@@ -1755,7 +1767,7 @@ class DeepSeekChatModel:
                 calls = message.get("tool_calls") if isinstance(message, dict) else None
                 content = _arguments_content(
                     calls,
-                    expected_tool_name=_forced_tool_name(tool_choice),
+                    expected_tool_name=expected_tool_name,
                 )
             if not isinstance(content, str) or not content.strip():
                 raise ValueError("model response content must be a non-empty string")
@@ -2344,6 +2356,34 @@ def _forced_tool_name(tool_choice: object | None) -> str | None:
         return None
     name = function.get("name")
     return name if isinstance(name, str) and name else None
+
+
+def _expected_tool_name(
+    tools: list[dict[str, object]] | None,
+    tool_choice: object | None,
+) -> str | None:
+    """Bind one response identity without changing the caller's wire selection."""
+
+    forced_name = _forced_tool_name(tool_choice)
+    if tool_choice != "auto":
+        if forced_name is not None and tools and len(tools) == 1:
+            function = tools[0].get("function")
+            if not isinstance(function, dict) or function.get("name") != forced_name:
+                raise ValueError("forced tool identity must match the declared function")
+        return forced_name
+    if not tools or len(tools) != 1:
+        raise ValueError("single-tool auto requires exactly one declared function")
+    tool = tools[0]
+    function = tool.get("function") if isinstance(tool, dict) else None
+    name = function.get("name") if isinstance(function, dict) else None
+    if (
+        not isinstance(tool, dict)
+        or tool.get("type") != "function"
+        or not isinstance(name, str)
+        or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name) is None
+    ):
+        raise ValueError("single-tool auto requires a valid declared function name")
+    return name
 
 
 def _arguments_content(

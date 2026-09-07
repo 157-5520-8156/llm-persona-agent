@@ -59,6 +59,7 @@ from .inbound_appraisal_wire import (
     _proposal_from_draft as materialize_appraisal_draft,
 )
 from .inbound_tool_contract import InboundToolContracts
+from .single_tool_transport import resolve_single_tool_transport
 from .inbound_wire import (
     _ExpressionDraftWire,
     _ProviderSubcallAuditCapture,
@@ -1263,6 +1264,7 @@ class _CombinedInteriorStreamProvider:
         self.supports_strict_tool_choice = bool(
             getattr(provider, "supports_strict_tool_choice", False)
         )
+        self.single_tool_selection_mode = getattr(provider, "single_tool_selection_mode", "forced")
         self._request = request
         self._provider = provider
         self._stream_adapter = stream_adapter
@@ -3009,10 +3011,16 @@ class _InboundCharacterAuthor:
                 else "standard"
             ),
         )
+        transport = resolve_single_tool_transport(
+            provider=provider,
+            tools=contract.provider_tools,
+            tool_choice=contract.provider_tool_choice,
+            identity=contract.identity.request_identity_material(),
+        )
         return {
             "tools": list(contract.provider_tools),
-            "tool_choice": contract.provider_tool_choice,
-            "tool_contract_identity": contract.identity.request_identity_material(),
+            "tool_choice": transport.tool_choice,
+            "tool_contract_identity": dict(transport.identity),
             "unwrap_tool_result": contract.unwrap,
         }
 
@@ -3933,7 +3941,14 @@ class _InboundCharacterAuthor:
             )
         )
         cognition_tools = list(cognition_contract.provider_tools)
-        cognition_tool_choice = cognition_contract.provider_tool_choice
+        cognition_transport = resolve_single_tool_transport(
+            provider=provider,
+            tools=cognition_contract.provider_tools,
+            tool_choice=cognition_contract.provider_tool_choice,
+            identity=cognition_contract.identity.request_identity_material(),
+        )
+        cognition_tool_choice = cognition_transport.tool_choice
+        cognition_contract_identity = dict(cognition_transport.identity)
         metered = (
             None
             if transport_provider is not None
@@ -3972,8 +3987,12 @@ class _InboundCharacterAuthor:
                 "expression_draft exactly as specified above. "
             )
             messages[0]["content"] += (
-                "\n\nFORCED TOOL TRANSPORT (overrides only the outer JSON envelope above): "
-                "call the required function exactly once. Its arguments must include "
+                (
+                    "\n\nSINGLE TOOL TRANSPORT (provider selection is auto; only the declared function is valid): "
+                    if cognition_tool_choice == "auto"
+                    else "\n\nFORCED TOOL TRANSPORT (overrides only the outer JSON envelope above): "
+                )
+                + "call the required function exactly once. Its arguments must include "
                 "result_kind. "
                 + decision_transport
                 + forced_tool_recall_instruction(
@@ -3993,9 +4012,7 @@ class _InboundCharacterAuthor:
             temperature=self._temperature,
             tools=(cognition_tools if use_forced_tool else None),
             tool_choice=(cognition_tool_choice if use_forced_tool else None),
-            tool_contract_identity=(
-                cognition_contract.identity.request_identity_material() if use_forced_tool else None
-            ),
+            tool_contract_identity=(cognition_contract_identity if use_forced_tool else None),
         )
         usage: ModelUsageProvenance | None = None
         forced_transport_error: ValueError | None = None
@@ -4018,11 +4035,7 @@ class _InboundCharacterAuthor:
                 model_provider_request_identity_scope(
                     request_hash=winning_provider_identity.request_hash,
                     identity_extras=(
-                        {
-                            "tool_contract_identity": (
-                                cognition_contract.identity.request_identity_material()
-                            )
-                        }
+                        {"tool_contract_identity": (cognition_contract_identity)}
                         if use_forced_tool
                         else None
                     ),
@@ -4036,9 +4049,7 @@ class _InboundCharacterAuthor:
                             {
                                 "tools": cognition_tools,
                                 "tool_choice": cognition_tool_choice,
-                                "tool_contract_identity": (
-                                    cognition_contract.identity.request_identity_material()
-                                ),
+                                "tool_contract_identity": (cognition_contract_identity),
                             }
                             if use_forced_tool
                             else {}
