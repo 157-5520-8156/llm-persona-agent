@@ -159,6 +159,131 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
 
 
 @pytest.mark.asyncio
+async def test_injected_provider_clients_close_after_host_quiescence_at_each_restart(
+    tmp_path, monkeypatch
+):
+    fixture = _RunnerFixture(monkeypatch)
+    closes = []
+
+    async def close_resources():
+        assert fixture.hosts[-1].closed
+        assert fixture.hosts[-1].quiescent
+        closes.append(len(fixture.hosts))
+
+    scenario = Journey.parse(
+        {
+            "scenario_id": "provider-lifecycle",
+            "started_at": NOW.isoformat(),
+            "duration_minutes": 3,
+            "restart_minutes": [1],
+        }
+    )
+    result = await run_journey(
+        journey=scenario,
+        output=tmp_path / "run",
+        host_factory=fixture.factory,
+        synthetic=True,
+        close_resources=close_resources,
+    )
+    assert result["completed"]
+    assert closes == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_partial_factory_failure_closes_caller_owned_provider_clients(tmp_path, monkeypatch):
+    fixture = _RunnerFixture(monkeypatch)
+    closed = []
+
+    def broken_factory(database, clock, delivery):
+        fixture.factory(database, clock, delivery)
+        raise ValueError("fixture construction failure")
+
+    async def close_resources():
+        closed.append(True)
+
+    result = await run_journey(
+        journey=_journey(),
+        output=tmp_path / "run",
+        host_factory=broken_factory,
+        synthetic=True,
+        close_resources=close_resources,
+    )
+    assert result["stop_reason"] == "technical_failure:ValueError"
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
+async def test_host_close_error_still_waits_for_quiescence_and_closes_clients(
+    tmp_path, monkeypatch
+):
+    fixture = _RunnerFixture(monkeypatch)
+    closed = []
+
+    def factory(database, clock, delivery):
+        host = fixture.factory(database, clock, delivery)
+
+        async def broken_close():
+            raise OSError("fixture close error")
+
+        host.aclose = broken_close
+        return host
+
+    async def close_resources():
+        assert fixture.hosts[-1].quiescent
+        closed.append(True)
+
+    result = await run_journey(
+        journey=_journey(),
+        output=tmp_path / "run",
+        host_factory=factory,
+        synthetic=True,
+        close_resources=close_resources,
+    )
+    assert result["stop_reason"] == "technical_failure:shutdown:OSError"
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
+async def test_caller_cancel_cannot_close_clients_before_shutdown_quiescence(tmp_path, monkeypatch):
+    fixture = _RunnerFixture(monkeypatch)
+    entered, release = asyncio.Event(), asyncio.Event()
+    closed = []
+
+    def factory(database, clock, delivery):
+        host = fixture.factory(database, clock, delivery)
+
+        async def wait_for_quiescence():
+            entered.set()
+            await release.wait()
+            host.quiescent = True
+
+        host.wait_for_shutdown_quiescence = wait_for_quiescence
+        return host
+
+    async def close_resources():
+        assert fixture.hosts[-1].quiescent
+        closed.append(True)
+
+    task = asyncio.create_task(
+        run_journey(
+            journey=_journey(),
+            output=tmp_path / "run",
+            host_factory=factory,
+            synthetic=True,
+            close_resources=close_resources,
+        )
+    )
+    await entered.wait()
+    task.cancel()
+    await asyncio.sleep(0)
+    assert not closed
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
 async def test_same_time_input_observes_due_environment_after_settlement(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

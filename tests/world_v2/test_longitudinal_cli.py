@@ -94,10 +94,15 @@ def test_real_life_review_profile_reports_configuration_without_enabling_it(
     )
     profile = cli.life_review_profile(settings, synthetic=False)
     assert settings.world_v2_life_self_review_allowed is self_review
-    assert profile["status"] == ("configured_self_review" if self_review else "unavailable")
+    assert profile["status"] == (
+        "configured_self_review" if self_review else "deterministic_checks"
+    )
     assert profile["model"] == (settings.deepseek_model if self_review else None)
-    if not self_review:
-        assert profile["richness_coverage"] == "missing_reviewer_excludes_life_richness_comparison"
+    assert profile["general_source_closure"] == "deterministic"
+    assert profile["novel_origin_review"] == (
+        "configured_world_author_self_review" if self_review else "deterministic_focused_origin"
+    )
+    assert profile["richness_coverage"] == "requires_manual_evaluation"
     assert "fixture-debug-key" not in json.dumps(profile)
 
 
@@ -208,6 +213,82 @@ async def test_fixture_public_journey_does_not_expire_virtual_ingress_deadline(
     assert any(audit["status"] == "provider_completed" for audit in audits)
     rows = [json.loads(line) for line in (output / "timeline.jsonl").read_text().splitlines()]
     assert sum(delivery["kind"] == "text" for row in rows for delivery in row["deliveries"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_real_cli_captures_actual_provider_body_and_closes_injected_clients(
+    tmp_path, monkeypatch
+):
+    import companion_daemon.llm as llm
+    import companion_daemon.world_v2.longitudinal_journey as runner
+
+    monkeypatch.setenv("DEEPSEEK_DEBUG_API_KEY", "fixture-debug-key")
+    monkeypatch.setenv("DEEPSEEK_CHARACTER_THINKING_ENABLED", "true")
+    clients = []
+    actual_model = llm.DeepSeekChatModel
+
+    def observed_model(*args, **kwargs):
+        client = actual_model(*args, **kwargs)
+        clients.append(client)
+        return client
+
+    def respond(request):
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": '{"ok":true}'}}],
+                "usage": {"prompt_tokens": 1000, "completion_tokens": 100},
+            },
+        )
+
+    monkeypatch.setattr(llm, "DeepSeekChatModel", observed_model)
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kwargs: httpx.MockTransport(respond))
+
+    async def build_and_call(**kwargs):
+        kwargs["output"].mkdir()
+        clock = runner.JourneyClock(kwargs["journey"].started_at)
+        host = kwargs["host_factory"](
+            kwargs["output"] / "world.sqlite", clock, runner.CaptureDelivery(clock)
+        )
+        try:
+            assert len(clients) == 3
+            assert clients[0].max_completion_tokens == 4096
+            assert clients[1].thinking_enabled is True
+            assert clients[1].max_completion_tokens == 900
+            assert clients[2].max_completion_tokens == 4096
+            with llm.model_call_scope("inbound_turn"):
+                result = await clients[0].complete_json(
+                    [{"role": "user", "content": "计划改到周二"}]
+                )
+            assert json.loads(result) == {"ok": True}
+            _, records = kwargs["model_input_capture"].read_since()
+            requests = [record for record in records if record["kind"] == "request"]
+            assert len(requests) == 1
+            assert json.loads(requests[0]["model_content_json"])["messages"] == [
+                {"role": "user", "content": "计划改到周二"}
+            ]
+            assert host.usage_budget_health()["daily_cost_cny"] > 0
+        finally:
+            await host.aclose()
+            await host.wait_for_shutdown_quiescence()
+            await kwargs["close_resources"]()
+        assert all(client.client.is_closed for client in clients)
+        return {"completed": True, "synthetic": False, "stop_reason": "test_complete"}
+
+    monkeypatch.setattr(runner, "run_journey", build_and_call)
+    cli = _cli()
+    result = await cli.run(
+        cli.parse_options(
+            [
+                "--output",
+                str(tmp_path / "run"),
+                "--model-mode",
+                "real-provider",
+                "--allow-real-provider",
+            ]
+        )
+    )
+    assert result["completed"]
 
 
 @pytest.mark.asyncio

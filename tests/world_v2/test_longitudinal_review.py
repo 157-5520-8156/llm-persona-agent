@@ -71,6 +71,45 @@ def evidence_id(sequence: int) -> str:
     return f"event:variant-secret:{sequence}"
 
 
+def test_exact_client_request_is_not_promoted_to_provider_attention():
+    raw = '{"messages":[{"role":"user","content":"分享改到下周二了"}]}'
+    request = {
+        "kind": "request",
+        "capture_id": "request-1",
+        "model_content_json": raw,
+        "content_hash": hashlib.sha256(raw.encode()).hexdigest(),
+    }
+    row = _step("one", 0, 0, context_evidence={"requests": [request]})
+    packet = build_review_packet(timeline=[row], evidence=[], run_manifest={})
+    assert packet["timeline"][0]["context_visibility"] == "captured_client_requests"
+    assert (
+        "分享改到下周二了"
+        in packet["timeline"][0]["context_evidence"]["requests"][0]["model_content_json"]
+    )
+    request["model_content_json"] = '{"messages":[]}'
+    with pytest.raises(ValueError, match="hash mismatch"):
+        build_review_packet(timeline=[row], evidence=[], run_manifest={})
+
+
+def test_unread_client_request_remains_unverified_without_hiding_the_journey():
+    row = _step(
+        "one",
+        0,
+        0,
+        context_evidence={
+            "requests": [
+                {
+                    "kind": "request",
+                    "model_facing": False,
+                    "reason": "unread_request_body",
+                }
+            ]
+        },
+    )
+    packet = build_review_packet(timeline=[row], evidence=[], run_manifest={})
+    assert packet["timeline"][0]["context_visibility"] == "unverified"
+
+
 def test_recovered_model_failure_is_not_hidden_as_quiet_scheduler():
     row = _step(
         "technical",

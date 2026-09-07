@@ -62,6 +62,7 @@ _MANIFEST_FIELDS = (
     "profile_differences",
     "life_source_review",
     "quiet_tail_seconds",
+    "model_input_capture",
 )
 _PROVENANCE_FIELDS = {
     "version",
@@ -117,7 +118,28 @@ def _terminal_outcome(row: dict) -> str:
     return declared
 
 
-def _context_visibility(value: Any) -> str:
+def context_evidence_visibility(value: Any) -> str:
+    if isinstance(value, dict) and isinstance(value.get("requests"), list):
+        requests = value["requests"]
+        captured = 0
+        for request in requests:
+            raw = request.get("model_content_json")
+            if raw is None and request.get("model_facing") is False:
+                continue
+            if (
+                request.get("kind") != "request"
+                or not isinstance(raw, str)
+                or hashlib.sha256(raw.encode("utf-8")).hexdigest() != request.get("content_hash")
+            ):
+                raise ValueError("client request body hash mismatch")
+            captured += 1
+        if not captured:
+            return "unverified"
+        return (
+            "captured_client_requests"
+            if captured == len(requests)
+            else "partially_captured_client_requests"
+        )
     if not isinstance(value, dict) or value.get("model_facing") is not True:
         return "unverified"
     raw = value.get("model_content_json")
@@ -196,7 +218,7 @@ def build_review_packet(
                 "terminal_outcome": _terminal_outcome(row),
                 "terminal_outcomes": _blind(row.get("terminal_outcomes", []), refs),
                 "context_evidence": _blind(row.get("context_evidence"), refs),
-                "context_visibility": _context_visibility(row.get("context_evidence")),
+                "context_visibility": context_evidence_visibility(row.get("context_evidence")),
                 "ledger_start_sequence": start,
                 "ledger_end_sequence": end,
                 "evidence_refs": event_refs,
@@ -310,10 +332,15 @@ def render_longitudinal_report(
         ]
     )
     supplied = sum(row["context_visibility"] == "supplied" for row in packet["timeline"])
+    captured = sum(
+        row["context_visibility"] == "captured_client_requests" for row in packet["timeline"]
+    )
     missing = sum(row["unprovided_event_count"] for row in packet["timeline"])
     lines.extend(
         [
-            f"- 实际模型可见 Context: supplied {supplied}/{len(timeline)} 步；其余 unverified。",
+            f"- 旧格式模型材料 supplied {supplied}/{len(timeline)} 步；全调用输入覆盖尚未核验。",
+            f"- 另有 {captured} 步包含实际客户端请求字节；仅证明请求进入客户端 transport。",
+            "- 捕获区间不是 pinned turn 关联证明；上游接收、模型关注和全调用覆盖仍需分别核对。",
             "- ModelResultRecorded、decision_context 或 Fact 已入库，均不单独证明内容送到了模型或被使用。",
             f"- 各步 ledger 范围内未提供的事件总数: {missing}；缺少事件材料不能当作机制没有发生。",
             "- 无消息不反推沉默；technical_failure、未知终态与角色明确选择分别记录。",

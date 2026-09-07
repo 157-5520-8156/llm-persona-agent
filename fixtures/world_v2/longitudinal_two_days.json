@@ -1,0 +1,14 @@
+{
+  "scenario_id": "longitudinal-two-days.1",
+  "started_at": "2026-09-07T08:00:00+08:00",
+  "duration_minutes": 2880,
+  "restart_minutes": [1440],
+  "turns": [
+    {"id": "plan", "at_minutes": 0, "text": "早，我这周有点忙，周五下午要做一个分享。我平时比较喜欢喝桂花乌龙。"},
+    {"id": "her-morning", "at_minutes": 120, "text": "材料写了一会儿，歇歇。你今天怎么样？"},
+    {"id": "correction", "at_minutes": 180, "text": "刚收到通知，我那个分享推迟到下周二下午了，周五不用去了。今天先不聊准备材料的事了。"},
+    {"id": "return", "at_minutes": 1620, "text": "回来啦，昨天后来一直没看手机。路过一家茶店，想起之前聊过喝的东西。"},
+    {"id": "her-day", "at_minutes": 1920, "text": "今天想听你说说你自己的事，这两天有没有什么让你在意的事情？"},
+    {"id": "current-plan", "at_minutes": 2820, "text": "我准备排一下后面的时间，你记得我的分享现在改到哪天了吗？记不清也没关系。"}
+  ]
+}

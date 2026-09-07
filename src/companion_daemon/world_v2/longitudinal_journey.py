@@ -19,6 +19,7 @@ import sqlite3
 import time
 from typing import Callable
 
+from .longitudinal_review import context_evidence_visibility
 from .replay_evaluator import ReplayEvaluator
 from .sqlite_ledger import SQLiteWorldLedger
 
@@ -279,6 +280,8 @@ async def run_journey(
     synthetic: bool,
     limits: JourneyLimits = JourneyLimits(),
     provenance: dict | None = None,
+    model_input_capture=None,
+    close_resources: Callable | None = None,
 ) -> dict:
     """Create a fresh world and retain reviewable evidence even on early stop.
 
@@ -291,6 +294,7 @@ async def run_journey(
     clock = JourneyClock(journey.started_at)
     delivery = CaptureDelivery(clock)
     host = None
+    shutdown_task: asyncio.Task | None = None
     wall_started = time.monotonic()
     billing_day = datetime.now(UTC).date()
     timeline: list[dict] = []
@@ -299,6 +303,7 @@ async def run_journey(
     end = journey.started_at + timedelta(minutes=journey.duration_minutes)
     sequence = 0
     delivery_offset = 0
+    capture_offset = 0
     turn_index = restart_index = 0
     stop_reason = "completed"
     replay: dict = {}
@@ -308,6 +313,36 @@ async def run_journey(
     due_snapshot_sequence_before: int | None = None
     due_snapshot_sequence_after: int | None = None
     row: dict = {}
+
+    async def shutdown() -> None:
+        nonlocal shutdown_task
+
+        async def finish_owned_resources():
+            failure = None
+            operations = []
+            if host is not None:
+                operations.extend((host.aclose, host.wait_for_shutdown_quiescence))
+            if close_resources is not None:
+                operations.append(close_resources)
+            for operation in operations:
+                try:
+                    await operation()
+                except BaseException as exc:
+                    failure = failure or exc
+            if failure is not None:
+                raise failure
+
+        if shutdown_task is None:
+            shutdown_task = asyncio.create_task(finish_owned_resources())
+        cancelled = False
+        while not shutdown_task.done():
+            try:
+                await asyncio.shield(shutdown_task)
+            except asyncio.CancelledError:
+                cancelled = True
+        shutdown_task.result()
+        if cancelled:
+            raise asyncio.CancelledError()
 
     async def bounded(awaitable):
         remaining = limits.max_wall_seconds - (time.monotonic() - wall_started)
@@ -324,7 +359,7 @@ async def run_journey(
             raise
 
     def capture(row: dict) -> None:
-        nonlocal sequence, delivery_offset
+        nonlocal sequence, delivery_offset, capture_offset
         new_events = read_events(database, sequence)
         row.update(
             {
@@ -340,6 +375,17 @@ async def run_journey(
         row["terminal_outcomes"] = terminal_evidence(new_events)
         row["model_failures"] = model_failures(new_events)
         row["context_visibility"] = "unverified"
+        if model_input_capture is not None:
+            capture_offset, records = model_input_capture.read_since(capture_offset)
+            requests = [record for record in records if record.get("kind") == "request"]
+            row["context_evidence"] = {
+                "requests": requests,
+                "transport_results": [
+                    record for record in records if record.get("kind") == "transport_result"
+                ],
+                "association": "capture_interval_only_not_pinned_turn_proof",
+            }
+            row["context_visibility"] = context_evidence_visibility(row["context_evidence"])
         delivery_offset = len(delivery.records)
         if new_events:
             sequence = new_events[-1]["ledger_sequence"]
@@ -425,8 +471,7 @@ async def run_journey(
                 break
             if next_restart is not None and next_restart <= clock.now():
                 row["kind"] = "restart"
-                await host.aclose()
-                await host.wait_for_shutdown_quiescence()
+                await shutdown()
                 before = cold_evidence(database)
                 delivered_before = len(delivery.records)
                 checkpoint_path = (
@@ -435,6 +480,7 @@ async def run_journey(
                 with sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True) as source:
                     with sqlite3.connect(checkpoint_path) as destination:
                         source.backup(destination)
+                shutdown_task = None
                 host = host_factory(database, clock, delivery)
                 after = host.export_replay_evidence()
                 restart = {
@@ -499,10 +545,12 @@ async def run_journey(
                 {**row, "kind": "failure", "status": "technical_failure", "errors": [stop_reason]}
             )
     finally:
+        try:
+            await shutdown()
+        except Exception as exc:
+            stop_reason = f"technical_failure:shutdown:{type(exc).__name__}"
         if host is not None:
             try:
-                await host.aclose()
-                await host.wait_for_shutdown_quiescence()
                 exported = cold_evidence(database)
                 final_logical_time = exported.projection.logical_time
                 evaluation = ReplayEvaluator().evaluate(evidence=exported)
@@ -523,8 +571,8 @@ async def run_journey(
                         stop_reason = "unprocessed_due_before_end"
                 usage = host.usage_budget_health()
                 capture({"kind": "final", "status": stop_reason, "errors": []})
-            finally:
-                await host.aclose()
+            except Exception as exc:
+                stop_reason = f"technical_failure:final_evidence:{type(exc).__name__}"
 
     manifest = {
         "contract": CONTRACT,
@@ -555,6 +603,11 @@ async def run_journey(
         "restarts": restarts,
         "replay": replay,
         "usage": usage,
+        "model_input_capture": (
+            model_input_capture.health()
+            if model_input_capture is not None
+            else {"status": "unverified"}
+        ),
         "provenance": provenance or {},
         "profile_differences": (provenance or {}).get("profile_differences", []),
         "life_source_review": (provenance or {}).get(
@@ -570,7 +623,7 @@ async def run_journey(
         ],
         "artifacts": {
             name: hashlib.sha256((output / name).read_bytes()).hexdigest()
-            for name in ("timeline.jsonl", "evidence.jsonl")
+            for name in ("timeline.jsonl", "evidence.jsonl", "model-inputs.jsonl")
             if (output / name).exists()
         },
     }

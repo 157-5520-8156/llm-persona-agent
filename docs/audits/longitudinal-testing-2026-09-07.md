@@ -78,8 +78,9 @@ ledger_sequence 均为 876，语义 hash 均为
 本轮证明加速宿主链可运行，**没有证明真人感或每月 ¥100 已达标**。固定回复夹具是已知负对照，
 不能评价角色人格、记忆或生活丰富度。六维仍未评审，仍为 `manual_only`。
 
-当前实验 profile 关闭媒体、外界实时源、语义 embedding 和文本端点评估；真实 builder 未配置
-Life reviewer 时生活事实接纳也不可用，报告显式记录。实际发送给模型的完整 Context 字节尚未保证
+当前实验 profile 关闭媒体、外界实时源、语义 embedding 和文本端点评估。**后续源码核对更正**：
+缺少 Life reviewer 并不关闭生活事实接纳；general closure 为确定性检查，novel-origin 在无 reviewer 时
+走 deterministic focused-origin，详见后续真实测试审计。实际发送给模型的完整 Context 字节尚未保证
 捕获，不能从事件入库推断模型已经看过。重启 hash 证明状态连续性，异步恢复重发资格仍为 unverified。
 
 后续优先补实际 Context 取证和与目标生产能力一致的生活审查配置，再做小额真实模型短旅程及连续周

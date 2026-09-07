@@ -145,13 +145,20 @@ def life_review_profile(settings, *, synthetic: bool) -> dict:
         settings.world_v2_life_source_review_enabled and settings.world_v2_life_self_review_allowed
     )
     return {
-        "status": "configured_self_review" if available else "unavailable",
+        "status": "configured_self_review" if available else "deterministic_checks",
         "model": settings.deepseek_model if available else None,
-        "richness_coverage": (
-            "requires_manual_evaluation"
-            if available
-            else "missing_reviewer_excludes_life_richness_comparison"
+        "general_source_closure": "deterministic",
+        "semantic_entailment_verified": False,
+        "independent_reviewer_qualified": False,
+        "runtime_isolation": "self_review_operator_approved" if available else "no_model_reviewer",
+        "configured_switches": {
+            "source_review_enabled": settings.world_v2_life_source_review_enabled,
+            "self_review_allowed": settings.world_v2_life_self_review_allowed,
+        },
+        "novel_origin_review": (
+            "configured_world_author_self_review" if available else "deterministic_focused_origin"
         ),
+        "richness_coverage": "requires_manual_evaluation",
     }
 
 
@@ -181,6 +188,25 @@ async def run(options: argparse.Namespace) -> dict:
         synthetic=synthetic,
         max_cost_cny=options.max_cost_cny,
     )
+    capture = None
+    owned_models = []
+    if not synthetic:
+        from companion_daemon.world_v2.longitudinal_model_input_capture import (
+            PrivateModelInputCapture,
+        )
+
+        capture = PrivateModelInputCapture(options.output / "model-inputs.jsonl")
+
+    async def close_models():
+        # Caller-injected clients outlive host shutdown tasks, then close
+        # before a restart constructs another set against the same ledger.
+        results = await asyncio.gather(
+            *(model.aclose() for model in owned_models), return_exceptions=True
+        )
+        owned_models.clear()
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
 
     def host_factory(database, clock, delivery):
         settings = configured.model_copy(update={"database_path": database})
@@ -196,6 +222,48 @@ async def run(options: argparse.Namespace) -> dict:
                 thinking_model=fixture,
                 world_support_model=fixture,
                 life_source_closure_model=fixture,
+            )
+        else:
+            import httpx
+
+            from companion_daemon.llm import DeepSeekChatModel
+            from companion_daemon.world_v2.longitudinal_model_input_capture import (
+                ModelInputCaptureTransport,
+            )
+            from companion_daemon.world_v2.model_usage_budget import usage_store_for_settings
+
+            usage = usage_store_for_settings(settings)
+
+            def provider(role, *, thinking=False):
+                client = DeepSeekChatModel(
+                    api_key=settings.deepseek_debug_api_key,
+                    base_url=settings.deepseek_base_url,
+                    model=(
+                        settings.deepseek_character_thinking_model
+                        if thinking
+                        else settings.deepseek_model
+                    ),
+                    thinking_enabled=thinking,
+                    reasoning_effort=settings.deepseek_character_thinking_reasoning_effort,
+                    max_completion_tokens=900 if thinking else 4096,
+                    usage_observer=usage.record,
+                    transport=ModelInputCaptureTransport(
+                        inner=httpx.AsyncHTTPTransport(trust_env=False),
+                        capture=capture,
+                        model_role=role,
+                    ),
+                )
+                owned_models.append(client)
+                return client
+
+            injected = dict(
+                model=provider("flash"),
+                thinking_model=(
+                    provider("thinking", thinking=True)
+                    if settings.deepseek_character_thinking_enabled
+                    else None
+                ),
+                world_support_model=provider("world_support"),
             )
         return build_qq_c2c_host(
             settings=settings,
@@ -219,6 +287,8 @@ async def run(options: argparse.Namespace) -> dict:
         host_factory=host_factory,
         synthetic=synthetic,
         limits=limits,
+        model_input_capture=capture,
+        close_resources=close_models,
         provenance={
             "model_mode": options.model_mode,
             "scenario_sha256": hashlib.sha256(scenario_bytes).hexdigest(),
@@ -227,7 +297,9 @@ async def run(options: argparse.Namespace) -> dict:
             "life_source_review": life_review_profile(configured, synthetic=synthetic),
             "max_cost_cny": options.max_cost_cny,
             "billing_clock": "real_utc_not_virtual",
-            "context_input_verification": "unverified",
+            "context_input_verification": (
+                "unverified" if synthetic else "client_transport_capture_not_provider_attention"
+            ),
             "profile_differences": [
                 "captured QQ delivery",
                 "virtual calendar and presentation waits",
