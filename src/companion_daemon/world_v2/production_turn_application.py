@@ -3622,9 +3622,6 @@ def build_sqlite_world_v2_turn_application(
         if semantic_recall_embedding is not None
         else None
     )
-    if warm_semantic_recall:
-        # Optional bootstrap work uses the same durable budget/cache as recall.
-        warm_semantic_recall_embedding(cached_semantic_embedding)
     recall_coordinator = RecallCoordinator(
         index=recall_index,
         semantic_embedding=cached_semantic_embedding,
@@ -3638,6 +3635,9 @@ def build_sqlite_world_v2_turn_application(
         (time.perf_counter() - build_started) * 1000,
     )
     try:
+        if warm_semantic_recall:
+            # Optional bootstrap work uses the same durable budget/cache as recall.
+            warm_semantic_recall_embedding(cached_semantic_embedding)
         occurrence_content = OccurrenceContentCoordinator(ledger=ledger, store=life_content_store)
         perception_dependencies = (perception_input_source, perception_transport)
         perception_requested = any(item is not None for item in perception_dependencies)

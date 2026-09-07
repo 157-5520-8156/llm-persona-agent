@@ -66,3 +66,27 @@ def test_installed_warmup_respects_durable_embedding_budget(tmp_path, warm, deni
             "SELECT request_count, rejected_count FROM world_recall_embedding_usage_daily"
         ).fetchone()
     assert row == ((1, 0) if expected_calls else ((0, 1) if denied else None))
+
+
+def test_invalid_provider_warmup_closes_the_owned_embedding(tmp_path):
+    class InvalidEmbedding:
+        version = "fixture:invalid-warmup"
+        dimensions = 2
+        closed = False
+
+        def embed(self, texts):
+            raise ValueError("invalid embedding response")
+
+        def close(self):
+            self.closed = True
+
+    embedding = InvalidEmbedding()
+    with pytest.raises(ValueError, match="invalid embedding response"):
+        build_sqlite_world_v2_test_application(
+            path=tmp_path / "invalid.sqlite", config=_config(), identities=_Identities(), router=_Router(),
+            character_interior=compose_fixture_character_interior(
+                inbound_author=_InboundCharacterAuthor(flash_model=_DraftChatModel()),
+            ), transport=_DeliveredTransport(), now=NOW,
+            semantic_recall_embedding=embedding, warm_semantic_recall=True,
+        )
+    assert embedding.closed
