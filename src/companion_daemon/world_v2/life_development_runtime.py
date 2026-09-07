@@ -241,9 +241,12 @@ def _aspiration_surfaces(projection: object) -> list[dict[str, object]]:
         row: dict[str, object] = {
             "aspiration_id": item.aspiration_id,
             "text": item.text,
+            "source_ref": item.revision_event_ref or item.planted_event_ref,
             "planted_event_ref": item.planted_event_ref,
             "reinforcement_count": item.reinforcement_count,
         }
+        if item.last_revised_at is not None:
+            row["last_revised_at"] = item.last_revised_at.isoformat()
         if item.tension_summary is not None:
             row["tension_summary"] = item.tension_summary
         items.append(row)
