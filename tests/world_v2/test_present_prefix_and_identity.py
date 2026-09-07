@@ -142,10 +142,10 @@ def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None
     assert "只在文字里说要发图不会打开这条车道" in instruction
     assert "photo true（或写一个可用候选的 source_ref）可以搭 reply_only" in instruction
     assert "photo true 不能搭 reply_only" not in instruction
-    assert "day_sheet 和传记里的习惯是日程底色" in instruction
-    assert "聊天里的颜色是允许的" in instruction
-    assert "Fact、Relationship、Media 或持续情绪事件" in instruction
-    assert "已经发过图" in instruction
+    assert "day_sheet 和传记习惯不能证明当前或刚才发生了什么" in instruction
+    assert "语气、态度、记忆的不确定感和愿望由你写" in instruction
+    assert "不会自动变成已发生的事实或持续状态" in instruction
+    assert "photos_i_shared 是你已经成功发给他的照片这一世界事实" in instruction
     assert "candidate_only" in instruction
     assert "even-tempered" not in instruction
     assert "unfinished bubble" not in instruction
