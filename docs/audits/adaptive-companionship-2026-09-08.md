@@ -479,3 +479,28 @@ slim schema 没有将它列为 required，缺失/null 又会补成空数组。�
 typed 分类的 606 字节（+176）；双方都显式声明同一事实时为 601→651（+50）。这只是
 UTF-8 字节，不是 token、费用、模型正确率或流式兼容测试。原型及 comparison.json
 保留为下一次有界协议对照的材料；当前未改变生产表达格式或宣称事实漏洞已关闭。
+
+## 长期生活背景的审查覆盖与历史身份
+
+`e55210bb` 补齐一个独立的输入缺口：World Author 可写入持久生活背景的
+`outcomes.N.dynamic_life_direction`，之前整项没有进入现有 focused origin critic。
+现在传入完整对象，并允许模型针对 summary 与各类 tag 的原字段路径、原文片段报告
+越权或缺乏来源。代码只核对坐标，未增加本地语义分类器或模型调用。合法 unsupported
+结论仍结束该次 admission；没有恢复额外 World Author 重写调用。
+
+新 review `.4`、packet `.5`、subject `.4` 标识扩大后的输入。旧 packet `.4` 的真实
+审计继续使用 subject `.3` 原公式。公共冷账本反例还发现：只改新 Proposal 的复制审计，
+可以伪装旧 subject。因此 reducer 现在将两种已存在的 review 副本，与原 ModelResult
+中的角色、Context、请求、响应和 subject 身份逐项绑定；删标、旧标及重算副本都不能
+获得历史资格。历史 fixture 来自 `233249ed` 的公共 runtime 和本地 stub，未重新生成
+旧事件或给它们升级覆盖承诺。
+
+作者侧 Life/biography/public reader **371 项通过**；root 集成后定向 **124 项通过**。
+干净 `e55210bb` 完整运行 **120 个冻结场景**，逐字段比较原 `.98` manifest，并独立
+重算 SHA256，完全一致，保持原版本与 hash。证据为 `baseline-dynamic-origin.json`
+和 `baseline-dynamic-origin-verification.json`；这批离线场景不证明真实模型能发现
+隐含前提。
+
+该修复不能解释或解决此前真实误判：trial03 的旧草稿前提、trial05 的未读诗集前提
+已经完整进入原 critic，仍得到 supported。这两个实际反例均未使用新补齐的字段。
+机制覆盖、模型语义判断与长期真人感继续分开验收。
