@@ -1598,12 +1598,20 @@ async def test_expression_event_stream_rejects_a_false_protocol_before_releasing
     )
     model = _EventFrameStreamingModel(raw)
     adapter = _ExpressionDraftWire(model=model)
-
-    result = await asyncio.gather(
-        adapter.propose_stream_head(_qq_request()),
-        return_exceptions=True,
-    )
-    adapter.cancel_expression_unit_streams()
+    task = asyncio.create_task(adapter.propose_stream_head(_qq_request()))
+    try:
+        await asyncio.sleep(0.01)
+        # An invalid head cannot release a caller that would cancel the
+        # physical stream; the peer may still send its original usage tail.
+        assert not task.done()
+        model.release_tail.set()
+        result = await asyncio.wait_for(
+            asyncio.gather(task, return_exceptions=True),
+            timeout=1,
+        )
+    finally:
+        adapter.cancel_expression_unit_streams()
+        await asyncio.gather(task, return_exceptions=True)
 
     assert isinstance(result[0], BaseException)
 

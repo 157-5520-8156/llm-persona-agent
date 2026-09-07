@@ -8560,6 +8560,8 @@ class _ExpressionDraftWire:
                     chunks.append(delta)
                     if head_future.done():
                         return True
+                    if incremental_parse_error is not None:
+                        return False
                     try:
                         first = _incremental_first_expression(
                             "".join(chunks),
@@ -8567,10 +8569,11 @@ class _ExpressionDraftWire:
                             compact_gate=compact_gate_tool,
                         )
                     except ValueError as exc:
-                        # A malformed partial argument must not cancel the
-                        # provider stream before it can finish. If the final
-                        # object remains invalid, the complete raw bytes are
-                        # handed to the bounded same-role correction path.
+                        # Do not release an invalid carrier as a head: its
+                        # rejection would retire this task before the HTTP
+                        # usage tail arrives. Drain the original response
+                        # under its existing deadline/cancellation, then hand
+                        # its complete bytes to the same-role correction path.
                         incremental_parse_error = exc
                         logger.warning(
                             "incremental character stream head rejected error_type=%s detail=%s raw=%s",
@@ -8578,15 +8581,7 @@ class _ExpressionDraftWire:
                             str(exc)[:300],
                             "".join(chunks)[:800],
                         )
-                        if not head_future.done():
-                            # Release only an invalid, non-visible carrier so
-                            # a provider that waits for the callback before
-                            # sending its tail cannot deadlock. The paired
-                            # author will reject this carrier and spend its
-                            # one bounded correction; no Expression frame is
-                            # authorized from it.
-                            head_future.set_result("".join(chunks))
-                        return True
+                        return False
                     if first is not None:
                         # The final append/complete relationship cannot be
                         # known until continuation arrives, but the first
