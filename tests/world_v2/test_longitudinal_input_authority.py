@@ -13,11 +13,12 @@ from companion_daemon.world_v2.longitudinal_fixture_model import LongitudinalFix
 
 
 @pytest.mark.asyncio
-async def test_real_host_http_input_does_not_turn_clock_and_routine_into_current_life(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize("invalid_fact_source", [False, True], ids=["routine_input", "fact_source"])
+async def test_real_host_http_input_and_authored_current_life_sources(
+    tmp_path, monkeypatch, invalid_fact_source
 ):
     # Real host, compiler and DeepSeek adapter; only the HTTP peer is synthetic.
-    # The fixture's reply is irrelevant to this input-authority assertion.
+    # Invalid source declarations must never authorize character speech.
     fixture = LongitudinalFixtureModel()
     bodies = []
 
@@ -27,6 +28,19 @@ async def test_real_host_http_input_does_not_turn_clock_and_routine_into_current
         raw = await fixture.complete_json(
             body["messages"], tools=body.get("tools"), tool_choice=body.get("tool_choice")
         )
+        carrier = json.loads(raw)
+        if invalid_fact_source and "payload_json" in carrier:
+            authored = json.loads(carrier["payload_json"])
+            authored["messages"] = ["我在图书馆看书"]
+            authored["world_claims"] = [
+                {
+                    "claim_text": "我在图书馆看书",
+                    "scope": "current_world",
+                    "source_refs": ["event:never-accepted-library-activity"],
+                }
+            ]
+            carrier["payload_json"] = json.dumps(authored, ensure_ascii=False)
+            raw = json.dumps(carrier, ensure_ascii=False)
         function = body.get("tool_choice", {}).get("function", {}).get("name")
         value = (
             {
@@ -93,7 +107,20 @@ async def test_real_host_http_input_does_not_turn_clock_and_routine_into_current
             ]
         )
     )
-    assert result["completed"], result["stop_reason"]
+    if invalid_fact_source:
+        timeline = [json.loads(line) for line in (output / "timeline.jsonl").read_text().splitlines()]
+        assert not [
+            record
+            for row in timeline
+            for record in row["deliveries"]
+            if record["text"] == "我在图书馆看书"
+        ]
+        events = [json.loads(line) for line in (output / "evidence.jsonl").read_text().splitlines()]
+        assert not [event for event in events if event["event_type"] == "ActionAuthorized"]
+        # An explicitly labeled service notice is separate from character speech.
+        assert result["model_failures"]
+    else:
+        assert result["completed"], result["stop_reason"]
     requests = [
         json.loads(line)
         for line in (output / "model-inputs.jsonl").read_text().splitlines()
@@ -112,7 +139,9 @@ async def test_real_host_http_input_does_not_turn_clock_and_routine_into_current
             payload = json.loads(message["content"])
             if "inner_life_snapshot" in payload and "current_trigger_message" in payload:
                 inputs.append(payload)
-    assert len(inputs) == 1
+    assert inputs
+    if not invalid_fact_source:
+        assert len(inputs) == 1
     materials = inputs[0]["inner_life_snapshot"]["materials"]
     assert "图书馆看书" in materials["day_sheet"]  # Habit remains available to the character.
     assert "（现在）" not in materials["day_sheet"]

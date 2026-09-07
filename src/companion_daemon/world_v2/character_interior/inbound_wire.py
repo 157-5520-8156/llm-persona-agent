@@ -11265,7 +11265,6 @@ def _proposal_from_model_text(
             stable_identity_source_refs=stable_identity_source_refs,
             private_state_context_json=private_state_context_json,
             source_ref_aliases=aliases,
-            strip_unpinned_claims=True,
         ).model_dump(mode="json")
     if quick_recovery and ("beats" in value or "timing_choice" in value):
         value = normalize_expression_draft_wire(value)

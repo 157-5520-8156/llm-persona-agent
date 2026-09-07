@@ -226,7 +226,7 @@ def slim_consider_instruction() -> str:
         "以及可选的 waiting_for、wait、how_it_landed、noticed、"
         "keep_impression、come_back、come_back_in、about_us、why_us、us_deltas、"
         "we_are、calling_it、said_as、matters_bp、pressure_bp、importance_bp、"
-        "declared_display。\n"
+        "declared_display、world_claims。\n"
         "waiting_for 加 wait 才编译盼头；come_back 加 come_back_in 仍要成对。"
         "later 和空 messages（不回）跟 messages 同级，不是藏起来的键。"
         "口头说「我等你」不会变成 waiting_for。宿主从不替你写这些字段。"
@@ -267,6 +267,10 @@ def slim_consider_instruction() -> str:
         "别把它们当成当前的地点、活动、天气，或者已经发出去的图。"
         "要说现在正在发生的外部生活，优先用 situation / 进行中的 occurrence / "
         "已提交的 experience 这些 token。"
+        "world_claims 与 messages 同级，可保留你引用的可核对事实；每项写 claim_text、scope、"
+        "source_refs，scope 和可用来源见 expression_hard_boundaries。"
+        "宿主会按原来的事实时态和来源检查，不会删除无效引用后照发那句话。"
+        "不写声明不等于正文已被证明没有事实；未发生的事仍只是想法或计划。"
         "photos_i_shared 是你已经成功发给他的照片这一世界事实："
         "line 是人话：什么时候发出、哪一类、已经出现在你们的对话里没有；"
         "when 是相对此刻的时间，local_clock 是当地钟点。"
@@ -1795,7 +1799,10 @@ def compile_slim_consider_payload(
         "stance": label,
         "brief_rationale": meaning_of_this[:240],
         "confidence": 5000,
-        "world_claims": [],
+        # Preserve explicit declarations for the ordinary source validator.
+        # A compact carrier must not turn a sourced or invalid authored claim
+        # into an apparently claim-free message. Absence keeps the old shape.
+        "world_claims": value.get("world_claims") if value.get("world_claims") is not None else [],
         "media_request": media_request,
         "media_source_refs": media_source_refs,
     }
@@ -2183,7 +2190,7 @@ def compile_slim_interior_envelope(
                 "response_expectation_assessment"
             ),
             "revisit": expression.get("revisit"),
-            "world_claims": [],
+            "world_claims": expression["world_claims"],
             "media_request": media_request,
             "media_source_refs": media_source_refs,
         }
@@ -2208,7 +2215,7 @@ def compile_slim_interior_envelope(
                 "response_expectation_assessment"
             ),
             "revisit": expression.get("revisit"),
-            "world_claims": [],
+            "world_claims": expression["world_claims"],
             "media_request": expression.get("media_request", "none"),
             "media_source_refs": list(expression.get("media_source_refs") or []),
         }

@@ -4770,7 +4770,7 @@ async def test_combined_inbound_role_receives_exact_active_affect_head_capabilit
 
 
 @pytest.mark.asyncio
-async def test_invalid_world_claim_prefix_is_rewritten_by_character_model() -> None:
+async def test_invalid_world_claim_is_rejected_without_erasing_its_sources() -> None:
     provider = _UnsupportedGreetingClaimProvider()
     cognition = InboundCharacterAuthor(flash_model=provider)
     base = _request(revision=3, call="call:unsupported-greeting")
@@ -4805,26 +4805,13 @@ async def test_invalid_world_claim_prefix_is_rewritten_by_character_model() -> N
         }
     )
 
-    expression = await cognition.propose(request)
-    proposal = DecisionProposal.model_validate_json(json.dumps(expression.raw_proposal))
-    visible = [
-        change.payload.value()["beat_drafts"][0]["inline_text"]
-        for change in proposal.proposed_changes
-        if change.kind == "expression_plan_transition"
-    ]
+    with pytest.raises(ValidationTechnicalFailure) as failure:
+        await cognition.propose(request)
 
-    # The fabricated-ref claim is stripped deterministically (2026-08-07):
-    # the reply survives with the model's own wording, no second model call
-    # rewrites it, and the unpinned claim never reaches the proposal.
-    assert visible == ["刚忙完社团的事，午安呀。你今天过得怎么样？"]
-    assert expression.model_version != "local-expression-failsafe.1"
+    # Invalid evidence cannot be erased while its visible assertion survives.
+    # This legacy one-shot author leaves correction to CharacterInterior.
+    assert "outside its semantic source lane" in failure.value.failure_detail
     assert len(provider.calls) == 1
-    visible_claims = [
-        change.payload.value()["world_claims"]
-        for change in proposal.proposed_changes
-        if change.kind == "expression_plan_transition"
-    ]
-    assert all(claims == [] for claims in visible_claims)
 
 
 @pytest.mark.asyncio
