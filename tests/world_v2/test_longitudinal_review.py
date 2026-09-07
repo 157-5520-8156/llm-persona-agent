@@ -180,7 +180,6 @@ def test_report_exposes_partial_virtual_run_missing_context_cost_and_concrete_ev
         "明天再说",
         "ExperienceCommitted",
         "event:000001",
-        "计划已经完成",
         "unverified",
         "technical_failure",
         "provider_timeout",
@@ -188,6 +187,7 @@ def test_report_exposes_partial_virtual_run_missing_context_cost_and_concrete_ev
     ):
         assert text in report
     assert "真人评估通过" not in report
+    assert "计划已经完成" not in report
 
 
 def test_packet_preserves_causal_lineage_and_independent_clock_measurements() -> None:
@@ -207,3 +207,65 @@ def test_packet_preserves_causal_lineage_and_independent_clock_measurements() ->
     assert packet["evidence"][1]["actor"] == "agent:companion"
     assert packet["run_summary"]["elapsed_logical_seconds"] == 86400
     assert packet["timeline"][0]["unprovided_event_count"] == 0
+
+
+def test_report_summarizes_quiet_days_but_preserves_conversation_and_full_review_packet() -> None:
+    timeline = [_step("opening", 0, 8, user_text="这周我先忙一阵子。")]
+    for day in (1, 2):
+        timeline.extend(
+            _step(
+                f"quiet-{day}-{minute}",
+                8,
+                8,
+                kind="scheduler",
+                status="scheduled",
+                virtual_at=f"2026-09-0{day}T10:{minute // 2:02d}:{30 * (minute % 2):02d}Z",
+            )
+            for minute in range(100)
+        )
+        timeline.append(
+            _step(
+                f"delivery-{day}",
+                8,
+                8,
+                kind="scheduler",
+                deliveries=[{"kind": "text", "text": f"第{day}天的主动消息。"}],
+            )
+        )
+    timeline.extend(
+        [
+            _step("restart", 8, 8, kind="restart", status="reopened"),
+            _step("failure", 8, 8, kind="scheduler", errors=["provider_timeout"]),
+            _step("return", 8, 8, user_text="回来了，后来怎么样？"),
+        ]
+    )
+    evidence = [
+        _event(index, "ExperienceCommitted", {"summary": f"完整经历原文-{index}"})
+        for index in range(1, 9)
+    ]
+    packet = build_review_packet(timeline=timeline, evidence=evidence, run_manifest={})
+    report = render_longitudinal_report(manifest={}, timeline=timeline, evidence=evidence)
+
+    assert "2026-09-01: 100 个安静调度步骤" in report
+    assert "2026-09-02: 100 个安静调度步骤" in report
+    assert len(report.splitlines()) < 180
+    ordered = [
+        "这周我先忙一阵子。",
+        "第1天的主动消息。",
+        "第2天的主动消息。",
+        " · restart",
+        "provider_timeout",
+        "回来了，后来怎么样？",
+    ]
+    assert [report.index(item) for item in ordered] == sorted(
+        report.index(item) for item in ordered
+    )
+    assert "ExperienceCommitted: 8" in report
+    assert "event:000003" in report
+    assert "event:000008" not in report
+    assert "完整经历原文" not in report
+    assert "review.json" in report and "evidence.jsonl" in report
+    assert "unverified" in report and "insufficient" in report
+    assert len(packet["timeline"]) == len(timeline)
+    assert len(packet["evidence"]) == 8
+    assert packet["evidence"][-1]["payload"]["summary"] == "完整经历原文-8"

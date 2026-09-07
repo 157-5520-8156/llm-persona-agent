@@ -262,6 +262,22 @@ def _quoted(value: Any) -> list[str]:
     return ["", *("    " + line for line in str(value).splitlines()), ""]
 
 
+def _report_refs(refs: list[str]) -> str:
+    shown = ", ".join(refs[:3]) or "无提供"
+    return f"{shown}（共 {len(refs)} 条）" if len(refs) > 3 else shown
+
+
+def _quiet_scheduler(row: dict) -> bool:
+    return (
+        row["kind"] == "scheduler"
+        and row["status"] in {"scheduled", "completed", "idle"}
+        and row["user_text"] is None
+        and not row["deliveries"]
+        and not row["errors"]
+        and row["terminal_outcome"] not in {"technical_failure", "conflicting_evidence"}
+    )
+
+
 def render_longitudinal_report(
     *, manifest: dict, timeline: list[dict], evidence: list[dict]
 ) -> str:
@@ -297,26 +313,43 @@ def render_longitudinal_report(
             "- 无消息不反推沉默；technical_failure、未知终态与角色明确选择分别记录。",
             "- 出现事件与后续表达不等于因果闭环；需检查生产、接受、实际 Context 消费和后续选择引用。",
             "- 以下统计为事件类型数量，不能替代生活主题丰富度、来源真实性或人格一致性判断。",
+            "- 完整顺序、Context 材料和事件内容见 review.json；原始 WorldEvent 字节见 evidence.jsonl。",
+        ]
+    )
+    quiet_days: dict[str, Counter] = {}
+    for row in packet["timeline"]:
+        if _quiet_scheduler(row):
+            day = str(row["virtual_at"]).partition("T")[0]
+            counts = quiet_days.setdefault(day, Counter())
+            counts.update(
+                steps=1, events=len(row["evidence_refs"]), outcomes=len(row["terminal_outcomes"])
+            )
+    lines.extend(["", "## 每日安静调度概览", ""])
+    if not quiet_days:
+        lines.append("没有省略安静调度步骤。")
+    for day, counts in quiet_days.items():
+        lines.append(
+            f"- {day}: {counts['steps']} 个安静调度步骤；"
+            f"{counts['events']} 条事件、{counts['outcomes']} 条进程终态记录。"
+        )
+    lines.extend(
+        [
             "",
-            "## 已提供的机制事件",
+            "安静仅指该步没有用户输入、交付或错误；不表示内在状态没有变化，也不推断角色沉默。",
+            "",
+            "## 对话与关键节点（保持原始顺序）",
             "",
         ]
     )
-    counts = Counter(row["event_type"] for row in packet["evidence"])
-    if not counts:
-        lines.append("未提供 WorldEvent 证据；机制链为 insufficient。")
-    for event_type, count in sorted(counts.items()):
-        refs = [row["ref"] for row in packet["evidence"] if row["event_type"] == event_type]
-        lines.append(f"- {event_type}: {count}，引用 {', '.join(refs)}")
-    lines.extend(["", "## 完整顺序时间线", ""])
     for row in packet["timeline"]:
+        if _quiet_scheduler(row):
+            continue
         lines.extend(
             [
                 f"### {row['ref']} · {row['virtual_at']} · {row['kind']}",
                 "",
                 f"状态: {row['status']}；终态: {row['terminal_outcome']}；Context: {row['context_visibility']}。",
-                f"ledger: [{row['ledger_start_sequence']}, {row['ledger_end_sequence']}]；step_hash: {row['step_hash']}",
-                f"事件引用: {', '.join(row['evidence_refs']) or '无提供'}；未提供 {row['unprovided_event_count']} 条。",
+                f"事件引用: {_report_refs(row['evidence_refs'])}；未提供 {row['unprovided_event_count']} 条。",
             ]
         )
         if row["user_text"] is not None:
@@ -328,26 +361,23 @@ def render_longitudinal_report(
         if not row["deliveries"]:
             lines.append("无交付记录；原因见终态证据，不能据此判定角色沉默。")
         if row["terminal_outcomes"]:
-            lines.append("逐条进程终态：")
-            lines.extend(_quoted(_json(row["terminal_outcomes"])))
+            lines.append(
+                f"另有 {len(row['terminal_outcomes'])} 条进程终态，见 review.json 的本步骤。"
+            )
         if row["errors"]:
             lines.append("技术错误：")
             lines.extend(_quoted(_json(row["errors"])))
         if row["context_evidence"]:
-            lines.append("Context 采集材料（内容哈希仅绑定所采集字节）：")
-            lines.extend(_quoted(_json(row["context_evidence"])))
+            lines.append("Context 采集材料及内容哈希见 review.json 的本步骤。")
         lines.append("")
-    lines.extend(["## 事件内容与来源哈希", ""])
-    for row in packet["evidence"]:
-        lines.extend(
-            [
-                f"### {row['ref']} · {row['event_type']} · ledger {row['ledger_sequence']}",
-                "",
-                f"logical_time: {row['logical_time']}；actor: {row['actor']}；causation_ref: {row['causation_ref']}",
-                f"event_hash: {row['event_hash']}；payload_hash: {row['payload_hash']}",
-            ]
-        )
-        lines.extend(_quoted(_json(row["payload"])))
+    lines.extend(["## 已提供的机制事件", ""])
+    counts = Counter(row["event_type"] for row in packet["evidence"])
+    if not counts:
+        lines.append("未提供 WorldEvent 证据；机制链为 insufficient。")
+    for event_type, count in sorted(counts.items()):
+        refs = [row["ref"] for row in packet["evidence"] if row["event_type"] == event_type]
+        lines.append(f"- {event_type}: {count}，引用示例 {_report_refs(refs)}")
+    lines.extend(["", "事件全文、来源哈希和因果引用保留在 review.json / evidence.jsonl。", ""])
     lines.extend(["## 独立评审待填", ""])
     for row in packet["annotations_template"]:
         lines.extend(
