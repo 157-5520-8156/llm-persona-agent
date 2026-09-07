@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import pytest
+
 from companion_daemon.world_v2.occasion import (
     OccasionAlreadyConsidered,
     OccasionConsiderGate,
@@ -11,9 +13,19 @@ from companion_daemon.world_v2.occasion import (
     quiet_gap_expires_at,
 )
 from companion_daemon.world_v2.private_impression_producer import (
+    PrivateImpressionTriggerOpener,
     private_impression_opportunity,
 )
 from companion_daemon.world_v2.social_initiative import SocialInitiativePolicy
+from test_private_impression_producer import (
+    OWNER,
+    _Model,
+    _advance_clock,
+    _append_second_appraisal,
+    _ledger_with_active_appraisal,
+    _private_runtime,
+    _retain,
+)
 
 
 NOW = datetime(2026, 8, 13, 12, 0, tzinfo=UTC)
@@ -146,3 +158,38 @@ def test_private_impression_opens_only_the_head_appraisal() -> None:
     opened = private_impression_opportunity(projection)
     assert opened is not None
     assert opened[1] == head_ref
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bury_appraisal_head", [False, True])
+async def test_opener_keeps_latest_identity_and_does_not_reopen_retained_sources(
+    bury_appraisal_head: bool,
+) -> None:
+    ledger = _ledger_with_active_appraisal()
+    _append_second_appraisal(ledger)
+    if bury_appraisal_head:
+        _advance_clock(ledger, timedelta(minutes=5), event_id="occasion:clock-after-appraisals")
+    opener = PrivateImpressionTriggerOpener(ledger=ledger, owner_id=OWNER)
+
+    opened = await opener.open_once()
+
+    assert opened is not None
+    process = next(item for item in ledger.project().trigger_processes if item.trigger_id == opened)
+    assert process.source_evidence_ref == "interaction-appraisal-accepted:2"
+    assert await opener.open_once() is None
+
+    # The character may retain the older reading alongside the new one.
+    # Both source identities contain colons and must remain consumed exactly.
+    runtime, _interior = _private_runtime(ledger, _Model([_retain([
+        "appraisal:appraisal:interaction:1:meaning:disappointment",
+        "appraisal:appraisal:interaction:2:meaning:disappointment",
+    ])]))
+    assert (await runtime.drain_one()).work_status == "accepted"
+    after = ledger.project()
+    assert len(after.private_impressions) == 1
+    assert set(after.private_impressions[0].interpretation_refs) == {
+        "appraisal:appraisal:interaction:1:meaning:disappointment",
+        "appraisal:appraisal:interaction:2:meaning:disappointment",
+    }
+    assert await opener.open_once() is None
+    assert ledger.project() == after

@@ -1058,17 +1058,6 @@ def private_impression_opportunity(projection) -> tuple[str, str] | None:
         for impression in projection.private_impressions
         for ref in impression.interpretation_refs
     }
-    # Appraisal and hypothesis IDs themselves contain colons. Match the
-    # source identity we emitted instead of guessing its delimiter boundary.
-    interpreted = {
-        appraisal.appraisal_id
-        for appraisal in projection.appraisals
-        if any(
-            f"appraisal:{appraisal.appraisal_id}:{hypothesis.hypothesis_id}"
-            in interpretation_refs
-            for hypothesis in appraisal.hypotheses
-        )
-    }
     existing_triggers = {item.trigger_id for item in projection.trigger_processes}
 
     def eligible(appraisal: object) -> str | None:
@@ -1078,11 +1067,18 @@ def private_impression_opportunity(projection) -> tuple[str, str] | None:
             getattr(appraisal, "status", None) != "active"
             or not isinstance(source_ref, str)
             or not source_ref
-            or getattr(appraisal, "appraisal_id", None) in interpreted
         ):
             return None
         trigger_id = private_impression_trigger_identity(projection.world_id, source_ref)
         if trigger_id in existing_triggers:
+            return None
+        # Match exact emitted identities only for the candidate under review;
+        # finding the newest opportunity does not require every old hypothesis.
+        if interpretation_refs and any(
+            f"appraisal:{appraisal.appraisal_id}:{hypothesis.hypothesis_id}"
+            in interpretation_refs
+            for hypothesis in appraisal.hypotheses
+        ):
             return None
         return source_ref
 
