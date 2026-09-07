@@ -3382,15 +3382,31 @@ async def test_qq_production_composition_ticks_life_from_plan_through_experience
             )
             previous = at
 
-        # Ordinary completion tracks the accepted schedule window, so the
-        # settling wake happens only after the started plan's window closes.
+        # The plan can complete before the occurrence's full-outcome window:
+        # this five-minute plan started one tick before the occurrence opened.
         started = host._host._application._ledger.project().plans[0]  # type: ignore[attr-defined]
         assert started.status == "active"
         assert started.scheduled_window is not None
-        settle_at = started.scheduled_window.closes_at + timedelta(seconds=30)
+        plan_completed_at = started.scheduled_window.closes_at + timedelta(seconds=30)
+        await host.tick(
+            tick_id="tick:qq-life:complete-plan",
+            logical_time_from=previous,
+            logical_time_to=plan_completed_at,
+            observed_at=plan_completed_at,
+            reason="qq_production_life_vertical_test",
+        )
+        before_end = host._host._application._ledger.project()  # type: ignore[attr-defined]
+        assert before_end.plans[0].status == "completed"
+        occurrence = before_end.world_occurrences[0]
+        assert plan_completed_at < occurrence.time_window.closes_at
+        assert occurrence.status == "active"
+        assert before_end.experiences == ()
+
+        # Realize a complete frozen result only at its accepted boundary.
+        settle_at = occurrence.time_window.closes_at
         await host.tick(
             tick_id="tick:qq-life:settle",
-            logical_time_from=previous,
+            logical_time_from=plan_completed_at,
             logical_time_to=settle_at,
             observed_at=settle_at,
             reason="qq_production_life_vertical_test",
