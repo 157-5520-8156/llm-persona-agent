@@ -564,7 +564,10 @@ def _validate_proactive_payload(
     from ..proactive_action import ProactiveDraft
     from ..private_turn_state import validate_authored_impression_retention
 
-    validate_authored_impression_retention(payload)
+    appraisal = payload.get("appraisal_draft")
+    validate_authored_impression_retention(
+        payload, appraisal=appraisal if isinstance(appraisal, dict) else None,
+    )
     if "private_turn_state" in payload:
         raise ValueError("proactive private_turn_state is supplied by the same InnerTurn summary")
     normalized = bind_proactive_expression_wire(
@@ -1755,6 +1758,8 @@ class StructuredCharacterRoleFaculty:
                 "写了走不到的阶段，这一轮会被整轮拒绝。"
                 "keep_impression / stuck_with_me / noticed / declared_display 可选；"
                 "keep_impression=true 必须同时写非空 stuck_with_me，才保留你选中的那段理解；"
+                "这需要本次有来源的 appraisal，不能同时写 appraise=false；"
+                "宿主不会替你挑过去的 appraisal，也可以自主不保留。"
                 "外层 summary 不会替代 stuck_with_me。noticed 仅留在本次私有回合记录，"
                 "不会新增世界事实、已发生的经历或完成聊天约定。"
                 "declared_display 只能是 sexual_suggestive、explicit_adult 或 withdraw。"
@@ -2984,7 +2989,7 @@ class StructuredCharacterRoleFaculty:
                 "we_are": "optional stage; only with calling_it and said_as",
                 "calling_it": "optional name for the stage; only with we_are and said_as",
                 "said_as": "optional exact spoken line; only with we_are and calling_it",
-                "keep_impression": "optional bool; true requires non-empty stuck_with_me",
+                "keep_impression": "optional bool; true requires non-empty stuck_with_me and this turn's sourced appraisal, never appraise=false",
                 "stuck_with_me": "exact private understanding she chooses to retain with keep_impression=true",
                 "noticed": "optional turn-local subjective attention; audit only, no World fact or completed Action",
                 "declared_display": (

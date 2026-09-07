@@ -17,7 +17,9 @@ from pydantic import Field, field_validator, model_validator
 from .schema_core import FrozenModel
 
 
-def validate_authored_impression_retention(value: Mapping[str, object]) -> None:
+def validate_authored_impression_retention(
+    value: Mapping[str, object], *, appraisal: Mapping[str, object] | None = None,
+) -> None:
     """Check fresh role output without changing historical state decoding."""
 
     residue = value.get("stuck_with_me")
@@ -30,6 +32,14 @@ def validate_authored_impression_retention(value: Mapping[str, object]) -> None:
             "如果不想保留，可以省略 keep_impression 或写 false。"
             "宿主不会用 my_state 或 summary 代填，也不会悄悄忽略保留请求。"
         )
+    if (value.get("keep_impression") is True and appraisal is not None
+            and appraisal.get("appraise") is False):
+        raise ValueError(
+            "private_turn_state.retained_appraisal_required。"
+            "keep_impression=true 需要本次有来源的 appraisal 解释，不能同时写 appraise=false；"
+            "你可以写下本次有来源的解释，或自主把 keep_impression 设为 false。"
+            "宿主不会替你选择过去的 appraisal，也不会把留存请求悄悄丢掉。"
+        )
 
 
 class PrivateTurnState(FrozenModel):
@@ -38,7 +48,13 @@ class PrivateTurnState(FrozenModel):
     contract: Literal["private-turn-state.1"] = "private-turn-state.1"
     inner_state_summary: str = Field(min_length=1, max_length=480)
     attended_source_refs: tuple[str, ...] = Field(default=(), max_length=8)
-    keep_impression: bool | None = Field(default=None, exclude_if=lambda value: value is None)
+    keep_impression: bool | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+        description=(
+            "True retains non-empty stuck_with_me using this turn's sourced appraisal; "
+            "cannot accompany appraise=false. Omit or choose false to retain nothing."
+        ),
+    )
     # Separate the wording she chose to retain from her momentary self-state.
     # Omit absent values so historical audit payloads keep their exact shape.
     stuck_with_me: str | None = Field(

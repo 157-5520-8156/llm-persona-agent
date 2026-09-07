@@ -312,7 +312,14 @@ def _proactive_payload_schema(
     )
     properties["calling_it"] = _nullable_provider_schema({"type": "string"})
     properties["said_as"] = _nullable_provider_schema({"type": "string"})
-    properties["keep_impression"] = _nullable_provider_schema({"type": "boolean"})
+    properties["keep_impression"] = _nullable_provider_schema({
+        "type": "boolean",
+        "description": (
+            "True retains the exact non-empty stuck_with_me using this turn's sourced appraisal. "
+            "Cannot accompany appraisal_draft.appraise=false; omit or choose false to retain nothing. "
+            "The host does not choose old appraisals as sources."
+        ),
+    })
     properties["stuck_with_me"] = _nullable_provider_schema({"type": "string"})
     properties["noticed"] = _nullable_provider_schema(
         {

@@ -133,7 +133,7 @@ from ..production_reliability_metrics import (
     record_shape_repair,
     record_source_closure_reselection,
 )
-from ..private_turn_state import PrivateTurnState
+from ..private_turn_state import PrivateTurnState, validate_authored_impression_retention
 from ..proposal_envelope import (
     DecisionProposal,
     MinimalProposal,
@@ -4848,6 +4848,9 @@ def _parse_combined(raw: str) -> dict[str, dict[str, Any]]:
     if not all(isinstance(value[key], dict) for key in value):
         raise ValueError("combined cognition drafts must be objects")
     value = attach_hitchhiked_relationship_residue(value, authored=authored)
+    private_state = value["expression_draft"].get("private_turn_state")
+    if isinstance(private_state, dict):
+        validate_authored_impression_retention(private_state, appraisal=value["appraisal_draft"])
     return value  # type: ignore[return-value]
 
 

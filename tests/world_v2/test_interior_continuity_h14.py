@@ -22,6 +22,7 @@ from companion_daemon.world_v2.private_impression_producer import (
     compile_paid_private_impression_draft,
 )
 from companion_daemon.world_v2.private_turn_state import PrivateTurnState
+from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
 from companion_daemon.world_v2.character_interior.inbound_author import (
     _InboundCharacterAuthor,
 )
@@ -172,10 +173,91 @@ async def test_inbound_keeps_only_the_authored_residue_not_the_momentary_state(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("wire_shape", ["slim", "full"])
+@pytest.mark.parametrize("fresh_appraisal", [False, True])
+async def test_paid_retention_is_bound_to_this_authored_appraisal(
+    tmp_path, fresh_appraisal: bool,
+) -> None:
+    class RoleModel:
+        model = "test-paid-appraisal-binding"
+        retain = False
+
+        async def complete(self, messages, *, temperature=0.8):
+            if not self.retain or fresh_appraisal:
+                return json.dumps({
+                    "messages": ["嗯，我听到了。"],
+                    "meaning_of_this": "他在解释今天为什么忙" if self.retain else "他想讲昨天的事",
+                    "my_state": "我想听他说完",
+                    "keep_impression": self.retain,
+                    "stuck_with_me": "他今天认真解释过，我想记住" if self.retain else None,
+                }, ensure_ascii=False)
+            return json.dumps({
+                "appraisal_draft": {
+                    "appraise": False, "brief_rationale": "今天我没有新的读法",
+                    "behavior_tendency": "继续听", "stance": "平静",
+                    "display_strategy": "直接表达", "confidence": 5000,
+                },
+                "expression_draft": {
+                    "timing_choice": "now",
+                    "beats": [{"modality": "text", "text": "嗯，我听到了。"}],
+                    "stance": "平静", "brief_rationale": "我想听他说完", "confidence": 5000,
+                    "private_turn_state": {
+                        "inner_state_summary": "我想听他说完", "attended_source_refs": [],
+                        "keep_impression": True, "stuck_with_me": "他今天认真解释过，我想记住",
+                    },
+                    "world_claims": [],
+                },
+            }, ensure_ascii=False)
+
+    model = RoleModel()
+    app = build_sqlite_world_v2_test_application(
+        path=tmp_path / "paid-appraisal-binding.sqlite", config=_config(),
+        identities=_Identities(), router=_Router(),
+        character_interior=compose_fixture_character_interior(
+            inbound_author=_InboundCharacterAuthor(flash_model=model),
+        ),
+        transport=_DeliveredTransport(), now=NOW,
+    )
+    try:
+        for index in range(2):
+            model.retain = index == 1
+            outcome = await app.respond(InboundTurn(
+                platform="test", platform_user_id="user.1",
+                platform_message_id=f"message:paid-binding:{index}",
+                text="我想讲讲这两天的事。", observed_at=NOW,
+                trace_id=f"trace:paid-binding:{index}",
+            ))
+            assert outcome.status == (
+                "action_authorized" if index == 0 or fresh_appraisal else "deferred"
+            )
+        evidence = app.export_replay_evidence()
+    finally:
+        app.close()
+    projection = evidence.projection
+    if fresh_appraisal:
+        assert len(projection.appraisals) == 2
+        assert len(projection.private_impressions) == 1
+        current = projection.appraisals[-1]
+        impression = projection.private_impressions[0]
+        assert impression.subject_ref == current.subject_ref
+        assert impression.interpretation_refs == tuple(
+            f"appraisal:{current.appraisal_id}:{item.hypothesis_id}" for item in current.hypotheses
+        )
+        assert impression.source_refs == (current.origin.accepted_event_ref,)
+    else:
+        assert len(projection.appraisals) == 1
+        assert projection.private_impressions == ()
+        assert "retained_appraisal_required" in json.dumps(
+            [item.audit_json for item in projection.model_result_audits], ensure_ascii=False,
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("wire_shape, missing_material", [
+    ("slim", "text"), ("full", "text"), ("full", "appraisal"),
+])
 @pytest.mark.parametrize("correction_choice", ["keep", "discard", "invalid"])
 async def test_new_inbound_retention_without_text_gets_one_precise_reselection(
-    tmp_path, wire_shape, correction_choice,
+    tmp_path, wire_shape, missing_material, correction_choice,
 ) -> None:
     requests: list[list[dict[str, str]]] = []
 
@@ -189,6 +271,8 @@ async def test_new_inbound_retention_without_text_gets_one_precise_reselection(
                 "attended_source_refs": [],
                 "keep_impression": True,
             }
+            if missing_material == "appraisal":
+                state["stuck_with_me"] = "我仍想记着他这次认真解释过"
             if len(requests) > 1 and correction_choice == "keep":
                 state["stuck_with_me"] = "我仍想记着他这次认真解释过"
             elif len(requests) > 1 and correction_choice == "discard":
@@ -206,7 +290,11 @@ async def test_new_inbound_retention_without_text_gets_one_precise_reselection(
             return json.dumps(
                 {
                     "appraisal_draft": {
-                        "appraise": False,
+                        "appraise": len(requests) > 1 and correction_choice == "keep",
+                        "affect": "no_change",
+                        "meanings": [{"meaning": "他在解释忙碌", "confidence": 5000}],
+                        "attribution": "user",
+                        "severity": 2000,
                         "brief_rationale": "我想先听他解释。",
                         "behavior_tendency": "继续听",
                         "stance": "平静",
@@ -251,15 +339,16 @@ async def test_new_inbound_retention_without_text_gets_one_precise_reselection(
     if correction_choice == "invalid":
         assert outcome.status == "deferred"
         assert evidence.projection.actions == ()
-        assert "retained_text_required" in json.dumps(
+        assert f"retained_{missing_material}_required" in json.dumps(
             [item.audit_json for item in evidence.projection.model_result_audits],
             ensure_ascii=False,
         )
     else:
         assert outcome.status == "action_authorized"
     assert len(requests) == 2
-    assert "stuck_with_me" in json.dumps(requests[1], ensure_ascii=False)
-    assert "retained_text_required" in json.dumps(requests[1], ensure_ascii=False)
+    assert f"retained_{missing_material}_required" in json.dumps(requests[1], ensure_ascii=False)
+    if correction_choice == "keep":
+        assert len(evidence.projection.private_impressions) == 1
 
 
 def test_stuck_with_me_is_dropped_unless_she_keeps_the_impression() -> None:
@@ -281,9 +370,9 @@ def test_stuck_with_me_is_dropped_unless_she_keeps_the_impression() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("needs_correction", [False, True])
+@pytest.mark.parametrize("needs_correction", [None, "text", "appraisal"])
 async def test_proactive_paid_residue_reaches_the_next_projection(
-    tmp_path, needs_correction: bool,
+    tmp_path, needs_correction: str | None,
 ) -> None:
     from test_proactive_action_production import (
         NOW as PROACTIVE_NOW,
@@ -303,8 +392,10 @@ async def test_proactive_paid_residue_reaches_the_next_projection(
         async def complete(self, messages, *, temperature=0.8):
             payload = json.loads(await super().complete(messages, temperature=temperature))
             payload["keep_impression"] = True
-            if not needs_correction or len(self.messages) > 1:
+            if needs_correction != "text" or len(self.messages) > 1:
                 payload["stuck_with_me"] = kept_text
+            if needs_correction == "appraisal" and len(self.messages) == 1:
+                payload["appraisal_draft"]["appraise"] = False
             return json.dumps(payload, ensure_ascii=False)
 
     model = RoleModel(reading="这件没说完的事仍然让我在意")
@@ -350,7 +441,7 @@ async def test_proactive_paid_residue_reaches_the_next_projection(
     ]
     assert len(model.messages) == (2 if needs_correction else 1)
     if needs_correction:
-        assert "retained_text_required" in json.dumps(model.messages[1], ensure_ascii=False)
+        assert f"retained_{needs_correction}_required" in json.dumps(model.messages[1], ensure_ascii=False)
 
 
 @pytest.mark.asyncio
@@ -399,7 +490,7 @@ async def test_paid_inbound_impression_is_dropped_unless_she_keeps_it() -> None:
 
 
 @pytest.mark.asyncio
-async def test_paid_inbound_impression_lands_only_when_she_keeps_it() -> None:
+async def test_paid_retention_rejects_an_unbound_model_result() -> None:
     ledger = _ledger_with_active_appraisal()
     model = _Model([])
     runtime, _interior = _private_runtime(ledger, model)
@@ -407,53 +498,140 @@ async def test_paid_inbound_impression_lands_only_when_she_keeps_it() -> None:
     assert located is not None
     source_event = located[0]
 
-    accepted = await runtime.record_paid_inbound(
-        keep_impression=True,
-        reflection_summary="他说完我就一直在想他到底怎么看我",
-        model_result_ref="model-result:paid-inbound:test",
-        source_event=source_event,
+    with pytest.raises(ValueError, match="paid_retention_appraisal_authority_missing"):
+        await runtime.record_paid_inbound(
+            keep_impression=True,
+            reflection_summary="他说完我就一直在想他到底怎么看我",
+            model_result_ref="model-result:paid-inbound:test",
+            source_event=source_event,
+        )
+    assert ledger.project().private_impressions == ()
+    assert "paid_retention_appraisal_authority_missing" in json.dumps(
+        [item.audit_json for item in ledger.project().model_result_audits], ensure_ascii=False,
     )
-
-    assert accepted is not None
-    impressions = ledger.project().private_impressions
-    assert len(impressions) == 1
-    assert impressions[0].status == "active"
-    assert "一直在想" in impressions[0].reflection_summary
     assert model.calls == []
 
 
-@pytest.mark.asyncio
-async def test_paid_retention_does_not_reopen_the_same_appraisal_for_reflection() -> None:
-    ledger = _ledger_with_active_appraisal()
-    runtime, _interior = _private_runtime(ledger, _Model([]))
-    source_event = ledger.lookup_event_commit("message-event:1")[0]
-    assert await runtime.record_paid_inbound(
-        keep_impression=True,
-        reflection_summary="他说完我就一直在想他到底怎么看我",
-        model_result_ref="model-result:paid-inbound:test",
-        source_event=source_event,
-    ) is not None
+async def _ledger_after_authored_paid_retention(tmp_path):
+    class RoleModel:
+        model = "test-authored-paid-retention"
 
-    opener = PrivateImpressionTriggerOpener(ledger=ledger, owner_id="worker:test")
-    assert await opener.open_once() is None
+        async def complete(self, messages, *, temperature=0.8):
+            return json.dumps({
+                "messages": ["嗯，我听到了。"], "meaning_of_this": "他在解释这两天的忙碌",
+                "my_state": "我想听他解释", "keep_impression": True,
+                "stuck_with_me": "他说完我就一直在想他到底怎么看我",
+            }, ensure_ascii=False)
 
-
-@pytest.mark.asyncio
-async def test_kept_stuck_with_me_reaches_the_next_inner_life_snapshot() -> None:
-    ledger = _ledger_with_active_appraisal()
-    runtime, _interior = _private_runtime(ledger, _Model([]))
-    located = ledger.lookup_event_commit("message-event:1")
-    assert located is not None
-    source_event = located[0]
-    kept_text = "他说完我就一直在想他到底怎么看我"
-
-    accepted = await runtime.record_paid_inbound(
-        keep_impression=True,
-        reflection_summary=kept_text,
-        model_result_ref="model-result:paid-inbound:test",
-        source_event=source_event,
+    path = tmp_path / "authored-paid-retention.sqlite"
+    app = build_sqlite_world_v2_test_application(
+        path=path, config=_config(), identities=_Identities(), router=_Router(),
+        character_interior=compose_fixture_character_interior(
+            inbound_author=_InboundCharacterAuthor(flash_model=RoleModel()),
+        ), transport=_DeliveredTransport(), now=NOW,
     )
-    assert accepted is not None
+    try:
+        result = await app.respond(InboundTurn(
+            platform="test", platform_user_id="user.1", platform_message_id="paid-retention",
+            text="这两天很忙。", observed_at=NOW, trace_id="trace:paid-retention",
+        ))
+        assert result.status == "action_authorized"
+        world_id = app.export_replay_evidence().projection.world_id
+    finally:
+        app.close()
+    return SQLiteWorldLedger(path=path, world_id=world_id)
+
+
+@pytest.mark.asyncio
+async def test_paid_retention_does_not_reopen_the_same_appraisal_for_reflection(tmp_path) -> None:
+    ledger = await _ledger_after_authored_paid_retention(tmp_path)
+    try:
+        opener = PrivateImpressionTriggerOpener(ledger=ledger, owner_id="worker:test")
+        assert await opener.open_once() is None
+    finally:
+        ledger.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expire_appraisal", [False, True])
+async def test_exact_paid_retention_recovery_does_not_write_the_decision_again(
+    tmp_path, expire_appraisal: bool,
+) -> None:
+    ledger = await _ledger_after_authored_paid_retention(tmp_path)
+    try:
+        if expire_appraisal:
+            from companion_daemon.world_v2 import WorldRuntime
+            from companion_daemon.world_v2.schemas import ClockObservation
+
+            current = ledger.project()
+            when = current.appraisals[0].expires_at
+            await WorldRuntime(world_id=ledger.world_id, ledger=ledger).advance(ClockObservation(
+                schema_version="world-v2.1", tick_id="retention:expiry", world_id=ledger.world_id,
+                logical_time=when, created_at=when, trace_id="retention:expiry",
+                causation_id="retention:expiry", correlation_id="retention:expiry",
+                logical_time_from=current.logical_time, logical_time_to=when,
+                reason="advance to the accepted appraisal expiry",
+            ))
+            assert ledger.project().appraisals[0].status == "expired"
+        before = ledger.project()
+        paid = before.proposal_audits[0]
+        impression = before.private_impressions[0]
+        runtime, _interior = _private_runtime(ledger, _Model([]))
+        recovered = await runtime.record_paid_inbound(
+            keep_impression=True, reflection_summary=impression.reflection_summary,
+            model_result_ref=paid.model_result_ref,
+            source_event=ledger.lookup_event_commit(paid.trigger_ref)[0],
+        )
+        assert recovered == impression.origin.accepted_event_ref
+        assert ledger.project() == before
+    finally:
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_paid_retention_resumes_its_persisted_proposal_after_storage_failure(
+    tmp_path, monkeypatch,
+) -> None:
+    original_commit = SQLiteWorldLedger.commit_at_cursor
+    failed = False
+
+    def fail_acceptance_once(ledger, events, **kwargs):
+        nonlocal failed
+        if not failed and any(item.event_type == "PrivateImpressionAccepted" for item in events):
+            failed = True
+            raise OSError("storage failed before accepting the retained impression")
+        return original_commit(ledger, events, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(SQLiteWorldLedger, "commit_at_cursor", fail_acceptance_once)
+        ledger = await _ledger_after_authored_paid_retention(tmp_path)
+    try:
+        before = ledger.project()
+        assert failed
+        assert before.private_impressions == ()
+        assert len(before.private_impression_proposals) == 1
+        proposed = before.private_impression_proposals[0]
+        paid = before.proposal_audits[0]
+        runtime, _interior = _private_runtime(ledger, _Model([]))
+        accepted = await runtime.record_paid_inbound(
+            keep_impression=True, reflection_summary="他说完我就一直在想他到底怎么看我",
+            model_result_ref=paid.model_result_ref,
+            source_event=ledger.lookup_event_commit(paid.trigger_ref)[0],
+        )
+        after = ledger.project()
+        assert accepted == after.private_impressions[0].origin.accepted_event_ref
+        assert ledger.lookup_event_commit(accepted)[0].payload()["proposal_id"] == proposed.proposal_id
+        assert after.private_impression_proposals == ()
+        assert after.model_result_audits == before.model_result_audits
+        assert ledger.export_replay_evidence().replay == after
+    finally:
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_kept_stuck_with_me_reaches_the_next_inner_life_snapshot(tmp_path) -> None:
+    ledger = await _ledger_after_authored_paid_retention(tmp_path)
+    kept_text = "他说完我就一直在想他到底怎么看我"
     impression = ledger.project().private_impressions[0]
     assert impression.status == "active"
     assert impression.origin is not None
@@ -471,12 +649,13 @@ async def test_kept_stuck_with_me_reaches_the_next_inner_life_snapshot() -> None
         query_from_projection(
             projection,
             actor_ref="actor:companion",
-            trigger_ref="message-event:1",
+            trigger_ref=projection.proposal_audits[0].trigger_ref,
         )
     )
     snapshot = compile_inner_life_snapshot(json.loads(capsule.model_content_json)).model_view()
     materials = snapshot["materials"]["private_impressions"]
     assert any(item.get("reflection_summary") == kept_text for item in materials)
+    ledger.close()
 
 
 @pytest.mark.asyncio

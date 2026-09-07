@@ -353,6 +353,8 @@ def slim_consider_instruction() -> str:
         "以及最近有几个回合什么都没留下。那是事实，不是要求。\n"
         "keep_impression 只在 stuck_with_me 应该留成一条私人印象时写 true，"
         "这时 stuck_with_me 必须有非空文字；宿主不会用 my_state 代填。"
+        "留存以本次有来源的解释为起因，不会替你挑过去的 appraisal；"
+        "完整格式里 appraise=false 不能与 keep_impression=true 同时写。"
         "省略或 false 就是让它散掉。\n"
         "没有什么东西真的沉下来就不写 affect；宿主永远不会从你的措辞里编出持续情绪，"
         "也不要求你有负面情绪。同样地，它也不偏好好受的维度："
@@ -873,6 +875,8 @@ def combined_turn_system_lead(*, private_turn_state_required: bool) -> str:
     epistemic_expression_clause = (
         "appraisal_draft 负责你私下怎么理解，expression_draft 负责你决定说什么；"
         "后者不需要复述、解释或证明前者，让那份理解改变回应方式就已经够了。"
+        "要 keep_impression=true 留下 stuck_with_me 原文，需要本次有来源的 appraisal，"
+        "不能同时写 appraise=false；也可以自主不保留。"
         "先从你已经知道的事实和私下理解出发读懂这一轮，再决定自然回应什么。"
         "知道、认出或推断了一个意思，并不要求你在可见消息里把那个意思解释给他听；"
         "理解可以只体现在你的回应方式里。是否点破仍是你的表达决定，"
