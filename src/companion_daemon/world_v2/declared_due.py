@@ -312,6 +312,14 @@ def _extract_plans(projection: object) -> tuple[DeclaredDueTarget, ...]:
             if status == "planned" and getattr(plan, "plan_id", None) not in considered
             else _as_datetime(getattr(window, "closes_at", None))
         )
+        started_at = _as_datetime(getattr(plan, "last_transitioned_at", None))
+        if status == "active" and due is not None and started_at is not None:
+            from .activity_timing import activity_minimum_completion_delta
+
+            # A late start may put the existing minimum activity duration
+            # beyond window.close. The current owner needs that real Clock,
+            # not a close wake where its completion token is still illegal.
+            due = max(due, started_at + activity_minimum_completion_delta(plan))
         if due is not None:
             found.append(
                 DeclaredDueTarget(

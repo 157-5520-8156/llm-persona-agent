@@ -158,6 +158,18 @@ async def _run_http_journey(
                         else openings[0]
                     )
                     choice = {"decision": "select", "selected_token": selected["opening_token"]}
+                    if prefer_complete and not selected["safe_summary"].startswith(
+                        (
+                            "begin an abstract planned activity",
+                            "finish the current abstract activity",
+                        )
+                    ):
+                        # The fixture waits for the real completion authority;
+                        # an unrelated first token is not its declared choice.
+                        choice = {"decision": "no_op"}
+                    if followup and not capability["payload"].get("accepted_plan_opportunity"):
+                        # This read/cite test keeps the chosen activity active.
+                        choice = {"decision": "no_op"}
                     if capability["payload"].get("accepted_plan_opportunity"):
                         if initial_lifecycle_decision == "no_op":
                             choice = {"decision": "no_op"}
@@ -982,6 +994,10 @@ async def test_shortest_chat_plan_gets_a_real_clock_before_its_window_closes(tmp
     clock = next(x for x in rows if x["event_id"] == records[0]["clock_event_ref"])
     assert clock["event_type"] == "ClockAdvanced"
     assert datetime.fromisoformat(clock["logical_time"]) == opened + timedelta(seconds=1)
+    completed = [x for x in rows if x["event_type"] == "ActivityCompleted"]
+    assert len(completed) == 1
+    assert datetime.fromisoformat(completed[0]["logical_time"]) == opened + timedelta(seconds=61)
+    assert not any(x["event_type"] in {"ActivityPaused", "ActivityAbandoned"} for x in rows)
     assert calls == 1
     assert result["completed"], result["stop_reason"]
 
