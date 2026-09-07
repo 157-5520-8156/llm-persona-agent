@@ -267,3 +267,21 @@ admission 和 provider hook 不因观测成功而绕过持久证据。
 同输入 thinking 对照的首次请求被供应商以 HTTP 400 拒绝：当前工具选择参数不受支持。
 primary 记录为 not_billed、零 token、预约 settled；尚未产生可比较的角色回答。原始输出
 位于 `output/private-audits/trial04-thinking-7cd8rcmt/`，不得把接口拒绝当成语义对照结果。
+
+原 400 的完整 146 字节响应及其 hash、primary not_billed 记录和 settled 预约已独立核对，
+仅对应 campaign entry 以比较后写入的方式结算 0，保留供应商拒绝状态。随后两次单请求
+对照都使用原首问的 messages、tools、4096 token 上限及 55 秒时限，未写入 World：
+
+| 配置变化 | 实际结果 | 时长 / 费用 |
+| --- | --- | --- |
+| thinking enabled，并因接口限制另改 tool_choice 为 auto | 表达在考虑下午去哪看书，没有声称当前已在图书馆；一个合法工具结果 | 27.94 秒 / ¥0.0375030 |
+| 仅 tool_choice 改 auto，thinking 仍 disabled | 再次声称已在图书馆翻书，raw world_claims 仍为空 | 1.42 秒 / ¥0.0014463 |
+
+第一项有额外参数混杂，且每项都只有一个样本，不能据此宣布推理模式解决了问题。第二项
+有 16,896 个缓存命中 token，第一项没有缓存命中，两者费用也不能作为稳定倍率比较。
+这两次只检验 provider 输出；没有运行角色接受、来源闭包或 QQ 交付，更没有修改生产默认。
+证据分别在 `output/private-audits/trial04-thinking-auto-5fgwngtc/` 和
+`output/private-audits/trial04-fast-auto-h7pz03qo/`。
+
+费用审计脚本现同时归集旅程和独立 probe，不把镜像导入重复算作新调用。阶段实际累计
+**¥1.1697389**，加此前历史为 **¥2.0518255**，无 probe 待对账预约；仍未对供应商发票。
