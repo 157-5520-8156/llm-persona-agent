@@ -396,17 +396,6 @@ def _rendered_conversation(
 LIVED_MOMENT_MATERIAL_KEY = "lived_moment"
 
 
-def _current_window_title(day_sheet: str) -> str | None:
-    marker = "此刻窗口是"
-    start = day_sheet.find(marker)
-    if start < 0:
-        return None
-    rest = day_sheet[start + len(marker) :]
-    end = rest.find("。")
-    title = (rest if end < 0 else rest[:end]).strip()
-    return title or None
-
-
 def _walking_in_residue(appraisals: object, logical_time: datetime | None = None) -> str | None:
     if not isinstance(appraisals, list):
         return None
@@ -475,17 +464,12 @@ def _walking_in_impression(
 
 def _lived_moment(
     *,
-    day_sheet: str | None,
     week_diary: list[dict[str, object]],
     logical_time: datetime | None,
     appraisals: object = None,
     impressions: object = None,
 ) -> str | None:
     parts: list[str] = []
-    if isinstance(day_sheet, str):
-        window = _current_window_title(day_sheet)
-        if window:
-            parts.append(f"这会儿是{window}")
     if logical_time is not None:
         today = logical_time.astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat()
         for item in week_diary:
@@ -512,20 +496,19 @@ def _lived_moment(
 def _rendered_lived_moment(
     materials: Mapping[str, object], logical_time: datetime | None
 ) -> str | None:
-    """Render the already-redacted day, residue, and impression as one moment.
+    """Render already-redacted experiences, residue, and impression.
 
     Compile-time assembly minted a sourceless string, so redaction could not
     drop a private impression or appraisal the viewer is not allowed to see.
     Derived here, after redaction, it can carry no source she may not see and
-    mints no new authority. The semantic frame is unchanged: window, today's
-    lines, walking-in residue, walking-in impression.
+    mints no new authority. The routine sheet is not a current-life source;
+    matching the clock to a habitual slot cannot prove the activity occurred.
     """
 
     if logical_time is not None and (
         logical_time.tzinfo is None or logical_time.utcoffset() is None
     ):
         logical_time = None
-    day_sheet = materials.get("day_sheet")
     raw_diary = materials.get("week_diary")
     week_diary = (
         [item for item in raw_diary if isinstance(item, dict)]
@@ -533,7 +516,6 @@ def _rendered_lived_moment(
         else []
     )
     return _lived_moment(
-        day_sheet=day_sheet if isinstance(day_sheet, str) else None,
         week_diary=week_diary,
         logical_time=logical_time,
         appraisals=materials.get("appraisals"),
@@ -550,9 +532,10 @@ def _rendered_day_sheet(
     """Rebuild today's sheet from already-redacted biography plus the seed.
 
     Compile-time assembly was a sourceless string, so redacting biographical
-    context could not drop age/phase/season copied into it. Schedule and
-    weather come from the reviewed seed and the snapshot clock, not from a
-    withhold item; they remain when biography is hidden.
+    context could not drop age/phase/season copied into it. Habitual windows
+    come from the reviewed seed and remain non-authoritative background when
+    biography is hidden. Neither the clock nor those windows establish weather
+    or actual activity.
     """
 
     from ..day_skeleton import compile_day_sheet, load_world_day_skeleton

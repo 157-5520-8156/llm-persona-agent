@@ -722,7 +722,7 @@ def test_lived_moment_is_a_short_sourced_situation_not_a_lookup_panel() -> None:
         }
     ).model_view()
     moment = snapshot["materials"]["lived_moment"]
-    assert moment.startswith("这会儿是")
+    assert moment.startswith("今天已经过的：")
     assert "今天已经过的：图书馆靠窗坐了一下午" in moment
     assert "source_ref" not in moment
     assert "activity_kind" not in moment

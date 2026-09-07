@@ -31,13 +31,13 @@ def test_world_seed_daily_schedule_compiles_without_a_model() -> None:
         age=21,
         season="summer",
     )
-    assert "今日作息" in sheet
-    assert "（现在）" in sheet
+    assert "惯常作息" in sheet
+    assert "（现在）" not in sheet
     assert "图书馆看书" in sheet or "整理" in sheet
-    assert "天气" in sheet
+    assert "天气" not in sheet
 
 
-def test_day_sheet_marks_the_current_local_window() -> None:
+def test_day_sheet_preserves_routine_windows_without_claiming_attendance() -> None:
     skeleton = WorldDaySkeleton(
         slots=(
             DaySlot("sleep", "睡觉", 0, 8, "宿舍", "rest"),
@@ -46,7 +46,9 @@ def test_day_sheet_marks_the_current_local_window() -> None:
         themes=(),
     )
     sheet = compile_day_sheet(logical_at=NOW, skeleton=skeleton)
-    assert "看书（现在）" in sheet or "看书" in sheet and "（现在）" in sheet
+    assert "00:00–08:00 睡觉 @ 宿舍" in sheet
+    assert "09:00–12:00 看书 @ 图书馆" in sheet
+    assert "不代表今天的计划或实际活动" in sheet
 
 
 def test_day_open_is_spent_once_per_local_day() -> None:
