@@ -2188,9 +2188,16 @@ class WorldV2TurnApplication:
                 self._ledger, owner_actor_ref=self._companion_actor_ref, projection=projection
             )
         )
-        return min(
-            (x for x in (due, *(item.due_at for item in pending)) if x is not None), default=None
-        )
+        candidates = tuple(x for x in (due, *(item.due_at for item in pending)) if x is not None)
+        now = projection.logical_time
+        if now is not None and any(item.due_at > now for item in pending):
+            # A past ready value is not a future Clock boundary. Retain its
+            # readiness at the next second rather than hiding a new plan's
+            # boundary, or postponing ready work until a much later plan.
+            candidates = tuple(
+                now + timedelta(seconds=1) if item <= now else item for item in candidates
+            )
+        return min(candidates, default=None)
 
     def _social_initiative_compiler(self) -> SocialInitiativeCompiler:
         return SocialInitiativeCompiler(

@@ -956,3 +956,66 @@ async def test_corrupt_terminal_sources_cannot_reopen_a_completed_no_op(tmp_path
                 requests.append(material)
     assert len(requests) == 1
     assert not any(x["event_type"] == "ChatLifePlanConsiderationRecorded" for x in rows)
+
+
+@pytest.mark.asyncio
+async def test_shortest_chat_plan_gets_a_real_clock_before_its_window_closes(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta
+
+    result, rows, _, _, calls = await _run_http_journey(
+        tmp_path,
+        monkeypatch,
+        no_appraisal=True,
+        intent={**INTENT, "duration_seconds": 60},
+        prefer_complete=True,
+    )
+    plans = [x for x in rows if x["event_type"] == "ActivityPlanned"]
+    starts = [x for x in rows if x["event_type"] == "ActivityStarted"]
+    assert len(plans) == 1
+    assert len(starts) == 1
+    window = plans[0]["payload"]["plan"]["scheduled_window"]
+    opened = datetime.fromisoformat(window["opens_at"])
+    assert datetime.fromisoformat(window["closes_at"]) == opened + timedelta(seconds=60)
+    assert datetime.fromisoformat(starts[0]["logical_time"]) == opened + timedelta(seconds=1)
+    records = [x["payload"] for x in rows if x["event_type"] == "ChatLifePlanConsiderationRecorded"]
+    assert len(records) == 1 and records[0]["status"] == "selected"
+    clock = next(x for x in rows if x["event_id"] == records[0]["clock_event_ref"])
+    assert clock["event_type"] == "ClockAdvanced"
+    assert datetime.fromisoformat(clock["logical_time"]) == opened + timedelta(seconds=1)
+    assert calls == 1
+    assert result["completed"], result["stop_reason"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ordinary,pending,expected", [(0, [86400], 1), (600, [-1, 10], 1), (600, [10], 10), (0, [], 0)]
+)
+async def test_life_clock_peek_preserves_ready_work_and_future_boundaries(
+    monkeypatch, ordinary, pending, expected
+):
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+    import companion_daemon.world_v2.chat_life_plan_consideration as consideration
+    from companion_daemon.world_v2.production_turn_application import WorldV2TurnApplication
+
+    now = datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc)
+    projection = SimpleNamespace(logical_time=now)
+    application = SimpleNamespace(
+        _life_ecology=SimpleNamespace(
+            _trigger_store=SimpleNamespace(
+                next_consideration_at=lambda: now + timedelta(seconds=ordinary)
+            )
+        ),
+        _ledger=SimpleNamespace(blocks_event_loop=False, project=lambda: projection),
+        _companion_actor_ref="agent:companion",
+    )
+    monkeypatch.setattr(
+        consideration,
+        "pending_opportunities",
+        lambda *args, **kwargs: tuple(
+            SimpleNamespace(due_at=now + timedelta(seconds=value)) for value in pending
+        ),
+    )
+    assert await WorldV2TurnApplication.life_ecology_next_due(application) == now + timedelta(
+        seconds=expected
+    )
