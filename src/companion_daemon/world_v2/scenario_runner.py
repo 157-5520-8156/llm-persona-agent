@@ -356,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.98"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.99"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -621,8 +621,14 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.98"
 # fixes) preserve all 17 non-replay fields in all 120 ordered cases from .96.
 # Only replay identity changes; no scenario predicate or byte limit moves.
 # See adaptive-companionship-2026-09-08.md and baseline-life-links-clock.
+# 2026-09-08: .99 records expression-hard-boundaries.present.2, which retains
+# the exact, already-derived biography alias/field/value catalog in the model
+# input. The complete 120-case candidate differs from .98 only in replay_hash;
+# every other run field and predicate is unchanged. Source authority, model
+# call counts and output/room hashes do not change. See the independently
+# compared baseline-biography-readable candidate and audit report.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "c554344cc79b35a870db771d3ca5d666b985b6b1caf8d7d87b8776411505da26"
+    "8f3579b38dbc6895330db8f02bbbbbf12eb78604d11d2f3f5424724313459f60"
 )
 
 
