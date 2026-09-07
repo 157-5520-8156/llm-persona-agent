@@ -181,7 +181,7 @@ class _SequenceModel:
                     "capability_ref": manifest.capability_ref,
                     "capability_payload_hash": manifest.payload_hash,
                     "payload": {
-                        "contract": "character-interior-life-development-choice.1",
+                        "contract": "character-interior-life-development-choice.2",
                         "completion": completion,
                     },
                 },
@@ -3109,6 +3109,8 @@ async def test_character_can_crystallize_active_aspiration_into_open_plan_atomic
                     "decision": "accept",
                     "intention_summary": "我现在确实想把这个念头变成一次具体安排。",
                     "importance_bp": 4600,
+                    "opens_at": (NOW + timedelta(hours=2)).isoformat(),
+                    "closes_at": (NOW + timedelta(hours=4)).isoformat(),
                     "participant_refs": [],
                     "crystallized_aspiration_source_ref": aspiration_event.event_id,
                 },
@@ -3173,6 +3175,8 @@ async def test_current_reader_and_batch_bind_every_review_request_hash() -> None
                         "decision": "accept",
                         "intention_summary": "我想去随便翻翻旧书。",
                         "importance_bp": 3600,
+                        "opens_at": (NOW + timedelta(hours=2)).isoformat(),
+                        "closes_at": (NOW + timedelta(hours=4)).isoformat(),
                         "participant_refs": [],
                     },
                     ensure_ascii=False,
@@ -3266,6 +3270,8 @@ async def test_source_closed_world_author_restarts_without_reauthoring_or_rerevi
                     "decision": "accept",
                     "intention_summary": "我想去随便翻翻旧书。",
                     "importance_bp": 3600,
+                    "opens_at": (NOW + timedelta(hours=2)).isoformat(),
+                    "closes_at": (NOW + timedelta(hours=4)).isoformat(),
                     "participant_refs": [],
                 },
                 ensure_ascii=False,
@@ -4561,7 +4567,7 @@ async def test_character_choice_reselection_receives_exact_phase_and_shape_contr
     assert initial["output_contract"]["no_op"] == {"decision": "no_op"}
     assert initial["output_contract"]["accept"]["properties"]["decision"]["const"] == "accept"
     assert initial["cross_field_authority"] == {
-        "contract_version": "life-development-character-choice-authority.1",
+        "contract_version": "life-development-character-choice-authority.2",
         "decision_phase": {
             "accept": "authorize_one_character_plan",
             "no_op": "decline_this_opportunity_without_a_plan",
@@ -4571,13 +4577,15 @@ async def test_character_choice_reselection_receives_exact_phase_and_shape_contr
             "selected_outcome_index": "forbidden_in_this_phase",
         },
         "timing": {
-            "optional_override_fields": ["opens_at", "closes_at"],
-            "pairing": "both_or_neither",
+            "accept_required_fields": ["opens_at", "closes_at"],
+            "meaning": "your_own_planned_start_and_end_not_opportunity_availability",
+            "ordering": "closes_at_strictly_after_opens_at",
             "must_stay_within_offered_window": {
                 "opens_at": offered_opens.isoformat(),
                 "closes_at": offered_closes.isoformat(),
             },
-            "when_omitted": "use_complete_offered_window",
+            "when_omitted_or_null": "invalid_accept_choose_times_or_no_op",
+            "no_op_requires_timing": False,
         },
         "participants": {
             "field": "participant_refs",
@@ -5182,6 +5190,8 @@ async def test_world_author_location_reselection_exposes_empty_capability_space(
                     "decision": "accept",
                     "intention_summary": "我想试试看这项协作。",
                     "importance_bp": 4200,
+                    "opens_at": NOW.isoformat(),
+                    "closes_at": (NOW + timedelta(minutes=45)).isoformat(),
                     "participant_refs": [],
                 },
                 ensure_ascii=False,
@@ -5559,6 +5569,8 @@ async def test_world_author_visual_privacy_reselection_preserves_privacy_and_acc
                     "decision": "accept",
                     "intention_summary": "我想去看看这个变化。",
                     "importance_bp": 5000,
+                    "opens_at": NOW.isoformat(),
+                    "closes_at": (NOW + timedelta(minutes=30)).isoformat(),
                 },
                 ensure_ascii=False,
             ),

@@ -222,6 +222,8 @@ class _AcceptCharacterModel:
                 "decision": "accept",
                 "intention_summary": "我想带杯水去后排坐一会儿。",
                 "importance_bp": 4300,
+                "opens_at": (NOW + timedelta(minutes=10)).isoformat(),
+                "closes_at": (NOW + timedelta(minutes=70)).isoformat(),
                 "participant_refs": [],
             },
             ensure_ascii=False,

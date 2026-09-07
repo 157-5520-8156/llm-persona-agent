@@ -342,7 +342,7 @@ class _StructuredPurposeFixtureFaculty:
                 response_hash=(_hash_text(raw) if isinstance(locals().get("raw"), str) else None),
             ) from exc
         payload_contract = {
-            "life_development_choice": "character-interior-life-development-choice.1",
+            "life_development_choice": "character-interior-life-development-choice.2",
             "fact_memory_retention": "character-interior-fact-memory-retention.1",
             "experience_memory_retention": (
                 "character-interior-experience-memory-retention.1"

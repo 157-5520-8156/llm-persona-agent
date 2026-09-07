@@ -578,7 +578,7 @@ def _life_development_manifest() -> _InteriorCapabilityManifest:
                 "accept": {"decision": "accept"},
             },
             "cross_field_authority": {
-                "contract_version": "life-development-character-choice-authority.1"
+                "contract_version": "life-development-character-choice-authority.2"
             },
         },
         ensure_ascii=False,
@@ -871,6 +871,9 @@ async def test_life_choice_nested_payload_is_wrapped_without_changing_authored_c
     )
 
     assert result["decision"]["payload"]["completion"]["decision"] == "no_op"
+    assert result["decision"]["payload"]["contract"] == (
+        "character-interior-life-development-choice.2"
+    )
 
 
 @pytest.mark.asyncio
@@ -896,12 +899,15 @@ async def test_life_choice_uses_one_versioned_forced_tool_and_preserves_accept_c
     )
 
     assert result["decision"]["payload"]["completion"]["decision"] == "accept"
+    assert result["decision"]["payload"]["contract"] == (
+        "character-interior-life-development-choice.2"
+    )
     assert result["decision"]["payload"]["completion"]["participant_refs"] == [
         "npc:friend"
     ]
     assert model.tool_calls[0][1] == {
         "type": "function",
-        "function": {"name": "character_role_life_development_choice_v1"},
+        "function": {"name": "character_role_life_development_choice_v2"},
     }
 
 
@@ -943,6 +949,8 @@ def test_life_choice_tool_schema_binds_participants_and_aspiration_sources() -> 
                     "decision": "accept",
                     "intention_summary": "和朋友去看电影。",
                     "importance_bp": 5000,
+                    "opens_at": (_NOW + timedelta(hours=2, minutes=30)).isoformat(),
+                    "closes_at": (_NOW + timedelta(hours=3, minutes=30)).isoformat(),
                     "participant_refs": ["npc:friend"],
                     "crystallized_aspiration_source_ref": "aspiration:travel",
                 }
@@ -958,12 +966,20 @@ def test_life_choice_tool_schema_binds_participants_and_aspiration_sources() -> 
     ]
     with pytest.raises(ValidationError):
         validator.validate(invalid)
-    half_timing = json.loads(json.dumps(valid))
-    half_timing["decision"]["payload"]["completion"]["opens_at"] = (
-        _NOW + timedelta(hours=2)
-    ).isoformat()
-    with pytest.raises(ValidationError):
-        validator.validate(half_timing)
+    for missing_fields in (("opens_at",), ("closes_at",), ("opens_at", "closes_at")):
+        missing_timing = json.loads(json.dumps(valid))
+        for field in missing_fields:
+            del missing_timing["decision"]["payload"]["completion"][field]
+        with pytest.raises(ValidationError):
+            validator.validate(missing_timing)
+    for null_fields in (("opens_at",), ("closes_at",), ("opens_at", "closes_at")):
+        null_timing = json.loads(json.dumps(valid))
+        for field in null_fields:
+            null_timing["decision"]["payload"]["completion"][field] = None
+        with pytest.raises(ValidationError):
+            validator.validate(null_timing)
+    no_op = json.loads(_life_choice_result({"decision": "no_op"}))
+    assert list(validator.iter_errors(no_op)) == []
 
     empty_participants = dict(manifest.payload)
     empty_participants["external_opportunity"] = dict(
@@ -988,9 +1004,28 @@ def test_life_choice_tool_schema_binds_participants_and_aspiration_sources() -> 
 
 
 @pytest.mark.asyncio
-async def test_life_choice_required_tool_reaches_deepseek_http_boundary() -> None:
+@pytest.mark.parametrize("choice", ["accept", "no_op", "accept_null", "accept_missing"])
+async def test_life_choice_required_window_contract_reaches_deepseek_http_boundary(
+    choice: str,
+) -> None:
     captured: dict[str, object] = {}
-    raw_result = _life_choice_result({"decision": "no_op"})
+    completion: dict[str, object] = {
+        "decision": "accept",
+        "intention_summary": "我想和朋友一起去看露天电影。",
+        "importance_bp": 5200,
+        "opens_at": "2026-08-04T16:30:00Z",
+        "closes_at": "2026-08-04T17:30:00Z",
+        "participant_refs": ["npc:friend"],
+        "crystallized_aspiration_source_ref": "aspiration:travel",
+    }
+    if choice == "no_op":
+        completion = {"decision": "no_op"}
+    elif choice == "accept_null":
+        completion.update(opens_at=None, closes_at=None)
+    elif choice == "accept_missing":
+        del completion["opens_at"]
+        del completion["closes_at"]
+    raw_result = _life_choice_result(completion)
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured.update(json.loads(request.content))
@@ -1004,7 +1039,7 @@ async def test_life_choice_required_tool_reaches_deepseek_http_boundary() -> Non
                                 {
                                     "type": "function",
                                     "function": {
-                                        "name": "character_role_life_development_choice_v1",
+                                        "name": "character_role_life_development_choice_v2",
                                         "arguments": raw_result,
                                     },
                                 }
@@ -1023,27 +1058,43 @@ async def test_life_choice_required_tool_reaches_deepseek_http_boundary() -> Non
         transport=httpx.MockTransport(handler),
     )
     try:
-        result = await StructuredCharacterRoleFaculty(
+        role = StructuredCharacterRoleFaculty(
             model=model,
             model_id="deepseek-v4-flash",
-        ).consider(
-            await _request(
-                purpose="life_development_choice",
-                capability_manifest=_life_development_manifest(),
-            )
         )
+        request = await _request(
+            purpose="life_development_choice",
+            capability_manifest=_life_development_manifest(),
+        )
+        if choice in {"accept_null", "accept_missing"}:
+            with pytest.raises(StructuredRoleResultError) as raised:
+                await role.consider(request)
+            assert raised.value.code == "invalid_character_output"
+            assert "opens_at" in raised.value.detail
+            assert "closes_at" in raised.value.detail
+        else:
+            result = await role.consider(request)
+            assert result["decision"]["payload"] == {
+                "contract": "character-interior-life-development-choice.2",
+                "completion": completion,
+            }
     finally:
         await model.aclose()
 
-    assert result["decision"]["payload"]["completion"]["decision"] == "no_op"
     assert "response_format" not in captured
     assert captured["tool_choice"] == {
         "type": "function",
-        "function": {"name": "character_role_life_development_choice_v1"},
+        "function": {"name": "character_role_life_development_choice_v2"},
     }
     tools = captured["tools"]
     assert isinstance(tools, list) and len(tools) == 1
-    assert tools[0]["function"]["name"] == "character_role_life_development_choice_v1"
+    assert tools[0]["function"]["name"] == "character_role_life_development_choice_v2"
+    validator = Draft202012Validator(tools[0]["function"]["parameters"])
+    if choice in {"accept_null", "accept_missing"}:
+        with pytest.raises(ValidationError):
+            validator.validate(json.loads(raw_result))
+    else:
+        validator.validate(json.loads(raw_result))
 
 
 @pytest.mark.asyncio
@@ -4929,4 +4980,3 @@ async def test_ambiguous_beat_index_fails_closed_with_precise_chinese_detail() -
     assert "不能猜" in raised.value.detail or "无法唯一" in raised.value.detail
     assert "s0" in raised.value.detail
     assert "不要手写拼接" in raised.value.detail
-

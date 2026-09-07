@@ -3088,11 +3088,11 @@ class _SelectingLifeEcologyModel:
         elif purpose == "life_development_choice":
             assert tools and len(tools) == 1
             assert tools[0]["function"]["name"] == (
-                "character_role_life_development_choice_v1"
+                "character_role_life_development_choice_v2"
             )
             assert tool_choice == {
                 "type": "function",
-                "function": {"name": "character_role_life_development_choice_v1"},
+                "function": {"name": "character_role_life_development_choice_v2"},
             }
         else:
             assert tools is None
@@ -3167,6 +3167,9 @@ class _SelectingLifeEcologyModel:
             )
         if capsule.get("inner_turn", {}).get("purpose") == "life_development_choice":
             source_refs = capsule["capability_manifest"]["source_refs"]
+            chosen_start = datetime.fromisoformat(
+                capsule["capability_manifest"]["payload"]["executable_envelope"]["opens_at"]
+            )
             return json.dumps(
                 {
                     "status": "decision",
@@ -3179,6 +3182,8 @@ class _SelectingLifeEcologyModel:
                                 "decision": "accept",
                                 "intention_summary": "我想出去走一小圈。",
                                 "importance_bp": 3500,
+                                "opens_at": chosen_start.isoformat(),
+                                "closes_at": (chosen_start + timedelta(minutes=5)).isoformat(),
                                 "participant_refs": [],
                             }
                         },

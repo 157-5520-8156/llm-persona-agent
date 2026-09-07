@@ -1087,7 +1087,7 @@ _BUILTIN_CONTRACTS = (
     ),
     PurposeDecisionContract(
         purpose="life_development_choice",
-        payload_contract="character-interior-life-development-choice.1",
+        payload_contract="character-interior-life-development-choice.2",
         capability_kind="life_development_choice",
         decision_required=True,
         proposals_allowed=False,

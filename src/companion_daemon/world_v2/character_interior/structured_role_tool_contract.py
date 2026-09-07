@@ -29,7 +29,7 @@ _WORLD_STIMULUS_TOOL_NAME = "character_role_world_stimulus_appraisal_v1"
 _PRIVATE_IMPRESSION_TOOL_NAME = "character_role_private_impression_reflection_v1"
 _OUTCOME_SELECTION_TOOL_NAME = "character_role_outcome_selection_v1"
 _ACTIVITY_LIFECYCLE_TOOL_NAME = "character_role_activity_lifecycle_choice_v1"
-_LIFE_DEVELOPMENT_TOOL_NAME = "character_role_life_development_choice_v1"
+_LIFE_DEVELOPMENT_TOOL_NAME = "character_role_life_development_choice_v2"
 _EXPRESSION_RECONSIDERATION_TOOL_NAME = "character_role_expression_reconsideration_v1"
 _FACT_MEMORY_RETENTION_TOOL_NAME = "character_role_fact_memory_retention_v1"
 _EXPERIENCE_MEMORY_RETENTION_TOOL_NAME = "character_role_experience_memory_retention_v1"
@@ -1981,6 +1981,7 @@ class StructuredRoleToolContracts:
         recall_allowed: bool,
     ) -> StructuredRoleToolContract:
         from ..life_development_draft import (
+            CHARACTER_CHOICE_AUTHORITY_CONTRACT,
             CharacterChoiceAcceptDraft,
             CharacterChoiceNoOpDraft,
         )
@@ -1988,6 +1989,11 @@ class StructuredRoleToolContracts:
         capability_payload = json.loads(capability_payload_json)
         if not isinstance(capability_payload, dict):
             raise ValueError("life development choice capability must be one object")
+        authority = capability_payload.get("cross_field_authority")
+        if not isinstance(authority, dict) or authority.get("contract_version") != (
+            CHARACTER_CHOICE_AUTHORITY_CONTRACT
+        ):
+            raise ValueError("life development choice requires current explicit-time authority")
         external_opportunity = capability_payload.get("external_opportunity")
         if not isinstance(external_opportunity, dict):
             raise ValueError("life development choice capability lacks opportunity")
@@ -2051,39 +2057,6 @@ class StructuredRoleToolContracts:
         else:
             accept_properties["crystallized_aspiration_source_ref"] = {"type": "null"}
 
-        opens_at = accept_properties.get("opens_at")
-        closes_at = accept_properties.get("closes_at")
-        if not isinstance(opens_at, dict) or not isinstance(closes_at, dict):
-            raise ValueError("life development choice timing schema is incomplete")
-        accept_schema["allOf"] = [
-            {
-                "anyOf": [
-                    {
-                        "not": {
-                            "anyOf": [
-                                {"required": ["opens_at"]},
-                                {"required": ["closes_at"]},
-                            ]
-                        }
-                    },
-                    {
-                        "properties": {
-                            "opens_at": {"type": "null"},
-                            "closes_at": {"type": "null"},
-                        },
-                        "required": ["opens_at", "closes_at"],
-                    },
-                    {
-                        "properties": {
-                            "opens_at": _non_null_schema(opens_at, field_name="opens_at"),
-                            "closes_at": _non_null_schema(closes_at, field_name="closes_at"),
-                        },
-                        "required": ["opens_at", "closes_at"],
-                    },
-                ]
-            }
-        ]
-
         payload_schema = {
             "type": "object",
             "properties": {
@@ -2104,7 +2077,8 @@ class StructuredRoleToolContracts:
             description=(
                 "Return the complete source-bound life-development choice. The "
                 "character may accept this offered opportunity with a personally "
-                "authored intention, timing within the supplied window, and offered "
+                "authored intention, explicit personal start and end within the supplied "
+                "availability window, and offered "
                 "participants, or choose no_op. The function constrains transport and "
                 "capability shape only; it does not choose for the character."
             ),

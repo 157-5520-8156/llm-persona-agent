@@ -101,6 +101,8 @@ from .life_events import (
 from .life_content_events import LifeContentRecordedPayload
 from .aspiration_events import AspirationCrystallizedPayload
 from .life_development_draft import (
+    CHARACTER_CHOICE_CONTRACT,
+    CharacterChoiceAcceptDraft,
     LifeDevelopmentCapabilityManifest,
     LifeDevelopmentLocationCapability,
 )
@@ -1519,6 +1521,35 @@ def _validate_life_development_subject_effect(
         if effect.plan.plan_id != effect_ref or effect.plan.owner_actor_ref != authored_subject_ref:
             raise ValueError("life-development Plan owner exceeds authored subject authority")
         character_choice = proposal.get("character_choice")
+        interior = proposal.get("character_interior_decision")
+        decision = interior.get("decision") if isinstance(interior, dict) else None
+        payload = decision.get("payload") if isinstance(decision, dict) else None
+        if isinstance(payload, dict) and payload.get("contract") == CHARACTER_CHOICE_CONTRACT:
+            # The offered window is an availability boundary. Only the exact
+            # current role completion grants the narrower executable duration.
+            authored = CharacterChoiceAcceptDraft.model_validate_json(
+                json.dumps(payload.get("completion"), ensure_ascii=False)
+            )
+            authored_window = DueWindow(opens_at=authored.opens_at, closes_at=authored.closes_at)
+            canonical_window = (
+                DueWindow.model_validate_json(
+                    json.dumps(
+                        {
+                            "opens_at": character_choice.get("opens_at"),
+                            "closes_at": character_choice.get("closes_at"),
+                        }
+                    )
+                )
+                if isinstance(character_choice, dict)
+                else None
+            )
+            if (
+                effect.plan.scheduled_window != authored_window
+                or canonical_window != authored_window
+            ):
+                raise ValueError(
+                    "life-development Plan timing differs from character-authored window"
+                )
         chosen_participants = (
             character_choice.get("participant_refs") if isinstance(character_choice, dict) else None
         )

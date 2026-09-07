@@ -40,8 +40,12 @@ from .life_content_store import (
     life_content_payload_hash,
 )
 from .life_development_draft import (
+    CHARACTER_CHOICE_AUTHORITY_CONTRACT,
+    CHARACTER_CHOICE_CONTRACT,
+    LEGACY_CHARACTER_CHOICE_CONTRACT,
     CharacterChoiceAcceptDraft,
     CharacterChoiceNoOpDraft,
+    LegacyCharacterChoiceAcceptDraft,
     LIFE_DEVELOPMENT_PRIVACY_ORDER,
     ORDINARY_LIFE_PHOTO_PRIVACY,
     LifeDevelopmentCapabilityManifest,
@@ -56,6 +60,7 @@ from .life_development_draft import (
     LifeDevelopmentVisualEvidenceDraft,
     LifeDevelopmentWorldDraft,
     parse_character_choice,
+    parse_legacy_character_choice,
     parse_world_author_draft,
 )
 from .life_development_model_adapter import (
@@ -723,7 +728,7 @@ class _LifeDevelopmentModelRun:
     model_id: str
     parsed: (
         LifeDevelopmentWorldDraft
-        | CharacterChoiceAcceptDraft
+        | LegacyCharacterChoiceAcceptDraft
         | CharacterChoiceNoOpDraft
         | LifeDevelopmentSourceClosureReview
         | LifeDevelopmentNovelOriginReview
@@ -2014,18 +2019,40 @@ class LifeDevelopmentRuntime:
             logical_time=wake.logical_time,
             manifest=world_manifest,
         )
+        character_subject = {
+            "external_opportunity": draft.model_dump(mode="json"),
+            "offered_window": offered_window.model_dump(mode="json"),
+            "active_aspiration_source_refs": world_manifest.active_aspiration_source_refs,
+        }
         character_subject_hash = _digest(
-            {
-                "external_opportunity": draft.model_dump(mode="json"),
-                "offered_window": offered_window.model_dump(mode="json"),
-                "active_aspiration_source_refs": (world_manifest.active_aspiration_source_refs),
-            }
+            {**character_subject, "choice_contract": CHARACTER_CHOICE_CONTRACT}
         )
+        legacy_choice_recovery = False
         recovered_character = self._recover_character_interior_decision(
             wake_event_ref=wake.event_id,
             current_world_revision=projection.world_revision,
             decision_subject_hash=character_subject_hash,
         )
+        if recovered_character is None:
+            # Only the old subject identity plus an exact durable ModelResult,
+            # audit Proposal and hash-bound InnerDecision can select the v1
+            # decoder. A new author cannot request a downgrade via its payload.
+            legacy = self._recover_character_interior_decision(
+                wake_event_ref=wake.event_id,
+                current_world_revision=projection.world_revision,
+                decision_subject_hash=_digest(character_subject),
+            )
+            if legacy is not None:
+                legacy_payload = (legacy.inner_decision.decision or {}).get("payload")
+                if not isinstance(legacy_payload, dict) or legacy_payload.get("contract") != (
+                    LEGACY_CHARACTER_CHOICE_CONTRACT
+                ):
+                    return LifeDevelopmentResult(
+                        status="technical_failure",
+                        reason_code="life_development.historical_character_contract_invalid",
+                    )
+                recovered_character = legacy
+                legacy_choice_recovery = True
         if recovered_character is not None:
             character_audit = recovered_character
             character_decision = recovered_character.inner_decision
@@ -2056,6 +2083,23 @@ class LifeDevelopmentRuntime:
                     status="technical_failure",
                     reason_code="life_development.character_interior_unavailable",
                 )
+        character_cursor = character_decision.cursor
+        try:
+            character_choice, _character_completion_json = self._materialize_character_choice(
+                decision=character_decision,
+                draft=draft,
+                offered_window=offered_window,
+                active_aspiration_source_refs=(world_manifest.active_aspiration_source_refs),
+                legacy_recovery=legacy_choice_recovery,
+            )
+        except (LifeDevelopmentDraftError, TypeError, ValueError):
+            return LifeDevelopmentResult(
+                status="technical_failure",
+                reason_code="life_development.character_interior_decision_invalid",
+            )
+        if recovered_character is None:
+            # Validate current contract/time authority before creating the
+            # durable audit which a restart is allowed to recover.
             try:
                 character_audit = self._record_character_interior_decision(
                     proposal_id=proposal_id,
@@ -2071,19 +2115,6 @@ class LifeDevelopmentRuntime:
                     status="stale_prefix",
                     reason_code="life_development.model_result_prefix_stale",
                 )
-        character_cursor = character_decision.cursor
-        try:
-            character_choice, _character_completion_json = self._materialize_character_choice(
-                decision=character_decision,
-                draft=draft,
-                offered_window=offered_window,
-                active_aspiration_source_refs=(world_manifest.active_aspiration_source_refs),
-            )
-        except (LifeDevelopmentDraftError, TypeError, ValueError):
-            return LifeDevelopmentResult(
-                status="technical_failure",
-                reason_code="life_development.character_interior_decision_invalid",
-            )
         projection = self._ledger.project()
         acceptance_cursor = _cursor(projection)
         if (
@@ -2186,7 +2217,7 @@ class LifeDevelopmentRuntime:
         source_closure_deliberation: _RecordedDeliberation | None,
         novel_origin_review: LifeDevelopmentNovelOriginReview | None,
         novel_origin_deliberation: _RecordedDeliberation | None,
-        character_choice: CharacterChoiceAcceptDraft,
+        character_choice: LegacyCharacterChoiceAcceptDraft,
         character_interior_decision: _RecordedCharacterInteriorDecision,
         offered_window: DueWindow,
         trace_id: str,
@@ -2218,14 +2249,17 @@ class LifeDevelopmentRuntime:
         )
         for record in records:
             self._store.put_if_absent(record)
-        selected_window = (
-            DueWindow(
+        if isinstance(character_choice, CharacterChoiceAcceptDraft):
+            selected_window = DueWindow(
                 opens_at=character_choice.opens_at,
                 closes_at=character_choice.closes_at,
             )
-            if character_choice.opens_at is not None and character_choice.closes_at is not None
-            else offered_window
-        )
+        else:
+            # Frozen v1 semantics, reachable only after durable legacy recovery.
+            selected_window = DueWindow(
+                opens_at=character_choice.opens_at or offered_window.opens_at,
+                closes_at=character_choice.closes_at or offered_window.closes_at,
+            )
         proposal = self._proposal_event(
             proposal_event_id=proposal_event_id,
             proposal_id=proposal_id,
@@ -5520,20 +5554,23 @@ class LifeDevelopmentRuntime:
         draft: LifeDevelopmentPossibilityDraft,
         offered_window: DueWindow,
         active_aspiration_source_refs: tuple[str, ...],
-    ) -> tuple[CharacterChoiceAcceptDraft | CharacterChoiceNoOpDraft, str]:
+        legacy_recovery: bool = False,
+    ) -> tuple[LegacyCharacterChoiceAcceptDraft | CharacterChoiceNoOpDraft, str]:
         outer = decision.decision
         if decision.status != "decided" or not isinstance(outer, dict):
             raise ValueError("CharacterInterior life decision is unavailable")
         payload = outer.get("payload")
         if (
             not isinstance(payload, dict)
-            or payload.get("contract") != "character-interior-life-development-choice.1"
+            or payload.get("contract")
+            != (LEGACY_CHARACTER_CHOICE_CONTRACT if legacy_recovery else CHARACTER_CHOICE_CONTRACT)
             or set(payload) != {"contract", "completion"}
             or not isinstance(payload.get("completion"), dict)
         ):
             raise ValueError("CharacterInterior life completion is invalid")
         raw = canonical_json(payload["completion"])
-        parsed = parse_character_choice(
+        parser = parse_legacy_character_choice if legacy_recovery else parse_character_choice
+        parsed = parser(
             raw=raw,
             offered=draft,
             offered_window=offered_window,
@@ -5815,7 +5852,7 @@ class LifeDevelopmentRuntime:
         content_bindings: tuple[dict[str, str], ...] = (),
         final_decision: str | None = None,
         outcome_descriptors: tuple[OutcomeCandidateDescriptor, ...] = (),
-        character_choice: CharacterChoiceAcceptDraft | CharacterChoiceNoOpDraft | None = None,
+        character_choice: LegacyCharacterChoiceAcceptDraft | CharacterChoiceNoOpDraft | None = None,
         character_interior_decision: _RecordedCharacterInteriorDecision | None = None,
         source_closure_review: LifeDevelopmentSourceClosureReview | None = None,
         source_closure_deliberation: _RecordedDeliberation | None = None,
@@ -6130,7 +6167,7 @@ class LifeDevelopmentRuntime:
     def _canonical_character_choice(
         self,
         *,
-        choice: CharacterChoiceAcceptDraft | CharacterChoiceNoOpDraft | None,
+        choice: LegacyCharacterChoiceAcceptDraft | CharacterChoiceNoOpDraft | None,
         draft: LifeDevelopmentWorldDraft,
         manifest: LifeDevelopmentCapabilityManifest,
         wake: WorldEvent,
@@ -6239,7 +6276,7 @@ def _character_choice_hard_boundary_contract(
     """Expose this planning phase's authority without choosing for the character."""
 
     return {
-        "contract_version": "life-development-character-choice-authority.1",
+        "contract_version": CHARACTER_CHOICE_AUTHORITY_CONTRACT,
         "decision_phase": {
             "accept": "authorize_one_character_plan",
             "no_op": "decline_this_opportunity_without_a_plan",
@@ -6249,13 +6286,15 @@ def _character_choice_hard_boundary_contract(
             "selected_outcome_index": "forbidden_in_this_phase",
         },
         "timing": {
-            "optional_override_fields": ["opens_at", "closes_at"],
-            "pairing": "both_or_neither",
+            "accept_required_fields": ["opens_at", "closes_at"],
+            "meaning": "your_own_planned_start_and_end_not_opportunity_availability",
+            "ordering": "closes_at_strictly_after_opens_at",
             "must_stay_within_offered_window": {
                 "opens_at": offered_window.opens_at.isoformat(),
                 "closes_at": offered_window.closes_at.isoformat(),
             },
-            "when_omitted": "use_complete_offered_window",
+            "when_omitted_or_null": "invalid_accept_choose_times_or_no_op",
+            "no_op_requires_timing": False,
         },
         "participants": {
             "field": "participant_refs",

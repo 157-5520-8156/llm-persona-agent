@@ -165,7 +165,7 @@ class _CharacterModel(FakeCompanionModel):
     ) -> str:
         purpose = json.loads(messages[-1]["content"])["inner_turn"]["purpose"]
         expected_tools = {
-            "life_development_choice": "character_role_life_development_choice_v1",
+            "life_development_choice": "character_role_life_development_choice_v2",
             "activity_lifecycle_choice": "character_role_activity_lifecycle_choice_v1",
             "outcome_selection": "character_role_outcome_selection_v1",
         }
@@ -197,11 +197,16 @@ class _CharacterModel(FakeCompanionModel):
         except (IndexError, KeyError, TypeError, json.JSONDecodeError):
             return await super().complete(messages, temperature=temperature)
         if purpose == "life_development_choice":
+            chosen_start = datetime.fromisoformat(
+                request["capability_manifest"]["payload"]["executable_envelope"]["opens_at"]
+            )
             payload = {
                 "completion": {
                     "decision": "accept",
                     "intention_summary": "我想去看看。",
                     "importance_bp": 4_300,
+                    "opens_at": chosen_start.isoformat(),
+                    "closes_at": (chosen_start + timedelta(minutes=30)).isoformat(),
                     "participant_refs": [],
                 }
             }

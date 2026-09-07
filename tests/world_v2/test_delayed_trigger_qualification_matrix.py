@@ -319,7 +319,7 @@ def test_life_model_followups_are_independently_and_honestly_declared() -> None:
     )
     assert by_id["life.development"].model_contract == ModelContract(
         purpose="life_development_choice",
-        contract_identity="character-interior-life-development-choice.1",
+        contract_identity="character-interior-life-development-choice.2",
     )
     assert by_id["life.development"].release_status == "limited"
     assert by_id["life.open_world_generation"].release_status == "limited"

@@ -11,7 +11,7 @@ from datetime import date, datetime, time, timedelta
 import hashlib
 import json
 import re
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, ValidationError, computed_field, field_validator, model_validator
@@ -887,7 +887,14 @@ class CharacterChoiceNoOpDraft(FrozenModel):
     decision: Literal["no_op"]
 
 
-class CharacterChoiceAcceptDraft(FrozenModel):
+CHARACTER_CHOICE_CONTRACT = "character-interior-life-development-choice.2"
+LEGACY_CHARACTER_CHOICE_CONTRACT = "character-interior-life-development-choice.1"
+CHARACTER_CHOICE_AUTHORITY_CONTRACT = "life-development-character-choice-authority.2"
+
+
+class LegacyCharacterChoiceAcceptDraft(FrozenModel):
+    """Frozen v1 completion, readable only for an already-audited decision."""
+
     decision: Literal["accept"]
     intention_summary: str = Field(min_length=1, max_length=4_000)
     importance_bp: int = Field(ge=0, le=10_000)
@@ -905,7 +912,7 @@ class CharacterChoiceAcceptDraft(FrozenModel):
     )
 
     @model_validator(mode="after")
-    def optional_window_is_complete(self) -> "CharacterChoiceAcceptDraft":
+    def optional_window_is_complete(self) -> "LegacyCharacterChoiceAcceptDraft":
         if (self.opens_at is None) != (self.closes_at is None):
             raise ValueError("Character choice timing override must be complete")
         if (
@@ -917,6 +924,20 @@ class CharacterChoiceAcceptDraft(FrozenModel):
         if self.participant_refs != tuple(sorted(set(self.participant_refs))):
             raise ValueError("Character choice participants must be sorted and unique")
         return self
+
+
+class CharacterChoiceAcceptDraft(LegacyCharacterChoiceAcceptDraft):
+    """Current role-owned schedule; an opportunity window is only availability."""
+
+    opens_at: datetime = Field(
+        description="Your own planned start within the offered availability window; required."
+    )
+    closes_at: datetime = Field(
+        description=(
+            "Your own planned end, strictly after your start and within availability. "
+            "Choose how long you intend to spend; availability is not your duration."
+        )
+    )
 
 
 CharacterChoiceDraft = CharacterChoiceNoOpDraft | CharacterChoiceAcceptDraft
@@ -1363,6 +1384,43 @@ def parse_character_choice(
     offered_window: DueWindow,
     active_aspiration_source_refs: tuple[str, ...] = (),
 ) -> CharacterChoiceDraft:
+    return cast(
+        CharacterChoiceDraft,
+        _parse_character_choice(
+            raw=raw,
+            offered=offered,
+            offered_window=offered_window,
+            active_aspiration_source_refs=active_aspiration_source_refs,
+            accept_model=CharacterChoiceAcceptDraft,
+        ),
+    )
+
+
+def parse_legacy_character_choice(
+    *,
+    raw: str,
+    offered: LifeDevelopmentPossibilityDraft,
+    offered_window: DueWindow,
+    active_aspiration_source_refs: tuple[str, ...] = (),
+) -> LegacyCharacterChoiceAcceptDraft | CharacterChoiceNoOpDraft:
+    """Decode v1 after its durable ModelResult/Proposal lineage was verified."""
+    return _parse_character_choice(
+        raw=raw,
+        offered=offered,
+        offered_window=offered_window,
+        active_aspiration_source_refs=active_aspiration_source_refs,
+        accept_model=LegacyCharacterChoiceAcceptDraft,
+    )
+
+
+def _parse_character_choice(
+    *,
+    raw: str,
+    offered: LifeDevelopmentPossibilityDraft,
+    offered_window: DueWindow,
+    active_aspiration_source_refs: tuple[str, ...],
+    accept_model: type[LegacyCharacterChoiceAcceptDraft],
+) -> LegacyCharacterChoiceAcceptDraft | CharacterChoiceNoOpDraft:
     if not isinstance(raw, str) or len(raw.encode("utf-8")) > 8_192:
         raise LifeDevelopmentDraftError(
             "invalid_character_output", "Character Model output must be bounded JSON"
@@ -1381,9 +1439,9 @@ def parse_character_choice(
         )
     try:
         if decoded.get("decision") == "no_op":
-            draft: CharacterChoiceDraft = CharacterChoiceNoOpDraft.model_validate_json(raw)
+            draft = CharacterChoiceNoOpDraft.model_validate_json(raw)
         else:
-            draft = CharacterChoiceAcceptDraft.model_validate_json(raw)
+            draft = accept_model.model_validate_json(raw)
     except ValidationError as exc:
         violations = tuple(
             {
@@ -1432,6 +1490,11 @@ def parse_character_choice(
 
 
 __all__ = [
+    "CHARACTER_CHOICE_CONTRACT",
+    "CHARACTER_CHOICE_AUTHORITY_CONTRACT",
+    "LEGACY_CHARACTER_CHOICE_CONTRACT",
+    "LegacyCharacterChoiceAcceptDraft",
+    "parse_legacy_character_choice",
     "CharacterChoiceAcceptDraft",
     "CharacterChoiceDraft",
     "CharacterChoiceNoOpDraft",
