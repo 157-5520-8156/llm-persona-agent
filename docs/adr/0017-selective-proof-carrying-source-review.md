@@ -1,7 +1,21 @@
 # ADR 0017: Selective Proof-Carrying Source Review
 
-- Status: Accepted as the only production visible-chat route; qualification incomplete
+- Status: Historical topology; model-review routing superseded by the 2026-08-13 H1d implementation; qualification incomplete
 - Date: 2026-08-10
+
+## Current implementation notice (2026-09-08)
+
+The routing and deployment statements below describe the original decision,
+not the installed production composition. The
+[H1d implementation record](../design/harness-restructure-execution-plan.md#2026-08-13-h1d-删除模型审查车道裁决-7--1210)
+removed the general chat model-review lanes. Current one-shot chat validates
+declared source coordinates locally; it does not prove that free prose has
+declared every factual assertion. The optional focused Life novel-origin critic
+is a separate lane and does not review visible chat. See
+[current terminology](../../CONTEXT.md#source-review-qualification) and the
+[real-dialogue audit](../audits/adaptive-companionship-2026-09-08.md) for the
+installed scope and remaining counterexamples. The historical measurements
+below do not qualify the current route or authorize restoring a second reviewer.
 
 ## Context
 

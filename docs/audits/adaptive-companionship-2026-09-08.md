@@ -348,3 +348,68 @@ prepared-only 对照只替换 identity JSON：请求 **68,473→64,152 字节**�
 `c554344cc79b35a870db771d3ca5d666b985b6b1caf8d7d87b8776411505da26`。
 证据在 `output/adaptive-companionship-2026-09-08/baseline-choice-context/`。最终完整回归
 与真实新旅程继续单列，固定场景没有替代生产资格。
+
+## `.98` 完整回归、第五轮试聊与仍存在的事实漏洞
+
+干净 `90f23381` 的完整回归为 **6533 passed / 19 skipped**，用时 501.00 秒；唯一
+warning 是既有 Starlette/httpx 弃用提示。日志为
+`output/adaptive-companionship-2026-09-08/full-choice-context-98.log`。此结果在后面的
+thinking auto 传输修改之前，不能当作后续所有提交的完整回归。
+
+人设逐字去重的真实单请求对照也已结束：保留原 Flash、forced tool、温度和输入，只改变
+上述重复 JSON，输入为 15,983 tokens、输出 124 tokens、缓存命中为 0，耗时 1.744 秒，
+费用 ¥0.0245325。返回仍声称已经在图书馆读书，另添无依据的当天课程安排，原工具参数
+显式 `world_claims=[]`。这是负结果：减少重复输入没有解决事实漏报。它没有写入 World
+或执行 QQ 交付；原始请求 SHA256 为
+`7c47c37d725971a5d3c7989ff788601457fb04e51c0a241154cb7253d714bed3`，证据在
+`output/private-audits/trial04-identity-control-_1ehasji/`。
+
+trial-05 使用干净 `90f23381`、独立新 World 和本地 CaptureDelivery，完成 **3 回合、22
+分钟逻辑时间**后主动关闭，`operator_stopped / completed=false`。其证据位于
+`output/adaptive-companionship-2026-09-08/trial-05/`。
+
+- 外部机会 10:05–22:00 共 715 分钟；角色用新的 choice v2 明确选择 10:05–12:00 共
+  115 分钟，seq17 Plan 与 seq20 Started 保留了原选择。这是真实模型使用个人时段的
+  正例，没有把机会完整窗口直接作为她的活动时长。
+- 首问时确有上述图书馆活动，不应笼统称整段活动虚构；但靠窗位置、已翻到具体蓝皮诗集、
+  尚未读过等细节来自习惯、候选结果或接受意图，没有已结算的经历来源。当前地点条目也
+  仍不可用。最终纠错回复却将这些细节写成实况，raw `world_claims=[]`。
+- World Author 写入“此前没见过这本书”一类角色既往知识，focused novel-origin critic
+  仍判 supported。新时间能力与 reader scope 没有消除这一作者越权及漏判。
+- 后两轮关于再待一两个小时、用户去泡茶后再聊的表达已得到本地捕获。关闭发生在第三轮
+  之后，未继续观察沉默时段、主动联系或跨日变化，不能把措辞自然当成长期真人感通过。
+
+首问原请求与最后纠错必须分别计数。原请求其实尝试写了两条 source claims，但外层
+JSON 中的 `payload_json.messages` 缺少闭合 `]`；不能把它描述成原模型完全没有声明。
+接收器捕获解析错误后过早释放非法 head，上层开始一次纠错时取消原流。capture
+`4c3d5705a6a54c21944487f54c2993a6` 留下 53,267 字节、159 个完整 SSE 帧，所有 usage
+均 null，没有结束帧，状态是 `cancelled / body_complete=false`；响应前缀 SHA256 为
+`f5e33c18d562e9d19b406ce4f1a6cf470a06cabed681f4b401f52abfe0022652`。主账准确记录
+`caller_cancelled / unknown`，不能从后续成功回复补造这笔用量。
+
+该轮 11 次 provider 尝试中，10 笔 known 费用合计 **¥0.0798991**，另有上述未知账单的
+**¥0.241365 保守预约**；没有普通 pending 预约。旅程 manifest 的 `model_failures=[]`
+只表示最终处理未留下该类失败事件，不抹掉原失败 provider attempt。194 个事件 payload、
+11 份请求及 10 份完整响应和 1 份不完整响应前缀的 hash 均核对；不完整响应仍明确不完整。
+10 笔 known 在全局调试账本恰有 10 份来源路径、预约、原账单 hash 与字段一致的自动镜像，
+unknown 没有导入；没有手工补写历史账本。
+
+费用汇总脚本已区分 known、not_billed 和 unknown，并纳入独立 probe。当前阶段已知
+费用 **¥1.2741705**，加先前历史的已知累计为 **¥2.1562571**，另保留未知预约
+¥0.241365。campaign 为 unresolved trial-05 继续占用整个 ¥0.60 入场预约，阶段承诺
+额度为 ¥1.7942714，仍受原 ¥2 上限约束。这里没有把未知账单当成零，也没有声称已核对
+供应商发票或满足每月 ¥100。付费探测暂缓，先修复上述收尾时序。
+
+## Thinking 单工具传输的显式协商
+
+`2b7e2abd` 在计算调用身份前协商单工具选择：显式 thinking 使用版本化
+`single-tool-auto-transport.1`，保留原 schema identity；普通 Flash 继续 forced，其
+请求身份不变。atomic 与 SSE 都校验唯一预期工具名，名字迟到时先缓冲参数，拒绝错名、
+多工具和纯文本。初始、final、表达修正、Recall 及 StructuredRole 经同一协商入口。
+没有改变默认 thinking 开关、模型路由、超时或原重选次数；没有混入计费尾帧修复。
+
+集成后相关 **366 个定向测试通过**，独立审查无具体 P1/P2。完整 120 场景导出在
+`/tmp/girl-agent-thinking-auto-frozen-20260908.json`；root 独立重新计算 hash，并逐字段
+确认它与 `.98` 候选完全一致。部分 final/表达修正测试只验证参数协商，未增加或证明
+原本被合同禁止的第二次 HTTP。之前 27.94 秒的真实 thinking probe 也不证明此版本的
+真实时延、World 接受或 QQ 交付合格；这些资格仍未完成。
