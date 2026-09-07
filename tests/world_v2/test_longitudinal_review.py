@@ -124,6 +124,38 @@ def test_recovered_model_failure_is_not_hidden_as_quiet_scheduler():
     assert "之后成功恢复也保留" in report
 
 
+@pytest.mark.parametrize(
+    "outcome", ["life-ecology:failed_safe", "life-ecology:technical_failure.source_review"]
+)
+def test_post_model_process_failure_remains_visible_even_with_legacy_unknown_label(outcome):
+    # Trial 01: all three model results validated, then the plan reducer failed.
+    event = _event(1, "TriggerProcessCompleted", {"runtime_outcome_ref": outcome})
+    row = _step(
+        "late-failure",
+        0,
+        1,
+        kind="scheduler",
+        status="scheduled",
+        terminal_outcomes=[
+            {
+                "event_ref": event["event_id"],
+                "outcome_ref": outcome,
+                "terminal_outcome": "unknown",
+            }
+        ],
+    )
+    report = render_longitudinal_report(manifest={}, timeline=[row], evidence=[event])
+    packet = build_review_packet(timeline=[row], evidence=[event], run_manifest={})
+    assert outcome in report
+    assert "进程技术失败" in report
+    assert "没有省略安静调度步骤" in report
+    failure = packet["timeline"][0]["runtime_failures"][0]
+    assert failure["event_ref"] == "event:000001"
+    assert failure["outcome_ref"] == outcome
+    # Keep the raw legacy label instead of rewriting the original experiment.
+    assert packet["timeline"][0]["terminal_outcomes"][0]["terminal_outcome"] == "unknown"
+
+
 def test_no_delivery_is_unknown_and_technical_failure_cannot_be_character_silence() -> None:
     packet = build_review_packet(
         timeline=[

@@ -118,6 +118,22 @@ def _terminal_outcome(row: dict) -> str:
     return declared
 
 
+def _runtime_failures(row: dict) -> list[dict]:
+    """Expose producer-defined failures even when every model attempt validated.
+
+    The LifeEcology reducer uses these exact outcome identifiers for technical
+    backoff. This also reads older captures whose generic terminal label was
+    unknown; it does not infer character intent or parse authored language.
+    """
+    return [
+        outcome
+        for outcome in row.get("terminal_outcomes", [])
+        if outcome.get("terminal_outcome") == "technical_failure"
+        or outcome.get("outcome_ref") == "life-ecology:failed_safe"
+        or str(outcome.get("outcome_ref", "")).startswith("life-ecology:technical_failure.")
+    ]
+
+
 def context_evidence_visibility(value: Any) -> str:
     if isinstance(value, dict) and isinstance(value.get("requests"), list):
         requests = value["requests"]
@@ -215,6 +231,7 @@ def build_review_packet(
                 "status": row.get("status", "unknown"),
                 "errors": _blind(row.get("errors", []), refs),
                 "model_failures": _blind(row.get("model_failures", []), refs),
+                "runtime_failures": _blind(_runtime_failures(row), refs),
                 "terminal_outcome": _terminal_outcome(row),
                 "terminal_outcomes": _blind(row.get("terminal_outcomes", []), refs),
                 "context_evidence": _blind(row.get("context_evidence"), refs),
@@ -302,6 +319,7 @@ def _quiet_scheduler(row: dict) -> bool:
         and not row["deliveries"]
         and not row["errors"]
         and not row["model_failures"]
+        and not row["runtime_failures"]
         and row["terminal_outcome"] not in {"technical_failure", "conflicting_evidence"}
     )
 
@@ -403,6 +421,9 @@ def render_longitudinal_report(
         if row["model_failures"]:
             lines.append("模型尝试的技术失败（之后成功恢复也保留）：")
             lines.extend(_quoted(_json(row["model_failures"])))
+        if row["runtime_failures"]:
+            lines.append("进程技术失败（模型返回合法也可能在提交时失败）：")
+            lines.extend(_quoted(_json(row["runtime_failures"])))
         if row["context_evidence"]:
             lines.append("Context 采集材料及内容哈希见 review.json 的本步骤。")
         lines.append("")
