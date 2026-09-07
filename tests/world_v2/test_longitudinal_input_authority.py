@@ -108,7 +108,9 @@ async def test_real_host_http_input_and_authored_current_life_sources(
         )
     )
     if invalid_fact_source:
-        timeline = [json.loads(line) for line in (output / "timeline.jsonl").read_text().splitlines()]
+        timeline = [
+            json.loads(line) for line in (output / "timeline.jsonl").read_text().splitlines()
+        ]
         assert not [
             record
             for row in timeline
@@ -140,7 +142,22 @@ async def test_real_host_http_input_and_authored_current_life_sources(
             if "inner_life_snapshot" in payload and "current_trigger_message" in payload:
                 inputs.append(payload)
     assert inputs
-    if not invalid_fact_source:
+    if invalid_fact_source:
+        snapshots = [item["inner_life_snapshot"] for item in inputs]
+        corrections = [item for item in snapshots if "role_result_correction" in item]
+        assert corrections
+        for corrected in corrections:
+            matching = [
+                item for item in snapshots if item["snapshot_id"] == corrected["snapshot_id"]
+            ]
+            assert len(matching) == 2  # One original and one correction per pinned attempt.
+            assert "role_result_correction" not in matching[0]
+            assert matching[1] == corrected
+            assert (
+                "outside its semantic source lane"
+                in corrected["role_result_correction"]["failure_detail"]
+            )
+    else:
         assert len(inputs) == 1
     materials = inputs[0]["inner_life_snapshot"]["materials"]
     assert "图书馆看书" in materials["day_sheet"]  # Habit remains available to the character.
