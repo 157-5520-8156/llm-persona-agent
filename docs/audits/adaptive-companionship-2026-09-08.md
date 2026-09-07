@@ -574,6 +574,9 @@ InnerLifeSnapshot 时的六个精确坐标、对应 alias、当前 scope 均能�
 据此建立 `.99`，摘要为
 `8f3579b38dbc6895330db8f02bbbbbf12eb78604d11d2f3f5424724313459f60`。
 完整候选、逐项比较和仅版本变化的导出均保留，未修改场景或放松判据。
+随后干净 `f48af2d4` 通过不带 limit 的完整正门；最终全部字段与已比较的 `.99`
+候选完全一致，并再次独立重算摘要。证据为 `baseline-biography-readable-final.json`
+及 `baseline-biography-readable-final-verification.json`。
 
 之前的真实两臂对照发生在此修复之前。当前证据证明来源说明能到达角色，尚未证明
 这份新输入能减少实际误述；下一次真实试聊仍需核对正文、引用与费用。
