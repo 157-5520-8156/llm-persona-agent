@@ -293,9 +293,19 @@ def _extract_threads(projection: object) -> tuple[DeclaredDueTarget, ...]:
 def _extract_plans(projection: object) -> tuple[DeclaredDueTarget, ...]:
     found: list[DeclaredDueTarget] = []
     for plan in _iter(getattr(projection, "plans", ())):
-        if getattr(plan, "status", None) not in _LIVE_PLAN_STATUSES:
+        status = getattr(plan, "status", None)
+        if status not in _LIVE_PLAN_STATUSES:
             continue
-        due = _window_open(getattr(plan, "scheduled_window", None))
+        window = getattr(plan, "scheduled_window", None)
+        # Starting consumes the opening. Active/paused activities retain the
+        # accepted end boundary; replaying their past opening would both miss
+        # completion wakes and falsely report already-started work as overdue.
+        # The lifecycle owner still decides the legal transition at that wake.
+        due = (
+            _window_open(window)
+            if status == "planned"
+            else _as_datetime(getattr(window, "closes_at", None))
+        )
         if due is not None:
             found.append(
                 DeclaredDueTarget(

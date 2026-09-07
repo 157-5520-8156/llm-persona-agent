@@ -129,6 +129,44 @@ def test_active_occurrence_wakes_at_its_complete_outcome_boundary() -> None:
     assert [item.due_at for item in dues] == [closes]
 
 
+@pytest.mark.parametrize("status", ["active", "paused"])
+def test_started_plan_retires_opening_and_wakes_at_its_remaining_window_boundary(status) -> None:
+    opens = NOW - timedelta(minutes=3)
+    closes = NOW + timedelta(minutes=27)
+    dues = collect_projection_declared_dues(SimpleNamespace(
+        plans=(SimpleNamespace(
+            status=status,
+            scheduled_window=SimpleNamespace(opens_at=opens, closes_at=closes),
+        ),),
+    ))
+
+    # A short journey ending while the activity is in progress has no
+    # unprocessed opening; its accepted end still wakes production later.
+    assert not any(item.due_at <= NOW for item in dues)
+    assert select_clock_wake(after=NOW, through=closes - timedelta(seconds=1), dues=dues) is None
+    selected = select_clock_wake(after=NOW, through=closes, dues=dues)
+    assert selected is not None
+    assert selected.kind == "life.activity_occurrence"
+    assert selected.due_at == closes
+
+
+@pytest.mark.parametrize("status", ["planned", "completed", "abandoned"])
+def test_plan_opening_remains_only_for_not_yet_started_plans(status) -> None:
+    opens = NOW + timedelta(minutes=3)
+    closes = NOW + timedelta(minutes=30)
+    dues = collect_projection_declared_dues(SimpleNamespace(
+        plans=(SimpleNamespace(
+            status=status,
+            scheduled_window=SimpleNamespace(opens_at=opens, closes_at=closes),
+        ),),
+    ))
+    selected = select_clock_wake(after=NOW, through=closes, dues=dues)
+    if status == "planned":
+        assert selected is not None and selected.due_at == opens
+    else:
+        assert selected is None and dues == ()
+
+
 def test_collect_clock_wake_dues_requires_exact_computed_keys() -> None:
     with pytest.raises(AssertionError, match="missing computed kinds"):
         collect_clock_wake_dues(None, computed={"social.initiative.cadence": None})

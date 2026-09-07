@@ -115,3 +115,12 @@ trial-02 在 `4d62611e` tracked clean 上运行，操作者按角色的实际回
 也不是已有预约的来源。保留新行为、感受和分支内新事件的自由，不增加审查调用、字段或通用
 reviewer。生活 runtime/production 的 118 项本地回归通过，只验证现有契约和调用链兼容；
 该说明能否降低真实语义误判仍未验证，不能把本地通过记成上述反例已修复。
+
+## 集成测试继续暴露的调度断点
+
+聊天生活能力的本地 HTTP 公共旅程先成功创建 30 分钟计划，并在第 1 分钟由角色选择开始；
+第 2 分钟重启后重放一致，第 3 分钟终止检查却报 `unprocessed_due_before_end`。根因是生产
+`declared_due._extract_plans` 对 active/paused 仍返回早已消费的开窗时间，同时丢失真正的
+关窗唤醒。已先用公共 collector/clock selector 复现红测，再让 active/paused 使用既有
+`closes_at`；planned 保留开窗，completed/abandoned 无待办唤醒。代码不决定角色是否参与或
+如何结束，既有生命周期仍负责合法转换；没有放宽审计终态、缩短计划或补造完成经历。
