@@ -9,7 +9,10 @@ from __future__ import annotations
 from datetime import datetime
 import hashlib
 import json
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from .context_capsule import ContextCapsule
 
 
 LIFE_REVIEW_PROJECTION_CONTRACT = "life-review-selected-source-proof.1"
@@ -43,8 +46,10 @@ def compile_life_decision_context(capsule: LifeContextCapsule) -> dict[str, obje
     return decoded
 
 
-def compile_life_review_context(capsule: LifeContextCapsule) -> dict[str, object]:
-    """Present exact proof for already selected Fact/Dialogue items only.
+def _compile_selected_source_context(
+    capsule: LifeContextCapsule,
+) -> tuple[ContextCapsule, dict[str, object]]:
+    """Revalidate and expose exact, already selected Fact/Dialogue items.
 
     The normal model view is intentionally lossy. Its value hashes cannot be
     attached to shortened values as if those were complete source payloads.
@@ -86,6 +91,13 @@ def compile_life_review_context(capsule: LifeContextCapsule) -> dict[str, object
                 for item in selected.items
             ],
         }
+    return validated, context
+
+
+def compile_life_review_context(capsule: LifeContextCapsule) -> dict[str, object]:
+    """Preserve the original life-review presentation and byte contract."""
+
+    validated, context = _compile_selected_source_context(capsule)
     context["life_review_projection"] = {
         "contract": LIFE_REVIEW_PROJECTION_CONTRACT,
         "capsule_id": validated.capsule_id,
