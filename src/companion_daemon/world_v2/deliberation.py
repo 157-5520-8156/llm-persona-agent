@@ -69,6 +69,7 @@ MAX_INFLIGHT_PROVIDER_TASKS = 8
 MAX_INFLIGHT_QUICK_TASKS = 2
 MAX_INFLIGHT_SHADOW_OBSERVER_TASKS = 2
 _PROVIDER_CANCELLATION_AUDIT_GRACE_SECONDS = 0.01
+_BUDGET_DEADLINE_CANCEL = object()
 _PROVIDER_CLOSE_GRACE_SECONDS = 0.05
 _T = TypeVar("_T")
 _LOG = logging.getLogger(__name__)
@@ -3568,7 +3569,7 @@ class Deliberation:
                         continue
                     if primary_result is None:
                         if not primary_task.done():
-                            primary_task.cancel()
+                            primary_task.cancel(_BUDGET_DEADLINE_CANCEL)
                             await asyncio.gather(primary_task, return_exceptions=True)
                             await asyncio.sleep(0)
                         primary_result = (None, None, "timeout")
@@ -3856,6 +3857,15 @@ class Deliberation:
         task.add_done_callback(observe)  # type: ignore[arg-type]
         try:
             done, _ = await asyncio.wait((task,), timeout=timeout)
+        except asyncio.CancelledError as exc:
+            if not exc.args or exc.args[0] is not _BUDGET_DEADLINE_CANCEL:
+                task.cancel()
+                await asyncio.sleep(0)
+                raise
+            # The caller's own budget expired before this nested hard
+            # deadline. Use the same bounded audit drain as local expiry;
+            # unrelated cancellation must retain its propagation semantics.
+            done = set()
         except BaseException:
             task.cancel()
             # Deliver cancellation to the provider before reporting the slot

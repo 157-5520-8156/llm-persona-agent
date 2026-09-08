@@ -193,10 +193,31 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
                         failure, failure_code=failure.failure_code
                     ) from None
             raise
+        except asyncio.CancelledError as exc:
+            # Only the enclosing Deliberation deadline may promote this
+            # evidence to a technical result. External cancellation still
+            # propagates through Core without authoring a terminal decision.
+            candidates, reviews = self._rejected.pop(request.inner_turn_id, ((), ()))
+            recall, _ = _recall_control_transfer_audit(request)
+            if recall is not None and all(
+                item.model_call_id != recall.model_call_id for item in candidates
+            ):
+                candidates = (*candidates, recall)
+            if candidates or reviews:
+                exc.world_v2_validation_technical_failure = ValidationTechnicalFailure(
+                    "authored_subcall_timeout",
+                    model_call_id=model_call_id,
+                    request_hash=request_hash.removeprefix("sha256:"),
+                    attempted_model_id=self._model_id,
+                    attempted_model_version=self._model_version,
+                    authored_candidate_audits=candidates,
+                    provider_subcall_audits=reviews,
+                )
+            raise
         except Exception as exc:
             # A failed corrective author must still retire the preceding paid
-            # candidate and reviewer. Cancellation remains cancellation below
-            # this adapter; no completed result or usage is invented for it.
+            # candidate and reviewer. No completed result or usage is invented
+            # for the failed current invocation.
             from ..model_usage_budget import BackgroundSpendCapDenied, ModelUsageAdmissionError
 
             candidates, reviews = self._rejected.pop(request.inner_turn_id, ((), ()))
@@ -321,6 +342,26 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
                     provider_subcall_audits=output.provider_subcall_audits,
                     failure_detail="reviewed proactive completed output is not a bounded carrier",
                 ) from exc
+        except asyncio.CancelledError as exc:
+            self._rejected.pop(request.inner_turn_id, None)
+            # The current author completed, but its pending review did not.
+            # Preserve only completed evidence; the provider usage ledger
+            # independently retains any unknown charge for the cancelled RPC.
+            exc.world_v2_validation_technical_failure = ValidationTechnicalFailure(
+                "source_review_timeout",
+                attempted_model_id=str(
+                    getattr(self._visible_reviewer, "model", type(self._visible_reviewer).__name__)
+                ),
+                attempted_model_version=str(
+                    getattr(self._visible_reviewer, "VERSION", type(self._visible_reviewer).__name__)
+                ),
+                authored_candidate_audits=(
+                    *prior_candidates,
+                    candidate.model_copy(update={"outcome": "validation_unresolved"}),
+                ),
+                provider_subcall_audits=prior_reviews,
+            )
+            raise
         except ValidationTechnicalFailure as exc:
             self._fail_review(
                 request=request,

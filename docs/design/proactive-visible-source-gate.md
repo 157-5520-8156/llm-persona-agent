@@ -61,9 +61,19 @@ inbound、时钟、主动机会、Core、Proposal、Expression 接受、Action�
 返回 unclosed 后，第二作者显式抛 TimeoutError 或第二审核返回非法 verdict，仍保存先前
 已完成作者和审核的公开审计；未知账单保持 `unknown` / `billing_unknown`。
 
-这些证据不是供应商语义准确、真实 QQ、生产延迟或成本资格。特别地，provider 主动抛出
-TimeoutError 不等于外层 Deliberation deadline 取消：本片只验证局部 facade 保持
-CancelledError 传播；外层取消时此前已完成调用审计的终端持久化尚未 qualification。
+主动预算 deadline 的后续离线回归另用永不返回的 HTTP fixture，验证实际外层取消发生于
+纠正作者、首次审核和第二次审核时，已完成作者与先前审核的已知用量审计均被持久化，
+当前未返回调用的费用仍为 `unknown` / `billing_unknown`，失败零 Action。
+Faculty 只在 CancelledError 附带已有不可变证据并继续传播。Deliberation 仅对自己预算
+deadline 发出的私有取消标记，复用原有 0.01 秒审计收尾；没有延长模型执行或纠正窗口。
+外部取消仍抛原 CancelledError。公共 host 的 drain waiter 本来就与宿主拥有的任务隔离，
+因此外部测试在取消 waiter 后显式关闭 host；真正取消 provider 后，主动 Core 仍无终态。
+局部 metered facade 还验证并发 task 与继承 ContextVar 的 child task 不串用调用捕获。
+
+这些证据不是供应商语义准确、真实 QQ、生产延迟或成本资格。本修复仅补预算截止时
+已完成调用的审计保留；当前被取消 reviewer 的请求身份仍只在共享 review runtime 中，
+未补写为 ModelResult 子调用。外部关闭没有角色终态，其已完成中间调用的终端持久化
+也不在本次资格范围内，不能据此声称所有取消 RPC 的审计树完整。
 主动 Recall 额外取得的材料不自动升级原 selected source table 的权限，尚无本片完整
 Recall 资格证明。background 原 ModelCall meta 的 world/turn 归属并非本片新增或修复范围。
 
@@ -71,3 +81,12 @@ Recall 资格证明。background 原 ModelCall meta 的 world/turn 归属并非�
 篡改、冷恢复、调用隔离测试以及既有 inbound/主动生产链、receipt/source table 回归。
 变更 Python 的 Ruff 与 `git diff --check` 通过。日志：
 `/tmp/proactive-visible-source-targeted-final.log`。没有运行全套测试或真实供应商/QQ。
+
+取消审计补丁的追加定向门覆盖 11 文件共 **301 项**：普通回归 298 passed / 73.66s，
+三处真实 outer deadline 另跑 3 passed / 74.80s；关闭后无新增 World Event 的两项
+公共 host 断言单独复验 2 passed / 7.39s。日志分别为
+`/tmp/girl-agent-proactive-cancel-audit-targeted.log`、
+`/tmp/girl-agent-proactive-cancel-audit-deadline-final.log` 和
+`/tmp/girl-agent-proactive-cancel-audit-shutdown-journal.log`。
+独立 Spec 与 Standards 审查未发现实现硬问题；其关闭后快照证据缺口已由事件数量
+不变断言补齐。变更 Python 的 Ruff 与 diff 检查通过；仍未运行全套或真实供应商/QQ。

@@ -5,6 +5,7 @@ real host creates the Observation, delayed opportunity, Proposal and audit.
 An empty authored claim list cannot excuse an unreviewed visible statement.
 """
 
+import asyncio
 from datetime import timedelta
 import json
 from pathlib import Path
@@ -34,7 +35,12 @@ UNSOURCED_TEXT = "我刚刚在冥王星签收了编号 PX-UNSOURCED-772 的包�
 
 
 async def _run_scenario(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scenario: str, *, pause_before_acceptance=False
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: str,
+    *,
+    pause_before_acceptance=False,
+    external_cancel=False,
 ):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     monkeypatch.setattr(config_module, "_macos_launchctl_env", lambda _name: None)
@@ -70,6 +76,16 @@ async def _run_scenario(
     proactive_requests = []
     reviewer_requests = []
     proactive_limits = []
+    provider_blocked = asyncio.Event()
+    provider_cancelled = asyncio.Event()
+
+    async def wait_for_cancellation():
+        provider_blocked.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            provider_cancelled.set()
+            raise
 
     def capture_limits():
         from companion_daemon.world_v2.deliberation import (
@@ -104,6 +120,9 @@ async def _run_scenario(
         assert len(proactive_requests) <= 2, "more than one same-role reselection"
         if scenario == "author_timeout" and len(proactive_requests) == 2:
             raise TimeoutError("offline corrected author timeout")
+        if scenario == "author_deadline" and len(proactive_requests) == 2:
+            # The production deadline or explicit host shutdown ends this call.
+            await wait_for_cancellation()
         if len(proactive_requests) == 1:
             # The fixture's novel counterexample was never source context.
             # A correction may subsequently quote the rejected candidate.
@@ -161,6 +180,10 @@ async def _run_scenario(
                 a.kind == "proactive_message"
                 for a in host.export_replay_evidence().projection.actions
             ), "candidate escaped before review"
+            if scenario == "review_deadline" or (
+                scenario == "review_deadline_second" and len(reviewer_requests) == 3
+            ):
+                await wait_for_cancellation()
         unclosed = texts == (UNSOURCED_TEXT,)
         # Exact scripted provider verdicts, not a production prose classifier.
         return _http_result(
@@ -245,7 +268,16 @@ async def _run_scenario(
             reason="offline_source_gate_regression",
             run_life_ecology=False,
         )
-        if pause_before_acceptance:
+        if external_cancel:
+            task = asyncio.create_task(host.drain(max_action_units=8, max_background_units=2))
+            await asyncio.wait_for(provider_blocked.wait(), timeout=10)
+            task.cancel("external-stop")
+            with pytest.raises(asyncio.CancelledError, match="external-stop"):
+                await task
+            # The host owns and shields its scheduler task. Cancelling this
+            # waiter leaves that task running until explicit aclose below.
+            assert not provider_cancelled.is_set()
+        elif pause_before_acceptance:
             from companion_daemon.world_v2.expression_plan_atomic_recorder import (
                 ExpressionPlanAtomicRecorder,
             )
@@ -273,6 +305,34 @@ async def _run_scenario(
     )
     proactive_review_count = len(reviewer_requests) - initial_review_count
     assert proactive_requests, "public tick/drain must reach the real proactive author"
+    if external_cancel:
+        assert provider_cancelled.is_set(), "host shutdown must cancel its provider task"
+        assert not proactive_actions
+        assert not any(
+            item.process_kind == "proactive_action_deliberation" and item.state == "terminal"
+            for item in evidence.projection.trigger_processes
+        )
+        with sqlite3.connect(tmp_path / "world.sqlite") as connection:
+            rows = connection.execute(
+                "SELECT state, terminal_result_json FROM world_v2_character_interior_turns "
+                "WHERE purpose = 'proactive_contact'"
+            ).fetchall()
+            billing = connection.execute(
+                "SELECT billing_state FROM world_v2_model_usage WHERE billing_state != 'known'"
+            ).fetchall()
+            (event_count,) = connection.execute(
+                "SELECT COUNT(*) FROM world_v2_events"
+            ).fetchone()
+        assert rows and all(state != "terminal" and result is None for state, result in rows)
+        assert billing == [("unknown",)]
+        # Closing really cancelled the provider, and appended no World Event;
+        # the pre-close Action/TriggerProcess/ModelResult snapshot is unchanged.
+        assert event_count == len(evidence.events)
+        # External cancellation must not become a model outcome or character silence.
+        assert len(evidence.projection.model_result_audits) == 2
+        assert all(text != UNSOURCED_TEXT for _recipient, text in delivery.sent)
+        assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
+        return evidence, proactive_requests, reviewer_requests, delivery
     if legacy_whole:
         assert len(proactive_requests) == 1 and proactive_review_count == 0
         assert len(proactive_actions) == len(SAFE_TEXTS)
@@ -289,6 +349,8 @@ async def _run_scenario(
             "bad_claim_twice",
             "bad_claim_reselect",
             "author_timeout",
+            "author_deadline",
+            "review_deadline_second",
             "review_invalid_second",
         }
         else 1
@@ -297,6 +359,7 @@ async def _run_scenario(
         "bad_claim_twice": 0,
         "bad_claim_reselect": 1,
         "author_timeout": 1,
+        "author_deadline": 1,
         "prepare_error": 0,
     }.get(scenario, expected_count)
     assert len(proactive_requests) == expected_count
@@ -315,9 +378,17 @@ async def _run_scenario(
         ).fetchall()
     assert len(usage_rows) == 2 + expected_count + expected_reviews
     known_rows = [row for row in usage_rows if row[3] == "known"]
-    assert len(known_rows) == len(usage_rows) - (1 if scenario == "author_timeout" else 0)
+    assert len(known_rows) == len(usage_rows) - (
+        1
+        if scenario in {
+            "author_timeout", "author_deadline", "review_deadline", "review_deadline_second"
+        }
+        else 0
+    )
     assert all(row[1:4] == (100, 100, "known") for row in known_rows)
-    if scenario == "author_timeout":
+    if scenario in {
+        "author_timeout", "author_deadline", "review_deadline", "review_deadline_second"
+    }:
         assert [row[3] for row in usage_rows if row[3] != "known"] == ["unknown"]
     assert len({row[4] for row in usage_rows}) == len(usage_rows)
     assert len(reservations) == len(usage_rows)
@@ -384,8 +455,11 @@ async def _run_scenario(
     assert failed_audit.failure_code is not None
     if scenario in {"invalid", "review_invalid_second", "prepare_error"}:
         assert failed_audit.failure_code == "source_review_exception"
-    if scenario == "author_timeout":
+    if scenario in {"author_timeout", "author_deadline"}:
         assert failed_audit.failure_code == "authored_subcall_timeout"
+        assert failed_audit.usage is None
+    if scenario in {"review_deadline", "review_deadline_second"}:
+        assert failed_audit.failure_code == "source_review_timeout"
         assert failed_audit.usage is None
     assert failed_audit.outcome != "winner"
     assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
@@ -411,6 +485,22 @@ async def _run_scenario(
 )
 async def test_required_proactive_review_public_host(tmp_path, monkeypatch, scenario):
     await _run_scenario(tmp_path, monkeypatch, scenario)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", ("author_deadline", "review_deadline", "review_deadline_second"))
+async def test_production_outer_deadline_preserves_completed_proactive_audits(
+    tmp_path, monkeypatch, scenario
+):
+    await _run_scenario(tmp_path, monkeypatch, scenario)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", ("author_deadline", "review_deadline"))
+async def test_external_cancellation_and_close_leave_proactive_turn_unfinished(
+    tmp_path, monkeypatch, scenario
+):
+    await _run_scenario(tmp_path, monkeypatch, scenario, external_cancel=True)
 
 
 @pytest.mark.asyncio
@@ -652,6 +742,15 @@ async def test_metered_facade_captures_each_task_and_preserves_cancellation():
     assert first[0] == first[1].raw == "first"
     assert second[0] == second[1].raw == "second"
     assert first[1] is not second[1]
+    inherited = _Invocation(owner_task=asyncio.current_task())
+    token = _INVOCATION.set(inherited)
+    try:
+        assert await asyncio.create_task(
+            facade.complete_json([{"role": "user", "content": "child"}])
+        ) == "ordinary:child"
+        assert inherited.parameters is inherited.raw is inherited.usage is None
+    finally:
+        _INVOCATION.reset(token)
     task = asyncio.create_task(invoke("cancel"))
     await provider.waiting.wait()
     task.cancel()
