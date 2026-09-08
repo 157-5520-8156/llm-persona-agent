@@ -5170,7 +5170,7 @@ class LifeDevelopmentRuntime:
                 model_id=self._world_author_model, parsed=None,
                 attempts=(_LifeDevelopmentAttempt(
                     request_hash=request_hash, request_binding=request_binding, raw_output=None,
-                    status=status, failure_code=code, outcome=outcome,
+                    status=status, failure_code=code, slot="primary", outcome=outcome,
                 ),),
             )
         try:
