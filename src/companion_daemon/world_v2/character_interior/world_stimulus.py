@@ -39,6 +39,7 @@ from ..character_life_response_contract import (
     validate_character_life_response_coverage,
 )
 from ..character_life_experience_runtime import CharacterLifeExperienceRuntime
+from ..occurrence_result_content_runtime import require_published_world_consequence
 from ..character_life_response_runtime import (
     CharacterLifeResponseRuntime,
     character_life_response_id,
@@ -1326,6 +1327,7 @@ class CharacterInteriorWorldStimulusRuntime:
         self._emotion_worker = emotion_worker
         self._owner_id = owner_id
         self._companion_actor_ref = companion_actor_ref
+        self._life_content_store = life_content_store
         self._world_life_response = CharacterLifeResponseRuntime(
             ledger=ledger, owner_actor_ref=companion_actor_ref,
         )
@@ -1772,6 +1774,23 @@ class CharacterInteriorWorldStimulusRuntime:
                 opportunity_identity=identity,
                 source_events=batch.source_events,
             )
+            try:
+                required = manifest.payload.get("world_life_response", {}).get("source_event_refs", ())
+                for ref in required:
+                    occurrence = next(item for item in current.world_occurrences
+                                      if item.settlement_event_ref == ref)
+                    check = dict(projection=current, occurrence=occurrence,
+                                 content_store=self._life_content_store)
+                    if self._ledger.blocks_event_loop:
+                        await asyncio.to_thread(require_published_world_consequence, **check)
+                    else:
+                        require_published_world_consequence(**check)
+            except (ValueError, OSError):
+                await self._record_technical_failure(
+                    process=active, source_event=source_event,
+                    failure_code="world_consequence_published_source_unavailable",
+                )
+                return result(work_status="technical_failure")
             transition = await self._interior.experience(
                 InteriorStimulus(
                     inner_turn_ref=f"world-stimulus:{active.trigger_id}:{active.claim_lease.attempt_id}",

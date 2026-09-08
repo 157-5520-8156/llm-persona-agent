@@ -29,6 +29,35 @@ def read_world_consequence_candidate(*, content_store, candidate) -> StoredLifeC
     return stored
 
 
+def require_published_world_consequence(*, projection, occurrence, content_store) -> None:
+    """A role must not be asked to read a consequence whose publication failed."""
+    selected = next((item for item in occurrence.candidate_outcomes
+                     if item.candidate_result_ref == occurrence.settled_outcome_ref), None)
+    if selected is None or occurrence.status != "settled":
+        raise ValueError("world consequence source is not settled")
+    original = read_world_consequence_candidate(content_store=content_store, candidate=selected)
+    descriptor = next((item for item in projection.life_content_descriptors
+                       if item.source_kind == "occurrence_settlement"
+                       and item.source_event_ref == occurrence.settlement_event_ref), None)
+    if descriptor is None or (
+        descriptor.content_kind != "occurrence_result"
+        or descriptor.source_entity_id != occurrence.occurrence_id
+        or descriptor.source_entity_revision != occurrence.entity_revision
+        or descriptor.source_world_revision != occurrence.settlement_world_revision
+        or descriptor.source_payload_hash != occurrence.settlement_payload_hash
+        or descriptor.content_ref != occurrence.result_payload_ref
+        or descriptor.content_payload_hash != original.content_payload_hash
+    ):
+        raise ValueError("world consequence source has no exact published descriptor")
+    published = content_store.read_exact(content_ref=descriptor.content_ref)
+    if published is None or (
+        published.content_kind not in {"outcome_candidate", "occurrence_result"}
+        or published.content_payload_hash != original.content_payload_hash
+        or published.text != original.text
+    ):
+        raise ValueError("world consequence published source body is unavailable")
+
+
 class OccurrenceResultContentRuntime:
     """Recoverable sidecar publication; it creates no Experience or character decision."""
 
