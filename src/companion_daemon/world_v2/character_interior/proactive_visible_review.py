@@ -71,8 +71,17 @@ class _MeteredProactiveModel:
 
 
 class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
-    def __init__(self, *, reviewer, expression_capabilities, **kwargs):
+    def __init__(
+        self, *, reviewer, expression_capabilities, visible_source_review_version="1", **kwargs
+    ):
+        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2"}:
+            raise ValueError("unsupported visible source review version")
+        if visible_source_review_version != "1" and not callable(
+            getattr(reviewer, "complete_json_with_usage", None)
+        ):
+            raise ValueError("versioned source review requires the explicit metered source reviewer")
         super().__init__(**kwargs)
+        self._visible_source_review_version = visible_source_review_version
         self._model = _MeteredProactiveModel(self._model)
         self._visible_reviewer = reviewer
         self._visible_capabilities = expression_capabilities
@@ -329,6 +338,7 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
                 output=output,
                 author_request_json=body,
                 reviewer=self._visible_reviewer,
+                review_version=self._visible_source_review_version,
             )
             try:
                 recorded = record_output(output)

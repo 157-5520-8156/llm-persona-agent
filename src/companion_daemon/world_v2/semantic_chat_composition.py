@@ -785,6 +785,7 @@ def build_semantic_chat_composition(
     source_closure_model: ChatCompletionModel | None = None,
     visible_source_review_required: bool = False,
     visible_author_tool_version: str = "1",
+    visible_source_review_version: str = "1",
     life_source_closure_model: ChatCompletionModel | None = None,
     expression_episode_observer_model: ChatCompletionModel | None = None,
     model_id_prefix: str,
@@ -808,6 +809,10 @@ def build_semantic_chat_composition(
 
     if not model_id_prefix:
         raise ValueError("semantic chat composition requires a model id prefix")
+    if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2"}:
+        raise ValueError("unsupported visible source review version")
+    if visible_source_review_version != "1" and not visible_source_review_required:
+        raise ValueError("versioned source reviewer requires explicit visible source review")
     if visible_author_tool_version not in {"1", "2", "3"}:
         raise ValueError("unsupported visible author tool version")
     if visible_author_tool_version != "1" and not visible_source_review_required:
@@ -994,6 +999,7 @@ def build_semantic_chat_composition(
         whole_candidate_mode=visible_source_review_required,
         visible_source_review_model=source_closure_model if visible_source_review_required else None,
         atomic_tool_envelope_version=visible_author_tool_version,
+        visible_source_review_version=visible_source_review_version,
         source_closure_model=None,
         report_relative_source_closure_model=None,
         source_closure_reselection_lane=None,

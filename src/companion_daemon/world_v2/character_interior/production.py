@@ -1043,6 +1043,7 @@ def compose_production_character_interior(
     whole_candidate_mode: bool = False,
     visible_source_review_model: object | None = None,
     atomic_tool_envelope_version: str = "1",
+    visible_source_review_version: str = "1",
     turn_store: _CharacterInteriorTurnStore | None = None,
     turn_owner_id: str = "character-interior:production",
     **_unused: object,
@@ -1061,6 +1062,7 @@ def compose_production_character_interior(
         whole_candidate_mode=whole_candidate_mode,
         visible_source_review_model=visible_source_review_model,
         atomic_tool_envelope_version=atomic_tool_envelope_version,
+        visible_source_review_version=visible_source_review_version,
         flash_model=flash_model,
         thinking_model=thinking_model,
         source_closure_model=source_closure_model,
@@ -1086,6 +1088,7 @@ def compose_production_character_interior(
         role = ReviewedProactiveStructuredRoleFaculty(
             model=flash_model, model_id=flash_model_id,
             reviewer=visible_source_review_model,
+            visible_source_review_version=visible_source_review_version,
             expression_capabilities=expression_capabilities,
         )
     else:

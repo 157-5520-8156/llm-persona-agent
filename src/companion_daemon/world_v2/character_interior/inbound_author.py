@@ -2426,12 +2426,21 @@ class _InboundCharacterAuthor:
         whole_candidate_mode: bool = False,
         visible_source_review_model: object | None = None,
         atomic_tool_envelope_version: str = "1",
+        visible_source_review_version: str = "1",
         **_unused: object,
     ) -> None:
         del _unused
         if type(whole_candidate_mode) is not bool:
             raise TypeError("whole_candidate_mode must be an explicit boolean")
         self._whole_candidate_mode = whole_candidate_mode
+        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2"}:
+            raise ValueError("unsupported visible source review version")
+        if visible_source_review_version != "1":
+            if not whole_candidate_mode:
+                raise ValueError("versioned source review requires whole-candidate authoring")
+            if not callable(getattr(visible_source_review_model, "complete_json_with_usage", None)):
+                raise ValueError("versioned source review requires the explicit metered source reviewer")
+        self._visible_source_review_version = visible_source_review_version
         if atomic_tool_envelope_version not in {"1", "2", "3"}:
             raise ValueError("unsupported atomic tool envelope version")
         if atomic_tool_envelope_version != "1" and not whole_candidate_mode:
@@ -2704,7 +2713,16 @@ class _InboundCharacterAuthor:
         if request.visible_source_requirement_json is not None:
             from ..visible_source_runtime import review_candidate
             try:
-                output = await review_candidate(request=request, output=output, author_request_json=self.visible_source_author_request(output.winning_model_call_id, expected_request_hash=output.winning_request_hash), reviewer=self._visible_source_review_model)
+                output = await review_candidate(
+                    request=request,
+                    output=output,
+                    author_request_json=self.visible_source_author_request(
+                        output.winning_model_call_id,
+                        expected_request_hash=output.winning_request_hash,
+                    ),
+                    reviewer=self._visible_source_review_model,
+                    review_version=self._visible_source_review_version,
+                )
             except ValidationTechnicalFailure as exc:
                 rejected = self._rejected_call_audits.get(_rejected_call_pin(request))
                 if rejected is not None:
