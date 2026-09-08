@@ -75,7 +75,7 @@ def test_dashboard_field_policy_requires_an_explicit_decision_for_every_projecti
         "intentionally_withheld"
     )
     assert DASHBOARD_LEDGER_FIELD_POLICY["proposal_audits"].exposure == "count_only"
-    assert DASHBOARD_LEDGER_FIELD_POLICY["private_impressions"].exposure == "typed_summary"
+    assert DASHBOARD_LEDGER_FIELD_POLICY["private_impressions"].exposure == "count_only"
     assert DASHBOARD_LEDGER_FIELD_POLICY["facts"].exposure == "typed_summary"
 
 
@@ -638,11 +638,8 @@ async def test_nonempty_projection_compiles_every_section_without_raw_sensitive_
         for metric in relationship["metrics"]
         if metric["key"] == "private_impressions"
     ) == 1
-    assert any(
-        item["kind"] == "private_impression"
-        and item["title"] == "说话有点急，但不是故意的。"
-        for item in relationship["highlights"]
-    )
+    assert not any(item["kind"] == "private_impression" for item in relationship["highlights"])
+    assert "说话有点急，但不是故意的。" not in json.dumps(payload, ensure_ascii=False)
     overview = payload["sections"]["overview_life"]["data"]
     plan_highlight = next(item for item in overview["highlights"] if item["kind"] == "plan")
     location_highlight = next(

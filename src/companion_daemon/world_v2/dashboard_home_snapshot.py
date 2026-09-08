@@ -29,12 +29,13 @@ from .audited_proposal_settlement import (
     find_terminal_audited_change,
 )
 from .dashboard_projection_adapter import DashboardRoomRouteCatalog, DashboardSceneRoute
+from .dashboard_life_intention import DashboardLifeIntention, read_dashboard_life_intention
 from .ledger import LedgerPort
 from .proposal_audit_schemas import ProposalAuditProjection
 from .proposal_envelope import DecisionProposal, TypedChange, validate_proposal_envelope
 from .room_projection import RoomProjectionMaterializer
 from .schema_core import FrozenModel
-from .schemas import LedgerProjection, ProjectionCursor
+from .schemas import ExperienceWorldLifeResponseBinding, LedgerProjection, ProjectionCursor
 
 
 _DETAIL_LIMIT = 48
@@ -48,7 +49,6 @@ _KIND_KEEP: Mapping[str, int] = MappingProxyType(
         "affect_episode": 3,
         "appraisal": 2,
         "relationship_state": 2,
-        "private_impression": 3,
         "response_expectation": 2,
         "revisit_intention": 2,
         "expectation_assessment": 2,
@@ -79,7 +79,6 @@ _NOW_KINDS: tuple[str, ...] = (
     "attention",
     "affect_episode",
     "relationship_state",
-    "private_impression",
     "response_expectation",
     "revisit_intention",
     "interaction_bid",
@@ -313,6 +312,18 @@ _CUE_LABELS: Mapping[str, str] = MappingProxyType(
         "world_continuity": "生活连续性",
     }
 )
+_MEMORY_STATUS_LABELS = MappingProxyType({
+    "pending": "待复核", "active": "已保留", "rejected": "未保留", "forgotten": "已遗忘",
+})
+_RETENTION_LABELS = MappingProxyType({
+    "identity_relevance": "与身份有关", "relationship_continuity": "关系连续性",
+    "boundary_relevance": "与边界有关", "unfinished_business": "未完成的事",
+    "repeated_pattern": "重复的模式", "future_utility": "以后有用",
+    "emotional_salience": "情绪意义", "world_continuity": "生活连续性",
+})
+_MEMORY_SOURCE_LABELS = MappingProxyType({
+    "fact": "已接受事实", "experience": "已提交经历", "terminal_thread": "已结束事项",
+})
 _MEANING_LABELS: Mapping[str, str] = MappingProxyType(
     {
         "ordinary": "普通往来",
@@ -674,7 +685,6 @@ _TYPED_SUMMARY_FIELDS = frozenset(
         "affect_baselines",
         "affect_episodes",
         "facts",
-        "private_impressions",
         "response_expectation_assessments",
     }
 )
@@ -1200,20 +1210,34 @@ class DashboardHomeSnapshotModule:
             ),
         )
 
-    @staticmethod
     def _overview_life(
+        self,
         *,
         projection: LedgerProjection,
         cursor: ProjectionCursor,
     ) -> DashboardOverviewLifeSection:
         metrics = _overview_life_metrics(projection)
-        all_highlights = _overview_life_summaries(projection)
+        # Only the bounded display candidates need additional immutable reads.
+        plans = sorted(projection.plans, key=lambda item: (
+            item.last_transitioned_at or datetime.min.replace(tzinfo=UTC), item.plan_id,
+        ))[-_KIND_KEEP["plan"]:]
+        intentions = {
+            plan.plan_id: material for plan in plans
+            if (material := read_dashboard_life_intention(
+                ledger=self._ledger, projection=projection, plan=plan,
+            )) is not None
+        }
+        all_highlights = _overview_life_summaries(
+            projection, intentions=intentions, plan_display_candidates=plans,
+        )
         highlights = _bounded_summaries(all_highlights)
         return DashboardOverviewLifeSection(
             state=_state_from_metrics(metrics),
             observed_at=projection.logical_time,
             cursor=cursor,
-            coverage=_coverage(len(all_highlights), len(highlights)),
+            coverage=_coverage(
+                len(all_highlights) + len(projection.plans) - len(plans), len(highlights),
+            ),
             data=DashboardOverviewLifeData(metrics=metrics, highlights=highlights),
         )
 
@@ -1687,6 +1711,8 @@ def _ledger_qualification_metrics(
 
 def _overview_life_summaries(
     projection: LedgerProjection,
+    *, intentions: Mapping[str, DashboardLifeIntention] | None = None,
+    plan_display_candidates: Sequence[object] | None = None,
 ) -> tuple[DashboardEntitySummary, ...]:
     summaries: list[DashboardEntitySummary] = []
     for item in projection.goals:
@@ -1800,17 +1826,37 @@ def _overview_life_summaries(
                 ),
             )
         )
-    for item in projection.plans:
+    for item in projection.plans if plan_display_candidates is None else plan_display_candidates:
+        intention = (intentions or {}).get(item.plan_id)
+        plan_values = [_value("importance_bp", "重要度", item.importance_bp)]
+        window = getattr(item, "scheduled_window", None)
+        if window is not None:
+            plan_values.extend((
+                _value("scheduled_start", "计划开始", window.opens_at.isoformat()),
+                _value("scheduled_end", "计划结束", window.closes_at.isoformat()),
+            ))
+        if intention is not None:
+            plan_values.extend((
+                _value("intention", "原意图", intention.intention),
+                _value("intent_source", "意图来源", intention.source_kind, {
+                    "day_open": "独处时的自主选择", "chat": "同次对话中的自主选择",
+                    "world": "对已结算事件的自主回应",
+                }[intention.source_kind]),
+                _value("execution_scope", "活动范围", "self_directed", "自己进行的活动"),
+                _value("selected_at", "选择时间", intention.selected_at.isoformat()),
+            ))
         summaries.append(
             _summary(
                 kind="plan",
                 kind_label="计划与活动",
                 entity_id=item.plan_id,
-                title=_activity_title(item.activity_kind),
+                title=(_short_text(intention.intention, limit=80) if intention else None)
+                or _activity_title(item.activity_kind),
+                detail=intention.intention if intention else None,
                 status=_plan_display_status(item, projection.logical_time),
                 occurred_at=item.last_transitioned_at,
                 privacy_class=item.privacy_class,
-                values=(_value("importance_bp", "重要度", item.importance_bp),),
+                values=tuple(plan_values),
             )
         )
     for item in projection.world_occurrences:
@@ -1819,12 +1865,16 @@ def _overview_life_summaries(
                 kind="world_occurrence",
                 kind_label="世界事件",
                 entity_id=item.occurrence_id,
-                title="刚发生过一件事",
+                title="世界事件",
                 status=item.status,
                 occurred_at=item.settled_at or item.activated_at,
+                privacy_class=getattr(item, "visibility", "withhold"),
                 values=(
                     _value("candidate_outcome_count", "候选结果", len(item.candidate_outcomes)),
                     _value("observation_count", "观察", len(item.observation_refs)),
+                    _value("world_environment_status", "环境结果正文",
+                           "not_read" if item.status == "settled" else "not_settled",
+                           "未读取" if item.status == "settled" else "尚未结算"),
                 ),
             )
         )
@@ -1864,10 +1914,38 @@ def _overview_life_summaries(
                         "参与者",
                         len(participant_refs),
                     ),
+                    *_experience_source_values(values),
                 ),
             )
         )
     return tuple(summaries)
+
+
+def _experience_source_values(values) -> tuple[DashboardLabeledValue, ...]:
+    bindings = getattr(values, "source_bindings", ())
+    if len(bindings) != 1:
+        return ()
+    source = bindings[0]
+    labels = {
+        "occurrence_settlement": "已结算世界事件",
+        "execution_receipt": "执行回执",
+        "world_life_response": "已结算事件与独立角色回应",
+    }
+    if source.source_kind not in labels:
+        return ()
+    result = [_value("source_kind", "经历来源", source.source_kind, labels[source.source_kind])]
+    if source.source_kind in {"occurrence_settlement", "world_life_response"}:
+        result.append(_value("world_environment_status", "环境结果正文", "not_read", "未读取"))
+    # Only this composite contains a response to this exact settlement. Nearby
+    # appraisals or activities cannot fill in a missing response, including null.
+    if isinstance(source, ExperienceWorldLifeResponseBinding):
+        explicit_none = source.response.response_text is None
+        result.append(_value(
+            "character_response_status", "角色回应",
+            "explicit_none" if explicit_none else "recorded_private",
+            "明确无回应文本" if explicit_none else "已记录私态（正文不展示）",
+        ))
+    return tuple(result)
 
 
 def _facts_memory_inner_summaries(
@@ -1890,6 +1968,28 @@ def _facts_memory_inner_summaries(
         )
     for item in projection.memory_candidates:
         values = item.values
+        memory_values = [
+            _value("retrieval_strength_bp", "提取强度", values.retrieval_strength_bp),
+            _value("reinforcement_count", "强化次数", values.reinforcement_count),
+        ]
+        rationales = tuple(getattr(values, "retention_rationales", ()))
+        if rationales:
+            memory_values.append(_value("retention_rationales", "保留依据", "、".join(
+                _RETENTION_LABELS.get(reason, "其他保留依据") for reason in rationales
+            )))
+        kinds = tuple(dict.fromkeys(
+            source.source_kind for source in getattr(values, "source_bindings", ())
+            if source.source_kind in _MEMORY_SOURCE_LABELS
+        ))
+        if kinds:
+            memory_values.append(_value("source_kind", "来源类型", ",".join(kinds), "、".join(
+                _MEMORY_SOURCE_LABELS[kind] for kind in kinds
+            )))
+        for key, label in (("review_due_at", "下次复核"), ("reviewed_at", "已复核"),
+                           ("forgotten_at", "遗忘时间")):
+            at = getattr(values, key, None)
+            if at is not None:
+                memory_values.append(_value(key, label, at.isoformat()))
         summaries.append(
             _summary(
                 kind="memory_candidate",
@@ -1897,12 +1997,10 @@ def _facts_memory_inner_summaries(
                 entity_id=item.candidate_id,
                 title=_label(values.cue_kind, _CUE_LABELS),
                 status=values.status,
+                status_mapping=_MEMORY_STATUS_LABELS,
                 occurred_at=item.updated_at,
                 privacy_class=values.privacy_ceiling,
-                values=(
-                    _value("retrieval_strength_bp", "提取强度", values.retrieval_strength_bp),
-                    _value("reinforcement_count", "强化次数", values.reinforcement_count),
-                ),
+                values=tuple(memory_values),
             )
         )
     if projection.character_core is not None:
@@ -2138,20 +2236,6 @@ def _relationship_summaries(
                 detail=_short_text(item.hoped_response),
                 occurred_at=item.opened_at,
                 values=(_bp_value("pressure_bp", "在意", item.pressure_bp),),
-            )
-        )
-    for item in projection.private_impressions:
-        if item.status != "active":
-            continue
-        summaries.append(
-            _summary(
-                kind="private_impression",
-                kind_label="对你的印象",
-                entity_id=item.impression_id,
-                title=_short_text(item.reflection_summary, limit=80) or "她心里有一个对你的判断",
-                status=item.status,
-                occurred_at=item.last_supported,
-                values=(_bp_value("confidence_bp", "把握", item.confidence_bp),),
             )
         )
     return tuple(summaries)
