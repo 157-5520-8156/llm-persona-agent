@@ -43,6 +43,8 @@ from .media_thread_acceptance_manifest import MediaDeliveryThreadAcceptanceManif
 from .media_thread_acceptance_runtime import MediaDeliveryThreadAcceptanceRuntime
 from .media_thread_proposal_compiler import MediaDeliveryThreadProposalCompiler
 
+from .world_life_intent_contract import WorldLifeIntentOrigin
+from .world_life_intent_runtime import derive_world_life_plan, validate_world_life_plan_event
 from .chat_life_intent_contract import ChatLifeIntentOrigin
 from .chat_life_intent_runtime import derive_chat_life_plan, validate_chat_life_plan_event
 from .proposal_envelope import (
@@ -349,9 +351,20 @@ _LIFE_INTENT = SpecializedProposalCapability(
     reverse_verifier_ref="chat-life-intent-reverse-verifier.1",
 )
 
+_WORLD_LIFE_INTENT = SpecializedProposalCapability(
+    change_kind="world_life_intent", transition="plan",
+    compiler_ref="world-life-intent-compiler.1", manifest_ref="world-life-intent-origin.1",
+    reverse_verifier_ref="world-life-intent-reverse-verifier.1",
+)
+
 _SPECIALIZED_AUTHORITY_SEAMS: Mapping[tuple[str, str, str], SpecializedAuthoritySeam] = (
     MappingProxyType(
         {
+            (_WORLD_LIFE_INTENT.compiler_ref, _WORLD_LIFE_INTENT.manifest_ref,
+             _WORLD_LIFE_INTENT.reverse_verifier_ref): SpecializedAuthoritySeam(
+                compiler=derive_world_life_plan, manifest=WorldLifeIntentOrigin,
+                reverse_verifier=validate_world_life_plan_event,
+            ),
             (_LIFE_INTENT.compiler_ref, _LIFE_INTENT.manifest_ref, _LIFE_INTENT.reverse_verifier_ref): SpecializedAuthoritySeam(
                 compiler=derive_chat_life_plan, manifest=ChatLifeIntentOrigin,
                 reverse_verifier=validate_chat_life_plan_event,
@@ -442,7 +455,7 @@ _EXPECTED_PRODUCTION_PROPOSAL_GRAMMARS: Mapping[
         ),
         "settled_world_appraisal": ProductionProposalGrammar(
             lane_id="settled_world_appraisal",
-            capabilities=(_APPRAISAL, _AFFECT),
+            capabilities=(_APPRAISAL, _AFFECT, _WORLD_LIFE_INTENT),
             allows_no_change_decision=True,
         ),
         # Silence / disruption share settled-world discipline: appraisal plus

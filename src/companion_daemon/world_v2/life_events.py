@@ -11,6 +11,7 @@ from pydantic import Field, model_validator
 
 from .activity_lifecycle_contract import ActivityLifecycleProposalRecordedPayload
 from .chat_life_intent_contract import ChatLifeIntentOrigin
+from .world_life_intent_contract import WorldLifeIntentOrigin
 from .schemas import (
     BiographicalCoordinateReplacement,
     EvidenceRef,
@@ -116,9 +117,14 @@ class ActivityPlannedPayload(DomainMutationPayload):
     chat_intent_origin: ChatLifeIntentOrigin | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    world_intent_origin: WorldLifeIntentOrigin | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def creates_planned_activity(self) -> ActivityPlannedPayload:
+        if self.chat_intent_origin is not None and self.world_intent_origin is not None:
+            raise ValueError("ActivityPlanned cannot combine different role intent origins")
         if self.expected_entity_revision != 0 or self.plan.entity_revision != 1:
             raise ValueError("ActivityPlanned must create entity revision one")
         if self.plan.status != "planned":

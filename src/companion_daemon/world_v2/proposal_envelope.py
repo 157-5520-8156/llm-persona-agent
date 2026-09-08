@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_valid
 
 from .private_turn_state import PrivateTurnState
 from .chat_life_intent_contract import LifeIntentPayload
+from .world_life_intent_contract import WorldLifeIntentPayload
 from .schema_core import FrozenModel, PrivacyClass
 
 
@@ -82,6 +83,7 @@ CHANGE_TRANSITION_REGISTRY: dict[str, frozenset[str]] = {
     "resource_transition": frozenset({"adjust", "clock_adjust", "compensate"}),
     "attention_transition": frozenset({"change", "expire", "compensate"}),
     "life_intent": frozenset({"plan"}),
+    "world_life_intent": frozenset({"plan"}),
     "activity_transition": frozenset({"plan", "start", "pause", "resume", "complete", "abandon"}),
     "location_transition": frozenset({"change", "compensate"}),
     "world_occurrence_transition": frozenset({"commit", "cancel", "expire"}),
@@ -231,6 +233,11 @@ PAYLOAD_CONTRACTS: dict[str, _PayloadContract] = {
         "execution_scope": str, "intention": str, "start_after_seconds": int,
         "duration_seconds": int, "importance_bp": int, "actor_ref": str,
         "source_observation_ref": str,
+    }),
+    "world_life_intent": _PayloadContract({
+        "execution_scope": str, "intention": str, "start_after_seconds": int,
+        "duration_seconds": int, "importance_bp": int, "actor_ref": str,
+        "source_event_ref": str,
     }),
     "activity_transition": _PayloadContract(
         {"activity_id": str, "plan_ref": str, "phase": str, "participants": list, "location": str}
@@ -1382,6 +1389,7 @@ PAYLOAD_MODEL_REGISTRY: dict[str, type[FrozenModel]] = {
     "resource_transition": ResourcePayload,
     "attention_transition": AttentionPayload,
     "life_intent": LifeIntentPayload,
+    "world_life_intent": WorldLifeIntentPayload,
     "activity_transition": ActivityPayload,
     "location_transition": LocationPayload,
     "world_occurrence_transition": WorldOccurrencePayload,
@@ -1549,7 +1557,9 @@ class ProposalEnvelope(FrozenModel):
     evaluated_world_revision: int = Field(ge=0)
     # Legacy generic writes keep .1 bytes; explicit chat life intents opt into .3.
     # .2 belongs to the separate FactCommitProposalEnvelopeV2 grammar.
-    schema_registry_version: Literal["world-v2-proposals.1", "world-v2-proposals.3"] = "world-v2-proposals.1"
+    schema_registry_version: Literal[
+        "world-v2-proposals.1", "world-v2-proposals.3", "world-v2-proposals.4"
+    ] = "world-v2-proposals.1"
     evidence_refs: tuple[ProposalEvidenceRef, ...] = Field(default=(), max_length=128)
     proposed_changes: tuple[TypedChange, ...] = Field(default=(), max_length=64)
     action_intents: tuple[ProposalActionIntent, ...] = Field(default=(), max_length=64)
@@ -1803,6 +1813,10 @@ class DecisionProposal(ProposalEnvelope):
 
     @model_validator(mode="after")
     def summary_views_reference_their_typed_changes(self) -> Self:
+        if self.schema_registry_version != "world-v2-proposals.4" and any(
+            change.kind == "world_life_intent" for change in self.proposed_changes
+        ):
+            raise ValueError("world_life_intent requires proposal registry .4")
         if self.schema_registry_version == "world-v2-proposals.1" and any(
             change.kind == "life_intent" for change in self.proposed_changes
         ):

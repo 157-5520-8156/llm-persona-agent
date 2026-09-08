@@ -17,6 +17,7 @@ from .event_identity import domain_idempotency_key
 from .life_events import ActivityPlannedPayload
 from .proposal_audit_schemas import RecordedModelResultAudit
 from .proposal_envelope import DecisionProposal, validate_proposal_envelope
+from .role_life_intent_reader import RoleLifeIntentActivityReader
 from .schemas import DueWindow, EvidenceRef, PlanStateProjection, ProjectionCursor, WorldEvent
 from .unified_inbound_decision import inspect_unified_inbound_decision
 
@@ -338,165 +339,13 @@ class CompositeActivityPlanMaterialReader:
         return None
 
 
-class _ChatLifeIntentActivityReader:
-    """Expose accepted intent and its exact lifecycle state, never results."""
-
+class _ChatLifeIntentActivityReader(RoleLifeIntentActivityReader):
     def __init__(self, *, ledger) -> None:
-        self._ledger = ledger
-
-    def _read(self, *, plan_id, expected_cursor, actor_ref, viewer_privacy_ceiling, status):
-        try:
-            return self._read_context(
-                status=status,
-                plan_id=plan_id,
-                expected_cursor=expected_cursor,
-                actor_ref=actor_ref,
-                viewer_privacy_ceiling=viewer_privacy_ceiling,
-            )
-        except (ValueError, TypeError, KeyError):
-            return None
-
-    def _read_context(self, *, plan_id, expected_cursor, actor_ref, viewer_privacy_ceiling, status):
-        from .schemas import validate_plan_authority_state
-        from .world_life_context import (
-            AcceptedActivityIntention,
-            ActiveActivityContextItem,
-            CompletedActivityContextItem,
-            ActiveWorldOccurrenceProposalBinding,
-            WorldLifeSourceBinding,
+        super().__init__(
+            ledger=ledger, plan_prefix=PLAN_PREFIX, event_prefix="event:chat-life-intent:",
+            origin_field="chat_intent_origin", derive=derive_chat_life_plan,
+            validate=validate_chat_life_plan_event,
         )
-
-        if not plan_id.startswith(PLAN_PREFIX) or viewer_privacy_ceiling not in {
-            "private",
-            "withhold",
-        }:
-            return None
-        projection = self._ledger.project()
-        cursor = ProjectionCursor(
-            world_revision=projection.world_revision,
-            deliberation_revision=projection.deliberation_revision,
-            ledger_sequence=projection.ledger_sequence,
-        )
-        if cursor != expected_cursor:
-            return None
-        plan = next((x for x in projection.plans if x.plan_id == plan_id), None)
-        if plan is None or plan.status != status or plan.owner_actor_ref != actor_ref:
-            return None
-        validate_plan_authority_state(
-            (plan,), projection.committed_world_event_refs, logical_time=projection.logical_time
-        )
-        authority = {x.event_id: x for x in projection.committed_world_event_refs}
-        bindings = []
-        planned = None
-        for event_ref, event_type in (
-            ("event:chat-life-intent:" + plan_id.removeprefix(PLAN_PREFIX), "ActivityPlanned"),
-            (plan.authority_origin.accepted_event_ref, plan.authority_origin.accepted_event_type),
-        ):
-            ref = authority.get(event_ref)
-            located = self._ledger.lookup_event_commit(event_ref)
-            if (
-                ref is None
-                or located is None
-                or any(
-                    (
-                        ref.event_type != event_type,
-                        located[0].event_type != event_type,
-                        located[0].world_id != self._ledger.world_id,
-                        located[0].payload_hash != ref.payload_hash,
-                        located[0].logical_time != ref.logical_time,
-                        located[1].ledger_sequence > cursor.ledger_sequence,
-                        located[1].world_revision > cursor.world_revision,
-                    )
-                )
-            ):
-                return None
-            if event_type == "ActivityPlanned":
-                planned = ActivityPlannedPayload.model_validate_json(located[0].payload_json)
-                validate_chat_life_plan_event(state=projection, event=located[0], payload=planned)
-            elif located[0].payload().get("plan_id") != plan_id:
-                return None
-            bindings.append(
-                WorldLifeSourceBinding(
-                    authority_event_ref=event_ref,
-                    authority_world_revision=ref.world_revision,
-                    authority_payload_hash=ref.payload_hash,
-                )
-            )
-        if planned is None or any(
-            getattr(planned.plan, field) != getattr(plan, field)
-            for field in (
-                "plan_id",
-                "activity_id",
-                "activity_kind",
-                "owner_actor_ref",
-                "location_ref",
-                "participant_refs",
-                "privacy_class",
-                "scheduled_window",
-                "importance_bp",
-            )
-        ):
-            return None
-        origin = planned.chat_intent_origin
-        proposal = self._ledger.lookup_event_commit(origin.proposal_event_ref)
-        if proposal is None or any(
-            (
-                proposal[0].event_type != "ProposalRecorded",
-                proposal[0].world_id != self._ledger.world_id,
-                proposal[0].payload_hash != origin.proposal_payload_hash,
-                proposal[1].ledger_sequence > cursor.ledger_sequence,
-            )
-        ):
-            return None
-        _, intent = derive_chat_life_plan(
-            state=projection,
-            world_id=self._ledger.world_id,
-            proposal_id=origin.proposal_id,
-            owner_actor_ref=actor_ref,
-        )
-        # A concurrent advance invalidates this foreground read rather than
-        # reading a lifecycle head from a different snapshot.
-        head = self._ledger.project()
-        if (head.world_revision, head.deliberation_revision, head.ledger_sequence) != (
-            cursor.world_revision,
-            cursor.deliberation_revision,
-            cursor.ledger_sequence,
-        ):
-            return None
-        item_type = (
-            ActiveActivityContextItem if status == "active" else CompletedActivityContextItem
-        )
-        state_coordinates = (
-            {
-                "participant_refs": plan.participant_refs,
-                "location_ref": plan.location_ref,
-                "active_since": plan.authority_origin.accepted_at,
-            }
-            if status == "active"
-            else {"ended_at": plan.authority_origin.accepted_at}
-        )
-        return item_type(
-            **state_coordinates,
-            activity_event_ref=plan.authority_origin.accepted_event_ref,
-            plan_id=plan_id,
-            plan_entity_revision=plan.entity_revision,
-            owner_actor_ref=actor_ref,
-            activity_kind=plan.activity_kind,
-            privacy_class=plan.privacy_class,
-            accepted_intention=AcceptedActivityIntention(
-                content_ref=origin.proposal_event_ref + "#" + origin.change_id,
-                content_payload_hash=hashlib.sha256(intent.intention.encode()).hexdigest(),
-                text=intent.intention,
-                truncated=False,
-            ),
-            proposal_source=ActiveWorldOccurrenceProposalBinding(
-                authority_event_ref=origin.proposal_event_ref,
-                authority_ledger_sequence=proposal[1].ledger_sequence,
-                authority_payload_hash=origin.proposal_payload_hash,
-            ),
-            source_bindings=tuple(bindings),
-        )
-
 
 class ChatLifeIntentActiveReader(_ChatLifeIntentActivityReader):
     def read_active_plan(self, **kwargs):
@@ -517,6 +366,18 @@ class CompositeActiveActivityReader:
     def read_active_plan(self, **kwargs):
         for reader in self._readers:
             value = reader.read_active_plan(**kwargs)
+            if value is not None:
+                return value
+        return None
+
+
+class CompositeCompletedActivityReader:
+    def __init__(self, *readers) -> None:
+        self._readers = tuple(x for x in readers if x is not None)
+
+    def read_completed_plan(self, **kwargs):
+        for reader in self._readers:
+            value = reader.read_completed_plan(**kwargs)
             if value is not None:
                 return value
         return None

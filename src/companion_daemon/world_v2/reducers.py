@@ -12618,7 +12618,9 @@ def _activity_planned(
     logical_time = _require_life_time(state, event)
     payload = _validated_life_payload(state, event, ActivityPlannedPayload)
     from .chat_life_intent_runtime import validate_chat_life_plan_event
+    from .world_life_intent_runtime import validate_world_life_plan_event
     validate_chat_life_plan_event(state=state, event=event, payload=payload)
+    validate_world_life_plan_event(state=state, event=event, payload=payload)
     return state.model_copy(
         update={
             "plans": plan_activity(
