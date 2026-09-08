@@ -502,21 +502,29 @@ def _prepared_turn_json(
     snapshot: InnerLifeSnapshot,
     private_self_lineage: _PrivateSelfLineage,
     entry: _TurnCacheEntry,
+    recall_initial_snapshot: InnerLifeSnapshot | None = None,
 ) -> str:
-    return json.dumps(
-        {
-            "contract": "character-interior-prepared-turn.1",
-            "result": result.model_dump(mode="json"),
-            "snapshot": _durable_snapshot_value(snapshot),
-            "private_self_lineage": private_self_lineage.model_dump(mode="json"),
-            "presented_prefetch_traces": [
-                item.model_dump(mode="json") for item in (entry.presented_prefetch_traces or ())
-            ],
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
+    from .inbound_output_record import (
+        PREPARED_CONTRACT,
+        _validated_initial_snapshot,
     )
+
+    payload = {
+        "contract": "character-interior-prepared-turn.1",
+        "result": result.model_dump(mode="json"),
+        "snapshot": _durable_snapshot_value(snapshot),
+        "private_self_lineage": private_self_lineage.model_dump(mode="json"),
+        "presented_prefetch_traces": [
+            item.model_dump(mode="json") for item in (entry.presented_prefetch_traces or ())
+        ],
+    }
+    if recall_initial_snapshot is not None:
+        payload["contract"] = PREPARED_CONTRACT
+        payload["recall_initial_snapshot"] = _durable_snapshot_value(recall_initial_snapshot)
+        _validated_initial_snapshot(
+            payload, result=result, snapshot=snapshot, private=private_self_lineage
+        )
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def _durable_snapshot_value(snapshot: InnerLifeSnapshot) -> dict[str, object]:
@@ -562,6 +570,8 @@ def _recall_turn_json(
 
 def _restore_prepared_turn(
     raw: str,
+    *,
+    purpose: str,
 ) -> tuple[
     _InteriorRoleResult,
     InnerLifeSnapshot,
@@ -570,8 +580,11 @@ def _restore_prepared_turn(
 ]:
     try:
         payload = json.loads(raw)
-        if payload.get("contract") != "character-interior-prepared-turn.1":
-            raise ValueError("prepared turn contract is unsupported")
+        if (
+            payload.get("contract") == "character-interior-prepared-turn.2"
+            and purpose != "inbound_turn"
+        ):
+            raise ValueError("new prepared contract is limited to inbound turns")
         result = _InteriorRoleResult.model_validate_json(
             json.dumps(payload["result"], ensure_ascii=False)
         )
@@ -587,6 +600,9 @@ def _restore_prepared_turn(
             PrefetchPresentationAudit.model_validate_json(json.dumps(item, ensure_ascii=False))
             for item in payload.get("presented_prefetch_traces", ())
         )
+        from .inbound_output_record import _validated_initial_snapshot
+
+        _validated_initial_snapshot(payload, result=result, snapshot=snapshot, private=lineage)
         return result, snapshot, lineage, traces
     except (KeyError, TypeError, ValueError, ValidationError, json.JSONDecodeError) as exc:
         raise _InteriorTechnicalError("invalid_durable_turn_checkpoint") from exc
@@ -647,6 +663,7 @@ def _checkpoint_contract(raw: str) -> str:
         raise _InteriorTechnicalError("invalid_durable_turn_checkpoint") from exc
     if contract not in {
         "character-interior-prepared-turn.1",
+        "character-interior-prepared-turn.2",
         "character-interior-recall-checkpoint.1",
     }:
         raise _InteriorTechnicalError("invalid_durable_turn_checkpoint")
@@ -849,11 +866,36 @@ class CharacterInterior:
         if durable is None or self._turn_store is None:
             return durable[1] if durable is not None else None
         request, record = durable
+        # Preserve the original checkpoint, not a later Context reconstruction.
+        # Only inbound output .2 needs this new carrier; other purposes retain .1.
+        from .inbound_output_record import DECISION_CONTRACT
+
+        initial_snapshot = None
+        if (
+            request.purpose == "inbound_turn"
+            and result.decision.get("contract") == DECISION_CONTRACT
+            and private_self_lineage.relation == "selective_recall"
+        ):
+            previous = _restore_recall_turn(record.authored_state_json or "")
+            if (
+                previous.stage != "recall_resolved"
+                or previous.current_snapshot != snapshot
+                or previous.initial_result.author_lineage
+                != private_self_lineage.initial_author_lineage
+                or previous.initial_result.recall_query != private_self_lineage.recall_query
+                or previous.initial_result.summary
+                != private_self_lineage.initial_private_self.summary
+                or previous.initial_result.attended_source_refs
+                != private_self_lineage.initial_private_self.attended_source_refs
+            ):
+                raise _InteriorTechnicalError("invalid_durable_turn_checkpoint", snapshot=snapshot)
+            initial_snapshot = previous.initial_snapshot
         raw = _prepared_turn_json(
             result=result,
             snapshot=snapshot,
             private_self_lineage=private_self_lineage,
             entry=entry,
+            recall_initial_snapshot=initial_snapshot,
         )
         try:
             return self._turn_store.checkpoint(
@@ -1021,7 +1063,7 @@ class CharacterInterior:
             result = InnerDecision.model_validate_json(record.terminal_result_json)
             request = record.request
             prepared, snapshot, private, _ = _restore_prepared_turn(
-                record.authored_state_json or ""
+                record.authored_state_json or "", purpose=purpose
             )
             decision = result.decision
             binding = snapshot.capability_scope.value
@@ -1514,11 +1556,12 @@ class CharacterInterior:
                     resume_recall: _RecallTurnCheckpoint | None = None
                     if durable is not None and durable[1].state == "checkpointed":
                         checkpoint_raw = durable[1].authored_state_json or ""
-                        if _checkpoint_contract(checkpoint_raw) == (
-                            "character-interior-prepared-turn.1"
-                        ):
+                        if _checkpoint_contract(checkpoint_raw) in {
+                            "character-interior-prepared-turn.1",
+                            "character-interior-prepared-turn.2",
+                        }:
                             result, snapshot, private_self_lineage, traces = _restore_prepared_turn(
-                                checkpoint_raw
+                                checkpoint_raw, purpose=stimulus.purpose
                             )
                             entry.snapshot = snapshot
                             entry.presented_prefetch_traces = list(traces)
@@ -1701,11 +1744,12 @@ class CharacterInterior:
                     resume_recall: _RecallTurnCheckpoint | None = None
                     if durable is not None and durable[1].state == "checkpointed":
                         checkpoint_raw = durable[1].authored_state_json or ""
-                        if _checkpoint_contract(checkpoint_raw) == (
-                            "character-interior-prepared-turn.1"
-                        ):
+                        if _checkpoint_contract(checkpoint_raw) in {
+                            "character-interior-prepared-turn.1",
+                            "character-interior-prepared-turn.2",
+                        }:
                             result, snapshot, private_self_lineage, traces = _restore_prepared_turn(
-                                checkpoint_raw
+                                checkpoint_raw, purpose=opportunity.purpose
                             )
                             entry.snapshot = snapshot
                             entry.presented_prefetch_traces = list(traces)

@@ -33,6 +33,59 @@ from .turn_store import _CharacterInteriorTurnStore, _TurnCoordinationRequest
 
 DECISION_CONTRACT = "character-interior-inbound-turn-decision.2"
 LEGACY_DECISION_CONTRACT = "character-interior-inbound-turn-decision.1"
+PREPARED_CONTRACT = "character-interior-prepared-turn.2"
+LEGACY_PREPARED_CONTRACT = "character-interior-prepared-turn.1"
+# Only the new inbound selective-Recall carrier has this whole-record bound.
+# Legacy prepared bytes and limits are unchanged. Nothing is truncated.
+MAX_INBOUND_PREPARED_BYTES = 3 * MAX_MODEL_OUTPUT_BYTES
+
+
+def _validated_initial_snapshot(
+    prepared: dict[str, object],
+    *,
+    result: _InteriorRoleResult,
+    snapshot: InnerLifeSnapshot,
+    private: _PrivateSelfLineage,
+) -> InnerLifeSnapshot | None:
+    """Validate the original Core checkpoint anchor, never a supplied trace alone."""
+    contract = prepared.get("contract")
+    if contract == LEGACY_PREPARED_CONTRACT:
+        if "recall_initial_snapshot" in prepared:
+            raise ValueError("legacy prepared turn cannot acquire an initial snapshot")
+        return None
+    if contract != PREPARED_CONTRACT:
+        raise ValueError("unsupported prepared turn contract")
+    if len(_canonical(prepared).encode("utf-8")) > MAX_INBOUND_PREPARED_BYTES:
+        raise ValueError("inbound prepared turn exceeds its byte limit")
+    if (
+        result.decision.get("contract") != DECISION_CONTRACT
+        or private.relation != "selective_recall"
+        or private.initial_author_lineage is None
+        or private.final_author_lineage != result.author_lineage
+    ):
+        raise ValueError("new prepared turn requires an authored inbound Recall decision")
+    initial = InnerLifeSnapshot.model_validate_json(_canonical(prepared["recall_initial_snapshot"]))
+    if (
+        (initial.snapshot_id, initial.snapshot_hash)
+        != (private.initial_snapshot_id, private.initial_snapshot_hash)
+        or (snapshot.snapshot_id, snapshot.snapshot_hash)
+        != (private.final_snapshot_id, private.final_snapshot_hash)
+        or any(
+            getattr(initial, name) != getattr(snapshot, name)
+            for name in (
+                "world_id",
+                "actor_ref",
+                "cursor",
+                "logical_time",
+                "capability_scope",
+                "viewer_scope",
+                "privacy_scope",
+                "context_compiler",
+            )
+        )
+    ):
+        raise ValueError("inbound Recall initial snapshot escaped its original pin")
+    return initial
 
 
 def _canonical(value: object) -> str:
@@ -268,8 +321,6 @@ def _restore_completed_inbound_output(
     try:
         terminal = InnerDecision.model_validate_json(row.terminal_result_json)
         prepared = json.loads(row.authored_state_json)
-        if prepared.get("contract") != "character-interior-prepared-turn.1":
-            raise ValueError("unsupported checkpoint")
         role = _InteriorRoleResult.model_validate_json(_canonical(prepared["result"]))
         snapshot = InnerLifeSnapshot.model_validate_json(_canonical(prepared["snapshot"]))
         private = _PrivateSelfLineage.model_validate_json(
@@ -278,6 +329,9 @@ def _restore_completed_inbound_output(
         presentations = tuple(
             PrefetchPresentationAudit.model_validate_json(_canonical(item))
             for item in prepared["presented_prefetch_traces"]
+        )
+        initial_snapshot = _validated_initial_snapshot(
+            prepared, result=role, snapshot=snapshot, private=private
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("inbound_output_record.invalid_original_checkpoint") from exc
@@ -340,9 +394,42 @@ def _restore_completed_inbound_output(
         record.author_lineage.model_call_id,
         *(item.model_call_id for item in record.output.authored_candidate_audits),
     }
+    initial_prefetch = original_prefetch
+    if initial_snapshot is not None:
+        raw = initial_snapshot.prefetch_trace_json
+        initial_prefetch = TrustedRecallTrace.model_validate_json(raw).audit if raw else None
+        parent = private.initial_author_lineage
+        if parent is None or not any(
+            item.purpose == "recall_control_transfer"
+            and item.outcome == "control_transfer"
+            and item.model_call_id == parent.model_call_id
+            and item.request_hash == parent.request_hash.removeprefix("sha256:")
+            and item.response_hash == parent.response_hash.removeprefix("sha256:")
+            and item.model_id == parent.model_id
+            and item.model_version == parent.model_version
+            for item in record.output.authored_candidate_audits
+        ):
+            raise ValueError("inbound_output_record.recall_parent_mismatch")
     for item in presentations:
-        if item.trace != original_prefetch:
+        if item.phase in {"initial", "recovery_initial"}:
+            expected_prefetch = initial_prefetch
+        elif item.phase == "recall_followup" and private.relation == "selective_recall":
+            expected_prefetch = original_prefetch
+        else:
+            raise ValueError("inbound_output_record.prefetch_phase_mismatch")
+        if item.trace != expected_prefetch:
             raise ValueError("inbound_output_record.prefetch_source_mismatch")
+        if initial_snapshot is not None and (
+            (
+                item.model_call_id == private.final_parent_model_call_id
+                and item.phase not in {"initial", "recovery_initial"}
+            )
+            or (
+                item.model_call_id == record.author_lineage.model_call_id
+                and item.phase != "recall_followup"
+            )
+        ):
+            raise ValueError("inbound_output_record.prefetch_call_mismatch")
         if item.model_call_id not in call_ids:
             raise ValueError("inbound_output_record.prefetch_call_mismatch")
         audits.append(item.trace)

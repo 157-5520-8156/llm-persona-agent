@@ -179,7 +179,25 @@ required the empty top-level field to equal the snapshot trace, resulting in
 the final author's actual call ID. It retains the original empty top-level field,
 does not add source material, and still rejects missing/replaced presentations.
 The stored presentation list must match the original prepared and terminal
-records; each presented trace must match the original snapshot prefetch audit.
+records; without a selective-Recall upgrade, each presented trace must match the
+original snapshot prefetch audit.
 Ordinary Recall retains its exact top-level binding. New subprocess cases cover
 the actual automatic-prefetch producer format as well as deletion and replacement.
 No timeout, budget limit, source scope or character choice was changed.
+
+## Selective Recall 的原始 prefetch 锚点
+
+实际 Core 可先展示 local prefetch，再于同次 Recall 后展示已经完成的 semantic
+prefetch。两次 presentation 分别绑定原 `initial` / `recovery_initial` 与
+`recall_followup` 调用；不能要求它们都等于最终 snapshot。
+
+仅新的 inbound `.2` 输出且有 selective Recall 时，prepared carrier 使用
+`character-interior-prepared-turn.2`，保留原 `recall_resolved` checkpoint 的完整
+`recall_initial_snapshot`（含原 trace）。初末 snapshot 与 private lineage 的原
+id/hash、actor、cursor、time、capability、viewer/privacy 和作者 parent 精确核对。
+恢复按原 presentation phase 与调用身份读取各自锚点，不进行新检索或重签任意正文。
+
+新 carrier 全部 canonical JSON 限 1,536,000 UTF-8 bytes，超限明确失败、不截断。
+旧 prepared `.1` 和其他 purpose 的写入字节与上限不变；缺原初 body 且两 trace 不同的
+旧记录仍不可恢复，不后补初始来源。这不改变 lease、新 cursor 的 fresh 判断、作者
+语义、输出 record identity 或 World 接受规则。

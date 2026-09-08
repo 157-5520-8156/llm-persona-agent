@@ -209,6 +209,10 @@ def _replace_checkpoint(path, row, *, terminal, prepared):
         "prefetch_missing_subprocess",
         "prefetch_changed_subprocess",
         "upgrade_subprocess",
+        "upgrade_initial_missing_subprocess",
+        "upgrade_initial_changed_subprocess",
+        "upgrade_legacy_subprocess",
+        "upgrade_prepared_subprocess",
         "legacy_same_pin",
         *(
             "record_" + name
@@ -266,6 +270,7 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
     monkeypatch.setattr(public, "compose_production_character_interior", durable_compose)
     adapters = []
     captured_results = []
+    captured_requests = []
     make_adapter = application_module.compose_character_interior_inbound_deliberation
     propose = CharacterInteriorInboundDeliberationAdapter.propose
 
@@ -275,6 +280,7 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
         return adapter
 
     async def capture_propose(self, request):
+        captured_requests.append(request)
         output = await propose(self, request)
         captured_results.append((request, output))
         return output
@@ -319,62 +325,130 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
     prior_terminals = _terminals(path)
     prior_projection = app.export_replay_evidence().projection
     monkeypatch.setattr(ProposalAuditRecorder, "record", stop_before_record)
+    stopped_terminal = []
+    if window == "upgrade_prepared_subprocess":
+
+        def stop_before_terminal(**kwargs):
+            stopped_terminal.append(json.loads(kwargs["terminal_result_json"]))
+            raise _ProcessStopped()
+
+        monkeypatch.setattr(stores[-1], "complete", stop_before_terminal)
     try:
         with pytest.raises(_ProcessStopped):
             await app.respond(inbound)
-        original = _terminals(path)
-        assert len(original) == 1 + len(prior_terminals)
-        original_calls = len(requests.chat_requests)
-        assert original_calls > 0
-        original_request, original_output = captured_results[-1]
-        original_usage = _usage_rows(usage_path)
-        assert len(original_usage) == original_calls
-        assert all(item["billing_state"] == "known" for item in original_usage)
-        assert all(
-            item["prompt_tokens"] == item["completion_tokens"] == 100 for item in original_usage
-        )
-        original_projection = app.export_replay_evidence().projection
-        assert original_projection.proposal_audits == prior_projection.proposal_audits
-        assert original_projection.model_result_audits == prior_projection.model_result_audits
-        # The primary bill exists. The absent World audit and absent output
-        # body are separate losses; this is not a claim of unmetered HTTP.
-        original_row = next(row for row in original if row not in prior_terminals)
-        decision = json.loads(original_row["terminal_result_json"])["decision"]
-        assert decision["contract"] == "character-interior-inbound-turn-decision.2"
-        assert decision["output_record"]["output"]["raw_proposal"] == original_output.raw_proposal
-        assert original_output.winning_model_call_id is not None
-        if upgrade_case:
-            presented = original_output.presented_prefetch_traces
-            assert tuple(item.phase for item in presented) == ("initial", "recall_followup")
-            assert (
-                presented[0].trace.audit.embedding_version
-                != presented[1].trace.audit.embedding_version
+        if window == "upgrade_prepared_subprocess":
+            assert len(stopped_terminal) == 1
+            terminal = stopped_terminal[0]
+            with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
+                connection.row_factory = sqlite3.Row
+                row = dict(
+                    connection.execute(
+                        "SELECT * FROM world_v2_character_interior_turns WHERE inner_turn_id=?",
+                        (terminal["inner_turn_id"],),
+                    ).fetchone()
+                )
+            assert row["state"] == "checkpointed" and row["terminal_result_json"] is None
+            prepared = json.loads(row["authored_state_json"])
+            assert prepared["contract"] == "character-interior-prepared-turn.2"
+            assert len(_terminals(path)) == len(prior_terminals)
+            from companion_daemon.world_v2.character_interior.audit import (
+                recorded_character_interior_lineage,
             )
-            assert presented[1].trace.audit.embedding_version.endswith(semantic.version)
+            from companion_daemon.world_v2.character_interior.contracts import InnerDecision
+
+            original_decision = InnerDecision.model_validate_json(_json(terminal))
+            lineage = recorded_character_interior_lineage(
+                original_decision,
+                purpose="inbound_turn",
+                subject_ref=original_decision.opportunity_ref,
+                capability_ref=original_decision.decision["capability_ref"],
+            )
+            expected_output = dict(terminal["decision"]["output_record"]["output"])
+            expected_output["character_interior_lineage"] = lineage.model_dump(mode="json")
+            evidence_path = tmp_path / "child-input.json"
+            evidence_path.write_text(
+                _json(
+                    {
+                        "request": captured_requests[-1].model_dump(mode="json"),
+                        "old_trace": json.loads(prepared["snapshot"]["prefetch_trace_json"]),
+                        "trace_kind": "prefetch",
+                        "expected_output": expected_output,
+                        "technical_resume_at": row["lease_expires_at"],
+                    }
+                )
+            )
+            original_usage = _usage_rows(usage_path)
+        else:
+            original = _terminals(path)
+            assert len(original) == 1 + len(prior_terminals)
+        if window != "upgrade_prepared_subprocess":
+            original_calls = len(requests.chat_requests)
+            assert original_calls > 0
+            original_request, original_output = captured_results[-1]
+            original_usage = _usage_rows(usage_path)
+            assert len(original_usage) == original_calls
+            assert all(item["billing_state"] == "known" for item in original_usage)
+            assert all(
+                item["prompt_tokens"] == item["completion_tokens"] == 100 for item in original_usage
+            )
+            original_projection = app.export_replay_evidence().projection
+            assert original_projection.proposal_audits == prior_projection.proposal_audits
+            assert original_projection.model_result_audits == prior_projection.model_result_audits
+            # The primary bill exists. The absent World audit and absent output
+            # body are separate losses; this is not a claim of unmetered HTTP.
+            original_row = next(row for row in original if row not in prior_terminals)
+            decision = json.loads(original_row["terminal_result_json"])["decision"]
+            prepared = json.loads(original_row["authored_state_json"])
+            selective = (
+                json.loads(original_row["terminal_result_json"])["private_self_lineage"]["relation"]
+                == "selective_recall"
+            )
+            assert prepared["contract"] == "character-interior-prepared-turn." + (
+                "2" if selective else "1"
+            )
+            assert ("recall_initial_snapshot" in prepared) == selective
+            assert decision["contract"] == "character-interior-inbound-turn-decision.2"
+            assert (
+                decision["output_record"]["output"]["raw_proposal"] == original_output.raw_proposal
+            )
+            assert original_output.winning_model_call_id is not None
+            if upgrade_case:
+                presented = original_output.presented_prefetch_traces
+                assert tuple(item.phase for item in presented) == ("initial", "recall_followup")
+                assert (
+                    presented[0].trace.audit.embedding_version
+                    != presented[1].trace.audit.embedding_version
+                )
+                assert presented[1].trace.audit.embedding_version.endswith(semantic.version)
     finally:
         await app.aclose()
         stores[-1].close()
     monkeypatch.setattr(ProposalAuditRecorder, "record", record)
     if window.endswith("subprocess"):
-        if prefetch_case:
+        if window == "upgrade_prepared_subprocess":
+            pass  # Evidence came from the real complete() interruption above.
+        elif prefetch_case:
             assert original_output.prefetch_trace is None
             assert original_output.presented_prefetch_traces
             original_trace = original_output.presented_prefetch_traces[-1].trace
         else:
             assert original_output.recall_trace is not None
             original_trace = original_output.recall_trace
-        evidence_path = tmp_path / "child-input.json"
-        evidence_path.write_text(
-            json.dumps(
-                {
-                    "request": original_request.model_dump(mode="json"),
-                    "old_trace": original_trace.model_dump(mode="json"),
-                    "trace_kind": "prefetch" if prefetch_case else "recall",
-                    "expected_output": _recorded_output(original_output).model_dump(mode="json"),
-                },
-                ensure_ascii=False,
+        if window != "upgrade_prepared_subprocess":
+            evidence_path = tmp_path / "child-input.json"
+            evidence_path.write_text(
+                json.dumps(
+                    {
+                        "request": original_request.model_dump(mode="json"),
+                        "old_trace": original_trace.model_dump(mode="json"),
+                        "trace_kind": "prefetch" if prefetch_case else "recall",
+                        "expected_output": _recorded_output(original_output).model_dump(
+                            mode="json"
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
             )
-        )
         if window == "recall_tampered_subprocess":
             prepared = json.loads(original[0]["authored_state_json"])
             trace = json.loads(prepared["snapshot"]["recall_trace_json"])
@@ -413,6 +487,22 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
             payload["output_ref"], payload["output_hash"] = output_record_identity(body)
             prepared["result"]["decision"] = payload
             _replace_checkpoint(path, original_row, terminal=terminal, prepared=prepared)
+        if window in {
+            "upgrade_initial_missing_subprocess",
+            "upgrade_initial_changed_subprocess",
+            "upgrade_legacy_subprocess",
+        }:
+            terminal = json.loads(original_row["terminal_result_json"])
+            prepared = json.loads(original_row["authored_state_json"])
+            if window == "upgrade_initial_changed_subprocess":
+                # Complete valid final body with a different identity is not the
+                # original initial body. Rehashing the row cannot grant it.
+                prepared["recall_initial_snapshot"] = prepared["snapshot"]
+            else:
+                prepared.pop("recall_initial_snapshot")
+            if window == "upgrade_legacy_subprocess":
+                prepared["contract"] = "character-interior-prepared-turn.1"
+            _replace_checkpoint(path, original_row, terminal=terminal, prepared=prepared)
         root = Path(__file__).resolve().parents[2]
         child = await asyncio.create_subprocess_exec(
             sys.executable,
@@ -438,12 +528,24 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
         assert result["http_calls"] == result["recall_calls"] == 0
         if window == "recall_tampered_subprocess":
             assert result["error"] == "inbound_output_record.invalid_original_checkpoint"
-        elif window in {"prefetch_missing_subprocess", "prefetch_changed_subprocess"}:
+        elif window in {"upgrade_initial_missing_subprocess", "upgrade_initial_changed_subprocess"}:
+            assert result["error"] == "inbound_output_record.invalid_original_checkpoint"
+        elif window in {
+            "prefetch_missing_subprocess",
+            "prefetch_changed_subprocess",
+            "upgrade_legacy_subprocess",
+        }:
             assert result["error"] == "inbound_output_record.prefetch_source_mismatch"
         else:
             assert result["error"] is None
             assert result["equal_output"] is True
-            assert _terminals(path) == original
+            if window == "upgrade_prepared_subprocess":
+                current = _terminals(path)
+                assert len(current) == len(prior_terminals) + 1
+                assert json.loads(current[-1]["terminal_result_json"]) == stopped_terminal[0]
+                assert _usage_rows(usage_path) == original_usage
+            else:
+                assert _terminals(path) == original
         await model.aclose()
         return
     if window == "legacy_same_pin" or window.startswith("record_"):
@@ -564,6 +666,8 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
 async def _recover_in_child(path_string, evidence_string):
     """Real subprocess entry: no inherited HMAC, Core, Faculty, or output cache."""
     from companion_daemon.world_v2.character_interior.production import _CoordinatorRecallPort
+    from companion_daemon.world_v2.character_interior.core import CharacterInterior
+    from datetime import datetime
 
     path = Path(path_string)
     evidence = json.loads(Path(evidence_string).read_text())
@@ -593,6 +697,16 @@ async def _recover_in_child(path_string, evidence_string):
     )
     store = open_sqlite_character_interior_turn_store(path=path, world_id=public.WORLD)
     compose = public.compose_production_character_interior
+    core_init = CharacterInterior.__init__
+
+    def resume_core(self, **kwargs):
+        if evidence.get("technical_resume_at"):
+            resumed_at = datetime.fromisoformat(evidence["technical_resume_at"]) + timedelta(
+                seconds=1
+            )
+            kwargs["turn_clock"] = lambda: resumed_at
+        core_init(self, **kwargs)
+
     make_adapter = application_module.compose_character_interior_inbound_deliberation
     adapters = []
 
@@ -602,6 +716,7 @@ async def _recover_in_child(path_string, evidence_string):
         return adapter
 
     with (
+        patch.object(CharacterInterior, "__init__", resume_core),
         patch.object(
             public,
             "compose_production_character_interior",
@@ -719,3 +834,18 @@ def test_recall_restoration_does_not_accept_arbitrary_audit_dict():
 
     with pytest.raises(TypeError, match="completed inbound trace authority is unavailable"):
         _restore_completed_inbound_traces({"audit": {"trigger_ref": "event:invented"}})
+
+
+def test_new_prepared_carrier_is_bounded_without_changing_legacy_limit():
+    from companion_daemon.world_v2.character_interior.inbound_output_record import (
+        MAX_INBOUND_PREPARED_BYTES,
+        PREPARED_CONTRACT,
+        LEGACY_PREPARED_CONTRACT,
+        _validated_initial_snapshot,
+    )
+
+    payload = {"contract": PREPARED_CONTRACT, "oversized": "界" * (MAX_INBOUND_PREPARED_BYTES // 3)}
+    with pytest.raises(ValueError, match="inbound prepared turn exceeds its byte limit"):
+        _validated_initial_snapshot(payload, result=None, snapshot=None, private=None)
+    payload["contract"] = LEGACY_PREPARED_CONTRACT
+    assert _validated_initial_snapshot(payload, result=None, snapshot=None, private=None) is None
