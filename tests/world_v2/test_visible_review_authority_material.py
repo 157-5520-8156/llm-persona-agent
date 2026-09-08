@@ -161,6 +161,20 @@ async def test_public_sqlite_fact_multiref_keeps_one_exact_selected_payload(
         assert item == original
         assert _known_capsule_source_refs(evidence) == frozenset(original_refs)
         if full_source:
+            correction = visible_source_closure_messages(
+                visible_beats=("这是离线待核对的句子。",), world_claims=(), source_references=rows,
+                invalid_reason=VisibleSourceClosureWireFailure(
+                    "subject_binding_invalid", "fixture actor mismatch", beat_index=0,
+                    field="decisions.0.subject_role",
+                ),
+            )
+            correction_rows = json.loads(correction[-1]["content"])["structural_constraints"]["source_subject_roles"]
+            assert correction_rows[fact_index] == {
+                "source_ref_index": fact_index, "subject_role": "counterpart",
+                "support_subject_ref": case.observation.actor,
+                "support_eligibility": "eligible",
+            }
+        if full_source:
             assert material["source_bindings"] == original["source_bindings"]
             assert (
                 material["value_hash"]
@@ -375,3 +389,22 @@ def test_historical_packet_without_material_keeps_2351c4b6_bytes():
         hashlib.sha256(_json(wire).encode()).hexdigest()
         == "a528e4b38ccea33a59b03fbbcd05b4dd856db9ed1a2223b4f37f0b16a327f4a6"
     )
+
+
+@pytest.mark.parametrize("boundary", [{"privacy_class": "withhold"}, {"availability": "unavailable"}])
+def test_new_packet_cannot_leak_blocked_report_through_legacy_evidence_text(boundary):
+    evidence = {"entries": [{
+        "kind": "current_counterpart_report", **boundary,
+        "source_refs": ["event:test"], "message": {
+            "text": "WITHHELD_SENTINEL", "actor": "user:test", "event_ref": "event:test",
+            "event_payload_hash": "sha256:test",
+        },
+    }]}
+    rows = compact_source_reference_table(evidence)
+    assert rows[0]["evidence_text"] == "WITHHELD_SENTINEL"  # Historical table is unchanged.
+    assert _known_capsule_source_refs(evidence) == frozenset({"event:test"})
+    packet = _packet(rows)
+    assert packet["source_references"][0]["source_ref_index"] == 0
+    assert packet["source_references"][0]["source_ref"] == "event:test"
+    assert packet["source_references"][0]["support_eligibility"] == "baseline_only"
+    assert "WITHHELD_SENTINEL" not in _json(packet)
