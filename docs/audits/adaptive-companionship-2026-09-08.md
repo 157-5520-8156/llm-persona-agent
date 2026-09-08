@@ -4,6 +4,25 @@
 生产数据库、配置与实际 QQ 不在写入范围。阶段新增真实模型试验总预约上限 ¥2，每个 fresh world
 上限 ¥1；此前三次试验的 ¥0.8820866 持续累计，不能用新数据库抹去测试成本。
 
+## 本批试验收束时的结论
+
+已执行真实逐回合聊天、生活推进与相同输入对照；当前仍未达到真人感阶段验收。
+已经修复来源字段被丢弃、生活意图缺少执行消费者、活动来源不可读、部分调度断点、
+World Author 内心权限矛盾和 NPC 当地时间输入。后续真实样本仍暴露三个实质缺口：
+聊天用空声明讲出不存在的当前生活、focused critic 漏检既往前提、NPC 在同一响应中
+混用上午和下午。当地时间输入补齐、审查合同可执行，都不等于模型行为已经正确。
+
+最后的 stock thinking 对照耗尽 4096 输出 token，正文为空，本批不再追加付费调用。
+所有可取得的主账已知用量合计 **1.5980047 元**，另有历史未知 **0.241365 元**；
+campaign 保守占用 **1.9124717 / 2 元**。其中最后一笔已知费用 0.056898 元包含在
+未释放的 0.13 元 allocation 内，不能再把它叠加到占用金额。跨阶段已知费用
+**2.4800913 元**；未对供应商发票，未验收每月 100 元。
+
+下一项应优先补上“角色自选移动 → Clock 执行 → 到达事实 → 聊天引用”的最小真实
+生产链。其依据是当前 Location 缺 producer，Plan 和 Activity 不能证明到达；不能再
+靠添加生活背景或增加审查器填补该缺口。主动联系的测试也须跨过实际已声明的机会
+时点，现有短时无消息记录没有证明角色自主选择沉默。
+
 ## 已确认问题与机制修复
 
 - compact `reply_only` 与 `full_turn` 曾无条件把角色的 `world_claims` 清空。现在保留其原文、
@@ -763,3 +782,45 @@ phase 已知 **1.5411067**，共占用 **1.7824717**，在原 2 元上限内剩 
 原始结果分别在 `output/private-audits/prepared-prose-control-sample01/` 与
 `prepared-npc-control-sample01/`；独立审计为 `prepared-life-controls-assessment.md`。
 这两个反例继续保留为未通过，不用离线测试、body 完整或费用结算代替语义验收。
+
+## 最后一次对照：推理用尽输出上限，没有审查结论
+
+在干净 `c4737053` 上，root 执行冻结的 `run-prepared-thinking-control.py`。
+它使用原 sample01 新合同的完全相同 messages、事实、schema、模型与 4096 输出上限，
+调用公共 SDK 的 thinking profile：thinking 从 disabled 变为 enabled，默认增加
+`reasoning_effort=high`，并省略 temperature。由于 stock SDK 同时调整三个 HTTP 字段，
+这不是仅单字段改变的因果实验；没有用自定义 payload 绕过 SDK。
+
+实际请求 **25,550 字节**，SHA256
+`e0bbe2adbfee7686c685b911154872f2b2e627d4df84439b81152e258f97f6a7`；
+与冻结稿逐字一致，分配 0.13 元、保守预留 0.116586 元，最多一次 HTTP、55 秒。
+root 独立通过 4 项离线 fixture 后执行；测试涵盖真实 MockTransport 出站字节、
+reasoning usage、未知用量全额保留与发送前来源/CAS 漂移拒绝，没有第二次调用。
+
+约 **38.765 秒**后收到完整 HTTP 200 响应，`finish_reason=length`，最终 content 是
+空字符串。原始 usage 为 input **6,678**、output **4,096**、reasoning **4,096**，
+无 cache hit。SDK 因没有非空正文报告 schema error；不是请求超时或角色选择沉默。
+没有 review JSON，因而无法判定它是否识别了内心越权或既往事实；不从 reasoning
+文本补造 verdict，也没有提高上限重跑或把该 profile 安装到生产。
+
+该观察与供应商的 [Chat Completions API](https://api-docs.deepseek.com/api/create-chat-completion/)
+所述输出上限与 `length` 终止相符；这里的 token 分配和空正文结论直接来自本次原始
+响应。当前限制下，这个样本未提供可用审查结果，不证明任何推理配置都不可行。
+
+raw body **21,257 字节**、EOF 完整，SHA256
+`9545b551693c1240043db7b8f19f69acd3a0b5b4b039aaf3ff0061abc7ec0c2d`。
+唯一 primary usage 是 known、reservation 是 settled；按原记账时刻重算为
+**0.056898 元**。但冻结 probe closure 要求方法成功返回正文，实际 ValueError 使
+`billing_closed=false`。因此 campaign 仍保留整笔 **0.13 元**，不改写旧关账条件或
+释放余额；这不是又产生了 0.13 元账单，也不是 provider billing unknown。
+
+原 `assess-trials.py` 只把 campaign 已关账 probes 计入其 `phase_cny=1.5411067`，
+这次列入 `pending_probe_hold_cny=0.13`。补充实际已知 primary 0.056898 后，本阶段
+可取得的已知费用是 **1.5980047 元**，跨阶段 **2.4800913 元**。原 unknown
+**0.241365 元**保持不变；campaign 总占用 **1.9124717 元**，在原 2 元上限内剩
+**0.0875283 元**。已知费用与 allocation 占用是不同口径，不能相加重复计费。
+
+原始结果位于 `output/private-audits/prepared-thinking-control-sample01/`，关账凭证
+位于 `prepared-thinking-control-launch-state/`。campaign SHA256 为
+`d2b23e14bff154071690231f30be703c7faa771066293555b3c0a6cb92af537c`。
+本批至此停止付费探索；所有失败样本保留。没有部署、真实 QQ 或生产 World 写入。
