@@ -315,6 +315,26 @@ _CUE_LABELS: Mapping[str, str] = MappingProxyType(
 _MEMORY_STATUS_LABELS = MappingProxyType({
     "pending": "待复核", "active": "已保留", "rejected": "未保留", "forgotten": "已遗忘",
 })
+_FACT_PREDICATE_LABELS = MappingProxyType({
+    "location.current": "当前位置", "profile.display_name": "姓名与称呼",
+    "profile.timezone": "时区", "preference.likes": "喜欢的事物",
+    "preference.dislikes": "不喜欢的事物", "relationship.affiliation": "所属组织",
+    "profile.occupation": "工作与职业", "profile.education": "学业情况",
+    "location.home": "居住地", "location.hometown": "家乡",
+    "schedule.commitment": "计划与约定", "situation.recent": "近期处境",
+    "activity.current": "正在做的事", "relationship.person": "身边的人",
+    "health.condition": "身体情况", "routine.habit": "习惯与作息",
+    "interest.activity": "兴趣活动", "possession.item": "拥有的物品或宠物",
+})
+_FACT_STATUS_LABELS = MappingProxyType({"active": "有效记录", "withdrawn": "已撤回"})
+_APPRAISAL_STATUS_LABELS = MappingProxyType({
+    "active": "当前理解", "contradicted": "已有矛盾证据",
+    "expired": "已失效", "superseded": "已有新的理解",
+})
+_NPC_STATUS_LABELS = MappingProxyType({
+    "active": "现有人物", "dormant": "暂时不活跃",
+    "departed": "已离开", "retired": "已退场",
+})
 _RETENTION_LABELS = MappingProxyType({
     "identity_relevance": "与身份有关", "relationship_continuity": "关系连续性",
     "boundary_relevance": "与边界有关", "unfinished_business": "未完成的事",
@@ -1959,8 +1979,9 @@ def _facts_memory_inner_summaries(
                 kind="fact",
                 kind_label="事实",
                 entity_id=item.fact_id,
-                title=_label(values.predicate_code, {}),
+                title=_FACT_PREDICATE_LABELS.get(values.predicate_code, "已记录事实"),
                 status=values.status,
+                status_mapping=_FACT_STATUS_LABELS,
                 occurred_at=item.updated_at or item.committed_at,
                 privacy_class=values.privacy_class,
                 values=(_value("confidence_bp", "置信度", values.confidence_bp),),
@@ -2027,6 +2048,7 @@ def _facts_memory_inner_summaries(
                 entity_id=item.appraisal_id,
                 title=meanings or "情境评估",
                 status=item.status,
+                status_mapping=_APPRAISAL_STATUS_LABELS,
                 occurred_at=item.accepted_at,
                 values=(_value("confidence_bp", "置信度", item.confidence_bp),),
             )
@@ -2088,8 +2110,9 @@ def _relationship_summaries(
                 kind="npc",
                 kind_label="人物",
                 entity_id=item.npc_id,
-                title=_NPC_LABELS.get(item.npc_id, "还叫不出名字的人"),
+                title=_NPC_LABELS.get(item.npc_id, "人物"),
                 status=item.status,
+                status_mapping=_NPC_STATUS_LABELS,
                 privacy_class=item.privacy_class,
                 occurred_at=(
                     item.subjective_state.evolved_at
@@ -2902,7 +2925,7 @@ def _activity_title(activity_kind: str | None) -> str:
         return "她自己在过的一件事"
     if activity_kind.startswith("npc_initiative."):
         return "别人找上门的事"
-    return "一件进行中的事"
+    return "一项活动"
 
 
 def _place_title(location_ref: str | None) -> str:
