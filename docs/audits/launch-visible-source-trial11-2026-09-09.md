@@ -54,6 +54,30 @@ v2 请求小于第 10 批的 168,336 bytes，且本次首稿实际返回；两�
 
 这是一条可继续诊断的真实失败证据，不是来源审核、加速生活、真人感或月费验收。
 
+## 后续合入：准确纠正信息与 Recall 可用性
+
+`434589b7` 保持 v1/v2 的工具、Schema、身份和成功输出字节，格式拒绝改为提供 `$` 或
+`$.result`、缺失字段与多余字段。未知字段名做转义及数量/长度限制，不回显字段值，
+不填补角色输出，也不改变两个版本原有的重复键政策。实际首稿在离线回放中继续被拒，
+但现在准确指出 `private_turn_state` 与 `recall_request` 缺失；仅在内存添加两个 null
+的反事实检查符合原 Schema，不是把修补稿提交给世界或作为实际模型纠正。
+
+`44fbab38` 修复另一处确认矛盾：Core 已接管 Recall，工具允许检索，但旧 expression
+adapter 只检查自己的本地 coordinator，导致 occasion 告诉模型 `recall_available=false`。
+现在 occasion 与同一次工具调用使用作者已有的同一可用性值。没有增加检索授权或
+次数；无能力仍为 false，Core 检索后及之后的一次纠正均为 false，原 pin 和来源不变。
+
+两项合入后的六文件共同调用链 **96 passed / 22.62s**，包括实际 MockTransport
+捕获、v1/v2、直接回答/Recall、同模型一次纠正、完整审核前零 Action 与审核失败零交付。
+两独立分支另完成 166 项和 65 项相关回归；不把重叠数量相加充当新覆盖。
+工具诊断的 12 组历史字节指纹保持，真实试验的所有旧凭证保持。尚未进行修复后的
+新付费试验，所以这些改动不能被表述为已经解决真实超时或通过正文审核语义。
+
+额外核对了 [DeepSeek 官方工具文档](https://api-docs.deepseek.com/guides/tool_calls/)：
+strict 要求 Beta 路径。当前 `DeepSeekChatModel._completion_base_url` 已根据工具的
+`strict: true` 自动加 `/beta`，所以仅见配置 base URL 不含 `/beta` 不能判定端点用错。
+原捕获未保存 URL，当前结论是代码路径核对，不补写原试验的网络路由证据。
+
 ## 并行复核：第 8 批为何没有生活推进
 
 当前同一集成版本的 `parse_world_author_draft` 与 `_world_author_draft` 消费原始两份
