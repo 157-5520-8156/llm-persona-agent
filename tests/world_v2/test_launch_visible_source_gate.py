@@ -182,6 +182,7 @@ async def _app(path, handler):
     author = _InboundCharacterAuthor(
         flash_model=model, whole_candidate_mode=True, visible_source_review_model=model,
         atomic_tool_envelope_version=getattr(handler, "tool_version", "1"),
+        visible_source_review_version=getattr(handler, "review_version", "1"),
     )
     app = build_sqlite_world_v2_test_application(
         path=path,

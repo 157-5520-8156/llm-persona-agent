@@ -108,7 +108,7 @@ def _verify_original_capability(requirement, lineage, author_request_json=None):
     return original
 
 
-async def review_candidate(*, request, output, author_request_json, reviewer):
+async def review_candidate(*, request, output, author_request_json, reviewer, review_version="1"):
     from companion_daemon.llm import (
         model_call_scope,
         model_provider_request_identity_scope,
@@ -128,6 +128,8 @@ async def review_candidate(*, request, output, author_request_json, reviewer):
     aliases = verify_visible_source_author_request(
         author_request_json, expected_request_hash=output.winning_request_hash
     )
+    if review_version not in {"1", "2"}:
+        raise ValueError("visible source review version is unsupported")
     requirement = request.visible_source_requirement_json
     table = requirement_table(requirement)
     proposal = validate_proposal_envelope(output.raw_proposal)
@@ -154,7 +156,8 @@ async def review_candidate(*, request, output, author_request_json, reviewer):
             }
         )
     prepared = prepare_visible_source_review(
-        candidate=proposal, source_table=table, source_ref_aliases=aliases
+        candidate=proposal, source_table=table, source_ref_aliases=aliases,
+        review_version=review_version,
     )
     value = prepared.as_dict()
     parent = output.winning_model_call_id
@@ -170,6 +173,8 @@ async def review_candidate(*, request, output, author_request_json, reviewer):
     raw = None
     usage = None
     subcall = None
+    rejection = None
+    failure_detail = None
     try:
         operation = getattr(reviewer, "complete_json_with_usage", None)
         if not callable(operation):
@@ -196,29 +201,25 @@ async def review_candidate(*, request, output, author_request_json, reviewer):
         subcall = ProviderSubcallAudit(
             **binding.model_dump(mode="python"), lane="direct", outcome="winner", usage=usage
         )
-        receipt = record_visible_source_review(
-            prepared=prepared,
-            author=VisibleReviewAuthorBinding(
-                model_call_id=parent,
-                request_hash=output.winning_request_hash,
-                proposal_material_hash=digest(value["candidate_json"]),
-            ),
-            review=binding,
-            raw_verdict=raw,
-        )
-    except VisibleSourceReviewRejected as exc:
-        failure = ValidationTechnicalFailure(
-            "paired_expression_reselection_invalid",
-            model_call_id=parent,
-            request_hash=output.winning_request_hash,
-            attempted_model_id=output.model_id,
-            attempted_model_version=output.model_version,
-            usage=output.usage,
-            provider_subcall_audits=(*output.provider_subcall_audits, subcall),
-            failure_detail="完整表达的来源审核未闭合，请按原材料重选完整表达："
-            + canonical(exc.verdict.model_dump(mode="json")),
-        )
-        raise failure from exc
+        try:
+            receipt = record_visible_source_review(
+                prepared=prepared,
+                author=VisibleReviewAuthorBinding(
+                    model_call_id=parent,
+                    request_hash=output.winning_request_hash,
+                    proposal_material_hash=digest(value["candidate_json"]),
+                ),
+                review=binding,
+                raw_verdict=raw,
+            )
+        except VisibleSourceReviewRejected as exc:
+            rejection = exc
+            if review_version == "2":
+                from .visible_source_rejection_feedback import rejection_feedback
+
+                failure_detail = rejection_feedback(prepared=prepared, rejection=exc, review=binding)
+            else:
+                failure_detail = "完整表达的来源审核未闭合，请按原材料重选完整表达：" + canonical(exc.verdict.model_dump(mode="json"))
     except Exception as exc:
         failure_code = (
             "source_review_timeout" if isinstance(exc, TimeoutError) else "source_review_exception"
@@ -258,6 +259,17 @@ async def review_candidate(*, request, output, author_request_json, reviewer):
             ),
             failure_detail=detail,
         ) from exc
+    if rejection is not None:
+        raise ValidationTechnicalFailure(
+            "paired_expression_reselection_invalid",
+            model_call_id=parent,
+            request_hash=output.winning_request_hash,
+            attempted_model_id=output.model_id,
+            attempted_model_version=output.model_version,
+            usage=output.usage,
+            provider_subcall_audits=(*output.provider_subcall_audits, subcall),
+            failure_detail=failure_detail,
+        ) from rejection
     evidence = canonical(
         {
             "contract": EVIDENCE_CONTRACT,
@@ -303,6 +315,7 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
         verify_visible_source_review_receipt,
         VisibleReviewAuthorBinding,
         VisibleReviewInvocationBinding,
+        review_version_for_contract,
     )
 
     if not isinstance(raw, str) or len(raw.encode()) > MAX_EVIDENCE_BYTES:
@@ -340,7 +353,8 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
         value["author_request_json"], expected_request_hash=author_request_hash
     )
     prepared = prepare_visible_source_review(
-        candidate=proposal, source_table=table, source_ref_aliases=aliases
+        candidate=proposal, source_table=table, source_ref_aliases=aliases,
+        review_version=review_version_for_contract(receipt.contract, family="receipt"),
     )
     matching = [
         s

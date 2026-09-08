@@ -17,8 +17,10 @@ from pydantic import Field, model_validator
 from .proposal_envelope import DecisionProposal, ExpressionPlanPayload
 from .schema_core import FrozenModel
 from .visible_source_closure_protocol import (
+    ParsedVisibleSourceVerdict,
+    VisibleSourceRejectionDiagnostic,
     VisibleSourceClosureWire,
-    parse_visible_source_closure,
+    parse_visible_source_verdict,
     visible_source_closure_messages,
     visible_source_verdict_provider_request_contract,
 )
@@ -28,6 +30,14 @@ if TYPE_CHECKING:
 
 
 _MAX_BYTES = 512_000
+
+
+def review_version_for_contract(contract: str, *, family: str) -> Literal["1", "2"]:
+    """Select a known static compiler, never code supplied by a receipt."""
+    for version in ("1", "2"):
+        if contract == f"visible-source-review-{family}.{version}":
+            return version
+    raise ValueError("visible review contract is unsupported")
 
 
 def _json(value: object) -> str:
@@ -86,6 +96,7 @@ def prepare_visible_source_review(
     candidate: DecisionProposal,
     source_table: VisibleSourceTable,
     source_ref_aliases: Mapping[str, str],
+    review_version: Literal["1", "2"] = "1",
 ) -> PreparedVisibleSourceReview:
     """Prepare every inline text Beat of one complete typed decision.
 
@@ -163,12 +174,13 @@ def prepare_visible_source_review(
             )
     if not 1 <= len(beats) <= 16:
         raise ValueError("visible review record requires one to sixteen complete inline Beats")
-    contract = visible_source_verdict_provider_request_contract()
+    contract = visible_source_verdict_provider_request_contract(version=review_version)
     request = {
         "messages": visible_source_closure_messages(
             visible_beats=tuple(beat["text"] for beat in beats),
             world_claims=tuple(claims),
             source_references=source_table.source_references(),
+            version=review_version,
         ),
         "temperature": 0.0,
         "tools": contract["tools"],
@@ -180,7 +192,7 @@ def prepare_visible_source_review(
             "schema_digest": contract["schema_digest"],
         },
         "visible_review_preparation": {
-            "contract": "visible-source-review-request.1",
+            "contract": f"visible-source-review-request.{review_version}",
             "candidate_hash": _hash(candidate_json),
             "source_table_hash": source_table.payload_hash,
             "alias_map_hash": _hash(_json(aliases)),
@@ -188,7 +200,7 @@ def prepare_visible_source_review(
         },
     }
     material = {
-        "contract": "visible-source-review-request.1",
+        "contract": f"visible-source-review-request.{review_version}",
         "candidate_json": candidate_json,
         "source_table_json": source_table.payload_json,
         "source_ref_aliases": aliases,
@@ -210,19 +222,21 @@ def _restore_preparation(raw: str) -> PreparedVisibleSourceReview:
         candidate=DecisionProposal.model_validate_json(value["candidate_json"], strict=True),
         source_table=VisibleSourceTable(payload_json=value["source_table_json"]),
         source_ref_aliases=value["source_ref_aliases"],
+        review_version=review_version_for_contract(value["contract"], family="request"),
     )
     if result.payload_json != raw:
         raise ValueError("visible review preparation changed its request or candidate binding")
     return result
 
 
-def _verdict(prepared: PreparedVisibleSourceReview, raw: str) -> VisibleSourceClosureWire:
+def _verdict(prepared: PreparedVisibleSourceReview, raw: str) -> ParsedVisibleSourceVerdict:
     from .visible_source_composer import VisibleSourceTable
 
     value = prepared.as_dict()
     rows = VisibleSourceTable(payload_json=value["source_table_json"]).source_references()
-    return parse_visible_source_closure(
+    return parse_visible_source_verdict(
         raw,
+        version=review_version_for_contract(value["contract"], family="request"),
         visible_beats=tuple(beat["text"] for beat in value["beat_mapping"]),
         source_references=rows,
         source_ref_kinds=tuple(row["kind"] for row in rows),
@@ -256,13 +270,17 @@ def _check_invocation_binding(
 class VisibleSourceReviewRejected(ValueError):
     """A legal semantic rejection, distinct from an invalid reviewer wire."""
 
-    def __init__(self, verdict: VisibleSourceClosureWire) -> None:
+    def __init__(
+        self, verdict: VisibleSourceClosureWire, *,
+        rejections: tuple[VisibleSourceRejectionDiagnostic, ...] = (),
+    ) -> None:
         super().__init__("the complete visible candidate contains an unclosed Beat")
         self.verdict = verdict
+        self.rejections = rejections
 
 
 class VisibleSourceReviewReceipt(FrozenModel):
-    contract: Literal["visible-source-review-receipt.1"] = "visible-source-review-receipt.1"
+    contract: Literal["visible-source-review-receipt.1", "visible-source-review-receipt.2"] = "visible-source-review-receipt.1"
     prepared_json: str = Field(min_length=2, max_length=_MAX_BYTES)
     author: VisibleReviewAuthorBinding
     review: VisibleReviewInvocationBinding
@@ -273,10 +291,14 @@ class VisibleSourceReviewReceipt(FrozenModel):
     @model_validator(mode="after")
     def record_is_self_consistent(self) -> VisibleSourceReviewReceipt:
         prepared = _restore_preparation(self.prepared_json)
+        if review_version_for_contract(self.contract, family="receipt") != review_version_for_contract(
+            prepared.as_dict()["contract"], family="request"
+        ):
+            raise ValueError("visible receipt version differs from its original preparation")
         _check_invocation_binding(prepared, self.author, self.review, self.raw_verdict)
         parsed = _verdict(prepared, self.raw_verdict)
-        if parsed != self.verdict or any(
-            segment.decision == "unclosed" for segment in parsed.segments
+        if parsed.verdict != self.verdict or any(
+            segment.decision == "unclosed" for segment in parsed.verdict.segments
         ):
             raise ValueError("accepted visible receipt requires the exact complete passing verdict")
         if self.receipt_hash != _hash(
@@ -296,11 +318,13 @@ def record_visible_source_review(
     """Record one accepted attempt; no retries, rewriting or Action authority."""
     prepared = _restore_preparation(prepared.payload_json)
     _check_invocation_binding(prepared, author, review, raw_verdict)
-    verdict = _verdict(prepared, raw_verdict)
+    parsed = _verdict(prepared, raw_verdict)
+    verdict = parsed.verdict
     if any(segment.decision == "unclosed" for segment in verdict.segments):
-        raise VisibleSourceReviewRejected(verdict)
+        raise VisibleSourceReviewRejected(verdict, rejections=parsed.rejections)
+    version = review_version_for_contract(prepared.as_dict()["contract"], family="request")
     value = {
-        "contract": "visible-source-review-receipt.1",
+        "contract": f"visible-source-review-receipt.{version}",
         "prepared_json": prepared.payload_json,
         "author": author.model_dump(mode="json"),
         "review": review.model_dump(mode="json"),
