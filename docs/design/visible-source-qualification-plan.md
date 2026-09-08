@@ -54,3 +54,20 @@ trial-07 和 trial-08 都有 `world_claims: []` 的实际可见生活陈述。�
 
 纯语义诊断须用明确的诊断 manifest，不能伪装成已完成的 longitudinal journey。
 它没有 World/Action/QQ 接受，也不能作为生产真人感或月费 100 元的完成证据。
+
+## 2026-09-08 准备接口合入
+
+`a3155013` 已合入已选正文、材料资格和精确主体投影，仍未安装普通聊天语义审核。
+Root 复查另复现 top-level withhold 报告经旧 `evidence_text` 旁路进入新 packet；
+现已移除新 packet 的该旁路，并使结构纠正使用实际材料主体。旧手工 packet、
+旧纠正 wire 和普通已知 ref 集合保留。
+
+Root 在合入代码运行协议、材料、inbound、biography、已选 Life proof 和隔离 daemon
+六文件检查：345 passed / 29.21s，日志 `/tmp/girl-agent-visible-material-a3155013.log`。
+这些是机制回归，未计入任何真实模型语义通过率。
+
+下一试验私有入口为 `output/private-audits/consequence-conversation-20260908/runner-visible-trial09.py`。
+它默认 prepare；编写时 HEAD/输入 pin 均未开放。五项离线执行检查覆盖无凭据/网络准备、
+崩溃保留全额、原始流与主账闭合、unknown 保留和 HTTP 前输入变化拒绝；独立只读审查
+未确认阻断。该入口使用自己的脚本 hash、纯诊断 manifest 和原共享 batch，不重写
+trial-07/08，也没有将旧 unknown 作为可用额度。正式调用须另行冻结输入并记录执行证据。
