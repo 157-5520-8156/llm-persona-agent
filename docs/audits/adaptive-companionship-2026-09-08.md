@@ -580,3 +580,63 @@ InnerLifeSnapshot 时的六个精确坐标、对应 alias、当前 scope 均能�
 
 之前的真实两臂对照发生在此修复之前。当前证据证明来源说明能到达角色，尚未证明
 这份新输入能减少实际误述；下一次真实试聊仍需核对正文、引用与费用。
+
+## 第六轮真实旅程：来源可读仍不足以阻止编造当前生活
+
+干净 `803f15a5` 经原公开 interactive CLI 运行 trial06，仍使用独立 debug provider、
+新 SQLite、虚拟时钟及本地 CaptureDelivery。固定额度 **0.40 CNY**、wall 600 秒，
+原 phase 2 元上限不变。私有 launcher 仅在既有 transport 外核对准入来源，保留原始
+请求；4 项离线检查覆盖公共 CLI/DeepSeek/MockTransport/交付/关账，以及 CAS 拒绝、
+unknown 和缺失证据保留整笔额度，root 与作者分别通过，独立审查无阻断问题。
+
+| 当地时间 | 测试者输入 | 实际本地交付 |
+| --- | --- | --- |
+| 10:20 | 你这会儿在做什么？ | 在图书馆这边 刚坐下没多久 你那边呢 |
+| 10:21 | 我刚忙完一阵，想歇会儿。你今天准备在那儿待多久？ | 看情况吧 下午要是没课可能在图书馆待到三四点 你呢 歇够了打算干嘛 |
+| 10:22 | 先泡杯茶，过一会儿还得继续干活，可能顾不上回你。你也按自己的安排来就好。 | 好 那我也不打扰你了 忙你自己的吧 回头再聊 |
+
+三次原始 slim 均为 `reply_only`、`world_claims=[]`；首轮 `my_state` 也写“上午在
+图书馆”。首问 capture 为 `model-input:26aa919094dd429da73585b645693762`，请求
+SHA256 `c572dde887854beb92b9ee62d62c90cf2a81e48f19e8027d25441e5c19748bbe`。
+新传记来源表确实出现在该实际请求中，六项仅支持季节、学期、学年、年龄、校历和
+宿舍居住背景。Location 为 unavailable，近期经历不可用，没有当前活动。该 cursor
+的 seq1–29 唯一 Plan 是角色在 10:05 接受的 **14:00–15:00 教学楼诗歌活动**，
+没有 Started、Occurrence、Experience、Location 或 Movement。首问因而仍是无来源
+的当前地点与行为陈述，不能再归因于缺少这张表；单个样本也不证明模型具体用了哪段
+背景。第二轮“可能待到”是未执行的未来意向，不当作已发生的新世界事实。
+
+测试者随后请求推进到 11:30；实际在 **11:07** 因预算准入拒绝结束。10:22–11:07
+这 45 分钟没有额外发言，但不能据此判定角色主动选择了沉默：七条 CharacterInterior
+终态为两次 LifeChoice、三次 inbound、一次 lifecycle select、一次私人印象更新；
+没有主动联系决策、主动联系调用或角色 no_op。第三问对“接下来忙”的理解由角色
+自己写出，但无人回复后的长期行为仍未获得充分试验。
+
+全部 **201 条事件** 序号连续、payload hash 有效。10:50 出现第二个角色接受的
+校园小径 Plan，窗口 10:50–13:00，并在同刻 Started；10:52 打开并激活其 occurrence。
+结束时没有 Completed、Settlement 或 Experience，因此这些后来的事件不能追认
+10:20 的发言。另一个待修问题是该角色意图写去图书馆、翻一本借了很久的小说，
+typed Plan/Occurrence 地点却都是校园小径；其意图和旧发言均不能证明到达或借书历史。
+
+这轮还直接暴露了 World Author 审查权限的代码矛盾：候选中写入“心里觉得安静又
+踏实”等角色内心，focused critic 返回 supported。当前提示在 premise 中禁止新内心，
+却允许 outcome 中的 candidate feelings；这种范围区分仍让 World Author
+预写角色主观反应。下一片沿用现有 focused critic 修正权限与拒绝坐标，不增加模型
+车道；真实已有前提误判与聊天正文漏报仍须分别验证。
+
+15 次实际请求均有完整响应：12 个 atomic JSON、3 个 SSE；三条 SSE 均含 usage、
+finish 与 DONE。主账 **15 known / 15 settled**，输入 162,074、输出 4,812 tokens，
+已知费用 **0.170109 CNY**，没有新增 unknown。拒绝的是新的 `life_development_draft`：
+拟预留 0.282726，此前实际已知 0.1660485，合计超过 0.40；它没有发 HTTP，也没有
+reservation、tokens 或费用。同次 drain 随后完成一笔较小 NPC 请求，runner 才停止。
+不能将这个终点描述为已花满额度，或角色因心情而停止生活。
+
+原内存 manifest 经 CLI 同一序列化规则与磁盘全字段核对后，原始 usage/预约与响应
+cohort 对齐，才释放未用额度 **0.229891**。独立复核确认五个 artifact 与关账/campaign
+绑定；没有 capture→reservation 的直接 FK，不宣称逐请求密码学绑定。phase 已知
+**1.4833341**，保留原 unknown **0.241365**，共占用 **1.7246991**，剩余 **0.2753009**；
+跨阶段累计已知 **2.3654207**。这些仍非供应商发票对账或每月 100 元目标验收。
+
+证据位于 `output/adaptive-companionship-2026-09-08/trial-06/`；关账位于
+`output/private-audits/trial-06-launch-state/`。本轮未部署、发真实 QQ 或修改生产数据库。
+移动链仍未安装；只纠正了文档中“Plan 承载当前位置”的过时说明，没有激活 dormant
+Location 权限，也没有把住址、惯常日程或计划升级为已到达。

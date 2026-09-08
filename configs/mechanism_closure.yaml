@@ -129,9 +129,9 @@ mechanisms:
   #   v1 scheduler inputs whose deadlines have already passed, so
   #   provisioning them would only manufacture immediate mechanical expiries.
   #   goal_expiry_runtime stays wired but fires only on existing heads.
-  # - location: current location reaches deliberation through active Plan
-  #   heads; a plan-derived location producer would install a second voice
-  #   for the same truth and needs a real settlement-lane design first.
+  # - location: Plan location coordinates describe intentions, not current
+  #   presence. Situation reports missing Location authority as unavailable;
+  #   a real movement producer and settlement lane are still required.
   # - resource: one-shot seeding of world_seed energy/attention would freeze
   #   a never-adjusted number into the capsule; the honest producer is
   #   activity-settlement resource pressure, again a full delivery.
