@@ -230,6 +230,37 @@ test('withheld and private reflection rows never enter the rendered material', (
   assert.deepEqual(view.values, [{label:'计划结束', text:'8月13日 15:00'}]);
 });
 
+test('unfinished matters preserve typed status and section availability without guessing from time', () => {
+  const payload=snapshot({state:'empty'});
+  payload.sections.relationship_lifecycle={state:'ready',data:{highlights:[
+    {kind:'thread',title:'一次待续的讨论',status_code:'open',status_label:'未结束'},
+    {kind:'commitment',title:'承诺',status_code:'completed',status_label:'已完成'},
+    {kind:'interaction_bid',title:'一次互动期待',status_code:'expired',status_label:'已过期'},
+    {kind:'thread',title:'PRIVATE',privacy_class:'withhold'},
+    {kind:'npc',title:'人物'},
+  ]}};
+  payload.sections.operations={state:'ready',data:{highlights:[
+    {kind:'revisit_intention',title:'回头再谈',status_code:'pending',status_label:'待处理'},
+    {kind:'response_expectation',title:'一份回应期待',status_code:'open',status_label:'开放',
+      occurred_at:'2000-01-01T00:00:00Z'},
+    {kind:'action',title:'一般行动'},
+  ]}};
+  const original=JSON.stringify(payload);
+  const groups=client.pendingView(payload);
+  assert.deepEqual(groups[0].items.map(item=>[item.kind,item.statusCode,item.status||item.title]),[
+    ['thread','open','未结束'],['commitment','completed','已完成'],['interaction_bid','expired','已过期'],
+  ]);
+  assert.deepEqual(groups[1].items.map(item=>[item.kind,item.statusCode]),[
+    ['revisit_intention','pending'],['response_expectation','open'],
+  ]);
+  assert.equal(groups[1].items[1].kindLabel,'回应期待');
+  assert.equal(JSON.stringify(payload),original);
+  payload.sections.operations.state='unavailable';
+  assert.equal(client.pendingView(payload)[0].items.length,3);
+  assert.equal(client.pendingView(payload)[1].state,'unavailable');
+  assert.deepEqual(client.pendingView(payload)[1].items,[]);
+});
+
 // A small DOM adapter exercises the shipped script's events and poll loop.
 // It does not assert CSS layout; that remains a browser visual check.
 const fs = require('node:fs');
@@ -329,6 +360,15 @@ test('recording focus is reversible, read-only and survives poll failures withou
   await browser.poll();
   assert.ok(browser.document.querySelectorAll('[data-focus-area]').every(
     panel=>panel.hidden===(panel.dataset.focusArea!=='life')));
+  browser.ids.recordingFocus.value='pending';
+  browser.ids.recordingFocus.fire('change');
+  const pending=browser.document.querySelectorAll('[data-focus-area]').find(
+    panel=>panel.dataset.focusArea==='pending');
+  assert.ok(pending);
+  assert.equal(pending.hidden,false);
+  assert.match(pending.textContent,/未完成事项/);
+  assert.ok(browser.document.querySelectorAll('[data-focus-area]').every(
+    panel=>panel.hidden===(panel.dataset.focusArea!=='pending')));
   browser.document.events.keydown({key:'Escape'});
   assert.equal(browser.ids.recordingToggle.attributes['aria-pressed'],'false');
   assert.equal(browser.ids.recordingTools.hidden,true);

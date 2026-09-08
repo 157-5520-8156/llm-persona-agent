@@ -133,6 +133,12 @@ def preview_snapshot(*, empty: bool = False) -> DashboardHomeSnapshot:
         "relationship_lifecycle": [
             item("relationship_state", "关系状态", "熟悉", "active", "已记录", 4, 0),
             item("npc", "人物", "一位已知的人物", "active", "可见", 3, 0),
+            item("thread", "关系线程", "一次还没谈完的讨论", "open", "未结束", 5, 10),
+            item("commitment", "承诺", "一项已有结果的承诺", "completed", "已完成", 4, 30),
+        ],
+        "operations": [
+            item("revisit_intention", "回访意图", "之后想再聊起的事", "pending", "待处理", 5, 20),
+            item("response_expectation", "回应期待", "一份已记录的期待", "open", "开放", 5, 25),
         ],
     }
     for name, highlights in groups.items():

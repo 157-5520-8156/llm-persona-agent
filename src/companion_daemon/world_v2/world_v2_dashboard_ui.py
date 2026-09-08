@@ -91,7 +91,7 @@ DASHBOARD_HTML = """<!doctype html>
 .bar{max-width:1440px;margin:auto;padding:24px 40px;display:flex;align-items:center;justify-content:space-between;gap:24px;border-bottom:1px solid var(--line)}.identity{display:flex;gap:14px;align-items:center}.monogram{display:grid;place-items:center;width:44px;height:44px;background:var(--green);color:#fffef2;border-radius:14px;font-size:23px;font-family:serif}.bar h1{font-size:18px;font-weight:600;letter-spacing:.05em;margin:0}.eyebrow{margin:5px 0 0;color:var(--muted);font-size:10px;letter-spacing:.16em}.bar-actions{display:flex;align-items:center;gap:10px}.button{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:9px 14px;font-size:12px;color:var(--ink)}.button.primary{background:var(--green);color:#fff;border-color:var(--green)}.logout{margin:0}.logout button{background:none;border:none;padding:8px;color:var(--muted);font:12px inherit;cursor:pointer}
 .status-bar{max-width:1440px;margin:auto;padding:18px 40px 0;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:12px;color:var(--muted)}.status-meta{display:flex;align-items:center;gap:12px}.capture-state{display:inline-flex;align-items:center;gap:7px;color:var(--green)}.capture-state:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}.capture-state.error{color:#965240}.header-clock{margin:0}.readonly{letter-spacing:.04em}.capture-notice{max-width:1360px;margin:14px auto 0;padding:12px 16px;background:#f6ead7;border:1px solid #e8d5b4;border-radius:10px;color:#754e29;font-size:13px;line-height:1.6}.recording-tools{max-width:1440px;margin:16px auto 0;padding:0 40px;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted)}.recording-tools select{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 32px 8px 12px;color:var(--ink)}
 .wrap{max-width:1440px;margin:auto;padding:24px 40px 48px;display:grid;gap:24px}.panel,.section-card{background:var(--paper);border:1px solid var(--line);border-radius:18px;overflow:hidden;min-width:0}.now-panel{display:grid;grid-template-columns:minmax(210px,.55fr) minmax(0,1.6fr);padding:28px;gap:32px;background:linear-gradient(115deg,#e8eee0,#fafbf3)}.hero-label{font-size:10px;letter-spacing:.16em;color:#6b7f69;margin:0 0 15px}.now-panel h2{font-size:34px;font-weight:500;letter-spacing:.05em;margin:0}.hero-note{margin:12px 0;color:var(--muted);line-height:1.8;font-size:12px;max-width:240px}.world-clock{font-size:12px;color:var(--muted);line-height:1.7;margin:14px 0 0}.now-story{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 22px;align-content:center}.now-line{min-width:0;border-left:2px solid #c5d2bd;padding-left:12px}.now-line .k{display:block;font-size:11px;color:var(--muted)}.now-line .v{display:block;margin-top:7px;font-size:15px;line-height:1.6;overflow-wrap:anywhere}.now-line .d{display:block;margin-top:4px;color:var(--muted);font-size:12px;line-height:1.6}.now-line.missing .v{color:var(--muted);font-size:13px}
-.section-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:start}.section-card{padding:24px}.section-card[data-focus-area="life"]{grid-column:1/-1}.section-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.section-head h2{font-size:18px;font-weight:600;margin:0;letter-spacing:.03em}.section-state{border-radius:999px;padding:4px 9px;background:var(--soft);color:var(--green);font-size:11px;white-space:nowrap}.section-state[data-state="unavailable"],.section-state[data-state="degraded"],.section-state[data-state="stale"]{background:#f4e3d7;color:#91523a}.section-state[data-state="empty"],.section-state[data-state="disabled"]{background:#eeeee7;color:var(--muted)}.section-body{padding-top:16px;display:grid;gap:16px}.section-note{font-size:12px;color:var(--muted);line-height:1.8;margin:0}.empty-state{padding:24px 16px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:13px;line-height:1.8;text-align:center}.section-subtitle{font-size:12px;color:var(--muted);font-weight:500;margin:0 0 10px}.life-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:30px}.life-column{min-width:0}.activity-list,.highlight-list{display:grid;gap:10px}.highlight{padding:16px;background:#f8f9f3;border:1px solid #e3e8dc;border-radius:12px;min-width:0}.highlight-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.kind-tag{color:#66816b;font-size:10px;letter-spacing:.06em}.when{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}.highlight h3{font-size:15px;line-height:1.65;font-weight:500;margin:8px 0 0;overflow-wrap:anywhere}.status-pill{display:inline-block;margin-top:8px;border-radius:5px;padding:3px 7px;background:var(--soft);font-size:10px;color:var(--green)}.highlight[data-status="planned"] .status-pill,.highlight[data-status="pending"] .status-pill{background:#f0e9d9;color:var(--amber)}.highlight .detail{font-size:12px;line-height:1.8;color:var(--muted);margin:8px 0 0;overflow-wrap:anywhere}.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.chip{font-size:10px;line-height:1.5;color:var(--muted);background:#eef1e8;border-radius:4px;padding:3px 6px;overflow-wrap:anywhere}.timeline{list-style:none;padding:0;margin:0;display:grid;gap:12px}.timeline li{display:grid;grid-template-columns:9px minmax(0,1fr);gap:12px;align-items:start}.timeline-dot{margin-top:20px;width:7px;height:7px;border-radius:50%;background:#91a888}.timeline .highlight{background:transparent;border:0;border-bottom:1px solid var(--line);padding:12px 0 16px;border-radius:0}.timeline li:last-child .highlight{border:0}.timeline h3{margin-top:4px}.timeline-caption{font-size:11px;color:var(--muted);margin:0 0 10px;line-height:1.8}
+.section-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:start}.section-card{padding:24px}.section-card[data-focus-area="life"],.section-card[data-focus-area="pending"]{grid-column:1/-1}.section-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.section-head h2{font-size:18px;font-weight:600;margin:0;letter-spacing:.03em}.section-state{border-radius:999px;padding:4px 9px;background:var(--soft);color:var(--green);font-size:11px;white-space:nowrap}.section-state[data-state="unavailable"],.section-state[data-state="degraded"],.section-state[data-state="stale"]{background:#f4e3d7;color:#91523a}.section-state[data-state="empty"],.section-state[data-state="disabled"]{background:#eeeee7;color:var(--muted)}.section-body{padding-top:16px;display:grid;gap:16px}.section-note{font-size:12px;color:var(--muted);line-height:1.8;margin:0}.empty-state{padding:24px 16px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:13px;line-height:1.8;text-align:center}.section-subtitle{font-size:12px;color:var(--muted);font-weight:500;margin:0 0 10px}.life-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:30px}.life-column{min-width:0}.activity-list,.highlight-list{display:grid;gap:10px}.highlight{padding:16px;background:#f8f9f3;border:1px solid #e3e8dc;border-radius:12px;min-width:0}.highlight-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.kind-tag{color:#66816b;font-size:10px;letter-spacing:.06em}.when{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}.highlight h3{font-size:15px;line-height:1.65;font-weight:500;margin:8px 0 0;overflow-wrap:anywhere}.status-pill{display:inline-block;margin-top:8px;border-radius:5px;padding:3px 7px;background:var(--soft);font-size:10px;color:var(--green)}.highlight[data-status="planned"] .status-pill,.highlight[data-status="pending"] .status-pill{background:#f0e9d9;color:var(--amber)}.highlight .detail{font-size:12px;line-height:1.8;color:var(--muted);margin:8px 0 0;overflow-wrap:anywhere}.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.chip{font-size:10px;line-height:1.5;color:var(--muted);background:#eef1e8;border-radius:4px;padding:3px 6px;overflow-wrap:anywhere}.timeline{list-style:none;padding:0;margin:0;display:grid;gap:12px}.timeline li{display:grid;grid-template-columns:9px minmax(0,1fr);gap:12px;align-items:start}.timeline-dot{margin-top:20px;width:7px;height:7px;border-radius:50%;background:#91a888}.timeline .highlight{background:transparent;border:0;border-bottom:1px solid var(--line);padding:12px 0 16px;border-radius:0}.timeline li:last-child .highlight{border:0}.timeline h3{margin-top:4px}.timeline-caption{font-size:11px;color:var(--muted);margin:0 0 10px;line-height:1.8}
 .metric-grid,.signal-grid,.notice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}.metric,.signal,.notice{padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:#fcfcf6;min-width:0}.metric span,.signal span,.notice span{display:block;color:var(--muted);font-size:10px}.metric strong,.signal strong,.notice strong{display:block;margin-top:6px;font-size:20px;font-weight:500}.signal strong,.notice strong{font-size:12px;line-height:1.6}.zero-metrics,.section-contract{border-top:1px solid var(--line);padding-top:12px}.zero-metrics summary,.section-contract summary{font-size:11px;color:var(--muted);cursor:pointer}.zero-metrics .metric-grid{margin-top:10px}.truncated{font-size:11px;color:var(--muted);margin:0;line-height:1.8}.operator-details{grid-column:1/-1;padding:18px 0;border-top:1px solid var(--line)}.operator-details>summary{font-size:12px;color:var(--muted);cursor:pointer}.operator-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding-top:18px}.meta{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:11px;color:var(--muted)}.meta dd{margin:0}.footer{font-size:11px;color:var(--muted);display:flex;justify-content:space-between;gap:16px;line-height:1.8}.footer a{color:inherit}
 body.recording .operator-only{display:none!important}body.recording .bar{padding-top:28px}body.recording .wrap{gap:28px}body.recording .hero-note,body.recording .section-note{font-size:14px}body.recording .now-line .v{font-size:19px}body.recording .highlight h3{font-size:20px}body.recording .highlight .detail{font-size:15px}body.recording .kind-tag,body.recording .when,body.recording .chip,body.recording .status-pill{font-size:12px}body.recording .section-head h2{font-size:23px}body.recording[data-focus]:not([data-focus="all"]) .section-grid{grid-template-columns:1fr}body.recording[data-focus]:not([data-focus="all"]) .highlight-list{grid-template-columns:repeat(2,minmax(0,1fr))}body.recording .section-card{padding:30px}
 @media(min-width:1500px){.wrap{padding-top:32px}}@media(max-width:1000px){.section-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.now-panel{grid-template-columns:1fr;gap:22px}.now-panel h2{font-size:28px}.hero-note{max-width:none}.life-columns{gap:20px}}@media(max-width:680px){.bar{padding:18px;gap:8px}.bar h1{font-size:15px}.monogram{width:36px;height:36px}.eyebrow,.readonly{display:none}.status-bar{padding:16px 18px 0;align-items:start}.status-meta{align-items:start;flex-direction:column;gap:6px}.wrap{padding:18px;gap:16px}.section-grid,.operator-grid,.life-columns{grid-template-columns:1fr}.now-panel,.section-card{padding:20px}.now-story{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.bar-actions{gap:4px}.button{font-size:11px;padding:8px}.capture-notice{margin:12px 18px 0}.recording-tools{padding:0 18px;flex-wrap:wrap}body.recording[data-focus]:not([data-focus="all"]) .highlight-list{grid-template-columns:1fr}.footer{flex-direction:column;gap:4px}}
@@ -99,7 +99,7 @@ body.recording .operator-only{display:none!important}body.recording .bar{padding
 </style></head><body><header class="bar"><div class="identity"><span class="monogram" aria-hidden="true">栀</span><div><h1>沈知栀 · 生活现场</h1><p class="eyebrow">A LIFE, CONTINUING</p></div></div><div class="bar-actions"><button id="recordingToggle" class="button primary" type="button" aria-pressed="false">录制模式</button><form class="logout operator-only" method="post" action="/world-v2/dashboard/logout"><button type="submit">退出登录</button></form></div></header>
 <div class="status-bar"><div class="status-meta"><span id="captureState" class="capture-state" role="status">正在读取</span><p id="headerClock" class="header-clock"></p></div><span class="readonly">只读 · 不改变她的生活</span></div>
 <p id="captureNotice" class="capture-notice" role="status" hidden></p>
-<div id="recordingTools" class="recording-tools" hidden><label for="recordingFocus">聚焦区域</label><select id="recordingFocus"><option value="all">完整视图</option><option value="now">这一刻</option><option value="life">生活进展</option><option value="memory">记忆</option><option value="emotion">情绪</option><option value="relationships">关系</option></select><span>仅改变显示；同步状态始终保留 · Esc 退出</span></div>
+<div id="recordingTools" class="recording-tools" hidden><label for="recordingFocus">聚焦区域</label><select id="recordingFocus"><option value="all">完整视图</option><option value="now">这一刻</option><option value="life">生活进展</option><option value="memory">记忆</option><option value="emotion">情绪</option><option value="relationships">关系</option><option value="pending">未完成事项</option></select><span>仅改变显示；同步状态始终保留 · Esc 退出</span></div>
 <main class="wrap"><section class="panel now-panel" data-focus-area="now"><div><p class="hero-label">THE PRESENT</p><h2>这一刻</h2><p class="hero-note">生活有自己的时间。<br>这里是已经记录下来的状态。</p><p id="worldClock" class="world-clock"></p></div><div id="nowStory" class="now-story"><p class="section-note">正在读取生活状态…</p></div></section><div id="sectionGrid" class="section-grid"></div><footer class="footer"><span>只展示经过授权的摘要，私密反思不在此呈现。</span><span class="operator-only">本机 owner 视图</span></footer></main>
 <script src="/world-v2/dashboard/app.js?v=world-v2-dashboard-home.1-ui5" defer></script></body></html>"""
 
@@ -188,8 +188,8 @@ const DashboardHomeClient=(()=>{
     location:'人在哪',
     affect_episode:'心情',
     attention:'注意力',
-    interaction_bid:'她在等',
-    response_expectation:'她在等',
+    interaction_bid:'互动期待',
+    response_expectation:'回应期待',
     private_impression:'对你的印象',
     relationship_state:'和你',
     expression_plan:'最近说话',
@@ -361,6 +361,21 @@ const DashboardHomeClient=(()=>{
       ])),
     };
   }
+  function pendingView(snapshot){
+    return [
+      {sectionId:'relationship_lifecycle',label:'事项与承诺',
+        kinds:['thread','commitment','relationship_commitment','interaction_bid']},
+      {sectionId:'operations',label:'回访与回应',
+        kinds:['revisit_intention','response_expectation']},
+    ].map(group=>{
+      const section=record(snapshot)&&record(snapshot.sections)?snapshot.sections[group.sectionId]:null;
+      return {
+        sectionId:group.sectionId,label:group.label,
+        state:record(section)&&STATE_LABELS[section.state]?section.state:'unavailable',
+        items:visibleHighlights(snapshot,group.sectionId,group.kinds),
+      };
+    });
+  }
   function nowStory(snapshot){
     const lines=[];
     const add=(label,sectionId,kinds,empty,unavailable)=>{
@@ -417,6 +432,7 @@ const DashboardHomeClient=(()=>{
     visibleHighlights,
     metaLabel,
     nowStory,
+    pendingView,
     roomMessageFrom,
     roomOverlayText,
     sectionHeading,
@@ -440,7 +456,7 @@ if(typeof document!=='undefined'){
   let recording=false;
   let focusArea='all';
   let previousScroll=0;
-  const focusAreas=['all','now','life','memory','emotion','relationships'];
+  const focusAreas=['all','now','life','memory','emotion','relationships','pending'];
   const element=(tag,className,text)=>{
     const node=document.createElement(tag);
     if(className)node.className=className;
@@ -609,6 +625,26 @@ if(typeof document!=='undefined'){
     }
     sectionGrid.appendChild(card);
   }
+  function renderPending(snapshot){
+    const groups=DashboardHomeClient.pendingView(snapshot);
+    const available=groups.filter(group=>group.state!=='unavailable');
+    const state=!available.length?'unavailable':available.length!==groups.length?'degraded'
+      :groups.some(group=>group.items.length)?'ready':'empty';
+    const {card,body}=sectionCard('未完成事项',{state},'pending');
+    body.appendChild(element('p','section-note','待续事项及相关记录，保留原有状态；不据时间推断此刻仍在等待。'));
+    const columns=element('div','life-columns');
+    for(const group of groups){
+      const column=element('div','life-column');
+      column.appendChild(element('h3','section-subtitle',group.label));
+      if(group.state==='unavailable')empty(column,'这部分事项记录暂时不可用。');
+      else if(!group.items.length)empty(column,'暂无可展示的事项记录。');
+      else appendHighlights(column,group.items);
+      appendCoverage(column,snapshot.sections[group.sectionId]);
+      columns.appendChild(column);
+    }
+    body.appendChild(columns);
+    sectionGrid.appendChild(card);
+  }
   function renderOperations(snapshot){
     const details=element('details','operator-details operator-only');
     details.appendChild(element('summary','','运维与其他记录'));
@@ -668,6 +704,7 @@ if(typeof document!=='undefined'){
       metricKeys:['relationship_states','relationship_commitments','npcs','private_impressions'],
       note:'承诺、关系与人物各有记录。私人印象只显示数量。',
     });
+    renderPending(snapshot);
     renderOperations(snapshot);
     applyPresentation();
     setCaptureState('ready');
