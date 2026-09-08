@@ -365,11 +365,26 @@ class OutcomeAcceptanceRuntime:
             read_world_consequence_candidate(content_store=self._content_store, candidate=selected)
         accepted = self.ledger.commit_accepted(batch, expected_cursor=cursor)
         if selected.result_contract == "world-consequence.2":
-            published = OccurrenceResultContentRuntime(
-                ledger=self.ledger, content_store=self._content_store,
-            ).materialize(occurrence_id=occurrence.occurrence_id)
-            return published or accepted
+            self.recover_result_content(occurrence_id=occurrence.occurrence_id)
+        # This is the exact accepted batch, not the later publication commit.
         return accepted
+
+    def recover_result_content(self, *, occurrence_id: str) -> CommitResult | None:
+        occurrence = next(
+            (item for item in self.ledger.project().world_occurrences
+             if item.occurrence_id == occurrence_id), None,
+        )
+        if occurrence is None or occurrence.status != "settled":
+            raise OutcomeAcceptanceError("result_not_settled")
+        selected = next((item for item in occurrence.candidate_outcomes
+                         if item.candidate_result_ref == occurrence.settled_outcome_ref), None)
+        if selected is None:
+            raise OutcomeAcceptanceError("settled_result_missing")
+        if selected.result_contract != "world-consequence.2":
+            return None
+        return OccurrenceResultContentRuntime(
+            ledger=self.ledger, content_store=self._content_store,
+        ).materialize(occurrence_id=occurrence_id)
 
     def accept_runtime_owned(self, *, handle: PinnedOutcomeProposalAuthorityHandle,
                              actor: str, source: str) -> CommitResult:

@@ -101,5 +101,8 @@ class OutcomeProposalWorker:
             source=self._source,
         )
 
+    def recover_settled_result(self, *, occurrence_id: str) -> CommitResult | None:
+        return self._acceptance.recover_result_content(occurrence_id=occurrence_id)
+
 
 __all__ = ["OutcomeProposalWorker", "OutcomeProposalWorkResult"]

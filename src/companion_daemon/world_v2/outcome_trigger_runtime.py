@@ -103,10 +103,16 @@ class OutcomeTriggerRuntime:
                     None,
                 )
                 if accepted is not None:
+                    if self._ledger.blocks_event_loop:
+                        await asyncio.to_thread(
+                            self._worker.recover_settled_result, occurrence_id=typed.occurrence_id,
+                        )
+                    else:
+                        self._worker.recover_settled_result(occurrence_id=typed.occurrence_id)
                     await self._complete(
                         process=active,
                         source_event=source_event,
-                        cursor=current_cursor,
+                        cursor=self._cursor(await self._project()),
                         outcome_ref=(
                             f"outcome:{active.trigger_id}:accepted:"
                             f"{typed.outcome_proposal_id}"
