@@ -1144,6 +1144,43 @@ def _failed_cache_key(request: ModelInput) -> tuple[str, ...]:
     )
 
 
+def _rejected_call_pin(request: ModelInput) -> str:
+    """Match only the same ModelInput plus Core's one correction coordinate."""
+
+    content = json.loads(request.model_content_json)
+    snapshot = content.get("inner_life_snapshot") if isinstance(content, dict) else None
+    correction = snapshot.get("role_result_correction") if isinstance(snapshot, dict) else None
+    if not isinstance(correction, dict) or (
+        correction.get("contract") != "character-interior-role-result-correction.1"
+        or correction.get("task") != "return_one_fresh_complete_role_result"
+    ):
+        return _model_input_request_hash(request)
+    snapshot.pop("role_result_correction")
+    normalized = request.model_copy(
+        update={
+            "model_content_json": json.dumps(
+                content, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ),
+        },
+    )
+    return _model_input_request_hash(normalized)
+
+
+def _merge_rejected_call_audits(
+    *groups: tuple[AuthoredCandidateInvocationAudit, ...],
+) -> tuple[AuthoredCandidateInvocationAudit, ...]:
+    by_call: dict[str, AuthoredCandidateInvocationAudit] = {}
+    for group in groups:
+        for audit in group:
+            previous = by_call.get(audit.model_call_id)
+            if previous is not None and previous != audit:
+                raise ValueError("rejected author invocation changed its audit identity")
+            by_call[audit.model_call_id] = audit
+    if len(by_call) > 8:
+        raise ValueError("rejected author invocation audit limit exceeded")
+    return tuple(by_call.values())
+
+
 def _provider_runtime_resource_ids(provider: object | None) -> frozenset[int]:
     """Identify mutable provider resources that an observer must not share."""
 
@@ -2520,6 +2557,7 @@ class _InboundCharacterAuthor:
         self._terminal_failed_combined = _BoundedKeySet(_MAX_PENDING_DRAFTS)
         self._terminal_authored_expression_combined = _BoundedKeySet(_MAX_PENDING_DRAFTS)
         self._failed_details: OrderedDict[tuple[str, ...], _FailedExpressionDetail] = OrderedDict()
+        self._rejected_call_audits: OrderedDict[str, AuthoredCandidateInvocationAudit] = OrderedDict()
         self._interior_streams: OrderedDict[tuple[str, ...], _CombinedInteriorStreamProvider] = (
             OrderedDict()
         )
@@ -2590,14 +2628,17 @@ class _InboundCharacterAuthor:
     ) -> ModelOutput:
         """Let this exact author replace one malformed outer role result.
 
-        Ordinary Expression parsing already performs its own bounded repair.
-        This outer guard is a fail-closed defense for a result that somehow
-        crossed that parser without a complete final private state. It never
-        selects another provider or changes the pinned World context.
+        Core owns this single correction. Discard unusable paired candidates
+        while retaining complete provider-return evidence from the same pin.
+        This port never selects another provider or changes the World context.
         """
 
         if not failure_code:
             raise ValueError("character interior correction failure code is missing")
+        audit_pin = _rejected_call_pin(request)
+        original = self._rejected_call_audits.pop(audit_pin, None)
+        if self._whole_candidate_mode and original is None:
+            logger.warning("original rejected author invocation evidence is unavailable")
         key = _cache_key(request)
         failed_key = _failed_cache_key(request)
         self._failed_combined.discard(failed_key)
@@ -2607,9 +2648,58 @@ class _InboundCharacterAuthor:
         self._pending.pop(key, None)
         for item_key in [item for item in self._candidate_pending if item[0] == key]:
             self._candidate_pending.pop(item_key, None)
-        if not self._whole_candidate_mode and self.stream_provider_available(request):
-            return await self.propose_stream_head(request)
-        return await self.propose(request)
+        try:
+            if not self._whole_candidate_mode and self.stream_provider_available(request):
+                output = await self.propose_stream_head(request)
+            else:
+                output = await self.propose(request)
+        except ValidationTechnicalFailure as exc:
+            # This invocation is corrective because it came through this
+            # explicit Core port, not because a response excerpt resembled it.
+            current = tuple(
+                audit.model_copy(update={"purpose": "role_correction"})
+                if audit.model_call_id == exc.model_call_id
+                else audit
+                for audit in exc.authored_candidate_audits
+            )
+            exc.authored_candidate_audits = _merge_rejected_call_audits(
+                (original,) if original is not None else (), current,
+            )
+            raise
+        finally:
+            self._rejected_call_audits.pop(audit_pin, None)
+        if original is None:
+            return output
+        if original.model_call_id == output.winning_model_call_id:
+            raise ValueError("corrected author reused the rejected invocation identity")
+        return output.model_copy(
+            update={
+                "authored_candidate_audits": _merge_rejected_call_audits(
+                    (original,), output.authored_candidate_audits,
+                ),
+            },
+        )
+
+    def _retain_rejected_return(
+        self,
+        request: ModelInput,
+        returned: AuthoredCandidateInvocationAudit | None,
+        identity: _ProviderInvocationIdentity,
+    ) -> tuple[AuthoredCandidateInvocationAudit, ...]:
+        if returned is None or (
+            returned.model_call_id != identity.model_call_id
+            or returned.request_hash != identity.request_hash
+        ):
+            # Head fragments, incomplete calls and later invocations cannot
+            # inherit the complete return hash of a different provider call.
+            logger.warning("complete rejected author invocation evidence is unavailable")
+            return ()
+        pin = _rejected_call_pin(request)
+        self._rejected_call_audits[pin] = returned
+        self._rejected_call_audits.move_to_end(pin)
+        while len(self._rejected_call_audits) > _MAX_PENDING_DRAFTS:
+            self._rejected_call_audits.popitem(last=False)
+        return (returned,)
 
     def stream_provider_available(self, request: ModelInput) -> bool:
         """Report whether this author mode exposes incremental transport."""
@@ -4027,6 +4117,7 @@ class _InboundCharacterAuthor:
             tool_contract_identity=(cognition_contract_identity if use_forced_tool else None),
         )
         usage: ModelUsageProvenance | None = None
+        returned_candidate_audit: AuthoredCandidateInvocationAudit | None = None
         forced_transport_error: ValueError | None = None
         exact_request_emission = bool(getattr(provider, "reports_exact_request_emission", False))
         if not exact_request_emission:
@@ -4100,6 +4191,21 @@ class _InboundCharacterAuthor:
                         if callable(complete_json)
                         else provider.complete(messages, temperature=self._temperature)
                     )
+            if transport_provider is None and isinstance(raw, str) and raw:
+                # Freeze the complete adapter-returned arguments before the
+                # forced-tool unwrap removes transport fields or normalizes
+                # JSON. Never manufacture this hash from a rejected excerpt.
+                # This local value becomes an audit only if validation fails.
+                returned_candidate_audit = AuthoredCandidateInvocationAudit(
+                    purpose="primary_initial",
+                    model_call_id=winning_provider_identity.model_call_id,
+                    request_hash=winning_provider_identity.request_hash,
+                    response_hash=sha256(raw.encode("utf-8")).hexdigest(),
+                    model_id=model_id,
+                    model_version=self.VERSION,
+                    outcome="validation_rejected",
+                    usage=usage,
+                )
             if use_forced_tool and transport_provider is None:
                 try:
                     raw = cognition_contract.unwrap(raw)
@@ -4471,6 +4577,9 @@ class _InboundCharacterAuthor:
                 attempted_model_id=model_id,
                 attempted_model_version=self.VERSION,
                 usage=usage,
+                authored_candidate_audits=self._retain_rejected_return(
+                    request, returned_candidate_audit, winning_provider_identity,
+                ),
                 **_role_failure_payload_kwargs(raw, exc),
             ) from exc
         key = _cache_key(request)
@@ -4509,6 +4618,9 @@ class _InboundCharacterAuthor:
                 attempted_model_id=model_id,
                 attempted_model_version=self.VERSION,
                 usage=usage,
+                authored_candidate_audits=self._retain_rejected_return(
+                    request, returned_candidate_audit, winning_provider_identity,
+                ),
                 **_role_failure_payload_kwargs(raw, appraisal_error),
             ) from appraisal_error
         expression_value = _postel_expression_draft(dict(value["expression_draft"]))
@@ -4719,6 +4831,9 @@ class _InboundCharacterAuthor:
             attempted_model_id=model_id,
             attempted_model_version=self.VERSION,
             usage=usage,
+            authored_candidate_audits=self._retain_rejected_return(
+                request, returned_candidate_audit, winning_provider_identity,
+            ),
             **_ensure_reselection_detail(extra),
         )
 
