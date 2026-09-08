@@ -3926,6 +3926,13 @@ class _InboundCharacterAuthor:
         expression_user_material["appraisal_affect_hard_boundaries"] = {
             "active_affect_heads": _active_affect_heads(request),
         }
+        recall_context_available = model_content_allows_recall(request.model_content_json)
+        recall_available = self._recall_available(request) or (
+            recall_context_available and self._character_interior_recall_delegate
+        )
+        # Core-owned Recall has no coordinator on the private expression wire.
+        # Present the same author capability used by this call's tool contract.
+        expression_user_material["recall_available"] = recall_available
         expression_messages[1] = {
             "role": "user",
             "content": json.dumps(
@@ -3934,10 +3941,6 @@ class _InboundCharacterAuthor:
                 separators=(",", ":"),
             ),
         }
-        recall_context_available = model_content_allows_recall(request.model_content_json)
-        recall_available = self._recall_available(request) or (
-            recall_context_available and self._character_interior_recall_delegate
-        )
         recall_choice_envelope = (
             '{"private_turn_state":{...},"recall_request":{...}}'
             if self._capabilities.private_turn_state_mode == "required"

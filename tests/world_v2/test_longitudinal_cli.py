@@ -535,6 +535,11 @@ async def test_required_review_cli_host_holds_complete_candidate_until_review(
                 "flash", *(["flash"] if recall_first else []), "visible_source_review",
             ]
             assert len(requests) == (3 if recall_first else 2)
+            author_requests = requests[:-1]
+            assert [
+                json.loads(body["messages"][1]["content"])["recall_available"]
+                for body in author_requests
+            ] == [True, *([False] if recall_first else [])]
             if tool_version == "2":
                 from companion_daemon.usage_metrics import estimate_provider_request_reserve_cny
 
