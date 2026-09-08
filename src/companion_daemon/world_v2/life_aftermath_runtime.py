@@ -153,9 +153,8 @@ _LOG = logging.getLogger(__name__)
 _EXPERIENCE_MEMORY_INTERIOR_VERSION = (
     "character-interior-experience-memory-retention.1"
 )
-# A source that keeps failing wire validation must not pin the whole life
-# pass forever: 8 attempts at 10m/30m/2h backoff exhaust the budget in
-# roughly a day and then decline the memory deterministically.
+# Eight failed attempts exhaust this source's technical retry budget. Keep
+# its failure distinct from a character decision not to retain the memory.
 _EXPERIENCE_MEMORY_RETRY_LIMIT = 8
 
 
@@ -314,6 +313,7 @@ class LifeAftermathRuntime:
                     for item in projection.experiences
                     if isinstance(item, ExperienceProjection)
                     and item.experience_id not in settled_experience_ids
+                    and self._experience_memory_recovery_is_due(item, projection)
                 ),
                 None,
             )
@@ -2070,6 +2070,37 @@ class LifeAftermathRuntime:
             decision_payload_json=canonical_json(payload),
         )
 
+    def _experience_memory_recovery_is_due(
+        self, experience: ExperienceProjection, projection
+    ) -> bool:
+        # An already authored choice (or a legacy pending candidate) needs
+        # only deterministic acceptance. Its old model retry cannot block
+        # recovering that effect or cause the character to be asked again.
+        if self._experience_memory_decision(experience) is not None:
+            return True
+        if any(
+            candidate.values.status == "pending"
+            and any(
+                binding.source_kind == "experience"
+                and binding.source_id == experience.experience_id
+                for binding in candidate.values.source_bindings
+            )
+            for candidate in projection.memory_candidates
+        ):
+            return True
+        retry = contextual_life_retry_for(
+            projection,
+            lane="experience_memory",
+            source_event_ref=experience.origin.accepted_event_ref,
+        )
+        # Leave this source's failure and retry budget intact while allowing
+        # other eligible Experiences to reach their own character decision.
+        return retry is None or (
+            retry.retry_ordinal < _EXPERIENCE_MEMORY_RETRY_LIMIT
+            and projection.logical_time is not None
+            and projection.logical_time >= retry.next_retry_at
+        )
+
     async def _materialize_experience_memory(
         self,
         *,
@@ -2194,9 +2225,9 @@ class LifeAftermathRuntime:
                 source_event_ref=experience.origin.accepted_event_ref,
             )
             if retry is not None and retry.retry_ordinal >= _EXPERIENCE_MEMORY_RETRY_LIMIT:
-                # Deterministic surrender: the retry budget for this source is
-                # exhausted.  Decline the memory quietly instead of blocking
-                # the whole life pass forever on one unclassifiable source.
+                # This source's technical retry budget is exhausted. Keep its
+                # recorded failure; this is not a character no-change choice.
+                # Recovery skips it so other Experiences remain eligible.
                 return None
             if (
                 retry is not None
