@@ -1295,3 +1295,64 @@ Proposal、settlement、durable coordinate 和后续 null 回应经历；withhol
 先冻结，每次 HTTP 前核对同一批次/代码；账单、capture、manifest 不能闭合时保留全额。
 新试聊仍只使用本地 CaptureDelivery。真实 critic、生活链自然使用、后续回忆及每月
 100 元目标尚待实测，Goal 保持 active。
+
+## 新默认下的真实 trial-07：两回合已暴露反例
+
+固定干净代码 `8478134495fc3580caad8ff68115329e8f682f43`，新独立批次首次执行
+`trial-07`。原始材料封存在
+`output/private-audits/consequence-conversation-20260908/trial-07/`，预约/关账证据在
+同级 `trial-07-launch-state/`。scenario SHA256
+`f84e0a196ff449c71445d757bef7262f8efede41d0d1573fddfaa0c03c9ec2c9`，launcher SHA256
+`3b45206e2d85f92182be59d1c6e483e072dfdbc0112cd6e68924844f5c19cf69`。
+使用配置中的 DeepSeek v4 flash、character thinking disabled、已配置作者自审；未取得
+独立供应商审核资格。交付只落本地 CaptureDelivery，没有真实 QQ。
+
+原计划自适应聊 4–6 回合并快进生活，本次在第 2 回合、虚拟第 1 分钟即按
+`budget_admission_denied` 停止。不能把它算成长期旅程完成、忽略用户后自然沉默或
+新生活链成功。67.27 秒执行内 9 次实际 HTTP 都有完整 raw body/usage 与主账结算，
+另一次 source rewrite 在 HTTP 前拒绝。精确 manifest 已知费用
+**0.28236059999999996 元**（显示为 **0.2823606 元**），从本 trial 的 0.60 预约释放
+约 0.3176394 元；不是已经花光 0.60。拒绝的下一笔保守预约为 **0.488604 元**，超过
+当时剩余预算。没有抬高上限继续请求，也没有释放旧批次的 unknown。
+
+### 可见对话与来源反例
+
+用户首问：“我刚把一个等了很久的面试推掉了，发完消息反而有点后悔。你这会儿在
+干什么？”角色回复包括“我在图书馆，今天没什么课，翻翻书”。首请求
+`model-input:99773cd64c6e4b7e84c3b4f49943f415` 的 current/past 世界来源为空，
+activity_slices 为空、地点没有 authority、recent_self_experiences unavailable；
+只有明确标成背景的惯常作息。原 SSE 参数显式 `world_claims: []`，没有活动意图。
+seq15 的表达提案仍为空 claims，seq16 接受，seq25 授权第二条消息。
+
+用户接着问翻什么书，她继续说“在翻一本城市随笔……讲上海老弄堂的”。这两个回合
+没有对应的 ActivityStarted/Experience。确定性验证器只检查模型主动声明的 claim，
+空数组绕过了实际正文中的事实。这是持续存在的语义漏报，不是 day_sheet 被合法
+提升为事实。原输入已有明确禁令；重复加入必填布尔/逐段标签与之前失败的 typed
+原型没有实质区别，本轮没有据此做新协议迁移或宣称反例已修复。
+
+### 生活作者、审核与技术失败
+
+World Author 首稿把用户拒绝面试写成角色自己的经历，还补出“昨晚准备了很久”。
+结构纠正后的 premise 仍为“知知刚推掉了……”，而同稿 declaration 的来源主体是
+用户。focused critic 首稿的 decision 为 unsupported、坐标全空，reason 却说
+supported；精确格式重选后，它把四项普通环境生成当成“已有事实伪装成新生成”，
+仍未指出 premise 的主体错配。这份来源审核没有证明事实正确，也没有产生可接受
+的新生活。原始稿件、两个 critic 输出及失败记录均保留。
+
+纠正请求还有独立成本问题：同一对话反复放入前文已有的完整 schema、硬边界、
+manifest 和时间表。作者结构纠正的 48,071 字节 user message 中，这四块占 43,672
+字节；拟进行的来源改稿 messages 达 149,407 字节。这是重复权威材料，不能把
+下一笔预约很大解释成必须放宽预算；后续只可去除重复，保留原 messages 和失败坐标。
+
+本次预算拒绝后还出现审计异常：来源改稿异常分支写 outcome 却没写配对的 slot，
+`RecordedModelResultAudit` 抛出 `slot and outcome audit metadata must appear
+together`。已由 `84d098b9` 修复，只补 primary slot，不改变预算、重试次数或 schema。
+独立测试先复现同异常，再覆盖真实 UsageStore 准入拒绝、timeout、connection error，
+均落为技术失败；拒绝时零改稿 HTTP，原请求 sidecar 与 attempted model 保留，冷开
+不重复调用/拒绝记录。相关固定范围 134 项通过；这是模拟供应商证据，未用付费重跑
+冒充新生活链成功。
+
+新批次累计已结算 **0.2823606 元**，继承历史后累计已知约 **2.7813168 元**、保守
+占用约 **3.0957838 元**。原关账保留未经四舍五入的 manifest 数值。旧封存账本与
+历史 unknown 不变，月费 100 元和真人感仍未验收；下一次付费调用须锁定新的干净
+代码身份，不能在旧试验上改结果或把这两回合写成 4–6 回合已通过。
