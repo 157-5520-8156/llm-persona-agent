@@ -9,7 +9,10 @@ import json
 
 import pytest
 
-from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
+from companion_daemon.world_v2.life_content_store import (
+    SQLiteImmutableLifeContentStore,
+    StoredLifeContent,
+)
 from companion_daemon.world_v2.life_development_draft import (
     LifeDevelopmentCapabilityManifest,
     parse_world_author_draft,
@@ -28,6 +31,7 @@ from test_life_development_runtime import (
     _location_bound_world_draft,
     _location_capability,
     _novel_origin_review,
+    _replace_event_payload,
     _seed_clock,
 )
 from test_world_author_request_audit import _CurrentManifest, _ReceivedAuthor, _json
@@ -298,6 +302,194 @@ async def test_exact_character_authorship_rejection_returns_to_same_author_and_i
         }
         assert hashlib.sha256(_json(rejected).encode()).hexdigest() in response_hashes
         assert hashlib.sha256(_json(corrected).encode()).hexdigest() in response_hashes
+    finally:
+        store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tamper", "failure"),
+    [
+        ("substitute", "descriptor changed its original author content"),
+        ("missing_hashes", "lacks the ordered original author content hashes"),
+        ("downgrade", "requires explicit possibility authority version .8"),
+    ],
+)
+async def test_public_final_batch_cannot_rebind_original_author_proof(
+    tmp_path, monkeypatch, tamper, failure
+):
+    path = tmp_path / "tamper.sqlite"
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
+    try:
+        wake = _seed_clock(ledger)
+        author = _ReceivedAuthor(store, (_json(_draft(wake)),))
+        general = _SequenceModel(model="fixture:unused-general", outputs=())
+        focused = _SequenceModel(
+            model="fixture:focused", outputs=(_novel_origin_review(decision="supported"),)
+        )
+        original = ledger.commit_at_cursor
+        before_final = []
+
+        def change_final(events, **kwargs):
+            changed = []
+            for event in events:
+                payload = event.payload()
+                if (
+                    event.event_type == "ProposalRecorded"
+                    and payload.get("proposal_kind") == "life_development"
+                ):
+                    before_final.append(ledger.project())
+                    _assert_original_requests(ledger, store, author)
+                    if tamper == "downgrade":
+                        payload["possibility_authority_version"] = "life-development-possibility.7"
+                    elif tamper == "missing_hashes":
+                        authority = payload["world_author_deliberation"]
+                        authority.pop("world_consequence_content_hashes")
+                        payload["world_author_deliberation_hash"] = hashlib.sha256(
+                            _json(authority).encode()
+                        ).hexdigest()
+                    else:
+                        substitute = _json(
+                            {
+                                "contract": "world-consequence.2",
+                                "environment_text": "她及时收回了手账。",
+                            }
+                        )
+                        digest = hashlib.sha256(substitute.encode()).hexdigest()
+                        ref = "content:fixture:unauthored-substitute"
+                        store.put_if_absent(
+                            StoredLifeContent(
+                                content_ref=ref,
+                                content_kind="outcome_candidate",
+                                text=substitute,
+                                content_payload_hash=digest,
+                            )
+                        )
+                        descriptor = payload["possibility_authority"]["outcomes"][0]["descriptor"]
+                        descriptor["content_ref"] = ref
+                        descriptor["content_payload_hash"] = digest
+                        descriptor["result_payload_hash"] = digest
+                        for binding in payload["content_bindings"]:
+                            if binding["role"] == "outcome:1":
+                                binding["content_ref"] = ref
+                                binding["content_payload_hash"] = digest
+                        payload["possibility_authority_hash"] = hashlib.sha256(
+                            _json(payload["possibility_authority"]).encode()
+                        ).hexdigest()
+                    event = _replace_event_payload(event, payload=payload)
+                changed.append(event)
+            return original(tuple(changed), **kwargs)
+
+        monkeypatch.setattr(ledger, "commit_at_cursor", change_final)
+        with pytest.raises(ValueError, match=failure):
+            await _advance(_runtime(ledger, store, wake, author, general, focused), wake)
+        assert len(before_final) == len(author.received) == focused.calls == 1
+        assert ledger.project() == before_final[0]
+        assert ledger.project().world_occurrences == ()
+    finally:
+        store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_current_consequence_requires_an_installed_focused_critic(tmp_path):
+    path = tmp_path / "no-critic.sqlite"
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
+    try:
+        wake = _seed_clock(ledger)
+        author = _ReceivedAuthor(store, (_json(_draft(wake)),))
+        result = await _advance(_runtime(ledger, store, wake, author, None, None), wake)
+        assert result.status == "technical_failure"
+        assert result.reason_code == "life_development.world_consequence_critic_not_configured"
+        assert len(author.received) == 1
+        _assert_original_requests(ledger, store, author)
+        assert ledger.project().world_occurrences == ()
+        assert ledger.project().plans == ()
+    finally:
+        store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_corrected_author_and_review_audits_cold_recover_before_final_effect(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "corrected-recovery.sqlite"
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
+    try:
+        wake = _seed_clock(ledger)
+        corrected = _draft(wake)
+        rejected = json.loads(_json(corrected))
+        fragment = "她及时收回了手账。"
+        rejected["outcomes"][0]["world_consequence"]["environment_text"] += fragment
+        author = _ReceivedAuthor(store, (_json(rejected), _json(corrected)))
+        general = _SequenceModel(model="fixture:general", outputs=())
+        focused = _SequenceModel(
+            model="fixture:focused",
+            outputs=(
+                _novel_origin_review(
+                    decision="unsupported",
+                    unsupported_outcome_prerequisites=(
+                        {
+                            "prose_path": "outcomes.0.world_consequence.environment_text",
+                            "violation_kinds": ["character_interior_authorship"],
+                            "exact_fragments": [fragment],
+                        },
+                    ),
+                ),
+                _novel_origin_review(decision="supported"),
+            ),
+        )
+        original = ledger.commit_at_cursor
+        checkpoints = []
+
+        def stop_before_final(events, **kwargs):
+            if any(
+                event.event_type == "ProposalRecorded"
+                and event.payload().get("proposal_kind") == "life_development"
+                for event in events
+            ):
+                assert len(author.received) == focused.calls == 2
+                _assert_original_requests(ledger, store, author)
+                checkpoints.append(ledger.project())
+                raise InterruptedError("fixture: before final consequence effect")
+            return original(events, **kwargs)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(ledger, "commit_at_cursor", stop_before_final)
+            with pytest.raises(InterruptedError, match="before final consequence effect"):
+                await _advance(_runtime(ledger, store, wake, author, general, focused), wake)
+        assert len(checkpoints) == 1
+        assert checkpoints[0].world_occurrences == ()
+        original_audits = tuple(item.audit_json for item in checkpoints[0].model_result_audits)
+        original_proposal_audits = tuple(
+            item.proposal_json for item in checkpoints[0].proposal_audits
+        )
+        store.close()
+        ledger.close()
+        ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+        store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
+        cold_author = _ReceivedAuthor(store, ())
+        cold_general = _SequenceModel(model="fixture:general", outputs=())
+        cold_focused = _SequenceModel(model="fixture:focused", outputs=())
+        result = await _advance(
+            _runtime(ledger, store, wake, cold_author, cold_general, cold_focused), wake
+        )
+        _assert_occurrence(ledger, store, result, corrected)
+        assert cold_author.received == []
+        assert cold_general.calls == cold_focused.calls == 0
+        assert (
+            tuple(item.audit_json for item in ledger.project().model_result_audits)
+            == original_audits
+        )
+        assert (
+            tuple(item.proposal_json for item in ledger.project().proposal_audits)
+            == original_proposal_audits
+        )
     finally:
         store.close()
         ledger.close()
