@@ -720,3 +720,46 @@ trial06 的 45 分钟静默还没有覆盖主动联系决策。seq178 在 10:52 
 10:22，测试在 11:07 已停止。现有机会时序本身尚未到期，故这段日志只能证明没有
 额外交付，不能证明角色因尊重、失落或自行决定而沉默。后续长时测试需推进到真实
 已声明机会并检查角色 terminal choice，不能缩短生产节奏来制造“通过”。
+
+## 两次有界对照：逐项审查部分命中，NPC 时间仍自相矛盾
+
+在干净 `5a8be681` 上，root 各执行一次 prose protocol 与 NPC civil-time 对照。
+新 shim `run-prepared-life-controls.py` 复用冻结单调用 engine 和既有 CAS/费用闭环，
+只在隔离模块中替换 capture role、原 pinned 时间和 probe kind 三个标签；原文件不变。
+prose 分配 0.13 元，NPC 分配 0.07 元，各最多一次 HTTP、55 秒、无 fallback 或重试。
+root 独立通过 11 项新 binding/预算 fixture 后才执行，两次实际出站字节均与准备稿一致。
+
+prose 是可丢弃的私有合同，不是生产 schema。它保留原 sample01 的全部事实和非 messages
+参数，澄清“不评价情绪好坏”和“检查谁有权写入”的区别，并要求在同一 critic 响应中
+逐项检查 premise 和每个 outcome 的内心权限与既往前提。代码只核字段覆盖、逐字片段、
+来源指针、同分支先行片段及结论一致性，不切关键词或自动改写文字。27 项纯函数测试
+包含一个“坐标全部合法但语义仍可误判”的负面边界，不能作为真实效果证明。
+
+实际请求 28,757 字节、input 7,250 / output 604 tokens，约 4.648 秒返回。
+模型这次将两个 outcome 的内心标为 unsupported，识别出新满足感、决定和思想活动；
+原 review 内层 parser 独立验证两个 finding 的路径、kind 和逐字片段均合法。但六个轴
+全部漏 `supports`，四个 clear 轴还返回空 `fragments`；冻结私有 parser 原样拒绝，
+报 `incorrect object keys`。两个 prerequisites 仍为 clear，旧诗稿依旧没有来源或
+同分支创建依据。因此结果是**内心权限部分命中、整体协议无效、既往事实漏检未解决**。
+没有补字段或放宽规则来把原响应变成成功，也没有把该协议安装到生产路径。
+
+NPC 对照先用旧 compiler 逐字复原原 6,475 字节请求，再由当前 compiler 增加时间视图。
+其余 profile、`my_last_state=null`、图书馆位置、public_world、stimulus 和 HTTP 参数
+保持一致；新增请求为 7,737 字节。复原只覆盖模型可见输入，未声称恢复完整 runtime
+snapshot 或 catalog。当地时间来自原 193 事件/88 commit 的精确前缀，不伪造 commit。
+
+实际 NPC input 2,098 / output 288 tokens，约 3.285 秒返回 no_op。其 inner state 明确
+写出 `11:07 AM local time`，但 impulse 同时写 `quiet afternoon`。当前
+`NpcActorDecision` parser 和 `_validate_actor_decision` 在复原的有效视图上均通过；
+语义仍存在上午/下午矛盾，不能宣布时间行为修复成功。no_op 本身是合法自主选择。
+这次只测模型，不将其结果写入 NPC 状态或 World。
+
+prose 已知费用 **0.027186 元**，NPC **0.008886 元**，合计 **0.036072 元**；原始
+响应、唯一主 usage/reservation 和关账凭证一致，均 known/settled，新增 unknown 为 0。
+两次释放未用分配共 **0.163928 元**，旧 campaign 行与原 unknown **0.241365** 不变。
+phase 已知 **1.5411067**，共占用 **1.7824717**，在原 2 元上限内剩 **0.2175283**；
+跨阶段累计已知 **2.4231933**。这仍是按安装价表核算的实际 token 用量，未做发票对账。
+
+原始结果分别在 `output/private-audits/prepared-prose-control-sample01/` 与
+`prepared-npc-control-sample01/`；独立审计为 `prepared-life-controls-assessment.md`。
+这两个反例继续保留为未通过，不用离线测试、body 完整或费用结算代替语义验收。
