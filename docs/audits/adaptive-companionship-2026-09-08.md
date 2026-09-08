@@ -1,8 +1,9 @@
 # 2026-09-08 自主迭代与逐回合试聊
 
 本阶段由用户明确授权创建 Goal 并持续迭代。仍在 `codex/living-continuity` 隔离分支工作，
-生产数据库、配置与实际 QQ 不在写入范围。阶段新增真实模型试验总预约上限 ¥2，每个 fresh world
-上限 ¥1；此前三次试验的 ¥0.8820866 持续累计，不能用新数据库抹去测试成本。
+生产数据库、配置与实际 QQ 不在写入范围。初始试验批次总预约上限 ¥2，每个 fresh world
+上限 ¥1；此前三次试验的 ¥0.8820866 持续累计，不能用新数据库抹去测试成本。该批次已
+封存；后续独立对照另列上限并继承全部累计占用，不重新打开旧批次或释放其未知费用。
 
 ## 本批试验收束时的结论
 
@@ -17,6 +18,10 @@ World Author 内心权限矛盾和 NPC 当地时间输入。后续真实样本�
 campaign 保守占用 **1.9124717 / 2 元**。其中最后一笔已知费用 0.056898 元包含在
 未释放的 0.13 元 allocation 内，不能再把它叠加到占用金额。跨阶段已知费用
 **2.4800913 元**；未对供应商发票，未验收每月 100 元。
+
+后续独立 low 对照新增上限 **0.13 元**，实际已知 **0.0188649 元**，仍无最终正文。
+目前跨阶段累计已知 **2.4989562 元**，累计保守占用 **2.8134232 元**；旧 campaign、
+历史 unknown 及旧 high 的完整 0.13 元占用均不变。其证据与局限见本文最后一节。
 
 2026-09-08 用户随后明确纠正范围：小屋已暂时弃用，本轮不做角色移动。此前提出的
 移动纵向链停止；它不再是本 Goal 的待交付项或继续迭代的前置条件。已创建的空隔离
@@ -134,6 +139,29 @@ reply-only 检查通过（不同测试集合合计 142 项）；Ruff 和 diff �
 场景正常冻结门禁也通过，`baseline-fact-compact-prompt-final.json` 与上一 manifest
 全字段和字节一致，JSON SHA 仍为 `56ad03ebc1649166ab3089f21526ab5f6f955864a8872b8d829df746cc9ce1d3`。
 未调整 `.99` 基线。这些改动尚无新的真实聊天验收。
+
+full-turn 后续清理的 `486f84f4` 再次通过上述 5 项紧凑检查和完整正常冻结门禁；
+`baseline-fact-compact-prompt-followup.json` 仍与前述 manifest 字节相同。
+
+## 新复现：世界偶发事件可以夹带未由角色选择的行为
+
+独立只读诊断及 root 运行现成公共 fixture
+`test_world_author_can_commit_a_free_adverse_world_contingency` 均确认：初始状态只有
+Clock 与可用地点资料，没有 Plan、行动意图或角色决定，World Author 仍能提交冰雹
+事件及“她及时收回了手账”的候选全文。fixture 断言角色调用为零，Occurrence 已
+激活且保存该原文；本次该测试通过。这不是已授权“收回手账”行动受到天气影响的成败。
+
+其 reviewer 是返回 supported 的 fixture，因此它证明机械接口允许混合作者权限，
+不能声称真实 critic 已在这个新样本上放行，亦未在本次测试中推进到最终 Experience。
+当前生产代码的 `world_contingency` 分支跳过初次角色决定；LifeAftermathRuntime 按已记录的
+抽样选择候选，复用 WA 的结果正文。另一类 `character_choice` 分支虽然允许角色选
+候选，结果接口主要仍是 selected token，并没有角色自行创作最终动作正文的独立载体。
+
+这使权限缺口超出“漏掉了一句新情绪”：`LifeDevelopmentOutcomeDraft.text` 的当前
+合同本身允许 objective actions，但结果来源没有分别绑定环境变化和角色自己的回应。
+下一处设计工作应版本化区分这些来源，保留世界事件独立发生及角色决定如何回应的权利。
+上游 `intention_summary` 是未来计划，不能冒充已经发生的角色行动。尚未实现新协议，
+旧结果和审计不作静默重写；这项工作不包含小屋或移动。
 
 ## 已确认问题与机制修复
 
@@ -936,3 +964,50 @@ raw body **21,257 字节**、EOF 完整，SHA256
 位于 `prepared-thinking-control-launch-state/`。campaign SHA256 为
 `d2b23e14bff154071690231f30be703c7faa771066293555b3c0a6cb92af537c`。
 本批至此停止付费探索；所有失败样本保留。没有部署、真实 QQ 或生产 World 写入。
+
+## 独立 low 对照：单字段改变仍没有最终正文
+
+在干净 `486f84f4` 上另开一次独立批次，上限 **0.13 元**；执行前已明确告知该上限，
+没有修改旧 2 元 campaign。开批前累计已知为 2.4800913 元，保守占用为 2.7945583
+元，新增后保守天花板为 2.9245583 元。原 high 的整笔 0.13 元继续包含在开批基数，
+不把其中已知 0.056898 元再次叠加。
+
+普通 SDK 生成的请求与原 high 冻结请求仅 `reasoning_effort: high → low` 不同；
+messages、模型、4096 上限、thinking、JSON 格式以及 temperature/tools/stream 的
+缺省状态均相同。实际捕获 25,549 字节与准备稿逐字一致，SHA256 为
+`c3c7ad0996dad19c547dd3206cb4d4a61cec1a1901bcc59e0664ffc3f9012c1b`。
+没有重编事实输入；捕获的 virtual time 来自其原 pinned Clock 10:05 +08:00。
+
+新的独立执行器只使用普通 WorldV2UsageStore 的实际请求准入，保守预留 0.116583 元，
+最多一次 HTTP，调用与关闭共享 55 秒，stock client 45 秒，无 fallback、纠错或重试。
+全局 debug 镜像在构造模型前禁用，仅写本次私有主账。固定执行 manifest 为
+`31ac970b911266f8a826a97ec9b3467242abd4ed12300f92f15383c7217550fd`；root 与
+独立审者各自在冻结稿上通过 9 项临时 MockTransport/SQLite 检查，随后仅 root 执行。
+测试中的
+预算拒绝保留原 `budget_denied/legacy` 零 token 记录，不伪造供应商计费结果。
+
+约 **34.269 秒**后收到完整响应，`finish_reason=length`，content 为空，output
+4096 token 全部为 reasoning；SDK 返回 ValueError，没有交给 parser 的普通 review。
+input 为 6599 token，其中 cache hit 6528、miss 71。原始 body 共 20,752 字节、EOF
+完整，SHA256 为 `9e986d19a295592e2f184692a1c5ca384011619fe94c18e324bdcf5df8d62066`。
+没有阅读推理正文来补造结论，也没有提高上限或追加样本。
+
+因此预先列出的“有效最终审查、既往诗稿前提、角色内心作者权限”均未获得本次验证。
+不能根据一次失败断言所有 low 请求都不可用；也不能把这次较低费用或时间解释成
+推理档位的普遍优势：旧 high 与本次的 cache 命中及峰谷计价不同。这不是改后聊天
+或真实 QQ 验收，也没有安装此配置到生产。
+
+唯一主 usage 的 token/cache/reasoning 与原始 usage 一致，唯一 reservation 已
+settled。按该记录时刻安装的 offpeak 价表重算 **0.0188649 元**；主账四舍五入展示
+0.0189 元。新规则在执行前即将计费与正文成功分开，允许完整证据的 known 技术失败
+只关闭本次账；因此本次占用降为 0.0188649 元，释放新分配余额 0.1111351 元。
+这不改变旧 high 的不同关账条件或其保留金额，亦非供应商发票核验。
+
+执行后的独立只读审计复核了实际 raw、实时 SQLite 与 primary 快照、请求及旧
+campaign 字节；费用与关闭状态得到一致结论。该审计没有重跑请求或改写证据。
+
+累计已知 **2.4989562 元**，保守占用 **2.8134232 元**，仍低于本次 2.9245583 元
+天花板；新增 unknown 为零，历史差额 0.314467 元保持原口径。旧 campaign SHA 仍为
+`d2b23e14bff154071690231f30be703c7faa771066293555b3c0a6cb92af537c`。
+本次结果在 `output/private-audits/outcome-critic-low-control-execution/run/`，预先判据
+在 `output/private-audits/outcome-critic-low-semantic-rubric.md`。该独立批次不再追加调用。
