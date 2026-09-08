@@ -22,6 +22,7 @@ from .schemas import ProjectionCursor, WorldEvent
 from .world_stimulus_choice_authority import (
     read_world_stimulus_choice_authority,
     world_stimulus_source_origin,
+    world_life_response_source_refs,
 )
 
 
@@ -105,6 +106,14 @@ def derive_character_life_responses(
                 origin=CharacterLifeResponseOrigin(**origin),
             )
         )
+    required = world_life_response_source_refs(
+        state=state,
+        source_refs=authority.lineage.causal_source_refs,
+        owner_actor_ref=owner_actor_ref,
+        evaluated_world_revision=authority.audit.evaluated_world_revision,
+    )
+    if seen_sources != set(required):
+        raise CharacterLifeResponseError("response_source_coverage_invalid")
     return tuple(sorted(responses, key=lambda item: item.response_id))
 
 

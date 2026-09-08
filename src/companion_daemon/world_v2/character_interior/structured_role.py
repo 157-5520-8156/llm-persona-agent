@@ -35,6 +35,7 @@ from companion_daemon.llm import (
 from ..model_completion import ChatCompletionModel
 from ..character_outcome_contract import CharacterLifeDirectionDraft
 from ..chat_life_intent_contract import LifeIntentDraft
+from ..character_life_response_contract import validate_character_life_response_coverage
 from ..proposal_envelope import AspirationTransitionPayload
 from ..schema_core import canonicalize_json_value
 from ..structured_completion import complete_json_object
@@ -928,6 +929,12 @@ class _WorldStimulusLifeIntentDraft(LifeIntentDraft):
     source_event_ref: str = Field(min_length=1, max_length=512)
 
 
+class _WorldStimulusLifeResponseDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    source_event_ref: str = Field(min_length=1, max_length=512)
+    response_text: str | None = Field(max_length=4000)
+
+
 class _WorldStimulusAppraisalResult(BaseModel):
     """Wire closure only; the role still owns whether and how it appraises."""
 
@@ -1005,6 +1012,15 @@ class _WorldStimulusAppraisalResult(BaseModel):
     life_intent: _WorldStimulusLifeIntentDraft | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+
+    life_responses: tuple[_WorldStimulusLifeResponseDraft, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @field_validator("life_responses", mode="before")
+    @classmethod
+    def parse_response_array(cls, value):
+        return tuple(value) if isinstance(value, list) else value
 
     @model_validator(mode="after")
     def decision_closes_appraisal_shape(self) -> "_WorldStimulusAppraisalResult":
@@ -2155,6 +2171,7 @@ class StructuredCharacterRoleFaculty:
                 or proposal.aspiration_transition is not None
                 or proposal.experience_transition is not None
                 or proposal.life_intent is not None
+                or proposal.life_responses is not None
                 else "no_change"
             )
             if result.status != expected_status:
@@ -2162,6 +2179,15 @@ class StructuredCharacterRoleFaculty:
             manifest = request.capability_manifest
             if manifest is None or manifest.capability_kind != "world_stimulus_appraisal":
                 cls._raise("capability_manifest_required", response_hash=response_hash)
+            try:
+                validate_character_life_response_coverage(
+                    proposal.life_responses, manifest.payload.get("world_life_response")
+                )
+            except ValueError as exc:
+                raise StructuredRoleResultError(
+                    "world_stimulus_life_response_source_coverage_invalid",
+                    detail=str(exc), response_hash=response_hash,
+                ) from exc
             affect_capability = manifest.payload.get("affect_target_lower_bounds")
             raw_bounds = (
                 affect_capability.get("bounds") if isinstance(affect_capability, dict) else None
@@ -3270,6 +3296,30 @@ class StructuredCharacterRoleFaculty:
                     "a place or another person, or send anything. No appraisal is required"
                 ),
             }
+            response_capability = (
+                capability_manifest.payload.get("world_life_response")
+                if capability_manifest is not None else None
+            )
+            if response_capability is not None:
+                view["status_schema"] = {
+                    "transition": "one result proposal including all required life_responses; "
+                    "decision=no_change still means no Appraisal is chosen"
+                }
+                view["proposal_schema"]["life_responses"] = {
+                    "contract": "world-life-response-array.1",
+                    "coverage": "one entry per exact world_life_response.source_event_refs; "
+                    "missing entries, omitted response_text and duplicate sources are invalid",
+                    "source_event_ref": "one exact offered settlement source",
+                    "response_text": "required text or explicit null; your freely authored "
+                    "private response to this consequence, not an additional World result. "
+                    "Null means you choose no response text for this source. It neither "
+                    "requires Appraisal nor future action; those remain independent choices",
+                }
+                for example in ("proposal_example_activate", "proposal_example_no_change"):
+                    view[example]["life_responses"] = [
+                        {"source_event_ref": ref, "response_text": None}
+                        for ref in response_capability["source_event_refs"]
+                    ]
         if contract.purpose == "life_development_choice":
             view["payload_schema"] = {"completion": "one complete JSON object"}
         if contract.purpose == "activity_lifecycle_choice":

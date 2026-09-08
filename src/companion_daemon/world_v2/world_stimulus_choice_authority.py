@@ -10,7 +10,59 @@ import json
 
 from .proposal_audit_schemas import RecordedModelResultAudit
 from .proposal_envelope import DecisionProposal, validate_proposal_envelope
-from .world_life_intent_contract import world_life_intent_source_authority
+from .world_life_intent_contract import (
+    world_life_intent_capability,
+    world_life_intent_source_authority,
+)
+
+
+def world_life_response_source_refs(
+    *, state, source_refs, owner_actor_ref: str, evaluated_world_revision: int
+) -> tuple[str, ...]:
+    """Only the originally selected, explicitly versioned consequences need a response.
+
+    A settled occurrence's candidate matrix is immutable. The source revision
+    cutoff prevents recovery from borrowing a settlement newer than the role's
+    original pin, even if the current projection contains it.
+    """
+    allowed = []
+    for ref in source_refs:
+        source = world_life_intent_source_authority(
+            state=state, source_event_ref=ref, owner_actor_ref=owner_actor_ref
+        )
+        if source is None or source.world_revision > evaluated_world_revision:
+            continue
+        occurrence = next(x for x in state.world_occurrences if x.settlement_event_ref == ref)
+        selected = next(
+            (
+                x
+                for x in occurrence.candidate_outcomes
+                if x.candidate_result_ref == occurrence.settled_outcome_ref
+            ),
+            None,
+        )
+        if selected is not None and selected.result_contract == "world-consequence.2":
+            allowed.append(ref)
+    return tuple(sorted(set(allowed)))
+
+
+def world_life_response_capability(*, state, source_events, owner_actor_ref: str) -> dict | None:
+    # Reuse exact event/world/hash/privacy participation checks before exposing
+    # the narrower response capability. An unselected candidate grants nothing.
+    life = world_life_intent_capability(
+        state=state, source_events=source_events, owner_actor_ref=owner_actor_ref
+    )
+    if life is None:
+        return None
+    refs = world_life_response_source_refs(
+        state=state,
+        source_refs=life["source_event_refs"],
+        owner_actor_ref=owner_actor_ref,
+        evaluated_world_revision=state.world_revision,
+    )
+    if not refs:
+        return None
+    return {"contract": "world-life-response-capability.1", "source_event_refs": list(refs)}
 
 
 @dataclass(frozen=True)
@@ -144,6 +196,8 @@ def world_stimulus_source_origin(
 
 __all__ = [
     "WorldStimulusChoiceAuthority",
+    "world_life_response_source_refs",
+    "world_life_response_capability",
     "read_world_stimulus_choice_authority",
     "world_stimulus_source_origin",
 ]

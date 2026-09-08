@@ -18,6 +18,7 @@ from .role_life_intent_reader import RoleLifeIntentActivityReader
 from .world_stimulus_choice_authority import (
     read_world_stimulus_choice_authority,
     world_stimulus_source_origin,
+    world_life_response_source_refs,
 )
 from .schemas import DueWindow, EvidenceRef, PlanStateProjection, ProjectionCursor, WorldEvent
 from .world_life_intent_contract import (
@@ -61,6 +62,18 @@ def derive_world_life_plan(*, state, world_id: str, proposal_id: str, owner_acto
         registry_versions=(WORLD_LIFE_INTENT_REGISTRY_VERSION, "world-v2-proposals.5"),
         error_type=WorldLifeIntentError,
     )
+    if world_life_response_source_refs(
+        state=state, source_refs=authority.lineage.causal_source_refs,
+        owner_actor_ref=owner_actor_ref,
+        evaluated_world_revision=authority.audit.evaluated_world_revision,
+    ):
+        # This validates the same role audit, not event ordering. Either facet
+        # may recover first, but a Plan cannot bypass the explicit source responses.
+        from .character_life_response_runtime import derive_character_life_responses
+
+        derive_character_life_responses(
+            state=state, world_id=world_id, proposal_id=proposal_id, owner_actor_ref=owner_actor_ref,
+        )
     proposal = authority.proposal
     changes = tuple(x for x in proposal.proposed_changes if x.kind == "world_life_intent")
     if len(changes) != 1:

@@ -24,8 +24,63 @@ from companion_daemon.world_v2.proposal_envelope import (
     TypedChange,
 )
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
-from test_life_projection import WORLD_ID, commit, event
-from test_world_life_intent_runtime import ACTOR, SOURCE, INTENT, _advance_clock, _cursor, _seed
+from test_life_projection import commit
+from test_world_life_intent_runtime import ACTOR, INTENT, _cursor
+from test_world_stimulus_life_response import _ResponseHTTP, _settled
+from test_world_stimulus_life_intent import WORLD as WORLD_ID, _build, _model
+
+
+@pytest.fixture(autouse=True)
+def isolated_usage(monkeypatch):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+
+
+async def _seed(path):
+    provider = _ResponseHTTP()
+    model = _model(provider)
+    app = _build(path, model)
+    try:
+        await _settled(app)
+    finally:
+        await app.aclose()
+        await model.aclose()
+    return SQLiteWorldLedger(path=path, world_id=WORLD_ID), None
+
+
+def _source(ledger):
+    return next(
+        x.event_id
+        for x in ledger.project().committed_world_event_refs
+        if x.event_type == "WorldOccurrenceSettled"
+    )
+
+
+def _advance_clock(ledger, seconds, label):
+    from datetime import timedelta
+    from companion_daemon.world_v2.schemas import WorldEvent
+
+    now = ledger.project().logical_time
+    at = now + timedelta(seconds=seconds)
+    commit(
+        ledger,
+        [
+            WorldEvent.from_payload(
+                schema_version="world-v2.1",
+                world_id=ledger.world_id,
+                event_id="clock:" + label,
+                event_type="ClockAdvanced",
+                logical_time=at,
+                created_at=at,
+                actor="system:fixture",
+                source="fixture",
+                trace_id="trace:" + label,
+                causation_id="cause:" + label,
+                correlation_id="response-fixture",
+                idempotency_key="clock:" + label,
+                payload={"logical_time_from": now.isoformat(), "logical_time_to": at.isoformat()},
+            )
+        ],
+    )
 
 
 def _audit_response(
@@ -34,18 +89,21 @@ def _audit_response(
     text,
     identity="one",
     actor=ACTOR,
-    source_ref=SOURCE,
+    source_ref=None,
     purpose="world_stimulus_appraisal",
     lineage_actor=None,
     evidence_hash=None,
     source_refs=None,
     selections=None,
     include_plan=False,
+    omit_responses=False,
+    registry_version="world-v2-proposals.5",
 ):
     from companion_daemon.world_v2.character_life_response_runtime import character_life_response_id
 
     projection = ledger.project()
     world_id = ledger.world_id
+    source_ref = source_ref or _source(ledger)
     selections = selections if selections is not None else ((source_ref, text),)
     sources = {x.event_id: x for x in projection.committed_world_event_refs}
     changes = tuple(
@@ -68,6 +126,8 @@ def _audit_response(
         )
         for index, (ref, selected_text) in enumerate(selections)
     )
+    if omit_responses:
+        changes = ()
     if include_plan:
         from companion_daemon.world_v2.world_life_intent_runtime import world_life_plan_id
 
@@ -96,7 +156,7 @@ def _audit_response(
         )
     proposal = DecisionProposal(
         proposal_id="proposal:world-response:" + identity,
-        schema_registry_version="world-v2-proposals.5",
+        schema_registry_version=registry_version,
         trigger_ref=source_ref,
         evaluated_world_revision=projection.world_revision,
         evidence_refs=(
@@ -245,7 +305,10 @@ def _audit_response(
 
 
 @pytest.mark.parametrize("text", [None, "这件事让我有一点意外，我想先想想。"])
-def test_same_role_response_and_explicit_null_are_source_bound_and_cold_replay_once(tmp_path, text):
+@pytest.mark.asyncio
+async def test_same_role_response_and_explicit_null_are_source_bound_and_cold_replay_once(
+    tmp_path, text
+):
     from companion_daemon.world_v2.character_life_response_contract import (
         CharacterLifeResponseRecordedPayload,
     )
@@ -254,7 +317,7 @@ def test_same_role_response_and_explicit_null_are_source_bound_and_cold_replay_o
     )
 
     path = tmp_path / "response.sqlite"
-    ledger, issuer = _seed(path)
+    ledger, issuer = await _seed(path)
     proposal, cursor = _audit_response(ledger, text=text)
     before = ledger.project()
     chosen_at = ledger.project().logical_time
@@ -271,7 +334,7 @@ def test_same_role_response_and_explicit_null_are_source_bound_and_cold_replay_o
     original = ledger.lookup_event_commit(sources[0].event_id)[0]
     payload = CharacterLifeResponseRecordedPayload.model_validate_json(original.payload_json)
     assert payload.response_text == text and payload.actor_ref == ACTOR
-    assert payload.origin.source_event_ref == SOURCE
+    assert payload.origin.source_event_ref == _source(ledger)
     assert payload.origin.selected_at == chosen_at
     assert (
         ledger.project().plans == before.plans
@@ -304,18 +367,19 @@ def test_same_role_response_and_explicit_null_are_source_bound_and_cold_replay_o
     [
         ({"actor": "actor:other"}, "actor_mismatch"),
         ({"purpose": "inbound_turn"}, "inner_turn_authority_invalid"),
-        ({"source_ref": "clock-life"}, "settlement_authority_invalid"),
-        ({"source_refs": ("clock-life",)}, "inner_turn_authority_invalid"),
+        ({"source_ref": "event:trigger:clock:activate-rain"}, "settlement_authority_invalid"),
+        ({"source_refs": ("event:trigger:clock:activate-rain",)}, "inner_turn_authority_invalid"),
         ({"lineage_actor": "actor:other"}, "inner_turn_authority_invalid"),
         ({"evidence_hash": "0" * 64}, "source_binding_invalid"),
     ],
 )
-def test_response_requires_the_exact_source_actor_and_role_audit(tmp_path, options, error):
+@pytest.mark.asyncio
+async def test_response_requires_the_exact_source_actor_and_role_audit(tmp_path, options, error):
     from companion_daemon.world_v2.character_life_response_runtime import (
         CharacterLifeResponseRuntime,
     )
 
-    ledger, _ = _seed(tmp_path / "binding.sqlite")
+    ledger, _ = await _seed(tmp_path / "binding.sqlite")
     proposal, cursor = _audit_response(ledger, text=None, **options)
     before = ledger.project()
     with pytest.raises(ValueError, match=error):
@@ -328,14 +392,15 @@ def test_response_requires_the_exact_source_actor_and_role_audit(tmp_path, optio
     ledger.close()
 
 
-def test_duplicate_merged_source_is_rejected_without_partial_effect(tmp_path):
+@pytest.mark.asyncio
+async def test_duplicate_merged_source_is_rejected_without_partial_effect(tmp_path):
     from companion_daemon.world_v2.character_life_response_runtime import (
         CharacterLifeResponseRuntime,
     )
 
-    ledger, _ = _seed(tmp_path / "duplicate.sqlite")
+    ledger, _ = await _seed(tmp_path / "duplicate.sqlite")
     proposal, cursor = _audit_response(
-        ledger, text=None, selections=((SOURCE, None), (SOURCE, "另外一段。"))
+        ledger, text=None, selections=((_source(ledger), None), (_source(ledger), "另外一段。"))
     )
     before = ledger.project()
     with pytest.raises(ValueError, match="duplicate_source"):
@@ -349,13 +414,14 @@ def test_duplicate_merged_source_is_rejected_without_partial_effect(tmp_path):
 
 
 @pytest.mark.parametrize("plan_first", [False, True])
-def test_joint_registry_preserves_one_original_response_and_plan_choice(tmp_path, plan_first):
+@pytest.mark.asyncio
+async def test_joint_registry_preserves_one_original_response_and_plan_choice(tmp_path, plan_first):
     from companion_daemon.world_v2.character_life_response_runtime import (
         CharacterLifeResponseRuntime,
     )
     from companion_daemon.world_v2.world_life_intent_runtime import WorldLifeIntentRuntime
 
-    ledger, _ = _seed(tmp_path / "joint.sqlite")
+    ledger, _ = await _seed(tmp_path / "joint.sqlite")
     proposal, cursor = _audit_response(ledger, text=None, include_plan=True)
     before = ledger.project()
     responders = [
@@ -397,7 +463,8 @@ def test_joint_registry_preserves_one_original_response_and_plan_choice(tmp_path
         "source",
     ],
 )
-def test_direct_event_append_cannot_rewrite_the_author_or_source(tmp_path, field):
+@pytest.mark.asyncio
+async def test_direct_event_append_cannot_rewrite_the_author_or_source(tmp_path, field):
     from companion_daemon.world_v2.character_life_response_runtime import (
         derive_character_life_responses,
         EVENT_PREFIX,
@@ -405,7 +472,7 @@ def test_direct_event_append_cannot_rewrite_the_author_or_source(tmp_path, field
         SOURCE as RESPONSE_SOURCE,
     )
 
-    ledger, _ = _seed(tmp_path / "forged.sqlite")
+    ledger, _ = await _seed(tmp_path / "forged.sqlite")
     proposal, _ = _audit_response(ledger, text=None)
     payload = derive_character_life_responses(
         state=ledger.project(),
@@ -427,12 +494,27 @@ def test_direct_event_append_cannot_rewrite_the_author_or_source(tmp_path, field
         actor = "actor:other"
     else:
         source = "world-author"
-    forged = event(
-        EVENT_PREFIX + payload.response_id.removeprefix(RESPONSE_PREFIX),
-        "CharacterLifeResponseRecorded",
-        value,
-    ).model_copy(
-        update={"actor": actor, "source": source, "causation_id": payload.origin.proposal_event_ref}
+    from companion_daemon.world_v2.schemas import WorldEvent
+    from companion_daemon.world_v2.event_identity import domain_idempotency_key
+
+    forged = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        world_id=ledger.world_id,
+        event_id=EVENT_PREFIX + payload.response_id.removeprefix(RESPONSE_PREFIX),
+        event_type="CharacterLifeResponseRecorded",
+        logical_time=ledger.project().logical_time,
+        created_at=ledger.project().logical_time,
+        actor=actor,
+        source=source,
+        trace_id="trace:forged",
+        causation_id=payload.origin.proposal_event_ref,
+        correlation_id="response-fixture",
+        payload=value,
+        idempotency_key=domain_idempotency_key(
+            event_type="CharacterLifeResponseRecorded",
+            world_id=ledger.world_id,
+            payload=value,
+        ),
     )
     before = ledger.project()
     with pytest.raises(ValueError):
@@ -441,14 +523,15 @@ def test_direct_event_append_cannot_rewrite_the_author_or_source(tmp_path, field
     ledger.close()
 
 
-def test_cas_interruption_recovers_the_durable_null_without_new_author(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_cas_interruption_recovers_the_durable_null_without_new_author(tmp_path, monkeypatch):
     from companion_daemon.world_v2.character_life_response_runtime import (
         CharacterLifeResponseRuntime,
     )
     from companion_daemon.world_v2.errors import ConcurrencyConflict
 
     path = tmp_path / "interrupted.sqlite"
-    ledger, issuer = _seed(path)
+    ledger, issuer = await _seed(path)
     proposal, cursor = _audit_response(ledger, text=None)
     before = ledger.project()
     with monkeypatch.context() as local:
@@ -484,8 +567,9 @@ def test_cas_interruption_recovers_the_durable_null_without_new_author(tmp_path,
 @pytest.mark.parametrize(
     "version", ["world-v2-proposals.1", "world-v2-proposals.3", "world-v2-proposals.4"]
 )
-def test_legacy_proposal_cannot_acquire_a_response_by_relabeling(tmp_path, version):
-    ledger, _ = _seed(tmp_path / "legacy.sqlite")
+@pytest.mark.asyncio
+async def test_legacy_proposal_cannot_acquire_a_response_by_relabeling(tmp_path, version):
+    ledger, _ = await _seed(tmp_path / "legacy.sqlite")
     proposal, _ = _audit_response(ledger, text=None)
     raw = proposal.model_dump(mode="json")
     raw["schema_registry_version"] = version
@@ -501,7 +585,7 @@ def test_missing_response_is_not_an_authored_null():
 
     with pytest.raises(ValueError):
         CharacterLifeResponsePayload.model_validate(
-            {"actor_ref": ACTOR, "source_event_ref": SOURCE}
+            {"actor_ref": ACTOR, "source_event_ref": "event:missing"}
         )
 
 
@@ -510,117 +594,25 @@ async def test_merged_real_settlements_resume_after_only_one_response_committed(
     tmp_path, monkeypatch
 ):
     """Both source events come from the installed public HTTP outcome chain."""
-    from datetime import timedelta
     from companion_daemon.world_v2.character_life_response_runtime import (
         CharacterLifeResponseRuntime,
     )
     from companion_daemon.world_v2.errors import ConcurrencyConflict
-    from companion_daemon.world_v2.occurrence_content_coordinator import (
-        OccurrenceContentCommitRequest,
-        OutcomeCandidateContent,
-    )
-    from companion_daemon.world_v2.schemas import (
-        DueWindow,
-        EvidenceRef,
-        OutcomeObservation,
-        WorldOccurrenceProjection,
-    )
-    from test_world_stimulus_life_intent import (
-        CANDIDATE,
-        CONSIDERED,
-        WORLD,
-        _RoleHTTP,
-        _accepted_settlement,
-        _build,
-        _clock,
-        _model,
-    )
+    from test_world_stimulus_life_intent import WORLD
 
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
-    provider = _RoleHTTP(intent="null")
+    # A failed role response cannot consume either source or invent null. It
+    # leaves both publicly accepted sources for the explicit coalesced audit.
+    provider = _ResponseHTTP(fault="provider_failure")
     model = _model(provider)
     path = tmp_path / "two-sources.sqlite"
     app = _build(path, model)
     try:
-        first = await _accepted_settlement(app)
-        provider.source_ref = first.event_id
-        await app.drain_background_once()
-        second_at = CONSIDERED + timedelta(minutes=1)
-        await app.commit_occurrence(
-            OccurrenceContentCommitRequest(
-                world_id=WORLD,
-                occurrence=WorldOccurrenceProjection(
-                    occurrence_id="occurrence:world-response:second",
-                    entity_revision=1,
-                    trigger_ref="trigger:world-response:second",
-                    participant_refs=(ACTOR,),
-                    location_ref=None,
-                    time_window=DueWindow(
-                        opens_at=CONSIDERED,
-                        closes_at=second_at + timedelta(minutes=10),
-                    ),
-                    candidate_outcome_refs=(CANDIDATE,),
-                    visibility="private",
-                    status="committed",
-                ),
-                candidate_contents=(
-                    OutcomeCandidateContent(
-                        candidate_result_ref=CANDIDATE,
-                        result_id="result:world-response:second",
-                        result_payload_ref="payload:world-response:second",
-                        result_payload_hash="sha256:" + "b" * 64,
-                        privacy_class="private",
-                        content_ref="content:world-response:second",
-                        text="短雨之后天空明亮了一点。",
-                    ),
-                ),
-                change_id="change:world-response:second",
-                transition_id="transition:world-response:second",
-                evidence_refs=(
-                    EvidenceRef(
-                        ref_id="clock:" + CONSIDERED.isoformat(),
-                        evidence_type="clock_observation",
-                        claim_purpose="current_fact",
-                    ),
-                ),
-                logical_time=CONSIDERED,
-                created_at=CONSIDERED,
-                actor="system:offline-world",
-                source="test",
-                trace_id="trace:second",
-                causation_id="cause:second",
-                correlation_id="world-response",
-            )
-        )
-        await app.advance(_clock("second-activate", CONSIDERED, second_at))
-        await app.record_outcome_observation(
-            OutcomeObservation(
-                schema_version="world-v2.1",
-                observation_id="observation:world-response:second",
-                world_id=WORLD,
-                logical_time=second_at,
-                created_at=second_at,
-                trace_id="trace:second-observed",
-                causation_id="sensor:second",
-                correlation_id="world-response",
-                occurrence_id="occurrence:world-response:second",
-                source_kind="committed_world_event",
-                source_refs=("event:trigger:clock:second-activate",),
-                observed_payload_ref="sensor-payload:second",
-                observed_payload_hash="c" * 64,
-                observed_at=second_at,
-                confidence_bp=9500,
-            )
-        )
-        await app.drain_background_once()
-        sources = [
-            row.event
-            for row in app.export_replay_evidence().events
-            if row.event.event_type == "WorldOccurrenceSettled"
-        ]
-        assert len(sources) == 2
+        first = await _settled(app)
+        second = await _settled(app, name="second")
+        sources = (first, second)
     finally:
-        app.close()
+        await app.aclose()
         await model.aclose()
 
     ledger = SQLiteWorldLedger(path=path, world_id=WORLD)
@@ -680,3 +672,112 @@ async def test_merged_real_settlements_resume_after_only_one_response_committed(
         == receipts
     )
     reopened.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("selection", ["missing_current", "extra_legacy", "only_legacy"])
+async def test_reducer_requires_exact_new_source_set_without_promoting_legacy(tmp_path, selection):
+    from companion_daemon.world_v2.character_life_response_runtime import (
+        CharacterLifeResponseRuntime,
+    )
+
+    path = tmp_path / "source-set.sqlite"
+    provider = _ResponseHTTP()
+    model = _model(provider)
+    app = _build(path, model)
+    try:
+        first = await _settled(app)
+        second = await _settled(app, name="second")
+        legacy = await _settled(app, name="legacy", current=False)
+        assert provider.stimulus_requests == []
+    finally:
+        await app.aclose()
+        await model.aclose()
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    try:
+        selected = [(first.event_id, None), (second.event_id, None)]
+        if selection == "missing_current":
+            selected.pop()
+        elif selection == "extra_legacy":
+            selected.append((legacy.event_id, None))
+        else:
+            selected = [(legacy.event_id, None)]
+        proposal, cursor = _audit_response(
+            ledger,
+            text=None,
+            source_ref=first.event_id,
+            selections=tuple(selected),
+            source_refs=tuple(sorted([first.event_id, second.event_id, legacy.event_id])),
+        )
+        before = ledger.project()
+        with pytest.raises(ValueError, match="response_source_coverage_invalid"):
+            CharacterLifeResponseRuntime(ledger=ledger, owner_actor_ref=ACTOR).accept(
+                world_id=WORLD_ID,
+                audit_cursor=cursor,
+                proposal_id=proposal.proposal_id,
+            )
+        assert ledger.project() == before
+    finally:
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_later_settlement_does_not_expand_original_response_obligation(tmp_path):
+    from companion_daemon.world_v2.character_life_response_runtime import (
+        CharacterLifeResponseRuntime,
+    )
+
+    path = tmp_path / "late-source.sqlite"
+    ledger, _ = await _seed(path)
+    proposal, cursor = _audit_response(ledger, text=None)
+    original_source = _source(ledger)
+    selected_at = ledger.project().logical_time
+    ledger.close()
+    model = _model(_ResponseHTTP(fault="provider_failure"))
+    app = _build(path, model)
+    try:
+        later = await _settled(app, name="late")
+    finally:
+        await app.aclose()
+        await model.aclose()
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    try:
+        original_models = ledger.project().model_result_audits
+        receipts = CharacterLifeResponseRuntime(ledger=ledger, owner_actor_ref=ACTOR).accept(
+            world_id=WORLD_ID,
+            audit_cursor=cursor,
+            proposal_id=proposal.proposal_id,
+        )
+        assert len(receipts) == 1
+        result = ledger.lookup_event_commit(receipts[0].event_ids[0])[0].payload()
+        assert result["origin"]["source_event_ref"] == original_source != later.event_id
+        assert result["origin"]["selected_at"] == selected_at.isoformat().replace("+00:00", "Z")
+        assert ledger.project().model_result_audits == original_models
+    finally:
+        ledger.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", ["world-v2-proposals.4", "world-v2-proposals.5"])
+async def test_plan_consumer_cannot_bypass_required_response_in_same_audit(tmp_path, version):
+    from companion_daemon.world_v2.world_life_intent_runtime import WorldLifeIntentRuntime
+
+    ledger, _ = await _seed(tmp_path / "missing-response-plan.sqlite")
+    try:
+        proposal, cursor = _audit_response(
+            ledger,
+            text=None,
+            include_plan=True,
+            omit_responses=True,
+            registry_version=version,
+        )
+        before = ledger.project()
+        with pytest.raises(ValueError):
+            WorldLifeIntentRuntime(ledger=ledger, owner_actor_ref=ACTOR).accept(
+                world_id=WORLD_ID,
+                audit_cursor=cursor,
+                proposal_id=proposal.proposal_id,
+            )
+        assert ledger.project() == before
+    finally:
+        ledger.close()

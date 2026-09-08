@@ -33,6 +33,18 @@ from ..aspiration_events import (
     AspirationReinforcedPayload,
     AspirationRevisedPayload,
 )
+from ..character_life_response_contract import (
+    CHARACTER_LIFE_RESPONSE_POLICY_REF,
+    CHARACTER_LIFE_RESPONSE_REGISTRY_VERSION,
+    validate_character_life_response_coverage,
+)
+from ..character_life_response_runtime import (
+    CharacterLifeResponseRuntime,
+    character_life_response_id,
+    EVENT_PREFIX as _RESPONSE_EVENT_PREFIX,
+    RESPONSE_PREFIX as _RESPONSE_PREFIX,
+)
+from ..world_stimulus_choice_authority import world_life_response_capability
 from ..event_identity import domain_idempotency_key
 from ..errors import ConcurrencyConflict
 from ..immediate_emotion_proposal_worker import ImmediateEmotionProposalWorker
@@ -823,6 +835,12 @@ class _WorldStimulusInteriorAuthorityHandler:
                 not in expected_life_capability["source_event_refs"]
             ):
                 raise ValueError("world stimulus life intent is outside exact source authority")
+        expected_response_capability = world_life_response_capability(
+            state=pinned, source_events=tuple(source_events), owner_actor_ref=request.actor_ref
+        )
+        if manifest.payload.get("world_life_response") != expected_response_capability:
+            raise ValueError("world stimulus life response capability is not exact source authority")
+        validate_character_life_response_coverage(result.life_responses, expected_response_capability)
         identity = _digest(
             {
                 "contract": PAYLOAD_CONTRACT,
@@ -848,8 +866,10 @@ class _WorldStimulusInteriorAuthorityHandler:
                     ref_id=ref,
                     evidence_kind=(
                         "settled_world_event"
-                        if result.life_intent is not None
-                        and ref == result.life_intent.source_event_ref
+                        if (
+                            result.life_intent is not None
+                            and ref == result.life_intent.source_event_ref
+                        ) or any(item.source_event_ref == ref for item in result.life_responses or ())
                         else (
                             _EVIDENCE_KIND[process_kind]
                             if ref == source_ref
@@ -1030,11 +1050,29 @@ class _WorldStimulusInteriorAuthorityHandler:
                     ),
                 )
             )
+        for response in result.life_responses or ():
+            response_identity = character_life_response_id(
+                world_id=request.world_id, actor_ref=request.actor_ref,
+                source_event_ref=response.source_event_ref,
+            )
+            changes.append(TypedChange(
+                change_id="change:character-interior-world-stimulus:life-response:"
+                + _digest([identity, response.source_event_ref]),
+                kind="world_life_response", target_id=response_identity,
+                transition="record", expected_entity_revision=0,
+                evidence_refs=(response.source_event_ref,),
+                policy_refs=(CHARACTER_LIFE_RESPONSE_POLICY_REF,),
+                payload=CanonicalTypedPayload.from_value(
+                    payload_schema="world_life_response.v1",
+                    value={**response.model_dump(mode="json"), "actor_ref": request.actor_ref},
+                ),
+            ))
         decision = DecisionProposal(
             **(
+                {"schema_registry_version": CHARACTER_LIFE_RESPONSE_REGISTRY_VERSION}
+                if expected_response_capability is not None else
                 {"schema_registry_version": WORLD_LIFE_INTENT_REGISTRY_VERSION}
-                if result.life_intent is not None
-                else {}
+                if result.life_intent is not None else {}
             ),
             proposal_id=f"proposal:character-interior-world-stimulus:{identity}",
             trigger_ref=source_ref,
@@ -1286,6 +1324,9 @@ class CharacterInteriorWorldStimulusRuntime:
         self._emotion_worker = emotion_worker
         self._owner_id = owner_id
         self._companion_actor_ref = companion_actor_ref
+        self._world_life_response = CharacterLifeResponseRuntime(
+            ledger=ledger, owner_actor_ref=companion_actor_ref,
+        )
         self._world_life_intent = WorldLifeIntentRuntime(
             ledger=ledger, owner_actor_ref=companion_actor_ref
         )
@@ -1806,6 +1847,24 @@ class CharacterInteriorWorldStimulusRuntime:
             deliberation_revision=located_audit[1].deliberation_revision,
             ledger_sequence=located_audit[1].ledger_sequence,
         )
+        # Persist the same paid role's explicit response (including null)
+        # before any optional sibling can terminalize its source process.
+        if any(change.kind == "world_life_response" for change in authored_proposal.proposed_changes):
+            try:
+                arguments = dict(
+                    world_id=self._ledger.world_id, audit_cursor=audit_cursor,
+                    proposal_id=audit.proposal_id,
+                )
+                if self._ledger.blocks_event_loop:
+                    await asyncio.to_thread(self._world_life_response.accept, **arguments)
+                else:
+                    self._world_life_response.accept(**arguments)
+            except (ConcurrencyConflict, ValueError):
+                await self._record_technical_failure(
+                    process=active, source_event=source_event,
+                    failure_code="world_life_response_settlement_failure",
+                )
+                return result(work_status="technical_failure")
         has_life_intent = any(
             change.kind == "world_life_intent" for change in authored_proposal.proposed_changes
         )
@@ -2157,6 +2216,7 @@ class CharacterInteriorWorldStimulusRuntime:
                 if audit is not None and (
                     self._affect_is_pending(projection, audit=audit)
                     or self._world_life_intent_is_pending(projection, audit=audit)
+                    or self._world_life_response_is_pending(projection, audit=audit)
                     or self._relationship_is_pending(
                         projection,
                         audit=audit,
@@ -2170,6 +2230,20 @@ class CharacterInteriorWorldStimulusRuntime:
                 ):
                     return process
         return None
+
+    @staticmethod
+    def _world_life_response_is_pending(projection, *, audit) -> bool:
+        proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+        if not isinstance(proposal, DecisionProposal):
+            return False
+        accepted_refs = {ref.event_id for ref in projection.committed_world_event_refs
+                         if ref.event_type == "CharacterLifeResponseRecorded"}
+        return any(
+            change.kind == "world_life_response"
+            and _RESPONSE_EVENT_PREFIX + change.target_id.removeprefix(_RESPONSE_PREFIX)
+            not in accepted_refs
+            for change in proposal.proposed_changes
+        )
 
     @staticmethod
     def _world_life_intent_is_pending(projection, *, audit) -> bool:
@@ -2775,6 +2849,12 @@ class CharacterInteriorWorldStimulusRuntime:
         )
         if life_capability is not None:
             payload["world_life_intent"] = life_capability
+        response_capability = world_life_response_capability(
+            state=projection, source_events=ordered_source_events,
+            owner_actor_ref=self._companion_actor_ref,
+        )
+        if response_capability is not None:
+            payload["world_life_response"] = response_capability
         payload_json = _canonical(payload)
         return _InteriorCapabilityManifest(
             capability_ref=f"capability:world-stimulus:{process.trigger_id}:{process.claim_lease.attempt_id}",

@@ -1368,6 +1368,35 @@ class StructuredRoleToolContracts:
                 proposal_schema["required"] = [
                     key for key in proposal_schema["required"] if key != "life_intent"
                 ]
+        response_capability = capability_payload.get("world_life_response")
+        if response_capability is not None:
+            refs = response_capability.get("source_event_refs") if isinstance(response_capability, dict) else None
+            if (
+                not isinstance(response_capability, dict)
+                or response_capability.get("contract") != "world-life-response-capability.1"
+                or not isinstance(refs, list) or not refs
+                or any(not isinstance(ref, str) or not ref for ref in refs)
+                or len(refs) != len(set(refs))
+            ):
+                raise ValueError("world life response capability is invalid")
+            response_schema = _non_null_schema(
+                proposal_properties.get("life_responses"), field_name="life_responses"
+            )
+            response_schema["minItems"] = len(refs)
+            response_schema["maxItems"] = len(refs)
+            _required_object_properties(response_schema["items"])["source_event_ref"] = {
+                "type": "string", "enum": refs,
+            }
+            proposal_properties["life_responses"] = response_schema
+            proposal_schema["required"] = [
+                *proposal_schema.get("required", []), "life_responses"
+            ]
+        else:
+            proposal_properties.pop("life_responses", None)
+            if isinstance(proposal_schema.get("required"), list):
+                proposal_schema["required"] = [
+                    key for key in proposal_schema["required"] if key != "life_responses"
+                ]
         proposal_branch_properties = {
             **common,
             "decision": {"type": "null"},
