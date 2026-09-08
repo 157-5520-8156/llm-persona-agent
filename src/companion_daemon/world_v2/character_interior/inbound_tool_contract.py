@@ -963,6 +963,42 @@ class InboundToolContract:
     # inner field inventory before removing the redundant provider root.
     wrapped_result_fields: tuple[str, ...] | None = None
 
+    def required_null_padding_paths(self) -> dict[str, tuple[str, ...]]:
+        """Read available v2 branch padding from the tool, without changing it."""
+
+        if self.wrapped_result_fields is None:
+            return {}
+        try:
+            branches = self.provider_tools[0]["function"]["parameters"]["properties"][
+                "result"
+            ]["anyOf"]
+            if not isinstance(branches, list) or not branches:
+                raise ValueError("atomic v2 padding schema has no branches")
+            padding: dict[str, tuple[str, ...]] = {}
+            for branch in branches:
+                properties = branch["properties"]
+                required = branch["required"]
+                kinds = properties["result_kind"]["enum"]
+                if (
+                    not isinstance(properties, dict)
+                    or not isinstance(required, list)
+                    or any(not isinstance(key, str) for key in required)
+                    or not isinstance(kinds, list)
+                    or len(kinds) != 1
+                    or not isinstance(kinds[0], str)
+                    or kinds[0] in padding
+                ):
+                    raise ValueError("atomic v2 padding schema branch is invalid")
+                if kinds[0] == "recall" and not self.recall_allowed:
+                    continue
+                padding[kinds[0]] = tuple(sorted(
+                    f"$.result.{key}" for key in required
+                    if properties[key] == {"type": "null"}
+                ))
+            return padding
+        except (IndexError, KeyError, TypeError) as exc:
+            raise ValueError("atomic v2 padding schema is unavailable") from exc
+
     def unwrap(self, raw_arguments: str) -> str:
         """Validate and remove only the exact forced-tool transport wrapper."""
 

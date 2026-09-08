@@ -58,7 +58,7 @@ from .inbound_appraisal_wire import (
     _appraisal_draft_messages,
     _proposal_from_draft as materialize_appraisal_draft,
 )
-from .inbound_tool_contract import InboundToolContracts
+from .inbound_tool_contract import InboundToolContract, InboundToolContracts
 from .single_tool_transport import resolve_single_tool_transport
 from .inbound_wire import (
     _ExpressionDraftWire,
@@ -166,6 +166,36 @@ from .author_identity import character_semantic_author_identity
 _MAX_PENDING_DRAFTS = 64
 _CONTEXTUAL_FAILSAFE_TIMEOUT_SECONDS = 3.0
 _CONTEXTUAL_FAILSAFE_VERSION = "contextual-failure-recovery.1"
+_ATOMIC_PADDING_MARKER = "\nRequired explicit null padding paths by result_kind:\n"
+
+
+def _atomic_padding_instruction(contract: InboundToolContract) -> str:
+    return _ATOMIC_PADDING_MARKER + json.dumps(
+        contract.required_null_padding_paths(),
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    )
+
+
+def _refresh_atomic_padding_instruction(
+    messages: list[dict[str, str]], contract: InboundToolContract,
+) -> None:
+    """Refresh only the host-owned final table on this copied message list."""
+
+    if not messages or messages[0].get("role") != "system":
+        raise ValueError("atomic v2 padding instruction requires its system message")
+    prefix, marker, old_table = messages[0]["content"].rpartition(_ATOMIC_PADDING_MARKER)
+    if not marker:
+        raise ValueError("atomic v2 padding instruction is unavailable")
+    try:
+        if not isinstance(json.loads(old_table), dict):
+            raise ValueError("atomic v2 padding table must be an object")
+    except json.JSONDecodeError as exc:
+        raise ValueError("atomic v2 padding table must be the complete system suffix") from exc
+    messages[0] = {
+        **messages[0], "content": prefix + _atomic_padding_instruction(contract),
+    }
+
+
 # One corrective completion for a claim-bookkeeping near-miss.  A repaired
 # genuine reply a few seconds late reads far more human than an instant
 # canned acknowledgement, but the wait stays bounded.
@@ -3134,8 +3164,9 @@ class _InboundCharacterAuthor:
         *,
         request: ModelInput,
         provider: ChatCompletionModel,
+        messages: list[dict[str, str]] | None = None,
     ) -> dict[str, object]:
-        """Return the decision-only transport for an already-consumed choice.
+        """Prepare the final transport and refresh its copied v2 message table.
 
         Internal shape/source corrections and Recall follow-ups are final: the
         transport must not advertise another Recall branch. Offline fixtures
@@ -3166,6 +3197,10 @@ class _InboundCharacterAuthor:
             tool_choice=contract.provider_tool_choice,
             identity=contract.identity.request_identity_material(),
         )
+        if self._atomic_tool_envelope_version == "2":
+            if messages is None:
+                raise ValueError("atomic v2 final transport requires its copied messages")
+            _refresh_atomic_padding_instruction(messages, contract)
         return {
             "tools": list(contract.provider_tools),
             "tool_choice": transport.tool_choice,
@@ -3404,6 +3439,7 @@ class _InboundCharacterAuthor:
                     self._final_tool_reselection_kwargs(
                         request=request,
                         provider=reselection_provider,
+                        messages=reselection_messages,
                     )
                     if combined and reselection_lane is None
                     else expression_tool_kwargs
@@ -3607,6 +3643,7 @@ class _InboundCharacterAuthor:
                 **self._final_tool_reselection_kwargs(
                     request=request,
                     provider=provider,
+                    messages=reselection_messages,
                 ),
             )
         except asyncio.CancelledError:
@@ -4170,6 +4207,10 @@ class _InboundCharacterAuthor:
                 "Put the complete chosen Decision or Recall object under the sole outer "
                 "key result of this tool's arguments, retaining every inner field and "
                 "explicit null sibling required by the schema."
+                " For the result_kind you choose, write JSON null at each listed path; "
+                "an empty list requires no padding. This table describes transport fields, "
+                "not additional branch permissions."
+                + _atomic_padding_instruction(cognition_contract)
             )
         winning_provider_identity = _provider_invocation_identity(
             parent_call_id=provider_request.call_id,
@@ -4547,6 +4588,7 @@ class _InboundCharacterAuthor:
             followup_tool = self._final_tool_reselection_kwargs(
                 request=provider_expression_request,
                 provider=provider,
+                messages=followup,
             )
             followup_tools = followup_tool.get("tools")
             followup_tool_choice = followup_tool.get("tool_choice")
