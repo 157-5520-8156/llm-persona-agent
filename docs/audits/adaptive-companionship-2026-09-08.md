@@ -63,6 +63,47 @@ self-history 同时区分平台接受与已交付，删除“每个期待都会�
 JSON SHA-256 仍为 `56ad03ebc1649166ab3089f21526ab5f6f955864a8872b8d829df746cc9ce1d3`。
 证据为 `baseline-receipt-experience.json`，基线版本 `.99` 未调整；仍只代表固定离线机制。
 
+## 恢复迭代：精确撤回多个安排中的一条
+
+公共 SQLite 链保留两条同一 `schedule.commitment` predicate 的 set Fact，并让角色
+采纳相应记忆。角色随后明确选择撤回一条，原 adapter 仍只接受 single 撤回，原始
+请求及一次纠正后均为技术失败；旧安排继续有效。此前 trial-02 的十次 `retain:false`
+则是模型确实没有选择记录，不能把两种问题混称为缺少事实消费者。
+
+新增同一 Fact 模型通道的显式 `target_fact_ref`，系统将它绑定到已提供成员的版本、
+值 hash、接受事件及新 Observation。决定先持久化，再由 proposal/effect 两处检查
+同一授权；删除新绑定、改用旧 policy、换目标/版本/hash/用户/来源均不能通过。
+批处理中先执行一条不会让另一条被偷偷改绑；撤回前后崩溃均重用原决定和效果。
+旧 `.3` single/no_change 决定仍按旧来源上下文恢复，不获得新 set 撤回能力。
+
+当前资料最多提供 16 个可消费的 `.2` active、非 withhold set 成员，另保留旧 single
+资料。不在资料中的成员不能猜测撤回，所以尚未解决任意久远安排的检索覆盖。
+已撤回安排退出当前事实；其 before-image 与截止时间仍进入历史回忆，角色原始记忆
+不被自动删除。没有关键词取消规则、额外模型通道、行为脚本或小屋机制。
+
+新身份为 adapter `.4`、source-context `.2`、`fact-member-withdraw.1` policy；保留
+既有 single 与 `.1` 历史编码，全局 bundle `.56` 沿用现有追加 policy 的方式。
+此前可被手工拼出的无绑定 `.2` set 撤回现在会被拒绝；旧 adapter/lifecycle 无此
+producer，但这不能证明所有生产历史都不存在此类事件。未扫描或迁移生产数据库，
+不能宣称任意既有 `.56` 账本都兼容。
+
+集成点 `4c6d0538` 的 **236 项联合回归通过**，Ruff 与 diff 检查通过；完整 120 场景
+冻结门禁再次通过，`baseline-continuity-recovery-final.json` 与前述 manifest 全字段
+及字节一致，未调整 `.99` 基线。这些均为 fixture 机制证据，不是新版本的真实聊天
+验收。本轮项目真实模型调用费用增量为零；原封存试验费用与未知预约均未重算或释放。
+
+固定实现 `dbac6f29` 的更广 Fact/reader/accepted-contract/authority/registry 15 文件
+共 175 项回归通过，其中包含前述联合集合中的 61 项，不重复累加成总数。固定提交
+独立审查无确认 P1/P2；这不是未审计生产历史的兼容证明。
+
+成本材料按实际公共两成员反例构造：messages 从 4,810 到 7,079 UTF-8 字节，增加
+2,269 字节，其中 `current_set_facts` 数组 1,656 字节。16 条短测试正文的构造样例中，
+数组 13,136 字节，messages 从 4,758 到 19,235 字节；这不是生产输入 token 上限，
+长正文还会继续增加。保持原始来源文本，不截断后冒充完整事实；既有 provider 在实际
+wire payload 上预约预算，较长输入可以因此被拒绝。未新增模型调用通道不等于成本
+不增加；没有依据这组字节数外推月费，也没有把保守预约金额当成实际费用。接下来的
+成本优化应减少模型不必复制的来源元数据，并继续保留 host 的完整来源绑定。
+
 ## 已确认问题与机制修复
 
 - compact `reply_only` 与 `full_turn` 曾无条件把角色的 `world_claims` 清空。现在保留其原文、
