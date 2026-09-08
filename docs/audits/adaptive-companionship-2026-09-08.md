@@ -667,7 +667,56 @@ MockTransport 主链证明合法拒绝可被正确消费，其他本地 fixture 
 `8f3579b38dbc6895330db8f02bbbbbf12eb78604d11d2f3f5424724313459f60`，保留 `.99`，
 没有修改基线或判据。证据为 `baseline-outcome-authority-final-verification.json`。
 
-这些是机械权限与兼容性证据。修复后的真实 critic 尚未复测，不能据此声称它能
+这些是机械权限与兼容性证据。在该提交完成时，修复后的真实 critic 尚未复测，不能据此声称它能
 找全内心越权或旧事实前提；聊天空声明编造当前生活也仍未解决。为后续复测，已从
 trial06 原始材料逐字复原首个 critic 的完整 messages；第二个样本缺原完整 dialogue
 lane，明确标记缺失，不伪造同输入对照。本片没有新增真实调用或费用。
+
+## 相同事实输入复测：内心与既往事实仍被放过
+
+在干净 `e16f2707` 上，root 使用独立 debug key 执行了一次 sample01 focused critic
+请求，最多一笔 HTTP、55 秒、分配 0.13 元，无 fallback、重试或 World 接受。原
+trial06 的首个 critic messages 已由旧公开 compiler 逐字复原；新请求的
+`reviewed_surface`、`pinned_authority` 及所有非 messages HTTP 参数与原请求完全
+一致。变化只在权限说明、review/schema、坐标目录及 packet 版本/hash。第二个原
+样本仍缺完整 context，没有被拼成“同输入”试验。
+
+新请求 25,543 UTF-8 字节，较原请求增加 788 字节；实际 wire SHA 为
+`039e89106cbf6aa6898798129c1f98cd96d31edb000bb90816b7aa6bc1ebe10e`。
+约 4.53 秒后返回 **supported**，七组负向 findings 全空。模型明确将“她之前一直在
+修改的一首诗”解释成分支内新动作，并遗漏候选中的新满足感、想法与意图。
+这是结构合法但语义仍有漏检的真实反例；没有把 unsupported 通路的离线通过当作
+真实拒绝成功，也没有将该结果写成新的 World 经历。后续应检查同一 critic 内的
+任务表示和权限豁免冲突，而不是增加通用 reviewer 或按反例关键词删改文字。
+
+原始响应完整、唯一主 usage 为 known、唯一 reservation 为 settled；input 6,599
+tokens（hit 256 / miss 6,343）、output 294。按原记录时刻的安装价表计费
+**0.0217006 元**，释放分配中未用的 **0.1082994 元**。root 的 7 项临时 fixture
+通过后才执行；独立只读复核确认整个单调用 cohort、关账凭证和所有旧 campaign
+行不变。仍无 capture→reservation FK，亦非供应商发票对账。
+
+phase 已知 **1.5050347**，原 unknown **0.241365** 继续保留，共占用 **1.7463997**，
+在原 2 元上限内剩 **0.2536003**；跨阶段累计已知 **2.3871213**。冻结 runner 为
+`output/private-audits/run-outcome-interior-control.py`，结果与关账分别在
+`outcome-interior-control-sample01/` 和 `outcome-interior-control-launch-state/`。
+
+## NPC 当地时间与沉默观察的边界
+
+`2c3c6b87` 为 NPC 请求补入只读 `npc-civil-time.1`：以当前已提交 Clock 与唯一已
+提交 biography timezone 转换当地 ISO 时间，保留原 UTC、地点和既有内心文字。
+精确来源只授权两个时间字段，完整传记不会进入 NPC 输入。缺源、读错、hash 不符
+或可变 catalog 时区冲突时明确 unavailable，不按地点推断，也不覆盖此前“深夜”的
+错误状态。没有增加角色或 World Author 调用。
+
+root 独立通过 **59 项** NPC 相关检查，涵盖公共 MockTransport 的上午/跨日期、
+后续状态原文、缺源、引用预算、回放及既有 NPC 能力。120 个冻结场景候选 manifest
+与修复前 `.99` 全字段相同，随后不带 limit 的完整正门也通过；root 独立重算摘要
+仍为 `8f3579b38dbc6895330db8f02bbbbbf12eb78604d11d2f3f5424724313459f60`，
+证据为 `baseline-npc-civil-final-verification.json`。没有更改基线；输入修复不等于
+真实模型的时间判断已经通过验收。
+
+trial06 的 45 分钟静默还没有覆盖主动联系决策。seq178 在 10:52 记录的
+`social-initiative-context.2` draw 候选为 6/7/8 小时，选中 8 小时；最后用户消息在
+10:22，测试在 11:07 已停止。现有机会时序本身尚未到期，故这段日志只能证明没有
+额外交付，不能证明角色因尊重、失落或自行决定而沉默。后续长时测试需推进到真实
+已声明机会并检查角色 terminal choice，不能缩短生产节奏来制造“通过”。
