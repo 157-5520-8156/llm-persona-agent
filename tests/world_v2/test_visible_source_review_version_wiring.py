@@ -27,7 +27,7 @@ def _settings(tmp_path, **updates):
     )
 
 
-@pytest.mark.parametrize("version", ["0", "4", "", 1, 2, 3, True, None, [], {}])
+@pytest.mark.parametrize("version", ["0", "5", "", 1, 2, 3, 4, True, None, [], {}])
 @pytest.mark.parametrize("entry", ["host", "composition", "author", "proactive"])
 def test_unknown_review_versions_fail_at_each_entry(tmp_path, version, entry):
     with pytest.raises(ValueError, match="unsupported visible source review version"):
@@ -58,7 +58,7 @@ def test_unknown_review_versions_fail_at_each_entry(tmp_path, version, entry):
 
 
 @pytest.mark.parametrize("entry", ["host", "composition", "author"])
-@pytest.mark.parametrize("review_version", ["2", "3"])
+@pytest.mark.parametrize("review_version", ["2", "3", "4"])
 def test_versioned_reviewer_cannot_enable_review_implicitly(tmp_path, entry, review_version):
     with pytest.raises(ValueError, match="explicit visible source review|whole-candidate"):
         if entry == "host":
@@ -79,7 +79,7 @@ def test_versioned_reviewer_cannot_enable_review_implicitly(tmp_path, entry, rev
 
 
 @pytest.mark.parametrize("flag", [1, "yes"])
-@pytest.mark.parametrize("review_version", ["2", "3"])
+@pytest.mark.parametrize("review_version", ["2", "3", "4"])
 def test_direct_composition_versioned_review_requires_true_boolean_before_model_setup(
     tmp_path, flag, review_version
 ):
@@ -92,7 +92,7 @@ def test_direct_composition_versioned_review_requires_true_boolean_before_model_
 
 
 @pytest.mark.parametrize("entry", ["author", "proactive"])
-@pytest.mark.parametrize("review_version", ["2", "3"])
+@pytest.mark.parametrize("review_version", ["2", "3", "4"])
 def test_versioned_reviewer_requires_metered_reviewer_even_with_v1_author(entry, review_version):
     with pytest.raises(ValueError, match="metered source reviewer"):
         if entry == "author":
@@ -112,7 +112,7 @@ def test_versioned_reviewer_requires_metered_reviewer_even_with_v1_author(entry,
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["1", "2", "3"])
+@pytest.mark.parametrize("review_version", ["1", "2", "3", "4"])
 async def test_public_host_forwards_review_version_to_inbound_and_proactive(
     tmp_path, monkeypatch, review_version
 ):
@@ -146,7 +146,7 @@ async def test_public_host_forwards_review_version_to_inbound_and_proactive(
 
 
 @pytest.mark.parametrize("author_version", ["1", "2", "3"])
-@pytest.mark.parametrize("review_version", ["1", "2", "3"])
+@pytest.mark.parametrize("review_version", ["1", "2", "3", "4"])
 def test_review_version_is_independent_of_author_tool_version(
     tmp_path, monkeypatch, author_version, review_version
 ):
@@ -172,8 +172,8 @@ def test_review_version_is_independent_of_author_tool_version(
         )
 
 
-@pytest.mark.parametrize("change", ["stream", "no_reviewer", "second_reviewer"])
-@pytest.mark.parametrize("review_version", ["2", "3"])
+@pytest.mark.parametrize("change", ["stream", "shadow", "no_reviewer", "second_reviewer"])
+@pytest.mark.parametrize("review_version", ["2", "3", "4"])
 def test_versioned_reviewer_keeps_existing_host_deployment_checks(tmp_path, change, review_version):
     settings = _settings(tmp_path)
     reviewer = _MeteredFixture()
@@ -182,11 +182,11 @@ def test_versioned_reviewer_keeps_existing_host_deployment_checks(tmp_path, chan
         visible_source_review_model=reviewer, visible_source_review_version=review_version,
     )
     message = {
-        "stream": "atomic expression", "no_reviewer": "metered provider",
+        "stream": "atomic expression", "shadow": "atomic expression", "no_reviewer": "metered provider",
         "second_reviewer": "second source reviewer",
     }[change]
-    if change == "stream":
-        kwargs["settings"] = settings.model_copy(update={"world_v2_expression_episode_mode": "stream"})
+    if change in {"stream", "shadow"}:
+        kwargs["settings"] = settings.model_copy(update={"world_v2_expression_episode_mode": change})
     elif change == "no_reviewer":
         kwargs["visible_source_review_model"] = None
     else:
@@ -205,7 +205,9 @@ def test_cli_requires_explicit_review_and_retains_default_v1(tmp_path):
         ["--model-mode", "real-provider", "--allow-real-provider", "--visible-source-review-version", "2"],
         ["--visible-source-review-version", "3"],
         ["--model-mode", "real-provider", "--allow-real-provider", "--visible-source-review-version", "3"],
-        ["--model-mode", "real-provider", "--allow-real-provider", "--require-visible-source-review", "--visible-source-review-version", "4"],
+        ["--visible-source-review-version", "4"],
+        ["--model-mode", "real-provider", "--allow-real-provider", "--visible-source-review-version", "4"],
+        ["--model-mode", "real-provider", "--allow-real-provider", "--require-visible-source-review", "--visible-source-review-version", "5"],
     ):
         with pytest.raises(SystemExit) as exc:
             cli.parse_options(["--output", str(output), *options])
@@ -214,7 +216,7 @@ def test_cli_requires_explicit_review_and_retains_default_v1(tmp_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["1", "2", "3"])
+@pytest.mark.parametrize("review_version", ["1", "2", "3", "4"])
 async def test_cli_passes_selected_review_version_and_only_records_nondefault(
     tmp_path, monkeypatch, review_version
 ):
@@ -264,3 +266,72 @@ async def test_cli_passes_selected_review_version_and_only_records_nondefault(
         "--visible-author-tool-version", "3",
     ]))
     assert result["completed"] and selected == [review_version]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("review_version", ["1", "4"])
+async def test_actual_cli_manifest_preserves_explicit_reviewer_identity_without_provider_calls(
+    tmp_path, monkeypatch, review_version,
+):
+    monkeypatch.setenv("DEEPSEEK_DEBUG_API_KEY", "offline-fixture-key")
+    monkeypatch.setenv("DEEPSEEK_CHARACTER_THINKING_ENABLED", "false")
+    requests = []
+
+    def reject(request):
+        requests.append(request)
+        raise AssertionError("configuration-only journey must not call a provider")
+
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **_kwargs: httpx.MockTransport(reject))
+    scenario = tmp_path / "bootstrap.json"
+    scenario.write_text(json.dumps({
+        "scenario_id": "reviewer-configuration", "started_at": "2026-09-09T10:00:00+08:00",
+        "duration_minutes": 1, "turns": [],
+    }))
+    output = tmp_path / "journey"
+
+    async def stop(_observation):
+        return None
+
+    cli = _cli()
+    manifest = await cli.run(cli.parse_options([
+        "--scenario", str(scenario), "--output", str(output),
+        "--interactive",
+        "--model-mode", "real-provider", "--allow-real-provider",
+        "--require-visible-source-review", "--visible-author-tool-version", "3",
+        "--visible-source-review-version", review_version,
+    ]), next_command=stop)
+    saved = json.loads((output / "manifest.json").read_text())
+    assert saved == json.loads(json.dumps(manifest))
+    assert saved["stop_reason"] == "operator_stopped"
+    assert saved["provenance"]["visible_author_tool_version"] == "3"
+    assert saved["provenance"]["visible_source_review"]["expression_episode_mode"] == "off"
+    if review_version == "1":
+        assert "visible_source_review_version" not in saved["provenance"]
+    else:
+        assert saved["provenance"]["visible_source_review_version"] == "4"
+    assert requests == []
+    assert "offline-fixture-key" not in json.dumps(saved)
+    events = [json.loads(line) for line in (output / "evidence.jsonl").read_text().splitlines()]
+    assert not any(item["event_type"] == "ModelResultRecorded" for item in events)
+
+
+@pytest.mark.parametrize("entry", ["host", "composition", "author"])
+def test_reviewer_v4_does_not_enable_an_author_v4(tmp_path, entry):
+    with pytest.raises(ValueError, match="unsupported visible author tool version|unsupported atomic tool envelope version"):
+        if entry == "author":
+            _InboundCharacterAuthor(
+                flash_model=object(), whole_candidate_mode=True,
+                visible_source_review_model=_MeteredFixture(),
+                visible_source_review_version="4", atomic_tool_envelope_version="4",
+            )
+        else:
+            options = dict(
+                settings=_settings(tmp_path), visible_source_review_required=True,
+                visible_source_review_model=_MeteredFixture(),
+                visible_source_review_version="4", visible_author_tool_version="4",
+            )
+            if entry == "host":
+                build_qq_c2c_host(recipient_id="fixture", **options)
+            else:
+                build_semantic_chat_composition(model_id_prefix="fixture", **options)
+    assert not (tmp_path / "world.sqlite").exists()

@@ -33,8 +33,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         help="Explicit whole-author wire version; v2/v3 require whole-source review and is unqualified with real providers.",
     )
     parser.add_argument(
-        "--visible-source-review-version", choices=("1", "2", "3"), default="1",
-        help="Explicit whole-source reviewer wire version; v2/v3 require whole-source review and remain unqualified with real providers.",
+        "--visible-source-review-version", choices=("1", "2", "3", "4"), default="1",
+        help="Explicit whole-source reviewer wire version; v2/v3/v4 require whole-source review and remain unqualified with real providers.",
     )
     parser.add_argument(
         "--interactive",
@@ -62,7 +62,7 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
     if options.visible_author_tool_version != "1" and not options.require_visible_source_review:
         parser.error("--visible-author-tool-version 2/3 requires --require-visible-source-review")
     if options.visible_source_review_version != "1" and not options.require_visible_source_review:
-        parser.error("--visible-source-review-version 2/3 requires --require-visible-source-review")
+        parser.error("--visible-source-review-version 2/3/4 requires --require-visible-source-review")
     if not math.isfinite(options.max_cost_cny) or not 0 < options.max_cost_cny <= 100:
         parser.error("--max-cost-cny must be finite, greater than 0 and at most 100")
     if options.output.exists() or options.output.is_symlink():
