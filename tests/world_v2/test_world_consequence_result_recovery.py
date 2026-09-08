@@ -14,7 +14,7 @@ from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeCont
 from companion_daemon.world_v2.outcome_acceptance_runtime import OutcomeAcceptanceRuntime
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
 from test_world_stimulus_life_intent import WORLD, _RoleHTTP, _build, _model
-from test_world_stimulus_life_response import _settled
+from test_world_stimulus_life_response import _ResponseHTTP, _settled
 
 
 class _NoHTTP:
@@ -203,3 +203,77 @@ async def test_accept_returns_its_atomic_acceptance_commit_after_publishing_resu
     finally:
         await app.aclose()
         await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_isolated_result_io_failure_cannot_call_role_before_publication(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    path = tmp_path / "world.sqlite"
+    # This fixture would author a valid response if invoked. A provider failure
+    # must not stand in for the missing production publication guard.
+    provider = _ResponseHTTP(text=None)
+    model = _model(provider)
+    app = _build(path, model, ecology=False)
+    original = SQLiteImmutableLifeContentStore.put_if_absent
+    failures = []
+
+    def failing_put(store, record):
+        if record.content_kind == "occurrence_result":
+            failures.append(record.content_ref)
+            raise OSError("offline result sidecar I/O failure")
+        return original(store, record)
+
+    try:
+        with monkeypatch.context() as fault:
+            fault.setattr(SQLiteImmutableLifeContentStore, "put_if_absent", failing_put)
+            source = await _settled(app)
+        assert len(failures) == 1
+        before = app.export_replay_evidence()
+        (occurrence,) = before.projection.world_occurrences
+        assert occurrence.status == "settled"
+        assert _result_descriptors(before.projection, occurrence) == ()
+        responses = [
+            row.event
+            for row in before.events
+            if row.event.event_type == "CharacterLifeResponseRecorded"
+        ]
+        assert (
+            len(provider.stimulus_requests),
+            len(responses),
+            len(before.projection.experiences),
+        ) == (0, 0, 0)
+        assert len(provider.requests) == 1
+        assert (
+            json.loads(provider.requests[0]["messages"][-1]["content"])["inner_turn"]["purpose"]
+            == "outcome_selection"
+        )
+    finally:
+        await app.aclose()
+        await model.aclose()
+
+    cold_provider = _ResponseHTTP(text=None)
+    cold_model = _model(cold_provider)
+    cold_app = _build(path, cold_model, ecology=False)
+    try:
+        recovered = await cold_app.drain_background_once()
+        assert recovered.work_status == "accepted"
+        assert cold_provider.requests == []
+        published = cold_app.export_replay_evidence()
+        _assert_published(path, published.projection, occurrence)
+        assert published.projection.experiences == ()
+        await cold_app.drain_background_once()
+        assert len(cold_provider.requests) == len(cold_provider.stimulus_requests) == 1
+        after = cold_app.export_replay_evidence()
+        responses = [
+            row.event
+            for row in after.events
+            if row.event.event_type == "CharacterLifeResponseRecorded"
+        ]
+        assert len(responses) == len(after.projection.experiences) == 1
+        assert responses[0].payload()["origin"]["source_event_ref"] == source.event_id
+        assert after.projection.world_occurrences == before.projection.world_occurrences
+    finally:
+        await cold_app.aclose()
+        await cold_model.aclose()
