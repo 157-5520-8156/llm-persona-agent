@@ -59,7 +59,7 @@ WorldOccurrenceSettled、角色 model result / proposal / lineage、actor、curs
 
 ### 后续片：世界来源与角色经历的分离
 
-2026-09-08 当前进度（`66e373c9`）：作者、结算、角色回应、经历与主要读取端已接通。
+2026-09-08 初次默认切换（`66e373c9`）：作者、结算、角色回应、经历与主要读取端已接通。
 隔离代码中的实际 `ProjectionLifeCapabilityManifestCompiler` 新请求默认改为
 `life-development-capability.production.3` / `world-consequence.2`；没有修改正在运行的
 生产程序或配置。历史 `.1` 与旧 pending 保留原 manifest、审计及正文，不自动升级。
@@ -114,7 +114,7 @@ world_contingency 表达。动态 Plan 转换保留 `.2` 描述符，读取器�
 普通 Context 读取仍要求当前头；恢复接口不产生新的可信角色决定句柄。新/旧协议、
 active Plan、不同预算和后续事件隔离均有反证及零 HTTP 恢复测试。
 
-小屋和角色移动不在本轮范围内。当前 `66e373c9` 通过 55 文件中的 **846 项不同用例
+小屋和角色移动不在本轮范围内。当时 `66e373c9` 通过 55 文件中的 **846 项不同用例
 （68.55 秒）**。正常 CLI 不带 limit 的完整 120 场景通过，产物与上一 `.100` 逐字一致；
 旧阶段 476/790 等组保留在审计文档，不累加。这些仍是离线机制证据。
 
@@ -143,3 +143,13 @@ active Plan、不同预算和后续事件隔离均有反证及零 HTTP 恢复测
 trial-07 的 9 次已结算调用约 0.2823606 元，当前累计已知约 **2.7813168 元**，保守
 占用约 **3.0957838 元**；原关账保存精确 manifest 数值。新批次总上限 1.20 元，每次
 先预约 0.60 元，旧封存批次与 low 单样本批次不追加调用、不释放历史 unknown。
+
+
+2026-09-08 后续整合至 `212a3126`：新请求默认升级为 capability production `.4`，
+focused packet `.8` / subject `.7`，用于标记同一 trusted Capsule 的原选 Fact/Dialogue
+完整证明投影。聊天与 World Author 仍用原压缩视图，旧 `.2/.3` 审计保持原身份。
+输入证明损坏是技术失败，不是角色选择沉默。详见
+[来源证明设计](life-review-selected-source-proof.md)。该投影与纠正请求去重整合后，
+59 文件 879 项通过，正常 120 场景产物逐字不变；这仍是离线机制证据。trial-07 的
+聊天正文事实漏报和真实 critic 误判尚未通过新实测，累计费用仍为已知约 2.7813168
+元、保守占用约 3.0957838 元。Goal 保持 active；小屋已暂时弃用，不做角色移动。

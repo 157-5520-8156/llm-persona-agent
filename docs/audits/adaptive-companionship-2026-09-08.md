@@ -1403,3 +1403,44 @@ SHA256 `71790d81d603e1958be57616994cf516262e463f319c9a8f68caab03f54118a2`。
 实际 producer/consumer 断点。正在隔离修复 reviewer 专用投影，只读取同一 trusted
 capsule 中已选材料的完整证明，保留聊天压缩与旧审计视图。不能直接给 slim 值补原
 hash，因为原 value_hash 对应完整值；恢复证据传递也不能宣称已修复模型的语义漏判。
+
+
+## 精确来源证明已接入 focused review，等待真实复测
+
+根分支 `6ff283fa` 合入专用证明投影，`212a3126` 完成与纠正材料去重的测试整合。
+新 capability manifest 为 `life-development-capability.production.4`，对应 focused
+packet `.8` / subject `.7`，outcome 仍为 `world-consequence.2`。运行时只给 focused
+review 派生局部输入：先重新验证原 typed Capsule 的 compiler tag、完整输出和逐项
+source/value hash，再使用其中原已选 Fact/Dialogue 的完整 payload 与 binding。
+没有重新检索、扩充选择数量、读取未来状态、改变隐私或增加模型调用；普通聊天和
+World Author 输入保持原视图。损坏证明落明确技术失败，focused HTTP 为零，不能
+以 baseline-only 材料冒充新资格。不可用 slice 仍不可用。
+
+公开用例贯穿临时 SQLite Observation → Fact 接受 → 实际 Resolver/Capsule →
+LifeDevelopment → DeepSeek MockTransport。单 Fact/Dialogue 样本的作者 HTTP 为
+45,024 字节、保持不变；focused 由 24,288 增至 25,973 字节（+1,685，约 6.94%）。
+这是完整证据的 token 成本，不是新的调用次数或实付账单。旧 production `.2/.3`
+审计按原 pin/packet/请求字节冷恢复，新增 `.4` 也通过相同恢复链，均零新增 HTTP；
+原 audit_json 未重写，manifest/packet 错配拒绝。
+
+根整合首次检查发现三处旧形状断言：一个新请求仍断言 `.3`，两个纠正测试仍直接
+查找已去重的字段。只更新新请求版本及原消息 locator 解引用，保留失败原因、权限
+内容、拒绝降级和原请求存在性断言；历史 `.2/.3` fixture 未改成新资格。
+固定 `212a3126` 的同一 59 文件检查 **879 passed / 67.82 秒**，日志
+`/tmp/girl-agent-selected-proof-gate-212a3126.log`，文件集合为
+`/tmp/girl-agent-selected-proof-gate-6ff283fa.files.json`。修改 Python 的 Ruff 与
+`git diff --check` 通过。独立只读复核未确认阻断，13 个专用检查亦通过；数量与总门
+重叠，不累加。真实模型的语义判断仍未验证。
+
+正常 CLI 不带 `--limit` 的 120 个冻结场景通过，manifest 保持
+`b405ce3beb2d6f4ab83b21011341fbe26192bbd24cb2dab3fb94979468c565c9`。
+`output/adaptive-companionship-2026-09-08/baseline-selected-life-proof-100.json`
+与前片 default 产物逐字相同：233,258 字节，SHA256
+`080d3b84cf37a6c07cf54732cea10aa7d2d9ab721d4872a73af9a94a03e92e95`。
+没有更换冻结基线。
+
+本片新增付费调用为零，累计已知约 2.7813168 元、保守占用约 3.0957838 元不变。
+trial-08 仅准备独立 runner 文件，保留 trial-07 的 runner/原始结果/账单；复用同一
+1.20 元批次及每次 0.60 元完整预约，5 个离线启动器检查通过。下一步冻结新的干净
+HEAD 后进行真实多轮试聊，查看来源证明能否帮助审核，而不是把机制通过记作主体
+错误、聊天正文事实漏报或长期真人感已经解决。小屋与角色移动继续排除。
