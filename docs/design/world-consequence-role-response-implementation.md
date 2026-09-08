@@ -59,6 +59,37 @@ WorldOccurrenceSettled、角色 model result / proposal / lineage、actor、curs
 
 ### 后续片：世界来源与角色经历的分离
 
+2026-09-08 进度：新协议的作者输入与角色回应两端已分别实现，完整经历链尚未接通。
+新 `.2` 来源经公共 HTTP 角色调用生成 `life_responses`，逐源正文或显式 null 必填；
+同一决定先接受回应，再接受可选意图/情绪。多源部分提交及独立情绪消费者先终结
+触发器后，均从原 audit 恢复，不补模型决定。旧来源保持旧 wire。`.4` 提案不能对
+新来源绕过回应要求后单独接受 Plan。
+
+World Author 新请求只从原 manifest anchors 中提供至多四条可读执行材料，包含
+真实开始/恢复记录以及原角色授权意图全文。没有可读 Action 正文的 receipt 不提供
+执行权限。新请求在调用前保存完整 messages；结果反证模块核对原 ModelResult、
+Proposal、request bytes、manifest、原 pin 和每条执行材料。该反证模块已有公共
+作者调用中断后及 SQLite 重开测试，**尚未接到完整 SourceReview/接受路径**。
+新 prompt 已接显式 `.2` manifest 的作者调用，未提供的 execution binding 会精确
+交回同一作者重选一次。旧 schema 已独立逐字比较，不因兼容解析器增加新字段。
+
+生产 manifest 编译器仍保持 `.production.2` 与原缺省，不启用新后果写入。必须按以下
+顺序完成余下链条后才能切换：
+
+1. 将已核实的原执行材料交给两种 review 编译器，持久保存新 packet/subject 版本；
+   为新作者结果的单次来源纠正传递同一新合同。当前 source-rewrite helper 仍是旧 wire。
+2. World Author 新候选使用结构化内容及 `result_contract`，Aftermath 与通用
+   Outcome 接受均反证原作者/执行来源；旧 pending 不因缺省而升级。
+3. 增加一个复合来源绑定的 Experience `.2`，同时引用世界结算与已接受角色回应。
+   两种结算路径停止将新 WA 原文直接复制成经历；LifeContent、WorldLife、snapshot、
+   Recall 与后置 retention 一同识别两种作者权限。不能只改显示标签。
+4. 完成原冰雹/手账反例的整条修复与冷恢复，再做另列预算的真实角色实验。
+
+本阶段合并的 466 项及随后新增 10 项请求审计测试通过；完整 120 固定场景的 `.100`
+输出与此前逐字相同，
+没有更新 baseline。这里不构成新语义审核质量或长期真人感验收。用户已明确暂时弃用
+小屋，角色移动与小屋交互不在此轮目标内。
+
 版本化世界后果材料，保留环境变化独立结算。给已有世界感知回合加入明确的角色回应
 结果，记录原文与作者来源；用单个复合来源对象绑定世界 settlement 和角色回应，
 记忆保留继续后置。各读取器输出分别有来源的资料，不能只靠显示标签提升原文权限。

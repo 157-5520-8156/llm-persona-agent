@@ -1077,3 +1077,86 @@ tuple 归一为 JSON list，曾误报整体不同。最后按 JSON 规范复核�
 不变，所有旧批次仍封存。意图复用已有感知回合，开始/结束仍使用原角色生命周期
 调用，新 schema/正文也会增加 token，尚不能据此保证每月 100 元。未修改生产数据库
 或配置、未发真实 QQ、未部署或合并主分支。
+
+
+## World Consequence 合同与同回合角色回应（完整迁移尚未完成）
+
+本段基于隔离 `codex/living-continuity` 至 `12337d1b` 的集成结果。用户再次明确小屋
+暂时弃用，角色移动与小屋交互排除在本轮之外。没有切换生产 manifest、没有部署或
+改写生产数据。该 Goal 仍在进行，以下进度不能作为 WA 越权问题已经消失的结论。
+
+### 已完成的两个端点
+
+- `world-consequence.2` 明确区分环境结果与已获授权尝试的客观结果。Clock、Plan、
+  outcome token、以后才出现的 Started 或未确定 receipt 均不能赋予新增行动权限。
+  `97d1aa1c` / `cf259ba3` 对原 pin、事件及作者请求进行验证；自然语言是否夹带新动作
+  仍需 focused review，类型名不是语义证明。
+- `ae490b41` / `e9f24710` 只从原 manifest anchors 选择至多四条可读执行材料，保留
+  原角色意图全文与 ModelResult / Proposal 来源。withhold、其他 actor、缺失或错误
+  sidecar、缺少可读 Action 正文的 receipt 均不提供执行权限。公共 manifest 编译组合
+  证实 Started 经 current_situation 进入 anchors；没有从全集历史补授权限。
+- `18a560b0` / `ca548005` 在新作者调用前写入有界、不可变的 messages 原文，metadata
+  与最终 Proposal 均精确绑定每次请求；恢复重验 kind/hash/UTF8 长度和原 ModelResult。
+  这是模型 messages 原文，**不是完整 HTTP 参数或响应流的抓包证明**。旧 manifest
+  不新增字段或 sidecar，不在恢复时猜新合同。
+- `3953c22c` / `4ea339ed` 将新 prompt 接入显式 `.2` 的作者调用，移除旧的角色行动
+  候选权限。未提供的 execution binding 给同一作者一次精确错误反馈，不由代码代改
+  正文。新的作者证据读取器反证原 request / response / ModelResult / Proposal / pin
+  与原可读意图；公共调用在作者审计已提交、后续审核前中断后，以及 SQLite 重开后，
+  都能读回同一份材料。
+- `6de0ddbe` 的新 review 编译与解析分别覆盖环境正文、客观尝试正文及其完整执行材料。
+  保留既有 focused 车道；general 仍只负责原 typed-location 边界。新 packet/输出格式
+  与旧请求分开。此编译器及作者证据读取器**尚未一同接入完整 live 接受流程**。
+- `79ff8cc8` / `eec4ee2c` 允许公共环境 writer 显式提交 canonical `.2` 环境正文，
+  标记、正文与 result hash 必须一致；其没有原作者执行验证器，故拒绝任何 attempt。
+  请求在任何 sidecar 写入前重验，不能用 model_copy 绕过。实际新公共链还发现原结果
+  裸 digest 未转为 TypedObjectBinding 的 sha256 前缀，`d0c7923d` 修复该格式边界，
+  接受仍比较同一原始 digest。
+- `74d1ce7d` / `f7d57d7e` 在已有 world-stimulus 同次角色调用内生成逐源 life_responses。
+  新源必须明确正文或 null；漏字段、重复、错来源交回同一角色纠正一次，仍失败则
+  技术失败。`.5` 明确绑定新源，旧 `.4` / 无能力请求不增加字段。回应先于可选 Plan /
+  Appraisal 接受；两件新事混合一件旧事、部分 CAS 失败、情绪消费者先终结触发器后，
+  都可从原审计补齐，不再次询问角色。直接 Plan 消费者也不能借 `.4` 或缺响应的 `.5`
+  提案绕过原决定的完整性要求。回应正文自身仍没有外部事实权限。
+
+### 验证与兼容边界
+
+root 在以上集成树通过 **466 项不同定向用例**（31.27 秒），包含新的执行来源、作者
+输入、审核格式、环境提交、角色回应、旧意图和角色协议、相关生产装配及读写测试。
+各分支此前的 59 / 85 / 137 / 270 项测试与该组有重叠，不作加总。其后 `12337d1b` 单独集成并通过 10 项全新公共请求审计
+测试（1.57 秒）：调用前写入、原审计后中断恢复零调用、临时数据库损坏/缺失/错 lane
+拒绝、首次存储失败零供应商调用、provider Timeout 留存请求、旧字段缺省、最终提案
+篡改反证及 256000/256001 UTF8 边界。合计 476 项不同用例，生产代码与 466 项时相同。
+新增作者审计的 7
+项测试明确停在后续接受之前，不能把这段公共前缀验证称为完整 World→Experience 链。
+首次未授权 binding 的反例还发现错误坐标缺少 type 导致本地 KeyError，已补入精确
+校验坐标，确认同作者第二次请求收到原错误并返回合法完整结果。
+
+新后果兼容 DTO 曾使旧 prompt schema 获得新字段。修复采用显式输出 wire，并独立
+从 `4fed62c8` 对比旧 schema 的未排序 JSON：完全相同，12,166 字节，SHA256 为
+`58d8f7bf4cb66499e0cced702cc86e685ce8c01b98870edbdd0f1b4aedfba0f8`。
+没有通过替换 baseline 隐藏这种兼容性变化。随后正常 CLI **不带 --limit** 的完整
+120 场景通过，`.100` manifest 仍为
+`b405ce3beb2d6f4ab83b21011341fbe26192bbd24cb2dab3fb94979468c565c9`。
+新产物 `output/adaptive-companionship-2026-09-08/baseline-world-consequence-protocol-100.json`
+与上一阶段 `.100` 输出逐字一致：233,258 字节，SHA256
+`080d3b84cf37a6c07cf54732cea10aa7d2d9ab721d4872a73af9a94a03e92e95`。
+
+固定 `3953c22c` 的原请求/公共环境入口/输出 wire，以及固定 `aef66aa0`（root
+`f7d57d7e`）的角色回应接线均完成独立只读审查（后一片包含独立 Standards 与 Spec 两轴），未确认 P1/P2；审查不代替实际测试，
+也未覆盖后来 `4ea339ed` 的所有新接线。Ruff / diff-check 已逐片通过。
+
+### 下一段必须完成的链条
+
+生产仍使用旧 manifest 缺省。余下工作是：把原作者证据读取器接入新格式的审核与
+单次纠正，保存新 packet/subject/possibility 版本；让 World Author 新候选的结构化
+内容通过 Aftermath 和通用 Outcome 两条接受路径反证，再创建同时绑定世界结算与
+角色回应的单个复合来源 Experience `.2`。LifeContent、WorldLife、snapshot、Recall
+和后置 retention 必须一起迁移，旧 pending 不能默认升级。旧 source-rewrite helper
+仍使用历史 schema，需要显式新合同，不能直接开启。
+
+冰雹/手账反例的旧完整链仍是已知缺口，不能因两端的机制测试通过就称为修复。完成
+上述接线后再复现、修复并冷恢复此反例，随后另列有界预算做真实角色实验。本阶段
+新增付费调用 **0 元**；累计已知 **2.4989562 元**、保守占用 **2.8134232 元**保持不变，
+旧批次仍封存。同回合回应减少独立调用需要，但 schema、正文、后续生活决策仍会
+消耗 token；每月约 100 元与长期真人感均未取得新验收证据。
