@@ -14,16 +14,17 @@ import json
 from .decision_proposal_authority import DecisionProposalAuthorityReader
 from .event_identity import domain_idempotency_key
 from .life_events import ActivityPlannedPayload
-from .proposal_audit_schemas import RecordedModelResultAudit
-from .proposal_envelope import DecisionProposal, validate_proposal_envelope
 from .role_life_intent_reader import RoleLifeIntentActivityReader
+from .world_stimulus_choice_authority import (
+    read_world_stimulus_choice_authority,
+    world_stimulus_source_origin,
+)
 from .schemas import DueWindow, EvidenceRef, PlanStateProjection, ProjectionCursor, WorldEvent
 from .world_life_intent_contract import (
     WORLD_LIFE_INTENT_POLICY_REF,
     WORLD_LIFE_INTENT_REGISTRY_VERSION,
     WorldLifeIntentOrigin,
     WorldLifeIntentPayload,
-    world_life_intent_source_authority,
 )
 
 SOURCE = "world-v2:world-life-intent"
@@ -54,16 +55,13 @@ def derive_world_life_plan(*, state, world_id: str, proposal_id: str, owner_acto
     Both live acceptance and the ActivityPlanned reducer call this function.
     It never treats the source outcome's text as a role-authored intention.
     """
-    audit = next((x for x in state.proposal_audits if x.proposal_id == proposal_id), None)
-    if audit is None:
-        raise WorldLifeIntentError("proposal_missing")
-    proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
-    if (
-        not isinstance(proposal, DecisionProposal)
-        or proposal.proposal_hash != audit.proposal_hash
-        or proposal.schema_registry_version != WORLD_LIFE_INTENT_REGISTRY_VERSION
-    ):
-        raise WorldLifeIntentError("proposal_binding_invalid")
+    authority = read_world_stimulus_choice_authority(
+        state=state, world_id=world_id, proposal_id=proposal_id,
+        owner_actor_ref=owner_actor_ref,
+        registry_versions=(WORLD_LIFE_INTENT_REGISTRY_VERSION, "world-v2-proposals.5"),
+        error_type=WorldLifeIntentError,
+    )
+    proposal = authority.proposal
     changes = tuple(x for x in proposal.proposed_changes if x.kind == "world_life_intent")
     if len(changes) != 1:
         raise WorldLifeIntentError("explicit_intent_count_invalid")
@@ -82,60 +80,11 @@ def derive_world_life_plan(*, state, world_id: str, proposal_id: str, owner_acto
         or change.policy_refs != (WORLD_LIFE_INTENT_POLICY_REF,)
     ):
         raise WorldLifeIntentError("change_binding_invalid")
-    model = next((x for x in state.model_result_audits
-                  if x.model_result_ref == audit.model_result_ref), None)
-    if model is None or any((
-        model.proposal_hash != audit.proposal_hash,
-        model.model_call_id != audit.model_call_id,
-        model.attempt_id != audit.attempt_id,
-        model.capsule_id != audit.capsule_id,
-        model.deliberation_result_id != audit.deliberation_result_id,
-        model.trigger_ref != audit.trigger_ref,
-        model.evaluated_world_revision != audit.evaluated_world_revision,
-        model.attempt_index != model.attempt_count - 1,
-    )):
-        raise WorldLifeIntentError("model_binding_invalid")
-    recorded = RecordedModelResultAudit.model_validate_json(model.audit_json)
-    lineage = recorded.character_interior_lineage
-    if lineage is None or any((
-        lineage.purpose != "world_stimulus_appraisal",
-        lineage.author_model_call_id != model.model_call_id,
-        lineage.inner_turn_id != model.attempt_id,
-        lineage.snapshot_hash != model.capsule_id,
-        lineage.causal_world_id != world_id,
-        lineage.causal_actor_ref != owner_actor_ref,
-        intent.source_event_ref not in lineage.causal_source_refs,
-        audit.trigger_ref not in lineage.causal_source_refs,
-    )):
-        raise WorldLifeIntentError("inner_turn_authority_invalid")
-    source = world_life_intent_source_authority(
-        state=state, source_event_ref=intent.source_event_ref, owner_actor_ref=owner_actor_ref
+    source, origin_value = world_stimulus_source_origin(
+        state=state, authority=authority, source_event_ref=intent.source_event_ref,
+        change_id=change.change_id, error_type=WorldLifeIntentError,
     )
-    if source is None or source.world_revision > audit.evaluated_world_revision:
-        raise WorldLifeIntentError("settlement_authority_invalid")
-    declared = next((x for x in proposal.evidence_refs if x.ref_id == source.event_id), None)
-    if declared is None or any((
-        declared.evidence_kind != "settled_world_event",
-        declared.source_world_revision != source.world_revision,
-        declared.immutable_hash != "sha256:" + source.payload_hash,
-    )):
-        raise WorldLifeIntentError("source_binding_invalid")
-    selected_clock = next((x for x in state.committed_world_event_refs
-                           if x.world_revision == audit.evaluated_world_revision), None)
-    if selected_clock is None or selected_clock.logical_time < source.logical_time:
-        raise WorldLifeIntentError("selection_clock_unavailable")
-    origin = WorldLifeIntentOrigin(
-        source_event_ref=source.event_id, source_world_revision=source.world_revision,
-        source_payload_hash=source.payload_hash,
-        proposal_id=proposal_id, proposal_event_ref=audit.event_ref,
-        proposal_payload_hash=audit.event_payload_hash, proposal_hash=audit.proposal_hash,
-        change_id=change.change_id, evaluated_world_revision=audit.evaluated_world_revision,
-        selected_at=selected_clock.logical_time,
-        model_result_ref=model.model_result_ref, model_result_payload_hash=model.event_payload_hash,
-        model_call_id=model.model_call_id, inner_turn_id=lineage.inner_turn_id,
-        opportunity_ref=lineage.opportunity_ref,
-        snapshot_id=lineage.snapshot_id, snapshot_hash=lineage.snapshot_hash,
-    )
+    origin = WorldLifeIntentOrigin(**origin_value)
     evidence = EvidenceRef(
         ref_id=source.event_id, evidence_type="settled_world_event", claim_purpose="future_plan",
         source_world_revision=source.world_revision, immutable_hash=source.payload_hash,
