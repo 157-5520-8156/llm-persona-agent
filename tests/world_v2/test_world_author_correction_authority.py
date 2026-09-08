@@ -13,7 +13,12 @@ import pytest
 from companion_daemon.llm import DeepSeekChatModel
 from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
-from test_life_development_runtime import WORLD_ID, _SequenceModel, _novel_origin_review, _seed_clock
+from test_life_development_runtime import (
+    WORLD_ID,
+    _SequenceModel,
+    _novel_origin_review,
+    _seed_clock,
+)
 from test_world_author_request_audit import (
     _advance,
     _audited,
@@ -43,7 +48,8 @@ class _AuthorHTTP:
         raw = _json(body["messages"])
         self.stored.append(
             self.store.read_exact(
-                content_ref="content:world-author-request:" + hashlib.sha256(raw.encode()).hexdigest()
+                content_ref="content:world-author-request:"
+                + hashlib.sha256(raw.encode()).hexdigest()
             )
         )
         assert self.outputs, "cold recovery must not send another HTTP request"
@@ -58,8 +64,11 @@ class _AuthorHTTP:
 
 def _model(transport):
     return DeepSeekChatModel(
-        "offline-fixture", "https://fixture.invalid", "deepseek-v4-flash",
-        thinking_enabled=False, transport=httpx.MockTransport(transport),
+        "offline-fixture",
+        "https://fixture.invalid",
+        "deepseek-v4-flash",
+        thinking_enabled=False,
+        transport=httpx.MockTransport(transport),
     )
 
 
@@ -115,7 +124,9 @@ async def test_structure_correction_preserves_authority_and_cold_request_bytes(
             assert wire.stored == [None, None]
             # Frozen from the public 84781344 HTTP boundary before this change.
             assert [
-                hashlib.sha256(json.dumps(item, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+                hashlib.sha256(
+                    json.dumps(item, ensure_ascii=False, separators=(",", ":")).encode()
+                ).hexdigest()
                 for item in wire.requests
             ] == [
                 "f2b392c5e2da907ce7fd3d109014518a9b6cf3e76f407415d78ae3704922e57a",
@@ -148,8 +159,9 @@ async def test_structure_correction_preserves_authority_and_cold_request_bytes(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("no_op", [False, True])
 async def test_source_correction_preserves_initial_authority_and_reviews_the_complete_new_draft(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, no_op
 ):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     path = tmp_path / "source.sqlite"
@@ -165,7 +177,8 @@ async def test_source_correction_preserves_initial_authority_and_reviews_the_com
         "violation_kinds": ["character_interior_authorship"],
         "exact_fragments": [fragment],
     }
-    wire = _AuthorHTTP(store, ("{", _json(rejected), _json(corrected)))
+    replacement = '{"decision":"no_op"}' if no_op else _json(corrected)
+    wire = _AuthorHTTP(store, ("{", _json(rejected), replacement))
     model = _model(wire)
     general = _SequenceModel(model="fixture:general-no-call", outputs=())
     focused = _SequenceModel(
@@ -181,21 +194,37 @@ async def test_source_correction_preserves_initial_authority_and_reviews_the_com
         result = await _advance(
             _producer_runtime(ledger, store, wake, model, general, focused), wake
         )
-        _assert_occurrence(ledger, store, result, corrected)
+        if no_op:
+            assert result.status == "no_op"
+            assert ledger.project().world_occurrences == ()
+        else:
+            _assert_occurrence(ledger, store, result, corrected)
         assert len(wire.requests) == 3
-        assert focused.calls == 2 and general.calls == 0
+        assert focused.calls == (1 if no_op else 2) and general.calls == 0
         initial, shape, source = [request["messages"] for request in wire.requests]
         assert shape[:-1] == initial
         assert source[:-2] == shape
         assert source[-2] == {"role": "assistant", "content": _json(rejected)}
         correction = json.loads(source[-1]["content"])
         _assert_authority_locator(source, correction)
-        assert correction["source_closure_failure"]["unsupported_outcome_prerequisites"] == [finding]
+        assert correction["no_op_output_contract"] == {
+            "additionalProperties": False,
+            "properties": {"decision": {"const": "no_op", "title": "Decision", "type": "string"}},
+            "required": ["decision"],
+            "title": "LifeDevelopmentNoOpDraft",
+            "type": "object",
+        }
+        assert correction["source_closure_failure"]["unsupported_outcome_prerequisites"] == [
+            finding
+        ]
         original_user = json.loads(initial[1]["content"])
-        assert correction["capability_manifest_hash"] == original_user["capability_manifest"]["manifest_hash"]
+        assert (
+            correction["capability_manifest_hash"]
+            == original_user["capability_manifest"]["manifest_hash"]
+        )
         for request, stored in zip(wire.requests, wire.stored, strict=True):
             assert stored is not None and stored.text == _json(request["messages"])
-        for index, draft in enumerate((rejected, corrected)):
+        for index, draft in enumerate((rejected,) if no_op else (rejected, corrected)):
             _assert_general_audit(ledger, result, original_user, draft)
             _assert_review_input(focused.messages[index], original_user, draft, focused=True)
         old_audits = ledger.project().model_result_audits
@@ -211,7 +240,7 @@ async def test_source_correction_preserves_initial_authority_and_reviews_the_com
             )
             assert repeated.proposal_event_ref == result.proposal_event_ref
             assert cold_wire.requests == []
-            assert focused.calls == 2
+            assert focused.calls == (1 if no_op else 2)
             assert ledger.project().model_result_audits == old_audits
         finally:
             await cold_model.aclose()

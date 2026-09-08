@@ -5137,25 +5137,10 @@ class LifeDevelopmentRuntime:
         messages = [
             *messages,
             {"role": "assistant", "content": rejected_raw},
-            {"role": "user", "content": canonical_json({
-                "source_closure_failure": _world_author_rejection_coordinates(review),
-                "rejected_draft_hash": _digest(rejected_raw),
-                "capability_manifest_hash": manifest.manifest_hash,
-                "output_contract": {
-                    "no_op": LifeDevelopmentNoOpDraft.model_json_schema(),
-                    "propose": life_possibility_output_schema(
-                        outcome_contract="world-consequence.2",
-                    ),
-                },
-                "instruction": (
-                    "Return one complete replacement as the same World Author. Use only "
-                    "the original pinned evidence and offered execution authority above. "
-                    "Resolve each exact source-closure failure. You may choose no_op or "
-                    "a different possibility. Do not author the character's interior, "
-                    "choices, or unauthorised completed actions as environment facts. "
-                    "The host will not write or repair your prose. There is one correction."
-                ),
-            })},
+            _world_consequence_source_correction_message(
+                original_messages=messages, rejected_raw=rejected_raw,
+                manifest_hash=manifest.manifest_hash, review=review,
+            ),
         ]
         request_hash = _messages_hash(messages)
         request_binding = record_world_author_request(content_store=self._store, messages=messages)
@@ -7317,6 +7302,30 @@ def _world_consequence_reselection_message(
         "fields": fields,
     }
     return {"role": "user", "content": canonical_json(payload)}
+
+
+def _world_consequence_source_correction_message(
+    *, original_messages: list[dict[str, str]], rejected_raw: str, manifest_hash: str,
+    review: LifeDevelopmentSourceClosureReview | LifeDevelopmentNovelOriginReview,
+) -> dict[str, str]:
+    return _world_consequence_reselection_message(
+        original_messages=original_messages,
+        correction={
+            "source_closure_failure": _world_author_rejection_coordinates(review),
+            "rejected_draft_hash": _digest(rejected_raw),
+            "capability_manifest_hash": manifest_hash,
+            # The first request has a no_op specimen, not this full schema.
+            "no_op_output_contract": LifeDevelopmentNoOpDraft.model_json_schema(),
+            "instruction": (
+                "Return one complete replacement as the same World Author. Use only "
+                "the original pinned evidence and offered execution authority above. "
+                "Resolve each exact source-closure failure. You may choose no_op or "
+                "a different possibility. Do not author the character's interior, "
+                "choices, or unauthorised completed actions as environment facts. "
+                "The host will not write or repair your prose. There is one correction."
+            ),
+        },
+    )
 
 
 def _world_author_reselection_instruction(*, failure_code: str) -> str:
