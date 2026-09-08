@@ -18,6 +18,13 @@ from .chat_life_plan_consideration_contract import (
 from .event_identity import domain_idempotency_key
 from .life_events import ActivityPlannedPayload
 from .schemas import ProjectionCursor, WorldEvent
+from .world_life_intent_contract import WorldLifeIntentOrigin
+from .world_life_intent_runtime import (
+    EVENT_PREFIX as WORLD_EVENT_PREFIX,
+    PLAN_PREFIX as WORLD_PLAN_PREFIX,
+    derive_world_life_plan,
+    validate_world_life_plan_event,
+)
 
 SOURCE = "world-v2:chat-life-plan-consideration"
 
@@ -65,14 +72,19 @@ def opportunity_from_state(
     )
     if plan is None or source is None:
         raise ValueError("chat_life_plan.original_plan_authority_missing")
-    payload, _ = derive_chat_life_plan(
+    world_origin = isinstance(opportunity.origin, WorldLifeIntentOrigin)
+    derive = derive_world_life_plan if world_origin else derive_chat_life_plan
+    plan_prefix = WORLD_PLAN_PREFIX if world_origin else PLAN_PREFIX
+    event_prefix = WORLD_EVENT_PREFIX if world_origin else "event:chat-life-intent:"
+    payload, _ = derive(
         state=state,
         world_id=world_id,
         proposal_id=opportunity.origin.proposal_id,
         owner_actor_ref=plan.owner_actor_ref,
     )
     if (
-        source.event_id != "event:chat-life-intent:" + plan.plan_id.removeprefix(PLAN_PREFIX)
+        not plan.plan_id.startswith(plan_prefix)
+        or source.event_id != event_prefix + plan.plan_id.removeprefix(plan_prefix)
         or source.event_type != "ActivityPlanned"
         or payload.plan.plan_id != plan.plan_id
         or _digest(payload.model_dump(mode="json")) != source.payload_hash
@@ -93,7 +105,7 @@ def opportunity_from_state(
         plan_event_ref=source.event_id,
         plan_payload_hash=source.payload_hash,
         owner_actor_ref=plan.owner_actor_ref,
-        origin=payload.chat_intent_origin,
+        origin=payload.world_intent_origin if world_origin else payload.chat_intent_origin,
         due_at=due_at,
         attempt_ordinal=ordinal,
     )
@@ -110,7 +122,7 @@ def pending_opportunities(
     for plan in projection.plans:
         if (
             plan.plan_id in resolved
-            or not plan.plan_id.startswith(PLAN_PREFIX)
+            or not plan.plan_id.startswith((PLAN_PREFIX, WORLD_PLAN_PREFIX))
             or plan.owner_actor_ref != owner_actor_ref
             or plan.status != "planned"
         ):
@@ -121,13 +133,15 @@ def pending_opportunities(
             or plan.scheduled_window.closes_at <= projection.logical_time
         ):
             continue
-        located = ledger.lookup_event_commit(
-            "event:chat-life-intent:" + plan.plan_id.removeprefix(PLAN_PREFIX)
-        )
+        world_origin = plan.plan_id.startswith(WORLD_PLAN_PREFIX)
+        plan_prefix = WORLD_PLAN_PREFIX if world_origin else PLAN_PREFIX
+        event_prefix = WORLD_EVENT_PREFIX if world_origin else "event:chat-life-intent:"
+        located = ledger.lookup_event_commit(event_prefix + plan.plan_id.removeprefix(plan_prefix))
         if located is None:
             continue
         payload = ActivityPlannedPayload.model_validate_json(located[0].payload_json)
-        validate_chat_life_plan_event(state=projection, event=located[0], payload=payload)
+        validate = validate_world_life_plan_event if world_origin else validate_chat_life_plan_event
+        validate(state=projection, event=located[0], payload=payload)
         ordinal, due_at = _next_opportunity(
             projection,
             plan_id=plan.plan_id,
@@ -141,7 +155,7 @@ def pending_opportunities(
                 plan_event_ref=located[0].event_id,
                 plan_payload_hash=located[0].payload_hash,
                 owner_actor_ref=owner_actor_ref,
-                origin=payload.chat_intent_origin,
+                origin=payload.world_intent_origin if world_origin else payload.chat_intent_origin,
                 due_at=due_at,
                 attempt_ordinal=ordinal,
             )

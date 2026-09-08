@@ -87,7 +87,8 @@ from .life_content import LifeContentCompiler, collect_user_channel_limited_cont
 from .private_impression_events import collect_user_channel_limited_impression_ids
 from .life_content_store import ImmutableLifeContentStore
 from .life_development_runtime import LifeDevelopmentProposalReader
-from .chat_life_intent_runtime import ChatLifeIntentActiveReader, ChatLifeIntentCompletedReader, CompositeActiveActivityReader
+from .chat_life_intent_runtime import ChatLifeIntentActiveReader, ChatLifeIntentCompletedReader, CompositeActiveActivityReader, CompositeCompletedActivityReader
+from .world_life_intent_runtime import WorldLifeIntentActiveReader, WorldLifeIntentCompletedReader
 from .life_events import NpcRegisteredPayload
 from .npc_identity_view import npc_identity_views
 from .perception_result_context import (
@@ -1404,9 +1405,13 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         self._reviewed_npc_identity_summaries = reviewed_npc_identity_summaries or {}
         self._world_life = WorldLifeContextCompiler(
             life_content=self._life_content,
-            completed_activity_reader=ChatLifeIntentCompletedReader(ledger=ledger),
+            completed_activity_reader=CompositeCompletedActivityReader(
+                ChatLifeIntentCompletedReader(ledger=ledger),
+                WorldLifeIntentCompletedReader(ledger=ledger),
+            ),
             active_activity_reader=CompositeActiveActivityReader(
                 ChatLifeIntentActiveReader(ledger=ledger),
+                WorldLifeIntentActiveReader(ledger=ledger),
                 LifeDevelopmentProposalReader(ledger=ledger, content_store=life_content_store)
                 if life_content_store is not None else None,
             ),

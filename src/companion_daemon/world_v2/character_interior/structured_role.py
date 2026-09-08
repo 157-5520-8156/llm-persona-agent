@@ -34,6 +34,7 @@ from companion_daemon.llm import (
 
 from ..model_completion import ChatCompletionModel
 from ..character_outcome_contract import CharacterLifeDirectionDraft
+from ..chat_life_intent_contract import LifeIntentDraft
 from ..proposal_envelope import AspirationTransitionPayload
 from ..schema_core import canonicalize_json_value
 from ..structured_completion import complete_json_object
@@ -921,6 +922,12 @@ class _WorldStimulusRelationshipSignal(BaseModel):
     suggested_deltas: _WorldStimulusRelationshipDeltas
 
 
+class _WorldStimulusLifeIntentDraft(LifeIntentDraft):
+    """A chosen future self-directed activity, grounded in one offered settlement."""
+
+    source_event_ref: str = Field(min_length=1, max_length=512)
+
+
 class _WorldStimulusAppraisalResult(BaseModel):
     """Wire closure only; the role still owns whether and how it appraises."""
 
@@ -995,6 +1002,9 @@ class _WorldStimulusAppraisalResult(BaseModel):
     relationship_signal: _WorldStimulusRelationshipSignal | None = None
     aspiration_transition: AspirationTransitionPayload | None = None
     experience_transition: ExperienceTransitionDraft | None = None
+    life_intent: _WorldStimulusLifeIntentDraft | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def decision_closes_appraisal_shape(self) -> "_WorldStimulusAppraisalResult":
@@ -2144,6 +2154,7 @@ class StructuredCharacterRoleFaculty:
                 if proposal.decision == "activate"
                 or proposal.aspiration_transition is not None
                 or proposal.experience_transition is not None
+                or proposal.life_intent is not None
                 else "no_change"
             )
             if result.status != expected_status:
@@ -2296,6 +2307,21 @@ class StructuredCharacterRoleFaculty:
                         detail=str(exc),
                         response_hash=response_hash,
                     ) from exc
+            if proposal.life_intent is not None:
+                capability = manifest.payload.get("world_life_intent")
+                if (
+                    not isinstance(capability, dict)
+                    or capability.get("contract") != "world-life-intent-capability.1"
+                    or capability.get("execution_scope") != "self_directed"
+                    or not isinstance(capability.get("source_event_refs"), list)
+                    or proposal.life_intent.source_event_ref
+                    not in capability["source_event_refs"]
+                ):
+                    raise StructuredRoleResultError(
+                        "world_stimulus_life_intent_outside_capability",
+                        detail="life_intent requires one exact offered World settlement source",
+                        response_hash=response_hash,
+                    )
             return
         if result.status == "no_change" and not result.proposals:
             return
@@ -3095,11 +3121,11 @@ class StructuredCharacterRoleFaculty:
             view["status_schema"] = {
                 "no_change": (
                     "one result proposal whose decision is no_change and whose "
-                    "aspiration_transition and experience_transition are null"
+                    "aspiration_transition, experience_transition and life_intent are null"
                 ),
                 "transition": (
                     "one result proposal whose decision is activate or whose optional "
-                    "aspiration_transition or experience_transition is present"
+                    "aspiration_transition, experience_transition or life_intent is present"
                 ),
             }
             view["proposal_example_activate"] = {
@@ -3150,12 +3176,11 @@ class StructuredCharacterRoleFaculty:
                 "decision": (
                     "no_change means the character has no appraisal at all: "
                     "meaning_candidates, attribution, severity, expiry, "
-                    "affect_transition, relationship_signal, aspiration_transition "
-                    "and experience_transition must all be null; "
-                    "activate means the character does appraise it: those fields "
-                    "may be present. Pick exactly one. Return the exact "
-                    "proposal_example_activate shape when activating, or the exact "
-                    "proposal_example_no_change shape otherwise"
+                    "affect_transition and relationship_signal must be null. "
+                    "Independent aspiration_transition, experience_transition or life_intent "
+                    "may still be chosen when their capabilities allow them. Activate "
+                    "requires a complete appraisal. Choose the appraisal independently "
+                    "of any future activity intention"
                 ),
                 "brief_rationale": "the character's short private reason (required)",
                 "behavior_tendency": "free text (required, even for no_change)",
@@ -3237,6 +3262,13 @@ class StructuredCharacterRoleFaculty:
                     "source_refs": "the exact closure required by the selected capability",
                     "reason_summary": "the character's free private reason, not a system motive code",
                 },
+                "life_intent": (
+                    "null or one future self_directed intention, only when the "
+                    "world_life_intent capability offers its exact source_event_ref. "
+                    "Choose intention, start_after_seconds, duration_seconds and importance_bp "
+                    "yourself. This requests a Plan; it does not claim execution, control "
+                    "a place or another person, or send anything. No appraisal is required"
+                ),
             }
         if contract.purpose == "life_development_choice":
             view["payload_schema"] = {"completion": "one complete JSON object"}

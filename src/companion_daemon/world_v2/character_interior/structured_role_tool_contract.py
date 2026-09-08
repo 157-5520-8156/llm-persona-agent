@@ -1341,6 +1341,33 @@ class StructuredRoleToolContracts:
             )
         }
         proposal_schema = _provider_schema(_WorldStimulusAppraisalResult)
+        proposal_properties = _required_object_properties(proposal_schema)
+        intent_capability = capability_payload.get("world_life_intent")
+        if isinstance(intent_capability, dict):
+            source_refs = intent_capability.get("source_event_refs")
+            if (
+                intent_capability.get("contract") != "world-life-intent-capability.1"
+                or intent_capability.get("execution_scope") != "self_directed"
+                or not isinstance(source_refs, list)
+                or not source_refs
+                or any(not isinstance(ref, str) or not ref for ref in source_refs)
+                or len(source_refs) != len(set(source_refs))
+            ):
+                raise ValueError("world life intent capability is invalid")
+            intent_schema = _non_null_schema(
+                proposal_properties.get("life_intent"), field_name="life_intent"
+            )
+            _required_object_properties(intent_schema)["source_event_ref"] = {
+                "type": "string", "enum": source_refs,
+            }
+            proposal_properties["life_intent"] = _nullable_provider_schema(intent_schema)
+        else:
+            # The added capability must not widen older or unrelated stimulus tools.
+            proposal_properties.pop("life_intent", None)
+            if isinstance(proposal_schema.get("required"), list):
+                proposal_schema["required"] = [
+                    key for key in proposal_schema["required"] if key != "life_intent"
+                ]
         proposal_branch_properties = {
             **common,
             "decision": {"type": "null"},

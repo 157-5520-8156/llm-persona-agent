@@ -28,6 +28,7 @@ from .action_pump import (
     ProviderAcceptedReconciliationGate,
 )
 from .chat_life_intent_runtime import ChatLifeIntentRuntime, CompositeActivityPlanMaterialReader
+from .world_life_intent_runtime import WorldLifeIntentRuntime
 from .activity_plan_runtime import (
     ActivityPlanCommand,
     ActivityPlanRuntime,
@@ -4300,6 +4301,7 @@ def build_sqlite_world_v2_turn_application(
                 ecology_catalog_version=config.life_ecology.catalog_version,
                 plan_material_reader=CompositeActivityPlanMaterialReader(
                     ChatLifeIntentRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref),
+                    WorldLifeIntentRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref),
                     LifeDevelopmentProposalReader(ledger=ledger, content_store=life_content_store),
                 ),
             )
