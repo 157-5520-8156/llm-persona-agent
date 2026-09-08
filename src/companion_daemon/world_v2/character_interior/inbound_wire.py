@@ -41,6 +41,7 @@ from ..biographical_claim_authority import (
 )
 from ..companion_identity import (
     CompanionIdentityFrame,
+    companion_identity_source_material,
     companion_identity_source_refs,
 )
 from ..present_prompt import (
@@ -2235,22 +2236,9 @@ def _identity_source_material(
     """Return the exact semantic material hashed into one identity source."""
 
     if scope == "stable_identity":
-        return identity.model_dump(
-            mode="json",
-            exclude={
-                "counterpart_name",
-                "shared_history_facts",
-                "counterpart_history_facts",
-            },
-            exclude_none=True,
-        )
+        return companion_identity_source_material(identity, scope="stable_identity")
     if scope == "shared_history":
-        return {
-            "scope": scope,
-            "companion_name": identity.companion_name,
-            "counterpart_name": identity.counterpart_name,
-            "facts": identity.shared_history_facts,
-        }
+        return companion_identity_source_material(identity, scope="shared_history")
     raise ValueError(f"unsupported identity source scope: {scope}")
 
 

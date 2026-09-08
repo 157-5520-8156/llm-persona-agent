@@ -48,6 +48,53 @@ def _digest(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def companion_identity_source_material(
+    identity: CompanionIdentityFrame,
+    *,
+    scope: Literal[
+        "stable_identity",
+        "shared_history",
+        "counterpart_history",
+    ] = "stable_identity",
+) -> dict[str, object]:
+    """Return exactly the configured material covered by one identity token.
+
+    Prompt-only fields are deliberately outside stable identity authority.
+    Keeping the material producer shared prevents evidence from attaching
+    additional, unhashed fields to an existing source reference.
+    """
+
+    if scope == "stable_identity":
+        return identity.model_dump(
+            mode="json",
+            exclude={
+                "counterpart_name",
+                "shared_history_facts",
+                "counterpart_history_facts",
+                "base_prompt",
+                "appearance",
+                "background",
+                "daily_life",
+                "speech_examples",
+                "first_message",
+            },
+            exclude_none=True,
+        )
+    facts = (
+        identity.shared_history_facts
+        if scope == "shared_history"
+        else identity.counterpart_history_facts
+    )
+    if not facts:
+        raise ValueError(f"identity frame has no configured {scope} facts")
+    return {
+        "scope": scope,
+        "companion_name": identity.companion_name,
+        "counterpart_name": identity.counterpart_name,
+        "facts": facts,
+    }
+
+
 def companion_identity_source_ref(
     identity: CompanionIdentityFrame,
     *,
@@ -57,41 +104,13 @@ def companion_identity_source_ref(
         "counterpart_history",
     ] = "stable_identity",
 ) -> str:
-    """Return one immutable token for one configured semantic lane."""
+    """Return the byte-compatible token for one configured semantic lane."""
 
-    if scope == "stable_identity":
-        return "identity-frame:sha256:" + _digest(
-            identity.model_dump(
-                mode="json",
-                exclude={
-                    "counterpart_name",
-                    "shared_history_facts",
-                    "counterpart_history_facts",
-                    "base_prompt",
-                    "appearance",
-                    "background",
-                    "daily_life",
-                    "speech_examples",
-                    "first_message",
-                },
-                exclude_none=True,
-            )
-        )
-    facts = (
-        identity.shared_history_facts
-        if scope == "shared_history"
-        else identity.counterpart_history_facts
+    material = companion_identity_source_material(identity, scope=scope)
+    prefix = "identity-frame:sha256:" if scope == "stable_identity" else (
+        f"identity-frame:{scope.replace('_', '-')}:sha256:"
     )
-    if not facts:
-        raise ValueError(f"identity frame has no configured {scope} facts")
-    return f"identity-frame:{scope.replace('_', '-')}:sha256:" + _digest(
-        {
-            "scope": scope,
-            "companion_name": identity.companion_name,
-            "counterpart_name": identity.counterpart_name,
-            "facts": facts,
-        }
-    )
+    return prefix + _digest(material)
 
 
 def companion_identity_source_refs(
@@ -110,6 +129,7 @@ def companion_identity_source_refs(
 
 __all__ = [
     "CompanionIdentityFrame",
+    "companion_identity_source_material",
     "companion_identity_source_ref",
     "companion_identity_source_refs",
 ]
