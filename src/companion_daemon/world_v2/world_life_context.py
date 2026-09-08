@@ -380,6 +380,22 @@ class WorldLifeContextCompiler:
                 continue
             if occurrence.result_payload_ref in user_channel_limited_content_refs:
                 continue
+            privacy = occurrence.visibility
+            selected = next((
+                item for item in occurrence.candidate_outcomes
+                if item.candidate_result_ref == occurrence.settled_outcome_ref
+            ), None)
+            if selected is not None and selected.result_contract == "world-consequence.2":
+                # The selected consequence may be more private than the
+                # opportunity. Its readable outer view must retain that floor.
+                ranks = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}
+                excerpt = excerpts.get(occurrence.occurrence_id)
+                privacy = max(
+                    (privacy, selected.privacy_class, excerpt.privacy_class if excerpt else privacy),
+                    key=ranks.__getitem__,
+                )
+                if privacy == "withhold" or ranks[privacy] > ranks[viewer_privacy_ceiling]:
+                    continue
             items.append(
                 WorldLifeContextItem(
                     occurrence_id=occurrence.occurrence_id,
@@ -390,7 +406,7 @@ class WorldLifeContextCompiler:
                     result_payload_ref=occurrence.result_payload_ref,
                     result_payload_hash=occurrence.result_payload_hash,
                     settled_at=occurrence.settled_at,
-                    privacy_class=occurrence.visibility,
+                    privacy_class=privacy,
                     source=WorldLifeSourceBinding(
                         authority_event_ref=settlement.event_id,
                         authority_world_revision=settlement.world_revision,

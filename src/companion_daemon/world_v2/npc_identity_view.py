@@ -13,13 +13,14 @@ from datetime import datetime
 from pydantic import Field
 
 from .life_content_store import ImmutableLifeContentStore
+from .life_content import LifeContentCompiler, LifeContentBudget
 from .npc_relationship_view import (
     NpcRelationshipReading,
     SharedHistoryEvidence,
     npc_relationship_by_ref,
 )
 from .schema_core import FrozenModel
-from .schemas import NpcSocialVariables
+from .schemas import NpcSocialVariables, ProjectionCursor
 
 
 class NpcIdentityView(FrozenModel):
@@ -188,10 +189,14 @@ def npc_identity_views(
                 key=lambda item: item.experience_id,
             )
         )
-        shared_experience_refs = tuple(item.experience_id for item in shared_experiences)
+        legacy_experiences = tuple(
+            item for item in shared_experiences
+            if getattr(item, "authority_contract_version", None) != "experience.2"
+        )
+        shared_experience_refs = tuple(item.experience_id for item in legacy_experiences)
         shared_experience_summaries = tuple(
             stored_experience.text
-            for item in shared_experiences
+            for item in legacy_experiences
             if (
                 (stored_experience := content_store.read_exact(content_ref=item.values.summary_ref))
                 is not None
@@ -199,6 +204,40 @@ def npc_identity_views(
                 and stored_experience.content_payload_hash == item.values.summary_payload_hash
             )
         )[-4:]
+        structured = tuple(
+            item for item in shared_experiences
+            if getattr(item, "authority_contract_version", None) == "experience.2"
+        )
+        sourced_worlds = ()
+        if structured:
+            # Participation in an occurrence does not grant this NPC the
+            # companion's private reading. Read only independently published
+            # World content through the NPC's own participant/privacy gate.
+            worlds = tuple(
+                item
+                for participant in (npc_ref, provisional_entity_ref)
+                if participant is not None
+                for item in LifeContentCompiler(store=content_store).compile(
+                    cursor=ProjectionCursor(
+                        world_revision=projection.world_revision,
+                        deliberation_revision=projection.deliberation_revision,
+                        ledger_sequence=projection.ledger_sequence,
+                    ),
+                    actor_ref=participant, viewer_privacy_ceiling="private", projection=projection,
+                    budget=LifeContentBudget(max_item_characters=480, max_total_characters=1_920),
+                ).settled_items
+            )
+            owned_occurrences = {
+                item.values.source_bindings[0].settlement.occurrence_id for item in structured
+            }
+            sourced_worlds = tuple(
+                item for item in worlds if item.source_entity_id in owned_occurrences
+                and item.world_consequence is not None
+            )
+            shared_experience_summaries = (
+                *shared_experience_summaries,
+                *dict.fromkeys(item.world_consequence.model_dump_json() for item in sourced_worlds),
+            )[-4:]
         active_plan_refs = tuple(
             sorted(
                 item.plan_id
@@ -248,7 +287,9 @@ def npc_identity_views(
                         if shared_history_item is not None
                         else ()
                     ),
-                    *(item.origin.accepted_event_ref for item in shared_experiences),
+                    *(item.origin.accepted_event_ref for item in legacy_experiences),
+                    *(ref for item in sourced_worlds
+                      for ref in (item.authority_event_ref, item.descriptor_event_ref)),
                     *(
                         item.authority_origin.accepted_event_ref
                         for item in plans

@@ -63,6 +63,7 @@ from .character_interior.run_result import (
 )
 from .event_identity import domain_idempotency_key
 from .ledger import LedgerPort
+from .life_content_store import ImmutableLifeContentStore
 from .model_json import extract_json_object_text
 from .private_impression_events import (
     PRIVATE_IMPRESSION_POLICY_REFS,
@@ -856,6 +857,8 @@ def compile_private_impression_reflection_capsule(
     identity_frame: CompanionIdentityFrame,
     world_id: str,
     content_reader: Callable[[str], str | None] | None = None,
+    life_content_store: ImmutableLifeContentStore | None = None,
+    companion_actor_ref: str | None = None,
 ) -> PrivateImpressionReflectionCapsule:
     """Compile bounded layered context without granting it mutation authority."""
 
@@ -985,6 +988,29 @@ def compile_private_impression_reflection_capsule(
         and appraisal.subject_ref in item.values.participant_refs
     ][-4:]
     for experience in reversed(experiences):
+        if getattr(experience, "authority_contract_version", None) == "experience.2":
+            from .life_content_reading import read_character_life_experience_content
+
+            # The legacy raw-text callback cannot prove a composite's World
+            # descriptor/body. New material needs the installed exact reader;
+            # missing ports or sources never fall back to flattened prose.
+            if life_content_store is None or companion_actor_ref is None:
+                raise ValueError("private reflection requires the exact composite source reader")
+            reading = read_character_life_experience_content(
+                store=life_content_store, projection=projection, experience=experience,
+                actor_ref=companion_actor_ref, viewer_privacy_ceiling="private",
+                max_characters=1_200,
+            )
+            add(
+                source_ref=f"experience:{experience.experience_id}",
+                source_kind="experience", authority_event_ref=experience.origin.accepted_event_ref,
+                value={
+                    **reading.model_dump(mode="json"),
+                    "occurred_from": experience.values.occurred_from,
+                    "occurred_to": experience.values.occurred_to,
+                },
+            )
+            continue
         add(
             source_ref=f"experience:{experience.experience_id}",
             source_kind="experience",
@@ -1402,6 +1428,7 @@ class PrivateImpressionTriggerRuntime:
         companion_actor_ref: str,
         identity_frame: CompanionIdentityFrame | None = None,
         content_reader: Callable[[str], str | None] | None = None,
+        life_content_store: ImmutableLifeContentStore | None = None,
         owner_id: str,
         lease_seconds: int = 120,
         merge_window_seconds: int = DEFAULT_CAUSAL_OPPORTUNITY_POLICY.merge_window_seconds,
@@ -1425,6 +1452,7 @@ class PrivateImpressionTriggerRuntime:
             )
         )
         self._content_reader = content_reader
+        self._life_content_store = life_content_store
         self._owner_id = owner_id
         self._lease_seconds = lease_seconds
         self._policy = CausalOpportunityPolicy(
@@ -1608,6 +1636,8 @@ class PrivateImpressionTriggerRuntime:
             identity_frame=self._identity_frame,
             world_id=self._ledger.world_id,
             content_reader=self._content_reader,
+            life_content_store=self._life_content_store,
+            companion_actor_ref=self._companion_actor_ref,
         )
         # A paid turn authored this appraisal. Other old readings in the
         # reflection capsule are context, not sources selected by this turn.
@@ -1680,6 +1710,8 @@ class PrivateImpressionTriggerRuntime:
                     projection=pinned, appraisal=appraisal,
                     identity_frame=self._identity_frame, world_id=self._ledger.world_id,
                     content_reader=self._content_reader,
+                    life_content_store=self._life_content_store,
+                    companion_actor_ref=self._companion_actor_ref,
                 )
                 if (capsule.capsule_id != existing_audit.capsule_id
                         or pinned.world_revision != projection.world_revision
@@ -1950,6 +1982,8 @@ class PrivateImpressionTriggerRuntime:
             identity_frame=self._identity_frame,
             world_id=self._ledger.world_id,
             content_reader=self._content_reader,
+            life_content_store=self._life_content_store,
+            companion_actor_ref=self._companion_actor_ref,
         )
         attempt_id = active.claim_lease.attempt_id
         capability_manifest = _private_impression_capability(
