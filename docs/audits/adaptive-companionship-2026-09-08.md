@@ -1237,3 +1237,61 @@ withhold 来源不进入新角色回应或经历。上层还修正了读取失�
 本片新增付费调用 **0 元**。累计已知 **2.4989562 元**、保守占用 **2.8134232 元**，
 封存的旧批次和历史 unknown 不变。复用回应/保留调用不代表 token 没有增长；每月
 约 100 元及长期真人感仍未验收，Goal 继续保持 active。
+
+## 新请求默认合同、活动与长期方向的资格
+
+本段接续 `18462f4e`，最终代码固定于 **`66e373c9`**。实际生产 compiler 在隔离代码中
+改为 `life-development-capability.production.3` / `world-consequence.2`。只改变新的
+请求；旧 `.1` / production.2 已审计 pending 用原 manifest、原 hash、原 descriptor
+恢复。没有修改 main、生产进程、配置或数据库，没有发送 QQ；小屋及角色移动仍排除。
+
+### 新增反例与修复
+
+- 新未来 Plan 不得把另一项已开始活动的执行结果当成自己的结果。明确失败坐标为
+  `future_plan_execution_result`，仍交同一作者一次精确重选；实际已开始尝试的客观结果
+  继续通过有原始执行绑定的 world_contingency 提供。这是事实权限约束，不决定她做什么。
+- 动态 Plan 的 Aftermath 转换保留 `.2` 描述符；`.8` Plan reader 校验原稿完整来源与
+  新候选正文。新长期后果先通过 typed reader 核对完整材料及隐私，再交角色选择。
+  原角色 Proposal 中的 `character_life_direction` 现在传入实际 settlement；之前遗漏
+  该字段会造成 accepted change hash 不一致，合法方向决定无法落地。
+- 已审计作者/审核会推进 deliberation cursor，原恢复拿当前 Context 与旧 bytes 比较，
+  导致真实 resolver 拒绝正常恢复。新增仅供审计恢复的只读 prefix facade，嵌套读取亦
+  固定原 cursor；完整 capsule/snapshot/cursor/model-content hash 一致后才复用原审计。
+  当前头 Context 的普通要求不变，恢复不产生新的可信决定句柄。材料漂移、缺失或存储
+  失败明确失败且零 HTTP，不能用新材料冒充旧请求。原固定测试 compiler 同步尊重 query
+  的 cursor，保留旧断言，避免忽略 query 掩盖这一实际问题。
+
+无预先 Plan 的突发事件走到文字/null 角色回应、Experience `.2`、后续读取。独立实际
+角色请求先生成并开始一次尝试，冷重启后的真实 production compiler 给 World Author
+提供原 ActivityStarted 及完整授权意图，再接受并结算客观后果。另有完整新活动链：
+默认 compiler → 作者候选 → 角色明确选择时长 → Plan → start → Aftermath → complete
+→ 角色后果选择 → 文字回应 → Experience `.2`，重启无重复调用。长期方向选择验证
+Proposal、settlement、durable coordinate 和后续 null 回应经历；withhold 候选在任何
+角色调用前失败。相关测试使用 MockTransport/替身作者和 critic，不是实际语义检出证明。
+
+旧冰雹/手账 fixture 保留，SHA256 为
+`0e9783f3efc3b5640b4638a760fd15830d36d2515a49966be8b6eb918c142b8a`。
+它仍能揭示旧 `.1` 允许的叙事越权，未删除或标记 xfail。新默认的版本化替代覆盖作者
+权限及角色自由回应，不能据此宣称真实 critic 能识别任意自然语言中的越权动作。
+
+### 固定提交的验证与下一项实测
+
+`66e373c9` 一次 pytest 调用通过 **55 文件、846 项不同用例，68.55 秒**；文件清单
+`/tmp/girl-agent-consequence-default-gate-66e373c9.files.json`，完整日志同前缀 `.log`。
+各片 205/42/23 等组与此重叠，不累加。修改的 Python 文件通过 Ruff，diff-check 通过。
+独立只读复核覆盖 `c8e094b1` 的候选隐私、未来 Plan 权限与角色方向传递，以及
+`0c0ded96` 的原 Context 恢复 facade/嵌套 reader/完整身份比较，均未确认 P1/P2；该
+复核不是生产恢复或真实供应商语义正确性的保证。
+
+正常 CLI **不带 --limit** 的完整 120 场景通过；manifest 仍为
+`b405ce3beb2d6f4ab83b21011341fbe26192bbd24cb2dab3fb94979468c565c9`。
+新 `output/adaptive-companionship-2026-09-08/baseline-world-consequence-default-100.json`
+与前片 experience 产物逐字相同，233,258 字节，SHA256
+`080d3b84cf37a6c07cf54732cea10aa7d2d9ab721d4872a73af9a94a03e92e95`，未更新基线。
+
+至此本片新增付费调用 **0 元**，累计已知 **2.4989562 元**、保守占用 **2.8134232 元**
+不变。准备独立新批次：上限 **1.20 元**，每个 fresh trial 完整预约 **0.60 元**，继承
+并 hash 绑定旧封存证据，不追加旧批次、不释放历史 unknown。最终干净代码和 scenario
+先冻结，每次 HTTP 前核对同一批次/代码；账单、capture、manifest 不能闭合时保留全额。
+新试聊仍只使用本地 CaptureDelivery。真实 critic、生活链自然使用、后续回忆及每月
+100 元目标尚待实测，Goal 保持 active。
