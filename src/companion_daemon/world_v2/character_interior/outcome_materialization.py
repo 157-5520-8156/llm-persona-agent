@@ -60,7 +60,10 @@ class _CharacterInteriorOutcomeMaterializer:
         candidates = [
             {
                 "token": item.candidate_result_ref,
-                "summary": item.text,
+                **(
+                    {"world_consequence": item.world_consequence.model_dump(mode="json")}
+                    if item.world_consequence is not None else {"summary": item.text}
+                ),
                 "privacy_class": item.privacy_class,
             }
             for item in readable.candidates

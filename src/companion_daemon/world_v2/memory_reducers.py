@@ -659,11 +659,16 @@ def _resolve_source(
             authority.event_type != "ExperienceCommitted"
             or transition is None
             or current is None
-            or current.authority_contract_version != "experience.1"
+            or current.authority_contract_version not in {"experience.1", "experience.2"}
             or _canonical_hash(transition.values_after) != binding.source_values_hash
             or (require_current and current.entity_revision != binding.source_entity_revision)
         ):
             raise ValueError("memory source does not resolve hardened Experience authority")
+        if current.authority_contract_version == "experience.2" and (
+            current.origin.accepted_event_ref != binding.authority_event_ref
+            or current.values != transition.values_after
+        ):
+            raise ValueError("memory source changed the accepted paired Experience")
         return transition.values_after.privacy_class
     transition = next(
         (

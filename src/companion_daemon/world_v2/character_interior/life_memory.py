@@ -186,6 +186,18 @@ def _memory_retention_capability(
     }
 
 
+def _paired_experience_memory_capability(*, reading: dict[str, object]) -> dict[str, object]:
+    """Offer independently verified World and private-response sources to retention."""
+    capability = _memory_retention_capability(
+        source_kind="companion_lived_experience", predicate_code="world.experience",
+        source_text="",
+    )
+    del capability["verified_experience_text"]
+    capability["source_authorship_contract"] = "character-life-experience-summary.1"
+    capability["verified_experience_sources"] = reading
+    return capability
+
+
 def _materialize_memory_retention(
     *,
     result: InnerDecision,

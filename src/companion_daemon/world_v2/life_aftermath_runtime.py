@@ -43,6 +43,7 @@ from .character_interior.life_memory import (
     _materialize_memory_retention,
     _memory_opportunity,
     _memory_retention_capability,
+    _paired_experience_memory_capability,
 )
 from .character_interior.purpose_context import InteriorPurposeContext
 from .life_author_seed import ReviewedLifeSeedCatalog
@@ -2285,6 +2286,26 @@ class LifeAftermathRuntime:
                     "experience summary sidecar is unavailable for memory classification"
                 )
             try:
+                capability_payload = _memory_retention_capability(
+                    source_kind="companion_lived_experience",
+                    predicate_code="world.experience", source_text=summary.text,
+                )
+                if experience.authority_contract_version == "experience.2":
+                    from .life_content_reading import read_character_life_experience_content
+
+                    try:
+                        reading = read_character_life_experience_content(
+                            store=self._content_store, projection=projection, experience=experience,
+                            actor_ref=self._owner_actor_ref, viewer_privacy_ceiling="private",
+                            max_characters=3000,
+                        )
+                    except ValueError as exc:
+                        raise FactMemoryDraftTechnicalFailure(
+                            "paired_experience_source_unavailable",
+                        ) from exc
+                    capability_payload = _paired_experience_memory_capability(
+                        reading=reading.model_dump(mode="json"),
+                    )
                 context = InteriorPurposeContext(
                     inner_turn_ref=(
                         f"memory:experience:{experience.origin.accepted_event_ref}"
@@ -2299,11 +2320,7 @@ class LifeAftermathRuntime:
                     actor_ref=self._owner_actor_ref,
                     purpose=_EXPERIENCE_MEMORY_PURPOSE,
                     context=context,
-                    capability_payload=_memory_retention_capability(
-                        source_kind="companion_lived_experience",
-                        predicate_code="world.experience",
-                        source_text=summary.text,
-                    ),
+                    capability_payload=capability_payload,
                 )
                 interior_result = await self._character_interior.consider(opportunity)
                 classified = _materialize_memory_retention(
