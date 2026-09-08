@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -131,6 +132,7 @@ class _PlanWorldAuthor:
 
     def __init__(self, *, wake_event_ref: str) -> None:
         self.calls = 0
+        self.requests = []
         self._wake_event_ref = wake_event_ref
 
     async def complete(
@@ -141,6 +143,7 @@ class _PlanWorldAuthor:
     ) -> str:
         del temperature
         self.calls += 1
+        self.requests.append(_messages)
         return json.dumps(
             {
                 "decision": "propose",
@@ -775,12 +778,29 @@ async def test_production_open_life_opportunity_draw_calls_world_author(
 @pytest.mark.asyncio
 async def test_production_open_life_plan_comes_from_the_world_author(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A reviewed catalog is material for the author, not a plan generator.
+    """Preserve the production.2 historical Plan producer and original wire.
 
     The plan that lands must be the one the World Author actually wrote, and
     she has to accept it; nothing may appear from the catalog alone.
     """
+
+    class LegacyManifestCompiler(ProjectionLifeCapabilityManifestCompiler):
+        def compile(self, **kwargs):
+            # This fixture deliberately exercises its original text contract.
+            # Fresh production requests are covered separately through HTTP.
+            return super().compile(**kwargs).model_copy(
+                update={
+                    "version": "life-development-capability.production.2",
+                    "outcome_contract": None,
+                }
+            )
+
+    monkeypatch.setattr(
+        "companion_daemon.world_v2.production_turn_application.ProjectionLifeCapabilityManifestCompiler",
+        LegacyManifestCompiler,
+    )
 
     database = tmp_path / "open-life-dynamic-aftermath.sqlite"
     seed = _open_life_seed(tmp_path / "dynamic-aftermath-seed.yaml")
@@ -837,6 +857,17 @@ async def test_production_open_life_plan_comes_from_the_world_author(
         )
         assert planned.life_development_followup_status == "plan_committed"
         assert world_author.calls >= 1
+        manifest = json.loads(world_author.requests[0][1]["content"])["capability_manifest"]
+        # Captured from the unmodified compiler at 18462f4e using this public
+        # app fixture; neither expected hash is derived from the new compiler.
+        assert manifest["manifest_hash"] == (
+            "9b2e5755fcbf51eb47aa749c8af0cc1236593d2c95798bf069fee470b68bddac"
+        )
+        assert hashlib.sha256(
+            json.dumps(
+                manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode()
+        ).hexdigest() == "cd59ff6b27cc27e6f496c772519cac2984099b29ec524132fe64c7ca95817ce3"
         assert character_model.calls >= 1
         assert any(
             item.activity_kind.startswith("open_life.")
