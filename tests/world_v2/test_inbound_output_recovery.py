@@ -163,6 +163,9 @@ def _replace_checkpoint(path, row, *, terminal, prepared):
         "recall_port",
         "recall_subprocess",
         "recall_tampered_subprocess",
+        "prefetch_subprocess",
+        "prefetch_missing_subprocess",
+        "prefetch_changed_subprocess",
         "legacy_same_pin",
         *(
             "record_" + name
@@ -186,6 +189,7 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
     path = tmp_path / "world.sqlite"
     usage_path = tmp_path / "usage.sqlite"
     usage = WorldV2UsageStore(path=str(usage_path), monthly_budget_cny=1, daily_budget_cny=1)
+    prefetch_case = window.startswith("prefetch_")
     requests = _AtomicHTTP(recall=window.startswith("recall_"))
     model = DeepSeekChatModel(
         "offline-fixture",
@@ -227,7 +231,7 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
 
     def stop_before_record(self, result, context):
         if result.proposal is not None:
-            assert len(_terminals(path)) == 1
+            assert len(_terminals(path)) == 1 + len(prior_terminals)
             raise _ProcessStopped()
         return record(self, result, context)
 
@@ -240,15 +244,25 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
         trace_id="trace:durable-output",
     )
     app = public._build(path, model)
+    if prefetch_case:
+        # Real first conversation supplies the subsequent automatic prefetch;
+        # no trace, memory, or accepted World event is manually inserted.
+        from dataclasses import replace
+
+        await app.respond(
+            replace(inbound, platform_message_id="message:warmup", trace_id="trace:warmup")
+        )
+    prior_terminals = _terminals(path)
+    prior_projection = app.export_replay_evidence().projection
     monkeypatch.setattr(ProposalAuditRecorder, "record", stop_before_record)
     try:
         with pytest.raises(_ProcessStopped):
             await app.respond(inbound)
         original = _terminals(path)
-        assert len(original) == 1
+        assert len(original) == 1 + len(prior_terminals)
         original_calls = len(requests.chat_requests)
         assert original_calls > 0
-        original_request, original_output = captured_results[0]
+        original_request, original_output = captured_results[-1]
         original_usage = _usage_rows(usage_path)
         assert len(original_usage) == original_calls
         assert all(item["billing_state"] == "known" for item in original_usage)
@@ -256,11 +270,12 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
             item["prompt_tokens"] == item["completion_tokens"] == 100 for item in original_usage
         )
         original_projection = app.export_replay_evidence().projection
-        assert not original_projection.proposal_audits
-        assert not original_projection.model_result_audits
+        assert original_projection.proposal_audits == prior_projection.proposal_audits
+        assert original_projection.model_result_audits == prior_projection.model_result_audits
         # The primary bill exists. The absent World audit and absent output
         # body are separate losses; this is not a claim of unmetered HTTP.
-        decision = json.loads(original[0]["terminal_result_json"])["decision"]
+        original_row = next(row for row in original if row not in prior_terminals)
+        decision = json.loads(original_row["terminal_result_json"])["decision"]
         assert decision["contract"] == "character-interior-inbound-turn-decision.2"
         assert decision["output_record"]["output"]["raw_proposal"] == original_output.raw_proposal
         assert original_output.winning_model_call_id is not None
@@ -269,13 +284,20 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
         stores[-1].close()
     monkeypatch.setattr(ProposalAuditRecorder, "record", record)
     if window.endswith("subprocess"):
-        assert original_output.recall_trace is not None
+        if prefetch_case:
+            assert original_output.prefetch_trace is None
+            assert original_output.presented_prefetch_traces
+            original_trace = original_output.presented_prefetch_traces[-1].trace
+        else:
+            assert original_output.recall_trace is not None
+            original_trace = original_output.recall_trace
         evidence_path = tmp_path / "child-input.json"
         evidence_path.write_text(
             json.dumps(
                 {
                     "request": original_request.model_dump(mode="json"),
-                    "old_trace": original_output.recall_trace.model_dump(mode="json"),
+                    "old_trace": original_trace.model_dump(mode="json"),
+                    "trace_kind": "prefetch" if prefetch_case else "recall",
                     "expected_output": _recorded_output(original_output).model_dump(mode="json"),
                 },
                 ensure_ascii=False,
@@ -297,6 +319,28 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
                     "UPDATE world_v2_character_interior_turns SET authored_state_json=?,authored_state_hash=? WHERE inner_turn_id=?",
                     (raw, digest, original[0]["inner_turn_id"]),
                 )
+        if window in {"prefetch_missing_subprocess", "prefetch_changed_subprocess"}:
+            terminal = json.loads(original_row["terminal_result_json"])
+            prepared = json.loads(original_row["authored_state_json"])
+            payload = terminal["decision"]
+            body = payload["output_record"]
+            if window == "prefetch_missing_subprocess":
+                body["output"].pop("presented_prefetch_traces")
+                presentations = []
+            else:
+                # Keep a valid trace at the same actor/cursor, but replace its
+                # execution identity; recomputing outer hashes cannot make it
+                # the trace actually shown in the original pinned snapshot.
+                presentations = body["output"]["presented_prefetch_traces"]
+                presentations[-1]["trace"]["embedding_version"] = "other-embedding.1"
+                from companion_daemon.world_v2.recall_audit import PrefetchPresentationAudit
+
+                PrefetchPresentationAudit.model_validate_json(_json(presentations[-1]))
+            terminal["presented_prefetch_traces"] = presentations
+            prepared["presented_prefetch_traces"] = presentations
+            payload["output_ref"], payload["output_hash"] = output_record_identity(body)
+            prepared["result"]["decision"] = payload
+            _replace_checkpoint(path, original_row, terminal=terminal, prepared=prepared)
         root = Path(__file__).resolve().parents[2]
         child = await asyncio.create_subprocess_exec(
             sys.executable,
@@ -322,6 +366,8 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
         assert result["http_calls"] == result["recall_calls"] == 0
         if window == "recall_tampered_subprocess":
             assert result["error"] == "inbound_output_record.invalid_original_checkpoint"
+        elif prefetch_case and window != "prefetch_subprocess":
+            assert result["error"] == "inbound_output_record.prefetch_source_mismatch"
         else:
             assert result["error"] is None
             assert result["equal_output"] is True
@@ -507,7 +553,14 @@ async def _recover_in_child(path_string, evidence_string):
             except ValueError as exc:
                 result["error"] = str(exc)
             else:
-                assert verify_trusted_recall_trace(output.recall_trace) == old_trace.audit
+                restored_trace = (
+                    output.presented_prefetch_traces[-1].trace
+                    if evidence.get("trace_kind") == "prefetch"
+                    else output.recall_trace
+                )
+                assert verify_trusted_recall_trace(restored_trace) == old_trace.audit
+                if evidence.get("trace_kind") == "prefetch":
+                    assert output.prefetch_trace is None
                 result["equal_output"] = (
                     _recorded_output(output).model_dump(mode="json") == evidence["expected_output"]
                 )

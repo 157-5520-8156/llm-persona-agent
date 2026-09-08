@@ -311,11 +311,26 @@ def _restore_completed_inbound_output(
     ):
         raise ValueError("inbound_output_record.original_authority_mismatch")
     audits: list[RecallAuditTrace] = []
+    original_prefetch: RecallAuditTrace | None = None
     for name in ("recall_trace", "prefetch_trace"):
         trace = getattr(record.output, name)
         raw = getattr(snapshot, name + "_json")
         original = TrustedRecallTrace.model_validate_json(raw).audit if raw is not None else None
-        if trace != original:
+        if name == "prefetch_trace":
+            original_prefetch = original
+            # Core owns automatic prefetch and the Faculty records which
+            # invocation saw it. The legacy top-level slot stays None in this
+            # producer format; it must not be backfilled during restoration.
+            if trace is None and original is not None:
+                if not any(
+                    item.trace == original
+                    and item.model_call_id == record.author_lineage.model_call_id
+                    for item in presentations
+                ):
+                    raise ValueError("inbound_output_record.prefetch_source_mismatch")
+            elif trace != original:
+                raise ValueError("inbound_output_record.prefetch_source_mismatch")
+        elif trace != original:
             raise ValueError("inbound_output_record.recall_source_mismatch")
         if trace is not None:
             audits.append(trace)
@@ -326,6 +341,8 @@ def _restore_completed_inbound_output(
         *(item.model_call_id for item in record.output.authored_candidate_audits),
     }
     for item in presentations:
+        if item.trace != original_prefetch:
+            raise ValueError("inbound_output_record.prefetch_source_mismatch")
         if item.model_call_id not in call_ids:
             raise ValueError("inbound_output_record.prefetch_call_mismatch")
         audits.append(item.trace)
