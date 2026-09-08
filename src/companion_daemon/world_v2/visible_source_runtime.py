@@ -279,7 +279,18 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
         }
     )
     if len(evidence.encode()) > MAX_EVIDENCE_BYTES:
-        raise ValidationTechnicalFailure("source_review_exception")
+        # The carrier limit is checked after a completed, billable review.
+        # Retain its independent invocation even though no receipt can escape.
+        raise ValidationTechnicalFailure(
+            "source_review_exception",
+            model_call_id=parent,
+            request_hash=output.winning_request_hash,
+            attempted_model_id=output.model_id,
+            attempted_model_version=output.model_version,
+            usage=output.usage,
+            provider_subcall_audits=(*output.provider_subcall_audits, subcall),
+            failure_detail="visible_source_review.evidence_size_exceeded",
+        )
     return output.model_copy(
         update={
             "visible_source_review_json": evidence,
