@@ -59,36 +59,49 @@ WorldOccurrenceSettled、角色 model result / proposal / lineage、actor、curs
 
 ### 后续片：世界来源与角色经历的分离
 
-2026-09-08 进度：新协议的作者输入与角色回应两端已分别实现，完整经历链尚未接通。
-新 `.2` 来源经公共 HTTP 角色调用生成 `life_responses`，逐源正文或显式 null 必填；
-同一决定先接受回应，再接受可选意图/情绪。多源部分提交及独立情绪消费者先终结
-触发器后，均从原 audit 恢复，不补模型决定。旧来源保持旧 wire。`.4` 提案不能对
-新来源绕过回应要求后单独接受 Plan。
+2026-09-08 当前进度：显式新合同的作者、结算、角色回应、经历与主要读取端已接通，
+生产 manifest 缺省仍未切换。历史 `.1` 与旧 pending 不因新代码自动升级。
 
-World Author 新请求只从原 manifest anchors 中提供至多四条可读执行材料，包含
-真实开始/恢复记录以及原角色授权意图全文。没有可读 Action 正文的 receipt 不提供
-执行权限。新请求在调用前保存完整 messages；结果反证模块核对原 ModelResult、
-Proposal、request bytes、manifest、原 pin 和每条执行材料。该反证模块已有公共
-作者调用中断后及 SQLite 重开测试，**尚未接到完整 SourceReview/接受路径**。
-新 prompt 已接显式 `.2` manifest 的作者调用，未提供的 execution binding 会精确
-交回同一作者重选一次。旧 schema 已独立逐字比较，不因兼容解析器增加新字段。
+World Author 从原 manifest anchors 提供至多四条可读执行材料，包含实际开始/恢复
+记录及原角色授权意图。没有可读 Action 正文的 receipt 不提供执行权限。新请求在
+调用前保存完整 messages；接受前反证原 ModelResult、Proposal、request bytes、
+manifest、原 pin 和每条执行材料。两个 review packet 均使用该原始证据。新 `.8`
+possibility 必须逐项绑定原作者审计中有序的 canonical consequence hashes，不能用
+自洽的新 sidecar/hash 替换审核过的正文。新语义 focused critic 未配置时明确失败。
 
-生产 manifest 编译器仍保持 `.production.2` 与原缺省，不启用新后果写入。必须按以下
-顺序完成余下链条后才能切换：
+新合同的 source-closure rejection 只交给同一个 World Author 一次：保留原请求和
+拒稿，加入精确失败坐标，再完整重审替换稿。不得本地删改角色动作、补写故事或用
+no_op 冒充技术恢复。已审计稿件后的 CAS 失败及 SQLite 重开不重复付费调用。
 
-1. 将已核实的原执行材料交给两种 review 编译器，持久保存新 packet/subject 版本；
-   为新作者结果的单次来源纠正传递同一新合同。当前 source-rewrite helper 仍是旧 wire。
-2. World Author 新候选使用结构化内容及 `result_contract`，Aftermath 与通用
-   Outcome 接受均反证原作者/执行来源；旧 pending 不因缺省而升级。
-3. 增加一个复合来源绑定的 Experience `.2`，同时引用世界结算与已接受角色回应。
-   两种结算路径停止将新 WA 原文直接复制成经历；LifeContent、WorldLife、snapshot、
-   Recall 与后置 retention 一同识别两种作者权限。不能只改显示标签。
-4. 完成原冰雹/手账反例的整条修复与冷恢复，再做另列预算的真实角色实验。
+Aftermath 与通用 Outcome 均发布精确选中的 `.2` 结果正文及来源描述符。环境可以先
+结算，但没有已接受 CharacterLifeResponse 时不创建新 Experience。通用 Outcome
+的接受后中断会先补齐正文再终结触发器；世界感知模型调用前也检查实际发布的正文，
+不能在内容缺失时询问角色、生成回应或把存储失败解释为角色选择。
 
-本阶段合并的 466 项及随后新增 10 项请求审计测试通过；完整 120 固定场景的 `.100`
-输出与此前逐字相同，
-没有更新 baseline。这里不构成新语义审核质量或长期真人感验收。用户已明确暂时弃用
-小屋，角色移动与小屋交互不在此轮目标内。
+同一次 world-stimulus 调用的 `life_responses` 按源保存原文或显式 null，再组合成
+Experience `.2`。一个复合来源同时引用精确世界 settlement 与已接受角色回应；摘要
+仅包含世界结果定位和角色原文，不把世界作者的叙述复制成角色亲历。回应、经历与
+可选 Plan/Appraisal 的部分提交及独立消费者先结束触发器均从原审计恢复。Memory
+retention 在 Experience 之后复用现有角色调用，输入分别列出世界后果和私人回应，
+校验全部来源后限制可读文本至 3000 字并标记截断；不把回应中的推测变成外部事实。
+
+LifeContent、WorldLife、snapshot、Recall 与 Memory retrieval 识别复合来源，世界
+部分和私人解读分栏。复合 Experience wrapper 不自动获得 `past_world/shared_history`
+权限；世界事实仍引用独立 settlement，私人解读进入 reflective 索引。新候选在
+Outcome 的 advisory 与角色输入中保留结构，不能把 JSON 字符串裁坏后当摘要。
+选中结果的隐私下限不能低于 occurrence 或 candidate 中较严格的一方；withhold
+后果不进入新角色回应/经历来源。
+
+NPC 仅取得世界部分及其 settlement/descriptor 来源；私人反思保留两个作者的原始
+分栏，并复用已有读取预算。缺正文、错 hash 或 reader 缺失时拒绝该次技术输入；
+上层将该经历域标为 unavailable，不能把读取失败改成“可用但没有经历”。
+
+还需完成：旧冰雹/手账反例的版本化替代和已执行活动/客观成败路径；
+切换真实生产 manifest 的完整资格检查；
+另列预算的真实语义审核和角色对话。以上机制测试使用替身供应商，不能替代这些验收。
+小屋和角色移动不在本轮范围内。上一阶段 476 项及完整 120 场景的证据保留在审计文档；
+本轮集成点 `dc00ddd7` 通过 49 文件中的 790 项不同用例（59.84 秒）。正常 CLI
+不带 limit 的完整 120 场景通过，产物与上一 `.100` 逐字一致；两组仍是离线机制证据。
 
 版本化世界后果材料，保留环境变化独立结算。给已有世界感知回合加入明确的角色回应
 结果，记录原文与作者来源；用单个复合来源对象绑定世界 settlement 和角色回应，

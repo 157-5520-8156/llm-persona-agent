@@ -1160,3 +1160,75 @@ root 在以上集成树通过 **466 项不同定向用例**（31.27 秒），包
 新增付费调用 **0 元**；累计已知 **2.4989562 元**、保守占用 **2.8134232 元**保持不变，
 旧批次仍封存。同回合回应减少独立调用需要，但 schema、正文、后续生活决策仍会
 消耗 token；每月约 100 元与长期真人感均未取得新验收证据。
+
+## 世界后果与角色经历：作者、接受与读取的集成闭环
+
+本片在 `0832aa46` 之后继续隔离实现，集成检查固定于 `dc00ddd7`。未修改 main、
+生产配置或数据库，未部署、发送真实 QQ 或调用付费供应商；小屋和角色移动继续排除。
+生产 Capability Manifest 的默认合同尚未切换，以下闭环需要显式新 `.2` manifest。
+
+### 已接通的真实代码路径
+
+World Author 的新 `.8` possibility 从原请求与持久审计反证逐项有序的 canonical
+consequence hashes，两个新 review packet 都使用同一份原始作者证据。缺少 focused
+语义 critic 时明确技术失败。拒稿只给同一作者一次包含原请求、拒稿及精确失败坐标的
+纠错机会，再完整重审；代码不删改自然语言或代写 no_op。原作者/审核决定提交后的
+CAS 失败及 SQLite 冷恢复复用原记录，不增加模型调用。相关公共测试还覆盖篡改正文、
+缺 critic、旧审计 hash 口径与恢复前后内容一致。
+
+Aftermath 和通用 Outcome 接受后都发布精确选中的 `.2` 世界正文及来源描述符。
+世界先结算；角色回应尚未接受时没有新 Experience。已有 world-stimulus 调用中的
+逐源 `life_responses` 保留角色原文或明确 null，随后由确定性组合器创建 Experience
+`.2`：单个复合来源绑定原 settlement、角色回应及各自事件/修订/hash。摘要保留世界
+来源定位和角色原文，不能用 WA 叙述替角色补写动作或日记。回应、经历、可选 Plan /
+Appraisal 的部分提交，以及另一消费者先完成触发器，均能恢复而不重新询问角色。
+
+独立复核确认并修复两个通用 Outcome 中断问题：接受接口曾返回后续正文发布的
+CommitResult，且接受后失败的正文发布会被触发器恢复逻辑跳过。现在接口返回原接受
+批次，恢复先补正文再终结原触发器。另一个公共应用反例验证普通 OSError 被隔离后，
+同一调度周期原本仍会调用角色；现必须先验证实际已发布正文。失败时记录
+`world_consequence_published_source_unavailable`，角色调用、回应、经历均为零。
+冷恢复补正文为零模型调用，待原角色租约到期后只消费一次原来源。对应四项公共
+回归由独立分支提供，包含崩溃恢复、原接受结果与继续同周期运行的路径。
+
+LifeContent、WorldLife、snapshot、Recall、Outcome 及 Memory retrieval 读取时先
+校验完整材料，再按既有预算截断各字段。环境/客观执行结果与私人回应分别带作者和
+认识权限；新 Experience wrapper 不获得 `past_world/shared_history` 权限。私人
+回应只进入 reflective 资料；null 不生成虚构反思文本。NPC 只取得世界部分及其
+settlement/descriptor 来源，私人反思在原 1200 字预算内读取两个作者。所有这些新
+路径都拒绝缺正文、错 hash、错误角色及超出隐私上限的材料，没有 raw JSON 回退。
+
+通用 Outcome 的新候选输入采用结构化分栏，避免裁坏载体 JSON。后置记忆保留复用
+原角色调用，改为世界后果/私人回应两组输入，完整来源验证后限制到 3000 字并标记
+截断。memory kernel 接纳合法的 Experience `.2` 时，继续核对原 accepted event、
+历史 transition 与当前值；不让版本白名单把合法新来源错误拒绝。公共保留测试覆盖
+文字/null、明确不保留决定与冷恢复零调用；其角色端口是替身，不代表真实模型的
+记忆取舍。新选中结果隐私不得低于 occurrence/candidate/descriptor 的最严者，
+withhold 来源不进入新角色回应或经历。上层还修正了读取失败被误标为“可用但为空”
+的问题：公共上下文现在明确显示 unavailable，原有效来源仍正常可读。
+
+### 集成检查与剩余资格
+
+在 `dc00ddd7` 上一次 pytest 调用通过 **49 文件、790 项不同用例，59.84 秒**。
+涵盖作者/审核/接受、两类 Outcome、角色回应与意图、经历与记忆、主要和次级读取、
+隐私、CAS/冷恢复及旧合同兼容。文件清单与完整日志分别保存在本机
+`/tmp/girl-agent-consequence-experience-gate-dc00ddd7-files.json` 和同前缀 `.log`；
+各分支的 82/115/140 等组与本组重叠，不累加为额外验收。修改过的全部 Python 文件
+通过 Ruff，diff-check 通过。
+
+正常 CLI **不带 --limit** 的完整 120 场景通过，manifest 仍为
+`b405ce3beb2d6f4ab83b21011341fbe26192bbd24cb2dab3fb94979468c565c9`。
+新 `output/adaptive-companionship-2026-09-08/baseline-world-consequence-experience-100.json`
+与原 `baseline-world-consequence-protocol-100.json` 逐字一致：233,258 字节，SHA256
+`080d3b84cf37a6c07cf54732cea10aa7d2d9ab721d4872a73af9a94a03e92e95`。没有更新基线。
+
+这些证据不表示所有生产请求已使用新协议。尚需用实际生产 manifest compiler 完成
+新请求切换与旧 pending 恢复资格，验证无 Plan 的突发事件、实际已授权活动的客观
+成败及长远生活选择三种新链。旧冰雹/手账 fixture 原样保留且旧路径仍能暴露越权；
+不能借新路径的 supported/rejected 替身 critic 宣称真实语义漏检已修好。Aftermath
+长远后果输入和动态 Plan 转换也须在新默认启用前检查，不能给旧候选补 marker 升权。
+随后须另列有界预算进行真实审核与角色对话，检查可见表达、生活后果、回忆及费用。
+
+本片新增付费调用 **0 元**。累计已知 **2.4989562 元**、保守占用 **2.8134232 元**，
+封存的旧批次和历史 unknown 不变。复用回应/保留调用不代表 token 没有增长；每月
+约 100 元及长期真人感仍未验收，Goal 继续保持 active。
