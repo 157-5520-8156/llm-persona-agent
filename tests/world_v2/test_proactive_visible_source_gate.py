@@ -189,9 +189,7 @@ async def _run_scenario(
                 await wait_for_cancellation()
         unclosed = texts == (UNSOURCED_TEXT,)
         # Exact scripted provider verdicts, not a production prose classifier.
-        return _http_result(
-            body,
-            {
+        verdict = {
                 "contract": f"visible-beat-source-verdict.{review_version}",
                 **({"rejections": [
                     {
@@ -200,7 +198,7 @@ async def _run_scenario(
                     }
                     for index, text in enumerate(texts)
                     if unclosed
-                ]} if review_version == "2" else {}),
+                ]} if review_version in {"2", "3"} else {}),
                 "decisions": [
                     {
                         "beat_index": index,
@@ -219,8 +217,11 @@ async def _run_scenario(
                         else len(texts)
                     )
                 ],
-            },
-        )
+            }
+        if review_version == "3":
+            for decision in verdict["decisions"]:
+                assert decision.pop("source_ref_indexes") == []
+        return _http_result(body, verdict)
 
     from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
 
@@ -500,18 +501,19 @@ async def test_required_proactive_review_public_host(tmp_path, monkeypatch, scen
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("review_version", ("2", "3"))
 @pytest.mark.parametrize(
     "scenario",
     ("source_free", "reselect", "reject_twice", "review_invalid_second", "review_deadline_second"),
 )
-async def test_v2_proactive_review_and_reselection_use_actual_protocol(
-    tmp_path, monkeypatch, scenario
+async def test_versioned_proactive_review_and_reselection_use_actual_protocol(
+    tmp_path, monkeypatch, scenario, review_version
 ):
     evidence, authors, reviews, _delivery = await _run_scenario(
-        tmp_path, monkeypatch, scenario, review_version="2"
+        tmp_path, monkeypatch, scenario, review_version=review_version
     )
     assert all(
-        body["tool_choice"]["function"]["name"] == "visible_beat_source_verdict_v2"
+        body["tool_choice"]["function"]["name"] == f"visible_beat_source_verdict_v{review_version}"
         for body in reviews
     )
     if scenario != "source_free":
@@ -540,10 +542,10 @@ async def test_v2_proactive_review_and_reselection_use_actual_protocol(
             and lineage.purpose == "proactive_contact"
         )
         receipt = json.loads(parent.visible_source_review_json)["receipt"]
-        assert receipt["contract"] == "visible-source-review-receipt.2"
-        assert json.loads(receipt["prepared_json"])["contract"] == "visible-source-review-request.2"
+        assert receipt["contract"] == f"visible-source-review-receipt.{review_version}"
+        assert json.loads(receipt["prepared_json"])["contract"] == f"visible-source-review-request.{review_version}"
         verdict = json.loads(receipt["raw_verdict"])
-        assert verdict["contract"] == "visible-beat-source-verdict.2"
+        assert verdict["contract"] == f"visible-beat-source-verdict.{review_version}"
         assert verdict["rejections"] == []
 
 
@@ -565,7 +567,7 @@ async def test_external_cancellation_and_close_leave_proactive_turn_unfinished(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("pause_before_acceptance", (False, True))
-@pytest.mark.parametrize("review_version", ("1", "2"))
+@pytest.mark.parametrize("review_version", ("1", "2", "3"))
 async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_actions(
     tmp_path, monkeypatch, pause_before_acceptance, review_version
 ):

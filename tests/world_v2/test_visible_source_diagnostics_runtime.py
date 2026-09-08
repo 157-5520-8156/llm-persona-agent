@@ -34,7 +34,7 @@ class _DiagnosticHTTP(_ReviewHTTP):
             return await super().__call__(request)
         self.requests.append(body)
         self.reviews += 1
-        assert name.endswith("_v2"), name
+        assert name.endswith(f"_v{self.review_version}"), name
         scenario = next(self.verdicts)
         packet = json.loads(body["messages"][-1]["content"])
         beats = packet["visible_beats"]
@@ -53,15 +53,20 @@ class _DiagnosticHTTP(_ReviewHTTP):
         }
         if scenario == "invalid_diagnostic":
             diagnostic["char_end"] += 1
+        if self.review_version == "3":
+            for decision in decisions:
+                assert decision.pop("source_ref_indexes") == []
         return _http_result(body, {
-            "contract": "visible-beat-source-verdict.2", "decisions": decisions,
+            "contract": f"visible-beat-source-verdict.{self.review_version}", "decisions": decisions,
             "rejections": [diagnostic] if rejected else [],
         })
 
 
 @pytest.mark.asyncio
-async def test_v2_diagnostics_reach_same_role_and_complete_replacement_cold_verifies(tmp_path):
+@pytest.mark.parametrize("review_version", ["2", "3"])
+async def test_diagnostics_reach_same_role_and_complete_replacement_cold_verifies(tmp_path, review_version):
     http = _DiagnosticHTTP(["unclosed", "pass"], tool_version="3")
+    http.review_version = review_version
     path = tmp_path / "world.sqlite"
     async with _app(path, http) as app:
         assert (await app.respond(_inbound())).status == "action_authorized"
@@ -89,7 +94,7 @@ async def test_v2_diagnostics_reach_same_role_and_complete_replacement_cold_veri
         assert len([a for a in audits if a.usage is not None]) == 4
         winner = next(a for a in audits if a.visible_source_review_json is not None)
         receipt = json.loads(winner.visible_source_review_json)["receipt"]
-        assert receipt["contract"] == "visible-source-review-receipt.2"
+        assert receipt["contract"] == f"visible-source-review-receipt.{review_version}"
         evidence = app.export_replay_evidence()
         decision = next(a for a in evidence.projection.proposal_audits if a.proposal_kind == "decision")
         assert verify_recorded_candidate(
@@ -100,6 +105,7 @@ async def test_v2_diagnostics_reach_same_role_and_complete_replacement_cold_veri
             assert db.execute("SELECT COUNT(*) FROM world_v2_model_usage WHERE billing_state='known'").fetchone() == (4,)
     # Cold persisted evidence is sufficient: no new author or reviewer invocation.
     cold = _DiagnosticHTTP([], tool_version="3")
+    cold.review_version = review_version
     async with _app(path, cold) as app:
         repeated = await app.respond(_inbound())
         assert repeated.status == "action_authorized"
@@ -108,9 +114,11 @@ async def test_v2_diagnostics_reach_same_role_and_complete_replacement_cold_veri
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("review_version", ["2", "3"])
 @pytest.mark.parametrize("verdicts,expected", [(["unclosed", "new_unclosed"], (2, 2)), (["invalid_diagnostic"], (1, 1))])
-async def test_v2_changed_other_beat_and_bad_locator_authorize_nothing(tmp_path, verdicts, expected):
+async def test_changed_other_beat_and_bad_locator_authorize_nothing(tmp_path, verdicts, expected, review_version):
     http = _DiagnosticHTTP(verdicts, tool_version="3")
+    http.review_version = review_version
     async with _app(tmp_path / "world.sqlite", http) as app:
         assert (await app.respond(_inbound())).status != "action_authorized"
         assert (http.authors, http.reviews) == expected
@@ -173,8 +181,12 @@ async def test_final_evidence_size_failure_keeps_already_completed_invocations(t
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("version,verdicts", [("1", ["pass"]), ("1", ["unclosed", "pass"]), ("2", ["pass"])])
-async def test_fully_recompiled_version_forgery_cannot_replace_independent_review_audit(tmp_path, version, verdicts):
+@pytest.mark.parametrize("version,target,verdicts", [
+    ("1", "2", ["pass"]), ("1", "2", ["unclosed", "pass"]), ("2", "1", ["pass"]),
+    ("1", "3", ["pass"]), ("2", "3", ["unclosed", "pass"]),
+    ("3", "1", ["pass"]), ("3", "2", ["unclosed", "pass"]),
+])
+async def test_fully_recompiled_version_forgery_cannot_replace_independent_review_audit(tmp_path, version, target, verdicts):
     from companion_daemon.world_v2.proposal_audit_schemas import RecordedModelResultAudit
     from companion_daemon.world_v2.proposal_envelope import DecisionProposal
     from companion_daemon.world_v2.visible_source_composer import VisibleSourceTable
@@ -184,6 +196,7 @@ async def test_fully_recompiled_version_forgery_cannot_replace_independent_revie
     from companion_daemon.world_v2.visible_source_runtime import canonical, digest
 
     http = (_ReviewHTTP if version == "1" else _DiagnosticHTTP)(verdicts, tool_version="3")
+    http.review_version = version
     async with _app(tmp_path / "world.sqlite", http) as app:
         assert (await app.respond(_inbound())).status == "action_authorized"
         projection = app.export_replay_evidence().projection
@@ -194,7 +207,6 @@ async def test_fully_recompiled_version_forgery_cannot_replace_independent_revie
     receipt = VisibleSourceReviewReceipt.model_validate_json(canonical(value["receipt"]))
     assert verify_recorded_candidate(audit=audit, model_result_audits=projection.model_result_audits) == receipt.receipt_hash
     prepared = json.loads(receipt.prepared_json)
-    target = "2" if version == "1" else "1"
     replacement = prepare_visible_source_review(
         candidate=DecisionProposal.model_validate_json(audit.proposal_json),
         source_table=VisibleSourceTable(payload_json=prepared["source_table_json"]),
@@ -202,10 +214,21 @@ async def test_fully_recompiled_version_forgery_cannot_replace_independent_revie
     )
     raw = json.loads(receipt.raw_verdict)
     raw["contract"] = f"visible-beat-source-verdict.{target}"
-    if target == "2":
+    if target in {"2", "3"}:
         raw["rejections"] = []
     else:
         raw.pop("rejections")
+    for decision in raw["decisions"]:
+        if version == "3":
+            refs = ([decision.pop("first_source_ref_index"), *decision.pop("additional_source_ref_indexes")]
+                    if decision["verdict"] == "closed" else [])
+        else:
+            refs = decision.pop("source_ref_indexes")
+        if target == "3":
+            if decision["verdict"] == "closed":
+                decision.update(first_source_ref_index=refs[0], additional_source_ref_indexes=refs[1:])
+        else:
+            decision["source_ref_indexes"] = refs
     raw = canonical(raw)
     forged = record_visible_source_review(
         prepared=replacement, author=receipt.author, raw_verdict=raw,
