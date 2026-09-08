@@ -207,10 +207,11 @@ async def test_production_manifest_requests_current_consequences_through_http_an
         result = await _advance(_composition(ledger, store, _catalog(tmp_path), model), wake)
         user = json.loads(provider.requests[0]["messages"][1]["content"])
         assert user["capability_manifest"]["outcome_contract"] == "world-consequence.2"
-        assert user["capability_manifest"]["version"] == "life-development-capability.production.3"
+        assert user["capability_manifest"]["version"] == "life-development-capability.production.4"
         _assert_occurrence(ledger, store, result, provider.draft)
         assert len(provider.requests) == 2  # author + existing focused lane only
-        _assert_review_input(provider.requests[1]["messages"], user, provider.draft, focused=True)
+        _assert_review_input(provider.requests[1]["messages"], user, provider.draft,
+                             focused=True, focused_packet=".8")
         raw_messages = _json(provider.requests[0]["messages"])
         request_hash = hashlib.sha256(raw_messages.encode()).hexdigest()
         assert (

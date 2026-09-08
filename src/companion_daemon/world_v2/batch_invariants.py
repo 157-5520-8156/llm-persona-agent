@@ -107,6 +107,7 @@ from .life_development_draft import (
     LifeDevelopmentLocationCapability,
 )
 from .life_review_identity import (
+    novel_origin_evidence_packet_contract,
     PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT,
     current_novel_origin_review_subject_hash,
     current_source_review_subject_hash,
@@ -114,7 +115,6 @@ from .life_review_identity import (
     legacy_source_review_subject_hash,
     GENERAL_EVIDENCE_PACKET_CONTRACT,
     WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT,
-    WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT,
 )
 from .proposal_audit_schemas import (
     ModelResultRecordedPayload,
@@ -1025,7 +1025,9 @@ def _validate_world_consequence_possibility(*, proposal, possibility, manifest) 
         or proposal.get("world_author_source_closure_evidence_packet_contract")
         != WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT
         or proposal.get("world_author_novel_origin_evidence_packet_contract")
-        != WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT
+        != novel_origin_evidence_packet_contract(
+            world_consequence=True, manifest_version=manifest.version,
+        )
     ):
         raise ValueError("world consequence requires its original manifest and review packets")
     from .life_development_source_closure import LifeDevelopmentWorldConsequenceReview

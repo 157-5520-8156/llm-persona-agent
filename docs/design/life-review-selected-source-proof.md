@@ -33,3 +33,20 @@ recovery without additional HTTP. Added request bytes are reported separately.
 This closes an input authority loss. It does not prove that a semantic critic
 will notice the actor mistake in the real trial, or entail every statement from
 a correctly cited source. No real provider or production database is used.
+
+The actual one-Fact/one-Dialogue fixture at `1a1731af` emitted a 45,024-byte
+World Author request and a 24,288-byte focused request. With this projection,
+the author request remains 45,024 bytes and focused becomes 25,973 bytes
+(+1,685, about 6.94%). These are the captured HTTP body bytes, not tokenizer
+counts or a monthly cost estimate. Complete proof increases review tokens;
+the original Capsule selection caps, item count, order and privacy are
+unchanged. Existing provider admission still estimates the assembled payload.
+Chat compaction is unchanged, and there is no additional model lane or call.
+
+The implementation's 13 dedicated cases cover the actual HTTP/acceptance chain,
+selection/privacy preservation, later-prefix isolation, corrupt Capsule proof
+returning a typed technical failure before focused HTTP, empty material,
+unproved-view rejection, wrong manifest/packet pairs, and `.2/.3/.4` cold audit
+recovery without new HTTP. The 13-file related gate passes 231 tests. These
+fixtures use temporary SQLite and MockTransport; no real semantic verdict,
+production migration or frozen longitudinal baseline is claimed here.

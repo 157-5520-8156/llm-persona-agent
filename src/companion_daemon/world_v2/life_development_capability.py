@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from .life_review_identity import SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION
 from .life_author_seed import ReviewedLifeSeedCatalog
 from .life_content_store import ImmutableLifeContentStore
 from .life_development_draft import (
@@ -268,7 +269,7 @@ class ProjectionLifeCapabilityManifestCompiler:
             # Fresh requests use the separated World/character authorship
             # contract. Recovery reads the original persisted manifest; the
             # manifest schema's legacy omitted value remains unchanged.
-            version="life-development-capability.production.3",
+            version=SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION,
             outcome_contract="world-consequence.2",
             owner_actor_ref=self._owner,
             pinned_cursor=ProjectionCursor(

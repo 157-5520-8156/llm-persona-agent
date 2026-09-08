@@ -96,7 +96,7 @@ def _assert_original_requests(ledger, store, author):
         assert sum(item["request_hash"] == digest for item in audits) == 1
 
 
-def _assert_review_input(messages, original_request, expected, *, focused):
+def _assert_review_input(messages, original_request, expected, *, focused, focused_packet=".7"):
     user = json.loads(messages[-1]["content"])
     pinned_key = "pinned_authority" if focused else "pinned_source_evidence"
     assert user[pinned_key]["execution_authority"] == {
@@ -104,7 +104,7 @@ def _assert_review_input(messages, original_request, expected, *, focused):
         "execution_materials": original_request["execution_materials"],
     }
     assert user["evidence_packet_binding"]["contract"] == (
-        "life-development-novel-origin-review-evidence-packet.7"
+        "life-development-novel-origin-review-evidence-packet" + focused_packet
         if focused
         else "life-development-general-source-review-evidence-packet.4"
     )

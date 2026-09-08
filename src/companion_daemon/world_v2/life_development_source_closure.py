@@ -28,11 +28,12 @@ from .life_development_draft import (
     LifeDevelopmentTimingDraft,
 )
 from .life_review_identity import (
+    SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT,
+    novel_origin_evidence_packet_contract,
     GENERAL_EVIDENCE_PACKET_CONTRACT as _GENERAL_EVIDENCE_PACKET_CONTRACT,
-    NOVEL_EVIDENCE_PACKET_CONTRACT as _NOVEL_EVIDENCE_PACKET_CONTRACT,
     WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT,
-    WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT,
 )
+from .life_context import LIFE_REVIEW_PROJECTION_CONTRACT
 from .schema_core import FrozenModel
 from .schemas import ProjectionCursor, WorldEvent
 
@@ -1759,6 +1760,21 @@ def life_development_novel_origin_messages(
     profile = background_context_profile_for_purpose("life_development_novel_origin_review")
     context = slice_background_capsule_context(context, profile)
     current = _uses_world_consequence(draft)
+    packet_contract = novel_origin_evidence_packet_contract(
+        world_consequence=current, manifest_version=manifest.version,
+    )
+    review_projection = context.get("life_review_projection")
+    if packet_contract == SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT and (
+        not isinstance(review_projection, dict)
+        or review_projection.get("contract") != LIFE_REVIEW_PROJECTION_CONTRACT
+    ):
+        raise ValueError("qualified Life review requires its exact selected-source projection")
+    if packet_contract == SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT:
+        for name in ("relevant_facts", "recent_dialogue"):
+            lane = context.get("slices", {}).get(name, {})
+            for item in lane.get("items", []):
+                if not item.get("source_bindings"):
+                    raise ValueError("qualified Life review cannot use unproved selected items")
     outcome_path = "world_consequence field" if current else "outcomes.N.text"
     system = (
         "You are an independent focused novel-origin critic, not the general "
@@ -1868,16 +1884,14 @@ def life_development_novel_origin_messages(
     }
     if current:
         pinned_authority["execution_authority"] = _required_execution_authority(execution_authority)
+    if packet_contract == SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT:
+        pinned_authority["review_projection"] = review_projection
     request = {
         "review_contract": _novel_review_contract(draft),
         "reviewed_surface": reviewed_surface,
         "pinned_authority": pinned_authority,
         "evidence_packet_binding": _evidence_packet_binding(
-            contract=(
-                WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT
-                if current
-                else _NOVEL_EVIDENCE_PACKET_CONTRACT
-            ),
+            contract=packet_contract,
             reviewed_surface=reviewed_surface,
             pinned_authority=pinned_authority,
         ),

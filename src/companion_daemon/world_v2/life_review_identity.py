@@ -31,8 +31,20 @@ WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT = (
 WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT = (
     "life-development-novel-origin-review-evidence-packet.7"
 )
+SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION = "life-development-capability.production.4"
+SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT = (
+    "life-development-novel-origin-review-evidence-packet.8"
+)
 # This absent-marker default must remain packet 4. Explicit packet 5 records
 # retain their own subject formula and do not gain outcome-interior coverage.
+
+
+def novel_origin_evidence_packet_contract(*, world_consequence: bool, manifest_version: str) -> str:
+    if not world_consequence:
+        return NOVEL_EVIDENCE_PACKET_CONTRACT
+    if manifest_version == SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION:
+        return SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT
+    return WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT
 
 
 def _digest(value: object) -> str:
@@ -123,6 +135,8 @@ def current_novel_origin_review_subject_hash(
         NOVEL_EVIDENCE_PACKET_CONTRACT: NOVEL_ORIGIN_REVIEW_SUBJECT_CONTRACT,
         WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT:
             "life-development-novel-origin-review-subject.6",
+        SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT:
+            "life-development-novel-origin-review-subject.7",
     }
     if not isinstance(evidence_packet_contract, str) or evidence_packet_contract not in contracts:
         raise ValueError("unknown novel-origin evidence packet contract")
@@ -173,6 +187,9 @@ def legacy_novel_origin_review_subject_hashes(
 
 
 __all__ = [
+    "SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION",
+    "SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT",
+    "novel_origin_evidence_packet_contract",
     "WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT",
     "WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT",
     "GENERAL_EVIDENCE_PACKET_CONTRACT",

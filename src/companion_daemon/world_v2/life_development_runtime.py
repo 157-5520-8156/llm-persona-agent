@@ -27,6 +27,7 @@ from .event_identity import domain_idempotency_key
 from .life_context import (
     LifeContextCapsuleCompiler,
     compile_life_decision_context,
+    compile_life_review_context,
 )
 from .background_context_profile import (
     background_context_profile_for_purpose,
@@ -103,6 +104,9 @@ from .life_events import (
     WorldOccurrenceCommittedPayload,
 )
 from .life_review_identity import (
+    SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION,
+    SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT,
+    novel_origin_evidence_packet_contract,
     GENERAL_EVIDENCE_PACKET_CONTRACT,
     NOVEL_EVIDENCE_PACKET_CONTRACT,
     PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT,
@@ -4774,8 +4778,20 @@ class LifeDevelopmentRuntime:
                 status="technical_failure",
                 reason_code="life_development.world_consequence_critic_not_configured",
             )
+        review_context = context
+        if (
+            manifest.version == SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION
+            and manifest.outcome_contract == "world-consequence.2"
+        ):
+            try:
+                review_context = {**context, **compile_life_review_context(capsule)}
+            except (TypeError, ValueError):
+                return LifeDevelopmentResult(
+                    status="technical_failure",
+                    reason_code="life_development.novel_origin_context_unavailable",
+                )
         messages = life_development_novel_origin_messages(
-            context=context,
+            context=review_context,
             manifest=manifest,
             draft=draft,
             execution_authority=execution_authority,
@@ -6235,9 +6251,8 @@ class LifeDevelopmentRuntime:
             WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT
             if current_consequence else GENERAL_EVIDENCE_PACKET_CONTRACT
         )
-        novel_packet = (
-            WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT
-            if current_consequence else NOVEL_EVIDENCE_PACKET_CONTRACT
+        novel_packet = novel_origin_evidence_packet_contract(
+            world_consequence=current_consequence, manifest_version=manifest.version,
         )
         if source_closure_deliberation is not None:
             expected_source_subject = _source_closure_subject_hash(
@@ -7781,6 +7796,7 @@ def _novel_origin_subject_hash(
 ) -> str:
     if packet_contract not in {
         NOVEL_EVIDENCE_PACKET_CONTRACT, WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT,
+        SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT,
     }:
         raise ValueError("novel-origin review packet contract is not current")
     return current_novel_origin_review_subject_hash(
