@@ -25,6 +25,12 @@ NOVEL_EVIDENCE_PACKET_CONTRACT = (
 PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT = (
     "life-development-novel-origin-review-evidence-packet.4"
 )
+WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT = (
+    "life-development-general-source-review-evidence-packet.4"
+)
+WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT = (
+    "life-development-novel-origin-review-evidence-packet.7"
+)
 # This absent-marker default must remain packet 4. Explicit packet 5 records
 # retain their own subject formula and do not gain outcome-interior coverage.
 
@@ -76,10 +82,18 @@ def current_source_review_subject_hash(
     wake_event_ref: str,
     wake_world_id: str,
     wake_logical_time: str,
+    evidence_packet_contract: str = GENERAL_EVIDENCE_PACKET_CONTRACT,
 ) -> str:
+    contracts = {
+        GENERAL_EVIDENCE_PACKET_CONTRACT: SOURCE_REVIEW_SUBJECT_CONTRACT,
+        WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT:
+            "life-development-source-review-subject.3",
+    }
+    if evidence_packet_contract not in contracts:
+        raise ValueError("unknown general source evidence packet contract")
     return _current_review_subject_hash(
-        subject_contract=SOURCE_REVIEW_SUBJECT_CONTRACT,
-        evidence_packet_contract=GENERAL_EVIDENCE_PACKET_CONTRACT,
+        subject_contract=contracts[evidence_packet_contract],
+        evidence_packet_contract=evidence_packet_contract,
         review_request_hashes=review_request_hashes,
         world_author_raw_output_hash=world_author_raw_output_hash,
         capability_manifest_hash=capability_manifest_hash,
@@ -107,6 +121,8 @@ def current_novel_origin_review_subject_hash(
         PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT: "life-development-novel-origin-review-subject.3",
         "life-development-novel-origin-review-evidence-packet.5": "life-development-novel-origin-review-subject.4",
         NOVEL_EVIDENCE_PACKET_CONTRACT: NOVEL_ORIGIN_REVIEW_SUBJECT_CONTRACT,
+        WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT:
+            "life-development-novel-origin-review-subject.6",
     }
     if not isinstance(evidence_packet_contract, str) or evidence_packet_contract not in contracts:
         raise ValueError("unknown novel-origin evidence packet contract")
@@ -157,6 +173,8 @@ def legacy_novel_origin_review_subject_hashes(
 
 
 __all__ = [
+    "WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT",
+    "WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT",
     "GENERAL_EVIDENCE_PACKET_CONTRACT",
     "NOVEL_EVIDENCE_PACKET_CONTRACT",
     "NOVEL_ORIGIN_REVIEW_SUBJECT_CONTRACT",

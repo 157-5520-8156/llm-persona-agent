@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import Field, ValidationError, computed_field, field_validator, model_validator
 
 from .schema_core import FrozenModel, PrivacyClass
+from .world_consequence_contract import WorldConsequenceV2
 from .schemas import (
     BiographicalCoordinateReplacement,
     DueWindow,
@@ -322,6 +323,10 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
         default=(), exclude_if=lambda value: not value
     )
     allow_external_observation_outcomes: bool = False
+    # A missing marker is historical permission, never an implicit upgrade.
+    outcome_contract: Literal["world-consequence.2"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     max_future_days: int = Field(ge=1, le=366)
     max_window_minutes: int = Field(ge=5, le=7 * 24 * 60)
 
@@ -650,21 +655,21 @@ class DynamicLifeDirectionDraft(FrozenModel):
 
 
 class LifeDevelopmentOutcomeDraft(FrozenModel):
-    """One objective candidate branch, not companion interior or a channel Action.
+    """An environmental consequence, with a separate frozen historical shape.
 
-    ``text`` may propose objective actions, photographs, NPC talk and world
-    consequences. New companion feelings, motives, thoughts, intentions and
-    subjective reactions belong to the Character Model. Exact source-bound
-    historical interior is context only, not a new response. It cannot make a
-    completed user-channel act true: sending him a message or photo, his
-    receiving it, or his reply through that channel. Those facts exist only as
-    authorized Action and receipt events. ``user_channel_completion`` is the
-    structural acknowledgement; this author has no Action authority, so the
-    only legal value is ``none``.
+    New candidates use ``world_consequence``. Its objective execution result
+    needs execution evidence already in the author's pinned request; it cannot
+    supply a new character action or response. ``text`` is retained solely to
+    decode old audits, whose missing protocol never grants the new authority.
     """
 
     experienced_by_ref: str = Field(min_length=1, max_length=512)
-    text: str = Field(min_length=1, max_length=12_000)
+    text: str | None = Field(
+        default=None, min_length=1, max_length=12_000, exclude_if=lambda value: value is None
+    )
+    world_consequence: WorldConsequenceV2 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     user_channel_completion: Literal["none"] = "none"
     privacy_class: PrivacyClass
     relative_plausibility_weight: int = Field(ge=1, le=1_000_000)
@@ -682,6 +687,8 @@ class LifeDevelopmentOutcomeDraft(FrozenModel):
 
     @model_validator(mode="after")
     def local_refs_are_unique(self) -> "LifeDevelopmentOutcomeDraft":
+        if (self.text is None) == (self.world_consequence is None):
+            raise ValueError("outcome must use exactly one historical text or world consequence")
         if self.claim_refs != tuple(sorted(set(self.claim_refs))):
             raise ValueError("outcome claim refs must be sorted and unique")
         refs = tuple(item.local_ref for item in self.provisional_npcs)
@@ -713,6 +720,29 @@ class LifeDevelopmentOutcomeDraft(FrozenModel):
                     "recipient-unbound life-development visual evidence must be ordinary life privacy, not withhold"
                 )
         return self
+
+    @property
+    def prose_fields(self) -> dict[str, str]:
+        """Exact paths for the existing source review; no synthesized narrative."""
+        if self.world_consequence is None:
+            assert self.text is not None
+            return {"text": self.text}
+        result = {"world_consequence.environment_text": self.world_consequence.environment_text}
+        attempt = self.world_consequence.authorized_attempt_result
+        if attempt is not None:
+            result["world_consequence.authorized_attempt_result.text"] = attempt.text
+        return result
+
+    @property
+    def content_text(self) -> str:
+        """Store new material structurally so readers cannot merge its authors."""
+        if self.world_consequence is None:
+            assert self.text is not None
+            return self.text
+        return json.dumps(
+            self.world_consequence.model_dump(mode="json"),
+            ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        )
 
 
 class LifeDevelopmentTimingDraft(FrozenModel):
@@ -1089,6 +1119,24 @@ def parse_world_author_draft(
         ) from exc
     if isinstance(draft, LifeDevelopmentNoOpDraft):
         return draft
+    for index, outcome in enumerate(draft.outcomes):
+        is_current = outcome.world_consequence is not None
+        if is_current != (manifest.outcome_contract == "world-consequence.2"):
+            raise LifeDevelopmentDraftError(
+                "outcome_contract_mismatch",
+                "outcome authority must match the explicitly pinned World consequence contract",
+                violations=(
+                    {
+                        "path": f"outcomes.{index}.world_consequence",
+                        "message": (
+                            "supply world_consequence.2 and omit legacy text"
+                            if manifest.outcome_contract is not None
+                            else "a historical manifest cannot authorize a new consequence"
+                        ),
+                        "type": "outcome_contract_mismatch",
+                    },
+                ),
+            )
     if draft.authored_subject_ref != manifest.owner_actor_ref:
         raise LifeDevelopmentDraftError(
             "unauthorized_authored_subject",
