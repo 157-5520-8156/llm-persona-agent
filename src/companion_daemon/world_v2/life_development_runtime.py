@@ -39,6 +39,7 @@ from .life_content_store import (
     StoredLifeContent,
     life_content_payload_hash,
 )
+from .world_consequence_author_audit import read_world_consequence_author_evidence
 from .world_consequence_authoring_context import build_world_consequence_authoring_context
 from .world_consequence_prompt import (
     compile_world_consequence_messages, validate_world_consequence_offered_bindings,
@@ -86,6 +87,7 @@ from .life_development_deterministic_closure import (
 from .weighted_table import inject_nothing_mass, pick_weighted_token
 from .life_development_source_closure import (
     LifeDevelopmentNovelOriginReview,
+    LifeDevelopmentWorldConsequenceReview,
     LifeDevelopmentSourceClosureError,
     LifeDevelopmentSourceClosureReview,
     life_development_novel_origin_correction_message,
@@ -104,6 +106,8 @@ from .life_review_identity import (
     GENERAL_EVIDENCE_PACKET_CONTRACT,
     NOVEL_EVIDENCE_PACKET_CONTRACT,
     PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT,
+    WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT,
+    WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT,
     current_novel_origin_review_subject_hash,
     current_source_review_subject_hash,
     legacy_novel_origin_review_subject_hashes,
@@ -782,9 +786,14 @@ class _RecordedDeliberation:
     capability_manifest_content_ref: str | None = None
     capability_manifest_content_hash: str | None = None
     request_bindings: tuple[WorldAuthorRequestBinding | None, ...] | None = None
+    world_consequence_content_hashes: tuple[str, ...] | None = None
 
     def authority_payload(self) -> dict[str, object]:
         return {
+            **(
+                {"world_consequence_content_hashes": list(self.world_consequence_content_hashes)}
+                if self.world_consequence_content_hashes is not None else {}
+            ),
             **(
                 {"request_bindings": [
                     item.model_dump(mode="json") if item is not None else None
@@ -1410,6 +1419,7 @@ class LifeDevelopmentProposalReader:
                 "life-development-possibility.5",
                 "life-development-possibility.6",
                 "life-development-possibility.7",
+                "life-development-possibility.8",
             }
             or not isinstance(possibility, dict)
             or proposal.get("possibility_authority_hash") != _digest(possibility)
@@ -1613,6 +1623,10 @@ class LifeDevelopmentProposalReader:
             and isinstance(trigger_id, str)
         ):
             current_subject = current_source_review_subject_hash(
+                evidence_packet_contract=proposal.get(
+                    "world_author_source_closure_evidence_packet_contract",
+                    GENERAL_EVIDENCE_PACKET_CONTRACT,
+                ),
                 review_request_hashes=tuple(request_hashes),
                 world_author_raw_output_hash=raw_output_hash,
                 capability_manifest_hash=manifest_hash,
@@ -1627,6 +1641,7 @@ class LifeDevelopmentProposalReader:
             in {
                 "life-development-possibility.6",
                 "life-development-possibility.7",
+                "life-development-possibility.8",
             }
             else legacy_subject
         )
@@ -1639,13 +1654,19 @@ class LifeDevelopmentProposalReader:
             "life-development-possibility.5",
             "life-development-possibility.6",
             "life-development-possibility.7",
+            "life-development-possibility.8",
         }:
             return
         novel_review = proposal.get("world_author_novel_origin_review")
         novel_deliberation = proposal.get("world_author_novel_origin_deliberation")
         if not isinstance(novel_review, dict) or not isinstance(novel_deliberation, dict):
             raise ValueError("active occurrence has no novel-origin authority")
-        parsed_novel = LifeDevelopmentNovelOriginReview.model_validate(novel_review)
+        review_type = (
+            LifeDevelopmentWorldConsequenceReview
+            if possibility_version == "life-development-possibility.8"
+            else LifeDevelopmentNovelOriginReview
+        )
+        parsed_novel = review_type.model_validate(novel_review)
         if (
             parsed_novel.decision != "supported"
             or parsed_novel.unsupported_claims
@@ -1693,6 +1714,7 @@ class LifeDevelopmentProposalReader:
             in {
                 "life-development-possibility.6",
                 "life-development-possibility.7",
+                "life-development-possibility.8",
             }
             and current_novel_subject is not None
             else legacy_novel_subjects
@@ -2719,12 +2741,17 @@ class LifeDevelopmentRuntime:
         if not run.attempts:
             raise ValueError("Life Development model run has no attempts")
         request_bindings = None
+        consequence_content_hashes = None
         if (
             role == "world_author"
             and manifest is not None
             and manifest.outcome_contract == "world-consequence.2"
         ):
             request_bindings = tuple(attempt.request_binding for attempt in run.attempts)
+            if isinstance(run.parsed, LifeDevelopmentPossibilityDraft):
+                consequence_content_hashes = tuple(
+                    life_content_payload_hash(outcome.content_text) for outcome in run.parsed.outcomes
+                )
             for attempt in run.attempts:
                 if attempt.request_binding is None:
                     if run.succeeded:
@@ -2929,6 +2956,10 @@ class LifeDevelopmentRuntime:
         proposal_hash: str | None = None
         if run.succeeded:
             audit_metadata: dict[str, object] = {
+                **(
+                    {"world_consequence_content_hashes": list(consequence_content_hashes)}
+                    if consequence_content_hashes is not None else {}
+                ),
                 **(
                     {"request_bindings": [
                         item.model_dump(mode="json") if item is not None else None
@@ -3170,6 +3201,7 @@ class LifeDevelopmentRuntime:
             capability_manifest_content_ref=manifest_content_ref,
             capability_manifest_content_hash=manifest_content_hash,
             request_bindings=request_bindings,
+            world_consequence_content_hashes=consequence_content_hashes,
         )
 
     def _record_character_interior_decision(
@@ -3944,6 +3976,15 @@ class LifeDevelopmentRuntime:
                 )
         elif "request_bindings" in metadata:
             raise ValueError("historical author request cannot be upgraded during recovery")
+        consequence_content_hashes = metadata.get("world_consequence_content_hashes")
+        if consequence_content_hashes is not None:
+            if (
+                request_bindings is None
+                or not isinstance(consequence_content_hashes, list)
+                or not 2 <= len(consequence_content_hashes) <= 4
+                or any(not isinstance(value, str) or len(value) != 64 for value in consequence_content_hashes)
+            ):
+                raise ValueError("recoverable world consequence output hashes are invalid")
         binding = _RecordedDeliberation(
             role=role,
             capsule_id=terminal.capsule_id,
@@ -3964,6 +4005,9 @@ class LifeDevelopmentRuntime:
             capability_manifest_content_ref=manifest_ref,
             capability_manifest_content_hash=manifest_hash,
             request_bindings=request_bindings,
+            world_consequence_content_hashes=(
+                tuple(consequence_content_hashes) if consequence_content_hashes is not None else None
+            ),
         )
         capsule = _PinnedIdentity(
             capsule_id=terminal.capsule_id,
@@ -4024,11 +4068,11 @@ class LifeDevelopmentRuntime:
         candidates: list[OutcomeCandidateDescriptor] = []
         for index, outcome in enumerate(draft.outcomes, start=1):
             outcome_ref = f"content:life-development:outcome:{suffix}:{index}"
-            outcome_hash = life_content_payload_hash(outcome.text)
+            outcome_hash = life_content_payload_hash(outcome.content_text)
             store_binding(
                 role=f"outcome:{index}",
                 ref=outcome_ref,
-                text=outcome.text,
+                text=outcome.content_text,
             )
             provisional: list[ProvisionalNpcIntroductionDescriptor] = []
             for npc_index, npc in enumerate(outcome.provisional_npcs, start=1):
@@ -4102,6 +4146,9 @@ class LifeDevelopmentRuntime:
                     result_id=f"result:life-development:{suffix}:{index}",
                     result_payload_ref=(f"content:life-development:result:{suffix}:{index}"),
                     result_payload_hash=outcome_hash,
+                    result_contract=(
+                        "world-consequence.2" if outcome.world_consequence is not None else None
+                    ),
                     privacy_class=outcome.privacy_class,
                     content_ref=outcome_ref,
                     content_payload_hash=outcome_hash,
@@ -4239,6 +4286,16 @@ class LifeDevelopmentRuntime:
                 repair_ordinal=repair_ordinal,
                 author_deliberation=author_deliberation,
             )
+        try:
+            execution_authority = self._original_consequence_review_evidence(
+                manifest=manifest, draft=draft, raw=raw,
+                author_deliberation=author_deliberation,
+            )
+        except ValueError:
+            return LifeDevelopmentResult(
+                status="technical_failure",
+                reason_code="life_development.world_consequence_author_evidence_unavailable",
+            )
         reviewed = await self._review_world_author_candidate(
             proposal_id=proposal_id,
             wake=wake,
@@ -4248,6 +4305,7 @@ class LifeDevelopmentRuntime:
             manifest=manifest,
             draft=draft,
             raw=raw,
+            execution_authority=execution_authority,
             trace_id=trace_id,
             correlation_id=correlation_id,
         )
@@ -4267,6 +4325,7 @@ class LifeDevelopmentRuntime:
                     manifest=manifest,
                     draft=draft,
                     raw=raw,
+                    execution_authority=execution_authority,
                     trace_id=trace_id,
                     correlation_id=correlation_id,
                 )
@@ -4338,13 +4397,43 @@ class LifeDevelopmentRuntime:
                 reason_code="life_development.world_author_source_rewrite_unavailable",
             )
         if recovered_rewrite is None:
-            _LOG.warning(
-                "life development source closure unsupported; rejecting without a rewrite call"
+            if manifest.outcome_contract != "world-consequence.2":
+                _LOG.warning(
+                    "life development source closure unsupported; rejecting without a rewrite call"
+                )
+                return LifeDevelopmentResult(
+                    status="technical_failure",
+                    reason_code="life_development.source_closure_rejected",
+                )
+            rewrite_run = await self._world_consequence_source_rewrite(
+                manifest=manifest, logical_time=wake.logical_time,
+                rejected_raw=raw, review=rejection_review,
+                author_deliberation=author_deliberation,
             )
-            return LifeDevelopmentResult(
-                status="technical_failure",
-                reason_code="life_development.source_closure_rejected",
+            try:
+                self._record_model_run(
+                    proposal_id=rewrite_proposal_id, role="world_author", run=rewrite_run,
+                    wake=wake, capsule=capsule, manifest=manifest,
+                    decision_subject_hash=rewrite_subject_hash,
+                    expected_cursor=context_cursor, commit_cursor=_cursor(self._ledger.project()),
+                    trace_id=trace_id, correlation_id=correlation_id,
+                )
+            except ConcurrencyConflict:
+                return LifeDevelopmentResult(
+                    status="stale_prefix", reason_code="life_development.model_result_prefix_stale",
+                )
+            if not rewrite_run.succeeded:
+                return LifeDevelopmentResult(
+                    status="technical_failure",
+                    reason_code="life_development.world_author_source_rewrite_unavailable",
+                )
+            recovered_rewrite = self._recover_successful_model_run(
+                proposal_id=rewrite_proposal_id, role="world_author",
+                current_world_revision=context_cursor.world_revision,
+                expected_subject_hash=rewrite_subject_hash,
             )
+            if recovered_rewrite is None:
+                raise ValueError("recorded consequence rewrite is not recoverable")
         (
             rewritten_raw,
             rewrite_repair_ordinal,
@@ -4377,6 +4466,16 @@ class LifeDevelopmentRuntime:
                 author_deliberation=rewrite_deliberation,
             )
 
+        try:
+            execution_authority = self._original_consequence_review_evidence(
+                manifest=manifest, draft=rewritten_draft, raw=rewritten_raw,
+                author_deliberation=rewrite_deliberation,
+            )
+        except ValueError:
+            return LifeDevelopmentResult(
+                status="technical_failure",
+                reason_code="life_development.world_consequence_author_evidence_unavailable",
+            )
         corrected_reviewed = await self._review_world_author_candidate(
             proposal_id=proposal_id,
             wake=wake,
@@ -4386,6 +4485,7 @@ class LifeDevelopmentRuntime:
             manifest=manifest,
             draft=rewritten_draft,
             raw=rewritten_raw,
+            execution_authority=execution_authority,
             trace_id=trace_id,
             correlation_id=correlation_id,
         )
@@ -4413,6 +4513,7 @@ class LifeDevelopmentRuntime:
                 manifest=manifest,
                 draft=rewritten_draft,
                 raw=rewritten_raw,
+                execution_authority=execution_authority,
                 trace_id=trace_id,
                 correlation_id=correlation_id,
             )
@@ -4450,6 +4551,7 @@ class LifeDevelopmentRuntime:
         manifest: LifeDevelopmentCapabilityManifest,
         draft: LifeDevelopmentPossibilityDraft,
         raw: str,
+        execution_authority: dict[str, object] | None = None,
         trace_id: str,
         correlation_id: str,
     ) -> tuple[LifeDevelopmentSourceClosureReview, _RecordedDeliberation] | LifeDevelopmentResult:
@@ -4469,6 +4571,7 @@ class LifeDevelopmentRuntime:
             manifest=manifest,
             draft=draft,
             cited_events=cited_events,
+            execution_authority=execution_authority,
         )
         packet_contract, _packet_hash = life_development_review_packet_identity(messages)
         initial_request_hash = _messages_hash(messages)
@@ -4634,13 +4737,20 @@ class LifeDevelopmentRuntime:
         manifest: LifeDevelopmentCapabilityManifest,
         draft: LifeDevelopmentPossibilityDraft,
         raw: str,
+        execution_authority: dict[str, object] | None = None,
         trace_id: str,
         correlation_id: str,
     ) -> tuple[LifeDevelopmentNovelOriginReview, _RecordedDeliberation] | LifeDevelopmentResult:
+        if manifest.outcome_contract == "world-consequence.2" and self._novel_origin_critic is None:
+            return LifeDevelopmentResult(
+                status="technical_failure",
+                reason_code="life_development.world_consequence_critic_not_configured",
+            )
         messages = life_development_novel_origin_messages(
             context=context,
             manifest=manifest,
             draft=draft,
+            execution_authority=execution_authority,
         )
         packet_contract, _packet_hash = life_development_review_packet_identity(messages)
         initial_request_hash = _messages_hash(messages)
@@ -4967,6 +5077,92 @@ class LifeDevelopmentRuntime:
                     status="proposal_validated",
                 ),
             ),
+        )
+
+    def _original_consequence_review_evidence(
+        self, *, manifest, draft, raw: str, author_deliberation: _RecordedDeliberation,
+    ) -> dict[str, object] | None:
+        if manifest.outcome_contract != "world-consequence.2":
+            return None
+        return read_world_consequence_author_evidence(
+            ledger=self._ledger, content_store=self._store, manifest=manifest,
+            actor_ref=self._owner, draft=draft, raw=raw,
+            author_deliberation=author_deliberation.authority_payload(),
+        )
+
+    async def _world_consequence_source_rewrite(
+        self, *, manifest: LifeDevelopmentCapabilityManifest, logical_time: datetime,
+        rejected_raw: str,
+        review: LifeDevelopmentSourceClosureReview | LifeDevelopmentNovelOriginReview,
+        author_deliberation: _RecordedDeliberation,
+    ) -> _LifeDevelopmentModelRun:
+        """One same-author correction, with its original request and precise rejection."""
+        if not author_deliberation.request_bindings:
+            raise ValueError("consequence correction lacks original author request")
+        original_binding = author_deliberation.request_bindings[-1]
+        if original_binding is None:
+            raise ValueError("consequence correction lacks original author request")
+        messages = read_world_author_request(
+            content_store=self._store, binding=original_binding,
+            expected_request_hash=author_deliberation.request_hashes[-1],
+        )
+        messages = [
+            *messages,
+            {"role": "assistant", "content": rejected_raw},
+            {"role": "user", "content": canonical_json({
+                "source_closure_failure": _world_author_rejection_coordinates(review),
+                "rejected_draft_hash": _digest(rejected_raw),
+                "capability_manifest_hash": manifest.manifest_hash,
+                "output_contract": {
+                    "no_op": LifeDevelopmentNoOpDraft.model_json_schema(),
+                    "propose": life_possibility_output_schema(
+                        outcome_contract="world-consequence.2",
+                    ),
+                },
+                "instruction": (
+                    "Return one complete replacement as the same World Author. Use only "
+                    "the original pinned evidence and offered execution authority above. "
+                    "Resolve each exact source-closure failure. You may choose no_op or "
+                    "a different possibility. Do not author the character's interior, "
+                    "choices, or unauthorised completed actions as environment facts. "
+                    "The host will not write or repair your prose. There is one correction."
+                ),
+            })},
+        ]
+        request_hash = _messages_hash(messages)
+        request_binding = record_world_author_request(content_store=self._store, messages=messages)
+        try:
+            with model_call_scope("life_development_source_rewrite"):
+                raw = await complete_json_object(self._world_author, messages, temperature=0.6)
+        except Exception as exc:
+            if not _is_expected_model_transport_failure(exc):
+                raise
+            status, code, outcome = _model_provider_failure(exc, corrective=False)
+            return _LifeDevelopmentModelRun(
+                model_id=self._world_author_model, parsed=None,
+                attempts=(_LifeDevelopmentAttempt(
+                    request_hash=request_hash, request_binding=request_binding, raw_output=None,
+                    status=status, failure_code=code, outcome=outcome,
+                ),),
+            )
+        try:
+            parsed = parse_world_author_draft(raw=raw, manifest=manifest, logical_time=logical_time)
+            if isinstance(parsed, LifeDevelopmentPossibilityDraft):
+                validate_world_consequence_offered_bindings(draft=parsed, messages=messages)
+        except LifeDevelopmentDraftError:
+            return _LifeDevelopmentModelRun(
+                model_id=self._world_author_model, parsed=None,
+                attempts=(_LifeDevelopmentAttempt(
+                    request_hash=request_hash, request_binding=request_binding, raw_output=raw,
+                    status="main_invalid", failure_code="main_invalid_output",
+                ),),
+            )
+        return _LifeDevelopmentModelRun(
+            model_id=self._world_author_model, parsed=parsed,
+            attempts=(_LifeDevelopmentAttempt(
+                request_hash=request_hash, request_binding=request_binding, raw_output=raw,
+                status="proposal_validated",
+            ),),
         )
 
     async def _world_author_source_rewrite(
@@ -6016,11 +6212,20 @@ class LifeDevelopmentRuntime:
                 raise ValueError(
                     "life development possibility has no supported novel-origin review"
                 )
+        current_consequence = manifest.outcome_contract == "world-consequence.2"
+        general_packet = (
+            WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT
+            if current_consequence else GENERAL_EVIDENCE_PACKET_CONTRACT
+        )
+        novel_packet = (
+            WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT
+            if current_consequence else NOVEL_EVIDENCE_PACKET_CONTRACT
+        )
         if source_closure_deliberation is not None:
             expected_source_subject = _source_closure_subject_hash(
                 raw=raw,
                 manifest=manifest,
-                packet_contract=GENERAL_EVIDENCE_PACKET_CONTRACT,
+                packet_contract=general_packet,
                 review_request_hashes=source_closure_deliberation.request_hashes,
                 context_cursor=context_cursor,
                 wake=wake,
@@ -6036,7 +6241,7 @@ class LifeDevelopmentRuntime:
             expected_novel_subject = _novel_origin_subject_hash(
                 raw=raw,
                 manifest=manifest,
-                packet_contract=NOVEL_EVIDENCE_PACKET_CONTRACT,
+                packet_contract=novel_packet,
                 review_request_hashes=novel_origin_deliberation.request_hashes,
                 context_cursor=context_cursor,
                 wake=wake,
@@ -6071,8 +6276,12 @@ class LifeDevelopmentRuntime:
         payload = {
             "proposal_id": proposal_id,
             **(
-                {"world_author_novel_origin_evidence_packet_contract": NOVEL_EVIDENCE_PACKET_CONTRACT}
+                {"world_author_novel_origin_evidence_packet_contract": novel_packet}
                 if novel_origin_deliberation is not None else {}
+            ),
+            **(
+                {"world_author_source_closure_evidence_packet_contract": general_packet}
+                if current_consequence and source_closure_deliberation is not None else {}
             ),
             "proposal_kind": "life_development",
             "trigger_id": wake.event_id,
@@ -6157,7 +6366,8 @@ class LifeDevelopmentRuntime:
             "capability_manifest_hash": manifest.manifest_hash,
             "possibility_authority_version": (
                 (
-                    "life-development-possibility.7"
+                    "life-development-possibility.8"
+                    if current_consequence else "life-development-possibility.7"
                     if novel_origin_deliberation is not None
                     else "life-development-possibility.3"
                 )
@@ -7483,9 +7693,12 @@ def _source_closure_subject_hash(
     context_cursor: ProjectionCursor,
     wake: WorldEvent,
 ) -> str:
-    if packet_contract != GENERAL_EVIDENCE_PACKET_CONTRACT:
+    if packet_contract not in {
+        GENERAL_EVIDENCE_PACKET_CONTRACT, WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT,
+    }:
         raise ValueError("source review packet contract is not current")
     return current_source_review_subject_hash(
+        evidence_packet_contract=packet_contract,
         review_request_hashes=review_request_hashes,
         world_author_raw_output_hash=_digest(raw),
         capability_manifest_hash=manifest.manifest_hash,
@@ -7505,9 +7718,12 @@ def _novel_origin_subject_hash(
     context_cursor: ProjectionCursor,
     wake: WorldEvent,
 ) -> str:
-    if packet_contract != NOVEL_EVIDENCE_PACKET_CONTRACT:
+    if packet_contract not in {
+        NOVEL_EVIDENCE_PACKET_CONTRACT, WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT,
+    }:
         raise ValueError("novel-origin review packet contract is not current")
     return current_novel_origin_review_subject_hash(
+        evidence_packet_contract=packet_contract,
         review_request_hashes=review_request_hashes,
         world_author_raw_output_hash=_digest(raw),
         capability_manifest_hash=manifest.manifest_hash,

@@ -3709,6 +3709,8 @@ def _validate_one_life_development_deliberation(
     )
     if current_author_request:
         required.add("request_bindings")
+        if "world_consequence_content_hashes" in binding:
+            required.add("world_consequence_content_hashes")
     if set(binding) != required or binding.get("role") != expected_role:
         raise ValueError(f"life-development {expected_role} deliberation shape is invalid")
     audit_proposal = next(
@@ -3742,6 +3744,10 @@ def _validate_one_life_development_deliberation(
     ):
         raise ValueError(f"life-development {expected_role} manifest binding is invalid")
     metadata_binding = {
+        **(
+            {"world_consequence_content_hashes": metadata.get("world_consequence_content_hashes")}
+            if "world_consequence_content_hashes" in required else {}
+        ),
         **({"request_bindings": metadata.get("request_bindings")} if current_author_request else {}),
         "role": metadata.get("model_role"),
         "capsule_id": context_identity.get("capsule_id"),
@@ -3839,6 +3845,14 @@ def _validate_one_life_development_deliberation(
                 or request.content_ref != "content:world-author-request:" + audit.request_hash
             ):
                 raise ValueError("life-development author request is not bound to its ModelResult")
+        if "world_consequence_content_hashes" in required:
+            hashes = binding["world_consequence_content_hashes"]
+            if (
+                not isinstance(hashes, list) or not 2 <= len(hashes) <= 4
+                or any(not isinstance(value, str) or len(value) != 64
+                       or any(char not in "0123456789abcdef" for char in value) for value in hashes)
+            ):
+                raise ValueError("life-development world consequence output hashes are invalid")
     return binding
 
 

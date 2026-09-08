@@ -40,6 +40,10 @@ def read_world_consequence_author_evidence(
     audit = RecordedModelResultAudit.model_validate_json(model.audit_json)
     if life_content_payload_hash(raw) != audit.response_hash:
         raise ValueError("world consequence draft changed the original author response")
+    if binding.get("world_consequence_content_hashes") != [
+        life_content_payload_hash(outcome.content_text) for outcome in draft.outcomes
+    ]:
+        raise ValueError("world consequence candidates differ from their original author audit")
     messages = read_world_author_request(
         content_store=content_store,
         binding=WorldAuthorRequestBinding.model_validate(binding["request_bindings"][-1]),
