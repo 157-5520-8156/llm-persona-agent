@@ -3496,6 +3496,11 @@ class OutcomeCandidateDescriptor(FrozenModel):
     result_id: str = Field(min_length=1)
     result_payload_ref: str = Field(min_length=1)
     result_payload_hash: str = Field(min_length=1)
+    # Absence is the historical prose carrier. Readers must never infer the
+    # current contract from prose or add this marker during replay.
+    result_contract: Literal["world-consequence.2"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     privacy_class: PrivacyClass
     content_ref: str | None = Field(default=None, min_length=1)
     content_payload_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
