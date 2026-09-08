@@ -5,6 +5,8 @@ Provider responses are explicit fixtures, not semantic critic qualification.
 
 import hashlib
 import json
+from datetime import timedelta
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -34,6 +36,7 @@ from companion_daemon.world_v2.local_chronology import LocalChronology
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
 from test_life_development_production import _open_life_seed
 from test_life_development_runtime import (
+    NOW,
     OWNER,
     WORLD_ID,
     _SequenceModel,
@@ -42,6 +45,9 @@ from test_life_development_runtime import (
     _seed_clock,
 )
 from test_world_consequence_producer import _assert_occurrence, _assert_review_input
+from test_world_stimulus_life_intent import _NoExternalActions, _http_result
+from test_world_stimulus_life_response import _ResponseHTTP
+from test_production_turn_application import _Identities, _Router
 
 
 def _json(value):
@@ -49,9 +55,10 @@ def _json(value):
 
 
 class _HTTP:
-    def __init__(self, wake, *, legacy=False):
+    def __init__(self, wake, *, legacy=False, causal_authority="world_contingency"):
         self.wake = wake
         self.legacy = legacy
+        self.causal_authority = causal_authority
         self.requests = []
         self.draft = None
 
@@ -79,8 +86,8 @@ class _HTTP:
                     capability=capability,
                     timing={"mode": "now", "duration_minutes": 20},
                     privacy_class="shareable",
-                    causal_authority="world_contingency",
-                    outcome_resolution_authority="world_contingency",
+                    causal_authority=self.causal_authority,
+                    outcome_resolution_authority=self.causal_authority,
                 )
             )
             value["premise"] = "公园开始降下冰雹。"
@@ -338,6 +345,7 @@ async def test_original_legacy_author_and_reviews_recover_without_new_http_or_pr
         assert ledger.project().world_occurrences == ()
         store.close()
         ledger.close()
+
         ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
         store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
         result = await _advance(_composition(ledger, store, catalog, model), wake)
@@ -362,3 +370,201 @@ async def test_original_legacy_author_and_reviews_recover_without_new_http_or_pr
         await model.aclose()
         store.close()
         ledger.close()
+
+
+class _PlanHTTP(_HTTP):
+    def __init__(self, wake):
+        super().__init__(wake, causal_authority="character_choice")
+        self.role_requests = []
+        self.lifecycle_choice = "start"
+        self.response = _ResponseHTTP(text="我觉得这段安静很难得。")
+
+    async def __call__(self, request):
+        wire = json.loads(request.content)
+        material = json.loads(wire["messages"][-1]["content"])
+        purpose = material.get("inner_turn", {}).get("purpose")
+        if purpose == "world_stimulus_appraisal":
+            return await self.response(request)
+        if purpose is None:
+            if self.draft is not None and "review_contract" not in material:
+                self.requests.append(wire)
+                return httpx.Response(
+                    200,
+                    json={
+                        "choices": [
+                            {
+                                "message": {"role": "assistant", "content": '{"decision":"no_op"}'},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": 100,
+                            "completion_tokens": 10,
+                            "total_tokens": 110,
+                        },
+                    },
+                )
+            return super().__call__(request)
+        self.role_requests.append(wire)
+        capability = material["capability_manifest"]
+        if purpose == "life_development_choice":
+            payload = {
+                "completion": {
+                    "decision": "accept",
+                    "intention_summary": "我想在公园安静地待十分钟。",
+                    "importance_bp": 4300,
+                    "opens_at": self.wake.logical_time.isoformat(),
+                    "closes_at": (self.wake.logical_time + timedelta(minutes=10)).isoformat(),
+                    "participant_refs": [],
+                }
+            }
+        elif purpose == "activity_lifecycle_choice":
+            prefix = (
+                "begin an abstract planned activity"
+                if self.lifecycle_choice == "start"
+                else "finish the current abstract activity"
+            )
+            selected = next(
+                (
+                    item
+                    for item in capability["payload"]["openings"]
+                    if item["safe_summary"].startswith(prefix)
+                ),
+                None,
+            )
+            payload = (
+                {"decision": "select", "selected_token": selected["opening_token"]}
+                if selected
+                else {"decision": "no_op"}
+            )
+        elif purpose == "outcome_selection":
+            payload = {
+                "selected_token": capability["payload"]["offered_tokens"][0],
+                "adopt_proposed_life_direction": False,
+                "character_life_direction": None,
+            }
+        else:
+            raise AssertionError("unexpected character purpose: " + purpose)
+        return _http_result(
+            wire,
+            {
+                "status": "decision",
+                "summary": "我选择这项变化。",
+                "attended_source_refs": [],
+                "recall_query": None,
+                "proposals": [],
+                "decision": {"source_refs": capability["source_refs"], "payload": payload},
+            },
+        )
+
+
+def _plan_app(path, model, seed):
+    from companion_daemon.world_v2.character_interior.production import (
+        compose_production_character_interior,
+    )
+    from companion_daemon.world_v2.companion_identity import CompanionIdentityFrame
+    from companion_daemon.world_v2.expression_draft import QQ_NAPCAT_EXPRESSION_CAPABILITIES
+    from companion_daemon.world_v2.production_turn_application import (
+        LifeEcologyComposition,
+        WorldV2TurnApplicationConfig,
+        build_sqlite_world_v2_turn_application,
+    )
+
+    capabilities = QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
+        update={"private_turn_state_mode": "required"}
+    )
+    interior = compose_production_character_interior(
+        flash_model=model,
+        thinking_model=None,
+        source_closure_model=None,
+        report_relative_source_closure_model=None,
+        source_closure_reselection_lane=None,
+        expression_episode_observer_model=None,
+        flash_model_id=model.model,
+        thinking_model_id=None,
+        expression_capabilities=capabilities,
+        identity_frame=CompanionIdentityFrame(companion_name="小满", counterpart_name="用户"),
+    )
+    return build_sqlite_world_v2_turn_application(
+        path=path,
+        config=WorldV2TurnApplicationConfig(
+            world_id=WORLD_ID,
+            companion_actor_ref=OWNER,
+            reply_target="user:user.1",
+            action_pump_owner="pump:manifest-plan",
+            character_memory_enabled=False,
+            expression_capabilities=capabilities,
+            life_ecology=LifeEcologyComposition.production_v1(seed_catalog_path=seed),
+        ),
+        identities=_Identities(),
+        router=_Router(),
+        character_interior=interior,
+        transport=_NoExternalActions(),
+        life_world_author_model=model,
+        life_source_closure_reviewer=model,
+        now=NOW,
+    )
+
+
+async def _tick(app, name, before, after):
+    await app.tick(
+        tick_id=name,
+        logical_time_from=before,
+        logical_time_to=after,
+        observed_at=after,
+        trace_id="trace:" + name,
+        causation_id="clock:" + name,
+        correlation_id="manifest-plan",
+        reason="offline qualification",
+        run_life_ecology=False,
+    )
+    return await app.advance_life_ecology_once(
+        wake_event_ref="event:trigger:clock:" + name,
+        trace_id="trace:" + name,
+        correlation_id="manifest-plan",
+    )
+
+
+@pytest.mark.asyncio
+async def test_current_production_character_choice_plan_preserves_consequences_after_start(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    selected_at = NOW + timedelta(minutes=1)
+    provider = _PlanHTTP(
+        SimpleNamespace(event_id="event:trigger:clock:choose-plan", logical_time=selected_at)
+    )
+    model = _model(provider)
+    app = _plan_app(tmp_path / "plan.sqlite", model, _open_life_seed(tmp_path / "plan-seed.yaml"))
+    try:
+        result = await _tick(app, "choose-plan", NOW, selected_at)
+        assert result.life_development_followup_status == "plan_committed", result
+        evidence = app.export_replay_evidence()
+        (plan,) = evidence.projection.plans
+        assert plan.scheduled_window.opens_at == selected_at
+        assert plan.scheduled_window.closes_at == selected_at + timedelta(minutes=10)
+        (choice,) = [
+            body
+            for body in provider.role_requests
+            if json.loads(body["messages"][-1]["content"])["inner_turn"]["purpose"]
+            == "life_development_choice"
+        ]
+        opportunity = json.loads(choice["messages"][-1]["content"])["capability_manifest"][
+            "payload"
+        ]["external_opportunity"]
+        assert all(
+            item["world_consequence"]["contract"] == "world-consequence.2"
+            for item in opportunity["outcomes"]
+        )
+        started_at = selected_at + timedelta(minutes=1)
+        await _tick(app, "start-plan", selected_at, started_at)
+        evidence = app.export_replay_evidence()
+        assert evidence.projection.plans[0].status == "active"
+        assert any(row.event.event_type == "ActivityStarted" for row in evidence.events)
+        (occurrence,) = evidence.projection.world_occurrences
+        assert all(
+            item.result_contract == "world-consequence.2" for item in occurrence.candidate_outcomes
+        )
+    finally:
+        await app.aclose()
+        await model.aclose()
