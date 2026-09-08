@@ -265,7 +265,11 @@ class ProjectionLifeCapabilityManifestCompiler:
             )
         )
         return LifeDevelopmentCapabilityManifest(
-            version="life-development-capability.production.2",
+            # Fresh requests use the separated World/character authorship
+            # contract. Recovery reads the original persisted manifest; the
+            # manifest schema's legacy omitted value remains unchanged.
+            version="life-development-capability.production.3",
+            outcome_contract="world-consequence.2",
             owner_actor_ref=self._owner,
             pinned_cursor=ProjectionCursor(
                 world_revision=getattr(projection, "world_revision"),

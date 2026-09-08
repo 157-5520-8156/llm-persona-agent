@@ -358,9 +358,16 @@ async def test_original_legacy_author_and_reviews_recover_without_new_http_or_pr
         proposal = ledger.lookup_event_commit(result.proposal_event_ref)[0].payload()
         original_manifest = proposal["world_author_deliberation"]["capability_manifest"]
         visible_manifest = original_user["capability_manifest"]
-        assert original_manifest == {
+        restored_manifest = LifeDevelopmentCapabilityManifest.model_validate_json(
+            _json(original_manifest)
+        )
+        # Audit storage omits computed capability_ref; the public model dump
+        # restores it from the original fields, never from the new compiler.
+        assert restored_manifest.model_dump(mode="json") == {
             key: value for key, value in visible_manifest.items() if key != "manifest_hash"
         }
+        assert restored_manifest.outcome_contract is None
+        assert restored_manifest.manifest_hash == visible_manifest["manifest_hash"]
         assert proposal["capability_manifest_hash"] == visible_manifest["manifest_hash"]
         assert all(
             item.result_contract is None
@@ -565,6 +572,47 @@ async def test_current_production_character_choice_plan_preserves_consequences_a
         assert all(
             item.result_contract == "world-consequence.2" for item in occurrence.candidate_outcomes
         )
+        assert evidence.projection.experiences == ()
+        provider.lifecycle_choice = "complete"
+        await _tick(app, "finish-plan", started_at, plan.scheduled_window.closes_at)
+        await app.drain_background_once()
+        evidence = app.export_replay_evidence()
+        assert evidence.projection.plans[0].status == "completed"
+        (occurrence,) = evidence.projection.world_occurrences
+        assert occurrence.status == "settled"
+        outcome_requests = [
+            body
+            for body in provider.role_requests
+            if json.loads(body["messages"][-1]["content"])["inner_turn"]["purpose"]
+            == "outcome_selection"
+        ]
+        assert len(outcome_requests) == 1
+        (experience,) = evidence.projection.experiences
+        assert experience.authority_contract_version == "experience.2"
+        (binding,) = experience.values.source_bindings
+        assert binding.source_kind == "world_life_response"
+        assert binding.settlement.authority_event_ref == occurrence.settlement_event_ref
+        assert binding.response.response_text == "我觉得这段安静很难得。"
+        assert len(provider.response.stimulus_requests) == 1
+        types = [row.event.event_type for row in evidence.events]
+        assert (
+            types.count("CharacterLifeResponseRecorded") == types.count("ExperienceCommitted") == 1
+        )
+        before_calls = (
+            len(provider.requests),
+            len(provider.role_requests),
+            len(provider.response.requests),
+        )
+        before = evidence.projection
+        await app.aclose()
+        app = _plan_app(tmp_path / "plan.sqlite", model, tmp_path / "plan-seed.yaml")
+        await app.drain_background_once()
+        assert app.export_replay_evidence().projection == before
+        assert (
+            len(provider.requests),
+            len(provider.role_requests),
+            len(provider.response.requests),
+        ) == before_calls
     finally:
         await app.aclose()
         await model.aclose()
