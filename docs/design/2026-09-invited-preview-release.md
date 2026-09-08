@@ -182,8 +182,13 @@ host 重建；尚未执行的阶段不记作通过。保持原作者 11 秒截�
 相关 6 文件 218 项通过；V1/V3 旧新同进程对照中，无纠正请求逐字不变，有纠正仅改变
 第二次作者的系统说明及对应真实请求哈希。root 合并后完整来源审核文件 16 项通过 /
 9.66 秒。没有新增真实模型调用，不能据此称来源判断或纠正后的交付已通过。
-下一项[拒绝诊断接口](visible-source-rejection-diagnostics.md)目前只是 proposed；仍缺
-精确争议片段及原因的生产链和真实资格。录制候选保持 `manual_only / qualification_incomplete`。
+[拒绝诊断接口](visible-source-rejection-diagnostics.md)现已显式可选地接入入站、主动、
+同角色一次纠正、完整复审和冷验证，默认仍为 v1。反馈保留完整位置、短原因、明确的
+前缀摘录及原调用绑定，16 条合法长气泡不会被 4000 字符通道截断。`ee695fbd` 同时修复
+证据大小失败漏带已完成 reviewer 审计的旧分支。离线门及跨版本伪造反例已通过，未新增
+真实费用；[完整证据和未测范围](../audits/visible-source-diagnostics-v2-2026-09-09.md)。
+下一步转入固定来源判定对照及真实多轮复测，不复用已封存第 15 批启动器。
+录制候选保持 `manual_only / qualification_incomplete`。
 
 ## 邀请体验的部署单位
 
