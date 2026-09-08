@@ -1,10 +1,9 @@
 """Compact whole-Beat verdict protocol for correlated factual source review.
 
-The host supplies exact, indexed visible Beats and a pinned source table.  The
-reviewer returns one small verdict per Beat; it never copies prose, calculates
-offsets, or authors replacement dialogue. This is a review preparation protocol;
-ordinary chat does not currently install a semantic reviewer. Readable, eligible
-sources do not establish that a model will exhaustively classify the prose.
+The host supplies exact, indexed visible Beats and a pinned source table. The
+reviewer returns one verdict per whole Beat. Version 2 also locates a rejected
+span for diagnostic feedback; it never authors replacement dialogue. Readable,
+eligible sources do not establish exhaustive semantic classification.
 """
 
 from __future__ import annotations
@@ -14,13 +13,17 @@ import hashlib
 import json
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from .context_capsule import ResolvedSourceBinding, source_bindings_hash
 from .world_life_context import ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem
 
 
 VISIBLE_SOURCE_CLOSURE_CONTRACT = "visible-beat-source-verdict.1"
+VISIBLE_SOURCE_VERDICT_V2_CONTRACT = "visible-beat-source-verdict.2"
+MAX_VISIBLE_SOURCE_PROBLEM_CHARS = 64
+MAX_VISIBLE_SOURCE_PROBLEM_JSON_CHARS = 96
+MAX_VISIBLE_SOURCE_VERDICT_V2_BYTES = 32_768
 
 VisibleSemanticRole = Literal[
     "immediate_private_state",
@@ -48,6 +51,9 @@ VisibleSourceClosureWireFailureCode = Literal[
     "verdict_role_invalid",
     "verdict_ref_invalid",
     "subject_binding_invalid",
+    "diagnostic_coverage_invalid",
+    "diagnostic_locator_invalid",
+    "diagnostic_ref_invalid",
 ]
 
 _ProviderSemanticRole = Literal[
@@ -109,6 +115,47 @@ class VisibleSourceClosureWire(BaseModel):
 
     contract: Literal["visible-beat-source-verdict.1"]
     segments: tuple[VisibleSourceClosureSegment, ...]
+
+
+class VisibleSourceRejectionDiagnostic(BaseModel):
+    """Reviewer explanation only; these references confer no source authority."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    beat_index: int = Field(ge=0, le=15)
+    char_start: int = Field(ge=0)
+    char_end: int = Field(ge=1)
+    related_source_ref_indexes: tuple[int, ...] = Field(max_length=8)
+    source_problem: str = Field(min_length=1, max_length=MAX_VISIBLE_SOURCE_PROBLEM_CHARS)
+
+    @field_validator("source_problem")
+    @classmethod
+    def problem_is_bounded(cls, value: str) -> str:
+        if (
+            not value.strip()
+            or len(json.dumps(value, ensure_ascii=False)) > MAX_VISIBLE_SOURCE_PROBLEM_JSON_CHARS
+        ):
+            raise ValueError("source problem must be nonblank and JSON-bounded")
+        return value
+
+
+class ParsedVisibleSourceVerdict(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    verdict: VisibleSourceClosureWire
+    rejections: tuple[VisibleSourceRejectionDiagnostic, ...]
+
+
+class _ProviderVisibleBeatVerdictV2(_ProviderVisibleBeatVerdict):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+
+class _ProviderVisibleBeatVerdictWireV2(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    contract: Literal["visible-beat-source-verdict.2"]
+    decisions: tuple[_ProviderVisibleBeatVerdictV2, ...] = Field(max_length=16)
+    rejections: tuple[VisibleSourceRejectionDiagnostic, ...] = Field(max_length=16)
 
 
 class VisibleSourceClosureWireFailure(ValueError):
@@ -198,10 +245,41 @@ _VISIBLE_BEAT_VERDICT_SCHEMA: dict[str, object] = {
 }
 
 
-def visible_source_closure_schema() -> dict[str, object]:
+def _versioned_contract(version: Literal["1", "2"]) -> str:
+    if version == "1":
+        return VISIBLE_SOURCE_CLOSURE_CONTRACT
+    if version == "2":
+        return VISIBLE_SOURCE_VERDICT_V2_CONTRACT
+    raise ValueError("visible source verdict version must be 1 or 2")
+
+
+def visible_source_closure_schema(*, version: Literal["1", "2"] = "1") -> dict[str, object]:
     """Return an isolated provider schema for the exact strict-tool wire."""
 
-    return deepcopy(_VISIBLE_BEAT_VERDICT_SCHEMA)
+    contract = _versioned_contract(version)
+    schema = deepcopy(_VISIBLE_BEAT_VERDICT_SCHEMA)
+    if version == "2":
+        schema["properties"]["contract"]["enum"] = [contract]
+        schema["properties"]["rejections"] = {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "beat_index": {"type": "integer", "minimum": 0, "maximum": 15},
+                    "char_start": {"type": "integer", "minimum": 0},
+                    "char_end": {"type": "integer", "minimum": 1},
+                    "related_source_ref_indexes": {"type": "array", "items": {"type": "integer"}},
+                    "source_problem": {"type": "string"},
+                },
+                "required": [
+                    "beat_index", "char_start", "char_end",
+                    "related_source_ref_indexes", "source_problem",
+                ],
+                "additionalProperties": False,
+            },
+        }
+        schema["required"].append("rejections")
+    return schema
 
 
 _MATERIAL_CONTRACT = "visible-source-materials.1"
@@ -691,6 +769,11 @@ Critical examples:
 - "你今天没有出门。" plus pinned evidence "我今天出门了。" is unclosed: positive evidence does not support the opposite polarity.
 - "你今天很忙吗？" is source_free when it is a genuine question without a factual presupposition."""
 
+_DIAGNOSTICS_SYSTEM_CONTRACT = """
+Version 2 keeps every complete Beat verdict and adds rejections. Return exactly one rejection for each unclosed Beat and none for closed or source_free Beats. Each rejection has beat_index, char_start, char_end, related_source_ref_indexes, and source_problem.
+Locate a nonempty disputed span in the original Beat using zero-based Unicode code point offsets [char_start, char_end); count neither UTF-8 bytes nor UTF-16 code units. Do not copy or rewrite the span. The host derives its quotation from the pinned original Beat.
+related_source_ref_indexes are at most eight unique indexes into the supplied source table, or empty. They explain a source problem; they never supply authority, close a Beat, or change source_ref_indexes. source_problem explains the missing or mismatched source support in at most 64 Unicode characters and 96 JSON-encoded characters including quotes, using unescaped Unicode. Do not author replacement dialogue or instruct the character's choices. Review every full Beat even when only part is disputed."""
+
 
 def visible_source_closure_messages(
     *,
@@ -698,14 +781,16 @@ def visible_source_closure_messages(
     world_claims: tuple[dict[str, object], ...],
     source_references: tuple[dict[str, object], ...],
     invalid_reason: VisibleSourceClosureWireFailure | None = None,
+    version: Literal["1", "2"] = "1",
 ) -> list[dict[str, str]]:
     """Compile one compact request; correction never echoes invalid bytes."""
 
+    contract = _versioned_contract(version)
     if len(visible_beats) > 16:
         raise ValueError("visible source verdict supports at most sixteen Beats")
     packet: dict[str, object] = {
         "output_contract": {
-            "contract": VISIBLE_SOURCE_CLOSURE_CONTRACT,
+            "contract": contract,
             "authority": "correlated_source_guard_not_character_author",
         },
         "visible_beats": tuple(
@@ -760,7 +845,10 @@ def visible_source_closure_messages(
                 ),
             }
     messages = [
-        {"role": "system", "content": _SYSTEM_CONTRACT},
+        {
+            "role": "system",
+            "content": _SYSTEM_CONTRACT + (_DIAGNOSTICS_SYSTEM_CONTRACT if version == "2" else ""),
+        },
         {
             "role": "user",
             "content": json.dumps(packet, ensure_ascii=False, separators=(",", ":")),
@@ -791,7 +879,7 @@ def visible_source_closure_messages(
                 "role": "user",
                 "content": json.dumps(
                     {
-                        "correction_contract": "visible-beat-source-verdict-repair.1",
+                        "correction_contract": f"visible-beat-source-verdict-repair.{version}",
                         "failure": invalid_reason.correction_coordinate(),
                         "structural_constraints": {
                             "expected_beat_indexes": list(range(len(visible_beats))),
@@ -828,7 +916,7 @@ def visible_source_closure_messages(
                             "pinned candidate. Do not change or author the candidate."
                         ),
                         "output_contract": {
-                            "contract": VISIBLE_SOURCE_CLOSURE_CONTRACT,
+                            "contract": contract,
                         },
                     },
                     ensure_ascii=False,
@@ -1107,9 +1195,85 @@ def _relation_for_source_kinds(kinds: tuple[str | None, ...]) -> VisibleSourceRe
     return "pinned_context_authority_coverage"
 
 
-def visible_source_verdict_schema_digest() -> str:
+def _unique_verdict_members(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate verdict member")
+        value[key] = item
+    return value
+
+
+def parse_visible_source_verdict(
+    raw: str,
+    *,
+    version: Literal["1", "2"] = "1",
+    visible_beats: tuple[str, ...],
+    source_ref_kinds: tuple[str | None, ...],
+    source_ref_subject_roles: tuple[str | None, ...] = (),
+    source_references: tuple[dict[str, object], ...] | None = None,
+) -> ParsedVisibleSourceVerdict:
+    """Keep original whole-Beat closure authoritative; diagnostics only explain rejection."""
+
+    _versioned_contract(version)
+    if version == "1":
+        return ParsedVisibleSourceVerdict(
+            verdict=parse_visible_source_closure(
+                raw, visible_beats=visible_beats, source_ref_kinds=source_ref_kinds,
+                source_ref_subject_roles=source_ref_subject_roles, source_references=source_references,
+            ),
+            rejections=(),
+        )
+    try:
+        if not isinstance(raw, str) or len(raw.encode("utf-8")) > MAX_VISIBLE_SOURCE_VERDICT_V2_BYTES:
+            raise ValueError("diagnostic verdict is not bounded JSON")
+        # Pydantic's JSON parser otherwise accepts duplicate keys by keeping the
+        # last value. Version 2 gives conflicting coordinates no such authority.
+        json.loads(raw, object_pairs_hook=_unique_verdict_members)
+        provider_wire = _ProviderVisibleBeatVerdictWireV2.model_validate_json(raw)
+    except (ValueError, TypeError, RecursionError):
+        raise VisibleSourceClosureWireFailure(
+            "schema_invalid", "visible source diagnostic verdict wire schema is invalid",
+        ) from None
+    verdict = parse_visible_source_closure(
+        json.dumps({
+            "contract": VISIBLE_SOURCE_CLOSURE_CONTRACT,
+            "decisions": [decision.model_dump(mode="json") for decision in provider_wire.decisions],
+        }, ensure_ascii=False, separators=(",", ":")),
+        visible_beats=visible_beats, source_ref_kinds=source_ref_kinds,
+        source_ref_subject_roles=source_ref_subject_roles, source_references=source_references,
+    )
+    rejections = provider_wire.rejections
+    indexes = tuple(item.beat_index for item in rejections)
+    expected = {item.locator.beat_index for item in verdict.segments if item.decision == "unclosed"}
+    if len(set(indexes)) != len(indexes) or set(indexes) != expected:
+        raise VisibleSourceClosureWireFailure(
+            "diagnostic_coverage_invalid", "diagnostics must cover each unclosed Beat exactly once",
+            field="rejections",
+        )
+    for item in rejections:
+        if not 0 <= item.char_start < item.char_end <= len(visible_beats[item.beat_index]):
+            raise VisibleSourceClosureWireFailure(
+                "diagnostic_locator_invalid",
+                "diagnostic span must be nonempty within its original Beat",
+                beat_index=item.beat_index, field="rejections.char_start.char_end",
+            )
+        refs = item.related_source_ref_indexes
+        if len(set(refs)) != len(refs) or any(
+            index < 0 or index >= len(source_ref_kinds) for index in refs
+        ):
+            raise VisibleSourceClosureWireFailure(
+                "diagnostic_ref_invalid", "diagnostic references must be unique pinned indexes",
+                beat_index=item.beat_index, field="rejections.related_source_ref_indexes",
+            )
+    return ParsedVisibleSourceVerdict(
+        verdict=verdict, rejections=tuple(sorted(rejections, key=lambda item: item.beat_index)),
+    )
+
+
+def visible_source_verdict_schema_digest(*, version: Literal["1", "2"] = "1") -> str:
     encoded = json.dumps(
-        visible_source_closure_schema(),
+        visible_source_closure_schema(version=version),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -1117,10 +1281,13 @@ def visible_source_verdict_schema_digest() -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def visible_source_verdict_provider_request_contract() -> dict[str, object]:
+def visible_source_verdict_provider_request_contract(
+    *, version: Literal["1", "2"] = "1",
+) -> dict[str, object]:
     """Compile the one canonical strict-tool request contract for this protocol."""
 
-    tool_name = "visible_beat_source_verdict_v1"
+    contract = _versioned_contract(version)
+    tool_name = f"visible_beat_source_verdict_v{version}"
     return {
         "tools": [
             {
@@ -1129,7 +1296,7 @@ def visible_source_verdict_provider_request_contract() -> dict[str, object]:
                     "name": tool_name,
                     "description": ("Return exhaustive factual source verdicts for visible Beats."),
                     "strict": True,
-                    "parameters": visible_source_closure_schema(),
+                    "parameters": visible_source_closure_schema(version=version),
                 },
             }
         ],
@@ -1137,17 +1304,24 @@ def visible_source_verdict_provider_request_contract() -> dict[str, object]:
             "type": "function",
             "function": {"name": tool_name},
         },
-        "contract": VISIBLE_SOURCE_CLOSURE_CONTRACT,
-        "schema_digest": visible_source_verdict_schema_digest(),
+        "contract": contract,
+        "schema_digest": visible_source_verdict_schema_digest(version=version),
     }
 
 
 __all__ = [
     "VISIBLE_SOURCE_CLOSURE_CONTRACT",
+    "VISIBLE_SOURCE_VERDICT_V2_CONTRACT",
+    "MAX_VISIBLE_SOURCE_PROBLEM_CHARS",
+    "MAX_VISIBLE_SOURCE_PROBLEM_JSON_CHARS",
+    "MAX_VISIBLE_SOURCE_VERDICT_V2_BYTES",
+    "ParsedVisibleSourceVerdict",
+    "VisibleSourceRejectionDiagnostic",
     "VisibleSourceClosureWire",
     "VisibleSourceClosureWireFailure",
     "compact_source_reference_table",
     "parse_visible_source_closure",
+    "parse_visible_source_verdict",
     "visible_source_closure_messages",
     "visible_source_closure_schema",
     "visible_source_verdict_provider_request_contract",
