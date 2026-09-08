@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_valid
 from .private_turn_state import PrivateTurnState
 from .chat_life_intent_contract import LifeIntentPayload
 from .world_life_intent_contract import WorldLifeIntentPayload
+from .day_open_life_intent_contract import DayOpenLifeIntentPayload
 from .character_life_response_contract import CharacterLifeResponsePayload
 from .schema_core import FrozenModel, PrivacyClass
 
@@ -85,6 +86,7 @@ CHANGE_TRANSITION_REGISTRY: dict[str, frozenset[str]] = {
     "attention_transition": frozenset({"change", "expire", "compensate"}),
     "life_intent": frozenset({"plan"}),
     "world_life_intent": frozenset({"plan"}),
+    "day_open_life_intent": frozenset({"plan"}),
     "world_life_response": frozenset({"record"}),
     "activity_transition": frozenset({"plan", "start", "pause", "resume", "complete", "abandon"}),
     "location_transition": frozenset({"change", "compensate"}),
@@ -240,6 +242,11 @@ PAYLOAD_CONTRACTS: dict[str, _PayloadContract] = {
         "execution_scope": str, "intention": str, "start_after_seconds": int,
         "duration_seconds": int, "importance_bp": int, "actor_ref": str,
         "source_event_ref": str,
+    }),
+    "day_open_life_intent": _PayloadContract({
+        "execution_scope": str, "intention": str, "start_after_seconds": int,
+        "duration_seconds": int, "importance_bp": int, "actor_ref": str,
+        "role_decision_json": str, "capability_payload_json": str,
     }),
     "world_life_response": _PayloadContract({
         "actor_ref": str, "source_event_ref": str, "response_text": (str, type(None)),
@@ -1395,6 +1402,7 @@ PAYLOAD_MODEL_REGISTRY: dict[str, type[FrozenModel]] = {
     "attention_transition": AttentionPayload,
     "life_intent": LifeIntentPayload,
     "world_life_intent": WorldLifeIntentPayload,
+    "day_open_life_intent": DayOpenLifeIntentPayload,
     "world_life_response": CharacterLifeResponsePayload,
     "activity_transition": ActivityPayload,
     "location_transition": LocationPayload,
@@ -1565,7 +1573,7 @@ class ProposalEnvelope(FrozenModel):
     # .2 belongs to the separate FactCommitProposalEnvelopeV2 grammar.
     schema_registry_version: Literal[
         "world-v2-proposals.1", "world-v2-proposals.3", "world-v2-proposals.4",
-        "world-v2-proposals.5",
+        "world-v2-proposals.5", "world-v2-proposals.6",
     ] = "world-v2-proposals.1"
     evidence_refs: tuple[ProposalEvidenceRef, ...] = Field(default=(), max_length=128)
     proposed_changes: tuple[TypedChange, ...] = Field(default=(), max_length=64)
@@ -1579,6 +1587,17 @@ class ProposalEnvelope(FrozenModel):
 
     @model_validator(mode="after")
     def identifiers_evidence_and_expression_beats_are_bound(self) -> Self:
+        if self.schema_registry_version != "world-v2-proposals.6" and any(
+            change.kind == "day_open_life_intent" for change in self.proposed_changes
+        ):
+            raise ValueError("day_open_life_intent requires proposal registry .6")
+        if self.schema_registry_version == "world-v2-proposals.6" and (
+            self.proposal_kind != "decision"
+            or len(self.proposed_changes) != 1
+            or self.proposed_changes[0].kind != "day_open_life_intent"
+            or self.action_intents
+        ):
+            raise ValueError("proposal registry .6 permits only one day-open intent")
         evidence_ids = [ref.ref_id for ref in self.evidence_refs]
         if len(set(evidence_ids)) != len(evidence_ids):
             raise ValueError("duplicate evidence ref_id")
