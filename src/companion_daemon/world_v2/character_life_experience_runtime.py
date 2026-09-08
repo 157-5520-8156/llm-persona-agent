@@ -111,6 +111,10 @@ def validate_character_life_experience_binding(*, state, world_id: str, binding)
             occurrence is not None and occurrence.result_payload_hash != source.result_payload_hash,
             occurrence is not None
             and occurrence.settlement_event_ref != source.authority_event_ref,
+            occurrence is not None
+            and occurrence.settlement_world_revision != source.authority_world_revision,
+            occurrence is not None
+            and occurrence.settlement_payload_hash != source.authority_payload_hash,
             occurrence is not None and response.actor_ref not in occurrence.participant_refs,
             selected is None,
             selected is not None and selected.result_contract != "world-consequence.2",

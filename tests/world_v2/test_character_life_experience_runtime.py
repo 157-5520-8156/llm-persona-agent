@@ -212,7 +212,14 @@ def _rewrite_proposal(event, mutate):
         policy_refs=tuple(mutation["policy_refs"]),
     )
     mutation["accepted_change_hash"] = experience_mutation_hash(mutation)
-    for name in ("evidence_refs", "policy_refs"):
+    for name in (
+        "evidence_refs",
+        "policy_refs",
+        "evaluated_world_revision",
+        "proposal_id",
+        "change_id",
+        "transition_id",
+    ):
         raw[name] = mutation[name]
     raw["proposed_change_hash"] = mutation["accepted_change_hash"]
     raw["proposed_mutation"]["payload_json"] = json.dumps(
@@ -331,6 +338,99 @@ async def test_public_acceptance_rejects_rehashed_false_composite_authority(
             _submit_proposal_and_effect(ledger, proposal)
         assert ledger.project().experiences == ()
         assert ledger.lookup_event_commit(response_ref)[0] == before_response
+    finally:
+        store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_another_experience_id_cannot_duplicate_the_same_paired_source(tmp_path, monkeypatch):
+    from companion_daemon.world_v2.errors import ConcurrencyConflict
+
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    path = tmp_path / "world.sqlite"
+    _, response_ref = await _accepted_response(path, None)
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD)
+    store = SQLiteImmutableLifeContentStore(path=str(path), world_id=WORLD)
+    try:
+        capture = _FailingCommit(ledger, 1)
+        with pytest.raises(ConcurrencyConflict):
+            _runtime(capture, store).accept(
+                world_id=WORLD, audit_cursor=_cursor(ledger), response_event_ref=response_ref
+            )
+        original = capture.candidate[0]
+        _runtime(ledger, store).accept(
+            world_id=WORLD, audit_cursor=_cursor(ledger), response_event_ref=response_ref
+        )
+
+        def another(mutation):
+            mutation["evaluated_world_revision"] = ledger.project().world_revision
+            for name in ("proposal_id", "acceptance_id", "change_id", "transition_id"):
+                mutation[name] += ":duplicate-source"
+            experience = mutation["experience"]
+            experience["experience_id"] += ":duplicate-source"
+            experience["origin"]["accepted_event_ref"] += ":duplicate-source"
+            for name in ("change_id", "transition_id"):
+                experience["origin"][name] = mutation[name]
+
+        duplicate = _rewrite_proposal(original, another)
+        duplicate = _event_like(
+            duplicate, value=duplicate.payload(), identity="event:duplicate-source-proposal"
+        )
+        with pytest.raises(ValueError, match="source authority is already committed"):
+            _submit_proposal_and_effect(ledger, duplicate)
+        assert len(ledger.project().experiences) == 1
+        assert ledger.rebuild() == ledger.project()
+    finally:
+        store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_reader_proof_requires_original_role_audit_and_exact_summary(tmp_path, monkeypatch):
+    from companion_daemon.world_v2.character_life_experience_contract import (
+        validate_character_life_experience_summary,
+    )
+    from companion_daemon.world_v2.character_life_experience_runtime import (
+        validate_character_life_experience_binding,
+    )
+
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    path = tmp_path / "world.sqlite"
+    _, response_ref = await _accepted_response(path, "我自己的感受🫖。")
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD)
+    store = SQLiteImmutableLifeContentStore(path=str(path), world_id=WORLD)
+    try:
+        _runtime(ledger, store).accept(
+            world_id=WORLD, audit_cursor=_cursor(ledger), response_event_ref=response_ref
+        )
+        p = ledger.project()
+        (experience,) = p.experiences
+        (binding,) = experience.values.source_bindings
+        body = store.read_exact(content_ref=experience.values.summary_ref).text
+        assert (
+            validate_character_life_experience_summary(
+                body, binding
+            ).character_response.response_text
+            == "我自己的感受🫖。"
+        )
+        for value in (body + " ", body.replace("我自己的感受", "世界发生了改变"), "{}"):
+            with pytest.raises(ValueError, match="summary_mismatch"):
+                validate_character_life_experience_summary(value, binding)
+        # The reader proof cannot be replaced by trusting an embedded response
+        # event hash alone when its independently recorded model audit is absent.
+        for field in ("proposal_audits", "model_result_audits"):
+            damaged_pin = p.model_copy(update={field: ()})
+            with pytest.raises(ValueError):
+                validate_character_life_experience_binding(
+                    state=damaged_pin,
+                    world_id=WORLD,
+                    binding=binding,
+                )
+        with pytest.raises(ValueError):
+            validate_character_life_experience_binding(
+                state=p, world_id="world:other", binding=binding
+            )
     finally:
         store.close()
         ledger.close()
