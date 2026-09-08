@@ -13493,6 +13493,9 @@ def _life_content_recorded(state: ReducerState, event: WorldEvent) -> ReducerSta
         ):
             raise ValueError("life content descriptor does not match settled occurrence")
         source_privacy = occurrence.visibility
+        if selected is not None and selected.result_contract == "world-consequence.2":
+            if _LIFE_CONTENT_PRIVACY_RANK[selected.privacy_class] > _LIFE_CONTENT_PRIVACY_RANK[source_privacy]:
+                source_privacy = selected.privacy_class
     elif payload.source_kind == "experience":
         if (
             payload.content_kind != "experience_summary"

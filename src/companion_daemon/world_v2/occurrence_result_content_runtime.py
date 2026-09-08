@@ -9,6 +9,8 @@ from .proposal_audit_schemas import canonical_json
 from .schemas import ProjectionCursor, WorldEvent
 from .world_consequence_contract import WorldConsequenceV2
 
+_PRIVACY = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}
+
 
 def read_world_consequence_candidate(*, content_store, candidate) -> StoredLifeContent:
     if candidate.result_contract != "world-consequence.2" or content_store is None:
@@ -62,6 +64,7 @@ class OccurrenceResultContentRuntime:
         ):
             raise ValueError("consequence publication lacks its original settlement")
         settlement, commit = located
+        privacy = max((occurrence.visibility, candidate.privacy_class), key=_PRIVACY.__getitem__)
         record = StoredLifeContent(
             content_ref=occurrence.result_payload_ref, content_kind="occurrence_result",
             content_payload_hash=stored.content_payload_hash, text=stored.text,
@@ -75,13 +78,14 @@ class OccurrenceResultContentRuntime:
                          and item.source_event_ref == settlement.event_id), None)
         if existing is not None:
             if (existing.content_ref != record.content_ref
-                    or existing.content_payload_hash != record.content_payload_hash):
+                    or existing.content_payload_hash != record.content_payload_hash
+                    or _PRIVACY[existing.privacy_class] < _PRIVACY[privacy]):
                 raise ValueError("consequence publication conflicts with its original descriptor")
             return None
         payload = LifeContentRecordedPayload(
             content_id="life-content:world-consequence:" + suffix,
             content_kind="occurrence_result", content_ref=record.content_ref,
-            content_payload_hash=record.content_payload_hash, privacy_class=occurrence.visibility,
+            content_payload_hash=record.content_payload_hash, privacy_class=privacy,
             source_kind="occurrence_settlement", source_event_ref=settlement.event_id,
             source_world_revision=commit.world_revision, source_payload_hash=settlement.payload_hash,
             source_entity_id=occurrence.occurrence_id,
