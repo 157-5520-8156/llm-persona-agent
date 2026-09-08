@@ -39,6 +39,11 @@ from .life_content_store import (
     StoredLifeContent,
     life_content_payload_hash,
 )
+from .world_author_request_audit import (
+    WorldAuthorRequestBinding,
+    read_world_author_request,
+    record_world_author_request,
+)
 from .life_development_draft import (
     CHARACTER_CHOICE_AUTHORITY_CONTRACT,
     CHARACTER_CHOICE_CONTRACT,
@@ -722,6 +727,7 @@ class _LifeDevelopmentAttempt:
     slot: Literal["primary", "corrective"] | None = None
     outcome: _AttemptOutcome | None = None
     source_review_attempts: tuple[_ProviderLaneTrace, ...] = ()
+    request_binding: WorldAuthorRequestBinding | None = None
 
 
 @dataclass(frozen=True)
@@ -770,9 +776,17 @@ class _RecordedDeliberation:
     capability_manifest: dict[str, object] | None = None
     capability_manifest_content_ref: str | None = None
     capability_manifest_content_hash: str | None = None
+    request_bindings: tuple[WorldAuthorRequestBinding | None, ...] | None = None
 
     def authority_payload(self) -> dict[str, object]:
         return {
+            **(
+                {"request_bindings": [
+                    item.model_dump(mode="json") if item is not None else None
+                    for item in self.request_bindings
+                ]}
+                if self.request_bindings is not None else {}
+            ),
             "role": self.role,
             "capsule_id": self.capsule_id,
             "context_cursor": self.context_cursor.model_dump(mode="json"),
@@ -2699,6 +2713,23 @@ class LifeDevelopmentRuntime:
     ) -> _RecordedDeliberation:
         if not run.attempts:
             raise ValueError("Life Development model run has no attempts")
+        request_bindings = None
+        if (
+            role == "world_author"
+            and manifest is not None
+            and manifest.outcome_contract == "world-consequence.2"
+        ):
+            request_bindings = tuple(attempt.request_binding for attempt in run.attempts)
+            for attempt in run.attempts:
+                if attempt.request_binding is None:
+                    if run.succeeded:
+                        raise ValueError("World Author request binding is absent")
+                    continue
+                read_world_author_request(
+                    content_store=self._store,
+                    binding=attempt.request_binding,
+                    expected_request_hash=attempt.request_hash,
+                )
         suffix = _digest(
             {
                 "proposal_id": proposal_id,
@@ -2893,6 +2924,13 @@ class LifeDevelopmentRuntime:
         proposal_hash: str | None = None
         if run.succeeded:
             audit_metadata: dict[str, object] = {
+                **(
+                    {"request_bindings": [
+                        item.model_dump(mode="json") if item is not None else None
+                        for item in request_bindings
+                    ]}
+                    if request_bindings is not None else {}
+                ),
                 "final_response_hash": final.response_hash,
                 "model_role": role,
                 "decision_subject_hash": decision_subject_hash,
@@ -3126,6 +3164,7 @@ class LifeDevelopmentRuntime:
             capability_manifest=manifest_value,
             capability_manifest_content_ref=manifest_content_ref,
             capability_manifest_content_hash=manifest_content_hash,
+            request_bindings=request_bindings,
         )
 
     def _record_character_interior_decision(
@@ -3878,6 +3917,28 @@ class LifeDevelopmentRuntime:
             manifest_value = json.loads(stored_manifest.text)
             manifest_ref = manifest_ref_value
             manifest_hash = manifest_hash_value
+        request_bindings = None
+        if (
+            role == "world_author"
+            and manifest is not None
+            and manifest.outcome_contract == "world-consequence.2"
+        ):
+            raw_bindings = metadata.get("request_bindings")
+            if not isinstance(raw_bindings, list) or len(raw_bindings) != len(recorded_audits):
+                raise ValueError("recoverable World Author request bindings are absent")
+            request_bindings = tuple(
+                WorldAuthorRequestBinding.model_validate(value) for value in raw_bindings
+            )
+            for request_binding, recorded_audit in zip(
+                request_bindings, recorded_audits, strict=True,
+            ):
+                read_world_author_request(
+                    content_store=self._store,
+                    binding=request_binding,
+                    expected_request_hash=recorded_audit.request_hash,
+                )
+        elif "request_bindings" in metadata:
+            raise ValueError("historical author request cannot be upgraded during recovery")
         binding = _RecordedDeliberation(
             role=role,
             capsule_id=terminal.capsule_id,
@@ -3897,6 +3958,7 @@ class LifeDevelopmentRuntime:
             capability_manifest=manifest_value,
             capability_manifest_content_ref=manifest_ref,
             capability_manifest_content_hash=manifest_hash,
+            request_bindings=request_bindings,
         )
         capsule = _PinnedIdentity(
             capsule_id=terminal.capsule_id,
@@ -5022,7 +5084,12 @@ class LifeDevelopmentRuntime:
         propose_repair_required = False
         for ordinal in range(2):
             request_hash = _messages_hash(messages)
+            request_binding = None
             try:
+                if manifest.outcome_contract == "world-consequence.2":
+                    request_binding = record_world_author_request(
+                        content_store=self._store, messages=messages,
+                    )
                 rewritten_raw = await complete_json_object(
                     completion_rewriter,
                     messages,
@@ -5043,6 +5110,7 @@ class LifeDevelopmentRuntime:
                     first = attempts[0]
                     attempts[0] = _LifeDevelopmentAttempt(
                         request_hash=first.request_hash,
+                        request_binding=first.request_binding,
                         raw_output=first.raw_output,
                         status=first.status,
                         failure_code=first.failure_code,
@@ -5052,6 +5120,7 @@ class LifeDevelopmentRuntime:
                 attempts.append(
                     _LifeDevelopmentAttempt(
                         request_hash=request_hash,
+                        request_binding=request_binding,
                         raw_output=None,
                         status=status,
                         failure_code=failure_code,
@@ -5089,6 +5158,7 @@ class LifeDevelopmentRuntime:
                 attempts.append(
                     _LifeDevelopmentAttempt(
                         request_hash=request_hash,
+                        request_binding=request_binding,
                         raw_output=rewritten_raw,
                         status=("recovery_failed" if ordinal else "main_invalid"),
                         failure_code=("corrective_invalid" if ordinal else "main_invalid_output"),
@@ -5104,6 +5174,7 @@ class LifeDevelopmentRuntime:
                     first = attempts[0]
                     attempts[0] = _LifeDevelopmentAttempt(
                         request_hash=first.request_hash,
+                        request_binding=first.request_binding,
                         raw_output=first.raw_output,
                         status=first.status,
                         failure_code=first.failure_code,
@@ -5199,6 +5270,7 @@ class LifeDevelopmentRuntime:
             attempts.append(
                 _LifeDevelopmentAttempt(
                     request_hash=request_hash,
+                    request_binding=request_binding,
                     raw_output=rewritten_raw,
                     status=("main_invalid_recovered" if ordinal else "proposal_validated"),
                     failure_code=("main_invalid_output" if ordinal else None),
@@ -5242,7 +5314,12 @@ class LifeDevelopmentRuntime:
         attempts: list[_LifeDevelopmentAttempt] = []
         for ordinal in range(2):
             request_hash = _messages_hash(messages)
+            request_binding = None
             try:
+                if manifest.outcome_contract == "world-consequence.2":
+                    request_binding = record_world_author_request(
+                        content_store=self._store, messages=messages,
+                    )
                 with model_call_scope(
                     "life_development_draft",
                     action_id=f"life-development:{logical_time.isoformat()}:{ordinal}",
@@ -5275,6 +5352,7 @@ class LifeDevelopmentRuntime:
                     first = attempts[0]
                     attempts[0] = _LifeDevelopmentAttempt(
                         request_hash=first.request_hash,
+                        request_binding=first.request_binding,
                         raw_output=first.raw_output,
                         status=first.status,
                         failure_code=first.failure_code,
@@ -5284,6 +5362,7 @@ class LifeDevelopmentRuntime:
                 attempts.append(
                     _LifeDevelopmentAttempt(
                         request_hash=request_hash,
+                        request_binding=request_binding,
                         raw_output=None,
                         status=status,
                         failure_code=failure_code,
@@ -5305,6 +5384,7 @@ class LifeDevelopmentRuntime:
                 attempts.append(
                     _LifeDevelopmentAttempt(
                         request_hash=request_hash,
+                        request_binding=request_binding,
                         raw_output=raw,
                         status=("main_invalid_recovered" if ordinal else "proposal_validated"),
                         failure_code=("main_invalid_output" if ordinal else None),
@@ -5319,6 +5399,7 @@ class LifeDevelopmentRuntime:
                 attempts.append(
                     _LifeDevelopmentAttempt(
                         request_hash=request_hash,
+                        request_binding=request_binding,
                         raw_output=raw,
                         status=("recovery_failed" if ordinal else "main_invalid"),
                         failure_code=("corrective_invalid" if ordinal else "main_invalid_output"),
@@ -5335,6 +5416,7 @@ class LifeDevelopmentRuntime:
                     first = attempts[0]
                     attempts[0] = _LifeDevelopmentAttempt(
                         request_hash=first.request_hash,
+                        request_binding=first.request_binding,
                         raw_output=first.raw_output,
                         status=first.status,
                         failure_code=first.failure_code,

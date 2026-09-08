@@ -5,7 +5,7 @@ stores and retrieves exact UTF-8 bytes by an immutable reference; it knows no
 occurrence, Experience, Context, or proposal semantics.  Keeping that policy
 out of the store is what lets :mod:`life_content` remain the one read module
 that validates a descriptor against a pinned ledger cursor.  The
-``raw_model_result`` kind is internal audit material and has no
+``raw_model_result`` and ``raw_model_request`` kinds are internal audit material and have no
 ``LifeContentRecorded`` visibility descriptor.
 """
 
@@ -30,9 +30,11 @@ LifeContentKind = Literal[
     "npc_inner_state",
     "npc_goal",
     "raw_model_result",
+    "raw_model_request",
 ]
 MAX_LIFE_CONTENT_CHARACTERS = 12_000
 MAX_RAW_MODEL_RESULT_UTF8_BYTES = 64_000
+MAX_RAW_MODEL_REQUEST_UTF8_BYTES = 256_000
 
 
 def life_content_payload_hash(text: str) -> str:
@@ -69,6 +71,7 @@ class StoredLifeContent:
             "npc_inner_state",
             "npc_goal",
             "raw_model_result",
+            "raw_model_request",
         }:
             raise ValueError("unsupported life content kind")
         if (
@@ -77,7 +80,12 @@ class StoredLifeContent:
         ):
             raise ValueError("raw model result exceeds the audit byte limit")
         if (
-            self.content_kind != "raw_model_result"
+            self.content_kind == "raw_model_request"
+            and len(self.text.encode("utf-8")) > MAX_RAW_MODEL_REQUEST_UTF8_BYTES
+        ):
+            raise ValueError("raw model request exceeds the audit byte limit")
+        if (
+            self.content_kind not in {"raw_model_result", "raw_model_request"}
             and len(self.text) > MAX_LIFE_CONTENT_CHARACTERS
         ):
             raise ValueError("life content exceeds the maximum size")
