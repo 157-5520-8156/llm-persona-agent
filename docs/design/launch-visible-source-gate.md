@@ -38,4 +38,30 @@ MockTransport 证明普通路径 2 次物理调用、主动 Recall 路径 3 次�
 - 旧 local Recall conversation 与带 `technical_recovery_failure` 的额外恢复 capability 不在本片资格内；不能以当前普通原 pin 重签这些历史载体。同角色一次纠正沿原 capability。
 - 默认仍关闭。原完整 strict author 工具 schema 很大；根实际 CLI MockTransport 测得作者约 150,582 字符，其中 tools 约 114,080，原实际 payload 预约约 0.543558 CNY、审核约 0.090042。不能缩小预约或提高试验额度掩盖；它会限制 `.60` 试验的多轮可运行性。这是冻结完整工具协议的成本限制，本片没有压缩它。
 
+## 可选 v2 传输包装
+
+后续独立实现以 `atomic_envelope_version="2"` 选择 strict `result` 包装：原完整
+Decision/Recall 分支放在唯一 `result` 字段内，消除 root 重复属性树；内部生命周期、
+时间、权限和 canonical 校验保留。v1 与 stream 保留原字节和解释。新版本使用独立工具
+名称、identity/version/schema hash，并拒绝重复键及不精确的包装。
+
+测试 CLI 通过 `--visible-author-tool-version 2` 显式选择，要求同时启用完整来源审核；
+QQ host 的 `visible_author_tool_version="2"` 也要求该审核配置及 atomic 表达。
+生产作者的初始、Recall 后和最终纠正工具都会收到版本选项，实际请求/响应审计仍按
+原始物理载体绑定。默认仍为 `"1"`，不是上线默认切换。
+
+合同片 97 项回归通过，48 组 v1 工具、tool choice、identity 与旧版本逐字节相同。
+根最终通过 138 项合同、CLI 与完整审核链集成检查（21.83 秒）；其中四项 v1/v2 ×
+普通/主动 Recall 实际 host 测试冷开数据库并重放成功，未增加模型调用。v2 在默认 0.50 元离线试验
+准入下可完成完整作者+审核，使用的仍是未缩减的 final-wire 估算器和 4096 输出上限。
+最终日志与固定材料：`/tmp/girl-agent-v2-source-final-83f1c251.log`、
+`/tmp/girl-agent-v2-source-final-83f1c251`。独立只读审查发现并修复一项提示顺序冲突：
+v2 的唯一外层 result 说明现在位于 forced-tool 指令之后、请求哈希计算之前；旧 v1
+字串保留。复核无未解决问题。低层生产作者也在构造时拒绝 v2 缺计费 reviewer 的组合。
+
+固定离线请求比较中工具说明由约 114,080 降至 57,815 字符，完整请求预留由约
+0.543585 降至 0.387081 元；接入作者时新增的包装说明会带来少量增量。
+这是请求规模与保守准入证据，**未证明实际节费、供应商兼容性或超时已修复**。
+第 10 批的未知费用仍全额占用，不能用此估算释放旧账单或超过当前批次余量。
+
 固定提交前定向门：7 个测试文件 **121 passed / 18.50s**，包含新增公开 Core Recall 最终三次 HTTP 与主账本三笔 known；原 `.1–.8` audit 的八个冻结 canonical hash 全部保持。变更 Python 的 Ruff 和 diff check 通过。根另负责 CLI 集成、恢复组合与正常 120 场景门，本片不将这些尚未运行的整合门列为通过。

@@ -29,6 +29,10 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         help="Require whole-candidate source review in the real-provider capture host (atomic expression).",
     )
     parser.add_argument(
+        "--visible-author-tool-version", choices=("1", "2"), default="1",
+        help="Explicit whole-author wire version; v2 requires whole-source review and is unqualified with real providers.",
+    )
+    parser.add_argument(
         "--interactive",
         action="store_true",
         help="Read adaptive user turns, {wait_until_minutes: N}, or null from stdin JSON lines.",
@@ -51,6 +55,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--allow-real-provider requires --model-mode real-provider")
     if options.require_visible_source_review and options.model_mode != "real-provider":
         parser.error("--require-visible-source-review requires the real-provider capture profile")
+    if options.visible_author_tool_version != "1" and not options.require_visible_source_review:
+        parser.error("--visible-author-tool-version 2 requires --require-visible-source-review")
     if not math.isfinite(options.max_cost_cny) or not 0 < options.max_cost_cny <= 100:
         parser.error("--max-cost-cny must be finite, greater than 0 and at most 100")
     if options.output.exists() or options.output.is_symlink():
@@ -290,6 +296,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                 injected.update(
                     visible_source_review_required=True,
                     visible_source_review_model=provider("visible_source_review"),
+                    visible_author_tool_version=options.visible_author_tool_version,
                 )
         return build_qq_c2c_host(
             settings=settings,
@@ -317,6 +324,8 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
         close_resources=close_models,
         next_command=next_command,
         provenance={
+            **({"visible_author_tool_version": options.visible_author_tool_version}
+               if options.visible_author_tool_version != "1" else {}),
             **({"visible_source_review": {
                 "policy": "visible-source-review-required.1",
                 "expression_episode_mode": "off",

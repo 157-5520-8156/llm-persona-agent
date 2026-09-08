@@ -49,6 +49,11 @@ def test_whole_source_review_cannot_be_claimed_by_the_legacy_fixture(tmp_path):
     ])
     assert options.require_visible_source_review
     assert not cli.parse_options(["--output", str(output)]).require_visible_source_review
+    with pytest.raises(SystemExit):
+        cli.parse_options([
+            "--output", str(output), "--model-mode", "real-provider", "--allow-real-provider",
+            "--visible-author-tool-version", "2",
+        ])
 
 
 def test_existing_output_is_preserved(tmp_path):
@@ -440,8 +445,9 @@ async def test_real_cli_captures_actual_provider_body_and_closes_injected_client
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("recall_first", [False, True])
+@pytest.mark.parametrize("tool_version", ["1", "2"])
 async def test_required_review_cli_host_holds_complete_candidate_until_review(
-    tmp_path, monkeypatch, recall_first
+    tmp_path, monkeypatch, recall_first, tool_version
 ):
     import companion_daemon.world_v2.longitudinal_journey as runner
     from test_whole_candidate_author import BEATS, _decision
@@ -458,7 +464,10 @@ async def test_required_review_cli_host_holds_complete_candidate_until_review(
         requests.append(body)
         assert not body.get("stream")
         name = body["tool_choice"]["function"]["name"]
-        if name in {"character_inbound_initial_v1", "character_inbound_after_recall_v1"}:
+        if name in {
+            f"character_inbound_initial_v{tool_version}",
+            f"character_inbound_after_recall_v{tool_version}",
+        }:
             assert "visible_source_requirement_json" not in json.dumps(body)
             authored = _decision()
             if recall_first and len(requests) == 1:
@@ -474,8 +483,21 @@ async def test_required_review_cli_host_holds_complete_candidate_until_review(
                         "limit": 4,
                     },
                 }
-            fields = body["tools"][0]["function"]["parameters"]["properties"]
-            return _http_result(body, {key: authored.get(key) for key in fields})
+            schema = body["tools"][0]["function"]["parameters"]
+            if tool_version == "2":
+                instruction = body["messages"][0]["content"]
+                assert instruction.index("ATOMIC TOOL ENVELOPE V2:") > instruction.index("FORCED TOOL TRANSPORT")
+                assert "Its arguments must include result_kind." not in instruction
+                assert set(schema["properties"]) == {"result"}
+                variants = schema["properties"]["result"].get("anyOf", [schema["properties"]["result"]])
+                selected = next(
+                    branch for branch in variants
+                    if branch["properties"]["result_kind"]["enum"] == [authored["result_kind"]]
+                )
+                return _http_result(body, {
+                    "result": {key: authored.get(key) for key in selected["properties"]},
+                })
+            return _http_result(body, {key: authored.get(key) for key in schema["properties"]})
         review_started.set()
         await release_review.wait()
         return _http_result(body, {
@@ -513,6 +535,15 @@ async def test_required_review_cli_host_holds_complete_candidate_until_review(
                 "flash", *(["flash"] if recall_first else []), "visible_source_review",
             ]
             assert len(requests) == (3 if recall_first else 2)
+            if tool_version == "2":
+                from companion_daemon.usage_metrics import estimate_provider_request_reserve_cny
+
+                assert kwargs["provenance"]["visible_author_tool_version"] == "2"
+                # Use the same conservative final-wire estimator as actual admission.
+                # The complete author still fits the default isolated allowance.
+                assert estimate_provider_request_reserve_cny(request_payload=requests[0]) < 0.5
+            else:
+                assert "visible_author_tool_version" not in kwargs["provenance"]
             assert host.usage_budget_health()["daily_cost_cny"] > 0
         finally:
             release_review.set()
@@ -522,6 +553,11 @@ async def test_required_review_cli_host_holds_complete_candidate_until_review(
             await host.aclose()
             await host.wait_for_shutdown_quiescence()
             await kwargs["close_resources"]()
+        reopened = runner.cold_evidence(kwargs["output"] / "world.sqlite")
+        assert tuple(row.text for row in reopened.projection.stored_message_payloads) == BEATS
+        replay = runner.ReplayEvaluator().evaluate(evidence=reopened)
+        assert replay.passed and replay.replay_hash_matches
+        assert len(requests) == (3 if recall_first else 2)
         return {"completed": True}
 
     monkeypatch.setattr(runner, "run_journey", run_inbound)
@@ -529,8 +565,18 @@ async def test_required_review_cli_host_holds_complete_candidate_until_review(
     assert (await cli.run(cli.parse_options([
         "--output", str(tmp_path / "run"), "--model-mode", "real-provider",
         "--allow-real-provider", "--require-visible-source-review",
-        "--max-cost-cny", "0.60",
+        "--visible-author-tool-version", tool_version,
+        *( ["--max-cost-cny", "0.60"] if tool_version == "1" else [] ),
     ])))["completed"]
+
+
+def test_atomic_v2_author_cannot_be_installed_without_metered_review():
+    from companion_daemon.world_v2.character_interior.inbound_author import _InboundCharacterAuthor
+
+    with pytest.raises(ValueError, match="explicit metered source reviewer"):
+        _InboundCharacterAuthor(
+            flash_model=object(), whole_candidate_mode=True, atomic_tool_envelope_version="2",
+        )
 
 
 @pytest.mark.asyncio

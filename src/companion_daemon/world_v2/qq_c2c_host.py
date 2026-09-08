@@ -3042,6 +3042,7 @@ def build_qq_c2c_host(
     source_closure_model: ChatCompletionModel | None = None,
     visible_source_review_required: bool = False,
     visible_source_review_model: ChatCompletionModel | None = None,
+    visible_author_tool_version: str = "1",
     life_source_closure_model: ChatCompletionModel | None = None,
     candidate_external_proposition_inventory_model: ChatCompletionModel | None = None,
     delivery: QQC2CDelivery | None = None,
@@ -3093,6 +3094,10 @@ def build_qq_c2c_host(
     )
     if type(visible_source_review_required) is not bool:
         raise TypeError("visible source review deployment flag must be a bool")
+    if visible_author_tool_version not in {"1", "2"}:
+        raise ValueError("unsupported visible author tool version")
+    if visible_author_tool_version != "1" and not visible_source_review_required:
+        raise ValueError("versioned whole author requires explicit visible source review")
     if visible_source_review_required:
         if expression_episode_mode != "off":
             raise ValueError("required whole visible review requires explicit atomic expression mode")
@@ -3122,6 +3127,7 @@ def build_qq_c2c_host(
             world_support_model=world_support_model,
             source_closure_model=(visible_source_review_model if visible_source_review_required else source_closure_model),
             visible_source_review_required=visible_source_review_required,
+            visible_author_tool_version=visible_author_tool_version,
             life_source_closure_model=life_source_closure_model,
             model_id_prefix="qq-c2c-v2",
             expression_capabilities=expression_capabilities,

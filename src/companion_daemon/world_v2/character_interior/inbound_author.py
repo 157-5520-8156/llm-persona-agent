@@ -2373,12 +2373,22 @@ class _InboundCharacterAuthor:
         require_explicit_authored_decision_fields: bool = False,
         whole_candidate_mode: bool = False,
         visible_source_review_model: object | None = None,
+        atomic_tool_envelope_version: str = "1",
         **_unused: object,
     ) -> None:
         del _unused
         if type(whole_candidate_mode) is not bool:
             raise TypeError("whole_candidate_mode must be an explicit boolean")
         self._whole_candidate_mode = whole_candidate_mode
+        if atomic_tool_envelope_version not in {"1", "2"}:
+            raise ValueError("unsupported atomic tool envelope version")
+        if atomic_tool_envelope_version != "1" and not whole_candidate_mode:
+            raise ValueError("versioned atomic envelope requires whole-candidate authoring")
+        if atomic_tool_envelope_version == "2" and not callable(
+            getattr(visible_source_review_model, "complete_json_with_usage", None)
+        ):
+            raise ValueError("atomic v2 author requires the explicit metered source reviewer")
+        self._atomic_tool_envelope_version = atomic_tool_envelope_version
         self._visible_source_review_model = visible_source_review_model
         self._visible_review_rejections = OrderedDict()
         if visible_source_review_model is not None and not whole_candidate_mode:
@@ -3137,6 +3147,7 @@ class _InboundCharacterAuthor:
         contract = InboundToolContracts().contract_for(
             phase="final",
             transport="atomic",
+            atomic_envelope_version=self._atomic_tool_envelope_version,
             capabilities=self._capabilities,
             recall_allowed=False,
             require_turn_posture=(
@@ -4061,6 +4072,7 @@ class _InboundCharacterAuthor:
             else InboundToolContracts().contract_for(
                 phase=("initial" if recall_context_available else "after_recall"),
                 transport=("stream" if transport_provider is not None else "atomic"),
+                atomic_envelope_version=self._atomic_tool_envelope_version,
                 capabilities=self._capabilities,
                 recall_allowed=recall_available,
                 require_turn_posture=(
@@ -4130,8 +4142,13 @@ class _InboundCharacterAuthor:
                     if cognition_tool_choice == "auto"
                     else "\n\nFORCED TOOL TRANSPORT (overrides only the outer JSON envelope above): "
                 )
-                + "call the required function exactly once. Its arguments must include "
-                "result_kind. "
+                + (
+                    "call the required function exactly once. Its arguments must contain only "
+                    "result. The complete object inside result must include result_kind. "
+                    if self._atomic_tool_envelope_version == "2"
+                    else "call the required function exactly once. Its arguments must include "
+                    "result_kind. "
+                )
                 + decision_transport
                 + forced_tool_recall_instruction(
                     private_turn_state_required=(
@@ -4142,6 +4159,14 @@ class _InboundCharacterAuthor:
                 "the host does not infer it. Within the selected branch, appraisal, affect, "
                 "timing, expression, and silence remain your choices wherever that branch "
                 "exposes them."
+            )
+        if self._atomic_tool_envelope_version == "2":
+            messages[0]["content"] += (
+                "\n\nATOMIC TOOL ENVELOPE V2:\n"
+                "All return envelopes shown above describe the inner result object. "
+                "Put the complete chosen Decision or Recall object under the sole outer "
+                "key result of this tool's arguments, retaining every inner field and "
+                "explicit null sibling required by the schema."
             )
         winning_provider_identity = _provider_invocation_identity(
             parent_call_id=provider_request.call_id,
