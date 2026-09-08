@@ -17,6 +17,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from .context_capsule import ResolvedSourceBinding, source_bindings_hash
+from .world_life_context import ActiveActivityContextItem, CompletedActivityContextItem
 
 
 VISIBLE_SOURCE_CLOSURE_CONTRACT = "visible-beat-source-verdict.1"
@@ -391,6 +392,127 @@ def _review_material(entry: dict[str, object]) -> tuple[dict[str, object], bool]
     return material, eligible
 
 
+def _activity_support(
+    material: dict[str, object],
+    source_ref: str,
+) -> tuple[str, dict[str, object]] | None:
+    """Qualify one exact lifecycle ref in the reader's already selected body.
+
+    The public activity reader owns original role/Plan audit validation. This
+    projection checks the typed value and its internal event bindings; it never
+    reads another source or promotes the intention's embedded prose to fact.
+    """
+    if (
+        material.get("lane") != "world_life"
+        or source_ref not in material.get("source_refs", ())
+        or material.get("privacy_class") == "withhold"
+        or material.get("availability") == "unavailable"
+        or (
+            isinstance(material.get("authority"), str)
+            and material["authority"] in _NON_SUPPORT_AUTHORITIES
+        )
+    ):
+        return None
+    projected, _ = _review_material(material)
+    if projected.get("kind") == "pinned_context_item":
+        items = [projected["item"]]
+    elif projected.get("kind") == "pinned_context_slice":
+        items = projected["slice"]["items"]
+    else:
+        return None
+    matching = [item for item in items if item.get("item_ref") == source_ref]
+    if len(matching) != 1:
+        return None
+    item = matching[0]
+    value = item.get("value")
+    if not isinstance(value, dict) or item.get("value_hash") != _material_hash(value):
+        return None
+    context_kind = value.get("context_kind")
+    if not isinstance(context_kind, str):
+        return None
+    activity_type = {
+        "active_activity": ActiveActivityContextItem,
+        "completed_activity": CompletedActivityContextItem,
+    }.get(context_kind)
+    if activity_type is None:
+        return None
+    try:
+        activity = activity_type.model_validate_json(json.dumps(value, ensure_ascii=False))
+        bindings = tuple(
+            ResolvedSourceBinding.model_validate(binding)
+            for binding in item.get("source_bindings", ())
+        )
+    except (TypeError, ValueError):
+        return None
+    intention = activity.accepted_intention
+    if (
+        len(bindings) != 2
+        or source_bindings_hash(bindings) != item.get("source_hash")
+        or activity.activity_event_ref != source_ref
+        or item.get("privacy_class") != activity.privacy_class
+        or intention.truncated
+        or hashlib.sha256(intention.text.encode("utf-8")).hexdigest()
+        != intention.content_payload_hash
+    ):
+        return None
+    planned, lifecycle = activity.source_bindings
+    if (
+        planned.authority_event_ref == lifecycle.authority_event_ref
+        or lifecycle.authority_event_ref != source_ref
+        or planned.authority_world_revision >= lifecycle.authority_world_revision
+    ):
+        return None
+    by_ref = {binding.ref: binding for binding in bindings}
+    if len(by_ref) != 2:
+        return None
+    for inner in activity.source_bindings:
+        outer = by_ref.get(inner.authority_event_ref)
+        if (
+            outer is None
+            or outer.source_kind != "committed_event"
+            or outer.source_world_revision != inner.authority_world_revision
+            or outer.immutable_hash != inner.authority_payload_hash
+        ):
+            return None
+    lifecycle_type = by_ref[source_ref].authority_type
+    expected_types = (
+        {"ActivityStarted", "ActivityResumed"}
+        if isinstance(activity, ActiveActivityContextItem)
+        else {"ActivityCompleted"}
+    )
+    if (
+        by_ref[planned.authority_event_ref].authority_type != "ActivityPlanned"
+        or lifecycle_type not in expected_types
+    ):
+        return None
+    return activity.owner_actor_ref, {
+        "contract": "visible-activity-source.1",
+        "status": activity.status,
+        "source_event_type": lifecycle_type,
+        "scope": (
+            "activity_in_progress_not_intention_fulfilled"
+            if isinstance(activity, ActiveActivityContextItem)
+            else activity.completion_scope
+        ),
+    }
+
+
+def _eligible_reference(row: dict[str, object]) -> bool:
+    if row.get("support_eligibility") != "eligible":
+        return False
+    material = row.get("review_material")
+    if not isinstance(material, dict):
+        return False
+    if "activity_support" in row:
+        support = _activity_support(material, row.get("source_ref"))
+        return bool(
+            support is not None
+            and support[0] == row.get("support_subject_ref")
+            and support[1] == row["activity_support"]
+        )
+    return _review_material(material)[1]
+
+
 def _packet_materials(
     rows: tuple[dict[str, object], ...],
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
@@ -481,6 +603,18 @@ def compact_source_reference_table(
             if normalized in seen:
                 continue
             seen.add(normalized)
+            activity = _activity_support(material, normalized)
+            row_subject, row_role, row_eligible = support_subject, support_role, eligible
+            if activity is not None:
+                row_subject = activity[0]
+                row_role = (
+                    "companion"
+                    if row_subject == companion_actor_ref
+                    else "counterpart"
+                    if row_subject == counterpart_actor_ref
+                    else None
+                )
+                row_eligible = row_role is not None
             message = entry.get("message")
             message_actor = message.get("actor") if isinstance(message, dict) else None
             evidence_text = (
@@ -511,9 +645,10 @@ def compact_source_reference_table(
                     "subject_role": subject_role,
                     "evidence_text": evidence_text,
                     "review_material": material,
-                    "support_eligibility": "eligible" if eligible else "baseline_only",
-                    "support_subject_ref": support_subject,
-                    "support_subject_role": support_role,
+                    "support_eligibility": "eligible" if row_eligible else "baseline_only",
+                    "support_subject_ref": row_subject,
+                    "support_subject_role": row_role,
+                    **({"activity_support": activity[1]} if activity is not None else {}),
                 }
             )
     return tuple(rows)
@@ -582,6 +717,17 @@ def visible_source_closure_messages(
                 ),
             }
         )
+        if any("activity_support" in row for row in source_references):
+            packet["activity_support_contract"] = {
+                "contract": "visible-activity-source.1",
+                "scope": (
+                    "The exact lifecycle ref supports only its typed activity state. "
+                    "Active means in progress; completed means the lifecycle ended. "
+                    "Neither establishes intention fulfillment, embedded history, location "
+                    "presence or objective outcome. accepted_intention remains intention-only; "
+                    "private material does not become authorized for disclosure."
+                ),
+            }
     messages = [
         {"role": "system", "content": _SYSTEM_CONTRACT},
         {
@@ -823,10 +969,7 @@ def parse_visible_source_closure(
                     field=f"decisions.{beat_index}.source_ref_indexes",
                 )
             if source_references is not None and any(
-                source_references[index].get("support_eligibility") != "eligible"
-                or not isinstance(source_references[index].get("review_material"), dict)
-                or not _review_material(source_references[index]["review_material"])[1]
-                for index in refs
+                not _eligible_reference(source_references[index]) for index in refs
             ):
                 raise VisibleSourceClosureWireFailure(
                     "verdict_ref_invalid",

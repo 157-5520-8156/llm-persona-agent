@@ -34,7 +34,13 @@ Public regression uses current Chat LifeIntent through the actual DeepSeek
 adapter with MockTransport, temporary SQLite, real lifecycle choices and the
 ordinary Context/source-table producer. It covers started/completed state,
 future Plan exclusion, exact original values, wrong participant and tampered
-body/status/bindings. It does not claim live-provider, day-open-specific or
+body/status/bindings. Active state uses the same selected world-life item's
+original value hash to ask the existing producer for that complete material.
+Canonical Started-only selection currently resolves through the earlier, weaker
+current_situation projection; its public baseline-only negative is preserved.
+This change does not repair that separate source-selection limitation, which
+requires its producer's owner. Completed state uses its canonical lifecycle ref.
+It does not claim live-provider, day-open-specific or
 whole-Beat semantic qualification. Legacy manual packets and parser calls without
 material tables retain their old bytes and behavior; activity qualification is
 opt-in through the new row contract.
