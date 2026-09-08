@@ -282,7 +282,11 @@ def _proposal(*, request, occurrence, source, candidate, observations) -> Decisi
                         "observations": list(observations),
                         "result_payload": {
                             "object_ref": candidate.result_payload_ref,
-                            "schema_version": "outcome-result.1",
+                            "schema_version": next(
+                                item.result_contract or "outcome-result.1"
+                                for item in occurrence.candidate_outcomes
+                                if item.candidate_result_ref == candidate.candidate_result_ref
+                            ),
                             "payload_hash": (
                                 "sha256:" + candidate.result_payload_hash.removeprefix("sha256:")
                             ),

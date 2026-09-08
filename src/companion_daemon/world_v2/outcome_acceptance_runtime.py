@@ -22,6 +22,9 @@ from .outcome_acceptance_manifest import (
     build_outcome_acceptance_manifest,
     canonical_outcome_acceptance_value_hash,
 )
+from .occurrence_result_content_runtime import (
+    OccurrenceResultContentRuntime, read_world_consequence_candidate,
+)
 from .schemas import CommitResult, ProjectionCursor, TriggerProcess, WorldEvent
 from .sqlite_ledger import SQLiteWorldLedger
 
@@ -315,10 +318,12 @@ class OutcomeAtomicRecorder:
 class OutcomeAcceptanceRuntime:
     """Composition root for the isolated production Outcome acceptance lane."""
 
-    __slots__ = ("ledger", "_reader", "_recorder")
+    __slots__ = ("ledger", "_reader", "_recorder", "_content_store")
 
-    def __init__(self, *, ledger: LedgerPort, batch_issuer: AcceptedLedgerBatchIssuer) -> None:
+    def __init__(self, *, ledger: LedgerPort, batch_issuer: AcceptedLedgerBatchIssuer,
+                 content_store=None) -> None:
         self.ledger = ledger
+        self._content_store = content_store
         self._reader = OutcomeProposalAuthorityReader(ledger=ledger)
         self._recorder = OutcomeAtomicRecorder(proposal_reader=self._reader, batch_issuer=batch_issuer)
 
@@ -351,7 +356,20 @@ class OutcomeAcceptanceRuntime:
             handle=handle, actor=actor, source=source, logical_time=logical_time,
             created_at=created_at, trace_id=trace_id, correlation_id=correlation_id,
         )
-        return self.ledger.commit_accepted(batch, expected_cursor=cursor)
+        proposal = object.__getattribute__(handle, "_PinnedOutcomeProposalAuthorityHandle__proposal")
+        occurrence = next(item for item in self.ledger.project_at(cursor).world_occurrences
+                          if item.occurrence_id == proposal.occurrence_id)
+        selected = next(item for item in occurrence.candidate_outcomes
+                        if item.candidate_result_ref == proposal.candidate_result_ref)
+        if selected.result_contract == "world-consequence.2":
+            read_world_consequence_candidate(content_store=self._content_store, candidate=selected)
+        accepted = self.ledger.commit_accepted(batch, expected_cursor=cursor)
+        if selected.result_contract == "world-consequence.2":
+            published = OccurrenceResultContentRuntime(
+                ledger=self.ledger, content_store=self._content_store,
+            ).materialize(occurrence_id=occurrence.occurrence_id)
+            return published or accepted
+        return accepted
 
     def accept_runtime_owned(self, *, handle: PinnedOutcomeProposalAuthorityHandle,
                              actor: str, source: str) -> CommitResult:

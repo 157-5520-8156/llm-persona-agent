@@ -3891,6 +3891,7 @@ def build_sqlite_world_v2_turn_application(
         outcome_acceptance = OutcomeAcceptanceRuntime(
             ledger=ledger,
             batch_issuer=issuer,
+            content_store=life_content_store,
         )
         outcome_turn = OutcomeDeliberationTurn(
             ledger=ledger,

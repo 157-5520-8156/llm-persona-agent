@@ -215,6 +215,7 @@ class OutcomeProposalCompiler:
         binding = raw["result_payload"]
         if (
             raw["result_id"] != candidate.result_id
+            or binding["schema_version"] != (candidate.result_contract or "outcome-result.1")
             or binding["object_ref"] != candidate.result_payload_ref
             or binding["payload_hash"].removeprefix("sha256:")
             != candidate.result_payload_hash.removeprefix("sha256:")

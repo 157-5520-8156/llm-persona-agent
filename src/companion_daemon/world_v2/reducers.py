@@ -13449,6 +13449,13 @@ def _life_content_recorded(state: ReducerState, event: WorldEvent) -> ReducerSta
             ),
             None,
         )
+        selected = next(
+            (item for item in occurrence.candidate_outcomes if item.result_id == occurrence.result_id),
+            None,
+        ) if occurrence is not None else None
+        result_hash = occurrence.result_payload_hash if occurrence is not None else None
+        if selected is not None and selected.result_contract == "world-consequence.2":
+            result_hash = result_hash.removeprefix("sha256:") if result_hash else None
         if occurrence is None or (
             occurrence.status != "settled"
             or occurrence.entity_revision != payload.source_entity_revision
@@ -13456,7 +13463,7 @@ def _life_content_recorded(state: ReducerState, event: WorldEvent) -> ReducerSta
             or occurrence.settlement_world_revision != payload.source_world_revision
             or occurrence.settlement_payload_hash != payload.source_payload_hash
             or occurrence.result_payload_ref != payload.content_ref
-            or occurrence.result_payload_hash != payload.content_payload_hash
+            or result_hash != payload.content_payload_hash
         ):
             raise ValueError("life content descriptor does not match settled occurrence")
         source_privacy = occurrence.visibility
