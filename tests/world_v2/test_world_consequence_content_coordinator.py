@@ -18,7 +18,7 @@ def _current():
     request = _request()
     body = {"contract": "world-consequence.2", "environment_text": "院内的树枝被冰雹打断。"}
     text = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    value = request.candidate_contents[0].model_dump(mode="json")
+    value = request.candidate_contents[0].model_dump()
     value.update(result_contract="world-consequence.2", text=text,
                  result_payload_hash=life_content_payload_hash(text))
     candidate = OutcomeCandidateContent.model_validate(value)
