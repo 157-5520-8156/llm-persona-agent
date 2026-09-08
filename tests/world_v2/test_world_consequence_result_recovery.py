@@ -5,6 +5,7 @@ Only sidecar/ledger write failures are injected; accepted events are never seede
 """
 
 import asyncio
+from datetime import timedelta
 import json
 
 import pytest
@@ -13,7 +14,7 @@ from companion_daemon.world_v2.errors import ConcurrencyConflict
 from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
 from companion_daemon.world_v2.outcome_acceptance_runtime import OutcomeAcceptanceRuntime
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
-from test_world_stimulus_life_intent import WORLD, _RoleHTTP, _build, _model
+from test_world_stimulus_life_intent import WORLD, _RoleHTTP, _build, _clock, _model
 from test_world_stimulus_life_response import _ResponseHTTP, _settled
 
 
@@ -249,6 +250,11 @@ async def test_isolated_result_io_failure_cannot_call_role_before_publication(
             json.loads(provider.requests[0]["messages"][-1]["content"])["inner_turn"]["purpose"]
             == "outcome_selection"
         )
+        assert any(
+            json.loads(item.audit_json).get("failure_code")
+            == "world_consequence_published_source_unavailable"
+            for item in before.projection.model_result_audits
+        )
     finally:
         await app.aclose()
         await model.aclose()
@@ -263,6 +269,21 @@ async def test_isolated_result_io_failure_cannot_call_role_before_publication(
         published = cold_app.export_replay_evidence()
         _assert_published(path, published.projection, occurrence)
         assert published.projection.experiences == ()
+        pending = next(
+            item
+            for item in published.projection.trigger_processes
+            if item.process_kind == "npc_world_appraisal"
+        )
+        assert pending.claim_lease is not None
+        # The failed preflight is durable under its original claim. Let that
+        # lease expire through the public clock before asking the role again.
+        await cold_app.advance(
+            _clock(
+                "published-result-retry",
+                published.projection.logical_time,
+                pending.claim_lease.expires_at + timedelta(seconds=1),
+            )
+        )
         await cold_app.drain_background_once()
         assert len(cold_provider.requests) == len(cold_provider.stimulus_requests) == 1
         after = cold_app.export_replay_evidence()
