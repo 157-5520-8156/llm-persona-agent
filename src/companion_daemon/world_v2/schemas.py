@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .chat_life_intent_contract import ChatLifeIntentFailure
 from .chat_life_plan_consideration_contract import ChatLifePlanConsideration
+from .character_life_response_contract import CharacterLifeResponseRecordedPayload
 
 from datetime import datetime
 from enum import StrEnum
@@ -2177,7 +2178,31 @@ class ExperienceExecutionReceiptBinding(FrozenModel):
     raw_payload_hash: str = Field(min_length=1)
 
 
-ExperienceSourceBinding = ExperienceOccurrenceSettlementBinding | ExperienceExecutionReceiptBinding
+class ExperienceWorldLifeResponseBinding(FrozenModel):
+    """One experience, with independent World and character authorship proofs."""
+
+    source_kind: Literal["world_life_response"] = "world_life_response"
+    settlement: ExperienceOccurrenceSettlementBinding
+    response_event_ref: str = Field(min_length=1)
+    response_world_revision: int = Field(ge=1)
+    response_payload_hash: str = Field(min_length=64, max_length=64)
+    response: CharacterLifeResponseRecordedPayload
+
+
+ExperienceSourceBinding = (
+    ExperienceOccurrenceSettlementBinding
+    | ExperienceExecutionReceiptBinding
+    | ExperienceWorldLifeResponseBinding
+)
+
+
+def experience_source_identity(binding: ExperienceSourceBinding) -> tuple[str, str]:
+    """A composite cannot duplicate its settlement under another wrapper."""
+    if isinstance(binding, ExperienceWorldLifeResponseBinding):
+        binding = binding.settlement
+    if isinstance(binding, ExperienceOccurrenceSettlementBinding):
+        return (binding.source_kind, binding.authority_event_ref)
+    return (binding.source_kind, binding.receipt_id)
 
 
 class ExperienceValues(FrozenModel):
@@ -2186,10 +2211,8 @@ class ExperienceValues(FrozenModel):
     occurred_from: datetime
     occurred_to: datetime
     participant_refs: tuple[str, ...] = Field(min_length=1)
-    # A2 settlement accepts exactly one authoritative source.  Exposing a
-    # multi-source shape would be misleading because occurrence settlements
-    # are committed one at a time and the acceptance bridge cannot authorize
-    # several future settlement revisions atomically yet.
+    # Exactly one source unit: either legacy authority or one paired World /
+    # character source. A pair is not permission to combine unrelated events.
     source_bindings: tuple[ExperienceSourceBinding, ...] = Field(min_length=1, max_length=1)
     privacy_class: PrivacyClass
 
@@ -2199,12 +2222,7 @@ class ExperienceValues(FrozenModel):
             raise ValueError("experience occurrence window is reversed")
         if len(self.participant_refs) != len(set(self.participant_refs)):
             raise ValueError("experience participant refs must be unique")
-        identities = tuple(
-            (item.source_kind, item.authority_event_ref)
-            if isinstance(item, ExperienceOccurrenceSettlementBinding)
-            else (item.source_kind, item.receipt_id)
-            for item in self.source_bindings
-        )
+        identities = tuple(experience_source_identity(item) for item in self.source_bindings)
         if len(identities) != len(set(identities)):
             raise ValueError("experience source identities must be unique")
         return self
@@ -2233,7 +2251,7 @@ def experience_semantic_fingerprint(
 class ExperienceProjection(FrozenModel):
     experience_id: str = Field(min_length=1)
     entity_revision: Literal[1] = 1
-    authority_contract_version: Literal["experience.1"] = "experience.1"
+    authority_contract_version: Literal["experience.1", "experience.2"] = "experience.1"
     semantic_fingerprint: str = Field(min_length=64, max_length=64)
     values: ExperienceValues
     origin: ExperienceOrigin
@@ -2241,6 +2259,9 @@ class ExperienceProjection(FrozenModel):
 
     @model_validator(mode="after")
     def fingerprint_matches_immutable_authority(self) -> ExperienceProjection:
+        composite = isinstance(self.values.source_bindings[0], ExperienceWorldLifeResponseBinding)
+        if (self.authority_contract_version == "experience.2") != composite:
+            raise ValueError("experience.2 requires exactly the paired world-life response source")
         expected = experience_semantic_fingerprint(
             values=self.values, policy_refs=self.origin.policy_refs
         )

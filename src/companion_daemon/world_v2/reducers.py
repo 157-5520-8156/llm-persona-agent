@@ -4590,8 +4590,7 @@ def _experience_proposal_recorded(
         or payload.policy_refs != proposal.policy_refs
     ):
         raise ValueError("persisted experience proposal body does not match its index")
-    if proposal.policy_refs != INSTALLED_EXPERIENCE_POLICY_REFS:
-        raise ValueError("experience proposal references an uninstalled policy")
+    _validate_experience_policy_and_response(state, event, payload)
     # Proposal evidence is present-tense rationale. Future settlement bindings
     # remain only inside the accepted canonical body until mutation time.
     _validate_evidence_authority(state, proposal.evidence_refs, require_all=True)
@@ -13358,11 +13357,38 @@ def _outcome_proposal_recorded(state: ReducerState, event: WorldEvent) -> Reduce
     )
 
 
+def _validate_experience_policy_and_response(state, event, payload) -> None:
+    from .character_life_experience_contract import (
+        CHARACTER_LIFE_EXPERIENCE_POLICY_REFS,
+        derive_character_life_experience_summary,
+    )
+    from .character_life_experience_runtime import (
+        character_life_experience_evidence,
+        validate_character_life_experience_binding,
+    )
+    from .schemas import ExperienceWorldLifeResponseBinding
+
+    binding = payload.experience.values.source_bindings[0]
+    if not isinstance(binding, ExperienceWorldLifeResponseBinding):
+        if payload.policy_refs != INSTALLED_EXPERIENCE_POLICY_REFS:
+            raise ValueError("experience references an uninstalled policy")
+        return
+    if payload.policy_refs != CHARACTER_LIFE_EXPERIENCE_POLICY_REFS:
+        raise ValueError("paired experience requires its installed response policy")
+    if event.actor != binding.response.actor_ref:
+        raise ValueError("paired experience actor differs from its character response")
+    validate_character_life_experience_binding(state=state, world_id=event.world_id, binding=binding)
+    if payload.evidence_refs != character_life_experience_evidence(binding):
+        raise ValueError("paired experience requires exact World and character evidence")
+    summary = derive_character_life_experience_summary(binding).canonical_json()
+    if hashlib.sha256(summary.encode()).hexdigest() != payload.experience.values.summary_payload_hash:
+        raise ValueError("paired experience summary hash differs from its two authors")
+
+
 def _experience_committed(state: ReducerState, event: WorldEvent) -> ReducerState:
     logical_time = _require_life_time(state, event)
     payload = ExperienceCommittedPayload.model_validate_json(event.payload_json)
-    if payload.policy_refs != INSTALLED_EXPERIENCE_POLICY_REFS:
-        raise ValueError("experience commit references an uninstalled policy")
+    _validate_experience_policy_and_response(state, event, payload)
     if payload.experience.origin.accepted_event_ref != event.event_id:
         raise ValueError("experience origin does not identify its accepted mutation event")
     if any(item.transition_id == payload.transition_id for item in state.experience_transitions):

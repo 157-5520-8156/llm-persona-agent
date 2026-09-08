@@ -24,6 +24,8 @@ from .schemas import (
     ExperienceExecutionReceiptBinding,
     ExperienceOccurrenceSettlementBinding,
     ExperienceProjection,
+    ExperienceWorldLifeResponseBinding,
+    experience_source_identity,
     FactProjection,
     LegacyExperienceProjection,
     CommittedWorldEventRef,
@@ -530,23 +532,24 @@ def commit_experience(
         payload, experiences, facts, occurrences, plans
     )
     identities = {
-        (item.source_kind, item.authority_event_ref)
-        if isinstance(item, ExperienceOccurrenceSettlementBinding)
-        else (item.source_kind, item.receipt_id)
+        experience_source_identity(item)
         for candidate in experiences
         if isinstance(candidate, ExperienceProjection)
         for item in candidate.values.source_bindings
     }
     proposed_identities = {
-        (item.source_kind, item.authority_event_ref)
-        if isinstance(item, ExperienceOccurrenceSettlementBinding)
-        else (item.source_kind, item.receipt_id)
+        experience_source_identity(item)
         for item in experience.values.source_bindings
     }
     if identities & proposed_identities:
         raise ValueError("experience source authority is already committed elsewhere")
     participants: set[str] = set()
     for binding in experience.values.source_bindings:
+        composite = isinstance(binding, ExperienceWorldLifeResponseBinding)
+        if composite:
+            if _PRIVACY_RANK[experience.values.privacy_class] < _PRIVACY_RANK["private"]:
+                raise ValueError("character response experience must remain private")
+            binding = binding.settlement
         if isinstance(binding, ExperienceOccurrenceSettlementBinding):
             committed = next(
                 (
@@ -580,6 +583,10 @@ def commit_experience(
                 or occurrence.settlement_payload_hash != binding.authority_payload_hash
             ):
                 raise ValueError("experience occurrence binding does not resolve exact settlement authority")
+            selected = next((item for item in occurrence.candidate_outcomes
+                             if item.candidate_result_ref == occurrence.settled_outcome_ref), None)
+            if (selected is not None and selected.result_contract == "world-consequence.2") != composite:
+                raise ValueError("experience consequence contract requires its exact response source")
             if (
                 occurrence.activated_at is None
                 or occurrence.settled_at is None
