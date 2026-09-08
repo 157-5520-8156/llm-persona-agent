@@ -1216,6 +1216,11 @@ withhold 来源不进入新角色回应或经历。上层还修正了读取失�
 各分支的 82/115/140 等组与本组重叠，不累加为额外验收。修改过的全部 Python 文件
 通过 Ruff，diff-check 通过。
 
+固定 `76830ed4` 的 `.2` reader/retention 边界完成独立 Spec/Standards 只读复核，
+未确认 P1/P2；该次复核排除随后根侧 `dc00ddd7` 的 resolver/production 窄接线、
+默认协议切换和旧 `.1`。缺正文的 WorldLife 保留真实结算元数据且 content=None，
+没有把它当成可读叙事；此行为与经历域的 unavailable 状态不是同一项契约。
+
 正常 CLI **不带 --limit** 的完整 120 场景通过，manifest 仍为
 `b405ce3beb2d6f4ab83b21011341fbe26192bbd24cb2dab3fb94979468c565c9`。
 新 `output/adaptive-companionship-2026-09-08/baseline-world-consequence-experience-100.json`
