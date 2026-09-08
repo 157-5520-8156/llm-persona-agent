@@ -30,6 +30,8 @@ from .life_development_draft import (
 from .life_review_identity import (
     GENERAL_EVIDENCE_PACKET_CONTRACT as _GENERAL_EVIDENCE_PACKET_CONTRACT,
     NOVEL_EVIDENCE_PACKET_CONTRACT as _NOVEL_EVIDENCE_PACKET_CONTRACT,
+    WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT,
+    WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT,
 )
 from .schema_core import FrozenModel
 from .schemas import ProjectionCursor, WorldEvent
@@ -37,6 +39,7 @@ from .schemas import ProjectionCursor, WorldEvent
 
 _REVIEW_CONTRACT = "life-development-source-closure-review.1"
 _NOVEL_ORIGIN_CONTRACT = "life-development-novel-origin-review.5"
+_WORLD_CONSEQUENCE_REVIEW_CONTRACT = "life-development-novel-origin-review.6"
 _MANIFEST_BINDING_CONTRACT = "life-development-review-manifest-binding.2"
 _EXISTING_WORLD_EVIDENCE_CONTRACT = (
     "life-development-novel-origin-existing-world-evidence.1"
@@ -418,6 +421,26 @@ class LifeDevelopmentNovelOriginReview(FrozenModel):
         return self
 
 
+class LifeDevelopmentWorldConsequenceFinding(LifeDevelopmentOutcomePrerequisiteFinding):
+    """An exact authored field in the new carrier, never a legacy text alias."""
+
+    prose_path: str = Field(
+        pattern=(
+            r"^outcomes\.(0|[1-9][0-9]*)\.world_consequence\."
+            r"(environment_text|authorized_attempt_result\.text)$"
+        ),
+        max_length=256,
+    )
+
+
+class LifeDevelopmentWorldConsequenceReview(LifeDevelopmentNovelOriginReview):
+    """The existing focused verdict with explicitly versioned consequence paths."""
+
+    unsupported_outcome_prerequisites: tuple[LifeDevelopmentWorldConsequenceFinding, ...] = Field(
+        default=(), max_length=8
+    )
+
+
 class LifeDevelopmentSourceClosureError(ValueError):
     def __init__(
         self,
@@ -658,7 +681,7 @@ def parse_life_development_novel_origin_review(
         review_label="novel-origin review",
     )
     try:
-        review = LifeDevelopmentNovelOriginReview.model_validate_json(
+        review = _novel_review_model(draft).model_validate_json(
             json.dumps(review_value, ensure_ascii=False, separators=(",", ":"))
         )
     except ValueError as exc:
@@ -748,10 +771,7 @@ def parse_life_development_novel_origin_review(
                 "unknown_novel_origin_place_fragment",
                 "focused critic place fragment is absent from exact place summaries",
             )
-    outcome_text = {
-        f"outcomes.{index}.text": outcome.text
-        for index, outcome in enumerate(draft.outcomes)
-    }
+    outcome_text = _outcome_prose_coordinates(draft)
     for finding in review.unsupported_outcome_prerequisites:
         text = outcome_text.get(finding.prose_path)
         if text is None:
@@ -797,6 +817,71 @@ def parse_life_development_novel_origin_review(
                 "focused critic fragment is absent from the exact direction field",
             )
     return review
+
+
+def _uses_world_consequence(draft: LifeDevelopmentPossibilityDraft) -> bool:
+    return any(outcome.world_consequence is not None for outcome in draft.outcomes)
+
+
+def _novel_review_model(draft: LifeDevelopmentPossibilityDraft):
+    return (
+        LifeDevelopmentWorldConsequenceReview
+        if _uses_world_consequence(draft)
+        else LifeDevelopmentNovelOriginReview
+    )
+
+
+def _novel_review_contract(draft: LifeDevelopmentPossibilityDraft) -> str:
+    return (
+        _WORLD_CONSEQUENCE_REVIEW_CONTRACT
+        if _uses_world_consequence(draft)
+        else _NOVEL_ORIGIN_CONTRACT
+    )
+
+
+def _outcome_prose_coordinates(draft: LifeDevelopmentPossibilityDraft) -> dict[str, str]:
+    return {
+        f"outcomes.{index}.{path}": text
+        for index, outcome in enumerate(draft.outcomes)
+        for path, text in outcome.prose_fields.items()
+    }
+
+
+def _outcome_prose_surface(outcome: LifeDevelopmentOutcomeDraft) -> dict[str, object]:
+    if outcome.world_consequence is None:
+        return {"text": outcome.text}
+    return {"world_consequence": outcome.world_consequence.model_dump(mode="json")}
+
+
+def _required_execution_authority(value: dict[str, object] | None) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError("world-consequence review requires the original execution_authority")
+    return value
+
+
+def _world_consequence_actor_boundary() -> str:
+    return (
+        "Inspect every world_consequence.environment_text and optional "
+        "world_consequence.authorized_attempt_result.text field. Environment prose "
+        "may create external changes, never a new companion action, choice or "
+        "subjective response. An authorized_attempt_result may describe only the "
+        "objective result of the exact earlier attempt in execution_authority and "
+        "its matching source-bound material. This packet pairs the original authority "
+        "with execution_materials; each readable item needs its matching binding. "
+        "An execution_binding cannot authorize "
+        "a new companion action, extend the attempt, or grant motivation, thoughts "
+        "or feelings. Its exact attempt may have a candidate objective success or "
+        "failure, but an ActivityStarted is not prior proof of success. Opaque refs "
+        "and hashes prove no unstated action. A future Plan, "
+        "sibling candidate or later outcome-token selection cannot supply missing "
+        "pre-author execution authority. The Character Model authors any new "
+        "response separately. Report unauthorized companion action, choice or "
+        "interior as character_interior_authorship in unsupported_outcome_prerequisites. "
+        "Use the exact supplied outcomes.N.world_consequence.environment_text or "
+        "outcomes.N.world_consequence.authorized_attempt_result.text path and a "
+        "verbatim fragment from that one field. A structured label never proves "
+        "that its prose respects this boundary. "
+    )
 
 
 def _dynamic_life_direction_coordinates(
@@ -870,10 +955,7 @@ def _typed_location_prose_coordinates(
 
     return {
         **_general_source_prose_coordinates(draft),
-        **{
-            f"outcomes.{index}.text": outcome.text
-            for index, outcome in enumerate(draft.outcomes)
-        },
+        **_outcome_prose_coordinates(draft),
     }
 
 
@@ -1295,9 +1377,7 @@ def _general_reviewed_surface(
         "authored_subject_ref": draft.authored_subject_ref,
         "premise": draft.premise,
         "premise_claim_refs": list(draft.premise_claim_refs),
-        "claim_declarations": [
-            item.model_dump(mode="json") for item in draft.claim_declarations
-        ],
+        "claim_declarations": [item.model_dump(mode="json") for item in draft.claim_declarations],
         "location_ref": draft.location_ref,
         "location_capability_ref": draft.location_capability_ref,
         "entity_refs": list(draft.entity_refs),
@@ -1306,18 +1386,13 @@ def _general_reviewed_surface(
                 "experienced_by_ref": outcome.experienced_by_ref,
                 # Outcome text is visible here only for typed-location
                 # consistency; it has no general undeclared-fact coordinate.
-                **(
-                    {"text": outcome.text}
-                    if draft.location_ref is not None
-                    else {}
-                ),
+                **(_outcome_prose_surface(outcome) if draft.location_ref is not None else {}),
                 "claim_refs": list(outcome.claim_refs),
                 "provisional_npcs": [
                     npc.model_dump(mode="json") for npc in outcome.provisional_npcs
                 ],
                 "provisional_places": [
-                    place.model_dump(mode="json")
-                    for place in outcome.provisional_places
+                    place.model_dump(mode="json") for place in outcome.provisional_places
                 ],
                 "objective_biographical_transition": (
                     outcome.objective_biographical_transition.model_dump(mode="json")
@@ -1344,13 +1419,11 @@ def _novel_origin_reviewed_surface(
         "authored_subject_ref": draft.authored_subject_ref,
         "premise": draft.premise,
         "premise_claim_refs": list(draft.premise_claim_refs),
-        "claim_declarations": [
-            item.model_dump(mode="json") for item in draft.claim_declarations
-        ],
+        "claim_declarations": [item.model_dump(mode="json") for item in draft.claim_declarations],
         "entity_refs": list(draft.entity_refs),
         "outcomes": [
             {
-                "text": outcome.text,
+                **_outcome_prose_surface(outcome),
                 "user_channel_completion": outcome.user_channel_completion,
                 "dynamic_life_direction": (
                     outcome.dynamic_life_direction.model_dump(mode="json")
@@ -1439,9 +1512,11 @@ def life_development_source_closure_messages(
     manifest: LifeDevelopmentCapabilityManifest,
     draft: LifeDevelopmentPossibilityDraft,
     cited_events: tuple[WorldEvent, ...],
+    execution_authority: dict[str, object] | None = None,
 ) -> list[dict[str, str]]:
     """Compile the independent reviewer request from the exact pinned inputs."""
 
+    current = _uses_world_consequence(draft)
     existing_claim_refs = {
         ref
         for claim in draft.claim_declarations
@@ -1504,9 +1579,15 @@ def life_development_source_closure_messages(
         "undeclared_fact_fragments. A separate focused critic reviews only imported "
         "current/prior prerequisites, retroactive history, and completed "
         "user-channel acts and companion interior authorship in outcome text. "
-        "Objective candidate actions, NPC talk and world consequences remain "
-        "unsettled; the focused critic checks their fact and actor authority. "
-        "If a typed location_ref is "
+        + (
+            "Only environmental changes and results of exactly bound earlier attempts "
+            "are candidate World consequences; the focused critic checks whether "
+            "their prose invents any new companion action, choice or response. "
+            if current
+            else "Objective candidate actions, NPC talk and world consequences remain "
+            "unsettled; the focused critic checks their fact and actor authority. "
+        )
+        + "If a typed location_ref is "
         "present, it must be the execution coordinate of the proposed Plan or "
         "occurrence; other places may appear only as explicit background, origin, or "
         "hypothetical alternatives, not as a hidden destination. A proposal-scoped "
@@ -1535,12 +1616,20 @@ def life_development_source_closure_messages(
             "claims. Opaque ids and broad event types add no unstated facts."
         ),
     }
+    if current:
+        pinned_source_evidence["execution_authority"] = _required_execution_authority(
+            execution_authority
+        )
     request = {
         "review_contract": _REVIEW_CONTRACT,
         "reviewed_surface": reviewed_surface,
         "pinned_source_evidence": pinned_source_evidence,
         "evidence_packet_binding": _evidence_packet_binding(
-            contract=_GENERAL_EVIDENCE_PACKET_CONTRACT,
+            contract=(
+                WORLD_CONSEQUENCE_GENERAL_EVIDENCE_PACKET_CONTRACT
+                if current
+                else _GENERAL_EVIDENCE_PACKET_CONTRACT
+            ),
             reviewed_surface=reviewed_surface,
             pinned_authority=pinned_source_evidence,
         ),
@@ -1555,7 +1644,9 @@ def life_development_source_closure_messages(
                 "focused_novel_origin_critic": (
                     "imported_prerequisites_history_user_channel_and_companion_interior"
                 ),
-                "branch_internal_objective_candidates": "allowed",
+                "branch_internal_objective_candidates": (
+                    "environment_and_exact_prior_attempt_result_only" if current else "allowed"
+                ),
                 "companion_interior_authorship": "reserved_for_character_model",
                 "completed_user_channel_act": "not_allowed_without_action_receipt",
             },
@@ -1661,11 +1752,14 @@ def life_development_novel_origin_messages(
     context: dict[str, object],
     manifest: LifeDevelopmentCapabilityManifest,
     draft: LifeDevelopmentPossibilityDraft,
+    execution_authority: dict[str, object] | None = None,
 ) -> list[dict[str, str]]:
     """Compile an independent hard-boundary review of novel fact origin."""
 
     profile = background_context_profile_for_purpose("life_development_novel_origin_review")
     context = slice_background_capsule_context(context, profile)
+    current = _uses_world_consequence(draft)
+    outcome_path = "world_consequence field" if current else "outcomes.N.text"
     system = (
         "You are an independent focused novel-origin critic, not the general "
         "source reviewer, World Author, or Character Model. Review only hard truth "
@@ -1699,23 +1793,29 @@ def life_development_novel_origin_messages(
         "existing-world authority, or an earlier event in this same candidate "
         "that actually creates them; an unselected sibling outcome is not evidence. "
         "Inspect these embedded prerequisites before deciding that an entire "
-        "outcome is branch-internal. Objective candidate actions, NPC conversation, "
-        "photography and world consequences remain unsettled candidates; that "
-        "freedom does not validate unrelated embedded facts. The World Author "
-        "cannot assign the companion new feelings, motives, thoughts, intentions "
-        "or subjective reactions in an outcome, even conditionally or in a "
-        "character_choice branch. Selecting a supplied outcome token is not "
-        "authorship of her inner response; the Character Model chooses and "
-        "appraises separately. Exact source-bound historical interior may be "
-        "referenced as context, never rewritten as a new reaction. Put a new "
-        "interior authorship finding on unsupported_outcome_prerequisites, using "
-        "the exact outcomes.N.text path, character_interior_authorship violation "
-        "kind and a verbatim fragment from that outcome. A completed "
+        "outcome is branch-internal. "
+        + (
+            _world_consequence_actor_boundary()
+            if current
+            else "Objective candidate actions, NPC conversation, "
+            "photography and world consequences remain unsettled candidates; that "
+            "freedom does not validate unrelated embedded facts. The World Author "
+            "cannot assign the companion new feelings, motives, thoughts, intentions "
+            "or subjective reactions in an outcome, even conditionally or in a "
+            "character_choice branch. Selecting a supplied outcome token is not "
+            "authorship of her inner response; the Character Model chooses and "
+            "appraises separately. Exact source-bound historical interior may be "
+            "referenced as context, never rewritten as a new reaction. Put a new "
+            "interior authorship finding on unsupported_outcome_prerequisites, using "
+            "the exact outcomes.N.text path, character_interior_authorship violation "
+            "kind and a verbatim fragment from that outcome. "
+        )
+        + "A completed "
         "user-channel act in that text is different: sending him "
         "a message or photo, his receiving it, or his reply through that channel is "
         "Action-ledger territory and is not a branch-internal life event. Put that "
         "finding only on unsupported_outcome_prerequisites for the exact "
-        "outcomes.N.text path with violation kind completed_user_channel_act "
+        f"{outcome_path} path with violation kind completed_user_channel_act "
         "and a verbatim fragment from that outcome. Do not put "
         "completed_user_channel_act on unsupported_claims, NPCs, places, or "
         "objective transitions; claim summaries do not contain the send. "
@@ -1743,7 +1843,7 @@ def life_development_novel_origin_messages(
         "verbatim fragments from that claim summary; each provisional NPC or place uses its "
         "exact local_ref and verbatim fragments from its summary; each objective "
         "transition uses its exact supplied summary path and verbatim fragments; each imported "
-        "outcome prerequisite uses an exact supplied outcomes.N.text prose_path and "
+        f"outcome prerequisite uses an exact supplied {outcome_path} prose_path and "
         "verbatim fragments from that one outcome. Each dynamic_life_direction is "
         "a proposed durable world effect: inspect its entire object, including "
         "summary, tags, supersession and duration, against that exact branch and "
@@ -1766,19 +1866,23 @@ def life_development_novel_origin_messages(
             review_lane="focused",
         ),
     }
+    if current:
+        pinned_authority["execution_authority"] = _required_execution_authority(execution_authority)
     request = {
-        "review_contract": _NOVEL_ORIGIN_CONTRACT,
+        "review_contract": _novel_review_contract(draft),
         "reviewed_surface": reviewed_surface,
         "pinned_authority": pinned_authority,
         "evidence_packet_binding": _evidence_packet_binding(
-            contract=_NOVEL_EVIDENCE_PACKET_CONTRACT,
+            contract=(
+                WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT
+                if current
+                else _NOVEL_EVIDENCE_PACKET_CONTRACT
+            ),
             reviewed_surface=reviewed_surface,
             pinned_authority=pinned_authority,
         ),
         "review_dimensions": {
-            "novel_claim_origin": (
-                "no_prior_relationship_shared_history_or_completed_experience"
-            ),
+            "novel_claim_origin": ("no_prior_relationship_shared_history_or_completed_experience"),
             "provisional_npc_origin": "new_person_or_new_relationship_start_only",
             "provisional_place_origin": "new_place_without_invented_prior_history_only",
             "objective_biographical_transition": (
@@ -1792,17 +1896,15 @@ def life_development_novel_origin_messages(
                 "coordinates": "exact_summary_or_tag_field_paths",
             },
             "outcome_prerequisites": {
-                "reject": (
-                    "imported_current_or_prior_fact_or_retroactive_history_outside_branch"
-                ),
+                "reject": ("imported_current_or_prior_fact_or_retroactive_history_outside_branch"),
                 "allow": (
-                    "objective_candidate_actions_npc_talk_and_world_consequences"
+                    "environment_and_exact_prior_attempt_result_only"
+                    if current
+                    else "objective_candidate_actions_npc_talk_and_world_consequences"
                 ),
                 "character_interior": "cannot_author_new_state_or_reaction",
                 "historical_interior": "exact_source_bound_context_only_not_new_reaction",
-                "reject_unbound": (
-                    "completed_user_channel_act_message_or_media_delivered_to_him"
-                ),
+                "reject_unbound": ("completed_user_channel_act_message_or_media_delivered_to_him"),
             },
             "current_premise_coverage": {
                 "surface": "complete_premise_independent_of_claim_declarations",
@@ -1814,8 +1916,8 @@ def life_development_novel_origin_messages(
         },
         "parser_coordinate_catalog": _novel_origin_coordinate_catalog(draft),
         "output_contract": _review_output_contract(
-            contract=_NOVEL_ORIGIN_CONTRACT,
-            review_model=LifeDevelopmentNovelOriginReview,
+            contract=_novel_review_contract(draft),
+            review_model=_novel_review_model(draft),
         ),
     }
     return [
@@ -1847,16 +1949,23 @@ def life_development_novel_origin_correction_message(
                     "detail": error.detail,
                     "violations": list(error.violations),
                 },
-                "review_contract": _NOVEL_ORIGIN_CONTRACT,
-                "parser_coordinate_catalog": _novel_origin_coordinate_catalog(
-                    draft
-                ),
+                "review_contract": _novel_review_contract(draft),
+                "parser_coordinate_catalog": _novel_origin_coordinate_catalog(draft),
                 "output_contract": _review_output_contract(
-                    contract=_NOVEL_ORIGIN_CONTRACT,
-                    review_model=LifeDevelopmentNovelOriginReview,
+                    contract=_novel_review_contract(draft),
+                    review_model=_novel_review_model(draft),
                 ),
                 "instruction": (
-                    "Return one complete replacement review for the identical draft "
+                    (
+                        "Return one complete replacement review for the identical draft "
+                        "and pinned authority, using only exact coordinates from this catalog. "
+                        + _world_consequence_actor_boundary()
+                        + "Preserve all other focused truth-origin boundaries: premise, claims, "
+                        "NPCs, places, objective transitions, dynamic life directions and "
+                        "completed user-channel acts. Do not judge or rewrite the story."
+                    )
+                    if _uses_world_consequence(draft)
+                    else "Return one complete replacement review for the identical draft "
                     "and pinned authority. Preserve the focused truth-origin boundary, "
                     "use only exact parser-verifiable coordinates from the supplied "
                     "catalogue, and do not judge or change the story. Objective "
@@ -1895,23 +2004,12 @@ def _novel_origin_coordinate_catalog(
             if item.scope == "novel_world_generation"
         ],
         "provisional_npc_refs": sorted(
-            {
-                npc.local_ref
-                for outcome in draft.outcomes
-                for npc in outcome.provisional_npcs
-            }
+            {npc.local_ref for outcome in draft.outcomes for npc in outcome.provisional_npcs}
         ),
         "provisional_place_refs": sorted(
-            {
-                place.local_ref
-                for outcome in draft.outcomes
-                for place in outcome.provisional_places
-            }
+            {place.local_ref for outcome in draft.outcomes for place in outcome.provisional_places}
         ),
-        "outcome_prerequisite_paths": [
-            f"outcomes.{index}.text"
-            for index, _outcome in enumerate(draft.outcomes)
-        ],
+        "outcome_prerequisite_paths": list(_outcome_prose_coordinates(draft)),
         "objective_transition_paths": [
             f"outcomes.{index}.objective_biographical_transition.summary"
             for index, outcome in enumerate(draft.outcomes)
