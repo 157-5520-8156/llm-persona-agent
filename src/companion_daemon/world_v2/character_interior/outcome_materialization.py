@@ -283,7 +283,9 @@ def _proposal(*, request, occurrence, source, candidate, observations) -> Decisi
                         "result_payload": {
                             "object_ref": candidate.result_payload_ref,
                             "schema_version": "outcome-result.1",
-                            "payload_hash": candidate.result_payload_hash,
+                            "payload_hash": (
+                                "sha256:" + candidate.result_payload_hash.removeprefix("sha256:")
+                            ),
                         },
                     },
                 ),
