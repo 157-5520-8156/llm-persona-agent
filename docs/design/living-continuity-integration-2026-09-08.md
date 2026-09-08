@@ -95,3 +95,22 @@ composer/protocol 共 **41 passed / 9.88s**，日志
 
 本轮以上工作均为离线临时账本/MockTransport，无新增真实供应商支出；此前费用
 封存记录保持。每月约 100 元、长期真人感以及已知正文漏报仍需后续实际链验证。
+
+## `fa5906f4` 正式合并门与新增反例
+
+相同 91 文件的完整合并回归为 **1784 passed / 214.27s**，日志
+`/tmp/girl-agent-integrated-fa5906f4.log`，清单
+`/tmp/girl-agent-integrated-fa5906f4.files.json`。正常 CLI 未带 `--limit` 的全部
+120 场景通过，输出 `baseline-fa5906f4.json`，文件 SHA-256 为
+`74c9a0b8d233c5a7c23805a838d31d4317a96b73d44419824b2adbf51daec06e`，
+manifest 为上述 `.101` 的 `96a7d21d…a4ea796`。重新逐项比较仍只有 120 个
+`replay_hash` 变化。此次更改文件 Ruff 和 diff 检查通过。
+
+独立代码复核随后发现一个尚未由这些绿门覆盖的真实生产者组合：selective Recall
+会将首轮 local prefetch 升级为后续 semantic prefetch，两次实际 presentation
+因此可以不同。当前恢复器仍要求所有 presentation 等于最终 snapshot 的一份
+prefetch，可能误拒该合法链。Core 原 Recall checkpoint 持有 initial_snapshot，
+但最终 prepared `.1` 覆盖后只剩其 id/hash 和 presentation 列表，初始完整来源
+已丢失。下一窄片将从原 Core 值保存显式新版 initial_snapshot 证据并分别核对，
+不能把旧字典自洽当作重签依据。该反例还未关闭；Goal 保持进行中，绿门不等于
+恢复完备或生产资格。
