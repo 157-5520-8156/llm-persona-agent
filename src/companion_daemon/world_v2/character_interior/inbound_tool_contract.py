@@ -923,6 +923,30 @@ def _unique_atomic_v2_object(pairs: list[tuple[str, object]]) -> dict[str, objec
     return value
 
 
+def _strict_envelope_field_failure(
+    value: dict[str, object], expected_fields: set[str], *, location: str
+) -> str:
+    """Describe only the rejected field inventory, never model-authored values."""
+
+    missing = sorted(expected_fields - value.keys())
+    extra = sorted(value.keys() - expected_fields)
+    # Unknown field names are untrusted text. Keep them JSON-quoted, ASCII,
+    # and bounded even when a provider returns many very large object keys.
+    shown = extra[:8]
+
+    def literal(items: list[str]) -> str:
+        return json.dumps(items, ensure_ascii=True, separators=(",", ":"))
+
+    return (
+        f"DeepSeek strict transport envelope shape invalid at {location}: "
+        f"missing_fields={literal(missing)}; "
+        f"extra_fields={literal([name[:48] for name in shown])}; "
+        f"extra_fields_omitted={len(extra) - len(shown)}; "
+        f"extra_fields_truncated={sum(len(name) > 48 for name in shown)}. "
+        "Only transport shape was checked; no character choice was evaluated."
+    )
+
+
 @dataclass(frozen=True)
 class InboundToolContract:
     """One provider-standard function and lossless decoder for one phase."""
@@ -953,8 +977,16 @@ class InboundToolContract:
         if not isinstance(value, dict):
             raise ValueError("forced transport must be one JSON object")
         if self.wrapped_result_fields is not None:
-            if set(value) != {"result"} or not isinstance(value["result"], dict):
-                raise ValueError("atomic v2 transport requires the exact result object")
+            if set(value) != {"result"}:
+                raise ValueError(
+                    _strict_envelope_field_failure(value, {"result"}, location="$")
+                )
+            if not isinstance(value["result"], dict):
+                raise ValueError(
+                    "DeepSeek strict transport envelope shape invalid at $.result: "
+                    "expected object. Only transport shape was checked; "
+                    "no character choice was evaluated."
+                )
             value = value["result"]
         kind = value.get("result_kind")
         if self.identity.schema_dialect == "deepseek-strict":
@@ -968,8 +1000,16 @@ class InboundToolContract:
                 expected_fields = set(self.wrapped_result_fields)
             else:
                 expected_fields = set(properties) if isinstance(properties, dict) else None
-            if expected_fields is None or set(value) != expected_fields:
-                raise ValueError("DeepSeek strict transport envelope is incomplete")
+            location = "$.result" if self.wrapped_result_fields is not None else "$"
+            if expected_fields is None:
+                raise ValueError(
+                    f"DeepSeek strict transport envelope shape invalid at {location}: "
+                    "expected field inventory is unavailable"
+                )
+            if set(value) != expected_fields:
+                raise ValueError(
+                    _strict_envelope_field_failure(value, expected_fields, location=location)
+                )
             value = {
                 key: item
                 for key, item in value.items()
