@@ -31,6 +31,7 @@ from .life_content_store import (
     life_content_payload_hash,
 )
 from .schema_core import FrozenModel, PrivacyClass
+from .world_consequence_contract import WorldConsequenceV2
 from .schemas import (
     CommitResult,
     DynamicLifeArcContextDescriptor,
@@ -54,6 +55,9 @@ class OutcomeCandidateContent(FrozenModel):
     result_id: str = Field(min_length=1)
     result_payload_ref: str = Field(min_length=1)
     result_payload_hash: str = Field(min_length=1)
+    result_contract: Literal["world-consequence.2"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     privacy_class: PrivacyClass
     content_ref: str = Field(min_length=1)
     text: str = Field(min_length=1, max_length=12_000)
@@ -69,6 +73,23 @@ class OutcomeCandidateContent(FrozenModel):
     ] = ()
     dynamic_life_arc_context: DynamicLifeArcContextDescriptor | None = None
 
+    @model_validator(mode="after")
+    def current_result_is_exact_structured_content(self):
+        if self.result_contract is not None:
+            consequence = WorldConsequenceV2.model_validate_json(self.text)
+            exact = json.dumps(
+                consequence.model_dump(mode="json"), ensure_ascii=False,
+                sort_keys=True, separators=(",", ":"),
+            )
+            if self.text != exact or self.result_payload_hash != self.content_payload_hash:
+                raise ValueError("world consequence result must bind exact canonical content")
+            if consequence.authorized_attempt_result is not None:
+                # This public environmental writer has no role execution or
+                # original-author-request verifier. Do not let a marker bypass
+                # the Life Development author acceptance seam.
+                raise ValueError("world consequence attempt requires original author authority")
+        return self
+
     @property
     def content_payload_hash(self) -> str:
         return life_content_payload_hash(self.text)
@@ -79,6 +100,7 @@ class OutcomeCandidateContent(FrozenModel):
             result_id=self.result_id,
             result_payload_ref=self.result_payload_ref,
             result_payload_hash=self.result_payload_hash,
+            result_contract=self.result_contract,
             privacy_class=self.privacy_class,
             content_ref=self.content_ref,
             content_payload_hash=self.content_payload_hash,
@@ -188,6 +210,7 @@ class OccurrenceContentCoordinator:
         discover without the failed occurrence descriptor.
         """
 
+        request = OccurrenceContentCommitRequest.model_validate_json(request.model_dump_json())
         if request.world_id != self._ledger.world_id:
             raise ValueError("occurrence content request belongs to another world")
         for candidate in request.candidate_contents:
