@@ -13,7 +13,7 @@ import pytest
 from companion_daemon.llm import DeepSeekChatModel
 from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
-from test_life_development_runtime import WORLD_ID, _seed_clock
+from test_life_development_runtime import WORLD_ID, _SequenceModel, _novel_origin_review, _seed_clock
 from test_world_author_request_audit import (
     _advance,
     _audited,
@@ -21,6 +21,13 @@ from test_world_author_request_audit import (
     _json,
     _runtime,
 )
+from test_world_consequence_producer import (
+    _assert_general_audit,
+    _assert_occurrence,
+    _assert_review_input,
+    _draft,
+)
+from test_world_consequence_producer import _runtime as _producer_runtime
 
 
 class _AuthorHTTP:
@@ -132,6 +139,80 @@ async def test_structure_correction_preserves_authority_and_cold_request_bytes(
             new_metadata, new_audits = _audited(ledger)
             assert tuple(item.audit_json for item in new_audits) == old_audits
             assert new_metadata.get("request_bindings") == old_bindings
+        finally:
+            await cold_model.aclose()
+    finally:
+        await model.aclose()
+        store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_source_correction_preserves_initial_authority_and_reviews_the_complete_new_draft(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    path = tmp_path / "source.sqlite"
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    corrected = _draft(wake)
+    rejected = json.loads(_json(corrected))
+    fragment = "她及时收回了手账。"
+    rejected["outcomes"][0]["world_consequence"]["environment_text"] += fragment
+    finding = {
+        "prose_path": "outcomes.0.world_consequence.environment_text",
+        "violation_kinds": ["character_interior_authorship"],
+        "exact_fragments": [fragment],
+    }
+    wire = _AuthorHTTP(store, ("{", _json(rejected), _json(corrected)))
+    model = _model(wire)
+    general = _SequenceModel(model="fixture:general-no-call", outputs=())
+    focused = _SequenceModel(
+        model="fixture:focused",
+        outputs=(
+            _novel_origin_review(
+                decision="unsupported", unsupported_outcome_prerequisites=(finding,)
+            ),
+            _novel_origin_review(decision="supported"),
+        ),
+    )
+    try:
+        result = await _advance(
+            _producer_runtime(ledger, store, wake, model, general, focused), wake
+        )
+        _assert_occurrence(ledger, store, result, corrected)
+        assert len(wire.requests) == 3
+        assert focused.calls == 2 and general.calls == 0
+        initial, shape, source = [request["messages"] for request in wire.requests]
+        assert shape[:-1] == initial
+        assert source[:-2] == shape
+        assert source[-2] == {"role": "assistant", "content": _json(rejected)}
+        correction = json.loads(source[-1]["content"])
+        _assert_authority_locator(source, correction)
+        assert correction["source_closure_failure"]["unsupported_outcome_prerequisites"] == [finding]
+        original_user = json.loads(initial[1]["content"])
+        assert correction["capability_manifest_hash"] == original_user["capability_manifest"]["manifest_hash"]
+        for request, stored in zip(wire.requests, wire.stored, strict=True):
+            assert stored is not None and stored.text == _json(request["messages"])
+        for index, draft in enumerate((rejected, corrected)):
+            _assert_general_audit(ledger, result, original_user, draft)
+            _assert_review_input(focused.messages[index], original_user, draft, focused=True)
+        old_audits = ledger.project().model_result_audits
+        store.close()
+        ledger.close()
+        ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+        store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
+        cold_wire = _AuthorHTTP(store, ())
+        cold_model = _model(cold_wire)
+        try:
+            repeated = await _advance(
+                _producer_runtime(ledger, store, wake, cold_model, general, focused), wake
+            )
+            assert repeated.proposal_event_ref == result.proposal_event_ref
+            assert cold_wire.requests == []
+            assert focused.calls == 2
+            assert ledger.project().model_result_audits == old_audits
         finally:
             await cold_model.aclose()
     finally:

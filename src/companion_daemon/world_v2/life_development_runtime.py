@@ -5743,6 +5743,11 @@ class LifeDevelopmentRuntime:
                         ),
                     },
                 ]
+                if manifest.outcome_contract == "world-consequence.2":
+                    messages[-1] = _world_consequence_reselection_message(
+                        original_messages=messages[:-1],
+                        correction=json.loads(messages[-1]["content"]),
+                    )
         raise AssertionError("World Author retry loop did not terminate")
 
     def _character_choice_capability(
@@ -7293,6 +7298,25 @@ _WORLD_AUTHOR_COMPLIANT_PROPOSE_EXAMPLE = {
         },
     ],
 }
+
+
+def _world_consequence_reselection_message(
+    *, original_messages: list[dict[str, str]], correction: dict[str, object],
+) -> dict[str, str]:
+    """Keep the original readable authority in place, without another full copy."""
+    fields = {
+        "capability_manifest": "capability_manifest",
+        "hard_boundary_contract": "cross_field_authority",
+        "output_contract": "output_contract",
+        "timing_coordinates": "timing_coordinates",
+    }
+    payload = {key: value for key, value in correction.items() if key not in fields}
+    payload["original_authority"] = {
+        "message_index": 1,
+        "request_hash": _messages_hash(original_messages[:2]),
+        "fields": fields,
+    }
+    return {"role": "user", "content": canonical_json(payload)}
 
 
 def _world_author_reselection_instruction(*, failure_code: str) -> str:
