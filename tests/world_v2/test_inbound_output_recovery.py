@@ -7,6 +7,7 @@ import sqlite3
 import asyncio
 import hashlib
 import sys
+import threading
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -48,6 +49,7 @@ class _AtomicHTTP:
     def __init__(self, *, recall=False):
         self.chat_requests = []
         self.recall = recall
+        self.recall_at = 1
 
     def __call__(self, request):
         body = json.loads(request.content)
@@ -84,7 +86,7 @@ class _AtomicHTTP:
                     ensure_ascii=False,
                 ),
             }
-        if self.recall and len(self.chat_requests) == 1:
+        if self.recall and len(self.chat_requests) == self.recall_at:
             recall = {
                 "result_kind": "recall",
                 "private_turn_state": {
@@ -102,6 +104,46 @@ class _AtomicHTTP:
             else:
                 authored = {**dict.fromkeys(properties), **recall}
         return public._http_result(body, authored)
+
+
+class _DelayedSemanticEmbedding:
+    version = "inbound-recovery-semantic.1"
+    dimensions = 2
+    dense_match_threshold_bp = 9_000
+
+    def __init__(self):
+        self.started = threading.Event()
+        self.release = threading.Event()
+        self.finished = threading.Event()
+
+    def embed(self, texts):
+        if any(text.startswith("用户刚说：直说的词面线索\n") for text in texts):
+            self.started.set()
+            if not self.release.wait(3):
+                raise RuntimeError("fixture semantic release missing")
+            self.finished.set()
+        return tuple((1.0, 0.0) for _ in texts)
+
+
+class _SemanticRecallHTTP(_AtomicHTTP):
+    def __init__(self, semantic):
+        super().__init__(recall=True)
+        self.recall_at = 1000
+        self.semantic = semantic
+        self.health = None
+
+    async def __call__(self, request):
+        response = super().__call__(request)
+        if len(self.chat_requests) == self.recall_at:
+            assert self.semantic.started.is_set()
+            self.semantic.release.set()
+            assert await asyncio.to_thread(self.semantic.finished.wait, 1)
+            for _ in range(100):
+                if self.health()["last_prefetch_status"] == "ready":
+                    break
+                await asyncio.sleep(0.01)
+            assert self.health()["last_prefetch_status"] == "ready"
+        return response
 
 
 def _terminals(path):
@@ -166,6 +208,7 @@ def _replace_checkpoint(path, row, *, terminal, prepared):
         "prefetch_subprocess",
         "prefetch_missing_subprocess",
         "prefetch_changed_subprocess",
+        "upgrade_subprocess",
         "legacy_same_pin",
         *(
             "record_" + name
@@ -189,8 +232,21 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
     path = tmp_path / "world.sqlite"
     usage_path = tmp_path / "usage.sqlite"
     usage = WorldV2UsageStore(path=str(usage_path), monthly_budget_cny=1, daily_budget_cny=1)
-    prefetch_case = window.startswith("prefetch_")
-    requests = _AtomicHTTP(recall=window.startswith("recall_"))
+    upgrade_case = window.startswith("upgrade_")
+    prefetch_case = window.startswith("prefetch_") or upgrade_case
+    semantic = _DelayedSemanticEmbedding() if upgrade_case else None
+    requests = (
+        _SemanticRecallHTTP(semantic)
+        if upgrade_case
+        else _AtomicHTTP(recall=window.startswith("recall_"))
+    )
+    if upgrade_case:
+        build = public.build_sqlite_world_v2_turn_application
+        monkeypatch.setattr(
+            public,
+            "build_sqlite_world_v2_turn_application",
+            lambda **kwargs: build(**kwargs, semantic_recall_embedding=semantic),
+        )
     model = DeepSeekChatModel(
         "offline-fixture",
         "https://fixture.invalid",
@@ -239,7 +295,7 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
         platform="test",
         platform_user_id="user.1",
         platform_message_id="message:durable-output",
-        text="我想和你聊一下。",
+        text="直说的词面线索" if upgrade_case else "我想和你聊一下。",
         observed_at=public.NOW,
         trace_id="trace:durable-output",
     )
@@ -250,8 +306,16 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
         from dataclasses import replace
 
         await app.respond(
-            replace(inbound, platform_message_id="message:warmup", trace_id="trace:warmup")
+            replace(
+                inbound,
+                platform_message_id="message:warmup",
+                trace_id="trace:warmup",
+                text="这里保留直说的词面线索。",
+            )
         )
+    if upgrade_case:
+        requests.recall_at = len(requests.chat_requests) + 1
+        requests.health = app.dashboard_semantic_recall_health
     prior_terminals = _terminals(path)
     prior_projection = app.export_replay_evidence().projection
     monkeypatch.setattr(ProposalAuditRecorder, "record", stop_before_record)
@@ -279,6 +343,14 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
         assert decision["contract"] == "character-interior-inbound-turn-decision.2"
         assert decision["output_record"]["output"]["raw_proposal"] == original_output.raw_proposal
         assert original_output.winning_model_call_id is not None
+        if upgrade_case:
+            presented = original_output.presented_prefetch_traces
+            assert tuple(item.phase for item in presented) == ("initial", "recall_followup")
+            assert (
+                presented[0].trace.audit.embedding_version
+                != presented[1].trace.audit.embedding_version
+            )
+            assert presented[1].trace.audit.embedding_version.endswith(semantic.version)
     finally:
         await app.aclose()
         stores[-1].close()
@@ -366,7 +438,7 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
         assert result["http_calls"] == result["recall_calls"] == 0
         if window == "recall_tampered_subprocess":
             assert result["error"] == "inbound_output_record.invalid_original_checkpoint"
-        elif prefetch_case and window != "prefetch_subprocess":
+        elif window in {"prefetch_missing_subprocess", "prefetch_changed_subprocess"}:
             assert result["error"] == "inbound_output_record.prefetch_source_mismatch"
         else:
             assert result["error"] is None
