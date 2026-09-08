@@ -10774,6 +10774,12 @@ def _chat_life_plan_consideration_recorded(state, event):
     return reduce_consideration(state, event)
 
 
+def _character_life_response_recorded(state, event):
+    from .character_life_response_runtime import reduce_character_life_response
+
+    return reduce_character_life_response(state, event)
+
+
 def _chat_life_intent_acceptance_failed(state, event):
     from .chat_life_intent_retry import reduce_acceptance_failure
     return reduce_acceptance_failure(state, event)
@@ -15372,6 +15378,10 @@ _EVENTS = {
             "InteractionFactTechnicalFailureRecorded",
             RevisionClass.DELIBERATION,
             _interaction_fact_technical_failure_recorded,
+        ),
+        EventDefinition(
+            "CharacterLifeResponseRecorded", RevisionClass.WORLD,
+            _character_life_response_recorded,
         ),
         EventDefinition(
             "ChatLifePlanConsiderationRecorded", RevisionClass.DELIBERATION,

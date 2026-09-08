@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .chat_life_intent_contract import ChatLifeIntentFailure
 from .chat_life_plan_consideration_contract import ChatLifePlanConsideration
+from .character_life_response_contract import CharacterLifeResponseRecordedPayload
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -462,6 +463,7 @@ _PAYLOAD_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "ContextualLifeTechnicalFailureRecorded": (ContextualLifeTechnicalFailureRecordedPayload),
         "ChatLifeIntentAcceptanceFailed": ChatLifeIntentFailure,
         "ChatLifePlanConsiderationRecorded": ChatLifePlanConsideration,
+        "CharacterLifeResponseRecorded": CharacterLifeResponseRecordedPayload,
         "ContextualLifeSourceDispositionRecorded": (ContextualLifeSourceDispositionRecordedPayload),
         "InteractionFactDecisionRecorded": InteractionFactDecisionRecordedPayload,
         "FactMemoryDecisionRecorded": FactMemoryDecisionRecordedPayload,
@@ -619,6 +621,7 @@ _IDEMPOTENCY_IDENTITIES: Mapping[str, str] = MappingProxyType(
         "ContextualLifeTechnicalFailureRecorded": ("world_id+lane+source_event_ref+retry_ordinal"),
         "ChatLifeIntentAcceptanceFailed": "world_id+proposal_event_ref+change_id+retry_ordinal",
         "ChatLifePlanConsiderationRecorded": "world_id+opportunity.plan_event_ref+opportunity.attempt_ordinal",
+        "CharacterLifeResponseRecorded": "world_id+actor_ref+origin.source_event_ref",
         "ContextualLifeSourceDispositionRecorded": ("world_id+source_event_ref+disposition"),
         "InteractionFactDecisionRecorded": ("world_id+trigger_id+fact_context_hash+decision_id"),
         "FactMemoryDecisionRecorded": ("world_id+trigger_id+fact_authority_event_ref+decision_id"),
@@ -1090,6 +1093,13 @@ _CONTRACTS: Mapping[str, EventContract] = MappingProxyType(
                 ),
                 evidence_types=("model_failure", "retry_schedule"),
                 successors=("TriggerProcessReclaimed",),
+            ),
+            _contract(
+                "CharacterLifeResponseRecorded", "character_life_response", "world",
+                "CharacterLifeResponseRecordedPayload",
+                allowed_predecessors=("WorldOccurrenceSettled", "ProposalRecorded"),
+                evidence_types=("settled_world_event", "role_decision"),
+                successors=("ExperienceCommitted",),
             ),
             _contract(
                 "ChatLifePlanConsiderationRecorded", "activity_lifecycle", "deliberation",

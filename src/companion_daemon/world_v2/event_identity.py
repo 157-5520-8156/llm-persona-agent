@@ -371,6 +371,8 @@ def _life_identity_components(
         )
     if event_type == "ChatLifePlanConsiderationRecorded":
         return world_id, payload.get("opportunity", {}).get("plan_event_ref"), payload.get("opportunity", {}).get("attempt_ordinal")
+    if event_type == "CharacterLifeResponseRecorded":
+        return world_id, payload.get("actor_ref"), payload.get("origin", {}).get("source_event_ref")
     if event_type == "ChatLifeIntentAcceptanceFailed":
         return world_id, payload.get("proposal_event_ref"), payload.get("change_id"), payload.get("retry_ordinal")
     if event_type == "ContextualLifeTechnicalFailureRecorded":
