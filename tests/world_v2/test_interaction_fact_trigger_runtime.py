@@ -725,7 +725,10 @@ async def test_fact_decision_cas_loser_executes_the_ledger_winner(
     assert ledger.project().facts == ()
     projection = ledger.project()
     trigger_id = projection.trigger_processes[0].trigger_id
-    fact_context_hash = hashlib.sha256(b"[]").hexdigest()
+    fact_context_hash = hashlib.sha256(
+        json.dumps({"contract": "interaction-fact-source-context.2", "facts": []},
+                   sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
     recorded = ledger.lookup_event_commit(
         interaction_fact_decision_event_id(
             trigger_id=trigger_id,
@@ -1315,7 +1318,7 @@ async def test_withdrawal_rejoins_durable_model_decision_after_crash(
         if item.source_evidence_ref == second.observation_id
     )
     projection = ledger.project()
-    fact_context = runtime._single_fact_authority_context(
+    fact_context = runtime._fact_authority_context(
         projection,
         subject_ref=second.actor,
     )

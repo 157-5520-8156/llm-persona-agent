@@ -12,6 +12,7 @@ from pydantic import Field, model_validator
 from pydantic_core import to_jsonable_python
 
 from .schemas import EvidenceRef, FactProjection, FrozenModel
+from .interaction_fact_decision import FactMemberWithdrawalBinding
 
 
 class FactAuthorizedMutationPayload(FrozenModel):
@@ -31,12 +32,21 @@ class FactChangedPayload(FactAuthorizedMutationPayload):
     fact_before: FactProjection | None
     fact_after: FactProjection
     compensates_transition_id: str | None = None
+    member_withdrawal: FactMemberWithdrawalBinding | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def mutation_is_complete(self) -> FactChangedPayload:
         if self.accepted_change_hash != fact_mutation_hash(self):
             raise ValueError("accepted change hash does not match fact transition")
         after = self.fact_after
+        if self.member_withdrawal is not None and (
+            self.operation != "withdraw"
+            or self.fact_before is None
+            or self.fact_before.values.cardinality != "set"
+        ):
+            raise ValueError("Fact member withdrawal binding is only valid for a set withdrawal")
         if (
             after.origin.change_id != self.change_id
             or after.origin.transition_id != self.transition_id

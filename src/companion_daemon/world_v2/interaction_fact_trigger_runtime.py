@@ -22,6 +22,7 @@ from .epoch_migration_source import is_epoch_genesis_fact
 from .event_identity import domain_idempotency_key
 from .fact_accepted_contracts import rehydrate_fact_commit_intent_v2_json
 from .fact_correction_lifecycle import FactCorrectionLifecycle
+from .fact_events import FactChangedPayload
 from .fact_draft_adapter import (
     FactDraftTechnicalFailure,
     FactObservationSource,
@@ -59,6 +60,9 @@ from .fact_trigger import (
     interaction_fact_failure_event_id,
 )
 from .interaction_fact_decision import (
+    FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION,
+    require_fact_member_withdrawal_decision,
+    interaction_fact_source_context,
     canonical_interaction_fact_decision_json,
     interaction_fact_decision_hash,
 )
@@ -180,12 +184,17 @@ class InteractionFactTriggerRuntime:
         if source_commit is None:
             raise ValueError("interaction fact source event is no longer available")
         source_world_revision = source_commit[1].world_revision
-        current_single_fact_sources = await self._current_single_fact_sources(
+        current_single_fact_sources = await self._current_fact_sources(
             before,
             subject_ref=observation.actor,
         )
+        current_set_fact_sources = await self._current_fact_sources(
+            before,
+            subject_ref=observation.actor,
+            cardinality="set",
+        )
         fact_context_hash = _digest(
-            self._single_fact_authority_context(
+            self._fact_authority_context(
                 before,
                 subject_ref=observation.actor,
             )
@@ -197,9 +206,7 @@ class InteractionFactTriggerRuntime:
             subject_ref=observation.actor,
         )
         decision_recorded = recorded_decision is not None
-        proposal = (
-            None if recorded_decision is _NO_FACT_DECISION else recorded_decision
-        )
+        proposal = None if recorded_decision is _NO_FACT_DECISION else recorded_decision
         if not decision_recorded:
             # Historical pre-decision-audit retain proposals remain
             # replayable only while the exact single-Fact authority visible at
@@ -221,6 +228,7 @@ class InteractionFactTriggerRuntime:
                     primary_source_world_revision=source_world_revision,
                     projection=before,
                     current_single_fact_sources=current_single_fact_sources,
+                    current_set_fact_sources=current_set_fact_sources,
                     fact_context_hash=fact_context_hash,
                 )
                 if batch_decision is None:
@@ -230,6 +238,7 @@ class InteractionFactTriggerRuntime:
                         source_world_revision=source_world_revision,
                         evaluated_world_revision=cursor.world_revision,
                         current_single_fact_sources=current_single_fact_sources,
+                        current_set_fact_sources=current_set_fact_sources,
                     )
                     recorded_decision = await self._record_decision(
                         process=active,
@@ -237,16 +246,13 @@ class InteractionFactTriggerRuntime:
                         observation=observation,
                         evaluated_cursor=cursor,
                         current_single_fact_sources=current_single_fact_sources,
+                        current_set_fact_sources=current_set_fact_sources,
                         fact_context_hash=fact_context_hash,
                         decision=proposal,
                     )
                 else:
                     recorded_decision = batch_decision
-                proposal = (
-                    None
-                    if recorded_decision is _NO_FACT_DECISION
-                    else recorded_decision
-                )
+                proposal = None if recorded_decision is _NO_FACT_DECISION else recorded_decision
                 before = await self._project()
                 cursor = self._cursor(before)
                 acceptance_logical_time = before.logical_time or source_event.logical_time
@@ -268,7 +274,7 @@ class InteractionFactTriggerRuntime:
                 work_status="technical_failure",
             )
         if fact_context_hash != _digest(
-            self._single_fact_authority_context(
+            self._fact_authority_context(
                 before,
                 subject_ref=observation.actor,
             )
@@ -276,9 +282,7 @@ class InteractionFactTriggerRuntime:
             # The immutable result remains auditable under its old Context
             # epoch. A later wake will ask the role model again against the
             # new exact Fact authority instead of rebinding old semantics.
-            raise ConcurrencyConflict(
-                "interaction Fact decision Context changed before effect"
-            )
+            raise ConcurrencyConflict("interaction Fact decision Context changed before effect")
         if (
             isinstance(proposal, FactCommitProposalEnvelopeV2)
             and proposal.evaluated_world_revision != cursor.world_revision
@@ -288,17 +292,40 @@ class InteractionFactTriggerRuntime:
                 evaluated_world_revision=cursor.world_revision,
             )
         if isinstance(proposal, FactWithdrawalDraft):
+            member_decision = None
+            if proposal.target_fact_ref is not None:
+                member_decision = await self._existing_decision_payload(
+                    trigger_id=active.trigger_id,
+                    source_event_ref=source_event.event_id,
+                    fact_context_hash=fact_context_hash,
+                    subject_ref=observation.actor,
+                )
+                if member_decision is None:
+                    raise ValueError("Fact member withdrawal has no durable model decision")
             withdrawn_fact = next(
                 (
                     item
                     for item in before.facts
                     if item.values.status == "active"
-                    and item.values.cardinality == "single"
+                    and (
+                        item.fact_id == proposal.target_fact_ref
+                        if proposal.target_fact_ref is not None
+                        else item.values.cardinality == "single"
+                    )
                     and item.values.subject_ref == observation.actor
                     and item.values.predicate_code == proposal.predicate_code
                 ),
                 None,
             )
+            if proposal.target_binding is not None and withdrawn_fact is not None:
+                if member_decision is None or not self._batch_decision_is_current(
+                    before,
+                    payload=member_decision,
+                    subject_ref=observation.actor,
+                ):
+                    raise ConcurrencyConflict(
+                        "Fact withdrawal target head changed after its model decision"
+                    )
             if withdrawn_fact is None:
                 await self._complete(
                     process=active,
@@ -327,6 +354,7 @@ class InteractionFactTriggerRuntime:
                     source_event.logical_time,
                     acceptance_logical_time,
                 ),
+                member_decision=member_decision,
             )
             cursor = self._cursor(await self._project())
             await self._complete(
@@ -372,15 +400,12 @@ class InteractionFactTriggerRuntime:
         if duplicate_fact is not None:
             if (
                 self._memory_lifecycle is not None
-                and duplicate_fact.values.assertion_binding.source_ref
-                == observation.observation_id
+                and duplicate_fact.values.assertion_binding.source_ref == observation.observation_id
             ):
                 try:
                     await self._materialize_memory(
                         process=active,
-                        accepted_event_ids=(
-                            duplicate_fact.origin.accepted_event_ref,
-                        ),
+                        accepted_event_ids=(duplicate_fact.origin.accepted_event_ref,),
                         observation=observation,
                         source_event=source_event,
                     )
@@ -449,9 +474,7 @@ class InteractionFactTriggerRuntime:
                     world_id=self._ledger.world_id,
                 )
             ):
-                raise ValueError(
-                    "context-bound interaction Fact proposal identity collision"
-                )
+                raise ValueError("context-bound interaction Fact proposal identity collision")
         if existing_audit is None:
             audit_event = build_fact_commit_proposal_recorded_event_v2(
                 proposal=proposal,
@@ -666,6 +689,7 @@ class InteractionFactTriggerRuntime:
         primary_source_world_revision: int,
         projection,
         current_single_fact_sources: tuple[dict[str, object], ...],
+        current_set_fact_sources: tuple[dict[str, object], ...] = (),
         fact_context_hash: str,
     ) -> FactCommitProposalEnvelopeV2 | FactWithdrawalDraft | object | None:
         """Claim and decide nearby source-bound Fact opportunities together.
@@ -703,8 +727,7 @@ class InteractionFactTriggerRuntime:
                 candidate_observation.actor != primary_observation.actor
                 or abs(
                     (
-                        candidate_observation.logical_time
-                        - primary_observation.logical_time
+                        candidate_observation.logical_time - primary_observation.logical_time
                     ).total_seconds()
                 )
                 > 30
@@ -715,10 +738,7 @@ class InteractionFactTriggerRuntime:
                 at = working.logical_time or candidate_event.logical_time
                 if (
                     candidate.claim_lease is None
-                    or (
-                        candidate_failure is not None
-                        and at < candidate_failure.next_retry_at
-                    )
+                    or (candidate_failure is not None and at < candidate_failure.next_retry_at)
                     or (
                         candidate.claim_lease.owner_id != self._owner_id
                         and at < candidate.claim_lease.expires_at
@@ -771,6 +791,7 @@ class InteractionFactTriggerRuntime:
                 ),
                 "evaluated_cursor": evaluated_cursor.model_dump(mode="json"),
                 "current_single_fact_sources": current_single_fact_sources,
+                "current_set_fact_sources": current_set_fact_sources,
                 "fact_context_hash": fact_context_hash,
             }
         )
@@ -779,6 +800,7 @@ class InteractionFactTriggerRuntime:
                 sources=batch_sources,
                 evaluated_world_revision=evaluated_cursor.world_revision,
                 current_single_fact_sources=current_single_fact_sources,
+                current_set_fact_sources=current_set_fact_sources,
             )
         except FactDraftTechnicalFailure as failure:
             logger.exception(
@@ -834,10 +856,7 @@ class InteractionFactTriggerRuntime:
         trigger_ids = {member.process.trigger_id for member in members}
         for _attempt in range(8):
             projection = await self._project_at(commit_cursor)
-            recorded_at = (
-                projection.logical_time
-                or members[0].source.event.logical_time
-            )
+            recorded_at = projection.logical_time or members[0].source.event.logical_time
             events = tuple(
                 self._decision_event(
                     process=member.process,
@@ -856,8 +875,7 @@ class InteractionFactTriggerRuntime:
                 await self._commit_at_cursor(
                     events,
                     cursor=commit_cursor,
-                    commit_id="commit:interaction-fact:decision-batch:"
-                    + request_hash,
+                    commit_id="commit:interaction-fact:decision-batch:" + request_hash,
                 )
                 return
             except ConcurrencyConflict:
@@ -870,9 +888,7 @@ class InteractionFactTriggerRuntime:
                 if existing_ids == trigger_ids:
                     return
                 if existing_ids:
-                    raise ConcurrencyConflict(
-                        "interaction Fact batch decision commit was partial"
-                    )
+                    raise ConcurrencyConflict("interaction Fact batch decision commit was partial")
                 active_by_id = {
                     item.trigger_id: item
                     for item in latest.trigger_processes
@@ -881,19 +897,15 @@ class InteractionFactTriggerRuntime:
                 if (
                     len(active_by_id) != len(members)
                     or any(
-                        active_by_id[member.process.trigger_id].state
-                        != "claimed"
-                        or active_by_id[member.process.trigger_id].claim_lease
-                        is None
+                        active_by_id[member.process.trigger_id].state != "claimed"
+                        or active_by_id[member.process.trigger_id].claim_lease is None
                         or member.process.claim_lease is None
-                        or active_by_id[
-                            member.process.trigger_id
-                        ].claim_lease.attempt_id
+                        or active_by_id[member.process.trigger_id].claim_lease.attempt_id
                         != member.process.claim_lease.attempt_id
                         for member in members
                     )
                     or _digest(
-                        self._single_fact_authority_context(
+                        self._fact_authority_context(
                             latest,
                             subject_ref=subject_ref,
                         )
@@ -904,9 +916,7 @@ class InteractionFactTriggerRuntime:
                         "interaction Fact batch Context changed before recording"
                     )
                 commit_cursor = self._cursor(latest)
-        raise ConcurrencyConflict(
-            "interaction Fact batch decision could not join a stable cursor"
-        )
+        raise ConcurrencyConflict("interaction Fact batch decision could not join a stable cursor")
 
     async def _technical_failure(
         self, process: TriggerProcess
@@ -1126,7 +1136,9 @@ class InteractionFactTriggerRuntime:
             # be reconstructed safely enough to reuse its semantic result.
             return None
         audited = await self._project_at(self._cursor_from_commit(stored[1]))
-        if fact_context_hash != _digest(
+        if _digest(
+            self._single_fact_authority_context(projection, subject_ref=subject_ref)
+        ) != _digest(
             self._single_fact_authority_context(
                 audited,
                 subject_ref=subject_ref,
@@ -1142,12 +1154,14 @@ class InteractionFactTriggerRuntime:
         source_event_ref: str,
         fact_context_hash: str,
         subject_ref: str,
+        exact_only: bool = False,
     ):
         payload = await self._existing_decision_payload(
             trigger_id=trigger_id,
             source_event_ref=source_event_ref,
             fact_context_hash=fact_context_hash,
             subject_ref=subject_ref,
+            exact_only=exact_only,
         )
         if payload is None:
             return None
@@ -1171,6 +1185,7 @@ class InteractionFactTriggerRuntime:
         source_event_ref: str,
         fact_context_hash: str,
         subject_ref: str,
+        exact_only: bool = False,
     ) -> InteractionFactDecisionRecordedPayload | None:
         stored = await self._lookup_event_commit(
             interaction_fact_decision_event_id(
@@ -1179,46 +1194,81 @@ class InteractionFactTriggerRuntime:
             )
         )
         if stored is None:
+            if exact_only:
+                return None
             projection = await self._project()
-            candidates = tuple(
-                item
-                for item in projection.interaction_fact_decisions
-                if item.trigger_id == trigger_id
-                and item.source_event_ref == source_event_ref
-                and item.batch_size > 1
+            # .3 used only the single-Fact domain. Rejoin its immutable result
+            # only at that exact original head, never relabel it as .4.
+            legacy_hash = _digest(
+                self._single_fact_authority_context(projection, subject_ref=subject_ref)
             )
-            if len(candidates) > 1:
-                raise ValueError(
-                    "interaction Fact trigger has multiple batch decisions"
+            legacy = await self._lookup_event_commit(
+                interaction_fact_decision_event_id(
+                    trigger_id=trigger_id,
+                    fact_context_hash=legacy_hash,
                 )
-            if not candidates:
-                return None
-            payload = candidates[0]
-            # Do not reconstruct the decision cursor.  After epoch-continuity
-            # and relationship-ladder changes, historical replay of
-            # WorldStarted no longer byte-matches the Fact dumps hashed into
-            # the original decision, and a full replay also stalls the
-            # scheduler.  Live slot currency is the reclaim gate.
-            if not self._batch_decision_is_current(
-                projection,
-                payload=payload,
-                subject_ref=subject_ref,
-            ):
-                return None
-            return payload
+            )
+            if legacy is not None:
+                candidate = InteractionFactDecisionRecordedPayload.model_validate_json(
+                    legacy[0].payload_json
+                )
+                if (
+                    legacy[0].event_type == "InteractionFactDecisionRecorded"
+                    and candidate.adapter_version == "fact-observation-draft.3"
+                    and candidate.trigger_id == trigger_id
+                    and candidate.source_event_ref == source_event_ref
+                    and candidate.fact_context_hash == legacy_hash
+                    and self._legacy_decision_shape(candidate)
+                ):
+                    return candidate
+            candidates = []
+            for item in projection.interaction_fact_decisions:
+                if item.trigger_id != trigger_id or item.source_event_ref != source_event_ref:
+                    continue
+                member = (
+                    item.adapter_version == FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION
+                    and item.decision_kind == "withdraw"
+                    and "target_fact_ref" in json.loads(item.decision_json)
+                )
+                if not (item.batch_size > 1 or member):
+                    continue
+                if self._batch_decision_is_current(
+                    projection, payload=item, subject_ref=subject_ref
+                ) or (
+                    member
+                    and await self._member_withdrawal_was_applied(
+                        projection, item, subject_ref=subject_ref
+                    )
+                ):
+                    candidates.append(item)
+            if len(candidates) > 1:
+                raise ValueError("interaction Fact trigger has multiple current durable decisions")
+            return candidates[0] if candidates else None
         event, _commit = stored
         if event.event_type != "InteractionFactDecisionRecorded":
             raise ValueError("interaction Fact decision identity resolved to another event")
-        payload = InteractionFactDecisionRecordedPayload.model_validate_json(
-            event.payload_json
-        )
+        payload = InteractionFactDecisionRecordedPayload.model_validate_json(event.payload_json)
         if (
             payload.trigger_id != trigger_id
             or payload.source_event_ref != source_event_ref
             or payload.fact_context_hash != fact_context_hash
         ):
             raise ValueError("interaction Fact decision does not bind its source")
+        if (
+            payload.adapter_version != FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION
+            and not self._legacy_decision_shape(payload)
+        ):
+            raise ValueError("legacy Fact decision cannot acquire member withdrawal authority")
         return payload
+
+    @staticmethod
+    def _legacy_decision_shape(payload: InteractionFactDecisionRecordedPayload) -> bool:
+        return payload.decision_kind != "withdraw" or set(json.loads(payload.decision_json)) == {
+            "predicate_code",
+            "assertion_source_ref",
+            "confidence_bp",
+            "brief_rationale",
+        }
 
     @staticmethod
     def _batch_decision_is_current(
@@ -1234,9 +1284,39 @@ class InteractionFactTriggerRuntime:
         this member still wins and forces fresh role-model evaluation.
         """
 
+        decision = json.loads(payload.decision_json)
+        if payload.decision_kind == "withdraw" and "target_fact_ref" in decision:
+            if payload.adapter_version != FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION:
+                return False
+            target = next(
+                (
+                    fact
+                    for fact in projection.facts
+                    if fact.fact_id == decision["target_fact_ref"]
+                    and fact.values.subject_ref == subject_ref
+                ),
+                None,
+            )
+            if target is None:
+                return False
+            if target.values.status != "active":
+                return False
+            try:
+                require_fact_member_withdrawal_decision(
+                    payload,
+                    before=target,
+                    source_observation_ref=payload.source_observation_ref,
+                    source_event_ref=payload.source_event_ref,
+                    committed_world_event_refs=projection.committed_world_event_refs,
+                    message_observations=projection.message_observations,
+                )
+            except ValueError:
+                return False
+            return True
+        if not InteractionFactTriggerRuntime._legacy_decision_shape(payload):
+            return False
         if payload.decision_kind == "no_change":
             return True
-        decision = json.loads(payload.decision_json)
         if payload.decision_kind == "withdraw":
             predicate = decision.get("predicate_code")
         else:
@@ -1269,8 +1349,7 @@ class InteractionFactTriggerRuntime:
                 (
                     item
                     for item in projection.message_observations
-                    if item.observation_id
-                    == fact.values.assertion_binding.source_ref
+                    if item.observation_id == fact.values.assertion_binding.source_ref
                 ),
                 None,
             )
@@ -1281,6 +1360,49 @@ class InteractionFactTriggerRuntime:
             if authority.world_revision > source.world_revision:
                 return False
         return True
+
+    async def _member_withdrawal_was_applied(
+        self, projection, payload, *, subject_ref: str
+    ) -> bool:
+        draft = FactWithdrawalDraft.model_validate_json(payload.decision_json)
+        target = next(
+            (
+                fact
+                for fact in projection.facts
+                if fact.fact_id == draft.target_fact_ref
+                and fact.values.subject_ref == subject_ref
+                and fact.values.status == "withdrawn"
+            ),
+            None,
+        )
+        if target is None:
+            return False
+        stored = await self._lookup_event_commit(target.origin.accepted_event_ref)
+        if stored is None or stored[0].event_type != "FactWithdrawn":
+            return False
+        mutation = FactChangedPayload.model_validate_json(stored[0].payload_json)
+        binding = mutation.member_withdrawal
+        if (
+            mutation.fact_after != target
+            or mutation.fact_before is None
+            or binding is None
+            or binding.decision_id != payload.decision_id
+            or binding.decision_hash != payload.decision_hash
+        ):
+            return False
+        require_fact_member_withdrawal_decision(
+            payload,
+            before=mutation.fact_before,
+            source_observation_ref=payload.source_observation_ref,
+            source_event_ref=payload.source_event_ref,
+            committed_world_event_refs=projection.committed_world_event_refs,
+            message_observations=projection.message_observations,
+        )
+        return True
+
+    @staticmethod
+    def _fact_authority_context(projection, *, subject_ref: str):
+        return interaction_fact_source_context(projection.facts, subject_ref=subject_ref)
 
     @staticmethod
     def _single_fact_authority_context(
@@ -1383,6 +1505,7 @@ class InteractionFactTriggerRuntime:
         observation: Observation,
         evaluated_cursor: ProjectionCursor,
         current_single_fact_sources: tuple[dict[str, object], ...],
+        current_set_fact_sources: tuple[dict[str, object], ...] = (),
         fact_context_hash: str,
         decision,
         commit_cursor: ProjectionCursor | None = None,
@@ -1399,6 +1522,7 @@ class InteractionFactTriggerRuntime:
                     "source_payload_hash": source_event.payload_hash,
                     "evaluated_cursor": evaluated_cursor.model_dump(mode="json"),
                     "current_single_fact_sources": current_single_fact_sources,
+                    "current_set_fact_sources": current_set_fact_sources,
                     "fact_context_hash": fact_context_hash,
                 }
             )
@@ -1431,6 +1555,7 @@ class InteractionFactTriggerRuntime:
                     source_event_ref=source_event.event_id,
                     fact_context_hash=fact_context_hash,
                     subject_ref=observation.actor,
+                    exact_only=True,
                 )
                 if existing is not None:
                     return existing
@@ -1447,10 +1572,9 @@ class InteractionFactTriggerRuntime:
                     active is None
                     or active.state != "claimed"
                     or active.claim_lease is None
-                    or active.claim_lease.attempt_id
-                    != process.claim_lease.attempt_id
+                    or active.claim_lease.attempt_id != process.claim_lease.attempt_id
                     or _digest(
-                        self._single_fact_authority_context(
+                        self._fact_authority_context(
                             latest,
                             subject_ref=observation.actor,
                         )
@@ -1463,9 +1587,7 @@ class InteractionFactTriggerRuntime:
                 commit_cursor = self._cursor(latest)
                 continue
             return _NO_FACT_DECISION if decision is None else decision
-        raise ConcurrencyConflict(
-            "interaction Fact decision could not join a stable ledger cursor"
-        )
+        raise ConcurrencyConflict("interaction Fact decision could not join a stable ledger cursor")
 
     def _decision_event(
         self,
@@ -2072,11 +2194,12 @@ class InteractionFactTriggerRuntime:
     async def _lookup_event_commit(self, event_id: str):
         return await asyncio.to_thread(self._ledger.lookup_event_commit, event_id)
 
-    async def _current_single_fact_sources(
+    async def _current_fact_sources(
         self,
         projection,
         *,
         subject_ref: str,
+        cardinality: str = "single",
     ) -> tuple[dict[str, object], ...]:
         """Expose exact old source prose so the model, not slot code, judges updates."""
 
@@ -2086,7 +2209,9 @@ class InteractionFactTriggerRuntime:
                 if (
                     len(output) >= 16
                     or fact.values.status != "active"
-                    or fact.values.cardinality != "single"
+                    or fact.values.cardinality != cardinality
+                    or (cardinality == "set" and fact.values.privacy_class == "withhold")
+                    or (cardinality == "set" and fact.origin.policy_refs != ("policy:fact-commit.2",))
                     or fact.values.subject_ref != subject_ref
                 ):
                     continue
@@ -2122,8 +2247,26 @@ class InteractionFactTriggerRuntime:
                     continue
                 if old_observation.observation_id != binding.source_ref or not old_observation.text:
                     continue
+                extra = {}
+                if cardinality == "set":
+                    authority = next(
+                        (
+                            item
+                            for item in projection.committed_world_event_refs
+                            if item.event_id == fact.origin.accepted_event_ref
+                        ),
+                        None,
+                    )
+                    if authority is None:
+                        continue
+                    extra = {
+                        "subject_ref": fact.values.subject_ref,
+                        "value_hash": fact.values.value_hash,
+                        "fact_accepted_payload_hash": authority.payload_hash,
+                    }
                 output.append(
                     {
+                        **extra,
                         "fact_id": fact.fact_id,
                         "predicate_code": fact.values.predicate_code,
                         "source_text": old_observation.text,
@@ -2142,9 +2285,7 @@ class InteractionFactTriggerRuntime:
                         "source_observation_logical_time": (
                             old_observation.logical_time.isoformat()
                         ),
-                        "source_observation_received_at": (
-                            old_observation.received_at.isoformat()
-                        ),
+                        "source_observation_received_at": (old_observation.received_at.isoformat()),
                     }
                 )
             return tuple(output)

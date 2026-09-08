@@ -236,6 +236,13 @@ from .fact_trigger import (
     interaction_fact_trigger_identity,
 )
 from .fact_memory_draft import FactMemoryRetentionDraft
+from .interaction_fact_decision import (
+    FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION,
+    FACT_MEMBER_WITHDRAWAL_POLICY_REFS,
+    require_fact_member_withdrawal_decision,
+    interaction_fact_source_context,
+    canonical_interaction_fact_decision_json,
+)
 from .experience_memory_decision import (
     ExperienceMemoryDecisionRecordedPayload,
     experience_memory_decision_event_id,
@@ -4494,8 +4501,9 @@ def _fact_proposal_recorded(
     if proposal.policy_refs != INSTALLED_FACT_POLICY_REFS and not (
         proposal.policy_refs == ("policy:fact-commit.2",)
         and proposal.transition_kind in {"correct", "withdraw"}
-    ):
+    ) and proposal.policy_refs != FACT_MEMBER_WITHDRAWAL_POLICY_REFS:
         raise ValueError("fact proposal references an uninstalled policy")
+    _validate_fact_member_withdrawal_authority(state, proposed_payload)
     _validate_evidence_authority(state, proposal.evidence_refs, require_all=True)
     reduce_fact(
         state.facts,
@@ -10955,6 +10963,15 @@ def _interaction_fact_decision_recorded(state: ReducerState, event: WorldEvent) 
         raise ValueError(
             "interaction Fact decision does not bind the active attempt and observation"
         )
+    if payload.adapter_version == FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION:
+        observation = next((item for item in state.message_observations
+                            if item.observation_id == payload.source_observation_ref), None)
+        if observation is None or payload.fact_context_hash != hashlib.sha256(
+            canonical_interaction_fact_decision_json(interaction_fact_source_context(
+                state.facts, subject_ref=observation.actor,
+            )).encode()
+        ).hexdigest():
+            raise ValueError("interaction Fact decision changed its exact Fact source context")
     if payload.decision_kind == "retain":
         proposal = validate_fact_commit_proposal_v2(
             decision,
@@ -10966,14 +10983,12 @@ def _interaction_fact_decision_recorded(state: ReducerState, event: WorldEvent) 
         ):
             raise ValueError("recorded retain decision changed its pinned source")
     elif payload.decision_kind == "withdraw":
+        member = "target_fact_ref" in decision
+        fields = {"predicate_code", "assertion_source_ref", "confidence_bp", "brief_rationale"}
+        if member:
+            fields |= {"target_fact_ref", "target_binding"}
         if (
-            set(decision)
-            != {
-                "predicate_code",
-                "assertion_source_ref",
-                "confidence_bp",
-                "brief_rationale",
-            }
+            set(decision) != fields
             or decision.get("predicate_code") not in INSTALLED_FACT_PREDICATE_CARDINALITY
             or decision.get("assertion_source_ref") != payload.source_observation_ref
             or not isinstance(decision.get("confidence_bp"), int)
@@ -10983,6 +10998,21 @@ def _interaction_fact_decision_recorded(state: ReducerState, event: WorldEvent) 
             or not decision["brief_rationale"]
         ):
             raise ValueError("recorded withdrawal decision is malformed")
+        if member:
+            before = next((fact for fact in state.facts
+                           if fact.fact_id == decision["target_fact_ref"]), None)
+            observation = next((item for item in state.message_observations
+                                if item.observation_id == payload.source_observation_ref), None)
+            if (before is None or observation is None
+                or observation.actor != before.values.subject_ref
+                or payload.adapter_version != FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION):
+                raise ValueError("recorded member withdrawal requires its same-user current Fact")
+            require_fact_member_withdrawal_decision(
+                payload, before=before, source_observation_ref=payload.source_observation_ref,
+                source_event_ref=payload.source_event_ref,
+                committed_world_event_refs=state.committed_world_event_refs,
+                message_observations=state.message_observations,
+            )
     # This is immutable external-result audit, not Fact authority.  Keeping a
     # compact replay index lets a coalesced batch resume its remaining exact
     # source decisions after an earlier member changes Fact authority.
@@ -14265,6 +14295,33 @@ def _commitment_clock_changed(
     )
 
 
+def _validate_fact_member_withdrawal_authority(state: ReducerState, payload: FactChangedPayload) -> None:
+    binding = payload.member_withdrawal
+    before = payload.fact_before
+    is_v2_member = (payload.operation == "withdraw" and before is not None
+                    and before.values.cardinality == "set"
+                    and before.origin.policy_refs == ("policy:fact-commit.2",))
+    if binding is None and payload.policy_refs != FACT_MEMBER_WITHDRAWAL_POLICY_REFS and not is_v2_member:
+        return  # Historical policies retain their original authority semantics.
+    decision = next((item for item in state.interaction_fact_decisions
+                     if binding is not None and item.decision_id == binding.decision_id
+                     and item.decision_hash == binding.decision_hash), None)
+    observation = next((item for item in state.message_observations
+                        if item.observation_id == payload.fact_after.values.withdrawal_evidence_ref), None)
+    if (payload.policy_refs != FACT_MEMBER_WITHDRAWAL_POLICY_REFS
+        or payload.operation != "withdraw" or before is None
+        or before.origin.policy_refs != ("policy:fact-commit.2",)
+        or binding is None or decision is None or observation is None
+        or observation.actor != before.values.subject_ref):
+        raise ValueError("Fact member withdrawal lacks its exact recorded model authority")
+    require_fact_member_withdrawal_decision(
+        decision, before=before, source_observation_ref=observation.observation_id,
+        source_event_ref=decision.source_event_ref,
+        committed_world_event_refs=state.committed_world_event_refs,
+        message_observations=state.message_observations,
+    )
+
+
 def _fact_changed(state: ReducerState, event: WorldEvent) -> ReducerState:
     logical_time = _require_life_time(state, event)
     payload = FactChangedPayload.model_validate_json(event.payload_json)
@@ -14273,8 +14330,9 @@ def _fact_changed(state: ReducerState, event: WorldEvent) -> ReducerState:
         and payload.operation in {"correct", "withdraw"}
         and payload.fact_before is not None
         and payload.fact_before.origin.policy_refs == ("policy:fact-commit.2",)
-    ):
+    ) and payload.policy_refs != FACT_MEMBER_WITHDRAWAL_POLICY_REFS:
         raise ValueError("fact transition references an uninstalled policy")
+    _validate_fact_member_withdrawal_authority(state, payload)
     if payload.fact_after.origin.accepted_event_ref != event.event_id:
         raise ValueError("fact origin does not identify its mutation event")
     proposal = _require_authorized_fact(state, payload)

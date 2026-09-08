@@ -1,4 +1,10 @@
-"""Source-bound correction of an occupied single-valued Fact slot."""
+"""Source-bound single-slot correction and explicitly chosen Fact-v2 member withdrawal.
+
+The member policy requires a .4 durable decision. The former adapter and
+lifecycle could not produce a set withdrawal; hand-built unbound .2 set
+withdrawals are rejected rather than granted the new model-selected authority.
+Historical single-slot and .1 policies keep their original encodings.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +15,12 @@ import json
 from .event_identity import domain_idempotency_key
 from .fact_accepted_contracts import FactCommitIntentV2
 from .fact_events import FactChangedPayload, fact_mutation_hash
+from .interaction_fact_decision import (
+    FACT_MEMBER_WITHDRAWAL_POLICY_REFS,
+    FactMemberWithdrawalBinding,
+    InteractionFactDecisionRecordedPayload,
+    require_fact_member_withdrawal_decision,
+)
 from .schema_core import EvidenceRef
 from .schemas import (
     FactAssertionBinding,
@@ -72,6 +84,7 @@ class FactCorrectionLifecycle:
         observation_world_revision: int,
         logical_time: datetime,
         created_at: datetime,
+        member_decision: InteractionFactDecisionRecordedPayload | None = None,
     ) -> FactProjection:
         intent = FactCommitIntentV2(
             subject_ref=before.values.subject_ref,
@@ -98,6 +111,7 @@ class FactCorrectionLifecycle:
             observation_world_revision=observation_world_revision,
             logical_time=logical_time,
             created_at=created_at,
+            member_decision=member_decision,
         )
 
     def _transition(
@@ -111,20 +125,42 @@ class FactCorrectionLifecycle:
         observation_world_revision: int,
         logical_time: datetime,
         created_at: datetime,
+        member_decision: InteractionFactDecisionRecordedPayload | None = None,
     ) -> FactProjection:
         if (
             before.values.status != "active"
-            or before.values.cardinality != "single"
+            or (
+                before.values.cardinality != "single"
+                and not (
+                    operation == "withdraw"
+                    and before.values.cardinality == "set"
+                    and member_decision is not None
+                )
+            )
             or before.values.subject_ref != intent.subject_ref
             or before.values.predicate_code != intent.predicate_code
             or (
                 operation == "correct"
-                and before.values.value_hash
-                == intent.value_hash.removeprefix("sha256:")
+                and before.values.value_hash == intent.value_hash.removeprefix("sha256:")
             )
             or operation not in {"correct", "withdraw"}
         ):
             raise ValueError("Fact transition requires one matching active single slot")
+        if member_decision is not None:
+            projection = self._ledger.project()
+            if (
+                member_decision not in projection.interaction_fact_decisions
+                or observation.actor != before.values.subject_ref
+            ):
+                raise ValueError("Fact member withdrawal requires its recorded same-user decision")
+            require_fact_member_withdrawal_decision(
+                member_decision,
+                before=before,
+                source_observation_ref=observation.observation_id,
+                source_event_ref=observation_event.event_id,
+                committed_world_event_refs=projection.committed_world_event_refs,
+                message_observations=projection.message_observations,
+            )
         if (
             observation_event.event_type != "ObservationRecorded"
             or observation.observation_id != intent.assertion_source_ref
@@ -142,6 +178,11 @@ class FactCorrectionLifecycle:
                 "observation_payload_hash": observation_event.payload_hash,
                 "value_hash": intent.value_hash,
                 "operation": operation,
+                **(
+                    {"member_decision_hash": member_decision.decision_hash}
+                    if member_decision is not None
+                    else {}
+                ),
             }
         )
         with self._ledger.serialized_commit_sequence():
@@ -208,6 +249,7 @@ class FactCorrectionLifecycle:
                     logical_time=logical_time,
                     identity=identity,
                     operation=operation,
+                    member_decision=member_decision,
                 )
                 proposal = FactProposalProjection(
                     proposal_id=proposal_id,
@@ -318,6 +360,7 @@ class FactCorrectionLifecycle:
         logical_time: datetime,
         identity: str,
         operation: str,
+        member_decision: InteractionFactDecisionRecordedPayload | None = None,
     ) -> FactChangedPayload:
         old_values_hash = hashlib.sha256(
             _canonical(before.values.model_dump(mode="json")).encode()
@@ -391,7 +434,11 @@ class FactCorrectionLifecycle:
         origin = FactOrigin(
             change_id=f"change:fact-correction:{identity}",
             transition_id=transition_id,
-            policy_refs=before.origin.policy_refs,
+            policy_refs=(
+                FACT_MEMBER_WITHDRAWAL_POLICY_REFS
+                if member_decision is not None
+                else before.origin.policy_refs
+            ),
             accepted_event_ref=event_id,
         )
         after = FactProjection(
@@ -427,6 +474,11 @@ class FactCorrectionLifecycle:
             "fact_after": after,
             "compensates_transition_id": None,
         }
+        if member_decision is not None:
+            raw["member_withdrawal"] = FactMemberWithdrawalBinding(
+                decision_id=member_decision.decision_id,
+                decision_hash=member_decision.decision_hash,
+            )
         raw["accepted_change_hash"] = fact_mutation_hash(raw)
         return FactChangedPayload.model_validate(raw)
 

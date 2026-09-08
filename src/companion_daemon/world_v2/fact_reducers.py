@@ -7,6 +7,7 @@ from datetime import datetime
 from types import MappingProxyType
 
 from .fact_events import FactChangedPayload
+from .interaction_fact_decision import FACT_MEMBER_WITHDRAWAL_POLICY_REFS
 from .schemas import (
     FactProjection,
     FactTransitionProjection,
@@ -170,7 +171,13 @@ def reduce_fact(
         if (
             after.committed_at != authority.committed_at
             or after.updated_at != logical_time
-            or after.origin.policy_refs != authority.origin.policy_refs
+            or (after.origin.policy_refs != authority.origin.policy_refs and not (
+                payload.operation == "withdraw"
+                and authority.values.cardinality == "set"
+                and authority.origin.policy_refs == ("policy:fact-commit.2",)
+                and after.origin.policy_refs == FACT_MEMBER_WITHDRAWAL_POLICY_REFS
+                and payload.member_withdrawal is not None
+            ))
         ):
             raise ValueError("fact transition changed immutable origin")
         if payload.operation == "compensate":

@@ -20,6 +20,42 @@ from .schema_core import FrozenModel
 
 _HASH = r"^[0-9a-f]{64}$"
 _MAX_DECISION_BYTES = 262_144
+FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION = "fact-observation-draft.4"
+FACT_MEMBER_WITHDRAWAL_POLICY_REFS = ("policy:fact-commit.2", "policy:fact-member-withdraw.1")
+
+
+def interaction_fact_source_context(facts, *, subject_ref: str) -> dict[str, object]:
+    """Versioned Fact authority epoch used by the .4 request and decision CAS."""
+    return {
+        "contract": "interaction-fact-source-context.2",
+        "facts": tuple(
+            fact.model_dump(mode="json")
+            for fact in sorted(
+                (
+                    fact
+                    for fact in facts
+                    if fact.values.status == "active" and fact.values.subject_ref == subject_ref
+                ),
+                key=lambda fact: (fact.values.predicate_code, fact.fact_id),
+            )
+        ),
+    }
+
+
+class FactWithdrawalTargetBinding(FrozenModel):
+    """Host-bound head of the exact set member selected in the model input."""
+
+    entity_revision: int = Field(ge=1)
+    authority_event_ref: str = Field(min_length=1)
+    authority_payload_hash: str = Field(pattern=_HASH)
+    value_hash: str = Field(pattern=_HASH)
+
+
+class FactMemberWithdrawalBinding(FrozenModel):
+    """Exact durable model choice authorizing this member's withdrawal."""
+
+    decision_id: str = Field(min_length=1)
+    decision_hash: str = Field(pattern=_HASH)
 
 
 def canonical_interaction_fact_decision_json(value: object) -> str:
@@ -77,8 +113,69 @@ class InteractionFactDecisionRecordedPayload(FrozenModel):
         return self
 
 
+def require_fact_member_withdrawal_decision(
+    decision: InteractionFactDecisionRecordedPayload,
+    *,
+    before,
+    source_observation_ref: str,
+    source_event_ref: str,
+    committed_world_event_refs,
+    message_observations,
+) -> None:
+    """Validate only exact mechanical links; retraction meaning belongs to the model."""
+    value = json.loads(decision.decision_json)
+    target = FactWithdrawalTargetBinding.model_validate(value.get("target_binding"))
+    authority = next(
+        (
+            ref
+            for ref in committed_world_event_refs
+            if ref.event_id == before.origin.accepted_event_ref
+        ),
+        None,
+    )
+    source = next(
+        (ref for ref in committed_world_event_refs if ref.event_id == source_event_ref), None
+    )
+    observation = next(
+        (ref for ref in message_observations if ref.observation_id == source_observation_ref), None
+    )
+    if (
+        decision.adapter_version != FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION
+        or decision.decision_kind != "withdraw"
+        or before.values.cardinality != "set"
+        or before.values.status != "active"
+        or value.get("target_fact_ref") != before.fact_id
+        or value.get("predicate_code") != before.values.predicate_code
+        or value.get("assertion_source_ref") != source_observation_ref
+        or decision.source_observation_ref != source_observation_ref
+        or decision.source_event_ref != source_event_ref
+        or target.entity_revision != before.entity_revision
+        or target.authority_event_ref != before.origin.accepted_event_ref
+        or target.value_hash != before.values.value_hash
+        or authority is None
+        or authority.payload_hash != target.authority_payload_hash
+        or authority.world_revision > decision.evaluated_world_revision
+        or source is None
+        or observation is None
+        or source.event_type != "ObservationRecorded"
+        or source.world_revision != observation.world_revision
+        or source.payload_hash != observation.event_payload_hash
+        or source.world_revision > decision.evaluated_world_revision
+        or observation.actor != before.values.subject_ref
+    ):
+        raise ValueError(
+            "Fact member withdrawal does not bind its exact model-selected source head"
+        )
+
+
 __all__ = [
+    "FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION",
+    "FACT_MEMBER_WITHDRAWAL_POLICY_REFS",
+    "FactWithdrawalTargetBinding",
+    "FactMemberWithdrawalBinding",
     "InteractionFactDecisionRecordedPayload",
     "canonical_interaction_fact_decision_json",
     "interaction_fact_decision_hash",
+    "interaction_fact_source_context",
+    "require_fact_member_withdrawal_decision",
 ]
