@@ -6,8 +6,52 @@ from copy import deepcopy
 import json
 
 from .life_development_output_schema import life_possibility_output_schema
+from .life_development_draft import LifeDevelopmentDraftError, LifeDevelopmentPossibilityDraft
+from .life_content_store import MAX_LIFE_CONTENT_CHARACTERS
 from .world_consequence_contract import WorldConsequenceAuthority
 from .world_consequence_execution_context import WorldConsequenceExecutionMaterial
+
+
+def validate_world_consequence_offered_bindings(*, draft, messages) -> None:
+    if not isinstance(draft, LifeDevelopmentPossibilityDraft):
+        return
+    declarations = []
+    for message in messages:
+        if message.get("role") != "user":
+            continue
+        try:
+            value = json.loads(message["content"])
+        except (ValueError, KeyError):
+            continue
+        if isinstance(value, dict) and "execution_authority" in value:
+            declarations.append(value["execution_authority"])
+    if len(declarations) != 1:
+        raise ValueError("world consequence request lacks unique execution authority")
+    authority = WorldConsequenceAuthority.model_validate_json(json.dumps(declarations[0]))
+    for index, outcome in enumerate(draft.outcomes):
+        consequence = outcome.world_consequence
+        if consequence is None:
+            raise ValueError("world consequence request cannot accept historical outcome text")
+        attempt = consequence.authorized_attempt_result
+        if attempt is not None and attempt.execution_binding not in authority.execution_bindings:
+            raise LifeDevelopmentDraftError(
+                "execution_binding_not_offered",
+                "The attempt result must copy one exact execution binding from the original request.",
+                violations=({
+                    "path": f"outcomes.{index}.world_consequence.authorized_attempt_result.execution_binding",
+                    "type": "value_error",
+                    "message": "exact_offered_execution_binding",
+                },),
+            )
+        if len(outcome.content_text) > MAX_LIFE_CONTENT_CHARACTERS:
+            raise LifeDevelopmentDraftError(
+                "consequence_content_too_large",
+                "Each complete serialized world consequence must fit the 12000-character content limit.",
+                violations=({
+                    "path": f"outcomes.{index}.world_consequence",
+                    "type": "value_error", "message": "complete_content_size_limit",
+                },),
+            )
 
 
 def compile_world_consequence_messages(

@@ -39,6 +39,10 @@ from .life_content_store import (
     StoredLifeContent,
     life_content_payload_hash,
 )
+from .world_consequence_authoring_context import build_world_consequence_authoring_context
+from .world_consequence_prompt import (
+    compile_world_consequence_messages, validate_world_consequence_offered_bindings,
+)
 from .world_author_request_audit import (
     WorldAuthorRequestBinding,
     read_world_author_request,
@@ -5312,6 +5316,8 @@ class LifeDevelopmentRuntime:
             model_purpose="life_development_draft",
             occasion_mode=occasion_mode,
         )
+        if manifest.outcome_contract == "world-consequence.2":
+            hard_boundary_contract = json.loads(messages[1]["content"])["cross_field_authority"]
         attempts: list[_LifeDevelopmentAttempt] = []
         for ordinal in range(2):
             request_hash = _messages_hash(messages)
@@ -5382,6 +5388,8 @@ class LifeDevelopmentRuntime:
                     manifest=manifest,
                     logical_time=logical_time,
                 )
+                if manifest.outcome_contract == "world-consequence.2":
+                    validate_world_consequence_offered_bindings(draft=parsed, messages=messages)
                 attempts.append(
                     _LifeDevelopmentAttempt(
                         request_hash=request_hash,
@@ -5691,7 +5699,10 @@ class LifeDevelopmentRuntime:
             compile_pressure_surfaces(
                 manifest=manifest,
                 context=pinned_context,
-                projection=self._ledger.project(),
+                projection=(
+                    self._ledger.project_at(manifest.pinned_cursor)
+                    if manifest.outcome_contract == "world-consequence.2" else self._ledger.project()
+                ),
                 logical_time=logical_time,
                 owner_actor_ref=self._owner,
                 content_store=self._store,
@@ -5714,7 +5725,7 @@ class LifeDevelopmentRuntime:
             if occasion_mode == "disturbance"
             else ""
         )
-        return [
+        messages = [
             {
                 "role": "system",
                 "content": (
@@ -5928,6 +5939,15 @@ class LifeDevelopmentRuntime:
                 ),
             },
         ]
+        if manifest.outcome_contract == "world-consequence.2":
+            execution = build_world_consequence_authoring_context(
+                ledger=self._ledger, content_store=self._store, manifest=manifest, actor_ref=self._owner,
+            )
+            return compile_world_consequence_messages(
+                user_context=json.loads(messages[1]["content"]), authority=execution.authority,
+                execution_materials=execution.execution_materials,
+            )
+        return messages
 
     def _proposal_event(
         self,
