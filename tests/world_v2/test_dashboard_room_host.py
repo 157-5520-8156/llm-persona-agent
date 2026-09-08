@@ -25,10 +25,10 @@ PROTOTYPE_INDEX = (REPO_ROOT / "prototypes" / "pixel-home" / "index.html").read_
 )
 
 
-def test_dashboard_does_not_start_room_but_preserves_its_independent_entry() -> None:
+def test_dashboard_has_no_room_entry_but_preserves_the_independent_asset() -> None:
     assert '<canvas id="stage" width="1120" height="640">' in PROTOTYPE_INDEX
     assert "<iframe" not in DASHBOARD_HTML
-    assert 'href="/pixel-home/index.html"' in DASHBOARD_HTML
+    assert "/pixel-home/" not in DASHBOARD_HTML
     assert "zhizhi-room-isometric" not in DASHBOARD_HTML
     assert "zhizhi-room-isometric" not in DASHBOARD_APP_JS
     assert "?edit=1" not in DASHBOARD_HTML
