@@ -101,7 +101,7 @@ body.recording .operator-only{display:none!important}body.recording .bar{padding
 <p id="captureNotice" class="capture-notice" role="status" hidden></p>
 <div id="recordingTools" class="recording-tools" hidden><label for="recordingFocus">聚焦区域</label><select id="recordingFocus"><option value="all">完整视图</option><option value="now">这一刻</option><option value="life">生活进展</option><option value="memory">记忆</option><option value="emotion">情绪</option><option value="relationships">关系</option><option value="pending">未完成事项</option></select><span>仅改变显示；同步状态始终保留 · Esc 退出</span></div>
 <main class="wrap"><section class="panel now-panel" data-focus-area="now"><div><p class="hero-label">THE PRESENT</p><h2>这一刻</h2><p class="hero-note">生活有自己的时间。<br>这里是已经记录下来的状态。</p><p id="worldClock" class="world-clock"></p></div><div id="nowStory" class="now-story"><p class="section-note">正在读取生活状态…</p></div></section><div id="sectionGrid" class="section-grid"></div><footer class="footer"><span>只展示经过授权的摘要，私密反思不在此呈现。</span><span class="operator-only">本机 owner 视图</span></footer></main>
-<script src="/world-v2/dashboard/app.js?v=world-v2-dashboard-home.1-ui5" defer></script></body></html>"""
+<script src="/world-v2/dashboard/app.js?v=world-v2-dashboard-home.1-ui6" defer></script></body></html>"""
 
 DASHBOARD_APP_JS = """'use strict';
 const DashboardHomeClient=(()=>{
@@ -547,7 +547,7 @@ if(typeof document!=='undefined'){
     if(view.when)top.appendChild(element('time','when',DashboardHomeClient.formatClock(view.when)));
     card.append(top,element('h3','',view.title||view.kindLabel));
     if(view.status)card.appendChild(element('span','status-pill',view.status));
-    if(view.detail)card.appendChild(element('p','detail',view.detail));
+    if(view.detail&&view.detail!==view.title)card.appendChild(element('p','detail',view.detail));
     if(view.values.length){
       const chips=element('div','chips');
       for(const value of view.values)chips.appendChild(element('span','chip',value.label+' '+value.text));

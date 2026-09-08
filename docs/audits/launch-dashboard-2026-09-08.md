@@ -49,3 +49,23 @@
 
 这是面板与来源恢复的阶段证据。正文来源审核的运行时接线、真实多轮对话、长期多样性、
 月底成本和邀请体验部署仍分别验收，不能用本片的界面或离线回归代替。
+
+## 9 月 9 日：真实未来计划的录制复核
+
+从第 13 批原数据库只读备份，使用正式 owner capture 编译固定历史 DTO。原数据库与
+WAL 哈希前后相等，capture 不改变投影，也没有模型或 QQ 调用。角色真实接受的摄影
+整理意图、14:05–15:05 计划窗口和 `planned` 状态完整显示；没有开始、结束或已交付聊天。
+
+浏览器检查发现卡片标题与完整原意图相同时重复展示，现只显示一次；标题较短时仍保留
+完整原意图。day-open 原标签“独处时的自主选择”包含没有证明的独处含义，改为“当日
+自主安排”。这只是源类型显示，不替角色改写计划或选择。
+
+认证本机历史 source 的录制模式、生活聚焦及 Esc 退出已实际检查；历史样本说明与世界
+时间始终可见。没有修改浏览器 viewport，本片不新增其他尺寸验收。修正后的 DTO SHA
+`2eed409d29f626ac86c70259ccaee1fceb2731098658470ce39572097a270d9f`，截图及 AX 证据位于
+`output/private-audits/dashboard-recording-refined-20260909/`。原始 capture 报告保留
+`browser_inspected=false`，另写 `browser-verification.json` 记录随后检查，未改旧试验证据。
+
+4 个相关文件 **38 passed / 8.25 秒**，覆盖 owner 会话、实际 QQ owner 页面、生活投影、
+JS 客户端及 bridge；1 条既有 Starlette 弃用警告。首次运行仅旧资源版本断言失败，随后
+同步到 `ui6` 并重跑通过。日志 `/tmp/girl-agent-real-plan-dashboard-final-green.log`。
