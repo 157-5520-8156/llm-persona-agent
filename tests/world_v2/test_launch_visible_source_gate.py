@@ -91,6 +91,10 @@ async def test_complete_candidate_with_empty_claims_is_reviewed_before_any_actio
         assert outcome.status == "action_authorized", outcome
         evidence = app.export_replay_evidence()
         assert len(requests) == 2
+        author_instruction = requests[0]["messages"][0]["content"]
+        assert "There is no second review pass" not in author_instruction
+        assert "unsupported and dropped" not in author_instruction
+        assert "complete candidate is source-reviewed" in author_instruction
         assert tuple(item.text for item in evidence.projection.stored_message_payloads) == BEATS
     finally:
         release.set()

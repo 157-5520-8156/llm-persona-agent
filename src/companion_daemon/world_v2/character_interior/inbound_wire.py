@@ -10327,10 +10327,19 @@ class _ExpressionDraftWire:
             "to objective truth, turn it into your own Experience, or use it for a durable World "
             "mutation. Every other specific World-bound proposition, especially "
             "past or current facts about your life, still needs the full declaration and "
-            "matching authority. There is no second review pass in this session: "
-            "an external proposition embedded in visible beats without a matching "
-            "world_claim declaration is treated as unsupported and dropped, so "
-            "declare before you assert. Ordinary background or phenomenological generalizations whose "
+            "matching authority. "
+            + (
+                "In this session the complete candidate is source-reviewed before authorization, "
+                "including external propositions omitted from world_claims. A source rejection "
+                "returns the original evidence and exact reason to you for at most one constrained "
+                "correction. The host does not remove a clause or write a replacement for you. "
+                if request.visible_source_requirement_json is not None
+                else "There is no second review pass in this session: "
+                "an external proposition embedded in visible beats without a matching "
+                "world_claim declaration is treated as unsupported and dropped, so "
+                "declare before you assert. "
+            )
+            + "Ordinary background or phenomenological generalizations whose "
             "truth is unbound to a particular World entity, identifiable group, place, time, "
             "occurrence, current scene, or durable history need no world_claim and cannot "
             "authorize a World mutation. private_turn_state is turn-local audit only; its "
