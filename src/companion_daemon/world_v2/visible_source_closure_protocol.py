@@ -2,11 +2,9 @@
 
 The host supplies exact, indexed visible Beats and a pinned source table.  The
 reviewer returns one small verdict per Beat; it never copies prose, calculates
-offsets, or authors replacement dialogue.  The deployed guard is a separate
-runtime of the same DeepSeek checkpoint as the Character author, so it is an
-explicitly correlated hard-boundary check rather than independent authority.
-The compact wire removes the unreliable provider-authored segmentation that
-made the earlier proof slow and format-fragile.
+offsets, or authors replacement dialogue. This is a review preparation protocol;
+ordinary chat does not currently install a semantic reviewer. Readable, eligible
+sources do not establish that a model will exhaustively classify the prose.
 """
 
 from __future__ import annotations
@@ -17,6 +15,8 @@ import json
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
+
+from .context_capsule import ResolvedSourceBinding, source_bindings_hash
 
 
 VISIBLE_SOURCE_CLOSURE_CONTRACT = "visible-beat-source-verdict.1"
@@ -203,10 +203,254 @@ def visible_source_closure_schema() -> dict[str, object]:
     return deepcopy(_VISIBLE_BEAT_VERDICT_SCHEMA)
 
 
+_MATERIAL_CONTRACT = "visible-source-materials.1"
+_ENTRY_FIELDS = (
+    "kind",
+    "lane",
+    "scope",
+    "authority",
+    "packet_contract",
+    "epistemic_status",
+    "source_refs",
+    "actor_ref",
+    "actor",
+    "privacy_class",
+    "availability",
+    "does_not_authorize",
+    "permits_natural_visible_uptake_without_world_claim",
+    "natural_uptake_does_not_need_attribution_phrase",
+)
+_ITEM_FIELDS = (
+    "item_ref",
+    "source_ref",
+    "source_refs",
+    "source_hash",
+    "source_bindings",
+    "value_hash",
+    "value",
+    "privacy_class",
+    "authority_scope",
+    "availability",
+)
+_COORDINATE_FIELDS = (
+    "contract",
+    "parent_item_ref",
+    "claim_scope",
+    "field_path",
+    "value",
+    "logical_at",
+)
+_MESSAGE_FIELDS = (
+    "event_ref",
+    "event_payload_hash",
+    "observation_ref",
+    "source_world_revision",
+    "actor",
+    "channel",
+    "text",
+    "observed_at",
+)
+_REPORT_FIELDS = ("dialogue_ref", "text", "occurred_at", "sequence", "continuity_reasons")
+_NON_SUPPORT_AUTHORITIES = frozenset(
+    {
+        "reference_metadata_only",
+        "private_attention_exact_time_only_not_world_claim",
+        "non_authoritative_advisory_not_external_fact",
+        "attention_only_biographical_context_not_world_claim_authority;"
+        "use_exact_biographical_coordinate_authority",
+    }
+)
+
+
+def _selected_fields(value: object, fields: tuple[str, ...]) -> dict[str, object]:
+    return (
+        {key: deepcopy(value[key]) for key in fields if key in value}
+        if isinstance(value, dict)
+        else {}
+    )
+
+
+def _readable(value: object) -> bool:
+    """Presence only: this never classifies the meaning or truth of prose."""
+    if isinstance(value, str):
+        return bool(value.strip())
+    return value is not None and value != {} and value != []
+
+
+def _material_hash(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _review_item(raw: object) -> tuple[dict[str, object], bool]:
+    item = _selected_fields(raw, _ITEM_FIELDS)
+    value = item.get("value")
+    if (
+        item.get("privacy_class") == "withhold"
+        or item.get("availability") == "unavailable"
+        or isinstance(value, dict)
+        and value.get("privacy_class") == "withhold"
+    ):
+        item.pop("value", None)
+        return item, False
+    exact_value = item.get("value_hash") == _material_hash(value)
+    if not exact_value and "value_hash" in item:
+        # Ordinary chat may carry a slim value beside the original full hash.
+        # Retain that metadata without presenting it as a hash of this value.
+        item["unverified_value_hash"] = item.pop("value_hash")
+    try:
+        bindings = tuple(
+            ResolvedSourceBinding.model_validate(binding)
+            for binding in item.get("source_bindings", ())
+        )
+        exact_sources = bool(bindings) and source_bindings_hash(bindings) == item.get("source_hash")
+    except (TypeError, ValueError):
+        exact_sources = False
+    # These explicit payload fields have readable-body contracts. Unknown
+    # shapes remain baseline material until their producer is qualified here.
+    has_body = isinstance(value, dict) and any(
+        _readable(value.get(field)) for field in ("text", "summary", "source_excerpt")
+    )
+    return item, bool(exact_value and exact_sources and has_body)
+
+
+def _review_material(entry: dict[str, object]) -> tuple[dict[str, object], bool]:
+    material = _selected_fields(entry, _ENTRY_FIELDS)
+    eligible = False
+    if entry.get("privacy_class") == "withhold" or entry.get("availability") == "unavailable":
+        return material, False
+    kind = entry.get("kind")
+    if kind == "biographical_coordinate":
+        coordinate = _selected_fields(entry.get("material"), _COORDINATE_FIELDS)
+        material["material"] = coordinate
+        eligible = (
+            coordinate.get("contract") == "biographical-coordinate-authority.1"
+            and coordinate.get("claim_scope") == "current_world"
+            and all(
+                _readable(coordinate.get(field)) for field in ("field_path", "logical_at", "value")
+            )
+            and entry.get("source_refs")
+            == ["biography-coordinate:sha256:" + _material_hash(coordinate)]
+        )
+    elif kind == "current_counterpart_report":
+        material["message"] = _selected_fields(entry.get("message"), _MESSAGE_FIELDS)
+        reports = entry.get("messages", ())
+        material["messages"] = (
+            [_selected_fields(report, _REPORT_FIELDS) for report in reports]
+            if isinstance(reports, (list, tuple))
+            else []
+        )
+        message = material["message"]
+        eligible = bool(
+            _readable(message.get("text"))
+            and message.get("actor")
+            and message.get("event_ref")
+            and message.get("event_payload_hash")
+        )
+    elif kind == "pinned_context_item":
+        material["item"], eligible = _review_item(entry.get("item"))
+    elif kind == "pinned_context_slice":
+        raw_slice = entry.get("slice")
+        selected = _selected_fields(
+            raw_slice,
+            (
+                "availability",
+                "privacy_class",
+                "source_refs",
+                "source_hash",
+                "pinned_world_revision",
+            ),
+        )
+        raw_items = (
+            raw_slice.get("items", ())
+            if isinstance(raw_slice, dict)
+            and selected.get("availability") == "available"
+            and selected.get("privacy_class") != "withhold"
+            else ()
+        )
+        items = (
+            [_review_item(item) for item in raw_items]
+            if isinstance(raw_items, (list, tuple))
+            else []
+        )
+        selected["items"] = [item for item, _ in items]
+        material["slice"] = selected
+        eligible = (
+            bool(items)
+            and all(valid for _, valid in items)
+            and selected.get("availability") == "available"
+        )
+    if isinstance(entry.get("authority"), str) and entry["authority"] in _NON_SUPPORT_AUTHORITIES:
+        eligible = False
+    return material, eligible
+
+
+def _packet_materials(
+    rows: tuple[dict[str, object], ...],
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Material occurs once in the packet, even when an entry has many refs."""
+    materials: list[dict[str, object]] = []
+    references: list[dict[str, object]] = []
+    indexes: dict[str, int] = {}
+    for row in rows:
+        reference = {key: value for key, value in row.items() if key != "review_material"}
+        material = row.get("review_material")
+        if isinstance(material, dict):
+            identity = json.dumps(
+                material, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            )
+            if identity not in indexes:
+                indexes[identity] = len(materials)
+                materials.append(material)
+            reference["material_index"] = indexes[identity]
+        references.append(reference)
+    return references, materials
+
+
+def _material_subject(
+    material: dict[str, object],
+    subjects: dict[str, object],
+) -> tuple[str | None, str | None]:
+    """Bind explicit source actors to this packet's participants, never names."""
+    if material.get("kind") == "biographical_coordinate":
+        actor = subjects.get("companion_actor_ref")
+    elif material.get("kind") == "current_counterpart_report":
+        actor = material.get("message", {}).get("actor")
+    else:
+        items = (
+            [material["item"]] if "item" in material else material.get("slice", {}).get("items", ())
+        )
+        actors = {
+            value[field]
+            for item in items
+            for value in (item.get("value"),)
+            if isinstance(value, dict)
+            for field in ("subject_ref", "speaker_ref")
+            if isinstance(value.get(field), str) and value[field]
+        }
+        actor = next(iter(actors)) if len(actors) == 1 else None
+    if not isinstance(actor, str) or not actor:
+        return None, None
+    role = (
+        "companion"
+        if actor == subjects.get("companion_actor_ref")
+        else "counterpart"
+        if actor == subjects.get("counterpart_actor_ref")
+        else None
+    )
+    return actor, role
+
+
 def compact_source_reference_table(
     source_evidence: dict[str, object],
 ) -> tuple[dict[str, object], ...]:
-    """Flatten pinned evidence refs without copying prompt prose twice."""
+    """Keep historical refs and attach one shared projection per selected entry."""
 
     rows: list[dict[str, object]] = []
     seen: set[str] = set()
@@ -224,6 +468,9 @@ def compact_source_reference_table(
         refs = entry.get("source_refs", ())
         if not isinstance(refs, (list, tuple)):
             raise ValueError("source evidence refs must be a sequence")
+        material, eligible = _review_material(entry)
+        support_subject, support_role = _material_subject(material, subjects)
+        eligible = eligible and support_role is not None
         for ref in refs:
             if not isinstance(ref, str) or not ref.strip():
                 raise ValueError("source evidence ref must be non-empty")
@@ -243,13 +490,9 @@ def compact_source_reference_table(
             actor_ref = entry.get("actor_ref") or entry.get("actor") or message_actor
             subject_role = (
                 "counterpart"
-                if isinstance(counterpart_actor_ref, str)
-                and actor_ref == counterpart_actor_ref
+                if isinstance(counterpart_actor_ref, str) and actor_ref == counterpart_actor_ref
                 else "companion"
-                if (
-                    isinstance(companion_actor_ref, str)
-                    and actor_ref == companion_actor_ref
-                )
+                if (isinstance(companion_actor_ref, str) and actor_ref == companion_actor_ref)
                 or (isinstance(actor_ref, str) and actor_ref.startswith("companion:"))
                 else "other"
                 if isinstance(actor_ref, str) and actor_ref
@@ -264,6 +507,10 @@ def compact_source_reference_table(
                     "actor_ref": actor_ref,
                     "subject_role": subject_role,
                     "evidence_text": evidence_text,
+                    "review_material": material,
+                    "support_eligibility": "eligible" if eligible else "baseline_only",
+                    "support_subject_ref": support_subject,
+                    "support_subject_role": support_role,
                 }
             )
     return tuple(rows)
@@ -305,8 +552,7 @@ def visible_source_closure_messages(
             "authority": "correlated_source_guard_not_character_author",
         },
         "visible_beats": tuple(
-            {"beat_index": index, "text": text}
-            for index, text in enumerate(visible_beats)
+            {"beat_index": index, "text": text} for index, text in enumerate(visible_beats)
         ),
         "dialogue_subject_contract": {
             "candidate_first_person": "companion_actor",
@@ -317,6 +563,22 @@ def visible_source_closure_messages(
         "world_claims": world_claims,
         "source_references": source_references,
     }
+    if any("review_material" in row for row in source_references):
+        references, materials = _packet_materials(source_references)
+        packet.update(
+            {
+                "source_material_contract": _MATERIAL_CONTRACT,
+                "source_references": references,
+                "source_materials": materials,
+                "source_support_contract": (
+                    "Only eligible references may close a Beat. baseline_only is not supporting "
+                    "authority. Material retains its original scope, actor, privacy, time and status; "
+                    "readability does not prove entailment or authorize disclosure. "
+                    "support_subject_ref/support_subject_role identify the readable material's "
+                    "subject; legacy subject_role may be absent and cannot override them."
+                ),
+            }
+        )
     messages = [
         {"role": "system", "content": _SYSTEM_CONTRACT},
         {
@@ -358,9 +620,7 @@ def visible_source_closure_messages(
                                         "external_proposition",
                                         "mixed",
                                     ],
-                                    "source_ref_indexes": (
-                                        "one_to_eight_unique_in_range"
-                                    ),
+                                    "source_ref_indexes": ("one_to_eight_unique_in_range"),
                                 },
                                 "unclosed": {
                                     "semantic_roles": [
@@ -393,6 +653,7 @@ def parse_visible_source_closure(
     visible_beats: tuple[str, ...],
     source_ref_kinds: tuple[str | None, ...],
     source_ref_subject_roles: tuple[str | None, ...] = (),
+    source_references: tuple[dict[str, object], ...] | None = None,
 ) -> VisibleSourceClosureWire:
     """Validate exhaustive whole-Beat decisions and pinned source bindings."""
 
@@ -430,11 +691,7 @@ def parse_visible_source_closure(
             and isinstance(safe_location[1], int)
             else None
         )
-        field = (
-            ".".join(str(item) for item in safe_location)
-            if safe_location
-            else None
-        )
+        field = ".".join(str(item) for item in safe_location) if safe_location else None
         raise VisibleSourceClosureWireFailure(
             "schema_invalid",
             "visible source verdict wire schema is invalid",
@@ -445,6 +702,19 @@ def parse_visible_source_closure(
         raise ValueError("visible source verdict supports at most sixteen Beats")
     if source_ref_subject_roles and len(source_ref_subject_roles) != len(source_ref_kinds):
         raise ValueError("source kind and subject tables must align")
+    if source_references is not None and (
+        len(source_references) != len(source_ref_kinds)
+        or any(
+            row.get("source_ref_index") != index
+            or row.get("kind") != source_ref_kinds[index]
+            or (
+                source_ref_subject_roles
+                and row.get("subject_role") != source_ref_subject_roles[index]
+            )
+            for index, row in enumerate(source_references)
+        )
+    ):
+        raise ValueError("source material table must align with pinned source indexes")
     decisions = provider_wire.decisions
     expected_indexes = tuple(range(len(visible_beats)))
     actual_indexes = tuple(decision.beat_index for decision in decisions)
@@ -512,10 +782,10 @@ def parse_visible_source_closure(
                     beat_index=beat_index,
                     field=f"decisions.{beat_index}.subject_role",
                 )
-            if (
-                decision.semantic_role == "generalization"
-                and decision.subject_role not in {"general", "none"}
-            ):
+            if decision.semantic_role == "generalization" and decision.subject_role not in {
+                "general",
+                "none",
+            }:
                 raise VisibleSourceClosureWireFailure(
                     "subject_binding_invalid",
                     "source-free generalization must retain general scope",
@@ -536,6 +806,28 @@ def parse_visible_source_closure(
                     "closed Beat requires at least one pinned source",
                     beat_index=beat_index,
                     field=f"decisions.{beat_index}.source_ref_indexes",
+                )
+            if source_references is not None and any(
+                source_references[index].get("support_eligibility") != "eligible"
+                or not isinstance(source_references[index].get("review_material"), dict)
+                or not _review_material(source_references[index]["review_material"])[1]
+                for index in refs
+            ):
+                raise VisibleSourceClosureWireFailure(
+                    "verdict_ref_invalid",
+                    "closed Beat requires eligible readable source material",
+                    beat_index=beat_index,
+                    field=f"decisions.{beat_index}.source_ref_indexes",
+                )
+            if source_references is not None and any(
+                source_references[index].get("support_subject_role") != decision.subject_role
+                for index in refs
+            ):
+                raise VisibleSourceClosureWireFailure(
+                    "subject_binding_invalid",
+                    "closed Beat source material actor does not match subject role",
+                    beat_index=beat_index,
+                    field=f"decisions.{beat_index}.subject_role",
                 )
         else:
             if decision.semantic_role not in {"external_proposition", "mixed"}:
@@ -592,9 +884,7 @@ def parse_visible_source_closure(
             if decision.semantic_role == "private_state"
             else "not_external_proposition"
             if decision.verdict == "source_free"
-            else _relation_for_source_kinds(
-                tuple(source_ref_kinds[index] for index in refs)
-            )
+            else _relation_for_source_kinds(tuple(source_ref_kinds[index] for index in refs))
         )
         normalized.append(
             VisibleSourceClosureSegment(
@@ -648,9 +938,7 @@ def visible_source_verdict_provider_request_contract() -> dict[str, object]:
                 "type": "function",
                 "function": {
                     "name": tool_name,
-                    "description": (
-                        "Return exhaustive factual source verdicts for visible Beats."
-                    ),
+                    "description": ("Return exhaustive factual source verdicts for visible Beats."),
                     "strict": True,
                     "parameters": visible_source_closure_schema(),
                 },
