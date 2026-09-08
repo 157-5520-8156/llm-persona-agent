@@ -2443,8 +2443,85 @@ def _canonical_digest(value: object) -> str:
 
 
 class FakeCompanionModel:
+    # Offline fixtures support only the named protocols implemented below.
+    # Do not advertise strict schemas: that would opt chat into a different
+    # compact carrier which this fake does not implement.
+    supports_required_tool_choice = True
+
     def __init__(self):
         self.calls: list[list[dict[str, str]]] = []
+
+    async def complete_json(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float = 0.8,
+        tools: list[dict[str, object]] | None = None,
+        tool_choice: object | None = None,
+    ) -> str:
+        if tools is None and tool_choice is None:
+            return await self.complete(messages, temperature=temperature)
+        if not isinstance(tools, list) or len(tools) != 1:
+            raise ValueError("fake provider requires exactly one supported named tool")
+        function = tools[0].get("function")
+        if not isinstance(function, dict):
+            raise ValueError("fake provider tool function is missing")
+        name = function.get("name")
+        if tool_choice != {"type": "function", "function": {"name": name}}:
+            raise ValueError("fake provider requires the exact named tool choice")
+        if name in {
+            "character_role_activity_lifecycle_choice_v1",
+            "character_role_activity_lifecycle_choice_v2",
+        }:
+            self.calls.append(messages)
+            material = json.loads(messages[-1]["content"])
+            capability = material["capability_manifest"]
+            refs = capability["source_refs"]
+            return json.dumps(
+                {
+                    "status": "decision",
+                    "summary": "Offline activity fixture chooses no_op.",
+                    "attended_source_refs": refs,
+                    "recall_query": None,
+                    "proposals": [],
+                    "decision": {"source_refs": refs, "payload": {"decision": "no_op"}},
+                },
+                ensure_ascii=False,
+            )
+        atomic_names = {
+            "character_inbound_initial_v1",
+            "character_inbound_after_recall_v1",
+            "character_inbound_final_atomic_v1",
+        }
+        stream_names = {
+            "character_inbound_initial_stream_v1",
+            "character_inbound_after_recall_stream_v1",
+            "character_inbound_final_stream_v1",
+        }
+        if name not in atomic_names | stream_names:
+            raise ValueError(f"fake provider does not implement tool {name!r}")
+        raw = await self.complete(messages, temperature=temperature)
+        value = json.loads(raw)
+        # The standard required-tool carrier makes affect explicit; the
+        # historical no-tool fixture remains unchanged.
+        value["appraisal_draft"]["affect"] = "no_change"
+        if name in atomic_names:
+            return json.dumps({"result_kind": "decision", **value}, ensure_ascii=False)
+        expression = value["expression_draft"]
+        beats = expression.pop("beats")
+        return json.dumps(
+            {
+                "result_kind": "decision",
+                "protocol": "character-interior-events.1",
+                "appraisal_draft": value["appraisal_draft"],
+                "events": [
+                    {"type": "head", **expression, "beat": beats[0]},
+                    *[{"type": "beat", "beat": beat, "world_claims": []} for beat in beats[1:]],
+                    {"type": "end"},
+                ],
+            },
+            ensure_ascii=False,
+        )
 
     async def complete(self, messages: list[dict[str, str]], *, temperature: float = 0.8) -> str:
         self.calls.append(messages)
@@ -2606,10 +2683,14 @@ class FakeCompanionModel:
         *,
         temperature: float = 0.8,
         on_text_delta: Callable[[str], None] | None = None,
+        tools: list[dict[str, object]] | None = None,
+        tool_choice: object | None = None,
     ) -> tuple[str, dict[str, object]]:
         """Expose the production fast-interface contract for offline fixtures."""
 
-        raw = await self.complete(messages, temperature=temperature)
+        raw = await self.complete_json(
+            messages, temperature=temperature, tools=tools, tool_choice=tool_choice
+        )
         if on_text_delta is not None:
             on_text_delta(raw)
         material: dict[str, object] = {
@@ -2618,8 +2699,8 @@ class FakeCompanionModel:
             "input_tokens": 0,
             "output_tokens": 0,
             "thinking_tokens": 0,
-            "token_provenance": "estimated",
-            "transport": "fake",
+            "token_provenance": "offline_estimated",
+            "transport": "offline_fixture",
             "provider": "fake-companion",
             "provider_usage_ref": "usage:fake-companion:stream",
         }
