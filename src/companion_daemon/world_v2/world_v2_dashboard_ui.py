@@ -85,79 +85,23 @@ UNAVAILABLE_HTML = """<!doctype html>
 
 DASHBOARD_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>沈知栀 · 现在</title><style>
-:root{font-family:"PingFang SC",system-ui,sans-serif;color:#3f342d;background:#d9cdbc}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh}
-.bar{padding:14px 24px;background:#4d3b34;color:#fff8ea;display:flex;justify-content:space-between;align-items:center;gap:16px}
-.bar h1{font-size:18px;margin:0}
-.header-clock{margin:4px 0 0;font-size:12px;color:#e8d7c4}
-.bar-actions{display:flex;align-items:center;gap:14px}
-.capture-state{font-size:12px;color:#e8d7c4}
-.logout{margin:0}
-.logout button{border:1px solid #d9cdbc;border-radius:5px;background:transparent;color:#fff8ea;padding:5px 9px;font:12px inherit;cursor:pointer}
-.wrap{max-width:1440px;margin:auto;padding:22px;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(330px,.72fr);align-items:start;gap:18px}
-.room,.panel,.section-card{background:#f7eedf;border:3px solid #684f42;box-shadow:5px 5px 0 #b79c84}
-.room{position:relative;overflow:hidden;aspect-ratio:7/4}
-.room iframe{display:block;border:0;background:#211b1a;image-rendering:pixelated;pointer-events:none;position:absolute;top:0;left:0;width:1120px;height:640px;transform-origin:top left}
-.room-overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(33,27,26,.58);color:#fff8ea;font-size:15px;z-index:1}
-.room-overlay[hidden]{display:none}
-.room-edit{position:absolute;z-index:2;top:10px;right:10px;padding:7px 10px;border:1px solid #fff3d5;border-radius:6px;background:rgba(77,59,52,.88);color:#fff8ea;font-size:12px;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.28)}
-.room-edit:focus-visible,.logout button:focus-visible{outline:3px solid #e8c568;outline-offset:2px}
-.side{display:grid;gap:18px}
-.panel,.section-card{padding:16px}
-.panel h2,.section-card h2{margin:0;font-size:16px}
-.world-clock{margin:8px 0 0;font-size:13px;color:#6f584d}
-.now-story{display:grid;gap:8px;margin-top:12px}
-.now-line{padding:10px 12px;background:#fff8eb;border:1px solid #d5c3b1}
-.now-line .k{display:block;font-size:11px;color:#725e53}
-.now-line .v{display:block;margin-top:3px;font-size:15px;line-height:1.45}
-.now-line .d{display:block;margin-top:4px;font-size:12px;color:#6f584d;line-height:1.45}
-.now-line.missing .v{color:#80685b;font-size:13px;font-weight:400}
-.more-sections{grid-column:1/-1;display:grid;gap:18px}
-.more-sections>summary{cursor:pointer;color:#735d50;font-size:13px;padding:8px 0}
-.tech-details{margin-top:12px;border-top:1px dashed #cbb6a3;padding-top:10px}
-.tech-details summary,.zero-metrics summary,.section-contract summary{cursor:pointer;color:#735d50;font-size:12px}
-.meta,.tree{margin:10px 0 0;display:grid;grid-template-columns:minmax(110px,.42fr) minmax(0,1fr);gap:7px 10px}
-.meta dt,.tree dt{font-size:11px;color:#80685b;overflow-wrap:anywhere}
-.meta dd,.tree dd{margin:0;min-width:0;overflow-wrap:anywhere}
-.tree ul{margin:0;padding-left:20px}
-.tree code,.meta code{font:11px ui-monospace,SFMono-Regular,monospace}
-.section-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:18px}
-.section-card[data-section="runtime_operations"]{grid-column:1/-1}
-.section-head{display:flex;justify-content:space-between;gap:12px;align-items:start;padding-bottom:12px;border-bottom:1px solid #d7c7b7}
-.section-state{border-radius:999px;padding:3px 8px;background:#d8e4dc;color:#3d6d63;font-size:11px}
-.section-state[data-state="unavailable"],.section-state[data-state="degraded"],.section-state[data-state="stale"]{background:#edd6d2;color:#90483f}
-.section-state[data-state="empty"],.section-state[data-state="disabled"]{background:#e8e0d2;color:#766455}
-.section-body{display:grid;gap:14px;padding-top:14px}
-.section-subtitle{margin:0 0 7px;font-size:12px;color:#6f584d}
-.section-note{margin:0;font-size:13px;line-height:1.5;color:#5c4a41}
-.metric-grid,.signal-grid,.notice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px}
-.metric,.signal,.notice{min-width:0;border:1px solid #d5c3b1;background:#fff8eb;padding:8px 10px}
-.metric span,.signal span,.notice span{display:block;color:#725e53;font-size:11px;overflow-wrap:anywhere}
-.metric strong,.signal strong,.notice strong{display:block;margin-top:3px;font-size:16px}
-.signal strong,.notice strong{font-size:13px;color:#3d6d63;line-height:1.4}
-.highlight-list{display:grid;gap:8px}
-.highlight{padding:10px 12px;background:#fff8eb;border:1px solid #d5c3b1}
-.highlight-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
-.kind-tag{font-size:11px;color:#557f78}
-.when{font-size:11px;color:#80685b;white-space:nowrap}
-.highlight h3{margin:4px 0 0;font-size:15px;line-height:1.4}
-.status-pill{display:inline-block;margin-top:6px;border-radius:999px;padding:2px 8px;background:#d8e4dc;color:#3d6d63;font-size:11px}
-.highlight .detail{margin:6px 0 0;font-size:13px;color:#5c4a41;line-height:1.45}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.chip{font-size:11px;background:#f0e4d4;padding:2px 7px;border-radius:999px}
-.zero-metrics,.section-contract{border-top:1px dashed #cbb6a3;padding-top:10px}
-.zero-metrics .metric-grid,.section-contract .tree{margin-top:10px}
-.truncated{margin:0;font-size:12px;color:#6f584d}
-.error{color:#c87b73}
-@media(max-width:900px){.wrap{grid-template-columns:1fr}.section-grid{grid-template-columns:1fr}.section-card[data-section="runtime_operations"]{grid-column:auto}}
-@media(max-width:520px){.bar{padding:12px 14px}.wrap{padding:14px}.capture-state{display:none}.metric-grid,.signal-grid,.notice-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-</style></head><body><header class="bar"><div><h1>沈知栀 · 现在</h1><p id="headerClock" class="header-clock"></p></div><div class="bar-actions"><span id="captureState" class="capture-state">正在打开</span><form class="logout" method="post" action="/world-v2/dashboard/logout"><button type="submit">退出</button></form></div></header>
-<main class="wrap"><section class="room"><iframe id="roomVisual" src="/pixel-home/index.html?embed=1" title="知栀的房间" aria-label="知栀的房间" scrolling="no"></iframe><div id="roomOverlay" class="room-overlay">房间暂时看不到</div><a class="room-edit" href="/pixel-home/index.html?edit=1" target="_blank" rel="noopener" aria-label="在独立页面编辑渲染房间">✎ 编辑房间</a></section>
-<aside class="side"><section class="panel"><h2>这一刻</h2><p id="worldClock" class="world-clock"></p><div id="nowStory" class="now-story"></div><details class="tech-details"><summary>技术信息</summary><dl id="snapshotMeta" class="meta"></dl></details></section></aside><div id="sectionGrid" class="section-grid" aria-live="polite"></div></main>
-<script src="/world-v2/dashboard/app.js?v=world-v2-dashboard-home.1-ui4" defer></script></body></html>"""
-
+<meta name="color-scheme" content="light"><title>沈知栀 · 生活现场</title><style>
+:root{font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:#263d36;background:#f4f4ed;font-synthesis:none;--ink:#263d36;--muted:#687970;--line:#dce2d7;--paper:#fffef9;--green:#315b4a;--soft:#e7eee2;--amber:#835e25}
+*{box-sizing:border-box}body{margin:0;min-height:100vh}button,select{font:inherit}button,a,select{-webkit-tap-highlight-color:transparent}button,select{cursor:pointer}button:focus-visible,a:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #a4b89a;outline-offset:4px}[hidden]{display:none!important}
+.bar{max-width:1440px;margin:auto;padding:24px 40px;display:flex;align-items:center;justify-content:space-between;gap:24px;border-bottom:1px solid var(--line)}.identity{display:flex;gap:14px;align-items:center}.monogram{display:grid;place-items:center;width:44px;height:44px;background:var(--green);color:#fffef2;border-radius:14px;font-size:23px;font-family:serif}.bar h1{font-size:18px;font-weight:600;letter-spacing:.05em;margin:0}.eyebrow{margin:5px 0 0;color:var(--muted);font-size:10px;letter-spacing:.16em}.bar-actions{display:flex;align-items:center;gap:10px}.button{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:9px 14px;font-size:12px;color:var(--ink)}.button.primary{background:var(--green);color:#fff;border-color:var(--green)}.logout{margin:0}.logout button{background:none;border:none;padding:8px;color:var(--muted);font:12px inherit;cursor:pointer}
+.status-bar{max-width:1440px;margin:auto;padding:18px 40px 0;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:12px;color:var(--muted)}.status-meta{display:flex;align-items:center;gap:12px}.capture-state{display:inline-flex;align-items:center;gap:7px;color:var(--green)}.capture-state:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}.capture-state.error{color:#965240}.header-clock{margin:0}.readonly{letter-spacing:.04em}.capture-notice{max-width:1360px;margin:14px auto 0;padding:12px 16px;background:#f6ead7;border:1px solid #e8d5b4;border-radius:10px;color:#754e29;font-size:13px;line-height:1.6}.recording-tools{max-width:1440px;margin:16px auto 0;padding:0 40px;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted)}.recording-tools select{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 32px 8px 12px;color:var(--ink)}
+.wrap{max-width:1440px;margin:auto;padding:24px 40px 48px;display:grid;gap:24px}.panel,.section-card{background:var(--paper);border:1px solid var(--line);border-radius:18px;overflow:hidden;min-width:0}.now-panel{display:grid;grid-template-columns:minmax(210px,.55fr) minmax(0,1.6fr);padding:28px;gap:32px;background:linear-gradient(115deg,#e8eee0,#fafbf3)}.hero-label{font-size:10px;letter-spacing:.16em;color:#6b7f69;margin:0 0 15px}.now-panel h2{font-size:34px;font-weight:500;letter-spacing:.05em;margin:0}.hero-note{margin:12px 0;color:var(--muted);line-height:1.8;font-size:12px;max-width:240px}.world-clock{font-size:12px;color:var(--muted);line-height:1.7;margin:14px 0 0}.now-story{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 22px;align-content:center}.now-line{min-width:0;border-left:2px solid #c5d2bd;padding-left:12px}.now-line .k{display:block;font-size:11px;color:var(--muted)}.now-line .v{display:block;margin-top:7px;font-size:15px;line-height:1.6;overflow-wrap:anywhere}.now-line .d{display:block;margin-top:4px;color:var(--muted);font-size:12px;line-height:1.6}.now-line.missing .v{color:var(--muted);font-size:13px}
+.section-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:start}.section-card{padding:24px}.section-card[data-focus-area="life"]{grid-column:1/-1}.section-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.section-head h2{font-size:18px;font-weight:600;margin:0;letter-spacing:.03em}.section-state{border-radius:999px;padding:4px 9px;background:var(--soft);color:var(--green);font-size:11px;white-space:nowrap}.section-state[data-state="unavailable"],.section-state[data-state="degraded"],.section-state[data-state="stale"]{background:#f4e3d7;color:#91523a}.section-state[data-state="empty"],.section-state[data-state="disabled"]{background:#eeeee7;color:var(--muted)}.section-body{padding-top:16px;display:grid;gap:16px}.section-note{font-size:12px;color:var(--muted);line-height:1.8;margin:0}.empty-state{padding:24px 16px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:13px;line-height:1.8;text-align:center}.section-subtitle{font-size:12px;color:var(--muted);font-weight:500;margin:0 0 10px}.life-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:30px}.life-column{min-width:0}.activity-list,.highlight-list{display:grid;gap:10px}.highlight{padding:16px;background:#f8f9f3;border:1px solid #e3e8dc;border-radius:12px;min-width:0}.highlight-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.kind-tag{color:#66816b;font-size:10px;letter-spacing:.06em}.when{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}.highlight h3{font-size:15px;line-height:1.65;font-weight:500;margin:8px 0 0;overflow-wrap:anywhere}.status-pill{display:inline-block;margin-top:8px;border-radius:5px;padding:3px 7px;background:var(--soft);font-size:10px;color:var(--green)}.highlight[data-status="planned"] .status-pill,.highlight[data-status="pending"] .status-pill{background:#f0e9d9;color:var(--amber)}.highlight .detail{font-size:12px;line-height:1.8;color:var(--muted);margin:8px 0 0;overflow-wrap:anywhere}.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.chip{font-size:10px;line-height:1.5;color:var(--muted);background:#eef1e8;border-radius:4px;padding:3px 6px;overflow-wrap:anywhere}.timeline{list-style:none;padding:0;margin:0;display:grid;gap:12px}.timeline li{display:grid;grid-template-columns:9px minmax(0,1fr);gap:12px;align-items:start}.timeline-dot{margin-top:20px;width:7px;height:7px;border-radius:50%;background:#91a888}.timeline .highlight{background:transparent;border:0;border-bottom:1px solid var(--line);padding:12px 0 16px;border-radius:0}.timeline li:last-child .highlight{border:0}.timeline h3{margin-top:4px}.timeline-caption{font-size:11px;color:var(--muted);margin:0 0 10px;line-height:1.8}
+.metric-grid,.signal-grid,.notice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}.metric,.signal,.notice{padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:#fcfcf6;min-width:0}.metric span,.signal span,.notice span{display:block;color:var(--muted);font-size:10px}.metric strong,.signal strong,.notice strong{display:block;margin-top:6px;font-size:20px;font-weight:500}.signal strong,.notice strong{font-size:12px;line-height:1.6}.zero-metrics,.section-contract{border-top:1px solid var(--line);padding-top:12px}.zero-metrics summary,.section-contract summary{font-size:11px;color:var(--muted);cursor:pointer}.zero-metrics .metric-grid{margin-top:10px}.truncated{font-size:11px;color:var(--muted);margin:0;line-height:1.8}.operator-details{grid-column:1/-1;padding:18px 0;border-top:1px solid var(--line)}.operator-details>summary{font-size:12px;color:var(--muted);cursor:pointer}.operator-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding-top:18px}.meta{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:11px;color:var(--muted)}.meta dd{margin:0}.footer{font-size:11px;color:var(--muted);display:flex;justify-content:space-between;gap:16px;line-height:1.8}.footer a{color:inherit}
+body.recording .operator-only{display:none!important}body.recording .bar{padding-top:28px}body.recording .wrap{gap:28px}body.recording .hero-note,body.recording .section-note{font-size:14px}body.recording .now-line .v{font-size:19px}body.recording .highlight h3{font-size:20px}body.recording .highlight .detail{font-size:15px}body.recording .kind-tag,body.recording .when,body.recording .chip,body.recording .status-pill{font-size:12px}body.recording .section-head h2{font-size:23px}body.recording[data-focus]:not([data-focus="all"]) .section-grid{grid-template-columns:1fr}body.recording[data-focus]:not([data-focus="all"]) .highlight-list{grid-template-columns:repeat(2,minmax(0,1fr))}body.recording .section-card{padding:30px}
+@media(min-width:1500px){.wrap{padding-top:32px}}@media(max-width:1000px){.section-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.now-panel{grid-template-columns:1fr;gap:22px}.now-panel h2{font-size:28px}.hero-note{max-width:none}.life-columns{gap:20px}}@media(max-width:680px){.bar{padding:18px;gap:8px}.bar h1{font-size:15px}.monogram{width:36px;height:36px}.eyebrow,.readonly{display:none}.status-bar{padding:16px 18px 0;align-items:start}.status-meta{align-items:start;flex-direction:column;gap:6px}.wrap{padding:18px;gap:16px}.section-grid,.operator-grid,.life-columns{grid-template-columns:1fr}.now-panel,.section-card{padding:20px}.now-story{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.bar-actions{gap:4px}.button{font-size:11px;padding:8px}.capture-notice{margin:12px 18px 0}.recording-tools{padding:0 18px;flex-wrap:wrap}body.recording[data-focus]:not([data-focus="all"]) .highlight-list{grid-template-columns:1fr}.footer{flex-direction:column;gap:4px}}
+@media(prefers-reduced-motion:no-preference){.button{transition:background .15s}.button:hover{filter:brightness(.97)}}
+</style></head><body><header class="bar"><div class="identity"><span class="monogram" aria-hidden="true">栀</span><div><h1>沈知栀 · 生活现场</h1><p class="eyebrow">A LIFE, CONTINUING</p></div></div><div class="bar-actions"><button id="recordingToggle" class="button primary" type="button" aria-pressed="false">录制模式</button><form class="logout operator-only" method="post" action="/world-v2/dashboard/logout"><button type="submit">退出登录</button></form></div></header>
+<div class="status-bar"><div class="status-meta"><span id="captureState" class="capture-state" role="status">正在读取</span><p id="headerClock" class="header-clock"></p></div><span class="readonly">只读 · 不改变她的生活</span></div>
+<p id="captureNotice" class="capture-notice" role="status" hidden></p>
+<div id="recordingTools" class="recording-tools" hidden><label for="recordingFocus">聚焦区域</label><select id="recordingFocus"><option value="all">完整视图</option><option value="now">这一刻</option><option value="life">生活进展</option><option value="memory">记忆</option><option value="emotion">情绪</option><option value="relationships">关系</option></select><span>仅改变显示；同步状态始终保留 · Esc 退出</span></div>
+<main class="wrap"><section class="panel now-panel" data-focus-area="now"><div><p class="hero-label">THE PRESENT</p><h2>这一刻</h2><p class="hero-note">生活有自己的时间。<br>这里是已经记录下来的状态。</p><p id="worldClock" class="world-clock"></p></div><div id="nowStory" class="now-story"><p class="section-note">正在读取生活状态…</p></div></section><div id="sectionGrid" class="section-grid"></div><footer class="footer"><span>只展示经过授权的摘要，私密反思不在此呈现。</span><span class="operator-only">本机 owner 视图 · <a href="/pixel-home/index.html" target="_blank" rel="noopener">独立房间页面</a></span></footer></main>
+<script src="/world-v2/dashboard/app.js?v=world-v2-dashboard-home.1-ui5" defer></script></body></html>"""
 
 DASHBOARD_APP_JS = """'use strict';
 const DashboardHomeClient=(()=>{
@@ -231,7 +175,7 @@ const DashboardHomeClient=(()=>{
   };
   const SECTION_HEADINGS={
     overview_life:'生活',
-    facts_memory_inner:'心里',
+    facts_memory_inner:'记忆与情绪',
     relationship_lifecycle:'身边的人',
     operations:'说话和行动',
     perception_media:'看见的和照片',
@@ -240,7 +184,7 @@ const DashboardHomeClient=(()=>{
     runtime_operations:'系统现在怎么样',
   };
   const KIND_HEADINGS={
-    plan:'在做什么',
+    plan:'活动与计划',
     location:'人在哪',
     affect_episode:'心情',
     attention:'注意力',
@@ -305,7 +249,7 @@ const DashboardHomeClient=(()=>{
   }
   function stateLabel(state){
     if(typeof state!=='string'||!state)return STATE_LABELS.unavailable;
-    return STATE_LABELS[state]||state;
+    return STATE_LABELS[state]||STATE_LABELS.unavailable;
   }
   function captureStateLabel(state){
     if(state==='ready')return '已同步';
@@ -360,11 +304,13 @@ const DashboardHomeClient=(()=>{
     return title;
   }
   function highlightView(item){
-    if(!record(item))return null;
+    if(!record(item)||item.privacy_class==='withhold'||item.kind==='private_impression')return null;
+    let detail=typeof item.detail==='string'?item.detail:'';
     const values=[];
     if(Array.isArray(item.values)){
       for(const entry of item.values){
         if(!record(entry))continue;
+        if(entry.key==='intention'&&typeof entry.value==='string'){detail=entry.value;continue;}
         const text=formatScalar(entry.key,entry.value,entry.value_label);
         if(!text)continue;
         values.push({
@@ -377,62 +323,62 @@ const DashboardHomeClient=(()=>{
     const status=typeof item.status_label==='string'?item.status_label.trim():'';
     return{
       kind:typeof item.kind==='string'?item.kind:'',
-      kindLabel:KIND_HEADINGS[item.kind]||item.kind_label||item.kind||'条目',
+      kindLabel:KIND_HEADINGS[item.kind]||item.kind_label||'记录',
+      statusCode:typeof item.status_code==='string'?item.status_code:'',
       title:headline,
       status:status&&status!==headline?status:'',
-      detail:typeof item.detail==='string'?item.detail:'',
+      detail:detail,
       when:typeof item.occurred_at==='string'?item.occurred_at:'',
       values:values,
     };
   }
-  function latestHighlight(highlights,kind){
-    if(!Array.isArray(highlights))return null;
-    for(let index=highlights.length-1;index>=0;index-=1){
-      const item=highlights[index];
-      if(record(item)&&item.kind===kind)return item;
-    }
-    return null;
-  }
   function sectionData(snapshot,sectionId){
     const section=record(snapshot)&&record(snapshot.sections)?snapshot.sections[sectionId]:null;
-    return record(section)&&record(section.data)?section.data:null;
+    if(!record(section)||section.state==='unavailable')return null;
+    return record(section.data)?section.data:null;
+  }
+  function visibleHighlights(snapshot,sectionId,kinds=null){
+    const data=sectionData(snapshot,sectionId);
+    if(!data||!Array.isArray(data.highlights))return [];
+    return data.highlights.filter(item=>record(item)&&(!kinds||kinds.includes(item.kind)))
+      .map(highlightView).filter(Boolean);
+  }
+  function newestFirst(items){
+    return items.slice().sort((a,b)=>{
+      const first=Date.parse(a.when),second=Date.parse(b.when);
+      return (Number.isFinite(second)?second:0)-(Number.isFinite(first)?first:0);
+    });
+  }
+  function lifeView(snapshot){
+    const section=record(snapshot)&&record(snapshot.sections)?snapshot.sections.overview_life:null;
+    const state=record(section)&&STATE_LABELS[section.state]?section.state:'unavailable';
+    if(state==='unavailable')return {state,activities:[],timeline:[]};
+    return {
+      state,
+      activities:newestFirst(visibleHighlights(snapshot,'overview_life',['plan'])),
+      timeline:newestFirst(visibleHighlights(snapshot,'overview_life',[
+        'world_occurrence','outcome_observation','experience','life_arc','aspiration','biographical_coordinate',
+      ])),
+    };
   }
   function nowStory(snapshot){
     const lines=[];
-    const add=(label,item,empty)=>{
-      const view=highlightView(item);
-      if(!view||!view.title){
-        lines.push({label:label,text:empty,detail:'',missing:true});
-        return;
-      }
-      const bits=[view.title];
-      if(view.status)bits.push(view.status);
-      lines.push({label:label,text:bits.join(' · '),detail:view.detail,missing:false});
+    const add=(label,sectionId,kinds,empty,unavailable)=>{
+      const data=sectionData(snapshot,sectionId);
+      const view=newestFirst(visibleHighlights(snapshot,sectionId,kinds))[0];
+      lines.push({
+        label,
+        text:view?[view.title,view.status].filter(Boolean).join(' · '):(data?empty:unavailable),
+        detail:view?view.detail:'',
+        missing:!view,
+      });
     };
-    const life=sectionData(snapshot,'overview_life');
-    const inner=sectionData(snapshot,'facts_memory_inner');
-    const rel=sectionData(snapshot,'relationship_lifecycle');
-    const ops=sectionData(snapshot,'operations');
-    const lifeHighlights=life&&life.highlights;
-    const innerHighlights=inner&&inner.highlights;
-    const relHighlights=rel&&rel.highlights;
-    const opsHighlights=ops&&ops.highlights;
-    add('在做什么',latestHighlight(lifeHighlights,'plan'),'还没记下正在做的事');
-    add('人在哪',latestHighlight(lifeHighlights,'location'),'位置还没记下');
-    add('身子',latestHighlight(lifeHighlights,'resource'),'体力这些还没记下');
-    add('心情',latestHighlight(innerHighlights,'affect_episode'),'这会儿没有记下的心情');
-    add('和你',latestHighlight(relHighlights,'relationship_state'),'关系还没记下');
-    add('对你的印象',latestHighlight(relHighlights,'private_impression'),'还没有记下对你的印象');
-    add(
-      '她在等',
-      latestHighlight(opsHighlights,'response_expectation')||latestHighlight(relHighlights,'interaction_bid'),
-      '这轮没有在等你回',
-    );
-    add(
-      '最近说话',
-      latestHighlight(opsHighlights,'expression_plan')||latestHighlight(opsHighlights,'action'),
-      '最近没有发出的话',
-    );
+    add('活动与计划','overview_life',['plan'],'暂无可展示的活动或计划','生活状态暂时不可用');
+    add('人在哪','overview_life',['location'],'暂无可展示的位置记录','位置状态暂时不可用');
+    add('身体状态','overview_life',['resource'],'暂无可展示的身体状态','身体状态暂时不可用');
+    add('情绪记录','facts_memory_inner',['affect_episode'],'暂无可展示的情绪记录','情绪记录暂时不可用');
+    add('关系状态','relationship_lifecycle',['relationship_state'],'暂无可展示的关系记录','关系状态暂时不可用');
+    add('互动状态','operations',['response_expectation'],'暂无可展示的互动状态','互动状态暂时不可用');
     return lines;
   }
   function isNoiseMetric(metric){
@@ -445,7 +391,7 @@ const DashboardHomeClient=(()=>{
   }
   function dataFieldLabel(key){
     if(key==='typed_change_terminals'||key==='qualification_status'||key==='qualification_label'||key==='notice_count'||key==='expression_episode'||key==='semantic_recall')return null;
-    return DATA_FIELD_LABELS[key]||key;
+    return DATA_FIELD_LABELS[key]||null;
   }
   function metricGroups(metrics){
     const grouped={active:[],zero:[]};
@@ -467,6 +413,8 @@ const DashboardHomeClient=(()=>{
     formatClock,
     formatRelative,
     highlightView,
+    lifeView,
+    visibleHighlights,
     metaLabel,
     nowStory,
     roomMessageFrom,
@@ -485,483 +433,267 @@ if(typeof window!=='undefined')window.DashboardHomeClient=DashboardHomeClient;
 if(typeof document!=='undefined'){
   const byId=id=>document.getElementById(id);
   const isRecord=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
-  const captureState=byId('captureState');
-  const headerClock=byId('headerClock');
-  const worldClock=byId('worldClock');
-  const nowStory=byId('nowStory');
-  const snapshotMeta=byId('snapshotMeta');
   const sectionGrid=byId('sectionGrid');
-  const roomFrame=byId('roomVisual');
-  const roomHost=roomFrame?roomFrame.closest('.room'):null;
-  const roomOverlay=byId('roomOverlay');
-  const ROOM_FRAME_WIDTH=1120;
-  const ROOM_FRAME_HEIGHT=640;
-  const ROOM_FRAME_INSET=8;
-  let roomMessage=DashboardHomeClient.unavailableRoomMessage();
   let lastSnapshot=null;
   let snapshotEtag=null;
-
-  function fitRoomFrame(){
-    if(!roomFrame||!roomHost)return;
-    const scale=Math.max(0,Math.min(
-      (roomHost.clientWidth-ROOM_FRAME_INSET*2)/ROOM_FRAME_WIDTH,
-      (roomHost.clientHeight-ROOM_FRAME_INSET*2)/ROOM_FRAME_HEIGHT,
-    ));
-    const x=(roomHost.clientWidth-ROOM_FRAME_WIDTH*scale)/2;
-    const y=(roomHost.clientHeight-ROOM_FRAME_HEIGHT*scale)/2;
-    roomFrame.style.transform='translate('+x+'px,'+y+'px) scale('+scale+')';
-  }
-  function pushRoomMessage(){
-    if(roomFrame&&roomFrame.contentWindow)roomFrame.contentWindow.postMessage(roomMessage,window.location.origin);
-  }
-  function setCaptureState(state,isError){
-    if(!captureState)return;
-    captureState.textContent=DashboardHomeClient.captureStateLabel(state);
-    captureState.classList.toggle('error',Boolean(isError));
-  }
-  function showRoomMessage(message){
-    roomMessage=message;
-    const ready=message.state==='ready';
-    if(roomOverlay){
-      roomOverlay.hidden=ready;
-      roomOverlay.textContent=DashboardHomeClient.roomOverlayText(message.state);
+  let loading=false;
+  let recording=false;
+  let focusArea='all';
+  let previousScroll=0;
+  const focusAreas=['all','now','life','memory','emotion','relationships'];
+  const element=(tag,className,text)=>{
+    const node=document.createElement(tag);
+    if(className)node.className=className;
+    if(text!==undefined)node.textContent=String(text);
+    return node;
+  };
+  function setCaptureState(state){
+    const badge=byId('captureState');
+    if(badge){
+      badge.textContent=DashboardHomeClient.captureStateLabel(state);
+      badge.classList.toggle('error',state!=='ready');
     }
-    pushRoomMessage();
-  }
-  function appendScalar(parent,value){
-    const code=document.createElement('code');
-    code.textContent=value===null?'null':String(value);
-    parent.appendChild(code);
-  }
-  function appendTree(parent,value){
-    if(Array.isArray(value)){
-      if(!value.length){appendScalar(parent,'[]');return;}
-      const list=document.createElement('ul');
-      for(const item of value){
-        const row=document.createElement('li');
-        appendTree(row,item);
-        list.appendChild(row);
-      }
-      parent.appendChild(list);
-      return;
+    const notice=byId('captureNotice');
+    if(notice){
+      notice.hidden=state==='ready';
+      notice.textContent=state==='stale'
+        ?'连接暂时中断。以下保留上次同步的记录，可能已不是最新状态。'
+        :state==='unavailable'?'暂时无法读取生活状态，请稍后重试。':'';
     }
-    if(value!==null&&typeof value==='object'){
-      const list=document.createElement('dl');
-      list.className='tree';
-      for(const [key,item] of Object.entries(value)){
-        const term=document.createElement('dt');
-        term.textContent=DashboardHomeClient.metaLabel(key);
-        const detail=document.createElement('dd');
-        appendTree(detail,item);
-        list.append(term,detail);
-      }
-      parent.appendChild(list);
-      return;
-    }
-    appendScalar(parent,value);
   }
+  function applyPresentation(){
+    document.body.classList.toggle('recording',recording);
+    document.body.dataset.focus=focusArea;
+    byId('recordingToggle').textContent=recording?'退出录制模式':'录制模式';
+    byId('recordingToggle').setAttribute('aria-pressed',String(recording));
+    byId('recordingTools').hidden=!recording;
+    byId('recordingFocus').value=focusArea;
+    for(const panel of document.querySelectorAll('[data-focus-area]')){
+      panel.hidden=recording&&focusArea!=='all'&&panel.dataset.focusArea!==focusArea;
+    }
+  }
+  function toggleRecording(){
+    if(!recording)previousScroll=window.scrollY||0;
+    recording=!recording;
+    if(!recording)focusArea='all';
+    applyPresentation();
+    window.scrollTo(0,recording?0:previousScroll);
+  }
+  byId('recordingToggle').addEventListener('click',toggleRecording);
+  byId('recordingFocus').addEventListener('change',event=>{
+    focusArea=focusAreas.includes(event.target.value)?event.target.value:'all';
+    applyPresentation();
+  });
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&recording)toggleRecording();
+  });
   function renderClocks(snapshot){
     const clock=DashboardHomeClient.formatClock(snapshot.logical_time);
     const generated=DashboardHomeClient.formatClock(snapshot.generated_at);
-    if(headerClock)headerClock.textContent=clock?('世界时间 '+clock):'';
-    if(!worldClock)return;
-    if(clock&&generated)worldClock.textContent='世界时间 '+clock+' · 页面生成于 '+generated;
-    else if(clock)worldClock.textContent='世界时间 '+clock;
-    else if(generated)worldClock.textContent='页面生成于 '+generated;
-    else worldClock.textContent='';
+    byId('headerClock').textContent=clock?'世界时间 '+clock:'世界时间暂无记录';
+    byId('worldClock').textContent=generated?'快照生成于 '+generated:'';
   }
   function renderNowStory(snapshot){
-    if(!nowStory)return;
-    nowStory.replaceChildren();
-    const lines=DashboardHomeClient.nowStory(snapshot);
-    if(!lines.length){
-      const empty=document.createElement('p');
-      empty.className='now-empty';
-      empty.textContent='这一刻还没有可看的摘要。';
-      nowStory.appendChild(empty);
-      return;
-    }
-    for(const line of lines){
-      const card=document.createElement('div');
-      card.className='now-line';
-      if(line.missing)card.classList.add('missing');
-      const kind=document.createElement('span');
-      kind.className='k';
-      kind.textContent=line.label;
-      const value=document.createElement('span');
-      value.className='v';
-      value.textContent=line.text;
-      card.append(kind,value);
-      if(line.detail){
-        const detail=document.createElement('span');
-        detail.className='d';
-        detail.textContent=line.detail;
-        card.appendChild(detail);
-      }
-      nowStory.appendChild(card);
+    const parent=byId('nowStory');
+    parent.replaceChildren();
+    for(const line of DashboardHomeClient.nowStory(snapshot)){
+      const card=element('div','now-line'+(line.missing?' missing':''));
+      card.append(element('span','k',line.label),element('span','v',line.text));
+      // Full intention belongs to the life card; the present stays a summary.
+      parent.appendChild(card);
     }
   }
-  function renderMeta(snapshot){
-    if(!snapshotMeta)return;
-    snapshotMeta.replaceChildren();
-    const fields=['logical_time','generated_at','world_id','schema_version','policy_version','snapshot_hash','owner','cursor'];
-    for(const key of fields){
-      if(!(key in snapshot))continue;
-      const term=document.createElement('dt');
-      term.textContent=DashboardHomeClient.metaLabel(key);
-      const detail=document.createElement('dd');
-      if(key==='logical_time'||key==='generated_at'){
-        detail.textContent=DashboardHomeClient.formatClock(snapshot[key])||String(snapshot[key]);
-      }else{
-        appendTree(detail,snapshot[key]);
-      }
-      snapshotMeta.append(term,detail);
-    }
-  }
+  function empty(parent,text){parent.appendChild(element('p','empty-state',text));}
   function appendMetricGrid(parent,metrics){
     const groups=DashboardHomeClient.metricGroups(metrics);
-    function buildGrid(items){
-      const grid=document.createElement('div');
-      grid.className='metric-grid';
+    function grid(items){
+      const tiles=element('div','metric-grid');
       for(const metric of items){
-        const tile=document.createElement('div');
-        tile.className='metric';
-        const label=document.createElement('span');
-        label.textContent=typeof metric.label==='string'?metric.label:String(metric.key||'计数');
-        const value=document.createElement('strong');
-        value.textContent=String(metric.count??0);
-        tile.append(label,value);
-        grid.appendChild(tile);
+        if(typeof metric.count!=='number'||typeof metric.label!=='string')continue;
+        const tile=element('div','metric');
+        tile.append(element('span','',metric.label),element('strong','',metric.count));
+        tiles.appendChild(tile);
       }
-      return grid;
+      return tiles;
     }
-    if(groups.active.length)parent.appendChild(buildGrid(groups.active));
+    if(groups.active.length)parent.appendChild(grid(groups.active));
     if(groups.zero.length){
-      const details=document.createElement('details');
-      details.className='zero-metrics';
-      const summary=document.createElement('summary');
-      summary.textContent='其余为零的计数 ('+groups.zero.length+')';
-      details.append(summary,buildGrid(groups.zero));
+      const details=element('details','zero-metrics');
+      details.append(element('summary','','其余为零的计数 ('+groups.zero.length+')'),grid(groups.zero));
       parent.appendChild(details);
     }
   }
-  function appendSignalGrid(parent,signals){
-    if(!Array.isArray(signals)||!signals.length)return;
-    const attention=[];
-    const ok=[];
-    for(const signal of signals){
-      if(!isRecord(signal))continue;
-      if(signal.state==='ready')ok.push(signal);
-      else attention.push(signal);
-    }
-    function paint(items){
-      const grid=document.createElement('div');
-      grid.className='signal-grid';
-      for(const signal of items){
-        const tile=document.createElement('div');
-        tile.className='signal';
-        const label=document.createElement('span');
-        label.textContent=typeof signal.label==='string'?signal.label:String(signal.key||'信号');
-        const value=document.createElement('strong');
-        value.textContent=typeof signal.state_label==='string'?signal.state_label:DashboardHomeClient.stateLabel(signal.state);
-        tile.append(label,value);
-        grid.appendChild(tile);
-      }
-      return grid;
-    }
-    if(attention.length){
-      const title=document.createElement('h3');
-      title.className='section-subtitle';
-      title.textContent='现在不太稳';
-      parent.append(title,paint(attention));
-    }
-    if(ok.length){
-      const details=document.createElement('details');
-      details.className='zero-metrics';
-      const summary=document.createElement('summary');
-      summary.textContent='其余正常 ('+ok.length+')';
-      details.append(summary,paint(ok));
-      parent.appendChild(details);
-    }
-  }
-  function appendNoticeGrid(parent,notices){
-    if(!Array.isArray(notices)||!notices.length)return;
-    const title=document.createElement('h3');
-    title.className='section-subtitle';
-    title.textContent='需要留意';
-    const grid=document.createElement('div');
-    grid.className='notice-grid';
-    for(const notice of notices){
-      if(!isRecord(notice))continue;
-      const tile=document.createElement('div');
-      tile.className='notice';
-      const label=document.createElement('span');
-      label.textContent=String(notice.signal_label||notice.label||'提示');
-      const reason=document.createElement('strong');
-      reason.textContent=String(notice.reason_label||DashboardHomeClient.stateLabel(notice.severity)||'');
-      tile.append(label,reason);
-      grid.appendChild(tile);
-    }
-    parent.append(title,grid);
-  }
-  function appendHighlightCard(parent,item){
-    const view=DashboardHomeClient.highlightView(item);
-    if(!view)return;
-    const card=document.createElement('article');
-    card.className='highlight';
-    const top=document.createElement('div');
-    top.className='highlight-top';
-    const kind=document.createElement('span');
-    kind.className='kind-tag';
-    kind.textContent=view.kindLabel;
-    top.appendChild(kind);
-    if(view.when){
-      const when=document.createElement('span');
-      when.className='when';
-      when.textContent=DashboardHomeClient.formatRelative(view.when);
-      top.appendChild(when);
-    }
-    const title=document.createElement('h3');
-    title.textContent=view.title||view.kindLabel;
-    card.append(top,title);
-    if(view.status){
-      const status=document.createElement('span');
-      status.className='status-pill';
-      status.textContent=view.status;
-      card.appendChild(status);
-    }
-    if(view.detail){
-      const detail=document.createElement('p');
-      detail.className='detail';
-      detail.textContent=view.detail;
-      card.appendChild(detail);
-    }
+  function appendHighlight(parent,view){
+    const card=element('article','highlight');
+    card.dataset.status=view.statusCode;
+    const top=element('div','highlight-top');
+    top.appendChild(element('span','kind-tag',view.kindLabel));
+    if(view.when)top.appendChild(element('time','when',DashboardHomeClient.formatClock(view.when)));
+    card.append(top,element('h3','',view.title||view.kindLabel));
+    if(view.status)card.appendChild(element('span','status-pill',view.status));
+    if(view.detail)card.appendChild(element('p','detail',view.detail));
     if(view.values.length){
-      const chips=document.createElement('div');
-      chips.className='chips';
-      for(const entry of view.values){
-        const chip=document.createElement('span');
-        chip.className='chip';
-        chip.textContent=entry.label?entry.label+' '+entry.text:entry.text;
-        chips.appendChild(chip);
-      }
+      const chips=element('div','chips');
+      for(const value of view.values)chips.appendChild(element('span','chip',value.label+' '+value.text));
       card.appendChild(chips);
     }
     parent.appendChild(card);
   }
-  function appendHighlights(parent,highlights){
-    if(!Array.isArray(highlights)||!highlights.length)return;
-    const groups=[];
-    const index=new Map();
-    for(const item of highlights){
-      if(!isRecord(item))continue;
-      const key=String(item.kind_label||item.kind||'条目');
-      if(!index.has(key)){
-        const group={label:key,items:[]};
-        index.set(key,group);
-        groups.push(group);
-      }
-      index.get(key).items.push(item);
-    }
-    for(const group of groups){
-      const title=document.createElement('h3');
-      title.className='section-subtitle';
-      title.textContent=group.label;
-      const list=document.createElement('div');
-      list.className='highlight-list';
-      for(const item of group.items)appendHighlightCard(list,item);
-      parent.append(title,list);
+  function appendHighlights(parent,views){
+    const list=element('div','highlight-list');
+    for(const view of views)appendHighlight(list,view);
+    parent.appendChild(list);
+  }
+  function sectionCard(title,section,area){
+    const card=element('section','section-card');
+    if(area)card.dataset.focusArea=area;
+    const head=element('div','section-head');
+    const state=section&&typeof section.state==='string'?section.state:'unavailable';
+    const badge=element('span','section-state',DashboardHomeClient.stateLabel(state));
+    badge.dataset.state=state;
+    head.append(element('h2','',title),badge);
+    const body=element('div','section-body');
+    card.append(head,body);
+    return {card,body};
+  }
+  function appendCoverage(parent,section){
+    if(isRecord(section&&section.coverage)&&section.coverage.truncated){
+      parent.appendChild(element('p','truncated','这里只展示部分摘要，未列出的记录不代表不存在。'));
     }
   }
-  function appendLabeledValues(parent,data){
-    const tiles=[];
-    for(const [key,value] of Object.entries(data||{})){
-      const label=DashboardHomeClient.dataFieldLabel(key);
-      if(!label)continue;
-      if(value!==null&&typeof value==='object')continue;
-      tiles.push([label,value]);
+  function renderLife(snapshot){
+    const section=snapshot.sections.overview_life;
+    const {card,body}=sectionCard('生活进展',section,'life');
+    const view=DashboardHomeClient.lifeView(snapshot);
+    body.appendChild(element('p','section-note','计划尚未发生；活动结束也不代表目标已经达成。'));
+    if(view.state==='unavailable')empty(body,'生活记录暂时不可用。');
+    else{
+      const columns=element('div','life-columns');
+      const activities=element('div','life-column');
+      activities.appendChild(element('h3','section-subtitle','活动与计划'));
+      if(view.activities.length)appendHighlights(activities,view.activities);
+      else empty(activities,'暂无可展示的活动或计划。');
+      const history=element('div','life-column');
+      history.append(element('h3','section-subtitle','最近的生活记录'),element('p','timeline-caption','按记录时间排列，仅显示摘要；相邻记录不表示因果关系。'));
+      if(view.timeline.length){
+        const list=element('ol','timeline');
+        for(const item of view.timeline){
+          const row=element('li','');
+          const dot=element('span','timeline-dot');
+          dot.setAttribute('aria-hidden','true');
+          row.appendChild(dot);
+          appendHighlight(row,item);
+          list.appendChild(row);
+        }
+        history.appendChild(list);
+      }else empty(history,'暂无可展示的生活进展记录。');
+      columns.append(activities,history);
+      body.appendChild(columns);
+      appendCoverage(body,section);
     }
-    if(!tiles.length)return;
-    const grid=document.createElement('div');
-    grid.className='metric-grid';
-    for(const [label,value] of tiles){
-      const tile=document.createElement('div');
-      tile.className='metric';
-      const name=document.createElement('span');
-      name.textContent=label;
-      const strong=document.createElement('strong');
-      strong.textContent=String(value);
-      tile.append(name,strong);
-      grid.appendChild(tile);
-    }
-    parent.appendChild(grid);
+    sectionGrid.appendChild(card);
   }
-  function appendTerminals(parent,terminals){
-    if(!Array.isArray(terminals)||!terminals.length)return;
-    const title=document.createElement('h3');
-    title.className='section-subtitle';
-    title.textContent='已经结束的关系变化';
-    const list=document.createElement('div');
-    list.className='highlight-list';
-    for(const item of terminals){
-      if(!isRecord(item))continue;
-      const card=document.createElement('article');
-      card.className='highlight';
-      const top=document.createElement('div');
-      top.className='highlight-top';
-      const kind=document.createElement('span');
-      kind.className='kind-tag';
-      kind.textContent=item.status_label||item.status||'关系变化';
-      top.appendChild(kind);
-      if(item.occurred_at){
-        const when=document.createElement('span');
-        when.className='when';
-        when.textContent=DashboardHomeClient.formatRelative(item.occurred_at);
-        top.appendChild(when);
-      }
-      const heading=document.createElement('h3');
-      heading.textContent=item.target_stage_label||item.target_stage||'关系阶段';
-      card.append(top,heading);
-      list.appendChild(card);
-    }
-    parent.append(title,list);
-  }
-  function appendRuntimeExtras(parent,data){
-    const extras=[];
-    if(isRecord(data.expression_episode)&&typeof data.expression_episode.mode_label==='string'){
-      extras.push(['表达节奏',data.expression_episode.mode_label]);
-    }
-    if(isRecord(data.semantic_recall)&&typeof data.semantic_recall.semantic_embedding_label==='string'){
-      extras.push(['语义记忆',data.semantic_recall.semantic_embedding_label]);
-    }
-    if(!extras.length)return;
-    const grid=document.createElement('div');
-    grid.className='signal-grid';
-    for(const [label,value] of extras){
-      const tile=document.createElement('div');
-      tile.className='signal';
-      const name=document.createElement('span');
-      name.textContent=label;
-      const strong=document.createElement('strong');
-      strong.textContent=value;
-      tile.append(name,strong);
-      grid.appendChild(tile);
-    }
-    parent.appendChild(grid);
-  }
-  function appendSectionContract(parent,section){
-    const contract={};
-    for(const [key,value] of Object.entries(section||{})){
-      if(key==='label'||key==='data')continue;
-      contract[key]=value;
-    }
-    const details=document.createElement('details');
-    details.className='section-contract';
-    const summary=document.createElement('summary');
-    summary.textContent='技术细节';
-    details.appendChild(summary);
-    appendTree(details,contract);
-    parent.appendChild(details);
-  }
-  function appendSectionData(parent,section){
+  function renderDomain(snapshot,{title,sectionId,area,kinds,metricKeys,note}){
+    const section=snapshot.sections[sectionId];
+    const {card,body}=sectionCard(title,section,area);
+    body.appendChild(element('p','section-note',note));
     const data=isRecord(section&&section.data)?section.data:null;
-    if(!data)return;
-    if(typeof data.qualification_label==='string'&&data.qualification_label){
-      const note=document.createElement('p');
-      note.className='section-note';
-      note.textContent=data.qualification_label;
-      parent.appendChild(note);
+    if(!data||section.state==='unavailable')empty(body,title+'记录暂时不可用。');
+    else{
+      const views=DashboardHomeClient.visibleHighlights(snapshot,sectionId,kinds);
+      if(views.length)appendHighlights(body,views);
+      else empty(body,'暂无可展示的'+title+'摘要。');
+      const metrics=Array.isArray(data.metrics)?data.metrics:[];
+      appendMetricGrid(body,metrics.filter(item=>isRecord(item)&&(!metricKeys||metricKeys.includes(item.key))));
+      appendCoverage(body,section);
     }
-    appendMetricGrid(parent,data.metrics);
-    appendSignalGrid(parent,data.signals);
-    appendNoticeGrid(parent,data.notices);
-    appendRuntimeExtras(parent,data);
-    appendLabeledValues(parent,data);
-    appendTerminals(parent,data.typed_change_terminals);
-    appendHighlights(parent,data.highlights);
-    if(isRecord(section.coverage)&&section.coverage.truncated){
-      const note=document.createElement('p');
-      note.className='truncated';
-      note.textContent='这里只列出最近几条，还有没展开的。';
-      parent.appendChild(note);
-    }
+    sectionGrid.appendChild(card);
   }
-  function renderSections(snapshot){
-    if(!sectionGrid)return;
-    sectionGrid.replaceChildren();
-    const secondary=document.createElement('details');
-    secondary.className='more-sections';
-    const secondarySummary=document.createElement('summary');
-    secondarySummary.textContent='系统内部核对';
-    secondary.appendChild(secondarySummary);
-    let hasSecondary=false;
-    for(const [sectionId,section] of Object.entries(snapshot.sections)){
-      if(sectionId==='room')continue;
-      const card=document.createElement('section');
-      card.className='section-card';
-      card.dataset.section=sectionId;
-      const head=document.createElement('div');
-      head.className='section-head';
-      const title=document.createElement('h2');
-      title.textContent=DashboardHomeClient.sectionHeading(sectionId,section);
-      const state=document.createElement('span');
-      state.className='section-state';
-      const stateCode=section&&typeof section.state==='string'?section.state:'unavailable';
-      state.textContent=DashboardHomeClient.stateLabel(stateCode);
-      state.dataset.state=stateCode;
-      head.append(title,state);
-      card.appendChild(head);
-      const body=document.createElement('div');
-      body.className='section-body';
-      appendSectionData(body,section);
-      appendSectionContract(body,section);
-      card.appendChild(body);
-      if(sectionId==='authority_privacy'||sectionId==='ledger_qualification'){
-        secondary.appendChild(card);
-        hasSecondary=true;
-      }else{
-        sectionGrid.appendChild(card);
+  function renderOperations(snapshot){
+    const details=element('details','operator-details operator-only');
+    details.appendChild(element('summary','','运维与其他记录'));
+    const grid=element('div','operator-grid');
+    for(const id of ['operations','perception_media','authority_privacy','ledger_qualification','runtime_operations']){
+      const section=snapshot.sections[id];
+      if(!isRecord(section))continue;
+      const {card,body}=sectionCard(DashboardHomeClient.sectionHeading(id,section),section,null);
+      const data=isRecord(section.data)?section.data:{};
+      if(section.state==='unavailable')empty(body,'这部分记录暂时不可用。');
+      else{
+        if(typeof data.qualification_label==='string')body.appendChild(element('p','section-note',data.qualification_label));
+        appendMetricGrid(body,data.metrics);
+        appendHighlights(body,DashboardHomeClient.visibleHighlights(snapshot,id));
+        for(const signal of Array.isArray(data.signals)?data.signals:[]){
+          if(!isRecord(signal))continue;
+          body.appendChild(element('p','section-note',String(signal.label||'状态')+' · '+DashboardHomeClient.stateLabel(signal.state)));
+        }
+        for(const notice of Array.isArray(data.notices)?data.notices:[]){
+          if(!isRecord(notice))continue;
+          body.appendChild(element('p','section-note',String(notice.signal_label||notice.label||'提示')+' · '+String(notice.reason_label||'暂时不可用')));
+        }
+        for(const [key,value] of Object.entries(data)){
+          const label=DashboardHomeClient.dataFieldLabel(key);
+          if(label&&typeof value==='number')body.appendChild(element('p','section-note',label+' · '+value));
+        }
+        appendCoverage(body,section);
       }
+      const coverage=section.coverage;
+      if(isRecord(coverage)){
+        const info=element('details','section-contract');
+        info.append(element('summary','','技术细节'),element('p','section-note','已展示 '+coverage.included_count+' / 已知 '+coverage.known_count+' 条摘要'));
+        body.appendChild(info);
+      }
+      grid.appendChild(card);
     }
-    if(hasSecondary)sectionGrid.appendChild(secondary);
+    details.appendChild(grid);
+    sectionGrid.appendChild(details);
   }
   function renderSnapshot(snapshot){
     renderClocks(snapshot);
     renderNowStory(snapshot);
-    renderMeta(snapshot);
-    renderSections(snapshot);
-    setCaptureState('ready',false);
-    showRoomMessage(DashboardHomeClient.roomMessageFrom(snapshot));
+    sectionGrid.replaceChildren();
+    renderLife(snapshot);
+    renderDomain(snapshot,{
+      title:'记忆',sectionId:'facts_memory_inner',area:'memory',
+      kinds:['fact','memory_candidate','character_core'],metricKeys:['facts','memory_candidates'],
+      note:'候选、保留与遗忘分别记录。记忆候选不等于已确认事实。',
+    });
+    renderDomain(snapshot,{
+      title:'情绪',sectionId:'facts_memory_inner',area:'emotion',
+      kinds:['affect_episode','affect_baseline','appraisal'],metricKeys:['appraisals','affect_episodes'],
+      note:'这里是已记录的情绪与情境评估摘要，不是完整内心独白。',
+    });
+    renderDomain(snapshot,{
+      title:'关系',sectionId:'relationship_lifecycle',area:'relationships',kinds:null,
+      metricKeys:['relationship_states','relationship_commitments','npcs','private_impressions'],
+      note:'承诺、关系与人物各有记录。私人印象只显示数量。',
+    });
+    renderOperations(snapshot);
+    applyPresentation();
+    setCaptureState('ready');
   }
   async function loadDashboardHome(){
+    if(loading)return;
+    loading=true;
     try{
       const result=await DashboardHomeClient.capture(window.fetch.bind(window),snapshotEtag);
       const snapshot=DashboardHomeClient.snapshotFromCapture(result,lastSnapshot);
       if(result.kind==='not_modified'){
-        lastSnapshot=snapshot;
-        setCaptureState('ready',false);
-        showRoomMessage(DashboardHomeClient.roomMessageFrom(snapshot));
+        setCaptureState('ready');
         return;
       }
       snapshotEtag=result.etag;
       lastSnapshot=snapshot;
       renderSnapshot(snapshot);
     }catch(error){
-      console.error('Dashboard refresh failed',error instanceof Error?error.message:'unknown');
-      const state=lastSnapshot?'stale':'unavailable';
-      setCaptureState(state,true);
-      showRoomMessage(
-        lastSnapshot
-          ? DashboardHomeClient.roomMessageFrom(lastSnapshot,state)
-          : DashboardHomeClient.unavailableRoomMessage(state),
-      );
-    }
-  }
-  if(roomFrame){
-    roomFrame.addEventListener('load',()=>{fitRoomFrame();pushRoomMessage();});
-    fitRoomFrame();
-    if(typeof ResizeObserver==='function')new ResizeObserver(fitRoomFrame).observe(roomHost);
-    else window.addEventListener('resize',fitRoomFrame);
+      // The payload and upstream error never become visible page content.
+      setCaptureState(lastSnapshot?'stale':'unavailable');
+      if(!lastSnapshot){
+        renderNowStory({sections:{}});
+        sectionGrid.replaceChildren();
+        empty(sectionGrid,'尚未取得可验证的生活快照。');
+      }
+    }finally{loading=false;}
   }
   loadDashboardHome();
   setInterval(loadDashboardHome,15000);

@@ -144,10 +144,13 @@ def test_local_dashboard_requires_signed_session_and_never_leaks_operator_token(
     assert OPERATOR_TOKEN not in cookie
     assert authenticated_page.status_code == 200
     assert "operator-token" not in authenticated_page.text
-    assert "沈知栀 · 现在" in authenticated_page.text
+    assert "沈知栀 · 生活现场" in authenticated_page.text
     assert "这一刻" in authenticated_page.text
     assert "Snapshot" not in authenticated_page.text
-    assert "world-v2-dashboard-home.1-ui4" in authenticated_page.text
+    assert "world-v2-dashboard-home.1-ui5" in authenticated_page.text
+    assert 'id="recordingToggle"' in authenticated_page.text
+    assert 'id="recordingFocus"' in authenticated_page.text
+    assert "<iframe" not in authenticated_page.text
 
 
 def test_authenticated_dashboard_uses_remote_source_without_bootstrapping_sandbox_host(
@@ -424,9 +427,11 @@ def test_hot_dashboard_uses_only_v2_dtos_and_static_room_resources(tmp_path: Pat
     assert page.status_code == 200
     assert page.headers["cache-control"] == "no-store"
     assert "/world-v2/dashboard/app.js" in page.text
-    # The room visual is the live pixel-home prototype, not a static render.
-    assert "/pixel-home/index.html?embed=1" in page.text
-    assert "/pixel-home/index.html?edit=1" in page.text
+    # The life view never starts the room. Its existing independent routes
+    # remain available to explicit callers below.
+    assert "<iframe" not in page.text
+    assert "/pixel-home/index.html?embed=1" not in page.text
+    assert "/pixel-home/index.html?edit=1" not in page.text
     assert "/world-v2/dashboard/logout" in page.text
     assert "zhizhi-room-isometric" not in page.text
     assert script.status_code == 200

@@ -1,9 +1,7 @@
-"""Contract tests for the dashboard's embedded pixel-home renderer.
+"""Contract tests for the dashboard's independent pixel-home compatibility.
 
-The World v2 panel hosts the pixel-home prototype in an iframe and relays only
-the owner snapshot's renderer-ready route via a versioned postMessage.  These
-tests pin both sides of that fail-closed seam plus the static mount, without
-rendering anything.
+The life panel does not start the room. The original route conversion and
+independent static mount remain available without inferring character movement.
 """
 
 from __future__ import annotations
@@ -27,39 +25,27 @@ PROTOTYPE_INDEX = (REPO_ROOT / "prototypes" / "pixel-home" / "index.html").read_
 )
 
 
-def test_dashboard_html_embeds_pixel_home_instead_of_static_render() -> None:
+def test_dashboard_does_not_start_room_but_preserves_its_independent_entry() -> None:
     assert '<canvas id="stage" width="1120" height="640">' in PROTOTYPE_INDEX
-    assert '<iframe id="roomVisual" src="/pixel-home/index.html?embed=1"' in DASHBOARD_HTML
+    assert "<iframe" not in DASHBOARD_HTML
+    assert 'href="/pixel-home/index.html"' in DASHBOARD_HTML
     assert "zhizhi-room-isometric" not in DASHBOARD_HTML
     assert "zhizhi-room-isometric" not in DASHBOARD_APP_JS
-    assert 'href="/pixel-home/index.html?edit=1"' in DASHBOARD_HTML
-    assert 'aria-label="在独立页面编辑渲染房间"' in DASHBOARD_HTML
-    assert 'title="知栀的房间"' in DASHBOARD_HTML
-    assert 'aria-label="知栀的房间"' in DASHBOARD_HTML
-    assert '<div id="roomOverlay" class="room-overlay">房间暂时看不到</div>' in DASHBOARD_HTML
-    assert "align-items:start" in DASHBOARD_HTML
-    assert ".room{position:relative;overflow:hidden;aspect-ratio:7/4}" in DASHBOARD_HTML
-    assert "position:absolute;top:0;left:0;width:1120px;height:640px" in DASHBOARD_HTML
-    assert 'aspect-ratio:4/3' not in DASHBOARD_HTML
-    assert "pointer-events:none" in DASHBOARD_HTML
+    assert "?edit=1" not in DASHBOARD_HTML
+    assert "?embed=1" not in DASHBOARD_HTML
     assert 'id="roomRoute"' not in DASHBOARD_HTML
 
 
-def test_dashboard_script_posts_only_renderer_ready_snapshot_routes() -> None:
+def test_dashboard_compatibility_converts_only_renderer_ready_snapshot_routes() -> None:
     assert "const DATA_URL='/world-v2/dashboard/home'" in DASHBOARD_APP_JS
     assert "credentials:'same-origin'" in DASHBOARD_APP_JS
     assert "headers['If-None-Match']=etag" in DASHBOARD_APP_JS
-    assert "postMessage" in DASHBOARD_APP_JS
-    assert "window.location.origin" in DASHBOARD_APP_JS
+    assert "postMessage" not in DASHBOARD_APP_JS
     assert "room.render_state.route" in DASHBOARD_APP_JS
     assert "scene_id:route.scene_id" in DASHBOARD_APP_JS
     assert "action_id:route.action_id" in DASHBOARD_APP_JS
     assert "availability:route.availability" in DASHBOARD_APP_JS
     assert "return unavailableRoomMessage('unavailable',logicalTime)" in DASHBOARD_APP_JS
-    assert "ROOM_FRAME_WIDTH=1120" in DASHBOARD_APP_JS
-    assert "ROOM_FRAME_HEIGHT=640" in DASHBOARD_APP_JS
-    assert "ROOM_FRAME_INSET=8" in DASHBOARD_APP_JS
-    assert "new ResizeObserver(fitRoomFrame)" in DASHBOARD_APP_JS
     for forbidden in (
         "/health",
         "/world-v2/life-state",
