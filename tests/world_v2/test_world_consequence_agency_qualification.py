@@ -46,15 +46,6 @@ INTENTION = "我想试着把桌面上的两本书叠在一起。"
 ATTEMPT_RESULTS = ("两本书叠稳了，没有滑落。", "上面的书滑到一旁，两本书没有叠稳。")
 
 
-class _CurrentProductionManifest(ProjectionLifeCapabilityManifestCompiler):
-    """Only opt into the new wire; never manufacture execution anchors."""
-
-    def compile(self, **kwargs):
-        return (
-            super().compile(**kwargs).model_copy(update={"outcome_contract": "world-consequence.2"})
-        )
-
-
 class _AttemptAuthor(_ReceivedAuthor):
     def __init__(self, store, wake, source_ref):
         super().__init__(store, ())
@@ -368,7 +359,7 @@ async def test_actual_started_role_attempt_reaches_production_authority_and_worl
                 life_content_store=store,
                 relevance_scope=ContextRelevanceScope(actor_ref=ACTOR),
             ),
-            capability_manifest_compiler=_CurrentProductionManifest(
+            capability_manifest_compiler=ProjectionLifeCapabilityManifestCompiler(
                 owner_actor_ref=ACTOR,
                 catalog=catalog,
                 content_store=store,
@@ -379,6 +370,8 @@ async def test_actual_started_role_attempt_reaches_production_authority_and_worl
         assert len(author.received) == 1
         actual = json.loads(json.loads(author.received[0])[-1]["content"])
         bindings = actual["execution_authority"]["execution_bindings"]
+        assert actual["capability_manifest"]["version"] == "life-development-capability.production.3"
+        assert actual["capability_manifest"]["outcome_contract"] == "world-consequence.2"
         assert [item["source_event_ref"] for item in bindings] == [source_ref]
         (material,) = actual["execution_materials"]
         assert material["execution_binding"] == bindings[0]
