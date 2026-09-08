@@ -21,6 +21,7 @@ from .world_life_context import ActiveActivityContextItem, CompletedActivityCont
 
 VISIBLE_SOURCE_CLOSURE_CONTRACT = "visible-beat-source-verdict.1"
 VISIBLE_SOURCE_VERDICT_V2_CONTRACT = "visible-beat-source-verdict.2"
+VISIBLE_SOURCE_VERDICT_V3_CONTRACT = "visible-beat-source-verdict.3"
 MAX_VISIBLE_SOURCE_PROBLEM_CHARS = 64
 MAX_VISIBLE_SOURCE_PROBLEM_JSON_CHARS = 96
 MAX_VISIBLE_SOURCE_VERDICT_V2_BYTES = 32_768
@@ -158,6 +159,41 @@ class _ProviderVisibleBeatVerdictWireV2(BaseModel):
     rejections: tuple[VisibleSourceRejectionDiagnostic, ...] = Field(max_length=16)
 
 
+class _ProviderVisibleBeatBranchV3(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    beat_index: int
+    subject_role: _ProviderSubjectRole
+
+
+class _ProviderVisibleBeatClosedV3(_ProviderVisibleBeatBranchV3):
+    verdict: Literal["closed"]
+    semantic_role: Literal["external_proposition", "mixed"]
+    first_source_ref_index: int
+    additional_source_ref_indexes: tuple[int, ...]
+
+
+class _ProviderVisibleBeatSourceFreeV3(_ProviderVisibleBeatBranchV3):
+    verdict: Literal["source_free"]
+    semantic_role: Literal["private_state", "commitment", "generalization", "question"]
+
+
+class _ProviderVisibleBeatUnclosedV3(_ProviderVisibleBeatBranchV3):
+    verdict: Literal["unclosed"]
+    semantic_role: Literal["external_proposition", "mixed"]
+
+
+class _ProviderVisibleBeatVerdictWireV3(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    contract: Literal["visible-beat-source-verdict.3"]
+    decisions: tuple[
+        _ProviderVisibleBeatClosedV3 | _ProviderVisibleBeatSourceFreeV3 | _ProviderVisibleBeatUnclosedV3,
+        ...,
+    ] = Field(max_length=16)
+    rejections: tuple[VisibleSourceRejectionDiagnostic, ...] = Field(max_length=16)
+
+
 class VisibleSourceClosureWireFailure(ValueError):
     """Content-free structural coordinate for one invalid reviewer wire."""
 
@@ -184,7 +220,7 @@ class VisibleSourceClosureWireFailure(ValueError):
 
 
 # DeepSeek strict tools support a deliberate JSON-Schema subset.  Keep this
-# provider schema hand-authored, flat, and immutable: no Pydantic titles,
+# provider schema hand-authored and immutable: no Pydantic titles,
 # minLength/maxLength/maxItems, or dialect-specific root unions.
 _VISIBLE_BEAT_VERDICT_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -245,18 +281,45 @@ _VISIBLE_BEAT_VERDICT_SCHEMA: dict[str, object] = {
 }
 
 
-def _versioned_contract(version: Literal["1", "2"]) -> str:
+def _versioned_contract(version: Literal["1", "2", "3"]) -> str:
     if version == "1":
         return VISIBLE_SOURCE_CLOSURE_CONTRACT
     if version == "2":
         return VISIBLE_SOURCE_VERDICT_V2_CONTRACT
-    raise ValueError("visible source verdict version must be 1 or 2")
+    if version == "3":
+        return VISIBLE_SOURCE_VERDICT_V3_CONTRACT
+    raise ValueError("visible source verdict version must be 1, 2 or 3")
 
 
-def visible_source_closure_schema(*, version: Literal["1", "2"] = "1") -> dict[str, object]:
+def visible_source_closure_schema(*, version: Literal["1", "2", "3"] = "1") -> dict[str, object]:
     """Return an isolated provider schema for the exact strict-tool wire."""
 
     contract = _versioned_contract(version)
+    if version == "3":
+        schema = visible_source_closure_schema(version="2")
+        schema["properties"]["contract"]["enum"] = [contract]
+        original = schema["properties"]["decisions"]["items"]["properties"]
+        branches = []
+        for verdict, roles in (
+            ("closed", ["external_proposition", "mixed"]),
+            ("source_free", ["private_state", "commitment", "generalization", "question"]),
+            ("unclosed", ["external_proposition", "mixed"]),
+        ):
+            properties = {
+                key: deepcopy(value) for key, value in original.items()
+                if key != "source_ref_indexes"
+            }
+            properties["verdict"]["enum"] = [verdict]
+            properties["semantic_role"]["enum"] = roles
+            if verdict == "closed":
+                properties["first_source_ref_index"] = {"type": "integer"}
+                properties["additional_source_ref_indexes"] = deepcopy(original["source_ref_indexes"])
+            branches.append({
+                "type": "object", "properties": properties,
+                "required": list(properties), "additionalProperties": False,
+            })
+        schema["properties"]["decisions"]["items"] = {"anyOf": branches}
+        return schema
     schema = deepcopy(_VISIBLE_BEAT_VERDICT_SCHEMA)
     if version == "2":
         schema["properties"]["contract"]["enum"] = [contract]
@@ -774,6 +837,20 @@ Version 2 keeps every complete Beat verdict and adds rejections. Return exactly 
 Locate a nonempty disputed span in the original Beat using zero-based Unicode code point offsets [char_start, char_end); count neither UTF-8 bytes nor UTF-16 code units. Do not copy or rewrite the span. The host derives its quotation from the pinned original Beat.
 related_source_ref_indexes are at most eight unique indexes into the supplied source table, or empty. They explain a source problem; they never supply authority, close a Beat, or change source_ref_indexes. source_problem explains the missing or mismatched source support in at most 64 Unicode characters and 96 JSON-encoded characters including quotes, using unescaped Unicode. Do not author replacement dialogue or instruct the character's choices. Review every full Beat even when only part is disputed."""
 
+_SYSTEM_CONTRACT_V3 = (
+    _SYSTEM_CONTRACT.replace(
+        "source_ref_indexes must be empty unless verdict is closed.",
+        "Each verdict branch must contain exactly its own fields.",
+    )
+    + _DIAGNOSTICS_SYSTEM_CONTRACT.replace("Version 2", "Version 3").replace(
+        "change source_ref_indexes", "change the selected source authority"
+    )
+    + """
+VERDICT BRANCH TRANSPORT V3:
+Every decision has beat_index, verdict, semantic_role and subject_role. A closed decision also requires first_source_ref_index (one integer) and additional_source_ref_indexes (an array, empty when no additional support is needed). Select the actual first supporting source index yourself from the supplied pinned table. All selected indexes together must be unique, in range and at most eight; their evidence must entail the exact claim with the same actor, polarity, time, status and disclosure authority. Never invent, guess or default a source index. If no eligible evidence supports an external proposition, return unclosed and its rejection diagnostic.
+source_free and unclosed decisions have no source fields: omit first_source_ref_index, additional_source_ref_indexes and source_ref_indexes entirely, including null or empty padding. closed also has no source_ref_indexes field. The host only combines the explicit closed first/additional indexes or normalizes a source-free/unclosed branch to an empty source set; it never chooses support. Diagnostic related_source_ref_indexes explain a problem and cannot close a Beat."""
+)
+
 
 def visible_source_closure_messages(
     *,
@@ -781,7 +858,7 @@ def visible_source_closure_messages(
     world_claims: tuple[dict[str, object], ...],
     source_references: tuple[dict[str, object], ...],
     invalid_reason: VisibleSourceClosureWireFailure | None = None,
-    version: Literal["1", "2"] = "1",
+    version: Literal["1", "2", "3"] = "1",
 ) -> list[dict[str, str]]:
     """Compile one compact request; correction never echoes invalid bytes."""
 
@@ -847,7 +924,10 @@ def visible_source_closure_messages(
     messages = [
         {
             "role": "system",
-            "content": _SYSTEM_CONTRACT + (_DIAGNOSTICS_SYSTEM_CONTRACT if version == "2" else ""),
+            "content": (
+                _SYSTEM_CONTRACT_V3 if version == "3"
+                else _SYSTEM_CONTRACT + (_DIAGNOSTICS_SYSTEM_CONTRACT if version == "2" else "")
+            ),
         },
         {
             "role": "user",
@@ -924,6 +1004,19 @@ def visible_source_closure_messages(
                 ),
             }
         )
+    if version == "3" and invalid_reason is not None:
+        repair = json.loads(messages[-1]["content"])
+        matrix = repair["structural_constraints"]["verdict_role_ref_matrix"]
+        for verdict, constraints in matrix.items():
+            del constraints["source_ref_indexes"]
+            if verdict == "closed":
+                constraints.update(
+                    first_source_ref_index="one_required_actual_pinned_index",
+                    additional_source_ref_indexes="zero_to_seven_more_unique_pinned_indexes",
+                )
+            else:
+                constraints["source_fields"] = "absent_including_null_and_empty_padding"
+        messages[-1]["content"] = json.dumps(repair, ensure_ascii=False, separators=(",", ":"))
     return messages
 
 
@@ -1204,10 +1297,39 @@ def _unique_verdict_members(pairs: list[tuple[str, object]]) -> dict[str, object
     return value
 
 
+def _normalize_verdict_v3_transport(raw: str) -> str:
+    """Merge explicit fields only; the unchanged v2 chain decides all authority."""
+    try:
+        if not isinstance(raw, str) or len(raw.encode("utf-8")) > MAX_VISIBLE_SOURCE_VERDICT_V2_BYTES:
+            raise ValueError("verdict branch transport is not bounded JSON")
+        json.loads(raw, object_pairs_hook=_unique_verdict_members)
+        wire = _ProviderVisibleBeatVerdictWireV3.model_validate_json(raw)
+    except (ValueError, TypeError, RecursionError):
+        raise VisibleSourceClosureWireFailure(
+            "schema_invalid", "visible source verdict v3 branch transport is invalid",
+        ) from None
+    decisions = []
+    for branch in wire.decisions:
+        decision = branch.model_dump(mode="json")
+        if isinstance(branch, _ProviderVisibleBeatClosedV3):
+            decision["source_ref_indexes"] = [
+                decision.pop("first_source_ref_index"),
+                *decision.pop("additional_source_ref_indexes"),
+            ]
+        else:
+            decision["source_ref_indexes"] = []
+        decisions.append(decision)
+    return json.dumps({
+        "contract": VISIBLE_SOURCE_VERDICT_V2_CONTRACT,
+        "decisions": decisions,
+        "rejections": [item.model_dump(mode="json") for item in wire.rejections],
+    }, ensure_ascii=False, separators=(",", ":"))
+
+
 def parse_visible_source_verdict(
     raw: str,
     *,
-    version: Literal["1", "2"] = "1",
+    version: Literal["1", "2", "3"] = "1",
     visible_beats: tuple[str, ...],
     source_ref_kinds: tuple[str | None, ...],
     source_ref_subject_roles: tuple[str | None, ...] = (),
@@ -1216,6 +1338,12 @@ def parse_visible_source_verdict(
     """Keep original whole-Beat closure authoritative; diagnostics only explain rejection."""
 
     _versioned_contract(version)
+    if version == "3":
+        return parse_visible_source_verdict(
+            _normalize_verdict_v3_transport(raw), version="2",
+            visible_beats=visible_beats, source_ref_kinds=source_ref_kinds,
+            source_ref_subject_roles=source_ref_subject_roles, source_references=source_references,
+        )
     if version == "1":
         return ParsedVisibleSourceVerdict(
             verdict=parse_visible_source_closure(
@@ -1271,7 +1399,7 @@ def parse_visible_source_verdict(
     )
 
 
-def visible_source_verdict_schema_digest(*, version: Literal["1", "2"] = "1") -> str:
+def visible_source_verdict_schema_digest(*, version: Literal["1", "2", "3"] = "1") -> str:
     encoded = json.dumps(
         visible_source_closure_schema(version=version),
         ensure_ascii=False,
@@ -1282,7 +1410,7 @@ def visible_source_verdict_schema_digest(*, version: Literal["1", "2"] = "1") ->
 
 
 def visible_source_verdict_provider_request_contract(
-    *, version: Literal["1", "2"] = "1",
+    *, version: Literal["1", "2", "3"] = "1",
 ) -> dict[str, object]:
     """Compile the one canonical strict-tool request contract for this protocol."""
 
@@ -1312,6 +1440,7 @@ def visible_source_verdict_provider_request_contract(
 __all__ = [
     "VISIBLE_SOURCE_CLOSURE_CONTRACT",
     "VISIBLE_SOURCE_VERDICT_V2_CONTRACT",
+    "VISIBLE_SOURCE_VERDICT_V3_CONTRACT",
     "MAX_VISIBLE_SOURCE_PROBLEM_CHARS",
     "MAX_VISIBLE_SOURCE_PROBLEM_JSON_CHARS",
     "MAX_VISIBLE_SOURCE_VERDICT_V2_BYTES",
