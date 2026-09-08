@@ -203,22 +203,35 @@ def test_missing_explicit_fields_are_explained_in_chinese() -> None:
     assert "cadence" in text
 
 
-def test_reselection_instruction_carries_the_chinese_detail() -> None:
+@pytest.mark.parametrize("missing_detail", [None, "", " \n "])
+def test_reselection_instruction_does_not_invent_missing_detail(missing_detail) -> None:
     instruction = _role_result_correction_instruction(
         {
             "failure_code": "paired_expression_reselection_invalid",
-            "failure_detail": "",
+            "failure_detail": missing_detail,
         }
     )
-    assert "结构校验失败" in instruction
+    assert "上一轮结果未通过校验" in instruction
+    assert "结构校验" not in instruction
+    assert "投递形状不合法" not in instruction
+    assert "paired_expression_reselection_invalid" in instruction
     assert "没把具体原因写清楚" in instruction
+
+
+@pytest.mark.parametrize("detail", [
+    "media_request 只有配 timing_choice=now 才能执行。",
+    " \n完整表达的来源审核未闭合：外部事实需要来源。\n ",
+])
+def test_reselection_instruction_carries_the_chinese_detail(detail) -> None:
     filled = _role_result_correction_instruction(
         {
             "failure_code": "paired_expression_reselection_invalid",
-            "failure_detail": "media_request 只有配 timing_choice=now 才能执行。",
+            "failure_detail": detail,
         }
     )
-    assert "media_request 只有配 timing_choice=now 才能执行" in filled
+    assert f"具体原因：{detail} " in filled
+    assert "结构校验" not in filled
+    assert "投递形状不合法" not in filled
 
 
 def test_role_failure_kwargs_never_leave_detail_empty() -> None:
@@ -526,7 +539,7 @@ class _HalfWaitThenFixedProvider:
     async def complete(self, messages: list[dict[str, str]], *, temperature: float = 0.8) -> str:
         del temperature
         self.calls.append(messages)
-        if self.repair and "结构校验失败" in messages[0]["content"]:
+        if self.repair and "上一轮结果未通过校验" in messages[0]["content"]:
             return json.dumps(_valid_dual_draft(), ensure_ascii=False)
         return json.dumps(
             {
@@ -601,7 +614,7 @@ async def test_half_written_wait_pair_gets_one_same_occasion_reselection(tmp_pat
     assert len(provider.calls) == 2
     assert len(provider.calls) <= MAX_PROVIDER_CALLS_PER_TURN
     correction = provider.calls[1][0]["content"]
-    assert "结构校验失败" in correction
+    assert "上一轮结果未通过校验" in correction
     assert "这次缺了：waiting_for" in correction
     assert "宿主不会替你补上缺的字段" in correction
 
@@ -614,7 +627,7 @@ async def test_half_written_wait_pair_still_fails_after_one_reselection(tmp_path
     assert outcome.status == "deferred"
     assert len(provider.calls) == 2
     assert len(provider.calls) <= MAX_PROVIDER_CALLS_PER_TURN
-    assert "结构校验失败" in provider.calls[1][0]["content"]
+    assert "上一轮结果未通过校验" in provider.calls[1][0]["content"]
 
 
 class _HalfCommitmentThenFixedProvider:
@@ -627,7 +640,7 @@ class _HalfCommitmentThenFixedProvider:
     async def complete(self, messages: list[dict[str, str]], *, temperature: float = 0.8) -> str:
         del temperature
         self.calls.append(messages)
-        if self.repair and "结构校验失败" in messages[0]["content"]:
+        if self.repair and "上一轮结果未通过校验" in messages[0]["content"]:
             return json.dumps(
                 _valid_dual_draft(text="我们算朋友了吧"),
                 ensure_ascii=False,
@@ -666,7 +679,7 @@ async def test_half_written_commitment_triplet_gets_one_same_occasion_reselectio
     assert len(provider.calls) == 2
     assert len(provider.calls) <= MAX_PROVIDER_CALLS_PER_TURN
     correction = provider.calls[1][0]["content"]
-    assert "结构校验失败" in correction
+    assert "上一轮结果未通过校验" in correction
     assert "这次缺了：said_as" in correction
     assert "宿主不会替你补上缺的字段" in correction
 
@@ -701,7 +714,7 @@ class _HalfWaitThenFixedStreamProvider:
         self.repair = repair
 
     def _raw(self, messages: list[dict[str, str]]) -> str:
-        if self.repair and messages and "结构校验失败" in messages[0]["content"]:
+        if self.repair and messages and "上一轮结果未通过校验" in messages[0]["content"]:
             inner = {
                 "messages": ["行 等你"],
                 "meaning_of_this": "他会回来继续说",
@@ -762,6 +775,6 @@ async def test_stream_compact_half_wait_pair_gets_one_same_occasion_reselection(
     assert len(provider.calls) == 2
     assert len(provider.calls) <= MAX_PROVIDER_CALLS_PER_TURN
     correction = provider.calls[1][0]["content"]
-    assert "结构校验失败" in correction
+    assert "上一轮结果未通过校验" in correction
     assert "这次缺了：waiting_for" in correction
     assert "宿主不会替你补上缺的字段" in correction

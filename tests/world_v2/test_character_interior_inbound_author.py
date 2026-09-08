@@ -5125,7 +5125,7 @@ async def test_public_turn_never_enters_detached_backup_correction(
     assert len(primary.calls) == 2
     assert backup.calls == []
     second_system = primary.calls[1][0]["content"]
-    assert "结构校验失败" in second_system
+    assert "上一轮结果未通过校验" in second_system
     assert "具体原因" in second_system
 
 

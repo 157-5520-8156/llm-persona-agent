@@ -9,9 +9,12 @@ import sqlite3
 import httpx
 import pytest
 
-from companion_daemon.llm import DeepSeekChatModel
+from companion_daemon.llm import DeepSeekChatModel, provider_invocation_request_hash
 from companion_daemon.world_v2.proposal_audit_schemas import RecordedModelResultAudit
 from companion_daemon.world_v2.character_interior.inbound_author import _InboundCharacterAuthor
+from companion_daemon.world_v2.visible_source_author_request import (
+    verify_visible_source_author_request,
+)
 from world_v2_application import (
     build_sqlite_world_v2_test_application,
     compose_fixture_character_interior,
@@ -211,12 +214,61 @@ async def test_unclosed_allows_one_same_role_reselection_and_reviews_whole_repla
         outcome = await app.respond(_inbound())
         assert outcome.status == "action_authorized", outcome
         assert (http.authors, http.reviews) == (2, 2)
+        first_author, first_review, corrected_author, second_review = http.requests
+        correction_context = json.loads(corrected_author["messages"][1]["content"])
+        correction = correction_context["inner_life_snapshot"]["role_result_correction"]
+        correction_instruction = corrected_author["messages"][0]["content"]
+        assert "上一轮结果未通过校验" in correction_instruction
+        assert "这只说明上一轮的投递形状不合法" not in correction_instruction
+        assert correction["failure_code"] in correction_instruction
+        assert correction["failure_detail"] in correction_instruction
+        assert correction["failure_detail"].startswith("完整表达的来源审核未闭合")
+        original_context = json.loads(first_author["messages"][1]["content"])
+        assert "role_result_correction" not in original_context["inner_life_snapshot"]
+        assert "上一轮结果未通过校验" not in first_author["messages"][0]["content"]
+        assert correction_context["request"] == original_context["request"]
+        for field in ("expression_capabilities", "expression_hard_boundaries"):
+            assert correction_context[field] == original_context[field]
+        assert (
+            correction_context["inner_life_snapshot"]["materials"]
+            == original_context["inner_life_snapshot"]["materials"]
+        )
+        original_review = json.loads(first_review["messages"][1]["content"])
+        replacement_review = json.loads(second_review["messages"][1]["content"])
+        assert replacement_review["source_references"] == original_review["source_references"]
+        assert replacement_review["source_materials"] == original_review["source_materials"]
         texts = tuple(
             item.text for item in app.export_replay_evidence().projection.stored_message_payloads
         )
         assert texts == ("我想重新把自己的想法说完整。", BEATS[1])
         assert BEATS[0] not in texts
         audits = _audits(app)
+        winner = next(row for row in audits if row.visible_source_review_json is not None)
+        rejected = next(
+            row for row in audits
+            if row.route.reason_code == "author_candidate.primary_initial.validation_rejected"
+        )
+        lineage = winner.character_interior_lineage
+        assert lineage.author_attempt_ordinal == 1
+        assert lineage.author_parent_model_call_id == rejected.model_call_id
+        assert winner.request_hash != rejected.request_hash
+        review_evidence = json.loads(winner.visible_source_review_json)
+        carrier = json.loads(review_evidence["author_request_json"])
+        for field in ("messages", "temperature", "tools", "tool_choice"):
+            assert carrier[field] == corrected_author[field]
+        parameters = {key: value for key, value in carrier.items() if key != "contract"}
+        assert provider_invocation_request_hash(**parameters) == winner.request_hash
+        assert verify_visible_source_author_request(
+            review_evidence["author_request_json"], expected_request_hash=winner.request_hash
+        ) == correction_context["expression_hard_boundaries"]["source_ref_aliases"]
+        # The cold verifier must bind the actual correction message, not merely
+        # the unchanged source pin or a stale initial-author identity.
+        carrier["messages"][0]["content"] = first_author["messages"][0]["content"]
+        with pytest.raises(ValueError, match="request hash"):
+            verify_visible_source_author_request(
+                json.dumps(carrier, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                expected_request_hash=winner.request_hash,
+            )
         reviews = [row for row in audits if row.route.reason_code == "validation.source_review"]
         assert len(reviews) == 2
         assert len({row.model_call_id for row in reviews}) == 2

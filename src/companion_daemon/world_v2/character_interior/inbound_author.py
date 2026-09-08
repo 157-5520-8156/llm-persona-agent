@@ -781,13 +781,11 @@ def _role_result_correction_instruction(correction: Mapping[str, object]) -> str
         raise ValueError("character interior role correction is malformed")
     detail = correction.get("failure_detail")
     if not isinstance(detail, str) or not detail.strip():
-        detail = "上一轮结果没通过结构校验，但宿主没把具体原因写清楚。请按当前契约重写一份完整结果。"
-    else:
-        detail = detail.strip()
+        detail = "上一轮结果没通过校验，但宿主没把具体原因写清楚。请按当前契约重写一份完整结果。"
     return (
-        "\n\n结构校验失败，请按同一份钉住的 Context 和能力重写一份完整结果。"
+        "\n\n上一轮结果未通过校验，请按同一份钉住的 Context 和能力重写一份完整结果。"
         f"失败码 {failure_code}。具体原因：{detail} "
-        "这只说明上一轮的投递形状不合法，不替你决定要不要说话、说什么、或什么心情。"
+        "校验失败不替你决定要不要说话、说什么、或什么心情。"
     )
 
 
