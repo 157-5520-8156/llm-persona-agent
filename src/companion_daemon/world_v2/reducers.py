@@ -3170,8 +3170,8 @@ def _authorization_changed(state: ReducerState, event: WorldEvent) -> ReducerSta
 def _model_result_recorded(state: ReducerState, event: WorldEvent) -> ReducerState:
     payload = ModelResultRecordedPayload.model_validate(event.payload())
     recorded = RecordedModelResultAudit.model_validate_json(payload.audit_json)
-    from .visible_source_runtime import REQUIRED_CAPABILITY_PREFIX
-    if recorded.character_interior_lineage is not None and recorded.character_interior_lineage.capability_ref.startswith(REQUIRED_CAPABILITY_PREFIX) and payload.audit_contract != "model-result-audit.9":
+    from .visible_source_runtime import requires_visible_review_capability
+    if recorded.character_interior_lineage is not None and requires_visible_review_capability(recorded.character_interior_lineage.capability_ref) and payload.audit_contract != "model-result-audit.9":
         raise ValueError("required visible review capability cannot downgrade its model audit")
     if payload.evaluated_world_revision > len(state.committed_world_event_refs):
         raise ValueError("model result cannot evaluate a future world revision")

@@ -11,6 +11,11 @@ MAX_EVIDENCE_BYTES = 512_000
 REQUIRED_CAPABILITY_PREFIX = "inbound-reviewed-turn-capability:sha256:"
 
 
+def requires_visible_review_capability(capability_ref):
+    from .visible_source_proactive import CAPABILITY_PREFIX
+    return capability_ref.startswith((REQUIRED_CAPABILITY_PREFIX, CAPABILITY_PREFIX))
+
+
 def canonical(value):
     return json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -72,7 +77,7 @@ def requirement_table(raw):
     return table
 
 
-def _verify_original_capability(requirement, lineage):
+def _verify_original_capability(requirement, lineage, author_request_json=None):
     """The immutable role lineage commits to the original host requirement.
 
     A receipt may repeat the body, but cannot replace it without changing the
@@ -81,6 +86,11 @@ def _verify_original_capability(requirement, lineage):
     from .deliberation import ModelInput
     from .character_interior.inbound_turn import _model_input_material
 
+    if lineage is not None and lineage.purpose == "proactive_contact":
+        from .visible_source_proactive import verify_original_capability
+        return verify_original_capability(
+            requirement=requirement, lineage=lineage, author_request_json=author_request_json
+        )
     if lineage is None or lineage.purpose != "inbound_turn":
         raise ValueError("visible review requires its original inbound role lineage")
     table = requirement_table(requirement)
@@ -363,9 +373,7 @@ def recorded_candidate_requires_review(*, audit, model_result_audits):
         if row.model_result_ref == audit.model_result_ref:
             recorded = RecordedModelResultAudit.model_validate_json(row.audit_json)
             lineage = recorded.character_interior_lineage
-            return lineage is not None and lineage.capability_ref.startswith(
-                REQUIRED_CAPABILITY_PREFIX
-            )
+            return lineage is not None and requires_visible_review_capability(lineage.capability_ref)
     return False
 
 
@@ -390,7 +398,9 @@ def verify_recorded_candidate(*, audit, model_result_audits):
         raise ValueError("required review carrier is missing")
     value = json.loads(parent.visible_source_review_json)
     requirement = value["requirement_json"]
-    original = _verify_original_capability(requirement, parent.character_interior_lineage)
+    original = _verify_original_capability(
+        requirement, parent.character_interior_lineage, value.get("author_request_json")
+    )
     pin = requirement_table(requirement).as_dict()["pin"]
     context = parent.decision_context
     if context is not None and (

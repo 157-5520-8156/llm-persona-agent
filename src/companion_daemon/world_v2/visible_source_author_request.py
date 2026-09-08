@@ -16,6 +16,7 @@ from companion_daemon.llm import provider_invocation_request_hash
 
 
 AUTHOR_REQUEST_CONTRACT = "visible-source-author-request.1"
+PROACTIVE_AUTHOR_REQUEST_CONTRACT = "visible-source-proactive-author-request.1"
 _MAX_BYTES = 512_000
 _PARAMETER_KEYS = {"messages", "temperature", "tools", "tool_choice", "identity_extras"}
 
@@ -101,6 +102,22 @@ def prepare_visible_source_author_request(
     return raw
 
 
+def prepare_proactive_visible_source_author_request(
+    *, messages, temperature, tools, tool_choice, identity_extras, expected_request_hash
+) -> str:
+    """Freeze the actual StructuredRole proactive request under its own version."""
+    raw = _canonical({
+        "contract": PROACTIVE_AUTHOR_REQUEST_CONTRACT,
+        "messages": messages,
+        "temperature": temperature,
+        "tools": tools,
+        "tool_choice": tool_choice,
+        "identity_extras": dict(identity_extras) if identity_extras is not None else None,
+    })
+    verify_visible_source_author_request(raw, expected_request_hash=expected_request_hash)
+    return raw
+
+
 def verify_visible_source_author_request(
     raw: str,
     *,
@@ -127,7 +144,7 @@ def verify_visible_source_author_request(
     if (
         not isinstance(value, dict)
         or set(value) != {"contract", *_PARAMETER_KEYS}
-        or value["contract"] != AUTHOR_REQUEST_CONTRACT
+        or value["contract"] not in {AUTHOR_REQUEST_CONTRACT, PROACTIVE_AUTHOR_REQUEST_CONTRACT}
         or _canonical(value) != raw
     ):
         raise ValueError("visible author request carrier contract is invalid")
@@ -139,6 +156,25 @@ def verify_visible_source_author_request(
         user = json.loads(value["messages"][1]["content"], object_pairs_hook=_unique_object)
     except (TypeError, RecursionError) as exc:
         raise ValueError("visible author request user material is not JSON") from exc
+    if value["contract"] == PROACTIVE_AUTHOR_REQUEST_CONTRACT:
+        if not isinstance(user, dict) or user.get("inner_turn", {}).get("purpose") != "proactive_contact":
+            raise ValueError("proactive author request has another purpose")
+        tools = value["tools"]
+        if not isinstance(tools, list) or len(tools) != 1 or tools[0].get("function", {}).get("name") != "character_role_proactive_contact_v1":
+            raise ValueError("proactive author request lacks its exact tool")
+        catalog = user.get("citeable_sources", {})
+        items = catalog.get("items") if isinstance(catalog, dict) else None
+        if not isinstance(items, list) or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("id"), str) or not item["id"]
+            or not isinstance(item.get("ref"), str) or not item["ref"]
+            for item in items
+        ):
+            raise ValueError("proactive author lacks its original citeable source catalog")
+        aliases = {item["id"]: item["ref"] for item in items}
+        if len(aliases) != len(items):
+            raise ValueError("proactive author source aliases are ambiguous")
+        return aliases
     boundaries = user.get("expression_hard_boundaries") if isinstance(user, dict) else None
     aliases = boundaries.get("source_ref_aliases") if isinstance(boundaries, dict) else None
     if not isinstance(aliases, dict) or any(

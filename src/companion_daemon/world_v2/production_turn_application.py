@@ -4071,6 +4071,7 @@ def build_sqlite_world_v2_turn_application(
             reply_target=config.reply_target,
             expression_capabilities=config.expression_capabilities,
             proactive_source_closure_model=proactive_source_closure_model,
+            visible_source_review_required=config.visible_source_review_required,
             proactive_candidate_external_proposition_inventory_model=(
                 proactive_candidate_external_proposition_inventory_model
             ),

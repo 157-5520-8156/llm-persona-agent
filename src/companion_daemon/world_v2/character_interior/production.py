@@ -813,6 +813,7 @@ def _bind_production_character_interior(
     reply_target: str,
     expression_capabilities: ExpressionDraftCapabilities,
     proactive_source_closure_model: ChatCompletionModel | None,
+    visible_source_review_required: bool = False,
     background_turn_budget_policy: InteractiveTurnBudgetPolicy,
     proactive_account_id: str,
     proactive_amount_per_action: int,
@@ -889,11 +890,13 @@ def _bind_production_character_interior(
                 identity_frame=identity_frame,
                 source_closure_reviewer=None,
                 report_relative_reviewer=None,
+                visible_source_review_required=visible_source_review_required,
                 companion_actor_ref=companion_actor_ref,
                 budget_policy=background_turn_budget_policy,
             ),
             batch_issuer=batch_issuer,
             policy=ExpressionPlanBudgetPolicy(
+                visible_source_review_required=visible_source_review_required,
                 account_id=proactive_account_id,
                 amount_limit_per_action=proactive_amount_per_action,
                 actor=companion_actor_ref,
@@ -1077,12 +1080,19 @@ def compose_production_character_interior(
     inbound_turn = InboundTurnFaculty(
         author=author,
     )
+    if whole_candidate_mode:
+        from .proactive_visible_review import ReviewedProactiveStructuredRoleFaculty
+
+        role = ReviewedProactiveStructuredRoleFaculty(
+            model=flash_model, model_id=flash_model_id,
+            reviewer=visible_source_review_model,
+            expression_capabilities=expression_capabilities,
+        )
+    else:
+        role = StructuredCharacterRoleFaculty(model=flash_model, model_id=flash_model_id)
     interior = CharacterInterior(
         projection=_DeferredProjection(),
-        role=StructuredCharacterRoleFaculty(
-            model=flash_model,
-            model_id=flash_model_id,
-        ),
+        role=role,
         faculties=(inbound_turn,),
         authority=_DeferredInteriorAuthority(),
         turn_store=turn_store,

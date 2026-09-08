@@ -728,6 +728,7 @@ class _CharacterInteriorProactiveTransport:
         identity_frame: CompanionIdentityFrame | None = None,
         source_closure_reviewer=None,
         report_relative_reviewer=None,
+        visible_source_review_required: bool = False,
         **_unused,
     ) -> None:
         del _unused
@@ -742,6 +743,7 @@ class _CharacterInteriorProactiveTransport:
         self._source_closure_reviewer = source_closure_reviewer
         self._report_relative_reviewer = report_relative_reviewer
         self._inventory_model = None
+        self._visible_source_review_required = visible_source_review_required
         # The role contract is capability-specialized.  Warm both legal
         # proactive phases before any claimed opportunity starts its bounded
         # author budget; the live CharacterInterior call then only performs
@@ -799,7 +801,7 @@ class _CharacterInteriorProactiveTransport:
         )
 
     def source_closure_review_enabled(self) -> bool:
-        return self._source_closure_reviewer is not None or self._inventory_model is not None
+        return self._visible_source_review_required or self._source_closure_reviewer is not None or self._inventory_model is not None
 
     async def recover(self, request: ModelInput, failure_code: str) -> ModelOutput:
         # Deliberation may invoke this only as the same-author bounded
@@ -842,6 +844,10 @@ class _CharacterInteriorProactiveTransport:
         if decision.status == "technical_failure":
             failure = decision.failure_code or "unknown"
             mapped = map_character_interior_proactive_failure(failure)
+            if self._visible_source_review_required and failure in {
+                "source_review_exception", "source_review_timeout",
+            }:
+                mapped = failure
             consume = getattr(self._interior, "_consume_role_failure_evidence", None)
             evidence = (
                 consume(
@@ -873,6 +879,18 @@ class _CharacterInteriorProactiveTransport:
             # Proactive silence is the explicit timing_choice=silent payload;
             # generic model_silent would discard the capability binding.
             raise ValueError("proactive Interior result lacks an explicit decision payload")
+        if self._visible_source_review_required:
+            from .visible_source_proactive import restore_output
+
+            output = restore_output(decision=decision, request=request)
+            return output.model_copy(update={
+                "character_interior_lineage": recorded_character_interior_lineage(
+                    decision, purpose="proactive_contact",
+                    subject_ref=decision.opportunity_ref,
+                    capability_ref=capability.capability_ref,
+                    causal_opportunity=opportunity_identity,
+                )
+            })
         draft = self._draft(decision=decision)
         try:
             draft = _validate_proactive_grounding(draft=draft, request=request)
@@ -916,10 +934,25 @@ class _CharacterInteriorProactiveTransport:
         request: ModelInput,
         source_refs: tuple[str, ...],
     ) -> _InteriorCapabilityManifest:
-        return self._capability_from_parts(
+        manifest = self._capability_from_parts(
             attempt_id=request.attempt_id,
             source_refs=source_refs,
             model_content_json=request.model_content_json,
+        )
+        if not self._visible_source_review_required:
+            return manifest
+        from .visible_source_proactive import CAPABILITY_PREFIX, qualify_capability
+
+        payload = qualify_capability(
+            payload=manifest.payload, request=request,
+            world_id=self._world_id, actor_ref=self._actor_ref,
+        )
+        raw = _canonical(payload)
+        hashed = hashlib.sha256(raw.encode()).hexdigest()
+        return _InteriorCapabilityManifest(
+            capability_ref=CAPABILITY_PREFIX + hashed,
+            capability_kind="proactive_contact", payload_json=raw,
+            payload_hash="sha256:" + hashed, source_refs=source_refs,
         )
 
     def _capability_from_parts(
@@ -999,39 +1032,10 @@ class _CharacterInteriorProactiveTransport:
             purpose="proactive_contact",
         ).identity_for_refs(source_refs, epoch=trigger_ref)
 
-    def _draft(self, *, decision) -> ProactiveDraft:  # type: ignore[no-untyped-def]
-        outer = decision.decision
-        if (
-            not isinstance(outer, dict)
-            or outer.get("contract") != "character-interior-purpose-decision.1"
-            or outer.get("purpose") != "proactive_contact"
-        ):
-            raise ValueError("proactive Interior decision envelope is invalid")
-        raw = outer.get("payload")
-        if not isinstance(raw, dict) or raw.get("contract") != (
-            "character-interior-proactive-contact-decision.1"
-        ):
-            raise ValueError("proactive Interior decision payload is invalid")
-        if not decision.summary:
-            raise ValueError("proactive Interior private turn state is out of bounds")
-        # PrivateTurnState.attended_source_refs max_length is 8.  Overflow is a
-        # typed field bound, not a reason to discard her already-authored
-        # expression or appraisal.  Keep the first 8 in listed order.
-        attended = tuple(decision.attended_source_refs[:8])
-        value = dict(raw)
-        value.pop("contract")
-        value["private_turn_state"] = {
-            "inner_state_summary": decision.summary,
-            "attended_source_refs": list(attended),
-        }
-        normalized = bind_proactive_expression_wire(normalize_expression_draft_wire(value))
-        draft = ProactiveDraft.model_validate_json(_canonical(normalized), strict=True)
-        validate_expression_draft_capabilities(
-            draft=draft,
-            capabilities=self._capabilities,
-            provider_message_id=None,
+    def _draft(self, *, decision) -> ProactiveDraft:
+        return proactive_draft_from_role_result(
+            decision=decision, expression_capabilities=self._capabilities
         )
-        return draft
 
     async def _grounding_outcome(
         self,
@@ -1056,6 +1060,41 @@ class _CharacterInteriorProactiveTransport:
         if result.review is None:
             return "not_required"
         return "accepted" if result.review.decision == "supported" else "rejected"
+
+
+def proactive_draft_from_role_result(*, decision, expression_capabilities) -> ProactiveDraft:
+    outer = decision.decision
+    if (
+        not isinstance(outer, dict)
+        or outer.get("contract") != "character-interior-purpose-decision.1"
+        or outer.get("purpose") != "proactive_contact"
+    ):
+        raise ValueError("proactive Interior decision envelope is invalid")
+    raw = outer.get("payload")
+    if not isinstance(raw, dict) or raw.get("contract") != (
+        "character-interior-proactive-contact-decision.1"
+    ):
+        raise ValueError("proactive Interior decision payload is invalid")
+    if not decision.summary:
+        raise ValueError("proactive Interior private turn state is out of bounds")
+    # PrivateTurnState.attended_source_refs max_length is 8.  Overflow is a
+    # typed field bound, not a reason to discard her already-authored
+    # expression or appraisal.  Keep the first 8 in listed order.
+    attended = tuple(decision.attended_source_refs[:8])
+    value = dict(raw)
+    value.pop("contract")
+    value["private_turn_state"] = {
+        "inner_state_summary": decision.summary,
+        "attended_source_refs": list(attended),
+    }
+    normalized = bind_proactive_expression_wire(normalize_expression_draft_wire(value))
+    draft = ProactiveDraft.model_validate_json(_canonical(normalized), strict=True)
+    validate_expression_draft_capabilities(
+        draft=draft,
+        capabilities=expression_capabilities,
+        provider_message_id=None,
+    )
+    return draft
 
 
 def _proactive_appraisal_raw(*, draft: ProactiveDraft) -> str | None:
@@ -1247,6 +1286,9 @@ def _materialize_interior_proactive_draft(
         ).model_dump(mode="json"),
         "world_claims": [item.model_dump(mode="json") for item in draft.world_claims],
     }
+    if request.visible_source_requirement_json is not None:
+        from .visible_source_runtime import REQUIRED_POLICY
+        expression_payload["visible_source_review_policy"] = REQUIRED_POLICY
     if len(intents) == 1:
         expression_payload["proactive_source_binding"] = ProactiveExpressionSourceBinding(
             source_kind=source_kind,
@@ -1555,6 +1597,7 @@ class ProactiveDeliberationTurn:
         identity_frame: CompanionIdentityFrame | None = None,
         source_closure_reviewer=None,
         report_relative_reviewer=None,
+        visible_source_review_required: bool = False,
         companion_actor_ref: str,
         budget_policy: InteractiveTurnBudgetPolicy | None = None,
         **_unused,
@@ -1569,12 +1612,14 @@ class ProactiveDeliberationTurn:
             identity_frame=identity_frame,
             source_closure_reviewer=source_closure_reviewer,
             report_relative_reviewer=report_relative_reviewer,
+            visible_source_review_required=visible_source_review_required,
         )
         self._transport = transport
         deliberation = compose_production_deliberation(
             lane_id="proactive",
             router=router,
             main_model=transport,
+            visible_source_review_required=visible_source_review_required,
         )
         self._ledger = ledger
         self._capsules = capsule_compiler
@@ -2352,6 +2397,7 @@ class ProactiveActionRuntime:
                 created_at=projection_time,
                 trace_id=opportunity.trace_id,
                 correlation_id=opportunity.correlation_id,
+                model_result_audits=current.model_result_audits,
             )
         except ExpressionPlanAcceptanceError as exc:
             if exc.code in {
