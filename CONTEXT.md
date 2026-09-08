@@ -101,6 +101,15 @@ activity she chooses in response. Her reading is not a new external fact, and
 her intention is not proof of completed execution.
 _Avoid_: World-Author-written behavior, automatic emotional reaction
 
+## World Life Intent
+
+A future self-directed activity authored by the companion while experiencing
+an exact settled World event. Its source contract binds that settlement and
+the original Character Interior decision to a Plan; starting and ending still
+require the activity lifecycle. It grants no location, other-actor, external
+delivery, or completed-outcome authority.
+_Avoid_: Inbound-chat authority, World-Author-authored action, completed experience
+
 ## Capability Manifest
 
 A revision-pinned declaration of the World effects currently available to a

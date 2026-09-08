@@ -27,8 +27,8 @@
   ExperienceProjection 的创建器。
 - `experience_memory_retention` 的输入必须引用已提交 Experience，不能移到前面作为
   新经历作者，否则会让一次决定依赖自己尚未创建的事实。
-- 已有 `LifeIntentDraft` 和 Plan 生命周期，但当前来源仅接受 inbound Observation。
-  世界事件需要独立来源合同，不能借旧来源或放宽旧验证器获得许可。
+- 此前 `LifeIntentDraft` 和 Plan 生命周期只接受 inbound Observation。第一片已接入
+  独立世界事件来源合同，旧聊天验证器仍保留原边界。
 
 ## 实施顺序与验收
 
@@ -45,6 +45,17 @@ WorldOccurrenceSettled、角色 model result / proposal / lineage、actor、curs
 本片必须通过实际角色请求 → DecisionProposal → Plan → 开始/完成 → 冷恢复的公共
 测试，另外拒绝错误 actor/source/hash、无角色决定、反向冒用聊天来源。它是完整迁移
 的执行前置，单独完成不能声称已经关闭 WA 正文问题。
+
+第一片已于 2026-09-08 接通（后端 `035a2b68`、前端 `fca6f29a`、公共恢复与读取测试
+`5560dba9` / `5cfa0742`）。9 项经 MockTransport 的生产角色请求测试与 1 项独立情绪消费者
+先完成的冷恢复测试通过；生产装配覆盖 Plan → start/complete → 后续聊天来源读取。
+27 项后端来源/权限/生命周期测试通过。这里使用模拟供应商，不是新真实角色验收。
+完整 120 固定场景仅一个场景的 replay hash 随新能力及合同文案改变；完成因果对照后
+建立 `.100`，不带 limit 的正门通过，原行为断言、输出和调用次数均未改变。
+
+新意图复用已有 world-stimulus 调用；其后开始/结束仍使用原活动生命周期角色调用。
+新 schema 及意图正文会增加 token，不能由“没有独立意图调用”推导成本为零，亦未据此
+声明每月 100 元目标已验收。该片新增付费调用为零。
 
 ### 后续片：世界来源与角色经历的分离
 

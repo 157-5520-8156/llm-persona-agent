@@ -1011,3 +1011,69 @@ campaign 字节；费用与关闭状态得到一致结论。该审计没有重�
 `d2b23e14bff154071690231f30be703c7faa771066293555b3c0a6cb92af537c`。
 本次结果在 `output/private-audits/outcome-critic-low-control-execution/run/`，预先判据
 在 `output/private-audits/outcome-critic-low-semantic-rubric.md`。该独立批次不再追加调用。
+
+## World Life Intent 第一片：角色自己安排后续活动
+
+在隔离分支完成 ADR-0019 的执行前置，整体世界后果/角色经历迁移仍在进行。后端
+`035a2b68`、前端 `fca6f29a`、逆序冷恢复 `5560dba9`、生产请求与活动读取测试
+`5cfa0742`；小屋和角色移动均不在这片范围内。
+
+`world_stimulus_appraisal` 同一个角色回合现在可选独立 `world_life_intent`。
+新能力只提供她参与过的精确 WorldOccurrenceSettled；角色自行填写意图、时间和
+重要程度，也可不填。没有 Appraisal 仍能提出计划，没有意图或供应商失败则不生成
+计划。新 Proposal 显式使用 `.4`，绑定原 ModelResult、Proposal、角色、源事件及
+原选择时刻；旧聊天来源仍使用自己的合同，旧无意图事件不加入空字段。
+
+计划进入已有 ActivityLifecycle，开始/完成由角色另行选择。没有地点、他人参与、
+发送或既成结果权限。源内容为 withhold 时，计划保留该隐私下限，当前/已结束活动
+读取不会将其降级给聊天资料。新 reader 共用对原 Plan 与最新生命周期来源的核对。
+
+先接受 Plan，再消费同次决定的其他部分；独立情绪消费者仍可能先终结原触发器，故
+terminal recovery 也查找未消费的 life intent。冷恢复从原 audit 补齐，稳定身份为
+world + actor + source settlement，不重算计划时间、不再次询问模型。
+
+验证范围如下，组间有重叠，不能把次数相加当成不同用例：
+
+- 后端源树先通过 200 项兼容组，再通过最终 27 项新权限/恢复测试与 17 项当前和
+  已结束活动读取测试，共 44 项。覆盖错误 actor/source/hash、缺少角色审计、反向
+  冒用聊天来源、CAS、withhold、实际生命周期与 SQLite 冷回放。
+- root 集成首条生产请求时通过 230 项结构化角色、world stimulus、schema 兼容、
+  旧聊天意图重试和 context resolver 测试。
+- 最终 root 集成通过 145 项，其中包括全部 9 项经 MockTransport 的生产请求、
+  1 项情绪先终结触发器的冷恢复、27 项新后端测试及相关读取/语法/既有机制。
+  新公共测试通过真正安装的 LifeEcologyComposition，公共 tick/advance 推进开始与
+  完成，两次后续聊天请求分别读到 Started 与 Completed 来源。未注入替代 worker
+  或 reader，也未手写本链的接受事件。旧 fixture seed 仅用于独立故障恢复测试。
+- Ruff 与 diff-check 通过；只读审查未发现新的 P1/P2，审查本身不计为实测。
+
+### 固定场景 `.99 → .100` 的原因与证据
+
+第一次正常正门拒绝旧总 hash。另开临时目录，以诊断模式导出完整 120 场景并逐字段
+比较：仅 `npc_world_impact.01.replay_hash` 改变，所有行为断言、消息输出、调用次数、
+事件类型序列和回放通过状态都相同。该场景 81 条事件中前 18 条逐字一致，首个变化
+为 world stimulus 的 ModelResultRecorded，来自新增能力与合同文案的请求身份。
+
+独立单场景因果对照只在该实验进程中关闭新 capability，并从 `035a2b68` 取回旧
+`_contract_view` 文案：其 JSON manifest 每个字段重现旧值，replay hash 恢复为
+`e97296ecae4def02ba9c11340a5268f1b7b997182b2524edeeeaca42539a1bd3`。
+仅关闭能力仍不足以恢复旧请求；第一次两项对照已恢复 replay hash，但比较器未将
+tuple 归一为 JSON list，曾误报整体不同。最后按 JSON 规范复核通过。中间诊断产物
+保留，最终依据为 `world-life-intent-baseline-causal-control-final.json`；该对照不是
+发布正门，不改变正常路径。
+
+因此建立 `.100`，没有放宽任何场景断言。随后正常代码、不带 limit 的 120 场景正门
+通过；所有 run 字段与独立诊断完全一致。新 manifest：
+`b405ce3beb2d6f4ab83b21011341fbe26192bbd24cb2dab3fb94979468c565c9`。
+`baseline-world-life-intent-100.json` 为 233,258 字节，文件 SHA256：
+`080d3b84cf37a6c07cf54732cea10aa7d2d9ab721d4872a73af9a94a03e92e95`。
+比较报告 `world-life-intent-baseline-comparison.json` 与以上文件均位于
+`output/adaptive-companionship-2026-09-08/`；旧 `.99` 产物未改。
+
+这仍是固定模型/MockTransport 的机械闭环，未取得新版本真实角色选择或长期真人感
+验收。World Author 正文可替角色编写行动的反例仍待下一片：环境结算、角色回应、
+经历与 Recall/聊天入口必须一同迁移，不能因 Plan 能运行就声称权限漏洞已关闭。
+
+该片新增付费调用为零；累计已知 **2.4989562 元**、保守占用 **2.8134232 元**保持
+不变，所有旧批次仍封存。意图复用已有感知回合，开始/结束仍使用原角色生命周期
+调用，新 schema/正文也会增加 token，尚不能据此保证每月 100 元。未修改生产数据库
+或配置、未发真实 QQ、未部署或合并主分支。

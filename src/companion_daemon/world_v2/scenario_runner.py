@@ -356,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.99"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.100"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -627,8 +627,16 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.99"
 # every other run field and predicate is unchanged. Source authority, model
 # call counts and output/room hashes do not change. See the independently
 # compared baseline-biography-readable candidate and audit report.
+# 2026-09-08: .100 offers the source-bound world-life-intent capability in the
+# existing world stimulus turn. All 120 cases retain every non-replay field;
+# only npc_world_impact.01's replay hash changes. Its first changed event is
+# the role ModelResultRecorded after the new capability and contract prose.
+# A separate, single-case causal control restoring only those two inputs
+# reproduces every old manifest field, including the .99 replay hash. No
+# case predicate, output, model-call budget or timing bound changes. See
+# world-life-intent-baseline-comparison.json and ADR-0019's implementation audit.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "8f3579b38dbc6895330db8f02bbbbbf12eb78604d11d2f3f5424724313459f60"
+    "b405ce3beb2d6f4ab83b21011341fbe26192bbd24cb2dab3fb94979468c565c9"
 )
 
 
