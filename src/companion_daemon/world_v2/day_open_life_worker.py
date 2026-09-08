@@ -46,6 +46,8 @@ class DayOpenLifeWorker:
     def _opportunity(self, *, projection, wake_event_ref, catalog, previous=None):
         from .day_open_life_intent_contract import day_open_opportunity_ref
 
+        if catalog.status != "no_openings":
+            raise ValueError("day_open.catalog_not_empty")
         wake = next(
             (x for x in projection.committed_world_event_refs if x.event_id == wake_event_ref), None
         )
@@ -189,6 +191,21 @@ class DayOpenLifeWorker:
         attempt = row.attempts[-1]
         result = self._recover(attempt)
         if result is None:
+            if catalog.status == "rejected_wake":
+                return ActivityLifecycleFollowupResult(
+                    status="blocked", reason_code=catalog.reason_code
+                )
+            if catalog.status != "no_openings":
+                # An already paid terminal still belongs to its original empty
+                # catalog. Without one, changed opportunity eligibility cannot
+                # be presented as another empty-catalog character decision.
+                self.store.save(
+                    row.model_copy(
+                        update={"terminal": True, "terminal_reason": "catalog_no_longer_empty"}
+                    ),
+                    expected=row,
+                )
+                return None  # Let this wake use the ordinary activity catalog.
             if row.day_key != day:
                 self.store.save(
                     row.model_copy(update={"terminal": True, "terminal_reason": "day_expired"}),

@@ -61,6 +61,7 @@ class _DayOpenHTTP(_RoleHTTP):
         self.day_requests = []
         self.fail = fail
         self.repair = repair
+        self.chat_intent = None
 
     async def __call__(self, request):
         body = json.loads(request.content)
@@ -74,6 +75,25 @@ class _DayOpenHTTP(_RoleHTTP):
                 material = value
                 break
         if material is None:
+            if self.chat_intent is not None:
+                self.requests.append(body)
+                self.chat_requests.append(body)
+                return _http_result(
+                    body,
+                    {
+                        "result_kind": "reply_only",
+                        "payload_json": json.dumps(
+                            {
+                                "messages": ["我给自己留一点时间。"],
+                                "meaning_of_this": "我看见了这次询问。",
+                                "my_state": "平静。",
+                                "world_claims": [],
+                                "life_intent": self.chat_intent,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    },
+                )
             return await super().__call__(request)
         if (
             not material.get("capability_manifest", {})
@@ -245,6 +265,84 @@ async def test_day_open_primary_budget_denial_is_explicit_and_sends_zero_http(
 
 
 @pytest.mark.asyncio
+async def test_pending_day_open_releases_to_real_chat_plan_when_empty_catalog_disappears(
+    tmp_path, monkeypatch, build_app
+):
+    import sqlite3
+
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    provider = _DayOpenHTTP(fail=True)
+    model = DeepSeekChatModel(
+        "offline-fixture",
+        "https://fixture.invalid",
+        "deepseek-v4-flash",
+        thinking_enabled=False,
+        transport=httpx.MockTransport(provider),
+    )
+    path = tmp_path / "catalog-changed.sqlite"
+    app = build_app(path, model, ecology=True)
+    try:
+        first_at = NOW + timedelta(minutes=1)
+        await app.tick(
+            tick_id="first",
+            logical_time_from=NOW,
+            logical_time_to=first_at,
+            observed_at=first_at,
+            trace_id="trace:first",
+            causation_id="clock:first",
+            correlation_id="catalog-changed",
+            reason="test_clock",
+        )
+        assert len(provider.day_requests) == 1
+        assert app.export_replay_evidence().projection.plans == ()
+        provider.fail = False
+        provider.chat_intent = {**INTENT, "intention": "想留一点时间整理我的提纲。"}
+        chatted_at = first_at + timedelta(seconds=5)
+        await app.respond(
+            InboundTurn(
+                platform="test",
+                platform_user_id="user.1",
+                platform_message_id="choose-plan",
+                text="接下来有什么安排吗？",
+                observed_at=chatted_at,
+                trace_id="trace:choose-plan",
+            )
+        )
+        plans = app.export_replay_evidence().projection.plans
+        assert len(plans) == 1 and plans[0].status == "planned"
+        assert plans[0].plan_id.startswith("plan:chat-life-intent:")
+        before = app.export_replay_evidence().projection.logical_time
+        at = first_at + timedelta(seconds=30)
+        await app.tick(
+            tick_id="retry",
+            logical_time_from=before,
+            logical_time_to=at,
+            observed_at=at,
+            trace_id="trace:retry",
+            causation_id="clock:retry",
+            correlation_id="catalog-changed",
+            reason="test_clock",
+        )
+        assert len(provider.day_requests) == 1, (
+            "a nonempty catalog must not mint another empty opportunity"
+        )
+        assert len(provider.lifecycle_requests) == 1
+        after = app.export_replay_evidence().projection.plans
+        assert len(after) == 1 and after[0].plan_id == plans[0].plan_id
+        assert after[0].status == "active"
+        assert after[0].authority_origin.accepted_event_type == "ActivityStarted"
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
+            row = json.loads(
+                connection.execute("SELECT body FROM world_v2_day_open_opportunities").fetchone()[0]
+            )
+        assert row["terminal"] and row["terminal_reason"] == "catalog_no_longer_empty"
+        assert len(row["attempts"]) == 1
+    finally:
+        app.close()
+        await model.aclose()
+
+
+@pytest.mark.asyncio
 async def test_day_open_technical_failure_has_bounded_retry_not_daily_no_op(
     tmp_path, monkeypatch, build_app
 ):
@@ -401,9 +499,12 @@ async def test_day_open_no_op_is_terminal_and_shared_daily_spend_survives_restar
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure_seam", ["before_audit", "before_plan"])
+@pytest.mark.parametrize(
+    ("failure_seam", "intervening_chat"),
+    [("before_audit", False), ("before_plan", False), ("before_plan", True)],
+)
 async def test_paid_day_open_choice_recovers_original_intention_after_new_clock(
-    tmp_path, monkeypatch, failure_seam, build_app
+    tmp_path, monkeypatch, failure_seam, intervening_chat, build_app
 ):
     from companion_daemon.world_v2.day_open_life_worker import DayOpenLifeWorker
     from companion_daemon.world_v2.day_open_life_intent_runtime import DayOpenLifeIntentRuntime
@@ -449,12 +550,27 @@ async def test_paid_day_open_choice_recovers_original_intention_after_new_clock(
         )
         assert failures and len(provider.day_requests) == 1
         assert app.export_replay_evidence().projection.plans == ()
+        if intervening_chat:
+            provider.chat_intent = {**INTENT, "intention": "想留一点时间整理我的提纲。"}
+            await app.respond(
+                InboundTurn(
+                    platform="test",
+                    platform_user_id="user.1",
+                    platform_message_id="intervening-plan",
+                    text="接下来有什么安排吗？",
+                    observed_at=selected_at + timedelta(seconds=5),
+                    trace_id="trace:intervening-plan",
+                )
+            )
+            plans = app.export_replay_evidence().projection.plans
+            assert len(plans) == 1 and plans[0].plan_id.startswith("plan:chat-life-intent:")
+        before = app.export_replay_evidence().projection.logical_time
         app.close()
         app = build_app(path, model, ecology=True)
         recovered_at = selected_at + timedelta(seconds=30)
         await app.tick(
             tick_id="recovery",
-            logical_time_from=selected_at,
+            logical_time_from=before,
             logical_time_to=recovered_at,
             observed_at=recovered_at,
             trace_id="trace:recovery",
@@ -465,7 +581,13 @@ async def test_paid_day_open_choice_recovers_original_intention_after_new_clock(
         evidence = app.export_replay_evidence()
         assert len(provider.day_requests) == 1
         planned = [
-            row.event for row in evidence.events if row.event.event_type == "ActivityPlanned"
+            row.event
+            for row in evidence.events
+            if row.event.event_type == "ActivityPlanned"
+            and ActivityPlannedPayload.model_validate_json(
+                row.event.payload_json
+            ).day_open_intent_origin
+            is not None
         ]
         assert len(planned) == 1
         payload = ActivityPlannedPayload.model_validate_json(planned[0].payload_json)
@@ -473,7 +595,7 @@ async def test_paid_day_open_choice_recovers_original_intention_after_new_clock(
         assert payload.day_open_intent_origin.selected_at == selected_at
         assert payload.day_open_intent_origin.source_event_ref == "event:trigger:clock:original"
         assert planned[0].logical_time == recovered_at
-        assert len(evidence.projection.plans) == 1
+        assert len(evidence.projection.plans) == 1 + int(intervening_chat)
     finally:
         app.close()
         await model.aclose()

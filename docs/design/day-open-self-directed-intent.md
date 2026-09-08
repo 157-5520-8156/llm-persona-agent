@@ -46,6 +46,9 @@ Context 才能读到原意图和真实状态。原 late-plan initial considerati
   决定，继续原 Proposal/Plan，不重新调用，不改绑后来的 Clock 或时间。
 - 正常 daily no_op 为终态，不新建 Plan。技术失败不算 no_op；复用技术退避
   30 秒、120 秒、最多三次以及原机会失效边界，due 合入既有生活调度。
+- 技术等待期间若原空 catalog 资格消失，先找原已支付 terminal；有则恢复原决定。
+  没有则以 `catalog_no_longer_empty` 关闭系统机会，当前 wake 交回普通活动
+  生命周期，不调用角色伪称空 catalog，也不把机会关闭记录成角色 no_op。
 - 最多一个新的 day_open 考虑/当地日；纠错沿原同角色一次。失败重试会额外
   调用，原 actual-request 预算准入保持。31 次/月只是正常考虑次数上限，
   不承诺月费已达标；启动/结算等原有调用另计。
@@ -77,9 +80,12 @@ DeepSeek MockTransport 的 activity role 请求 → 角色明确 intent → Plan
 
 ## 本地证据与剩余边界
 
-公共应用 8 项通过：原 RED 的空目录首次计划、同角色精确纠错、原生命周期启动
+公共应用 10 项通过：原 RED 的空目录首次计划、同角色精确纠错、原生命周期启动
 和下一聊天 Context、no_op 跨重启、30/120 秒三次技术退避、原已支付 terminal
 之后 audit/Plan 接受两处故障的冷恢复，以及临时主账本预算拒绝 0 HTTP。
+另有两项相反顺序：技术失败后真实聊天 Plan 出现，重试无新增日机会调用且原
+Plan 进入 `ActivityStarted`；原已支付 terminal 后另一个聊天 Plan 出现，冷恢复
+仍接受原日意图并保留原 Clock/selected_at，而不因新 catalog 丢掉作者结果。
 后端 19 项与 Proposal 合同 24 项另行通过。冷恢复 fixture 显式使用真实 host
 同款 SQLite CharacterInterior turn store；不把默认内存 turn store 的重建当作
 持久角色恢复。
@@ -98,3 +104,7 @@ messages 12,933 bytes，输出上限 900 tokens，现安装保守峰值预约 0.
 绑定空 capability、双 Clock/day/actor 与唯一派生 Plan；不宣称它单靠当前 state
 能独立重建任意历史 catalog。真实角色是否选择生活、长期多样性、完整冻结场景
 以及约百元月费尚未由这组离线检查验收。
+
+Plan 创建保留既有 `transitioned` 生命周期返回值，因此占用该 wake 的 activity
+槽位；这只表示发生了 World 状态写入，不宣称 Plan 已启动。下一次 wake 继续
+评估原活动和其他到期机会。本片不为将来才开始的 Plan 新建生态调度状态。

@@ -155,9 +155,11 @@ class ActivityLifecycleWorker:
         if self._day_open_life is not None and self._day_open_life.pending() is not None:
             projection = self._ledger.project()
             catalog = self._catalog.openings_for(projection=projection, wake_event_ref=wake_event_ref)
-            return await self._day_open_life.advance(
+            handled = await self._day_open_life.advance(
                 projection=projection, wake_event_ref=wake_event_ref, catalog=catalog,
             )
+            if handled is not None:
+                return handled
         pending = pending_opportunities(self._ledger, owner_actor_ref=self._owner_actor_ref)
         selected = next((x for x in pending if x.due_at <= logical_time), None)
         recovered = self._recover_initial_choice(selected) if selected is not None else None
