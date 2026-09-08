@@ -356,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.100"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.101"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -635,8 +635,15 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.100
 # reproduces every old manifest field, including the .99 replay hash. No
 # case predicate, output, model-call budget or timing bound changes. See
 # world-life-intent-baseline-comparison.json and ADR-0019's implementation audit.
+# 2026-09-08: .101 persists the complete original inbound output in decision .2.
+# The 120-case comparison changes only replay_hash; output, calls, event types,
+# action terminal states and every predicate remain identical. A diagnostic
+# control restoring only the original .1 Faculty producer reproduces the entire
+# .100 manifest. The first changed leaf is the recorded Interior decision hash,
+# followed by derived audit/Acceptance identities, not a new character choice.
+# See living-continuity-integration-2026-09-08.md and the 11909fb5 causal artifacts.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "b405ce3beb2d6f4ab83b21011341fbe26192bbd24cb2dab3fb94979468c565c9"
+    "96a7d21de8efe0cd3e257d481eaab6569d1a7af6c5188f8cb38b423efa4ea796"
 )
 
 

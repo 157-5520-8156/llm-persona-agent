@@ -1,7 +1,9 @@
 # 完整可见正文审核的运行时闭合设计
 
-状态：设计，尚未实现或部署。依据 CONTEXT、ADR-0010、trial-07/08 的正文漏报、
-trial-09 的相关模型诊断，以及 `14e63424` 的当前调用链复查。小屋和移动排除。
+状态：运行时闭合尚未安装或部署。原已选来源表、完整作者载体、独立凭据基础和
+同 pin 的完整输出恢复已分片实现；它们尚未形成发稿 gate。依据 CONTEXT、ADR-0010、
+trial-07/08 的正文漏报、trial-09 的相关模型诊断，以及截至 `11909fb5` 的调用链
+复查。小屋和移动排除。
 
 ## 已确认的缺口
 
@@ -78,17 +80,44 @@ mode 解决这个问题。上述是已核实的接入设计；参数能力和最
 
 ## 已完成输出的独立恢复依赖
 
-在 Core terminal 已写入、Proposal 尚未记录的窗口，当前 inbound `.1` decision
-仅保存输出引用与 hash，完整 ModelOutput 留在 Faculty 的进程缓存。新稳定载体
-需包含原输出及被普通 `model_dump` 排除的 physical/subcall/candidate audits，
-与原 terminal 同行持久化；保留原 turn、capability、cursor、proposal 和作者身份。
+在 Core terminal 已写入、Proposal 尚未记录的窗口，旧 inbound `.1` decision
+仅保存输出引用与 hash，完整 ModelOutput 留在 Faculty 的进程缓存。`b9d7ed4b`
+的新 `.2` decision 已保存完整原输出及被普通 `model_dump` 排除的
+physical/subcall/candidate audits，与原 terminal 同行持久化；保留原 turn、
+capability、cursor、proposal 和作者身份。它仅修复同 pin 的 public adapter
+消费口；普通冷入站尚不会提交这个原 ModelInput，不能宣称那条链已恢复。
 
 Recall 的 live seal 使用进程随机 HMAC，不能把旧 seal 序列化后在新进程重用。
-恢复应保留原 recorded trace，从受信原终态验证其绑定后恢复 live proof，不能
-重新检索、取消验证或固定生产 HMAC。已有 head 的恢复也不等于尚未结束的 HTTP
-tail 可以恢复；这两个窗口必须分别计数。
+已实现的窄恢复先从安装的 turn store 读取原终态/prepared/snapshot 并核对原
+recorded trace，再向私有端口传递不可序列化的已验证 proof 来重建 live seal。
+它不重新检索、取消验证或固定 HMAC。已有完整 head 的恢复也不等于尚未结束的
+HTTP tail 可以恢复；这些窗口必须分别计数。
 
 Receipt 接线后，接受门位于 `derive_expression_plan_material()`，回放门位于
 `_expression_plan_manifest_recorded()`；这也覆盖已有 Proposal 的冷恢复。新审核
 资格须由明确合同或 policy 要求，不能以“有 receipt 才选择新版”的可删字段方式
 降级。旧 model audit 和 expression manifest 保留原字节，但不补授新审核资格。
+
+## 原材料与审核要求的下一条交接
+
+Deliberation 验证 compiler-issued handle、创建原 ModelInput 后，仍同时持有原
+Capsule 和尚未追加 InnerLifeSnapshot/Recall 的原正文。这是编译来源表的最薄入口。
+当前没有将该 handle 传入 author 的现成钩子；不能在 author 收到改写后的 ModelInput
+时假装那就是 compiler 原输入，也不能使用一个进程级 latest Capsule 缓存。
+
+新增显式宿主 requirement 需要进入原调用身份及 Faculty capability，并与完整
+冻结表的 hash 绑定。表本身走宿主专用材料口，不塞入聊天正文。现 capability
+snapshot binding 只存 ref/hash，不含 payload；因此持久 carrier 还须保留原
+requirement，供接受和恢复独立判定。仅从 output/receipt 是否带字段选择 `.9`
+仍可删除字段降级，不是合格接线。
+
+实际 author alias 在最终 provider compaction 后产生，应由该次调用直接冻结。
+纠正和 Recall 不能以当前 head 重编原表；新增材料只可来自该回合已经验证的原
+Recall/prefetch trace，当前 composer 尚未为这些额外来源或部署身份完成资格。
+
+审计载体计划使用新版本，但容量与独立锚点必须先明确：当前 prepared 上限
+512000 bytes，旧 audit JSON 上限 262144 bytes；不得截掉候选或来源来适配。
+`_checked_output`、`_audit`、`_strict_audit` 都手工重建字段，需要显式保留。
+原作者以 winning invocation 与完整 Proposal/CharacterInterior lineage 绑定，
+审核者以真实 source_review subcall 绑定；Record 单行没有 subcall tuple，冷读
+须 join 独立 ModelResult。不能把 receipt 自报的 author/review 抄作 expected。

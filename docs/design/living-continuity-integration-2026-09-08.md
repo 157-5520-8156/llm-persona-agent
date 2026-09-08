@@ -48,3 +48,50 @@
 
 - 原无效作者调用经 Core 纠正后，World ModelResult 中缺少其用量记录；已验证获选稿和 Recall 控制转移的绑定，尚未据此证明或否定独立 provider 用量主账本完整性。
 - 公开重启测试若通过 Clock 推进来令旧租约过期，也会改变 World revision。此时新判断可能是合法的 fresh decision，不能同时要求零新调用与旧稿被直接授权。该反例不构成“重复调用必然是 bug”的证据；后续将同 pin 的原终态恢复、原证据留存和新世界状态下的重判分开测试，不放松 CAS 或用规则压制角色回应。
+
+## 完整调用记录、恢复与审核凭据：截至 `56f6e371`
+
+首拒稿调用审计已由 `66c9fcc4` 合入。它保留完整原始 arguments 的 hash、实际调用
+身份与用量，经同一 Core 的一次纠正后仍可审查；获选稿原用量语义保持单次调用，
+独立 provider 主账本未改。四完整文件门 **231 passed / 20.36s**，日志
+`/tmp/girl-agent-rejected-audit-integration.log`。这不补全通用异常或中途崩溃窗口。
+
+新 inbound `.2` decision 保存完整原输出和三类原来被普通序列化排除的审计数组。
+同 pin 的公开 adapter 消费口可从安装的原终态恢复，真实子进程会重新验证并恢复
+原 Recall proof，追加 HTTP/检索为零；旧 `.1` 不升级。这仍不是普通冷入站的
+自动审计恢复。第一次综合门 `11909fb5` 为 **1779 passed / 2 failed / 225.13s**：
+两条活动第二回合的实际回归暴露了 prefetch 的合法 presentation-only 格式。
+`56f6e371` 修正了该判断，并验证缺失/替换仍拒绝。合入后的七文件门
+**198 passed / 85.21s**，日志 `/tmp/girl-agent-prefetch-recovery-integration.log`。
+
+`11909fb5` 同时加入独立完整审核准备/凭据模块。全候选、有序来源表、alias、
+Beat 映射、实际逻辑请求及完整返回都参与绑定；自洽收据还必须对照外部原审计。
+合法语义拒绝与错调用/错主体/缺 Beat 的技术失败分别处理。专属 18 用例连同
+composer/protocol 共 **41 passed / 9.88s**，日志
+`/tmp/girl-agent-visible-receipt-integration.log`。固定 `.1` golden 防同版本漂移。
+这仍未接入 ModelOutput、Acceptance 或发送链，不能宣称正文漏报已修复。
+
+## `.101` 机械基线的依据
+
+正常、无限制的 120 场景 CLI 在 `11909fb5` 如实拒绝旧 `.100` 校验值：
+旧值 `b405ce3beb2d6f4ab83b21011341fbe26192bbd24cb2dab3fb94979468c565c9`，
+实际 `.100` 标签候选为 `ac9948399ce55250262dbaac521c6a3c2b2e20a9c17fcd2f0bdc84983eb0fbe0`。
+独立逐项比较确认 120/120 仅 `replay_hash` 改变，其他 manifest 字段逐字相同。
+仅在诊断进程中恢复旧 Faculty `.1` 生产者，就能完整复现旧 manifest。该对照
+不作为正式验收；正式代码仍保留完整记录和原全部场景断言。
+
+`ordinary_share.01` 的前 8 个事件完全一致；第 9 个事件首先变化的是
+`audit.character_interior_lineage.decision_hash`，随后为派生审计/接受/FK 身份。
+原作者请求/响应/调用、Proposal hash 和 snapshot 均保持。因而分配新的
+`world-v2-offline-mechanism-baseline.101`，预期 manifest hash 为
+`96a7d21de8efe0cd3e257d481eaab6569d1a7af6c5188f8cb38b423efa4ea796`。
+新版仍须正常 CLI 全量检查通过；不能将诊断中导出的候选算作通过。
+
+证据保存在 `output/adaptive-companionship-2026-09-08/`：
+
+- `11909fb5-manifest-diff.json`：`d0099afd6d8656b2bdf46f5c8ae899e90df2bd8cb32506261aa4f542dbbf6ec9`。
+- `11909fb5-event-leaf-diff.json`：`c7fef9ce3bb7a5eeb8a4ba4adca468112edb21a2d9d2265b9804417cfa46d184`。
+- `11909fb5-inbound-v1-causal-control.json`：`b48afc6e25a0368ad40cb470670d1c8ff412f8edccdbdf89703ba44909f70a29`。
+
+本轮以上工作均为离线临时账本/MockTransport，无新增真实供应商支出；此前费用
+封存记录保持。每月约 100 元、长期真人感以及已知正文漏报仍需后续实际链验证。

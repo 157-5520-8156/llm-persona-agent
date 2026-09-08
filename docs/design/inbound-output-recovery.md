@@ -164,3 +164,22 @@ suppress a fresh judgment at a changed cursor, recover unfinished HTTP tails,
 install source-review receipts, or repair omitted original author audits.
 Only the narrow Core consumption hook, inbound Faculty/adapter, private Recall
 restoration helper, new carrier module, tests, and this design changed.
+
+## Automatic prefetch integration correction
+
+The root `11909fb5` 91-file gate exposed two actual regressions in the public
+active/completed activity journeys. Their second message had automatic prefetch
+in the original snapshot. The Faculty deliberately retains that audit as
+`presented_prefetch_traces` for the actual invocation while leaving the legacy
+top-level `prefetch_trace` empty. The first recovery implementation incorrectly
+required the empty top-level field to equal the snapshot trace, resulting in
+`inbound_output_record.recall_source_mismatch` and downstream retry/budget noise.
+
+`56f6e371` validates that original snapshot trace through its presentation and
+the final author's actual call ID. It retains the original empty top-level field,
+does not add source material, and still rejects missing/replaced presentations.
+The stored presentation list must match the original prepared and terminal
+records; each presented trace must match the original snapshot prefetch audit.
+Ordinary Recall retains its exact top-level binding. New subprocess cases cover
+the actual automatic-prefetch producer format as well as deletion and replacement.
+No timeout, budget limit, source scope or character choice was changed.
