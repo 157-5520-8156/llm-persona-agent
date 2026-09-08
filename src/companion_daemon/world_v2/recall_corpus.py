@@ -424,6 +424,23 @@ class RecallCorpusCompiler:
                     ),
                 )
             )
+            if item.content.character_response is not None:
+                reading = item.content.character_response
+                if reading.response_text:
+                    documents.append(self._document(
+                        memory_kind="reflective", source_item_ref=item.experience_id,
+                        source_slice="private_impressions", bindings=bindings,
+                        text=reading.response_text, actor_ref=actor_ref,
+                        subject_refs=_subjects(actor_ref),
+                        link_refs=tuple(sorted(experience_memory_links.get(item.experience_id, ()))),
+                        occurred_from=item.values.occurred_from,
+                        occurred_to=item.values.occurred_to,
+                        privacy_class=item.content.privacy_class,
+                        authority="defeasible_interpretation",
+                        epistemic_scope="private_interpretation",
+                    ))
+                continue
+            assert item.content.text is not None
             documents.append(
                 self._document(
                     memory_kind="episodic",
@@ -462,6 +479,23 @@ class RecallCorpusCompiler:
                     ),
                 )
             )
+            if item.content.world_consequence is not None:
+                world = item.content.world_consequence
+                fields = [("environment", world.environment)]
+                if world.authorized_attempt_result is not None:
+                    fields.append(("authorized_attempt_result", world.authorized_attempt_result))
+                for field, excerpt in fields:
+                    documents.append(self._document(
+                        memory_kind="episodic",
+                        source_item_ref=item.occurrence_id + ":" + field,
+                        source_slice="world_life", bindings=bindings, text=excerpt.text,
+                        retrieval_text=(field + ": " + excerpt.text),
+                        actor_ref=actor_ref, subject_refs=_subjects(*item.participant_refs),
+                        link_refs=(item.result_id,), occurred_from=item.settled_at,
+                        privacy_class=item.privacy_class,
+                    ))
+                continue
+            assert item.content.text is not None
             documents.append(
                 self._document(
                     memory_kind="episodic",

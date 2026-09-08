@@ -5,6 +5,11 @@ from __future__ import annotations
 from pydantic import Field, model_validator
 
 from .life_content_store import ImmutableLifeContentStore
+from .life_content_reading import (
+    CharacterResponseReading, LifeContentReading, WorldConsequenceReading,
+    read_character_life_experience_content, selected_world_consequence,
+    world_consequence_reading,
+)
 from .life_content_events import (
     LIFE_CONTENT_USER_CHANNEL_AUTHORITY_LIMITED,
     LifeContentUserChannelAuthorityLimitedPayload,
@@ -47,7 +52,7 @@ class LifeContentExcerpt(FrozenModel):
     content_kind: str = Field(min_length=1)
     content_ref: str = Field(min_length=1)
     content_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    text: str = Field(min_length=1)
+    text: str | None = Field(default=None, min_length=1, exclude_if=lambda value: value is None)
     truncated: bool
     privacy_class: PrivacyClass
     source_entity_id: str = Field(min_length=1)
@@ -58,6 +63,44 @@ class LifeContentExcerpt(FrozenModel):
     descriptor_event_ref: str = Field(min_length=1)
     descriptor_world_revision: int = Field(ge=1)
     descriptor_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    world_consequence: WorldConsequenceReading | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+    character_response: CharacterResponseReading | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+
+    @model_validator(mode="after")
+    def one_content_carrier(self):
+        if (self.text is None) == (self.world_consequence is None):
+            raise ValueError("life excerpt requires either legacy prose or structured World content")
+        if self.character_response is not None and self.world_consequence is None:
+            raise ValueError("character reading requires its separate World content")
+        return self
+
+    def bounded(self, max_characters: int) -> LifeContentExcerpt:
+        if self.world_consequence is None:
+            assert self.text is not None
+            return self.model_copy(update={
+                "text": self.text[:max_characters],
+                "truncated": self.truncated or len(self.text) > max_characters,
+            })
+        reading = LifeContentReading(
+            world_consequence=self.world_consequence, character_response=self.character_response,
+        ).bounded(max_characters)
+        return self.model_copy(update={
+            **reading.model_dump(mode="python"),
+            "world_consequence": reading.world_consequence,
+            "character_response": reading.character_response,
+            "truncated": self.truncated or reading.truncated,
+        })
+
+    def text_characters(self) -> int:
+        if self.world_consequence is None:
+            return len(self.text or "")
+        return LifeContentReading(
+            world_consequence=self.world_consequence, character_response=self.character_response,
+        ).text_characters()
 
 
 class RecentExperienceContextItem(ExperienceProjection):
@@ -231,6 +274,11 @@ class LifeContentCompiler:
                 continue
             if descriptor.source_kind == "occurrence_settlement":
                 occurrence = occurrences.get(descriptor.source_entity_id)
+                structured_world = occurrence is not None and any(
+                    item.candidate_result_ref == occurrence.settled_outcome_ref
+                    and item.result_contract == "world-consequence.2"
+                    for item in occurrence.candidate_outcomes
+                )
                 related = occurrence is not None and (
                     actor_ref in occurrence.participant_refs
                     or any(
@@ -251,7 +299,11 @@ class LifeContentCompiler:
                         and occurrence.settlement_world_revision == descriptor.source_world_revision
                         and occurrence.settlement_payload_hash == descriptor.source_payload_hash
                         and occurrence.result_payload_ref == descriptor.content_ref
-                        and occurrence.result_payload_hash == descriptor.content_payload_hash
+                        and (
+                            occurrence.result_payload_hash.removeprefix("sha256:")
+                            if structured_world and occurrence.result_payload_hash is not None
+                            else occurrence.result_payload_hash
+                        ) == descriptor.content_payload_hash
                     )
                 )
                 rank = (
@@ -324,14 +376,43 @@ class LifeContentCompiler:
                     )
                 )
                 continue
-            text = stored.text[: budget.max_item_characters]
+            reading = None
+            try:
+                if descriptor.source_kind == "experience" and (
+                    experience.authority_contract_version == "experience.2"
+                ):
+                    reading = read_character_life_experience_content(
+                        store=self._store, projection=projection, experience=experience,
+                        actor_ref=actor_ref, viewer_privacy_ceiling=viewer_privacy_ceiling,
+                        max_characters=budget.max_item_characters,
+                        user_channel_limited_content_refs=user_channel_limited_content_refs,
+                    )
+                elif descriptor.source_kind == "occurrence_settlement" and any(
+                    candidate.candidate_result_ref == occurrence.settled_outcome_ref
+                    and candidate.result_contract == "world-consequence.2"
+                    for candidate in occurrence.candidate_outcomes
+                ):
+                    reading = LifeContentReading(world_consequence=world_consequence_reading(
+                        selected_world_consequence(
+                            store=self._store, projection=projection, occurrence=occurrence,
+                            actor_ref=actor_ref, viewer_privacy_ceiling=viewer_privacy_ceiling,
+                            user_channel_limited_content_refs=user_channel_limited_content_refs,
+                        )
+                    )).bounded(budget.max_item_characters)
+            except ValueError:
+                candidate_rows.append((rank, descriptor.content_id, None, LifeContentSuppression(
+                    content_id=descriptor.content_id, source_entity_id=descriptor.source_entity_id,
+                    reason="structured_content_unavailable",
+                )))
+                continue
+            text = stored.text[: budget.max_item_characters] if reading is None else None
             excerpt = LifeContentExcerpt(
                 content_id=descriptor.content_id,
                 content_kind=descriptor.content_kind,
                 content_ref=descriptor.content_ref,
                 content_payload_hash=descriptor.content_payload_hash,
                 text=text,
-                truncated=text != stored.text,
+                truncated=reading.truncated if reading is not None else text != stored.text,
                 privacy_class=descriptor.privacy_class,
                 source_entity_id=descriptor.source_entity_id,
                 source_entity_revision=descriptor.source_entity_revision,
@@ -341,6 +422,8 @@ class LifeContentCompiler:
                 descriptor_event_ref=descriptor.descriptor_event_ref,
                 descriptor_world_revision=descriptor.descriptor_world_revision,
                 descriptor_payload_hash=descriptor.descriptor_payload_hash,
+                world_consequence=reading.world_consequence if reading is not None else None,
+                character_response=reading.character_response if reading is not None else None,
             )
             compiled_item: LifeContentExcerpt | RecentExperienceContextItem
             if descriptor.source_kind == "experience":
@@ -403,27 +486,23 @@ class LifeContentCompiler:
                         )
                     )
                 else:
+                    original = item.content if isinstance(item, RecentExperienceContextItem) else item
+                    try:
+                        content = original.bounded(remaining)
+                    except ValueError:
+                        suppressions.append(LifeContentSuppression(
+                            content_id=original.content_id,
+                            source_entity_id=original.source_entity_id,
+                            reason="budget_exhausted",
+                        ))
+                        continue
                     if isinstance(item, RecentExperienceContextItem):
-                        content = item.content.model_copy(
-                            update={
-                                "text": item.content.text[:remaining],
-                                "truncated": (
-                                    item.content.truncated or len(item.content.text) > remaining
-                                ),
-                            }
-                        )
                         view = item.model_copy(update={"content": content})
-                        remaining -= len(content.text)
+                        remaining -= content.text_characters()
                         experiences_out.append(view)
                     else:
-                        view = item.model_copy(
-                            update={
-                                "text": item.text[:remaining],
-                                "truncated": item.truncated or len(item.text) > remaining,
-                            }
-                        )
-                        remaining -= len(view.text)
-                        settled.append(view)
+                        remaining -= content.text_characters()
+                        settled.append(content)
         return LifeContentResult(
             settled_items=tuple(settled),
             experience_items=tuple(experiences_out),

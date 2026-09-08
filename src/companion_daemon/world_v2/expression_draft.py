@@ -544,7 +544,42 @@ def _slice_claim_authority_tokens(
 ) -> set[str]:
     """Return semantic/proof tokens without promoting entity addresses."""
 
-    return _slice_source_tokens(context, *slice_names) - _context_entity_identity_tokens(context)
+    slices = context.get("slices")
+    tokens: set[str] = set()
+    for name in slice_names:
+        lane = slices.get(name) if isinstance(slices, dict) else None
+        items = lane.get("items") if isinstance(lane, dict) else None
+        excluded = (
+            [item for item in items if _nonfactual_experience_item(item)]
+            if name == "recent_experiences" and isinstance(items, list) else []
+        )
+        if not excluded:
+            tokens.update(_slice_source_tokens(context, name))
+            continue
+        # A .2 wrapper commits both an environment and a private reading. It
+        # is attention material, not a blanket external-fact capability. The
+        # independent WorldLife settlement carries the World portion's proof.
+        for item in items:
+            if isinstance(item, dict) and not _nonfactual_experience_item(item):
+                tokens.update(_context_item_source_tokens(item))
+        for item in excluded:
+            tokens.difference_update(_context_item_source_tokens(item))
+    return tokens - _context_entity_identity_tokens(context)
+
+
+def _nonfactual_experience_item(item: object) -> bool:
+    value = item.get("value") if isinstance(item, dict) else None
+    if not isinstance(value, dict):
+        return False
+    content = value.get("content")
+    return (
+        value.get("authority_contract_version") == "experience.2"
+        or value.get("memory_kind") == "reflective"
+        or (
+            isinstance(content, dict)
+            and content.get("character_response") is not None
+        )
+    )
 
 
 def _recent_dialogue_authority_tokens(
@@ -1544,8 +1579,17 @@ def expression_hard_boundary_manifest(
         return sorted(aliases.alias_for(ref) or ref for ref in refs)
 
     coordinate_authorities = biographical_coordinate_authorities(context)
+    slices = context.get("slices")
+    recent_experiences = slices.get("recent_experiences") if isinstance(slices, dict) else None
+    recent_items = recent_experiences.get("items") if isinstance(recent_experiences, dict) else None
     return {
-        "contract": "expression-hard-boundaries.10",
+        "contract": (
+            "expression-hard-boundaries.11"
+            if isinstance(recent_items, list) and any(
+                _nonfactual_experience_item(item)
+                for item in recent_items
+            ) else "expression-hard-boundaries.10"
+        ),
         "private_turn_state": {
             "attended_source_refs": {
                 "maximum_items": 8,

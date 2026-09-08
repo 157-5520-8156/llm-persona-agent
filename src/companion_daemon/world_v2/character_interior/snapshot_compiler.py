@@ -55,6 +55,18 @@ from .contracts import (
 
 
 SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.21"
+STRUCTURED_LIFE_SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.22"
+
+
+def _has_structured_life(value: object) -> bool:
+    if isinstance(value, list):
+        return any(_has_structured_life(item) for item in value)
+    if not isinstance(value, dict):
+        return False
+    world = value.get("world_consequence")
+    return (
+        isinstance(world, dict) and world.get("contract") == "world-consequence.2"
+    ) or any(_has_structured_life(item) for item in value.values())
 
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
@@ -581,7 +593,14 @@ def _experience_entry(item: dict[str, object], *, lane: str) -> dict[str, object
             },
         }
         content = value.get("content")
-        if isinstance(content, dict) and isinstance(content.get("text"), str):
+        if isinstance(content, dict) and isinstance(content.get("world_consequence"), dict):
+            semantic["content"] = {
+                key: content[key]
+                for key in ("content_ref", "world_consequence", "character_response", "truncated")
+                if key in content
+            }
+            semantic["epistemic_scope"] = "world_consequence_and_separate_private_reading"
+        elif isinstance(content, dict) and isinstance(content.get("text"), str):
             semantic["content"] = {
                 key: content[key]
                 for key in ("content_ref", "text", "truncated")
@@ -1156,6 +1175,18 @@ def _week_diary(
         day = _experience_day(entry)
         if day not in allowed:
             continue
+        content = entry.get("content")
+        if isinstance(content, dict) and isinstance(content.get("world_consequence"), dict):
+            reading = content.get("character_response")
+            field = "character_response" if isinstance(reading, dict) else "world_consequence"
+            selected = content[field]
+            if field == "character_response" and not selected.get("response_text"):
+                continue
+            existing = grouped.setdefault(day, [])
+            row = {"date": day, field: selected, "source_ref": source_ref}
+            if len(existing) < PRESENT_WEEK_DIARY_LINES_PER_DAY and row not in existing:
+                existing.append(row)
+            continue
         line = _experience_line(entry)
         if line is None:
             continue
@@ -1711,7 +1742,10 @@ def compile_inner_life_snapshot(
         privacy_scope=_binding(context, "viewer_privacy_ceiling", "viewer_privacy_scope_unavailable"),
         capability_scope=capability_scope,
         context_compiler=_binding(context, "context_compiler_version", "context_compiler_unavailable"),
-        snapshot_compiler=_InteriorBinding.available(SNAPSHOT_COMPILER_VERSION),
+        snapshot_compiler=_InteriorBinding.available(
+            STRUCTURED_LIFE_SNAPSHOT_COMPILER_VERSION
+            if _has_structured_life(context) else SNAPSHOT_COMPILER_VERSION
+        ),
         truncation=_binding(context, "truncation", "truncation_metadata_unavailable"),
     )
 

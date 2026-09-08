@@ -7,7 +7,10 @@ import hashlib
 import json
 from dataclasses import dataclass
 
-from .context_capsule import ContextCapsuleCompiler, InnerAdvisoryCandidate, InnerAdvisoryProjection
+from .context_capsule import (
+    ContextCapsuleCompiler, InnerAdvisoryCandidate, InnerAdvisoryProjection,
+    WorldConsequenceAdvisoryCandidate,
+)
 from .context_resolver import query_from_projection
 from .deliberation import Deliberation
 from .errors import ConcurrencyConflict, IdempotencyConflict
@@ -87,7 +90,11 @@ class OutcomeDeliberationTurn:
             source_refs=(observation_event.event_id,),
             candidate_refs=tuple(item.candidate_result_ref for item in readable.candidates),
             candidates=tuple(
-                InnerAdvisoryCandidate(
+                WorldConsequenceAdvisoryCandidate(
+                    candidate_ref=item.candidate_result_ref,
+                    world_consequence=item.world_consequence,
+                    weight_bp=10_000, confidence_bp=observation.confidence_bp,
+                ) if item.world_consequence is not None else InnerAdvisoryCandidate(
                     candidate_ref=item.candidate_result_ref,
                     value=item.text[:256],
                     weight_bp=10_000,
@@ -96,7 +103,9 @@ class OutcomeDeliberationTurn:
             ),
             confidence_bp=observation.confidence_bp,
             expiry=occurrence.time_window.closes_at,
-            producer_version="outcome-candidate-sidecar.1",
+            producer_version=("outcome-candidate-sidecar.2" if any(
+                item.world_consequence is not None for item in readable.candidates
+            ) else "outcome-candidate-sidecar.1"),
         )
         query = query_from_projection(projection, actor_ref=self._companion_actor_ref, trigger_ref=observation_event.event_id)
         try:

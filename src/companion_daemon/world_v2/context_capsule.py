@@ -24,6 +24,7 @@ from .context_resolver import (
     resolver_capability_is_valid,
 )
 from .life_content import RecentExperienceContextItem
+from .life_content_reading import WorldConsequenceReading
 from .memory_retrieval import MemoryRetrievalItem
 from .schema_core import PrivacyClass
 from .schemas import (
@@ -561,6 +562,15 @@ class InnerAdvisoryCandidate(_FrozenModel):
     confidence_bp: int = Field(ge=0, le=10_000)
 
 
+class WorldConsequenceAdvisoryCandidate(_FrozenModel):
+    """The offered World-only branch, still not an accepted outcome."""
+
+    candidate_ref: str = Field(min_length=1)
+    world_consequence: WorldConsequenceReading
+    weight_bp: int = Field(ge=0, le=10_000)
+    confidence_bp: int = Field(ge=0, le=10_000)
+
+
 class InnerAdvisoryProjection(_FrozenModel):
     """Non-authoritative, source-bound candidate coordinates for one deliberation."""
 
@@ -571,7 +581,7 @@ class InnerAdvisoryProjection(_FrozenModel):
     # ``candidate_refs`` alone made an advisory impossible for a model to use:
     # it conveyed opaque identities but none of the classifier's candidate
     # meaning.  The compact summaries remain read-only hints, never state.
-    candidates: tuple[InnerAdvisoryCandidate, ...] = Field(default=(), max_length=8)
+    candidates: tuple[InnerAdvisoryCandidate | WorldConsequenceAdvisoryCandidate, ...] = Field(default=(), max_length=8)
     confidence_bp: int = Field(ge=0, le=10_000)
     expiry: datetime
     producer_version: str = Field(min_length=1)

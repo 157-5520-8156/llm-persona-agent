@@ -13,10 +13,13 @@ import hashlib
 import json
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .ledger import LedgerPort, ObservationEventLocator
 from .life_content import collect_user_channel_limited_content_refs
+from .life_content_reading import (
+    CharacterResponseReading, WorldConsequenceReading, read_character_life_experience_content,
+)
 from .life_content_store import ImmutableLifeContentStore
 from .memory_reducers import evaluate_memory_retrieval
 from .schema_core import FrozenModel, PrivacyClass
@@ -44,8 +47,26 @@ class MemorySourceExcerpt(FrozenModel):
     source_values_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     excerpt_ref: str = Field(min_length=1)
     excerpt_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    text: str = Field(min_length=1)
+    text: str | None = Field(default=None, min_length=1, exclude_if=lambda value: value is None)
     truncated: bool
+    world_consequence: WorldConsequenceReading | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+    character_response: CharacterResponseReading | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+
+    @model_validator(mode="after")
+    def one_source_carrier(self):
+        if (self.text is None) == (self.world_consequence is None):
+            raise ValueError("memory source requires one exact content carrier")
+        if self.world_consequence is not None and (
+            self.source_kind != "experience" or self.character_response is None
+        ):
+            raise ValueError("structured memory requires the paired Experience reading")
+        if self.character_response is not None and self.world_consequence is None:
+            raise ValueError("private reading requires its separate World source")
+        return self
 
 
 class MemoryRetrievalItem(FrozenModel):
@@ -207,6 +228,7 @@ class MemoryRetrievalCompiler:
                     excerpt = self._experience_excerpt(
                         binding=binding,
                         projection=projection,
+                        viewer_privacy_ceiling=viewer_privacy_ceiling,
                         user_channel_limited_content_refs=limited_content_refs,
                     )
                 else:
@@ -248,6 +270,7 @@ class MemoryRetrievalCompiler:
         *,
         binding: MemorySourceBinding,
         projection,
+        viewer_privacy_ceiling: PrivacyClass = "private",
         user_channel_limited_content_refs: frozenset[str] = frozenset(),
     ) -> MemorySourceExcerpt | None:
         """Read one exact Experience summary through its descriptor and sidecar.
@@ -341,7 +364,19 @@ class MemoryRetrievalCompiler:
             or stored.content_payload_hash != descriptor.content_payload_hash
         ):
             return None
-        text = stored.text[: self._max_excerpt_characters]
+        reading = None
+        if experience.authority_contract_version == "experience.2":
+            try:
+                reading = read_character_life_experience_content(
+                    store=self._life_content_store, projection=projection, experience=experience,
+                    actor_ref=experience.values.source_bindings[0].response.actor_ref,
+                    viewer_privacy_ceiling=viewer_privacy_ceiling,
+                    max_characters=self._max_excerpt_characters,
+                    user_channel_limited_content_refs=user_channel_limited_content_refs,
+                )
+            except ValueError:
+                return None
+        text = stored.text[: self._max_excerpt_characters] if reading is None else None
         return MemorySourceExcerpt(
             source_kind="experience",
             source_id=binding.source_id,
@@ -353,7 +388,9 @@ class MemoryRetrievalCompiler:
             excerpt_ref=descriptor.content_ref,
             excerpt_payload_hash=descriptor.content_payload_hash,
             text=text,
-            truncated=text != stored.text,
+            truncated=reading.truncated if reading is not None else text != stored.text,
+            world_consequence=reading.world_consequence if reading is not None else None,
+            character_response=reading.character_response if reading is not None else None,
         )
 
     @staticmethod
