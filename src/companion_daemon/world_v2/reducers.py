@@ -3702,6 +3702,13 @@ def _validate_one_life_development_deliberation(
         "capability_manifest_content_ref",
         "capability_manifest_content_hash",
     }
+    current_author_request = (
+        expected_role == "world_author"
+        and isinstance(binding.get("capability_manifest"), dict)
+        and binding["capability_manifest"].get("outcome_contract") == "world-consequence.2"
+    )
+    if current_author_request:
+        required.add("request_bindings")
     if set(binding) != required or binding.get("role") != expected_role:
         raise ValueError(f"life-development {expected_role} deliberation shape is invalid")
     audit_proposal = next(
@@ -3735,6 +3742,7 @@ def _validate_one_life_development_deliberation(
     ):
         raise ValueError(f"life-development {expected_role} manifest binding is invalid")
     metadata_binding = {
+        **({"request_bindings": metadata.get("request_bindings")} if current_author_request else {}),
         "role": metadata.get("model_role"),
         "capsule_id": context_identity.get("capsule_id"),
         "context_cursor": context_identity.get("context_cursor"),
@@ -3818,6 +3826,19 @@ def _validate_one_life_development_deliberation(
         or attempts[-1].attempt_index != attempts[-1].attempt_count - 1
     ):
         raise ValueError(f"life-development {expected_role} attempt bytes changed")
+    if current_author_request:
+        from .world_author_request_audit import WorldAuthorRequestBinding
+
+        request_bindings = binding.get("request_bindings")
+        if not isinstance(request_bindings, list) or len(request_bindings) != len(recorded):
+            raise ValueError("life-development author request lineage is incomplete")
+        for value, audit in zip(request_bindings, recorded, strict=True):
+            request = WorldAuthorRequestBinding.model_validate(value)
+            if (
+                request.content_payload_hash != audit.request_hash
+                or request.content_ref != "content:world-author-request:" + audit.request_hash
+            ):
+                raise ValueError("life-development author request is not bound to its ModelResult")
     return binding
 
 
