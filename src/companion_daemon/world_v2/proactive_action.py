@@ -78,11 +78,13 @@ from .delayed_trigger_policies import TECHNICAL_RETRY_BACKOFF_SECONDS
 from .schemas import ClaimLease, ProjectionCursor, TriggerProcess, WorldEvent
 from .shared_private_invitation import pending_shared_private_invitation_advisories
 from .response_expectation_view import (
+    answerable_receipt_history,
     counterpart_last_spoke_facts,
     expired_hope_advisory_value,
     expired_unanswered_expectation,
     living_hope_hitch_clause,
     living_unanswered_hope,
+    unanswered_response_expectations,
 )
 from .revisit_intention_view import due_unfinished_revisit, thread_due_schedule_sources
 from .social_initiative import (
@@ -190,7 +192,7 @@ _SELF_HISTORY_CANDIDATE_MAX = 256
 _SELF_HISTORY_OUTBOUND_MIN = 2
 _SELF_HISTORY_TEXTS_SHOWN = 4
 _SELF_HISTORY_HOPES_SHOWN = 3
-_SELF_HISTORY_ADVISORY_VERSION = "proactive-self-history.1"
+_SELF_HISTORY_ADVISORY_VERSION = "proactive-self-history.2"
 
 
 def _unanswered_outbound_message_facts(projection: object) -> tuple[tuple[str, str], ...]:
@@ -207,24 +209,10 @@ def _unanswered_outbound_message_facts(projection: object) -> tuple[tuple[str, s
         latest_inbound_revision = (
             observations[-1].world_revision if observations else 0
         )
-        receipt_refs = tuple(
-            item
-            for item in getattr(projection, "committed_world_event_refs", ())
-            if item.event_type == "ExecutionReceiptRecorded"
-        )
-        receipts = tuple(getattr(projection, "execution_receipts", ()))
-        if len(receipt_refs) != len(receipts):
-            return ()
-        first_visible_by_action: dict[str, object] = {}
-        for ref, receipt in zip(receipt_refs, receipts, strict=True):
-            if getattr(receipt, "observed_state", None) not in {
-                "provider_accepted",
-                "delivered",
-            }:
-                continue
-            existing = first_visible_by_action.get(receipt.action_id)
-            if existing is None or ref.world_revision < existing.world_revision:
-                first_visible_by_action[receipt.action_id] = ref
+        first_visible_by_action = {
+            action_id: refs[0]
+            for action_id, refs in answerable_receipt_history(projection).items()
+        }
         if not first_visible_by_action:
             return ()
         payload_facts = {
@@ -266,16 +254,14 @@ def _living_hope_facts(
         logical_time = projection.logical_time
         if logical_time is None:
             return ()
-        terminal_plan_ids = {
-            item.source_plan_id
-            for item in getattr(projection, "response_expectation_assessments", ())
-            if getattr(item, "status", None)
-            in {"fulfilled", "superseded", "still_pending"}
+        answerable_plan_ids = {
+            item.plan_id
+            for item in unanswered_response_expectations(projection, due_only=False)
         }
         facts: list[tuple[str, str, datetime, datetime]] = []
         for manifest in getattr(projection, "expression_plan_manifests", ()):
             expectation = getattr(manifest, "response_expectation", None)
-            if expectation is None or getattr(manifest, "plan_id", "") in terminal_plan_ids:
+            if expectation is None or getattr(manifest, "plan_id", "") not in answerable_plan_ids:
                 continue
             not_before = getattr(expectation, "not_before", None)
             expires_at = getattr(expectation, "expires_at", None)
@@ -330,8 +316,8 @@ def compile_proactive_self_history_advisories(
             f", {repeats} of them exact repeats" if repeats > 0 else ""
         )
         value = (
-            f"Since his last inbound you have sent {len(outbound)} delivered "
-            f"messages with no verified reply{repeat_clause}: {shown}. "
+            f"Since his last inbound you have {len(outbound)} outgoing messages "
+            f"currently acknowledged or delivered, with no later inbound{repeat_clause}: {shown}. "
             "Facts only; she still decides."
         )[:_SELF_HISTORY_CANDIDATE_MAX]
         candidates.append(
@@ -357,7 +343,7 @@ def compile_proactive_self_history_advisories(
         value = (
             f"You are holding {len(hopes)} waiting hope(s): "
             + "; ".join(shown_hopes)
-            + ". Each unmet hope wakes you once more when its wait runs out. "
+            + ". Declared wait times, not a command to contact him. "
             "Facts only; she still decides."
         )[:_SELF_HISTORY_CANDIDATE_MAX]
         candidates.append(

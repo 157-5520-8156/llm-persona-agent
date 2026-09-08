@@ -362,8 +362,8 @@ class _CapturingInboundCognition:
         return next(item for item in self.requests if item.trigger_ref == trigger_ref)
 
 
-def _build_app(tmp_path, *, name: str, silence_idle_seconds: int | None):  # type: ignore[no-untyped-def]
-    transport = _DeliveredTransport()
+def _build_app(tmp_path, *, name: str, silence_idle_seconds: int | None, transport=None):  # type: ignore[no-untyped-def]
+    transport = transport if transport is not None else _DeliveredTransport()
     cognition = _CapturingInboundCognition(
         _ExpressionDraftWire(
             model=_ExpectingChat(),

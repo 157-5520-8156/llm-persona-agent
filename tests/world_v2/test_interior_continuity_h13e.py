@@ -507,7 +507,7 @@ def test_self_history_advisory_lists_unanswered_outbound_facts() -> None:
     assert advisory.kind == "proactive_self_history"
     values = {item.candidate_ref: item.value for item in advisory.candidates}
     outbound = values["self-history:unanswered_outbound"]
-    assert "you have sent 3 delivered messages" in outbound
+    assert "you have 3 outgoing messages currently acknowledged or delivered" in outbound
     assert "1 of them exact repeats" in outbound
     assert "在干嘛呀" in outbound
     assert "Facts only; she still decides" in outbound
@@ -572,6 +572,14 @@ def test_self_history_advisory_lists_living_hopes_with_wake_facts() -> None:
             source_plan_id="plan:hope:assessed", status="still_pending"
         ),
     )
+    for index, manifest in enumerate(projection.expression_plan_manifests, start=2):
+        manifest.response_expectation.source_beat_id = f"beat:proactive:{index}"
+        manifest.beats = (
+            SimpleNamespace(
+                beat_id=f"beat:proactive:{index}",
+                action=SimpleNamespace(action_id=f"action:proactive:{index}"),
+            ),
+        )
 
     advisories = compile_proactive_self_history_advisories(projection)
 
@@ -583,7 +591,7 @@ def test_self_history_advisory_lists_living_hopes_with_wake_facts() -> None:
     assert "wait already ran out" in hopes
     assert "过期的盼头" not in hopes
     assert "已评估的盼头" not in hopes
-    assert "Each unmet hope wakes you once more" in hopes
+    assert "Declared wait times, not a command to contact him" in hopes
 
 
 def test_self_history_advisory_stays_silent_below_threshold() -> None:

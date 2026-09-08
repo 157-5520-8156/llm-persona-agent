@@ -32,7 +32,7 @@ from .media_conversation_window import media_cross_lane_timing_clause
 from .schema_core import FrozenModel
 
 
-RESPONSE_EXPECTATION_ADVISORY_VERSION = "response-expectation-view.3"
+RESPONSE_EXPECTATION_ADVISORY_VERSION = "response-expectation-view.4"
 # Matches present_prompt open-hope sentinel: wait=86400, expires=172800.
 # A real max wait of 86400 still chases by 60s and is not this marker.
 OPEN_HOPE_CHASE_SECONDS = 86_400
@@ -87,6 +87,39 @@ class PendingResponseExpectationView(FrozenModel):
     declared_seconds_ago: int = Field(ge=0)
 
 
+def answerable_receipt_history(projection, *, before_world_revision=None):
+    """First visible leave and latest still-answerable receipt per Action.
+
+    A later failed/unknown receipt removes present delivery evidence, not the
+    character's authored hope. Historical readers only consume the receipt
+    prefix they actually had; late delivery never moves the original leave.
+    """
+
+    refs = tuple(
+        item for item in projection.committed_world_event_refs
+        if item.event_type == "ExecutionReceiptRecorded"
+    )
+    if len(refs) != len(projection.execution_receipts):
+        raise ValueError("execution receipt projection does not align with committed refs")
+    first_visible = {}
+    latest = {}
+    for ref, receipt in zip(refs, projection.execution_receipts, strict=True):
+        if before_world_revision is not None and ref.world_revision >= before_world_revision:
+            continue
+        prior = latest.get(receipt.action_id)
+        if prior is None or ref.world_revision > prior[0].world_revision:
+            latest[receipt.action_id] = (ref, receipt)
+        if receipt.observed_state in _ANSWERABLE_RECEIPT_STATES:
+            first = first_visible.get(receipt.action_id)
+            if first is None or ref.world_revision < first.world_revision:
+                first_visible[receipt.action_id] = ref
+    return {
+        action_id: (first_visible[action_id], ref)
+        for action_id, (ref, receipt) in latest.items()
+        if receipt.observed_state in _ANSWERABLE_RECEIPT_STATES
+    }
+
+
 def pending_response_expectation(
     projection,
     *,
@@ -119,10 +152,17 @@ def pending_response_expectation(
     if len(receipt_refs) != len(projection.execution_receipts):
         raise ValueError("execution receipt projection does not align with committed refs")
     pairs = tuple(zip(receipt_refs, projection.execution_receipts, strict=True))
+    answerable = answerable_receipt_history(
+        projection, before_world_revision=before_world_revision
+    )
     terminal_plan_ids = {
         item.source_plan_id
         for item in getattr(projection, "response_expectation_assessments", ())
         if item.status in _TERMINAL_ASSESSMENT_STATES
+        and (
+            before_world_revision is None
+            or getattr(item, "world_revision", 0) < before_world_revision
+        )
     }
 
     if anchor_event_ref is not None:
@@ -130,7 +170,11 @@ def pending_response_expectation(
         if anchor is None:
             return None
         anchor_ref, anchor_receipt = anchor
+        if before_world_revision is not None and anchor_ref.world_revision >= before_world_revision:
+            return None
         if anchor_receipt.observed_state not in _ANSWERABLE_RECEIPT_STATES:
+            return None
+        if anchor_receipt.action_id not in answerable:
             return None
         # The anchor is her last visible message; the invitation may live on
         # an earlier beat of the same accepted plan, so the manifest is bound
@@ -153,6 +197,12 @@ def pending_response_expectation(
         expectation = manifest.response_expectation
         if logical_time >= expectation.expires_at:
             return None
+        inviting_beat = next(
+            (beat for beat in manifest.beats if beat.beat_id == expectation.source_beat_id),
+            None,
+        )
+        if inviting_beat is None or inviting_beat.action.action_id not in answerable:
+            return None
         return _view(
             expectation,
             declared_seconds_ago=int((logical_time - anchor_ref.logical_time).total_seconds()),
@@ -160,13 +210,7 @@ def pending_response_expectation(
 
     # First visible leave per action — late terminal delivery must not push
     # the hope "after" an inbound that already answered it.
-    first_visible_by_action: dict[str, object] = {}
-    for ref, receipt in pairs:
-        if receipt.observed_state not in _ANSWERABLE_RECEIPT_STATES:
-            continue
-        existing = first_visible_by_action.get(receipt.action_id)
-        if existing is None or ref.world_revision < existing.world_revision:
-            first_visible_by_action[receipt.action_id] = ref
+    first_visible_by_action = {action_id: refs[0] for action_id, refs in answerable.items()}
     candidates = []
     for manifest in projection.expression_plan_manifests:
         expectation = manifest.response_expectation
@@ -243,13 +287,7 @@ def unanswered_response_expectations(
         logical_time = projection.logical_time
         if logical_time is None:
             return ()
-        receipt_refs = tuple(
-            item
-            for item in projection.committed_world_event_refs
-            if item.event_type == "ExecutionReceiptRecorded"
-        )
-        if len(receipt_refs) != len(projection.execution_receipts):
-            return ()
+        answerable = answerable_receipt_history(projection)
         latest_message_revision = (
             projection.message_observations[-1].world_revision
             if projection.message_observations
@@ -260,21 +298,8 @@ def unanswered_response_expectations(
             for item in getattr(projection, "response_expectation_assessments", ())
             if item.status in _TERMINAL_ASSESSMENT_STATES
         }
-        latest_by_action: dict[str, tuple[object, object]] = {}
-        first_visible_by_action: dict[str, object] = {}
-        for ref, receipt in zip(receipt_refs, projection.execution_receipts, strict=True):
-            existing = latest_by_action.get(receipt.action_id)
-            if existing is None or ref.world_revision > existing[0].world_revision:
-                latest_by_action[receipt.action_id] = (ref, receipt)
-            if receipt.observed_state in _ANSWERABLE_RECEIPT_STATES:
-                visible = first_visible_by_action.get(receipt.action_id)
-                if visible is None or ref.world_revision < visible.world_revision:
-                    first_visible_by_action[receipt.action_id] = ref
-        delivered_by_action = {
-            action_id: ref
-            for action_id, (ref, receipt) in latest_by_action.items()
-            if receipt.observed_state in _ANSWERABLE_RECEIPT_STATES
-        }
+        first_visible_by_action = {action_id: refs[0] for action_id, refs in answerable.items()}
+        delivered_by_action = {action_id: refs[1] for action_id, refs in answerable.items()}
         candidates: list[ExpiredUnansweredExpectation] = []
         for manifest in projection.expression_plan_manifests:
             expectation = manifest.response_expectation
@@ -384,22 +409,10 @@ def pending_response_expectation_manifest(
     logical_time = at_logical_time or projection.logical_time
     if logical_time is None:
         return None
-    receipt_refs = tuple(
-        item
-        for item in projection.committed_world_event_refs
-        if item.event_type == "ExecutionReceiptRecorded"
+    answerable = answerable_receipt_history(
+        projection, before_world_revision=before_world_revision
     )
-    if len(receipt_refs) != len(projection.execution_receipts):
-        raise ValueError("execution receipt projection does not align with committed refs")
-    delivered_by_action: dict[str, object] = {}
-    for ref, receipt in zip(receipt_refs, projection.execution_receipts, strict=True):
-        if (
-            receipt.observed_state in _ANSWERABLE_RECEIPT_STATES
-            and ref.world_revision < before_world_revision
-        ):
-            prior = delivered_by_action.get(receipt.action_id)
-            if prior is None or ref.world_revision > prior.world_revision:
-                delivered_by_action[receipt.action_id] = ref
+    delivered_by_action = {action_id: refs[0] for action_id, refs in answerable.items()}
     terminal_plan_ids = {
         item.source_plan_id
         for item in getattr(projection, "response_expectation_assessments", ())
@@ -746,29 +759,14 @@ def living_unanswered_hope(projection) -> LivingUnansweredHope | None:
         logical_time = projection.logical_time
         if logical_time is None:
             return None
-        receipt_refs = tuple(
-            item
-            for item in projection.committed_world_event_refs
-            if item.event_type == "ExecutionReceiptRecorded"
-        )
-        if len(receipt_refs) != len(projection.execution_receipts):
-            return None
+        answerable = answerable_receipt_history(projection)
         terminal_plan_ids = {
             item.source_plan_id
             for item in getattr(projection, "response_expectation_assessments", ())
             if item.status in _TERMINAL_ASSESSMENT_STATES
         }
-        delivered_by_action: dict[str, object] = {}
-        first_visible_by_action: dict[str, object] = {}
-        for ref, receipt in zip(receipt_refs, projection.execution_receipts, strict=True):
-            if receipt.observed_state not in _ANSWERABLE_RECEIPT_STATES:
-                continue
-            existing = delivered_by_action.get(receipt.action_id)
-            if existing is None or ref.world_revision > existing.world_revision:
-                delivered_by_action[receipt.action_id] = ref
-            visible = first_visible_by_action.get(receipt.action_id)
-            if visible is None or ref.world_revision < visible.world_revision:
-                first_visible_by_action[receipt.action_id] = ref
+        delivered_by_action = {action_id: refs[1] for action_id, refs in answerable.items()}
+        first_visible_by_action = {action_id: refs[0] for action_id, refs in answerable.items()}
         candidates: list[LivingUnansweredHope] = []
         for manifest in projection.expression_plan_manifests:
             expectation = manifest.response_expectation
@@ -1042,6 +1040,7 @@ __all__ = [
     "ExpiredUnansweredExpectation",
     "LivingUnansweredHope",
     "PendingResponseExpectationView",
+    "answerable_receipt_history",
     "attach_pending_expectation_advisory",
     "counterpart_last_spoke_facts",
     "expired_expectation_advisory",
