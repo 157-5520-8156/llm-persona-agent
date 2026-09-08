@@ -2922,9 +2922,9 @@ def _activity_title(activity_kind: str | None) -> str:
     if labeled:
         return labeled
     if activity_kind.startswith("open_life."):
-        return "她自己在过的一件事"
+        return "自主活动"
     if activity_kind.startswith("npc_initiative."):
-        return "别人找上门的事"
+        return "人物相关活动"
     return "一项活动"
 
 

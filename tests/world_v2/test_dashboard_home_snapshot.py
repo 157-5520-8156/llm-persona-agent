@@ -706,7 +706,7 @@ async def test_missed_plan_window_and_committed_experience_use_owner_labels() ->
         item for item in highlights if item["kind"] == "experience"
     )
 
-    assert plan_highlight["title"] == "她自己在过的一件事"
+    assert plan_highlight["title"] == "自主活动"
     assert plan_highlight["status_code"] == "window_missed"
     assert plan_highlight["status_label"] == "窗口过了还没开始"
     assert experience_highlight["status_code"] == "committed"
