@@ -45,6 +45,7 @@ class MinimalReplyAcceptanceError(ValueError):
 class ReplyBudgetPolicy(FrozenModel):
     """Composition-owned facts that a model cannot select for a reply Action."""
 
+    visible_source_review_required: bool = Field(default=False, exclude_if=lambda value: not value)
     account_id: str = Field(min_length=1, max_length=256)
     amount_limit: int = Field(ge=0, le=10_000_000)
     actor: str = Field(min_length=1, max_length=256)
@@ -146,6 +147,8 @@ def derive_minimal_reply_material(
 ) -> MinimalReplyAcceptanceMaterial:
     """Fail closed unless an audited proposal is exactly one normal reply."""
 
+    if policy.visible_source_review_required:
+        raise MinimalReplyAcceptanceError("required_whole_review_unavailable")
     if audit.evaluated_world_revision != cursor.world_revision:
         raise MinimalReplyAcceptanceError("stale_revision")
     try:

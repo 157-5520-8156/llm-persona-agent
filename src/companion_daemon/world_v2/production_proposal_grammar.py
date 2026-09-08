@@ -617,6 +617,7 @@ def compose_production_deliberation(
     quick_timeout_seconds: float = 2.5,
     expression_episode_mode: Literal["off", "shadow", "stream"] = "off",
     expression_episode_diagnostics: ExpressionEpisodeDiagnostics | None = None,
+    visible_source_review_required: bool = False,
 ):
     """Create the only Deliberation shape permitted by production composition.
 
@@ -644,6 +645,7 @@ def compose_production_deliberation(
         technical_recovery_enabled=False,
         expression_episode_mode=expression_episode_mode,
         expression_episode_diagnostics=expression_episode_diagnostics,
+        visible_source_review_required=visible_source_review_required,
         expression_episode_grammar=(
             production_proposal_grammar(
                 "chat_reply", expression_action_kinds=expression_action_kinds

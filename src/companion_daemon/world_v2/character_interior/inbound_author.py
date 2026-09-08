@@ -2372,12 +2372,17 @@ class _InboundCharacterAuthor:
         identity_frame: CompanionIdentityFrame | None = None,
         require_explicit_authored_decision_fields: bool = False,
         whole_candidate_mode: bool = False,
+        visible_source_review_model: object | None = None,
         **_unused: object,
     ) -> None:
         del _unused
         if type(whole_candidate_mode) is not bool:
             raise TypeError("whole_candidate_mode must be an explicit boolean")
         self._whole_candidate_mode = whole_candidate_mode
+        self._visible_source_review_model = visible_source_review_model
+        self._visible_review_rejections = OrderedDict()
+        if visible_source_review_model is not None and not whole_candidate_mode:
+            raise ValueError("visible source review requires whole-candidate authoring")
         self._flash_model = flash_model
         self._thinking_model = thinking_model
         self._source_closure_reselection_lane = source_closure_reselection_lane
@@ -2558,6 +2563,7 @@ class _InboundCharacterAuthor:
         self._terminal_authored_expression_combined = _BoundedKeySet(_MAX_PENDING_DRAFTS)
         self._failed_details: OrderedDict[tuple[str, ...], _FailedExpressionDetail] = OrderedDict()
         self._rejected_call_audits: OrderedDict[str, AuthoredCandidateInvocationAudit] = OrderedDict()
+        self._visible_source_author_requests: OrderedDict[str, str] = OrderedDict()
         self._interior_streams: OrderedDict[tuple[str, ...], _CombinedInteriorStreamProvider] = (
             OrderedDict()
         )
@@ -2573,6 +2579,20 @@ class _InboundCharacterAuthor:
         if self._identity_frame is None:
             return frozenset()
         return frozenset(companion_identity_source_refs(self._identity_frame).values())
+
+    def visible_source_author_request(
+        self, model_call_id: str, *, expected_request_hash: str,
+    ) -> str:
+        """Read the exact prepared request for the selected physical author call."""
+        from ..visible_source_author_request import verify_visible_source_author_request
+
+        if not isinstance(model_call_id, str):
+            raise ValueError("visible author request is unavailable")
+        raw = self._visible_source_author_requests.get(model_call_id)
+        if raw is None:
+            raise ValueError("visible author request is unavailable")
+        verify_visible_source_author_request(raw, expected_request_hash=expected_request_hash)
+        return raw
 
     def install_recall_coordinator(self, coordinator: RecallCoordinator) -> None:
         if self._character_interior_recall_delegate:
@@ -2608,18 +2628,31 @@ class _InboundCharacterAuthor:
     def source_closure_review_enabled(self) -> bool:
         """Report the source review owned by this same character author."""
 
-        return self._expression_materializer.source_closure_review_enabled()
+        return self._visible_source_review_model is not None or self._expression_materializer.source_closure_review_enabled()
 
     async def propose(self, request: ModelInput) -> ModelOutput:
         """Return one merged Expression+Appraisal+optional Affect decision."""
 
+        if (self._visible_source_review_model is not None) != (request.visible_source_requirement_json is not None):
+            raise ValidationTechnicalFailure("source_review_exception", failure_detail="whole-candidate review deployment and original requirement do not match")
         appraisal_output = await self._appraisal_materializer.propose(request)
         expression_input = self._expression_materializer.bind_same_call_paired_request(request)
         expression_output = await self._expression_materializer.propose(expression_input)
-        return _merge_cognition_outputs(
-            appraisal=appraisal_output,
-            expression=expression_output,
-        )
+        output = _merge_cognition_outputs(appraisal=appraisal_output, expression=expression_output)
+        if request.visible_source_requirement_json is not None:
+            from ..visible_source_runtime import review_candidate
+            try:
+                output = await review_candidate(request=request, output=output, author_request_json=self.visible_source_author_request(output.winning_model_call_id, expected_request_hash=output.winning_request_hash), reviewer=self._visible_source_review_model)
+            except ValidationTechnicalFailure as exc:
+                rejected = self._rejected_call_audits.get(_rejected_call_pin(request))
+                if rejected is not None:
+                    exc.authored_candidate_audits = _merge_rejected_call_audits((rejected,), exc.authored_candidate_audits)
+                self._visible_review_rejections[_rejected_call_pin(request)] = exc.provider_subcall_audits
+                while len(self._visible_review_rejections) > _MAX_PENDING_DRAFTS:
+                    self._visible_review_rejections.popitem(last=False)
+                raise
+            self._rejected_call_audits.pop(_rejected_call_pin(request), None)
+        return output
 
     async def correct_role_result(
         self,
@@ -2637,6 +2670,7 @@ class _InboundCharacterAuthor:
             raise ValueError("character interior correction failure code is missing")
         audit_pin = _rejected_call_pin(request)
         original = self._rejected_call_audits.pop(audit_pin, None)
+        original_reviews = self._visible_review_rejections.pop(audit_pin, ())
         if self._whole_candidate_mode and original is None:
             logger.warning("original rejected author invocation evidence is unavailable")
         key = _cache_key(request)
@@ -2665,6 +2699,7 @@ class _InboundCharacterAuthor:
             exc.authored_candidate_audits = _merge_rejected_call_audits(
                 (original,) if original is not None else (), current,
             )
+            exc.provider_subcall_audits = (*original_reviews, *exc.provider_subcall_audits)
             raise
         finally:
             self._rejected_call_audits.pop(audit_pin, None)
@@ -2677,6 +2712,7 @@ class _InboundCharacterAuthor:
                 "authored_candidate_audits": _merge_rejected_call_audits(
                     (original,), output.authored_candidate_audits,
                 ),
+                "provider_subcall_audits": (*original_reviews, *output.provider_subcall_audits),
             },
         )
 
@@ -4116,6 +4152,27 @@ class _InboundCharacterAuthor:
             tool_choice=(cognition_tool_choice if use_forced_tool else None),
             tool_contract_identity=(cognition_contract_identity if use_forced_tool else None),
         )
+        if request.visible_source_requirement_json is not None:
+            from ..visible_source_author_request import prepare_visible_source_author_request
+
+            prepared_request = prepare_visible_source_author_request(
+                messages=messages,
+                temperature=self._temperature,
+                tools=cognition_tools if use_forced_tool else None,
+                tool_choice=cognition_tool_choice if use_forced_tool else None,
+                identity_extras=(
+                    {"tool_contract_identity": cognition_contract_identity}
+                    if use_forced_tool
+                    else None
+                ),
+                expected_request_hash=winning_provider_identity.request_hash,
+            )
+            self._visible_source_author_requests[winning_provider_identity.model_call_id] = (
+                prepared_request
+            )
+            self._visible_source_author_requests.move_to_end(winning_provider_identity.model_call_id)
+            while len(self._visible_source_author_requests) > _MAX_PENDING_DRAFTS:
+                self._visible_source_author_requests.popitem(last=False)
         usage: ModelUsageProvenance | None = None
         returned_candidate_audit: AuthoredCandidateInvocationAudit | None = None
         forced_transport_error: ValueError | None = None
@@ -4206,6 +4263,8 @@ class _InboundCharacterAuthor:
                     outcome="validation_rejected",
                     usage=usage,
                 )
+            if request.visible_source_requirement_json is not None and returned_candidate_audit is not None:
+                self._retain_rejected_return(request, returned_candidate_audit, winning_provider_identity)
             if use_forced_tool and transport_provider is None:
                 try:
                     raw = cognition_contract.unwrap(raw)

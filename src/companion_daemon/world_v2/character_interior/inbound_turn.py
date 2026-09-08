@@ -335,7 +335,7 @@ def _model_input_material(
     """
 
     return {
-        "contract": "character-interior-inbound-capability.1",
+        "contract": ("character-interior-inbound-capability.2" if request.visible_source_requirement_json is not None else "character-interior-inbound-capability.1"),
         "call_id": request.call_id,
         "attempt_id": request.attempt_id,
         "capsule_id": request.capsule_id,
@@ -463,7 +463,8 @@ class InboundTurnFaculty:
         )
         if recovery_failure is not None:
             material["technical_recovery_failure"] = recovery_failure[:384]
-        capability_ref = "inbound-turn-capability:sha256:" + _digest(material)
+        prefix = "inbound-reviewed-turn-capability:sha256:" if request.visible_source_requirement_json is not None else "inbound-turn-capability:sha256:"
+        capability_ref = prefix + _digest(material)
         payload_json = _canonical(material)
         manifest = _InteriorCapabilityManifest(
             capability_ref=capability_ref,
@@ -797,6 +798,8 @@ class InboundTurnFaculty:
             ) from None
         if not isinstance(output, ModelOutput):
             raise TypeError("inbound character author output is invalid")
+        from ..visible_source_runtime import verify_output
+        verify_output(request=owned_input, output=output)
         if output.prefetch_trace is not None or output.presented_prefetch_traces:
             raise RuntimeError("inbound author attempted to own the retired prefetch lifecycle")
         recall_parent = self._recall_parents.get(request.inner_turn_id)

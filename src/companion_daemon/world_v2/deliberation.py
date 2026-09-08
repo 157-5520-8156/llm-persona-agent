@@ -780,6 +780,7 @@ def _checked_output(value: object) -> ModelOutput:
             "model_id": getattr(value, "model_id", None),
             "model_version": getattr(value, "model_version", None),
             "raw_proposal": raw,
+            "visible_source_review_json": getattr(value, "visible_source_review_json", None),
             "character_interior_lineage": (
                 lineage.model_dump(mode="python")
                 if isinstance(
@@ -987,6 +988,7 @@ class TriggerMessage(_FrozenModel):
 
 
 class ModelInput(_FrozenModel):
+    visible_source_requirement_json: str | None = Field(default=None, max_length=512_000, exclude_if=lambda v: v is None)
     call_id: str = Field(min_length=1, max_length=256)
     attempt_id: str = Field(min_length=1, max_length=256)
     route: ModelRoute
@@ -1177,6 +1179,7 @@ class PhysicalProviderInvocationAudit(_FrozenModel):
 
 
 class ModelOutput(_FrozenModel):
+    visible_source_review_json: str | None = Field(default=None, max_length=512_000, exclude_if=lambda v: v is None)
     model_id: str = Field(min_length=1, max_length=256)
     model_version: str = Field(min_length=1, max_length=256)
     raw_proposal: dict[str, Any]
@@ -1407,6 +1410,7 @@ def _map_terminal_validation_failure(
 
 
 class ModelResultAudit(_FrozenModel):
+    visible_source_review_json: str | None = Field(default=None, max_length=512_000, exclude_if=lambda v: v is None)
     model_call_id: str = Field(min_length=1)
     parent_model_call_id: str | None = Field(
         default=None,
@@ -1861,6 +1865,7 @@ class Deliberation:
         expression_episode_mode: Literal["off", "shadow", "stream"] = "off",
         expression_episode_diagnostics: ExpressionEpisodeDiagnostics | None = None,
         expression_episode_grammar: ProposalGrammar | None = None,
+        visible_source_review_required: bool = False,
     ) -> None:
         if not 0 < main_timeout_seconds <= 120:
             raise ValueError("main model timeout is out of bounds")
@@ -1868,6 +1873,9 @@ class Deliberation:
             raise ValueError("quick recovery timeout is out of bounds")
         if expression_episode_mode not in {"off", "shadow", "stream"}:
             raise ValueError("expression episode mode must be off, shadow, or stream")
+        self._visible_source_review_required = visible_source_review_required
+        if visible_source_review_required and expression_episode_mode != "off":
+            raise ValueError("whole visible review requires atomic expression mode")
         self._router = router
         self._main = main_model
         self._quick = quick_recovery
@@ -2142,6 +2150,9 @@ class Deliberation:
             recorded_draw_refs=recorded_draw_refs,
             recorded_cadence_draws=recorded_cadence_draws,
         )
+        if self._visible_source_review_required:
+            from .visible_source_runtime import compile_requirement
+            model_input = model_input.model_copy(update={"visible_source_requirement_json": compile_requirement(request=model_input, capsule=trusted)})
         request_hash = _digest(model_input.model_dump(mode="json"))
         if budget is not None:
             return await self._deliberate_first_valid(
@@ -2190,7 +2201,7 @@ class Deliberation:
                 _PROVIDER_SLOT_COORDINATOR.reset(slot_token)
                 _ATTEMPT_DEADLINE.reset(deadline_token)
             proposal = self._validated_proposal(
-                output, trusted, trigger_evidence=trigger_evidence, trigger_message=model_input.trigger_message
+                output, trusted, trigger_evidence=trigger_evidence, trigger_message=model_input.trigger_message, expected_review_requirement=model_input.visible_source_requirement_json
             )
             proposal = self._bind_minimal_model_result(proposal, call_id, output)
             status: AuditStatus = "proposal_validated"
@@ -2319,6 +2330,7 @@ class Deliberation:
                     minimal_only=self._recovery_mode == "minimal_only",
                     trigger_evidence=trigger_evidence,
                     trigger_message=model_input.trigger_message,
+                    expected_review_requirement=model_input.visible_source_requirement_json,
                 )
                 proposal = self._bind_minimal_model_result(proposal, quick_call_id, quick_output)
                 status = recovered_status
@@ -2469,6 +2481,7 @@ class Deliberation:
                     trigger_evidence=trigger_evidence,
                     proposal_grammar_override=proposal_grammar_override,
                     trigger_message=model_input.trigger_message,
+                    expected_review_requirement=model_input.visible_source_requirement_json,
                 )
                 proposal = self._bind_minimal_model_result(proposal, call_id, output)
                 return proposal, output, None
@@ -3900,8 +3913,14 @@ class Deliberation:
         trigger_evidence: tuple[ProposalEvidenceRef, ...] = (),
         proposal_grammar_override: ProposalGrammar | None = None,
         trigger_message: TriggerMessage | None = None,
+        expected_review_requirement: str | None = None,
     ) -> ProposalInput:
         checked = _checked_output(output)
+        if self._visible_source_review_required:
+            from .visible_source_runtime import verify_evidence
+            if expected_review_requirement is None or checked.visible_source_review_json is None:
+                raise ValueError("required visible review evidence is missing")
+            verify_evidence(raw=checked.visible_source_review_json, proposal=checked.raw_proposal, requirement=expected_review_requirement, author_call=checked.winning_model_call_id, author_request_hash=checked.winning_request_hash, subcalls=checked.provider_subcall_audits)
         proposal = validate_proposal_envelope(checked.raw_proposal)
         if proposal.trigger_ref != capsule.trigger_ref:
             raise ValueError("proposal trigger does not match Capsule")
@@ -4195,6 +4214,7 @@ class Deliberation:
                 else None
             ),
             usage=output.usage if output is not None else terminal_usage,
+            visible_source_review_json=output.visible_source_review_json if output is not None else None,
             recall_trace=(
                 verify_trusted_recall_trace(output.recall_trace)
                 if output is not None and output.recall_trace is not None

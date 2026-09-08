@@ -276,10 +276,12 @@ def derive_social_deferred_material(
     trace_id: str,
     correlation_id: str,
     thread_payload: ThreadChangedPayload,
+    model_result_audits: tuple = (),
 ) -> SocialDeferredAcceptanceMaterial:
     if audit.trigger_ref != source_observation_event_ref:
         raise ValueError("social deferred source event does not match proposal trigger")
     expression = derive_expression_plan_material(
+        model_result_audits=model_result_audits,
         audit=audit,
         cursor=cursor,
         world_id=world_id,

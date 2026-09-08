@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 
 EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION = "expression-plan-acceptance.1"
+EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS = (EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION, "expression-plan-acceptance.2")
 
 
 def _canonical_json(value: object) -> str:
@@ -116,6 +117,7 @@ class ExpressionPlanBeatManifest(FrozenModel):
 
 
 class ExpressionPlanAcceptanceManifest(FrozenModel):
+    visible_source_review_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda value: value is None)
     manifest_version: str = EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION
     acceptance_id: str = Field(min_length=1, max_length=256)
     proposal_id: str = Field(min_length=1, max_length=256)
@@ -139,7 +141,8 @@ class ExpressionPlanAcceptanceManifest(FrozenModel):
 
     @model_validator(mode="after")
     def manifest_is_self_bound_and_dag_is_closed(self) -> "ExpressionPlanAcceptanceManifest":
-        if self.manifest_version != EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION:
+        expected_version = "expression-plan-acceptance.2" if self.visible_source_review_hash is not None else EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION
+        if self.manifest_version != expected_version:
             raise ValueError("expression plan manifest version is unsupported")
         if self.manifest_hash != canonical_expression_plan_manifest_hash(self.model_dump(mode="json")):
             raise ValueError("expression plan manifest hash is invalid")
@@ -214,6 +217,9 @@ def build_expression_plan_manifest(
             for item in material.beats
         ),
     }
+    if material.visible_source_review_hash is not None:
+        values["manifest_version"] = "expression-plan-acceptance.2"
+        values["visible_source_review_hash"] = material.visible_source_review_hash
     if material.media_request != "none":
         values["media_request"] = material.media_request
     values["manifest_hash"] = canonical_expression_plan_manifest_hash(values)
@@ -222,6 +228,7 @@ def build_expression_plan_manifest(
 
 __all__ = [
     "EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION",
+    "EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS",
     "ExpressionPlanAcceptanceManifest",
     "ExpressionPlanBeatManifest",
     "build_expression_plan_manifest",

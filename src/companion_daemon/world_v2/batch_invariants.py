@@ -141,7 +141,7 @@ from .minimal_reply_manifest import (
     canonical_minimal_reply_value_hash,
 )
 from .expression_plan_manifest import (
-    EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION,
+    EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS,
     ExpressionPlanAcceptanceManifest,
     canonical_expression_plan_value_hash,
 )
@@ -1780,7 +1780,7 @@ def _validate_acceptance_manifest_v2_batch(events: Sequence[WorldEvent]) -> None
             OUTCOME_ACCEPTANCE_MANIFEST_VERSION,
             INTERACTION_BID_ACCEPTANCE_MANIFEST_VERSION,
             MEDIA_THREAD_ACCEPTANCE_MANIFEST_VERSION,
-            EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION,
+            *EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS,
             *SOCIAL_DEFERRED_ACCEPTANCE_MANIFEST_VERSIONS,
             EXTERNAL_PERCEPTION_ACCEPTANCE_MANIFEST_VERSION,
         }
@@ -2221,7 +2221,7 @@ def reject_minimal_reply_manifest_without_recorder(events: Sequence[WorldEvent])
 def reject_expression_plan_manifest_without_recorder(events: Sequence[WorldEvent]) -> None:
     if any(
         event.event_type == "AcceptanceRecorded"
-        and event.payload().get("manifest_version") == EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION
+        and event.payload().get("manifest_version") in EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS
         for event in events
     ):
         raise ValueError("expression_plan.recorder_capability_required")
@@ -2367,7 +2367,7 @@ def _validate_authorized_expression_plan_manifest_batch(
         event
         for event in events
         if event.event_type == "AcceptanceRecorded"
-        and event.payload().get("manifest_version") == EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION
+        and event.payload().get("manifest_version") in EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS
     ]
     if not manifests:
         return

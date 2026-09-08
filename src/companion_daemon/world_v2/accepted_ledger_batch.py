@@ -37,7 +37,7 @@ from .media_continuation_acceptance_manifest import (
 )
 from .minimal_reply_manifest import MINIMAL_REPLY_MANIFEST_VERSION
 from .outcome_acceptance_manifest import OUTCOME_ACCEPTANCE_MANIFEST_VERSION
-from .expression_plan_manifest import EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION
+from .expression_plan_manifest import EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS
 from .interaction_bid_acceptance_manifest import INTERACTION_BID_ACCEPTANCE_MANIFEST_VERSION
 from .media_thread_acceptance_manifest import MEDIA_THREAD_ACCEPTANCE_MANIFEST_VERSION
 from .social_action_acceptance import (
@@ -167,7 +167,7 @@ class AcceptedLedgerBatchIssuer:
             *MEDIA_SELECTION_ACCEPTANCE_MANIFEST_VERSIONS,
             MEDIA_CONTINUATION_ACCEPTANCE_MANIFEST_VERSION,
             OUTCOME_ACCEPTANCE_MANIFEST_VERSION,
-            EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION,
+            *EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS,
             INTERACTION_BID_ACCEPTANCE_MANIFEST_VERSION,
             MEDIA_THREAD_ACCEPTANCE_MANIFEST_VERSION,
             *SOCIAL_DEFERRED_ACCEPTANCE_MANIFEST_VERSIONS,

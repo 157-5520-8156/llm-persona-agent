@@ -161,7 +161,9 @@ class ProposalAuditRecorder:
             audit_json = model_audit_json(audit)  # type: ignore[arg-type]
             model_payload = ModelResultRecordedPayload(
                 audit_contract=(
-                    "model-result-audit.8"
+                    "model-result-audit.9"
+                    if audit.visible_source_review_json is not None
+                    else "model-result-audit.8"
                     if audit.physical_provider_audits
                     and audit.semantic_stream_part is None
                     and audit.parent_model_call_id is None
@@ -470,6 +472,7 @@ def _strict_audit(value: ModelResultAudit) -> ModelResultAudit:
         request_hash=value.request_hash,
         response_hash=value.response_hash,
         character_interior_lineage=value.character_interior_lineage,
+        visible_source_review_json=value.visible_source_review_json,
         status=value.status,
         failure_code=value.failure_code,
         failure_detail=value.failure_detail,

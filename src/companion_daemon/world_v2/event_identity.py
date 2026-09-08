@@ -22,7 +22,7 @@ from .relationship_adjustment_acceptance_manifest import (
 )
 from .minimal_reply_manifest import MINIMAL_REPLY_MANIFEST_VERSION
 from .outcome_acceptance_manifest import OUTCOME_ACCEPTANCE_MANIFEST_VERSION
-from .expression_plan_manifest import EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION
+from .expression_plan_manifest import EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS
 from .interaction_bid_acceptance_manifest import INTERACTION_BID_ACCEPTANCE_MANIFEST_VERSION
 from .media_thread_acceptance_manifest import MEDIA_THREAD_ACCEPTANCE_MANIFEST_VERSION
 from .activity_lifecycle_acceptance_manifest import ACTIVITY_LIFECYCLE_ACCEPTANCE_MANIFEST_VERSION
@@ -93,7 +93,7 @@ def _life_identity_components(
             ACTIVITY_LIFECYCLE_ACCEPTANCE_MANIFEST_VERSION,
             *MEDIA_SELECTION_ACCEPTANCE_MANIFEST_VERSIONS,
             MEDIA_CONTINUATION_ACCEPTANCE_MANIFEST_VERSION,
-            EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION,
+            *EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS,
             *SOCIAL_DEFERRED_ACCEPTANCE_MANIFEST_VERSIONS,
             EXTERNAL_PERCEPTION_ACCEPTANCE_MANIFEST_VERSION,
         }
@@ -440,7 +440,7 @@ def _life_identity_components(
         )
     if (
         event_type == "AcceptanceRecorded"
-        and payload.get("manifest_version") == EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION
+        and payload.get("manifest_version") in EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS
     ):
         return (
             world_id,

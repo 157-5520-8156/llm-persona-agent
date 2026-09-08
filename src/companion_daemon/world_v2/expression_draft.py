@@ -2720,6 +2720,7 @@ def materialize_expression_draft(
                     else {}
                 ),
                 "beat_drafts": beat_values,
+                **({"visible_source_review_policy": "visible-source-review-required.1"} if getattr(request, "visible_source_requirement_json", None) is not None else {}),
                 "response_expectation": (
                     draft.response_expectation.model_dump(mode="json")
                     if draft.response_expectation is not None

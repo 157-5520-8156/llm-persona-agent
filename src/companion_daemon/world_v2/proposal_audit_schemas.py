@@ -36,6 +36,9 @@ _MAX_PROPOSAL_BYTES = 262_144
 # immutable bytes are the source proof for what each role-author call actually
 # saw, so truncating them would be less safe than using a larger explicit cap.
 _MAX_AUDIT_BYTES = 262_144
+# Only audit.9 carries the complete visible-source review material.  Keep the
+# historical cap for every older contract, including on replay.
+_MAX_VISIBLE_REVIEW_AUDIT_BYTES = 1_048_576
 _PROPOSAL_ADAPTER = TypeAdapter(ProposalInput)
 
 
@@ -385,6 +388,12 @@ class RecordedModelResultAudit(FrozenModel):
     )
     character_interior_lineage: RecordedCharacterInteriorTurnLineage | None = Field(
         default=None,
+        exclude_if=lambda value: value is None,
+    )
+    visible_source_review_json: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=512_000,
         exclude_if=lambda value: value is None,
     )
     response_storage: RecordedModelResponseStorage | None = Field(
@@ -739,7 +748,8 @@ def model_audit_json(audit: RecordedModelResultAudit) -> str:
 
     ``usage`` was added after audit.1.  Omitting it when absent keeps old
     ledger events replayable; new metered records contain it and are bound by
-    the same audit hash.
+    the same audit hash.  Optional visible-source review material is likewise
+    omitted when absent and otherwise preserved byte-for-byte as a string.
     """
 
     payload = audit.model_dump(mode="json")
@@ -847,6 +857,7 @@ class ModelResultRecordedPayload(FrozenModel):
         "model-result-audit.6",
         "model-result-audit.7",
         "model-result-audit.8",
+        "model-result-audit.9",
     ] = "model-result-audit.1"
     model_result_ref: str = Field(min_length=1, max_length=256)
     deliberation_result_id: str = Field(min_length=1, max_length=256)
@@ -864,16 +875,25 @@ class ModelResultRecordedPayload(FrozenModel):
     evaluated_world_revision: int = Field(ge=0)
     attempt_index: int = Field(ge=0, le=1)
     attempt_count: int = Field(ge=1, le=2)
-    audit_json: str = Field(min_length=2, max_length=_MAX_AUDIT_BYTES)
+    audit_json: str = Field(min_length=2, max_length=_MAX_VISIBLE_REVIEW_AUDIT_BYTES)
     audit_hash: str = Field(pattern=_HASH)
 
     @model_validator(mode="after")
     def audit_bytes_are_canonical_and_bound(self) -> Self:
         if self.attempt_index >= self.attempt_count:
             raise ValueError("model attempt index is out of bounds")
-        if len(self.audit_json.encode("utf-8")) > _MAX_AUDIT_BYTES:
+        byte_limit = (
+            _MAX_VISIBLE_REVIEW_AUDIT_BYTES
+            if self.audit_contract == "model-result-audit.9"
+            else _MAX_AUDIT_BYTES
+        )
+        if len(self.audit_json.encode("utf-8")) > byte_limit:
             raise ValueError("model result audit exceeds byte limit")
         audit = RecordedModelResultAudit.model_validate_json(self.audit_json)
+        if (self.audit_contract == "model-result-audit.9") != (
+            audit.visible_source_review_json is not None
+        ):
+            raise ValueError("visible source review material requires model-result-audit.9")
         canonical = model_audit_json(audit)
         if canonical != self.audit_json or sha256(canonical) != self.audit_hash:
             raise ValueError("model result audit bytes/hash are not canonical")
@@ -905,6 +925,7 @@ class ModelResultRecordedPayload(FrozenModel):
                 "model-result-audit.6",
                 "model-result-audit.7",
                 "model-result-audit.8",
+                "model-result-audit.9",
             }
             and audit.slot is not None
         ):
@@ -931,6 +952,7 @@ class ModelResultRecordedPayload(FrozenModel):
                 "model-result-audit.6",
                 "model-result-audit.7",
                 "model-result-audit.8",
+                "model-result-audit.9",
             }
             and has_recall_audit
         ):
@@ -939,6 +961,7 @@ class ModelResultRecordedPayload(FrozenModel):
             "model-result-audit.6",
             "model-result-audit.7",
             "model-result-audit.8",
+            "model-result-audit.9",
         } and (
             (self.audit_contract == "model-result-audit.5")
             != bool(audit.presented_prefetch_traces)
@@ -961,6 +984,7 @@ class ModelResultRecordedPayload(FrozenModel):
         if self.audit_contract not in {
             "model-result-audit.7",
             "model-result-audit.8",
+            "model-result-audit.9",
         } and audit.character_interior_lineage is not None:
             raise ValueError("CharacterInterior lineage requires model-result-audit.7")
         if (

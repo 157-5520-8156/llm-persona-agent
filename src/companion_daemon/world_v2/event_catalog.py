@@ -128,7 +128,7 @@ from .media_provider_grants import ProviderMediaGrantRecordedPayload
 from .media_v2 import MEDIA_V2_PAYLOAD_MODELS
 from .minimal_reply_manifest import MINIMAL_REPLY_MANIFEST_VERSION, MinimalReplyManifest
 from .expression_plan_manifest import (
-    EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION,
+    EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS,
     ExpressionPlanAcceptanceManifest,
 )
 from .social_action_acceptance import (
@@ -228,7 +228,7 @@ class EventContract:
                 OUTCOME_ACCEPTANCE_MANIFEST_VERSION,
                 INTERACTION_BID_ACCEPTANCE_MANIFEST_VERSION,
                 MEDIA_THREAD_ACCEPTANCE_MANIFEST_VERSION,
-                EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION,
+                *EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS,
                 ACTIVITY_LIFECYCLE_ACCEPTANCE_MANIFEST_VERSION,
                 *MEDIA_SELECTION_ACCEPTANCE_MANIFEST_VERSIONS,
                 MEDIA_CONTINUATION_ACCEPTANCE_MANIFEST_VERSION,
@@ -268,7 +268,7 @@ class EventContract:
             return
         if (
             self.event_type == "AcceptanceRecorded"
-            and payload.get("manifest_version") == EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION
+            and payload.get("manifest_version") in EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS
         ):
             ExpressionPlanAcceptanceManifest.model_validate_json(
                 json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")),

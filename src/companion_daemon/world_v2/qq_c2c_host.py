@@ -3040,6 +3040,8 @@ def build_qq_c2c_host(
     thinking_model: ChatCompletionModel | None = None,
     world_support_model: ChatCompletionModel | None = None,
     source_closure_model: ChatCompletionModel | None = None,
+    visible_source_review_required: bool = False,
+    visible_source_review_model: ChatCompletionModel | None = None,
     life_source_closure_model: ChatCompletionModel | None = None,
     candidate_external_proposition_inventory_model: ChatCompletionModel | None = None,
     delivery: QQC2CDelivery | None = None,
@@ -3089,6 +3091,17 @@ def build_qq_c2c_host(
     expression_episode_mode: Literal["off", "shadow", "stream"] = (
         configured_expression_episode_mode
     )
+    if type(visible_source_review_required) is not bool:
+        raise TypeError("visible source review deployment flag must be a bool")
+    if visible_source_review_required:
+        if expression_episode_mode != "off":
+            raise ValueError("required whole visible review requires explicit atomic expression mode")
+        if not callable(getattr(visible_source_review_model, "complete_json_with_usage", None)):
+            raise ValueError("required visible review requires the injected metered provider")
+        if source_closure_model is not None and source_closure_model is not visible_source_review_model:
+            raise ValueError("required visible review cannot install a second source reviewer")
+    elif visible_source_review_model is not None:
+        raise ValueError("visible review provider supplied without required deployment")
     expression_capabilities = qq_expression_capabilities(
         settings.qq_adapter,
         recorded_cadence_mode=getattr(settings, "world_v2_recorded_cadence_mode", "off"),
@@ -3107,7 +3120,8 @@ def build_qq_c2c_host(
             flash_model=model,
             thinking_model=thinking_model,
             world_support_model=world_support_model,
-            source_closure_model=source_closure_model,
+            source_closure_model=(visible_source_review_model if visible_source_review_required else source_closure_model),
+            visible_source_review_required=visible_source_review_required,
             life_source_closure_model=life_source_closure_model,
             model_id_prefix="qq-c2c-v2",
             expression_capabilities=expression_capabilities,
@@ -3179,6 +3193,7 @@ def build_qq_c2c_host(
             perception_budget_limit=perception_budget_limit,
             interactive_turn_budget_policy=interactive_turn_budget_policy,
             expression_episode_mode=expression_episode_mode,
+            visible_source_review_required=visible_source_review_required,
             recorded_cadence_mode=getattr(settings, "world_v2_recorded_cadence_mode", "off"),
             private_impression_daily_model_call_limit=(
                 settings.world_v2_private_impression_daily_model_call_limit

@@ -1037,6 +1037,8 @@ def compose_production_character_interior(
     expression_capabilities: ExpressionDraftCapabilities,
     identity_frame: CompanionIdentityFrame,
     review_claim_free_candidates: bool = True,
+    whole_candidate_mode: bool = False,
+    visible_source_review_model: object | None = None,
     turn_store: _CharacterInteriorTurnStore | None = None,
     turn_owner_id: str = "character-interior:production",
     **_unused: object,
@@ -1052,6 +1054,8 @@ def compose_production_character_interior(
         )
 
     author = _InboundCharacterAuthor(
+        whole_candidate_mode=whole_candidate_mode,
+        visible_source_review_model=visible_source_review_model,
         flash_model=flash_model,
         thinking_model=thinking_model,
         source_closure_model=source_closure_model,

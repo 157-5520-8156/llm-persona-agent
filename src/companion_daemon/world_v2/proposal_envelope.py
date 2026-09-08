@@ -1256,6 +1256,7 @@ class ExpressionPlanWorldClaim(FrozenModel):
 
 
 class ExpressionPlanPayload(FrozenModel):
+    visible_source_review_policy: Literal["visible-source-review-required.1"] | None = Field(default=None, exclude_if=lambda value: value is None)
     plan_id: BoundedRef
     overall_intent: str = Field(min_length=1, max_length=240)
     beat_drafts: list[ExpressionBeatDraft] = Field(min_length=1, max_length=32)

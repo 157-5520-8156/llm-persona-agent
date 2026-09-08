@@ -70,6 +70,7 @@ class ExpressionPlanBudgetPolicy(FrozenModel):
     actor: str = Field(min_length=1, max_length=256)
     allowed_targets: tuple[str, ...] = Field(min_length=1, max_length=64)
     recovery_policy: str = Field(min_length=1, max_length=128)
+    visible_source_review_required: bool = Field(default=False, exclude_if=lambda value: value is False)
     category: Literal["chat", "proactive"] = "chat"
     policy_version: str = EXPRESSION_PLAN_ACCEPTANCE_POLICY_VERSION
 
@@ -95,6 +96,7 @@ class ExpressionPlanBeatMaterialized(FrozenModel):
 
 
 class ExpressionPlanAcceptanceMaterial(FrozenModel):
+    visible_source_review_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda value: value is None)
     proposal_id: str = Field(min_length=1)
     proposal_event_ref: str = Field(min_length=1)
     proposal_event_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -163,6 +165,7 @@ def derive_expression_plan_material(
     correlation_id: str,
     payload_store: ImmutableExpressionPayloadStore | None = None,
     source_observation: Observation | None = None,
+    model_result_audits: tuple = (),
 ) -> ExpressionPlanAcceptanceMaterial:
     """Fail closed unless all external expression work is one complete plan.
 
@@ -188,6 +191,13 @@ def derive_expression_plan_material(
         raise ExpressionPlanAcceptanceError("expression_change_invalid")
     change = shape.expression
     payload = change.payload.value()
+    review_hash = None
+    from .visible_source_runtime import recorded_candidate_requires_review, verify_recorded_candidate
+    if policy.visible_source_review_required or payload.get("visible_source_review_policy") is not None or recorded_candidate_requires_review(audit=audit, model_result_audits=model_result_audits):
+        try:
+            review_hash = verify_recorded_candidate(audit=audit, model_result_audits=model_result_audits)
+        except (ValueError, TypeError, KeyError) as exc:
+            raise ExpressionPlanAcceptanceError("visible_source_review_unavailable") from exc
     drafts = payload.get("beat_drafts")
     if not isinstance(drafts, list) or not drafts:
         raise ExpressionPlanAcceptanceError("beats_invalid")
@@ -466,6 +476,7 @@ def derive_expression_plan_material(
         if not draw_refs:
             raise ExpressionPlanAcceptanceError("cadence_draws_invalid")
     material = ExpressionPlanAcceptanceMaterial(
+        visible_source_review_hash=review_hash,
         proposal_id=proposal.proposal_id,
         proposal_event_ref=audit.event_ref,
         proposal_event_payload_hash=audit.event_payload_hash,

@@ -3068,6 +3068,7 @@ class WorldRuntime:
                             correlation_id=observation.correlation_id,
                             payload_store=self._expression_payload_store,
                             source_observation=observation,
+                            model_result_audits=tail_projection.model_result_audits,
                         )
                     except ExpressionPlanAcceptanceError:
                         disposition = "complete_without_more"
@@ -4226,6 +4227,7 @@ class WorldRuntime:
                                         correlation_id=observation.correlation_id,
                                         payload_store=self._expression_payload_store,
                                         source_observation=observation,
+                            model_result_audits=after_audit.model_result_audits,
                                     )
                                 except ExpressionPlanAcceptanceError as exc:
                                     reply_deferred_refs = (exc.code,)
@@ -4884,6 +4886,7 @@ class WorldRuntime:
                         correlation_id=observation.correlation_id,
                         payload_store=self._expression_payload_store,
                         source_observation=observation,
+                            model_result_audits=projection.model_result_audits,
                     )
                 except ExpressionPlanAcceptanceError as exc:
                     return await acceptance_retry_outcome(audit, exc.code)

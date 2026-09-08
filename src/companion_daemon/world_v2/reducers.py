@@ -304,7 +304,7 @@ from .minimal_reply_manifest import (
     canonical_minimal_reply_value_hash,
 )
 from .expression_plan_manifest import (
-    EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION,
+    EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS,
     ExpressionPlanAcceptanceManifest,
     canonical_expression_plan_value_hash,
 )
@@ -3170,6 +3170,9 @@ def _authorization_changed(state: ReducerState, event: WorldEvent) -> ReducerSta
 def _model_result_recorded(state: ReducerState, event: WorldEvent) -> ReducerState:
     payload = ModelResultRecordedPayload.model_validate(event.payload())
     recorded = RecordedModelResultAudit.model_validate_json(payload.audit_json)
+    from .visible_source_runtime import REQUIRED_CAPABILITY_PREFIX
+    if recorded.character_interior_lineage is not None and recorded.character_interior_lineage.capability_ref.startswith(REQUIRED_CAPABILITY_PREFIX) and payload.audit_contract != "model-result-audit.9":
+        raise ValueError("required visible review capability cannot downgrade its model audit")
     if payload.evaluated_world_revision > len(state.committed_world_event_refs):
         raise ValueError("model result cannot evaluate a future world revision")
     if any(
@@ -5866,7 +5869,7 @@ def _acceptance_recorded(state: ReducerState, event: WorldEvent) -> ReducerState
         "acceptance-manifest.2",
         "acceptance-manifest.3",
         MINIMAL_REPLY_MANIFEST_VERSION,
-        EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION,
+        *EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS,
         APPRAISAL_ACCEPTANCE_MANIFEST_VERSION,
         AFFECT_ACCEPTANCE_MANIFEST_VERSION,
         RELATIONSHIP_ACCEPTANCE_MANIFEST_VERSION,
@@ -5889,7 +5892,7 @@ def _acceptance_recorded(state: ReducerState, event: WorldEvent) -> ReducerState
         return _acceptance_manifest_v3_recorded(state, event)
     if raw.get("manifest_version") == MINIMAL_REPLY_MANIFEST_VERSION:
         return _minimal_reply_manifest_recorded(state, event)
-    if raw.get("manifest_version") == EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSION:
+    if raw.get("manifest_version") in EXPRESSION_PLAN_ACCEPTANCE_MANIFEST_VERSIONS:
         return _expression_plan_manifest_recorded(state, event)
     if raw.get("manifest_version") in SOCIAL_DEFERRED_ACCEPTANCE_MANIFEST_VERSIONS:
         manifest = parse_social_deferred_acceptance_manifest(event.payload_json)
@@ -6432,6 +6435,9 @@ def _minimal_reply_manifest_recorded(state: ReducerState, event: WorldEvent) -> 
     )
     if audit is None or audit.proposal_kind != "minimal":
         raise ValueError("minimal reply manifest references unavailable proposal authority")
+    from .visible_source_runtime import recorded_candidate_requires_review
+    if recorded_candidate_requires_review(audit=audit, model_result_audits=state.model_result_audits):
+        raise ValueError("required whole review cannot use a legacy minimal reply manifest")
     if (
         audit.event_ref != manifest.proposal_event_ref
         or audit.event_payload_hash != manifest.proposal_event_payload_hash
@@ -6544,6 +6550,11 @@ def _expression_plan_manifest_recorded(
     if change is None or change.change_id != manifest.expression_change_id:
         raise ValueError("expression plan manifest proposal is not exact")
     payload = change.payload.value()
+    from .visible_source_runtime import recorded_candidate_requires_review, verify_recorded_candidate
+    if payload.get("visible_source_review_policy") is not None or manifest.visible_source_review_hash is not None or recorded_candidate_requires_review(audit=audit, model_result_audits=state.model_result_audits):
+        if verify_recorded_candidate(audit=audit, model_result_audits=state.model_result_audits) != manifest.visible_source_review_hash:
+            raise ValueError("expression manifest lacks its exact required visible review")
+
     drafts = payload.get("beat_drafts")
     if (
         change.payload.payload_hash != manifest.expression_change_hash

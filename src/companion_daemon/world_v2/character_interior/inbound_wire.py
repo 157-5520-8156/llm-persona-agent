@@ -10436,7 +10436,7 @@ class _ExpressionDraftWire:
                 "providers, prompts, retries, systems, evidence, or this recovery mode."
             )
         system += " " + schema
-        request_material = request.model_dump(mode="json")
+        request_material = request.model_dump(mode="json", exclude={"visible_source_requirement_json"})
         provider_context_json = (
             compact_recovery_model_facing_context(request.model_content_json)
             if quick_recovery

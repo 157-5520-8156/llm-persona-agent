@@ -783,6 +783,7 @@ def build_semantic_chat_composition(
     thinking_model: ChatCompletionModel | None = None,
     world_support_model: ChatCompletionModel | None = None,
     source_closure_model: ChatCompletionModel | None = None,
+    visible_source_review_required: bool = False,
     life_source_closure_model: ChatCompletionModel | None = None,
     expression_episode_observer_model: ChatCompletionModel | None = None,
     model_id_prefix: str,
@@ -949,7 +950,9 @@ def build_semantic_chat_composition(
         daily_life=tuple(character.daily_life),
         first_message=character.first_message,
     )
-    del source_closure_model, _unused
+    del _unused
+    if visible_source_review_required and not callable(getattr(source_closure_model, "complete_json_with_usage", None)):
+        raise ValueError("required whole-candidate source reviewer is not configured")
     background_model = world_support_model
     if (
         background_model is None
@@ -983,6 +986,8 @@ def build_semantic_chat_composition(
     character_interior = compose_production_character_interior(
         flash_model=flash_model,
         thinking_model=thinking_model,
+        whole_candidate_mode=visible_source_review_required,
+        visible_source_review_model=source_closure_model if visible_source_review_required else None,
         source_closure_model=None,
         report_relative_source_closure_model=None,
         source_closure_reselection_lane=None,
@@ -1017,7 +1022,7 @@ def build_semantic_chat_composition(
             _model_identity(getattr(flash_model, "primary", flash_model)) or "unknown"
         ),
         expression_episode_observer_model=expression_episode_observer_model,
-        source_closure_model=None,
+        source_closure_model=source_closure_model if visible_source_review_required else None,
         recovery_source_closure_model=None,
         source_closure_reselection_lane=None,
         proactive_source_closure_model=None,

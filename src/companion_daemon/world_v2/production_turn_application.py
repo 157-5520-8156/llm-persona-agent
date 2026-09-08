@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, UTC
 import hashlib
 import json
@@ -749,6 +749,7 @@ class WorldV2TurnApplicationConfig:
     # ``on`` was the retired provisional/full two-author race.  Immutable
     # events from that contract remain replayable, but no live application may
     # create new work through it.
+    visible_source_review_required: bool = False
     expression_episode_mode: Literal["off", "shadow", "stream"] = "off"
     recorded_cadence_mode: Literal["off", "shadow", "on"] = "off"
     expression_action_kinds: frozenset[str] = frozenset({"reply", "followup", "proactive_message"})
@@ -3575,6 +3576,11 @@ def build_sqlite_world_v2_turn_application(
     before any message can be ingested.  The platform receives only immutable
     dispatch requests; it never receives a runtime or ledger writer.
     """
+    if type(config.visible_source_review_required) is not bool:
+        raise TypeError("visible source review deployment must be explicit boolean")
+    if config.visible_source_review_required:
+        config = replace(config, expression_episode_mode="off")
+
 
     if config.media_continuation is not None and media_transport is None:
         raise ValueError("media continuation composition requires durable media transport")
@@ -3835,6 +3841,7 @@ def build_sqlite_world_v2_turn_application(
             expression_action_kinds=config.expression_action_kinds,
             expression_episode_mode=config.expression_episode_mode,
             expression_episode_diagnostics=expression_episode_diagnostics,
+            visible_source_review_required=config.visible_source_review_required,
         )
         pinned = PinnedTurnCompiler(
             ledger=ledger,
@@ -3858,6 +3865,7 @@ def build_sqlite_world_v2_turn_application(
             batch_issuer=issuer,
             policy=SocialDeferredPolicy(
                 expression=ExpressionPlanBudgetPolicy(
+                    visible_source_review_required=config.visible_source_review_required,
                     account_id=config.chat_account_id,
                     amount_limit_per_action=config.reply_budget_amount,
                     actor=config.companion_actor_ref,
@@ -4044,6 +4052,7 @@ def build_sqlite_world_v2_turn_application(
                 perception=perception_executor,
             )
         expression_policy = ExpressionPlanBudgetPolicy(
+            visible_source_review_required=config.visible_source_review_required,
             account_id=config.chat_account_id,
             amount_limit_per_action=config.reply_budget_amount,
             actor=config.companion_actor_ref,
@@ -4114,6 +4123,7 @@ def build_sqlite_world_v2_turn_application(
             expression_retry_budget_policy=config.interactive_turn_budget_policy,
             expression_episode_owner=config.expression_episode_owner,
             reply_policy=ReplyBudgetPolicy(
+                visible_source_review_required=config.visible_source_review_required,
                 account_id=config.chat_account_id,
                 amount_limit=config.reply_budget_amount,
                 actor=config.companion_actor_ref,

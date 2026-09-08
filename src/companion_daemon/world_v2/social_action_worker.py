@@ -220,6 +220,7 @@ class SocialActionWorker:
         })
         try:
             material = derive_social_deferred_material(
+                model_result_audits=projection.model_result_audits,
                 acceptance_id=acceptance_id,
                 audit=audit,
                 cursor=cursor,
