@@ -108,6 +108,64 @@ class _NeverCharacterModel:
         raise AssertionError("a World Author no_op must not call the Character Model")
 
 
+class _NoOpDayOpenRole:
+    """The same Interior may decline its independent empty-life opportunity."""
+
+    model = "test-production-day-open-role"
+    supports_required_tool_choice = True
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete(
+        self,
+        _messages: list[dict[str, str]],
+        *,
+        temperature: float = 0.2,
+    ) -> str:
+        raise AssertionError("day-open choice must use the required v2 tool")
+
+    async def complete_json(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float = 0.2,
+        tools: list[dict[str, object]] | None = None,
+        tool_choice: object | None = None,
+    ) -> str:
+        del temperature
+        self.calls += 1
+        tool_name = "character_role_activity_lifecycle_choice_v2"
+        assert tools and len(tools) == 1
+        assert tools[0]["function"]["name"] == tool_name
+        assert tool_choice == {
+            "type": "function",
+            "function": {"name": tool_name},
+        }
+        material = json.loads(messages[1]["content"])
+        assert material["inner_turn"]["purpose"] == "activity_lifecycle_choice"
+        capability = material["capability_manifest"]
+        payload = capability["payload"]
+        assert payload["contract"] == "character-interior-activity-lifecycle-capability.3"
+        assert payload["offered_tokens"] == []
+        assert payload["openings"] == []
+        assert payload["self_directed_intent"]["execution_scope"] == "self_directed"
+        return json.dumps(
+            {
+                "status": "decision",
+                "summary": "我现在不想给自己增加一项安排。",
+                "attended_source_refs": capability["source_refs"],
+                "decision": {
+                    "source_refs": capability["source_refs"],
+                    "payload": {"decision": "no_op"},
+                },
+                "recall_query": None,
+                "proposals": [],
+            },
+            ensure_ascii=False,
+        )
+
+
 class _UnavailableWorldAuthor:
     model = "test-production-unavailable-world-author"
     semantic_authority_id = "semantic-authority:test:production-unavailable-world-author"
@@ -540,6 +598,7 @@ async def test_production_open_life_no_op_is_effect_once_across_cold_restart(
     )
     world_author = _NoOpWorldAuthor()
     character_model = _NeverCharacterModel()
+    day_open_role = _NoOpDayOpenRole()
     app = build_sqlite_world_v2_test_application(
         path=database,
         config=config,
@@ -551,6 +610,10 @@ async def test_production_open_life_no_op_is_effect_once_across_cold_restart(
                 compose_fixture_character_purpose(
                     purpose="life_development_choice",
                     provider=character_model,
+                ),
+                compose_fixture_character_purpose(
+                    purpose="activity_lifecycle_choice",
+                    provider=day_open_role,
                 ),
             ),
         ),
@@ -582,11 +645,13 @@ async def test_production_open_life_no_op_is_effect_once_across_cold_restart(
         # is a deterministic no_op that never asks.
         assert world_author.calls == 1
         assert character_model.calls == 0
+        assert day_open_role.calls == 1
     finally:
         app.close()
 
     recovered_world_author = _NoOpWorldAuthor(forbidden=True)
     recovered_character_model = _NeverCharacterModel()
+    recovered_day_open_role = _NoOpDayOpenRole()
     reopened = build_sqlite_world_v2_test_application(
         path=database,
         config=config,
@@ -598,6 +663,10 @@ async def test_production_open_life_no_op_is_effect_once_across_cold_restart(
                 compose_fixture_character_purpose(
                     purpose="life_development_choice",
                     provider=recovered_character_model,
+                ),
+                compose_fixture_character_purpose(
+                    purpose="activity_lifecycle_choice",
+                    provider=recovered_day_open_role,
                 ),
             ),
         ),
@@ -616,6 +685,7 @@ async def test_production_open_life_no_op_is_effect_once_across_cold_restart(
         assert recovered.life_development_followup_status is None
         assert recovered_world_author.calls == 0
         assert recovered_character_model.calls == 0
+        assert recovered_day_open_role.calls == 0
     finally:
         reopened.close()
 
@@ -671,6 +741,7 @@ async def test_production_open_life_defers_when_the_world_author_is_unavailable(
         life_ecology=LifeEcologyComposition.production_v1(seed_catalog_path=seed),
     )
     world_author = _UnavailableWorldAuthor()
+    day_open_role = _NoOpDayOpenRole()
     app = build_sqlite_world_v2_test_application(
         path=database,
         config=config,
@@ -682,6 +753,10 @@ async def test_production_open_life_defers_when_the_world_author_is_unavailable(
                 compose_fixture_character_purpose(
                     purpose="life_development_choice",
                     provider=_NeverCharacterModel(),
+                ),
+                compose_fixture_character_purpose(
+                    purpose="activity_lifecycle_choice",
+                    provider=day_open_role,
                 ),
             ),
         ),
@@ -709,6 +784,7 @@ async def test_production_open_life_defers_when_the_world_author_is_unavailable(
         assert first.status == "deferred"
         assert first.life_development_followup_status != "no_op"
         assert world_author.calls >= 1
+        assert day_open_role.calls == 1
     finally:
         app.close()
 
@@ -734,6 +810,7 @@ async def test_production_open_life_opportunity_draw_calls_world_author(
         life_ecology=LifeEcologyComposition.production_v1(seed_catalog_path=seed),
     )
     world_author = _NoOpWorldAuthor()
+    day_open_role = _NoOpDayOpenRole()
     app = build_sqlite_world_v2_test_application(
         path=database,
         config=config,
@@ -745,6 +822,10 @@ async def test_production_open_life_opportunity_draw_calls_world_author(
                 compose_fixture_character_purpose(
                     purpose="life_development_choice",
                     provider=_NeverCharacterModel(),
+                ),
+                compose_fixture_character_purpose(
+                    purpose="activity_lifecycle_choice",
+                    provider=day_open_role,
                 ),
             ),
         ),
@@ -771,6 +852,7 @@ async def test_production_open_life_opportunity_draw_calls_world_author(
         )
         assert first.life_development_followup_status == "no_op"
         assert world_author.calls >= 1
+        assert day_open_role.calls == 1
     finally:
         app.close()
 
