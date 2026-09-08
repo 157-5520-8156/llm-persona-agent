@@ -1012,10 +1012,10 @@ def _compact_reply_only_transport_grammar(
             ),
         },
         "marker_rule": (
-            "Every <role:...> marker is a type/domain placeholder only. Replace every marker "
-            "with your own chosen value; never copy marker text. Add appraisal affect-lifecycle "
-            "fields, attended source refs, world claims, or response-expectation fields only as "
-            "allowed and chosen under the semantic contracts above."
+            "Replace <role:...> type/domain placeholders with your own values; never copy them. "
+            "Appraisal affect-lifecycle, attention and response-expectation fields follow their "
+            "contracts. You choose whether to assert an external fact; if you do, its matching "
+            "world_claim and source refs are required."
         ),
     }
 

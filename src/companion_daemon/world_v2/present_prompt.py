@@ -636,8 +636,9 @@ def photo_usage_specimen() -> dict[str, object]:
     """Concrete optional example: photo=true opens the media lane on a now send."""
 
     return {
-        "messages": ["给你看刚才那张"],
-        "meaning_of_this": "他在等这张照片",
+        "messages": ["我想试试看能不能分享一张"],
+        "world_claims": [],
+        "meaning_of_this": "这轮聊到了照片",
         "my_state": "我现在想分享",
         "photo": True,
     }
