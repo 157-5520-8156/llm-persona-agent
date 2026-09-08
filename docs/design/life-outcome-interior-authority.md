@@ -50,8 +50,9 @@ fixture 同时保留。未修改 frozen baseline；集成后由根任务独立�
 
 公共 MockTransport 通过实际 DeepSeek JSON 请求与 Life runtime 检查：两个因果
 模式下的有效拒绝都仅一次 critic 响应；角色无调用、Plan/Occurrence 无效果；客观
-候选可以成功提交；非法片段获得一次原 critic 纠错；历史冷回放与 fresh 防降级。
-HTTP fixture 显式禁用 debug usage ledger，使用纯本地响应及内存 World。
+候选可以成功提交。另以本地 SequenceModel 和内存 ledger fixture 验证非法片段的
+一次原 critic 纠错、历史冷回放与 fresh 防降级。HTTP fixture 显式禁用 debug usage
+ledger，使用纯本地响应及内存 World。
 
 相同固定 location-bound fixture 的紧凑 JSON messages 字节数：作者
 36,169 → 36,799（+630），focused 16,558 → 17,346（+788）。这是消息字节测量，
