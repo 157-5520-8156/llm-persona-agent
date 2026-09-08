@@ -39,7 +39,7 @@ from ..present_prompt import (
 InboundToolPhase = Literal["gate", "initial", "after_recall", "final"]
 InboundToolTransport = Literal["atomic", "stream"]
 InboundToolSchemaDialect = Literal["standard", "deepseek-strict"]
-InboundAtomicEnvelopeVersion = Literal["1", "2"]
+InboundAtomicEnvelopeVersion = Literal["1", "2", "3"]
 _CONTRACT_VERSION = "1"
 _COMPACT_GATE_CONTRACT_VERSION = "2"
 _REPLY_ONLY_APPRAISAL_FIELDS = (
@@ -912,13 +912,15 @@ class InboundToolContractIdentity:
         }
 
 
-def _unique_atomic_v2_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+def _unique_atomic_v2_object(
+    pairs: list[tuple[str, object]], *, version: str = "2",
+) -> dict[str, object]:
     """Do not silently choose between duplicate fields in the new carrier."""
 
     value: dict[str, object] = {}
     for key, item in pairs:
         if key in value:
-            raise ValueError("atomic v2 transport contains a duplicate field")
+            raise ValueError(f"atomic v{version} transport contains a duplicate field")
         value[key] = item
     return value
 
@@ -959,14 +961,14 @@ class InboundToolContract:
     provider_tools: tuple[dict[str, object], ...]
     provider_tool_choice: dict[str, object]
     identity: InboundToolContractIdentity
-    # Only atomic v2 wraps the complete strict union. Preserve its original
-    # inner field inventory before removing the redundant provider root.
+    # Versioned atomic transports wrap the result. V2 retains the original
+    # union inventory; V3 uses the selected branch's own schema inventory.
     wrapped_result_fields: tuple[str, ...] | None = None
 
     def required_null_padding_paths(self) -> dict[str, tuple[str, ...]]:
         """Read available v2 branch padding from the tool, without changing it."""
 
-        if self.wrapped_result_fields is None:
+        if self.wrapped_result_fields is None or self.identity.version == "3":
             return {}
         try:
             branches = self.provider_tools[0]["function"]["parameters"]["properties"][
@@ -999,12 +1001,27 @@ class InboundToolContract:
         except (IndexError, KeyError, TypeError) as exc:
             raise ValueError("atomic v2 padding schema is unavailable") from exc
 
+    def result_branch_fields(self) -> dict[str, tuple[str, ...]]:
+        """Read v3's exact, available branch inventories from this same schema."""
+
+        if self.identity.version != "3":
+            raise ValueError("branch-local fields require atomic v3")
+        branches = self.provider_tools[0]["function"]["parameters"]["properties"][
+            "result"
+        ]["anyOf"]
+        return {
+            branch["properties"]["result_kind"]["enum"][0]: tuple(branch["required"])
+            for branch in branches
+        }
+
     def unwrap(self, raw_arguments: str) -> str:
         """Validate and remove only the exact forced-tool transport wrapper."""
 
         try:
             value = (
-                json.loads(raw_arguments, object_pairs_hook=_unique_atomic_v2_object)
+                json.loads(raw_arguments, object_pairs_hook=lambda pairs: _unique_atomic_v2_object(
+                    pairs, version=self.identity.version,
+                ))
                 if self.wrapped_result_fields is not None
                 else json.loads(raw_arguments)
             )
@@ -1026,13 +1043,16 @@ class InboundToolContract:
             value = value["result"]
         kind = value.get("result_kind")
         if self.identity.schema_dialect == "deepseek-strict":
-            # DeepSeek strict mode requires every property of the outer
-            # object to be present.  The branch that was not selected is
-            # represented by explicit nulls; remove only those transport-null
-            # siblings before applying the ordinary exact-envelope rules.
+            # Historical v1/v2 share an inventory with transport-null siblings.
+            # V3 keeps exact branch-local fields and performs no padding cleanup.
             parameters = self.provider_tools[0]["function"].get("parameters")
             properties = parameters.get("properties") if isinstance(parameters, dict) else None
-            if self.wrapped_result_fields is not None:
+            if self.identity.version == "3":
+                fields = self.result_branch_fields().get(kind) if isinstance(kind, str) else None
+                if fields is None:
+                    raise ValueError("forced transport result_kind is missing or unavailable")
+                expected_fields = set(fields)
+            elif self.wrapped_result_fields is not None:
                 expected_fields = set(self.wrapped_result_fields)
             else:
                 expected_fields = set(properties) if isinstance(properties, dict) else None
@@ -1046,11 +1066,12 @@ class InboundToolContract:
                 raise ValueError(
                     _strict_envelope_field_failure(value, expected_fields, location=location)
                 )
-            value = {
-                key: item
-                for key, item in value.items()
-                if key == "result_kind" or not _deepseek_strict_union_padding_is_empty(key, item)
-            }
+            if self.identity.version != "3":
+                value = {
+                    key: item
+                    for key, item in value.items()
+                    if key == "result_kind" or not _deepseek_strict_union_padding_is_empty(key, item)
+                }
         if kind in {"decision", "reply_only"}:
             if kind == "reply_only" and self.transport != "stream":
                 raise ValueError("forced reply-only transport is unavailable")
@@ -1260,15 +1281,17 @@ class InboundToolContracts:
             raise ValueError("unsupported inbound tool transport")
         if schema_dialect not in {"standard", "deepseek-strict"}:
             raise ValueError("unsupported inbound tool schema dialect")
-        if atomic_envelope_version not in {"1", "2"}:
+        if atomic_envelope_version not in {"1", "2", "3"}:
             raise ValueError("unsupported atomic inbound envelope version")
-        if atomic_envelope_version == "2" and (
+        if atomic_envelope_version != "1" and (
             transport != "atomic" or schema_dialect != "deepseek-strict"
         ):
-            raise ValueError("atomic v2 transport requires the DeepSeek strict atomic dialect")
-        contract_version = "2" if atomic_envelope_version == "2" else _CONTRACT_VERSION
+            raise ValueError("versioned atomic transport requires the DeepSeek strict atomic dialect")
+        contract_version = atomic_envelope_version
         recall_allowed = phase == "initial" and recall_allowed
-        schema_includes_recall = phase == "initial"
+        schema_includes_recall = phase == "initial" and (
+            atomic_envelope_version != "3" or recall_allowed
+        )
         tool_name = (
             f"character_inbound_{phase}_v{contract_version}"
             if transport == "atomic" and phase in {"initial", "after_recall"}
@@ -1482,6 +1505,18 @@ class InboundToolContracts:
                     "additionalProperties": False,
                 }
             )
+        # V3 projects each original branch independently below its object root.
+        # Strict objects require their own fields, not another branch's fields.
+        # Preserve historical v1/v2 projection and identities byte for byte.
+        branch_local_parameters = (
+            {
+                "type": "object",
+                "properties": {"result": {"anyOf": deepcopy(branches)}},
+                "required": ["result"],
+                "additionalProperties": False,
+            }
+            if atomic_envelope_version == "3" else None
+        )
         # Make the union's branch-exclusive fields explicit.  The ordinary
         # dialect may omit these siblings, while DeepSeek strict requires
         # every property to be present; using ``type: null`` here makes the
@@ -1573,6 +1608,9 @@ class InboundToolContracts:
                     "required": ["result"],
                     "additionalProperties": False,
                 }
+            elif atomic_envelope_version == "3":
+                wrapped_result_fields = tuple(parameters["properties"])
+                parameters = deepseek_strict_tool_schema(branch_local_parameters)
         function = {
             "name": tool_name,
             "description": (
@@ -1618,6 +1656,13 @@ class InboundToolContracts:
             function["description"] += (
                 " Transport v2: put that entire result object under the single outer "
                 "key result; preserve all inner fields and explicit null siblings."
+            )
+        elif atomic_envelope_version == "3":
+            function["description"] += (
+                " Transport v3: put the entire chosen object under the single outer "
+                "key result. Include exactly that branch's fields. Do not include "
+                "fields of another branch, even as null; inner draft fields retain "
+                "their complete schema."
             )
         provider_tools = ({"type": "function", "function": function},)
         digest = "sha256:" + sha256(_canonical_json(parameters).encode("utf-8")).hexdigest()

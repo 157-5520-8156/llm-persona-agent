@@ -264,7 +264,7 @@ def test_v2_rejects_nested_duplicate_fields_and_does_not_reinterpret_v1() -> Non
         _contract(version="1").unwrap(json.dumps({"result": value}))
 
 
-@pytest.mark.parametrize("version", [None, 2, "3"])
+@pytest.mark.parametrize("version", [None, 2, "4"])
 def test_unknown_atomic_envelope_versions_are_rejected(version) -> None:
     with pytest.raises(ValueError, match="envelope version"):
         _contract(version=version)

@@ -106,8 +106,9 @@ async def test_complete_candidate_with_empty_claims_is_reviewed_before_any_actio
 
 
 class _ReviewHTTP:
-    def __init__(self, verdicts):
+    def __init__(self, verdicts, *, tool_version="1"):
         self.verdicts = iter(verdicts)
+        self.tool_version = tool_version
         self.requests = []
         self.authors = 0
         self.reviews = 0
@@ -117,13 +118,23 @@ class _ReviewHTTP:
         self.requests.append(body)
         assert not body.get("stream")
         name = body["tool_choice"]["function"]["name"]
-        if name == "character_inbound_initial_v1":
+        if name in {
+            f"character_inbound_initial_v{self.tool_version}",
+            f"character_inbound_final_atomic_v{self.tool_version}",
+        }:
             self.authors += 1
             assert "visible_source_requirement_json" not in json.dumps(body)
             assert "source_table_json" not in json.dumps(body)
             authored = _decision()
             if self.authors > 1:
                 authored["expression_draft"]["beats"][0]["text"] = "我想重新把自己的想法说完整。"
+            if self.tool_version == "3":
+                system = body["messages"][0]["content"]
+                assert "ATOMIC TOOL ENVELOPE V3:" in system
+                assert "Required explicit null padding paths" not in system
+                return _http_result(body, {"result": {
+                    key: authored[key] for key in ("result_kind", "appraisal_draft", "expression_draft")
+                }})
             return _http_result(
                 body,
                 {
@@ -166,7 +177,8 @@ async def _app(path, handler):
         usage_observer=usage.record,
     )
     author = _InboundCharacterAuthor(
-        flash_model=model, whole_candidate_mode=True, visible_source_review_model=model
+        flash_model=model, whole_candidate_mode=True, visible_source_review_model=model,
+        atomic_tool_envelope_version=getattr(handler, "tool_version", "1"),
     )
     app = build_sqlite_world_v2_test_application(
         path=path,
@@ -192,8 +204,9 @@ def _audits(app):
 
 
 @pytest.mark.asyncio
-async def test_unclosed_allows_one_same_role_reselection_and_reviews_whole_replacement(tmp_path):
-    http = _ReviewHTTP(["unclosed", "pass"])
+@pytest.mark.parametrize("tool_version", ["1", "3"])
+async def test_unclosed_allows_one_same_role_reselection_and_reviews_whole_replacement(tmp_path, tool_version):
+    http = _ReviewHTTP(["unclosed", "pass"], tool_version=tool_version)
     async with _app(tmp_path / "world.sqlite", http) as app:
         outcome = await app.respond(_inbound())
         assert outcome.status == "action_authorized", outcome
@@ -226,13 +239,14 @@ async def test_unclosed_allows_one_same_role_reselection_and_reviews_whole_repla
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("tool_version", ["1", "3"])
 @pytest.mark.parametrize(
     "verdicts,counts", [(["unclosed", "unclosed"], (2, 2)), (["invalid"], (1, 1))]
 )
 async def test_semantic_exhaustion_and_technical_review_failure_authorize_no_action(
-    tmp_path, verdicts, counts
+    tmp_path, verdicts, counts, tool_version
 ):
-    http = _ReviewHTTP(verdicts)
+    http = _ReviewHTTP(verdicts, tool_version=tool_version)
     async with _app(tmp_path / "world.sqlite", http) as app:
         outcome = await app.respond(_inbound())
         assert outcome.status != "action_authorized"

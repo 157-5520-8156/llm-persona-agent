@@ -167,6 +167,30 @@ _MAX_PENDING_DRAFTS = 64
 _CONTEXTUAL_FAILSAFE_TIMEOUT_SECONDS = 3.0
 _CONTEXTUAL_FAILSAFE_VERSION = "contextual-failure-recovery.1"
 _ATOMIC_PADDING_MARKER = "\nRequired explicit null padding paths by result_kind:\n"
+_ATOMIC_BRANCH_MARKER = "\nExact result fields by available result_kind:\n"
+
+
+def _atomic_branch_instruction(contract: InboundToolContract) -> str:
+    return _ATOMIC_BRANCH_MARKER + json.dumps(
+        contract.result_branch_fields(),
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    )
+
+
+def _refresh_atomic_branch_instruction(
+    messages: list[dict[str, str]], contract: InboundToolContract,
+) -> None:
+    if not messages or messages[0].get("role") != "system":
+        raise ValueError("atomic v3 branch instruction requires its system message")
+    prefix, marker, old_table = messages[0]["content"].rpartition(_ATOMIC_BRANCH_MARKER)
+    if not marker:
+        raise ValueError("atomic v3 branch instruction is unavailable")
+    try:
+        if not isinstance(json.loads(old_table), dict):
+            raise ValueError("atomic v3 branch table must be an object")
+    except json.JSONDecodeError as exc:
+        raise ValueError("atomic v3 branch table must be the complete system suffix") from exc
+    messages[0] = {**messages[0], "content": prefix + _atomic_branch_instruction(contract)}
 
 
 def _atomic_padding_instruction(contract: InboundToolContract) -> str:
@@ -2410,14 +2434,14 @@ class _InboundCharacterAuthor:
         if type(whole_candidate_mode) is not bool:
             raise TypeError("whole_candidate_mode must be an explicit boolean")
         self._whole_candidate_mode = whole_candidate_mode
-        if atomic_tool_envelope_version not in {"1", "2"}:
+        if atomic_tool_envelope_version not in {"1", "2", "3"}:
             raise ValueError("unsupported atomic tool envelope version")
         if atomic_tool_envelope_version != "1" and not whole_candidate_mode:
             raise ValueError("versioned atomic envelope requires whole-candidate authoring")
-        if atomic_tool_envelope_version == "2" and not callable(
+        if atomic_tool_envelope_version != "1" and not callable(
             getattr(visible_source_review_model, "complete_json_with_usage", None)
         ):
-            raise ValueError("atomic v2 author requires the explicit metered source reviewer")
+            raise ValueError("versioned atomic author requires the explicit metered source reviewer")
         self._atomic_tool_envelope_version = atomic_tool_envelope_version
         self._visible_source_review_model = visible_source_review_model
         self._visible_review_rejections = OrderedDict()
@@ -3201,6 +3225,10 @@ class _InboundCharacterAuthor:
             if messages is None:
                 raise ValueError("atomic v2 final transport requires its copied messages")
             _refresh_atomic_padding_instruction(messages, contract)
+        elif self._atomic_tool_envelope_version == "3":
+            if messages is None:
+                raise ValueError("atomic v3 final transport requires its copied messages")
+            _refresh_atomic_branch_instruction(messages, contract)
         return {
             "tools": list(contract.provider_tools),
             "tool_choice": transport.tool_choice,
@@ -4185,7 +4213,7 @@ class _InboundCharacterAuthor:
                 + (
                     "call the required function exactly once. Its arguments must contain only "
                     "result. The complete object inside result must include result_kind. "
-                    if self._atomic_tool_envelope_version == "2"
+                    if self._atomic_tool_envelope_version != "1"
                     else "call the required function exactly once. Its arguments must include "
                     "result_kind. "
                 )
@@ -4211,6 +4239,17 @@ class _InboundCharacterAuthor:
                 "an empty list requires no padding. This table describes transport fields, "
                 "not additional branch permissions."
                 + _atomic_padding_instruction(cognition_contract)
+            )
+        elif self._atomic_tool_envelope_version == "3":
+            messages[0]["content"] += (
+                "\n\nATOMIC TOOL ENVELOPE V3:\n"
+                "The envelopes above describe the inner result object. Put the entire "
+                "chosen object under the sole outer key result. Use exactly the fields "
+                "listed below for the result_kind you choose. Omit fields of another "
+                "branch entirely, including null siblings. This changes only the branch "
+                "envelope: every field inside appraisal_draft, expression_draft, "
+                "private_turn_state or recall_request still follows its complete schema."
+                + _atomic_branch_instruction(cognition_contract)
             )
         winning_provider_identity = _provider_invocation_identity(
             parent_call_id=provider_request.call_id,

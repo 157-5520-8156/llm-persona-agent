@@ -41,7 +41,7 @@ def test_padding_paths_preserve_wire_and_do_not_advertise_unavailable_recall(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tool_version", ["1", "2"])
+@pytest.mark.parametrize("tool_version", ["1", "2", "3"])
 async def test_captured_author_padding_hint_matches_initial_and_after_recall_schema(
     tmp_path, monkeypatch, tool_version,
 ):
@@ -66,6 +66,18 @@ async def test_captured_author_padding_hint_matches_initial_and_after_recall_sch
         system = body["messages"][0]["content"]
         if tool_version == "1":
             assert _PADDING_MARKER not in system
+            continue
+        if tool_version == "3":
+            assert _PADDING_MARKER not in system
+            assert "ATOMIC TOOL ENVELOPE V2:" not in system
+            assert "ATOMIC TOOL ENVELOPE V3:" in system
+            hint = json.loads(system.rsplit("Exact result fields by available result_kind:\n", 1)[1])
+            branches = body["tools"][0]["function"]["parameters"]["properties"]["result"]["anyOf"]
+            assert hint == {
+                branch["properties"]["result_kind"]["enum"][0]: branch["required"]
+                for branch in branches
+            }
+            assert set(hint) == ({"decision", "recall"} if index == 0 else {"decision"})
             continue
         assert _PADDING_MARKER in system
         prefix, hint_json = system.rsplit(_PADDING_MARKER, 1)
@@ -120,3 +132,34 @@ async def test_captured_author_padding_hint_matches_initial_and_after_recall_sch
                 messages=with_suffix,
             )
         assert with_suffix == preserved
+    if tool_version == "3":
+        class Provider:
+            supports_required_tool_choice = True
+            supports_strict_tool_choice = True
+
+            async def complete_json_with_usage(self, *args, **kwargs):
+                pytest.fail("preparing a final request must not invoke the provider")
+
+        provider = Provider()
+        author = _InboundCharacterAuthor(
+            flash_model=provider, whole_candidate_mode=True,
+            visible_source_review_model=provider, atomic_tool_envelope_version="3",
+        )
+        original_messages = deepcopy(captured[0]["messages"])
+        messages = list(original_messages)
+        final = author._final_tool_reselection_kwargs(
+            request=_request(revision=3, call="call:final-v3"), provider=provider,
+            messages=messages,
+        )
+        assert final["tools"][0]["function"]["name"] == "character_inbound_final_atomic_v3"
+        hint = json.loads(messages[0]["content"].rsplit("Exact result fields by available result_kind:\n", 1)[1])
+        assert hint == {"decision": ["result_kind", "appraisal_draft", "expression_draft"]}
+        assert original_messages == captured[0]["messages"]
+        messages[0]["content"] += "\nTrailing unrelated text."
+        preserved = deepcopy(messages)
+        with pytest.raises(ValueError, match="branch table"):
+            author._final_tool_reselection_kwargs(
+                request=_request(revision=3, call="call:invalid-v3-suffix"), provider=provider,
+                messages=messages,
+            )
+        assert messages == preserved

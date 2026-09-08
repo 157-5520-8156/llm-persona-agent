@@ -445,7 +445,7 @@ async def test_real_cli_captures_actual_provider_body_and_closes_injected_client
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("recall_first", [False, True])
-@pytest.mark.parametrize("tool_version", ["1", "2"])
+@pytest.mark.parametrize("tool_version", ["1", "2", "3"])
 async def test_required_review_cli_host_holds_complete_candidate_until_review(
     tmp_path, monkeypatch, recall_first, tool_version
 ):
@@ -484,9 +484,9 @@ async def test_required_review_cli_host_holds_complete_candidate_until_review(
                     },
                 }
             schema = body["tools"][0]["function"]["parameters"]
-            if tool_version == "2":
+            if tool_version != "1":
                 instruction = body["messages"][0]["content"]
-                assert instruction.index("ATOMIC TOOL ENVELOPE V2:") > instruction.index("FORCED TOOL TRANSPORT")
+                assert instruction.index(f"ATOMIC TOOL ENVELOPE V{tool_version}:") > instruction.index("FORCED TOOL TRANSPORT")
                 assert "Its arguments must include result_kind." not in instruction
                 assert set(schema["properties"]) == {"result"}
                 variants = schema["properties"]["result"].get("anyOf", [schema["properties"]["result"]])
@@ -540,10 +540,10 @@ async def test_required_review_cli_host_holds_complete_candidate_until_review(
                 json.loads(body["messages"][1]["content"])["recall_available"]
                 for body in author_requests
             ] == [True, *([False] if recall_first else [])]
-            if tool_version == "2":
+            if tool_version != "1":
                 from companion_daemon.usage_metrics import estimate_provider_request_reserve_cny
 
-                assert kwargs["provenance"]["visible_author_tool_version"] == "2"
+                assert kwargs["provenance"]["visible_author_tool_version"] == tool_version
                 # Use the same conservative final-wire estimator as actual admission.
                 # The complete author still fits the default isolated allowance.
                 assert estimate_provider_request_reserve_cny(request_payload=requests[0]) < 0.5
@@ -575,12 +575,13 @@ async def test_required_review_cli_host_holds_complete_candidate_until_review(
     ])))["completed"]
 
 
-def test_atomic_v2_author_cannot_be_installed_without_metered_review():
+@pytest.mark.parametrize("version", ["2", "3"])
+def test_versioned_author_cannot_be_installed_without_metered_review(version):
     from companion_daemon.world_v2.character_interior.inbound_author import _InboundCharacterAuthor
 
     with pytest.raises(ValueError, match="explicit metered source reviewer"):
         _InboundCharacterAuthor(
-            flash_model=object(), whole_candidate_mode=True, atomic_tool_envelope_version="2",
+            flash_model=object(), whole_candidate_mode=True, atomic_tool_envelope_version=version,
         )
 
 

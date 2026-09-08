@@ -3094,7 +3094,7 @@ def build_qq_c2c_host(
     )
     if type(visible_source_review_required) is not bool:
         raise TypeError("visible source review deployment flag must be a bool")
-    if visible_author_tool_version not in {"1", "2"}:
+    if visible_author_tool_version not in {"1", "2", "3"}:
         raise ValueError("unsupported visible author tool version")
     if visible_author_tool_version != "1" and not visible_source_review_required:
         raise ValueError("versioned whole author requires explicit visible source review")
