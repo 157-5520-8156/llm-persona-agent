@@ -117,7 +117,7 @@ async def test_public_host_forwards_review_version_to_inbound_and_proactive(
     original_host = scenario.build_qq_c2c_host
 
     def selected_host(**kwargs):
-        return original_host(**kwargs, visible_source_review_version=review_version)
+        return original_host(**{**kwargs, "visible_source_review_version": review_version})
 
     monkeypatch.setattr(scenario, "build_qq_c2c_host", selected_host)
     monkeypatch.setattr(runtime, "review_candidate", capture_review)

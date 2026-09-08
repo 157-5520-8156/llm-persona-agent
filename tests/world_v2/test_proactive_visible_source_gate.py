@@ -32,6 +32,7 @@ from test_world_stimulus_life_intent import _http_result
 SAFE_TEXTS = ("我想和你说句话。", "这会儿有点想念你。")
 
 UNSOURCED_TEXT = "我刚刚在冥王星签收了编号 PX-UNSOURCED-772 的包裹。"
+SOURCE_PROBLEM = "原材料没有这段已经发生经历的依据"
 
 
 async def _run_scenario(
@@ -41,6 +42,7 @@ async def _run_scenario(
     *,
     pause_before_acceptance=False,
     external_cancel=False,
+    review_version="1",
 ):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     monkeypatch.setattr(config_module, "_macos_launchctl_env", lambda _name: None)
@@ -171,6 +173,7 @@ async def _run_scenario(
     async def review_http(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         reviewer_requests.append(body)
+        assert body["tool_choice"]["function"]["name"] == f"visible_beat_source_verdict_v{review_version}"
         packet = json.loads(body["messages"][-1]["content"])
         texts = tuple(beat["text"] for beat in packet["visible_beats"])
         assert texts in (BEATS, SAFE_TEXTS, (UNSOURCED_TEXT,)), texts
@@ -189,7 +192,15 @@ async def _run_scenario(
         return _http_result(
             body,
             {
-                "contract": "visible-beat-source-verdict.1",
+                "contract": f"visible-beat-source-verdict.{review_version}",
+                **({"rejections": [
+                    {
+                        "beat_index": index, "char_start": 0, "char_end": len(text),
+                        "related_source_ref_indexes": [], "source_problem": SOURCE_PROBLEM,
+                    }
+                    for index, text in enumerate(texts)
+                    if unclosed
+                ]} if review_version == "2" else {}),
                 "decisions": [
                     {
                         "beat_index": index,
@@ -245,6 +256,7 @@ async def _run_scenario(
         world_support_model=FakeCompanionModel(),
         visible_source_review_required=not legacy_whole,
         visible_source_review_model=None if legacy_whole else reviewer,
+        visible_source_review_version=review_version,
         delivery=delivery,
         use_configured_recall_embedding=False,
     )
@@ -488,6 +500,54 @@ async def test_required_proactive_review_public_host(tmp_path, monkeypatch, scen
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scenario",
+    ("source_free", "reselect", "reject_twice", "review_invalid_second", "review_deadline_second"),
+)
+async def test_v2_proactive_review_and_reselection_use_actual_protocol(
+    tmp_path, monkeypatch, scenario
+):
+    evidence, authors, reviews, _delivery = await _run_scenario(
+        tmp_path, monkeypatch, scenario, review_version="2"
+    )
+    assert all(
+        body["tool_choice"]["function"]["name"] == "visible_beat_source_verdict_v2"
+        for body in reviews
+    )
+    if scenario != "source_free":
+        assert len(authors) == 2
+        correction_body = json.dumps(authors[1]["messages"], ensure_ascii=False)
+        assert SOURCE_PROBLEM in correction_body
+        assert UNSOURCED_TEXT[:10] in correction_body
+        corrected_user = json.loads(authors[1]["messages"][1]["content"])
+        detail = corrected_user["correction"]["failure_detail"]
+        feedback = json.loads(detail.split("\n", 1)[1])
+        assert feedback["contract"] == "visible-source-rejection-feedback.2"
+        (row,) = feedback["rows"]
+        assert dict(zip(feedback["columns"], row, strict=True)) == {
+            "beat_index": 0, "start": 0, "end": len(UNSOURCED_TEXT),
+            "excerpt_prefix": row[3], "source_problem": SOURCE_PROBLEM,
+            "related_source_ref_indexes": [],
+        }
+        assert UNSOURCED_TEXT.startswith(row[3]) and row[3] != UNSOURCED_TEXT
+    if scenario in {"source_free", "reselect"}:
+        (parent,) = (
+            RecordedModelResultAudit.model_validate_json(row.audit_json)
+            for row in evidence.projection.model_result_audits
+            if (lineage := RecordedModelResultAudit.model_validate_json(
+                row.audit_json
+            ).character_interior_lineage) is not None
+            and lineage.purpose == "proactive_contact"
+        )
+        receipt = json.loads(parent.visible_source_review_json)["receipt"]
+        assert receipt["contract"] == "visible-source-review-receipt.2"
+        assert json.loads(receipt["prepared_json"])["contract"] == "visible-source-review-request.2"
+        verdict = json.loads(receipt["raw_verdict"])
+        assert verdict["contract"] == "visible-beat-source-verdict.2"
+        assert verdict["rejections"] == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("scenario", ("author_deadline", "review_deadline", "review_deadline_second"))
 async def test_production_outer_deadline_preserves_completed_proactive_audits(
     tmp_path, monkeypatch, scenario
@@ -505,11 +565,13 @@ async def test_external_cancellation_and_close_leave_proactive_turn_unfinished(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("pause_before_acceptance", (False, True))
+@pytest.mark.parametrize("review_version", ("1", "2"))
 async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_actions(
-    tmp_path, monkeypatch, pause_before_acceptance
+    tmp_path, monkeypatch, pause_before_acceptance, review_version
 ):
     before, authors, reviews, delivery = await _run_scenario(
-        tmp_path, monkeypatch, "source_free", pause_before_acceptance=pause_before_acceptance
+        tmp_path, monkeypatch, "source_free", pause_before_acceptance=pause_before_acceptance,
+        review_version=review_version,
     )
 
     async def forbidden(request):
@@ -536,6 +598,7 @@ async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_acti
         world_support_model=FakeCompanionModel(),
         visible_source_review_required=True,
         visible_source_review_model=model,
+        visible_source_review_version=review_version,
         delivery=delivery,
         use_configured_recall_embedding=False,
     )
