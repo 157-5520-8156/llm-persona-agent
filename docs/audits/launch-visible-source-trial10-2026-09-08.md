@@ -24,6 +24,11 @@ HTTP transport，168,336 UTF-8 bytes；未收到响应正文或用量，在现�
 确定或真实供应商兼容性已通过。当前记录只能定位到供应商调用等待阶段，不能进一步
 区分网络连接、供应商排队、输入处理和生成耗时。
 
+后续只读连接对照使用同样 `trust_env=False`、5 秒超时，不读凭据、不发送模型请求，
+两次 GET `/models` 分别在 0.338 / 0.176 秒取得预期未认证 401。它只证明检查当时
+该端点可经 DNS/TLS/HTTP 到达，不证明原聊天请求已被供应商接受，也不排除原时刻的
+网络问题或生成耗时。证据为 `trial-10-free-connectivity.json`。
+
 私有证据在 `output/private-audits/consequence-conversation-20260908/`：
 `trial-10/manifest.json`、`model-inputs.jsonl`、`world.sqlite`、逐步时间线、
 `trial-10-launch-state/finished.json`、`trial-10-analysis.json`。原始材料保留，不提交
