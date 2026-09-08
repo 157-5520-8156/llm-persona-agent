@@ -108,3 +108,34 @@ messages 12,933 bytes，输出上限 900 tokens，现安装保守峰值预约 0.
 Plan 创建保留既有 `transitioned` 生命周期返回值，因此占用该 wake 的 activity
 槽位；这只表示发生了 World 状态写入，不宣称 Plan 已启动。下一次 wake 继续
 评估原活动和其他到期机会。本片不为将来才开始的 Plan 新建生态调度状态。
+
+## 9/9：接入现有世界后果的执行材料
+
+已复现的遗漏发生在后续读取：day-open Plan 已由角色开始或恢复，生产 manifest
+也有相应 `ActivityStarted` / `ActivityResumed` anchor，但世界作者请求的
+execution_materials 为空。原 reader 只识别 chat、world-life-response 和
+LifeDevelopment；并非系统需要另建一套后果引擎。
+
+现通过原 `DayOpenLifeIntentActiveReader` 读取同一活动起点的完整角色意图，核对
+原 Proposal/ModelResult、主体、privacy、事件哈希和两个固定前缀，再交给既有
+world-consequence.2 作者。它仍只证明已授权尝试，不证明意图内嵌历史、地点到场
+或目标达成。planned/仅 completed 状态不因此获得尝试结果权限。
+
+生产新 manifest 显式使用 `execution_intention_sources_version="2"`；旧 manifest
+缺字段时序列化继续省略，永久使用旧 reader 集合。这个静态身份进入原 manifest
+hash、实际作者请求及独立审计。冷恢复不能按当前可读数据推断版本，也不能仅改 marker
+并自算哈希替换原作者审计。旧 world-consequence 以外的 outcome 不接受该标记。
+
+新增 17 项离线检查覆盖公共 day-open→角色选择开始/恢复→实际世界作者请求、原
+chat/world-response 入口、旧新 manifest 冷恢复零重问、错误版本、未执行状态，以及
+两个方向的 marker 伪造。另有独立旧 manifest 字节对照和来源边界审查。模型均为
+HTTP/调用替身，这不证明真实世界作者已经为 day-open 产生丰富后果。
+
+集成提交为 `e92950e5`。相关 104 个不同用例无剩余失败；最初两例固定回复 fixture
+因新 manifest hash 改变环境抽样路径，已显式固定测试 ordinary 场景，生产抽样
+没有调整。三个历史 compiler fixture 同时省略新字段，保持原合同身份；已通过的
+其他长门未重复运行。本片尚未进行全库门或新增真实供应商测试。
+
+结算也不等于角色已形成经历：现有 World Stimulus 链先接受角色自己的 Life Response，
+再组合 Experience.2；现有记忆生命周期随后消费已提交经历。本次未修改这些消费者，
+没有新增定时器或模型调用，也未将其完整真实链记为通过。

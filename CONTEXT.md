@@ -34,6 +34,12 @@ starts. This source-bound view proves the intention and scheduled window only;
 it grants no present location, started activity, embedded history or completed
 outcome. Other Plan producers require their own verified readers.
 
+A started or resumed self-directed Plan may provide the exact original
+Character-authorized intention to World Consequence authoring through its
+source-specific reader. That reading authorizes an attempt's scope, not the
+intention's embedded history or successful fulfillment. A recorded reader
+identity preserves the original source set when older requests are replayed.
+
 ## Biographical Context
 
 A source-bound reading of age, academic/calendar phase, current residence
