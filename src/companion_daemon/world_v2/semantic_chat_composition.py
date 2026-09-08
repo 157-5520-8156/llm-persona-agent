@@ -811,7 +811,7 @@ def build_semantic_chat_composition(
         raise ValueError("semantic chat composition requires a model id prefix")
     if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2"}:
         raise ValueError("unsupported visible source review version")
-    if visible_source_review_version != "1" and not visible_source_review_required:
+    if visible_source_review_version != "1" and visible_source_review_required is not True:
         raise ValueError("versioned source reviewer requires explicit visible source review")
     if visible_author_tool_version not in {"1", "2", "3"}:
         raise ValueError("unsupported visible author tool version")

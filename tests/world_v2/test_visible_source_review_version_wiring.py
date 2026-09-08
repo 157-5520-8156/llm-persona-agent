@@ -77,6 +77,16 @@ def test_v2_cannot_enable_review_implicitly(tmp_path, entry):
     assert not (tmp_path / "world.sqlite").exists()
 
 
+@pytest.mark.parametrize("flag", [1, "yes"])
+def test_direct_composition_v2_requires_true_boolean_before_model_setup(tmp_path, flag):
+    with pytest.raises(ValueError, match="explicit visible source review"):
+        build_semantic_chat_composition(
+            settings=_settings(tmp_path), model_id_prefix="fixture",
+            visible_source_review_version="2", visible_source_review_required=flag,
+        )
+    assert not (tmp_path / "world.sqlite").exists()
+
+
 @pytest.mark.parametrize("entry", ["author", "proactive"])
 def test_v2_requires_metered_reviewer_even_with_v1_author(entry):
     with pytest.raises(ValueError, match="metered source reviewer"):
