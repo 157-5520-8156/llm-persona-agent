@@ -37,3 +37,14 @@
 该表当前覆盖 Situation、所支持的活动/窄传记坐标、Fact、Dialogue，以及由原已选 Observation 证明的当前报告。它明确报告未支持的类型，包括 identity_source；不是所有来源的资格闭包。返回值只保存不可变 canonical JSON，导出的字典每次独立生成。
 
 身份材料另外修复了原 hash 与投影字段不一致，已有三类身份 ref 保持。组合后的十文件门为 **324 passed，22.83 秒**，日志 `/tmp/girl-agent-composer-identity-integration.log`，Ruff 与 diff check 通过。这里没有新增真实模型调用，也没有启用聊天 guard。
+
+## 完整作者载体：`c2d6b882`
+
+已集成默认关闭的 `whole_candidate_mode`。它使用原 atomic decision/Recall，正常、同一 Core 的一次纠正以及 Recall 最终稿都保留完整 Beat；即使供应商支持 stream，纠正也不会切回增量头。兼容 head 入口返回完整稿，随后误请求 tail 明确失败且不再调用作者。最终 composition 仍需配套 `expression_episode_mode=off`，本片没有启用 guard。
+
+完整 author、Deliberation、durable lineage 与新模式四文件门为 **235 passed，16.83 秒**，日志 `/tmp/girl-agent-whole-candidate-author-integration.log`。测试使用实际 Core 和 MockTransport，不是新增真实供应商试验。
+
+同时记录两个尚待分别核实/修复的边界：
+
+- 原无效作者调用经 Core 纠正后，World ModelResult 中缺少其用量记录；已验证获选稿和 Recall 控制转移的绑定，尚未据此证明或否定独立 provider 用量主账本完整性。
+- 公开重启测试若通过 Clock 推进来令旧租约过期，也会改变 World revision。此时新判断可能是合法的 fresh decision，不能同时要求零新调用与旧稿被直接授权。该反例不构成“重复调用必然是 bug”的证据；后续将同 pin 的原终态恢复、原证据留存和新世界状态下的重判分开测试，不放松 CAS 或用规则压制角色回应。
