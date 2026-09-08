@@ -273,7 +273,8 @@ async def test_exact_character_authorship_rejection_returns_to_same_author_and_i
         original_messages = json.loads(author.received[0])
         correction_messages = json.loads(author.received[1])
         original_user = json.loads(original_messages[1]["content"])
-        assert correction_messages[:-1] == original_messages
+        assert correction_messages[:-2] == original_messages
+        assert correction_messages[-2] == {"role": "assistant", "content": _json(rejected)}
         correction = json.loads(correction_messages[-1]["content"])
         assert correction["source_closure_failure"]["unsupported_outcome_prerequisites"] == [
             finding
