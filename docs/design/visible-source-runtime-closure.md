@@ -57,3 +57,38 @@ RecordedModelResultAudit 保存，由 Proposal 原 `model_result_ref` 引用。�
 
 小样本通过只支持该组反例。后续仍需要真实多轮聊天及加速生活观察误拒、漏报、
 重复话题、记忆持续性和花费。任何未安装的参数或 stub 都不作为已完成机制计数。
+
+## 接入点复核：先采用完整 atomic 载体
+
+全稿审核的首片可以采用现有 atomic decision/Recall 工具合同。它保留完整
+ExpressionDraft 与 Appraisal 能力；旧 compact `reply_only/full_turn` 是 stream
+载体，不能重标成 atomic 后复用。现 `_compile_combined_cognition_envelope` 即使
+收到完整 stream events 也只读取 head；将完整 raw 传入旧 parser 不等于取得了全稿。
+
+新显式模式的 composition 需要把有效 `expression_episode_mode` 设为 `off`，
+让 Deliberation 主操作走 `propose`，同时不预启 tail，诊断也应报告真实有效模式。
+仅让 `stream_provider_available=False` 还不够：配置仍为 stream 时主操作仍可能
+调用 `propose_stream_head`。完整 atomic 头若进入原 tail continuation，原代码把
+缺少 owned head 当成失败并可能再问一次作者。
+
+作者的纠正入口也必须遵守同一模式。当前 `correct_role_result` 根据供应商是否
+支持 stream 选择 `propose_stream_head`，会把外层 atomic 调用的 Core 纠正切回
+增量头。现有 Core 的一次 ordinal 与同 snapshot 机制仍可复用，不能靠只改外层
+mode 解决这个问题。上述是已核实的接入设计；参数能力和最终 guard 安装须分别验收。
+
+## 已完成输出的独立恢复依赖
+
+在 Core terminal 已写入、Proposal 尚未记录的窗口，当前 inbound `.1` decision
+仅保存输出引用与 hash，完整 ModelOutput 留在 Faculty 的进程缓存。新稳定载体
+需包含原输出及被普通 `model_dump` 排除的 physical/subcall/candidate audits，
+与原 terminal 同行持久化；保留原 turn、capability、cursor、proposal 和作者身份。
+
+Recall 的 live seal 使用进程随机 HMAC，不能把旧 seal 序列化后在新进程重用。
+恢复应保留原 recorded trace，从受信原终态验证其绑定后恢复 live proof，不能
+重新检索、取消验证或固定生产 HMAC。已有 head 的恢复也不等于尚未结束的 HTTP
+tail 可以恢复；这两个窗口必须分别计数。
+
+Receipt 接线后，接受门位于 `derive_expression_plan_material()`，回放门位于
+`_expression_plan_manifest_recorded()`；这也覆盖已有 Proposal 的冷恢复。新审核
+资格须由明确合同或 policy 要求，不能以“有 receipt 才选择新版”的可删字段方式
+降级。旧 model audit 和 expression manifest 保留原字节，但不补授新审核资格。
