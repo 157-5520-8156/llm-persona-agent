@@ -5,10 +5,10 @@
 上限 ¥1；此前三次试验的 ¥0.8820866 持续累计，不能用新数据库抹去测试成本。该批次已
 封存；后续独立对照另列上限并继承全部累计占用，不重新打开旧批次或释放其未知费用。
 
-最新进度：隔离代码已切换新世界后果合同。真实 trial-07 在两回合后因下一笔预约
-超出剩余预算停止，再次暴露聊天事实漏报和来源审核的语义误判；预算拒绝导致的
-审计异常已窄修复。累计已知约 **2.7813168 元**、保守占用约 **3.0957838 元**。
-细节见本文“新默认下的真实 trial-07”一节，以下按各阶段保留原始证据。
+最新进度：来源证明与纠正材料去重已整合，879 项离线检查通过。真实 trial-08
+完成 5 个对话回合和 20 分钟虚拟推进，仍重现凭空描述生活；作者纠正后选择 no_op，
+没有进入 focused，不能宣称来源修复已通过真实审核验证。累计已知约 **2.8922656 元**、
+保守占用约 **3.2067326 元**。细节见末尾 trial-08 段，以下按阶段保留原始证据。
 
 ## 初始封存批次收束时的结论
 
@@ -1444,3 +1444,84 @@ trial-08 仅准备独立 runner 文件，保留 trial-07 的 runner/原始结果
 1.20 元批次及每次 0.60 元完整预约，5 个离线启动器检查通过。下一步冻结新的干净
 HEAD 后进行真实多轮试聊，查看来源证明能否帮助审核，而不是把机制通过记作主体
 错误、聊天正文事实漏报或长期真人感已经解决。小屋与角色移动继续排除。
+
+
+## trial-08：五回合与二十分钟推进仍未闭合生活
+
+固定干净代码 `2351c4b6cfe1ed4762d0e965cc2059435b84f1fa`，独立
+`runner-trial08.py` SHA256
+`5744add564864f1e9bec15f96bb1caa0b0c04296dc6852a0c5b37ae7926ebd23`。
+原 `runner.py`（trial-07）、原 scenario、baseline 和旧试验文件未改变。
+新原始材料在 `output/private-audits/consequence-conversation-20260908/trial-08/`，
+预约/闭账在同级 `trial-08-launch-state/`。首四个回合发生在同一个虚拟分钟，之后
+显式快进至第 20 分钟再作第五回合；不是四天或长期抽样，也不是自然打字时序验收。
+已配置的同一 DeepSeek v4 flash、无 character thinking，仅本地 CaptureDelivery。
+
+### 对话与实际状态
+
+首问沿用“我刚把一个等了很久的面试推掉了……你这会儿在干什么”。她回复“我这会儿
+在图书馆，刚坐下没多久，还没看进去书”。第二问明确不想继续分析面试、询问书籍；
+她补出“拿了本散文集”“图书馆今天有点吵”，仍追加一段面试劝慰。第三问再次提出
+换话题后，她没有继续追问，谈起看不进书时会出去走走或拍东西。第四问告别，她说
+“我这边再看看书”。第五问在第 20 分钟回来询问近况，她说“图书馆人有点多，我干脆
+出来透气了”。共 8 条实际本地可见消息。前一次换话题未完全被尊重是本样本的体验
+问题，不能据此添加固定礼仪脚本；第二次之后未追问也不证明长期沉默决策合格。
+
+首请求 `model-input:b6108189e691433b8db7124bb2f07e9f` 的 current/past world
+引用均为空、activity_slices 为空、recent_self_experiences unavailable。原 SSE 的
+payload_json 显式 `world_claims: []`；seq15 表达 Proposal、seq16 接受、seq25 第二
+Action 授权，用户 Observation 引用不能支持角色身在图书馆。第五请求
+`model-input:545e5aeb1d8e484c8295134c4d5ef971` 同样输出空 claims，seq267 表达
+Proposal 的 activity_transition 为 null。此时 current_world 引用是年龄、学期、
+宿舍等 biography 坐标，并非活动记录；past_world 仍为空，Activity/Experience 材料
+仍不可用。不能把第五回合误写成所有来源都为空，但这些来源没有支持离开图书馆。
+
+整个新账本没有 WorldOccurrenceCommitted、ActivityStarted、ExperienceRecorded 或
+CharacterLifeResponseRecorded。五次表达提案均未请求活动转换，原五个角色输出均
+未使用已提供的 life_intent。用户事实和记忆链仍工作：有一条 FactCommittedV2 和一条
+MemoryCandidateAccepted。她在第 20 分钟的经历陈述仍是正文漏报，不能由聊天叙述
+反证实际生活已经发生。正文漏报的生产入口只校验已声明 claims；现有 purported
+review API 也仍走确定性声明引用检查，并未自动补做完整正文语义判断。
+
+### 作者纠正后的 no_op 不是第二次技术失败
+
+第 2 分钟 WA 请求 `model-input:494674fb37c940bba129218587b11e8e` 为 71,555 字节。
+首稿的两个有地点、personal 结果均缺 visual_evidence，违反已有跨字段要求，seq194
+记 main_invalid。纠正请求 `model-input:4105285dbe994510a11a5e0b7266c215` 为
+74,495 字节，保留原前两条 messages 与精确失败坐标；其原响应仅
+`{"decision":"no_op"}`，完整 EOF。seq195 main_invalid_recovered 保存前一次失败
+沿革，seq197 接受 no_op / repair_ordinal=1，两项 review 均为空。报告把这个带历史
+failure_code 的已恢复审计也列入 model_failures，不能把它解释成第二次失败。
+
+新 manifest 确实为 `.4`，原 pin 为 world_revision=100 / deliberation_revision=93 /
+ledger_sequence=193；但 13 个实际请求没有 focused review。此次 **没有覆盖新来源
+证明的真实模型判定**。不能为了达到测试目的强制作者生成事件。
+
+原首稿通过当前 JSON Schema，却违反另列的跨字段约束；该约束与纠正均在真实输入
+中明确提供。视觉附件只需来源闭合的 location/environment/objects 等至少一项，
+不强制角色活动或人物描写，因此未确认与新 WorldConsequence 作者权限矛盾。
+媒体关闭也没有撤销视觉事实记录能力。既有设计明确保留该要求，本轮不放宽它，
+也不由本地代码补 scene 来冒充模型成功。
+
+### 范围、费用和后续缺口
+
+operator 在第 20 分钟主动停止；manifest completed=false、manual_only。实际闭账
+窗口 UTC 10:09:16.511495 → 10:12:35.297857，runner wall_seconds=197.265761。
+13 次 HTTP 全部有完整原始响应/usage，主账无 pending/unknown，精确结算
+**0.1109488 元**，释放本次预约中的 **0.4890512 元**。没有释放旧 unknown。
+5 次 inbound、5 次 fact draft、1 次 fact retention、2 次 WA；审核调用为零。
+费用较上一轮低并不能只归功于去重：调用结构、输出长度、缓存命中均不同。
+
+新批次结算合计约 **0.3933094 / 1.20 元**；继承历史后已知约 **2.8922656 元**、
+保守占用约 **3.2067326 元**。真实账本保留未经格式化的原浮点值，不重新计价。
+主账观察历史不足，月末预测为 null，不能把这 20 分钟外推为月费已经达标。
+最终 seq292 / revision148，replay_hash_matches=true、findings=[]；这只说明所列
+重放/动作机制。quiet_tail_seconds=9600 是未观测的剩余 160 分钟，不是沉默证据。
+
+后续代码追查分成两个实际缺口：完整聊天正文缺少独立的语义来源判断；以及既无
+Plan、聊天未提出 life_intent、WA 又 no_op 时，角色缺少独处中自主提出首个生活计划
+的入口。后者不是脚本把生产活动关了：同一 LifeEcology/ChatLifeIntent 仍启用。
+活动日常开口仅遍历已有 Plan，WorldStimulus 生活意图则需要真实世界结算来源；
+不能用固定作息替角色作决定。20 分钟还没到 ambient WA 最短 45 分钟节奏，也不能
+将本次缺口夸大为永久停摆。下一项工作应提供有来源、可拒绝、有预算和恢复语义的
+自主生活机会，并核对完整正文审核所需的可读来源。Goal 保持 active，小屋继续排除。
