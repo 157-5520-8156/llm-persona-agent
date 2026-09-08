@@ -260,7 +260,15 @@ async def test_new_consequence_records_explicit_response_in_same_public_role_cal
         assert response["origin"]["source_payload_hash"] == source.payload_hash
         assert evidence.projection.plans == before.plans
         assert evidence.projection.appraisals == before.appraisals
-        assert evidence.projection.experiences == before.experiences
+        assert before.experiences == ()
+        assert len(evidence.projection.experiences) == 1
+        experience = evidence.projection.experiences[0]
+        assert experience.authority_contract_version == "experience.2"
+        binding = experience.values.source_bindings[0]
+        assert binding.source_kind == "world_life_response"
+        assert binding.response.response_text == text
+        assert binding.response_event_ref == responses[0].event_id
+        assert binding.settlement.authority_event_ref == source.event_id
         await app.drain_background_once()
         assert len(provider.stimulus_requests) == 1
     finally:
@@ -302,7 +310,12 @@ async def test_exact_same_role_correction_cannot_supply_an_implicit_null(
         assert len(responses) == int(accepted)
         assert evidence.projection.plans == before.plans
         assert evidence.projection.appraisals == before.appraisals
-        assert evidence.projection.experiences == before.experiences
+        assert before.experiences == ()
+        assert len(evidence.projection.experiences) == int(accepted)
+        if accepted:
+            binding = evidence.projection.experiences[0].values.source_bindings[0]
+            assert binding.response_event_ref == responses[0].event_id
+            assert binding.response.response_text is None
         if accepted:
             assert responses[0].payload()["response_text"] is None
             assert responses[0].payload()["origin"]["source_event_ref"] == source.event_id

@@ -828,6 +828,7 @@ def _bind_production_character_interior(
     silence_appraisal_idle_seconds: int | None,
     plan_disruption_appraisal_enabled: bool,
     perception_result_reader: PerceptionResultReader | None,
+    life_content_store=None,
     private_impression_daily_model_call_limit: int = 3,
     private_impression_min_interval_seconds: int = 14_400,
     private_impression_idle_after_user_seconds: int = 1_800,
@@ -969,6 +970,7 @@ def _bind_production_character_interior(
             owner_id=inner_state_settlement_owner,
             companion_actor_ref=companion_actor_ref,
             perception_result_reader=perception_result_reader,
+            life_content_store=life_content_store,
             relationship_settlement=_WorldStimulusRelationshipSignalSettlement(
                 ledger=ledger,
                 compiler=RelationshipProposalCompiler(ledger=ledger),

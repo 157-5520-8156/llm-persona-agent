@@ -53,6 +53,9 @@ from .life_content_store import (
     life_content_payload_hash,
 )
 from .life_development_runtime import LifeDevelopmentProposalReader
+from .character_life_experience_runtime import CharacterLifeExperienceRuntime
+from .character_life_response_contract import CharacterLifeResponseRecordedPayload
+from .occurrence_result_content_runtime import OccurrenceResultContentRuntime
 from .life_events import (
     OutcomeObservationRecordedPayload,
     OutcomeProposalRecordedPayload,
@@ -87,6 +90,7 @@ from .schemas import (
     DueWindow,
     EvidenceRef,
     ExperienceOccurrenceSettlementBinding,
+    ExperienceWorldLifeResponseBinding,
     ExperienceOrigin,
     ExperienceProjection,
     ExperienceProposalProjection,
@@ -338,6 +342,7 @@ class LifeAftermathRuntime:
                 for item in projection.world_occurrences
                 if item.status == "settled"
                 and not self._has_experience(projection, item.occurrence_id)
+                and self._experience_recovery_ready(projection, item)
             ),
             None,
         )
@@ -349,8 +354,11 @@ class LifeAftermathRuntime:
                 correlation_id=correlation_id,
             )
             return LifeAftermathResult(
-                status="recovered_experience",
-                reason_code="life_aftermath.experience_recovered",
+                status="recovered_experience" if experience_id is not None else "no_op",
+                reason_code=(
+                    "life_aftermath.experience_recovered" if experience_id is not None
+                    else "life_aftermath.world_consequence_awaiting_character_response"
+                ),
                 occurrence_id=recoverable.occurrence_id,
                 experience_id=experience_id,
             )
@@ -582,7 +590,7 @@ class LifeAftermathRuntime:
 
     async def _settle(
         self, *, occurrence, wake, logical_time: datetime, trace_id: str, correlation_id: str
-    ) -> str:
+    ) -> str | None:
         wake_evidence = self._event_evidence(wake, purpose="life_transition")
         suffix = occurrence.occurrence_id.removeprefix("occurrence:life-aftermath:")
         # Settlement observation is effect-once per occurrence.  A character
@@ -981,6 +989,16 @@ class LifeAftermathRuntime:
                 commit_id="commit:life-aftermath:settlement:" + suffix,
             )
 
+        if chosen.result_contract == "world-consequence.2":
+            OccurrenceResultContentRuntime(
+                ledger=self._ledger, content_store=self._content_store,
+            ).materialize(occurrence_id=occurrence.occurrence_id)
+            settled = next(item for item in self._ledger.project().world_occurrences
+                           if item.occurrence_id == occurrence.occurrence_id)
+            return await self._commit_experience(
+                occurrence=settled, logical_time=logical_time,
+                trace_id=trace_id, correlation_id=correlation_id,
+            )
         result_record = StoredLifeContent(
             content_ref=chosen.result_payload_ref,
             content_kind="occurrence_result",
@@ -1032,7 +1050,27 @@ class LifeAftermathRuntime:
 
     async def _commit_experience(
         self, *, occurrence, logical_time: datetime, trace_id: str, correlation_id: str
-    ) -> str:
+    ) -> str | None:
+        if self._is_world_consequence(occurrence):
+            OccurrenceResultContentRuntime(
+                ledger=self._ledger, content_store=self._content_store,
+            ).materialize(occurrence_id=occurrence.occurrence_id)
+            projection = self._ledger.project()
+            response_ref = self._response_for_occurrence(projection, occurrence)
+            if response_ref is None:
+                return None
+            experience_id = CharacterLifeExperienceRuntime(
+                ledger=self._ledger, content_store=self._content_store,
+                owner_actor_ref=self._owner_actor_ref,
+            ).accept(
+                world_id=self._ledger.world_id, audit_cursor=_cursor(projection),
+                response_event_ref=response_ref,
+            )
+            await self._materialize_experience_memory(
+                experience_id=experience_id, logical_time=logical_time,
+                trace_id=trace_id, correlation_id=correlation_id,
+            )
+            return experience_id
         suffix = occurrence.occurrence_id.removeprefix("occurrence:life-aftermath:")
         experience_id = "experience:life-aftermath:" + suffix
         if self._has_experience(self._ledger.project(), occurrence.occurrence_id):
@@ -2550,13 +2588,43 @@ class LifeAftermathRuntime:
     def _has_experience(projection, occurrence_id: str) -> bool:
         return any(
             any(
-                isinstance(binding, ExperienceOccurrenceSettlementBinding)
-                and binding.occurrence_id == occurrence_id
+                (isinstance(binding, ExperienceOccurrenceSettlementBinding)
+                 and binding.occurrence_id == occurrence_id)
+                or (isinstance(binding, ExperienceWorldLifeResponseBinding)
+                    and binding.settlement.occurrence_id == occurrence_id)
                 for binding in item.values.source_bindings
             )
             for item in projection.experiences
             if isinstance(item, ExperienceProjection)
         )
+
+    @staticmethod
+    def _is_world_consequence(occurrence) -> bool:
+        return any(item.result_id == occurrence.result_id
+                   and item.result_contract == "world-consequence.2"
+                   for item in occurrence.candidate_outcomes)
+
+    def _response_for_occurrence(self, projection, occurrence) -> str | None:
+        for ref in projection.committed_world_event_refs:
+            if ref.event_type != "CharacterLifeResponseRecorded":
+                continue
+            located = self._ledger.lookup_event_commit(ref.event_id)
+            if located is None:
+                raise ValueError("character response projection lacks its exact event")
+            response = CharacterLifeResponseRecordedPayload.model_validate_json(located[0].payload_json)
+            if (response.actor_ref == self._owner_actor_ref
+                    and response.origin.source_event_ref == occurrence.settlement_event_ref):
+                return ref.event_id
+        return None
+
+    def _experience_recovery_ready(self, projection, occurrence) -> bool:
+        if not self._is_world_consequence(occurrence):
+            return True
+        if not any(item.source_kind == "occurrence_settlement"
+                   and item.source_event_ref == occurrence.settlement_event_ref
+                   for item in projection.life_content_descriptors):
+            return True
+        return self._response_for_occurrence(projection, occurrence) is not None
 
     @staticmethod
     def _event_evidence(event_ref, *, purpose: str) -> EvidenceRef:

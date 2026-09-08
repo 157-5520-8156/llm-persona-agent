@@ -38,6 +38,7 @@ from ..character_life_response_contract import (
     CHARACTER_LIFE_RESPONSE_REGISTRY_VERSION,
     validate_character_life_response_coverage,
 )
+from ..character_life_experience_runtime import CharacterLifeExperienceRuntime
 from ..character_life_response_runtime import (
     CharacterLifeResponseRuntime,
     character_life_response_id,
@@ -1300,6 +1301,7 @@ class CharacterInteriorWorldStimulusRuntime:
         perception_result_reader: PerceptionResultReader | None = None,
         relationship_settlement: _WorldStimulusRelationshipSettlement | None = None,
         experience_settlement: ExperienceTransitionSettlement | None = None,
+        life_content_store=None,
         lease_seconds: int = 120,
         merge_window_seconds: int = _DEFAULT_OPPORTUNITY_MERGE_WINDOW_SECONDS,
         expiry_seconds: int = _DEFAULT_OPPORTUNITY_EXPIRY_SECONDS,
@@ -1326,6 +1328,12 @@ class CharacterInteriorWorldStimulusRuntime:
         self._companion_actor_ref = companion_actor_ref
         self._world_life_response = CharacterLifeResponseRuntime(
             ledger=ledger, owner_actor_ref=companion_actor_ref,
+        )
+        self._world_life_experience = (
+            CharacterLifeExperienceRuntime(
+                ledger=ledger, content_store=life_content_store,
+                owner_actor_ref=companion_actor_ref,
+            ) if life_content_store is not None else None
         )
         self._world_life_intent = WorldLifeIntentRuntime(
             ledger=ledger, owner_actor_ref=companion_actor_ref
@@ -1859,6 +1867,23 @@ class CharacterInteriorWorldStimulusRuntime:
                     await asyncio.to_thread(self._world_life_response.accept, **arguments)
                 else:
                     self._world_life_response.accept(**arguments)
+                if self._world_life_experience is None:
+                    raise ValueError("world life response experience content store is not configured")
+                response_projection = await self._project()
+                response_cursor = _cursor(response_projection)
+                for change in authored_proposal.proposed_changes:
+                    if change.kind != "world_life_response":
+                        continue
+                    compose = dict(
+                        world_id=self._ledger.world_id, audit_cursor=response_cursor,
+                        response_event_ref=(
+                            _RESPONSE_EVENT_PREFIX + change.target_id.removeprefix(_RESPONSE_PREFIX)
+                        ),
+                    )
+                    if self._ledger.blocks_event_loop:
+                        await asyncio.to_thread(self._world_life_experience.accept, **compose)
+                    else:
+                        self._world_life_experience.accept(**compose)
             except (ConcurrencyConflict, ValueError):
                 await self._record_technical_failure(
                     process=active, source_event=source_event,
@@ -2238,10 +2263,21 @@ class CharacterInteriorWorldStimulusRuntime:
             return False
         accepted_refs = {ref.event_id for ref in projection.committed_world_event_refs
                          if ref.event_type == "CharacterLifeResponseRecorded"}
+        composed_refs = {
+            binding.response_event_ref
+            for experience in projection.experiences
+            if getattr(experience, "authority_contract_version", None) == "experience.2"
+            for binding in experience.values.source_bindings
+            if binding.source_kind == "world_life_response"
+        }
         return any(
             change.kind == "world_life_response"
-            and _RESPONSE_EVENT_PREFIX + change.target_id.removeprefix(_RESPONSE_PREFIX)
-            not in accepted_refs
+            and (
+                _RESPONSE_EVENT_PREFIX + change.target_id.removeprefix(_RESPONSE_PREFIX)
+                not in accepted_refs
+                or _RESPONSE_EVENT_PREFIX + change.target_id.removeprefix(_RESPONSE_PREFIX)
+                not in composed_refs
+            )
             for change in proposal.proposed_changes
         )
 

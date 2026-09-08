@@ -4077,6 +4077,7 @@ def build_sqlite_world_v2_turn_application(
             silence_appraisal_idle_seconds=config.silence_appraisal_idle_seconds,
             plan_disruption_appraisal_enabled=config.plan_disruption_appraisal_enabled,
             perception_result_reader=perception_transport,
+            life_content_store=life_content_store,
             private_impression_daily_model_call_limit=config.private_impression_daily_model_call_limit,
             private_impression_min_interval_seconds=(
                 config.private_impression_min_interval_seconds
