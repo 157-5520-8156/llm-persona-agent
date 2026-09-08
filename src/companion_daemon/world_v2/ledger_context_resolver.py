@@ -178,6 +178,7 @@ _EXPERIENCE_CONTENT_UNAVAILABLE_REASONS = frozenset(
         "source_proof_failed",
         "content_missing",
         "hash_mismatch",
+        "structured_content_unavailable",
     }
 )
 

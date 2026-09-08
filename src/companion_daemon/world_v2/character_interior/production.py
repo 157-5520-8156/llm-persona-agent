@@ -944,6 +944,7 @@ def _bind_production_character_interior(
             companion_actor_ref=companion_actor_ref,
             identity_frame=identity_frame,
             content_reader=private_reflection_content_reader,
+            life_content_store=life_content_store,
             owner_id=private_impression_worker_owner,
         )
         authority_handlers.append(_PrivateImpressionInteriorAuthorityHandler(private_runtime))
