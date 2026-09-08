@@ -640,3 +640,34 @@ cohort 对齐，才释放未用额度 **0.229891**。独立复核确认五个 ar
 `output/private-audits/trial-06-launch-state/`。本轮未部署、发真实 QQ 或修改生产数据库。
 移动链仍未安装；只纠正了文档中“Plan 承载当前位置”的过时说明，没有激活 dormant
 Location 权限，也没有把住址、惯常日程或计划升级为已到达。
+
+## 阻止候选结果由 World Author 预写角色内心
+
+`68f5e26a` 同步修正了作者主提示、能力表、实际 JSON schema 描述，以及既有 focused
+critic 的主提示、维度和格式纠错说明。World Author 仍能提供客观动作候选、环境和
+后果；新的感受、想法、动机、意图和主观反应属于角色模型，不能靠选择一个包含这些
+内容的 outcome token 代替角色自行创作。精确有来源的历史内心仍可作为背景引用。
+
+既有 `unsupported_outcome_prerequisites` 新增 outcome 专属的
+`character_interior_authorship`，只接受该 `outcomes.N.text` 的逐字片段。此前此类
+合法拒绝会被 parser 当成格式错误；现在一次有效 unsupported 即停止 admission，
+不追加模型调用、不进入角色选择，也不创建 Plan/Occurrence。没有新增 reviewer，
+没有本地关键词分类或删除、改写模型正文。
+
+新 review `.5` / packet `.6` / subject `.5` 绑定实际请求；缺 marker 的历史永久保留
+packet `.4` / subject `.3`，显式 `.5` 保留 subject `.4`。新的审计副本不能通过删标、
+改旧标或重算复制哈希绕过原 ModelResult 绑定。改动前由 `803f15a5` 公共 runtime
+生成的 packet5 fixture 保留原 10 事件和 9 sidecar，冷回放不改变字节，也不声称
+旧审查获得新权限覆盖。旧 pending 候选和已提交经历没有被静默修正。
+
+作者与 root 分别通过 **164 项**相关检查，两轴独立审查无阻断问题。实际 HTTP
+MockTransport 主链证明合法拒绝可被正确消费，其他本地 fixture 覆盖错误片段纠正、
+历史回放和新提案防降级。完整 **120 个冻结场景**候选与原 `.99` manifest 全字段
+完全一致；干净 `68f5e26a` 随后也通过不带 limit 的完整正门。root 独立重算摘要为
+`8f3579b38dbc6895330db8f02bbbbbf12eb78604d11d2f3f5424724313459f60`，保留 `.99`，
+没有修改基线或判据。证据为 `baseline-outcome-authority-final-verification.json`。
+
+这些是机械权限与兼容性证据。修复后的真实 critic 尚未复测，不能据此声称它能
+找全内心越权或旧事实前提；聊天空声明编造当前生活也仍未解决。为后续复测，已从
+trial06 原始材料逐字复原首个 critic 的完整 messages；第二个样本缺原完整 dialogue
+lane，明确标记缺失，不伪造同输入对照。本片没有新增真实调用或费用。

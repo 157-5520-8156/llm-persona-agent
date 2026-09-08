@@ -18,8 +18,10 @@ authorship; deterministic code only validates the returned coordinates. No
 text is rewritten or classified locally. Empty findings preserve the former
 canonical verdict payload bytes.
 
-Review contract `.4`, evidence packet `.5`, and subject `.4` identify this
-larger surface. New admitted Proposals explicitly record the packet contract.
+This coverage was introduced with review contract `.4`, evidence packet `.5`,
+and subject `.4`. The subsequent [outcome interior authority change](life-outcome-interior-authority.md)
+retains it under review `.5`, packet `.6`, and subject `.5`.
+New admitted Proposals explicitly record the packet contract.
 Previously accepted Proposals without that marker retain packet `.4` and
 subject `.3`; their hash formula and audit bytes remain unchanged. Neither
 removing a new marker nor adding a new marker to an old Proposal changes what
