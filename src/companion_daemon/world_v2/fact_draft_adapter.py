@@ -27,6 +27,7 @@ from .fact_reducers import (
 from .model_json import extract_json_object_text
 from .interaction_fact_decision import (
     FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION,
+    FACT_SET_SOURCE_VIEW_VERSION,
     FactWithdrawalTargetBinding,
 )
 from .proposal_envelope_v2 import (
@@ -70,6 +71,15 @@ class FactWithdrawalDraft(FrozenModel):
         if (self.target_fact_ref is None) != (self.target_binding is None):
             raise ValueError("Fact member withdrawal requires its exact source binding")
         return self
+
+
+def _set_fact_source_view(sources: tuple[dict[str, object], ...]) -> tuple[dict[str, object], ...]:
+    """Present the exact text, member and times; host bindings keep the full rows."""
+    fields = (
+        "fact_id", "predicate_code", "source_text", "fact_committed_at", "fact_updated_at",
+        "source_observation_logical_time", "source_observation_received_at",
+    )
+    return tuple({field: source[field] for field in fields} for source in sources)
 
 
 @dataclass(frozen=True, slots=True)
@@ -502,7 +512,8 @@ class FactObservationProposalAdapter:
                         "observation_received_at": observation.received_at.isoformat(),
                         "observation_source_world_revision": source_world_revision,
                         "current_single_facts": current_single_fact_sources,
-                        "current_set_facts": current_set_fact_sources,
+                        "current_set_facts_view": FACT_SET_SOURCE_VIEW_VERSION,
+                        "current_set_facts": _set_fact_source_view(current_set_fact_sources),
                     },
                     ensure_ascii=False,
                     separators=(",", ":"),
@@ -598,7 +609,8 @@ class FactObservationProposalAdapter:
                     {
                         "observations": observations,
                         "current_single_facts": current_single_fact_sources,
-                        "current_set_facts": current_set_fact_sources,
+                        "current_set_facts_view": FACT_SET_SOURCE_VIEW_VERSION,
+                        "current_set_facts": _set_fact_source_view(current_set_fact_sources),
                     },
                     ensure_ascii=False,
                     separators=(",", ":"),

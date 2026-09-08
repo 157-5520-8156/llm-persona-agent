@@ -61,6 +61,7 @@ from .fact_trigger import (
 )
 from .interaction_fact_decision import (
     FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION,
+    FACT_SET_SOURCE_VIEW_VERSION,
     require_fact_member_withdrawal_decision,
     interaction_fact_source_context,
     canonical_interaction_fact_decision_json,
@@ -782,6 +783,7 @@ class InteractionFactTriggerRuntime:
         request_hash = _digest(
             {
                 "adapter_version": self._adapter.adapter_version,
+                "set_source_view_version": FACT_SET_SOURCE_VIEW_VERSION,
                 "batch_sources": tuple(
                     {
                         "source_event_ref": member.source.event.event_id,
@@ -1518,6 +1520,7 @@ class InteractionFactTriggerRuntime:
             request_hash = _digest(
                 {
                     "adapter_version": self._adapter.adapter_version,
+                    "set_source_view_version": FACT_SET_SOURCE_VIEW_VERSION,
                     "source_event_ref": source_event.event_id,
                     "source_payload_hash": source_event.payload_hash,
                     "evaluated_cursor": evaluated_cursor.model_dump(mode="json"),

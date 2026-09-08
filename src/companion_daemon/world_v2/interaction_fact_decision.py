@@ -22,6 +22,9 @@ _HASH = r"^[0-9a-f]{64}$"
 _MAX_DECISION_BYTES = 262_144
 FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION = "fact-observation-draft.4"
 FACT_MEMBER_WITHDRAWAL_POLICY_REFS = ("policy:fact-commit.2", "policy:fact-member-withdraw.1")
+# Presentation only: existing .3/.4 decisions retain their original audit and
+# source-context identity when rejoined after a restart.
+FACT_SET_SOURCE_VIEW_VERSION = "fact-set-source-view.1"
 
 
 def interaction_fact_source_context(facts, *, subject_ref: str) -> dict[str, object]:
@@ -171,6 +174,7 @@ def require_fact_member_withdrawal_decision(
 __all__ = [
     "FACT_MEMBER_WITHDRAWAL_ADAPTER_VERSION",
     "FACT_MEMBER_WITHDRAWAL_POLICY_REFS",
+    "FACT_SET_SOURCE_VIEW_VERSION",
     "FactWithdrawalTargetBinding",
     "FactMemberWithdrawalBinding",
     "InteractionFactDecisionRecordedPayload",
