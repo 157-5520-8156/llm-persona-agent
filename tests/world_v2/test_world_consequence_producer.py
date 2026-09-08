@@ -288,7 +288,7 @@ async def test_exact_character_authorship_rejection_returns_to_same_author_and_i
         assert payload["repair_ordinal"] == 1
         assert (
             payload["world_author_raw_output_hash"]
-            == hashlib.sha256(_json(corrected).encode()).hexdigest()
+            == hashlib.sha256(_json(_json(corrected)).encode()).hexdigest()
         )
         # Both actual responses remain independently auditable. Only the repaired
         # canonical outcomes may enter the accepted occurrence.
