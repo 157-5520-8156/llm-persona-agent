@@ -68,6 +68,7 @@ from .life_development_draft import (
     parse_legacy_character_choice,
     parse_world_author_draft,
 )
+from .life_development_output_schema import life_possibility_output_schema
 from .life_development_model_adapter import (
     life_development_reviewer_is_independent,
 )
@@ -5450,8 +5451,8 @@ class LifeDevelopmentRuntime:
                                 "output_contract": {
                                     "no_op": {"decision": "no_op"},
                                     "propose": (
-                                        LifeDevelopmentPossibilityDraft.model_json_schema(
-                                            mode="validation"
+                                        life_possibility_output_schema(
+                                            outcome_contract=manifest.outcome_contract
                                         )
                                     ),
                                 },
@@ -5898,8 +5899,8 @@ class LifeDevelopmentRuntime:
                         },
                         "output_contract": {
                             "no_op": {"decision": "no_op"},
-                            "propose": LifeDevelopmentPossibilityDraft.model_json_schema(
-                                mode="validation"
+                            "propose": life_possibility_output_schema(
+                                outcome_contract=manifest.outcome_contract
                             ),
                         },
                         # Pydantic's generated JSON Schema cannot express the
@@ -6590,7 +6591,7 @@ def _world_author_source_rewrite_output_contract() -> dict[str, object]:
             "replacement": "exactly_one_complete_no_op_or_propose_object",
         },
         "no_op": {"decision": "no_op"},
-        "propose": LifeDevelopmentPossibilityDraft.model_json_schema(mode="validation"),
+        "propose": life_possibility_output_schema(),
     }
 
 
@@ -6600,7 +6601,7 @@ def _world_author_source_rewrite_propose_repair_output_contract() -> dict[str, o
         "provider_wire_envelope": {
             "replacement": "exactly_one_complete_propose_object",
         },
-        "propose": LifeDevelopmentPossibilityDraft.model_json_schema(mode="validation"),
+        "propose": life_possibility_output_schema(),
     }
 
 
