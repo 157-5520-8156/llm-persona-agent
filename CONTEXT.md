@@ -87,6 +87,20 @@ companion's World. It cannot decide the companion's motives or responses, and
 its output remains a Proposal until admitted and settled.
 _Avoid_: Plot director, character model, deterministic event table
 
+## World Consequence
+
+A sourced environmental change or objective consequence of an authorized
+execution. Its occurrence does not decide the companion's response, and a
+consequence cannot supply missing authority for a new character action.
+_Avoid_: Character response, retroactive action permission
+
+## Character Life Response
+
+The companion's own reading of an encountered World change and any future
+activity she chooses in response. Her reading is not a new external fact, and
+her intention is not proof of completed execution.
+_Avoid_: World-Author-written behavior, automatic emotional reaction
+
 ## Capability Manifest
 
 A revision-pinned declaration of the World effects currently available to a
