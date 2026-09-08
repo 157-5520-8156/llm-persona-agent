@@ -12,6 +12,8 @@
 
 新准备输入标识为 `visible-source-materials.1`，输出 verdict 仍为 `.1`。旧七个 row 字段、ref 顺序、索引、普通 `_known_capsule_source_refs` 集合保持原样。每个 entry 只构造一次显式投影；packet 将相同材料集中到 `source_materials`，row 用 `material_index` 引用。
 
+新 packet 不再序列化旧 row 的 `evidence_text` 旁路，正文只从经过隐私投影的材料进入。原报告正文已完整位于新 `message.text`，被 withhold/unavailable 排除的正文不能从 legacy 字段重新出现；内存中的历史 row 与旧无材料手工 packet 字节仍不改。新纠正提示使用 `support_subject_role` 并显示原支持主体与资格，避免 eligible 用户 Fact 被旧 `subject_role=None` 掩盖；旧纠正请求的 hash 单独冻结。
+
 - entry 仅保留显式 kind/lane/scope/authority/actor/ref/privacy/availability 与报告权限字段；不复制任意未知顶层字段。
 - biography 保留完整 coordinate contract、parent ref、scope、field path、value 和 logical time，原 ref 必须匹配完整材料 hash。
 - Context item 仅保留明确 item/source refs、source/value hashes、bindings、privacy/availability/authority scope，以及已选 `value` 的完整原字段。slice 仅带已有选中 items 和明确 slice 元数据，不扩大选择，不恢复 capsule 中其他值。
@@ -33,7 +35,7 @@
 
 | 输入 | refs / entries | 旧 messages | 新 messages | 原 row metadata | 集中材料 | 假设完整 entry 按 ref 复制 |
 |---|---:|---:|---:|---:|---:|---:|
-| 普通 slim Fact + 当前报告 | 9 / 2 | 5852 | 10214 | 2738 | 2366 | 18557 |
-| 完整 source-bound Fact + 当前报告 | 10 / 2 | 6109 | 11892 | 2977 | 3575 | 25121 |
+| 普通 slim Fact + 当前报告 | 9 / 2 | 5852 | 9629 | 2738 | 2366 | 18557 |
+| 完整 source-bound Fact + 当前报告 | 10 / 2 | 6109 | 11284 | 2977 | 3575 | 25121 |
 
 可读输入有成本，集中材料避免同一 entry 按 refs 重复复制。没有为降低成本修改 token 估价、预约系数或调用预算。测试中的 `fixture_wire` 输出可重复这些测量；临时 ledger 由 pytest 提供，原试聊与原账本不改。

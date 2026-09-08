@@ -402,6 +402,9 @@ def _packet_materials(
         reference = {key: value for key, value in row.items() if key != "review_material"}
         material = row.get("review_material")
         if isinstance(material, dict):
+            # New packets expose prose only through the privacy-projected
+            # material. The historical text field must not bypass that filter.
+            reference.pop("evidence_text", None)
             identity = json.dumps(
                 material, ensure_ascii=False, sort_keys=True, separators=(",", ":")
             )
@@ -590,7 +593,19 @@ def visible_source_closure_messages(
         source_subject_roles = tuple(
             {
                 "source_ref_index": index,
-                "subject_role": row.get("subject_role"),
+                "subject_role": (
+                    row.get("support_subject_role")
+                    if "review_material" in row
+                    else row.get("subject_role")
+                ),
+                **(
+                    {
+                        "support_subject_ref": row.get("support_subject_ref"),
+                        "support_eligibility": row.get("support_eligibility"),
+                    }
+                    if "review_material" in row
+                    else {}
+                ),
             }
             for index, row in enumerate(source_references)
         )
