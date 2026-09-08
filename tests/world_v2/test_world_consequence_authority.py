@@ -405,3 +405,99 @@ def test_receipt_cannot_authorize_another_actor_or_unsettled_action(tmp_path):
                 "actions": (state.actions[0].model_copy(update={"state": "authorized"}),),
             }), actor_ref=ACTOR, source_events=case["source_events"],
         )
+
+
+@pytest.mark.parametrize("observed_state", ["provider_accepted", "unknown"])
+def test_recorded_ack_or_unknown_receipt_never_becomes_objective_result(tmp_path, observed_state):
+    from companion_daemon.world_v2.world_consequence_contract import (
+        derive_world_consequence_authority,
+    )
+    from test_experience_authority import event as receipt_event
+
+    ledger, _, _ = _receipt_case(tmp_path)
+    prior = ledger.project().execution_receipts[0]
+    receipt = prior.model_copy(update={
+        "receipt_id": "receipt:uncertain", "result_id": "result:uncertain",
+        "observed_state": observed_state,
+        "receipt_kind": "ack" if observed_state == "provider_accepted" else "terminal",
+        "is_terminal": observed_state != "provider_accepted",
+    })
+    source = receipt_event("receipt:uncertain-recorded", "ExecutionReceiptRecorded", {
+        "receipt": receipt.model_dump(mode="json"),
+    })
+    commit(ledger, [source])
+    with pytest.raises(ValueError, match="receipt_not_observed_result"):
+        derive_world_consequence_authority(
+            pinned_state=ledger.project(), actor_ref=ACTOR, source_events=(source,),
+        )
+
+
+def test_receipt_with_durable_reconciliation_cannot_be_promoted(tmp_path):
+    from companion_daemon.world_v2.schemas import ActionReconciliation
+    from companion_daemon.world_v2.world_consequence_contract import (
+        derive_world_consequence_authority,
+    )
+    from test_experience_authority import event as receipt_event
+
+    ledger, _, case = _receipt_case(tmp_path)
+    receipt = ledger.project().execution_receipts[0]
+    reconciliation = ActionReconciliation(
+        reconciliation_id="reconcile:receipt", result_id=receipt.result_id,
+        action_id=receipt.action_id, reason="terminal_conflict",
+        observed_state=receipt.observed_state, existing_state="delivered",
+        provider=receipt.provider, provider_ref=receipt.provider_ref,
+        raw_payload_hash=receipt.raw_payload_hash,
+    )
+    commit(ledger, [receipt_event("receipt:reconciliation", "ActionReconciliationRequired", {
+        "reconciliation": reconciliation.model_dump(mode="json"),
+    })])
+    with pytest.raises(ValueError, match="receipt_not_observed_result"):
+        derive_world_consequence_authority(
+            pinned_state=ledger.project(), actor_ref=ACTOR, source_events=case["source_events"],
+        )
+
+
+def test_legacy_ownerless_plan_is_not_granted_new_authority(tmp_path):
+    from companion_daemon.world_v2.world_consequence_contract import (
+        derive_world_consequence_authority,
+    )
+
+    ledger, _ = _activity(tmp_path)
+    source = _transition(ledger)
+    state = ledger.project()
+    legacy = state.plans[0].model_copy(update={
+        "owner_actor_ref": "legacy:unknown-owner", "authority_origin": None,
+    })
+    with pytest.raises(ValueError, match="activity_actor_or_plan"):
+        derive_world_consequence_authority(
+            pinned_state=state.model_copy(update={"plans": (legacy,)}),
+            actor_ref=ACTOR, source_events=(source,),
+        )
+
+
+def test_original_correction_request_keeps_same_pin_but_its_own_request_hash(tmp_path):
+    from companion_daemon.world_v2.world_consequence_contract import (
+        validate_world_consequence_authority,
+    )
+
+    ledger, _ = _activity(tmp_path)
+    case = _validation_case(ledger, (_transition(ledger),))
+    original_hash = case["author_audit"].request_hash
+    case["author_messages"].append({"role": "user", "content": canonical_json({
+        "failure_code": "world_consequence.attempt_not_authorized",
+    })})
+    case["author_audit"] = _audit(case["authority"], case["author_messages"])
+    assert case["author_audit"].request_hash != original_hash
+    validate_world_consequence_authority(**case)
+
+
+def test_missing_original_author_context_is_not_legacy_execution_permission(tmp_path):
+    from companion_daemon.world_v2.world_consequence_contract import (
+        validate_world_consequence_authority,
+    )
+
+    ledger, _ = _activity(tmp_path)
+    case = _validation_case(ledger)
+    case["author_audit"] = case["author_audit"].model_copy(update={"decision_context": None})
+    with pytest.raises(ValueError, match="author_audit_binding"):
+        validate_world_consequence_authority(**case)
