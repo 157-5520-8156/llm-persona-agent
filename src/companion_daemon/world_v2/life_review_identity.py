@@ -17,14 +17,16 @@ GENERAL_EVIDENCE_PACKET_CONTRACT = (
     "life-development-general-source-review-evidence-packet.3"
 )
 NOVEL_ORIGIN_REVIEW_SUBJECT_CONTRACT = (
-    "life-development-novel-origin-review-subject.4"
+    "life-development-novel-origin-review-subject.5"
 )
 NOVEL_EVIDENCE_PACKET_CONTRACT = (
-    "life-development-novel-origin-review-evidence-packet.5"
+    "life-development-novel-origin-review-evidence-packet.6"
 )
 PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT = (
     "life-development-novel-origin-review-evidence-packet.4"
 )
+# This absent-marker default must remain packet 4. Explicit packet 5 records
+# retain their own subject formula and do not gain outcome-interior coverage.
 
 
 def _digest(value: object) -> str:
@@ -103,6 +105,7 @@ def current_novel_origin_review_subject_hash(
     # formula; a previous verdict never acquires today's larger reviewed surface.
     contracts = {
         PREVIOUS_NOVEL_EVIDENCE_PACKET_CONTRACT: "life-development-novel-origin-review-subject.3",
+        "life-development-novel-origin-review-evidence-packet.5": "life-development-novel-origin-review-subject.4",
         NOVEL_EVIDENCE_PACKET_CONTRACT: NOVEL_ORIGIN_REVIEW_SUBJECT_CONTRACT,
     }
     if not isinstance(evidence_packet_contract, str) or evidence_packet_contract not in contracts:

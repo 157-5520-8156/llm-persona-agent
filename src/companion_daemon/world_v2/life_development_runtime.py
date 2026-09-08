@@ -5644,6 +5644,13 @@ class LifeDevelopmentRuntime:
                     "Model after it receives the opportunity. A personality or "
                     "habit does not prove that she already did or felt something, "
                     "and a claim declaration cannot grant that authority. "
+                    "The same actor boundary applies to every outcome: author "
+                    "objective candidate actions and world consequences, never "
+                    "her new feelings, motives, thoughts, intentions or subjective "
+                    "reactions. Selecting your outcome token cannot substitute "
+                    "for the Character Model authoring its own response. Exact "
+                    "source-bound historical interior is context only, not a new "
+                    "reaction to this opportunity. "
                     "There is no plot menu. causal_authority must be "
                     "world_contingency for an environmental occurrence or "
                     "character_choice for something the character may choose. An "
@@ -5746,15 +5753,16 @@ class LifeDevelopmentRuntime:
                     "in authored_subject. The user and user facts are context that may "
                     "affect that life; never author the user's choices, actions, inner "
                     "state, activities, commitments, or life direction. "
-                    "Outcome text is her internal life in this branch: where she went, "
-                    "what she did, what she thought, what she photographed, and talk "
-                    "with people who exist in this World. It is not the user-channel "
+                    "Outcome text offers objective branch candidates: places visited, "
+                    "actions, photographs and NPC conversation, subject to source "
+                    "and actor authority. It is not the user-channel "
                     "Action ledger. Do not narrate a completed act that reached him "
                     "through chat or photo delivery — sending him a message or a photo, "
                     "his receiving it, or his reply on that channel — as something this "
                     "branch makes true. Those facts exist only as authorized Action and "
-                    "receipt events. Photographing, choosing a photo, intending to send "
-                    "later, and talking to an NPC remain allowed. Each outcome must set "
+                    "receipt events. Photographing and NPC conversation remain "
+                    "objective candidates; her own intentions remain hers to author. "
+                    "Each outcome must set "
                     "user_channel_completion to none; this author has no Action "
                     "authority and cannot complete a send. "
                     "A long direction is allowed only when outcome_resolution_authority "
@@ -6798,6 +6806,8 @@ def _world_author_hard_boundary_contract(
             "authority_status": "unsettled_alternative",
             "does_not_establish_completed_experience": True,
             "must_not_author_user_choice_or_action": True,
+            "must_not_author_companion_interior": True,
+            "historical_interior": "exact_source_bound_context_only_not_new_reaction",
             "user_channel_completion": {
                 "required_const": "none",
                 "meaning": "this_branch_does_not_complete_a_user_channel_act",
@@ -6809,10 +6819,9 @@ def _world_author_hard_boundary_contract(
                 "allowed_in_outcome_text": [
                     "where_she_went",
                     "what_she_did_in_her_world",
-                    "what_she_thought",
                     "what_she_photographed",
                     "npc_talk",
-                    "intention_or_plan_to_send_later",
+                    "source_bound_prior_intention_as_context",
                 ],
                 "forbidden_as_completed_fact": [
                     "sending_him_a_message",

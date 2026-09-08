@@ -650,10 +650,12 @@ class DynamicLifeDirectionDraft(FrozenModel):
 
 
 class LifeDevelopmentOutcomeDraft(FrozenModel):
-    """One candidate branch of her internal life, not a user-channel Action.
+    """One objective candidate branch, not companion interior or a channel Action.
 
-    ``text`` may say where she went, what she did, what she thought, what she
-    photographed, or talk with people who exist in this World. It cannot make a
+    ``text`` may propose objective actions, photographs, NPC talk and world
+    consequences. New companion feelings, motives, thoughts, intentions and
+    subjective reactions belong to the Character Model. Exact source-bound
+    historical interior is context only, not a new response. It cannot make a
     completed user-channel act true: sending him a message or photo, his
     receiving it, or his reply through that channel. Those facts exist only as
     authorized Action and receipt events. ``user_channel_completion`` is the

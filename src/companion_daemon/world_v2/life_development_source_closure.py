@@ -36,7 +36,7 @@ from .schemas import ProjectionCursor, WorldEvent
 
 
 _REVIEW_CONTRACT = "life-development-source-closure-review.1"
-_NOVEL_ORIGIN_CONTRACT = "life-development-novel-origin-review.4"
+_NOVEL_ORIGIN_CONTRACT = "life-development-novel-origin-review.5"
 _MANIFEST_BINDING_CONTRACT = "life-development-review-manifest-binding.2"
 _EXISTING_WORLD_EVIDENCE_CONTRACT = (
     "life-development-novel-origin-existing-world-evidence.1"
@@ -215,13 +215,15 @@ class LifeDevelopmentNovelOriginPlaceFinding(FrozenModel):
 
 
 class LifeDevelopmentOutcomePrerequisiteFinding(FrozenModel):
-    """One exact outcome fragment that imports truth from before its branch."""
+    """One exact outcome fragment outside World Author fact or actor authority."""
 
     prose_path: str = Field(
         pattern=r"^outcomes\.(0|[1-9][0-9]*)\.text$",
         max_length=256,
     )
-    violation_kinds: tuple[NovelOriginViolationKind, ...] = Field(
+    violation_kinds: tuple[
+        NovelOriginViolationKind | Literal["character_interior_authorship"], ...
+    ] = Field(
         min_length=1,
         max_length=4,
     )
@@ -243,14 +245,16 @@ class LifeDevelopmentOutcomePrerequisiteFinding(FrozenModel):
             "existing_entity_or_fact_masquerading_as_novel",
             "imported_current_or_prior_prerequisite",
         }
-        user_channel_kinds = {"completed_user_channel_act"}
+        actor_authority_kinds = {
+            "completed_user_channel_act", "character_interior_authorship"
+        }
         if not (
             external_origin_kinds.intersection(self.violation_kinds)
-            or user_channel_kinds.intersection(self.violation_kinds)
+            or actor_authority_kinds.intersection(self.violation_kinds)
         ):
             raise ValueError(
                 "outcome-prerequisite findings must identify truth imported from "
-                "outside the current proposal branch or a completed user-channel act"
+                "outside the current proposal branch or an actor-authority violation"
             )
         return self
 
@@ -1499,9 +1503,9 @@ def life_development_source_closure_messages(
         "do not return an outcome text path or copy an outcome-only fragment into "
         "undeclared_fact_fragments. A separate focused critic reviews only imported "
         "current/prior prerequisites, retroactive history, and completed "
-        "user-channel acts in outcome text. "
-        "Branch-internal candidate self-life, NPC talk, feelings, and still-unsent "
-        "intentions remain unsettled and are not source-closure failures. "
+        "user-channel acts and companion interior authorship in outcome text. "
+        "Objective candidate actions, NPC talk and world consequences remain "
+        "unsettled; the focused critic checks their fact and actor authority. "
         "If a typed location_ref is "
         "present, it must be the execution coordinate of the proposed Plan or "
         "occurrence; other places may appear only as explicit background, origin, or "
@@ -1549,9 +1553,10 @@ def life_development_source_closure_messages(
             "outcome_text_authority": {
                 "general_reviewer": "no_negative_coordinate_authority",
                 "focused_novel_origin_critic": (
-                    "imported_current_or_prior_prerequisites_and_retroactive_history_only"
+                    "imported_prerequisites_history_user_channel_and_companion_interior"
                 ),
-                "branch_internal_candidate_self_life": "allowed",
+                "branch_internal_objective_candidates": "allowed",
+                "companion_interior_authorship": "reserved_for_character_model",
                 "completed_user_channel_act": "not_allowed_without_action_receipt",
             },
             "novel_world_generation": {
@@ -1694,10 +1699,18 @@ def life_development_novel_origin_messages(
         "existing-world authority, or an earlier event in this same candidate "
         "that actually creates them; an unselected sibling outcome is not evidence. "
         "Inspect these embedded prerequisites before deciding that an entire "
-        "outcome is branch-internal. The character's possible new actions, feelings, "
-        "NPC conversation, photography and still-unsent intentions themselves "
-        "remain unsettled candidates and are allowed; accepting that freedom "
-        "does not validate unrelated facts embedded in their prose. A completed "
+        "outcome is branch-internal. Objective candidate actions, NPC conversation, "
+        "photography and world consequences remain unsettled candidates; that "
+        "freedom does not validate unrelated embedded facts. The World Author "
+        "cannot assign the companion new feelings, motives, thoughts, intentions "
+        "or subjective reactions in an outcome, even conditionally or in a "
+        "character_choice branch. Selecting a supplied outcome token is not "
+        "authorship of her inner response; the Character Model chooses and "
+        "appraises separately. Exact source-bound historical interior may be "
+        "referenced as context, never rewritten as a new reaction. Put a new "
+        "interior authorship finding on unsupported_outcome_prerequisites, using "
+        "the exact outcomes.N.text path, character_interior_authorship violation "
+        "kind and a verbatim fragment from that outcome. A completed "
         "user-channel act in that text is different: sending him "
         "a message or photo, his receiving it, or his reply through that channel is "
         "Action-ledger territory and is not a branch-internal life event. Put that "
@@ -1783,8 +1796,10 @@ def life_development_novel_origin_messages(
                     "imported_current_or_prior_fact_or_retroactive_history_outside_branch"
                 ),
                 "allow": (
-                    "branch_internal_candidate_self_life_npc_talk_feeling_or_intention"
+                    "objective_candidate_actions_npc_talk_and_world_consequences"
                 ),
+                "character_interior": "cannot_author_new_state_or_reaction",
+                "historical_interior": "exact_source_bound_context_only_not_new_reaction",
                 "reject_unbound": (
                     "completed_user_channel_act_message_or_media_delivered_to_him"
                 ),
@@ -1844,11 +1859,15 @@ def life_development_novel_origin_correction_message(
                     "Return one complete replacement review for the identical draft "
                     "and pinned authority. Preserve the focused truth-origin boundary, "
                     "use only exact parser-verifiable coordinates from the supplied "
-                    "catalogue, and do not judge or change the story. Branch-internal "
-                    "candidate actions, dialogue, feelings, or responses in outcome "
-                    "text are not imported prerequisites. The current premise is "
-                    "different: it cannot invent past activity or author the "
-                    "character's present reaction. Copy premise findings exactly "
+                    "catalogue, and do not judge or change the story. Objective "
+                    "candidate actions, NPC dialogue and world consequences are "
+                    "allowed. New companion feelings, motives, thoughts, intentions "
+                    "or subjective reactions are character_interior_authorship: "
+                    "report the exact outcomes.N.text path and verbatim fragment "
+                    "in unsupported_outcome_prerequisites. Source-bound historical "
+                    "interior is context only, not a new reaction. The premise "
+                    "likewise cannot invent past activity or a present reaction. "
+                    "Copy premise findings exactly "
                     "from premise into undeclared_premise_fragments. Durable-context "
                     "findings use unsupported_dynamic_life_directions and exact "
                     "fragments from their supplied summary or tag field path."
@@ -1913,6 +1932,7 @@ def _novel_origin_coordinate_catalog(
             "existing_entity_or_fact_masquerading_as_novel",
             "imported_current_or_prior_prerequisite",
             "completed_user_channel_act",
+            "character_interior_authorship",
         ],
     }
 

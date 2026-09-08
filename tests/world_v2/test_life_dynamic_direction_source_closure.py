@@ -139,7 +139,7 @@ def test_frozen_packet4_history_cold_replays_without_gaining_new_coverage():
     proposal = proposal_event.payload()
     assert "world_author_novel_origin_evidence_packet_contract" not in proposal
     assert "unsupported_dynamic_life_directions" not in proposal["world_author_novel_origin_review"]
-    # Explicitly relabelling that same old subject as today's full coverage fails.
+    # Relabelling that same old subject as packet 5's dynamic coverage fails.
     upgraded = proposal | {
         "world_author_novel_origin_evidence_packet_contract": "life-development-novel-origin-review-evidence-packet.5"
     }
@@ -265,7 +265,8 @@ def test_direction_findings_bind_the_exact_field_and_packet(field, fragment):
 
 
 @pytest.mark.asyncio
-async def test_supported_durable_context_is_readable_and_cannot_downgrade_its_audit():
+@pytest.mark.parametrize("legacy_packet", [None, 4, 5])
+async def test_supported_durable_context_is_readable_and_cannot_downgrade_its_audit(legacy_packet):
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
     wake = _seed_clock(ledger)
     capability = _location_capability()
@@ -306,7 +307,7 @@ async def test_supported_durable_context_is_readable_and_cannot_downgrade_its_au
     proposal = proposal_event.payload()
     assert (
         proposal["world_author_novel_origin_evidence_packet_contract"]
-        == "life-development-novel-origin-review-evidence-packet.5"
+        == "life-development-novel-origin-review-evidence-packet.6"
     )
     assert "unsupported_dynamic_life_directions" not in proposal["world_author_novel_origin_review"]
     occurrence = ledger.project().world_occurrences[0]
@@ -316,7 +317,8 @@ async def test_supported_durable_context_is_readable_and_cannot_downgrade_its_au
     assert reader.read_for_occurrence(occurrence=occurrence) is not None
     assert ledger.rebuild() == ledger.project()
     events = tuple(ledger.lookup_event_commit(ref)[0] for ref in commit.event_ids)
-    for downgrade in [None, "life-development-novel-origin-review-evidence-packet.4"]:
+    for downgrade in [None, "life-development-novel-origin-review-evidence-packet.4",
+                      "life-development-novel-origin-review-evidence-packet.5"]:
         forged = dict(proposal)
         if downgrade is None:
             del forged["world_author_novel_origin_evidence_packet_contract"]
@@ -334,10 +336,14 @@ async def test_supported_durable_context_is_readable_and_cannot_downgrade_its_au
     # A writer cannot relabel both the Proposal and its copied subject while
     # leaving the actual ModelResult audit on the new packet.
     forged = json.loads(json.dumps(proposal))
-    forged.pop("world_author_novel_origin_evidence_packet_contract")
+    if legacy_packet is None:
+        forged.pop("world_author_novel_origin_evidence_packet_contract")
+    else:
+        forged["world_author_novel_origin_evidence_packet_contract"] = (
+            f"life-development-novel-origin-review-evidence-packet.{legacy_packet}")
     copied_review = forged["world_author_novel_origin_deliberation"]
     copied_review["decision_subject_hash"] = current_novel_origin_review_subject_hash(
-        evidence_packet_contract="life-development-novel-origin-review-evidence-packet.4",
+        evidence_packet_contract=f"life-development-novel-origin-review-evidence-packet.{legacy_packet or 4}",
         review_request_hashes=tuple(copied_review["request_hashes"]),
         world_author_raw_output_hash=forged["world_author_raw_output_hash"],
         capability_manifest_hash=forged["capability_manifest_hash"],

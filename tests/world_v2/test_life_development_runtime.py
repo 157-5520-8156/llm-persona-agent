@@ -5022,6 +5022,8 @@ async def test_invalid_world_draft_gets_one_source_bound_reselection() -> None:
             "authority_status": "unsettled_alternative",
             "does_not_establish_completed_experience": True,
             "must_not_author_user_choice_or_action": True,
+            "must_not_author_companion_interior": True,
+            "historical_interior": "exact_source_bound_context_only_not_new_reaction",
             "user_channel_completion": {
                 "required_const": "none",
                 "meaning": "this_branch_does_not_complete_a_user_channel_act",
@@ -5033,10 +5035,9 @@ async def test_invalid_world_draft_gets_one_source_bound_reselection() -> None:
                 "allowed_in_outcome_text": [
                     "where_she_went",
                     "what_she_did_in_her_world",
-                    "what_she_thought",
                     "what_she_photographed",
                     "npc_talk",
-                    "intention_or_plan_to_send_later",
+                    "source_bound_prior_intention_as_context",
                 ],
                 "forbidden_as_completed_fact": [
                     "sending_him_a_message",
@@ -5700,9 +5701,10 @@ def test_source_closure_contract_delegates_outcome_semantics_to_focused_critic()
     assert request["review_dimensions"]["outcome_text_authority"] == {
         "general_reviewer": "no_negative_coordinate_authority",
         "focused_novel_origin_critic": (
-            "imported_current_or_prior_prerequisites_and_retroactive_history_only"
+            "imported_prerequisites_history_user_channel_and_companion_interior"
         ),
-        "branch_internal_candidate_self_life": "allowed",
+        "branch_internal_objective_candidates": "allowed",
+        "companion_interior_authorship": "reserved_for_character_model",
         "completed_user_channel_act": "not_allowed_without_action_receipt",
     }
     assert all(
@@ -5739,7 +5741,9 @@ def test_source_closure_contract_delegates_outcome_semantics_to_focused_critic()
     ]
     assert focused_request["review_dimensions"]["outcome_prerequisites"] == {
         "reject": ("imported_current_or_prior_fact_or_retroactive_history_outside_branch"),
-        "allow": "branch_internal_candidate_self_life_npc_talk_feeling_or_intention",
+        "allow": "objective_candidate_actions_npc_talk_and_world_consequences",
+        "character_interior": "cannot_author_new_state_or_reaction",
+        "historical_interior": "exact_source_bound_context_only_not_new_reaction",
         "reject_unbound": "completed_user_channel_act_message_or_media_delivered_to_him",
     }
 
@@ -6212,7 +6216,7 @@ def test_novel_origin_packet_keeps_source_bound_truth_but_ignores_budget_noise()
         ]
     }
     assert life_development_review_packet_identity(first)[0] == (
-        "life-development-novel-origin-review-evidence-packet.5"
+        "life-development-novel-origin-review-evidence-packet.6"
     )
     assert "Inspect each exact outcome Opaque" not in first[0]["content"]
     assert "Opaque entity/location refs prove identity coordinates only" in first[0]["content"]
