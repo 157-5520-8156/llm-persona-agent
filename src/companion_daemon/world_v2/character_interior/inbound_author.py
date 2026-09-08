@@ -2334,9 +2334,13 @@ class _InboundCharacterAuthor:
         expression_capabilities: ExpressionDraftCapabilities = TEXT_ONLY_EXPRESSION_CAPABILITIES,
         identity_frame: CompanionIdentityFrame | None = None,
         require_explicit_authored_decision_fields: bool = False,
+        whole_candidate_mode: bool = False,
         **_unused: object,
     ) -> None:
         del _unused
+        if type(whole_candidate_mode) is not bool:
+            raise TypeError("whole_candidate_mode must be an explicit boolean")
+        self._whole_candidate_mode = whole_candidate_mode
         self._flash_model = flash_model
         self._thinking_model = thinking_model
         self._source_closure_reselection_lane = source_closure_reselection_lane
@@ -2603,14 +2607,17 @@ class _InboundCharacterAuthor:
         self._pending.pop(key, None)
         for item_key in [item for item in self._candidate_pending if item[0] == key]:
             self._candidate_pending.pop(item_key, None)
-        if self.stream_provider_available(request):
+        if not self._whole_candidate_mode and self.stream_provider_available(request):
             return await self.propose_stream_head(request)
         return await self.propose(request)
 
     def stream_provider_available(self, request: ModelInput) -> bool:
-        """Report only the selected provider's real streaming transport."""
+        """Report whether this author mode exposes incremental transport."""
 
-        return self._routed_expression.stream_provider_available(request)
+        return (
+            not self._whole_candidate_mode
+            and self._routed_expression.stream_provider_available(request)
+        )
 
     def _remember_compact_gate_control_transfer(
         self,
@@ -2645,6 +2652,11 @@ class _InboundCharacterAuthor:
     async def propose_stream_head(self, request: ModelInput) -> ModelOutput:
         """Resolve one simultaneous appraisal plus the first expression unit."""
 
+        if self._whole_candidate_mode:
+            # The compatibility entry point must not partition a complete
+            # candidate or open a continuation. Composition pairs this mode
+            # with expression_episode_mode="off", including Core correction.
+            return await self.propose(request)
         if not self.stream_provider_available(request):
             raise RuntimeError("character interior stream provider is unavailable")
         key = _cache_key(request)
