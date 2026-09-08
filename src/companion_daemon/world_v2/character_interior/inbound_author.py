@@ -886,10 +886,10 @@ def _compact_full_turn_transport_grammar(
         },
         "response_expectation_assessment_required": (response_expectation_assessment_required),
         "marker_rule": (
-            "Every <role:...> marker is a type/domain placeholder only. Replace every marker "
-            "with your own chosen value; never copy marker text. Add lifecycle, claim, media, "
-            "response-expectation, delayed, silent, typing, reaction, sticker, or continuation "
-            "fields only as allowed and chosen under the semantic contracts above."
+            "Replace <role:...> type/domain placeholders with your own values; never copy them. "
+            "Lifecycle, media, response-expectation, timing, typing, reaction, sticker and "
+            "continuation fields follow their contracts. You choose whether to assert an "
+            "external fact; if you do, its matching world_claim and source refs are required."
         ),
     }
 
