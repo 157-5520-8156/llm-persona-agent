@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -23,13 +24,28 @@ def _cursor(ledger):
 
 
 async def _accepted_response(path, text):
+    from companion_daemon.world_v2.character_life_experience_runtime import (
+        CharacterLifeExperienceRuntime,
+    )
+    from companion_daemon.world_v2.errors import ConcurrencyConflict
+
     provider = _ResponseHTTP(text=text)
     model = _model(provider)
     app = _build(path, model)
     try:
         source = await _settled(app)
-        await app.drain_background_once()
+        # The production app now composes immediately after response acceptance.
+        # Stop that one genuine consumer invocation, leaving its original role
+        # audit and accepted response intact for the public kernel tests below.
+        with patch.object(
+            CharacterLifeExperienceRuntime,
+            "accept",
+            side_effect=ConcurrencyConflict("offline stop before composition"),
+        ) as stopped:
+            await app.drain_background_once()
+        assert stopped.call_count == 1
         p = app.export_replay_evidence().projection
+        assert p.experiences == ()
         response = next(
             x
             for x in p.committed_world_event_refs
@@ -89,6 +105,79 @@ async def test_public_response_composes_exact_two_author_experience(tmp_path, mo
     finally:
         store.close()
         ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_public_drain_cold_recovers_partial_composition_without_another_role_call(
+    tmp_path,
+    monkeypatch,
+):
+    from companion_daemon.world_v2.errors import ConcurrencyConflict
+
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    path = tmp_path / "automatic-recovery.sqlite"
+    provider = _ResponseHTTP(text="我愿意保留此刻自己的感受。")
+    model = _model(provider)
+    app = _build(path, model)
+    original_commit = SQLiteWorldLedger.commit_at_cursor
+    interruptions = []
+
+    def fail_experience_tail(self, events, **kwargs):
+        if any(event.event_type == "ExperienceCommitted" for event in events):
+            interruptions.append(tuple(event.event_type for event in events))
+            raise ConcurrencyConflict("offline crash after actual Experience proposal")
+        return original_commit(self, events, **kwargs)
+
+    try:
+        source = await _settled(app)
+        with patch.object(SQLiteWorldLedger, "commit_at_cursor", fail_experience_tail):
+            await app.drain_background_once()
+        before = app.export_replay_evidence()
+        assert interruptions == [
+            ("AcceptanceRecorded", "ExperienceCommitted", "LifeContentRecorded")
+        ]
+        assert len(provider.stimulus_requests) == 1
+        response = next(
+            row.event
+            for row in before.events
+            if row.event.event_type == "CharacterLifeResponseRecorded"
+        )
+        assert before.projection.experiences == ()
+        assert len(before.projection.experience_proposals) == 1
+        model_audits = before.projection.model_result_audits
+    finally:
+        await app.aclose()
+        await model.aclose()
+
+    unexpected_calls = []
+
+    async def no_new_provider(request):
+        unexpected_calls.append(request)
+        raise AssertionError("cold recovery must use the original role audit")
+
+    model = _model(no_new_provider)
+    app = _build(path, model)
+    try:
+        await app.drain_background_once()
+        after = app.export_replay_evidence()
+        (experience,) = after.projection.experiences
+        (binding,) = experience.values.source_bindings
+        assert binding.settlement.authority_event_ref == source.event_id
+        assert binding.response_event_ref == response.event_id
+        assert binding.response.response_text == "我愿意保留此刻自己的感受。"
+        assert (
+            next(row.event for row in after.events if row.event.event_id == response.event_id)
+            == response
+        )
+        assert after.projection.model_result_audits == model_audits
+        assert unexpected_calls == []
+        assert sum(row.event.event_type == "ExperienceCommitted" for row in after.events) == 1
+        await app.drain_background_once()
+        assert app.export_replay_evidence().projection.experiences == (experience,)
+        assert unexpected_calls == []
+    finally:
+        await app.aclose()
+        await model.aclose()
 
 
 class _FailingCommit:
