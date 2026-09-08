@@ -1137,6 +1137,17 @@ def parse_world_author_draft(
                     },
                 ),
             )
+        if (is_current and draft.causal_authority == "character_choice"
+                and outcome.world_consequence.authorized_attempt_result is not None):
+            raise LifeDevelopmentDraftError(
+                "future_plan_execution_result",
+                "A new future Plan has not executed; an existing attempt result belongs to its original activity.",
+                violations=({
+                    "path": f"outcomes.{index}.world_consequence.authorized_attempt_result",
+                    "message": "future_plan_has_no_execution_source; keep existing attempt consequences in world_contingency",
+                    "type": "future_plan_execution_result",
+                },),
+            )
     if draft.authored_subject_ref != manifest.owner_actor_ref:
         raise LifeDevelopmentDraftError(
             "unauthorized_authored_subject",

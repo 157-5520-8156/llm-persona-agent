@@ -84,6 +84,7 @@ def compile_world_consequence_messages(
             "execution_binding": "copy_one_exact_offered_execution_binding",
             "text": "objective_result_of_only_that_original_authorized_attempt",
             "no_execution_binding": "omit_this_field",
+            "future_character_plan": "omit_this_field; an existing attempt cannot supply execution for a new Plan",
         },
         "character_actions_and_inner_response": "require_character_authorship",
         "selection_of_an_outcome_token": "cannot_author_a_character_action_or_response",
@@ -121,6 +122,9 @@ def compile_world_consequence_messages(
                 "Use world_contingency when the external world moves first; its resolution "
                 "belongs to a recorded world draw or external observation. Use "
                 "character_choice for an opportunity she can choose to undertake later. "
+                "Its future Plan has not executed: omit authorized_attempt_result from "
+                "those candidates. An existing attempt result belongs to its original "
+                "activity and may be proposed separately as world_contingency. "
                 "Do not narrate her acceptance or independently prescribe a life direction. "
                 "Optional durable effects must follow from that exact candidate, not a "
                 "hope, motive, or future Plan.\n"

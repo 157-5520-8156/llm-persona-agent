@@ -57,6 +57,7 @@ from .life_development_runtime import LifeDevelopmentProposalReader
 from .character_life_experience_runtime import CharacterLifeExperienceRuntime
 from .character_life_response_contract import CharacterLifeResponseRecordedPayload
 from .occurrence_result_content_runtime import OccurrenceResultContentRuntime
+from .outcome_candidate_reader import OutcomeCandidateReader
 from .life_events import (
     OutcomeObservationRecordedPayload,
     OutcomeProposalRecordedPayload,
@@ -503,6 +504,7 @@ class LifeAftermathRuntime:
                     result_id=item.descriptor.result_id,
                     result_payload_ref=item.descriptor.result_payload_ref,
                     result_payload_hash=item.descriptor.result_payload_hash,
+                    result_contract=item.descriptor.result_contract,
                     privacy_class=item.descriptor.privacy_class,
                     content_ref=item.descriptor.content_ref or "",
                     text=item.text,
@@ -952,6 +954,7 @@ class LifeAftermathRuntime:
             adopt_proposed_life_direction=(
                 proposal_payload.adopt_proposed_life_direction
             ),
+            character_life_direction=proposal_payload.character_life_direction,
         )
         settlement_event = self._event(
             event_id="event:life-aftermath:settlement:" + suffix,
@@ -1913,13 +1916,28 @@ class LifeAftermathRuntime:
     ):
         """Offer one source-bound consequence decision to CharacterInterior."""
 
+        structured_candidates = {}
+        if any(item.result_contract == "world-consequence.2" for item in occurrence.candidate_outcomes):
+            # Keep the existing full-text ceiling, but validate each complete
+            # carrier before exposing candidate facts to the role. A hidden or
+            # unreadable offered branch cannot become an opaque selectable token.
+            readable = OutcomeCandidateReader(store=self._content_store, max_characters=12_000).read(
+                occurrence=occurrence, viewer_privacy_ceiling="private",
+            )
+            structured_candidates = {
+                item.candidate_result_ref: item.world_consequence
+                for item in readable.candidates if item.world_consequence is not None
+            }
+            if any(item.result_contract == "world-consequence.2"
+                   and item.candidate_result_ref not in structured_candidates
+                   for item in occurrence.candidate_outcomes):
+                raise ValueError("aftermath world consequence candidate is unavailable to the character")
         candidates = [
             {
                 "token": item.candidate_result_ref,
-                "summary": self._candidate_text(
-                    item.content_ref,
-                    item.content_payload_hash,
-                ),
+                **({"world_consequence": structured_candidates[item.candidate_result_ref].model_dump(mode="json")}
+                   if item.result_contract == "world-consequence.2"
+                   else {"summary": self._candidate_text(item.content_ref, item.content_payload_hash)}),
                 "privacy_class": item.privacy_class,
                 "proposed_objective_direction": (
                     self._proposed_objective_direction(item)

@@ -924,6 +924,7 @@ _LIFE_DEVELOPMENT_POSSIBILITY_VERSIONS = frozenset({
     "life-development-possibility.5",
     "life-development-possibility.6",
     "life-development-possibility.7",
+    "life-development-possibility.8",
 })
 
 
@@ -1194,6 +1195,11 @@ class LifeDevelopmentProposalReader:
             or character_choice.get("decision") != "accept"
         ):
             raise ValueError("accepted life-development Plan has invalid Proposal authority")
+        if payload.get("possibility_authority_version") == "life-development-possibility.8":
+            self._validate_active_source_closure(
+                proposal=payload, possibility_version="life-development-possibility.8",
+                proposal_event=proposal_event,
+            )
         premise_descriptor = possibility.get("premise")
         outcome_values = possibility.get("outcomes")
         claims = possibility.get("claim_declarations")
@@ -1285,6 +1291,12 @@ class LifeDevelopmentProposalReader:
                     "content_payload_hash": descriptor.content_payload_hash,
                 }
             )
+            if descriptor.result_contract == "world-consequence.2":
+                from .occurrence_result_content_runtime import read_world_consequence_candidate
+
+                text = read_world_consequence_candidate(
+                    content_store=self._store, candidate=descriptor,
+                ).text
             outcomes.append(
                 LifeDevelopmentReadableOutcome(
                     descriptor=descriptor,
