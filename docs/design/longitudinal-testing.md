@@ -78,7 +78,10 @@ focused-origin 检查，配置 reviewer 后才使用该模型路径。缺少 rev
 - `evidence.jsonl`：新世界真实事件的增量导出；`manifest.json` 绑定文件 hash、回放检查、运行范围与限制。
 - `review.json`：保留顺序的评审包，去除已知运行版本/供应商管理标签；六维默认 `insufficient`。
 - `model-inputs.jsonl`：真实模型模式在客户端 transport 边界捕获完整 JSON 请求字节及 SHA-256；
-  包含 messages、tools、schema 与输出参数，不记录鉴权头、请求地址或响应正文。文件权限为 0600。
+  包含 messages、tools、schema 与输出参数，不记录鉴权头或请求地址。文件权限为 0600。
+- `model-inputs.jsonl.responses/`：有界保存实际消费的响应字节；JSONL 记录完整、截断、中断或缺失状态。
+  默认单条 2 MiB、总量 32 MiB、最多 1024 个文件。原始流与预加载 fixture 分开标识，前缀 hash
+  不能当成完整响应 hash；完整 HTTP body 也不单独证明模型完成，须核 finish、usage 及账本。
 - `checkpoint-*.sqlite`：关闭并等待后台收尾后的保存点。供本地进一步取证，不包含真实用户生产数据。
 
 `validate_review_annotations` 要求六维完整、理由和有效证据引用；`assessed` 表示有依据地做过判断，
@@ -92,7 +95,8 @@ focused-origin 检查，配置 reviewer 后才使用该模型路径。缺少 rev
 不把这些调度步骤折叠成安静时段，也不把它们解释成角色选择沉默。
 
 捕获成功标为 `captured_client_requests`；写入失败、不可读取的请求或部分覆盖会保留不完整状态，不能
-伪报成功。捕获器不缓冲响应流，记录故障不阻断模型调用；必须联合 usage 和 capture health 核对覆盖。
+伪报成功。捕获器随应用消费逐块写入响应，不预读或等待完整流再交给模型客户端；记录故障不阻断模型
+调用。必须联合 usage 和 capture health 核对覆盖，只有 pending 响应记录不能证明调用未计费。
 捕获区间不证明请求属于同一 pinned turn；发送字节不证明供应商接受、模型关注或后续变化的因果关系。
 导出的模型原文可能包含身份和供应商名称，管理字段隐藏不等于严格盲评。这些私人产物不进入版本控制。
 
