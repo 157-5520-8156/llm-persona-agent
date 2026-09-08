@@ -370,7 +370,7 @@ async def test_actual_started_role_attempt_reaches_production_authority_and_worl
         assert len(author.received) == 1
         actual = json.loads(json.loads(author.received[0])[-1]["content"])
         bindings = actual["execution_authority"]["execution_bindings"]
-        assert actual["capability_manifest"]["version"] == "life-development-capability.production.3"
+        assert actual["capability_manifest"]["version"] == "life-development-capability.production.4"
         assert actual["capability_manifest"]["outcome_contract"] == "world-consequence.2"
         assert [item["source_event_ref"] for item in bindings] == [source_ref]
         (material,) = actual["execution_materials"]

@@ -137,6 +137,11 @@ async def test_unoffered_attempt_returns_exact_failure_to_same_author_once(tmp_p
     assert model.calls == 2
     correction = json.loads(model.messages[1][-1]["content"])
     assert correction["validation_failure"]["code"] == "execution_binding_not_offered"
-    assert "outcome_text" not in correction["hard_boundary_contract"]
+    locator = correction["original_authority"]
+    assert locator["message_index"] == 1
+    assert locator["fields"]["hard_boundary_contract"] == "cross_field_authority"
+    assert model.messages[1][:2] == model.messages[0]
+    original = json.loads(model.messages[1][locator["message_index"]]["content"])
+    assert "outcome_text" not in original[locator["fields"]["hard_boundary_contract"]]
     assert len(arguments["author_deliberation"]["request_bindings"]) == 2
     assert read_world_consequence_author_evidence(**arguments)["authority"]["execution_bindings"] == []

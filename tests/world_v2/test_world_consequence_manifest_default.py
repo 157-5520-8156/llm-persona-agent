@@ -293,7 +293,12 @@ async def test_fresh_author_cannot_downgrade_to_legacy_outcome_text(tmp_path, mo
         assert len(provider.requests) == 2
         correction = json.loads(provider.requests[1]["messages"][-1]["content"])
         assert correction["validation_failure"]["code"] == "outcome_contract_mismatch"
-        assert correction["capability_manifest"]["outcome_contract"] == "world-consequence.2"
+        locator = correction["original_authority"]
+        assert locator["message_index"] == 1
+        assert locator["fields"]["capability_manifest"] == "capability_manifest"
+        assert provider.requests[1]["messages"][:2] == provider.requests[0]["messages"]
+        original = json.loads(provider.requests[1]["messages"][locator["message_index"]]["content"])
+        assert original[locator["fields"]["capability_manifest"]]["outcome_contract"] == "world-consequence.2"
         assert ledger.project().world_occurrences == ()
         assert ledger.project().plans == ()
     finally:
