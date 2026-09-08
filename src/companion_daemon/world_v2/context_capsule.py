@@ -3112,6 +3112,16 @@ class ContextCapsuleCompiler:
     def compile_for_deliberation(self, query: ContextCompileQuery) -> TrustedContextCapsuleHandle:
         return self.finalize_prepared(self.prepare_for_deliberation(query))
 
+    def compile_for_audit_recovery(self, query: ContextCompileQuery) -> ContextCapsule:
+        """Rebuild historical bytes without issuing a new deliberation handle."""
+
+        factory = getattr(self._resolver, "for_audit_recovery", None)
+        if not callable(factory):
+            raise ValueError("Context resolver cannot reconstruct an audited prefix")
+        return ContextCapsuleCompiler(
+            resolver=factory(query), policy=self._policy,
+        ).compile(query)
+
     def prepare_for_deliberation(
         self,
         query: ContextCompileQuery,

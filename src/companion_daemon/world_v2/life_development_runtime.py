@@ -1931,38 +1931,54 @@ class LifeDevelopmentRuntime:
             raw = world_run.final_raw
             world_repair_ordinal = world_run.repair_ordinal
         else:
-            freshly_compiled_capsule = world_capsule
             (
                 raw,
                 world_repair_ordinal,
                 world_audit,
-                recovered_world_capsule,
+                _recovered_world_capsule,
                 recovered_manifest,
             ) = recovered_world
             if recovered_manifest is None:
                 raise ValueError("recovered World Author audit lacks its manifest")
-            if (
-                hashlib.sha256(
-                    freshly_compiled_capsule.model_content_json.encode("utf-8")
-                ).hexdigest()
-                != world_audit.context_model_content_hash
-            ):
+            try:
+                original = self._ledger.project_at(world_audit.context_cursor)
+                if (
+                    original.world_id != self._ledger.world_id
+                    or _cursor(original) != world_audit.context_cursor
+                ):
+                    raise ValueError("recovered Context projection is not its original prefix")
+                query = query_from_projection(
+                    original, actor_ref=self._owner, trigger_ref=wake.event_id,
+                )
+                recover_capsule = getattr(
+                    self._capsule_compiler, "compile_for_audit_recovery", None,
+                )
+                world_capsule = (
+                    recover_capsule(query) if callable(recover_capsule)
+                    else self._capsule_compiler.compile_for_deliberation(query).capsule
+                )
+                if (
+                    _capsule_cursor(world_capsule) != world_audit.context_cursor
+                    or world_capsule.capsule_id != world_audit.capsule_id
+                    or world_capsule.snapshot_hash != world_audit.context_snapshot_hash
+                    or hashlib.sha256(world_capsule.model_content_json.encode("utf-8")).hexdigest()
+                    != world_audit.context_model_content_hash
+                ):
+                    raise ValueError("reconstructed Context differs from its original audit")
+                world_context = compile_life_decision_context(world_capsule)
+                aspirations = active_aspiration_advisories(original)
+                if aspirations:
+                    world_context = {
+                        **world_context,
+                        "active_aspirations": [item.model_dump(mode="json") for item in aspirations],
+                    }
+            except (OSError, sqlite3.Error, TypeError, ValueError, ConcurrencyConflict):
                 return LifeDevelopmentResult(
                     status="technical_failure",
                     reason_code="life_development.recovered_context_bytes_unavailable",
                 )
-            # Deliberation-only audit commits do not change World truth. Reuse
-            # the freshly compiled bytes only after their hash matches the
-            # immutable original audit, while retaining the original capsule
-            # identity and cursor for every subsequent reviewer/rewrite audit.
-            world_capsule = _PinnedIdentity(
-                capsule_id=recovered_world_capsule.capsule_id,
-                snapshot_hash=recovered_world_capsule.snapshot_hash,
-                world_revision=recovered_world_capsule.world_revision,
-                deliberation_revision=recovered_world_capsule.deliberation_revision,
-                ledger_sequence=recovered_world_capsule.ledger_sequence,
-                model_content_json=freshly_compiled_capsule.model_content_json,
-            )
+            # All reviewers and rewrites reuse the original capsule and
+            # context bytes, including its original complete ledger cursor.
             world_manifest = recovered_manifest
             world_cursor = world_audit.context_cursor
             draft = parse_world_author_draft(

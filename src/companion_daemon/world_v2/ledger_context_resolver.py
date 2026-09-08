@@ -1353,6 +1353,77 @@ def historical_fact_recall_items(
     return tuple(output)
 
 
+class _AuditRecoveryLedger:
+    """A read-only ledger prefix for all nested Context readers."""
+
+    def __init__(self, ledger: LedgerPort, projection: LedgerProjection) -> None:
+        self._ledger = ledger
+        self._projection = projection
+        self.world_id = projection.world_id
+        self._cursor = ProjectionCursor(
+            world_revision=projection.world_revision,
+            deliberation_revision=projection.deliberation_revision,
+            ledger_sequence=projection.ledger_sequence,
+        )
+
+    def _require_prefix(self, cursor: ProjectionCursor) -> None:
+        if any(getattr(cursor, key) > getattr(self._cursor, key) for key in (
+            "world_revision", "deliberation_revision", "ledger_sequence",
+        )):
+            raise ValueError("Context recovery read exceeds its audited prefix")
+
+    def project(self) -> LedgerProjection:
+        return self._projection
+
+    def project_at(self, cursor: ProjectionCursor) -> LedgerProjection:
+        self._require_prefix(cursor)
+        return self._projection if cursor == self._cursor else self._ledger.project_at(cursor)
+
+    def lookup_event_commit(self, event_id: str):
+        found = self._ledger.lookup_event_commit(event_id)
+        if found is None:
+            return None
+        event, commit = found
+        if event.world_id != self.world_id or event.event_id not in commit.event_ids:
+            raise ValueError("Context recovery event lacks its exact World commit")
+        try:
+            self._require_prefix(ProjectionCursor(
+                world_revision=commit.world_revision,
+                deliberation_revision=commit.deliberation_revision,
+                ledger_sequence=commit.ledger_sequence,
+            ))
+        except ValueError:
+            return None
+        return found
+
+    def observation_events_at(self, locators, *, cursor: ProjectionCursor):
+        self._require_prefix(cursor)
+        return self._ledger.observation_events_at(locators, cursor=cursor)
+
+    def recent_fact_transition_events(self, *, subject_refs, cursor: ProjectionCursor, limit):
+        self._require_prefix(cursor)
+        return self._ledger.recent_fact_transition_events(
+            subject_refs=subject_refs, cursor=cursor, limit=limit,
+        )
+
+    def resolve_committed_event_refs(self, event_ids, *, at_world_revision: int):
+        if at_world_revision > self._cursor.world_revision or any(
+            self.lookup_event_commit(event_id) is None for event_id in event_ids
+        ):
+            raise ValueError("Context recovery source exceeds its audited prefix")
+        return self._ledger.resolve_committed_event_refs(
+            event_ids, at_world_revision=at_world_revision,
+        )
+
+    def resolve_initial_world_event_ref(self, *, at_world_revision: int):
+        if at_world_revision > self._cursor.world_revision:
+            raise ValueError("Context recovery source exceeds its audited prefix")
+        ref = self._ledger.resolve_initial_world_event_ref(at_world_revision=at_world_revision)
+        if self.lookup_event_commit(ref.event_id) is None:
+            raise ValueError("Context recovery initial World source is unavailable")
+        return ref
+
+
 class LedgerProjectionContextResolver(TrustedInternalContextResolver):
     """Resolve Context domains from exactly one ledger projection cursor."""
 
@@ -1390,6 +1461,21 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         ):
             raise ValueError("biographical Context catalog does not match its timeline authority")
         self._ledger = ledger
+        # Reconstruct the same configured readers at an audited prefix. In
+        # particular, nested activity readers must not consult the live head.
+        self._audit_recovery_options = {
+            "situation_compiler": situation_compiler,
+            "relevance_scope": relevance_scope,
+            "life_content_store": life_content_store,
+            "perception_result_reader": perception_result_reader,
+            "expression_payload_store": expression_payload_store,
+            "recall_coordinator": recall_coordinator,
+            "biographical_catalog": biographical_catalog,
+            "biographical_timezone_name": biographical_timezone_name,
+            "biographical_timeline": biographical_timeline,
+            "reviewed_npc_identity_summaries": reviewed_npc_identity_summaries,
+            "archive_ledger": archive_ledger,
+        }
         self._archive_ledger = archive_ledger
         self._situation_compiler = situation_compiler
         self._relevance_scope = relevance_scope
@@ -1446,6 +1532,14 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         self._resolve_calls = 0
         self._resolve_cache_hits = 0
         self._resolve_cache_misses = 0
+
+    def for_audit_recovery(self, query: ContextCompileQuery) -> LedgerProjectionContextResolver:
+        projection = self._ledger.project_at(query.cursor)
+        self._validate_projection(query, projection)
+        return LedgerProjectionContextResolver(
+            ledger=_AuditRecoveryLedger(self._ledger, projection),
+            **self._audit_recovery_options,
+        )
 
     def _biographical_timeline_source(
         self,

@@ -212,7 +212,9 @@ class _PinnedCapsuleCompiler:
         self._context = context
 
     def compile_for_deliberation(self, _query):  # type: ignore[no-untyped-def]
-        projection = self._ledger.project()
+        projection = (
+            self._ledger.project_at(_query.cursor) if _query is not None else self._ledger.project()
+        )
         context = self._context or {
             "inner_life_snapshot": {
                 "character_core": {"values": ["autonomy"]},
