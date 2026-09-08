@@ -58,6 +58,11 @@ self-history 同时区分平台接受与已交付，删除“每个期待都会�
 已作决定但内容存储暂时失败后的恢复与不重复采纳。集成后 77 项相关回归通过；这仍
 是 fixture 角色的机制证据，尚不能证明实际模型愿意记住重要经历。
 
+两项修复集成点 `277d088c` 的完整 120 场景冻结门禁也通过。所有 manifest 字段及
+整文件字节与上一基线一致：语义 hash 仍为 `8f3579b38dbc6895330db8f02bbbbbf12eb78604d11d2f3f5424724313459f60`，
+JSON SHA-256 仍为 `56ad03ebc1649166ab3089f21526ab5f6f955864a8872b8d829df746cc9ce1d3`。
+证据为 `baseline-receipt-experience.json`，基线版本 `.99` 未调整；仍只代表固定离线机制。
+
 ## 已确认问题与机制修复
 
 - compact `reply_only` 与 `full_turn` 曾无条件把角色的 `world_claims` 清空。现在保留其原文、
