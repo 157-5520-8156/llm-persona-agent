@@ -17,7 +17,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from .context_capsule import ResolvedSourceBinding, source_bindings_hash
-from .world_life_context import ActiveActivityContextItem, CompletedActivityContextItem
+from .world_life_context import ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem
 
 
 VISIBLE_SOURCE_CLOSURE_CONTRACT = "visible-beat-source-verdict.1"
@@ -433,6 +433,7 @@ def _activity_support(
     activity_type = {
         "active_activity": ActiveActivityContextItem,
         "completed_activity": CompletedActivityContextItem,
+        "planned_activity": PlannedActivityContextItem,
     }.get(context_kind)
     if activity_type is None:
         return None
@@ -446,7 +447,7 @@ def _activity_support(
         return None
     intention = activity.accepted_intention
     if (
-        len(bindings) != 2
+        len(bindings) != (1 if isinstance(activity, PlannedActivityContextItem) else 2)
         or source_bindings_hash(bindings) != item.get("source_hash")
         or activity.activity_event_ref != source_ref
         or item.get("privacy_class") != activity.privacy_class
@@ -455,6 +456,24 @@ def _activity_support(
         != intention.content_payload_hash
     ):
         return None
+    if isinstance(activity, PlannedActivityContextItem):
+        planned = activity.source_bindings[0]
+        binding = bindings[0]
+        if (
+            planned.authority_event_ref != source_ref
+            or binding.ref != source_ref
+            or binding.source_kind != "committed_event"
+            or binding.authority_type != "ActivityPlanned"
+            or binding.source_world_revision != planned.authority_world_revision
+            or binding.immutable_hash != planned.authority_payload_hash
+        ):
+            return None
+        return activity.owner_actor_ref, {
+            "contract": "visible-planned-activity-source.1",
+            "status": "planned",
+            "source_event_type": "ActivityPlanned",
+            "scope": activity.planning_scope,
+        }
     planned, lifecycle = activity.source_bindings
     if (
         planned.authority_event_ref == lifecycle.authority_event_ref
@@ -726,6 +745,18 @@ def visible_source_closure_messages(
                     "Neither establishes intention fulfillment, embedded history, location "
                     "presence or objective outcome. accepted_intention remains intention-only; "
                     "private material does not become authorized for disclosure."
+                ),
+            }
+        if any(
+            row.get("activity_support", {}).get("contract") == "visible-planned-activity-source.1"
+            for row in source_references
+        ):
+            packet["planned_activity_support_contract"] = {
+                "contract": "visible-planned-activity-source.1",
+                "scope": (
+                    "The exact ActivityPlanned ref proves only an accepted intention and its "
+                    "scheduled window. It proves no started activity, location presence, "
+                    "past experience, embedded backstory, completion or objective outcome."
                 ),
             }
     messages = [

@@ -145,6 +145,33 @@ class ActiveActivityContextItem(FrozenModel):
     ]
 
 
+class PlannedActivityContextItem(FrozenModel):
+    """An accepted future intention, without present activity or outcome authority."""
+
+    context_kind: Literal["planned_activity"] = "planned_activity"
+    activity_event_ref: str = Field(min_length=1)
+    plan_id: str = Field(min_length=1)
+    plan_entity_revision: Literal[1] = 1
+    owner_actor_ref: str = Field(min_length=1)
+    activity_kind: str = Field(min_length=1)
+    status: Literal["planned"] = "planned"
+    scheduled_window: DueWindow
+    planning_scope: Literal["accepted_plan_not_started_or_completed"] = (
+        "accepted_plan_not_started_or_completed"
+    )
+    privacy_class: PrivacyClass
+    accepted_intention: AcceptedActivityIntention
+    proposal_source: ActiveWorldOccurrenceProposalBinding
+    source_bindings: tuple[WorldLifeSourceBinding]
+
+
+class PlannedActivityReader(Protocol):
+    def read_planned_plan(
+        self, *, plan_id: str, expected_cursor: ProjectionCursor,
+        actor_ref: str, viewer_privacy_ceiling: PrivacyClass,
+    ) -> PlannedActivityContextItem | None: ...
+
+
 class ActiveActivityReader(Protocol):
     def read_active_plan(
         self,
@@ -270,6 +297,7 @@ WorldLifeModelContextItem = (
     WorldLifeContextItem
     | ActiveWorldOccurrenceContextItem
     | ActiveActivityContextItem
+    | PlannedActivityContextItem
     | CompletedActivityContextItem
     | BiographicalWorldContextItem
 )
@@ -284,6 +312,7 @@ class WorldLifeContextCompiler:
         life_content: LifeContentCompiler | None = None,
         active_occurrence_reader: ActiveWorldOccurrenceReader | None = None,
         active_activity_reader: ActiveActivityReader | None = None,
+        planned_activity_reader: PlannedActivityReader | None = None,
         completed_activity_reader: CompletedActivityReader | None = None,
         biography: BiographicalLifecycleCatalog | None = None,
         biography_timezone: ZoneInfo | None = None,
@@ -291,6 +320,7 @@ class WorldLifeContextCompiler:
         self._life_content = life_content
         self._active_occurrence_reader = active_occurrence_reader
         self._active_activity_reader = active_activity_reader
+        self._planned_activity_reader = planned_activity_reader
         self._completed_activity_reader = completed_activity_reader
         self._biography = biography
         self._biography_timezone = biography_timezone
@@ -493,9 +523,34 @@ class WorldLifeContextCompiler:
                     completed_activities.append(ended)
                     if len(completed_activities) == 3:
                         break
+        planned_activities: list[PlannedActivityContextItem] = []
+        if cursor is not None and self._planned_activity_reader is not None:
+            for plan in projection.plans:
+                if plan.status != "planned" or plan.owner_actor_ref != actor_ref:
+                    continue
+                planned = self._planned_activity_reader.read_planned_plan(
+                    plan_id=plan.plan_id, expected_cursor=cursor, actor_ref=actor_ref,
+                    viewer_privacy_ceiling=viewer_privacy_ceiling,
+                )
+                if planned is not None and (
+                    plan.authority_origin is not None
+                    and planned.plan_id == plan.plan_id
+                    and planned.plan_entity_revision == plan.entity_revision
+                    and planned.owner_actor_ref == actor_ref
+                    and planned.activity_event_ref == plan.authority_origin.accepted_event_ref
+                    and planned.activity_kind == plan.activity_kind
+                    and planned.scheduled_window == plan.scheduled_window
+                    and planned.privacy_class == plan.privacy_class
+                    and planned.accepted_intention.content_ref not in user_channel_limited_content_refs
+                ):
+                    planned_activities.append(planned)
+        planned_activities.sort(key=lambda item: (
+            item.scheduled_window.opens_at, item.activity_event_ref,
+        ))
         return (
             ((biography,) if biography is not None else ())
-            + tuple(activities) + tuple(completed_activities) + active + settled
+            + tuple(activities) + tuple(completed_activities) + tuple(planned_activities)
+            + active + settled
         )
 
     def _biographical_item(

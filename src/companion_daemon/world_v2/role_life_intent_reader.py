@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 
 from .life_events import ActivityPlannedPayload
-from .schemas import ProjectionCursor
+from .schemas import ProjectionCursor, WorldEvent
 
 
 class RoleLifeIntentActivityReader:
@@ -41,6 +41,7 @@ class RoleLifeIntentActivityReader:
             AcceptedActivityIntention,
             ActiveActivityContextItem,
             CompletedActivityContextItem,
+            PlannedActivityContextItem,
             ActiveWorldOccurrenceProposalBinding,
             WorldLifeSourceBinding,
         )
@@ -66,27 +67,37 @@ class RoleLifeIntentActivityReader:
         validate_plan_authority_state(
             (plan,), projection.committed_world_event_refs, logical_time=projection.logical_time
         )
+        if plan.authority_origin is None:
+            return None
         authority = {x.event_id: x for x in projection.committed_world_event_refs}
         bindings = []
         planned = None
-        for event_ref, event_type in (
+        event_coordinates = (
             (self._event_prefix + plan_id.removeprefix(self._plan_prefix), "ActivityPlanned"),
             (plan.authority_origin.accepted_event_ref, plan.authority_origin.accepted_event_type),
-        ):
+        )
+        for event_ref, event_type in dict.fromkeys(event_coordinates):
             ref = authority.get(event_ref)
             located = self._ledger.lookup_event_commit(event_ref)
+            if located is not None:
+                located = (
+                    WorldEvent.model_validate_json(located[0].model_dump_json()), located[1],
+                )
             if (
                 ref is None
                 or located is None
                 or any(
                     (
                         ref.event_type != event_type,
+                        located[0].event_id != event_ref,
+                        event_ref not in located[1].event_ids,
                         located[0].event_type != event_type,
                         located[0].world_id != self._ledger.world_id,
                         located[0].payload_hash != ref.payload_hash,
                         located[0].logical_time != ref.logical_time,
                         located[1].ledger_sequence > cursor.ledger_sequence,
                         located[1].world_revision > cursor.world_revision,
+                        located[1].deliberation_revision > cursor.deliberation_revision,
                     )
                 )
             ):
@@ -120,12 +131,20 @@ class RoleLifeIntentActivityReader:
             return None
         origin = getattr(planned, self._origin_field)
         proposal = self._ledger.lookup_event_commit(origin.proposal_event_ref)
+        if proposal is not None:
+            proposal = (
+                WorldEvent.model_validate_json(proposal[0].model_dump_json()), proposal[1],
+            )
         if proposal is None or any(
             (
                 proposal[0].event_type != "ProposalRecorded",
+                proposal[0].event_id != origin.proposal_event_ref,
+                origin.proposal_event_ref not in proposal[1].event_ids,
                 proposal[0].world_id != self._ledger.world_id,
                 proposal[0].payload_hash != origin.proposal_payload_hash,
                 proposal[1].ledger_sequence > cursor.ledger_sequence,
+                proposal[1].world_revision > cursor.world_revision,
+                proposal[1].deliberation_revision > cursor.deliberation_revision,
             )
         ):
             return None
@@ -144,9 +163,11 @@ class RoleLifeIntentActivityReader:
             cursor.ledger_sequence,
         ):
             return None
-        item_type = (
-            ActiveActivityContextItem if status == "active" else CompletedActivityContextItem
-        )
+        item_type = {
+            "active": ActiveActivityContextItem,
+            "completed": CompletedActivityContextItem,
+            "planned": PlannedActivityContextItem,
+        }[status]
         state_coordinates = (
             {
                 "participant_refs": plan.participant_refs,
@@ -154,6 +175,8 @@ class RoleLifeIntentActivityReader:
                 "active_since": plan.authority_origin.accepted_at,
             }
             if status == "active"
+            else {"scheduled_window": plan.scheduled_window}
+            if status == "planned"
             else {"ended_at": plan.authority_origin.accepted_at}
         )
         return item_type(

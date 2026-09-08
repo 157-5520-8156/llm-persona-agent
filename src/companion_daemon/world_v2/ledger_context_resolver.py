@@ -87,9 +87,9 @@ from .life_content import LifeContentCompiler, collect_user_channel_limited_cont
 from .private_impression_events import collect_user_channel_limited_impression_ids
 from .life_content_store import ImmutableLifeContentStore
 from .life_development_runtime import LifeDevelopmentProposalReader
-from .chat_life_intent_runtime import ChatLifeIntentActiveReader, ChatLifeIntentCompletedReader, CompositeActiveActivityReader, CompositeCompletedActivityReader
-from .world_life_intent_runtime import WorldLifeIntentActiveReader, WorldLifeIntentCompletedReader
-from .day_open_life_intent_runtime import DayOpenLifeIntentActiveReader, DayOpenLifeIntentCompletedReader
+from .chat_life_intent_runtime import ChatLifeIntentActiveReader, ChatLifeIntentCompletedReader, ChatLifeIntentPlannedReader, CompositeActiveActivityReader, CompositeCompletedActivityReader, CompositePlannedActivityReader
+from .world_life_intent_runtime import WorldLifeIntentActiveReader, WorldLifeIntentCompletedReader, WorldLifeIntentPlannedReader
+from .day_open_life_intent_runtime import DayOpenLifeIntentActiveReader, DayOpenLifeIntentCompletedReader, DayOpenLifeIntentPlannedReader
 from .life_events import NpcRegisteredPayload
 from .npc_identity_view import npc_identity_views
 from .perception_result_context import (
@@ -144,6 +144,7 @@ from .situation_compiler import SituationCompiler, request_from_ledger_projectio
 from .world_life_context import (
     ActiveActivityContextItem,
     CompletedActivityContextItem,
+    PlannedActivityContextItem,
     ActiveWorldOccurrenceContextItem,
     BiographicalWorldContextItem,
     WorldLifeContextCompiler,
@@ -292,7 +293,7 @@ def _item_ref(slice_name: SliceName, item: BaseModel) -> str:
             item,
             (
                 "activity_event_ref"
-                if slice_name == "world_life" and isinstance(item, (ActiveActivityContextItem, CompletedActivityContextItem))
+                if slice_name == "world_life" and isinstance(item, (ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem))
                 else "biography_id"
                 if slice_name == "world_life" and isinstance(item, BiographicalWorldContextItem)
                 else "influence_id"
@@ -356,7 +357,7 @@ def _typed_refs(item: BaseModel, *, observation_aliases: dict[str, str]) -> tupl
                 )
             )
         )
-    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem)):
+    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem)):
         return tuple(sorted(binding.authority_event_ref for binding in item.source_bindings))
     if isinstance(item, WorldLifeContextItem):
         refs = {item.source.authority_event_ref}
@@ -553,7 +554,7 @@ def _typed_authority_claims(
                 )
             )
         )
-    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem)):
+    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem)):
         return tuple(
             sorted(
                 (
@@ -1493,6 +1494,11 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         self._reviewed_npc_identity_summaries = reviewed_npc_identity_summaries or {}
         self._world_life = WorldLifeContextCompiler(
             life_content=self._life_content,
+            planned_activity_reader=CompositePlannedActivityReader(
+                ChatLifeIntentPlannedReader(ledger=ledger),
+                WorldLifeIntentPlannedReader(ledger=ledger),
+                DayOpenLifeIntentPlannedReader(ledger=ledger),
+            ),
             completed_activity_reader=CompositeCompletedActivityReader(
                 ChatLifeIntentCompletedReader(ledger=ledger),
                 WorldLifeIntentCompletedReader(ledger=ledger),

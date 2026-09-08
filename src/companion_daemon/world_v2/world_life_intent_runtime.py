@@ -232,6 +232,11 @@ class _WorldLifeIntentActivityReader(RoleLifeIntentActivityReader):
         )
 
 
+class WorldLifeIntentPlannedReader(_WorldLifeIntentActivityReader):
+    def read_planned_plan(self, **kwargs):
+        return self._read(**kwargs, status="planned")
+
+
 class WorldLifeIntentActiveReader(_WorldLifeIntentActivityReader):
     def read_active_plan(self, **kwargs):
         return self._read(**kwargs, status="active")

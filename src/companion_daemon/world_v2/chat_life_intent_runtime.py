@@ -347,6 +347,11 @@ class _ChatLifeIntentActivityReader(RoleLifeIntentActivityReader):
             validate=validate_chat_life_plan_event,
         )
 
+class ChatLifeIntentPlannedReader(_ChatLifeIntentActivityReader):
+    def read_planned_plan(self, **kwargs):
+        return self._read(**kwargs, status="planned")
+
+
 class ChatLifeIntentActiveReader(_ChatLifeIntentActivityReader):
     def read_active_plan(self, **kwargs):
         return self._read(**kwargs, status="active")
@@ -378,6 +383,18 @@ class CompositeCompletedActivityReader:
     def read_completed_plan(self, **kwargs):
         for reader in self._readers:
             value = reader.read_completed_plan(**kwargs)
+            if value is not None:
+                return value
+        return None
+
+
+class CompositePlannedActivityReader:
+    def __init__(self, *readers) -> None:
+        self._readers = tuple(x for x in readers if x is not None)
+
+    def read_planned_plan(self, **kwargs):
+        for reader in self._readers:
+            value = reader.read_planned_plan(**kwargs)
             if value is not None:
                 return value
         return None

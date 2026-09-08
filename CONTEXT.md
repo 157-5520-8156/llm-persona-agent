@@ -28,6 +28,12 @@ A sourced, confirmed fact about the user. A current User Fact may supersede an o
 
 An intention or scheduled future activity that has not happened. A Plan is never an Experience.
 
+An accepted self-directed Plan from chat, a World Life Response, or day opening
+retains its original role-authored intention in `planned_activities` before it
+starts. This source-bound view proves the intention and scheduled window only;
+it grants no present location, started activity, embedded history or completed
+outcome. Other Plan producers require their own verified readers.
+
 ## Biographical Context
 
 A source-bound reading of age, academic/calendar phase, current residence

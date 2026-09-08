@@ -729,6 +729,12 @@ def _world_life_occurrence_source_tokens(
         kind = value.get("context_kind") if isinstance(value, dict) else None
         if kind == "biographical_context":
             continue
+        if kind == "planned_activity":
+            # The plan's existence is current intention authority, never an
+            # occurrence, past experience or current location/activity proof.
+            if include_active:
+                tokens.update(_planned_activity_item_source_tokens(item))
+            continue
         if kind == "completed_activity":
             # The accepted intention and its original Plan binding remain
             # readable audit material; only the actual ending is a past fact.
@@ -739,6 +745,25 @@ def _world_life_occurrence_source_tokens(
             continue
         tokens.update(_context_item_source_tokens(item))
     return tokens - _context_entity_identity_tokens(context)
+
+
+def _planned_activity_item_source_tokens(item: dict[str, object]) -> set[str]:
+    source_ref = item.get("source_ref", item.get("item_ref"))
+    bindings = item.get("source_bindings")
+    if not isinstance(source_ref, str) or not isinstance(bindings, list):
+        return set()
+    return {
+        source_ref
+        for binding in bindings
+        if isinstance(binding, dict)
+        and binding.get("ref") == source_ref
+        and binding.get("source_kind") == "committed_event"
+        and binding.get("authority_type") == "ActivityPlanned"
+        and isinstance(binding.get("source_world_revision"), int)
+        and binding["source_world_revision"] > 0
+        and isinstance(binding.get("immutable_hash"), str)
+        and len(binding["immutable_hash"]) == 64
+    }
 
 
 def _completed_activity_item_source_tokens(item: dict[str, object]) -> set[str]:

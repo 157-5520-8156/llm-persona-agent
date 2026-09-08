@@ -399,6 +399,11 @@ class _DayOpenLifeIntentReader(RoleLifeIntentActivityReader):
         )
 
 
+class DayOpenLifeIntentPlannedReader(_DayOpenLifeIntentReader):
+    def read_planned_plan(self, **kwargs):
+        return self._read(**kwargs, status="planned")
+
+
 class DayOpenLifeIntentActiveReader(_DayOpenLifeIntentReader):
     def read_active_plan(self, **kwargs):
         return self._read(**kwargs, status="active")

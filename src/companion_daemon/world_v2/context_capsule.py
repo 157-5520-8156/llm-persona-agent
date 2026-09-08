@@ -43,6 +43,7 @@ from .situation_compiler import SituationProjection
 from .world_life_context import (
     ActiveActivityContextItem,
     CompletedActivityContextItem,
+    PlannedActivityContextItem,
     ActiveWorldOccurrenceContextItem,
     BiographicalWorldContextItem,
     WorldLifeContextItem,
@@ -1122,7 +1123,7 @@ def _values(bound: ResolvedSlice[object]) -> tuple[BaseModel, ...]:
 def _identity(slice_name: SliceName, item: BaseModel) -> str:
     field = (
         "activity_event_ref"
-        if slice_name == "world_life" and isinstance(item, (ActiveActivityContextItem, CompletedActivityContextItem))
+        if slice_name == "world_life" and isinstance(item, (ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem))
         else "biography_id"
         if slice_name == "world_life" and isinstance(item, BiographicalWorldContextItem)
         else "influence_id"
@@ -1236,7 +1237,7 @@ def derived_privacy_floor(slice_name: SliceName, item: BaseModel) -> PrivacyClas
             typed.append(item.content.privacy_class)
     if slice_name == "world_life" and isinstance(
         item,
-        (WorldLifeContextItem, ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem),
+        (WorldLifeContextItem, ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem),
     ):
         typed.append(item.privacy_class)
     if slice_name == "relevant_facts":
@@ -1279,7 +1280,7 @@ def _typed_source_refs(slice_name: SliceName, item: BaseModel) -> tuple[str, ...
             refs.add(item.content.descriptor_event_ref)
         return tuple(sorted(refs))
     if slice_name == "world_life" and isinstance(
-        item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem)
+        item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem)
     ):
         return tuple(sorted(binding.authority_event_ref for binding in item.source_bindings))
     if slice_name == "world_life" and isinstance(item, BiographicalWorldContextItem):
@@ -1434,7 +1435,7 @@ def _typed_source_authorities(item: BaseModel) -> tuple[tuple[str, str, int, str
                 )
             )
         return tuple(sorted(authorities))
-    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem)):
+    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem)):
         return tuple(
             sorted(
                 (

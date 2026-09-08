@@ -23,10 +23,12 @@ from .world_life_context import (
     ActiveActivityContextItem,
     BiographicalWorldContextItem,
     CompletedActivityContextItem,
+    PlannedActivityContextItem,
 )
 
 
 VISIBLE_SOURCE_TABLE_CONTRACT = "visible-source-row-table.1"
+PLANNED_SOURCE_TABLE_CONTRACT = "visible-source-row-table.2"
 
 
 def _json(value: object) -> str:
@@ -99,6 +101,7 @@ def _world_entries(capsule: ContextCapsule) -> tuple[list[dict], dict, set[str]]
     world_types = {
         "active_activity": ActiveActivityContextItem,
         "completed_activity": CompletedActivityContextItem,
+        "planned_activity": PlannedActivityContextItem,
         "biographical_context": BiographicalWorldContextItem,
     }
     for lane in ("current_situation", "world_life"):
@@ -246,8 +249,12 @@ def compile_visible_source_table(
     if report is not None:
         entries.append(report)
     rows, materials = _indexed_materials(entries, proof["subjects"])
+    includes_planned = any(
+        entry.get("item", {}).get("value", {}).get("context_kind") == "planned_activity"
+        for entry in entries
+    )
     payload = {
-        "contract": VISIBLE_SOURCE_TABLE_CONTRACT,
+        "contract": PLANNED_SOURCE_TABLE_CONTRACT if includes_planned else VISIBLE_SOURCE_TABLE_CONTRACT,
         "pin": proof["visible_review_projection"],
         "additional_selection": selections,
         "coverage_scope": "selected_situation_activity_biography_fact_dialogue_only",

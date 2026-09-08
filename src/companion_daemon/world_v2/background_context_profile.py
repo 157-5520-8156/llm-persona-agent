@@ -181,6 +181,7 @@ _CHARACTER_CONTINUITY_MATERIALS = (
     "week_diary",
     "situation",
     "current_activities",
+    "planned_activities",
     "recently_ended_activities",
     "relationship",
     "protagonist_npc_relationships",
@@ -235,7 +236,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
         capsule_slices=_LIFE_ECOLOGY_CAPSULE_SLICES,
         # This typed item carries the protagonist's accepted inner intention.
         # Her own continuity may read it; an external World Author may not.
-        capsule_item_exclusions={"world_life": frozenset({"active_activity", "completed_activity"})},
+        capsule_item_exclusions={"world_life": frozenset({"active_activity", "completed_activity", "planned_activity"})},
         capsule_slice_limits={
             "recent_experiences": 4,
             "world_life": 6,
