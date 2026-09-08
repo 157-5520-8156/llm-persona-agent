@@ -34,6 +34,7 @@ from .life_content_events import LifeContentRecordedPayload
 from ..llm import model_call_scope
 from .life_author_seed import ReviewedLifeSeedCatalog
 from .npc_actor_profile import compile_npc_actor_profile
+from .npc_civil_time import NpcCivilTime, compile_npc_civil_time
 from .npc_ecology_occasion import (
     NPC_DECISION_OPPORTUNITY_MASS_BP,
     NPC_WEEKLY_ACTOR_DECISION_CAP,
@@ -159,6 +160,7 @@ class NpcSocialWorldSnapshot(FrozenModel):
     available_npc_refs: tuple[str, ...]
     available_location_refs: tuple[str, ...]
     recent_occurrence_refs: tuple[str, ...]
+    civil_time: NpcCivilTime = Field(default_factory=NpcCivilTime)
 
 
 class NpcActorDecision(FrozenModel):
@@ -426,6 +428,10 @@ class NpcEcology:
             available_npc_refs=available_npcs,
             available_location_refs=tuple(sorted(locations)),
             recent_occurrence_refs=recent_occurrences,
+            civil_time=compile_npc_civil_time(
+                ledger=self._ledger, projection=projection,
+                catalog_timezone_name=getattr(self._catalog, "timezone_name", None),
+            ),
         )
 
     def has_due_work(self, *, projection: object) -> bool:
@@ -950,6 +956,7 @@ class NpcEcology:
             identity=selected_identity,
             logical_time=snapshot.logical_time,
             pending_impulse_summary=pending_impulse_summary,
+            civil_time=snapshot.civil_time,
         )
         payload = {
             "stimulus": stimulus.model_dump(mode="json"),
@@ -968,7 +975,7 @@ class NpcEcology:
                 "role": "one_npc_actor",
                 "selected_npc_ref": selected_npc_ref,
                 "system_does_not_choose_motive": True,
-                "clock_is_opportunity_not_fact": True,
+                "clock_proves_time_only": True,
                 "input_event_refs": self._actor_context_event_refs(
                     stimulus=stimulus,
                     snapshot=snapshot,
@@ -990,6 +997,9 @@ class NpcEcology:
             "the NPC's own concrete timing (now/later), premise, participants, location, "
             "duration, visibility and, for later, free activity/timing/importance. The World "
             "Author cannot invent these choices. Exact refs must come from the supplied world. "
+            "Civil-time source bindings authorize only their displayed time fields, "
+            "not other biography fields. Clock proves time, not weather, activity, "
+            "motive or location. Unavailable civil time must not be inferred from place refs. "
             "Do not narrate a completed send or reply through the user's chat channel; that "
             "is Action-ledger territory. NPC self-life remains allowed. "
             "The following contract controls only JSON shape and authority closure; it does not "
@@ -1258,6 +1268,7 @@ class NpcEcology:
             *stimulus.source_event_refs,
             *selected.source_refs,
             *selected.private_source_refs,
+            *snapshot.civil_time.source_refs,
         }
         if not set(decision.source_refs).issubset(allowed_sources):
             return "npc_ecology.source_closure_failed"
@@ -1356,11 +1367,16 @@ class NpcEcology:
                     *stimulus.source_event_refs,
                     *selected.source_refs,
                     *selected.private_source_refs,
+                    *snapshot.civil_time.source_refs,
                 }
                 & committed
             )
         )
-        return refs[-32:]
+        # Both displayed time fields must retain their provenance within the
+        # existing input/effect source budget; do not raise that budget.
+        time_refs = set(snapshot.civil_time.source_refs) & committed
+        other_refs = tuple(ref for ref in refs if ref not in time_refs)
+        return tuple(sorted((*time_refs, *other_refs[-(32 - len(time_refs)) :])))
 
     def _model_audit_events(
         self, *, role: Literal["actor", "world"], attempts, stimulus, wake, npc_ref

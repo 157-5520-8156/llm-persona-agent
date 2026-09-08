@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .npc_identity_view import NpcIdentityView
+from .npc_civil_time import NpcCivilTime
 
 
 def compile_npc_actor_profile(
@@ -10,6 +11,7 @@ def compile_npc_actor_profile(
     identity: NpcIdentityView,
     logical_time: object,
     pending_impulse_summary: str | None = None,
+    civil_time: NpcCivilTime | None = None,
 ) -> dict[str, object]:
     """Compile the NPC Actor Profile: one actor, no protagonist interior."""
 
@@ -41,6 +43,7 @@ def compile_npc_actor_profile(
         "now": {
             "logical_time": logical_time_text,
             "current_location_ref": identity.current_location_ref,
+            "civil_time": (civil_time or NpcCivilTime()).model_dump(mode="json"),
         },
         "private_source_refs": list(identity.private_source_refs),
     }

@@ -268,6 +268,7 @@ def test_npc_snapshot_never_reads_or_surfaces_protagonist_private_affect() -> No
         "available_npc_refs",
         "available_location_refs",
         "recent_occurrence_refs",
+        "civil_time",
     }
 
 
