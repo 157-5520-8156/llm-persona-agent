@@ -41,14 +41,20 @@ def world_life_response_source_refs(
             ),
             None,
         )
-        if selected is not None and selected.result_contract == "world-consequence.2":
+        if (
+            selected is not None
+            and selected.result_contract == "world-consequence.2"
+            and occurrence.visibility != "withhold"
+            and selected.privacy_class != "withhold"
+        ):
             allowed.append(ref)
     return tuple(sorted(set(allowed)))
 
 
 def world_life_response_capability(*, state, source_events, owner_actor_ref: str) -> dict | None:
-    # Reuse exact event/world/hash/privacy participation checks before exposing
-    # the narrower response capability. An unselected candidate grants nothing.
+    # Reuse exact event/world/hash/participation checks. The narrower .2
+    # response selector also enforces occurrence and selected-result privacy;
+    # the older Plan source reader does not provide that privacy check.
     life = world_life_intent_capability(
         state=state, source_events=source_events, owner_actor_ref=owner_actor_ref
     )

@@ -38,6 +38,7 @@ from .world_consequence_contract import WorldConsequenceV2
 
 
 SOURCE = "world-v2:character-life-experience"
+_PRIVACY_RANK = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}
 
 
 def _canonical(value) -> str:
@@ -104,6 +105,7 @@ def validate_character_life_experience_binding(*, state, world_id: str, binding)
             origin.source_payload_hash != source.authority_payload_hash,
             occurrence is None,
             occurrence is not None and occurrence.status != "settled",
+            occurrence is not None and occurrence.visibility == "withhold",
             occurrence is not None
             and occurrence.entity_revision != source.occurrence_entity_revision,
             occurrence is not None and occurrence.result_id != source.result_id,
@@ -118,6 +120,7 @@ def validate_character_life_experience_binding(*, state, world_id: str, binding)
             occurrence is not None and response.actor_ref not in occurrence.participant_refs,
             selected is None,
             selected is not None and selected.result_contract != "world-consequence.2",
+            selected is not None and selected.privacy_class == "withhold",
             selected is not None and selected.result_id != source.result_id,
             selected is not None and selected.result_payload_ref != source.result_payload_ref,
             selected is not None
@@ -257,7 +260,10 @@ class CharacterLifeExperienceRuntime:
         prefix = "character-life-experience:" + suffix + ":" + str(state.world_revision)
         experience_event_id = "event:character-life-experience:" + suffix
         change_id, transition_id = "change:" + prefix, "transition:" + prefix
-        privacy = "withhold" if occurrence.visibility == "withhold" else "private"
+        privacy = max(
+            ("private", occurrence.visibility, selected.privacy_class),
+            key=_PRIVACY_RANK.__getitem__,
+        )
         values = ExperienceValues(
             summary_ref=summary.content_ref,
             summary_payload_hash=summary.content_payload_hash,

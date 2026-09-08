@@ -587,6 +587,11 @@ def commit_experience(
                              if item.candidate_result_ref == occurrence.settled_outcome_ref), None)
             if (selected is not None and selected.result_contract == "world-consequence.2") != composite:
                 raise ValueError("experience consequence contract requires its exact response source")
+            if composite and (
+                _PRIVACY_RANK[experience.values.privacy_class]
+                < _PRIVACY_RANK[selected.privacy_class]
+            ):
+                raise ValueError("experience cannot weaken selected consequence privacy")
             if (
                 occurrence.activated_at is None
                 or occurrence.settled_at is None
