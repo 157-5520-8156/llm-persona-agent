@@ -29,3 +29,11 @@
 恢复方面还需关闭一个独立窗口：`InboundTurnFaculty` 把 `output_ref/output_hash/proposal_hash` 写入 Core decision，但完整 ModelOutput 当前只在内存 `_outputs` 中。Core terminal 已持久化而 Proposal 尚未记录时，重启不能仅凭“通过审核”标记还原候选。后续持久载体必须保留原输出、调用审计、原 pin 和身份；不能自动重问角色、替换结果或给旧审计补授新资格。
 
 完整 guard、持久审核 receipt 和这段输出恢复尚未实现。本 goal 仍在进行，已知正文漏报缺口仍未闭合。
+
+## 后续来源准备集成：`c97de10d`
+
+新 `compile_visible_source_table(request, capsule)` 直接从原受信 Capsule 的已选材料组合审核表，不接受 claim 列表或检索端口。它使用 `visible-source-row-table.1`，以 `(canonical source ref, exact projected material identity)` 分行；同一个 Started ref 的 Situation 与完整 Activity 均保留独立索引，只有符合活动局部合同的材料获得资格。完整有序表、中央去重材料与原 pin 各自参与 hash，供后续 receipt 绑定；旧 compact table 和 knownrefs 未改。
+
+该表当前覆盖 Situation、所支持的活动/窄传记坐标、Fact、Dialogue，以及由原已选 Observation 证明的当前报告。它明确报告未支持的类型，包括 identity_source；不是所有来源的资格闭包。返回值只保存不可变 canonical JSON，导出的字典每次独立生成。
+
+身份材料另外修复了原 hash 与投影字段不一致，已有三类身份 ref 保持。组合后的十文件门为 **324 passed，22.83 秒**，日志 `/tmp/girl-agent-composer-identity-integration.log`，Ruff 与 diff check 通过。这里没有新增真实模型调用，也没有启用聊天 guard。
