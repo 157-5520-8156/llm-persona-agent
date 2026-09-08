@@ -1363,3 +1363,43 @@ together`。已由 `84d098b9` 修复，只补 primary slot，不改变预算、�
 占用约 **3.0957838 元**。原关账保留未经四舍五入的 manifest 数值。旧封存账本与
 历史 unknown 不变，月费 100 元和真人感仍未验收；下一次付费调用须锁定新的干净
 代码身份，不能在旧试验上改结果或把这两回合写成 4–6 回合已通过。
+
+## trial-07 后：去除重复纠正材料并追查审核来源投影
+
+`c550b159` 整合仅针对新 `.2` 的两处去重：结构纠正与来源改稿都保留最初的完整
+system/user messages，以原 message index、request hash 和字段路径定位同一份
+schema、manifest、硬边界和时间材料。`hard_boundary_contract` 明确映射首请求的
+`cross_field_authority`。来源改稿仍携带完整拒稿、精确 findings 和独有的完整 no_op
+schema；后者不是逐字重复，因此没有为压缩而删除。没有裁剪证据、替角色改正文、
+减少审核或改变预算估算系数。旧 `.1` 请求保持原字节；旧 `.2` 恢复读取其保存的
+原 sidecar，不用新的构造器重标旧身份。
+
+以 trial-07 冻结材料、原 HTTP 参数和现有保守估算器离线重建：
+
+| 请求 | 原 wire 字节 | 去重后字节 | 原最大预约（元） | 去重后最大预约（元） |
+| --- | ---: | ---: | ---: | ---: |
+| 作者结构纠正 | 122,885 | 75,047 | 0.408591 | 0.265077 |
+| 来源改稿（原试验未发 HTTP） | 149,556 | 83,844 | 0.488604 | 0.291468 |
+
+这比较的是相同旧结果的请求重建与最大预约，不是新的实付费用，也不证明新模型会
+返回同样内容。实际首两条 messages、精确失败坐标、拒稿与非 messages 参数均保留。
+在 root `c550b159` 的一次六文件检查通过 **143 项，4.01 秒**，包含预算失败审计三类
+反例与四项公共 HTTP 去重/旧 wire/原审计冷恢复测试。独立只读复核未确认阻断问题；
+分支另有旧 `.2` 原 runtime 写审计、新 runtime 冷恢复零 HTTP 的临时验证，和上述
+固定测试范围分列，不累加测试数量。未新增付费调用。
+
+准备“错主体/正确主体”低成本对照时进一步发现：原用户 Fact 和 Dialogue 在 focused
+packet 中只有 `capsule_bound_reviewer_baseline_only`，缺少 source_bindings。原合同
+不允许用这类资料支持 existing_world，故只把 premise 主体改为用户，也不能把控制臂
+预判为来源合格。没有强行补绑定或执行混杂试验；仅留下不可执行的计划 manifest：
+`output/private-audits/consequence-conversation-20260908/actor-load-contrast-prepared/manifest.json`，
+SHA256 `71790d81d603e1958be57616994cf516262e463f319c9a8f68caab03f54118a2`。
+
+只读追查确认上游 LedgerResolver 已核对原 Fact、Observation、actor、revision/hash；
+完整 CapsuleItem 也保留证明。丢失发生在供聊天使用的 `_slice_model_content`：它为
+节省 token 主动移除 Fact/Dialogue 的 source_bindings，LifeDevelopment 却复用此
+压缩 JSON 作为需要 exact proof 的审核材料，随后被正确降为 baseline_only。
+现有测试分别手造“有 binding 的完整值”和“无 binding 的压缩值”，没有贯穿这个
+实际 producer/consumer 断点。正在隔离修复 reviewer 专用投影，只读取同一 trusted
+capsule 中已选材料的完整证明，保留聊天压缩与旧审计视图。不能直接给 slim 值补原
+hash，因为原 value_hash 对应完整值；恢复证据传递也不能宣称已修复模型的语义漏判。
