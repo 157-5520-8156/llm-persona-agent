@@ -29,6 +29,7 @@ from .action_pump import (
 )
 from .chat_life_intent_runtime import ChatLifeIntentRuntime, CompositeActivityPlanMaterialReader
 from .world_life_intent_runtime import WorldLifeIntentRuntime
+from .day_open_life_intent_runtime import DayOpenLifeIntentRuntime
 from .activity_plan_runtime import (
     ActivityPlanCommand,
     ActivityPlanRuntime,
@@ -2163,6 +2164,7 @@ class WorldV2TurnApplication:
         if self._life_ecology is None:
             return None
         from .chat_life_plan_consideration import pending_opportunities
+        from .day_open_opportunity import day_open_retry_due
 
         trigger_store = getattr(self._life_ecology, "_trigger_store", None)
         reader = getattr(trigger_store, "next_consideration_at", None)
@@ -2189,7 +2191,8 @@ class WorldV2TurnApplication:
                 self._ledger, owner_actor_ref=self._companion_actor_ref, projection=projection
             )
         )
-        candidates = tuple(x for x in (due, *(item.due_at for item in pending)) if x is not None)
+        day_open_due = day_open_retry_due(self._ledger, actor_ref=self._companion_actor_ref)
+        candidates = tuple(x for x in (due, day_open_due, *(item.due_at for item in pending)) if x is not None)
         now = projection.logical_time
         if now is not None and any(item.due_at > now for item in pending):
             # A past ready value is not a future Clock boundary. Retain its
@@ -4301,9 +4304,11 @@ def build_sqlite_world_v2_turn_application(
                     ledger=ledger, batch_issuer=issuer
                 ),
                 ecology_catalog_version=config.life_ecology.catalog_version,
+                day_open_life_enabled=True,
                 plan_material_reader=CompositeActivityPlanMaterialReader(
                     ChatLifeIntentRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref),
                     WorldLifeIntentRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref),
+                    DayOpenLifeIntentRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref),
                     LifeDevelopmentProposalReader(ledger=ledger, content_store=life_content_store),
                 ),
             )

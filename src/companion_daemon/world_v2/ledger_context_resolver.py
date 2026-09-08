@@ -89,6 +89,7 @@ from .life_content_store import ImmutableLifeContentStore
 from .life_development_runtime import LifeDevelopmentProposalReader
 from .chat_life_intent_runtime import ChatLifeIntentActiveReader, ChatLifeIntentCompletedReader, CompositeActiveActivityReader, CompositeCompletedActivityReader
 from .world_life_intent_runtime import WorldLifeIntentActiveReader, WorldLifeIntentCompletedReader
+from .day_open_life_intent_runtime import DayOpenLifeIntentActiveReader, DayOpenLifeIntentCompletedReader
 from .life_events import NpcRegisteredPayload
 from .npc_identity_view import npc_identity_views
 from .perception_result_context import (
@@ -1495,10 +1496,12 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             completed_activity_reader=CompositeCompletedActivityReader(
                 ChatLifeIntentCompletedReader(ledger=ledger),
                 WorldLifeIntentCompletedReader(ledger=ledger),
+                DayOpenLifeIntentCompletedReader(ledger=ledger),
             ),
             active_activity_reader=CompositeActiveActivityReader(
                 ChatLifeIntentActiveReader(ledger=ledger),
                 WorldLifeIntentActiveReader(ledger=ledger),
+                DayOpenLifeIntentActiveReader(ledger=ledger),
                 LifeDevelopmentProposalReader(ledger=ledger, content_store=life_content_store)
                 if life_content_store is not None else None,
             ),

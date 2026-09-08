@@ -9,7 +9,7 @@ never discovers a second author or manufactures a character result.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 import hashlib
 import json
@@ -694,6 +694,15 @@ def _validate_activity_lifecycle_payload(
         raise ValueError("activity lifecycle selected an unavailable token")
 
 
+def _validate_day_open_payload(payload, offered_tokens) -> None:
+    del offered_tokens
+    if payload == {"decision": "no_op"}:
+        return
+    if set(payload) != {"decision", "life_intent"} or payload.get("decision") != "self_directed_intent":
+        raise ValueError("day_open requires one explicit self_directed_intent or no_op")
+    LifeIntentDraft.model_validate(payload["life_intent"])
+
+
 def _validate_outcome_selection_payload(
     payload: Mapping[str, object],
     offered_tokens: frozenset[str],
@@ -774,6 +783,14 @@ class _ActivityLifecyclePayload(BaseModel):
         if self.noticed is not None and self.user_channel_completion != "none":
             raise ValueError("activity noticed requires user_channel_completion=none")
         return self
+
+
+class _DayOpenPayload(BaseModel):
+    """The same activity role may author one future private intention."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    decision: Literal["no_op", "self_directed_intent"]
+    life_intent: LifeIntentDraft | None = None
 
 
 class _MediaSelectionPayload(BaseModel):
@@ -2447,6 +2464,15 @@ class StructuredCharacterRoleFaculty:
                 "capability_kind_mismatch",
                 detail=_FAILURE_DETAILS["capability_kind_mismatch"],
             )
+        if request.purpose == "activity_lifecycle_choice" and manifest.payload.get("self_directed_intent") is not None:
+            if manifest.payload.get("contract") != "character-interior-activity-lifecycle-capability.3":
+                raise StructuredRoleResultError("capability_kind_mismatch")
+            return replace(
+                contract,
+                payload_contract="character-interior-activity-lifecycle-choice.2",
+                offered_token_fields=(),
+                validator=_validate_day_open_payload,
+            )
         return contract
 
     def _validate_decision_payload(
@@ -3329,6 +3355,14 @@ class StructuredCharacterRoleFaculty:
                 "noticed": "optional turn-local subjective attention; audit only, no World fact or completed Action",
                 "user_channel_completion": "const none, required when noticed is present",
             }
+            if contract.payload_contract == "character-interior-activity-lifecycle-choice.2":
+                view["payload_schema"] = {
+                    "decision": "self_directed_intent|no_op",
+                    "life_intent": "only with self_directed_intent: execution_scope=self_directed, "
+                    "your own intention, start_after_seconds, duration_seconds and importance_bp. "
+                    "This is a future private Plan, not execution, place control, other people's "
+                    "participation or a World result. no_op has no other fields and is a valid choice",
+                }
         if contract.purpose == "outcome_selection":
             view["payload_schema"] = {
                 "selected_token": "exactly one offered outcome token",

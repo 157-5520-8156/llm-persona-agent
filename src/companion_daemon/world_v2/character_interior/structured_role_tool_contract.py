@@ -1827,11 +1827,39 @@ class StructuredRoleToolContracts:
         source_refs_json: str,
         recall_allowed: bool,
     ) -> StructuredRoleToolContract:
-        from .structured_role import _ActivityLifecyclePayload
+        from .structured_role import _ActivityLifecyclePayload, _DayOpenPayload
 
         capability_payload = json.loads(capability_payload_json)
         if not isinstance(capability_payload, dict):
             raise ValueError("activity lifecycle capability must be one object")
+        if capability_payload.get("self_directed_intent") is not None:
+            if (
+                capability_payload.get("contract") != "character-interior-activity-lifecycle-capability.3"
+                or capability_payload.get("offered_tokens") != []
+                or capability_payload.get("openings") != []
+                or capability_payload["self_directed_intent"].get("execution_scope") != "self_directed"
+            ):
+                raise ValueError("day_open capability is not an empty-catalog private intention opportunity")
+            schema = _provider_schema(_DayOpenPayload)
+            schema["required"] = ["decision"]
+            schema["anyOf"] = [
+                {"properties": {"decision": {"enum": ["no_op"]}}, "not": {"required": ["life_intent"]}},
+                {"properties": {"decision": {"enum": ["self_directed_intent"]}}, "required": ["life_intent"],
+                 "not": {"properties": {"life_intent": {"type": "null"}}}},
+            ]
+            return _compile_generic_decision_contract(
+                purpose="activity_lifecycle_choice",
+                tool_name="character_role_activity_lifecycle_choice_v2",
+                payload_schema=schema,
+                capability_identity=capability_payload,
+                source_refs=tuple(json.loads(source_refs_json)),
+                recall_allowed=recall_allowed,
+                description="Consider this daily opportunity with the pinned context. Freely choose one "
+                "self_directed private future intention or no_op. The intention requests a Plan; "
+                "it does not start or complete it, move anyone, control another person, or author "
+                "a World result. No action or intention is required. Return the same source-bound "
+                "activity decision envelope; arbitrary proposals are unavailable.",
+            )
         offered_tokens = capability_payload.get("offered_tokens")
         if (
             not isinstance(offered_tokens, list)

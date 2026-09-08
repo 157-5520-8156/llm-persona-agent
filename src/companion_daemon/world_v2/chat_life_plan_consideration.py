@@ -18,7 +18,6 @@ from .chat_life_plan_consideration_contract import (
 from .event_identity import domain_idempotency_key
 from .life_events import ActivityPlannedPayload
 from .schemas import ProjectionCursor, WorldEvent
-from .world_life_intent_contract import WorldLifeIntentOrigin
 from .world_life_intent_runtime import (
     EVENT_PREFIX as WORLD_EVENT_PREFIX,
     PLAN_PREFIX as WORLD_PLAN_PREFIX,
@@ -27,6 +26,20 @@ from .world_life_intent_runtime import (
 )
 
 SOURCE = "world-v2:chat-life-plan-consideration"
+
+
+def _plan_source(plan_id):
+    from .day_open_life_intent_runtime import (
+        PLAN_PREFIX as DAY_PREFIX, EVENT_PREFIX as DAY_EVENT_PREFIX,
+        derive_day_open_life_plan, validate_day_open_life_plan_event,
+    )
+    if plan_id.startswith(DAY_PREFIX):
+        return DAY_PREFIX, DAY_EVENT_PREFIX, "day_open_intent_origin", derive_day_open_life_plan, validate_day_open_life_plan_event
+    if plan_id.startswith(WORLD_PLAN_PREFIX):
+        return WORLD_PLAN_PREFIX, WORLD_EVENT_PREFIX, "world_intent_origin", derive_world_life_plan, validate_world_life_plan_event
+    if plan_id.startswith(PLAN_PREFIX):
+        return PLAN_PREFIX, "event:chat-life-intent:", "chat_intent_origin", derive_chat_life_plan, validate_chat_life_plan_event
+    return None
 
 
 def _digest(value: object) -> str:
@@ -72,10 +85,10 @@ def opportunity_from_state(
     )
     if plan is None or source is None:
         raise ValueError("chat_life_plan.original_plan_authority_missing")
-    world_origin = isinstance(opportunity.origin, WorldLifeIntentOrigin)
-    derive = derive_world_life_plan if world_origin else derive_chat_life_plan
-    plan_prefix = WORLD_PLAN_PREFIX if world_origin else PLAN_PREFIX
-    event_prefix = WORLD_EVENT_PREFIX if world_origin else "event:chat-life-intent:"
+    source_policy = _plan_source(plan.plan_id)
+    if source_policy is None:
+        raise ValueError("chat_life_plan.original_plan_authority_missing")
+    plan_prefix, event_prefix, origin_field, derive, _ = source_policy
     payload, _ = derive(
         state=state,
         world_id=world_id,
@@ -105,7 +118,7 @@ def opportunity_from_state(
         plan_event_ref=source.event_id,
         plan_payload_hash=source.payload_hash,
         owner_actor_ref=plan.owner_actor_ref,
-        origin=payload.world_intent_origin if world_origin else payload.chat_intent_origin,
+        origin=getattr(payload, origin_field),
         due_at=due_at,
         attempt_ordinal=ordinal,
     )
@@ -122,7 +135,7 @@ def pending_opportunities(
     for plan in projection.plans:
         if (
             plan.plan_id in resolved
-            or not plan.plan_id.startswith((PLAN_PREFIX, WORLD_PLAN_PREFIX))
+            or _plan_source(plan.plan_id) is None
             or plan.owner_actor_ref != owner_actor_ref
             or plan.status != "planned"
         ):
@@ -133,14 +146,11 @@ def pending_opportunities(
             or plan.scheduled_window.closes_at <= projection.logical_time
         ):
             continue
-        world_origin = plan.plan_id.startswith(WORLD_PLAN_PREFIX)
-        plan_prefix = WORLD_PLAN_PREFIX if world_origin else PLAN_PREFIX
-        event_prefix = WORLD_EVENT_PREFIX if world_origin else "event:chat-life-intent:"
+        plan_prefix, event_prefix, origin_field, _, validate = _plan_source(plan.plan_id)
         located = ledger.lookup_event_commit(event_prefix + plan.plan_id.removeprefix(plan_prefix))
         if located is None:
             continue
         payload = ActivityPlannedPayload.model_validate_json(located[0].payload_json)
-        validate = validate_world_life_plan_event if world_origin else validate_chat_life_plan_event
         validate(state=projection, event=located[0], payload=payload)
         ordinal, due_at = _next_opportunity(
             projection,
@@ -155,7 +165,7 @@ def pending_opportunities(
                 plan_event_ref=located[0].event_id,
                 plan_payload_hash=located[0].payload_hash,
                 owner_actor_ref=owner_actor_ref,
-                origin=payload.world_intent_origin if world_origin else payload.chat_intent_origin,
+                origin=getattr(payload, origin_field),
                 due_at=due_at,
                 attempt_ordinal=ordinal,
             )

@@ -114,6 +114,7 @@ class ActivityLifecycleWorker:
         occasion_spends: OccasionSpendStore | None = None,
         local_timezone_name: str = DEFAULT_LOCAL_TIMEZONE,
         plan_material_reader=None,
+        day_open_life_enabled: bool = False,
     ) -> None:
         if not ecology_catalog_version or not source or not owner_actor_ref:
             raise ValueError(
@@ -133,6 +134,12 @@ class ActivityLifecycleWorker:
         self._occasion_spends = occasion_spends or occasion_spend_store_for_ledger(ledger)
         self._local_timezone = ZoneInfo(local_timezone_name)
         self._plan_material_reader = plan_material_reader
+        from .day_open_life_worker import DayOpenLifeWorker
+        self._day_open_life = DayOpenLifeWorker(
+            ledger=ledger, interior=character_interior, actor_ref=owner_actor_ref,
+            daily=self._daily_occasions, spends=self._occasion_spends,
+            timezone=self._local_timezone,
+        ) if day_open_life_enabled else None
 
     async def advance_once(
         self,
@@ -145,6 +152,12 @@ class ActivityLifecycleWorker:
         correlation_id,
         renewed_plan_catalog=False,
     ):
+        if self._day_open_life is not None and self._day_open_life.pending() is not None:
+            projection = self._ledger.project()
+            catalog = self._catalog.openings_for(projection=projection, wake_event_ref=wake_event_ref)
+            return await self._day_open_life.advance(
+                projection=projection, wake_event_ref=wake_event_ref, catalog=catalog,
+            )
         pending = pending_opportunities(self._ledger, owner_actor_ref=self._owner_actor_ref)
         selected = next((x for x in pending if x.due_at <= logical_time), None)
         recovered = self._recover_initial_choice(selected) if selected is not None else None
@@ -294,6 +307,10 @@ class ActivityLifecycleWorker:
             ledger_sequence=projection.ledger_sequence,
         )
         catalog = self._catalog.openings_for(projection=projection, wake_event_ref=wake_event_ref)
+        if catalog.status == "no_openings" and self._day_open_life is not None:
+            return await self._day_open_life.advance(
+                projection=projection, wake_event_ref=wake_event_ref, catalog=catalog,
+            )
         if catalog.status != "openings_available":
             return ActivityLifecycleFollowupResult(
                 status="blocked" if catalog.status == "blocked_by_missing_capability" else "no_op",

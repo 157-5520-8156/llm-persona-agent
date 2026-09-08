@@ -1,6 +1,6 @@
 # 每日首次生活机会的自主意图
 
-状态：设计与公共 RED；生产边界待根任务审阅。
+状态：根任务已批准；隔离实现与公共应用资格检查，尚未做真实角色试聊。
 
 ## 已确认的缺口
 
@@ -55,12 +55,13 @@ Context 才能读到原意图和真实状态。原 late-plan initial considerati
 ## 拟定文件边界
 
 本 lane：activity worker 与 structured role/tool 的新版本窄分支；独立
-day-open 意图 contract/acceptance/consideration；ActivityPlanned 新 origin 与
-对应 reducer/event/projection 注册；旧 late-plan/角色活动 reader 的新来源
+day-open 意图 contract/acceptance 与 SQLite 机会 journal；ActivityPlanned 新 origin 与
+对应 reducer/Proposal 注册；旧 late-plan/角色活动 reader 的新来源
 分支及 production constructor/due 组合；新增公共测试。
 
 这些来源闭包是必要依赖，不能仅改 worker 早返便宣称完成。根任务审阅后确定
-最终 type/registry 名称。不会修改 World Author、聊天来源协议、QQ、配置或
+最终合同为 capability `.3`、activity decision `.2`、Proposal registry `.6`
+中的单条 `day_open_life_intent/plan`。不会修改 World Author、聊天来源协议、QQ、配置或
 旧测试/冻结基线来获得通过。
 
 ## 公共验收矩阵
@@ -73,3 +74,27 @@ DeepSeek MockTransport 的 activity role 请求 → 角色明确 intent → Plan
 错误 Clock/actor/hash/旧合同降级拒绝；terminal 后故障及冷重启零重问、
 原时间/字节保持、effect-once；技术失败有界退避与日界线；实际请求字节与
 预算准入统计。所有 provider 为本地 MockTransport。
+
+## 本地证据与剩余边界
+
+公共应用 8 项通过：原 RED 的空目录首次计划、同角色精确纠错、原生命周期启动
+和下一聊天 Context、no_op 跨重启、30/120 秒三次技术退避、原已支付 terminal
+之后 audit/Plan 接受两处故障的冷恢复，以及临时主账本预算拒绝 0 HTTP。
+后端 19 项与 Proposal 合同 24 项另行通过。冷恢复 fixture 显式使用真实 host
+同款 SQLite CharacterInterior turn store；不把默认内存 turn store 的重建当作
+持久角色恢复。
+
+预算反例在原 Core 被压成 `role_faculty_unavailable`。新增窄映射保留
+`BackgroundSpendCapDenied.reason`（本例 `monthly_budget_exceeded`），其他
+`ModelUsageAdmissionError` 为 `model_usage_admission_failed`；其他异常和原
+退避规则不变。没有按异常文本或角色语义分类。
+
+同一空世界 fixture 的一次实际 MockTransport 请求为 15,965 UTF-8 JSON bytes，
+messages 12,933 bytes，输出上限 900 tokens，现安装保守峰值预约 0.059067 元。
+这是请求成本包络，不是已付费用或月费结论。常态最多每日一个考虑机会；技术
+失败最多三个 attempt，每个仍可能使用原一次纠错，不能把物理调用上限说成 31 次。
+
+接受器用原 role cursor 重算准确空 catalog。纯 reducer 重放反证完整原角色审计、
+绑定空 capability、双 Clock/day/actor 与唯一派生 Plan；不宣称它单靠当前 state
+能独立重建任意历史 catalog。真实角色是否选择生活、长期多样性、完整冻结场景
+以及约百元月费尚未由这组离线检查验收。

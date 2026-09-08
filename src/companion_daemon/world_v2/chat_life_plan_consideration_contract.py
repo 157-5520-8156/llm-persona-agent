@@ -8,6 +8,7 @@ from pydantic import Field
 
 from .chat_life_intent_contract import ChatLifeIntentOrigin
 from .world_life_intent_contract import WorldLifeIntentOrigin
+from .day_open_life_intent_contract import DayOpenLifeIntentOrigin
 from .proposal_audit_schemas import ModelResultRecordedPayload
 from .schema_core import FrozenModel
 
@@ -19,7 +20,7 @@ class ChatLifePlanOpportunity(FrozenModel):
     owner_actor_ref: str = Field(min_length=1, max_length=256)
     # The historical event container is retained. World-origin plans carry
     # their own author contract and never acquire an inbound-chat authority.
-    origin: ChatLifeIntentOrigin | WorldLifeIntentOrigin
+    origin: ChatLifeIntentOrigin | WorldLifeIntentOrigin | DayOpenLifeIntentOrigin
     due_at: datetime
     attempt_ordinal: int = Field(ge=1, le=3)
 
