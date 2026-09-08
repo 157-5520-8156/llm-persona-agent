@@ -25,6 +25,10 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model-mode", choices=("fixture", "real-provider"), default="fixture")
     parser.add_argument("--allow-real-provider", action="store_true")
     parser.add_argument(
+        "--require-visible-source-review", action="store_true",
+        help="Require whole-candidate source review in the real-provider capture host (atomic expression).",
+    )
+    parser.add_argument(
         "--interactive",
         action="store_true",
         help="Read adaptive user turns, {wait_until_minutes: N}, or null from stdin JSON lines.",
@@ -45,6 +49,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("real-provider requires --allow-real-provider")
     if options.allow_real_provider and options.model_mode != "real-provider":
         parser.error("--allow-real-provider requires --model-mode real-provider")
+    if options.require_visible_source_review and options.model_mode != "real-provider":
+        parser.error("--require-visible-source-review requires the real-provider capture profile")
     if not math.isfinite(options.max_cost_cny) or not 0 < options.max_cost_cny <= 100:
         parser.error("--max-cost-cny must be finite, greater than 0 and at most 100")
     if options.output.exists() or options.output.is_symlink():
@@ -200,6 +206,9 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
         synthetic=synthetic,
         max_cost_cny=options.max_cost_cny,
     )
+    required_review = options.require_visible_source_review
+    if required_review:
+        configured = configured.model_copy(update={"world_v2_expression_episode_mode": "off"})
     capture = None
     owned_models = []
     if not synthetic:
@@ -277,6 +286,11 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                 ),
                 world_support_model=provider("world_support"),
             )
+            if required_review:
+                injected.update(
+                    visible_source_review_required=True,
+                    visible_source_review_model=provider("visible_source_review"),
+                )
         return build_qq_c2c_host(
             settings=settings,
             recipient_id=RECIPIENT,
@@ -303,6 +317,12 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
         close_resources=close_models,
         next_command=next_command,
         provenance={
+            **({"visible_source_review": {
+                "policy": "visible-source-review-required.1",
+                "expression_episode_mode": "off",
+                "review_model": configured.deepseek_model,
+                "qualification": "requires_evaluation_of_actual_records",
+            }} if required_review else {}),
             "model_mode": options.model_mode,
             "scenario_sha256": hashlib.sha256(scenario_bytes).hexdigest(),
             "code": code_identity(),

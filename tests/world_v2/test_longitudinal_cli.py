@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import hashlib
 import json
@@ -34,6 +35,20 @@ def test_invalid_cost_limit_rejected_before_any_output(tmp_path, value):
 def test_real_provider_requires_explicit_opt_in(tmp_path):
     with pytest.raises(SystemExit):
         _cli().parse_options(["--output", str(tmp_path / "fresh"), "--model-mode", "real-provider"])
+
+
+def test_whole_source_review_cannot_be_claimed_by_the_legacy_fixture(tmp_path):
+    output = tmp_path / "fresh"
+    cli = _cli()
+    with pytest.raises(SystemExit):
+        cli.parse_options(["--output", str(output), "--require-visible-source-review"])
+    assert not output.exists()
+    options = cli.parse_options([
+        "--output", str(output), "--model-mode", "real-provider", "--allow-real-provider",
+        "--require-visible-source-review",
+    ])
+    assert options.require_visible_source_review
+    assert not cli.parse_options(["--output", str(output)]).require_visible_source_review
 
 
 def test_existing_output_is_preserved(tmp_path):
@@ -325,8 +340,9 @@ async def test_fixture_public_journey_does_not_expire_virtual_ingress_deadline(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("required_review", [False, True])
 async def test_real_cli_captures_actual_provider_body_and_closes_injected_clients(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, required_review
 ):
     import companion_daemon.llm as llm
     import companion_daemon.world_v2.longitudinal_journey as runner
@@ -360,22 +376,43 @@ async def test_real_cli_captures_actual_provider_body_and_closes_injected_client
             kwargs["output"] / "world.sqlite", clock, runner.CaptureDelivery(clock)
         )
         try:
-            assert len(clients) == 3
+            assert len(clients) == (4 if required_review else 3)
             assert clients[0].max_completion_tokens == 4096
             assert clients[1].thinking_enabled is True
             assert clients[1].max_completion_tokens == 900
             assert clients[2].max_completion_tokens == 4096
+            if required_review:
+                assert clients[3].max_completion_tokens == 4096
+                assert kwargs["provenance"]["visible_source_review"] == {
+                    "policy": "visible-source-review-required.1",
+                    "expression_episode_mode": "off",
+                    "review_model": clients[3].model,
+                    "qualification": "requires_evaluation_of_actual_records",
+                }
+            else:
+                assert "visible_source_review" not in kwargs["provenance"]
             with llm.model_call_scope("inbound_turn"):
                 result = await clients[0].complete_json(
                     [{"role": "user", "content": "计划改到周二"}]
                 )
             assert json.loads(result) == {"ok": True}
+            if required_review:
+                with llm.model_call_scope("source_review"):
+                    review, _ = await clients[3].complete_json_with_usage(
+                        [{"role": "user", "content": "独立审核完整候选消息"}]
+                    )
+                assert json.loads(review) == {"ok": True}
             _, records = kwargs["model_input_capture"].read_since()
             requests = [record for record in records if record["kind"] == "request"]
-            assert len(requests) == 1
+            assert len(requests) == (2 if required_review else 1)
             assert json.loads(requests[0]["model_content_json"])["messages"] == [
                 {"role": "user", "content": "计划改到周二"}
             ]
+            if required_review:
+                assert requests[1]["model_role"] == "visible_source_review"
+                assert json.loads(requests[1]["model_content_json"])["messages"] == [
+                    {"role": "user", "content": "独立审核完整候选消息"}
+                ]
             assert host.usage_budget_health()["daily_cost_cny"] > 0
         finally:
             await host.aclose()
@@ -394,10 +431,106 @@ async def test_real_cli_captures_actual_provider_body_and_closes_injected_client
                 "--model-mode",
                 "real-provider",
                 "--allow-real-provider",
+                *(["--require-visible-source-review"] if required_review else []),
             ]
         )
     )
     assert result["completed"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recall_first", [False, True])
+async def test_required_review_cli_host_holds_complete_candidate_until_review(
+    tmp_path, monkeypatch, recall_first
+):
+    import companion_daemon.world_v2.longitudinal_journey as runner
+    from test_whole_candidate_author import BEATS, _decision
+    from test_world_stimulus_life_intent import _http_result
+
+    monkeypatch.setenv("DEEPSEEK_DEBUG_API_KEY", "fixture-debug-key")
+    monkeypatch.setenv("DEEPSEEK_CHARACTER_THINKING_ENABLED", "false")
+    requests = []
+    review_started = asyncio.Event()
+    release_review = asyncio.Event()
+
+    async def respond(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        assert not body.get("stream")
+        name = body["tool_choice"]["function"]["name"]
+        if name in {"character_inbound_initial_v1", "character_inbound_after_recall_v1"}:
+            assert "visible_source_requirement_json" not in json.dumps(body)
+            authored = _decision()
+            if recall_first and len(requests) == 1:
+                authored = {
+                    "result_kind": "recall",
+                    "private_turn_state": {
+                        "contract": "private-turn-state.1",
+                        "inner_state_summary": "我想先确认之前的对话，再说自己的想法。",
+                        "attended_source_refs": [],
+                    },
+                    "recall_request": {
+                        "query_text": "之前的对话", "memory_kinds": ["episodic", "semantic"],
+                        "limit": 4,
+                    },
+                }
+            fields = body["tools"][0]["function"]["parameters"]["properties"]
+            return _http_result(body, {key: authored.get(key) for key in fields})
+        review_started.set()
+        await release_review.wait()
+        return _http_result(body, {
+            "contract": "visible-beat-source-verdict.1",
+            "decisions": [
+                {"beat_index": i, "verdict": "source_free", "semantic_role": "commitment",
+                 "subject_role": "companion", "source_ref_indexes": []}
+                for i in range(len(BEATS))
+            ],
+        })
+
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kwargs: httpx.MockTransport(respond))
+
+    async def run_inbound(**kwargs):
+        kwargs["output"].mkdir()
+        clock = runner.JourneyClock(kwargs["journey"].started_at)
+        delivery = runner.CaptureDelivery(clock)
+        host = kwargs["host_factory"](kwargs["output"] / "world.sqlite", clock, delivery)
+        task = asyncio.create_task(host.inbound_text(
+            message_id="whole-review-cli", recipient_id=runner.RECIPIENT,
+            text="你想怎么说？", observed_at=clock.now(),
+        ))
+        try:
+            await asyncio.wait_for(review_started.wait(), 5)
+            assert not host.export_replay_evidence().projection.actions
+            assert not [row for row in delivery.records if row["kind"] == "text"]
+            release_review.set()
+            result = await task
+            assert result.status == "action_authorized", result
+            evidence = host.export_replay_evidence()
+            assert tuple(row.text for row in evidence.projection.stored_message_payloads) == BEATS
+            _, capture = kwargs["model_input_capture"].read_since()
+            captured_requests = [row for row in capture if row["kind"] == "request"]
+            assert [row["model_role"] for row in captured_requests] == [
+                "flash", *(["flash"] if recall_first else []), "visible_source_review",
+            ]
+            assert len(requests) == (3 if recall_first else 2)
+            assert host.usage_budget_health()["daily_cost_cny"] > 0
+        finally:
+            release_review.set()
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            await host.aclose()
+            await host.wait_for_shutdown_quiescence()
+            await kwargs["close_resources"]()
+        return {"completed": True}
+
+    monkeypatch.setattr(runner, "run_journey", run_inbound)
+    cli = _cli()
+    assert (await cli.run(cli.parse_options([
+        "--output", str(tmp_path / "run"), "--model-mode", "real-provider",
+        "--allow-real-provider", "--require-visible-source-review",
+        "--max-cost-cny", "0.60",
+    ])))["completed"]
 
 
 @pytest.mark.asyncio

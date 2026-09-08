@@ -24,6 +24,14 @@ Recall 继续由 Core 执行。最终作者请求/hash 单独绑定，但本片�
 
 ## 明确限制
 
+根集成线在合入 `22428b0b` 后以自身 `src` 运行 12 文件门：299 项通过，65.59 秒。
+范围包含上述审核载体/公开链、新旧 CLI、完整作者、既有 Recall 输出恢复、Expression
+接受、Proposal 审计及原来源/receipt 边界。CLI 的 25 项中新增实际 host 连接测试，
+MockTransport 证明普通路径 2 次物理调用、主动 Recall 路径 3 次，审核前零 Action；
+两个 provider 均捕获并计费、关闭。该证据仍不含真实供应商或真实 QQ。
+日志 `/tmp/girl-agent-source-gate-22428b0b.log`，固定测试材料目录
+`/tmp/girl-agent-source-gate-22428b0b`。
+
 - 同供应商 reviewer 属相关审核，不是独立事实验收；模型仍可能漏判/误判或错误自分类。结构覆盖不等于语义正确。
 - source table 仅当前已资格的 situation/activity/biography/Fact/dialogue/current-report 材料；不补 identity、后续 head 或额外 Recall 权限。
 - 本 receipt 首片仅完整 inline text、至多 16 Beats；其他载体不可跳过后发送。角色仍可选择不表达、生活意图等非可见 facet。
