@@ -1,6 +1,6 @@
 # Completed inbound output recovery
 
-Status: public RED and recovery boundary investigation. No production change yet.
+Status: exact-pin recovery implemented; public ingress policy unchanged.
 Baseline: `2256967d8518220a6bd633814ce07a62602ad6f9`.
 
 ## The accepted slice
@@ -54,9 +54,9 @@ the original ModelInput at the real application-to-adapter boundary and passes
 it unchanged to the adapter from a new application, Core, Faculty, and SQLite
 turn-store connection. It supplies neither the saved output nor a fabricated
 Capsule. This public port is compose_character_interior_inbound_deliberation's
-adapter.propose, not app.respond recovery. Both application instances currently
-run in the same test process; fresh-process Recall authority is a later required
-test, not something this fixture proves.
+adapter.propose, not app.respond recovery. The ordinary case uses separate application instances in one process. Separate
+Recall cases also execute a real Python subprocess; those results are recorded
+below and are not inferred from same-process cache tests.
 
 The reason is `WorldRuntime._existing_observation_outcome`: with no Proposal it
 joins a live foreign claim, or obtains a fresh expression attempt after expiry.
@@ -68,10 +68,10 @@ terminal alone does not make public cold ingress read that terminal.
 World revision to equal the acceptance cursor. Rewriting an old output's cursor
 or creating a new trusted handle from its JSON would bypass this boundary.
 
-## Bounded next seam and remaining integration question
+## Implemented seam and remaining integration question
 
 1. For the proven exact-pin port, Core already joins the original terminal.
-   Its `.2` decision can provide a complete stable carrier to the adapter after
+   Its `.2` decision now provides a complete stable carrier to the adapter after
    stored terminal/prepared hashes, original request/snapshot/capability,
    role decision and lineage have been verified. This is narrower than changing
    ingress leases or blocking fresh decisions. The existing generic
@@ -96,9 +96,71 @@ Capsule compiler_result_tag is a deterministic content hash, not a process
 secret. Its complete model validator checks identity, but
 TrustedContextCapsuleHandle is deliberately process-issued and unserializable.
 The existing compile_for_audit_recovery returns a Capsule, explicitly no new
-handle. Recall is different: `_TRACE_AUTHORITY_KEY` is process-random. A real
-subprocess test with a fresh key and zero retrieval calls remains required for
-the eventual green implementation. Neither boundary has been waived by this RED.
+handle. Recall is different: `_TRACE_AUTHORITY_KEY` is process-random. The real subprocess test confirms that the old live seal fails under the new
+key. It then restores the exact recorded audit through the original terminal,
+with no new Recall/prefetch or HTTP call. A changed original snapshot trace is
+rejected as `inbound_output_record.invalid_original_checkpoint`; its outer
+checkpoint hash is deliberately recomputed in the temporary fixture, so the
+failure checks the original snapshot proof rather than only that outer hash.
 
-Current changes are the new test and this design only. No runtime, Core,
-provider, health, budget, production database, or frozen audit has been changed.
+## Stable carrier and restoration authority
+
+`inbound_output_record.py` keeps the original ModelOutput grammar and explicitly
+serializes all three otherwise-excluded audit arrays. Recall/prefetch identities
+contain recorded audit bodies and presentation call identities, not a live HMAC.
+The record binds the original world, actor, full cursor, InnerTurn, capability
+ref/hash, original ModelInput hash, snapshot, proposal hash, and author lineage.
+The same original prepared checkpoint and terminal also retain the final private
+lineage. The canonical record is limited to 512,000 UTF-8 bytes and the existing
+ModelOutput node bound. Bounds reject rather than truncate output or evidence.
+
+Core retains a bounded handle to the exact coordination request it actually
+acquired. Only a completed same-pin `consider` can use that handle to read its
+installed terminal store. Restoration compares stored hashes, terminal and
+prepared decision, original snapshot/capability, private/author lineages, and
+original Recall trace/presentation material. The private Recall helper receives
+only an opaque, nonserializable verified-terminal proof containing a fixed audit
+tuple. It does not accept arbitrary audit dictionaries for signing. No new
+trusted Context handle or source membership is minted.
+
+The output record is local technical coordination evidence with the same privacy
+as the existing prepared snapshot and role terminal. It is not a public world
+fact, receipt, or additional model-visible input. No new table, migration, or
+provider request is added. Fresh `.2` decisions have a new output identity; old
+`.1` records retain their original hash formula and are never supplemented with
+a body. A cold `.1` without the old process cache remains explicitly unavailable,
+without a replacement author call at that same pin.
+
+## Executed validation and limits
+
+The new file has **19 passing cases**. These cover the original live-lease and
+changed-cursor diagnostics; same-pin and Recall recovery with repeat consumption;
+real subprocess Recall success and source-proof failure; old `.1` same-pin
+unavailability with unchanged terminal bytes; eight rehashed identity mutations
+(world, actor, cursor, capability, source, turn, proposal, author); retention of
+all three excluded audit arrays, including a rejected candidate; UTF-8 byte/node
+bounds; and rejection of arbitrary-dictionary Recall signing.
+
+The legacy test is an explicitly constructed technical-terminal fixture using
+the exact baseline `.1` serialization formula and the real original role output.
+It does not claim an inventory or migration test of production historical data.
+The audit-array codec fixture verifies preservation of recorded fields, not an
+extra successful HTTP or an author's completeness in collecting every rejected
+call. The initial public fixture still proves primary usage survives the crash;
+the recovery path does not meter those calls again.
+
+**193 passed in 25.84s** across the new file and eight adjacent files:
+`test_character_interior`, `test_character_interior_private_self_lineage`,
+`test_character_interior_turn_store`, `test_character_interior_durable_lineage`,
+`test_character_interior_single_author_composition`,
+`test_character_interior_inbound_author`,
+`test_character_interior_stream_tail_audit`, and `test_recall_attention`.
+Ruff and diff checks passed. All provider interactions were temporary
+MockTransport fixtures; no real provider, QQ, production DB, or frozen artifact
+was accessed or changed.
+
+This slice does not restore automatic cold app ingress, change leases or CAS,
+suppress a fresh judgment at a changed cursor, recover unfinished HTTP tails,
+install source-review receipts, or repair omitted original author audits.
+Only the narrow Core consumption hook, inbound Faculty/adapter, private Recall
+restoration helper, new carrier module, tests, and this design changed.

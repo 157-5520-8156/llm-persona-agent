@@ -53,6 +53,7 @@ from ..validation_failure_codes import (
 from .audit import recorded_character_interior_lineage
 from .inbound_author import _InboundRecallRequested
 from .contracts import (
+    InnerDecision,
     InnerLifeSnapshot,
     InteriorOpportunity,
     _InteriorAuthorLineage,
@@ -61,12 +62,19 @@ from .contracts import (
 from .core import CharacterInterior, _RoleFacultyTechnicalFailure
 from .ports import _InteriorRoleRequest, _RoleResultContractError
 from .run_result import CausalOpportunityIdentity
+from .inbound_output_record import (
+    DECISION_CONTRACT as _DECISION_CONTRACT,
+    LEGACY_DECISION_CONTRACT,
+    output_record_identity,
+    record_inbound_output,
+    stable_output_hash,
+    validate_cached_output,
+)
 
 
 _CACHE_LIMIT = 128
 _PURPOSE = "inbound_turn"
 _CAPABILITY_KIND = "inbound_turn_cognition"
-_DECISION_CONTRACT = "character-interior-inbound-turn-decision.1"
 
 
 def _canonical(value: object) -> str:
@@ -386,6 +394,7 @@ class InboundTurnFaculty:
         self._author = author
         self._requests: OrderedDict[str, ModelInput] = OrderedDict()
         self._outputs: OrderedDict[str, ModelOutput] = OrderedDict()
+        self._output_hashes: dict[str, tuple[str, str]] = {}
         self._recall_parents: OrderedDict[str, _InboundRecallRequested] = OrderedDict()
         self._prefetch_presentations: OrderedDict[str, tuple[PresentedPrefetchTrace, ...]] = (
             OrderedDict()
@@ -563,11 +572,23 @@ class InboundTurnFaculty:
                 ready.set_result(None)
         self._stream_ready.clear()
 
-    def consume_output(self, *, output_ref: str, output_hash: str) -> ModelOutput:
+    def consume_output(
+        self,
+        *,
+        output_ref: str,
+        output_hash: str,
+        decision: InnerDecision | None = None,
+        model_input: ModelInput | None = None,
+    ) -> ModelOutput:
         output = self._outputs.get(output_ref)
         if output is None:
             raise RuntimeError("inbound CharacterInterior output cache is unavailable")
-        if "sha256:" + _digest(output.model_dump(mode="json")) != output_hash:
+        if decision is not None:
+            validate_cached_output(output, decision=decision, model_input=model_input)
+        elif output_ref in self._output_hashes:
+            if self._output_hashes[output_ref] != (output_hash, stable_output_hash(output)):
+                raise RuntimeError("inbound CharacterInterior output cache changed identity")
+        elif "sha256:" + _digest(output.model_dump(mode="json")) != output_hash:
             raise RuntimeError("inbound CharacterInterior output cache changed identity")
         self._outputs.move_to_end(output_ref)
         return output
@@ -843,19 +864,6 @@ class InboundTurnFaculty:
                 detail="expression decision has no final model-owned private state",
                 response_hash="sha256:" + _digest(output.raw_proposal),
             )
-        output_hash = "sha256:" + _digest(output.model_dump(mode="json"))
-        output_ref = "inbound-turn-output:sha256:" + _digest(
-            {
-                "inner_turn_id": request.inner_turn_id,
-                "output_hash": output_hash,
-                "proposal_hash": proposal.proposal_hash,
-            }
-        )
-        self._outputs[output_ref] = output
-        self._outputs.move_to_end(output_ref)
-        while len(self._outputs) > _CACHE_LIMIT:
-            self._outputs.popitem(last=False)
-
         summary = private.inner_state_summary
         attended = tuple(
             ref
@@ -887,6 +895,14 @@ class InboundTurnFaculty:
             attempt_ordinal=1 if parent_model_call_id is not None else 0,
             parent_model_call_id=parent_model_call_id,
         )
+        output_record = record_inbound_output(output, request=request, lineage=lineage)
+        output_ref, output_hash = output_record_identity(output_record)
+        self._outputs[output_ref] = output
+        self._output_hashes[output_ref] = (output_hash, stable_output_hash(output))
+        self._outputs.move_to_end(output_ref)
+        while len(self._outputs) > _CACHE_LIMIT:
+            removed, _ = self._outputs.popitem(last=False)
+            self._output_hashes.pop(removed, None)
         if recall_parent is not None:
             self._recall_parents.pop(request.inner_turn_id, None)
         self._prefetch_presentations.pop(request.inner_turn_id, None)
@@ -902,6 +918,7 @@ class InboundTurnFaculty:
                 "output_ref": output_ref,
                 "output_hash": output_hash,
                 "proposal_hash": proposal.proposal_hash,
+                "output_record": output_record,
             },
             "proposals": (),
             "author_lineage": lineage.model_dump(mode="python"),
@@ -1086,7 +1103,7 @@ class CharacterInteriorInboundDeliberationAdapter:
             raise RuntimeError("character_interior_inbound_result_unavailable")
         payload = decision.decision
         if (
-            payload.get("contract") != _DECISION_CONTRACT
+            payload.get("contract") not in {_DECISION_CONTRACT, LEGACY_DECISION_CONTRACT}
             or payload.get("capability_ref") != manifest.capability_ref
             or payload.get("capability_payload_hash") != manifest.payload_hash
             or payload.get("source_refs") != list(manifest.source_refs)
@@ -1100,6 +1117,8 @@ class CharacterInteriorInboundDeliberationAdapter:
             _PURPOSE,
             output_ref=output_ref,
             output_hash=output_hash,
+            decision=decision if payload.get("contract") == _DECISION_CONTRACT else None,
+            model_input=request,
         )
         if not isinstance(output, ModelOutput):
             raise RuntimeError("character_interior_inbound_output_invalid")

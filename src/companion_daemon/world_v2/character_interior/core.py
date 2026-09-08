@@ -711,6 +711,9 @@ class CharacterInterior:
         self._snapshot_cache: OrderedDict[str, InnerLifeSnapshot] = OrderedDict()
         self._snapshot_locks: dict[str, asyncio.Lock] = {}
         self._role_failure_evidence: OrderedDict[str, _RoleFacultyTechnicalEvidence] = OrderedDict()
+        # Only a completed consider with this exact same-pin acquire may read
+        # a durable inbound body. This is not a source-wide ingress retry gate.
+        self._inbound_output_requests: OrderedDict[str, _TurnCoordinationRequest] = OrderedDict()
         self._background_driver: object | None = None
         self._metrics: Counter[str] = Counter()
         self._snapshot_compile_ms: deque[float] = deque(maxlen=512)
@@ -1121,13 +1124,37 @@ class CharacterInterior:
         *,
         output_ref: str,
         output_hash: str,
+        decision: InnerDecision | None = None,
+        model_input: object | None = None,
     ) -> object:
         """Resolve one exact output without exposing its owning Faculty."""
 
+        if decision is not None:
+            if purpose != "inbound_turn":
+                raise ValueError("durable output is only available for inbound_turn")
+            if self._turn_store is not None:
+                from .inbound_output_record import _restore_completed_inbound_output
+
+                expected_request = self._inbound_output_requests.get(decision.inner_turn_id)
+                if expected_request is None:
+                    raise ValueError("inbound_output_record.same_pin_acquire_unavailable")
+                return _restore_completed_inbound_output(
+                    store=self._turn_store,
+                    expected_request=expected_request,
+                    decision=decision,
+                    model_input=model_input,
+                )
         faculty = self._registry.for_purpose(purpose)
         operation = getattr(faculty, "consume_output", None)
         if not callable(operation):
             raise RuntimeError(f"CharacterInterior purpose has no output broker: {purpose}")
+        if decision is not None:
+            return operation(
+                output_ref=output_ref,
+                output_hash=output_hash,
+                decision=decision,
+                model_input=model_input,
+            )
         return operation(output_ref=output_ref, output_hash=output_hash)
 
     def _consume_role_failure_evidence(
@@ -1799,6 +1826,16 @@ class CharacterInterior:
                 )
             if decision.status == "technical_failure":
                 self._release_turn(durable)
+            elif (
+                durable is not None
+                and opportunity.purpose == "inbound_turn"
+                and isinstance(decision.decision, dict)
+                and decision.decision.get("contract") == "character-interior-inbound-turn-decision.2"
+            ):
+                self._inbound_output_requests[decision.inner_turn_id] = durable[0]
+                self._inbound_output_requests.move_to_end(decision.inner_turn_id)
+                while len(self._inbound_output_requests) > 128:
+                    self._inbound_output_requests.popitem(last=False)
             entry = self._cache.setdefault(cache_key, _TurnCacheEntry())
             # A model/provider/authority failure must remain retryable; only
             # a role-authored decision or silence is effect-once cached.

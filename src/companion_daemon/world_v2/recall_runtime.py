@@ -248,6 +248,20 @@ def verify_trusted_recall_trace(trace: TrustedRecallTrace) -> RecallAuditTrace:
     return trace.audit
 
 
+def _restore_completed_inbound_traces(proof: object) -> tuple[TrustedRecallTrace, ...]:
+    """Reissue only the fixed traces in a verified same-pin Core terminal.
+
+    There is intentionally no audit/dictionary argument. The opaque proof is
+    minted after reading and validating the original terminal and checkpoint.
+    """
+    from .character_interior.inbound_output_record import _verified_terminal_trace_audits
+
+    return tuple(
+        TrustedRecallTrace(audit=audit, authority_seal=_trace_seal(audit))
+        for audit in _verified_terminal_trace_audits(proof)
+    )
+
+
 async def perform_character_recall(
     coordinator: "RecallCoordinator",
     *,
