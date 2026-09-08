@@ -876,6 +876,7 @@ async def test_production_open_life_plan_comes_from_the_world_author(
                 update={
                     "version": "life-development-capability.production.2",
                     "outcome_contract": None,
+                    "execution_intention_sources_version": None,
                 }
             )
 

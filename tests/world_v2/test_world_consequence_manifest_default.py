@@ -1,6 +1,7 @@
 """Production manifest migration at actual HTTP and durable recovery boundaries.
 
-Provider responses are explicit fixtures, not semantic critic qualification.
+Provider responses and ordinary occasions are explicit fixtures, not semantic
+critic or disturbance-draw qualification.
 """
 
 import hashlib
@@ -52,6 +53,16 @@ from test_production_turn_application import _Identities, _Router
 
 def _json(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+@pytest.fixture(autouse=True)
+def ordinary_occasion(monkeypatch):
+    # Manifest identity may change this unrelated draw. These fixed responses
+    # exercise protocol migration, not the separate durable-disturbance lane.
+    monkeypatch.setattr(
+        LifeDevelopmentRuntime, "_resolve_occasion_draw",
+        lambda self, **kwargs: "life-development:opportunity",
+    )
 
 
 class _HTTP:
@@ -163,6 +174,7 @@ class _LegacyManifest:
     def compile(self, **kwargs):
         value = self.compiler.compile(**kwargs).model_dump(mode="json", round_trip=True)
         value.pop("outcome_contract", None)
+        value.pop("execution_intention_sources_version", None)
         value["version"] = "life-development-capability.production.2"
         return LifeDevelopmentCapabilityManifest.model_validate_json(_json(value))
 
@@ -207,6 +219,7 @@ async def test_production_manifest_requests_current_consequences_through_http_an
         result = await _advance(_composition(ledger, store, _catalog(tmp_path), model), wake)
         user = json.loads(provider.requests[0]["messages"][1]["content"])
         assert user["capability_manifest"]["outcome_contract"] == "world-consequence.2"
+        assert user["capability_manifest"]["execution_intention_sources_version"] == "2"
         assert user["capability_manifest"]["version"] == "life-development-capability.production.4"
         _assert_occurrence(ledger, store, result, provider.draft)
         assert len(provider.requests) == 2  # author + existing focused lane only
@@ -347,6 +360,7 @@ async def test_original_legacy_author_and_reviews_recover_without_new_http_or_pr
         assert len(provider.requests) == 2
         original_user = json.loads(provider.requests[0]["messages"][1]["content"])
         assert "outcome_contract" not in original_user["capability_manifest"]
+        assert "execution_intention_sources_version" not in original_user["capability_manifest"]
         original_audits = tuple(item.audit_json for item in ledger.project().model_result_audits)
         assert ledger.project().world_occurrences == ()
         store.close()

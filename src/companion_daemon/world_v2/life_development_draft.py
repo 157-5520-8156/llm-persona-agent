@@ -327,11 +327,21 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
     outcome_contract: Literal["world-consequence.2"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # An absent marker retains the original execution reader set on replay.
+    # Version 2 additionally reads an already-started day-opening intention.
+    execution_intention_sources_version: Literal["2"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     max_future_days: int = Field(ge=1, le=366)
     max_window_minutes: int = Field(ge=5, le=7 * 24 * 60)
 
     @model_validator(mode="after")
     def refs_are_canonical(self) -> "LifeDevelopmentCapabilityManifest":
+        if (
+            self.execution_intention_sources_version is not None
+            and self.outcome_contract != "world-consequence.2"
+        ):
+            raise ValueError("execution intention sources require world-consequence.2")
         for refs in (
             self.anchor_refs,
             self.grounding_refs,

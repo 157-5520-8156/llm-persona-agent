@@ -116,18 +116,22 @@ def _role_model(reader, *, model_result_ref, model_result_payload_hash):
     return model
 
 
-def _read_intention(reader, content_store, binding):
+def _read_intention(reader, content_store, binding, *, intention_reader_version):
     from .chat_life_intent_runtime import ChatLifeIntentActiveReader
+    from .day_open_life_intent_runtime import DayOpenLifeIntentActiveReader
     from .life_development_runtime import LifeDevelopmentProposalReader
     from .life_events import ActivityPlannedPayload
     from .world_life_intent_runtime import WorldLifeIntentActiveReader
 
     read = None
-    for source_reader in (
+    source_readers = (
         ChatLifeIntentActiveReader(ledger=reader),
         WorldLifeIntentActiveReader(ledger=reader),
         LifeDevelopmentProposalReader(ledger=reader, content_store=content_store),
-    ):
+    )
+    if intention_reader_version == "2":
+        source_readers += (DayOpenLifeIntentActiveReader(ledger=reader),)
+    for source_reader in source_readers:
         read = source_reader.read_active_plan(
             plan_id=binding.plan_id, expected_cursor=_cursor(reader.project()),
             actor_ref=binding.actor_ref, viewer_privacy_ceiling="private",
@@ -149,6 +153,8 @@ def _read_intention(reader, content_store, binding):
     )
     payload = ActivityPlannedPayload.model_validate_json(plan_event.payload_json)
     origin = payload.chat_intent_origin or payload.world_intent_origin
+    if intention_reader_version == "2":
+        origin = origin or payload.day_open_intent_origin
     descriptor = read.accepted_intention
     if origin is not None:
         # The public source-specific reader has already reverse-derived the
@@ -206,6 +212,7 @@ def _read_intention(reader, content_store, binding):
 
 def build_world_consequence_execution_materials(
     *, ledger, content_store, pinned_state, actor_ref: str, source_events,
+    intention_reader_version: Literal["1", "2"] = "1",
 ) -> tuple[WorldConsequenceExecutionMaterial, ...]:
     """Return available or explicitly unavailable material for each exact source.
 
@@ -218,6 +225,8 @@ def build_world_consequence_execution_materials(
     """
     from .schemas import ProjectionCursor
 
+    if intention_reader_version not in {"1", "2"}:
+        raise ValueError("execution intention reader version must be 1 or 2")
     author_cursor = _cursor(pinned_state)
     if ledger.world_id != pinned_state.world_id or ledger.project_at(author_cursor) != pinned_state:
         raise ValueError("execution materials require the original ledger projection")
@@ -247,6 +256,7 @@ def build_world_consequence_execution_materials(
                     ))
                     intention = _read_intention(
                         _PinnedReadLedger(ledger, execution_state), content_store, binding,
+                        intention_reader_version=intention_reader_version,
                     )
                 except _Unavailable as exc:
                     reason = str(exc)

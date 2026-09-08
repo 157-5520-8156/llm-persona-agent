@@ -271,6 +271,7 @@ class ProjectionLifeCapabilityManifestCompiler:
             # manifest schema's legacy omitted value remains unchanged.
             version=SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION,
             outcome_contract="world-consequence.2",
+            execution_intention_sources_version="2",
             owner_actor_ref=self._owner,
             pinned_cursor=ProjectionCursor(
                 world_revision=getattr(projection, "world_revision"),

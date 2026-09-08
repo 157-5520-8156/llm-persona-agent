@@ -124,6 +124,7 @@ class _LegacyManifest:
     def compile(self, **kwargs):
         value = self.compiler.compile(**kwargs).model_dump(mode="json", round_trip=True)
         value.pop("outcome_contract", None)
+        value.pop("execution_intention_sources_version", None)
         value["version"] = "life-development-capability.production.2"
         return LifeDevelopmentCapabilityManifest.model_validate_json(_json(value))
 

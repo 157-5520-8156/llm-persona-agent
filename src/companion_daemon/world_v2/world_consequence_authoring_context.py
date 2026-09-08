@@ -95,6 +95,7 @@ def build_world_consequence_authoring_context(
             material = build_world_consequence_execution_materials(
                 ledger=ledger, content_store=content_store, pinned_state=pinned,
                 actor_ref=actor_ref, source_events=(event,),
+                intention_reader_version=manifest.execution_intention_sources_version or "1",
             )[0]
         except WorldConsequenceAuthorityError as exc:
             # These are typed domain exclusions, not judgments about prose.
