@@ -198,7 +198,7 @@ async def _run_scenario(
                     }
                     for index, text in enumerate(texts)
                     if unclosed
-                ]} if review_version in {"2", "3"} else {}),
+                ]} if review_version in {"2", "3", "4"} else {}),
                 "decisions": [
                     {
                         "beat_index": index,
@@ -218,7 +218,7 @@ async def _run_scenario(
                     )
                 ],
             }
-        if review_version == "3":
+        if review_version in {"3", "4"}:
             for decision in verdict["decisions"]:
                 assert decision.pop("source_ref_indexes") == []
         return _http_result(body, verdict)
@@ -501,7 +501,7 @@ async def test_required_proactive_review_public_host(tmp_path, monkeypatch, scen
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ("2", "3"))
+@pytest.mark.parametrize("review_version", ("2", "3", "4"))
 @pytest.mark.parametrize(
     "scenario",
     ("source_free", "reselect", "reject_twice", "review_invalid_second", "review_deadline_second"),
@@ -567,7 +567,7 @@ async def test_external_cancellation_and_close_leave_proactive_turn_unfinished(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("pause_before_acceptance", (False, True))
-@pytest.mark.parametrize("review_version", ("1", "2", "3"))
+@pytest.mark.parametrize("review_version", ("1", "2", "3", "4"))
 async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_actions(
     tmp_path, monkeypatch, pause_before_acceptance, review_version
 ):
