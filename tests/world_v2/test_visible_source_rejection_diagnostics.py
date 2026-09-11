@@ -387,7 +387,7 @@ def test_v2_original_decision_integer_fields_are_also_strict(field, value):
     assert caught.value.code == "schema_invalid"
 
 
-@pytest.mark.parametrize("version", ["0", "4", 2, None, True])
+@pytest.mark.parametrize("version", ["0", "5", 2, None, True])
 def test_unknown_versions_never_fall_back_to_v1(version):
     with pytest.raises(ValueError, match="version"):
         protocol.visible_source_verdict_provider_request_contract(version=version)

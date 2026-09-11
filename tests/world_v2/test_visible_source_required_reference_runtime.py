@@ -34,10 +34,14 @@ class RequiredReferenceHTTP:
             for draft, text in zip(authored["expression_draft"]["beats"], TEXTS, strict=True):
                 draft["text"] = text
             return _http_result(body, {"result": authored})
-        assert tool == "visible_beat_source_verdict_v3"
+        assert tool == f"visible_beat_source_verdict_v{self.review_version}"
         self.reviews += 1
         packet = json.loads(body["messages"][-1]["content"])
-        source = next(row for row in packet["source_references"] if row["kind"] == "current_counterpart_report")
+        references = packet.get("source_references")
+        if self.review_version == "4":
+            references = [dict(zip(table["columns"], row, strict=True))
+                          for table in packet["source_reference_tables"] for row in table["rows"]]
+        source = next(row for row in references if row["kind"] == "current_counterpart_report")
         assert packet["source_materials"][source["material_index"]]["message"]["text"] == "我刚忙完，来找你说会儿话。你现在想聊点什么？"
         closed = {
             "beat_index": 0, "verdict": "closed", "semantic_role": "external_proposition",
@@ -53,16 +57,18 @@ class RequiredReferenceHTTP:
             closed.pop("additional_source_ref_indexes")
             closed["source_ref_indexes"] = []
         return _http_result(body, {
-            "contract": "visible-beat-source-verdict.3",
+            "contract": f"visible-beat-source-verdict.{self.review_version}",
             "decisions": [closed, {"beat_index": 1, "verdict": "source_free", "semantic_role": "question", "subject_role": "counterpart"}],
             "rejections": [],
         })
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("review_version", ["3", "4"])
 @pytest.mark.parametrize("fault", [None, "missing_first", "old_empty_refs", "wrong_actor"])
-async def test_real_shaped_closed_uptake_uses_model_index_and_keeps_actor_boundary(tmp_path, fault):
+async def test_real_shaped_closed_uptake_uses_model_index_and_keeps_actor_boundary(tmp_path, fault, review_version):
     http = RequiredReferenceHTTP(fault=fault)
+    http.review_version = review_version
     inbound = replace(_inbound(), text="我刚忙完，来找你说会儿话。你现在想聊点什么？")
     async with _app(tmp_path / "world.sqlite", http) as app:
         outcome = await app.respond(inbound)
@@ -76,7 +82,7 @@ async def test_real_shaped_closed_uptake_uses_model_index_and_keeps_actor_bounda
             assert tuple(row.text for row in projection.stored_message_payloads) == TEXTS
             winner = next(a for a in _audits(app) if a.visible_source_review_json is not None)
             receipt = json.loads(winner.visible_source_review_json)["receipt"]
-            assert receipt["contract"] == "visible-source-review-receipt.3"
+            assert receipt["contract"] == f"visible-source-review-receipt.{review_version}"
             audit = next(a for a in projection.proposal_audits if a.proposal_kind == "decision")
             assert verify_recorded_candidate(audit=audit, model_result_audits=projection.model_result_audits) == receipt["receipt_hash"]
         with sqlite3.connect(tmp_path / "usage.sqlite") as db:

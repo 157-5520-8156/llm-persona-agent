@@ -21,17 +21,18 @@ def test_frozen_v2_receipt_keeps_exact_complete_preparation_and_bytes():
     assert _json(receipt.model_dump(mode="json")) == raw
 
 
-def test_v3_passing_receipt_requires_model_selected_first_source():
+@pytest.mark.parametrize("review_version", ["3", "4"])
+def test_passing_receipt_requires_model_selected_first_source(review_version):
     fixture = Path(__file__).parent / "fixtures/visible_source_review_receipt_v2.json"
     old = VisibleSourceReviewReceipt.model_validate_json(fixture.read_text(), strict=True)
     value = json.loads(old.prepared_json)
     prepared = prepare_visible_source_review(
         candidate=DecisionProposal.model_validate_json(value["candidate_json"]),
         source_table=VisibleSourceTable(payload_json=value["source_table_json"]),
-        source_ref_aliases=value["source_ref_aliases"], review_version="3",
+        source_ref_aliases=value["source_ref_aliases"], review_version=review_version,
     )
     raw = json.loads(old.raw_verdict)
-    raw["contract"] = "visible-beat-source-verdict.3"
+    raw["contract"] = f"visible-beat-source-verdict.{review_version}"
     for decision in raw["decisions"]:
         refs = decision.pop("source_ref_indexes")
         if decision["verdict"] == "closed":
@@ -39,7 +40,7 @@ def test_v3_passing_receipt_requires_model_selected_first_source():
     raw = _json(raw)
     review = old.review.model_copy(update={"request_hash": prepared.as_dict()["request_hash"], "response_hash": _hash(raw)})
     receipt = record_visible_source_review(prepared=prepared, author=old.author, review=review, raw_verdict=raw)
-    assert receipt.contract == "visible-source-review-receipt.3"
+    assert receipt.contract == f"visible-source-review-receipt.{review_version}"
     assert receipt.verdict == old.verdict
     assert verify_visible_source_review_receipt(
         receipt=receipt, expected_prepared=prepared, expected_author=old.author, expected_review=review,

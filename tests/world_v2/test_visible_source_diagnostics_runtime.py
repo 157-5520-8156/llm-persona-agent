@@ -53,7 +53,7 @@ class _DiagnosticHTTP(_ReviewHTTP):
         }
         if scenario == "invalid_diagnostic":
             diagnostic["char_end"] += 1
-        if self.review_version == "3":
+        if self.review_version in {"3", "4"}:
             for decision in decisions:
                 assert decision.pop("source_ref_indexes") == []
         return _http_result(body, {
@@ -63,7 +63,7 @@ class _DiagnosticHTTP(_ReviewHTTP):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["2", "3"])
+@pytest.mark.parametrize("review_version", ["2", "3", "4"])
 async def test_diagnostics_reach_same_role_and_complete_replacement_cold_verifies(tmp_path, review_version):
     http = _DiagnosticHTTP(["unclosed", "pass"], tool_version="3")
     http.review_version = review_version
@@ -89,7 +89,8 @@ async def test_diagnostics_reach_same_role_and_complete_replacement_cold_verifie
         last_packet = json.loads(final_review["messages"][-1]["content"])
         assert len(last_packet["visible_beats"]) == len(BEATS)
         assert first_packet["source_materials"] == last_packet["source_materials"]
-        assert first_packet["source_references"] == last_packet["source_references"]
+        references_key = "source_reference_tables" if review_version == "4" else "source_references"
+        assert first_packet[references_key] == last_packet[references_key]
         audits = _audits(app)
         assert len([a for a in audits if a.usage is not None]) == 4
         winner = next(a for a in audits if a.visible_source_review_json is not None)
@@ -114,7 +115,7 @@ async def test_diagnostics_reach_same_role_and_complete_replacement_cold_verifie
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["2", "3"])
+@pytest.mark.parametrize("review_version", ["2", "3", "4"])
 @pytest.mark.parametrize("verdicts,expected", [(["unclosed", "new_unclosed"], (2, 2)), (["invalid_diagnostic"], (1, 1))])
 async def test_changed_other_beat_and_bad_locator_authorize_nothing(tmp_path, verdicts, expected, review_version):
     http = _DiagnosticHTTP(verdicts, tool_version="3")
@@ -185,6 +186,8 @@ async def test_final_evidence_size_failure_keeps_already_completed_invocations(t
     ("1", "2", ["pass"]), ("1", "2", ["unclosed", "pass"]), ("2", "1", ["pass"]),
     ("1", "3", ["pass"]), ("2", "3", ["unclosed", "pass"]),
     ("3", "1", ["pass"]), ("3", "2", ["unclosed", "pass"]),
+    ("3", "4", ["pass"]), ("4", "3", ["unclosed", "pass"]),
+    ("3", "4", ["closed"]), ("4", "3", ["closed"]),
 ])
 async def test_fully_recompiled_version_forgery_cannot_replace_independent_review_audit(tmp_path, version, target, verdicts):
     from companion_daemon.world_v2.proposal_audit_schemas import RecordedModelResultAudit
@@ -195,10 +198,18 @@ async def test_fully_recompiled_version_forgery_cannot_replace_independent_revie
     )
     from companion_daemon.world_v2.visible_source_runtime import canonical, digest
 
-    http = (_ReviewHTTP if version == "1" else _DiagnosticHTTP)(verdicts, tool_version="3")
+    inbound = _inbound()
+    if verdicts == ["closed"]:
+        from dataclasses import replace
+        from test_visible_source_required_reference_runtime import RequiredReferenceHTTP
+
+        http = RequiredReferenceHTTP()
+        inbound = replace(inbound, text="我刚忙完，来找你说会儿话。你现在想聊点什么？")
+    else:
+        http = (_ReviewHTTP if version == "1" else _DiagnosticHTTP)(verdicts, tool_version="3")
     http.review_version = version
     async with _app(tmp_path / "world.sqlite", http) as app:
-        assert (await app.respond(_inbound())).status == "action_authorized"
+        assert (await app.respond(inbound)).status == "action_authorized"
         projection = app.export_replay_evidence().projection
     audit = next(a for a in projection.proposal_audits if a.proposal_kind == "decision")
     original = next(a for a in projection.model_result_audits if a.model_result_ref == audit.model_result_ref)
@@ -214,17 +225,17 @@ async def test_fully_recompiled_version_forgery_cannot_replace_independent_revie
     )
     raw = json.loads(receipt.raw_verdict)
     raw["contract"] = f"visible-beat-source-verdict.{target}"
-    if target in {"2", "3"}:
+    if target in {"2", "3", "4"}:
         raw["rejections"] = []
     else:
         raw.pop("rejections")
     for decision in raw["decisions"]:
-        if version == "3":
+        if version in {"3", "4"}:
             refs = ([decision.pop("first_source_ref_index"), *decision.pop("additional_source_ref_indexes")]
                     if decision["verdict"] == "closed" else [])
         else:
             refs = decision.pop("source_ref_indexes")
-        if target == "3":
+        if target in {"3", "4"}:
             if decision["verdict"] == "closed":
                 decision.update(first_source_ref_index=refs[0], additional_source_ref_indexes=refs[1:])
         else:
