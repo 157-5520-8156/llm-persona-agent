@@ -10525,9 +10525,19 @@ class _ExpressionDraftWire:
             user_material["inner_life_snapshot"] = inner_life_snapshot
             materials = inner_life_snapshot.get("materials") if isinstance(inner_life_snapshot, dict) else None
             current_activities = materials.get("current_activities") if isinstance(materials, dict) else None
-            if current_activities:
-                user_material["current_activity_source_rule"] = (
-                    "When stating what you are doing now, use only the exact accepted_intention.text from current_activities; do not substitute a different activity, place, object, duration or outcome. An active activity plus its accepted intention may support saying that you are working on that intended thing, but not that it is finished."
+            planned_activities = materials.get("planned_activities") if isinstance(materials, dict) else None
+            recently_ended_activities = (
+                materials.get("recently_ended_activities") if isinstance(materials, dict) else None
+            )
+            if current_activities or planned_activities or recently_ended_activities:
+                user_material["activity_source_rule"] = (
+                    "Activity source rule: planned_activities prove only an accepted intention and its window; "
+                    "never state a planned activity as currently happening, already done, or as evidence of what "
+                    "happened today. current_activities prove only that the activity lifecycle is in progress; "
+                    "use only the exact accepted_intention.text, without adding a different activity, place, "
+                    "object, duration or outcome. recently_ended_activities prove only that the lifecycle ended; "
+                    "they do not prove the intention was fulfilled or what the outcome was. If no activity source "
+                    "supports a current or past detail, speak only about the intention/feeling or ask instead."
                 )
         if quick_recovery and source_closure_failure is not None:
             user_material["prior_source_closure_failure"] = {

@@ -1075,6 +1075,11 @@ def _verified_counterpart_actor(request: ModelInput) -> str | None:
     trigger = request.trigger_message
     if trigger is not None:
         return trigger.actor
+    manifest = request.capability_manifest
+    if manifest is not None and isinstance(manifest.payload, dict):
+        counterpart_ref = manifest.payload.get("counterpart_ref")
+        if isinstance(counterpart_ref, str) and counterpart_ref:
+            return counterpart_ref
     try:
         context = json.loads(request.model_content_json)
     except (TypeError, json.JSONDecodeError):

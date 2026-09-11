@@ -729,6 +729,7 @@ class _CharacterInteriorProactiveTransport:
         source_closure_reviewer=None,
         report_relative_reviewer=None,
         visible_source_review_required: bool = False,
+        counterpart_actor_ref: str | None = None,
         **_unused,
     ) -> None:
         del _unused
@@ -738,6 +739,7 @@ class _CharacterInteriorProactiveTransport:
         self._world_id = world_id
         self._actor_ref = actor_ref
         self._target = target
+        self._counterpart_actor_ref = counterpart_actor_ref
         self._capabilities = expression_capabilities
         self._identity_frame = identity_frame
         self._source_closure_reviewer = source_closure_reviewer
@@ -968,6 +970,8 @@ class _CharacterInteriorProactiveTransport:
             "source_opportunity": _proactive_source_frame(model_content_json),
             "target_ref": self._target,
         }
+        if isinstance(self._counterpart_actor_ref, str) and self._counterpart_actor_ref:
+            payload["counterpart_ref"] = self._counterpart_actor_ref
         payload_json = _canonical(payload)
         return _InteriorCapabilityManifest(
             capability_ref=f"capability:proactive:{attempt_id}",
@@ -1599,6 +1603,7 @@ class ProactiveDeliberationTurn:
         report_relative_reviewer=None,
         visible_source_review_required: bool = False,
         companion_actor_ref: str,
+        counterpart_actor_ref: str | None = None,
         budget_policy: InteractiveTurnBudgetPolicy | None = None,
         **_unused,
     ) -> None:
@@ -1613,6 +1618,7 @@ class ProactiveDeliberationTurn:
             source_closure_reviewer=source_closure_reviewer,
             report_relative_reviewer=report_relative_reviewer,
             visible_source_review_required=visible_source_review_required,
+            counterpart_actor_ref=counterpart_actor_ref,
         )
         self._transport = transport
         deliberation = compose_production_deliberation(

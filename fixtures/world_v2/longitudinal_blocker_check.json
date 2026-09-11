@@ -1,0 +1,18 @@
+{
+  "scenario_id": "longitudinal-blocker-check.1",
+  "started_at": "2026-09-07T08:00:00+08:00",
+  "duration_minutes": 720,
+  "restart_minutes": [],
+  "turns": [
+    {
+      "id": "plan",
+      "at_minutes": 0,
+      "text": "早，我这周有点忙，周五下午要做一个分享。我平时比较喜欢喝桂花乌龙。"
+    },
+    {
+      "id": "her-morning",
+      "at_minutes": 120,
+      "text": "材料写了一会儿，歇歇。你今天怎么样？"
+    }
+  ]
+}

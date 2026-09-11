@@ -4068,6 +4068,7 @@ def build_sqlite_world_v2_turn_application(
             recall_coordinator=recall_coordinator,
             batch_issuer=issuer,
             companion_actor_ref=config.companion_actor_ref,
+            counterpart_actor_ref=config.counterpart_actor_ref,
             reply_target=config.reply_target,
             expression_capabilities=config.expression_capabilities,
             proactive_source_closure_model=proactive_source_closure_model,
