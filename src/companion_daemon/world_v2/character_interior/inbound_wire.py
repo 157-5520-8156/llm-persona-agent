@@ -10447,6 +10447,15 @@ class _ExpressionDraftWire:
                 "If no such source exists, return no invented substitute. Do not mention "
                 "providers, prompts, retries, systems, evidence, or this recovery mode."
             )
+        system += (
+            " ACTIVITY SOURCE DISCIPLINE: current_activities prove only that the lifecycle is in progress; "
+            "when you speak about what you are doing now, use only the exact accepted_intention.text from the entry, "
+            "without substituting a different activity, place, object, duration or outcome. planned_activities prove "
+            "only an accepted intention and its window; never present them as current or completed. "
+            "recently_ended_activities prove only that the lifecycle ended, not that the intention was fulfilled or "
+            "what the outcome was. If no source supports a current or past detail, speak only about the intention, "
+            "feeling, question, or silence."
+        )
         system += " " + schema
         request_material = request.model_dump(mode="json", exclude={"visible_source_requirement_json"})
         provider_context_json = (

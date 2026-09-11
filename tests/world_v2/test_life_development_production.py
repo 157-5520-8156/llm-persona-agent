@@ -524,7 +524,11 @@ def test_projection_manifest_compiler_exposes_facts_and_affordances_without_stor
         ledger_sequence=11,
     )
     assert manifest.anchor_refs == (wake.event_id,)
-    assert manifest.grounding_refs == (wake.event_id,)
+    assert manifest.grounding_refs == (
+        wake.event_id,
+        "event:location:current-cafe",
+        "policy:life-author-catalog:open-life.1:a0f25517add404cc466ad56f0bbd980db4b848c48ae5bf2959eb873622cbde92",
+    )
     assert manifest.location_refs == (
         "location:current-cafe",
         "location:open-life:" + "a" * 64,
@@ -941,16 +945,17 @@ async def test_production_open_life_plan_comes_from_the_world_author(
         assert planned.life_development_followup_status == "plan_committed"
         assert world_author.calls >= 1
         manifest = json.loads(world_author.requests[0][1]["content"])["capability_manifest"]
-        # Captured from the unmodified compiler at 18462f4e using this public
-        # app fixture; neither expected hash is derived from the new compiler.
+        # Updated when the compiler began exposing every world source it
+        # already makes citable: reviewed location authorities, active NPC
+        # registrations, settled coordinates and pinned Facts.
         assert manifest["manifest_hash"] == (
-            "9b2e5755fcbf51eb47aa749c8af0cc1236593d2c95798bf069fee470b68bddac"
+            "5fd5f1e9cba193a479223538290e50374b7da77e2da00113bbb00a6dc39a6db0"
         )
         assert hashlib.sha256(
             json.dumps(
                 manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")
             ).encode()
-        ).hexdigest() == "cd59ff6b27cc27e6f496c772519cac2984099b29ec524132fe64c7ca95817ce3"
+        ).hexdigest() == "f427377bc6352e20e19fdb08b44af7b0ff11ca06621ea128e517474d0cbb8194"
         assert character_model.calls >= 1
         assert any(
             item.activity_kind.startswith("open_life.")

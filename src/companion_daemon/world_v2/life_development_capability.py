@@ -94,7 +94,7 @@ class ProjectionLifeCapabilityManifestCompiler:
             ref
             for slice_ in available_slices
             for ref in getattr(slice_, "source_refs", ())
-            if ref in committed_ids
+            if isinstance(ref, str) and ref
         }
         # The exact scheduler wake is verified separately by the runtime and
         # remains a legal anchor even when compact Context framing omits its
@@ -246,12 +246,23 @@ class ProjectionLifeCapabilityManifestCompiler:
         # genesis timeline as first-class authority.  Those exact refs must be
         # citable by the World Author for existing-world claims, otherwise the
         # model is forced to either invent novel-world claims or fail closure.
+        for capability in unique_location_capabilities.values():
+            grounding_refs_set.update(
+                ref for ref in capability.authority_refs if isinstance(ref, str) and ref
+            )
         for npc in getattr(projection, "npcs", ()):
             if getattr(npc, "status", None) != "active":
                 continue
             registration_ref = getattr(npc, "registration_event_ref", None)
             if isinstance(registration_ref, str) and registration_ref:
                 grounding_refs_set.add(registration_ref)
+        for fact in getattr(projection, "facts", ()):
+            fact_id = getattr(fact, "fact_id", None)
+            if isinstance(fact_id, str) and fact_id:
+                grounding_refs_set.add(fact_id)
+        reviewed_timeline_ref = getattr(biography, "reviewed_timeline_ref", None)
+        if isinstance(reviewed_timeline_ref, str) and reviewed_timeline_ref:
+            grounding_refs_set.add(reviewed_timeline_ref)
         for coordinate in getattr(projection, "biographical_coordinates", ()):
             settlement_ref = getattr(coordinate, "settlement_event_ref", None)
             if isinstance(settlement_ref, str) and settlement_ref:
