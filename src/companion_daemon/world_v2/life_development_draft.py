@@ -1001,6 +1001,82 @@ class LifeDevelopmentDraftError(ValueError):
         self.failure_context = dict(failure_context or {})
 
 
+def _normalized_claim_id(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        value = "anonymous"
+    if value.startswith("local:claim:"):
+        suffix = value[len("local:claim:"):]
+        if suffix and suffix[0] in "abcdefghijklmnopqrstuvwxyz0123456789" and all(
+            character in "abcdefghijklmnopqrstuvwxyz0123456789._-" for character in suffix
+        ):
+            return value
+    suffix = value[len("claim:"):] if value.startswith("claim:") else value
+    cleaned = "".join(
+        character
+        if character in "abcdefghijklmnopqrstuvwxyz0123456789._-"
+        else "-"
+        for character in suffix.lower()
+    ).strip("-")
+    if not cleaned:
+        cleaned = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+    if cleaned[0] not in "abcdefghijklmnopqrstuvwxyz0123456789":
+        cleaned = "claim" + cleaned
+    return "local:claim:" + cleaned[:64]
+
+
+def _normalize_claim_identifiers(decoded: dict[str, object]) -> dict[str, object]:
+    declarations = decoded.get("claim_declarations")
+    if not isinstance(declarations, list) or not declarations:
+        return decoded
+    mapping: dict[str, str] = {}
+    used: set[str] = set()
+    normalized_declarations: list[object] = []
+    for declaration in declarations:
+        if not isinstance(declaration, dict) or not isinstance(declaration.get("claim_id"), str):
+            return decoded
+        original = declaration["claim_id"]
+        candidate = _normalized_claim_id(original)
+        if candidate in used and candidate != original:
+            suffix = 1
+            base = candidate
+            while candidate in used:
+                candidate = f"{base}-{suffix}"
+                suffix += 1
+        used.add(candidate)
+        mapping[original] = candidate
+        normalized_declarations.append({**declaration, "claim_id": candidate})
+    if not any(old != new for old, new in mapping.items()):
+        return decoded
+
+    def rewrite(refs: object) -> object:
+        if not isinstance(refs, list):
+            return refs
+        return [mapping.get(item, item) if isinstance(item, str) else item for item in refs]
+
+    normalized: dict[str, object] = {
+        **decoded,
+        "claim_declarations": normalized_declarations,
+        "premise_claim_refs": rewrite(decoded.get("premise_claim_refs")),
+    }
+    outcomes = decoded.get("outcomes")
+    if isinstance(outcomes, list):
+        rebuilt: list[object] = []
+        for outcome in outcomes:
+            if not isinstance(outcome, dict):
+                rebuilt.append(outcome)
+                continue
+            item = {**outcome, "claim_refs": rewrite(outcome.get("claim_refs"))}
+            visual = outcome.get("visual_evidence")
+            if isinstance(visual, dict):
+                item["visual_evidence"] = {
+                    **visual,
+                    "claim_refs": rewrite(visual.get("claim_refs")),
+                }
+            rebuilt.append(item)
+        normalized["outcomes"] = rebuilt
+    return normalized
+
+
 def parse_world_author_draft(
     *,
     raw: str,
@@ -1121,6 +1197,11 @@ def parse_world_author_draft(
                         ensure_ascii=False,
                         separators=(",", ":"),
                     )
+    if isinstance(decoded, dict) and decoded.get("decision") != "no_op":
+        normalized_decoded = _normalize_claim_identifiers(decoded)
+        if normalized_decoded is not decoded:
+            decoded = normalized_decoded
+            json_text = json.dumps(decoded, ensure_ascii=False, separators=(",", ":"))
     try:
         if decoded.get("decision") == "no_op":
             draft: LifeDevelopmentWorldDraft = LifeDevelopmentNoOpDraft.model_validate_json(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 
 from .life_review_identity import SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION
@@ -270,6 +271,23 @@ class ProjectionLifeCapabilityManifestCompiler:
         for committed in committed_refs:
             if getattr(committed, "event_type", None) == "BiographicalTimelineConfigured":
                 grounding_refs_set.add(committed.event_id)
+        # The reviewed timeline parent ref is exposed to the World Author in
+        # the pinned context as an authority label, so make the exact value
+        # citable instead of forcing the model to invent or fail closure.
+        try:
+            context_document = json.loads(model_content)
+        except (TypeError, ValueError):
+            context_document = None
+        stack = [context_document]
+        while stack:
+            value = stack.pop()
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    if key in {"reviewed_timeline_ref", "timeline_source_event_ref"} and isinstance(item, str) and item:
+                        grounding_refs_set.add(item)
+                    stack.append(item)
+            elif isinstance(value, list):
+                stack.extend(value)
         grounding_refs = tuple(sorted(grounding_refs_set))
         current_situation_refs = {
             ref

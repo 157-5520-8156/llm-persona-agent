@@ -1555,6 +1555,51 @@ def test_world_author_drops_unused_claim_declarations_before_closure_validation(
     )
 
 
+def test_world_author_normalizes_local_claim_identifiers_before_validation() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    capability = _location_capability()
+    raw = json.loads(
+        _location_bound_world_draft(
+            wake=wake,
+            capability=capability,
+            timing={"mode": "now", "duration_minutes": 30},
+            privacy_class="shareable",
+        )
+    )
+    original = "local:claim:location-change"
+    replacement = "claim:location-change"
+    raw["premise_claim_refs"] = [replacement]
+    raw["claim_declarations"][0]["claim_id"] = replacement
+    for outcome in raw["outcomes"]:
+        outcome["claim_refs"] = [
+            replacement if item == original else item for item in outcome.get("claim_refs", [])
+        ]
+        visual = outcome.get("visual_evidence")
+        if isinstance(visual, dict):
+            visual["claim_refs"] = [
+                replacement if item == original else item for item in visual.get("claim_refs", [])
+            ]
+    manifest = _manifest(
+        wake,
+        pinned_cursor=_projection_cursor(ledger),
+        location_capability=capability,
+    )
+
+    parsed = parse_world_author_draft(
+        raw=json.dumps(raw, ensure_ascii=False),
+        manifest=manifest,
+        logical_time=NOW,
+    )
+
+    assert parsed.decision == "propose"
+    assert tuple(item.claim_id for item in parsed.claim_declarations) == (
+        "local:claim:location-change",
+    )
+    assert parsed.premise_claim_refs == ("local:claim:location-change",)
+    assert parsed.outcomes[0].claim_refs == ("local:claim:location-change",)
+
+
 def test_world_author_accepts_one_pure_json_markdown_transport_envelope() -> None:
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
     wake = _seed_clock(ledger)
