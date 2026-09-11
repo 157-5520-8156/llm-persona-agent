@@ -6206,7 +6206,9 @@ class LifeDevelopmentRuntime:
                 "Declare an existing_world claim only with an exact manifest.grounding_refs member. "
                 "Visual location pairing: if location_ref is set, every outcome.visual_evidence.location "
                 "must be null or exactly that same location_ref; never use a different place. If "
-                "location_ref is omitted, every visual location must be null. "
+                "location_ref is omitted, every visual location must be null. If you are not certain how "
+                "to bind a visual location, omit the location field entirely; null is always legal when "
+                "location_ref is present. "
                 "The current-contract compliant propose example below replaces the historical text-shaped "
                 "example above for every outcome field. Mirror its field names and structure precisely, "
                 "including world_consequence instead of text, and copy its privacy/location pairing. "
@@ -7291,11 +7293,6 @@ _WORLD_AUTHOR_COMPLIANT_PROPOSE_V2_EXAMPLE = {
             "visual_evidence": {
                 "claim_refs": ["local:claim:local-possibility"],
                 "activity_description": "At the authorized place during the covered window.",
-                "location": {
-                    "location_ref": "location:reviewed-place",
-                    "kind": "place",
-                    "publicness": "public",
-                },
                 "environment": {"structure": "authorized place during a covered window"},
             },
         },
@@ -7312,11 +7309,6 @@ _WORLD_AUTHOR_COMPLIANT_PROPOSE_V2_EXAMPLE = {
             "visual_evidence": {
                 "claim_refs": ["local:claim:local-possibility"],
                 "activity_description": "At the authorized place during the covered window.",
-                "location": {
-                    "location_ref": "location:reviewed-place",
-                    "kind": "place",
-                    "publicness": "public",
-                },
                 "environment": {"structure": "authorized place during a covered window"},
             },
         },
