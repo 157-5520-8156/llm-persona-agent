@@ -814,9 +814,16 @@ def test_stable_body_retains_all_excluded_audits_and_no_live_seal():
 def test_oversized_record_is_rejected_before_body_validation(kind):
     from companion_daemon.world_v2.character_interior.contracts import InnerDecision
     from companion_daemon.world_v2.character_interior.inbound_output_record import _validate_record
-    from companion_daemon.world_v2.deliberation import MAX_MODEL_OUTPUT_NODES
+    from companion_daemon.world_v2.deliberation import (
+        MAX_COMPLETED_INBOUND_OUTPUT_BYTES,
+        MAX_MODEL_OUTPUT_NODES,
+    )
 
-    raw = {"oversized": "界" * 171_000} if kind == "bytes" else [None] * MAX_MODEL_OUTPUT_NODES
+    raw = (
+        {"oversized": chr(30028) * (MAX_COMPLETED_INBOUND_OUTPUT_BYTES // 3 + 1)}
+        if kind == "bytes"
+        else [None] * MAX_MODEL_OUTPUT_NODES
+    )
     decision = InnerDecision.model_construct(
         decision={
             "contract": "character-interior-inbound-turn-decision.2",

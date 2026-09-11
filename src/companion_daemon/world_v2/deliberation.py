@@ -60,6 +60,11 @@ from .validation_failure_codes import (
 
 MAX_MODEL_OUTPUT_BYTES = 512_000
 MAX_MODEL_OUTPUT_NODES = 16_384
+# Completed inbound turns carry the accepted whole-candidate review
+# evidence in addition to the ordinary model output.  The review carrier
+# itself is bounded to 1MB elsewhere, so the completed record needs a
+# larger transport budget without widening raw role output validation.
+MAX_COMPLETED_INBOUND_OUTPUT_BYTES = 4_000_000
 MAX_ROUTE_REASON_CHARACTERS = 128
 MAX_REPORTED_TOKENS = 10_000_000
 # Process-wide ceilings cover unrelated lanes and detached cancellation audit.
@@ -741,7 +746,7 @@ def _output_response_hash(output: ModelOutput) -> str:
     )
 
 
-def _bounded_raw(value: object, *, label: str) -> None:
+def _bounded_raw(value: object, *, label: str, limit_bytes: int = MAX_MODEL_OUTPUT_BYTES) -> None:
     pending = [value]
     seen = 0
     characters = 0
@@ -752,7 +757,7 @@ def _bounded_raw(value: object, *, label: str) -> None:
             raise ValueError(f"{label} exceeds node limit")
         if isinstance(item, str):
             characters += len(item.encode("utf-8"))
-            if characters > MAX_MODEL_OUTPUT_BYTES:
+            if characters > limit_bytes:
                 raise ValueError(f"{label} exceeds byte limit")
         elif isinstance(item, dict):
             pending.extend(item.keys())

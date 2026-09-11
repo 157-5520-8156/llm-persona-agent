@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import Field
 
 from ..deliberation import (
+    MAX_COMPLETED_INBOUND_OUTPUT_BYTES,
     MAX_MODEL_OUTPUT_BYTES,
     ModelInput,
     ModelOutput,
@@ -186,8 +187,12 @@ def record_inbound_output(
         output=body,
     )
     value = record.model_dump(mode="json")
-    _bounded_raw(value, label="inbound output record")
-    if len(_canonical(value).encode()) > MAX_MODEL_OUTPUT_BYTES:
+    _bounded_raw(
+        value,
+        label="inbound output record",
+        limit_bytes=MAX_COMPLETED_INBOUND_OUTPUT_BYTES,
+    )
+    if len(_canonical(value).encode()) > MAX_COMPLETED_INBOUND_OUTPUT_BYTES:
         raise ValueError("inbound_output_record.byte_limit")
     return value
 
@@ -208,8 +213,12 @@ def _validate_record(*, decision: InnerDecision, model_input: ModelInput) -> _Ou
     if not isinstance(payload, dict) or payload.get("contract") != DECISION_CONTRACT:
         raise ValueError("inbound_output_record.contract_unavailable")
     raw = payload.get("output_record")
-    _bounded_raw(raw, label="inbound output record")
-    if len(_canonical(raw).encode()) > MAX_MODEL_OUTPUT_BYTES:
+    _bounded_raw(
+        raw,
+        label="inbound output record",
+        limit_bytes=MAX_COMPLETED_INBOUND_OUTPUT_BYTES,
+    )
+    if len(_canonical(raw).encode()) > MAX_COMPLETED_INBOUND_OUTPUT_BYTES:
         raise ValueError("inbound_output_record.byte_limit")
     try:
         record = _OutputRecord.model_validate_json(_canonical(raw))
