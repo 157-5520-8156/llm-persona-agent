@@ -7543,6 +7543,85 @@ def _world_author_repair_coordinates(
                 }
             )
             matched = True
+        if "outcome effect cannot weaken outcome privacy" in message:
+            coordinates.append(
+                {
+                    "rule": "outcome_effect_privacy_cannot_weaken",
+                    "field_paths": [
+                        "privacy_class",
+                        "outcomes.*.privacy_class",
+                        "outcomes.*.provisional_npcs.*.privacy_class",
+                        "outcomes.*.provisional_places.*.privacy_class",
+                        "outcomes.*.dynamic_life_direction.privacy_class",
+                        "outcomes.*.objective_biographical_transition.privacy_class",
+                    ],
+                    "required_relation": (
+                        "every nested effect privacy must be at least as restrictive as its outcome "
+                        "privacy; every outcome privacy must be at least as restrictive as proposal "
+                        "privacy and the selected location capability"
+                    ),
+                    "allowed_privacy_order_least_to_most_restrictive": [
+                        "public",
+                        "shareable",
+                        "personal",
+                        "private",
+                        "withhold",
+                    ],
+                }
+            )
+            matched = True
+        if "at least 2 items" in message or "too_short" in message:
+            coordinates.append(
+                {
+                    "rule": "propose_requires_two_to_four_outcomes",
+                    "field_path": "outcomes",
+                    "minimum_items": 2,
+                    "maximum_items": 4,
+                    "required_relation": (
+                        "keep two to four complete outcome candidates after privacy and closure "
+                        "validation; do not submit only the surviving subset"
+                    ),
+                }
+            )
+            matched = True
+        if (
+            "outcome visual location must equal" in message
+            or "proposal location_ref must be present and equal" in message
+            or "visual location_ref must" in message
+        ):
+            coordinates.append(
+                {
+                    "rule": "visual_location_pairing",
+                    "field_paths": [
+                        "location_ref",
+                        "outcomes.*.visual_evidence.location.location_ref",
+                    ],
+                    "required_relation": (
+                        "if proposal location_ref is present, every outcome visual location_ref must "
+                        "be null or exactly equal to it; if proposal location_ref is absent, every "
+                        "visual location must be null"
+                    ),
+                    "allowed_repairs": [
+                        "omit_visual_location",
+                        "copy_exact_proposal_location_ref",
+                        "omit_visual_evidence",
+                    ],
+                }
+            )
+            matched = True
+        if "existing-world claim cites a ref absent" in message:
+            coordinates.append(
+                {
+                    "rule": "existing_world_claim_grounding",
+                    "field_paths": ["claim_declarations.*.source_refs"],
+                    "allowed_source_refs": list(manifest.grounding_refs),
+                    "required_relation": (
+                        "existing_world claim source_refs must be copied from the pinned "
+                        "manifest's grounding_refs; novel_world_generation uses an empty array"
+                    ),
+                }
+            )
+            matched = True
         if "location-bound ordinary-privacy outcomes must carry visual_evidence" in message:
             coordinates.append(
                 {
