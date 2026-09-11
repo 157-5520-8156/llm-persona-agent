@@ -2734,6 +2734,28 @@ class LifeDevelopmentRuntime:
                 wake=wake,
                 capsule=capsule,
             )
+            # The pinned biographical material exposes the reviewed timeline
+            # under both its authority label and its source alias.  Both exact
+            # refs are visible to the World Author, so both must be citable for
+            # the broad age/term/residence claims the context already carries.
+            biography_refs: set[str] = set()
+            pending = [context]
+            while pending:
+                value = pending.pop()
+                if isinstance(value, dict):
+                    for item in value.values():
+                        if isinstance(item, str) and (
+                            item.startswith("biography:")
+                            or item.startswith("reviewed-biography:")
+                        ):
+                            biography_refs.add(item)
+                        pending.append(item)
+                elif isinstance(value, list):
+                    pending.extend(value)
+            if biography_refs:
+                grounding = tuple(sorted({*manifest.grounding_refs, *biography_refs}))
+                if grounding != manifest.grounding_refs:
+                    manifest = manifest.model_copy(update={"grounding_refs": grounding})
             if manifest.pinned_cursor != context_cursor:
                 raise ConcurrencyConflict(
                     "Life Development capability manifest belongs to another prefix"
@@ -6181,6 +6203,9 @@ class LifeDevelopmentRuntime:
             " Reviewed schedules, open hours and catalog policy refs are affordances for "
             "choosing a location and timing, not existing_world claim declarations. "
             "Declare an existing_world claim only with an exact manifest.grounding_refs member. "
+            "Visual location pairing: if location_ref is set, every outcome.visual_evidence.location "
+            "must be null or exactly that same location_ref; never use a different place. If "
+            "location_ref is omitted, every visual location must be null. "
         )
         return messages
 
