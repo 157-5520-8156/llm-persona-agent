@@ -9,6 +9,8 @@ inert proposal until the same-turn acceptance lane authorizes them.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
+
 import hashlib
 import json
 from typing import Literal
@@ -1063,6 +1065,26 @@ def _existing_affect_components(
     return result
 
 
+_VERIFIED_PROACTIVE_COUNTERPART: ContextVar[str | None] = ContextVar(
+    "verified_proactive_counterpart", default=None
+)
+
+
+def use_verified_proactive_counterpart(actor_ref: str | None):
+    """Bind the host-verified counterpart for one proactive Interior call."""
+
+    class _Use:
+        def __enter__(self):
+            self._token = _VERIFIED_PROACTIVE_COUNTERPART.set(actor_ref)
+            return actor_ref
+
+        def __exit__(self, exc_type, exc, tb):
+            _VERIFIED_PROACTIVE_COUNTERPART.reset(self._token)
+            return False
+
+    return _Use()
+
+
 def _verified_counterpart_actor(request: ModelInput) -> str | None:
     """The person this reading is about: inbound message actor, else pinned head.
 
@@ -1072,6 +1094,9 @@ def _verified_counterpart_actor(request: ModelInput) -> str | None:
     subject if that head is missing or ambiguous.
     """
 
+    proactive_counterpart = _VERIFIED_PROACTIVE_COUNTERPART.get()
+    if proactive_counterpart:
+        return proactive_counterpart
     trigger = request.trigger_message
     if trigger is not None:
         return trigger.actor

@@ -829,20 +829,25 @@ class _CharacterInteriorProactiveTransport:
             trigger_ref=request.trigger_ref,
             source_refs=source_refs,
         )
-        decision = await self._interior.consider(
-            self._opportunity(
-                attempt_id=request.attempt_id,
-                trigger_ref=request.trigger_ref,
-                source_refs=source_refs,
-                cursor=ProjectionCursor(
-                    world_revision=request.evaluated_world_revision,
-                    deliberation_revision=request.evaluated_deliberation_revision,
-                    ledger_sequence=request.evaluated_ledger_sequence,
-                ),
-                logical_time=logical_time,
-                capability=capability,
-            )
+        from .character_interior.inbound_appraisal_wire import (
+            use_verified_proactive_counterpart,
         )
+
+        with use_verified_proactive_counterpart(self._counterpart_actor_ref):
+            decision = await self._interior.consider(
+                self._opportunity(
+                    attempt_id=request.attempt_id,
+                    trigger_ref=request.trigger_ref,
+                    source_refs=source_refs,
+                    cursor=ProjectionCursor(
+                        world_revision=request.evaluated_world_revision,
+                        deliberation_revision=request.evaluated_deliberation_revision,
+                        ledger_sequence=request.evaluated_ledger_sequence,
+                    ),
+                    logical_time=logical_time,
+                    capability=capability,
+                )
+            )
         if decision.status == "technical_failure":
             failure = decision.failure_code or "unknown"
             mapped = map_character_interior_proactive_failure(failure)
