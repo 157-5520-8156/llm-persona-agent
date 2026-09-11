@@ -6207,6 +6207,11 @@ class LifeDevelopmentRuntime:
                 "Visual location pairing: if location_ref is set, every outcome.visual_evidence.location "
                 "must be null or exactly that same location_ref; never use a different place. If "
                 "location_ref is omitted, every visual location must be null. "
+                "The current-contract compliant propose example below replaces the historical text-shaped "
+                "example above for every outcome field. Mirror its field names and structure precisely, "
+                "including world_consequence instead of text, and copy its privacy/location pairing. "
+                + json.dumps(_WORLD_AUTHOR_COMPLIANT_PROPOSE_V2_EXAMPLE, ensure_ascii=False)
+                + " Return exactly JSON."
             )
         return messages
 
@@ -7248,6 +7253,75 @@ def _world_author_hard_boundary_contract(
         },
     }
 
+
+_WORLD_AUTHOR_COMPLIANT_PROPOSE_V2_EXAMPLE = {
+    "decision": "propose",
+    "authored_subject_ref": "agent:companion",
+    "causal_authority": "character_choice",
+    "outcome_resolution_authority": "character_choice",
+    "premise_scope": "external_opportunity",
+    "premise": "One specific current possibility at an authorized location during a covered window, not a weather default.",
+    "premise_claim_refs": ["local:claim:local-possibility"],
+    "claim_declarations": [
+        {
+            "claim_id": "local:claim:local-possibility",
+            "summary": "A time-bounded local possibility is available at an authorized place during a covered window.",
+            "scope": "novel_world_generation",
+            "subject_scope": "world_environment",
+            "source_refs": [],
+        }
+    ],
+    "timing": {"mode": "later", "opens_at": "2026-01-02T01:00:00+00:00", "closes_at": "2026-01-02T03:00:00+00:00"},
+    "anchor_refs": ["event:anchor:1"],
+    "location_ref": "location:reviewed-place",
+    "location_capability_ref": "location-capability:" + ("0" * 64),
+    "entity_refs": [],
+    "privacy_class": "shareable",
+    "outcomes": [
+        {
+            "experienced_by_ref": "agent:companion",
+            "world_consequence": {
+                "contract": "world-consequence.2",
+                "environment_text": "A concrete candidate change at the authorized place during the covered window.",
+            },
+            "user_channel_completion": "none",
+            "privacy_class": "shareable",
+            "relative_plausibility_weight": 6000,
+            "claim_refs": ["local:claim:local-possibility"],
+            "visual_evidence": {
+                "claim_refs": ["local:claim:local-possibility"],
+                "activity_description": "At the authorized place during the covered window.",
+                "location": {
+                    "location_ref": "location:reviewed-place",
+                    "kind": "place",
+                    "publicness": "public",
+                },
+                "environment": {"structure": "authorized place during a covered window"},
+            },
+        },
+        {
+            "experienced_by_ref": "agent:companion",
+            "world_consequence": {
+                "contract": "world-consequence.2",
+                "environment_text": "A different concrete candidate change at the same authorized place and window.",
+            },
+            "user_channel_completion": "none",
+            "privacy_class": "shareable",
+            "relative_plausibility_weight": 4000,
+            "claim_refs": ["local:claim:local-possibility"],
+            "visual_evidence": {
+                "claim_refs": ["local:claim:local-possibility"],
+                "activity_description": "At the authorized place during the covered window.",
+                "location": {
+                    "location_ref": "location:reviewed-place",
+                    "kind": "place",
+                    "publicness": "public",
+                },
+                "environment": {"structure": "authorized place during a covered window"},
+            },
+        },
+    ],
+}
 
 _WORLD_AUTHOR_COMPLIANT_PROPOSE_EXAMPLE = {
     "decision": "propose",
