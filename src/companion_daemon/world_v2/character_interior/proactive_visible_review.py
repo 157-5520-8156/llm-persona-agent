@@ -392,7 +392,7 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
                 provider_subcall_audits=(
                     output.provider_subcall_audits if output is not None else prior_reviews
                 ),
-                failure_detail="proactive visible review preparation failed: " + type(exc).__name__,
+                failure_detail=("proactive visible review preparation failed: " + type(exc).__name__ + ": " + str(exc)[:240]),
             )
             self._fail_review(
                 request=request,

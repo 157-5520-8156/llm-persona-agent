@@ -20,6 +20,8 @@ MAX_COMPLETED_OUTPUT_BYTES = 2 * MAX_MODEL_OUTPUT_BYTES
 
 def qualify_capability(*, payload, request, world_id, actor_ref):
     requirement = request.visible_source_requirement_json
+    if requirement is None:
+        raise ValueError("proactive visible requirement is missing from the original request")
     pin = requirement_table(requirement).as_dict()["pin"]
     if (pin["world_id"], pin["actor_ref"]) != (world_id, actor_ref):
         raise ValueError("proactive visible requirement belongs to another subject")
