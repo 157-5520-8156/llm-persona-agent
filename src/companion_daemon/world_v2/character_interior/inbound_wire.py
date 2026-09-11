@@ -10523,6 +10523,12 @@ class _ExpressionDraftWire:
         }
         if inner_life_snapshot is not None:
             user_material["inner_life_snapshot"] = inner_life_snapshot
+            materials = inner_life_snapshot.get("materials") if isinstance(inner_life_snapshot, dict) else None
+            current_activities = materials.get("current_activities") if isinstance(materials, dict) else None
+            if current_activities:
+                user_material["current_activity_source_rule"] = (
+                    "When stating what you are doing now, use only the exact accepted_intention.text from current_activities; do not substitute a different activity, place, object, duration or outcome. An active activity plus its accepted intention may support saying that you are working on that intended thing, but not that it is finished."
+                )
         if quick_recovery and source_closure_failure is not None:
             user_material["prior_source_closure_failure"] = {
                 "contract": "source-closure-recovery-failure.2",

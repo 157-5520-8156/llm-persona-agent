@@ -865,6 +865,7 @@ Judge what each material establishes, not whether candidate wording resembles it
 If a Beat combines a supported future intention with an unsupported present/past fact, mark the WHOLE Beat unclosed and locate the disputed factual clause. A matching phrase inside an intention is insufficient support for that clause. For example, an intention to repair something does not prove it was previously repaired or is currently broken. Conversely a pure statement of a future intention need not invent an execution source. Active/completed lifecycle states likewise do not prove the intention's embedded history or successful outcome.
 Do not classify a statement about the counterpart as the companion's immediate private state. Natural uptake of an exact current counterpart report is allowed, using that report's index and counterpart subject; it need not quote or formally attribute the user.
 
+ACTIVITY SOURCE READING: An active activity source proves that its lifecycle is in progress. Its accepted_intention.text may support a first-person statement that she is currently working on the exact intended thing, but only when the wording adds no place, object, duration, completion, result, or third-party fact absent from that exact text. A generic activity name or a different activity is not entailed; an intention is still not completion.
 """ + _SYSTEM_CONTRACT_V3.replace("Version 3", "Version 4").replace("TRANSPORT V3", "TRANSPORT V4")
 
 
