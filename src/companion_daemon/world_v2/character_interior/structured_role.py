@@ -2053,12 +2053,19 @@ class StructuredCharacterRoleFaculty:
                             ambiguous_tokens.add(short_token)
                             continue
                         attention_token_map[short_token] = authority_source_ref
-                normalized["attended_source_refs"] = [
+                translated_attention = [
                     attention_token_map.get(item, item)
                     if isinstance(item, str) and item not in ambiguous_tokens
                     else item
                     for item in raw_attention
                 ]
+                # Several distinct short tokens may resolve to the same pinned
+                # authority event.  Attention is a set: collapse exact
+                # duplicates before structural validation instead of treating
+                # provider repetition as an authored choice.
+                normalized["attended_source_refs"] = list(
+                    _unique_refs_in_order(translated_attention)
+                )[:_MAX_CITEABLE_SOURCES_FOR_ATTENTION]
         raw_decision = normalized.get("decision")
         proposals = normalized.get("proposals")
 
@@ -3272,7 +3279,7 @@ class StructuredCharacterRoleFaculty:
                 },
                 "relationship_signal": (
                     "activate only: optional source-bound relationship signal for one "
-                    "supplied relationship_subject_ref; null means no relationship change"
+                    "supplied relationship_subject_ref; when relationship_subject_refs is empty, leave this null; null means no relationship change"
                 ),
                 "aspiration_transition": {
                     "availability": "optional for either appraisal decision",

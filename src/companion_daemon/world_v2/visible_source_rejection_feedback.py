@@ -64,4 +64,10 @@ def rejection_feedback(*, prepared, rejection, review) -> str:
     # This is an internal bound proof assertion, not a smaller role input limit.
     if len(feedback) > 3900:
         raise ValueError("validated source diagnostics exceeded the proven feedback bound")
+    feedback = (
+        "Keep every clause that your exact source still entails and keep its source refs; "
+        "remove or rewrite only the unsupported clause. Do not delete all world_claims because one clause was rejected. "
+        "related_source_ref_indexes remain eligible only if they fully entail what you finally write. "
+        + feedback
+    )
     return feedback

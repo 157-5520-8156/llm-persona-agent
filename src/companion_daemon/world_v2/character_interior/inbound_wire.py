@@ -821,6 +821,9 @@ def expression_draft_shape_contract(*, include_world_claims: bool = True) -> str
         "Context 里没有这样的来源，就不要把具体的当前或过去活动、地点或人说成真的；"
         "写成感觉、假设，或者直接说你没有这样一条有来源的事件。"
     )
+    contract = contract + (
+        " Source discipline: split sourced and unsourced clauses inside one Beat. Cite exact sources for sourced clauses; rewrite or drop unsourced. A counterpart report proves only their side; do not claim their taste/habit/past unless your stable_identity or past_world source says it. Self taste/habit claims need their exact stable_identity source."
+    )
     if not include_world_claims:
         return contract
     return contract + (

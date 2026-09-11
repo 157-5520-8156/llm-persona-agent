@@ -2089,6 +2089,24 @@ async def test_private_impression_attention_token_maps_to_its_pinned_authority_s
 
 
 @pytest.mark.asyncio
+async def test_private_impression_duplicate_attention_tokens_collapse_before_validation() -> None:
+    raw_result = json.loads(_private_impression_result())
+    raw_result["attended_source_refs"] = ["s0", "s0", "s0"]
+    model = _RequiredToolQueueModel(json.dumps(raw_result, ensure_ascii=False))
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+
+    result = await role.experience(
+        await _request(
+            phase="experience",
+            purpose="private_impression_reflection",
+            capability_manifest=_tokenized_private_impression_manifest(),
+        )
+    )
+
+    assert result["attended_source_refs"] == ("source:private_self",)
+
+
+@pytest.mark.asyncio
 async def test_private_impression_unknown_attention_token_still_fails_closed() -> None:
     raw_result = json.loads(_private_impression_result())
     raw_result["attended_source_refs"] = ["s9"]
