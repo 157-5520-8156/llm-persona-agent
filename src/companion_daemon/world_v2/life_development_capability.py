@@ -240,7 +240,26 @@ class ProjectionLifeCapabilityManifestCompiler:
             if self._content_store is not None
             else ()
         )
-        grounding_refs = tuple(sorted(visible_refs))
+        grounding_refs_set = set(visible_refs)
+        # The manifest already exposes reviewed location policies, active NPC
+        # registration identities, settled biographical coordinates and the
+        # genesis timeline as first-class authority.  Those exact refs must be
+        # citable by the World Author for existing-world claims, otherwise the
+        # model is forced to either invent novel-world claims or fail closure.
+        for npc in getattr(projection, "npcs", ()):
+            if getattr(npc, "status", None) != "active":
+                continue
+            registration_ref = getattr(npc, "registration_event_ref", None)
+            if isinstance(registration_ref, str) and registration_ref:
+                grounding_refs_set.add(registration_ref)
+        for coordinate in getattr(projection, "biographical_coordinates", ()):
+            settlement_ref = getattr(coordinate, "settlement_event_ref", None)
+            if isinstance(settlement_ref, str) and settlement_ref:
+                grounding_refs_set.add(settlement_ref)
+        for committed in committed_refs:
+            if getattr(committed, "event_type", None) == "BiographicalTimelineConfigured":
+                grounding_refs_set.add(committed.event_id)
+        grounding_refs = tuple(sorted(grounding_refs_set))
         current_situation_refs = {
             ref
             for slice_ in available_slices

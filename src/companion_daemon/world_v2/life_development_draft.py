@@ -1089,6 +1089,38 @@ def parse_world_author_draft(
             ensure_ascii=False,
             separators=(",", ":"),
         )
+    # Transport repair: a provider may declare claims it never references.
+    # Unused declarations cannot change the premise or any outcome, so drop
+    # only those exact unused declarations before strict closure validation.
+    if isinstance(decoded, dict) and decoded.get("decision") != "no_op":
+        declarations = decoded.get("claim_declarations")
+        if (
+            isinstance(declarations, list)
+            and declarations
+            and all(
+                isinstance(item, dict) and isinstance(item.get("claim_id"), str)
+                for item in declarations
+            )
+        ):
+            used_refs: set[str] = set()
+            premise_refs = decoded.get("premise_claim_refs")
+            if isinstance(premise_refs, list):
+                used_refs.update(item for item in premise_refs if isinstance(item, str))
+            outcomes = decoded.get("outcomes")
+            if isinstance(outcomes, list):
+                for outcome in outcomes:
+                    claim_refs = outcome.get("claim_refs") if isinstance(outcome, dict) else None
+                    if isinstance(claim_refs, list):
+                        used_refs.update(item for item in claim_refs if isinstance(item, str))
+            if used_refs:
+                filtered = [item for item in declarations if item["claim_id"] in used_refs]
+                if len(filtered) != len(declarations):
+                    decoded = {**decoded, "claim_declarations": filtered}
+                    json_text = json.dumps(
+                        decoded,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    )
     try:
         if decoded.get("decision") == "no_op":
             draft: LifeDevelopmentWorldDraft = LifeDevelopmentNoOpDraft.model_validate_json(

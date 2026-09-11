@@ -1516,6 +1516,45 @@ def test_world_author_canonicalizes_set_valued_refs_without_weakening_authority(
     assert parsed.outcomes[0].visual_evidence.claim_refs == ("local:claim:location-change",)
 
 
+def test_world_author_drops_unused_claim_declarations_before_closure_validation() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    capability = _location_capability()
+    raw = json.loads(
+        _location_bound_world_draft(
+            wake=wake,
+            capability=capability,
+            timing={"mode": "now", "duration_minutes": 30},
+            privacy_class="shareable",
+        )
+    )
+    raw["claim_declarations"].append(
+        {
+            "claim_id": "local:claim:unused",
+            "summary": "A declaration that no premise or outcome references.",
+            "scope": "novel_world_generation",
+            "subject_scope": "world_environment",
+            "source_refs": [],
+        }
+    )
+    manifest = _manifest(
+        wake,
+        pinned_cursor=_projection_cursor(ledger),
+        location_capability=capability,
+    )
+
+    parsed = parse_world_author_draft(
+        raw=json.dumps(raw, ensure_ascii=False),
+        manifest=manifest,
+        logical_time=NOW,
+    )
+
+    assert parsed.decision == "propose"
+    assert tuple(item.claim_id for item in parsed.claim_declarations) == (
+        "local:claim:location-change",
+    )
+
+
 def test_world_author_accepts_one_pure_json_markdown_transport_envelope() -> None:
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
     wake = _seed_clock(ledger)

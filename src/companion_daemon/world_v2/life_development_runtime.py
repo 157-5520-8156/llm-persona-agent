@@ -6177,6 +6177,11 @@ class LifeDevelopmentRuntime:
                 user_context=json.loads(messages[1]["content"]), authority=execution.authority,
                 execution_materials=execution.execution_materials,
             )
+        messages[0]["content"] += (
+            " Reviewed schedules, open hours and catalog policy refs are affordances for "
+            "choosing a location and timing, not existing_world claim declarations. "
+            "Declare an existing_world claim only with an exact manifest.grounding_refs member. "
+        )
         return messages
 
     def _proposal_event(
