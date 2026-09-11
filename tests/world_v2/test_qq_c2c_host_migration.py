@@ -3105,7 +3105,7 @@ class _SelectingLifeEcologyModel:
         print("LIFE_MODEL system", system[:160].replace("\n", " | "))
         if "retrieval memory" in system:
             return '{"retain":false}'
-        capsule = json.loads(messages[-1]["content"])
+        capsule = json.loads(messages[1]["content"])
         if "You are the World Author" in system:
             anchor = capsule["capability_manifest"]["anchor_refs"][0]
             owner_actor_ref = capsule["authored_subject"]["owner_actor_ref"]
@@ -3135,7 +3135,7 @@ class _SelectingLifeEcologyModel:
                     "outcomes": [
                         {
                             "experienced_by_ref": owner_actor_ref,
-                            "text": "散步平静结束了。",
+                            "world_consequence": {"contract": "world-consequence.2", "environment_text": "散步平静结束了。"},
                             "privacy_class": "shareable",
                             "relative_plausibility_weight": 1,
                             "claim_refs": ["local:claim:walk"],
@@ -3144,7 +3144,7 @@ class _SelectingLifeEcologyModel:
                         },
                         {
                             "experienced_by_ref": owner_actor_ref,
-                            "text": "走到一半下了小雨，于是提前回来了。",
+                            "world_consequence": {"contract": "world-consequence.2", "environment_text": "走到一半下了小雨，于是提前回来了。"},
                             "privacy_class": "shareable",
                             "relative_plausibility_weight": 1,
                             "claim_refs": ["local:claim:walk"],

@@ -68,7 +68,7 @@ class _PlanWorldAuthor:
                 "outcomes": [
                     {
                         "experienced_by_ref": "agent:companion",
-                        "text": "放映平静地结束了。",
+                        "world_consequence": {"contract": "world-consequence.2", "environment_text": "放映平静地结束了。"},
                         "privacy_class": "shareable",
                         "relative_plausibility_weight": 1,
                         "claim_refs": ["local:claim:public-screening"],
@@ -77,7 +77,7 @@ class _PlanWorldAuthor:
                     },
                     {
                         "experienced_by_ref": "agent:companion",
-                        "text": "中途下了一点小雨，放映提前结束。",
+                        "world_consequence": {"contract": "world-consequence.2", "environment_text": "中途下了一点小雨，放映提前结束。"},
                         "privacy_class": "shareable",
                         "relative_plausibility_weight": 1,
                         "claim_refs": ["local:claim:public-screening"],

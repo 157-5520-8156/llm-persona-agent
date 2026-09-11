@@ -2752,7 +2752,7 @@ class LifeDevelopmentRuntime:
                         pending.append(item)
                 elif isinstance(value, list):
                     pending.extend(value)
-            if biography_refs:
+            if biography_refs and manifest.outcome_contract == "world-consequence.2":
                 grounding = tuple(sorted({*manifest.grounding_refs, *biography_refs}))
                 if grounding != manifest.grounding_refs:
                     manifest = manifest.model_copy(update={"grounding_refs": grounding})
@@ -6199,14 +6199,15 @@ class LifeDevelopmentRuntime:
                 user_context=json.loads(messages[1]["content"]), authority=execution.authority,
                 execution_materials=execution.execution_materials,
             )
-        messages[0]["content"] += (
-            " Reviewed schedules, open hours and catalog policy refs are affordances for "
-            "choosing a location and timing, not existing_world claim declarations. "
-            "Declare an existing_world claim only with an exact manifest.grounding_refs member. "
-            "Visual location pairing: if location_ref is set, every outcome.visual_evidence.location "
-            "must be null or exactly that same location_ref; never use a different place. If "
-            "location_ref is omitted, every visual location must be null. "
-        )
+        if manifest.outcome_contract == "world-consequence.2":
+            messages[0]["content"] += (
+                " Reviewed schedules, open hours and catalog policy refs are affordances for "
+                "choosing a location and timing, not existing_world claim declarations. "
+                "Declare an existing_world claim only with an exact manifest.grounding_refs member. "
+                "Visual location pairing: if location_ref is set, every outcome.visual_evidence.location "
+                "must be null or exactly that same location_ref; never use a different place. If "
+                "location_ref is omitted, every visual location must be null. "
+            )
         return messages
 
     def _proposal_event(
