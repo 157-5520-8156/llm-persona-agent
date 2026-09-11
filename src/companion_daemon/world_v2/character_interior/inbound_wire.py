@@ -10539,15 +10539,58 @@ class _ExpressionDraftWire:
                 materials.get("recently_ended_activities") if isinstance(materials, dict) else None
             )
             if current_activities or planned_activities or recently_ended_activities:
-                user_material["activity_source_rule"] = (
-                    "Activity source rule: planned_activities prove only an accepted intention and its window; "
-                    "never state a planned activity as currently happening, already done, or as evidence of what "
-                    "happened today. current_activities prove only that the activity lifecycle is in progress; "
-                    "use only the exact accepted_intention.text, without adding a different activity, place, "
-                    "object, duration or outcome. recently_ended_activities prove only that the lifecycle ended; "
-                    "they do not prove the intention was fulfilled or what the outcome was. If no activity source "
-                    "supports a current or past detail, speak only about the intention/feeling or ask instead."
+                def _activity_details(items: object) -> list[dict[str, object]]:
+                    details: list[dict[str, object]] = []
+                    if not isinstance(items, list):
+                        return details
+                    for entry in items:
+                        if not isinstance(entry, dict):
+                            continue
+                        intention = entry.get("accepted_intention")
+                        text = intention.get("text") if isinstance(intention, dict) else None
+                        if not isinstance(text, str) or not text:
+                            continue
+                        source_ref = entry.get("source_ref")
+                        details.append(
+                            {
+                                "exact_text": text,
+                                "source_ref": source_ref if isinstance(source_ref, str) else None,
+                            }
+                        )
+                    return details
+
+                current_details = _activity_details(current_activities)
+                planned_details = _activity_details(planned_activities)
+                rule = (
+                    "Activity source rule: do not claim any current or past activity beyond the exact facts below. "
                 )
+                if current_details:
+                    rule += (
+                        "The only current-activity content you may state is exactly: "
+                        + json.dumps(current_details, ensure_ascii=False)
+                        + ". If you state it, include a current_world world_claim whose source_refs contain that "
+                        "exact source_ref. Do not add a different activity, place, object, duration, outcome or "
+                        "evaluation that is not present in that exact text. "
+                    )
+                if planned_details:
+                    rule += (
+                        "Planned activities prove only an accepted intention and its window; speak about them only "
+                        "as future plans, and cite their exact source_ref if stated: "
+                        + json.dumps(planned_details, ensure_ascii=False)
+                        + ". "
+                    )
+                if recently_ended_activities:
+                    rule += (
+                        "Recently ended activities prove only that the lifecycle ended; they do not prove the "
+                        "intention was fulfilled or what the outcome was. "
+                    )
+                if not current_details:
+                    rule += (
+                        "There is no exact current-activity source. Do not state a specific activity, place or "
+                        "routine as what you are doing now. If asked about your day, speak only about a future "
+                        "plan, a feeling, uncertainty, or ask instead. "
+                    )
+                user_material["activity_source_rule"] = rule
         if quick_recovery and source_closure_failure is not None:
             user_material["prior_source_closure_failure"] = {
                 "contract": "source-closure-recovery-failure.2",

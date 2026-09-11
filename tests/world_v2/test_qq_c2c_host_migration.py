@@ -3094,6 +3094,8 @@ class _SelectingLifeEcologyModel:
                 "type": "function",
                 "function": {"name": "character_role_life_development_choice_v2"},
             }
+        elif purpose == "world_stimulus_appraisal":
+            assert tools and len(tools) == 1
         else:
             assert tools is None
             assert tool_choice is None
@@ -3165,7 +3167,51 @@ class _SelectingLifeEcologyModel:
                 },
                 ensure_ascii=False,
             )
-        if capsule.get("inner_turn", {}).get("purpose") == "life_development_choice":
+        purpose = capsule.get("inner_turn", {}).get("purpose")
+        if purpose == "world_stimulus_appraisal":
+            capability = capsule.get("capability_manifest", {})
+            payload = capability.get("payload") if isinstance(capability, dict) else {}
+            response_capability = payload.get("world_life_response") if isinstance(payload, dict) else None
+            refs = (
+                response_capability.get("source_event_refs", [])
+                if isinstance(response_capability, dict)
+                else []
+            )
+            proposal = {
+                "proposal_type": "world_stimulus_appraisal_result",
+                "decision": "no_change",
+                "brief_rationale": "Fixture reads her own consequence.",
+                "behavior_tendency": "Fixture.",
+                "stance": "Fixture.",
+                "display_strategy": "withhold",
+                "confidence": 7000,
+                "meaning_candidates": None,
+                "attribution": None,
+                "severity": None,
+                "expiry": None,
+                "affect_transition": None,
+                "relationship_signal": None,
+                "aspiration_transition": None,
+                "experience_transition": None,
+                "life_intent": None,
+            }
+            if refs:
+                proposal["life_responses"] = [
+                    {"source_event_ref": ref, "response_text": "fixture life response"}
+                    for ref in refs
+                ]
+            return json.dumps(
+                {
+                    "status": "transition" if refs else "no_change",
+                    "summary": "Fixture life response.",
+                    "attended_source_refs": capability.get("source_refs", []),
+                    "recall_query": None,
+                    "decision": None,
+                    "proposals": [proposal],
+                },
+                ensure_ascii=False,
+            )
+        if purpose == "life_development_choice":
             source_refs = capsule["capability_manifest"]["source_refs"]
             chosen_start = datetime.fromisoformat(
                 capsule["capability_manifest"]["payload"]["executable_envelope"]["opens_at"]
