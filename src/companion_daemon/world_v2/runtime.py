@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 from .delayed_trigger_policies import TECHNICAL_RETRY_BACKOFF_SECONDS
 from .errors import ConcurrencyConflict, IdempotencyConflict
+from .model_usage_budget import BackgroundSpendCapDenied
 from .ledger import LedgerPort, WorldLedger
 from .event_identity import domain_idempotency_key
 from .acceptance_manifest import (
@@ -645,6 +646,13 @@ class WorldRuntime:
             result = await drain()
         except (ConcurrencyConflict, IdempotencyConflict):
             raise
+        except BackgroundSpendCapDenied:
+            # Today's background envelope is spent.  That is capacity, not a
+            # failure: the worker is skipped without a traceback and the drain
+            # never re-raises it as a technical failure, so a capped day cannot
+            # fill the log with fake incidents or poison the retry ledger.
+            # Visible turns keep their own caps and never reach this branch.
+            return _BackgroundWorkerIsolated(None)
         except Exception as exc:
             _LOG.exception(
                 "world v2 background worker %s failed; isolating remainder of this drain",
