@@ -1693,6 +1693,27 @@ def _visible(delivery: "_Delivery") -> list[tuple[str, str]]:
     return [item for item in delivery.sent if item[1] != "typing:composing"]
 
 
+async def _schedule_through(
+    host: QQC2CHost, *, through: datetime, observed_at: datetime,
+    max_action_units: int = 8, max_background_units: int = 8,
+) -> None:
+    """Honor earlier Life handoffs while reaching a specific recovery boundary."""
+
+    for _ in range(16):
+        previous = await host._host.current_logical_time()  # noqa: SLF001
+        await host.scheduler_once(
+            observed_at=observed_at,
+            max_action_units=max_action_units,
+            max_background_units=max_background_units,
+        )
+        current = await host._host.current_logical_time()  # noqa: SLF001
+        assert current is not None
+        if current >= through:
+            return
+        assert previous is None or current > previous, "scheduler stalled before recovery due"
+    pytest.fail("scheduler did not reach the recovery boundary in 16 bounded passes")
+
+
 class _Delivery:
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
@@ -3075,15 +3096,19 @@ class _SelectingLifeEcologyModel:
         tools=None,
         tool_choice=None,
     ):  # type: ignore[no-untyped-def]
-        purpose = json.loads(messages[-1]["content"]).get("inner_turn", {}).get("purpose")
+        capsule = json.loads(messages[-1]["content"])
+        purpose = capsule.get("inner_turn", {}).get("purpose")
         if purpose == "activity_lifecycle_choice":
             assert tools and len(tools) == 1
-            assert tools[0]["function"]["name"] == (
-                "character_role_activity_lifecycle_choice_v1"
+            day_open = bool(capsule["capability_manifest"]["payload"].get("self_directed_intent"))
+            name = (
+                "character_role_activity_lifecycle_choice_v2" if day_open
+                else "character_role_activity_lifecycle_choice_v1"
             )
+            assert tools[0]["function"]["name"] == name
             assert tool_choice == {
                 "type": "function",
-                "function": {"name": "character_role_activity_lifecycle_choice_v1"},
+                "function": {"name": name},
             }
         elif purpose == "life_development_choice":
             assert tools and len(tools) == 1
@@ -3104,7 +3129,6 @@ class _SelectingLifeEcologyModel:
     async def complete(self, messages, *, temperature: float = 0.2):  # type: ignore[no-untyped-def]
         del temperature
         system = messages[0]["content"]
-        print("LIFE_MODEL system", system[:160].replace("\n", " | "))
         if "retrieval memory" in system:
             return '{"retain":false}'
         capsule = json.loads(messages[1]["content"])
@@ -3137,7 +3161,7 @@ class _SelectingLifeEcologyModel:
                     "outcomes": [
                         {
                             "experienced_by_ref": owner_actor_ref,
-                            "world_consequence": {"contract": "world-consequence.2", "environment_text": "散步平静结束了。"},
+                            "world_consequence": {"contract": "world-consequence.2", "environment_text": "这段时间天气平稳。"},
                             "privacy_class": "shareable",
                             "relative_plausibility_weight": 1,
                             "claim_refs": ["local:claim:walk"],
@@ -3146,7 +3170,7 @@ class _SelectingLifeEcologyModel:
                         },
                         {
                             "experienced_by_ref": owner_actor_ref,
-                            "world_consequence": {"contract": "world-consequence.2", "environment_text": "走到一半下了小雨，于是提前回来了。"},
+                            "world_consequence": {"contract": "world-consequence.2", "environment_text": "这段时间下起了小雨。"},
                             "privacy_class": "shareable",
                             "relative_plausibility_weight": 1,
                             "claim_refs": ["local:claim:walk"],
@@ -3242,6 +3266,14 @@ class _SelectingLifeEcologyModel:
         if capsule.get("inner_turn", {}).get("purpose") == "activity_lifecycle_choice":
             source_refs = capsule["capability_manifest"]["source_refs"]
             openings = capsule["capability_manifest"]["payload"]["openings"]
+            if not openings:
+                return json.dumps({
+                    "status": "decision", "summary": "此刻先不添加新的安排。",
+                    "attended_source_refs": source_refs,
+                    "decision": {"source_refs": source_refs, "payload": {
+                        "decision": "no_op",
+                    }}, "recall_query": None, "proposals": [],
+                }, ensure_ascii=False)
             selected = next(
                 (
                     item
@@ -3462,7 +3494,10 @@ async def test_qq_production_composition_ticks_life_from_plan_through_experience
             observed_at=settle_at,
             reason="qq_production_life_vertical_test",
         )
-
+        # Settlement creates the world event. Experience needs her separate
+        # Character Life Response, consumed by the installed background lane.
+        assert host._host._application._ledger.project().experiences == ()  # noqa: SLF001
+        await host.drain(max_action_units=0, max_background_units=8)
         projection = host._host._application._ledger.project()  # type: ignore[attr-defined]
     finally:
         await host.aclose()
@@ -3473,6 +3508,11 @@ async def test_qq_production_composition_ticks_life_from_plan_through_experience
     assert len(projection.world_occurrences) == 1
     assert projection.world_occurrences[0].status == "settled"
     assert len(projection.experiences) == 1
+    binding = projection.experiences[0].values.source_bindings[0]
+    assert binding.source_kind == "world_life_response"
+    assert binding.settlement.occurrence_id == occurrence.occurrence_id
+    assert binding.response.response_text == "fixture life response"
+    assert binding.response.origin.source_event_ref == binding.settlement.authority_event_ref
 
 
 @pytest.mark.asyncio
@@ -4069,7 +4109,9 @@ async def test_restart_waits_for_foreign_reclaimed_attempt_that_crashed_before_m
         # This is a different Runtime instance. With no durable ModelResult
         # from the reclaimed attempt, it cannot infer a crash and borrow the
         # live generation claim before the exact lease deadline.
-        await resumed.scheduler_once(
+        await _schedule_through(
+            resumed,
+            through=waiting_episode.claim_lease.expires_at,
             observed_at=waiting_episode.claim_lease.expires_at,
             max_action_units=8,
             max_background_units=8,
@@ -4276,7 +4318,9 @@ async def test_restart_recovers_an_observation_crash_before_reply_model_call(
         # recovery becomes immediate work at that exact boundary.
         assert model.calls == 0
         assert _visible(delivery) == []
-        await restarted.scheduler_once(
+        await _schedule_through(
+            restarted,
+            through=NOW + timedelta(seconds=120),
             observed_at=NOW + timedelta(seconds=121),
             max_action_units=8,
             # One recovered CharacterInterior unit owns appraisal, affect and
@@ -4391,7 +4435,9 @@ async def test_restart_continues_exact_durable_reply_proposal_without_regenerati
             max_background_units=1,
         )
         if choice == "later":
-            await restarted.scheduler_once(
+            await _schedule_through(
+                restarted,
+                through=NOW + timedelta(seconds=60),
                 observed_at=NOW + timedelta(seconds=61),
                 max_action_units=8,
                 max_background_units=0,
