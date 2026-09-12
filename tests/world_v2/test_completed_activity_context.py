@@ -16,7 +16,10 @@ INTENTION = "想花一会儿整理自己接下来要写的东西。"
 ENDED = "这次整理写作思路的活动已经结束了。"
 
 
-async def run_completed_journey(tmp_path, monkeypatch, *, scope="past_world", source_override=None):
+async def run_completed_journey(
+    tmp_path, monkeypatch, *, scope="past_world", source_override=None,
+    correct_scope=False, restart_after_reply=False, authored_outputs=None,
+):
     fixture = LongitudinalFixtureModel()
     bodies = []
     chats = []
@@ -57,8 +60,12 @@ async def run_completed_journey(tmp_path, monkeypatch, *, scope="past_world", so
                     (alias for alias, actual in aliases.items() if actual == canonical), canonical
                 )
                 authored["world_claims"] = [
-                    {"claim_text": ENDED, "scope": scope, "source_refs": [ref]}
+                    {"claim_text": ENDED,
+                     "scope": "past_world" if correct_scope and len(chats) == 3 else scope,
+                     "source_refs": [ref]}
                 ]
+            if authored_outputs is not None:
+                authored_outputs.append(json.loads(json.dumps(authored)))
             value["payload_json"] = json.dumps(authored, ensure_ascii=False)
             raw = json.dumps(value, ensure_ascii=False)
         else:
@@ -140,8 +147,8 @@ async def run_completed_journey(tmp_path, monkeypatch, *, scope="past_world", so
             {
                 "scenario_id": "completed-activity",
                 "started_at": "2026-09-08T10:00:00+08:00",
-                "duration_minutes": 5,
-                "restart_minutes": [2],
+                "duration_minutes": 6 if restart_after_reply else 5,
+                "restart_minutes": [2, 5] if restart_after_reply else [2],
                 "turns": [
                     {"id": "plan", "at_minutes": 0, "text": "接下来想做什么？"},
                     {"id": "ended", "at_minutes": 4, "text": "刚才那件事后来怎么样了？"},
@@ -273,6 +280,8 @@ async def test_completed_activity_http_rejects_wrong_scope_or_original_intention
         chats[1]["inner_life_snapshot"]["snapshot_id"]
         == chats[2]["inner_life_snapshot"]["snapshot_id"]
     )
+    assert chats[1]["request"] == chats[2]["request"]
+    assert chats[1]["expression_hard_boundaries"] == chats[2]["expression_hard_boundaries"]
     assert len([row for row in rows if row["event_type"] == "ActionAuthorized"]) == 1
     assert any(
         row["event_type"] == "ModelResultRecorded"
@@ -280,6 +289,37 @@ async def test_completed_activity_http_rejects_wrong_scope_or_original_intention
         == "paired_expression_reselection_invalid"
         for row in rows
     )
+
+
+@pytest.mark.asyncio
+async def test_role_can_correct_scope_once_then_survive_restart_without_new_delivery(
+    tmp_path, monkeypatch,
+):
+    authored = []
+    result, rows, chats, _ = await run_completed_journey(
+        tmp_path, monkeypatch, scope="current_world", correct_scope=True,
+        restart_after_reply=True, authored_outputs=authored,
+    )
+    assert len(chats) == len(authored) == 3
+    first, correction = authored[1:]
+    assert first["world_claims"][0]["scope"] == "current_world"
+    assert correction["world_claims"][0]["scope"] == "past_world"
+    assert first["messages"] == correction["messages"] == [ENDED]
+    assert first["world_claims"][0]["source_refs"] == correction["world_claims"][0]["source_refs"]
+    assert chats[1]["request"] == chats[2]["request"]
+    assert chats[1]["expression_hard_boundaries"] == chats[2]["expression_hard_boundaries"]
+    assert chats[1]["inner_life_snapshot"]["snapshot_id"] == chats[2]["inner_life_snapshot"]["snapshot_id"]
+    assert len([row for row in rows if row["event_type"] == "ActionAuthorized"]) == 2
+    assert result["completed"], result["stop_reason"]
+    assert result["replay"]["replay_hash_matches"]
+    assert len(result["restarts"]) == 2
+    assert all(restart["same_state"] and restart["construction_delivery_delta"] == 0
+               for restart in result["restarts"])
+    proposals = [row for row in rows if row["event_type"] == "ProposalRecorded"
+                 and row["payload"].get("proposal_id", "").startswith("proposal:expression:")]
+    evidence = json.loads(proposals[-1]["payload"]["proposal_json"])["evidence_refs"]
+    completed = next(row for row in rows if row["event_type"] == "ActivityCompleted")
+    assert {ref["ref_id"] for ref in evidence if ref["evidence_kind"] == "committed_world_event"} == {completed["event_id"]}
 
 
 @pytest.mark.asyncio

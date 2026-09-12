@@ -1782,61 +1782,6 @@ def expression_hard_boundary_manifest(
     }
 
 
-_COMPANION_CLAIM_LANES = frozenset({"current_world", "past_world", "shared_history"})
-
-
-def _rebind_claims_to_single_exact_lane(
-    *,
-    draft: ExpressionDraft,
-    request: ModelInput,
-    stable_identity_source_refs: frozenset[str] = frozenset(),
-) -> ExpressionDraft:
-    """Move one claim to its only exact source-authority lane when unambiguous.
-
-    A provider can name the right pinned source and still mislabel the
-    semantic scope (for example, its own earlier statement cited under
-    shared_history instead of current_world).  If every cited ref belongs to
-    exactly one allowed lane, the source authority itself selects that lane.
-    Ambiguous or unknown refs remain strict validation failures, so this does
-    not loosen the source boundary.
-    """
-
-    try:
-        context = json.loads(request.model_content_json)
-    except (TypeError, json.JSONDecodeError):
-        return draft
-    if not isinstance(context, dict):
-        return draft
-    allowed = _world_claim_source_refs_by_scope(
-        context=context,
-        stable_identity_source_refs=stable_identity_source_refs,
-        counterpart_message_source_refs=current_counterpart_report_source_refs(
-            context=context,
-            request=request,
-        ),
-    )
-    repaired = []
-    changed = False
-    for claim in draft.world_claims:
-        refs = set(claim.source_refs)
-        if not refs or refs <= allowed.get(claim.scope, set()):
-            repaired.append(claim)
-            continue
-        candidates = [
-            scope
-            for scope, scope_refs in allowed.items()
-            if scope in _COMPANION_CLAIM_LANES and refs <= scope_refs
-        ]
-        if len(candidates) == 1 and claim.scope in _COMPANION_CLAIM_LANES:
-            repaired.append(claim.model_copy(update={"scope": candidates[0]}))
-            changed = True
-        else:
-            repaired.append(claim)
-    if not changed:
-        return draft
-    return draft.model_copy(update={"world_claims": tuple(repaired)})
-
-
 def invalid_world_claim_source_indexes(
     *,
     draft: ExpressionDraft,
@@ -2532,11 +2477,8 @@ def materialize_expression_draft(
         outside = set(draft.media_source_refs) - allowed_media_refs
         if outside:
             raise ValueError("media request cites an unpinned source ref")
-    draft = _rebind_claims_to_single_exact_lane(
-        draft=draft,
-        request=request,
-        stable_identity_source_refs=stable_identity_source_refs,
-    )
+    # Aliases identify the same immutable source. Claim scope is the role's
+    # semantic choice: invalid source lanes require same-role reselection.
     _validate_world_claims(
         draft=draft,
         request=request,

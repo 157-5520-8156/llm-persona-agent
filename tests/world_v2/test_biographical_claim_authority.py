@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
+
+import pytest
 
 from companion_daemon.world_v2.biographical_claim_authority import (
     biographical_coordinate_authorities,
 )
 from companion_daemon.world_v2.expression_draft import (
-    ExpressionDraft,
-    WorldClaimDraft,
-    _rebind_claims_to_single_exact_lane,
+    TEXT_ONLY_EXPRESSION_CAPABILITIES,
+    materialize_expression_draft,
     world_claim_source_refs_by_scope,
 )
 from companion_daemon.world_v2.model_facing_context import (
@@ -150,43 +150,26 @@ def test_biography_parent_is_attention_only_while_exact_coordinates_are_current(
     assert coordinate_refs.isdisjoint(refs["past_world"])
     assert coordinate_refs.isdisjoint(refs["stable_identity"])
 
-def test_claim_with_one_exact_companion_lane_is_rebound_but_counterpart_stays_strict() -> None:
+@pytest.mark.parametrize("scope", ["shared_history", "past_world", "counterpart_history"])
+def test_current_coordinate_cannot_rewrite_the_characters_authored_claim_scope(scope) -> None:
+    from test_character_interior_inbound_wire import _qq_request
+
     context = _context()
     coordinate_ref = next(
         item.source_ref
         for item in biographical_coordinate_authorities(context)
         if item.scope == "current_world"
     )
-    request = SimpleNamespace(
-        model_content_json=json.dumps(context),
-        trigger_message=None,
-        trigger_ref="event:test-trigger",
-    )
-
-    def draft_with(scope: str) -> ExpressionDraft:
-        return ExpressionDraft(
-            timing_choice="now",
-            beats=({"modality": "text", "text": "上午想去图书馆。"},),
-            stance="test",
-            brief_rationale="test",
-            world_claims=(
-                WorldClaimDraft(
-                    claim_text="上午想去图书馆",
-                    scope=scope,
-                    source_refs=(coordinate_ref,),
-                ),
-            ),
+    request = _qq_request().model_copy(update={"model_content_json": json.dumps(context)})
+    value = {
+        "timing_choice": "now",
+        "beats": [{"modality": "text", "text": "当前传记有这个坐标。"}],
+        "stance": "test", "brief_rationale": "test",
+        "world_claims": [{"claim_text": "当前传记有这个坐标。", "scope": scope,
+                          "source_refs": [coordinate_ref]}],
+    }
+    with pytest.raises(ValueError, match="semantic source lane"):
+        materialize_expression_draft(
+            value=value, request=request, capabilities=TEXT_ONLY_EXPRESSION_CAPABILITIES,
         )
-
-    rebound = _rebind_claims_to_single_exact_lane(
-        draft=draft_with("shared_history"),
-        request=request,
-    )
-    assert rebound.world_claims[0].scope == "current_world"
-
-    strict = _rebind_claims_to_single_exact_lane(
-        draft=draft_with("counterpart_history"),
-        request=request,
-    )
-    assert strict.world_claims[0].scope == "counterpart_history"
-
+    assert value["world_claims"][0]["scope"] == scope
