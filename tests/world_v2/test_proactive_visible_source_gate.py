@@ -61,6 +61,7 @@ async def _run_scenario(
         monkeypatch.setattr(
             gate, "prepare_proactive_visible_source_author_request", invalid_preparation
         )
+    timing_failure = scenario in {"timing_reselect", "timing_twice", "silence_reselect", "silence_twice"}
     legacy_whole = scenario == "legacy_whole"
     if legacy_whole:
         import companion_daemon.world_v2.semantic_chat_composition as composition
@@ -131,7 +132,7 @@ async def _run_scenario(
             assert UNSOURCED_TEXT not in json.dumps(body, ensure_ascii=False)
         texts = (
             SAFE_TEXTS
-            if scenario in {"source_free", "legacy_whole"}
+            if scenario in {"source_free", "legacy_whole"} or timing_failure
             or (scenario in {"reselect", "bad_claim_reselect"} and len(proactive_requests) == 2)
             else (UNSOURCED_TEXT,)
         )
@@ -153,6 +154,18 @@ async def _run_scenario(
                     "source_refs": ["event:user:chengdu:not-in-context"],
                 }
             ]
+        if timing_failure:
+            payload["response_expectation"] = {
+                "hoped_response": "想听你说一句", "pressure_bp": 2000,
+                "importance_bp": 3000, "wait_seconds": 40_123,
+                "expires_after_seconds": 99_876,
+            }
+            if len(proactive_requests) == 1 or scenario.endswith("_twice"):
+                if scenario.startswith("silence_"):
+                    payload["timing_choice"] = "silent"
+                else:
+                    payload.update(timing_choice="later", delay_seconds=259_200,
+                                   expires_after_seconds=345_600)
         # Both attempts are complete role decisions. The host must give the
         # same author one reselection, and must not synthesize character silence.
         return _http_result(
@@ -358,6 +371,7 @@ async def _run_scenario(
         if scenario
         in {
             "reject_twice",
+            "timing_reselect", "timing_twice", "silence_reselect", "silence_twice",
             "reselect",
             "bad_claim_twice",
             "bad_claim_reselect",
@@ -369,6 +383,8 @@ async def _run_scenario(
         else 1
     )
     expected_reviews = {
+        "timing_reselect": 1, "timing_twice": 0,
+        "silence_reselect": 1, "silence_twice": 0,
         "bad_claim_twice": 0,
         "bad_claim_reselect": 1,
         "author_timeout": 1,
@@ -427,7 +443,7 @@ async def _run_scenario(
             for a in evidence.projection.proposal_audits
         )
         return evidence, proactive_requests, reviewer_requests, delivery
-    if scenario in {"source_free", "reselect", "bad_claim_reselect"}:
+    if scenario in {"source_free", "reselect", "bad_claim_reselect", "timing_reselect", "silence_reselect"}:
         assert len(proactive_actions) == len(SAFE_TEXTS)
         assert tuple(text for _recipient, text in delivery.sent)[-2:] == SAFE_TEXTS
         assert all(action.state == "provider_accepted" for action in proactive_actions)
@@ -827,3 +843,31 @@ async def test_metered_facade_captures_each_task_and_preserves_cancellation():
         await facade.complete_json([{"role": "user", "content": "untouched"}])
         == "ordinary:untouched"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", ["timing_reselect", "timing_twice", "silence_reselect", "silence_twice"])
+async def test_proactive_timing_conflicts_use_one_role_reselection(tmp_path, monkeypatch, scenario):
+    evidence, authors, _reviews, _delivery = await _run_scenario(
+        tmp_path, monkeypatch, scenario, review_version="4"
+    )
+    assert len(authors) == 2
+    initial = json.loads(authors[0]["messages"][-1]["content"])
+    corrected = json.loads(authors[1]["messages"][-1]["content"])
+    correction = corrected["correction"]
+    assert "correction" not in initial
+    for key in ("inner_turn", "inner_life_snapshot", "capability_manifest"):
+        assert corrected[key] == initial[key]
+    assert correction["failure_code"] == "role_result_schema_invalid"
+    expected_detail = "silent expression" if scenario.startswith("silence_") else "delay_seconds"
+    assert expected_detail in correction["failure_detail"]
+    if scenario.endswith("_reselect"):
+        # The model chose a valid new now expression and this exact hope window.
+        plans = [json.loads(row.proposal_json) for row in evidence.projection.proposal_audits
+                 if row.proposal_id.startswith("proposal:proactive:")]
+        assert len(plans) == 1
+        change = next(change for change in plans[0]["proposed_changes"]
+                      if change["kind"] == "expression_plan_transition")
+        expectation = json.loads(change["payload"]["canonical_json"])["response_expectation"]
+        assert expectation["wait_seconds"] == 40_123
+        assert expectation["expires_after_seconds"] == 99_876

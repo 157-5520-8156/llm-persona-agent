@@ -2150,55 +2150,6 @@ def _normalize_later_envelope(value: dict[str, object]) -> dict[str, object]:
     return normalized
 
 
-def bind_bounded_expression_windows(value: dict[str, object]) -> dict[str, object]:
-    """Keep provider-authored timing inside the published hard bounds.
-
-    The provider occasionally expresses an expectation or revisit horizon in
-    days (for example 3 * 86400) although the schema caps it at two days.  The
-    authored prose, beats and meaning stay untouched; only the numeric horizon
-    is capped to the maximum the contract already publishes, and an expiry is
-    kept strictly after its wait.  Missing, mistyped or lower-bound violations
-    remain strict validation failures.
-    """
-
-    if not isinstance(value, dict):
-        return value
-    bound = dict(value)
-
-    def _int(item: object) -> bool:
-        return isinstance(item, int) and not isinstance(item, bool)
-
-    for key in ("response_expectation", "revisit"):
-        container = bound.get(key)
-        if not isinstance(container, dict):
-            continue
-        repaired = dict(container)
-        wait = repaired.get("wait_seconds")
-        expiry = repaired.get("expires_after_seconds")
-        if _int(wait) and wait > RESPONSE_EXPECTATION_WAIT_MAX_SECONDS:
-            repaired["wait_seconds"] = RESPONSE_EXPECTATION_WAIT_MAX_SECONDS
-            wait = repaired["wait_seconds"]
-        if _int(expiry) and expiry > 172_800:
-            repaired["expires_after_seconds"] = 172_800
-            expiry = repaired["expires_after_seconds"]
-        if _int(wait) and _int(expiry) and expiry <= wait:
-            repaired["expires_after_seconds"] = min(172_800, wait + 60)
-        bound[key] = repaired
-
-    if bound.get("timing_choice") == "later":
-        delay = bound.get("delay_seconds")
-        expiry = bound.get("expires_after_seconds")
-        if _int(delay) and delay > EXPRESSION_DELAY_MAX_SECONDS:
-            bound["delay_seconds"] = EXPRESSION_DELAY_MAX_SECONDS
-            delay = bound["delay_seconds"]
-        if _int(expiry) and expiry > 172_800:
-            bound["expires_after_seconds"] = 172_800
-            expiry = bound["expires_after_seconds"]
-        if _int(delay) and _int(expiry) and expiry <= delay:
-            bound["expires_after_seconds"] = min(172_800, delay + 1)
-    return bound
-
-
 def normalize_expression_draft_wire(value: dict[str, object]) -> dict[str, object]:
     """Normalize only exact, lossless provider wire aliases before parsing."""
 
@@ -2265,7 +2216,6 @@ def normalize_expression_draft_wire(value: dict[str, object]) -> dict[str, objec
     return normalized
 
 
-_VISIBLE_BEAT_MODALITIES = frozenset({"text", "reaction", "sticker"})
 _BEAT_WIRE_KEYS = frozenset({"modality", "text", "reaction_id", "sticker_id"})
 _BEAT_KEY_ALIASES = {
     "reaction_option_id": "reaction_id",
@@ -2303,8 +2253,6 @@ _WORLD_CLAIM_SCOPE_PREFERENCE = (
     "counterpart_history",
     "stable_identity",
 )
-_LATER_DEFAULT_DELAY_SECONDS = 1_800
-_LATER_DEFAULT_EXPIRES_AFTER_SECONDS = 7_200
 
 
 def _clip_authored_text(value: object, *, max_length: int) -> object:
@@ -2312,17 +2260,6 @@ def _clip_authored_text(value: object, *, max_length: int) -> object:
         return value
     clipped = value[:max_length].rstrip()
     return clipped if clipped else value
-
-
-def _beat_has_visible_content(item: object) -> bool:
-    if isinstance(item, str) and item.strip():
-        return True
-    if not isinstance(item, dict):
-        return False
-    modality = item.get("modality")
-    if modality in _VISIBLE_BEAT_MODALITIES:
-        return True
-    return bool(item.get("text") or item.get("reaction_id") or item.get("sticker_id"))
 
 
 def _bind_proactive_beat(item: object) -> object:
@@ -2339,70 +2276,20 @@ def _bind_proactive_beat(item: object) -> object:
 
 
 def bind_proactive_expression_wire(value: dict[str, object]) -> dict[str, object]:
-    """Bind recoverable timing/posture/window contradictions onto the authored beats.
+    """Bind transport fields without choosing expression timing or posture.
 
-    This does not invent words or a motive. Visible beats keep their text;
-    ``timing_choice`` and due-window fields are closed over that already-made
-    expression so a legal ProactiveDraft can be accepted on the first pass.
+    Authored timing, windows, silence and beats are validated together below
+    by ExpressionDraft. Contradictions must reach the same-role correction
+    lifecycle; the host cannot choose a different time or turn silence into
+    an immediate message to make a candidate pass.
     """
 
     bound = {
         key: item for key, item in value.items() if key in _PROACTIVE_EXPRESSION_WIRE_KEYS
     }
     beats = bound.get("beats")
-    beat_list = [
-        _bind_proactive_beat(item) for item in beats
-    ] if isinstance(beats, (list, tuple)) else []
-    while (
-        beat_list
-        and isinstance(beat_list[-1], dict)
-        and beat_list[-1].get("modality") == "typing"
-        and any(_beat_has_visible_content(item) for item in beat_list[:-1])
-    ):
-        beat_list.pop()
-    visible = any(_beat_has_visible_content(item) for item in beat_list)
-    later_non_text = visible and any(
-        isinstance(item, dict)
-        and item.get("modality") in {"reaction", "sticker"}
-        for item in beat_list
-    )
-    timing = bound.get("timing_choice")
-    if visible:
-        if timing == "silent" or later_non_text:
-            bound["timing_choice"] = "now"
-            timing = "now"
-        if timing == "now":
-            bound["delay_seconds"] = None
-            bound["expires_after_seconds"] = None
-            if bound.get("turn_posture") == "yield":
-                bound["turn_posture"] = "continue"
-        elif timing == "later":
-            delay = bound.get("delay_seconds")
-            expiry = bound.get("expires_after_seconds")
-            if not isinstance(delay, int) or isinstance(delay, bool) or delay < 1:
-                delay = _LATER_DEFAULT_DELAY_SECONDS
-            delay = min(max(delay, 1), EXPRESSION_DELAY_MAX_SECONDS)
-            if (
-                not isinstance(expiry, int)
-                or isinstance(expiry, bool)
-                or expiry <= delay
-            ):
-                expiry = max(delay + 60, _LATER_DEFAULT_EXPIRES_AFTER_SECONDS)
-            expiry = min(max(expiry, delay + 1), 172_800)
-            bound["delay_seconds"] = delay
-            bound["expires_after_seconds"] = expiry
-            if bound.get("turn_posture") == "interject":
-                bound["turn_posture"] = "continue"
-        bound["beats"] = beat_list
-    else:
-        bound["timing_choice"] = "silent"
-        bound["beats"] = []
-        bound["delay_seconds"] = None
-        bound["expires_after_seconds"] = None
-        bound["response_expectation"] = None
-        bound["revisit"] = None
-        if bound.get("turn_posture") == "interject":
-            bound["turn_posture"] = "continue"
+    if isinstance(beats, (list, tuple)):
+        bound["beats"] = [_bind_proactive_beat(item) for item in beats]
     bound["stance"] = _clip_authored_text(bound.get("stance"), max_length=128)
     bound["brief_rationale"] = _clip_authored_text(
         bound.get("brief_rationale"), max_length=240
@@ -2425,32 +2312,12 @@ def bind_proactive_expression_wire(value: dict[str, object]) -> dict[str, object
         hoped = _clip_authored_text(expectation.get("hoped_response"), max_length=128)
         repaired = dict(expectation)
         repaired["hoped_response"] = hoped
-        wait = repaired.get("wait_seconds")
-        expiry = repaired.get("expires_after_seconds")
-        if (
-            isinstance(wait, int)
-            and not isinstance(wait, bool)
-            and isinstance(expiry, int)
-            and not isinstance(expiry, bool)
-            and expiry <= wait
-        ):
-            repaired["expires_after_seconds"] = min(172_800, max(wait + 60, expiry))
         bound["response_expectation"] = repaired
     leftover = bound.get("revisit")
     if isinstance(leftover, dict):
         thought = _clip_authored_text(leftover.get("thought"), max_length=160)
         repaired_leftover = dict(leftover)
         repaired_leftover["thought"] = thought
-        wait = repaired_leftover.get("wait_seconds")
-        expiry = repaired_leftover.get("expires_after_seconds")
-        if (
-            isinstance(wait, int)
-            and not isinstance(wait, bool)
-            and isinstance(expiry, int)
-            and not isinstance(expiry, bool)
-            and expiry <= wait
-        ):
-            repaired_leftover["expires_after_seconds"] = min(172_800, max(wait + 60, expiry))
         bound["revisit"] = repaired_leftover
     claims = bound.get("world_claims")
     if isinstance(claims, list):
@@ -2656,7 +2523,6 @@ def materialize_expression_draft(
         source_ref_aliases=aliases,
     )
     value = normalize_expression_draft_wire(value)
-    value = bind_bounded_expression_windows(value)
     # JSON arrays are the natural wire representation of immutable tuples.
     # Field validators remain strict about every scalar and cross-field rule.
     draft = ExpressionDraft.model_validate_json(_canonical_json(value), strict=True)

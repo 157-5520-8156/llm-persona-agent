@@ -9382,36 +9382,3 @@ async def test_missing_source_ref_fails_closed_without_a_second_model() -> None:
     assert exc_info.value.failure_code == "source_review_exception"
     assert reviewer.calls == []
     assert inventory.calls == []
-
-def test_bounded_expression_window_repair_caps_provider_horizons_only() -> None:
-    from companion_daemon.world_v2.expression_draft import bind_bounded_expression_windows
-
-    value = {
-        "timing_choice": "later",
-        "delay_seconds": 259_200,
-        "expires_after_seconds": 20_000_000,
-        "beats": [{"modality": "text", "text": "\u6211\u665a\u4e00\u70b9\u56de\u6765\u63a5\u7740\u8bf4\u3002"}],
-        "stance": "defer",
-        "brief_rationale": "A later expression keeps its text.",
-        "response_expectation": {
-            "hoped_response": "Would you answer?",
-            "pressure_bp": 2_000,
-            "importance_bp": 3_000,
-            "wait_seconds": 10_000_000,
-            "expires_after_seconds": 20_000_000,
-        },
-    }
-
-    repaired = bind_bounded_expression_windows(value)
-
-    assert repaired["delay_seconds"] == 86_400
-    assert repaired["expires_after_seconds"] == 172_800
-    expectation = repaired["response_expectation"]
-    assert expectation["wait_seconds"] == 86_400
-    assert expectation["expires_after_seconds"] == 172_800
-    assert repaired["beats"] == value["beats"]
-    assert repaired["stance"] == "defer"
-    assert repaired["brief_rationale"] == "A later expression keeps its text."
-
-
-

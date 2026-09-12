@@ -45,55 +45,38 @@ def _bind(payload: dict[str, object]) -> dict[str, object]:
     return bind_proactive_expression_wire(normalize_expression_draft_wire(payload))
 
 
-def test_now_plus_yield_binds_to_continue_and_accepts() -> None:
-    payload = _payload(turn_posture="yield")
+@pytest.mark.parametrize("updates", [
+    {"turn_posture": "yield"},
+    {"delay_seconds": 30, "expires_after_seconds": 90},
+    {"timing_choice": "silent"},
+    {"timing_choice": "later", "delay_seconds": None, "expires_after_seconds": None},
+    {"timing_choice": "later", "delay_seconds": 259_200, "expires_after_seconds": 345_600},
+    {"timing_choice": "later", "delay_seconds": 60, "expires_after_seconds": 60},
+    {"timing_choice": "later", "turn_posture": "interject", "delay_seconds": 60,
+     "expires_after_seconds": 120},
+    {"beats": []},
+    {"beats": [{"modality": "text", "text": "想到你了。"}, {"modality": "typing"}]},
+    {"response_expectation": {"hoped_response": "想听你说一句", "pressure_bp": 2000,
+                              "importance_bp": 3000, "wait_seconds": 60,
+                              "expires_after_seconds": 60}},
+    {"revisit": {"thought": "我还想说", "wait_seconds": 60, "expires_after_seconds": 60}},
+])
+def test_conflicting_proactive_choices_reach_strict_validation_unchanged(updates) -> None:
+    payload = _payload(**updates)
+    bound = _bind(payload)
+    for field in ("timing_choice", "turn_posture", "beats", "delay_seconds",
+                  "expires_after_seconds", "response_expectation", "revisit"):
+        assert bound.get(field) == payload.get(field)
+    with pytest.raises(ValueError):
+        _validate(payload)
 
-    bound = bind_proactive_expression_wire(payload)
+
+def test_valid_proactive_choice_preserves_authored_timing_posture_and_text() -> None:
+    payload = _payload(timing_choice="later", turn_posture="yield", delay_seconds=40_123,
+                       expires_after_seconds=99_876)
+    bound = _bind(payload)
     _validate(payload)
-
-    assert bound["timing_choice"] == "now"
-    assert bound["turn_posture"] == "continue"
-    assert bound["delay_seconds"] is None
-
-
-def test_now_plus_due_window_drops_the_window() -> None:
-    bound = bind_proactive_expression_wire(
-        _payload(delay_seconds=30, expires_after_seconds=90)
-    )
-    _validate(_payload(delay_seconds=30, expires_after_seconds=90))
-
-    assert bound["timing_choice"] == "now"
-    assert bound["delay_seconds"] is None
-    assert bound["expires_after_seconds"] is None
-
-
-def test_silent_with_visible_beats_keeps_the_words() -> None:
-    bound = bind_proactive_expression_wire(_payload(timing_choice="silent"))
-    _validate(_payload(timing_choice="silent"))
-
-    assert bound["timing_choice"] == "now"
-    assert bound["beats"] == [{"modality": "text", "text": "想到你了。"}]
-
-
-def test_later_without_window_gets_cadence_defaults() -> None:
-    bound = bind_proactive_expression_wire(
-        _payload(timing_choice="later", delay_seconds=None, expires_after_seconds=None)
-    )
-    _validate(
-        _payload(timing_choice="later", delay_seconds=None, expires_after_seconds=None)
-    )
-
-    assert bound["timing_choice"] == "later"
-    assert bound["delay_seconds"] == 1800
-    assert bound["expires_after_seconds"] == 7200
-
-
-def test_empty_beats_collapse_to_silent() -> None:
-    bound = bind_proactive_expression_wire(_payload(beats=[]))
-    _validate(_payload(beats=[]))
-
-    assert bound["timing_choice"] == "silent"
-    assert bound["beats"] == []
+    assert bound == payload
 
 
 def test_beat_option_aliases_and_unknown_keys_are_dropped() -> None:
