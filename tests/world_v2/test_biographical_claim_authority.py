@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 from companion_daemon.world_v2.biographical_claim_authority import (
     biographical_coordinate_authorities,
 )
 from companion_daemon.world_v2.expression_draft import (
+    ExpressionDraft,
+    WorldClaimDraft,
+    _rebind_claims_to_single_exact_lane,
     world_claim_source_refs_by_scope,
 )
 from companion_daemon.world_v2.model_facing_context import (
@@ -145,3 +149,44 @@ def test_biography_parent_is_attention_only_while_exact_coordinates_are_current(
     assert "biography:summer-home" not in refs["stable_identity"]
     assert coordinate_refs.isdisjoint(refs["past_world"])
     assert coordinate_refs.isdisjoint(refs["stable_identity"])
+
+def test_claim_with_one_exact_companion_lane_is_rebound_but_counterpart_stays_strict() -> None:
+    context = _context()
+    coordinate_ref = next(
+        item.source_ref
+        for item in biographical_coordinate_authorities(context)
+        if item.scope == "current_world"
+    )
+    request = SimpleNamespace(
+        model_content_json=json.dumps(context),
+        trigger_message=None,
+        trigger_ref="event:test-trigger",
+    )
+
+    def draft_with(scope: str) -> ExpressionDraft:
+        return ExpressionDraft(
+            timing_choice="now",
+            beats=({"modality": "text", "text": "上午想去图书馆。"},),
+            stance="test",
+            brief_rationale="test",
+            world_claims=(
+                WorldClaimDraft(
+                    claim_text="上午想去图书馆",
+                    scope=scope,
+                    source_refs=(coordinate_ref,),
+                ),
+            ),
+        )
+
+    rebound = _rebind_claims_to_single_exact_lane(
+        draft=draft_with("shared_history"),
+        request=request,
+    )
+    assert rebound.world_claims[0].scope == "current_world"
+
+    strict = _rebind_claims_to_single_exact_lane(
+        draft=draft_with("counterpart_history"),
+        request=request,
+    )
+    assert strict.world_claims[0].scope == "counterpart_history"
+

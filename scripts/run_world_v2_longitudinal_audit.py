@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -316,6 +317,9 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
             action_due_sleep=clock.timer_sleep,
             interactive_turn_budget_policy=InteractiveTurnBudgetPolicy(
                 wall_clock=clock.presentation_now,
+                total_seconds=float(
+                    os.environ.get("DSH_INTERACTIVE_TURN_BUDGET_SECONDS", "12.0")
+                ),
             ),
             use_configured_recall_embedding=False,
             **injected,
