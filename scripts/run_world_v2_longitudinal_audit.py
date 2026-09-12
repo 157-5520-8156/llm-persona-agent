@@ -169,10 +169,20 @@ def life_review_profile(settings, *, synthetic: bool) -> dict:
     available = (
         settings.world_v2_life_source_review_enabled and settings.world_v2_life_self_review_allowed
     )
+    # The real CLI does not inject an independent Life reviewer. Composition
+    # installs the world-support model only for explicit self-review; pending
+    # candidates otherwise fail closed, with no deterministic semantic fallback.
+    status = (
+        "configured_self_review" if available
+        else "unavailable" if settings.world_v2_life_source_review_enabled
+        else "disabled"
+    )
+    review = "configured_world_author_self_review" if available else "unavailable"
     return {
-        "status": "configured_self_review" if available else "deterministic_checks",
+        "status": status,
         "model": settings.deepseek_model if available else None,
-        "general_source_closure": "deterministic",
+        "general_source_closure": review,
+        "pending_candidate_policy": "model_semantic_review_required",
         "semantic_entailment_verified": False,
         "independent_reviewer_qualified": False,
         "runtime_isolation": "self_review_operator_approved" if available else "no_model_reviewer",
@@ -180,9 +190,7 @@ def life_review_profile(settings, *, synthetic: bool) -> dict:
             "source_review_enabled": settings.world_v2_life_source_review_enabled,
             "self_review_allowed": settings.world_v2_life_self_review_allowed,
         },
-        "novel_origin_review": (
-            "configured_world_author_self_review" if available else "deterministic_focused_origin"
-        ),
+        "novel_origin_review": review,
         "richness_coverage": "requires_manual_evaluation",
     }
 

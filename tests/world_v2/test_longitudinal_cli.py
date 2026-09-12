@@ -100,13 +100,15 @@ def test_real_provider_trial_uses_one_budget_and_isolated_debug_key(tmp_path, mo
 
 
 @pytest.mark.parametrize("self_review", [False, True])
+@pytest.mark.parametrize("source_review", [False, True])
 def test_real_life_review_profile_reports_configuration_without_enabling_it(
     tmp_path,
     monkeypatch,
     self_review,
+    source_review,
 ):
     monkeypatch.setenv("DEEPSEEK_DEBUG_API_KEY", "fixture-debug-key")
-    monkeypatch.setenv("WORLD_V2_LIFE_SOURCE_REVIEW_ENABLED", "true")
+    monkeypatch.setenv("WORLD_V2_LIFE_SOURCE_REVIEW_ENABLED", str(source_review).lower())
     monkeypatch.setenv("WORLD_V2_LIFE_SELF_REVIEW_ALLOWED", str(self_review).lower())
     cli = _cli()
     settings = cli.experiment_settings(
@@ -115,15 +117,22 @@ def test_real_life_review_profile_reports_configuration_without_enabling_it(
         max_cost_cny=0.5,
     )
     profile = cli.life_review_profile(settings, synthetic=False)
+    available = source_review and self_review
     assert settings.world_v2_life_self_review_allowed is self_review
+    assert settings.world_v2_life_source_review_enabled is source_review
     assert profile["status"] == (
-        "configured_self_review" if self_review else "deterministic_checks"
+        "configured_self_review" if available else "unavailable" if source_review else "disabled"
     )
-    assert profile["model"] == (settings.deepseek_model if self_review else None)
-    assert profile["general_source_closure"] == "deterministic"
+    assert profile["model"] == (settings.deepseek_model if available else None)
+    assert profile["general_source_closure"] == (
+        "configured_world_author_self_review" if available else "unavailable"
+    )
     assert profile["novel_origin_review"] == (
-        "configured_world_author_self_review" if self_review else "deterministic_focused_origin"
+        "configured_world_author_self_review" if available else "unavailable"
     )
+    assert profile["pending_candidate_policy"] == "model_semantic_review_required"
+    assert profile["semantic_entailment_verified"] is False
+    assert profile["independent_reviewer_qualified"] is False
     assert profile["richness_coverage"] == "requires_manual_evaluation"
     assert "fixture-debug-key" not in json.dumps(profile)
 

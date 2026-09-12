@@ -67,9 +67,11 @@ PYTHONPATH=src python scripts/run_world_v2_longitudinal_audit.py \
 为了隔离成本和网络，当前实验 profile 关闭图片、外界实时源、语义 embedding 和文本端点评估。
 因此还不能声称这些生产能力已经被整周覆盖。真实模型模式保留所配置的角色和世界模型，不用固定话术
 替换角色。虚拟未来的日期不会被配上今天抓来的新闻，制造假的未来世界证据。
-当前 Life general source closure 使用确定性检查；novel-origin 在未配置 reviewer 时使用确定性
-focused-origin 检查，配置 reviewer 后才使用该模型路径。缺少 reviewer 不等于关闭生活事件接纳。
-实验报告分别记录这两条路径；self-review 只复用显式配置，不为跑通评测自动开启。
+当前未提交的 Life 候选必须通过 general source closure 和 novel-origin 的模型语义审核；
+缺少 reviewer 时记录技术失败，不以“引用存在”替代正文的语义支持，也不继续接纳该候选。
+真实 CLI 仅在显式开启来源审核和 self-review 时复用世界模型；它不注入独立 Life reviewer。
+实验报告分别记录两条审核路径、开关关闭或审核器不可用的状态；self-review 不代表独立审核
+或语义准确率已验证，不为跑通评测自动开启。历史已提交记录仍按原身份读取。
 
 ## 输出与评审
 
