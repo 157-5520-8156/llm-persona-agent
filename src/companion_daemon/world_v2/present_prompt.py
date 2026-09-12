@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import copy
 import json
 import re
 
@@ -147,6 +148,185 @@ _RECENT_DIALOGUE_PER_TURN_REASONS = (
 )
 _RECENT_DIALOGUE_ATTENTION_KEY = "per_turn_attention"
 
+# ---------------------------------------------------------------------------
+# Presentation-only size cuts (evidence: output/release-readiness/APPENDIX-A-volume.md)
+#
+# Everything below removes bytes from the *serialized provider view* only.  The
+# canonical Capsule, the frozen request object and every host-side reader keep
+# the exact structures they had, and ``expand_present_world_context`` rebuilds
+# the canonical shape from the presented one.  Two rules keep each cut
+# provably reversible:
+#
+#   * a value is elided only when it equals a recorded constant of the Inner
+#     Life contract, and a deviation is never elided -- absence therefore
+#     always means "the constant", on every path;
+#   * a reference is replaced by its existing short alias only inside the
+#     volatile tail of the dialogue block, where the bytes already sit past the
+#     first difference between two consecutive requests.
+#
+# That second restriction is measured, not stylistic.  ``source_ref_aliases``
+# is renumbered from scratch every turn: of the dialogue ids carried over from
+# one captured turn to the next, 45/48, 61/89, 62/76 and 66/77 received a
+# *different* alias on the following turn.  Aliasing the frozen half of the
+# window would therefore rewrite ``stable_turns`` every turn and move the first
+# differing byte from the end of that window (~4 400-9 500 chars in) back into
+# its head -- trading a cached byte (CNY 0.10/M) for an uncached one (CNY
+# 3.00/M) to save a byte that was already cached.  In the volatile tail the
+# same substitution is free.
+_SOURCE_REF_IS_DIALOGUE_ID_KEY = "source_ref_is_dialogue_id"
+
+# ``automatic_prefetch`` items are remembered private interpretations.  These
+# five members are the wrapper the host attaches to every one of them; they
+# hold one value in all 58 captured items across four runs.  ``text``,
+# ``source_ref`` (the citation) and ``occurred_from`` (the recency) stay.
+_AUTOMATIC_PREFETCH_CONSTANTS: tuple[tuple[str, object], ...] = (
+    ("authority", "defeasible_interpretation"),
+    ("epistemic_scope", "private_interpretation"),
+    ("memory_kind", "reflective"),
+    ("source_slice", "recalled_emotional_associations"),
+    ("occurred_to", None),
+)
+# Canonical member order of one ``automatic_prefetch`` item, so expansion puts
+# the withheld constants back where the compiler wrote them.
+_AUTOMATIC_PREFETCH_ITEM_ORDER = (
+    "authority",
+    "epistemic_scope",
+    "memory_kind",
+    "occurred_from",
+    "occurred_to",
+    "privacy_class",
+    "source_ref",
+    "source_slice",
+    "text",
+)
+
+# ``_InteriorBinding.model_view`` wraps every scope/compiler binding as
+# ``{"availability": "available", "value": ...}``.  "available" is the only
+# value reachable while a value is present, so the wrapper key is elided and
+# restored from that default; an explicit ``"unavailable"`` is never touched.
+_AVAILABILITY_WRAPPER_KEYS = ("snapshot_compiler", "viewer_scope", "capability_scope")
+_AVAILABILITY_AVAILABLE = "available"
+
+# ``request.trigger_message`` is the same ``model_dump`` as the top-level
+# ``current_trigger_message`` (seen at inbound_wire.py:10460 and :10529), so it
+# is the same 638 characters twice.  When they are identical the copy becomes
+# this pointer; when they differ at all the original object is kept verbatim.
+_TRIGGER_MESSAGE_POINTER = "see current_trigger_message"
+
+
+def source_ref_alias_index(aliases: object) -> dict[str, str]:
+    """Return ``canonical ref -> shortest alias`` from an alias table.
+
+    ``expression_hard_boundaries.source_ref_aliases`` maps one alias to one
+    canonical ref, but a ref can carry several aliases (the beats of one
+    companion expression share a ``dialogue_id``).  Any alias that resolves to
+    the ref is a faithful citation, so the shortest one is chosen
+    deterministically; ``expand_present_world_context`` inverts it through the
+    same table, which makes the substitution lossless even when a ref is
+    reachable under more than one alias.
+    """
+
+    if not isinstance(aliases, Mapping):
+        return {}
+    grouped: dict[str, list[str]] = {}
+    for alias, ref in aliases.items():
+        if not isinstance(alias, str) or not alias:
+            continue
+        if not isinstance(ref, str) or not ref:
+            continue
+        grouped.setdefault(ref, []).append(alias)
+    return {
+        ref: min(names, key=lambda name: (len(name), name))
+        for ref, names in grouped.items()
+    }
+
+
+def _alias_dialogue_refs(
+    entry: dict[str, object], alias_index: Mapping[str, str]
+) -> dict[str, object]:
+    """Rewrite citable refs of one *volatile* entry as their short aliases."""
+
+    if not alias_index:
+        return entry
+    rebuilt: dict[str, object] = {}
+    for key, value in entry.items():
+        if key in {"dialogue_id", "source_ref"} and isinstance(value, str):
+            rebuilt[key] = alias_index.get(value, value)
+        elif key == "acknowledges_observation_event_refs" and isinstance(value, list):
+            rebuilt[key] = [
+                alias_index.get(ref, ref) if isinstance(ref, str) else ref
+                for ref in value
+            ]
+        else:
+            rebuilt[key] = value
+    return rebuilt
+
+
+def _dealias_dialogue_refs(
+    entry: dict[str, object], aliases: object
+) -> dict[str, object]:
+    """Undo ``_alias_dialogue_refs`` with the alias table of the same view."""
+
+    if not isinstance(aliases, Mapping) or not aliases:
+        return entry
+    rebuilt: dict[str, object] = {}
+    for key, value in entry.items():
+        if key in {"dialogue_id", "source_ref"} and isinstance(value, str):
+            rebuilt[key] = aliases.get(value, value)
+        elif key == "acknowledges_observation_event_refs" and isinstance(value, list):
+            rebuilt[key] = [
+                aliases.get(ref, ref) if isinstance(ref, str) else ref
+                for ref in value
+            ]
+        else:
+            rebuilt[key] = value
+    return rebuilt
+
+
+def _dialogue_source_ref_is_redundant(entries: list[object]) -> bool:
+    """Whether every entry repeats its ``dialogue_id`` verbatim as ``source_ref``.
+
+    ``snapshot_compiler._state_entry`` always copies the capsule item's
+    ``source_ref`` onto the material entry, and for every non-media dialogue
+    item that is byte-identical to ``dialogue_id`` (396/396 entries across the
+    four captured runs).  The copy is withheld only when the whole block
+    qualifies, so expansion can put it back on every entry without guessing
+    which ones ever had it.
+    """
+
+    if not entries:
+        return False
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return False
+        dialogue_id = entry.get("dialogue_id")
+        if not isinstance(dialogue_id, str) or not dialogue_id:
+            return False
+        if entry.get("source_ref") != dialogue_id:
+            return False
+    return True
+
+
+def _without_dialogue_source_ref(entry: dict[str, object]) -> dict[str, object]:
+    return {key: value for key, value in entry.items() if key != "source_ref"}
+
+
+def _with_dialogue_source_ref(entry: dict[str, object]) -> dict[str, object]:
+    """Restore the withheld ``source_ref`` copy at its canonical member position."""
+
+    if "source_ref" in entry or not isinstance(entry.get("dialogue_id"), str):
+        return entry
+    rebuilt: dict[str, object] = {}
+    placed = False
+    for key, value in entry.items():
+        rebuilt[key] = value
+        if key == "sequence":
+            rebuilt["source_ref"] = entry["dialogue_id"]
+            placed = True
+    if not placed:
+        rebuilt["source_ref"] = entry["dialogue_id"]
+    return rebuilt
+
 
 def _freeze_dialogue_entry(
     entry: dict[str, object],
@@ -235,8 +415,19 @@ def dialogue_attention_reasons(value: object) -> dict[str, list[str]]:
     }
 
 
-def recent_dialogue_material_entries(value: object) -> list[dict[str, object]]:
-    """Expand cache-split or legacy recent_dialogue without changing semantics."""
+def recent_dialogue_material_entries(
+    value: object, *, source_ref_aliases: object = None
+) -> list[dict[str, object]]:
+    """Expand cache-split or legacy recent_dialogue without changing semantics.
+
+    Inverts everything ``cache_stable_recent_dialogue`` did to the block:
+    withheld per-turn labels, refs shortened to their alias, and the withheld
+    duplicate ``source_ref``.  ``source_ref_aliases`` is the alias table of the
+    same view (``expression_hard_boundaries.source_ref_aliases``); without it an
+    aliased entry is returned with its alias, which is what a view-only reader
+    that has no alias table can honestly do.  Canonical input is returned
+    unchanged.
+    """
 
     if isinstance(value, list):
         return [item for item in value if isinstance(item, dict)]
@@ -244,32 +435,50 @@ def recent_dialogue_material_entries(value: object) -> list[dict[str, object]]:
         stable = value.get("stable_turns")
         volatile = value.get("volatile_last_turn")
         attention = value.get(_RECENT_DIALOGUE_ATTENTION_KEY)
+        redundant = value.get(_SOURCE_REF_IS_DIALOGUE_ID_KEY) is True
         entries: list[dict[str, object]] = []
         if isinstance(stable, list):
             entries.extend(item for item in stable if isinstance(item, dict))
         if isinstance(volatile, dict):
             entries.append(volatile)
         if entries:
-            return [
-                _restore_dialogue_attention(entry, attention) for entry in entries
-            ]
+            expanded: list[dict[str, object]] = []
+            for entry in entries:
+                restored = _restore_dialogue_attention(entry, attention)
+                restored = _dealias_dialogue_refs(restored, source_ref_aliases)
+                if redundant:
+                    restored = _with_dialogue_source_ref(restored)
+                expanded.append(restored)
+            return expanded
         legacy_items = value.get("items")
         if isinstance(legacy_items, list):
             return [item for item in legacy_items if isinstance(item, dict)]
     return []
 
 
-def cache_stable_recent_dialogue(value: object) -> object:
+def cache_stable_recent_dialogue(
+    value: object, *, source_ref_aliases: object = None
+) -> object:
     """Split dialogue tail so prior turns stay byte-stable for provider KV cache.
 
     Frozen entries keep only the labels that describe the entry itself; the
     per-turn attention labels move to the volatile ``per_turn_attention`` map,
     where rewriting them costs nothing because the tail is uncached anyway.
 
+    Two further cuts are presentation-only.  A ``source_ref`` that only repeats
+    its ``dialogue_id`` is withheld from the whole block (declared by
+    ``source_ref_is_dialogue_id``) because the readers of the material already
+    hold the canonical entry from the Capsule.  The volatile last turn has its
+    citable refs replaced by the aliases the same message already publishes, so
+    the tail stays citable without paying 166 characters per ref; the frozen
+    half is deliberately left canonical because the alias table is renumbered
+    on nearly every turn.
+
     Already-split input is re-frozen rather than passed through, so applying the
     presenter twice is the same as applying it once.
     """
 
+    alias_index = source_ref_alias_index(source_ref_aliases)
     if isinstance(value, dict):
         stable = value.get("stable_turns")
         volatile = value.get("volatile_last_turn")
@@ -279,10 +488,18 @@ def cache_stable_recent_dialogue(value: object) -> object:
             ref: list(reasons)
             for ref, reasons in dialogue_attention_reasons(value).items()
         }
-        return _split_stable_dialogue(stable, volatile, attention=attention)
+        return _split_stable_dialogue(
+            stable,
+            volatile,
+            attention=attention,
+            alias_index=alias_index,
+            already_declared=value.get(_SOURCE_REF_IS_DIALOGUE_ID_KEY) is True,
+        )
     if not isinstance(value, list) or len(value) < 2:
         return value
-    return _split_stable_dialogue(value[:-1], value[-1], attention={})
+    return _split_stable_dialogue(
+        value[:-1], value[-1], attention={}, alias_index=alias_index
+    )
 
 
 def _split_stable_dialogue(
@@ -290,13 +507,20 @@ def _split_stable_dialogue(
     volatile_last_turn: object,
     *,
     attention: dict[str, list[str]],
+    alias_index: Mapping[str, str],
+    already_declared: bool = False,
 ) -> dict[str, object]:
+    redundant = already_declared or _dialogue_source_ref_is_redundant(
+        [*frozen_source, volatile_last_turn]
+    )
     frozen: list[object] = []
     for entry in frozen_source:
         if not isinstance(entry, dict):
             frozen.append(entry)
             continue
         stripped, per_turn = _freeze_dialogue_entry(entry)
+        if redundant and isinstance(stripped, dict):
+            stripped = _without_dialogue_source_ref(stripped)
         frozen.append(stripped)
         if per_turn:
             ref = entry["dialogue_id"]
@@ -305,12 +529,19 @@ def _split_stable_dialogue(
             for reason in per_turn:
                 if reason not in held:
                     held.append(reason)
+    volatile = volatile_last_turn
+    if isinstance(volatile, dict):
+        volatile = _alias_dialogue_refs(volatile, alias_index)
+        if redundant:
+            volatile = _without_dialogue_source_ref(volatile)
     payload: dict[str, object] = {
         "stable_turns": frozen,
-        "volatile_last_turn": volatile_last_turn,
+        "volatile_last_turn": volatile,
     }
     if attention:
         payload[_RECENT_DIALOGUE_ATTENTION_KEY] = attention
+    if redundant:
+        payload[_SOURCE_REF_IS_DIALOGUE_ID_KEY] = True
     return payload
 
 
@@ -1155,7 +1386,115 @@ def forced_tool_recall_instruction(*, private_turn_state_required: bool) -> str:
     )
 
 
-def present_inner_life(snapshot: dict[str, object]) -> dict[str, object]:
+def _present_availability_wrappers(snapshot: dict[str, object]) -> dict[str, object]:
+    """Elide ``"availability": "available"`` from the scope/compiler bindings.
+
+    ``_InteriorBinding.model_view`` returns ``{"availability": "available",
+    "value": ...}`` whenever a value exists; only the *unavailable* stub carries
+    information, and it is never touched.
+    """
+
+    for key in _AVAILABILITY_WRAPPER_KEYS:
+        binding = snapshot.get(key)
+        if (
+            isinstance(binding, dict)
+            and binding.get("availability") == _AVAILABILITY_AVAILABLE
+            and len(binding) > 1
+        ):
+            snapshot[key] = {
+                name: value
+                for name, value in binding.items()
+                if name != "availability"
+            }
+    return snapshot
+
+
+def _expand_availability_wrappers(snapshot: dict[str, object]) -> dict[str, object]:
+    for key in _AVAILABILITY_WRAPPER_KEYS:
+        binding = snapshot.get(key)
+        if isinstance(binding, dict) and "availability" not in binding:
+            rebuilt: dict[str, object] = {"availability": _AVAILABILITY_AVAILABLE}
+            rebuilt.update(binding)
+            snapshot[key] = rebuilt
+    return snapshot
+
+
+def _present_automatic_prefetch(value: object) -> object:
+    """Drop the constant wrapper of her remembered private interpretations."""
+
+    if not isinstance(value, Mapping):
+        return value
+    items = value.get("items")
+    if not isinstance(items, list):
+        return value
+    presented: list[object] = []
+    for item in items:
+        if not isinstance(item, dict):
+            presented.append(item)
+            continue
+        presented.append(
+            {
+                name: entry
+                for name, entry in item.items()
+                if not any(
+                    name == constant and entry == expected
+                    for constant, expected in _AUTOMATIC_PREFETCH_CONSTANTS
+                )
+            }
+        )
+    return {**{k: v for k, v in value.items() if k != "items"}, "items": presented}
+
+
+def _expand_automatic_prefetch(value: object) -> object:
+    if not isinstance(value, Mapping):
+        return value
+    items = value.get("items")
+    if not isinstance(items, list):
+        return value
+    constants = dict(_AUTOMATIC_PREFETCH_CONSTANTS)
+    expanded: list[object] = []
+    for item in items:
+        if not isinstance(item, dict):
+            expanded.append(item)
+            continue
+        rebuilt: dict[str, object] = {}
+        for name in _AUTOMATIC_PREFETCH_ITEM_ORDER:
+            if name in item:
+                rebuilt[name] = item[name]
+            elif name in constants:
+                rebuilt[name] = constants[name]
+        for name, entry in item.items():
+            if name not in rebuilt:
+                rebuilt[name] = entry
+        expanded.append(rebuilt)
+    return {**{k: v for k, v in value.items() if k != "items"}, "items": expanded}
+
+
+def _present_duplicate_trigger_message(
+    prepared: dict[str, object],
+) -> dict[str, object]:
+    """Replace the second copy of the trigger with a pointer to the first.
+
+    ``inbound_wire`` writes the same ``trigger_message.model_dump`` into
+    ``request.trigger_message`` and into the top-level
+    ``current_trigger_message``.  Every reader of the trigger reads the frozen
+    request object, not this JSON, so the duplicate is presentation only.
+    """
+
+    request = prepared.get("request")
+    trigger = prepared.get("current_trigger_message")
+    if not isinstance(request, dict) or "trigger_message" not in request:
+        return prepared
+    if request["trigger_message"] != trigger:
+        return prepared
+    rewritten = dict(request)
+    rewritten["trigger_message"] = _TRIGGER_MESSAGE_POINTER
+    return {**prepared, "request": rewritten}
+
+
+def present_inner_life(
+    snapshot: dict[str, object], *, source_ref_aliases: object = None
+) -> dict[str, object]:
     materials = snapshot.get("materials")
     ordered_snapshot = dict(snapshot)
     if isinstance(materials, dict):
@@ -1168,7 +1507,8 @@ def present_inner_life(snapshot: dict[str, object]) -> dict[str, object]:
                 ordered_materials[key] = value
         if "recent_dialogue" in ordered_materials:
             ordered_materials["recent_dialogue"] = cache_stable_recent_dialogue(
-                ordered_materials["recent_dialogue"]
+                ordered_materials["recent_dialogue"],
+                source_ref_aliases=source_ref_aliases,
             )
         if "appraisals" in ordered_materials:
             ordered_materials["appraisals"] = cache_stable_appraisals(
@@ -1176,7 +1516,17 @@ def present_inner_life(snapshot: dict[str, object]) -> dict[str, object]:
             )
         if "affect" in ordered_materials:
             ordered_materials["affect"] = cache_stable_affect(ordered_materials["affect"])
+        if "automatic_prefetch" in ordered_materials:
+            ordered_materials["automatic_prefetch"] = _present_automatic_prefetch(
+                ordered_materials["automatic_prefetch"]
+            )
+        # ``production._bind_capability_evidence`` is the only writer and no
+        # module in src/ reads it back (its refs are already carried by
+        # ``source_refs`` and ``source_inventory``, which is where the visible
+        # source closure looks).  It is a host audit trail, not a fact for her.
+        ordered_materials.pop("capability_evidence", None)
         ordered_snapshot["materials"] = ordered_materials
+    ordered_snapshot = _present_availability_wrappers(ordered_snapshot)
     ordered: dict[str, object] = {}
     volatile = set(_SNAPSHOT_VOLATILE_LAST)
     for key, value in ordered_snapshot.items():
@@ -1188,11 +1538,67 @@ def present_inner_life(snapshot: dict[str, object]) -> dict[str, object]:
     return ordered
 
 
+def expand_present_world_context(view: Mapping[str, object]) -> dict[str, object]:
+    """Rebuild the canonical presentation input from a presented World Context.
+
+    The inverse of ``order_user_present_payload`` for everything that presenter
+    elides: the withheld duplicate ``source_ref``, the aliases of the volatile
+    dialogue turn, the availability wrappers of the scope/compiler bindings, the
+    ``automatic_prefetch`` wrapper, and the trigger pointer.  It reads the alias
+    table from the same view, so it needs nothing but the view itself.
+
+    ``recent_dialogue`` is returned in its canonical shape -- the flat
+    chronological list ``fold_dialogue_entries`` produced -- because the
+    frozen/volatile split is itself presentation.
+
+    ``inner_life_snapshot.materials.capability_evidence`` is the one member that
+    is removed rather than withheld, and it is not reconstructed here.
+    """
+
+    if not isinstance(view, Mapping):
+        return {}
+    expanded = copy.deepcopy(dict(view))
+    request = expanded.get("request")
+    if (
+        isinstance(request, dict)
+        and request.get("trigger_message") == _TRIGGER_MESSAGE_POINTER
+        and "current_trigger_message" in expanded
+    ):
+        request["trigger_message"] = copy.deepcopy(expanded["current_trigger_message"])
+    snapshot = expanded.get("inner_life_snapshot")
+    if not isinstance(snapshot, dict):
+        return expanded
+    boundaries = expanded.get("expression_hard_boundaries")
+    aliases = boundaries.get("source_ref_aliases") if isinstance(boundaries, Mapping) else None
+    materials = snapshot.get("materials")
+    if isinstance(materials, dict):
+        dialogue = materials.get("recent_dialogue")
+        if isinstance(dialogue, dict):
+            materials["recent_dialogue"] = recent_dialogue_material_entries(
+                dialogue, source_ref_aliases=aliases
+            )
+        if "automatic_prefetch" in materials:
+            materials["automatic_prefetch"] = _expand_automatic_prefetch(
+                materials["automatic_prefetch"]
+            )
+    expanded["inner_life_snapshot"] = _expand_availability_wrappers(snapshot)
+    return expanded
+
+
 def order_user_present_payload(material: dict[str, object]) -> dict[str, object]:
     prepared = dict(material)
     snapshot = prepared.get("inner_life_snapshot")
     if isinstance(snapshot, dict):
-        prepared["inner_life_snapshot"] = present_inner_life(snapshot)
+        boundaries = prepared.get("expression_hard_boundaries")
+        prepared["inner_life_snapshot"] = present_inner_life(
+            snapshot,
+            source_ref_aliases=(
+                boundaries.get("source_ref_aliases")
+                if isinstance(boundaries, Mapping)
+                else None
+            ),
+        )
+    prepared = _present_duplicate_trigger_message(prepared)
     ordered: dict[str, object] = {}
     for key in _PRESENT_USER_KEY_ORDER:
         if key in prepared:

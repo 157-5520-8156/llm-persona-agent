@@ -20,6 +20,7 @@ from companion_daemon.world_v2.present_prompt import (
     cache_stable_recent_dialogue,
     combined_turn_system_lead,
     dialogue_attention_reasons,
+    expand_present_world_context,
     order_user_present_payload,
     recent_dialogue_material_entries,
     slim_consider_instruction,
@@ -1024,3 +1025,336 @@ def _common_prefix(left: str, right: str) -> str:
     while index < bound and left[index] == right[index]:
         index += 1
     return left[:index]
+
+
+# ---------------------------------------------------------------------------
+# Presentation-only prompt trims
+# (evidence: output/release-readiness/APPENDIX-A-volume.md)
+# ---------------------------------------------------------------------------
+
+
+def _dialogue_turn(
+    ref: str,
+    sequence: int,
+    speaker: str,
+    text: str,
+    *,
+    ack: list[str] | None = None,
+    reasons: list[str] | None = None,
+) -> dict[str, object]:
+    return {
+        "dialogue_id": ref,
+        "source_ref": ref,
+        "speaker": speaker,
+        "speaker_ref": "agent:companion" if speaker == "companion" else "user:qq",
+        "text": text,
+        "occurred_at": "2026-09-07T06:00:00Z",
+        "delivery_state": "delivered" if speaker == "companion" else "observed",
+        "acknowledges_observation_event_refs": list(ack or ()),
+        "continuity_reasons": list(reasons or ["recent"]),
+        "sequence": sequence,
+    }
+
+
+def _presented_dialogue(
+    dialogue: list[dict[str, object]], *, aliases: dict[str, str] | None = None
+) -> dict[str, object]:
+    payload = order_user_present_payload(
+        {
+            "expression_hard_boundaries": {"source_ref_aliases": dict(aliases or {})},
+            "inner_life_snapshot": {"materials": {"recent_dialogue": dialogue}},
+        }
+    )
+    view = payload["inner_life_snapshot"]["materials"]["recent_dialogue"]
+    assert isinstance(view, dict)
+    return view
+
+
+def test_duplicate_dialogue_source_ref_is_withheld_and_restored_exactly() -> None:
+    """The material spells the same opaque ref twice; the view spells it once.
+
+    ``snapshot_compiler._state_entry`` always copies the capsule item's
+    ``source_ref`` onto the material entry, and for every non-media dialogue
+    item that is byte-identical to ``dialogue_id`` (396/396 entries across the
+    four captured compact-gate runs).  The duplicate is withheld from the whole
+    block and declared, so expanding the view rebuilds the canonical entries
+    exactly.  The host readers never used this copy: ``inbound_wire`` reads
+    ``context["slices"]["recent_dialogue"]["items"]`` and
+    ``conversation_continuity`` / ``recall_corpus`` read the
+    ``RecentDialogueItem`` records.
+    """
+
+    ref_one = "dialogue:observation:observation:qq:qq-coalesced:" + "a" * 64
+    ref_two = "dialogue:observation:observation:qq:qq-coalesced:" + "b" * 64
+    canonical = [
+        _dialogue_turn(ref_one, 100, "counterpart", "在忙吗"),
+        _dialogue_turn(ref_two, 200, "companion", "刚回来"),
+    ]
+
+    view = _presented_dialogue(canonical)
+
+    assert view["source_ref_is_dialogue_id"] is True
+    assert all("source_ref" not in entry for entry in view["stable_turns"])
+    assert "source_ref" not in view["volatile_last_turn"]
+    # Nothing is lost: the canonical entries come back byte for byte.
+    assert recent_dialogue_material_entries(view) == canonical
+    assert expand_present_world_context(
+        {"inner_life_snapshot": {"materials": {"recent_dialogue": view}}}
+    )["inner_life_snapshot"]["materials"]["recent_dialogue"] == canonical
+
+
+def test_dialogue_source_ref_is_kept_when_it_is_not_the_dialogue_id() -> None:
+    """A media-delivery entry cites a *different* ref; the whole block is kept.
+
+    The elision is all-or-nothing on purpose: withholding one entry's
+    ``source_ref`` and keeping another's would make expansion guess which
+    entries ever had the field.
+    """
+
+    plain = _dialogue_turn("dialogue:observation:x", 100, "counterpart", "在忙吗")
+    delivery = _dialogue_turn("dialogue:media-delivery:photo:1", 200, "companion", "给你看")
+    delivery["source_ref"] = "photo:1"
+
+    view = _presented_dialogue([plain, delivery])
+
+    assert "source_ref_is_dialogue_id" not in view
+    assert view["stable_turns"][0]["source_ref"] == "dialogue:observation:x"
+    assert view["volatile_last_turn"]["source_ref"] == "photo:1"
+    assert recent_dialogue_material_entries(view) == [plain, delivery]
+
+
+def test_volatile_dialogue_turn_uses_aliases_and_the_frozen_half_does_not() -> None:
+    """Only the uncached tail of the dialogue may carry a short alias.
+
+    ``source_ref_aliases`` is renumbered from scratch every turn -- of the
+    dialogue ids carried from one captured turn to the next, 45/48, 61/89,
+    62/76 and 66/77 got a different alias on the following turn.  Substituting
+    an alias into ``stable_turns`` would therefore rewrite the frozen bytes and
+    move the first differing byte from the end of that window back into its
+    head, which is exactly the cache loss the frozen/volatile split exists to
+    prevent.  The volatile last turn is past that boundary, so there the
+    substitution is free -- and the canonical ref is still recoverable.
+    """
+
+    ref_one = "dialogue:observation:observation:qq:qq-coalesced:" + "a" * 64
+    ref_two = "dialogue:observation:observation:qq:qq-coalesced:" + "b" * 64
+    acknowledged = "event:trigger:observation:platform:qq:qq-coalesced:" + "c" * 64
+    canonical = [
+        _dialogue_turn(ref_one, 100, "counterpart", "在忙吗"),
+        _dialogue_turn(ref_two, 200, "companion", "刚回来", ack=[acknowledged]),
+    ]
+    aliases = {"S7": ref_one, "S9": ref_two, "T1": acknowledged}
+
+    view = _presented_dialogue(canonical, aliases=aliases)
+
+    # The frozen entry keeps canonical refs, so turn N+1 with a renumbered
+    # alias table leaves its bytes alone.
+    assert view["stable_turns"][0]["dialogue_id"] == ref_one
+    renumbered = _presented_dialogue(canonical, aliases={"S1": ref_one, "S2": ref_two, "T4": acknowledged})
+    assert json.dumps(view["stable_turns"], ensure_ascii=False) == json.dumps(
+        renumbered["stable_turns"], ensure_ascii=False
+    )
+    # The volatile turn cites the aliases the same message already publishes.
+    assert view["volatile_last_turn"]["dialogue_id"] == "S9"
+    assert view["volatile_last_turn"]["acknowledges_observation_event_refs"] == ["T1"]
+    assert "source_ref" not in view["volatile_last_turn"]
+    # Expanding with that view's own alias table restores the canonical entry.
+    assert recent_dialogue_material_entries(view, source_ref_aliases=aliases) == canonical
+    assert expand_present_world_context(
+        {
+            "expression_hard_boundaries": {"source_ref_aliases": aliases},
+            "inner_life_snapshot": {"materials": {"recent_dialogue": view}},
+        }
+    )["inner_life_snapshot"]["materials"]["recent_dialogue"] == canonical
+    # Without an alias table the entry is honestly left with its alias, and the
+    # withheld duplicate is still restored.
+    without_table = recent_dialogue_material_entries(view)
+    assert without_table[-1]["dialogue_id"] == "S9"
+    assert without_table[-1]["source_ref"] == "S9"
+    assert without_table[0] == canonical[0]
+
+
+def test_faculty_wrapper_keys_are_left_alone_because_readers_use_them() -> None:
+    """The eight facets keep ``availability`` / ``material_keys`` verbatim.
+
+    ``contracts.InnerLifeSnapshot.model_view`` renders every facet as
+    ``{"availability": ..., "material_keys": [...]}`` and the audit ranked those
+    repeated wrapper keys as cuttable.  They are not: the *serialized* view is
+    read by name outside the presenter, so collapsing an available facet to its
+    bare key list is a shape change, not a size cut.  Measured while
+    implementing it: four provider-driven tests died on
+    ``snapshot["faculties"]["selective_memory"]["material_keys"]`` /
+    ``["availability"]``, and ``faculties`` (which sorts before ``materials``)
+    sits inside the cacheable prefix anyway, so the trim was worth about
+    CNY 0.37/month at 3 000 turns.
+    """
+
+    faculties = {
+        "appraisal_affect": {"availability": "available", "material_keys": ["appraisals", "affect"]},
+        "emotional_continuity": {"availability": "unavailable", "material_keys": []},
+    }
+    payload = order_user_present_payload(
+        {
+            "inner_life_snapshot": {
+                "faculties": faculties,
+                "materials": {},
+                "snapshot_compiler": {
+                    "availability": "available",
+                    "value": "inner-life-snapshot-compiler.21",
+                },
+                "truncation": {"availability": "unavailable"},
+            }
+        }
+    )
+    view = payload["inner_life_snapshot"]
+
+    assert view["faculties"] == faculties
+    assert view["faculties"]["appraisal_affect"]["material_keys"] == ["appraisals", "affect"]
+    # The scope/compiler bindings are only read host-side, so the constant
+    # ``"availability": "available"`` wrapper there is elided and restored.
+    assert view["snapshot_compiler"] == {"value": "inner-life-snapshot-compiler.21"}
+    assert view["truncation"] == {"availability": "unavailable"}
+
+    expanded = expand_present_world_context(payload)["inner_life_snapshot"]
+    assert expanded["faculties"] == faculties
+    assert expanded["snapshot_compiler"] == {
+        "availability": "available",
+        "value": "inner-life-snapshot-compiler.21",
+    }
+    assert expanded["truncation"] == {"availability": "unavailable"}
+
+
+def test_automatic_prefetch_wrapper_is_elided_and_capability_evidence_is_removed() -> None:
+    """Her remembered interpretations keep their text, citation and recency.
+
+    The five withheld members hold one value in all 58 captured items.  What
+    stays is what she judges with: ``text``, the ``source_ref`` she would cite,
+    ``occurred_from``, and the ``privacy_class`` boundary.  ``capability_evidence``
+    is removed outright -- ``production._bind_capability_evidence`` is its only
+    writer and no module in ``src/`` reads it back -- but its refs stay visible:
+    the writer appends them to ``source_refs``, which is where the visible
+    source closure looks.
+    """
+
+    item = {
+        "authority": "defeasible_interpretation",
+        "epistemic_scope": "private_interpretation",
+        "memory_kind": "reflective",
+        "occurred_from": "2026-09-07T06:04:00Z",
+        "occurred_to": None,
+        "privacy_class": "withhold",
+        "source_ref": "appraisal:compiled:" + "d" * 64,
+        "source_slice": "recalled_emotional_associations",
+        "text": "Remembered private interpretation — 他绕了半天没直说",
+    }
+    evidence_ref = "event:trigger:observation:platform:qq:qq-coalesced:" + "e" * 64
+    snapshot = {
+        "materials": {
+            "automatic_prefetch": {"items": [item]},
+            "capability_evidence": [
+                {
+                    "event_type": "ObservationRecorded",
+                    "source_ref": evidence_ref,
+                    "source_world_revision": 327,
+                }
+            ],
+        },
+        "source_refs": [evidence_ref],
+    }
+    frozen = json.dumps(snapshot, ensure_ascii=False, sort_keys=True)
+
+    payload = order_user_present_payload({"inner_life_snapshot": snapshot})
+    view = payload["inner_life_snapshot"]
+
+    assert view["materials"]["automatic_prefetch"]["items"] == [
+        {
+            "occurred_from": "2026-09-07T06:04:00Z",
+            "privacy_class": "withhold",
+            "source_ref": "appraisal:compiled:" + "d" * 64,
+            "text": "Remembered private interpretation — 他绕了半天没直说",
+        }
+    ]
+    assert "capability_evidence" not in view["materials"]
+    assert evidence_ref in view["source_refs"]
+    # Presentation only: the snapshot the host handed in is untouched.
+    assert json.dumps(snapshot, ensure_ascii=False, sort_keys=True) == frozen
+
+    expanded = expand_present_world_context(payload)["inner_life_snapshot"]["materials"]
+    assert expanded["automatic_prefetch"] == {"items": [item]}
+
+
+def test_duplicate_trigger_message_becomes_a_pointer_to_the_one_copy() -> None:
+    """``request.trigger_message`` is the same dump as ``current_trigger_message``.
+
+    Both come from ``request.trigger_message.model_dump(mode="json")``
+    (``inbound_wire`` writes one at :10460 and one at :10529), so the model
+    read 638 characters of trigger text twice.  Every reader of the trigger
+    reads the frozen request object, not this JSON.  A trigger that is not
+    identical is kept verbatim.
+    """
+
+    trigger = {
+        "event_ref": "event:trigger:" + "f" * 64,
+        "observation_ref": "observation:qq:" + "f" * 64,
+        "source_world_revision": 327,
+        "text": "我有点想你了",
+    }
+    payload = order_user_present_payload(
+        {
+            "request": {
+                "call_id": "call:1",
+                "trigger_message": json.loads(json.dumps(trigger)),
+            },
+            "current_trigger_message": json.loads(json.dumps(trigger)),
+        }
+    )
+
+    assert payload["request"]["trigger_message"] == "see current_trigger_message"
+    assert expand_present_world_context(payload)["request"]["trigger_message"] == trigger
+    assert payload["current_trigger_message"] == trigger
+
+    different = order_user_present_payload(
+        {
+            "request": {"trigger_message": {"text": "旧的"}},
+            "current_trigger_message": json.loads(json.dumps(trigger)),
+        }
+    )
+    assert different["request"]["trigger_message"] == {"text": "旧的"}
+
+
+def test_presenting_twice_is_presenting_once() -> None:
+    """Every trim is idempotent, so a re-presented view keeps its round trip."""
+
+    ref = "dialogue:observation:x"
+    canonical = [
+        _dialogue_turn(ref, 100, "counterpart", "在忙吗"),
+        _dialogue_turn("dialogue:observation:y", 200, "companion", "刚回来"),
+    ]
+    snapshot = {
+        "faculties": {"appraisal_affect": {"availability": "available", "material_keys": ["appraisals"]}},
+        "materials": {
+            "recent_dialogue": canonical,
+            "automatic_prefetch": {
+                "items": [
+                    {
+                        "authority": "defeasible_interpretation",
+                        "memory_kind": "reflective",
+                        "occurred_from": "2026-09-07T06:04:00Z",
+                        "privacy_class": "withhold",
+                        "source_ref": "appraisal:1",
+                        "source_slice": "recalled_emotional_associations",
+                        "text": "想起他绕了半天",
+                    }
+                ]
+            },
+        },
+    }
+    once = order_user_present_payload({"inner_life_snapshot": snapshot})
+    twice = order_user_present_payload(json.loads(json.dumps(once)))
+
+    assert json.dumps(once, ensure_ascii=False, sort_keys=True) == json.dumps(
+        twice, ensure_ascii=False, sort_keys=True
+    )
+    assert recent_dialogue_material_entries(
+        twice["inner_life_snapshot"]["materials"]["recent_dialogue"]
+    ) == canonical
