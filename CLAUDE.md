@@ -89,7 +89,7 @@ QQ → `qq_c2c_onebot_app.py`（`POST /onebot/event`）→ `qq_c2c_host.py` → 
 - **聊天快路径已达标**：生产默认 `stream` + compact gate，真实入站 8 回合端到端 **p50 2.08s / max 2.92s**，其中作者调用 p50 2.03s，其余阶段合计约 60ms。证据 `output/cost-latency/REPORT.md`。
 - **成本取决于前缀缓存**：单条 prompt **17.4K tokens**、命中 **54%**、输出 164 tokens → **¥0.0265/条**，热恋期 3000 条约 **¥79.5/月**。唯一被缓存的是 31,083 字符的系统合同；World Context（约 35K 字符）每回合全 miss，第一处分歧是 `inner_life_snapshot.capability_scope` 里的 `capability_ref` sha256。
 - **新硬边界 `WORLD_V2_BACKGROUND_DAILY_BUDGET_CNY`（默认 1.5，0 关闭）**：只约束非可见 lane，`inbound_turn` 等 visible purpose 不受它影响，额度用尽时唤醒以 `paused_by_budget` 安静收尾（不再逐 lane 记 `technical_failure`）。`budget_state()` 输出 `background_daily_cost_cny` / `background_daily_exhausted`。
-- **交互时限已可配**：`WORLD_V2_INTERACTIVE_TURN_BUDGET_SECONDS`（12.0）/ `WORLD_V2_INTERACTIVE_HEDGE_AFTER_SECONDS`（6.5）。注意 stream 模式下 hedge 的 backup 就是同一物理请求（`backup_role=stream_tail`），**调它买不到延迟**；真正会翻倍模型腿的是 core 的一次性 correction。
+- **交互时限已可配**：`WORLD_V2_INTERACTIVE_TURN_BUDGET_SECONDS`（12.0）/ `WORLD_V2_INTERACTIVE_HEDGE_AFTER_SECONDS`（6.5）。默认（`WORLD_V2_INTERACTIVE_HEDGE_ENABLED=false`）下 stream 模式的 hedge backup 就是同一物理请求（`backup_role=stream_tail`），**调阈值买不到延迟**；真正会翻倍模型腿的是 core 的一次性 correction。打开 `WORLD_V2_INTERACTIVE_HEDGE_ENABLED` 后，端口新增 `propose_hedge`（同 pinned ModelInput、同角色作者、独立 `call_id`，走 complete transport），`start_backup` 优先用它；此时 stream 模式把第二个 slot 让给 hedge，head 胜出后才开 `stream_tail`。输家只留 `hedge_cancelled` 审计（无接受、无投递、无账本权威）。设计见 `/tmp/hedge-design.md`；成本与风险见同文。
 - **审核现状**：聊天侧没有审核模型调用（确定性机械层 + 紧致合同）；生活侧 `life_development_novel_origin_review` 仍是作者自审（¥0.031/次），`WORLD_V2_SOURCE_REVIEW_BASE_URL` / `_LOCAL_MODEL` 在 `src/` 无消费点（死配置）。
 
 ### 一致性审计（日常运维）
