@@ -19,6 +19,7 @@ from companion_daemon.world_v2.present_prompt import (
     cache_stable_appraisals,
     cache_stable_recent_dialogue,
     combined_turn_system_lead,
+    dialogue_attention_reasons,
     order_user_present_payload,
     recent_dialogue_material_entries,
     slim_consider_instruction,
@@ -450,6 +451,91 @@ def test_recent_dialogue_cache_split_preserves_semantics_and_stable_prefix() -> 
     assert second_dialogue["volatile_last_turn"] == third_turn
     assert cache_stable_recent_dialogue([first_turn]) == [first_turn]
     assert cache_stable_recent_dialogue([first_turn]) == [first_turn]
+
+
+def test_stable_dialogue_prefix_survives_a_decaying_attention_label() -> None:
+    """The frozen half of recent_dialogue must not be rewritten between turns.
+
+    ``ConversationContinuityCompiler`` re-derives ``acknowledged_context`` /
+    ``current_turn`` / ``pending_interaction`` from scratch every turn, so an
+    entry that was frozen in turn N loses labels in turn N+1.  Reproduced on the
+    captured compact-gate runs: 11 of 11 frozen-entry mutations were exactly
+    ``["acknowledged_context","recent"] -> ["recent"]``.  The labels belong to
+    the volatile tail; the frozen bytes belong to the provider prefix cache.
+    """
+
+    def turn(ref: str, seq: int, speaker: str, text: str, reasons: list[str]) -> dict[str, object]:
+        return {
+            "dialogue_id": ref,
+            "speaker": speaker,
+            "speaker_ref": "agent:companion" if speaker == "companion" else "user:qq",
+            "text": text,
+            "occurred_at": "2026-09-07T06:00:00Z",
+            "delivery_state": "delivered" if speaker == "companion" else "observed",
+            "acknowledges_observation_event_refs": [],
+            "continuity_reasons": reasons,
+            "sequence": seq,
+        }
+
+    def presented(dialogue: list[dict[str, object]]) -> dict[str, object]:
+        payload = order_user_present_payload(
+            {"inner_life_snapshot": {"materials": {"recent_dialogue": dialogue}}}
+        )
+        view = payload["inner_life_snapshot"]["materials"]["recent_dialogue"]
+        assert isinstance(view, dict)
+        return view
+
+    first = turn("d:c1", 100, "counterpart", "在忙吗", ["acknowledged_context", "recent"])
+    reply = turn("d:m1", 200, "companion", "刚回来", ["recent", "recent_companion"])
+    second = turn("d:c2", 300, "counterpart", "晚上吃什么", ["acknowledged_context", "recent"])
+    reply2 = turn("d:m2", 400, "companion", "随便", ["recent", "recent_companion"])
+
+    # Turn N: the newest counterpart line is the trigger.
+    turn_n = [first, reply, second, reply2, turn("d:c3", 500, "counterpart", "?", ["current_turn", "recent"])]
+    # Turn N+1: the same lines survive, but the attention labels decayed on the
+    # entries that were already frozen, and a newer exchange arrived.
+    decayed = [
+        turn("d:c1", 100, "counterpart", "在忙吗", ["recent"]),
+        reply,
+        turn("d:c2", 300, "counterpart", "晚上吃什么", ["recent"]),
+        reply2,
+        turn("d:c3", 500, "counterpart", "?", ["acknowledged_context", "recent"]),
+        turn("d:m3", 600, "companion", "在", ["recent", "recent_companion"]),
+        turn("d:c4", 700, "counterpart", "在吗", ["current_turn", "recent"]),
+    ]
+
+    view_n = presented(turn_n)
+    view_next = presented(decayed)
+    stable_n = json.dumps(view_n["stable_turns"], ensure_ascii=False, separators=(",", ":"))
+    stable_next = json.dumps(
+        view_next["stable_turns"], ensure_ascii=False, separators=(",", ":")
+    )
+
+    # The frozen bytes are a byte prefix: the dialogue is append-only in the
+    # serialized prompt, which is the only thing DeepSeek's cache can reuse.
+    # Every frozen entry is identical, so the longer list continues exactly
+    # where the shorter one closed.
+    assert len(view_next["stable_turns"]) > len(view_n["stable_turns"])
+    assert stable_next[: len(stable_n) - 1] == stable_n[:-1]
+    # Without the split, the decayed label alone breaks that prefix at the head.
+    naive_n = json.dumps(turn_n[:-1], ensure_ascii=False, separators=(",", ":"))
+    naive_next = json.dumps(decayed[: len(turn_n) - 1], ensure_ascii=False, separators=(",", ":"))
+    assert naive_next[: len(naive_n) - 1] != naive_n[:-1]
+    # Nothing is lost: the withheld labels are republished once per turn, so the
+    # packet signal moves with the attention, not with the frozen bytes.
+    assert dialogue_attention_reasons(view_n) == {
+        "d:c1": ["acknowledged_context"],
+        "d:c2": ["acknowledged_context"],
+    }
+    assert dialogue_attention_reasons(view_next) == {"d:c3": ["acknowledged_context"]}
+    # d:c1 lost its acknowledged_context label at the source in turn N+1, and
+    # d:c3 picked one up; neither rewrites a frozen entry.
+    assert view_n["stable_turns"][0]["continuity_reasons"] == ["recent"]
+    assert view_next["stable_turns"][0] == view_n["stable_turns"][0]
+    assert recent_dialogue_material_entries(view_next) == decayed
+    # The newest turn keeps its labels inline: the system contract tells her
+    # that current_turn + pending_interaction form the current packet.
+    assert view_next["volatile_last_turn"] == decayed[-1]
 
 
 def test_appraisal_cache_split_preserves_semantics_and_stable_prefix() -> None:

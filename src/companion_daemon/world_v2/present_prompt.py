@@ -92,9 +92,147 @@ _MATERIAL_ORDER = (
     "logical_time",
 )
 
+# Presentation-only order for the provider view.  ``_MATERIAL_ORDER`` above is
+# *also* the slicing order ``background_context_profile`` uses to cut one
+# snapshot per background lane, so it must not move.  What moves is only what
+# the compact-gate request serializes.
+#
+# ``recent_dialogue`` is the one wide slice that grows by appending: with the
+# frozen/volatile split it keeps its earlier bytes identical turn to turn, so it
+# is emitted first and DeepSeek's prefix cache can reuse it.  Everything the old
+# order put ahead of it carries a per-turn coordinate -- ``biographical_context``
+# and ``day_sheet`` both stamp ``logical_at`` -- and measured 2026-09-12 on the
+# three captured compact-gate runs, that coordinate was the first differing byte
+# at offset ~2 487, capping the reusable prefix 2.5 KB into a 36 KB payload no
+# matter how stable the dialogue itself had become.  Nothing is dropped or
+# rewritten here: the same slices, in an order that lets the cache survive.
+_PRESENT_MATERIAL_ORDER = (
+    "recent_dialogue",
+    *(
+        key
+        for key in _MATERIAL_ORDER
+        if key != "recent_dialogue"
+    ),
+)
+
 _RECENT_DIALOGUE_CACHE_KEYS = ("stable_turns", "volatile_last_turn")
 _APPRAISAL_CACHE_KEYS = ("stable_rows", "volatile_last_row")
 _AFFECT_CACHE_KEYS = ("stable_entries", "volatile_last_entry")
+
+# ``ConversationContinuityCompiler.compile`` rebuilds the whole attention
+# classification from scratch on every turn.  These three labels are therefore
+# properties of *this* turn, not of the dialogue entry that carries them:
+#
+#   current_turn         this entry is the observation that triggered the turn
+#   pending_interaction  his line is still inside the unacknowledged window
+#   acknowledged_context a *recent* beat of hers answered it
+#
+# All three decay as the window slides -- ``acknowledged_context`` becomes
+# ``recent``, ``current_turn`` becomes ``acknowledged_context``.  Writing them
+# into entries that a later turn freezes made the "stable" half of
+# ``stable_turns`` change underneath the cache: measured on the three captured
+# compact-gate runs, 11 of 11 frozen-entry mutations were exactly
+# ``["acknowledged_context","recent"] -> ["recent"]``, first at the head of the
+# slice.  They are withheld from frozen entries and republished once per turn in
+# the volatile tail, keyed by ``dialogue_id`` (unique for the counterpart
+# entries that can carry them: 0 collisions across all three runs).
+#
+# ``recent`` and ``recent_companion`` stay inline: they are fill labels the
+# compiler attaches to every item of a window far larger than the 16 items this
+# slice presents, so they never changed on a frozen entry in any captured run.
+_RECENT_DIALOGUE_PER_TURN_REASONS = (
+    "acknowledged_context",
+    "current_turn",
+    "pending_interaction",
+)
+_RECENT_DIALOGUE_ATTENTION_KEY = "per_turn_attention"
+
+
+def _freeze_dialogue_entry(
+    entry: dict[str, object],
+) -> tuple[dict[str, object], tuple[str, ...]]:
+    """Return one entry without per-turn labels, plus the labels held back."""
+
+    reasons = entry.get("continuity_reasons")
+    if not isinstance(reasons, list):
+        return entry, ()
+    per_turn = tuple(
+        reason
+        for reason in reasons
+        if isinstance(reason, str) and reason in _RECENT_DIALOGUE_PER_TURN_REASONS
+    )
+    if not per_turn:
+        return entry, ()
+    if not isinstance(entry.get("dialogue_id"), str) or not entry["dialogue_id"]:
+        # No stable key to republish under, so dropping the label would lose a
+        # signal the system contract promises.  Keep the entry as it is.
+        return entry, ()
+    kept = [
+        reason
+        for reason in reasons
+        if not (isinstance(reason, str) and reason in _RECENT_DIALOGUE_PER_TURN_REASONS)
+    ]
+    rebuilt: dict[str, object] = {}
+    for key, value in entry.items():
+        if key != "continuity_reasons":
+            rebuilt[key] = value
+        elif kept:
+            rebuilt[key] = kept
+    return rebuilt, per_turn
+
+
+def _restore_dialogue_attention(
+    entry: dict[str, object], attention: object
+) -> dict[str, object]:
+    """Re-attach per-turn labels withheld by ``cache_stable_recent_dialogue``."""
+
+    if not isinstance(attention, dict):
+        return entry
+    ref = entry.get("dialogue_id")
+    extra = attention.get(ref) if isinstance(ref, str) else None
+    if not isinstance(extra, list) or not extra:
+        return entry
+    merged = sorted(
+        dict.fromkeys(
+            (
+                *(
+                    reason
+                    for reason in entry.get("continuity_reasons", ())
+                    if isinstance(reason, str)
+                ),
+                *(reason for reason in extra if isinstance(reason, str)),
+            )
+        )
+    )
+    rebuilt: dict[str, object] = {}
+    placed = False
+    for key, value in entry.items():
+        if key == "continuity_reasons":
+            rebuilt[key] = merged
+            placed = True
+            continue
+        if not placed and key == "sequence":
+            rebuilt["continuity_reasons"] = merged
+            placed = True
+        rebuilt[key] = value
+    if not placed:
+        rebuilt["continuity_reasons"] = merged
+    return rebuilt
+
+
+def dialogue_attention_reasons(value: object) -> dict[str, list[str]]:
+    """Per-turn attention labels withheld from the frozen dialogue entries."""
+
+    if not isinstance(value, dict):
+        return {}
+    attention = value.get(_RECENT_DIALOGUE_ATTENTION_KEY)
+    if not isinstance(attention, dict):
+        return {}
+    return {
+        ref: [reason for reason in reasons if isinstance(reason, str)]
+        for ref, reasons in attention.items()
+        if isinstance(ref, str) and isinstance(reasons, list) and reasons
+    }
 
 
 def recent_dialogue_material_entries(value: object) -> list[dict[str, object]]:
@@ -105,13 +243,16 @@ def recent_dialogue_material_entries(value: object) -> list[dict[str, object]]:
     if isinstance(value, dict):
         stable = value.get("stable_turns")
         volatile = value.get("volatile_last_turn")
+        attention = value.get(_RECENT_DIALOGUE_ATTENTION_KEY)
         entries: list[dict[str, object]] = []
         if isinstance(stable, list):
             entries.extend(item for item in stable if isinstance(item, dict))
         if isinstance(volatile, dict):
             entries.append(volatile)
         if entries:
-            return entries
+            return [
+                _restore_dialogue_attention(entry, attention) for entry in entries
+            ]
         legacy_items = value.get("items")
         if isinstance(legacy_items, list):
             return [item for item in legacy_items if isinstance(item, dict)]
@@ -119,14 +260,58 @@ def recent_dialogue_material_entries(value: object) -> list[dict[str, object]]:
 
 
 def cache_stable_recent_dialogue(value: object) -> object:
-    """Split dialogue tail so prior turns stay byte-stable for provider KV cache."""
+    """Split dialogue tail so prior turns stay byte-stable for provider KV cache.
 
+    Frozen entries keep only the labels that describe the entry itself; the
+    per-turn attention labels move to the volatile ``per_turn_attention`` map,
+    where rewriting them costs nothing because the tail is uncached anyway.
+
+    Already-split input is re-frozen rather than passed through, so applying the
+    presenter twice is the same as applying it once.
+    """
+
+    if isinstance(value, dict):
+        stable = value.get("stable_turns")
+        volatile = value.get("volatile_last_turn")
+        if not isinstance(stable, list) or not isinstance(volatile, dict):
+            return value
+        attention: dict[str, list[str]] = {
+            ref: list(reasons)
+            for ref, reasons in dialogue_attention_reasons(value).items()
+        }
+        return _split_stable_dialogue(stable, volatile, attention=attention)
     if not isinstance(value, list) or len(value) < 2:
         return value
-    return {
-        "stable_turns": value[:-1],
-        "volatile_last_turn": value[-1],
+    return _split_stable_dialogue(value[:-1], value[-1], attention={})
+
+
+def _split_stable_dialogue(
+    frozen_source: list[object],
+    volatile_last_turn: object,
+    *,
+    attention: dict[str, list[str]],
+) -> dict[str, object]:
+    frozen: list[object] = []
+    for entry in frozen_source:
+        if not isinstance(entry, dict):
+            frozen.append(entry)
+            continue
+        stripped, per_turn = _freeze_dialogue_entry(entry)
+        frozen.append(stripped)
+        if per_turn:
+            ref = entry["dialogue_id"]
+            assert isinstance(ref, str)
+            held = attention.setdefault(ref, [])
+            for reason in per_turn:
+                if reason not in held:
+                    held.append(reason)
+    payload: dict[str, object] = {
+        "stable_turns": frozen,
+        "volatile_last_turn": volatile_last_turn,
     }
+    if attention:
+        payload[_RECENT_DIALOGUE_ATTENTION_KEY] = attention
+    return payload
 
 
 def appraisal_material_rows(value: object) -> list[list[object]]:
@@ -975,7 +1160,7 @@ def present_inner_life(snapshot: dict[str, object]) -> dict[str, object]:
     ordered_snapshot = dict(snapshot)
     if isinstance(materials, dict):
         ordered_materials: dict[str, object] = {}
-        for key in _MATERIAL_ORDER:
+        for key in _PRESENT_MATERIAL_ORDER:
             if key in materials:
                 ordered_materials[key] = materials[key]
         for key, value in materials.items():

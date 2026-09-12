@@ -10275,7 +10275,9 @@ class _ExpressionDraftWire:
             "Understanding it silently is a valid use; mention it only when it genuinely belongs in "
             "the expression you choose, not to demonstrate recall. In recent_dialogue, current_turn together with "
             "pending_interaction forms the bounded current counterpart-message packet: those are "
-            "received reports without a later visible acknowledgement. This is report and attention "
+            "received reports without a later visible acknowledgement. Those two labels sit on the newest "
+            "turn, and any older packet item carries them in per_turn_attention, keyed by its dialogue_id. "
+            "This is report and attention "
             "authority, not an instruction to answer every item; choose what matters yourself, but "
             "do not mistake an earlier packet item for already handled history. "
             + self._identity_instruction()
