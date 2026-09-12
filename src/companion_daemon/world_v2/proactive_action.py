@@ -833,6 +833,14 @@ class _CharacterInteriorProactiveTransport:
             use_verified_proactive_counterpart,
         )
 
+        # The host itself synthesizes the relationship_signal from her authored
+        # about_us/why_us while the proactive wire is bound, and binding that
+        # signal needs this same verified counterpart.  Materialization is part
+        # of this one semantic crossing, so it stays inside the binding;
+        # otherwise her already-terminal decision dies on
+        # ``relationship_signal requires a verified counterpart`` and nothing
+        # can ever be delivered.  The manager only supplies a subject the host
+        # already holds and trusts: no episode, display, or source lane moves.
         with use_verified_proactive_counterpart(self._counterpart_actor_ref):
             decision = await self._interior.consider(
                 self._opportunity(
@@ -848,92 +856,94 @@ class _CharacterInteriorProactiveTransport:
                     capability=capability,
                 )
             )
-        if decision.status == "technical_failure":
-            failure = decision.failure_code or "unknown"
-            mapped = map_character_interior_proactive_failure(failure)
-            if self._visible_source_review_required and failure in {
-                "source_review_exception", "source_review_timeout",
-            }:
-                mapped = failure
-            consume = getattr(self._interior, "_consume_role_failure_evidence", None)
-            evidence = (
-                consume(
-                    inner_turn_id=decision.inner_turn_id,
-                    failure_code=failure,
+            if decision.status == "technical_failure":
+                failure = decision.failure_code or "unknown"
+                mapped = map_character_interior_proactive_failure(failure)
+                if self._visible_source_review_required and failure in {
+                    "source_review_exception", "source_review_timeout",
+                }:
+                    mapped = failure
+                consume = getattr(self._interior, "_consume_role_failure_evidence", None)
+                evidence = (
+                    consume(
+                        inner_turn_id=decision.inner_turn_id,
+                        failure_code=failure,
+                    )
+                    if callable(consume)
+                    else None
                 )
-                if callable(consume)
-                else None
-            )
-            cause = RuntimeError("character Interior proactive failure: " + failure)
-            if evidence is None:
-                raise ValidationTechnicalFailure(mapped) from cause
-            raise ValidationTechnicalFailure(
-                mapped,
-                model_call_id=evidence.model_call_id,
-                request_hash=evidence.request_hash,
-                attempted_model_id=evidence.attempted_model_id,
-                attempted_model_version=evidence.attempted_model_version,
-                usage=evidence.usage,  # type: ignore[arg-type]
-                provider_subcall_audits=evidence.provider_subcall_audits,  # type: ignore[arg-type]
-                authored_candidate_audits=evidence.authored_candidate_audits,  # type: ignore[arg-type]
-                physical_provider_audits=evidence.physical_provider_audits,  # type: ignore[arg-type]
-                original_failure_code=evidence.original_failure_code,
-                failure_detail=evidence.failure_detail,
-                rejected_raw_hash=evidence.rejected_raw_hash,
-                rejected_raw_excerpt=evidence.rejected_raw_excerpt,
-            ) from cause
-        if decision.status != "decided" or decision.decision is None:
-            # Proactive silence is the explicit timing_choice=silent payload;
-            # generic model_silent would discard the capability binding.
-            raise ValueError("proactive Interior result lacks an explicit decision payload")
-        if self._visible_source_review_required:
-            from .visible_source_proactive import restore_output
+                cause = RuntimeError("character Interior proactive failure: " + failure)
+                if evidence is None:
+                    raise ValidationTechnicalFailure(mapped) from cause
+                raise ValidationTechnicalFailure(
+                    mapped,
+                    model_call_id=evidence.model_call_id,
+                    request_hash=evidence.request_hash,
+                    attempted_model_id=evidence.attempted_model_id,
+                    attempted_model_version=evidence.attempted_model_version,
+                    usage=evidence.usage,  # type: ignore[arg-type]
+                    provider_subcall_audits=evidence.provider_subcall_audits,  # type: ignore[arg-type]
+                    authored_candidate_audits=evidence.authored_candidate_audits,  # type: ignore[arg-type]
+                    physical_provider_audits=evidence.physical_provider_audits,  # type: ignore[arg-type]
+                    original_failure_code=evidence.original_failure_code,
+                    failure_detail=evidence.failure_detail,
+                    rejected_raw_hash=evidence.rejected_raw_hash,
+                    rejected_raw_excerpt=evidence.rejected_raw_excerpt,
+                ) from cause
+            if decision.status != "decided" or decision.decision is None:
+                # Proactive silence is the explicit timing_choice=silent payload;
+                # generic model_silent would discard the capability binding.
+                raise ValueError(
+                    "proactive Interior result lacks an explicit decision payload"
+                )
+            if self._visible_source_review_required:
+                from .visible_source_proactive import restore_output
 
-            output = restore_output(decision=decision, request=request)
-            return output.model_copy(update={
-                "character_interior_lineage": recorded_character_interior_lineage(
-                    decision, purpose="proactive_contact",
+                output = restore_output(decision=decision, request=request)
+                return output.model_copy(update={
+                    "character_interior_lineage": recorded_character_interior_lineage(
+                        decision, purpose="proactive_contact",
+                        subject_ref=decision.opportunity_ref,
+                        capability_ref=capability.capability_ref,
+                        causal_opportunity=opportunity_identity,
+                    )
+                })
+            draft = self._draft(decision=decision)
+            try:
+                draft = _validate_proactive_grounding(draft=draft, request=request)
+            except _ProactiveGroundingViolation as violation:
+                if violation.code == "proactive_grounding_context_invalid":
+                    raise
+                # The character completed her one semantic choice.  A false or
+                # lane-mismatched factual declaration is an authority rejection,
+                # not a second author path and not provider downtime.
+                grounding = "rejected"
+            else:
+                grounding = await self._grounding_outcome(draft=draft, request=request)
+            proposal = _materialize_interior_proactive_draft(
+                draft=draft,
+                request=request,
+                target=self._target,
+                expression_capabilities=self._capabilities,
+                grounding_outcome=grounding,
+            )
+            lineage = decision.author_lineage
+            if lineage is None:
+                raise ValueError("proactive Interior decision lacks author lineage")
+            return ModelOutput(
+                model_id=lineage.model_id,
+                model_version=lineage.model_version,
+                raw_proposal=proposal.model_dump(mode="json"),
+                winning_model_call_id=lineage.model_call_id,
+                winning_request_hash=lineage.request_hash.removeprefix("sha256:"),
+                character_interior_lineage=recorded_character_interior_lineage(
+                    decision,
+                    purpose="proactive_contact",
                     subject_ref=decision.opportunity_ref,
                     capability_ref=capability.capability_ref,
                     causal_opportunity=opportunity_identity,
-                )
-            })
-        draft = self._draft(decision=decision)
-        try:
-            draft = _validate_proactive_grounding(draft=draft, request=request)
-        except _ProactiveGroundingViolation as violation:
-            if violation.code == "proactive_grounding_context_invalid":
-                raise
-            # The character completed her one semantic choice.  A false or
-            # lane-mismatched factual declaration is an authority rejection,
-            # not a second author path and not provider downtime.
-            grounding = "rejected"
-        else:
-            grounding = await self._grounding_outcome(draft=draft, request=request)
-        proposal = _materialize_interior_proactive_draft(
-            draft=draft,
-            request=request,
-            target=self._target,
-            expression_capabilities=self._capabilities,
-            grounding_outcome=grounding,
-        )
-        lineage = decision.author_lineage
-        if lineage is None:
-            raise ValueError("proactive Interior decision lacks author lineage")
-        return ModelOutput(
-            model_id=lineage.model_id,
-            model_version=lineage.model_version,
-            raw_proposal=proposal.model_dump(mode="json"),
-            winning_model_call_id=lineage.model_call_id,
-            winning_request_hash=lineage.request_hash.removeprefix("sha256:"),
-            character_interior_lineage=recorded_character_interior_lineage(
-                decision,
-                purpose="proactive_contact",
-                subject_ref=decision.opportunity_ref,
-                capability_ref=capability.capability_ref,
-                causal_opportunity=opportunity_identity,
-            ),
-        )
+                ),
+            )
 
     def _capability(
         self,
