@@ -45,6 +45,15 @@ _SNAPSHOT_VOLATILE_LAST = (
     "cursor",
     "truncation",
     "source_inventory",
+    # Per-turn audit coordinates.  ``capability_scope`` carries the capability
+    # manifest hash, which changes on every turn's payload, and ``source_refs``
+    # re-binds the whole snapshot to the newest committed events.  Both used to
+    # be serialized early (alphabetically), which truncated the cacheable prefix
+    # about 110 characters into the World Context: measured 2026-09-12, that
+    # cost 8 000 uncached prompt tokens per turn while the system contract was
+    # the only region DeepSeek could reuse.
+    "capability_scope",
+    "source_refs",
 )
 _MATERIAL_ORDER = (
     "stable_self",
