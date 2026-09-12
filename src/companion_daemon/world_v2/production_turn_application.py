@@ -755,6 +755,11 @@ class WorldV2TurnApplicationConfig:
     # the visible reply path keeps its own explicit caps.
     background_budget_paused: Callable[[], bool] | None = None
     expression_episode_mode: Literal["off", "shadow", "stream"] = "off"
+    # Speculative second candidate for the interactive reply lane: Deliberation
+    # already owns the timing and the single second-provider slot, and this is
+    # the deployment's explicit acceptance that one slow turn may cost two
+    # physical author calls.  Off keeps exactly one call per turn.
+    speculative_hedge_enabled: bool = False
     recorded_cadence_mode: Literal["off", "shadow", "on"] = "off"
     expression_action_kinds: frozenset[str] = frozenset({"reply", "followup", "proactive_message"})
     # Capability is a transport fact shared with proactive authoring.  It is
@@ -3598,6 +3603,7 @@ def build_sqlite_world_v2_turn_application(
         interior=character_interior,
         world_id=config.world_id,
         actor_ref=config.companion_actor_ref,
+        speculative_hedge_enabled=config.speculative_hedge_enabled,
     )
     has_proactive_author = "proactive_contact" in set(
         character_interior.runtime_health()["purpose_faculties"]
@@ -3840,6 +3846,11 @@ def build_sqlite_world_v2_turn_application(
             lane_id="chat_reply",
             router=router,
             main_model=inbound_model,
+            # The port fills the one second-provider slot only when the
+            # deployment enables the speculative hedge; the failure-recovery
+            # lane stays disabled either way, because `recover` is the
+            # separately configured fallback role model.
+            quick_recovery=inbound_model if config.speculative_hedge_enabled else None,
             main_timeout_seconds=config.interactive_turn_budget_policy.total_seconds,
             quick_timeout_seconds=config.interactive_turn_budget_policy.total_seconds,
             expression_action_kinds=config.expression_action_kinds,

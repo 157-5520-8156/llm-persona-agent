@@ -612,6 +612,7 @@ def compose_production_deliberation(
     lane_id: ProductionProposalLaneId,
     router: object,
     main_model: object,
+    quick_recovery: object | None = None,
     expression_action_kinds: frozenset[str] | None = None,
     main_timeout_seconds: float = 6.0,
     quick_timeout_seconds: float = 2.5,
@@ -636,12 +637,15 @@ def compose_production_deliberation(
     return Deliberation(
         router=router,  # type: ignore[arg-type]
         main_model=main_model,  # type: ignore[arg-type]
-        quick_recovery=None,
+        quick_recovery=quick_recovery,  # type: ignore[arg-type]
         main_timeout_seconds=main_timeout_seconds,
         quick_timeout_seconds=quick_timeout_seconds,
         # CharacterInterior owns same-author correction and every production
-        # business trigger owns later retry. Generic Deliberation's historical
-        # recovery-author port is deliberately absent from this composition.
+        # business trigger owns later retry.  The second port may carry the
+        # inbound port itself, but only so a configured speculative hedge can
+        # occupy that slot; generic Deliberation's recovery-author lane stays
+        # disabled and its `recover` fallback role is still never installed by
+        # this composition.
         technical_recovery_enabled=False,
         expression_episode_mode=expression_episode_mode,
         expression_episode_diagnostics=expression_episode_diagnostics,

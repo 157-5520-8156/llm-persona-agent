@@ -3236,6 +3236,9 @@ def build_qq_c2c_host(
             interactive_turn_budget_policy=interactive_turn_budget_policy,
             background_budget_paused=_background_budget_paused(usage_store),
             expression_episode_mode=expression_episode_mode,
+            speculative_hedge_enabled=bool(
+                getattr(settings, "world_v2_interactive_hedge_enabled", False)
+            ),
             visible_source_review_required=visible_source_review_required,
             recorded_cadence_mode=getattr(settings, "world_v2_recorded_cadence_mode", "off"),
             private_impression_daily_model_call_limit=(

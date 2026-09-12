@@ -104,8 +104,12 @@ class StubReplyModel:
         system = messages[0]["content"]
         envelope = json.loads(messages[1]["content"])
         request = envelope.get("request", {})
-        trigger = request.get("trigger_message") or {}
-        text = str(trigger.get("text", ""))
+        # The presenter keeps one copy of the trigger and points at it from
+        # ``request.trigger_message`` (present_prompt).
+        trigger = envelope.get("current_trigger_message") or request.get(
+            "trigger_message"
+        ) or {}
+        text = str(trigger.get("text", "")) if isinstance(trigger, dict) else ""
         context = _semantic_context_text(str(request.get("model_content_json", "")))
 
         probe = self._probes.get(text)

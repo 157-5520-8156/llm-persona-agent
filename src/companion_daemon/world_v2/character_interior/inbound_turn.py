@@ -937,12 +937,16 @@ class CharacterInteriorInboundDeliberationAdapter:
         interior: CharacterInterior,
         world_id: str,
         actor_ref: str,
+        speculative_hedge_enabled: bool = False,
     ) -> None:
         if not world_id or not actor_ref:
             raise ValueError("inbound CharacterInterior identity is required")
+        if type(speculative_hedge_enabled) is not bool:
+            raise TypeError("inbound speculative hedge deployment must be explicit boolean")
         self._interior = interior
         self._world_id = world_id
         self._actor_ref = actor_ref
+        self._speculative_hedge_enabled = speculative_hedge_enabled
 
     def source_closure_review_enabled(self) -> bool:
         # The combined internal Faculty owns the source-closure pass.  Surface
@@ -953,7 +957,15 @@ class CharacterInteriorInboundDeliberationAdapter:
         return bool(callable(operation) and operation())
 
     def has_hedge_provider(self, _request: ModelInput) -> bool:
-        return False
+        """Advertise a second *same-author* candidate only when configured.
+
+        Deliberation owns the timing; this port owns the physical capability.
+        Off (the default) keeps the historical answer: the configured
+        fallback role model is reserved for an observed failure and no
+        speculative author exists.
+        """
+
+        return self._speculative_hedge_enabled
 
     def provisional_provider_available(self, _request: ModelInput) -> bool:
         return False
@@ -970,6 +982,28 @@ class CharacterInteriorInboundDeliberationAdapter:
 
     async def propose(self, request: ModelInput) -> ModelOutput:
         return await self._consider(request, recovery_failure=None)
+
+    async def propose_hedge(self, request: ModelInput) -> ModelOutput:
+        """Author one independent speculative candidate for the same input.
+
+        This is a second *physical* invocation of the same role author over
+        the same pinned ``ModelInput`` under a distinct ``call_id``, so it is a
+        fresh Inner Turn with its own capability, output and lineage identity.
+
+        It is deliberately not ``recover``: that port is the separately
+        configured fallback role model, which must only appear after a real
+        technical failure, and it is not a second ``stream_head``: the unit
+        stream reservation and the paired candidate cache are keyed per
+        Observation, so a concurrent second head would cancel or steal the
+        primary's own session.  The complete transport authors the whole
+        decision in one call and touches neither.
+        """
+
+        return await self._consider(
+            request,
+            recovery_failure=None,
+            transport_operation="complete",
+        )
 
     async def recover(self, request: ModelInput, failure_code: str) -> ModelOutput:
         return await self._consider(request, recovery_failure=failure_code)
@@ -1162,6 +1196,7 @@ def compose_character_interior_inbound_deliberation(
     interior: CharacterInterior,
     world_id: str,
     actor_ref: str,
+    speculative_hedge_enabled: bool = False,
 ) -> CharacterInteriorInboundDeliberationAdapter:
     """Return the one ordinary-inbound port from the frozen Interior module."""
 
@@ -1169,6 +1204,7 @@ def compose_character_interior_inbound_deliberation(
         interior=interior,
         world_id=world_id,
         actor_ref=actor_ref,
+        speculative_hedge_enabled=speculative_hedge_enabled,
     )
 
 

@@ -244,6 +244,19 @@ class Settings(BaseSettings):
             "stay below the turn budget minus the acceptance/dispatch reserve."
         ),
     )
+    # A speculative second candidate is a second *physical* author invocation
+    # of the same pinned ModelInput: the first validated result wins and the
+    # loser is audit evidence only.  It buys tail latency with money and
+    # provider capacity, so the threshold above never starts a second call on
+    # its own; a deployment has to accept both explicitly.
+    world_v2_interactive_hedge_enabled: bool = Field(
+        default=False,
+        alias="WORLD_V2_INTERACTIVE_HEDGE_ENABLED",
+        description=(
+            "Enable the speculative second candidate on the interactive reply "
+            "lane.  Off keeps exactly one physical author call per turn."
+        ),
+    )
 
     @model_validator(mode="after")
     def reject_removed_semantic_model_configuration(self) -> "Settings":

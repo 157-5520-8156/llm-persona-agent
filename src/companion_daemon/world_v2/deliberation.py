@@ -140,6 +140,19 @@ class _ProviderSlotCoordinator:
             self.validation_corrective_claimed = True
         return True
 
+    @property
+    def independent_candidate_live(self) -> bool:
+        """One observation is being authored by a second independent candidate.
+
+        ``backup`` is the only slot that runs a *separate* candidate for the
+        same pinned ModelInput (a speculative hedge or a configured role
+        recovery).  A ``corrective`` candidate repairs the primary inside its
+        own candidate and therefore keeps replacing the primary's transient
+        paired state.
+        """
+
+        return self.second_kind == "backup"
+
     def claim_failure_recovery(self) -> bool:
         """Reserve one fallback only after the primary candidate has failed.
 
@@ -232,6 +245,18 @@ def secondary_provider_slot_kind() -> Literal["backup", "corrective", "recall"] 
 
 def has_provider_slot_coordinator() -> bool:
     return _PROVIDER_SLOT_COORDINATOR.get() is not None
+
+
+def second_candidate_is_independent() -> bool:
+    """Report whether a second independent candidate shares this observation.
+
+    Adapters use this to keep candidate-scoped transient state alive: while a
+    hedge or role-recovery candidate is live, one candidate's promotion must
+    never discard the other candidate's state for the same Observation.
+    """
+
+    coordinator = _PROVIDER_SLOT_COORDINATOR.get()
+    return bool(coordinator is not None and coordinator.independent_candidate_live)
 
 
 def expression_episode_provider_slots_active() -> bool:
@@ -2787,12 +2812,21 @@ class Deliberation:
                 return False
             if backup_task is not None:
                 return False
+            # A speculative hedge is one more physical invocation of the *same*
+            # role author and the *same* pinned ModelInput, so it is not the
+            # recovery port: `recover` is the separately configured fallback
+            # role model and must appear only after a real technical failure.
+            # A port that can author a second same-author candidate advertises
+            # `propose_hedge`, which takes the immutable input alone.
+            hedge_operation = (
+                None if after_actual_failure else getattr(self._quick, "propose_hedge", None)
+            )
             recovery_operation = (
                 getattr(self._quick, "recover_stream_head", None)
                 if unit_stream_episode
                 else getattr(self._quick, "recover", None)
             )
-            if not callable(recovery_operation):
+            if not callable(hedge_operation) and not callable(recovery_operation):
                 return False
             if after_actual_failure and not self._technical_recovery_enabled:
                 return False
@@ -2802,6 +2836,13 @@ class Deliberation:
                 and callable(hedge_available)
                 and not hedge_available(model_input)
             ):
+                return False
+            if not after_actual_failure and callable(hedge_operation) and not callable(
+                hedge_available
+            ):
+                # A same-author hedge declares its own availability; without
+                # that declaration the port keeps the historical recovery
+                # semantics and must not be started speculatively.
                 return False
             if after_actual_failure:
                 if not slot_coordinator.claim_failure_recovery():
@@ -2849,19 +2890,38 @@ class Deliberation:
             )
             token = _PROVIDER_SLOT_COORDINATOR.set(slot_coordinator)
             try:
-                backup_task = asyncio.create_task(
-                    candidate(
-                        lambda: recovery_operation(
-                            backup_input,
-                            recovery_failure_detail or failure_code,
-                        ),
-                        call_id=backup_call_id,
-                        minimal_only=self._recovery_mode == "minimal_only",
-                        lane="quick",
-                        candidate_deadline=recovery_deadline,
-                        validation_state=backup_validation,
+                if callable(hedge_operation):
+                    speculative_operation = hedge_operation
+                    backup_task = asyncio.create_task(
+                        candidate(
+                            lambda: speculative_operation(backup_input),
+                            call_id=backup_call_id,
+                            # A same-author hedge owes the same contract as the
+                            # primary it may replace.  `minimal_only` belongs to
+                            # the cheap configured fallback role, which is the
+                            # other user of this slot.
+                            minimal_only=False,
+                            lane="quick",
+                            candidate_deadline=recovery_deadline,
+                            validation_state=backup_validation,
+                        )
                     )
-                )
+                else:
+                    assert callable(recovery_operation)
+                    recovery_call = recovery_operation
+                    backup_task = asyncio.create_task(
+                        candidate(
+                            lambda: recovery_call(
+                                backup_input,
+                                recovery_failure_detail or failure_code,
+                            ),
+                            call_id=backup_call_id,
+                            minimal_only=self._recovery_mode == "minimal_only",
+                            lane="quick",
+                            candidate_deadline=recovery_deadline,
+                            validation_state=backup_validation,
+                        )
+                    )
                 backup_role = "technical_recovery" if after_actual_failure else "hedge"
             finally:
                 _PROVIDER_SLOT_COORDINATOR.reset(token)
@@ -2902,7 +2962,23 @@ class Deliberation:
             backup_validation = None
             backup_role = None
 
-        if episode_enabled and unit_stream_episode:
+        def start_initial_stream_tail() -> None:
+            """Reserve the accepted head's continuation in the second slot.
+
+            The unit-stream continuation is normally opened before the loop so
+            it can read the provider's later units while the head is still
+            being validated.  When a speculative hedge owns that one slot, the
+            continuation opens as soon as the head has actually won, so a
+            second independent candidate can never share it with a
+            non-candidate tail.  Its absolute deadline is unchanged.
+            """
+
+            nonlocal backup_task, backup_call_id, backup_input
+            nonlocal backup_request_hash, backup_role
+            if not (episode_enabled and unit_stream_episode):
+                return
+            if backup_task is not None:
+                return
             backup_call_id = f"model-call:{_digest({**call_identity, 'lane': 'stream_tail'})}"
             backup_input = model_input.model_copy(update={"call_id": backup_call_id})
             backup_request_hash = _digest(backup_input.model_dump(mode="json"))
@@ -2921,6 +2997,18 @@ class Deliberation:
                 backup_role = "stream_tail"
             finally:
                 _PROVIDER_SLOT_COORDINATOR.reset(token)
+
+        # A port that advertises a same-author speculative hedge needs the
+        # single second-provider slot for a real candidate.  Without that
+        # advertisement the composition is byte-identical to today: the slot
+        # belongs to the eager continuation and no hedge can start.
+        speculative_hedge_reserved = bool(
+            callable(getattr(self._quick, "propose_hedge", None))
+            and callable(getattr(self._quick, "has_hedge_provider", None))
+            and self._quick.has_hedge_provider(model_input)  # type: ignore[union-attr]
+        )
+        if not speculative_hedge_reserved:
+            start_initial_stream_tail()
 
         try:
             while True:
@@ -2994,6 +3082,45 @@ class Deliberation:
                             accept_candidate(model_input)
                         start_isolated_shadow()
                         loser_audit: ModelResultAudit | None = None
+                        if speculative_hedge_reserved and backup_role != "stream_tail":
+                            # This composition let a speculative second
+                            # candidate own the one second-provider slot, so no
+                            # continuation was open while the head was racing.
+                            # The head won: retire any losing hedge as audit
+                            # evidence only -- never a result, never an Action
+                            # -- and then open the accepted head's continuation
+                            # exactly as the eager path would have.  Cancelling
+                            # the loser here is what makes "the first validated
+                            # result wins" cost one provider call, not two.
+                            if backup_role == "hedge":
+                                if backup_task is not None and not backup_task.done():
+                                    backup_task.cancel()
+                                    await asyncio.gather(backup_task, return_exceptions=True)
+                                discard_hedge = getattr(self._quick, "discard_candidate", None)
+                                if callable(discard_hedge) and backup_input is not None:
+                                    discard_hedge(backup_input)
+                                assert backup_call_id is not None
+                                assert backup_request_hash is not None
+                                loser_audit = self._audit(
+                                    model_call_id=backup_call_id,
+                                    attempt_id=attempt_id,
+                                    route=route,
+                                    request_hash=backup_request_hash,
+                                    output=None,
+                                    status="recovery_failed",
+                                    failure_code="backup_cancelled",
+                                    slot="backup",
+                                    outcome="hedge_cancelled",
+                                )
+                                budget.mark("hedge_cancelled")
+                            backup_task = None
+                            backup_result = None
+                            backup_call_id = None
+                            backup_input = None
+                            backup_request_hash = None
+                            backup_validation = None
+                            backup_role = None
+                            start_initial_stream_tail()
                         if backup_task is not None and backup_role == "stream_tail":
                             continuing_tail = backup_task
                             tail_call_id = backup_call_id

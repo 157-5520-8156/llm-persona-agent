@@ -4283,3 +4283,378 @@ async def test_unbound_expression_evidence_uses_existing_role_recovery_only(
     else:
         assert result.proposal is None
         assert result.audit.status == "recovery_failed"
+
+
+class _SameAuthorHedgePort:
+    """Port that can author one more candidate for the same pinned input.
+
+    It models the interactive CharacterInterior composition: ``propose_hedge``
+    is a second *physical* author invocation of the same ModelInput rather
+    than the separately configured fallback role model behind ``recover``.
+    """
+
+    def __init__(
+        self,
+        *,
+        raw: object | None = None,
+        enabled: bool = True,
+        delay: float = 0.0,
+        block: bool = False,
+    ) -> None:
+        self.raw = _decision_raw() if raw is None else raw
+        self.enabled = enabled
+        self.delay = delay
+        self.block = block
+        self.requests: list[ModelInput] = []
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+        self.cancelled = asyncio.Event()
+
+    def has_hedge_provider(self, _request: ModelInput) -> bool:
+        return self.enabled
+
+    async def propose_hedge(self, request: ModelInput) -> ModelOutput:
+        self.requests.append(request)
+        self.started.set()
+        try:
+            if self.block:
+                await self.release.wait()
+            elif self.delay:
+                await asyncio.sleep(self.delay)
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
+        return ModelOutput(
+            model_id="hedge",
+            model_version="v1",
+            raw_proposal=self.raw,  # type: ignore[arg-type]
+            episode_disposition="append",
+        )
+
+
+class _StreamingPrimary:
+    """Primary unit-stream author whose head timing the test controls."""
+
+    def __init__(self, *, raw: object | None = None, block_head: bool = False) -> None:
+        self.raw = _decision_raw() if raw is None else raw
+        self.block_head = block_head
+        self.head_requests: list[ModelInput] = []
+        self.tail_requests: list[ModelInput] = []
+        self.head_started = asyncio.Event()
+        self.tail_started = asyncio.Event()
+        self.head_cancelled = asyncio.Event()
+        self.release_head = asyncio.Event()
+        self.release_tail = asyncio.Event()
+
+    def stream_provider_available(self, _request: ModelInput) -> bool:
+        return True
+
+    async def propose_stream_head(self, request: ModelInput) -> ModelOutput:
+        self.head_requests.append(request)
+        self.head_started.set()
+        try:
+            if self.block_head:
+                await self.release_head.wait()
+        except asyncio.CancelledError:
+            self.head_cancelled.set()
+            raise
+        return ModelOutput(
+            model_id="stream-head",
+            model_version="v1",
+            raw_proposal=self.raw,  # type: ignore[arg-type]
+            episode_disposition="append",
+        )
+
+    async def propose_stream_tail(self, request: ModelInput) -> ModelOutput:
+        self.tail_requests.append(request)
+        self.tail_started.set()
+        await self.release_tail.wait()
+        return ModelOutput(
+            model_id="stream-head",
+            model_version="v1",
+            raw_proposal=_decision_raw(),
+            episode_disposition="complete_without_more",
+        )
+
+
+def _hedge_budget(clock: _ManualClock, *, hedge_after: float = 1.5):
+    return InteractiveTurnBudgetPolicy(
+        total_seconds=6.0,
+        hedge_after_seconds=hedge_after,
+        acceptance_dispatch_reserve_seconds=0.5,
+        clock=clock,
+        sleep=clock.sleep,
+    ).start()
+
+
+@pytest.mark.asyncio
+async def test_speculative_hedge_wins_the_race_and_the_loser_is_audit_only() -> None:
+    """A slow primary head loses to the second same-author physical call."""
+
+    clock = _ManualClock()
+    marks: list[str] = []
+    budget = InteractiveTurnBudgetPolicy(
+        total_seconds=6.0,
+        hedge_after_seconds=1.5,
+        acceptance_dispatch_reserve_seconds=0.5,
+        clock=clock,
+        sleep=clock.sleep,
+    ).start(marker=marks.append)
+    primary = _StreamingPrimary(block_head=True)
+    hedge = _SameAuthorHedgePort()
+    deliberation = Deliberation(
+        router=_Router(),
+        main_model=primary,
+        quick_recovery=hedge,
+        expression_episode_mode="stream",
+    )
+    turn = asyncio.create_task(
+        deliberation.deliberate(
+            _capsule(), attempt_id="attempt:speculative-hedge-wins", budget=budget
+        )
+    )
+    try:
+        await asyncio.wait_for(primary.head_started.wait(), timeout=0.5)
+        assert hedge.requests == []
+        await clock.advance(1.5)
+        await asyncio.wait_for(hedge.started.wait(), timeout=0.5)
+
+        result = await asyncio.wait_for(turn, timeout=0.5)
+
+        # The second candidate won: its validated decision is the only result.
+        assert result.proposal is not None
+        assert result.audit.slot == "backup"
+        assert result.audit.outcome == "winner"
+        assert result.audit.model_id == "hedge"
+        assert result.audit.status == "main_timeout_recovered"
+        # The losing primary is evidence, not an accepted result.
+        assert [audit.outcome for audit in result.attempt_audits] == [
+            "hedge_cancelled",
+            "winner",
+        ]
+        assert result.attempt_audits[0].slot == "primary"
+        assert result.attempt_audits[0].response_hash is None
+        # Distinct physical invocations under one pinned request.
+        assert len(primary.head_requests) == len(hedge.requests) == 1
+        assert hedge.requests[0].call_id != primary.head_requests[0].call_id
+        assert hedge.requests[0].capsule_id == primary.head_requests[0].capsule_id
+        assert hedge.requests[0].model_content_json == primary.head_requests[0].model_content_json
+        # No continuation of the losing physical stream is ever registered.
+        assert primary.tail_requests == []
+        assert not deliberation.has_expression_episode_tail(_capsule().capsule.trigger_ref)
+        await asyncio.wait_for(primary.head_cancelled.wait(), timeout=0.5)
+        assert "hedge_lost" in marks
+    finally:
+        primary.release_head.set()
+        primary.release_tail.set()
+        if not turn.done():
+            turn.cancel()
+        await asyncio.gather(turn, return_exceptions=True)
+        await deliberation.aclose()
+
+
+@pytest.mark.asyncio
+async def test_primary_that_resolves_before_the_threshold_never_starts_a_hedge() -> None:
+    """The threshold is the only reason to spend a second physical call."""
+
+    clock = _ManualClock()
+    marks: list[str] = []
+    budget = InteractiveTurnBudgetPolicy(
+        total_seconds=6.0,
+        hedge_after_seconds=1.5,
+        acceptance_dispatch_reserve_seconds=0.5,
+        clock=clock,
+        sleep=clock.sleep,
+    ).start(marker=marks.append)
+    primary = _StreamingPrimary()
+    hedge = _SameAuthorHedgePort()
+    deliberation = Deliberation(
+        router=_Router(),
+        main_model=primary,
+        quick_recovery=hedge,
+        expression_episode_mode="stream",
+    )
+    turn = asyncio.create_task(
+        deliberation.deliberate(
+            _capsule(), attempt_id="attempt:hedge-never-needed", budget=budget
+        )
+    )
+    try:
+        await asyncio.wait_for(primary.head_started.wait(), timeout=0.5)
+        await clock.advance(0.4)  # strictly before the 1.5s threshold
+        assert hedge.requests == []
+
+        primary.release_tail.set()
+        result = await asyncio.wait_for(turn, timeout=0.5)
+
+        assert result.proposal is not None
+        assert result.audit.slot == "primary"
+        assert result.audit.outcome == "winner"
+        assert hedge.requests == []
+        assert hedge.started.is_set() is False
+        assert "hedge_started" not in marks
+        # The accepted head keeps its own continuation: one author call plus
+        # its stream continuation, never a speculative second candidate.
+        assert len(primary.head_requests) == 1
+        # The accepted head keeps its own continuation, opened after the head
+        # won because the hedge could have claimed that slot.
+        await asyncio.wait_for(primary.tail_started.wait(), timeout=0.5)
+        assert len(primary.tail_requests) == 1
+        assert primary.tail_requests[0].call_id != primary.head_requests[0].call_id
+    finally:
+        primary.release_head.set()
+        primary.release_tail.set()
+        if not turn.done():
+            turn.cancel()
+        await asyncio.gather(turn, return_exceptions=True)
+        await deliberation.aclose()
+
+
+@pytest.mark.asyncio
+async def test_slow_valid_primary_still_wins_when_the_hedge_is_invalid() -> None:
+    """A bad second candidate never degrades the accepted output."""
+
+    clock = _ManualClock()
+    budget = _hedge_budget(clock)
+    primary = _StreamingPrimary(block_head=True)
+    hedge = _SameAuthorHedgePort(raw={"not": "a decision"})
+    deliberation = Deliberation(
+        router=_Router(),
+        main_model=primary,
+        quick_recovery=hedge,
+        expression_episode_mode="stream",
+    )
+    turn = asyncio.create_task(
+        deliberation.deliberate(
+            _capsule(), attempt_id="attempt:invalid-hedge-loses", budget=budget
+        )
+    )
+    try:
+        await asyncio.wait_for(primary.head_started.wait(), timeout=0.5)
+        await clock.advance(1.5)
+        await asyncio.wait_for(hedge.started.wait(), timeout=0.5)
+        # The hedge resolved first, but with unusable bytes.
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.5)
+        assert hedge.requests and len(hedge.requests) == 1
+
+        primary.release_tail.set()
+        primary.release_head.set()
+        result = await asyncio.wait_for(turn, timeout=0.5)
+
+        assert result.proposal is not None
+        assert result.audit.slot == "primary"
+        assert result.audit.outcome == "winner"
+        assert result.audit.status == "proposal_validated"
+        # The rejected hedge is recorded as evidence, never as the winner.
+        assert [audit.outcome for audit in result.attempt_audits] == [
+            "hedge_cancelled",
+            "winner",
+        ]
+        assert result.proposal is not None
+        assert deliberation.has_expression_episode_tail(_capsule().capsule.trigger_ref)
+        assert len(primary.head_requests) == 1
+        await asyncio.wait_for(primary.tail_started.wait(), timeout=0.5)
+        assert len(primary.tail_requests) == 1
+    finally:
+        primary.release_head.set()
+        primary.release_tail.set()
+        hedge.release.set()
+        if not turn.done():
+            turn.cancel()
+        await asyncio.gather(turn, return_exceptions=True)
+        await deliberation.aclose()
+
+
+@pytest.mark.asyncio
+async def test_disabled_hedge_keeps_exactly_one_author_call_and_the_eager_tail() -> None:
+    """The default-off deployment is byte-identical to today."""
+
+    clock = _ManualClock()
+    marks: list[str] = []
+    budget = InteractiveTurnBudgetPolicy(
+        total_seconds=6.0,
+        hedge_after_seconds=1.5,
+        acceptance_dispatch_reserve_seconds=0.5,
+        clock=clock,
+        sleep=clock.sleep,
+    ).start(marker=marks.append)
+    primary = _StreamingPrimary(block_head=True)
+    hedge = _SameAuthorHedgePort(enabled=False)
+    deliberation = Deliberation(
+        router=_Router(),
+        main_model=primary,
+        quick_recovery=hedge,
+        expression_episode_mode="stream",
+    )
+    turn = asyncio.create_task(
+        deliberation.deliberate(
+            _capsule(), attempt_id="attempt:hedge-disabled", budget=budget
+        )
+    )
+    try:
+        await asyncio.wait_for(primary.head_started.wait(), timeout=0.5)
+        # The continuation is reserved before the head resolves, exactly as
+        # the historical unit-stream episode does, because no candidate can
+        # ever claim the second provider slot.
+        await asyncio.wait_for(primary.tail_started.wait(), timeout=0.5)
+        await clock.advance(3.0)  # well past the threshold
+        assert hedge.requests == []
+        assert "hedge_started" not in marks
+
+        primary.release_head.set()
+        primary.release_tail.set()
+        result = await asyncio.wait_for(turn, timeout=0.5)
+
+        assert result.proposal is not None
+        assert result.audit.outcome == "winner"
+        assert hedge.requests == []
+        assert len(primary.head_requests) == 1
+        assert len(primary.tail_requests) == 1
+    finally:
+        primary.release_head.set()
+        primary.release_tail.set()
+        if not turn.done():
+            turn.cancel()
+        await asyncio.gather(turn, return_exceptions=True)
+        await deliberation.aclose()
+
+
+def test_inbound_port_advertises_a_hedge_only_when_explicitly_deployed() -> None:
+    """Off is the default at the port, not only at the settings layer."""
+
+    from types import SimpleNamespace
+
+    interior = SimpleNamespace()
+    off = CharacterInteriorInboundDeliberationAdapter(
+        interior=interior,  # type: ignore[arg-type]
+        world_id="world:hedge-port",
+        actor_ref="agent:companion",
+    )
+    on = CharacterInteriorInboundDeliberationAdapter(
+        interior=interior,  # type: ignore[arg-type]
+        world_id="world:hedge-port",
+        actor_ref="agent:companion",
+        speculative_hedge_enabled=True,
+    )
+
+    request = ModelInput(
+        call_id="model-call:hedge-port",
+        attempt_id="attempt:hedge-port",
+        route=ModelRoute(tier="flash", reason_code="ordinary_turn", router_version="router.1"),
+        capsule_id="0" * 64,
+        trigger_ref="event:observation:hedge-port",
+        evaluated_world_revision=1,
+        evaluated_deliberation_revision=1,
+        evaluated_ledger_sequence=1,
+        model_content_json="{}",
+    )
+    assert off.has_hedge_provider(request) is False
+    assert on.has_hedge_provider(request) is True
+    assert callable(off.propose_hedge) and callable(on.propose_hedge)
+    with pytest.raises(TypeError, match="explicit boolean"):
+        CharacterInteriorInboundDeliberationAdapter(
+            interior=interior,  # type: ignore[arg-type]
+            world_id="world:hedge-port",
+            actor_ref="agent:companion",
+            speculative_hedge_enabled=1,  # type: ignore[arg-type]
+        )

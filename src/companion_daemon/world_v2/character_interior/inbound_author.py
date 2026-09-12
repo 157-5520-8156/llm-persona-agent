@@ -108,6 +108,7 @@ from ..deliberation import (
     has_provider_slot_coordinator,
     mark_first_role_provider_completion,
     mark_first_role_provider_entry,
+    second_candidate_is_independent,
 )
 from ..expression_draft import (
     ExpressionBeatDraftChoice,
@@ -2036,7 +2037,17 @@ class _PairedExpressionMaterializer:
             self._owner._pending.move_to_end(key)
             while len(self._owner._pending) > _MAX_PENDING_DRAFTS:
                 self._owner._pending.popitem(last=False)
-            self._owner._discard_other_candidate_pending(key)
+            if not second_candidate_is_independent():
+                # One candidate owns this Observation, so nothing else may
+                # still need its paired state: reclaim the slot.  While a
+                # second independent candidate is live (speculative hedge or
+                # configured role recovery) its candidate-scoped entry is a
+                # real sibling, and discarding it would turn a legitimate
+                # parallel author into a transport failure.  The promote
+                # directly below is immediately consumed by the expression
+                # materializer with no await in between, so the single
+                # promotion slot still serves each candidate in turn.
+                self._owner._discard_other_candidate_pending(key)
         pending = self._owner._pending.get(key)
         if pending is None:
             return request

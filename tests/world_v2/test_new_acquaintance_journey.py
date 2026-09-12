@@ -111,7 +111,13 @@ class _JourneyReplyModel:
                     ensure_ascii=False,
                 )
         request = envelope["request"]
-        trigger = request.get("trigger_message") or {}
+        # The presenter publishes the trigger once, at the top level, and
+        # leaves ``request.trigger_message`` pointing at it
+        # (present_prompt._present_duplicate_trigger_message).  Read the copy
+        # that carries the text.
+        trigger = envelope.get("current_trigger_message")
+        if not isinstance(trigger, dict):
+            trigger = request.get("trigger_message") or {}
         text = trigger.get("text")
         turn = self._by_text[str(text)]
         turn_id = str(turn["id"])
@@ -248,8 +254,12 @@ class _JourneyBackgroundModel:
         if "Classify fallible semantic interpretations" in system:
             return '{"classifications":[]}'
         if "immediate inner appraisal" in system:
-            material = json.loads(user)["request"]
-            text = str((material.get("trigger_message") or {}).get("text", ""))
+            envelope = json.loads(user)
+            material = envelope.get("request") or {}
+            trigger = envelope.get("current_trigger_message") or material.get(
+                "trigger_message"
+            ) or {}
+            text = str(trigger.get("text", ""))
             emotional = any(word in text for word in ("失望", "敷衍", "复读的程序", "真生气", "原谅"))
             if emotional:
                 return json.dumps({
