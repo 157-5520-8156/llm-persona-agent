@@ -2264,26 +2264,9 @@ def bind_proactive_expression_wire(value: dict[str, object]) -> dict[str, object
         repaired_leftover = dict(leftover)
         repaired_leftover["thought"] = thought
         bound["revisit"] = repaired_leftover
-    claims = bound.get("world_claims")
-    if isinstance(claims, list):
-        bound["world_claims"] = [
-            claim
-            for claim in claims
-            if isinstance(claim, dict)
-            and (
-                claim.get("scope")
-                not in {
-                    "current_world",
-                    "past_world",
-                    "counterpart_history",
-                    "shared_history",
-                }
-                or (
-                    isinstance(claim.get("source_refs"), (list, tuple))
-                    and any(isinstance(ref, str) and ref for ref in claim["source_refs"])
-                )
-            )
-        ]
+    # Keep authored claims, including invalid ones, for strict validation and
+    # same-role correction. Dropping a declaration leaves its visible claim
+    # behind while hiding the missing source authority from the validator.
     return bound
 
 

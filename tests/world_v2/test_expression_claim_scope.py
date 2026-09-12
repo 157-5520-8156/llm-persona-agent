@@ -4,8 +4,10 @@ from copy import deepcopy
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from companion_daemon.world_v2 import expression_draft as expression
+from companion_daemon.world_v2.proactive_action import ProactiveDraft
 from test_character_interior_inbound_wire import _qq_request
 
 
@@ -67,3 +69,44 @@ def test_valid_scope_and_exact_alias_produce_the_same_immutable_proposal(
     assert any(item.ref_id == ref for item in short.evidence_refs)
     plan = short.proposed_changes[0].payload.value()
     assert plan["beat_drafts"][0]["inline_text"] == text
+
+
+@pytest.mark.parametrize("scope", [
+    "current_world", "past_world", "shared_history", "counterpart_history",
+    "stable_identity", "subjective_or_hypothetical",
+])
+def test_proactive_claim_wire_aliases_preserve_authored_scope_and_material(scope):
+    refs = [] if scope == "subjective_or_hypothetical" else ["event:fixture:exact-source"]
+    raw = {
+        "timing_choice": "now", "stance": "test", "brief_rationale": "test",
+        "impulse_summary": "test", "beats": [{"modality": "text", "text": "角色自己的声明。"}],
+        "world_claims": [{"claim": "角色自己的声明。", "scope": scope, "exact_source_refs": refs}],
+    }
+    original = deepcopy(raw)
+    bound = expression.bind_proactive_expression_wire(expression.normalize_expression_draft_wire(raw))
+    draft = ProactiveDraft.model_validate_json(json.dumps(bound), strict=True)
+    assert raw == original
+    assert draft.world_claims[0].model_dump(mode="json") == {
+        "claim_text": "角色自己的声明。", "scope": scope, "source_refs": refs,
+    }
+
+
+@pytest.mark.parametrize("scope", [
+    "current_world", "past_world", "shared_history", "counterpart_history",
+])
+@pytest.mark.parametrize("refs_field", [{}, {"source_refs": []}])
+def test_proactive_mixed_claims_cannot_hide_one_missing_source(scope, refs_field):
+    raw = {
+        "timing_choice": "now", "stance": "test", "brief_rationale": "test",
+        "impulse_summary": "test", "beats": [{"modality": "text", "text": "两项角色声明。"}],
+        "world_claims": [
+            {"claim_text": "角色感受。", "scope": "subjective_or_hypothetical", "source_refs": []},
+            {"claim_text": "需要来源的经历。", "scope": scope, **refs_field},
+        ],
+    }
+    original = deepcopy(raw)
+    bound = expression.bind_proactive_expression_wire(expression.normalize_expression_draft_wire(raw))
+    assert raw == original
+    assert bound["world_claims"] == raw["world_claims"]
+    with pytest.raises(ValidationError, match="world claim scope requires matching source refs"):
+        ProactiveDraft.model_validate_json(json.dumps(bound), strict=True)

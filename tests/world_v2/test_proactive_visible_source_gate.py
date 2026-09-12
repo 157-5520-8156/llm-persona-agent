@@ -7,6 +7,7 @@ An empty authored claim list cannot excuse an unreviewed visible statement.
 
 import asyncio
 from datetime import timedelta
+import hashlib
 import json
 from pathlib import Path
 import socket
@@ -43,6 +44,8 @@ async def _run_scenario(
     pause_before_acceptance=False,
     external_cancel=False,
     review_version="1",
+    review_required=None,
+    authored_outputs=None,
 ):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     monkeypatch.setattr(config_module, "_macos_launchctl_env", lambda _name: None)
@@ -63,7 +66,9 @@ async def _run_scenario(
         )
     timing_failure = scenario in {"timing_reselect", "timing_twice", "silence_reselect", "silence_twice"}
     legacy_whole = scenario == "legacy_whole"
-    if legacy_whole:
+    if review_required is None:
+        review_required = not legacy_whole
+    if not review_required:
         import companion_daemon.world_v2.semantic_chat_composition as composition
 
         compose = composition.compose_production_character_interior
@@ -133,7 +138,8 @@ async def _run_scenario(
         texts = (
             SAFE_TEXTS
             if scenario in {"source_free", "legacy_whole"} or timing_failure
-            or (scenario in {"reselect", "bad_claim_reselect"} and len(proactive_requests) == 2)
+            or (scenario in {"reselect", "bad_claim_reselect", "empty_claim_reselect"}
+                and len(proactive_requests) == 2)
             else (UNSOURCED_TEXT,)
         )
         payload = {
@@ -154,6 +160,12 @@ async def _run_scenario(
                     "source_refs": ["event:user:chengdu:not-in-context"],
                 }
             ]
+        if scenario in {"empty_claim_twice", "empty_claim_reselect"} and texts != SAFE_TEXTS:
+            payload["world_claims"] = [{
+                "claim_text": UNSOURCED_TEXT,
+                "scope": "past_world",
+                "source_refs": [],
+            }]
         if timing_failure:
             payload["response_expectation"] = {
                 "hoped_response": "想听你说一句", "pressure_bp": 2000,
@@ -168,20 +180,20 @@ async def _run_scenario(
                                    expires_after_seconds=345_600)
         # Both attempts are complete role decisions. The host must give the
         # same author one reselection, and must not synthesize character silence.
-        return _http_result(
-            body,
-            {
-                "status": "decision",
-                "summary": "角色 fixture 选择现在发出这一条消息。",
-                "attended_source_refs": [],
-                "decision": {
-                    "source_refs": [_ProactiveRoleScript._capability_source_ref(body["messages"])],
-                    "payload": payload,
-                },
-                "recall_query": None,
-                "proposals": [],
+        authored = {
+            "status": "decision",
+            "summary": "角色 fixture 选择现在发出这一条消息。",
+            "attended_source_refs": [],
+            "decision": {
+                "source_refs": [_ProactiveRoleScript._capability_source_ref(body["messages"])],
+                "payload": payload,
             },
-        )
+            "recall_query": None,
+            "proposals": [],
+        }
+        if authored_outputs is not None:
+            authored_outputs.append(json.dumps(authored, ensure_ascii=False))
+        return _http_result(body, authored)
 
     async def review_http(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
@@ -268,8 +280,8 @@ async def _run_scenario(
         bootstrap_at=NOW,
         model=author,
         world_support_model=FakeCompanionModel(),
-        visible_source_review_required=not legacy_whole,
-        visible_source_review_model=None if legacy_whole else reviewer,
+        visible_source_review_required=review_required,
+        visible_source_review_model=reviewer if review_required else None,
         visible_source_review_version=review_version,
         delivery=delivery,
         use_configured_recall_embedding=False,
@@ -282,7 +294,7 @@ async def _run_scenario(
             observed_at=NOW,
         )
         initial_review_count = len(reviewer_requests)
-        assert initial_review_count == (0 if legacy_whole else 1)
+        assert initial_review_count == int(review_required)
         assert inbound.status == "action_authorized", inbound
 
         due = NOW + timedelta(hours=12, seconds=1)
@@ -375,6 +387,7 @@ async def _run_scenario(
             "reselect",
             "bad_claim_twice",
             "bad_claim_reselect",
+            "empty_claim_twice", "empty_claim_reselect",
             "author_timeout",
             "author_deadline",
             "review_deadline_second",
@@ -387,11 +400,16 @@ async def _run_scenario(
         "silence_reselect": 1, "silence_twice": 0,
         "bad_claim_twice": 0,
         "bad_claim_reselect": 1,
+        "empty_claim_twice": 0,
+        "empty_claim_reselect": int(review_required),
         "author_timeout": 1,
         "author_deadline": 1,
         "prepare_error": 0,
     }.get(scenario, expected_count)
-    assert len(proactive_requests) == expected_count
+    assert len(proactive_requests) == expected_count, {
+        "review_required": review_required,
+        "proactive_actions": [(action.kind, action.state) for action in proactive_actions],
+    }
     assert proactive_review_count == expected_reviews
     assert len(proactive_limits) == expected_count + expected_reviews
     assert len(set(proactive_limits)) == 1, "correction or review replaced its original limits"
@@ -405,7 +423,7 @@ async def _run_scenario(
         reservations = connection.execute(
             "SELECT reservation_id,status FROM world_v2_model_reservations"
         ).fetchall()
-    assert len(usage_rows) == 2 + expected_count + expected_reviews
+    assert len(usage_rows) == 1 + initial_review_count + expected_count + expected_reviews
     known_rows = [row for row in usage_rows if row[3] == "known"]
     assert len(known_rows) == len(usage_rows) - (
         1
@@ -430,8 +448,12 @@ async def _run_scenario(
         RecordedModelResultAudit.model_validate_json(row.audit_json)
         for row in evidence.projection.model_result_audits
     ]
-    assert len([row for row in paid if row.usage is not None]) == len(known_rows)
-    assert len({row.model_call_id for row in paid if row.usage is not None}) == len(known_rows)
+    if review_required:
+        assert len([row for row in paid if row.usage is not None]) == len(known_rows)
+        assert len({row.model_call_id for row in paid if row.usage is not None}) == len(known_rows)
+    # The legacy reviewer=None path does not yet project physical proactive
+    # subcall audits. Its durable usage/reservations are checked above; this
+    # wire regression must not claim that separate audit gap is closed.
     assert UNSOURCED_TEXT not in {
         payload.text for payload in evidence.projection.stored_message_payloads
     }
@@ -443,7 +465,7 @@ async def _run_scenario(
             for a in evidence.projection.proposal_audits
         )
         return evidence, proactive_requests, reviewer_requests, delivery
-    if scenario in {"source_free", "reselect", "bad_claim_reselect", "timing_reselect", "silence_reselect"}:
+    if scenario in {"source_free", "reselect", "bad_claim_reselect", "empty_claim_reselect", "timing_reselect", "silence_reselect"}:
         assert len(proactive_actions) == len(SAFE_TEXTS)
         assert tuple(text for _recipient, text in delivery.sent)[-2:] == SAFE_TEXTS
         assert all(action.state == "provider_accepted" for action in proactive_actions)
@@ -451,9 +473,10 @@ async def _run_scenario(
 
         refs = {a.intent_ref.split(":intent:")[0] for a in proactive_actions}
         (audit,) = (a for a in evidence.projection.proposal_audits if a.proposal_id in refs)
-        assert verify_recorded_candidate(
-            audit=audit, model_result_audits=evidence.projection.model_result_audits
-        )
+        if review_required:
+            assert verify_recorded_candidate(
+                audit=audit, model_result_audits=evidence.projection.model_result_audits
+            )
         assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
         return evidence, proactive_requests, reviewer_requests, delivery
     assert proactive_actions == (), {
@@ -871,3 +894,41 @@ async def test_proactive_timing_conflicts_use_one_role_reselection(tmp_path, mon
         expectation = json.loads(change["payload"]["canonical_json"])["response_expectation"]
         assert expectation["wait_seconds"] == 40_123
         assert expectation["expires_after_seconds"] == 99_876
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("review_required", [False, True])
+@pytest.mark.parametrize("scenario", ["empty_claim_reselect", "empty_claim_twice"])
+async def test_proactive_empty_source_claim_reaches_same_role_correction(
+    tmp_path, monkeypatch, review_required, scenario,
+):
+    authored_outputs = []
+    evidence, authors, _reviews, _delivery = await _run_scenario(
+        tmp_path, monkeypatch, scenario, review_version="4" if review_required else "1",
+        review_required=review_required, authored_outputs=authored_outputs,
+    )
+    initial = json.loads(authors[0]["messages"][-1]["content"])
+    corrected = json.loads(authors[1]["messages"][-1]["content"])
+    assert "correction" not in initial
+    for key in ("inner_turn", "inner_life_snapshot", "capability_manifest"):
+        assert corrected[key] == initial[key]
+    correction = corrected["correction"]
+    assert correction["failure_code"] == "role_result_schema_invalid"
+    assert "world claim scope requires matching source refs" in correction["failure_detail"]
+    # The same author must replace the unsupported assertion, not just erase
+    # its declaration while leaving the visible assertion in place.
+    raw_claim = json.loads(authored_outputs[0])["decision"]["payload"]["world_claims"][0]
+    assert raw_claim == {"claim_text": UNSOURCED_TEXT, "scope": "past_world", "source_refs": []}
+    if scenario.endswith("reselect"):
+        replacement = json.loads(authored_outputs[1])["decision"]["payload"]
+        assert tuple(beat["text"] for beat in replacement["beats"]) == SAFE_TEXTS
+        assert replacement["world_claims"] == []
+    paid = [RecordedModelResultAudit.model_validate_json(row.audit_json)
+            for row in evidence.projection.model_result_audits]
+    rejected_hash = hashlib.sha256(authored_outputs[0].encode()).hexdigest()
+    rejected = [row for row in paid if row.response_hash == rejected_hash]
+    if review_required:
+        assert rejected, "the original invalid provider response hash must remain auditable"
+        assert len(rejected) == (2 if scenario.endswith("twice") else 1)
+        assert all(row.usage is not None for row in rejected)
+        assert any(row.failure_code is not None for row in rejected)
