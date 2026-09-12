@@ -3034,8 +3034,8 @@ class QQC2CHost:
 def _background_budget_paused(store: WorldV2UsageStore) -> Callable[[], bool]:
     """Return the read-only probe the life scheduler uses to pause cheaply.
 
-    A spent background day must close wakes as ``paused_by_budget`` instead of
-    letting every lane discover the denial one provider call at a time.  The
+    Fully committed capacity must close wakes as ``paused_by_budget`` instead
+    of letting every lane discover denial one provider call at a time. The
     probe never raises: a broken usage ledger must not become a life fact.
     """
 
@@ -3043,7 +3043,7 @@ def _background_budget_paused(store: WorldV2UsageStore) -> Callable[[], bool]:
         budget = getattr(store, "background_daily_budget_cny", None)
         if budget is None:
             return False
-        probe = getattr(store, "background_daily_cost_cny", None)
+        probe = getattr(store, "background_daily_committed_cny", None)
         if not callable(probe):
             return False
         try:

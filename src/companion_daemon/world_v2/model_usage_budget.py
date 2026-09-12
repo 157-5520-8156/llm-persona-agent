@@ -402,6 +402,80 @@ class WorldV2UsageStore:
             "committed_cny": model + external + embedding + pending + unknown,
         }
 
+    def _background_spend_snapshot(
+        self, connection: sqlite3.Connection, *, since: datetime
+    ) -> dict[str, float]:
+        """Capacity already occupied by calls subject to the background cap.
+
+        Keep the historical token-cost readout separate from external bills and
+        open reservations. External bills join their admission's purpose, so a
+        non-visible call cannot release capacity merely by settling in
+        ``usage_events``. Image token telemetry remains a non-billing mirror.
+        Unreserved external/embedding ledgers retain their existing outer
+        monthly/daily accounting; this is not a full-instance cost aggregate.
+        """
+
+        iso = since.isoformat()
+        purposes = tuple(sorted(VISIBLE_INBOUND_PURPOSES))
+        placeholders = ", ".join("?" for _ in purposes)
+        model = self._background_model_spend_cny(connection, since=since)
+        external = float(
+            connection.execute(
+                f"""
+                SELECT COALESCE(SUM(e.estimated_cny), 0)
+                FROM usage_events e JOIN world_v2_model_reservations r
+                  ON r.reservation_id = e.reservation_id
+                WHERE e.created_at >= ? AND e.billing_state != 'unknown'
+                  AND r.purpose NOT IN ({placeholders})
+                """,
+                (iso, *purposes),
+            ).fetchone()[0]
+        )
+        pending = unknown = 0.0
+        reservations = connection.execute(
+            f"""
+            SELECT r.reservation_id, r.status,
+                   MAX(r.estimated_cny, COALESCE((
+                       SELECT e.estimated_cny FROM usage_events e
+                       WHERE e.reservation_id = r.reservation_id
+                         AND e.billing_state = 'unknown'
+                   ), 0))
+            FROM world_v2_model_reservations r
+            WHERE r.status IN ('pending', 'billing_unknown')
+              AND r.purpose NOT IN ({placeholders})
+            """,
+            purposes,
+        ).fetchall()
+        for reservation_id, status, amount in reservations:
+            # Partial usage contributes a repriced lower bound, not a second
+            # whole charge. Use the same price as the model aggregate rather
+            # than its rounded cost_cny cell. An old unresolved lower bound
+            # above the reservation also survives calendar rollover.
+            recorded_total = recorded_in_window = 0.0
+            cursor = connection.execute(
+                "SELECT * FROM world_v2_model_usage WHERE reservation_id = ? "
+                "AND status != 'budget_denied' AND purpose != 'image_generation'",
+                (reservation_id,),
+            )
+            cursor.row_factory = sqlite3.Row
+            for row in cursor:
+                cost = price_usage_row(dict(row), cny_per_usd=self._usd_to_cny).cny
+                recorded_total += cost
+                if row["recorded_at"] >= iso:
+                    recorded_in_window += cost
+            remainder = max(0.0, max(float(amount), recorded_total) - recorded_in_window)
+            if status == "billing_unknown":
+                unknown += remainder
+            else:
+                pending += remainder
+        return {
+            "model_cny": model,
+            "external_cny": external,
+            "pending_cny": pending,
+            "unknown_cny": unknown,
+            "committed_cny": model + external + pending + unknown,
+        }
+
     @staticmethod
     def _has_table(connection: sqlite3.Connection, name: str) -> bool:
         return (
@@ -424,6 +498,9 @@ class WorldV2UsageStore:
                     connection, since=now.replace(hour=0, minute=0, second=0, microsecond=0)
                 )
                 recent = self._spend_snapshot(connection, since=now - timedelta(hours=24))
+                background_day = self._background_spend_snapshot(
+                    connection, since=now.replace(hour=0, minute=0, second=0, microsecond=0)
+                )
                 times = [
                     row[0]
                     for row in connection.execute(
@@ -495,6 +572,7 @@ class WorldV2UsageStore:
         return {
             "month": month,
             "day": day,
+            "background_day": background_day,
             "cost_forecast": forecast,
             "monthly_purpose_cost_cny": {
                 key: round(value, 6) for key, value in purpose_costs.items()
@@ -542,12 +620,12 @@ class WorldV2UsageStore:
         ):
             return "soft_daily_budget_exceeded"
         if self._background_daily_budget_cny is not None:
-            background = self._background_model_spend_cny(
+            background = self._background_spend_snapshot(
                 connection, since=self._utc_window_start(month=False)
-            )
+            )["committed_cny"]
             if background + estimated_cny > self._background_daily_budget_cny:
                 # The visible lane keeps its own explicit caps above; this one
-                # only bounds background life/NPC/memory work for the day.
+                # bounds non-visible work and its unresolved reservations.
                 return "background_daily_budget_exceeded"
         return None
 
@@ -1044,7 +1122,7 @@ class WorldV2UsageStore:
         return self.cost_since(since=day_start)
 
     def background_daily_cost_cny(self) -> float:
-        """Today's repriced spend for every non-visible World V2 lane."""
+        """Today's recorded non-visible token cost, excluding open bill holds."""
 
         now = datetime.now(timezone.utc)
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -1052,6 +1130,19 @@ class WorldV2UsageStore:
             connection = self._connect()
             try:
                 return self._background_model_spend_cny(connection, since=day_start)
+            finally:
+                connection.close()
+
+    def background_daily_committed_cny(self) -> float:
+        """Recorded background charges plus unresolved capacity, including old calls."""
+
+        with self._lock:
+            connection = self._connect()
+            try:
+                connection.execute("BEGIN")
+                return self._background_spend_snapshot(
+                    connection, since=self._utc_window_start(month=False)
+                )["committed_cny"]
             finally:
                 connection.close()
 
@@ -1077,6 +1168,7 @@ class WorldV2UsageStore:
         cost_health = self._cost_health()
         month = cost_health.pop("month")
         day = cost_health.pop("day")
+        background_day = cost_health.pop("background_day")
         monthly = month["committed_cny"]
         daily = day["committed_cny"]
         attribution = self._daily_attribution()
@@ -1085,7 +1177,7 @@ class WorldV2UsageStore:
         monthly_exhausted = monthly_budget_cny is not None and monthly >= monthly_budget_cny
         daily_exhausted = daily_budget_cny is not None and daily >= daily_budget_cny
         soft_daily_exhausted = soft_daily_budget_cny is not None and daily >= soft_daily_budget_cny
-        background_daily = self.background_daily_cost_cny()
+        background_daily = background_day["committed_cny"]
         background_daily_exhausted = (
             self._background_daily_budget_cny is not None
             and background_daily >= self._background_daily_budget_cny
@@ -1113,7 +1205,11 @@ class WorldV2UsageStore:
             "soft_daily_budget_cny": soft_daily_budget_cny,
             "soft_daily_exhausted": soft_daily_exhausted,
             "background_daily_budget_cny": self._background_daily_budget_cny,
-            "background_daily_cost_cny": round(background_daily, 4),
+            "background_daily_cost_cny": round(background_day["model_cny"], 4),
+            "background_external_cost_cny": round(background_day["external_cny"], 4),
+            "background_pending_cost_cny": round(background_day["pending_cny"], 4),
+            "background_unknown_cost_hold_cny": round(background_day["unknown_cny"], 4),
+            "background_daily_committed_cny": round(background_daily, 4),
             "background_daily_exhausted": background_daily_exhausted,
             "token_usage_metrics_scope": "text_and_vision_token_calls",
             "purpose_counts": attribution["purpose_counts"],
