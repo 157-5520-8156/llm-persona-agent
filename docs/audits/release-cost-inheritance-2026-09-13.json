@@ -1,0 +1,3309 @@
+{
+  "combined_inheritance": {
+    "additional_authorized_budget_cny": null,
+    "conservative_committed_cny": "63.38385329999999992007",
+    "known_repriced_cny": "40.91664329999999987207",
+    "status": "inventory_only_no_new_paid_window"
+  },
+  "contract": "release-cost-inheritance-summary.1",
+  "full_inventory_private_artifact": "output/private-audits/release-cost-inheritance-20260913/release-repair-cost-inventory-20260913.json",
+  "full_inventory_sha256": "c4bfc867d8dec2a9142a26a9f1e9160fe78bb517e361b1dca7c9809335a637cb",
+  "generated_at": "2026-09-12T16:41:26.781044+00:00",
+  "inherited_trial17": {
+    "baseline_sha256": "a068fc11cfc3da32851fd576706e9017808efc0386676c85ff267e0ef4052ab4",
+    "batch_sha256": "301e2b5cb436858d579066493c808d1df2ac207ff5c1c41203354a5c18f53c48",
+    "conservative_committed_cny": "7.1471850",
+    "cross_run_historical_reservation_ids_checked": 55,
+    "finished_sha256": "efc33ed830bd99c766250f713d5c7abcf5692859d7e352a52c2a39eeefc8e36f",
+    "historical_export_usage_rows_inspected_for_identity_only": 48,
+    "known_cny": "3.246251999999999952",
+    "limitation": "Older whole-allocation holds inherited unchanged, not recomputed or released from potentially incomplete per-call exports.",
+    "prior_conservative_committed_cny": "7.0490125",
+    "prior_known_cny": "3.148079499999999952",
+    "reservation_overlap_with_new_exports": [],
+    "trial17_repriced_cny": "0.09817249999999999898",
+    "trial17_settled_cny": "0.0981725",
+    "unresolved_conservative_margin_preserved_cny": "3.900933000000000048",
+    "verification": {
+      "all_196_historical_hashes_match": true,
+      "baseline_digest_matches_batch": true,
+      "closure_digest_matches_entry": true,
+      "closure_manifest_digest_matches": true,
+      "finished_batch_digest_matches": true,
+      "finished_entry_equals_batch": true,
+      "historical_file_checks": [
+        {
+          "actual_sha256": "d2b23e14bff154071690231f30be703c7faa771066293555b3c0a6cb92af537c",
+          "expected_sha256": "d2b23e14bff154071690231f30be703c7faa771066293555b3c0a6cb92af537c",
+          "match": true,
+          "path": "output/adaptive-companionship-2026-09-08/campaign.json"
+        },
+        {
+          "actual_sha256": "f275e31bc612e86737f4cc08843ad75f98b08443df5906a6ece162a095b51dec",
+          "expected_sha256": "f275e31bc612e86737f4cc08843ad75f98b08443df5906a6ece162a095b51dec",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/baseline-evidence.json"
+        },
+        {
+          "actual_sha256": "1fcd84841046916ae351bb473c0894d821fd467359478351a0f3fc32689ff707",
+          "expected_sha256": "1fcd84841046916ae351bb473c0894d821fd467359478351a0f3fc32689ff707",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/batch.json"
+        },
+        {
+          "actual_sha256": "51ca0314c68304075132bc8d73010ab004c6f27177f09ad66a103fdd0fd64f90",
+          "expected_sha256": "51ca0314c68304075132bc8d73010ab004c6f27177f09ad66a103fdd0fd64f90",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/runner-trial11.py"
+        },
+        {
+          "actual_sha256": "f84e0a196ff449c71445d757bef7262f8efede41d0d1573fddfaa0c03c9ec2c9",
+          "expected_sha256": "f84e0a196ff449c71445d757bef7262f8efede41d0d1573fddfaa0c03c9ec2c9",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/scenario.json"
+        },
+        {
+          "actual_sha256": "fbe7996ee3055859c771f846cc086942a4acfaa0dc54ff03a33e4d2254ff6cdb",
+          "expected_sha256": "fbe7996ee3055859c771f846cc086942a4acfaa0dc54ff03a33e4d2254ff6cdb",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11-launch-state/admission-intent.json"
+        },
+        {
+          "actual_sha256": "78f9ddd82f839773eb67082d3e28d6150498eeb044a0878a19c035db05abc3fe",
+          "expected_sha256": "78f9ddd82f839773eb67082d3e28d6150498eeb044a0878a19c035db05abc3fe",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11-launch-state/admitted.json"
+        },
+        {
+          "actual_sha256": "f24c4b96e741859d92e1bca4c32e23c6055b1cc625aac617390777aabf546141",
+          "expected_sha256": "f24c4b96e741859d92e1bca4c32e23c6055b1cc625aac617390777aabf546141",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11-launch-state/closure-evidence.json"
+        },
+        {
+          "actual_sha256": "194f34529c12083883594b0dec4b2e71d8c987f9b68d315f3b8ae88811adccfa",
+          "expected_sha256": "194f34529c12083883594b0dec4b2e71d8c987f9b68d315f3b8ae88811adccfa",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11-launch-state/finished.json"
+        },
+        {
+          "actual_sha256": "8867f9d94c8136f90d4620aa364c83330b7525546826d538df570939418bb304",
+          "expected_sha256": "8867f9d94c8136f90d4620aa364c83330b7525546826d538df570939418bb304",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11/evidence.jsonl"
+        },
+        {
+          "actual_sha256": "834d2b7f25b876ecd51763dd7dee358e64c9753f44368f6ea66ba378cca8b137",
+          "expected_sha256": "834d2b7f25b876ecd51763dd7dee358e64c9753f44368f6ea66ba378cca8b137",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11/manifest.json"
+        },
+        {
+          "actual_sha256": "eaed7d496ac29b92d031ae3f2372e1339743cb884bb09a0e8d218014bf0e8c4a",
+          "expected_sha256": "eaed7d496ac29b92d031ae3f2372e1339743cb884bb09a0e8d218014bf0e8c4a",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11/model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "a53782a15a1a259b71e2b05df94a3da257482cddb0c49448d3a331c45a091acd",
+          "expected_sha256": "a53782a15a1a259b71e2b05df94a3da257482cddb0c49448d3a331c45a091acd",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11/model-inputs.jsonl.responses/52c41c85087541249a47b76a5a55c201.body"
+        },
+        {
+          "actual_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11/model-inputs.jsonl.responses/8d1c6b6dcf824b709233649b3fd17974.body"
+        },
+        {
+          "actual_sha256": "bc87126956df2df4d52a81b6aa5fd80c6fdb7b2e1a8d7dcfad2d2d6209980188",
+          "expected_sha256": "bc87126956df2df4d52a81b6aa5fd80c6fdb7b2e1a8d7dcfad2d2d6209980188",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11/model-inputs.jsonl.responses/c47010242ad14ae885dc58326164fd18.body"
+        },
+        {
+          "actual_sha256": "b6636ff1eaa37e954ed1de14a32e42d57a02d4cda070d81855ae98230b41aa14",
+          "expected_sha256": "b6636ff1eaa37e954ed1de14a32e42d57a02d4cda070d81855ae98230b41aa14",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11/model-inputs.jsonl.responses/d42327b802f74eef9d017d7ae6f5a75a.body"
+        },
+        {
+          "actual_sha256": "1ccc3a4a03c539e8c4d96f7814fea6aa582456dfea5068ac013f9b6233f84267",
+          "expected_sha256": "1ccc3a4a03c539e8c4d96f7814fea6aa582456dfea5068ac013f9b6233f84267",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11/operator-commands.jsonl"
+        },
+        {
+          "actual_sha256": "06c7b67afa92698450be70e40c3599fe3d7258380b7eb58a75c3ca1eb1b3628f",
+          "expected_sha256": "06c7b67afa92698450be70e40c3599fe3d7258380b7eb58a75c3ca1eb1b3628f",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11/provider-usage.json"
+        },
+        {
+          "actual_sha256": "61f0ed3dab661ae8f8e7e05a2fcc33188f75c4df20ac7dea0988cce1a3c8f322",
+          "expected_sha256": "61f0ed3dab661ae8f8e7e05a2fcc33188f75c4df20ac7dea0988cce1a3c8f322",
+          "match": true,
+          "path": "output/private-audits/compact-conversation-20260908/trial-11/timeline.jsonl"
+        },
+        {
+          "actual_sha256": "2ce80b6966517d4bc1fac810d45ea8b8f1a3914869c323490102556b72d11840",
+          "expected_sha256": "2ce80b6966517d4bc1fac810d45ea8b8f1a3914869c323490102556b72d11840",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/baseline-evidence.json"
+        },
+        {
+          "actual_sha256": "19606b06d49de884e5722e8ea9d4aceb509baa1ba530691f20b8054b77260b80",
+          "expected_sha256": "19606b06d49de884e5722e8ea9d4aceb509baa1ba530691f20b8054b77260b80",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/batch.json"
+        },
+        {
+          "actual_sha256": "7d796fdef6de20281f951839aed5f87d1ffb5ce1168c1b54afda9d94555da191",
+          "expected_sha256": "7d796fdef6de20281f951839aed5f87d1ffb5ce1168c1b54afda9d94555da191",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/runner-trial10.py"
+        },
+        {
+          "actual_sha256": "f84e0a196ff449c71445d757bef7262f8efede41d0d1573fddfaa0c03c9ec2c9",
+          "expected_sha256": "f84e0a196ff449c71445d757bef7262f8efede41d0d1573fddfaa0c03c9ec2c9",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/scenario.json"
+        },
+        {
+          "actual_sha256": "d2f2dfbac1b49632ea8726acb2710cff6b59cb86a98d0d981b7107ae07eb57f6",
+          "expected_sha256": "d2f2dfbac1b49632ea8726acb2710cff6b59cb86a98d0d981b7107ae07eb57f6",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-07-launch-state/admission-intent.json"
+        },
+        {
+          "actual_sha256": "057d588cd7143549d1d662ddecb6fa6ed74a0325d470108e5beccedf2ce0d0ba",
+          "expected_sha256": "057d588cd7143549d1d662ddecb6fa6ed74a0325d470108e5beccedf2ce0d0ba",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-07-launch-state/admitted.json"
+        },
+        {
+          "actual_sha256": "8db25bdd131465454780afc9811f10ca8f5db732e8a06b24dc5a2edcdf8251c6",
+          "expected_sha256": "8db25bdd131465454780afc9811f10ca8f5db732e8a06b24dc5a2edcdf8251c6",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-07-launch-state/closure-evidence.json"
+        },
+        {
+          "actual_sha256": "d1bc40e1cc89c2363288a1323e4816bbfe92695898032798fe1b090d66f1594f",
+          "expected_sha256": "d1bc40e1cc89c2363288a1323e4816bbfe92695898032798fe1b090d66f1594f",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-07-launch-state/finished.json"
+        },
+        {
+          "actual_sha256": "3abccb2eda96250e840485a99453e5ecf9535de3c2303b6537074412570d3ff2",
+          "expected_sha256": "3abccb2eda96250e840485a99453e5ecf9535de3c2303b6537074412570d3ff2",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-07/evidence.jsonl"
+        },
+        {
+          "actual_sha256": "51daea6158284c6a4c77ae29687c7d223860261ed6e4ac0b3c13ab08b5f1ba55",
+          "expected_sha256": "51daea6158284c6a4c77ae29687c7d223860261ed6e4ac0b3c13ab08b5f1ba55",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-07/manifest.json"
+        },
+        {
+          "actual_sha256": "c92acea692012b5f6196b6e30c0a3fd7c9da69a296fb1772a1ab101d75033a5e",
+          "expected_sha256": "c92acea692012b5f6196b6e30c0a3fd7c9da69a296fb1772a1ab101d75033a5e",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-07/model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "b937117f845cdb34c10d568726837caa16d04fb45d82b02d02d4f25244e4ae99",
+          "expected_sha256": "b937117f845cdb34c10d568726837caa16d04fb45d82b02d02d4f25244e4ae99",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-07/operator-commands.jsonl"
+        },
+        {
+          "actual_sha256": "9fa0757a3036b76d18e71449ccb4e6b206e3ed00335953f9d673705895463f93",
+          "expected_sha256": "9fa0757a3036b76d18e71449ccb4e6b206e3ed00335953f9d673705895463f93",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-07/provider-usage.json"
+        },
+        {
+          "actual_sha256": "19755618d40599a46964b0e0f698f262798e1d692e586cf0bb7ec4089a9691d3",
+          "expected_sha256": "19755618d40599a46964b0e0f698f262798e1d692e586cf0bb7ec4089a9691d3",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-07/timeline.jsonl"
+        },
+        {
+          "actual_sha256": "a0868e9e6c79fbcaf2dc43b64bc77a2765f091e9c8d8fd187cf5735de978099c",
+          "expected_sha256": "a0868e9e6c79fbcaf2dc43b64bc77a2765f091e9c8d8fd187cf5735de978099c",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-08-launch-state/admission-intent.json"
+        },
+        {
+          "actual_sha256": "bd18ae90e1f769b80f804c1864b38dddc353b5509f4e6ae09d3a5cfb6d44b0fa",
+          "expected_sha256": "bd18ae90e1f769b80f804c1864b38dddc353b5509f4e6ae09d3a5cfb6d44b0fa",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-08-launch-state/admitted.json"
+        },
+        {
+          "actual_sha256": "06a25a77d3bfe28dfa823ba480769d40ad4b00da9a1e6eba484d799a9f739b5d",
+          "expected_sha256": "06a25a77d3bfe28dfa823ba480769d40ad4b00da9a1e6eba484d799a9f739b5d",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-08-launch-state/closure-evidence.json"
+        },
+        {
+          "actual_sha256": "17bcf7f22884ec46c01d705555a1a8a1b5b10064afac43f440c97a3e94261fb2",
+          "expected_sha256": "17bcf7f22884ec46c01d705555a1a8a1b5b10064afac43f440c97a3e94261fb2",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-08-launch-state/finished.json"
+        },
+        {
+          "actual_sha256": "604f5e4b4f207e2f8c449889b77faa7b205c45a2ad16f8b929a6f6020d2dcb4f",
+          "expected_sha256": "604f5e4b4f207e2f8c449889b77faa7b205c45a2ad16f8b929a6f6020d2dcb4f",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-08/evidence.jsonl"
+        },
+        {
+          "actual_sha256": "b05b51784ad35e13fa01bd7cc0b644c0f127f7d7be3cf8013c1cdf7c3fca64c4",
+          "expected_sha256": "b05b51784ad35e13fa01bd7cc0b644c0f127f7d7be3cf8013c1cdf7c3fca64c4",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-08/manifest.json"
+        },
+        {
+          "actual_sha256": "cec8125fab7cff0c70e0539ffa7fb33a857cccdcab0e54b848ebe12f40aec7e3",
+          "expected_sha256": "cec8125fab7cff0c70e0539ffa7fb33a857cccdcab0e54b848ebe12f40aec7e3",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-08/model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "1773ef07e429ed4e9d5f063d616664ecca2c311652ef5f865a4466711ae5497c",
+          "expected_sha256": "1773ef07e429ed4e9d5f063d616664ecca2c311652ef5f865a4466711ae5497c",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-08/operator-commands.jsonl"
+        },
+        {
+          "actual_sha256": "5778280f546a3532f066af18db037b2297f612608bcc1b2e9f0fbe97ab1cd711",
+          "expected_sha256": "5778280f546a3532f066af18db037b2297f612608bcc1b2e9f0fbe97ab1cd711",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-08/provider-usage.json"
+        },
+        {
+          "actual_sha256": "bb9b2de79021c08f940582419324b8cd5effe6a5ca78ce6d738deba7c5f1a1c2",
+          "expected_sha256": "bb9b2de79021c08f940582419324b8cd5effe6a5ca78ce6d738deba7c5f1a1c2",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-08/timeline.jsonl"
+        },
+        {
+          "actual_sha256": "914bc100ca8aeb52e9385e95fd755656de1bb57326a3ada47e7c88f1db64a859",
+          "expected_sha256": "914bc100ca8aeb52e9385e95fd755656de1bb57326a3ada47e7c88f1db64a859",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-09-launch-state/admission-intent.json"
+        },
+        {
+          "actual_sha256": "29cf449a5149fb610390fe53aa30972804ca777d8c152539d6e15474c0c17e95",
+          "expected_sha256": "29cf449a5149fb610390fe53aa30972804ca777d8c152539d6e15474c0c17e95",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-09-launch-state/admitted.json"
+        },
+        {
+          "actual_sha256": "91c745d32e047430a44e601145fbdbe5a076d8d45bd548a9c58bb4e0c82c7c25",
+          "expected_sha256": "91c745d32e047430a44e601145fbdbe5a076d8d45bd548a9c58bb4e0c82c7c25",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-09-launch-state/closure-evidence.json"
+        },
+        {
+          "actual_sha256": "13659b9ee9140b35f15a140fff2f7a04353451ac9f48909e9890bb175eb3c121",
+          "expected_sha256": "13659b9ee9140b35f15a140fff2f7a04353451ac9f48909e9890bb175eb3c121",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-09-launch-state/finished.json"
+        },
+        {
+          "actual_sha256": "8138dcce89300ebcf97418f2dca7a6de185ae0b4f7f994c3a5cf7af876eeee13",
+          "expected_sha256": "8138dcce89300ebcf97418f2dca7a6de185ae0b4f7f994c3a5cf7af876eeee13",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-09/manifest.json"
+        },
+        {
+          "actual_sha256": "ffa3be387fadbc2c46b08e9d54fb208bec8ae13da7500dec7f3888ee9fa21ed0",
+          "expected_sha256": "ffa3be387fadbc2c46b08e9d54fb208bec8ae13da7500dec7f3888ee9fa21ed0",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-10-launch-state/admission-intent.json"
+        },
+        {
+          "actual_sha256": "196831f409adc31a32a026a73036ef1640ee71fee100d4041419f8a52a5e97dd",
+          "expected_sha256": "196831f409adc31a32a026a73036ef1640ee71fee100d4041419f8a52a5e97dd",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-10-launch-state/admitted.json"
+        },
+        {
+          "actual_sha256": "284194f347bb35cc41d77f5a4fdafcc08f56f202acd3df9b24e4000a0f777749",
+          "expected_sha256": "284194f347bb35cc41d77f5a4fdafcc08f56f202acd3df9b24e4000a0f777749",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-10-launch-state/closure-evidence.json"
+        },
+        {
+          "actual_sha256": "e494e52e6fe680325bf49a941435406015fcdd9092f7d9e0041b0f9ef100e61d",
+          "expected_sha256": "e494e52e6fe680325bf49a941435406015fcdd9092f7d9e0041b0f9ef100e61d",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-10-launch-state/finished.json"
+        },
+        {
+          "actual_sha256": "29e7e6b156f9c074c7226c9d5d006ecab972244d1c71ca6034b62bbf1b2c3d52",
+          "expected_sha256": "29e7e6b156f9c074c7226c9d5d006ecab972244d1c71ca6034b62bbf1b2c3d52",
+          "match": true,
+          "path": "output/private-audits/consequence-conversation-20260908/trial-10/manifest.json"
+        },
+        {
+          "actual_sha256": "3608a32f19e546a09da0159ee143973ed22fd7d164151b48391b72535eca06b1",
+          "expected_sha256": "3608a32f19e546a09da0159ee143973ed22fd7d164151b48391b72535eca06b1",
+          "match": true,
+          "path": "output/private-audits/launch-continuity-current.py"
+        },
+        {
+          "actual_sha256": "dee01ab9211c872c53a5dab4e4ddcddbdefc4e16ca85bc44cd355e665703dd9c",
+          "expected_sha256": "dee01ab9211c872c53a5dab4e4ddcddbdefc4e16ca85bc44cd355e665703dd9c",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/PREPARED.md"
+        },
+        {
+          "actual_sha256": "4cdcc919f94b616609d84f6f1057c9e35599a8a0f418fdb35a6710100f25e1f3",
+          "expected_sha256": "4cdcc919f94b616609d84f6f1057c9e35599a8a0f418fdb35a6710100f25e1f3",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/baseline-evidence.json"
+        },
+        {
+          "actual_sha256": "2efb327fb5489dc42cedd5e3c1a4b2f3e449f2b3e855eee703895657b2e26770",
+          "expected_sha256": "2efb327fb5489dc42cedd5e3c1a4b2f3e449f2b3e855eee703895657b2e26770",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/batch.json"
+        },
+        {
+          "actual_sha256": "47cb816a94bbd05b3c91bccdff13a0405bbe68c83e1dc41f2002ea41e061616b",
+          "expected_sha256": "47cb816a94bbd05b3c91bccdff13a0405bbe68c83e1dc41f2002ea41e061616b",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/prepare-report.json"
+        },
+        {
+          "actual_sha256": "85ee41df987d74bffb68a3790d8cf005ad12331ecf280f6a4ea44599f7a79c60",
+          "expected_sha256": "85ee41df987d74bffb68a3790d8cf005ad12331ecf280f6a4ea44599f7a79c60",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/runner-trial12.py"
+        },
+        {
+          "actual_sha256": "5864cb0dd2a319775a69e46cfddd32b6b420f3a6e090455dd21254500f662fc3",
+          "expected_sha256": "5864cb0dd2a319775a69e46cfddd32b6b420f3a6e090455dd21254500f662fc3",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/scenario.json"
+        },
+        {
+          "actual_sha256": "e7775c8edf26674135d737c45e1170dcf253f37fa2828e700c6f09575adc7806",
+          "expected_sha256": "e7775c8edf26674135d737c45e1170dcf253f37fa2828e700c6f09575adc7806",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/test_runner_trial12.py"
+        },
+        {
+          "actual_sha256": "7d78e10e2a580a705b564853bc39b065b0da25e632e9e40f452f167f74fc353e",
+          "expected_sha256": "7d78e10e2a580a705b564853bc39b065b0da25e632e9e40f452f167f74fc353e",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12-launch-state/admission-intent.json"
+        },
+        {
+          "actual_sha256": "65f5fdf63f129310adaf8d598c4662cdfa4e30524d4dd6c00133887923d78845",
+          "expected_sha256": "65f5fdf63f129310adaf8d598c4662cdfa4e30524d4dd6c00133887923d78845",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12-launch-state/admitted.json"
+        },
+        {
+          "actual_sha256": "c0ad7109802484d2d3c3b317da41a7e1d2aeeb569322351dcd17e07a3b0ce3e3",
+          "expected_sha256": "c0ad7109802484d2d3c3b317da41a7e1d2aeeb569322351dcd17e07a3b0ce3e3",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12-launch-state/closure-evidence.json"
+        },
+        {
+          "actual_sha256": "d98e11f6c5b957c013a9284aceb62bea0fe30f638712a443e525f83e31914e47",
+          "expected_sha256": "d98e11f6c5b957c013a9284aceb62bea0fe30f638712a443e525f83e31914e47",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12-launch-state/finished.json"
+        },
+        {
+          "actual_sha256": "694115485325c2a4236d46246a5bfb1de87110383417dc757f798b5862a1402c",
+          "expected_sha256": "694115485325c2a4236d46246a5bfb1de87110383417dc757f798b5862a1402c",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12-stderr.log"
+        },
+        {
+          "actual_sha256": "abd2acaf7b17339d52ff1b525b5527612c2f0d9813cdf6c151a1ae05d392e467",
+          "expected_sha256": "abd2acaf7b17339d52ff1b525b5527612c2f0d9813cdf6c151a1ae05d392e467",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/evidence.jsonl"
+        },
+        {
+          "actual_sha256": "d3b67f65299b93c6d47616e0ad9f7e8c46be9c2db3bf7a5ffcd4b2f84f4e2fb0",
+          "expected_sha256": "d3b67f65299b93c6d47616e0ad9f7e8c46be9c2db3bf7a5ffcd4b2f84f4e2fb0",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/manifest.json"
+        },
+        {
+          "actual_sha256": "0bbd764b74810d8c2b3fc4f0de4990ee39d44d1a3526abfd435e059ab9bd6709",
+          "expected_sha256": "0bbd764b74810d8c2b3fc4f0de4990ee39d44d1a3526abfd435e059ab9bd6709",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "0ddb60722f7cd326a36ea8b27a7ba3142fc4a04bad0f32a04a595f7b05d506ff",
+          "expected_sha256": "0ddb60722f7cd326a36ea8b27a7ba3142fc4a04bad0f32a04a595f7b05d506ff",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/model-inputs.jsonl.responses/07bb956724454a3dafd0aa402b0989bf.body"
+        },
+        {
+          "actual_sha256": "9e630c3122cf0089a7ecde9bd95cbb8c5bfb7e40a000a6f97d439032254a52eb",
+          "expected_sha256": "9e630c3122cf0089a7ecde9bd95cbb8c5bfb7e40a000a6f97d439032254a52eb",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/model-inputs.jsonl.responses/1e5ef050d9d541578390c1056ed09040.body"
+        },
+        {
+          "actual_sha256": "315ad6fcdae0676238660bd75fd59766b223dfb71226fb5955e984a379157a9a",
+          "expected_sha256": "315ad6fcdae0676238660bd75fd59766b223dfb71226fb5955e984a379157a9a",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/model-inputs.jsonl.responses/2ac4626e6ae2407da0455649ccdc0bac.body"
+        },
+        {
+          "actual_sha256": "6ffb7964c751c8667fce8483a85f7a389fc6a8ab117885d61e261111a9b4b10e",
+          "expected_sha256": "6ffb7964c751c8667fce8483a85f7a389fc6a8ab117885d61e261111a9b4b10e",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/model-inputs.jsonl.responses/4a596cbb35e4443596d63302f9b1c5da.body"
+        },
+        {
+          "actual_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/model-inputs.jsonl.responses/543f34d5d30f48cb8faffcd424c96f3a.body"
+        },
+        {
+          "actual_sha256": "713f04289477ba013c0df222ce2eaba229650d96ae0a72674cbfbfe21e75e42f",
+          "expected_sha256": "713f04289477ba013c0df222ce2eaba229650d96ae0a72674cbfbfe21e75e42f",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/model-inputs.jsonl.responses/63191b1d6bce4c30b6c9692c619ef536.body"
+        },
+        {
+          "actual_sha256": "0f4b74a9dddfc54e9e68fd6b1535727d27ca7126e8d31589f8c367c5e378e1f1",
+          "expected_sha256": "0f4b74a9dddfc54e9e68fd6b1535727d27ca7126e8d31589f8c367c5e378e1f1",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/model-inputs.jsonl.responses/8980fdacd18c4e279407e2781222a574.body"
+        },
+        {
+          "actual_sha256": "b08dd08995b61872db4c350f6ca6c5e06b09c2d684f3d31edc1f1d032e977e76",
+          "expected_sha256": "b08dd08995b61872db4c350f6ca6c5e06b09c2d684f3d31edc1f1d032e977e76",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/operator-commands.jsonl"
+        },
+        {
+          "actual_sha256": "493128c96d7c4761379d97f2c00eb8651c9e8d0e0196143f94547b214e295c54",
+          "expected_sha256": "493128c96d7c4761379d97f2c00eb8651c9e8d0e0196143f94547b214e295c54",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/provider-usage.json"
+        },
+        {
+          "actual_sha256": "3614138f22f123c208e2bc67025646c2814378e7556810cfb2ef3071a489ad7c",
+          "expected_sha256": "3614138f22f123c208e2bc67025646c2814378e7556810cfb2ef3071a489ad7c",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/report.md"
+        },
+        {
+          "actual_sha256": "61aa7930a84d459eb6618d4563103e11885185a904d97063e949ca9bba97d384",
+          "expected_sha256": "61aa7930a84d459eb6618d4563103e11885185a904d97063e949ca9bba97d384",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/review.json"
+        },
+        {
+          "actual_sha256": "6041ada5e863f1bda25cf2563d3872e69a8b2a901d86a981ef3467128cfc5b67",
+          "expected_sha256": "6041ada5e863f1bda25cf2563d3872e69a8b2a901d86a981ef3467128cfc5b67",
+          "match": true,
+          "path": "output/private-audits/life-conversation-20260909/trial-12/timeline.jsonl"
+        },
+        {
+          "actual_sha256": "cb7bdee724a09c6254f7d7f868e292678047b6824aac351816bf9c59b47723f0",
+          "expected_sha256": "cb7bdee724a09c6254f7d7f868e292678047b6824aac351816bf9c59b47723f0",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/PREPARED.md"
+        },
+        {
+          "actual_sha256": "1b1188afc9e296d6d56b2eeeb0662e26a57a9be99858ed8c6b9236d434091ef3",
+          "expected_sha256": "1b1188afc9e296d6d56b2eeeb0662e26a57a9be99858ed8c6b9236d434091ef3",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/baseline-evidence.json"
+        },
+        {
+          "actual_sha256": "857ab2a08ff99d62e892c021d9cded0adf267c720c56dcdde0ac8bbb58c339ac",
+          "expected_sha256": "857ab2a08ff99d62e892c021d9cded0adf267c720c56dcdde0ac8bbb58c339ac",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/batch.json"
+        },
+        {
+          "actual_sha256": "b6484a3a7be7159a6240fd3bc848a4585c60fd17335c369f4396d60ca40e5970",
+          "expected_sha256": "b6484a3a7be7159a6240fd3bc848a4585c60fd17335c369f4396d60ca40e5970",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/operator-final-prepare-trial13.json"
+        },
+        {
+          "actual_sha256": "389839b139ab835057ef611d3d543f1e9dd4edaf4bf425eb8be347950b846b79",
+          "expected_sha256": "389839b139ab835057ef611d3d543f1e9dd4edaf4bf425eb8be347950b846b79",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/operator-report-trial13.json"
+        },
+        {
+          "actual_sha256": "ba6d2bdc283cc1a96536b9b0da76afa6b36ecd8049c97704d1696345ccf9543c",
+          "expected_sha256": "ba6d2bdc283cc1a96536b9b0da76afa6b36ecd8049c97704d1696345ccf9543c",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/operator-report-trial13.md"
+        },
+        {
+          "actual_sha256": "147243b59a7954eaa8296358744cbfaad1e59bb314855d31109b76d4548ed5f8",
+          "expected_sha256": "147243b59a7954eaa8296358744cbfaad1e59bb314855d31109b76d4548ed5f8",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/prepare-report.json"
+        },
+        {
+          "actual_sha256": "00069aad48075682aa9f9eb10cd511077c34bc26a1713bbfaab3c84a9d205db9",
+          "expected_sha256": "00069aad48075682aa9f9eb10cd511077c34bc26a1713bbfaab3c84a9d205db9",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/runner-trial13.py"
+        },
+        {
+          "actual_sha256": "da107ba8c1e970c1c82a6b2b874ef18bcdb937b190086800955600f456976c63",
+          "expected_sha256": "da107ba8c1e970c1c82a6b2b874ef18bcdb937b190086800955600f456976c63",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/scenario.json"
+        },
+        {
+          "actual_sha256": "82bcbf4bd947701a2368712308399c377d124c6eb585e9ef3332e8c18e6c871c",
+          "expected_sha256": "82bcbf4bd947701a2368712308399c377d124c6eb585e9ef3332e8c18e6c871c",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/selfcheck-report.json"
+        },
+        {
+          "actual_sha256": "4d9be5d7d4faf4006b7e718a0d7646325a72354976bf5ddd8a33c01228ad2339",
+          "expected_sha256": "4d9be5d7d4faf4006b7e718a0d7646325a72354976bf5ddd8a33c01228ad2339",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/test_runner_trial13.py"
+        },
+        {
+          "actual_sha256": "997bdcefb14c5399f0b4e266f5ccb04d3add1db94decde658719c7a07243c54b",
+          "expected_sha256": "997bdcefb14c5399f0b4e266f5ccb04d3add1db94decde658719c7a07243c54b",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13-launch-state/admission-intent.json"
+        },
+        {
+          "actual_sha256": "447a245c1ed5c1ee76e6758015f45d7f2bba5bc89a7777b6fe7d5aafef3c603e",
+          "expected_sha256": "447a245c1ed5c1ee76e6758015f45d7f2bba5bc89a7777b6fe7d5aafef3c603e",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13-launch-state/admitted.json"
+        },
+        {
+          "actual_sha256": "7b2453884612dca4156719b4dcdd44532ad8040918f8b65c3a491909ec52e535",
+          "expected_sha256": "7b2453884612dca4156719b4dcdd44532ad8040918f8b65c3a491909ec52e535",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13-launch-state/closure-evidence.json"
+        },
+        {
+          "actual_sha256": "4b38d131fc8f470f9774e45bf6a23d9f050e0aa21365ba9957aad54459a190ac",
+          "expected_sha256": "4b38d131fc8f470f9774e45bf6a23d9f050e0aa21365ba9957aad54459a190ac",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13-launch-state/finished.json"
+        },
+        {
+          "actual_sha256": "a69b97f70d3d71ee3d1a763b55b2dbb1f3d58cc8c225e9cf1f493d5ee8823be6",
+          "expected_sha256": "a69b97f70d3d71ee3d1a763b55b2dbb1f3d58cc8c225e9cf1f493d5ee8823be6",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13-stderr.log"
+        },
+        {
+          "actual_sha256": "98be8b453fffe7ca30f4df20f85cd9c9340c68b8ccb068ef2f92230d8f7c4d25",
+          "expected_sha256": "98be8b453fffe7ca30f4df20f85cd9c9340c68b8ccb068ef2f92230d8f7c4d25",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13/evidence.jsonl"
+        },
+        {
+          "actual_sha256": "d066ba326821bcb517bdae34b0ddde0b67621cb6a168d6e84c036de8bb6d50db",
+          "expected_sha256": "d066ba326821bcb517bdae34b0ddde0b67621cb6a168d6e84c036de8bb6d50db",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13/manifest.json"
+        },
+        {
+          "actual_sha256": "2e248a30d47ea57ea6f6948a52ef611641fb656bd3d06162ffcefc8e0e1a629c",
+          "expected_sha256": "2e248a30d47ea57ea6f6948a52ef611641fb656bd3d06162ffcefc8e0e1a629c",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13/model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "6b67716dd24901483393bd5ca5a02f366c8c1a8352b0a00f6e97bfa059cb84c0",
+          "expected_sha256": "6b67716dd24901483393bd5ca5a02f366c8c1a8352b0a00f6e97bfa059cb84c0",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13/model-inputs.jsonl.responses/42de4c1bf07c47e5a88e2956149fdc3f.body"
+        },
+        {
+          "actual_sha256": "5a30243c0972c698a37af8d2db5d640e8760b7bd66b5a7ca3732b5f35ad2f508",
+          "expected_sha256": "5a30243c0972c698a37af8d2db5d640e8760b7bd66b5a7ca3732b5f35ad2f508",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13/model-inputs.jsonl.responses/483f36f68b5a4cd6af924a46a3c923ca.body"
+        },
+        {
+          "actual_sha256": "74d855d4113358c71ff1cdc6525e05254ef1c54c267887ac63996c15722dfcc4",
+          "expected_sha256": "74d855d4113358c71ff1cdc6525e05254ef1c54c267887ac63996c15722dfcc4",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13/model-inputs.jsonl.responses/d4cf7d90f1ba4684b0381d4050b65165.body"
+        },
+        {
+          "actual_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13/model-inputs.jsonl.responses/f784270bd5194853a84ba2a0648b44ee.body"
+        },
+        {
+          "actual_sha256": "4756357d863a218245233fa1d66e3b6d1bb8bb0ed12b169e45c0f3ee375e2c0c",
+          "expected_sha256": "4756357d863a218245233fa1d66e3b6d1bb8bb0ed12b169e45c0f3ee375e2c0c",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13/operator-commands.jsonl"
+        },
+        {
+          "actual_sha256": "99626ea5bb143573a495201950e8ecbde1aca23a4037722ba2680ca2dad58ddd",
+          "expected_sha256": "99626ea5bb143573a495201950e8ecbde1aca23a4037722ba2680ca2dad58ddd",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13/provider-usage.json"
+        },
+        {
+          "actual_sha256": "f4702126cdc960c0288eab10093cee3747c564d5661a498e12c8388b4bb4807c",
+          "expected_sha256": "f4702126cdc960c0288eab10093cee3747c564d5661a498e12c8388b4bb4807c",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13/report.md"
+        },
+        {
+          "actual_sha256": "f1d5051882d97788aa7ae6266252ad6b45a45668de51af3044b306b1661c15ca",
+          "expected_sha256": "f1d5051882d97788aa7ae6266252ad6b45a45668de51af3044b306b1661c15ca",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13/review.json"
+        },
+        {
+          "actual_sha256": "14ce88d473841d9214e33893681358a15dc1def9781f76817bf911bc3b112913",
+          "expected_sha256": "14ce88d473841d9214e33893681358a15dc1def9781f76817bf911bc3b112913",
+          "match": true,
+          "path": "output/private-audits/life-plan-conversation-20260909/trial-13/timeline.jsonl"
+        },
+        {
+          "actual_sha256": "bab9e4071f10892990e5540951cd95bf5a1be0719b11dc3cdd8011f6a993b043",
+          "expected_sha256": "bab9e4071f10892990e5540951cd95bf5a1be0719b11dc3cdd8011f6a993b043",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/PREPARED.md"
+        },
+        {
+          "actual_sha256": "041202825e3d28768123f4cabeb7cacbbdc8b7a2bd125f4fcf5cebfa538412d2",
+          "expected_sha256": "041202825e3d28768123f4cabeb7cacbbdc8b7a2bd125f4fcf5cebfa538412d2",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/baseline-evidence.json"
+        },
+        {
+          "actual_sha256": "817f4e9add1b436e0647d3a96b68e52f8e13e20d44654f0386a9767067a8f0fe",
+          "expected_sha256": "817f4e9add1b436e0647d3a96b68e52f8e13e20d44654f0386a9767067a8f0fe",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/batch.json"
+        },
+        {
+          "actual_sha256": "e4b840ead2fac21f7ee381790173953373cd18cec4f7ee9137c408851d9126c3",
+          "expected_sha256": "e4b840ead2fac21f7ee381790173953373cd18cec4f7ee9137c408851d9126c3",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/operator-final-prepare-trial14.json"
+        },
+        {
+          "actual_sha256": "dedf80ce109f2f2881b6cefa0eef4732e521e957fc2db460c3fbb776d490de9f",
+          "expected_sha256": "dedf80ce109f2f2881b6cefa0eef4732e521e957fc2db460c3fbb776d490de9f",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/operator-incident-trial14.json"
+        },
+        {
+          "actual_sha256": "25d3b1b34c0e9298c65c28ac52bb1176a3735806754cc35eadaf58fbb115404a",
+          "expected_sha256": "25d3b1b34c0e9298c65c28ac52bb1176a3735806754cc35eadaf58fbb115404a",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/operator-incident-trial14.md"
+        },
+        {
+          "actual_sha256": "ff5b244a5a912b6a7cef5dc7f759d64306e8a07f543f4705019e2a09c30df4cf",
+          "expected_sha256": "ff5b244a5a912b6a7cef5dc7f759d64306e8a07f543f4705019e2a09c30df4cf",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/operator-primary-snapshot-trial14.json"
+        },
+        {
+          "actual_sha256": "0af46c22423825194987365db2e740c1ceba367515366129c5fb946e1e05acf1",
+          "expected_sha256": "0af46c22423825194987365db2e740c1ceba367515366129c5fb946e1e05acf1",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/prepare-report.json"
+        },
+        {
+          "actual_sha256": "d6b4707fe4a090a23fd29d6602da962f403d4303eb28c19d49d6842d45572d69",
+          "expected_sha256": "d6b4707fe4a090a23fd29d6602da962f403d4303eb28c19d49d6842d45572d69",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/runner-trial14.py"
+        },
+        {
+          "actual_sha256": "9fd7326efeba15132b35a597b0503cd071b118dc037597f6390f2317ebd8c393",
+          "expected_sha256": "9fd7326efeba15132b35a597b0503cd071b118dc037597f6390f2317ebd8c393",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/scenario.json"
+        },
+        {
+          "actual_sha256": "e6f938ba7722d63b324748c6ac5335f978de4274a2c3ea384ab6cf1782d2d3d4",
+          "expected_sha256": "e6f938ba7722d63b324748c6ac5335f978de4274a2c3ea384ab6cf1782d2d3d4",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/selfcheck-report.json"
+        },
+        {
+          "actual_sha256": "8486ab4682ac32945dab269122a287e7b50e90f58a16dcc1f7d1713e49abdcd0",
+          "expected_sha256": "8486ab4682ac32945dab269122a287e7b50e90f58a16dcc1f7d1713e49abdcd0",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/test_runner_trial14.py"
+        },
+        {
+          "actual_sha256": "ba65900ad67501f40bd048d173a13916e465b4de3b12564fd168b0975b6b2182",
+          "expected_sha256": "ba65900ad67501f40bd048d173a13916e465b4de3b12564fd168b0975b6b2182",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/trial-14-launch-state/admission-intent.json"
+        },
+        {
+          "actual_sha256": "106cd4b13385efd9a4fee2d48fad7a8fcc00b3460e9be4aee5812936087d6eb5",
+          "expected_sha256": "106cd4b13385efd9a4fee2d48fad7a8fcc00b3460e9be4aee5812936087d6eb5",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/trial-14-launch-state/admitted.json"
+        },
+        {
+          "actual_sha256": "2718fca5cd1523ccd30c6bc6593145211db8f6cc55626c90089f7ae6e70e2aac",
+          "expected_sha256": "2718fca5cd1523ccd30c6bc6593145211db8f6cc55626c90089f7ae6e70e2aac",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/trial-14-stderr.log"
+        },
+        {
+          "actual_sha256": "c1b635921b1a8ffcab12bb95d4c9c4bb85fc01a1c301ce675000b8d33d9adf54",
+          "expected_sha256": "c1b635921b1a8ffcab12bb95d4c9c4bb85fc01a1c301ce675000b8d33d9adf54",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/trial-14/evidence.jsonl"
+        },
+        {
+          "actual_sha256": "e06f6e70d183937fcdac5619205de8d430ad8e65dd292c88fae84e33dc152987",
+          "expected_sha256": "e06f6e70d183937fcdac5619205de8d430ad8e65dd292c88fae84e33dc152987",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/trial-14/model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "eac6e3ea0a662b81dd46aba01afe9a5e918b65718fe77193e84f98823a18afd5",
+          "expected_sha256": "eac6e3ea0a662b81dd46aba01afe9a5e918b65718fe77193e84f98823a18afd5",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/trial-14/operator-commands.jsonl"
+        },
+        {
+          "actual_sha256": "366b48be3de741791d813ea236a0817b79571aaea38eeccc0da53ade66270a45",
+          "expected_sha256": "366b48be3de741791d813ea236a0817b79571aaea38eeccc0da53ade66270a45",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-conversation-20260909/trial-14/timeline.jsonl"
+        },
+        {
+          "actual_sha256": "52909fab36f4c61a75e1c79006c09c3d7ae5585fb6b53433f18c5beac22bfd1e",
+          "expected_sha256": "52909fab36f4c61a75e1c79006c09c3d7ae5585fb6b53433f18c5beac22bfd1e",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/PREPARED.md"
+        },
+        {
+          "actual_sha256": "ac64f80fc54fc5c9a735fdc032e26471273e64327f56e55526241d4518ada856",
+          "expected_sha256": "ac64f80fc54fc5c9a735fdc032e26471273e64327f56e55526241d4518ada856",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/baseline-evidence.json"
+        },
+        {
+          "actual_sha256": "762a4c01f9b7b8ac15df23db50a19cc384d396ac6be640abcb54ab793baa344d",
+          "expected_sha256": "762a4c01f9b7b8ac15df23db50a19cc384d396ac6be640abcb54ab793baa344d",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/batch.json"
+        },
+        {
+          "actual_sha256": "5ebd614eb1d467135a8eca54c7b314a65cb28cc84f488b8406e58d6c5db953c3",
+          "expected_sha256": "5ebd614eb1d467135a8eca54c7b314a65cb28cc84f488b8406e58d6c5db953c3",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/operator-final-prepare-trial15.json"
+        },
+        {
+          "actual_sha256": "7d7b6a0ffea03b68020c3398f1c241371b68eacf4bc24d906cc664059708c19f",
+          "expected_sha256": "7d7b6a0ffea03b68020c3398f1c241371b68eacf4bc24d906cc664059708c19f",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/operator-report-trial15.json"
+        },
+        {
+          "actual_sha256": "f025915db5fda582b26707b1069dea9a47dfe54fc5206992662fe141bd30be5a",
+          "expected_sha256": "f025915db5fda582b26707b1069dea9a47dfe54fc5206992662fe141bd30be5a",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/operator-report-trial15.md"
+        },
+        {
+          "actual_sha256": "e1bb813fc800107f21c8222db06018db41d297d71b0b3ce04ea8475fc1c0e804",
+          "expected_sha256": "e1bb813fc800107f21c8222db06018db41d297d71b0b3ce04ea8475fc1c0e804",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/prepare-report.json"
+        },
+        {
+          "actual_sha256": "0ec8d575570b66f25e151a5f739c05d882fb89ff5128f7de674a94e1a2d09728",
+          "expected_sha256": "0ec8d575570b66f25e151a5f739c05d882fb89ff5128f7de674a94e1a2d09728",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/regression-attempt-01.log"
+        },
+        {
+          "actual_sha256": "d3703ed4979090128548d5589c2f23914283d22ae025df3a98457bcea75f137c",
+          "expected_sha256": "d3703ed4979090128548d5589c2f23914283d22ae025df3a98457bcea75f137c",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/regression-attempt-02.log"
+        },
+        {
+          "actual_sha256": "065f7ebe4397218c35a5cbf12e940de565b26aa63e2b59d68b423808b3acb407",
+          "expected_sha256": "065f7ebe4397218c35a5cbf12e940de565b26aa63e2b59d68b423808b3acb407",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/regression-final.log"
+        },
+        {
+          "actual_sha256": "da104515d30bfe28c0d2a7d83c5f9b5286c476edabc8b4a888a05ffeff2bb2c7",
+          "expected_sha256": "da104515d30bfe28c0d2a7d83c5f9b5286c476edabc8b4a888a05ffeff2bb2c7",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/runner-trial15.py"
+        },
+        {
+          "actual_sha256": "363601b75b86a242ecfb5e8ae2527b67f1aa10b0eec2857611a49b3a52b2e13b",
+          "expected_sha256": "363601b75b86a242ecfb5e8ae2527b67f1aa10b0eec2857611a49b3a52b2e13b",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/scenario.json"
+        },
+        {
+          "actual_sha256": "de0f0478c3a34da5d39ddf780c0bbae4ab2dac1ad2bcd4388910f221107c5c56",
+          "expected_sha256": "de0f0478c3a34da5d39ddf780c0bbae4ab2dac1ad2bcd4388910f221107c5c56",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/selfcheck-report.json"
+        },
+        {
+          "actual_sha256": "831f5129bf8da0f69196ebba7b22feefacffa2eb93ea3c04513abf6bfa7e5371",
+          "expected_sha256": "831f5129bf8da0f69196ebba7b22feefacffa2eb93ea3c04513abf6bfa7e5371",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/test_runner_trial15.py"
+        },
+        {
+          "actual_sha256": "470a6dc95532af53b15aba2d3a01487397cc6cef5e034cdaacb82bc889337d77",
+          "expected_sha256": "470a6dc95532af53b15aba2d3a01487397cc6cef5e034cdaacb82bc889337d77",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15-launch-state/admission-intent.json"
+        },
+        {
+          "actual_sha256": "08336550ce1331ce45e7102f5370bf00e66397ce9e51f63dd911ed68b2dc5524",
+          "expected_sha256": "08336550ce1331ce45e7102f5370bf00e66397ce9e51f63dd911ed68b2dc5524",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15-launch-state/admitted.json"
+        },
+        {
+          "actual_sha256": "f8bd3b083713be4cd0294c712a0076e35a6da791552807ce07fafd283a8acd9b",
+          "expected_sha256": "f8bd3b083713be4cd0294c712a0076e35a6da791552807ce07fafd283a8acd9b",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15-launch-state/closure-evidence.json"
+        },
+        {
+          "actual_sha256": "8509dc4884589a610566d84f5a12541b2040e3a55667a88868576081f87f8300",
+          "expected_sha256": "8509dc4884589a610566d84f5a12541b2040e3a55667a88868576081f87f8300",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15-launch-state/finished.json"
+        },
+        {
+          "actual_sha256": "a4b26cd149faa36b96ec88003d2cea811b635b3ca7779d254364ea4fd9684a6c",
+          "expected_sha256": "a4b26cd149faa36b96ec88003d2cea811b635b3ca7779d254364ea4fd9684a6c",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15-stderr.log"
+        },
+        {
+          "actual_sha256": "0e4938186a10632b1ee3d1b7c4e2ed2736f2df9f43510a10309f04a7580e28da",
+          "expected_sha256": "0e4938186a10632b1ee3d1b7c4e2ed2736f2df9f43510a10309f04a7580e28da",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/evidence.jsonl"
+        },
+        {
+          "actual_sha256": "d66389cc091986cfa7f3ac4d5e2e276f55418b1f900ae76022fdd384f28e199a",
+          "expected_sha256": "d66389cc091986cfa7f3ac4d5e2e276f55418b1f900ae76022fdd384f28e199a",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/manifest.json"
+        },
+        {
+          "actual_sha256": "e11558e34fda201117bacf2a651bfc57925250c43f9ff9eeb2ea40e5ac765edf",
+          "expected_sha256": "e11558e34fda201117bacf2a651bfc57925250c43f9ff9eeb2ea40e5ac765edf",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "d05027ab105a9a07e580ca449d4b22abd34cf944847f90344c510801e325653f",
+          "expected_sha256": "d05027ab105a9a07e580ca449d4b22abd34cf944847f90344c510801e325653f",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/model-inputs.jsonl.responses/137e0962816c47bca27b9f99a1ea87f5.body"
+        },
+        {
+          "actual_sha256": "d9f0da6101e8a67c88916f0c90a27006cc099168bd36e32674e77e087ad1f393",
+          "expected_sha256": "d9f0da6101e8a67c88916f0c90a27006cc099168bd36e32674e77e087ad1f393",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/model-inputs.jsonl.responses/8d9794b9c54843e7966aa1ad86ad7516.body"
+        },
+        {
+          "actual_sha256": "1559a52b4788261cb084c5b902c552c86a87a28277df6bf4b468dd9325fe6502",
+          "expected_sha256": "1559a52b4788261cb084c5b902c552c86a87a28277df6bf4b468dd9325fe6502",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/model-inputs.jsonl.responses/bba3645d56a0466faf78c2b26df3fd87.body"
+        },
+        {
+          "actual_sha256": "17c4a90994d842d60345b7d87887146f714038813fc0df8f22be7d3a5a86c9c1",
+          "expected_sha256": "17c4a90994d842d60345b7d87887146f714038813fc0df8f22be7d3a5a86c9c1",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/model-inputs.jsonl.responses/c2fcadb6453e417493257eb3db94c5b1.body"
+        },
+        {
+          "actual_sha256": "bdb5067f11ca8a1d92c6c85e914bbb4a0ec85251fa5b3a61b3d0a8e34cbeed3c",
+          "expected_sha256": "bdb5067f11ca8a1d92c6c85e914bbb4a0ec85251fa5b3a61b3d0a8e34cbeed3c",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/model-inputs.jsonl.responses/e5035c7f268e495b920ecf5bfef08586.body"
+        },
+        {
+          "actual_sha256": "878c7ac14633fde5cdbc30c0a92b339a4238c22f8b65f1620625857165eacac5",
+          "expected_sha256": "878c7ac14633fde5cdbc30c0a92b339a4238c22f8b65f1620625857165eacac5",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/operator-commands.jsonl"
+        },
+        {
+          "actual_sha256": "21d258bc5f3b5a8b816e5615b149a71f2f845c49874bb9de02ef4a7b2cdf5025",
+          "expected_sha256": "21d258bc5f3b5a8b816e5615b149a71f2f845c49874bb9de02ef4a7b2cdf5025",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/provider-usage.json"
+        },
+        {
+          "actual_sha256": "51b77bc0526f4391024a311b7bdd6ee4d466a21b7f8b942e26f21e35d4b74166",
+          "expected_sha256": "51b77bc0526f4391024a311b7bdd6ee4d466a21b7f8b942e26f21e35d4b74166",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/report.md"
+        },
+        {
+          "actual_sha256": "f7143e732b02e9772169c023e29d5572f045a65d8c5dd3b75231bacb948ebfd3",
+          "expected_sha256": "f7143e732b02e9772169c023e29d5572f045a65d8c5dd3b75231bacb948ebfd3",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/review.json"
+        },
+        {
+          "actual_sha256": "eb9ce0059373c230c78c66afefb9c4964c0bc710b2e2cc0a6ce385a347981d83",
+          "expected_sha256": "eb9ce0059373c230c78c66afefb9c4964c0bc710b2e2cc0a6ce385a347981d83",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial-15/timeline.jsonl"
+        },
+        {
+          "actual_sha256": "4acdeceb3973cc2d912e4548a62b660d3df02e6e0ac6cc21e578e3d6d4b0df2e",
+          "expected_sha256": "4acdeceb3973cc2d912e4548a62b660d3df02e6e0ac6cc21e578e3d6d4b0df2e",
+          "match": true,
+          "path": "output/private-audits/life-plan-v3-runtime-20260909/trial14-to-trial15.diff"
+        },
+        {
+          "actual_sha256": "31ac970b911266f8a826a97ec9b3467242abd4ed12300f92f15383c7217550fd",
+          "expected_sha256": "31ac970b911266f8a826a97ec9b3467242abd4ed12300f92f15383c7217550fd",
+          "match": true,
+          "path": "output/private-audits/outcome-critic-low-control-execution/execution-manifest.json"
+        },
+        {
+          "actual_sha256": "587b23e9b46d39ae391433c8e20d8593184fe135f08cbedb1db28ae9e006fbfd",
+          "expected_sha256": "587b23e9b46d39ae391433c8e20d8593184fe135f08cbedb1db28ae9e006fbfd",
+          "match": true,
+          "path": "output/private-audits/outcome-critic-low-control-execution/run/allocation.json"
+        },
+        {
+          "actual_sha256": "3429af4573c65cadafc2d795172f91a9f79b7df7202cae4535bd4ae4e496fe7b",
+          "expected_sha256": "3429af4573c65cadafc2d795172f91a9f79b7df7202cae4535bd4ae4e496fe7b",
+          "match": true,
+          "path": "output/private-audits/outcome-critic-low-control-execution/run/model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "9e986d19a295592e2f184692a1c5ca384011619fe94c18e324bdcf5df8d62066",
+          "expected_sha256": "9e986d19a295592e2f184692a1c5ca384011619fe94c18e324bdcf5df8d62066",
+          "match": true,
+          "path": "output/private-audits/outcome-critic-low-control-execution/run/model-inputs.jsonl.responses/fed03bc345154bb2911ac51fa359edf9.body"
+        },
+        {
+          "actual_sha256": "2a6f42e91aa379738249d8fc2aa8eeee2c142e06d56979dc30d1ba482cbdfb8a",
+          "expected_sha256": "2a6f42e91aa379738249d8fc2aa8eeee2c142e06d56979dc30d1ba482cbdfb8a",
+          "match": true,
+          "path": "output/private-audits/outcome-critic-low-control-execution/run/primary-usage.json"
+        },
+        {
+          "actual_sha256": "7fa27bc099789c337e29132676dc4961685d12d49ef8307b0535296acb4fa840",
+          "expected_sha256": "7fa27bc099789c337e29132676dc4961685d12d49ef8307b0535296acb4fa840",
+          "match": true,
+          "path": "output/private-audits/outcome-critic-low-control-execution/run/summary.json"
+        },
+        {
+          "actual_sha256": "1b090d79fcc1b804244c7f6b50d1e6d50ea6afde76b5edf497f358ba48d619e3",
+          "expected_sha256": "1b090d79fcc1b804244c7f6b50d1e6d50ea6afde76b5edf497f358ba48d619e3",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/baseline-evidence.json"
+        },
+        {
+          "actual_sha256": "617c08df7a57bd4c6956b70da051addb287341e53fb92ce49d4d9fe7344b39ea",
+          "expected_sha256": "617c08df7a57bd4c6956b70da051addb287341e53fb92ce49d4d9fe7344b39ea",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/batch.json"
+        },
+        {
+          "actual_sha256": "f8d56b8d36ef552e11d537c361361164da178b8242e4d1827eedc8ba5e2d4cec",
+          "expected_sha256": "f8d56b8d36ef552e11d537c361361164da178b8242e4d1827eedc8ba5e2d4cec",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/execution.stderr.log"
+        },
+        {
+          "actual_sha256": "1e1830adb24e2d8355e519aea1ed73dcf7b324073231ef78a255cc7db36e2e90",
+          "expected_sha256": "1e1830adb24e2d8355e519aea1ed73dcf7b324073231ef78a255cc7db36e2e90",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/operator-report-trial16.json"
+        },
+        {
+          "actual_sha256": "43bc3fb536f6fdc4361b680d658d46482a0145787df5b4939029127fd41feaeb",
+          "expected_sha256": "43bc3fb536f6fdc4361b680d658d46482a0145787df5b4939029127fd41feaeb",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/operator-report-trial16.md"
+        },
+        {
+          "actual_sha256": "d1957aae05ce53cfa52b0fb9c0cd8ad11df85768c701ea4cb68f72fd4a9e4d5d",
+          "expected_sha256": "d1957aae05ce53cfa52b0fb9c0cd8ad11df85768c701ea4cb68f72fd4a9e4d5d",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/prepare-final.json"
+        },
+        {
+          "actual_sha256": "f64cdc314b6e98ed74803e02b4a8385b33e1bb9636048895523655ab55a7a95b",
+          "expected_sha256": "f64cdc314b6e98ed74803e02b4a8385b33e1bb9636048895523655ab55a7a95b",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/prepare-report.json"
+        },
+        {
+          "actual_sha256": "4a0c8f86c79af1bcb138ce36bdbb0809ef7f339fe51cd4423d8e7053cb6bb200",
+          "expected_sha256": "4a0c8f86c79af1bcb138ce36bdbb0809ef7f339fe51cd4423d8e7053cb6bb200",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/regression.log"
+        },
+        {
+          "actual_sha256": "ef7d1382e3af3c4706288fb2aec93567e4beda13c4f43dcb35b471c46e625214",
+          "expected_sha256": "ef7d1382e3af3c4706288fb2aec93567e4beda13c4f43dcb35b471c46e625214",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/runner-trial16.py"
+        },
+        {
+          "actual_sha256": "3dd56e992e36e501a95dc65573de72084fcdea9771767b3f47abda5eef384ede",
+          "expected_sha256": "3dd56e992e36e501a95dc65573de72084fcdea9771767b3f47abda5eef384ede",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/scenario.json"
+        },
+        {
+          "actual_sha256": "24a8ca5bbd02c09324dc600d57c0c71e2986e217086262383af542510dc55be4",
+          "expected_sha256": "24a8ca5bbd02c09324dc600d57c0c71e2986e217086262383af542510dc55be4",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/selfcheck-report.json"
+        },
+        {
+          "actual_sha256": "9f192f94c33a50aa9c635530d157d561e7702ddaa8e92f1c6619a52d679bddca",
+          "expected_sha256": "9f192f94c33a50aa9c635530d157d561e7702ddaa8e92f1c6619a52d679bddca",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/test_runner_trial16.py"
+        },
+        {
+          "actual_sha256": "476d41487bfe474fc32a7c07e4a95786e0172f9b63c4717c8cca9b0ddeccb3a2",
+          "expected_sha256": "476d41487bfe474fc32a7c07e4a95786e0172f9b63c4717c8cca9b0ddeccb3a2",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16-launch-state/admission-intent.json"
+        },
+        {
+          "actual_sha256": "5ccca1924676561ed73b09b258a829c3c2b09e6ffa3af91c4ceee554be793474",
+          "expected_sha256": "5ccca1924676561ed73b09b258a829c3c2b09e6ffa3af91c4ceee554be793474",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16-launch-state/admitted.json"
+        },
+        {
+          "actual_sha256": "a0dcdea0bcd2634b9e0c0ed5b85576946cb3ec0ba959d09b2dde0ca3e994958c",
+          "expected_sha256": "a0dcdea0bcd2634b9e0c0ed5b85576946cb3ec0ba959d09b2dde0ca3e994958c",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16-launch-state/closure-evidence.json"
+        },
+        {
+          "actual_sha256": "bc9cda312225fded80dd47f13f01de375f6f0bcdace669836057a5de2921455f",
+          "expected_sha256": "bc9cda312225fded80dd47f13f01de375f6f0bcdace669836057a5de2921455f",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16-launch-state/finished.json"
+        },
+        {
+          "actual_sha256": "da1a3ba0865f50bd4d1c0628a42a21e5bae70186470502031ce1f031f32124ea",
+          "expected_sha256": "da1a3ba0865f50bd4d1c0628a42a21e5bae70186470502031ce1f031f32124ea",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16/evidence.jsonl"
+        },
+        {
+          "actual_sha256": "2e7259b00735bbb753a40c76219b882fc9e51d13f941e56623d9fb51f7191396",
+          "expected_sha256": "2e7259b00735bbb753a40c76219b882fc9e51d13f941e56623d9fb51f7191396",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16/manifest.json"
+        },
+        {
+          "actual_sha256": "2e91d87b4eeeae0cc753c29a8eeefe75af77bfe2aa05c0dda263514d343a013e",
+          "expected_sha256": "2e91d87b4eeeae0cc753c29a8eeefe75af77bfe2aa05c0dda263514d343a013e",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16/model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "027fe64baab6eafa5a0ba3350db680623a91d1881bd542e86e1736fc89f47f66",
+          "expected_sha256": "027fe64baab6eafa5a0ba3350db680623a91d1881bd542e86e1736fc89f47f66",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16/model-inputs.jsonl.responses/690cd8ae182845b0b52af2e96d601f3a.body"
+        },
+        {
+          "actual_sha256": "10970b6d6bc7841f785350176da60fdd74c16bd9a59435b81c2ebaddff2f2d74",
+          "expected_sha256": "10970b6d6bc7841f785350176da60fdd74c16bd9a59435b81c2ebaddff2f2d74",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16/model-inputs.jsonl.responses/708b97277eb347488922d35bc819221b.body"
+        },
+        {
+          "actual_sha256": "7e1a7080866529b190ffb71216009cb8a887292a6657cc8703ae93aa42aaea68",
+          "expected_sha256": "7e1a7080866529b190ffb71216009cb8a887292a6657cc8703ae93aa42aaea68",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16/model-inputs.jsonl.responses/9e1b1903628f4559afab75de59e5c2dd.body"
+        },
+        {
+          "actual_sha256": "ecab48cded52bb6af55afc008cce7b23cd4664fcf5d0ded4d5889d96132ec3f6",
+          "expected_sha256": "ecab48cded52bb6af55afc008cce7b23cd4664fcf5d0ded4d5889d96132ec3f6",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16/model-inputs.jsonl.responses/f5d19e2ea2374601b6e8c9e9805d8cd0.body"
+        },
+        {
+          "actual_sha256": "878c7ac14633fde5cdbc30c0a92b339a4238c22f8b65f1620625857165eacac5",
+          "expected_sha256": "878c7ac14633fde5cdbc30c0a92b339a4238c22f8b65f1620625857165eacac5",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16/operator-commands.jsonl"
+        },
+        {
+          "actual_sha256": "ef67aff1a7aab63cedbbc073a23d38874b3226b84b4836d7a1a07bb4e2639775",
+          "expected_sha256": "ef67aff1a7aab63cedbbc073a23d38874b3226b84b4836d7a1a07bb4e2639775",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16/provider-usage.json"
+        },
+        {
+          "actual_sha256": "0034f8fa1d3533db516dfe886f0b1731b5ca819998d4cf8b9e0073cba8ac8a58",
+          "expected_sha256": "0034f8fa1d3533db516dfe886f0b1731b5ca819998d4cf8b9e0073cba8ac8a58",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16/report.md"
+        },
+        {
+          "actual_sha256": "c69f4bd25b509c5111fb6bbb50120c8cb99d5af055e562ddb118127d1bb3d090",
+          "expected_sha256": "c69f4bd25b509c5111fb6bbb50120c8cb99d5af055e562ddb118127d1bb3d090",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16/review.json"
+        },
+        {
+          "actual_sha256": "d3f3990ca8ffaca0e9f5201084bd508e3c490e68e2588d964413772df7d2fe50",
+          "expected_sha256": "d3f3990ca8ffaca0e9f5201084bd508e3c490e68e2588d964413772df7d2fe50",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial-16/timeline.jsonl"
+        },
+        {
+          "actual_sha256": "9fb2445ddda814a7c944fdd3bdcf9efea4f0dc208cb04ccd4e2e626e3259b2ec",
+          "expected_sha256": "9fb2445ddda814a7c944fdd3bdcf9efea4f0dc208cb04ccd4e2e626e3259b2ec",
+          "match": true,
+          "path": "output/private-audits/source-diagnostics-v2-runtime-20260909/trial15-to-trial16.diff"
+        }
+      ],
+      "trial17_artifact_hash_checks": [
+        {
+          "actual_sha256": "24f67eea877cacd52c655b81f656a786b10eb4b5d7e93adbf62987366e6837c1",
+          "expected_sha256": "24f67eea877cacd52c655b81f656a786b10eb4b5d7e93adbf62987366e6837c1",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "f0a0ef7e25db43db33a7999e98b0f0392122693e753f76e8ac7d0c86afc4c3ac",
+          "expected_sha256": "f0a0ef7e25db43db33a7999e98b0f0392122693e753f76e8ac7d0c86afc4c3ac",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "e454269c20a125bb9d23e4d9558f88e32a53692b62655184acaa9172f7a87e45",
+          "expected_sha256": "e454269c20a125bb9d23e4d9558f88e32a53692b62655184acaa9172f7a87e45",
+          "match": true,
+          "name": "operator-commands.jsonl"
+        },
+        {
+          "actual_sha256": "f742d3ebc9b54fa593b5989d9acc608f8516ade52fd331724c894893dab516a0",
+          "expected_sha256": "f742d3ebc9b54fa593b5989d9acc608f8516ade52fd331724c894893dab516a0",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "0024d593aec2b16abaeb430c624f35f33e35db9251804e45164a948eb14bdf99",
+          "expected_sha256": "0024d593aec2b16abaeb430c624f35f33e35db9251804e45164a948eb14bdf99",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "trial17_closed": true,
+      "trial17_repriced_matches_settlement_within_1e_12": true,
+      "trial17_settlement_equals_closure": true
+    }
+  },
+  "limitations": [
+    "Captured model-call exports only; not the supplier account ledger or a proof of total historical spend.",
+    "Calls without manifests, direct calls, other directories, other ledgers and missing exports may be absent.",
+    "World model-result audit completeness and capture-to-reservation foreign-key linkage are not certified by this inventory.",
+    "Unknown reservations are conservative recorded occupancy, not actual payment and not guaranteed final maximum if the provider estimate was low.",
+    "No new paid trial is authorized by this artifact; no monthly CNY100 qualification follows from it.",
+    "Trial18 has preparation files only; it is not counted as a paid run."
+  ],
+  "method": {
+    "access": "Only existing JSON/JSONL/Python evidence bytes read. No SQLite, .env, provider clients, production ledger or old runner imported/executed.",
+    "cny_per_usd": 7.2,
+    "deduplication": "Reservation ID is cross-run identity; identical duplicate export rows would count once; conflicting receipts require explicit review and cannot settle earlier unknowns automatically.",
+    "legacy_policy": "Budget-denied zero-token/zero-cost rows are audit events, not paid provider calls or new holds. Non-denial legacy billing would remain separately unqualified.",
+    "numeric_method": "Decimal(str(price_usage_row(row).cny)); sum without row rounding; display at 7 decimals",
+    "pricing_code_head": "9abc018c9d25a17080975b270f7616f921ea162e",
+    "pricing_function": "companion_daemon.usage_metrics.price_usage_row",
+    "pricing_repo": "/Users/geoff/Projects/Girl-Agent-repair-background-budget",
+    "pricing_source_sha256": "e315ef15221eac13ce6ffb005bdb6c91cf028365529e0e4dd6e9ecb8e15ac7e2",
+    "unknown_policy": "Retain max(recorded reservation, recorded usage estimate, repriced partial-usage lower bound). These exports have zero-token unknown rows. Never release by age or treat holds as paid spend."
+  },
+  "runs": [
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "f3dc32f2804e061726df12922637df02d29ebaf8b59224131e576ce9508d1e42",
+          "expected_sha256": "f3dc32f2804e061726df12922637df02d29ebaf8b59224131e576ce9508d1e42",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "a16e503f6aff3371e845c7394265ad11e21736ac4b7556831595e7b987e2b5bc",
+          "expected_sha256": "a16e503f6aff3371e845c7394265ad11e21736ac4b7556831595e7b987e2b5bc",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "5029634549d09e118997e4cc39a240826383a3bf136b340ce7036c6756bd0a57",
+          "expected_sha256": "5029634549d09e118997e4cc39a240826383a3bf136b340ce7036c6756bd0a57",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "7c2cde677cf215f917eefb212f4d765effe643e2c25ed475d1238bc065671e34",
+          "expected_sha256": "7c2cde677cf215f917eefb212f4d765effe643e2c25ed475d1238bc065671e34",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 7,
+        "legacy": 1
+      },
+      "capture_requests_seen": 7,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "d1e22c8e1f04b7f9b31b4ef39a33d298e6f3acca",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "0.2049181999999999959",
+      "declared_max_cost_cny": 0.45,
+      "known_repriced_cny": "0.2049181999999999959",
+      "known_stored_rounded_cny": "0.2050",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.2049182",
+      "manifest_sha256": "29c5822ec566a96ddb6e25c306b54a02d374ffb6b6bec43c175f7718250a254a",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "5029634549d09e118997e4cc39a240826383a3bf136b340ce7036c6756bd0a57",
+      "recorded_utc_max": "2026-09-12T09:41:33.019810+00:00",
+      "recorded_utc_min": "2026-09-12T09:41:16.784622+00:00",
+      "repriced_minus_manifest_settled_cny": "-4.1E-18",
+      "reservation_count": 7,
+      "reservation_status_counts": {
+        "settled": 7
+      },
+      "run": "budget-validation",
+      "stop_reason": "budget_admission_denied",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 8,
+      "usage_status_counts": {
+        "budget_denied": 1,
+        "succeeded": 7
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "0098bbe5a94112a80fffd25b398b3ac8c659a2288968d919e3f2429337b6362c",
+          "expected_sha256": "0098bbe5a94112a80fffd25b398b3ac8c659a2288968d919e3f2429337b6362c",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "8011b1f04ac579f8e993ad0eb7e15c73c705dc7cf8abf57695fbef691f620e62",
+          "expected_sha256": "8011b1f04ac579f8e993ad0eb7e15c73c705dc7cf8abf57695fbef691f620e62",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "fef8565847a314f24b02f779647b3db80b38f4b31bc13b710ef96c5d9c275d3b",
+          "expected_sha256": "fef8565847a314f24b02f779647b3db80b38f4b31bc13b710ef96c5d9c275d3b",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "70eafd4dacde25292f69ca66e7a0a20bc25c4b982d7440aab0e87fc46a5c6e61",
+          "expected_sha256": "70eafd4dacde25292f69ca66e7a0a20bc25c4b982d7440aab0e87fc46a5c6e61",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 17,
+        "legacy": 2
+      },
+      "capture_requests_seen": 17,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "fc52e23b5f21bdba28055f61d65d502765001a2f",
+        "tracked_dirty": true
+      },
+      "conservative_committed_cny": "0.3302925999999999877",
+      "declared_max_cost_cny": 0.6,
+      "known_repriced_cny": "0.3302925999999999877",
+      "known_stored_rounded_cny": "0.3301",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.33029260000000005",
+      "manifest_sha256": "3bf022efca8bad92eb623621f596edf11aae4744c93723ffad85cd1c66636a67",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "fef8565847a314f24b02f779647b3db80b38f4b31bc13b710ef96c5d9c275d3b",
+      "recorded_utc_max": "2026-09-12T09:20:14.097510+00:00",
+      "recorded_utc_min": "2026-09-12T09:19:47.360212+00:00",
+      "repriced_minus_manifest_settled_cny": "-6.23E-17",
+      "reservation_count": 17,
+      "reservation_status_counts": {
+        "settled": 17
+      },
+      "run": "chat-probe",
+      "stop_reason": "budget_admission_denied",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 19,
+      "usage_status_counts": {
+        "budget_denied": 2,
+        "succeeded": 17
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "d3d449c99bb0ffa9cf5323123df2ed9c2aa5d56f439ce7f39e6b3522052b2994",
+          "expected_sha256": "d3d449c99bb0ffa9cf5323123df2ed9c2aa5d56f439ce7f39e6b3522052b2994",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "3f49ff335e74364b7dfef4bb30b5e95b74cffad9e7e3546985e24480d084eff2",
+          "expected_sha256": "3f49ff335e74364b7dfef4bb30b5e95b74cffad9e7e3546985e24480d084eff2",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "e7424e4177ba1ed50674049571b9525e3d148022ebc2677aadd9b2cd1559e18d",
+          "expected_sha256": "e7424e4177ba1ed50674049571b9525e3d148022ebc2677aadd9b2cd1559e18d",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "df30e1aebfa124a266b5b93453a768594af4547b78ab7188ad13cd77128c355a",
+          "expected_sha256": "df30e1aebfa124a266b5b93453a768594af4547b78ab7188ad13cd77128c355a",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 25,
+        "legacy": 2
+      },
+      "capture_requests_seen": 25,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "ed773943c380f49c075d3c617704c7f87676f9f5",
+        "tracked_dirty": true
+      },
+      "conservative_committed_cny": "0.30292070000000001591",
+      "declared_max_cost_cny": 0.6,
+      "known_repriced_cny": "0.30292070000000001591",
+      "known_stored_rounded_cny": "0.3027",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.30292069999999993",
+      "manifest_sha256": "096acec957c5a754b27c3835c157499cba7a17768eb7e3eca6523f126fea0f15",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "e7424e4177ba1ed50674049571b9525e3d148022ebc2677aadd9b2cd1559e18d",
+      "recorded_utc_max": "2026-09-12T10:11:43.577210+00:00",
+      "recorded_utc_min": "2026-09-12T10:10:57.291310+00:00",
+      "repriced_minus_manifest_settled_cny": "8.591E-17",
+      "reservation_count": 25,
+      "reservation_status_counts": {
+        "settled": 25
+      },
+      "run": "chat-probe2",
+      "stop_reason": "budget_admission_denied",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 27,
+      "usage_status_counts": {
+        "budget_denied": 2,
+        "succeeded": 25
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "094bf65f0616b12108d8417b88fcc7c499acef7e5ebb224129f3497fdc47d5e4",
+          "expected_sha256": "094bf65f0616b12108d8417b88fcc7c499acef7e5ebb224129f3497fdc47d5e4",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "660160029ce85d55a6b3536c97c3ddb83b18dc708845763008312984d6e8ab01",
+          "expected_sha256": "660160029ce85d55a6b3536c97c3ddb83b18dc708845763008312984d6e8ab01",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "6e06e628a7cc60408c3520d2759a8569919a07b18138c18d7a44acb9d91ca863",
+          "expected_sha256": "6e06e628a7cc60408c3520d2759a8569919a07b18138c18d7a44acb9d91ca863",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "aed6e10bc7265c2132d37b06d5f3620b5ebe588f4017d230ebd6b4165c2a6796",
+          "expected_sha256": "aed6e10bc7265c2132d37b06d5f3620b5ebe588f4017d230ebd6b4165c2a6796",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 24,
+        "legacy": 2
+      },
+      "capture_requests_seen": 24,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "ed773943c380f49c075d3c617704c7f87676f9f5",
+        "tracked_dirty": true
+      },
+      "conservative_committed_cny": "0.29940569999999999307",
+      "declared_max_cost_cny": 0.6,
+      "known_repriced_cny": "0.29940569999999999307",
+      "known_stored_rounded_cny": "0.2991",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.29940570000000005",
+      "manifest_sha256": "1c1d5bd95fa0ed4ea785be2ba7dada2ac36045e28de29888a61cd47f40bd4987",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "6e06e628a7cc60408c3520d2759a8569919a07b18138c18d7a44acb9d91ca863",
+      "recorded_utc_max": "2026-09-12T10:13:36.918893+00:00",
+      "recorded_utc_min": "2026-09-12T10:12:52.091383+00:00",
+      "repriced_minus_manifest_settled_cny": "-5.693E-17",
+      "reservation_count": 24,
+      "reservation_status_counts": {
+        "settled": 24
+      },
+      "run": "chat-probe3",
+      "stop_reason": "budget_admission_denied",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 26,
+      "usage_status_counts": {
+        "budget_denied": 2,
+        "succeeded": 24
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "95b59ba62026170797e763301de420252edb805b98dc45893ec33829a3f7b882",
+          "expected_sha256": "95b59ba62026170797e763301de420252edb805b98dc45893ec33829a3f7b882",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "3305e3e9a3246ffcd848de014bc118367db4fbf4859308232276489594005f03",
+          "expected_sha256": "3305e3e9a3246ffcd848de014bc118367db4fbf4859308232276489594005f03",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "a7b8e8337217de8564a2165295166f5df37a85085a8c03a0f95d84261d87c750",
+          "expected_sha256": "a7b8e8337217de8564a2165295166f5df37a85085a8c03a0f95d84261d87c750",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "0371ee4f9db906e83594f3a54e6f745fa403d4acecd84231f68c01709ab7329d",
+          "expected_sha256": "0371ee4f9db906e83594f3a54e6f745fa403d4acecd84231f68c01709ab7329d",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 23,
+        "legacy": 1
+      },
+      "capture_requests_seen": 23,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "8a39aa1cacd25468873e1405aef57f6c220f475a",
+        "tracked_dirty": true
+      },
+      "conservative_committed_cny": "0.25614670000000000497",
+      "declared_max_cost_cny": 0.6,
+      "known_repriced_cny": "0.25614670000000000497",
+      "known_stored_rounded_cny": "0.2561",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.25614670000000006",
+      "manifest_sha256": "bc2f76dec979fd7250f8ab60e486d77508c2200dd0796434176afed1026c6037",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "a7b8e8337217de8564a2165295166f5df37a85085a8c03a0f95d84261d87c750",
+      "recorded_utc_max": "2026-09-12T10:52:33.170558+00:00",
+      "recorded_utc_min": "2026-09-12T10:51:46.881130+00:00",
+      "repriced_minus_manifest_settled_cny": "-5.503E-17",
+      "reservation_count": 23,
+      "reservation_status_counts": {
+        "settled": 23
+      },
+      "run": "chat-probe4",
+      "stop_reason": "budget_admission_denied",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 24,
+      "usage_status_counts": {
+        "budget_denied": 1,
+        "succeeded": 23
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "8e7884e435abb28b4f934b61d7fa9b8bbe623ade718d687ea818109983afd5a7",
+          "expected_sha256": "8e7884e435abb28b4f934b61d7fa9b8bbe623ade718d687ea818109983afd5a7",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "e03011aabc69aa5f6df234ae9e531a05904e8a532d9559242e0ac15dc1cccc74",
+          "expected_sha256": "e03011aabc69aa5f6df234ae9e531a05904e8a532d9559242e0ac15dc1cccc74",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "0593c9000be4627898e96dcfc9ce93b6c465ee2f909c4fcc1c0735abbca01669",
+          "expected_sha256": "0593c9000be4627898e96dcfc9ce93b6c465ee2f909c4fcc1c0735abbca01669",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "ef29881a5d7b8343c7a32a885e0cf5e62d295db6c90c1bb767d2248bfe16b9a0",
+          "expected_sha256": "ef29881a5d7b8343c7a32a885e0cf5e62d295db6c90c1bb767d2248bfe16b9a0",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 1,
+        "unknown": 1
+      },
+      "capture_requests_seen": 2,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "cfe8b33c5b9937d7415bb67a6dfe2962c3e033a9",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "0.1029663",
+      "declared_max_cost_cny": 20.0,
+      "known_repriced_cny": "0.0046653",
+      "known_stored_rounded_cny": "0.0047",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.0046653",
+      "manifest_sha256": "6e8a38f4abc503246d483819680b7c738f67a8083618f95424ce24fde1e209b2",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "0593c9000be4627898e96dcfc9ce93b6c465ee2f909c4fcc1c0735abbca01669",
+      "recorded_utc_max": "2026-09-11T18:51:26.022571+00:00",
+      "recorded_utc_min": "2026-09-11T18:51:21.875465+00:00",
+      "repriced_minus_manifest_settled_cny": "0E-7",
+      "reservation_count": 2,
+      "reservation_status_counts": {
+        "billing_unknown": 1,
+        "settled": 1
+      },
+      "run": "probe-two",
+      "stop_reason": "wall_time_limit",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0.098301",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 2,
+      "usage_status_counts": {
+        "failed": 1,
+        "succeeded": 1
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "5788dc18fbedcda394c07f5bd9301cd195f5d95b6685b6046c4a0ac7e7b7d511",
+          "expected_sha256": "5788dc18fbedcda394c07f5bd9301cd195f5d95b6685b6046c4a0ac7e7b7d511",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "24c9faa204ee6bd457878e8f2e060687208a7c31f2737354b32a31b225dafafe",
+          "expected_sha256": "24c9faa204ee6bd457878e8f2e060687208a7c31f2737354b32a31b225dafafe",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "f5e71a7e31c928339b15a879d1fda7fd43dab9db873c9484548b01f35b15f06d",
+          "expected_sha256": "f5e71a7e31c928339b15a879d1fda7fd43dab9db873c9484548b01f35b15f06d",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "5019cdfb250c3e7fe990fb96ab28c9de4e44f947fd8e82115050296b92a34843",
+          "expected_sha256": "5019cdfb250c3e7fe990fb96ab28c9de4e44f947fd8e82115050296b92a34843",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 2
+      },
+      "capture_requests_seen": 2,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "cfe8b33c5b9937d7415bb67a6dfe2962c3e033a9",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "0.014747000000000000",
+      "declared_max_cost_cny": 20.0,
+      "known_repriced_cny": "0.014747000000000000",
+      "known_stored_rounded_cny": "0.0147",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.014747",
+      "manifest_sha256": "f59030e9d25945e1c8f2fe5176e933e83752972fcad73aeeeb8c7ef83a565203",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "f5e71a7e31c928339b15a879d1fda7fd43dab9db873c9484548b01f35b15f06d",
+      "recorded_utc_max": "2026-09-11T18:51:44.851053+00:00",
+      "recorded_utc_min": "2026-09-11T18:51:41.187725+00:00",
+      "repriced_minus_manifest_settled_cny": "0E-18",
+      "reservation_count": 2,
+      "reservation_status_counts": {
+        "settled": 2
+      },
+      "run": "probe-week",
+      "stop_reason": "wall_time_limit",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 2,
+      "usage_status_counts": {
+        "succeeded": 2
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "3612343931baff38f3074441b9c93dca0660eae5ef2a12abec148796669f1999",
+          "expected_sha256": "3612343931baff38f3074441b9c93dca0660eae5ef2a12abec148796669f1999",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "ca2d14da601ffb3647015401bdc8beadbabd651c4cadaea5436a9ae864b97629",
+          "expected_sha256": "ca2d14da601ffb3647015401bdc8beadbabd651c4cadaea5436a9ae864b97629",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "82ad8a38593da539e8ff3d37b8d831d41e355650da3430ffd63d4ad35485d615",
+          "expected_sha256": "82ad8a38593da539e8ff3d37b8d831d41e355650da3430ffd63d4ad35485d615",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "fb65711a9a1468b035ec9d99bc3b101a738586fbd1f42a64a06d6c5348f00eb4",
+          "expected_sha256": "fb65711a9a1468b035ec9d99bc3b101a738586fbd1f42a64a06d6c5348f00eb4",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 6,
+        "legacy": 2
+      },
+      "capture_requests_seen": 6,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "fc52e23b5f21bdba28055f61d65d502765001a2f",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "0.1342562000000000068",
+      "declared_max_cost_cny": 0.3,
+      "known_repriced_cny": "0.1342562000000000068",
+      "known_stored_rounded_cny": "0.1342",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.1342562",
+      "manifest_sha256": "7144fbaeb8dd45927b7c5ccd5b333a6739288b8b4e8cb7c7e3b56909d25425e9",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "82ad8a38593da539e8ff3d37b8d831d41e355650da3430ffd63d4ad35485d615",
+      "recorded_utc_max": "2026-09-12T08:19:33.562310+00:00",
+      "recorded_utc_min": "2026-09-12T08:19:22.052404+00:00",
+      "repriced_minus_manifest_settled_cny": "6.8E-18",
+      "reservation_count": 6,
+      "reservation_status_counts": {
+        "settled": 6
+      },
+      "run": "prod-3turn",
+      "stop_reason": "budget_admission_denied",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 8,
+      "usage_status_counts": {
+        "budget_denied": 2,
+        "succeeded": 6
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "a16022cf06c6cf3ebdb9f959dae9f907240eb782e270e77a68e6a611d8f1fad7",
+          "expected_sha256": "a16022cf06c6cf3ebdb9f959dae9f907240eb782e270e77a68e6a611d8f1fad7",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "4db4e3d5b1241bcfc5e0287ea2d62f5e587b8f69a78c917f6c10489eddc78105",
+          "expected_sha256": "4db4e3d5b1241bcfc5e0287ea2d62f5e587b8f69a78c917f6c10489eddc78105",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "97d413dfc1a9bdfeeca2c3ac8e94c4928c2021e683552362d56fac4908b3bd94",
+          "expected_sha256": "97d413dfc1a9bdfeeca2c3ac8e94c4928c2021e683552362d56fac4908b3bd94",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "d7e8943a5b63f778d82bde3035ea662dc043600e4b472f733aa848de33b0a5d8",
+          "expected_sha256": "d7e8943a5b63f778d82bde3035ea662dc043600e4b472f733aa848de33b0a5d8",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 7
+      },
+      "capture_requests_seen": 7,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "fc52e23b5f21bdba28055f61d65d502765001a2f",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "0.207728800000000003",
+      "declared_max_cost_cny": 0.5,
+      "known_repriced_cny": "0.207728800000000003",
+      "known_stored_rounded_cny": "0.2077",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.2077288",
+      "manifest_sha256": "b3bddc50010eda0660e5032c2b1f6c19f31b0397f55444351701465d68ad3ffe",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "97d413dfc1a9bdfeeca2c3ac8e94c4928c2021e683552362d56fac4908b3bd94",
+      "recorded_utc_max": "2026-09-12T08:17:21.917341+00:00",
+      "recorded_utc_min": "2026-09-12T08:17:05.499701+00:00",
+      "repriced_minus_manifest_settled_cny": "3E-18",
+      "reservation_count": 7,
+      "reservation_status_counts": {
+        "settled": 7
+      },
+      "run": "prod-probe",
+      "stop_reason": "completed",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 7,
+      "usage_status_counts": {
+        "succeeded": 7
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "eac4e0627b2395954e292be272772014b135055c45edf79c6d50bea4777e2a2e",
+          "expected_sha256": "eac4e0627b2395954e292be272772014b135055c45edf79c6d50bea4777e2a2e",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "e039c631e30f8073352093590d5582348c1368e55f94fc3c3f4130fb8c07765b",
+          "expected_sha256": "e039c631e30f8073352093590d5582348c1368e55f94fc3c3f4130fb8c07765b",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "31884c46c5e295ed32395eac32a40ee8898c3cbd3328c298d9c76dc2850ca151",
+          "expected_sha256": "31884c46c5e295ed32395eac32a40ee8898c3cbd3328c298d9c76dc2850ca151",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "7ebe58a33071acff9b557c617a79a2749680f58054097e5fbfa1bbf9ba02eea9",
+          "expected_sha256": "7ebe58a33071acff9b557c617a79a2749680f58054097e5fbfa1bbf9ba02eea9",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 90,
+        "unknown": 2
+      },
+      "capture_requests_seen": 92,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "28e93e38ca27d37638cff7bd40170ea538ec7a8e",
+        "tracked_dirty": true
+      },
+      "conservative_committed_cny": "2.8951892000000000183",
+      "declared_max_cost_cny": 4.0,
+      "known_repriced_cny": "2.1089312000000000183",
+      "known_stored_rounded_cny": "2.1089",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "2.1089312000000002",
+      "manifest_sha256": "283529c4c6778efb60003a77b25e83264f759f20a2d61daf289b9ccad97eecf6",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "31884c46c5e295ed32395eac32a40ee8898c3cbd3328c298d9c76dc2850ca151",
+      "recorded_utc_max": "2026-09-12T11:32:51.136874+00:00",
+      "recorded_utc_min": "2026-09-12T11:27:48.676784+00:00",
+      "repriced_minus_manifest_settled_cny": "-1.817E-16",
+      "reservation_count": 92,
+      "reservation_status_counts": {
+        "billing_unknown": 2,
+        "settled": 90
+      },
+      "run": "r1r2-24",
+      "stop_reason": "unprocessed_due_before_end",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0.786258",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 92,
+      "usage_status_counts": {
+        "failed": 2,
+        "succeeded": 90
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "6dfb6b26bfa5d2f49cd05eb92a4ad05c1585dbb0ed99692f719b5d50cf4f3918",
+          "expected_sha256": "6dfb6b26bfa5d2f49cd05eb92a4ad05c1585dbb0ed99692f719b5d50cf4f3918",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "56aaea41f24eac4d29176abecfac0c3cb76c34a259aa2ce054649e48b41859ae",
+          "expected_sha256": "56aaea41f24eac4d29176abecfac0c3cb76c34a259aa2ce054649e48b41859ae",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "3f39649bae65c8f2da3ece00ce789b2437091af8c3e70306929c414f513da47d",
+          "expected_sha256": "3f39649bae65c8f2da3ece00ce789b2437091af8c3e70306929c414f513da47d",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "b42caec9b634982cb15314fc90468ba35cc6f9a4dc1d1f321f710023a1e68003",
+          "expected_sha256": "b42caec9b634982cb15314fc90468ba35cc6f9a4dc1d1f321f710023a1e68003",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 81,
+        "unknown": 2
+      },
+      "capture_requests_seen": 83,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "de22ebf4e4894911866fae1b0517cade2c5b0640",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "2.44024890000000003041",
+      "declared_max_cost_cny": 4.0,
+      "known_repriced_cny": "1.63886790000000003041",
+      "known_stored_rounded_cny": "1.6379",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "1.6388678999999997",
+      "manifest_sha256": "9c3e2496c88d0363b677830081041aa2c21de3585a4010983b32ddac03d9a466",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "3f39649bae65c8f2da3ece00ce789b2437091af8c3e70306929c414f513da47d",
+      "recorded_utc_max": "2026-09-12T11:40:54.911252+00:00",
+      "recorded_utc_min": "2026-09-12T11:36:37.347909+00:00",
+      "repriced_minus_manifest_settled_cny": "3.3041E-16",
+      "reservation_count": 83,
+      "reservation_status_counts": {
+        "billing_unknown": 2,
+        "settled": 81
+      },
+      "run": "r1r2-24b",
+      "stop_reason": "unprocessed_due_before_end",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0.801381",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 83,
+      "usage_status_counts": {
+        "failed": 2,
+        "succeeded": 81
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "6780778de45e4a67382f1c5e0a69ff70f032dd34e9dc18187d9f940af1c299d7",
+          "expected_sha256": "6780778de45e4a67382f1c5e0a69ff70f032dd34e9dc18187d9f940af1c299d7",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "4e79a2bbde86c73997f5c2bfcd61ff7b12e7cfde5057cfe37f776a15f2edcbaa",
+          "expected_sha256": "4e79a2bbde86c73997f5c2bfcd61ff7b12e7cfde5057cfe37f776a15f2edcbaa",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "23f5e25db451e2f348ea4bc79c9fbdd895a93b675b2e47bf668a49b92963e3bc",
+          "expected_sha256": "23f5e25db451e2f348ea4bc79c9fbdd895a93b675b2e47bf668a49b92963e3bc",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "a2fc6f16b477d44eec421a5d14c433a43230fc1bff74c740280824d38e392727",
+          "expected_sha256": "a2fc6f16b477d44eec421a5d14c433a43230fc1bff74c740280824d38e392727",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 90
+      },
+      "capture_requests_seen": 90,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "4cc5584e1a8638fb14866aaaacbf9d90370b71d4",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "1.68354210000000000671",
+      "declared_max_cost_cny": 5.0,
+      "known_repriced_cny": "1.68354210000000000671",
+      "known_stored_rounded_cny": "1.6826",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "1.6835421000000004",
+      "manifest_sha256": "fde4ce0995305659fc551bd6c9c6d679f81e23d0725b753a869ba6be353ab9ba",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "23f5e25db451e2f348ea4bc79c9fbdd895a93b675b2e47bf668a49b92963e3bc",
+      "recorded_utc_max": "2026-09-12T12:17:07.647419+00:00",
+      "recorded_utc_min": "2026-09-12T12:12:43.224065+00:00",
+      "repriced_minus_manifest_settled_cny": "-3.9329E-16",
+      "reservation_count": 90,
+      "reservation_status_counts": {
+        "settled": 90
+      },
+      "run": "r1r2-hedge",
+      "stop_reason": "unprocessed_due_before_end",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 90,
+      "usage_status_counts": {
+        "succeeded": 90
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "0a937783f86f393561c5503f04edee645c01a594ede8a0b600f505272d7e27a0",
+          "expected_sha256": "0a937783f86f393561c5503f04edee645c01a594ede8a0b600f505272d7e27a0",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "37971de0fd45be6c3b6c368c6af7d2b4ac41fe2693a179d8ba3af86b9580bc57",
+          "expected_sha256": "37971de0fd45be6c3b6c368c6af7d2b4ac41fe2693a179d8ba3af86b9580bc57",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "9620ca91ce244c393a392a35adb4ed1931e362d30f641a8d395f45aa9088529f",
+          "expected_sha256": "9620ca91ce244c393a392a35adb4ed1931e362d30f641a8d395f45aa9088529f",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "3bea7867b8789c39fa3ab11c875cb825d55e01d6beec37379b398a38a0c8ab62",
+          "expected_sha256": "3bea7867b8789c39fa3ab11c875cb825d55e01d6beec37379b398a38a0c8ab62",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 66
+      },
+      "capture_requests_seen": 66,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "5a12481d7107d5879cb1c9e5d532be4574063535",
+        "tracked_dirty": true
+      },
+      "conservative_committed_cny": "2.1002086000000000019",
+      "declared_max_cost_cny": 3.0,
+      "known_repriced_cny": "2.1002086000000000019",
+      "known_stored_rounded_cny": "2.1001",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "2.1002086000000006",
+      "manifest_sha256": "48b8054f96ae8ced0dac9347615c96144c47cc205ba6383809687bfca775c12c",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "9620ca91ce244c393a392a35adb4ed1931e362d30f641a8d395f45aa9088529f",
+      "recorded_utc_max": "2026-09-12T10:36:49.125757+00:00",
+      "recorded_utc_min": "2026-09-12T10:32:31.470846+00:00",
+      "repriced_minus_manifest_settled_cny": "-5.981E-16",
+      "reservation_count": 66,
+      "reservation_status_counts": {
+        "settled": 66
+      },
+      "run": "r3-proactive",
+      "stop_reason": "unprocessed_due_before_end",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 66,
+      "usage_status_counts": {
+        "succeeded": 66
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "4d0cd531a9895d733d3193491528764acc906f63bab440af382ad121a38763dc",
+          "expected_sha256": "4d0cd531a9895d733d3193491528764acc906f63bab440af382ad121a38763dc",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "29370fb55ca91d277b03626319d8d1fcdb57dc1443845056cc10b66f1d7d9074",
+          "expected_sha256": "29370fb55ca91d277b03626319d8d1fcdb57dc1443845056cc10b66f1d7d9074",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "61e55160e127b63b80b219c573d5a70bb19bae1e33e777aef6e03a3cb552c575",
+          "expected_sha256": "61e55160e127b63b80b219c573d5a70bb19bae1e33e777aef6e03a3cb552c575",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "b1ac76e6e48d9c920ca1a564f7403df3fd587afd696cb39f82399faab1512e32",
+          "expected_sha256": "b1ac76e6e48d9c920ca1a564f7403df3fd587afd696cb39f82399faab1512e32",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 82
+      },
+      "capture_requests_seen": 82,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "28e93e38ca27d37638cff7bd40170ea538ec7a8e",
+        "tracked_dirty": true
+      },
+      "conservative_committed_cny": "2.3570784000000000077",
+      "declared_max_cost_cny": 3.0,
+      "known_repriced_cny": "2.3570784000000000077",
+      "known_stored_rounded_cny": "2.3570",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "2.357078400000001",
+      "manifest_sha256": "ea706f38e6b469544daf1d2011fe8b48d0a821a215d2754c3594789cafb925bd",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "61e55160e127b63b80b219c573d5a70bb19bae1e33e777aef6e03a3cb552c575",
+      "recorded_utc_max": "2026-09-12T11:25:13.896418+00:00",
+      "recorded_utc_min": "2026-09-12T11:19:05.529729+00:00",
+      "repriced_minus_manifest_settled_cny": "-9.923E-16",
+      "reservation_count": 82,
+      "reservation_status_counts": {
+        "settled": 82
+      },
+      "run": "r3-proactive-2",
+      "stop_reason": "unprocessed_due_before_end",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 82,
+      "usage_status_counts": {
+        "succeeded": 82
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "ffd0655872df95560f570497a7080b87beda394d69f07c6518f16baea52af9f5",
+          "expected_sha256": "ffd0655872df95560f570497a7080b87beda394d69f07c6518f16baea52af9f5",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "2d1ad238b524bf4016a828e2245f173e6f31b6428db25a38a03a0b5f4079fb6c",
+          "expected_sha256": "2d1ad238b524bf4016a828e2245f173e6f31b6428db25a38a03a0b5f4079fb6c",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "e634448f3573e7230aa69e42218b21d929a2e65338c5e0379930081c20d39a1f",
+          "expected_sha256": "e634448f3573e7230aa69e42218b21d929a2e65338c5e0379930081c20d39a1f",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "1d576670f88962a6421bdb48e458b18e72ea3678e745a4ca67d1ee9e9cebceb3",
+          "expected_sha256": "1d576670f88962a6421bdb48e458b18e72ea3678e745a4ca67d1ee9e9cebceb3",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 61,
+        "unknown": 4
+      },
+      "capture_requests_seen": 65,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "bf9a28f9844e49adb853f11e425470851f58f85b",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "2.2519510999999999739",
+      "declared_max_cost_cny": 3.0,
+      "known_repriced_cny": "1.2749050999999999739",
+      "known_stored_rounded_cny": "1.2752",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "1.2749051",
+      "manifest_sha256": "3f93f36d14348a59597523438c7d853cc0105560aa6e4906261b4a439700cf54",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "e634448f3573e7230aa69e42218b21d929a2e65338c5e0379930081c20d39a1f",
+      "recorded_utc_max": "2026-09-11T16:46:54.141082+00:00",
+      "recorded_utc_min": "2026-09-11T16:42:51.405793+00:00",
+      "repriced_minus_manifest_settled_cny": "-2.61E-17",
+      "reservation_count": 65,
+      "reservation_status_counts": {
+        "billing_unknown": 4,
+        "settled": 61
+      },
+      "run": "real-life-audit-5",
+      "stop_reason": "unprocessed_due_before_end",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0.977046",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 65,
+      "usage_status_counts": {
+        "failed": 5,
+        "succeeded": 60
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "135f7a4bf7a2a79be39e445d762ed4cb1959493e480735dfd2e21df8fda27083",
+          "expected_sha256": "135f7a4bf7a2a79be39e445d762ed4cb1959493e480735dfd2e21df8fda27083",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "2d7b498f4e117cb9e538d52b3fe6548addfc63c7a21fc6089af73c2ee11559e8",
+          "expected_sha256": "2d7b498f4e117cb9e538d52b3fe6548addfc63c7a21fc6089af73c2ee11559e8",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "002309ef280726ea0b21f76ff774d6011288626900fd5352991e24ec9883d7cd",
+          "expected_sha256": "002309ef280726ea0b21f76ff774d6011288626900fd5352991e24ec9883d7cd",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "379498900cb575bf98191a27b2aec80d247bf1693b75fadebbbffc48f267ce86",
+          "expected_sha256": "379498900cb575bf98191a27b2aec80d247bf1693b75fadebbbffc48f267ce86",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 65,
+        "unknown": 3
+      },
+      "capture_requests_seen": 68,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "9d113fa11e9218e99ba3e066890b2a5189a708f3",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "2.3831880999999999706",
+      "declared_max_cost_cny": 3.0,
+      "known_repriced_cny": "1.3002240999999999706",
+      "known_stored_rounded_cny": "1.3005",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "1.3002240999999994",
+      "manifest_sha256": "e51920feb6421334c39175058fc02faed7329f182bd2377616f26f77ec3ff33f",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "002309ef280726ea0b21f76ff774d6011288626900fd5352991e24ec9883d7cd",
+      "recorded_utc_max": "2026-09-11T16:54:49.960738+00:00",
+      "recorded_utc_min": "2026-09-11T16:50:25.892802+00:00",
+      "repriced_minus_manifest_settled_cny": "5.706E-16",
+      "reservation_count": 68,
+      "reservation_status_counts": {
+        "billing_unknown": 3,
+        "settled": 65
+      },
+      "run": "real-life-audit-6",
+      "stop_reason": "unprocessed_due_before_end",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "1.082964",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 68,
+      "usage_status_counts": {
+        "failed": 3,
+        "succeeded": 65
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "9c668c26b5620ead840b5194547b5855c240858e9f21d9b1d62fda3bf939e4de",
+          "expected_sha256": "9c668c26b5620ead840b5194547b5855c240858e9f21d9b1d62fda3bf939e4de",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "4051519b16c7ac4b59549cde3d50e7cba1568b2ee758eaa28305594ead4e8702",
+          "expected_sha256": "4051519b16c7ac4b59549cde3d50e7cba1568b2ee758eaa28305594ead4e8702",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "0fd17bfc4447d7d5b379eac6f5cbd0cd81947e559b3b0ff996021a8d2bc8fe96",
+          "expected_sha256": "0fd17bfc4447d7d5b379eac6f5cbd0cd81947e559b3b0ff996021a8d2bc8fe96",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "c792fbb49331ff48e3789c5fe997706e5abe33468f922df2a42c52653eff2973",
+          "expected_sha256": "c792fbb49331ff48e3789c5fe997706e5abe33468f922df2a42c52653eff2973",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 43,
+        "legacy": 1,
+        "unknown": 6
+      },
+      "capture_requests_seen": 49,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "be8f9946fe4302b0c5f5c46727648bf5f62b6231",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "2.5632578999999999902",
+      "declared_max_cost_cny": 3.0,
+      "known_repriced_cny": "0.7805048999999999902",
+      "known_stored_rounded_cny": "0.7804",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.7805049",
+      "manifest_sha256": "231879c4655e50a282aa2f05511b751f7561bd3b0f2e5b2e300dba45614599cd",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "0fd17bfc4447d7d5b379eac6f5cbd0cd81947e559b3b0ff996021a8d2bc8fe96",
+      "recorded_utc_max": "2026-09-11T16:58:47.006561+00:00",
+      "recorded_utc_min": "2026-09-11T16:55:42.431827+00:00",
+      "repriced_minus_manifest_settled_cny": "-9.8E-18",
+      "reservation_count": 49,
+      "reservation_status_counts": {
+        "billing_unknown": 6,
+        "settled": 43
+      },
+      "run": "real-life-audit-7",
+      "stop_reason": "budget_admission_denied",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "1.782753",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 50,
+      "usage_status_counts": {
+        "budget_denied": 1,
+        "failed": 6,
+        "succeeded": 43
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "82187a71875f1bc54be35bc23e86000ab67e62c14855ec9d8df6fe4597be96e0",
+          "expected_sha256": "82187a71875f1bc54be35bc23e86000ab67e62c14855ec9d8df6fe4597be96e0",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "f64d65e6c36f858127f51abf03a58ac2073e454d303c927b4aef8f7fbb7659eb",
+          "expected_sha256": "f64d65e6c36f858127f51abf03a58ac2073e454d303c927b4aef8f7fbb7659eb",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "62beced06fa044f529b7b68d114c322307fbcf8fd247a9aa649ad17ca20b6948",
+          "expected_sha256": "62beced06fa044f529b7b68d114c322307fbcf8fd247a9aa649ad17ca20b6948",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "dbc87caa79cc978e164609ee946a3461934d7d89fd16a057c0681b19b1743b05",
+          "expected_sha256": "dbc87caa79cc978e164609ee946a3461934d7d89fd16a057c0681b19b1743b05",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 48,
+        "unknown": 1
+      },
+      "capture_requests_seen": 49,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "cfe8b33c5b9937d7415bb67a6dfe2962c3e033a9",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "1.5965430999999999908",
+      "declared_max_cost_cny": 8.0,
+      "known_repriced_cny": "1.1124270999999999908",
+      "known_stored_rounded_cny": "1.1124",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "1.1124271000000001",
+      "manifest_sha256": "81f88e3be31da7f30701a9eca9e4b8557806055f21bf1d09a89b69d63ab63638",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "62beced06fa044f529b7b68d114c322307fbcf8fd247a9aa649ad17ca20b6948",
+      "recorded_utc_max": "2026-09-11T18:49:04.374925+00:00",
+      "recorded_utc_min": "2026-09-11T18:45:55.265964+00:00",
+      "repriced_minus_manifest_settled_cny": "-1.092E-16",
+      "reservation_count": 49,
+      "reservation_status_counts": {
+        "billing_unknown": 1,
+        "settled": 48
+      },
+      "run": "run11",
+      "stop_reason": "unprocessed_due_before_end",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0.484116",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 49,
+      "usage_status_counts": {
+        "failed": 1,
+        "succeeded": 48
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "10b20e96187f0b2dd05022396d9e27014f817899f8ec490f5b1d5136f6dbc027",
+          "expected_sha256": "10b20e96187f0b2dd05022396d9e27014f817899f8ec490f5b1d5136f6dbc027",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "09eb9795045a21b883d4db87b0d0b78bb0163524f245ead785c1c7e4ff911af3",
+          "expected_sha256": "09eb9795045a21b883d4db87b0d0b78bb0163524f245ead785c1c7e4ff911af3",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "ca6e6e76b798b4a1a0fd10cdd3015e6b35300c0da8f655804e7252959b08edd2",
+          "expected_sha256": "ca6e6e76b798b4a1a0fd10cdd3015e6b35300c0da8f655804e7252959b08edd2",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "b3dc6ca6e39542900946765af169b5058e2d10fbe45b75fca2eb8c974329cc32",
+          "expected_sha256": "b3dc6ca6e39542900946765af169b5058e2d10fbe45b75fca2eb8c974329cc32",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 47,
+        "legacy": 1,
+        "unknown": 3
+      },
+      "capture_requests_seen": 50,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "f0ff0adeaa1d76d2cf7ed8f10e85cc729b593407",
+        "tracked_dirty": true
+      },
+      "conservative_committed_cny": "3.5354836000000000098",
+      "declared_max_cost_cny": 4.0,
+      "known_repriced_cny": "2.1249526000000000098",
+      "known_stored_rounded_cny": "2.1247",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "2.1249526",
+      "manifest_sha256": "dd5b9856c3a37b4da5a90f8073c1150a3087ce1be6847d7bc3ab32220c3ee902",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "ca6e6e76b798b4a1a0fd10cdd3015e6b35300c0da8f655804e7252959b08edd2",
+      "recorded_utc_max": "2026-09-12T06:28:16.636074+00:00",
+      "recorded_utc_min": "2026-09-12T06:25:25.046869+00:00",
+      "repriced_minus_manifest_settled_cny": "9.8E-18",
+      "reservation_count": 50,
+      "reservation_status_counts": {
+        "billing_unknown": 3,
+        "settled": 47
+      },
+      "run": "takeover-confirm",
+      "stop_reason": "budget_admission_denied",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "1.410531",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 51,
+      "usage_status_counts": {
+        "budget_denied": 1,
+        "failed": 3,
+        "succeeded": 47
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "1c2519088326d5f51a5f5ba75c7222b99dda3cb8e8c29c61493cc39410ecafa7",
+          "expected_sha256": "1c2519088326d5f51a5f5ba75c7222b99dda3cb8e8c29c61493cc39410ecafa7",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "bac87899d12cc8a0865f2892f3eb9602558263b8ca32afff5adbb9b7c94c031d",
+          "expected_sha256": "bac87899d12cc8a0865f2892f3eb9602558263b8ca32afff5adbb9b7c94c031d",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "014fccb57ae692d03685ce866d64849a3a9d1ce39b13ed48b35be66df2cd98d1",
+          "expected_sha256": "014fccb57ae692d03685ce866d64849a3a9d1ce39b13ed48b35be66df2cd98d1",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "f19683b11c6216350ba08065176c6dea1510385433827ff92faac185b7cc50b6",
+          "expected_sha256": "f19683b11c6216350ba08065176c6dea1510385433827ff92faac185b7cc50b6",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 11
+      },
+      "capture_requests_seen": 11,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "f0ff0adeaa1d76d2cf7ed8f10e85cc729b593407",
+        "tracked_dirty": true
+      },
+      "conservative_committed_cny": "0.354102199999999997",
+      "declared_max_cost_cny": 3.0,
+      "known_repriced_cny": "0.354102199999999997",
+      "known_stored_rounded_cny": "0.3540",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.35410220000000003",
+      "manifest_sha256": "ade5a4a7037dd72eac6f480a1bab3e8e5397a3cf42459666fd9c50476588dcfd",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "014fccb57ae692d03685ce866d64849a3a9d1ce39b13ed48b35be66df2cd98d1",
+      "recorded_utc_max": "2026-09-12T06:21:22.879311+00:00",
+      "recorded_utc_min": "2026-09-12T06:20:55.404336+00:00",
+      "repriced_minus_manifest_settled_cny": "-3.3E-17",
+      "reservation_count": 11,
+      "reservation_status_counts": {
+        "settled": 11
+      },
+      "run": "takeover-debug",
+      "stop_reason": "technical_failure:ValueError",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 11,
+      "usage_status_counts": {
+        "succeeded": 11
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "37d75468f7fe5827afecdfc364cd2b9bcd433e3794c27a04fe9983209a86bd6a",
+          "expected_sha256": "37d75468f7fe5827afecdfc364cd2b9bcd433e3794c27a04fe9983209a86bd6a",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "37178239f9a3dab754bd4d700071091f258d4dacf69df21d681cada19f986c21",
+          "expected_sha256": "37178239f9a3dab754bd4d700071091f258d4dacf69df21d681cada19f986c21",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "db3064d38a333833cad724260b54cf26201824dcf951abcc359d59fb36eb759f",
+          "expected_sha256": "db3064d38a333833cad724260b54cf26201824dcf951abcc359d59fb36eb759f",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "34ca1c14039ce5f159c9180f5d9fbd1c7a896938862da76ef9f753b1217dbd49",
+          "expected_sha256": "34ca1c14039ce5f159c9180f5d9fbd1c7a896938862da76ef9f753b1217dbd49",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 35,
+        "unknown": 1
+      },
+      "capture_requests_seen": 36,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "3ac265677f51795042c5c983186996f09462a610",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "1.7962204000000000062",
+      "declared_max_cost_cny": 5.0,
+      "known_repriced_cny": "1.6213174000000000062",
+      "known_stored_rounded_cny": "1.6213",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "1.6213174",
+      "manifest_sha256": "00144320c324c3f241615d1ff8d7946847181cc486ad6a587d7c3ba193b0ca83",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "db3064d38a333833cad724260b54cf26201824dcf951abcc359d59fb36eb759f",
+      "recorded_utc_max": "2026-09-12T06:51:46.152766+00:00",
+      "recorded_utc_min": "2026-09-12T06:49:48.127061+00:00",
+      "repriced_minus_manifest_settled_cny": "6.2E-18",
+      "reservation_count": 36,
+      "reservation_status_counts": {
+        "billing_unknown": 1,
+        "settled": 35
+      },
+      "run": "takeover-final3h",
+      "stop_reason": "unprocessed_due_before_end",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0.174903",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 36,
+      "usage_status_counts": {
+        "failed": 1,
+        "succeeded": 35
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "c85df50fa944fd7e5f646efb8bea9078fa25d2d1a366741b042a21e21f27b438",
+          "expected_sha256": "c85df50fa944fd7e5f646efb8bea9078fa25d2d1a366741b042a21e21f27b438",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "d94290d1c98a9467fed3e84241c894e7c8e886a4f58be4840519d20ebec7f0bc",
+          "expected_sha256": "d94290d1c98a9467fed3e84241c894e7c8e886a4f58be4840519d20ebec7f0bc",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "aff364adf5b22a3b536061f615810b468d0157488d3b52ccc663ca58e557b4a0",
+          "expected_sha256": "aff364adf5b22a3b536061f615810b468d0157488d3b52ccc663ca58e557b4a0",
+          "match": true,
+          "name": "operator-commands.jsonl"
+        },
+        {
+          "actual_sha256": "89757394863937f1dabc4ccb24803b1a000e59aca42dba55cef2abc87a170047",
+          "expected_sha256": "89757394863937f1dabc4ccb24803b1a000e59aca42dba55cef2abc87a170047",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "7a514e2e531e649d119dbcc823fc24b23aa56eac434d6ff428536ebb78eabe55",
+          "expected_sha256": "7a514e2e531e649d119dbcc823fc24b23aa56eac434d6ff428536ebb78eabe55",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 10,
+        "unknown": 2
+      },
+      "capture_requests_seen": 12,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "3ac265677f51795042c5c983186996f09462a610",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "0.908833800000000000",
+      "declared_max_cost_cny": 3.0,
+      "known_repriced_cny": "0.276904800000000000",
+      "known_stored_rounded_cny": "0.2770",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.27690479999999995",
+      "manifest_sha256": "e2e9bc696809ffc60067c1ea09f260f15f97992552c8b3f3741aa8da0099424e",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "89757394863937f1dabc4ccb24803b1a000e59aca42dba55cef2abc87a170047",
+      "recorded_utc_max": "2026-09-12T07:01:01.259157+00:00",
+      "recorded_utc_min": "2026-09-12T06:57:55.821297+00:00",
+      "repriced_minus_manifest_settled_cny": "5.0E-17",
+      "reservation_count": 12,
+      "reservation_status_counts": {
+        "billing_unknown": 2,
+        "settled": 10
+      },
+      "run": "takeover-live-chat",
+      "stop_reason": "operator_stopped",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0.631929",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 12,
+      "usage_status_counts": {
+        "failed": 2,
+        "succeeded": 10
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "d9fad85a1a537e5631dda62440c69b03630a91bf024bfede3a54db0e76ddb90e",
+          "expected_sha256": "d9fad85a1a537e5631dda62440c69b03630a91bf024bfede3a54db0e76ddb90e",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "baa8442fbdbfba06e1a2c195f90ec3990be3e405b425a9f322177578625b9ffb",
+          "expected_sha256": "baa8442fbdbfba06e1a2c195f90ec3990be3e405b425a9f322177578625b9ffb",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "92a84f9717a1501fb4a8d60f9f03f794fd6e7ead15698379d408f4a47354343e",
+          "expected_sha256": "92a84f9717a1501fb4a8d60f9f03f794fd6e7ead15698379d408f4a47354343e",
+          "match": true,
+          "name": "operator-commands.jsonl"
+        },
+        {
+          "actual_sha256": "c3011030eb8caa7bb15a52f9bc5a69b61f028c5078d7d36a016f289bca7bce05",
+          "expected_sha256": "c3011030eb8caa7bb15a52f9bc5a69b61f028c5078d7d36a016f289bca7bce05",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "8c3e6968aa93cdcd749078112fca0c8f568651ddedbddacd106c09c02fc9bc23",
+          "expected_sha256": "8c3e6968aa93cdcd749078112fca0c8f568651ddedbddacd106c09c02fc9bc23",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 10,
+        "unknown": 2
+      },
+      "capture_requests_seen": 12,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "3ac265677f51795042c5c983186996f09462a610",
+        "tracked_dirty": true
+      },
+      "conservative_committed_cny": "1.1370585999999999957",
+      "declared_max_cost_cny": 3.0,
+      "known_repriced_cny": "0.2325075999999999957",
+      "known_stored_rounded_cny": "0.2327",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.23250759999999998",
+      "manifest_sha256": "ebd0c2b38cc0ca342cd92d42eae587669307236f620278ca7e785f5b8029eb3f",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "c3011030eb8caa7bb15a52f9bc5a69b61f028c5078d7d36a016f289bca7bce05",
+      "recorded_utc_max": "2026-09-12T07:07:59.980660+00:00",
+      "recorded_utc_min": "2026-09-12T07:04:51.435797+00:00",
+      "repriced_minus_manifest_settled_cny": "1.57E-17",
+      "reservation_count": 12,
+      "reservation_status_counts": {
+        "billing_unknown": 2,
+        "settled": 10
+      },
+      "run": "takeover-live-chat2",
+      "stop_reason": "operator_stopped",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0.904551",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 12,
+      "usage_status_counts": {
+        "failed": 2,
+        "succeeded": 10
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "f4b22078a4a2a11422e05858c8a7511c5f872fc02c2bb045817645154074f859",
+          "expected_sha256": "f4b22078a4a2a11422e05858c8a7511c5f872fc02c2bb045817645154074f859",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "a5e2e4f263b18b39bb1e96f4a389c2deed86b2d927e48d6b7d64b0662358f60c",
+          "expected_sha256": "a5e2e4f263b18b39bb1e96f4a389c2deed86b2d927e48d6b7d64b0662358f60c",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "3ca6ae232a0efa2dc69ef8b96574d4f8002652db10ebe6404468e2b48787aae7",
+          "expected_sha256": "3ca6ae232a0efa2dc69ef8b96574d4f8002652db10ebe6404468e2b48787aae7",
+          "match": true,
+          "name": "operator-commands.jsonl"
+        },
+        {
+          "actual_sha256": "e7ee56c0c005b34f94aa050d9d4d80eea29c1cf300f7554f5c57efcc828ffcd9",
+          "expected_sha256": "e7ee56c0c005b34f94aa050d9d4d80eea29c1cf300f7554f5c57efcc828ffcd9",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "d895f33ecaef4c2e312e01a28cad3aefeef3c20ec7490c51304f4f350ccb08d7",
+          "expected_sha256": "d895f33ecaef4c2e312e01a28cad3aefeef3c20ec7490c51304f4f350ccb08d7",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 20
+      },
+      "capture_requests_seen": 20,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "3ac265677f51795042c5c983186996f09462a610",
+        "tracked_dirty": true
+      },
+      "conservative_committed_cny": "0.6762240000000000039",
+      "declared_max_cost_cny": 3.0,
+      "known_repriced_cny": "0.6762240000000000039",
+      "known_stored_rounded_cny": "0.6764",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.6762239999999999",
+      "manifest_sha256": "05217ce02e648c6d1db94fe05c72395e051abe2a3b798a873ca3d0dd39f36cb9",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "e7ee56c0c005b34f94aa050d9d4d80eea29c1cf300f7554f5c57efcc828ffcd9",
+      "recorded_utc_max": "2026-09-12T07:13:32.758705+00:00",
+      "recorded_utc_min": "2026-09-12T07:10:55.965047+00:00",
+      "repriced_minus_manifest_settled_cny": "1.039E-16",
+      "reservation_count": 20,
+      "reservation_status_counts": {
+        "settled": 20
+      },
+      "run": "takeover-live-chat3",
+      "stop_reason": "technical_failure:ValueError",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 20,
+      "usage_status_counts": {
+        "succeeded": 20
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "1186b0da115092a9a53b7a8ffc3004d4fd02e873e5c5f973dbbd3c4766d3964a",
+          "expected_sha256": "1186b0da115092a9a53b7a8ffc3004d4fd02e873e5c5f973dbbd3c4766d3964a",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "aec0a5fc66f4fedbe2b4c7fbc8dd76f08ae088600d16619fc493d9bbb7efd565",
+          "expected_sha256": "aec0a5fc66f4fedbe2b4c7fbc8dd76f08ae088600d16619fc493d9bbb7efd565",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "452cc372c11988e1d9ab760cb023bf5a8952d0249cf8bd52a0d7af10fa35e2b8",
+          "expected_sha256": "452cc372c11988e1d9ab760cb023bf5a8952d0249cf8bd52a0d7af10fa35e2b8",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "7887a9d7cffef7e6812feef5bde0e52835ab9ed8fb65aed8982d2a1836ad2ce3",
+          "expected_sha256": "7887a9d7cffef7e6812feef5bde0e52835ab9ed8fb65aed8982d2a1836ad2ce3",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 34,
+        "legacy": 2
+      },
+      "capture_requests_seen": 34,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "fc52e23b5f21bdba28055f61d65d502765001a2f",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "1.6679806000000000254",
+      "declared_max_cost_cny": 2.0,
+      "known_repriced_cny": "1.6679806000000000254",
+      "known_stored_rounded_cny": "1.6681",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "1.6679805999999997",
+      "manifest_sha256": "b0555e6c6a166cc5b811db73fda7086a6d3b6a2b8def7b8bed736daa8967770b",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "452cc372c11988e1d9ab760cb023bf5a8952d0249cf8bd52a0d7af10fa35e2b8",
+      "recorded_utc_max": "2026-09-12T07:25:05.529558+00:00",
+      "recorded_utc_min": "2026-09-12T07:22:55.985732+00:00",
+      "repriced_minus_manifest_settled_cny": "3.254E-16",
+      "reservation_count": 34,
+      "reservation_status_counts": {
+        "settled": 34
+      },
+      "run": "takeover-proactive",
+      "stop_reason": "budget_admission_denied",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 36,
+      "usage_status_counts": {
+        "budget_denied": 2,
+        "succeeded": 34
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "3e54b40d4b7e080927d40b42ed0dde3517da5f697426df327e3cc9de2fb2f68e",
+          "expected_sha256": "3e54b40d4b7e080927d40b42ed0dde3517da5f697426df327e3cc9de2fb2f68e",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "65ecaa39c7935d85e0b644a8345cdc29d53c36802e642655bdac53a1d9954582",
+          "expected_sha256": "65ecaa39c7935d85e0b644a8345cdc29d53c36802e642655bdac53a1d9954582",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "610afd82e3a2647ede2da82bbd74a75dc3bd27f0c863fe03e010a1e9411bc1fd",
+          "expected_sha256": "610afd82e3a2647ede2da82bbd74a75dc3bd27f0c863fe03e010a1e9411bc1fd",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "6fc91d88d3a0b795c0d05d591e6540e29548e614827c1b96ce3aadddb36c24bd",
+          "expected_sha256": "6fc91d88d3a0b795c0d05d591e6540e29548e614827c1b96ce3aadddb36c24bd",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 38,
+        "legacy": 1,
+        "unknown": 1
+      },
+      "capture_requests_seen": 39,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "f0ff0adeaa1d76d2cf7ed8f10e85cc729b593407",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "1.2402763000000000051",
+      "declared_max_cost_cny": 1.5,
+      "known_repriced_cny": "0.7828963000000000051",
+      "known_stored_rounded_cny": "0.7829",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.7828963",
+      "manifest_sha256": "3ff3e3a5f04f234b9e7b51cd74a26c8e8cc3bae1627d051418f747a3d874092c",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "610afd82e3a2647ede2da82bbd74a75dc3bd27f0c863fe03e010a1e9411bc1fd",
+      "recorded_utc_max": "2026-09-12T05:50:25.570041+00:00",
+      "recorded_utc_min": "2026-09-12T05:48:06.762416+00:00",
+      "repriced_minus_manifest_settled_cny": "5.1E-18",
+      "reservation_count": 39,
+      "reservation_status_counts": {
+        "billing_unknown": 1,
+        "settled": 38
+      },
+      "run": "takeover-real-12h",
+      "stop_reason": "budget_admission_denied",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0.45738",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 40,
+      "usage_status_counts": {
+        "budget_denied": 1,
+        "failed": 1,
+        "succeeded": 38
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "2aaea552ce407cdb3fee97a4041186c19077198c433408075738504b99f2955d",
+          "expected_sha256": "2aaea552ce407cdb3fee97a4041186c19077198c433408075738504b99f2955d",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "fd3cd7ac2a978b9f61abf83b45a354d37dc5befb4d00154ed737481193f1f8ad",
+          "expected_sha256": "fd3cd7ac2a978b9f61abf83b45a354d37dc5befb4d00154ed737481193f1f8ad",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "a7a9f1d3aed7df34cedc1ee3bd6ddb87a76fb1f58716a6db6e5cfed2f685d75a",
+          "expected_sha256": "a7a9f1d3aed7df34cedc1ee3bd6ddb87a76fb1f58716a6db6e5cfed2f685d75a",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "4ab9bec759089bdae10df3dde3d18acccaf596f0090356d1ee6eb7a19006b160",
+          "expected_sha256": "4ab9bec759089bdae10df3dde3d18acccaf596f0090356d1ee6eb7a19006b160",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 37,
+        "legacy": 2,
+        "unknown": 4
+      },
+      "capture_requests_seen": 41,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "f0ff0adeaa1d76d2cf7ed8f10e85cc729b593407",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "2.7359952000000000009",
+      "declared_max_cost_cny": 2.8,
+      "known_repriced_cny": "0.8179062000000000009",
+      "known_stored_rounded_cny": "0.8178",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.8179062",
+      "manifest_sha256": "65a9c66675852858ec0d26442060c38cca4251cbe616339b61536d62a79767c3",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "a7a9f1d3aed7df34cedc1ee3bd6ddb87a76fb1f58716a6db6e5cfed2f685d75a",
+      "recorded_utc_max": "2026-09-12T05:55:04.340699+00:00",
+      "recorded_utc_min": "2026-09-12T05:52:31.989139+00:00",
+      "repriced_minus_manifest_settled_cny": "9E-19",
+      "reservation_count": 41,
+      "reservation_status_counts": {
+        "billing_unknown": 4,
+        "settled": 37
+      },
+      "run": "takeover-real-12h-2",
+      "stop_reason": "budget_admission_denied",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "1.918089",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 43,
+      "usage_status_counts": {
+        "budget_denied": 2,
+        "failed": 4,
+        "succeeded": 37
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "19e855e46d4f783a06ad29b189f679aea0c4ee228ff62c1f7f6e7caf8e1febc9",
+          "expected_sha256": "19e855e46d4f783a06ad29b189f679aea0c4ee228ff62c1f7f6e7caf8e1febc9",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "8308ae7cffcdb7db938f0f56a25510a9b9d35537fe3d5f050d827f37ac42f621",
+          "expected_sha256": "8308ae7cffcdb7db938f0f56a25510a9b9d35537fe3d5f050d827f37ac42f621",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "61730c27a410598fd788164ca1950bbb010ef126abd69f5c2fc276344a1543de",
+          "expected_sha256": "61730c27a410598fd788164ca1950bbb010ef126abd69f5c2fc276344a1543de",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "e1b1a36ea1923f09494b26d1c6c6472ad91dd610ac43374b3e19b365e7fd0ff3",
+          "expected_sha256": "e1b1a36ea1923f09494b26d1c6c6472ad91dd610ac43374b3e19b365e7fd0ff3",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 52,
+        "unknown": 7
+      },
+      "capture_requests_seen": 59,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "f0ff0adeaa1d76d2cf7ed8f10e85cc729b593407",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "5.1626506999999999931",
+      "declared_max_cost_cny": 8.0,
+      "known_repriced_cny": "2.1620086999999999931",
+      "known_stored_rounded_cny": "2.1622",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "2.1620087",
+      "manifest_sha256": "8d3cadc1265044edcdcb89933ef9def992fb08b3165bb86dec7dc9a537fd88dc",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "61730c27a410598fd788164ca1950bbb010ef126abd69f5c2fc276344a1543de",
+      "recorded_utc_max": "2026-09-12T06:02:58.057754+00:00",
+      "recorded_utc_min": "2026-09-12T05:59:10.551943+00:00",
+      "repriced_minus_manifest_settled_cny": "-6.9E-18",
+      "reservation_count": 59,
+      "reservation_status_counts": {
+        "billing_unknown": 7,
+        "settled": 52
+      },
+      "run": "takeover-real-12h-3",
+      "stop_reason": "unprocessed_due_before_end",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "3.000642",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 59,
+      "usage_status_counts": {
+        "failed": 7,
+        "succeeded": 52
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "710396124145c6e1e98b7540814452098601eed1f3f2dafe8f137cb5e960271b",
+          "expected_sha256": "710396124145c6e1e98b7540814452098601eed1f3f2dafe8f137cb5e960271b",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "ba7f27282f3a9ee7e553b5ba38a65aeac30a68b8213c492adc84b2c3796e2253",
+          "expected_sha256": "ba7f27282f3a9ee7e553b5ba38a65aeac30a68b8213c492adc84b2c3796e2253",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "94cef31de91f17d4245b8e383c104017ee5c40bbd8237a630bdb0932c688a7a1",
+          "expected_sha256": "94cef31de91f17d4245b8e383c104017ee5c40bbd8237a630bdb0932c688a7a1",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "57d7d3a929475542195bc54eda0c5e35e2ed422035cc2a542f3017e49f1efa02",
+          "expected_sha256": "57d7d3a929475542195bc54eda0c5e35e2ed422035cc2a542f3017e49f1efa02",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 19
+      },
+      "capture_requests_seen": 19,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "f0ff0adeaa1d76d2cf7ed8f10e85cc729b593407",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "0.652905600000000004",
+      "declared_max_cost_cny": 12.0,
+      "known_repriced_cny": "0.652905600000000004",
+      "known_stored_rounded_cny": "0.6527",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "0.6529055999999999",
+      "manifest_sha256": "98693cdb6c5a27885e0dc1181a28e7092664db23f5a231233e0f17af3955d6a5",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "94cef31de91f17d4245b8e383c104017ee5c40bbd8237a630bdb0932c688a7a1",
+      "recorded_utc_max": "2026-09-12T06:16:30.181875+00:00",
+      "recorded_utc_min": "2026-09-12T06:15:32.252253+00:00",
+      "repriced_minus_manifest_settled_cny": "1.04E-16",
+      "reservation_count": 19,
+      "reservation_status_counts": {
+        "settled": 19
+      },
+      "run": "takeover-real-final",
+      "stop_reason": "technical_failure:ValueError",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "0",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 19,
+      "usage_status_counts": {
+        "succeeded": 19
+      }
+    },
+    {
+      "artifact_hash_checks": [
+        {
+          "actual_sha256": "fe7f1205a2764aa6452ba8973abb58aa9d891025efa8f2b4c1f10a34e8eb8a90",
+          "expected_sha256": "fe7f1205a2764aa6452ba8973abb58aa9d891025efa8f2b4c1f10a34e8eb8a90",
+          "match": true,
+          "name": "evidence.jsonl"
+        },
+        {
+          "actual_sha256": "2eaf52f5a686086b497d02b2f6860a97dd563ae5c83f147191c311f0064c3e88",
+          "expected_sha256": "2eaf52f5a686086b497d02b2f6860a97dd563ae5c83f147191c311f0064c3e88",
+          "match": true,
+          "name": "model-inputs.jsonl"
+        },
+        {
+          "actual_sha256": "8328da735c6491298546b6d5831843dca695987aeb26fa84d54449c5706023b1",
+          "expected_sha256": "8328da735c6491298546b6d5831843dca695987aeb26fa84d54449c5706023b1",
+          "match": true,
+          "name": "provider-usage.json"
+        },
+        {
+          "actual_sha256": "1782b6ea6baf041b1f2ee1591c18129d3bbb0cda424c01c2838d350bdcd7fc5e",
+          "expected_sha256": "1782b6ea6baf041b1f2ee1591c18129d3bbb0cda424c01c2838d350bdcd7fc5e",
+          "match": true,
+          "name": "timeline.jsonl"
+        }
+      ],
+      "artifact_hashes_match": true,
+      "billing_state_counts": {
+        "known": 396,
+        "unknown": 14
+      },
+      "capture_requests_seen": 410,
+      "capture_reservation_foreign_key": "unverified",
+      "code": {
+        "head": "1fd4702c1b6c0346464fb024859efbcaf586b48e",
+        "tracked_dirty": false
+      },
+      "conservative_committed_cny": "14.2443476999999998811",
+      "declared_max_cost_cny": 20.0,
+      "known_repriced_cny": "10.1889146999999998811",
+      "known_stored_rounded_cny": "10.1882",
+      "legacy_non_denial_repriced_cny": "0",
+      "manifest_settled_cny": "10.188914700000003",
+      "manifest_sha256": "7d0c0888d6b778dd9592d2f34ee3d26fa847364b997125b7473fd278a6f87907",
+      "manifest_usage_evidence_equals_export_summary": true,
+      "pending_full_recorded_hold_cny": "0",
+      "provider_usage_sha256": "8328da735c6491298546b6d5831843dca695987aeb26fa84d54449c5706023b1",
+      "recorded_utc_max": "2026-09-11T20:03:55.504078+00:00",
+      "recorded_utc_min": "2026-09-11T19:08:58.928362+00:00",
+      "repriced_minus_manifest_settled_cny": "-3.1189E-15",
+      "reservation_count": 410,
+      "reservation_status_counts": {
+        "billing_unknown": 14,
+        "settled": 396
+      },
+      "run": "week-journey3",
+      "stop_reason": "wall_time_limit",
+      "summary_counts_match_rows": true,
+      "unknown_full_recorded_hold_cny": "4.055433",
+      "unknown_reported_cost_lower_bound_cny": "0",
+      "usage_row_count": 410,
+      "usage_status_counts": {
+        "failed": 14,
+        "succeeded": 396
+      }
+    }
+  ],
+  "scope": "top-level /tmp/*/manifest.json contract longitudinal-journey.1 synthetic=false plus inherited immutable Trial17 baseline",
+  "status": "inventory_only_no_new_paid_window",
+  "summary": {
+    "artifact_checks": 123,
+    "artifact_hash_mismatches": [],
+    "conservative_committed_cny": "56.23666829999999992007",
+    "export_summary_mismatches": [],
+    "exported_usage_rows": 1517,
+    "known_repriced_cny": "37.67039129999999992007",
+    "known_repriced_minus_stored_cny": "0.00309129999999992007",
+    "known_stored_rounded_cny": "37.6673",
+    "known_usage_records": 1447,
+    "legacy_budget_denied_records": 17,
+    "legacy_non_denial_records": 0,
+    "legacy_non_denial_repriced_cny": "0",
+    "linkage_issues": [],
+    "pending_full_recorded_hold_cny": "0",
+    "pending_reservations": 0,
+    "real_provider_manifest_count": 30,
+    "recorded_utc_max": "2026-09-12T12:17:07.647419+00:00",
+    "recorded_utc_min": "2026-09-11T16:42:51.405793+00:00",
+    "reservation_duplicates": [],
+    "unique_admitted_reservations": 1500,
+    "unique_non_denied_usage_records": 1500,
+    "unknown_full_recorded_hold_cny": "18.566277",
+    "unknown_reported_cost_lower_bound_cny": "0",
+    "unknown_usage_records": 53,
+    "usage_duplicates": []
+  },
+  "trial18": {
+    "paid_evidence_found": false,
+    "scope": "only prepare-assets.py and runner-trial18.py present"
+  }
+}
