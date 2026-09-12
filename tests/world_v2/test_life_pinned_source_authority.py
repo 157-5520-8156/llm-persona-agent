@@ -363,6 +363,7 @@ async def test_public_runtime_rejects_candidate_material_even_with_historical_ma
         content_store=InMemoryImmutableLifeContentStore(),
         world_author=author,
         character_interior=character,
+        source_closure_reviewer=_SequenceModel(model="source-must-not-be-called", outputs=()),
         capsule_compiler=_PinnedCapsuleCompiler(
             ledger=ledger, context=_context(item, name="active_memory_candidates")
         ),

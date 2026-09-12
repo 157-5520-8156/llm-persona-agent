@@ -11,7 +11,7 @@ from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeCont
 from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
 from companion_daemon.world_v2.proposal_audit_schemas import RecordedModelResultAudit
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
-from test_life_development_runtime import WORLD_ID, _SequenceModel, _novel_origin_review, _seed_clock
+from test_life_development_runtime import WORLD_ID, _SequenceModel, _novel_origin_review, _source_closure_review, _seed_clock
 from test_world_consequence_producer import _advance, _draft, _runtime
 from test_world_author_request_audit import _json
 
@@ -58,7 +58,7 @@ async def test_rewrite_failure_records_paired_attempt_metadata_and_cold_recovers
         "offline-fixture", "https://fixture.invalid", "deepseek-v4-flash",
         thinking_enabled=False, transport=httpx.MockTransport(provider), usage_observer=usage.record,
     )
-    general = _SequenceModel(model="fixture:general", outputs=())
+    general = _SequenceModel(model="fixture:general", outputs=(_source_closure_review(decision="supported"),))
     focused = _SequenceModel(model="fixture:focused", outputs=(
         _novel_origin_review(
             decision="unsupported", unsupported_outcome_prerequisites=({
@@ -73,7 +73,7 @@ async def test_rewrite_failure_records_paired_attempt_metadata_and_cold_recovers
         assert result.status == "technical_failure"
         assert result.reason_code == "life_development.world_author_source_rewrite_unavailable"
         assert len(http_requests) == (1 if failure == "budget_denied" else 2)
-        assert focused.calls == 1 and general.calls == 0
+        assert focused.calls == 1 and general.calls == 1
         state = ledger.project()
         assert state.world_occurrences == state.plans == state.experiences == ()
         failed = [RecordedModelResultAudit.model_validate_json(item.audit_json)

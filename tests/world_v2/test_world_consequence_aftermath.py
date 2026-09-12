@@ -22,6 +22,7 @@ from test_life_development_runtime import (
     WORLD_ID,
     _SequenceModel,
     _novel_origin_review,
+    _source_closure_review,
     _seed_clock,
 )
 from test_world_author_request_audit import _ReceivedAuthor, _json
@@ -110,7 +111,7 @@ async def _settled_author_cohort(path, *, world_id=WORLD_ID, start=NOW):
         )
         draft = _draft(wake)
         author = _ReceivedAuthor(store, (_json(draft),))
-        general = _SequenceModel(model="fixture:unused-general", outputs=())
+        general = _SequenceModel(model="fixture:general", outputs=(_source_closure_review(decision="supported"),))
         focused = _SequenceModel(
             model="fixture:focused", outputs=(_novel_origin_review(decision="supported"),)
         )
@@ -160,7 +161,8 @@ async def _settled_author_cohort(path, *, world_id=WORLD_ID, start=NOW):
         assert outcome_events[0].payload()["decision_authority"] == "recorded_world_draw"
         assert outcome_events[0].payload()["decision_model_result_ref"] is None
         assert len(author.received) == focused.calls == 1
-        assert general.calls == character.calls == 0
+        assert general.calls == 1
+        assert character.calls == 0
         before = ledger.export_replay_evidence()
         repeated = await _advance(aftermath, due)
         assert repeated.status == "no_op"

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 import test_day_open_self_directed_intent as day_fixture
-from test_life_development_runtime import _seed_clock, _SequenceModel
+from test_life_development_runtime import _seed_clock, _SequenceModel, _source_closure_review
 from test_world_author_request_audit import _ReceivedAuthor, _json
 from test_world_consequence_producer import _advance, _assert_original_requests
 from test_world_stimulus_life_intent import ACTOR, NOW, WORLD, _http_result, _model
@@ -142,7 +142,8 @@ def _author_runtime(ledger, store, author, *, compiler=None, critic=None, actor=
     return LifeDevelopmentRuntime(
         ledger=ledger, content_store=store, world_author=author,
         character_interior=_SequenceModel(model="fixture:unused-choice", outputs=()),
-        source_closure_reviewer=None, novel_origin_critic=critic,
+        source_closure_reviewer=_SequenceModel(model="fixture:general", outputs=(_source_closure_review(decision="supported"),)),
+        novel_origin_critic=critic,
         capsule_compiler=context_capsule_compiler_from_ledger(
             ledger=ledger, life_content_store=store,
             relevance_scope=ContextRelevanceScope(actor_ref=actor),

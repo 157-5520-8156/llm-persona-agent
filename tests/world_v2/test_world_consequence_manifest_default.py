@@ -43,6 +43,7 @@ from test_life_development_runtime import (
     _SequenceModel,
     _location_bound_world_draft,
     _novel_origin_review,
+    _source_closure_review,
     _seed_clock,
 )
 from test_world_consequence_producer import _assert_occurrence, _assert_review_input
@@ -78,7 +79,11 @@ class _HTTP:
         self.requests.append(wire)
         user = json.loads(wire["messages"][1]["content"])
         if "review_contract" in user:
-            raw = _novel_origin_review(decision="supported")
+            raw = (
+                _novel_origin_review(decision="supported")
+                if "focused novel-origin critic" in wire["messages"][0]["content"]
+                else _source_closure_review(decision="supported")
+            )
         else:
             capability = LifeDevelopmentLocationCapability.model_validate_json(
                 _json(
@@ -141,7 +146,7 @@ def _composition(ledger, store, catalog, model, *, focused=True, compiler=None):
         content_store=store,
         world_author=model,
         character_interior=_SequenceModel(model="unused-character", outputs=()),
-        source_closure_reviewer=None,
+        source_closure_reviewer=model if focused else None,
         novel_origin_critic=model if focused else None,
         capsule_compiler=_capsule_compiler(ledger, store),
         capability_manifest_compiler=compiler
@@ -175,6 +180,7 @@ class _LegacyManifest:
         value = self.compiler.compile(**kwargs).model_dump(mode="json", round_trip=True)
         value.pop("outcome_contract", None)
         value.pop("execution_intention_sources_version", None)
+        value.pop("semantic_source_review_version", None)
         value["version"] = "life-development-capability.production.2"
         return LifeDevelopmentCapabilityManifest.model_validate_json(_json(value))
 
@@ -222,8 +228,8 @@ async def test_production_manifest_requests_current_consequences_through_http_an
         assert user["capability_manifest"]["execution_intention_sources_version"] == "2"
         assert user["capability_manifest"]["version"] == "life-development-capability.production.4"
         _assert_occurrence(ledger, store, result, provider.draft)
-        assert len(provider.requests) == 2  # author + existing focused lane only
-        _assert_review_input(provider.requests[1]["messages"], user, provider.draft,
+        assert len(provider.requests) == 3  # author + actual general + focused
+        _assert_review_input(provider.requests[2]["messages"], user, provider.draft,
                              focused=True, focused_packet=".8")
         raw_messages = _json(provider.requests[0]["messages"])
         request_hash = hashlib.sha256(raw_messages.encode()).hexdigest()
@@ -232,7 +238,7 @@ async def test_production_manifest_requests_current_consequences_through_http_an
             == raw_messages
         )
         audits = [json.loads(item.audit_json) for item in ledger.project().model_result_audits]
-        assert len(audits) == 3  # general closure retains its deterministic audit
+        assert len(audits) == 3  # each actual model result has its own audit
         proposal = ledger.lookup_event_commit(result.proposal_event_ref)[0].payload()
         manifest = LifeDevelopmentCapabilityManifest.model_validate_json(
             _json(proposal["world_author_deliberation"]["capability_manifest"])
@@ -244,6 +250,7 @@ async def test_production_manifest_requests_current_consequences_through_http_an
                 raw=_json(provider.draft), manifest=manifest, logical_time=wake.logical_time
             ),
             cited_events=(),
+            reviewer_is_independent=False,
             execution_authority={
                 "authority": user["execution_authority"],
                 "execution_materials": user["execution_materials"],
@@ -254,9 +261,9 @@ async def test_production_manifest_requests_current_consequences_through_http_an
         assert [
             (item["model_id"], item["request_hash"])
             for item in audits
-            if item["model_id"] == "deterministic:life-source-closure"
+            if item["request_hash"] == general_hash
         ] == [
-            ("deterministic:life-source-closure", general_hash),
+            ("deepseek-v4-flash", general_hash),
         ]
     finally:
         await model.aclose()
@@ -265,7 +272,7 @@ async def test_production_manifest_requests_current_consequences_through_http_an
 
 
 @pytest.mark.asyncio
-async def test_current_production_manifest_cannot_accept_without_focused_critic(
+async def test_current_production_manifest_cannot_accept_without_configured_reviewers(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
@@ -280,7 +287,7 @@ async def test_current_production_manifest_cannot_accept_without_focused_critic(
             _composition(ledger, store, _catalog(tmp_path), model, focused=False), wake
         )
         assert result.status == "technical_failure"
-        assert result.reason_code == "life_development.world_consequence_critic_not_configured"
+        assert result.reason_code == "life_development.source_closure_reviewer_not_configured"
         assert len(provider.requests) == 1
         assert ledger.project().world_occurrences == ()
         assert ledger.project().plans == ()
@@ -357,7 +364,7 @@ async def test_original_legacy_author_and_reviews_recover_without_new_http_or_pr
                     ),
                     wake,
                 )
-        assert len(provider.requests) == 2
+        assert len(provider.requests) == 3
         original_user = json.loads(provider.requests[0]["messages"][1]["content"])
         assert "outcome_contract" not in original_user["capability_manifest"]
         assert "execution_intention_sources_version" not in original_user["capability_manifest"]
@@ -370,7 +377,7 @@ async def test_original_legacy_author_and_reviews_recover_without_new_http_or_pr
         store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
         result = await _advance(_composition(ledger, store, catalog, model), wake)
         assert result.status == "occurrence_committed", result
-        assert len(provider.requests) == 2
+        assert len(provider.requests) == 3
         assert (
             tuple(item.audit_json for item in ledger.project().model_result_audits)
             == original_audits

@@ -134,9 +134,9 @@ async def test_public_fact_and_dialogue_proof_reaches_actual_focused_http(tmp_pa
 
         result = await _advance(case.runtime, case.wake)
         assert result.status == "occurrence_committed", result
-        assert len(provider.requests) == 2
+        assert len(provider.requests) == 3
         print("actual_http_bytes", [len(wire) for wire in provider.wires])
-        focused = json.loads(provider.requests[1]["messages"][1]["content"])
+        focused = json.loads(provider.requests[2]["messages"][1]["content"])
         assert (
             focused["evidence_packet_binding"]["contract"]
             == SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT
@@ -219,7 +219,7 @@ async def test_exact_review_rejects_corrupt_original_capsule(tmp_path, monkeypat
         result = await _advance(case.runtime, case.wake)
         assert result.status == "technical_failure"
         assert result.reason_code == "life_development.novel_origin_context_unavailable"
-        assert len(case.provider.requests) == 1  # Author only; no focused call.
+        assert len(case.provider.requests) == 2  # Author and general; no focused call.
         assert case.ledger.project().world_occurrences == ()
 
 
@@ -271,7 +271,7 @@ async def test_qualified_packet_never_falls_back_to_slim_unproved_material(
             ]
         with pytest.raises(ValueError, match="qualified Life review"):
             life_development_novel_origin_messages(context=context, manifest=manifest, draft=draft)
-        assert len(case.provider.requests) == 2
+        assert len(case.provider.requests) == 3
 
 
 @pytest.mark.asyncio
@@ -309,7 +309,7 @@ async def test_public_acceptance_requires_manifest_exact_review_packet(
             patch.setattr(case.ledger, "commit_at_cursor", changed_packet)
             with pytest.raises(ValueError, match="original manifest and review packets"):
                 await _advance(case.runtime, case.wake)
-        assert len(case.provider.requests) == 2
+        assert len(case.provider.requests) == 3
         assert case.ledger.project().world_occurrences == ()
 
 
@@ -334,8 +334,8 @@ async def test_original_proof_qualification_recovers_without_http_or_upgrading_a
             patch.setattr(case.ledger, "commit_at_cursor", interrupt_before_effect)
             with pytest.raises(InterruptedError, match="preserve original"):
                 await _advance(case.runtime, case.wake)
-        assert len(case.provider.requests) == 2
-        focused = json.loads(case.provider.requests[1]["messages"][1]["content"])
+        assert len(case.provider.requests) == 3
+        focused = json.loads(case.provider.requests[2]["messages"][1]["content"])
         packet = focused["evidence_packet_binding"]["contract"]
         assert packet.endswith({"2": ".6", "3": ".7", "4": ".8"}[version])
         original_audits = tuple(
@@ -362,7 +362,7 @@ async def test_original_proof_qualification_recovers_without_http_or_upgrading_a
             case.provider.reject_new_calls = True
             result = await _advance(runtime, case.wake)
             assert result.status == "occurrence_committed", result
-            assert len(case.provider.requests) == 2
+            assert len(case.provider.requests) == 3
             assert (
                 tuple(item.audit_json for item in ledger.project().model_result_audits)
                 == original_audits

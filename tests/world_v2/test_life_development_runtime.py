@@ -39,7 +39,6 @@ from companion_daemon.world_v2.life_development_runtime import (
 )
 from companion_daemon.world_v2.life_development_source_closure import (
     LifeDevelopmentSourceClosureError,
-    LifeDevelopmentSourceClosureReview,
     life_development_novel_origin_messages,
     life_development_review_packet_identity,
     life_development_source_closure_messages,
@@ -1905,6 +1904,7 @@ async def test_npc_privacy_failure_gets_one_author_reselection_with_visible_floo
         world_author=world_author,
         character_interior=character,
         novel_origin_critic=critic,
+        source_closure_reviewer=_SequenceModel(model="source-reviewer", outputs=(_source_closure_review(decision="supported"),)),
         capsule_compiler=_PinnedCapsuleCompiler(ledger=ledger),
         capability_manifest_compiler=Compiler(wake=wake),
         owner_actor_ref=OWNER,
@@ -2406,7 +2406,7 @@ def _source_closure_review(
 
 
 @pytest.mark.asyncio
-async def test_factful_world_author_draft_uses_deterministic_closure_without_source_reviewer() -> (
+async def test_factful_world_author_draft_fails_without_source_reviewer() -> (
     None
 ):
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
@@ -2435,10 +2435,10 @@ async def test_factful_world_author_draft_uses_deterministic_closure_without_sou
         correlation_id="correlation:life-development",
     )
 
-    assert result.status == "no_op"
-    assert result.reason_code == "life_development.character_declined"
+    assert result.status == "technical_failure"
+    assert result.reason_code == "life_development.source_closure_reviewer_not_configured"
     assert world_author.calls == 1
-    assert character.calls == 1
+    assert character.calls == 0
 
 
 @pytest.mark.asyncio
@@ -2475,29 +2475,19 @@ async def test_world_author_no_op_remains_valid_without_source_reviewer() -> Non
 
 @pytest.mark.asyncio
 async def test_unsupported_source_closure_rejects_without_a_rewrite_call(
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def _unsupported(*, draft, cited_events):  # type: ignore[no-untyped-def]
-        del draft, cited_events
-        return LifeDevelopmentSourceClosureReview(
-            decision="unsupported",
-            unsupported_claim_ids=("local:claim:book-exchange",),
-            reason="fixture unsupported source closure",
-        )
-
-    monkeypatch.setattr(
-        life_runtime_module, "evaluate_general_source_closure", _unsupported
-    )
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
     wake = _seed_clock(ledger)
     rewriter = _SequenceModel(
         model="must-not-rewrite",
         outputs=(AssertionError("source rewrite must not be called"),),
     )
-    world_author = _SequenceModel(
-        model="world-author",
-        outputs=(json.dumps(_novel_book_exchange_draft(wake=wake), ensure_ascii=False),),
-    )
+    draft = _novel_book_exchange_draft(wake=wake)
+    draft["claim_declarations"][0].update(scope="existing_world", source_refs=[wake.event_id])
+    world_author = _SequenceModel(model="world-author", outputs=(json.dumps(draft),))
+    reviewer = _SequenceModel(model="source-reviewer", outputs=(
+        _source_closure_review(decision="unsupported", unsupported_claim_ids=("local:claim:book-exchange",)),
+    ))
     character = _SequenceModel(
         model="character-must-not-see-unsupported-draft",
         outputs=(AssertionError("unsupported draft must not reach the character"),),
@@ -2508,6 +2498,7 @@ async def test_unsupported_source_closure_rejects_without_a_rewrite_call(
         world_author=world_author,
         world_author_source_rewriter=rewriter,
         character_interior=character,
+        source_closure_reviewer=reviewer,
     )
 
     result = await runtime.advance_once(
@@ -2518,6 +2509,7 @@ async def test_unsupported_source_closure_rejects_without_a_rewrite_call(
 
     assert result.status == "technical_failure"
     assert result.reason_code == "life_development.source_closure_rejected"
+    assert reviewer.calls == 1
     assert world_author.calls == 1
     assert rewriter.calls == 0
     assert character.calls == 0
@@ -3520,7 +3512,7 @@ async def test_source_closed_world_author_restarts_without_reauthoring_or_rerevi
 
     assert result.status == "plan_committed"
     assert world_author.calls == 1
-    assert reviewer.calls == 0
+    assert reviewer.calls == 1
     assert character.calls == 1
     assert len(ledger.project().plans) == 1
 

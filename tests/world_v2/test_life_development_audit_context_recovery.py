@@ -33,7 +33,7 @@ from current_activity_fixture import accepted_current_activity, CURRENT_ACTIVITY
 from test_life_development_production import _open_life_seed
 from test_life_development_runtime import (
     OWNER, WORLD_ID, _SequenceModel, _location_bound_world_draft,
-    _novel_origin_review, _seed_clock, _commit_at_head,
+    _novel_origin_review, _source_closure_review, _seed_clock, _commit_at_head,
 )
 
 
@@ -56,7 +56,11 @@ class _HTTP:
             raise httpx.ConnectError("fixture: no new author response is available", request=request)
         user = json.loads(wire["messages"][1]["content"])
         if "review_contract" in user:
-            raw = _novel_origin_review(decision="supported")
+            raw = (
+                _novel_origin_review(decision="supported")
+                if "focused novel-origin critic" in wire["messages"][0]["content"]
+                else _source_closure_review(decision="supported")
+            )
         else:
             capability = LifeDevelopmentLocationCapability.model_validate_json(
                 _json({key: value for key, value in user["capability_manifest"]["location_capabilities"][0].items()
@@ -98,7 +102,7 @@ def _composition(ledger, store, catalog, model, *, focused=True, compiler=None):
     return LifeDevelopmentRuntime(
         ledger=ledger, content_store=store, world_author=model,
         character_interior=_SequenceModel(model="unused-character", outputs=()),
-        source_closure_reviewer=None, novel_origin_critic=model if focused else None,
+        source_closure_reviewer=model, novel_origin_critic=model if focused else None,
         capsule_compiler=capsule,
         capability_manifest_compiler=compiler or ProjectionLifeCapabilityManifestCompiler(
             owner_actor_ref=OWNER, catalog=catalog, content_store=store,
@@ -125,6 +129,7 @@ class _LegacyManifest:
         value = self.compiler.compile(**kwargs).model_dump(mode="json", round_trip=True)
         value.pop("outcome_contract", None)
         value.pop("execution_intention_sources_version", None)
+        value.pop("semantic_source_review_version", None)
         value["version"] = "life-development-capability.production.2"
         return LifeDevelopmentCapabilityManifest.model_validate_json(_json(value))
 
@@ -189,7 +194,7 @@ async def _interrupted_author(tmp_path, monkeypatch, *, legacy=True, active=Fals
             patch.setattr(ledger, "commit_at_cursor", interrupt_before_effect)
             with pytest.raises(InterruptedError, match="original author and reviews"):
                 await _advance(runtime, wake)
-        assert len(provider.requests) == 2
+        assert len(provider.requests) == 3
         original_user = json.loads(provider.requests[0]["messages"][1]["content"])
         assert ("outcome_contract" not in original_user["capability_manifest"]) == legacy
         original_audits = tuple(item.audit_json for item in ledger.project().model_result_audits)
@@ -224,7 +229,7 @@ async def test_original_author_and_reviews_recover_at_exact_real_context_without
         assert compiler.compile_for_audit_recovery(case.query) == case.original_capsule
         result = await _advance(case.runtime, case.wake)
         assert result.status == "occurrence_committed", result
-        assert len(case.provider.requests) == 2
+        assert len(case.provider.requests) == 3
         assert tuple(item.audit_json for item in case.ledger.project().model_result_audits) == case.original_audits
         proposal = case.ledger.lookup_event_commit(result.proposal_event_ref)[0].payload()
         original_manifest = proposal["world_author_deliberation"]["capability_manifest"]
@@ -263,7 +268,7 @@ async def test_recovery_rejects_unavailable_or_changed_original_context_without_
         result = await _advance(case.runtime, case.wake)
         assert result.status == "technical_failure"
         assert result.reason_code == "life_development.recovered_context_bytes_unavailable"
-        assert len(case.provider.requests) == 2
+        assert len(case.provider.requests) == 3
         assert case.ledger.export_replay_evidence() == before
 
 
@@ -298,7 +303,7 @@ async def test_later_budget_and_model_audits_cannot_enter_recovered_context_or_r
         result = await _advance(case.runtime, case.wake)
         assert result.status == "technical_failure"
         assert result.reason_code == "life_development.world_author_unavailable"
-        assert len(case.provider.requests) > 2  # World changed; old successful author was not reused.
+        assert len(case.provider.requests) > 3  # World changed; old successful author was not reused.
         assert case.ledger.project().world_occurrences == ()
 
 

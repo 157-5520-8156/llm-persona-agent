@@ -337,6 +337,11 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
     pinned_source_materials_version: Literal["2"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # Absence retains historical identity; new proposals require model semantics,
+    # never the old deterministic reference-existence verdict.
+    semantic_source_review_version: Literal["1"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     max_future_days: int = Field(ge=1, le=366)
     max_window_minutes: int = Field(ge=5, le=7 * 24 * 60)
 

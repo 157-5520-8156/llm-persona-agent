@@ -31,6 +31,7 @@ from test_life_development_runtime import (
     _location_bound_world_draft,
     _location_capability,
     _novel_origin_review,
+    _source_closure_review,
     _replace_event_payload,
     _seed_clock,
 )
@@ -122,7 +123,7 @@ def _assert_review_input(messages, original_request, expected, *, focused, focus
 
 
 def _assert_general_audit(ledger, result, original_request, expected):
-    """Rebuild the public packet and match its actual deterministic audit hash."""
+    """Rebuild the public packet and match its actual model request audit hash."""
     proposal, _ = ledger.lookup_event_commit(result.proposal_event_ref)
     manifest = LifeDevelopmentCapabilityManifest.model_validate_json(
         _json(proposal.payload()["world_author_deliberation"]["capability_manifest"])
@@ -137,6 +138,7 @@ def _assert_general_audit(ledger, result, original_request, expected):
         manifest=manifest,
         draft=parse_world_author_draft(raw=_json(expected), manifest=manifest, logical_time=NOW),
         cited_events=(),
+        reviewer_is_independent=False,
         execution_authority={
             "authority": original_request["execution_authority"],
             "execution_materials": original_request["execution_materials"],
@@ -147,7 +149,7 @@ def _assert_general_audit(ledger, result, original_request, expected):
     audits = [json.loads(item.audit_json) for item in ledger.project().model_result_audits]
     matching = [item for item in audits if item["request_hash"] == digest]
     assert len(matching) == 1
-    assert matching[0]["model_id"] == "deterministic:life-source-closure"
+    assert matching[0]["model_id"] == "fixture:general"
 
 
 def _assert_occurrence(ledger, store, result, expected):
@@ -202,14 +204,16 @@ async def test_current_environment_passes_original_request_review_and_sqlite_acc
         wake = _seed_clock(ledger)
         draft = _draft(wake)
         author = _ReceivedAuthor(store, (_json(draft),))
-        general = _SequenceModel(model="fixture:general-must-not-be-called", outputs=())
+        general = _SequenceModel(model="fixture:general", outputs=tuple(
+            _source_closure_review(decision="supported") for _ in range(2)
+        ))
         focused = _SequenceModel(
             model="fixture:focused", outputs=(_novel_origin_review(decision="supported"),)
         )
         result = await _advance(_runtime(ledger, store, wake, author, general, focused), wake)
         before = _assert_occurrence(ledger, store, result, draft)
         assert len(author.received) == focused.calls == 1
-        assert general.calls == 0
+        assert general.calls == 1
         _assert_original_requests(ledger, store, author)
         original_user = json.loads(json.loads(author.received[0])[1]["content"])
         assert original_user["execution_authority"]["execution_bindings"] == []
@@ -257,7 +261,9 @@ async def test_exact_character_authorship_rejection_returns_to_same_author_and_i
             "exact_fragments": [fragment],
         }
         author = _ReceivedAuthor(store, (_json(rejected), _json(corrected)))
-        general = _SequenceModel(model="fixture:general-must-not-be-called", outputs=())
+        general = _SequenceModel(model="fixture:general", outputs=tuple(
+            _source_closure_review(decision="supported") for _ in range(2)
+        ))
         focused = _SequenceModel(
             model="fixture:focused",
             outputs=(
@@ -272,7 +278,7 @@ async def test_exact_character_authorship_rejection_returns_to_same_author_and_i
         result = await _advance(_runtime(ledger, store, wake, author, general, focused), wake)
         _assert_occurrence(ledger, store, result, corrected)
         assert len(author.received) == focused.calls == 2
-        assert general.calls == 0
+        assert general.calls == 2
         _assert_original_requests(ledger, store, author)
         original_messages = json.loads(author.received[0])
         correction_messages = json.loads(author.received[1])
@@ -325,7 +331,9 @@ async def test_public_final_batch_cannot_rebind_original_author_proof(
     try:
         wake = _seed_clock(ledger)
         author = _ReceivedAuthor(store, (_json(_draft(wake)),))
-        general = _SequenceModel(model="fixture:unused-general", outputs=())
+        general = _SequenceModel(model="fixture:general", outputs=tuple(
+            _source_closure_review(decision="supported") for _ in range(2)
+        ))
         focused = _SequenceModel(
             model="fixture:focused", outputs=(_novel_origin_review(decision="supported"),)
         )
@@ -394,7 +402,7 @@ async def test_public_final_batch_cannot_rebind_original_author_proof(
 
 
 @pytest.mark.asyncio
-async def test_current_consequence_requires_an_installed_focused_critic(tmp_path):
+async def test_current_consequence_requires_an_installed_source_reviewer(tmp_path):
     path = tmp_path / "no-critic.sqlite"
     ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
     store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
@@ -403,7 +411,7 @@ async def test_current_consequence_requires_an_installed_focused_critic(tmp_path
         author = _ReceivedAuthor(store, (_json(_draft(wake)),))
         result = await _advance(_runtime(ledger, store, wake, author, None, None), wake)
         assert result.status == "technical_failure"
-        assert result.reason_code == "life_development.world_consequence_critic_not_configured"
+        assert result.reason_code == "life_development.source_closure_reviewer_not_configured"
         assert len(author.received) == 1
         _assert_original_requests(ledger, store, author)
         assert ledger.project().world_occurrences == ()
@@ -427,7 +435,9 @@ async def test_corrected_author_and_review_audits_cold_recover_before_final_effe
         fragment = "她及时收回了手账。"
         rejected["outcomes"][0]["world_consequence"]["environment_text"] += fragment
         author = _ReceivedAuthor(store, (_json(rejected), _json(corrected)))
-        general = _SequenceModel(model="fixture:general", outputs=())
+        general = _SequenceModel(model="fixture:general", outputs=tuple(
+            _source_closure_review(decision="supported") for _ in range(2)
+        ))
         focused = _SequenceModel(
             model="fixture:focused",
             outputs=(

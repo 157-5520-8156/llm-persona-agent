@@ -882,6 +882,7 @@ async def test_production_open_life_plan_comes_from_the_world_author(
                     "outcome_contract": None,
                     "execution_intention_sources_version": None,
                     "pinned_source_materials_version": None,
+                    "semantic_source_review_version": None,
                 }
             )
 

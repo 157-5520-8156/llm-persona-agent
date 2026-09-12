@@ -17,6 +17,7 @@ from test_life_development_runtime import (
     WORLD_ID,
     _SequenceModel,
     _novel_origin_review,
+    _source_closure_review,
     _seed_clock,
 )
 from test_world_author_request_audit import (
@@ -180,7 +181,9 @@ async def test_source_correction_preserves_initial_authority_and_reviews_the_com
     replacement = '{"decision":"no_op"}' if no_op else _json(corrected)
     wire = _AuthorHTTP(store, ("{", _json(rejected), replacement))
     model = _model(wire)
-    general = _SequenceModel(model="fixture:general-no-call", outputs=())
+    general = _SequenceModel(model="fixture:general", outputs=tuple(
+        _source_closure_review(decision="supported") for _ in range(2)
+    ))
     focused = _SequenceModel(
         model="fixture:focused",
         outputs=(
@@ -200,7 +203,7 @@ async def test_source_correction_preserves_initial_authority_and_reviews_the_com
         else:
             _assert_occurrence(ledger, store, result, corrected)
         assert len(wire.requests) == 3
-        assert focused.calls == (1 if no_op else 2) and general.calls == 0
+        assert focused.calls == general.calls == (1 if no_op else 2)
         initial, shape, source = [request["messages"] for request in wire.requests]
         assert shape[:-1] == initial
         assert source[:-2] == shape

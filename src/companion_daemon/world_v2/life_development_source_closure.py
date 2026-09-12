@@ -1723,6 +1723,7 @@ def life_development_source_closure_messages(
     cited_events: tuple[WorldEvent, ...],
     cited_pinned_materials: tuple[dict[str, object], ...] = (),
     execution_authority: dict[str, object] | None = None,
+    reviewer_is_independent: bool | None = None,
 ) -> list[dict[str, str]]:
     """Compile the independent reviewer request from the exact pinned inputs."""
 
@@ -1767,8 +1768,11 @@ def life_development_source_closure_messages(
         }
         for event in (cited_by_ref[ref] for ref in sorted(cited_by_ref))
     ]
+    authority = (
+        "an independent " if reviewer_is_independent is not False else "a configured "
+    )
     system = (
-        "You are an independent semantic source-closure reviewer, not the World "
+        f"You are {authority}semantic source-closure reviewer, not the World "
         "Author and not the Character Model. Judge only non-negotiable truth and "
         "coordinate authority. Do not judge whether a development is interesting, "
         "likely, tasteful, socially appropriate, emotionally fitting, or what the "
@@ -1903,6 +1907,19 @@ def life_development_source_closure_messages(
             review_model=LifeDevelopmentSourceClosureReview,
         ),
     }
+    if reviewer_is_independent is not None:
+        # Runtime review authority differs from historical reference checks even
+        # when resuming an old manifest. The request hash binds this boundary.
+        system += (
+            "\nReview authority contract: life-development-semantic-source-review.1. "
+            "This model must judge the exact supplied evidence; reference existence "
+            "alone cannot establish support."
+        )
+    if reviewer_is_independent is False:
+        system += (
+            "\nIndependence from the author authority is not established. "
+            "Do not treat this as independent verification; apply the same evidence boundaries."
+        )
     return [
         {"role": "system", "content": system},
         {
@@ -1987,6 +2004,7 @@ def life_development_novel_origin_messages(
     manifest: LifeDevelopmentCapabilityManifest,
     draft: LifeDevelopmentPossibilityDraft,
     execution_authority: dict[str, object] | None = None,
+    reviewer_is_independent: bool | None = None,
 ) -> list[dict[str, str]]:
     """Compile an independent hard-boundary review of novel fact origin."""
 
@@ -2009,8 +2027,11 @@ def life_development_novel_origin_messages(
                 if not item.get("source_bindings"):
                     raise ValueError("qualified Life review cannot use unproved selected items")
     outcome_path = "world_consequence field" if current else "outcomes.N.text"
+    authority = (
+        "an independent " if reviewer_is_independent is not False else "a configured "
+    )
     system = (
-        "You are an independent focused novel-origin critic, not the general "
+        f"You are {authority}focused novel-origin critic, not the general "
         "source reviewer, World Author, or Character Model. Review only hard truth "
         "origin; never judge plot quality, likelihood, "
         "motive, mood, style, or whether the character should participate. A "
@@ -2167,6 +2188,19 @@ def life_development_novel_origin_messages(
             review_model=_novel_review_model(draft),
         ),
     }
+    if reviewer_is_independent is not None:
+        # Runtime review authority differs from historical reference checks even
+        # when resuming an old manifest. The request hash binds this boundary.
+        system += (
+            "\nReview authority contract: life-development-semantic-source-review.1. "
+            "This model must judge the exact supplied evidence; reference existence "
+            "alone cannot establish support."
+        )
+    if reviewer_is_independent is False:
+        system += (
+            "\nIndependence from the author authority is not established. "
+            "Do not treat this as independent verification; apply the same evidence boundaries."
+        )
     return [
         {"role": "system", "content": system},
         {

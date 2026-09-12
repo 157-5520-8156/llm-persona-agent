@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 import test_world_stimulus_life_intent as intent_fixture
-from test_life_development_runtime import _novel_origin_review, _seed_clock, _SequenceModel
+from test_life_development_runtime import _source_closure_review, _novel_origin_review, _seed_clock, _SequenceModel
 from test_world_author_request_audit import _json, _ReceivedAuthor
 from test_world_consequence_aftermath import (
     _aftermath,
@@ -352,7 +352,7 @@ async def test_actual_started_role_attempt_reaches_production_authority_and_worl
             content_store=store,
             world_author=author,
             character_interior=_SequenceModel(model="fixture:unused-choice", outputs=()),
-            source_closure_reviewer=None,
+            source_closure_reviewer=_SequenceModel(model="fixture:general", outputs=(_source_closure_review(decision="supported"),)),
             novel_origin_critic=focused,
             capsule_compiler=context_capsule_compiler_from_ledger(
                 ledger=ledger,
