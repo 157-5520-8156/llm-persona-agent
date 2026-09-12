@@ -223,6 +223,8 @@ async def test_real_cli_installs_and_records_the_configured_timing_policy(
             policy = host._interactive_turn_budget_policy
             assert policy.total_seconds == expected_total
             assert policy.hedge_after_seconds == float(hedge_after)
+            assert policy.clock is time.monotonic
+            assert policy.sleep is asyncio.sleep
             assert policy.wall_clock == clock.presentation_now
             profile = kwargs["provenance"]["interactive_timing_policy"]
             assert profile["total_seconds"] == policy.total_seconds
