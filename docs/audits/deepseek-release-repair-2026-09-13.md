@@ -86,7 +86,7 @@ host、CLI、后台预留联合门 **150 passed / 48.09 秒**；新增 response 
   自动改为 past_world 后接受。`ac516a70` 删除该语义改写，保留无损别名展开，让角色
   在原 Context 内自己纠正。隔离门 402 passed，整合后的范围/时间/候选审计门 35 passed。
   主动链删除无源 claim 的另一处问题已由下述 `084c9336` 修复；另一个主动 grounding
-  binder 仍会改 scope 和删除混合声明，正在单独复现，不能声称所有路径已保留原声明。
+  binder 的 scope 改写和混合删除由下述 `a4359ba3` 另行修复。
 - 修复前生活通用来源校验把“event ref 存在”返回为 supported；该检查不证明正文由
   事件支持。已用公共 runtime 复现：引用仅推进时钟的 ClockAdvanced，却宣称“学校
   昨天已经正式确认她完成学业并毕业”，最终进入 plan_committed 并新增 Plan。此例
@@ -101,11 +101,45 @@ host、CLI、后台预留联合门 **150 passed / 48.09 秒**；新增 response 
   同角色一次重选，两次错误为技术失败且零主动 Action。公共 HTTP 四反例 RED→GREEN，
   扩门 99 passed。旧路径（未要求完整可见审核）的 usage/reservation 完整，但初次
   拒绝候选仍缺独立 World 物理调用审计；required 路径另有响应 hash，不把 hash 称为
-  已保存原文。这一审计缺口和上项另一处主动 binder 尚未修复。
+  已保存原文。这一旧路径物理调用审计缺口尚未修复。
 - 试验入口同步记录当前 Life 语义审核配置：general/focused 仅在显式 self-review
   可用时标为配置的模型自审，否则标不可用；开关关闭与缺审核器分开显示。保留
   semantic entailment / independent reviewer 未验证，不再写成确定性审核可以接纳。
   四组合先 RED；与 Life 语义权限、主动完整来源、事实范围联合 **123 passed / 239.20 秒**。
+- `a4359ba3` 移除另一个主动 grounding helper 的 scope 改写和混合声明删除。
+  精确 scope/ref 权限复用已 pinned inventory 编译，恒进入 prepare/propose 的 capability
+  与请求身份；在 Core 终态前校验，使两种审核配置都能回到同角色一次重选。独立审查
+  发现的 prepare/propose 缓存身份失配也已修复。当前整合门正在验证旧 prepared、已提交
+  audit 恢复与合法语句交付；不能提前声称整合门通过。测试捕获的新元数据约 2122 UTF-8
+  字节，实际请求增量约 2208 字节，对该 fixture 的保守预留增量为每作者调用 0.006624 元，
+  不是实际供应商收费。
+- 同一公共主动路径另确认用户身份丢失：Clock trigger 没有 trigger_message，完整来源
+  编译器因此漏掉 counterpart actor，将用户已观察的旧发言标为 other / baseline_only。
+  正在修复精确身份传递，不能用放宽 other 的权限、猜 ID 或改世界事实来绕过。
+
+## 本轮整库检查与冻结场景
+
+固定 `b003fda4` 的完整 `scripts/test_fast.py --tier full` 结果为
+**7822 passed / 4 failed / 19 skipped / 1144.37 秒**，日志
+`/tmp/release-repair-full-b003fda4.log`。这轮不能称为全绿。
+
+其中三条旧规格冲突由 `9b50d898` 更新测试：保留退役 proof/inventory 守卫，但允许 Life
+runtime 的真实语义审核；两种非法时间结果必须由同一角色纠正或明确失败，不能由本地
+补姿态/时间。产品代码未回退，相关独立定向门 **88 passed / 18.14 秒**。
+
+第四项为冻结 120 场景摘要过时。分别在 DeepSeek `4d427fb8` 和修复 `b003fda4` 导出全部
+场景，所有断言通过且完整导出相同，manifest 均为 `3ab30188…ecbc4`。旧 `.101` 原件
+`baseline-fa5906f4.json` 的 SHA-256 仍匹配原文档 `74c9a0b8…aec06e`；与当前相比仅 120 个
+`replay_hash` 变化，其他 17 个逐场景字段保持，包括输出、调用数、事件、Action 和场景断言。
+另在原 `fa5906f4` 隔离执行首场景：第一个改变是第 9 条 ModelResultRecorded 中作者请求
+及派生审计身份，原作者响应 hash 不变。对照保存在
+`output/private-audits/scenario-baseline-20260913/`。冻结摘要尚待最终修复候选建立新版本，
+不能只为消除失败替换 hash。
+
+19 项 skip 均为退役的 v9 narrow-verdict 测试，本轮未新增 skip。当前 v3/v4 公共链已覆盖
+当前用户报告与错误 actor，以及纠正后另造生活经历被拒绝；主观外壳内嵌外部前提、用历史
+伴侣自述冒充会话外经历等旧案例，尚不能声称已完整等价覆盖。现有 parser 和 prompt
+约束也不是实际 reviewer 的语义准确率证明，这些边界须保留在真实试验检查中。
 
 ## 产品与发布验收缺口
 
@@ -143,3 +177,7 @@ Trial18 只有准备文件，没有付费证据。版本化摘要见
 角色进行生活→表达→后续对话及恢复验证。实际模型测试继续本地捕获；QQ、部署和
 邀请实例的隔离、回滚、回执、持续运行验收单独处理。面板使用同批真实状态录制，
 旧快照、未观察区间和未验证行为明确标注。
+
+本轮[真实试验准备计划](release-canary-plan-2026-09-13.md)仍为 not admitted / not executed。
+专用测试凭据当前不可用；已请求安全配置位置，没有读取生产 `.env`。零费用 fixture 已完成
+7 输入、870 虚拟分钟和一次宿主重建，原始证据保持 manual_only / human_likeness unassessed。
