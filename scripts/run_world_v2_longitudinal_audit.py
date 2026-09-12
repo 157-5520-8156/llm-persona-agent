@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from dataclasses import replace
 import hashlib
 import json
 import math
@@ -219,6 +220,16 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
         synthetic=synthetic,
         max_cost_cny=options.max_cost_cny,
     )
+    # Match production composition. Keep the historical experiment-only total
+    # override explicit, without silently discarding the configured hedge.
+    legacy_total = os.environ.get("DSH_INTERACTIVE_TURN_BUDGET_SECONDS")
+    timing_policy = InteractiveTurnBudgetPolicy(
+        total_seconds=float(
+            legacy_total if legacy_total is not None
+            else configured.world_v2_interactive_turn_budget_seconds
+        ),
+        hedge_after_seconds=float(configured.world_v2_interactive_hedge_after_seconds),
+    )
     required_review = options.require_visible_source_review
     if required_review:
         configured = configured.model_copy(update={"world_v2_expression_episode_mode": "off"})
@@ -315,11 +326,8 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
             ingress_sleep=clock.presentation_sleep,
             action_due_now=clock.now,
             action_due_sleep=clock.timer_sleep,
-            interactive_turn_budget_policy=InteractiveTurnBudgetPolicy(
-                wall_clock=clock.presentation_now,
-                total_seconds=float(
-                    os.environ.get("DSH_INTERACTIVE_TURN_BUDGET_SECONDS", "12.0")
-                ),
+            interactive_turn_budget_policy=replace(
+                timing_policy, wall_clock=clock.presentation_now,
             ),
             use_configured_recall_embedding=False,
             **injected,
@@ -349,6 +357,13 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
             "scenario_sha256": hashlib.sha256(scenario_bytes).hexdigest(),
             "code": code_identity(),
             "models": model_identity(configured, synthetic=synthetic),
+            "interactive_timing_policy": {
+                "total_seconds": timing_policy.total_seconds,
+                "hedge_after_seconds": timing_policy.hedge_after_seconds,
+                "speculative_hedge_enabled": configured.world_v2_interactive_hedge_enabled,
+                "legacy_total_override": legacy_total is not None,
+                "clock_scope": "real_provider_deadline_with_virtual_presentation",
+            },
             "life_source_review": life_review_profile(configured, synthetic=synthetic),
             "max_cost_cny": options.max_cost_cny,
             "billing_clock": "real_utc_not_virtual",

@@ -187,6 +187,99 @@ async def test_fixture_factory_constructs_real_host_without_external_clients(tmp
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("configured_total,hedge_after,legacy_total,expected_total", [
+    ("12", "1.3", None, 12.0),
+    ("8", "0.7", None, 8.0),
+    ("8", "0.7", "9", 9.0),
+])
+async def test_real_cli_installs_and_records_the_configured_timing_policy(
+    tmp_path, monkeypatch, configured_total, hedge_after, legacy_total, expected_total,
+):
+    """Exercise the real runner factory; changing env must reach the actual host."""
+    import companion_daemon.world_v2.longitudinal_journey as runner
+
+    monkeypatch.setenv("DEEPSEEK_DEBUG_API_KEY", "fixture-debug-key")
+    monkeypatch.setenv("DEEPSEEK_CHARACTER_THINKING_ENABLED", "false")
+    monkeypatch.setenv("WORLD_V2_INTERACTIVE_HEDGE_ENABLED", "true")
+    monkeypatch.setenv("WORLD_V2_INTERACTIVE_HEDGE_AFTER_SECONDS", hedge_after)
+    monkeypatch.setenv("WORLD_V2_INTERACTIVE_TURN_BUDGET_SECONDS", configured_total)
+    if legacy_total is None:
+        monkeypatch.delenv("DSH_INTERACTIVE_TURN_BUDGET_SECONDS", raising=False)
+    else:
+        monkeypatch.setenv("DSH_INTERACTIVE_TURN_BUDGET_SECONDS", legacy_total)
+
+    def unexpected_request(_request):
+        raise AssertionError("policy qualification must not issue a provider request")
+
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kwargs: httpx.MockTransport(unexpected_request))
+
+    async def build_only(**kwargs):
+        kwargs["output"].mkdir()
+        clock = runner.JourneyClock(kwargs["journey"].started_at)
+        host = kwargs["host_factory"](
+            kwargs["output"] / "world.sqlite", clock, runner.CaptureDelivery(clock)
+        )
+        try:
+            policy = host._interactive_turn_budget_policy
+            assert policy.total_seconds == expected_total
+            assert policy.hedge_after_seconds == float(hedge_after)
+            assert policy.wall_clock == clock.presentation_now
+            profile = kwargs["provenance"]["interactive_timing_policy"]
+            assert profile["total_seconds"] == policy.total_seconds
+            assert profile["hedge_after_seconds"] == policy.hedge_after_seconds
+            assert profile["speculative_hedge_enabled"] is True
+            assert profile["legacy_total_override"] is (legacy_total is not None)
+            assert profile["clock_scope"] == "real_provider_deadline_with_virtual_presentation"
+        finally:
+            await host.aclose()
+            await kwargs["close_resources"]()
+        return {"completed": False, "stop_reason": "policy_checked_without_model_calls"}
+
+    monkeypatch.setattr(runner, "run_journey", build_only)
+    scenario = tmp_path / "policy.json"
+    scenario.write_text(json.dumps({
+        "scenario_id": "timing-policy", "started_at": "2026-09-13T02:00:00+00:00",
+        "duration_minutes": 1, "turns": [],
+    }))
+    cli = _cli()
+    result = await cli.run(cli.parse_options([
+        "--scenario", str(scenario), "--output", str(tmp_path / "run"),
+        "--model-mode", "real-provider", "--allow-real-provider",
+    ]))
+    assert result["stop_reason"] == "policy_checked_without_model_calls"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_total", ["nan", "0", "1", "invalid"])
+async def test_invalid_timing_policy_fails_before_capture_or_provider(
+    tmp_path, monkeypatch, legacy_total,
+):
+    import companion_daemon.world_v2.longitudinal_journey as runner
+    import httpx
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("invalid timing must fail before clients or journey startup")
+
+    monkeypatch.setenv("DEEPSEEK_DEBUG_API_KEY", "offline-policy-test")
+    monkeypatch.setenv("DSH_INTERACTIVE_TURN_BUDGET_SECONDS", legacy_total)
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", forbidden)
+    monkeypatch.setattr(runner, "run_journey", forbidden)
+    scenario = tmp_path / "policy-invalid.json"
+    scenario.write_text(json.dumps({
+        "scenario_id": "timing-invalid", "started_at": "2026-09-13T02:00:00+00:00",
+        "duration_minutes": 1, "turns": [],
+    }))
+    cli = _cli()
+    output = tmp_path / "run"
+    with pytest.raises(ValueError):
+        await cli.run(cli.parse_options([
+            "--scenario", str(scenario), "--output", str(output),
+            "--model-mode", "real-provider", "--allow-real-provider",
+        ]))
+    assert not output.exists()
+
+
+@pytest.mark.asyncio
 async def test_adaptive_dialogue_reads_delivered_reply_before_next_input_and_can_wait(tmp_path):
     cli = _cli()
     scenario = tmp_path / "adaptive.json"
