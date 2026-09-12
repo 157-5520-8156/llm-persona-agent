@@ -36,6 +36,7 @@ from .deliberation import (
     ModelRouterAdapter,
     TriggerMessage,
     ValidationTechnicalFailure,
+    VisibleReviewParticipantBinding,
 )
 from .production_proposal_grammar import compose_production_deliberation
 from .errors import ConcurrencyConflict, IdempotencyConflict
@@ -1660,6 +1661,7 @@ class ProactiveDeliberationTurn:
         self._character_interior = character_interior
         self._budget_policy = budget_policy
         self._recorder = ProposalAuditRecorder(ledger=ledger)
+        self._review_counterpart_actor_ref = counterpart_actor_ref if visible_source_review_required else None
 
     async def audit(
         self,
@@ -2004,6 +2006,14 @@ class ProactiveDeliberationTurn:
             capsule,
             attempt_id=resolved_attempt_id,
             trigger_evidence=trigger_evidence,
+            visible_review_participants=(VisibleReviewParticipantBinding(
+                contract="visible-review-participant-binding.1",
+                world_id=self._ledger.world_id, actor_ref=self._actor,
+                counterpart_actor_ref=self._review_counterpart_actor_ref,
+                capsule_id=capsule.capsule.capsule_id, trigger_ref=opportunity.source_event_ref,
+                world_revision=cursor.world_revision, deliberation_revision=cursor.deliberation_revision,
+                ledger_sequence=cursor.ledger_sequence,
+            ) if self._review_counterpart_actor_ref is not None else None),
             budget=(self._budget_policy.start() if self._budget_policy is not None else None),
         )
         projection_time = projection.logical_time or stored[0].logical_time

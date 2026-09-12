@@ -1025,8 +1025,31 @@ class TriggerMessage(_FrozenModel):
         return self
 
 
+class VisibleReviewParticipantBinding(_FrozenModel):
+    """Configured dialogue participants bound before authoring to one pin."""
+
+    contract: Literal["visible-review-participant-binding.1"]
+    world_id: str = Field(min_length=1, max_length=256)
+    actor_ref: str = Field(min_length=1, max_length=256)
+    counterpart_actor_ref: str = Field(min_length=1, max_length=256)
+    capsule_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    trigger_ref: str = Field(min_length=1, max_length=256)
+    world_revision: int = Field(ge=0)
+    deliberation_revision: int = Field(ge=0)
+    ledger_sequence: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def participants_are_distinct(self) -> "VisibleReviewParticipantBinding":
+        if self.actor_ref == self.counterpart_actor_ref:
+            raise ValueError("visible review participants must be distinct actors")
+        return self
+
+
 class ModelInput(_FrozenModel):
     visible_source_requirement_json: str | None = Field(default=None, max_length=512_000, exclude_if=lambda v: v is None)
+    visible_review_participants: VisibleReviewParticipantBinding | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     call_id: str = Field(min_length=1, max_length=256)
     attempt_id: str = Field(min_length=1, max_length=256)
     route: ModelRoute
@@ -1047,6 +1070,19 @@ class ModelInput(_FrozenModel):
     # Values are reconstructable from RandomDrawRecorded; refs remain in the
     # hashed/audited request while this process-local convenience is excluded.
     recorded_cadence_draws: tuple[CadenceDraw, ...] = Field(default=(), exclude=True)
+
+    @model_validator(mode="after")
+    def visible_review_participants_bind_the_exact_pin(self) -> "ModelInput":
+        binding = self.visible_review_participants
+        if binding is not None and (
+            binding.capsule_id != self.capsule_id
+            or binding.trigger_ref != self.trigger_ref
+            or binding.world_revision != self.evaluated_world_revision
+            or binding.deliberation_revision != self.evaluated_deliberation_revision
+            or binding.ledger_sequence != self.evaluated_ledger_sequence
+        ):
+            raise ValueError("visible review participants do not bind the ModelInput pin")
+        return self
 
     @model_validator(mode="after")
     def affect_target_bounds_bind_the_exact_cursor(self) -> "ModelInput":
@@ -2117,6 +2153,7 @@ class Deliberation:
         trigger_evidence: tuple[ProposalEvidenceRef, ...] = (),
         trigger_message: TriggerMessage | None = None,
         affect_target_bounds: AffectTargetLowerBounds | None = None,
+        visible_review_participants: VisibleReviewParticipantBinding | None = None,
         budget: InteractiveTurnBudget | None = None,
         first_role_provider_marker: Callable[[str], None] | None = None,
         first_role_provider_completion_marker: Callable[[str], None] | None = None,
@@ -2209,6 +2246,7 @@ class Deliberation:
             trigger_evidence=trigger_evidence,
             trigger_message=trigger_message,
             affect_target_bounds=affect_target_bounds,
+            visible_review_participants=visible_review_participants,
             catalog_versions=catalog_versions,
             recorded_draw_refs=recorded_draw_refs,
             recorded_cadence_draws=recorded_cadence_draws,

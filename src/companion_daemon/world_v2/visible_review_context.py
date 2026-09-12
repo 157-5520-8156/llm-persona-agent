@@ -140,6 +140,13 @@ def compile_visible_selected_source_context(
             })
     subjects = {"companion_actor_ref": original.actor_ref}
     counterpart = _counterpart_actor(request, entries)
+    binding = request.visible_review_participants
+    if binding is not None:
+        if (binding.world_id, binding.actor_ref) != (original.world_id, original.actor_ref):
+            raise ValueError("visible review participants belong to another pinned world or actor")
+        if counterpart is not None and counterpart != binding.counterpart_actor_ref:
+            raise ValueError("visible review counterpart differs from the exact trigger actor")
+        counterpart = binding.counterpart_actor_ref
     if counterpart is not None:
         subjects["counterpart_actor_ref"] = counterpart
     return {

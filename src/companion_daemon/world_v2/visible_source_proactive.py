@@ -25,6 +25,7 @@ def qualify_capability(*, payload, request, world_id, actor_ref):
     pin = requirement_table(requirement).as_dict()["pin"]
     if (pin["world_id"], pin["actor_ref"]) != (world_id, actor_ref):
         raise ValueError("proactive visible requirement belongs to another subject")
+    _verify_participant_binding(request=request, payload=payload)
     return {
         **payload,
         "contract": CAPABILITY_CONTRACT,
@@ -43,7 +44,14 @@ def qualified_input(manifest):
     if manifest.capability_ref != CAPABILITY_PREFIX + digest(canonical(payload)):
         raise ValueError("proactive capability does not bind its original requirement")
     original = ModelInput.model_validate_json(json.loads(requirement)["original_input_json"])
+    _verify_participant_binding(request=original, payload=payload)
     return original.model_copy(update={REQUIREMENT_KEY: requirement})
+
+
+def _verify_participant_binding(*, request, payload):
+    binding = request.visible_review_participants
+    if binding is not None and binding.counterpart_actor_ref != payload.get("counterpart_ref"):
+        raise ValueError("proactive counterpart differs from original review participant binding")
 
 
 def verify_original_capability(*, requirement, lineage, author_request_json):
@@ -66,6 +74,7 @@ def verify_original_capability(*, requirement, lineage, author_request_json):
     if REQUIREMENT_KEY in payload or payload.get("contract") != CAPABILITY_CONTRACT:
         raise ValueError("proactive author body has an invalid private requirement view")
     original = ModelInput.model_validate_json(json.loads(requirement)["original_input_json"])
+    _verify_participant_binding(request=original, payload=payload)
     pin = requirement_table(requirement).as_dict()["pin"]
     full = {**payload, REQUIREMENT_KEY: requirement}
     capability_hash = digest(canonical(full))
