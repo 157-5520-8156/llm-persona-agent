@@ -1,5 +1,10 @@
 # 9 月邀请体验版：发布与录制范围
 
+**2026-09-13 更新：**DeepSeek 后续基线为 `integration/life-first-launch @ 4d427fb8`；
+现于 `codex/release-repair-20260913` 隔离修复。下文日期与批次保留为原计划和历史记录，
+不表示发布已完成。当前修复、验收缺口与费用口径见
+[发布前修复记录](../audits/deepseek-release-repair-2026-09-13.md)。
+
 用户确认：**9 月 11 日前可录制，9 月 12–13 日发布演示版并限量邀请体验**。
 以现有 `codex/living-continuity` 为集成线；本文件将进行中的 Goal 收敛到本周交付。
 角色语义决定权、来源与隐私、Action 授权、回执、重放和费用边界保持。
