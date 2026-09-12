@@ -2735,28 +2735,6 @@ class LifeDevelopmentRuntime:
                 wake=wake,
                 capsule=capsule,
             )
-            # The pinned biographical material exposes the reviewed timeline
-            # under both its authority label and its source alias.  Both exact
-            # refs are visible to the World Author, so both must be citable for
-            # the broad age/term/residence claims the context already carries.
-            biography_refs: set[str] = set()
-            pending = [context]
-            while pending:
-                value = pending.pop()
-                if isinstance(value, dict):
-                    for item in value.values():
-                        if isinstance(item, str) and (
-                            item.startswith("biography:")
-                            or item.startswith("reviewed-biography:")
-                        ):
-                            biography_refs.add(item)
-                        pending.append(item)
-                elif isinstance(value, list):
-                    pending.extend(value)
-            if biography_refs and manifest.outcome_contract == "world-consequence.2":
-                grounding = tuple(sorted({*manifest.grounding_refs, *biography_refs}))
-                if grounding != manifest.grounding_refs:
-                    manifest = manifest.model_copy(update={"grounding_refs": grounding})
             if manifest.pinned_cursor != context_cursor:
                 raise ConcurrencyConflict(
                     "Life Development capability manifest belongs to another prefix"
@@ -4715,6 +4693,19 @@ class LifeDevelopmentRuntime:
                     unavailable=("life_development.source_closure_reviewer_unavailable"),
                 ),
             )
+        # Historical bytes may be recompiled to identify an audit, but an
+        # unfinished request cannot promote material rejected by today's hard
+        # source boundary. Already committed proposals replay above unchanged.
+        if any(
+            resolve_cited_pinned_material(
+                context=context, manifest=manifest, ref=material["source_ref"]
+            ) != material
+            for material in cited_pinned_materials
+        ):
+            return LifeDevelopmentResult(
+                status="technical_failure",
+                reason_code="life_development.source_closure_evidence_unavailable",
+            )
         if recovered is None:
             review_run = await self._source_closure_review(
                 messages=messages,
@@ -5031,6 +5022,7 @@ class LifeDevelopmentRuntime:
                 context=context,
                 manifest=manifest,
                 ref=ref,
+                version=manifest.pinned_source_materials_version or "1",
             )
             if material is None:
                 raise ValueError(f"cited source material is unavailable: {ref}")

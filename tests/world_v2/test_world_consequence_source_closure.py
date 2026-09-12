@@ -365,7 +365,8 @@ def test_cited_pinned_materials_resolve_exact_context_and_location_policy():
     }
     context = {"slices": {"world_life": {"items": [item]}}}
 
-    material = resolve_cited_pinned_material(context=context, manifest=manifest, ref=ref)
+    # Persisted legacy requests retain their original unbound material bytes.
+    material = resolve_cited_pinned_material(context=context, manifest=manifest, ref=ref, version="1")
 
     assert material is not None
     assert material["authority_kind"] == "pinned_context_item"
@@ -390,7 +391,7 @@ def test_general_review_packet_carries_exact_cited_pinned_materials():
         "value": {"biography_id": ref, "age": 21, "academic_year": 3},
     }
     context = {"slices": {"world_life": {"items": [item]}}}
-    material = resolve_cited_pinned_material(context=context, manifest=manifest, ref=ref)
+    material = resolve_cited_pinned_material(context=context, manifest=manifest, ref=ref, version="1")
     assert material is not None
 
     messages = life_development_source_closure_messages(
@@ -412,4 +413,3 @@ def test_general_review_packet_carries_exact_cited_pinned_materials():
             draft=draft,
             cited_events=(),
         )
-

@@ -8,6 +8,7 @@ from datetime import timedelta
 from .life_review_identity import SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION
 from .life_author_seed import ReviewedLifeSeedCatalog
 from .life_content_store import ImmutableLifeContentStore
+from .life_development_source_closure import pinned_context_grounding_refs
 from .life_development_draft import (
     LifeDevelopmentBiographicalCoordinateCapability,
     LifeDevelopmentCapabilityManifest,
@@ -32,11 +33,7 @@ _CAPSULE_SLICE_NAMES = (
     "recent_experiences",
     "world_life",
     "perception_results",
-    "active_memory_candidates",
-    "available_capabilities",
-    "action_budget",
     "private_impressions",
-    "advisories",
 )
 
 _CURRENT_PRESENCE_AUTHORITY_HORIZON = timedelta(minutes=5)
@@ -95,7 +92,7 @@ class ProjectionLifeCapabilityManifestCompiler:
             ref
             for slice_ in available_slices
             for ref in getattr(slice_, "source_refs", ())
-            if isinstance(ref, str) and ref
+            if isinstance(ref, str) and ref in committed_ids
         }
         # The exact scheduler wake is verified separately by the runtime and
         # remains a legal anchor even when compact Context framing omits its
@@ -241,7 +238,12 @@ class ProjectionLifeCapabilityManifestCompiler:
             if self._content_store is not None
             else ()
         )
-        grounding_refs_set = set(visible_refs)
+        context_document = json.loads(model_content)
+        if not isinstance(context_document, dict):
+            raise ValueError("life capability manifest requires a Context object")
+        grounding_refs_set = {
+            *visible_refs, *pinned_context_grounding_refs(context_document)
+        }
         # The manifest already exposes reviewed location policies, active NPC
         # registration identities, settled biographical coordinates and the
         # genesis timeline as first-class authority.  Those exact refs must be
@@ -257,13 +259,6 @@ class ProjectionLifeCapabilityManifestCompiler:
             registration_ref = getattr(npc, "registration_event_ref", None)
             if isinstance(registration_ref, str) and registration_ref:
                 grounding_refs_set.add(registration_ref)
-        for fact in getattr(projection, "facts", ()):
-            fact_id = getattr(fact, "fact_id", None)
-            if isinstance(fact_id, str) and fact_id:
-                grounding_refs_set.add(fact_id)
-        reviewed_timeline_ref = getattr(biography, "reviewed_timeline_ref", None)
-        if isinstance(reviewed_timeline_ref, str) and reviewed_timeline_ref:
-            grounding_refs_set.add(reviewed_timeline_ref)
         for coordinate in getattr(projection, "biographical_coordinates", ()):
             settlement_ref = getattr(coordinate, "settlement_event_ref", None)
             if isinstance(settlement_ref, str) and settlement_ref:
@@ -271,23 +266,6 @@ class ProjectionLifeCapabilityManifestCompiler:
         for committed in committed_refs:
             if getattr(committed, "event_type", None) == "BiographicalTimelineConfigured":
                 grounding_refs_set.add(committed.event_id)
-        # The reviewed timeline parent ref is exposed to the World Author in
-        # the pinned context as an authority label, so make the exact value
-        # citable instead of forcing the model to invent or fail closure.
-        try:
-            context_document = json.loads(model_content)
-        except (TypeError, ValueError):
-            context_document = None
-        stack = [context_document]
-        while stack:
-            value = stack.pop()
-            if isinstance(value, dict):
-                for key, item in value.items():
-                    if key in {"reviewed_timeline_ref", "timeline_source_event_ref"} and isinstance(item, str) and item:
-                        grounding_refs_set.add(item)
-                    stack.append(item)
-            elif isinstance(value, list):
-                stack.extend(value)
         grounding_refs = tuple(sorted(grounding_refs_set))
         current_situation_refs = {
             ref
@@ -320,6 +298,7 @@ class ProjectionLifeCapabilityManifestCompiler:
             version=SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION,
             outcome_contract="world-consequence.2",
             execution_intention_sources_version="2",
+            pinned_source_materials_version="2",
             owner_actor_ref=self._owner,
             pinned_cursor=ProjectionCursor(
                 world_revision=getattr(projection, "world_revision"),

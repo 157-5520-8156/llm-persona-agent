@@ -881,6 +881,7 @@ async def test_production_open_life_plan_comes_from_the_world_author(
                     "version": "life-development-capability.production.2",
                     "outcome_contract": None,
                     "execution_intention_sources_version": None,
+                    "pinned_source_materials_version": None,
                 }
             )
 
@@ -945,17 +946,16 @@ async def test_production_open_life_plan_comes_from_the_world_author(
         assert planned.life_development_followup_status == "plan_committed"
         assert world_author.calls >= 1
         manifest = json.loads(world_author.requests[0][1]["content"])["capability_manifest"]
-        # Updated when the compiler began exposing every world source it
-        # already makes citable: reviewed location authorities, active NPC
-        # registrations, settled coordinates and pinned Facts.
+        # This fresh legacy-text fixture uses today's source-bound manifest
+        # compiler. Historical persisted request bytes are frozen separately.
         assert manifest["manifest_hash"] == (
-            "5fd5f1e9cba193a479223538290e50374b7da77e2da00113bbb00a6dc39a6db0"
+            "a5d9e0edfb1998d1e9f4d26d7079aa872be8765a3ffea1a9de167532af60f53b"
         )
         assert hashlib.sha256(
             json.dumps(
                 manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")
             ).encode()
-        ).hexdigest() == "f427377bc6352e20e19fdb08b44af7b0ff11ca06621ea128e517474d0cbb8194"
+        ).hexdigest() == "362670dd45f2567f2da560e61b8c7472eca5d3fee10f332a47110d7a1afc8d8a"
         assert character_model.calls >= 1
         assert any(
             item.activity_kind.startswith("open_life.")

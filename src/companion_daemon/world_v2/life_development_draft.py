@@ -332,6 +332,11 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
     execution_intention_sources_version: Literal["2"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # New requests use structural, source-bound material lookup. Absence is
+    # retained only for the exact historical request compiler on recovery.
+    pinned_source_materials_version: Literal["2"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     max_future_days: int = Field(ge=1, le=366)
     max_window_minutes: int = Field(ge=5, le=7 * 24 * 60)
 

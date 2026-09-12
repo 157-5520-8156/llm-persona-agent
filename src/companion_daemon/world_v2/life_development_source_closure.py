@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterator
 from typing import Literal
 
-from pydantic import Field, ValidationError, field_validator, model_validator
+from pydantic import Field, TypeAdapter, ValidationError, field_validator, model_validator
 
 from .background_context_profile import (
     background_context_profile_for_purpose,
@@ -36,9 +37,12 @@ from .life_review_identity import (
 from .life_context import LIFE_REVIEW_PROJECTION_CONTRACT
 from .schema_core import FrozenModel
 from .schemas import ProjectionCursor, WorldEvent
+from .world_life_context import BiographicalWorldContextItem, WorldLifeModelContextItem
 
 
 _REVIEW_CONTRACT = "life-development-source-closure-review.1"
+_WORLD_LIFE_ITEM_ADAPTER = TypeAdapter(WorldLifeModelContextItem)
+_PRIVACY_RANK = {"shareable": 0, "personal": 1, "private": 2, "withhold": 3}
 _NOVEL_ORIGIN_CONTRACT = "life-development-novel-origin-review.5"
 _WORLD_CONSEQUENCE_REVIEW_CONTRACT = "life-development-novel-origin-review.6"
 _MANIFEST_BINDING_CONTRACT = "life-development-review-manifest-binding.2"
@@ -1538,7 +1542,7 @@ def _iter_pinned_context_items(
     return pairs
 
 
-def _item_matches_ref(item: dict[str, object], ref: str) -> bool:
+def _legacy_item_matches_ref(item: dict[str, object], ref: str) -> bool:
     if item.get("item_ref") == ref or item.get("source_ref") == ref:
         return True
     bindings = item.get("source_bindings")
@@ -1573,8 +1577,96 @@ def _item_matches_ref(item: dict[str, object], ref: str) -> bool:
     return False
 
 
+def _pinned_item_refs(name: str, item: dict[str, object]) -> set[str]:
+    """Read identities from validated envelopes and typed biography fields.
+
+    The Capsule is the source selector. Neither a nested prose value nor an
+    authority *type* is an identity. An opaque ref still proves no semantics.
+    """
+    try:
+        compact = _compact_source_bound_item(item)
+    except (TypeError, ValueError):
+        return set()
+    if (
+        compact is None
+        or compact.get("authority_scope") != "exact_source_bound_existing_truth"
+        or item.get("privacy_class") not in {"shareable", "personal", "private"}
+    ):
+        return set()
+    refs = {
+        compact["item_ref"],
+        *(binding["ref"] for binding in compact["source_bindings"]),
+    }
+    value = item.get("value")
+    if name == "world_life":
+        try:
+            life = _WORLD_LIFE_ITEM_ADAPTER.validate_json(json.dumps(value))
+        except (TypeError, ValueError):
+            return set()
+        bindings = {
+            (binding["ref"], binding["source_world_revision"], binding["immutable_hash"])
+            for binding in compact["source_bindings"]
+        }
+        sources = getattr(life, "source_bindings", (getattr(life, "source", None),))
+        if (
+            any(
+                source is None
+                or (
+                    source.authority_event_ref,
+                    source.authority_world_revision,
+                    source.authority_payload_hash,
+                ) not in bindings
+                for source in sources
+            )
+            or _PRIVACY_RANK[item["privacy_class"]] < _PRIVACY_RANK[life.privacy_class]
+        ):
+            return set()
+        identity = (
+            getattr(life, "biography_id", None)
+            or getattr(life, "activity_event_ref", None)
+            or getattr(life, "occurrence_id", None)
+        )
+        if identity != compact["item_ref"]:
+            return set()
+        if isinstance(life, BiographicalWorldContextItem):
+            if life.timeline_source_event_ref not in {binding[0] for binding in bindings}:
+                return set()
+            refs.update((life.reviewed_timeline_ref, life.timeline_source_event_ref))
+    return refs
+
+
+def _available_pinned_items(
+    context: dict[str, object],
+) -> Iterator[tuple[str, dict[str, object]]]:
+    slices = context.get("slices")
+    if not isinstance(slices, dict):
+        return
+    for name in _NOVEL_ORIGIN_EVIDENCE_SLICES:
+        lane = slices.get(name)
+        if not isinstance(lane, dict) or lane.get("availability") != "available":
+            continue
+        items = lane.get("items")
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    yield name, item
+
+
+def pinned_context_grounding_refs(context: dict[str, object]) -> tuple[str, ...]:
+    """Expose only the refs the current pinned-material reader can resolve."""
+    return tuple(sorted({
+        ref
+        for name, item in _available_pinned_items(context)
+        for ref in _pinned_item_refs(name, item)
+    }))
+
+
 def resolve_cited_pinned_material(
-    *, context: dict[str, object], manifest, ref: str
+    *,
+    context: dict[str, object],
+    manifest: LifeDevelopmentCapabilityManifest,
+    ref: str,
+    version: Literal["1", "2"] = "2",
 ) -> dict[str, object] | None:
     """Resolve one citable non-ledger ref to its exact pinned material.
 
@@ -1583,11 +1675,26 @@ def resolve_cited_pinned_material(
     the material the author could read, never against the bare opaque ref.
     """
 
-    matches = [
-        {"slice": name, "item": item}
-        for name, item in _iter_pinned_context_items(context)
-        if _item_matches_ref(item, ref)
-    ]
+    if version not in {"1", "2"}:
+        raise ValueError("unknown pinned source material reader")
+    # The legacy matcher exists only to recompile persisted request bytes.
+    # Production manifests explicitly select version 2; it is never fallback.
+    if version == "1":
+        matches = [
+            {"slice": name, "item": item}
+            for name, item in _iter_pinned_context_items(context)
+            if _legacy_item_matches_ref(item, ref)
+        ]
+    else:
+        matches = [
+            {"slice": name, "item": item}
+            for name, item in _available_pinned_items(context)
+            if ref in _pinned_item_refs(name, item)
+            and all(
+                binding["source_world_revision"] <= manifest.pinned_cursor.world_revision
+                for binding in item["source_bindings"]
+            )
+        ]
     if matches:
         return {
             "source_ref": ref,
@@ -1630,6 +1737,13 @@ def life_development_source_closure_messages(
     cited_ids = tuple(event.event_id for event in cited_events)
     material_by_ref = {str(item["source_ref"]): item for item in cited_pinned_materials}
     material_ids = tuple(str(item["source_ref"]) for item in cited_pinned_materials)
+    if manifest.pinned_source_materials_version == "2":
+        for material in cited_pinned_materials:
+            exact = resolve_cited_pinned_material(
+                context=context, manifest=manifest, ref=material["source_ref"]
+            )
+            if exact is None or material != exact:
+                raise ValueError("cited pinned material differs from its source-bound authority")
     if (
         len(cited_ids) != len(cited_by_ref)
         or len(material_ids) != len(material_by_ref)
@@ -2243,5 +2357,7 @@ __all__ = [
     "life_development_source_closure_messages",
     "parse_life_development_novel_origin_review",
     "parse_life_development_source_closure_review",
+    "pinned_context_grounding_refs",
     "possibility_draft_from_outcome_texts",
+    "resolve_cited_pinned_material",
 ]
