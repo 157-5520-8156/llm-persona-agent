@@ -19,7 +19,7 @@ import logging
 from pathlib import Path
 import secrets
 import time
-from typing import Awaitable, Literal, Mapping, Protocol
+from typing import Awaitable, Callable, Literal, Mapping, Protocol
 
 from .accepted_ledger_batch import AcceptedLedgerBatchIssuer
 from .action_pump import (
@@ -750,6 +750,10 @@ class WorldV2TurnApplicationConfig:
     # events from that contract remain replayable, but no live application may
     # create new work through it.
     visible_source_review_required: bool = False
+    # Read-only capacity probe for background lanes: true when the day's
+    # background envelope is already spent.  It bounds work, never speech, and
+    # the visible reply path keeps its own explicit caps.
+    background_budget_paused: Callable[[], bool] | None = None
     expression_episode_mode: Literal["off", "shadow", "stream"] = "off"
     recorded_cadence_mode: Literal["off", "shadow", "on"] = "off"
     expression_action_kinds: frozenset[str] = frozenset({"reply", "followup", "proactive_message"})
@@ -4441,6 +4445,7 @@ def build_sqlite_world_v2_turn_application(
                     catalog_version=config.life_ecology.catalog_version,
                 ),
                 actor=config.life_ecology.worker_actor,
+                background_budget_paused=config.background_budget_paused,
             )
             if config.life_ecology is not None and media_ecology is not None
             else None

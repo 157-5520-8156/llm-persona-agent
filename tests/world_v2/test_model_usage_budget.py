@@ -567,3 +567,107 @@ def test_background_cap_reprices_legacy_half_price_rows(
             model="deepseek-v4-flash",
             prompt_characters=80,
         )
+
+
+def test_background_daily_ceiling_denies_life_lane_only(tmp_path) -> None:
+    """A spend cap for background work must never become character silence.
+
+    With only the background ceiling configured, an exhausted life lane is
+    denied while the visible inbound turn keeps its own explicit caps and is
+    still admitted.
+    """
+
+    path = tmp_path / "usage.sqlite"
+    store = WorldV2UsageStore(path=str(path), background_daily_budget_cny=0.01)
+    store.record(
+        _Usage(
+            model="deepseek-v4-flash",
+            prompt_tokens=1_000_000,
+            completion_tokens=0,
+            purpose="life_development_draft",
+        )
+    )
+    with pytest.raises(BackgroundSpendCapDenied, match="background_daily_budget_exceeded"):
+        store.admit_provider_call(
+            purpose="life_development_draft",
+            actor="agent:companion",
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            prompt_characters=80,
+        )
+    token = store.admit_provider_call(
+        purpose="inbound_turn",
+        actor="agent:companion",
+        provider="deepseek",
+        model="deepseek-v4-flash",
+        prompt_characters=80,
+    )
+    assert token.startswith("reservation:")
+
+
+def test_background_daily_ceiling_ignores_visible_spend(tmp_path) -> None:
+    """Chat spend must not consume the background envelope."""
+
+    path = tmp_path / "usage.sqlite"
+    store = WorldV2UsageStore(path=str(path), background_daily_budget_cny=0.01)
+    store.record(
+        _Usage(
+            model="deepseek-v4-flash",
+            prompt_tokens=5_000_000,
+            completion_tokens=0,
+            purpose="inbound_turn",
+        )
+    )
+    token = store.admit_provider_call(
+        purpose="activity_lifecycle_choice",
+        actor="agent:companion",
+        provider="deepseek",
+        model="deepseek-v4-flash",
+        prompt_characters=80,
+    )
+    assert token.startswith("reservation:")
+    assert store.background_daily_cost_cny() == 0.0
+
+
+def test_background_daily_ceiling_disabled_when_unset(tmp_path) -> None:
+    """No configured ceiling keeps the legacy shared-envelope behaviour."""
+
+    path = tmp_path / "usage.sqlite"
+    store = WorldV2UsageStore(path=str(path), background_daily_budget_cny=None)
+    store.record(
+        _Usage(
+            model="deepseek-v4-flash",
+            prompt_tokens=5_000_000,
+            completion_tokens=0,
+            purpose="life_development_draft",
+        )
+    )
+    store.admit_provider_call(
+        purpose="life_development_draft",
+        actor="agent:companion",
+        provider="deepseek",
+        model="deepseek-v4-flash",
+        prompt_characters=80,
+    )
+    state = store.budget_state()
+    assert state["background_daily_budget_cny"] is None
+    assert state["background_daily_exhausted"] is False
+    assert state["background_daily_cost_cny"] > 0.0
+
+
+def test_background_daily_ceiling_is_reported_in_budget_state(tmp_path) -> None:
+    path = tmp_path / "usage.sqlite"
+    store = WorldV2UsageStore(path=str(path), background_daily_budget_cny=0.5)
+    store.record(
+        _Usage(
+            model="deepseek-v4-flash",
+            prompt_tokens=10_000_000,
+            completion_tokens=0,
+            purpose="world_stimulus_appraisal",
+        )
+    )
+    state = store.budget_state()
+    assert state["background_daily_budget_cny"] == 0.5
+    assert state["background_daily_cost_cny"] >= 0.5
+    assert state["background_daily_exhausted"] is True
+    assert "background_daily_exhausted" in state["warning_reasons"]

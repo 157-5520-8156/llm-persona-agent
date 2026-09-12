@@ -278,6 +278,59 @@ async def test_life_ecology_accepts_exact_clock_from_a_multi_world_event_commit(
 
 
 @pytest.mark.asyncio
+async def test_life_ecology_pauses_quietly_when_the_background_budget_is_spent() -> None:
+    """A spent background day closes the wake as capacity, not as a failure.
+
+    The lane list must not be walked only to have every provider call denied,
+    and the visible reply path is not part of this envelope at all.
+    """
+
+    event = _event("clock-budget-paused")
+    ledger = _Ledger(event)
+    trigger_store, media = _TriggerStore(), _Media()
+    runtime = LifeEcologyRuntime(
+        ledger=ledger,
+        trigger_store=trigger_store,
+        media_followup=media,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+        background_budget_paused=lambda: True,
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:budget-paused",
+        correlation_id="correlation:budget-paused",
+    )
+
+    assert result.status == "idle"
+    assert result.reason_code == "life_ecology.paused_by_budget"
+    assert media.calls == []
+
+
+@pytest.mark.asyncio
+async def test_life_ecology_runs_normally_when_the_background_budget_is_open() -> None:
+    event = _event("clock-budget-open")
+    ledger = _Ledger(event)
+    trigger_store, media = _TriggerStore(), _Media()
+    runtime = LifeEcologyRuntime(
+        ledger=ledger,
+        trigger_store=trigger_store,
+        media_followup=media,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+        background_budget_paused=lambda: False,
+    )
+
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:budget-open",
+        correlation_id="correlation:budget-open",
+    )
+
+    assert result.reason_code != "life_ecology.paused_by_budget"
+    assert len(media.calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_life_ecology_rejects_a_wake_that_is_not_exactly_committed() -> None:
     event = _event("clock")
     ledger = _Ledger(event)

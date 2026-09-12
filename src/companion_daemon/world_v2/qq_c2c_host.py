@@ -3031,6 +3031,29 @@ class QQC2CHost:
             await semantic_quiescence()
 
 
+def _background_budget_paused(store: WorldV2UsageStore) -> Callable[[], bool]:
+    """Return the read-only probe the life scheduler uses to pause cheaply.
+
+    A spent background day must close wakes as ``paused_by_budget`` instead of
+    letting every lane discover the denial one provider call at a time.  The
+    probe never raises: a broken usage ledger must not become a life fact.
+    """
+
+    def paused() -> bool:
+        budget = getattr(store, "background_daily_budget_cny", None)
+        if budget is None:
+            return False
+        probe = getattr(store, "background_daily_cost_cny", None)
+        if not callable(probe):
+            return False
+        try:
+            return float(probe()) >= float(budget)
+        except Exception:
+            return False
+
+    return paused
+
+
 def build_qq_c2c_host(
     *,
     settings: Settings,
@@ -3117,7 +3140,14 @@ def build_qq_c2c_host(
         recorded_cadence_mode=getattr(settings, "world_v2_recorded_cadence_mode", "off"),
         media_request_available=media_preview is not None,
     )
-    interactive_turn_budget_policy = interactive_turn_budget_policy or InteractiveTurnBudgetPolicy()
+    interactive_turn_budget_policy = interactive_turn_budget_policy or InteractiveTurnBudgetPolicy(
+        total_seconds=float(
+            getattr(settings, "world_v2_interactive_turn_budget_seconds", 12.0)
+        ),
+        hedge_after_seconds=float(
+            getattr(settings, "world_v2_interactive_hedge_after_seconds", 6.5)
+        ),
+    )
     usage_store = usage_store_for_settings(settings)
     world_id = qq_c2c_world_id(settings.primary_user_id)
     character_turn_store = open_sqlite_character_interior_turn_store(
@@ -3204,6 +3234,7 @@ def build_qq_c2c_host(
             adult_media_enabled=settings.world_v2_adult_media_enabled,
             perception_budget_limit=perception_budget_limit,
             interactive_turn_budget_policy=interactive_turn_budget_policy,
+            background_budget_paused=_background_budget_paused(usage_store),
             expression_episode_mode=expression_episode_mode,
             visible_source_review_required=visible_source_review_required,
             recorded_cadence_mode=getattr(settings, "world_v2_recorded_cadence_mode", "off"),

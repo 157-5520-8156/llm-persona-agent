@@ -138,12 +138,20 @@ def _is_invalid_cost(*, purpose: str, attempt: int) -> bool:
 def usage_store_for_settings(settings: object) -> WorldV2UsageStore:
     """Bind World V2 usage to the same sqlite Settings uses for the ledger."""
 
+    background_daily = _optional_float(
+        getattr(settings, "world_v2_background_daily_budget_cny", None)
+    )
+    if background_daily is not None and background_daily <= 0:
+        # Zero is the documented "no separate background ceiling" value.  It
+        # must not become a ceiling of zero that denies every background call.
+        background_daily = None
     return WorldV2UsageStore(
         path=str(getattr(settings, "database_path")),
         monthly_cost_target_cny=float(getattr(settings, "world_v2_monthly_cost_target_cny", 100.0)),
         monthly_budget_cny=_optional_float(getattr(settings, "monthly_budget_cny", None)),
         daily_budget_cny=_optional_float(getattr(settings, "daily_budget_cny", None)),
         soft_daily_budget_cny=_optional_float(getattr(settings, "soft_daily_budget_cny", None)),
+        background_daily_budget_cny=background_daily,
     )
 
 
@@ -165,6 +173,7 @@ class WorldV2UsageStore:
         monthly_budget_cny: float | None = None,
         daily_budget_cny: float | None = None,
         soft_daily_budget_cny: float | None = None,
+        background_daily_budget_cny: float | None = None,
     ) -> None:
         if not path:
             raise ValueError("world v2 usage store requires a database path")
@@ -176,6 +185,7 @@ class WorldV2UsageStore:
         self._monthly_budget_cny = monthly_budget_cny
         self._daily_budget_cny = daily_budget_cny
         self._soft_daily_budget_cny = soft_daily_budget_cny
+        self._background_daily_budget_cny = background_daily_budget_cny
         self._lock = threading.RLock()
         self._spend_account = classify_spend_account(database_path=path)
         ensure_usage_events_schema(Path(path))
@@ -244,6 +254,7 @@ class WorldV2UsageStore:
                 self._monthly_budget_cny,
                 self._daily_budget_cny,
                 self._soft_daily_budget_cny,
+                self._background_daily_budget_cny,
             )
         )
 
@@ -272,6 +283,47 @@ class WorldV2UsageStore:
               AND status != 'budget_denied'
             """,
             (since.isoformat(),),
+        ).fetchall()
+        total = 0.0
+        for row in rows:
+            total += price_usage_row(
+                {
+                    "recorded_at": row[0],
+                    "model": row[1],
+                    "prompt_tokens": row[2],
+                    "completion_tokens": row[3],
+                    "cache_hit_tokens": row[4],
+                    "cache_miss_tokens": row[5],
+                    "cost_cny": row[6],
+                    "reasoning_tokens": row[7],
+                },
+                cny_per_usd=self._usd_to_cny,
+            ).cny
+        return total
+
+    def _background_model_spend_cny(
+        self, connection: sqlite3.Connection, *, since: datetime
+    ) -> float:
+        """Sum today's spend for non-visible lanes only.
+
+        Visible inbound turns are excluded on purpose: the background ceiling
+        exists to keep the life machine affordable next to a waiting human, and
+        never to silence a reply they are watching for.
+        """
+
+        placeholders = ", ".join("?" for _ in VISIBLE_INBOUND_PURPOSES)
+        rows = connection.execute(
+            f"""
+            SELECT recorded_at, model, prompt_tokens, completion_tokens,
+                   cache_hit_tokens, cache_miss_tokens, cost_cny,
+                   COALESCE(reasoning_tokens, 0)
+            FROM world_v2_model_usage
+            WHERE recorded_at >= ?
+              AND purpose != 'image_generation'
+              AND status != 'budget_denied'
+              AND purpose NOT IN ({placeholders})
+            """,
+            (since.isoformat(), *sorted(VISIBLE_INBOUND_PURPOSES)),
         ).fetchall()
         total = 0.0
         for row in rows:
@@ -489,6 +541,14 @@ class WorldV2UsageStore:
             and daily + estimated_cny > self._soft_daily_budget_cny
         ):
             return "soft_daily_budget_exceeded"
+        if self._background_daily_budget_cny is not None:
+            background = self._background_model_spend_cny(
+                connection, since=self._utc_window_start(month=False)
+            )
+            if background + estimated_cny > self._background_daily_budget_cny:
+                # The visible lane keeps its own explicit caps above; this one
+                # only bounds background life/NPC/memory work for the day.
+                return "background_daily_budget_exceeded"
         return None
 
     def _record_budget_denial(
@@ -983,6 +1043,24 @@ class WorldV2UsageStore:
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         return self.cost_since(since=day_start)
 
+    def background_daily_cost_cny(self) -> float:
+        """Today's repriced spend for every non-visible World V2 lane."""
+
+        now = datetime.now(timezone.utc)
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        with self._lock:
+            connection = self._connect()
+            try:
+                return self._background_model_spend_cny(connection, since=day_start)
+            finally:
+                connection.close()
+
+    @property
+    def background_daily_budget_cny(self) -> float | None:
+        """The configured daily background ceiling, or ``None`` when unset."""
+
+        return self._background_daily_budget_cny
+
     def budget_state(
         self,
         *,
@@ -1007,12 +1085,19 @@ class WorldV2UsageStore:
         monthly_exhausted = monthly_budget_cny is not None and monthly >= monthly_budget_cny
         daily_exhausted = daily_budget_cny is not None and daily >= daily_budget_cny
         soft_daily_exhausted = soft_daily_budget_cny is not None and daily >= soft_daily_budget_cny
+        background_daily = self.background_daily_cost_cny()
+        background_daily_exhausted = (
+            self._background_daily_budget_cny is not None
+            and background_daily >= self._background_daily_budget_cny
+        )
         if monthly_exhausted:
             warning_reasons.append("monthly_exhausted")
         if daily_exhausted:
             warning_reasons.append("daily_exhausted")
         if soft_daily_exhausted:
             warning_reasons.append("soft_daily_exhausted")
+        if background_daily_exhausted:
+            warning_reasons.append("background_daily_exhausted")
         return {
             **cost_health,
             "monthly_cost_cny": round(month["settled_cny"], 4),
@@ -1027,6 +1112,9 @@ class WorldV2UsageStore:
             "daily_exhausted": daily_exhausted,
             "soft_daily_budget_cny": soft_daily_budget_cny,
             "soft_daily_exhausted": soft_daily_exhausted,
+            "background_daily_budget_cny": self._background_daily_budget_cny,
+            "background_daily_cost_cny": round(background_daily, 4),
+            "background_daily_exhausted": background_daily_exhausted,
             "token_usage_metrics_scope": "text_and_vision_token_calls",
             "purpose_counts": attribution["purpose_counts"],
             "calls_per_user_message": attribution["calls_per_user_message"],

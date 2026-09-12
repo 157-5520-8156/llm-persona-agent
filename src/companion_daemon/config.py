@@ -222,6 +222,28 @@ class Settings(BaseSettings):
         ge=0.01,
         le=1.0,
     )
+    # Interactive reply timing posture.  These are the cancellation ceilings of
+    # one user-visible turn, not a target: the compact fast lane answers in
+    # ~1.5-2.0 s (measured p50 2.08 s end-to-end on 8 real turns, 2026-09-12),
+    # so the ceiling only decides when the host gives up and defers, and when a
+    # speculative second candidate is started.  They are environment-tunable so
+    # a 3 s deployment can tighten the posture without a code change.
+    world_v2_interactive_turn_budget_seconds: float = Field(
+        default=12.0,
+        gt=0,
+        allow_inf_nan=False,
+        alias="WORLD_V2_INTERACTIVE_TURN_BUDGET_SECONDS",
+    )
+    world_v2_interactive_hedge_after_seconds: float = Field(
+        default=6.5,
+        gt=0,
+        allow_inf_nan=False,
+        alias="WORLD_V2_INTERACTIVE_HEDGE_AFTER_SECONDS",
+        description=(
+            "Seconds after turn start when a slow primary may be hedged. Must "
+            "stay below the turn budget minus the acceptance/dispatch reserve."
+        ),
+    )
 
     @model_validator(mode="after")
     def reject_removed_semantic_model_configuration(self) -> "Settings":
@@ -716,6 +738,23 @@ class Settings(BaseSettings):
     monthly_budget_cny: float = Field(default=80.0, alias="MONTHLY_BUDGET_CNY")
     daily_budget_cny: float = Field(default=3.0, alias="DAILY_BUDGET_CNY")
     soft_daily_budget_cny: float = Field(default=2.0, alias="SOFT_DAILY_BUDGET_CNY")
+    # One daily ceiling for background World V2 work only (life ecology, NPC,
+    # appraisal, private impression, retention, proactive consideration).  It
+    # is what keeps a honeymoon-phase chat month inside the monthly target:
+    # 3000 chat turns at the compact fast lane cost roughly CNY 35, so the
+    # event machine must stay near CNY 1.5/day.  Visible turns are never
+    # denied by this envelope -- they keep their own monthly/daily hard caps.
+    # Zero disables the ceiling (legacy shared-envelope behaviour).
+    world_v2_background_daily_budget_cny: float = Field(
+        default=1.5,
+        ge=0,
+        allow_inf_nan=False,
+        alias="WORLD_V2_BACKGROUND_DAILY_BUDGET_CNY",
+        description=(
+            "Daily CNY ceiling for non-visible World V2 lanes; 0 disables it. "
+            "Visible inbound turns are exempt and keep their own hard caps."
+        ),
+    )
     monthly_image_limit: int = Field(default=20, alias="MONTHLY_IMAGE_LIMIT")
     monthly_vision_limit: int = Field(default=120, alias="MONTHLY_VISION_LIMIT")
     monthly_audio_limit: int = Field(default=60, alias="MONTHLY_AUDIO_LIMIT")

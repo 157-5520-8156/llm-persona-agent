@@ -20,7 +20,7 @@ from datetime import datetime
 import inspect
 import logging
 import re
-from typing import Literal, Protocol
+from typing import Callable, Literal, Protocol
 
 from .life_ecology_contract import (
     LIFE_ECOLOGY_WAKE_EVENT_TYPES,
@@ -230,6 +230,7 @@ class LifeEcologyRuntime:
         visual_evidence_followup: VisualEvidenceFollowup | None = None,
         availability: LifeEcologyAvailability,
         actor: str = "worker:life-ecology",
+        background_budget_paused: Callable[[], bool] | None = None,
     ) -> None:
         if not actor:
             raise ValueError("life ecology runtime requires an actor")
@@ -245,6 +246,10 @@ class LifeEcologyRuntime:
         self._visual_evidence_followup = visual_evidence_followup
         self._availability = availability
         self._actor = actor
+        # Read-only capacity probe owned by the usage store.  A background day
+        # that already spent its own ceiling must not walk the lane list only
+        # to have every provider call denied one by one.
+        self._background_budget_paused = background_budget_paused
 
     def availability(self) -> LifeEcologyAvailability:
         return self._availability
@@ -301,6 +306,17 @@ class LifeEcologyRuntime:
                 status="joined_existing",
                 trigger_id=claim.trigger_id,
                 reason_code="life_ecology.run_in_progress",
+            )
+        if self._background_budget_paused is not None and self._background_budget_paused():
+            # This is a capacity fact, not a character decision and not a
+            # technical failure: today's background envelope is spent, so the
+            # wake closes quietly and the next wake may still live.  Visible
+            # turns keep their own caps and are untouched by this state.
+            await self._complete_paused_by_budget(key=key, trigger_id=claim.trigger_id)
+            return LifeEcologyRunResult(
+                status="idle",
+                trigger_id=claim.trigger_id,
+                reason_code="life_ecology.paused_by_budget",
             )
 
         try:
@@ -1150,6 +1166,11 @@ class LifeEcologyRuntime:
 
     async def _complete_failed_safe(self, *, key: LifeEcologyRunKey, trigger_id: str) -> bool:
         return await self._complete_outcome(key=key, trigger_id=trigger_id, outcome="failed_safe")
+
+    async def _complete_paused_by_budget(self, *, key: LifeEcologyRunKey, trigger_id: str) -> bool:
+        return await self._complete_outcome(
+            key=key, trigger_id=trigger_id, outcome="paused_by_budget"
+        )
 
     async def _complete_technical_failure(
         self,
