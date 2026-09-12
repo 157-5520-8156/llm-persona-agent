@@ -2413,6 +2413,14 @@ async def test_proactive_contact_uses_one_versioned_forced_tool_at_http_boundary
         await model.aclose()
 
     assert result["decision"]["payload"]["timing_choice"] == "silent"
+    # Empty fixture context must not acquire example dialogue or motives from
+    # protocol scaffolding. The role can still author any legal choice.
+    request_text = json.dumps(captured["messages"], ensure_ascii=False)
+    for scripted_content in (
+        "突然想到你，在干嘛？", "你周末有空吗？", "自然想问候",
+        "想等他回我", "心里是暖的",
+    ):
+        assert scripted_content not in request_text
     assert captured_paths == ["/beta/chat/completions"]
     assert captured_headers["x-girl-agent-request-identity"] == result["author_lineage"][
         "request_hash"

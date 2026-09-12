@@ -70,7 +70,6 @@ from ..background_context_profile import (
 from ..present_prompt import (
     ordered_json_dumps,
     present_inner_life,
-    proactive_contact_usage_specimens,
 )
 from .structured_role_tool_contract import (
     StructuredRoleToolContract,
@@ -1823,9 +1822,8 @@ class StructuredCharacterRoleFaculty:
                 "declared_display 只能是 sexual_suggestive、explicit_adult 或 withdraw。"
                 "需要时就写，不需要时留空。"
             )
-            user_payload["proactive_contact_usage_specimens"] = (
-                proactive_contact_usage_specimens()
-            )
+            # Protocol constraints belong in the instructions and tool above.
+            # Protocol examples must not supply her dialogue or motives.
         if background_profile is not None:
             user_payload["background_context_profile"] = profile_audit_record(
                 background_profile
