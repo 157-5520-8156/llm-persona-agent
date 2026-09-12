@@ -356,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.101"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.102"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -642,8 +642,17 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.101
 # .100 manifest. The first changed leaf is the recorded Interior decision hash,
 # followed by derived audit/Acceptance identities, not a new character choice.
 # See living-continuity-integration-2026-09-08.md and the 11909fb5 causal artifacts.
+# 2026-09-13: .102 records the already-drifted DeepSeek integration baseline.
+# Complete exports at 4d427fb8, b003fda4, and a4359ba3 are identical, including
+# every frozen predicate. Against the hash-verified .101 export, only all 120
+# replay_hash fields differ; all 17 other case fields remain identical. The
+# first-case ledger comparison starts at ModelResultRecorded's emitted-request
+# and derived audit identities, with the original response hash unchanged.
+# No assertion, case, output or cost limit is weakened. This records offline
+# mechanism identity, not model semantics or release qualification. Evidence:
+# docs/audits/scenario-baseline-102-2026-09-13.json.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "96a7d21de8efe0cd3e257d481eaab6569d1a7af6c5188f8cb38b423efa4ea796"
+    "816f73723f0c969524bacffcf64201e906dd380228ca8b91086edce9efc83485"
 )
 
 

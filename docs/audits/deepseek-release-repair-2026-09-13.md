@@ -109,8 +109,10 @@ host、CLI、后台预留联合门 **150 passed / 48.09 秒**；新增 response 
 - `a4359ba3` 移除另一个主动 grounding helper 的 scope 改写和混合声明删除。
   精确 scope/ref 权限复用已 pinned inventory 编译，恒进入 prepare/propose 的 capability
   与请求身份；在 Core 终态前校验，使两种审核配置都能回到同角色一次重选。独立审查
-  发现的 prepare/propose 缓存身份失配也已修复。当前整合门正在验证旧 prepared、已提交
-  audit 恢复与合法语句交付；不能提前声称整合门通过。测试捕获的新元数据约 2122 UTF-8
+  发现的 prepare/propose 缓存身份失配也已修复。整合门为 **201 passed / 1 failed / 257.50 秒**：
+  唯一失败仍要求旧的后置一次 grounding 拒绝；`1bb83d87` 将它改为两次非法原稿的同角色
+  纠正后技术失败、零 Action、原机会终止，独立相关门 **82 passed / 37.68 秒**。
+  旧 prepared、已提交 audit 恢复与合法语句交付均保留检查。测试捕获的新元数据约 2122 UTF-8
   字节，实际请求增量约 2208 字节，对该 fixture 的保守预留增量为每作者调用 0.006624 元，
   不是实际供应商收费。
 - 同一公共主动路径另确认用户身份丢失：Clock trigger 没有 trigger_message，完整来源
@@ -133,8 +135,14 @@ runtime 的真实语义审核；两种非法时间结果必须由同一角色纠
 `replay_hash` 变化，其他 17 个逐场景字段保持，包括输出、调用数、事件、Action 和场景断言。
 另在原 `fa5906f4` 隔离执行首场景：第一个改变是第 9 条 ModelResultRecorded 中作者请求
 及派生审计身份，原作者响应 hash 不变。对照保存在
-`output/private-audits/scenario-baseline-20260913/`。冻结摘要尚待最终修复候选建立新版本，
-不能只为消除失败替换 hash。
+`output/private-audits/scenario-baseline-20260913/`。`a4359ba3` 的全部 120 场景再次与前两份导出
+完全一致，据此登记 `.102`，新摘要 `816f7372…83485`。正常完整场景检查 **6 passed / 46.03 秒**，
+其中包含不带 limit 的全部场景和冻结哈希守卫。详见
+[基线比较证据](scenario-baseline-102-2026-09-13.json)。后续产品改动仍须核对受影响的检查。
+
+主动冷恢复用例曾有一次缺回执 Action 后续进入 unknown，导致期望不变的 hash 改变；
+原基线之后重跑通过，根整合门也通过。该次不稳定现象尚未解释清楚，不能称稳定旧失败
+或用重跑通过抹掉记录；应先核对比较前是否仍有未结算回执，而非放宽重复 Action 的要求。
 
 19 项 skip 均为退役的 v9 narrow-verdict 测试，本轮未新增 skip。当前 v3/v4 公共链已覆盖
 当前用户报告与错误 actor，以及纠正后另造生活经历被拒绝；主观外壳内嵌外部前提、用历史

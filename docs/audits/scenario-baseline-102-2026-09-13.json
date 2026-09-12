@@ -1,0 +1,96 @@
+{
+  "contract": "offline-scenario-rebaseline-evidence.1",
+  "new_version": "world-v2-offline-mechanism-baseline.102",
+  "old_manifest_hash": "96a7d21de8efe0cd3e257d481eaab6569d1a7af6c5188f8cb38b423efa4ea796",
+  "new_run_hash_with_old_version": "3ab30188377f17226175556c3ace8b0c3eba73a78a31379d894da91b120ecbc4",
+  "new_manifest_hash": "816f73723f0c969524bacffcf64201e906dd380228ca8b91086edce9efc83485",
+  "full_exports_identical_at": [
+    "4d427fb8",
+    "b003fda4",
+    "a4359ba3"
+  ],
+  "cases": 120,
+  "all_case_predicates_passed": true,
+  "changed_case_fields": {
+    "replay_hash": 120
+  },
+  "unchanged_case_fields": [
+    "background_model_calls",
+    "background_work_statuses",
+    "emotional_gold",
+    "event_types",
+    "fault",
+    "model_calls",
+    "observation_count",
+    "output_hash",
+    "replay_passed",
+    "restarted_after_seed",
+    "room_view_hash",
+    "scenario_family",
+    "scenario_turn_id",
+    "terminal_action_states",
+    "trigger_kinds",
+    "verification_errors",
+    "world_id"
+  ],
+  "first_case_probe": {
+    "scenario": "ordinary_share.01",
+    "origin": "fa5906f4",
+    "old_replay_matches_verified_original": true,
+    "first_changed_ledger_sequence": 9,
+    "first_changed_event_type": "ModelResultRecorded",
+    "changed_payload_leaves": [
+      "/audit_hash",
+      "/audit_json[json]/character_interior_lineage/author_model_call_id",
+      "/audit_json[json]/character_interior_lineage/author_request_hash",
+      "/audit_json[json]/character_interior_lineage/decision_hash",
+      "/audit_json[json]/character_interior_lineage/private_self_lineage_hash",
+      "/audit_json[json]/model_call_id",
+      "/audit_json[json]/model_result_ref",
+      "/audit_json[json]/request_hash",
+      "/deliberation_result_id",
+      "/model_call_id",
+      "/model_result_ref"
+    ],
+    "author_response_hash_unchanged": true
+  },
+  "artifacts": [
+    {
+      "path": "/Users/geoff/Projects/Girl-Agent-living-continuity/output/adaptive-companionship-2026-09-08/baseline-fa5906f4.json",
+      "sha256": "74c9a0b8d233c5a7c23805a838d31d4317a96b73d44419824b2adbf51daec06e"
+    },
+    {
+      "path": "output/private-audits/scenario-baseline-20260913/deepseek-4d427fb8/manifest.json",
+      "sha256": "c9bd97d6ce06b63350f09af7ae58fe053605129a11c6dfaa04867dc91693ccae"
+    },
+    {
+      "path": "output/private-audits/scenario-baseline-20260913/repair-b003fda4/manifest.json",
+      "sha256": "c9bd97d6ce06b63350f09af7ae58fe053605129a11c6dfaa04867dc91693ccae"
+    },
+    {
+      "path": "output/private-audits/scenario-baseline-20260913/repair-a4359ba3/manifest.json",
+      "sha256": "c9bd97d6ce06b63350f09af7ae58fe053605129a11c6dfaa04867dc91693ccae"
+    },
+    {
+      "path": "output/private-audits/scenario-baseline-20260913/origin-fa5906f4-first/manifest.json",
+      "sha256": "989989ea6c1cffe677a4044f5263b3c6a069eb9300dce2bb81e2c4e88e144659"
+    },
+    {
+      "path": "output/private-audits/scenario-baseline-20260913/baseline-comparison.json",
+      "sha256": "d8f4fba4cdcf220f51f1885106cb5c6a0e17a008d91709b0c4ae26f7491c2a13"
+    },
+    {
+      "path": "output/private-audits/scenario-baseline-20260913/first-case-event-diff.json",
+      "sha256": "639ce895269d3855dcd27af2ab1b0dbc7cd2320dd4837b1552646e6fde8fbc89"
+    },
+    {
+      "path": "output/private-audits/scenario-baseline-20260913/first-model-result-leaf-diff.json",
+      "sha256": "2e152c2c855e44a9654bd36fd4c8855f0426867623fbc57dbce65592f9367abd"
+    }
+  ],
+  "limitations": [
+    "Fixed fake models and providers only; no model semantic or human-likeness qualification.",
+    "Only the first case has an old-versus-current event leaf comparison; all 120 cases have complete manifest-field comparisons.",
+    "The full gate at b003fda4 had four failures and nineteen skips; this evidence addresses only its stale scenario aggregate."
+  ]
+}
