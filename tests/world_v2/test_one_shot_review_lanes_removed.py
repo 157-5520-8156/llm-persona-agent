@@ -1,7 +1,8 @@
-"""H1d: model-bearing review lanes are gone. One-shot is the default."""
+"""Retired review lanes stay removed; restored Life reviews stay Life-owned."""
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -18,13 +19,18 @@ _HAYSTACK = (
     _SRC / "proactive_action.py",
 )
 
-# ``life_development_novel_origin_review`` is intentionally live again: the
-# optional focused World Author critic (prose / user-channel boundary). H1d
-# still forbids the deleted one-shot closure/proof lanes below.
+# General source closure and focused novel-origin review are restored for
+# Life Development only. The retired proof/inventory lanes remain forbidden.
 _FORBIDDEN = (
-    "life_development_source_closure_review",
     "visible_source_closure_proof_v1",
     "candidate_external_proposition_inventory",
+)
+
+_LIFE_REVIEW_PURPOSES = frozenset(
+    {
+        "life_development_source_closure_review",
+        "life_development_novel_origin_review",
+    }
 )
 
 _DELETED_MODULES = (
@@ -34,7 +40,7 @@ _DELETED_MODULES = (
 )
 
 
-def test_production_haystack_has_no_model_review_purposes() -> None:
+def test_production_haystack_has_no_retired_proof_or_inventory_lanes() -> None:
     missing = [path for path in _HAYSTACK if not path.is_file()]
     assert missing == [], f"haystack files missing: {missing}"
     hits: list[str] = []
@@ -44,6 +50,34 @@ def test_production_haystack_has_no_model_review_purposes() -> None:
             if needle in text:
                 hits.append(f"{path.relative_to(_ROOT)}:{needle}")
     assert hits == []
+
+
+@pytest.mark.parametrize("path", _HAYSTACK, ids=lambda path: path.stem)
+def test_restored_life_review_purposes_are_owned_by_life_runtime(path: Path) -> None:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    purposes: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = (
+            node.func.id
+            if isinstance(node.func, ast.Name)
+            else node.func.attr if isinstance(node.func, ast.Attribute) else None
+        )
+        if name != "model_call_scope":
+            continue
+        purpose = next(
+            (keyword.value for keyword in node.keywords if keyword.arg == "purpose"),
+            node.args[0] if node.args else None,
+        )
+        if isinstance(purpose, ast.Constant) and isinstance(purpose.value, str):
+            purposes.add(purpose.value)
+    expected = (
+        _LIFE_REVIEW_PURPOSES
+        if path == _SRC / "life_development_runtime.py"
+        else frozenset()
+    )
+    assert purposes & _LIFE_REVIEW_PURPOSES == expected, path.relative_to(_ROOT)
 
 
 def test_llm_review_modules_are_deleted() -> None:

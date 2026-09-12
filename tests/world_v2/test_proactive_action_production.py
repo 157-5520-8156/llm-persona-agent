@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from types import SimpleNamespace
@@ -1972,46 +1973,111 @@ async def test_http_400_is_retryable_provider_rejection_with_failure_detail() ->
 
 
 @pytest.mark.asyncio
-async def test_now_plus_yield_authorizes_on_the_first_pass() -> None:
+@pytest.mark.parametrize(
+    "invalid_choice, failure_detail",
+    [
+        ("now_plus_yield", "yield posture cannot authorize an immediate expression"),
+        ("later_without_due_window", "later expression requires a relative due window"),
+    ],
+)
+@pytest.mark.parametrize("corrected", [True, False], ids=["role_corrects", "invalid_twice"])
+async def test_proactive_timing_requires_same_role_correction_before_authorization(
+    invalid_choice: str, failure_detail: str, corrected: bool,
+) -> None:
     ledger, _model, _runtime_value, _turn = _runtime(choice="silent")
-    draft = _proactive_draft("图书馆坐了一上午，忽然想问你在不在。")
-    draft["turn_posture"] = "yield"
-    model = _ProactiveReplySequence([draft])
+    draft = _proactive_draft("忽然有点想和你说话。")
+    if invalid_choice == "now_plus_yield":
+        draft["turn_posture"] = "yield"
+    else:
+        draft["timing_choice"] = "later"
+    original = deepcopy(draft)
+    second = deepcopy(draft)
+    if corrected:
+        second.update(
+            timing_choice="later", delay_seconds=40_123, expires_after_seconds=99_876,
+            beats=[{"modality": "text", "text": "我想晚些再和你说话。"}],
+        )
+    authored_second = deepcopy(second)
+
+    class TimingRole(_ProactiveReplySequence):
+        async def complete(self, messages, *, temperature=0.8):
+            assert self.calls < 2, "timing failure opened another character call"
+            # Neither rejection nor correction preparation may authorize the first draft.
+            assert ledger.project().actions == ()
+            assert ledger.project().proposal_audits == ()
+            return await super().complete(messages, temperature=temperature)
+
+    model = TimingRole([draft, second])
     runtime, _ = _make_proactive_runtime(
         ledger=ledger,
         issuer=ledger._accepted_batch_issuer,  # noqa: SLF001
         model=model,
-        owner="worker:proactive:first-pass-yield",
+        owner="worker:proactive:timing-correction",
     )
 
     assert (await runtime.drain_one()).status == "opened"
+    pinned_at = ledger.project().logical_time
+    assert pinned_at is not None
     result = await runtime.drain_one()
 
-    assert result.status == "authorized"
-    assert model.calls == 1
+    assert model.calls == 2
+    assert model.replies == [], "both authored replies must be consumed"
+    assert draft == original
+    assert second == authored_second
+    assert "delay_seconds" not in draft and "expires_after_seconds" not in draft
+    initial, correction = [json.loads(messages[1]["content"]) for messages in model.messages]
+    failure = correction.pop("correction")
+    assert failure["ordinal"] == 1
+    assert failure["failure_code"] == "role_result_schema_invalid"
+    assert failure_detail in failure["failure_detail"]
+    assert failure["scope"] == "return_a_complete_new_result_for_the_same_pinned_request"
+    assert correction == initial
+    assert model.messages[0][0] == model.messages[1][0]
+
+    projection = ledger.project()
+    if corrected:
+        assert result.status == "authorized"
+        (action,) = projection.actions
+        assert action.kind == "followup" and action.state == "authorized"
+        assert action.not_before == pinned_at + timedelta(seconds=40_123)
+        assert action.expires_at == pinned_at + timedelta(seconds=99_876)
+        (proposal_audit,) = projection.proposal_audits
+        proposal = json.loads(proposal_audit.proposal_json)
+        assert proposal["timing_choice"] == authored_second["timing_choice"]
+        (recorded,) = projection.model_result_audits
+        lineage = json.loads(recorded.audit_json)["character_interior_lineage"]
+        authored_response = _ProactiveInteriorWireModel._wrap(
+            json.dumps(authored_second, ensure_ascii=False),
+            messages=model.messages[1],
+        )
+        assert lineage["author_response_hash"] == (
+            "sha256:" + sha256(authored_response.encode()).hexdigest()
+        )
+        assert lineage["author_attempt_ordinal"] == 1
+        assert lineage["author_parent_model_call_id"]
+        assert tuple(row.text for row in projection.stored_message_payloads) == (
+            authored_second["beats"][0]["text"],
+        )
+    else:
+        assert result.status == "failed_safe"
+        assert projection.actions == ()
+        assert projection.proposal_audits == ()
+        assert projection.expression_plans == ()
+        (recorded,) = projection.model_result_audits
+        audit = json.loads(recorded.audit_json)
+        assert audit["status"] == "main_exception"
+        assert audit["failure_code"] == "authored_expression_reselection_invalid"
+        rejection = audit["role_rejection"]
+        assert rejection["original_failure_code"] == "role_result_schema_invalid"
+        assert failure_detail in rejection["failure_detail"]
+        rejected = json.loads(rejection["rejected_raw_excerpt"])["decision"]["payload"]
+        assert rejected == original
+        assert projection.trigger_processes[-1].runtime_outcome_ref.startswith(
+            "proactive:deliberation-failed:"
+        )
+    assert projection.trigger_processes[-1].state == "terminal"
     assert (await runtime.drain_one()).status == "idle"
-
-
-@pytest.mark.asyncio
-async def test_later_without_due_window_authorizes_on_the_first_pass() -> None:
-    ledger, _model, _runtime_value, _turn = _runtime(choice="silent")
-    draft = _proactive_draft("你在忙吗？我这边图书馆坐了一上午。")
-    draft["timing_choice"] = "later"
-    model = _ProactiveReplySequence([draft])
-    runtime, _ = _make_proactive_runtime(
-        ledger=ledger,
-        issuer=ledger._accepted_batch_issuer,  # noqa: SLF001
-        model=model,
-        owner="worker:proactive:first-pass-later",
-    )
-
-    assert (await runtime.drain_one()).status == "opened"
-    result = await runtime.drain_one()
-
-    assert result.status == "authorized"
-    assert model.calls == 1
-    action = ledger.project().actions[-1]
-    assert action.kind == "followup"
+    assert model.calls == 2
 
 
 @pytest.mark.asyncio
