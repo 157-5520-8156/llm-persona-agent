@@ -11,6 +11,7 @@ from companion_daemon.world_v2.deliberation import ModelInput, ModelRoute
 from companion_daemon.world_v2.expression_draft import (
     bind_proactive_expression_wire,
     bind_proactive_world_claims,
+    compile_proactive_world_claim_source_lanes,
     normalize_expression_draft_wire,
     TEXT_ONLY_EXPRESSION_CAPABILITIES,
 )
@@ -197,7 +198,7 @@ def _draft_with_claims(*claims: dict[str, object]) -> ProactiveDraft:
     )
 
 
-def test_mismatched_dialogue_claim_is_rebound_instead_of_silencing() -> None:
+def test_mismatched_dialogue_claim_is_rejected_without_changing_scope() -> None:
     rain = "event:life-development:activated:rain"
     library = "dialogue:expression:plan:expression:library-beat:1"
     draft = _draft_with_claims(
@@ -214,15 +215,12 @@ def test_mismatched_dialogue_claim_is_rebound_instead_of_silencing() -> None:
     )
     request = _request(_context())
 
-    bound = bind_proactive_world_claims(draft=draft, request=request)
-    kept = _validate_proactive_grounding(draft=draft, request=request)
-
-    assert [claim.scope for claim in bound.world_claims] == [
-        "past_world",
-        "shared_history",
-    ]
-    assert kept.world_claims == bound.world_claims
-    assert kept.beats[0].text == "想到你了。"
+    original = draft.model_dump_json()
+    with pytest.raises(ValueError, match="outside its semantic source lane"):
+        bind_proactive_world_claims(draft=draft, request=request)
+    with pytest.raises(ValueError, match="proactive_world_claim_source_lane_mismatch"):
+        _validate_proactive_grounding(draft=draft, request=request)
+    assert draft.model_dump_json() == original
 
 
 def test_subjective_or_hypothetical_claim_is_kept() -> None:
@@ -243,7 +241,7 @@ def test_subjective_or_hypothetical_claim_is_kept() -> None:
     assert kept.beats[0].text == "想到你了。"
 
 
-def test_subjective_claim_does_not_fail_a_mixed_unsupported_set() -> None:
+def test_subjective_claim_cannot_hide_a_mixed_unsupported_declaration() -> None:
     draft = _draft_with_claims(
         {
             "claim_text": "好像刚散过步",
@@ -256,10 +254,10 @@ def test_subjective_claim_does_not_fail_a_mixed_unsupported_set() -> None:
         },
     )
 
-    bound = bind_proactive_world_claims(draft=draft, request=_request(_context()))
-
-    assert [claim.scope for claim in bound.world_claims] == ["subjective_or_hypothetical"]
-    assert bound.beats[0].text == "想到你了。"
+    original = draft.model_dump_json()
+    with pytest.raises(ValueError, match="world_claims\\[1\\].source_refs"):
+        bind_proactive_world_claims(draft=draft, request=_request(_context()))
+    assert draft.model_dump_json() == original
 
 
 def test_unsupported_only_claim_still_rejects() -> None:
@@ -275,6 +273,25 @@ def test_unsupported_only_claim_still_rejects() -> None:
         bind_proactive_world_claims(draft=draft, request=_request(_context()))
 
 
+@pytest.mark.parametrize("mutation", ["missing_contract", "unknown_version", "missing_lane", "null", "malformed_ref"])
+def test_proactive_source_lane_metadata_is_explicit_and_strict(mutation) -> None:
+    lanes = compile_proactive_world_claim_source_lanes(
+        model_content_json=json.dumps(_context()), trigger_ref="event:life-development:activated:rain",
+    ).model_dump(mode="json")
+    if mutation == "missing_contract":
+        lanes.pop("contract")
+    elif mutation == "unknown_version":
+        lanes["contract"] = "proactive-world-claim-source-lanes.99"
+    elif mutation == "missing_lane":
+        lanes["source_refs_by_scope"].pop("past_world")
+    elif mutation == "null":
+        lanes = None
+    else:
+        lanes["source_refs_by_scope"]["past_world"] = [None]
+    with pytest.raises(ValueError):
+        _validate_proactive_payload(_payload(), frozenset(), source_lanes=lanes)
+
+
 def test_companion_own_speech_binds_as_shared_history() -> None:
     library = "dialogue:expression:plan:expression:library-beat:1"
     draft = _draft_with_claims(
@@ -285,7 +302,7 @@ def test_companion_own_speech_binds_as_shared_history() -> None:
         },
         {
             "claim_text": "我说过晚上会发书店照片",
-            "scope": "current_world",
+            "scope": "shared_history",
             "source_refs": [library],
         },
     )
@@ -302,7 +319,8 @@ def test_companion_own_speech_binds_as_shared_history() -> None:
     assert kept.beats[0].text == "想到你了。"
 
 
-def test_proactive_observation_trigger_binds_without_trigger_message() -> None:
+@pytest.mark.parametrize("scope", ["current_world", "counterpart_history"])
+def test_proactive_observation_trigger_preserves_the_authored_scope(scope) -> None:
     trig = (
         "event:trigger:observation:platform:qq:qq:2759284998:"
         "qq-coalesced:9b0c93fee624208d21e91a78af8f914ec7362474c4edbe403fb9d58fb2b6a612"
@@ -349,15 +367,17 @@ def test_proactive_observation_trigger_binds_without_trigger_message() -> None:
     draft = _draft_with_claims(
         {
             "claim_text": "他应了句好滴",
-            "scope": "current_world",
+            "scope": scope,
             "source_refs": [trig],
         }
     )
 
-    bound = bind_proactive_world_claims(draft=draft, request=request)
-
-    assert [claim.scope for claim in bound.world_claims] == ["counterpart_history"]
-    assert bound.world_claims[0].source_refs == (trig,)
+    if scope == "current_world":
+        with pytest.raises(ValueError, match="outside its semantic source lane"):
+            bind_proactive_world_claims(draft=draft, request=request)
+    else:
+        assert bind_proactive_world_claims(draft=draft, request=request) is draft
+        assert draft.world_claims[0].source_refs == (trig,)
 
 
 def test_waiting_for_and_wait_compile_the_same_hope_as_inbound() -> None:

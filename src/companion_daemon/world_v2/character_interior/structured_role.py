@@ -553,13 +553,18 @@ class _MemoryWithdrawalReviewPayload(BaseModel):
     selected_token: str = Field(min_length=1, max_length=32)
 
 
+_PROACTIVE_SOURCE_LANES_ABSENT = object()
+
+
 def _validate_proactive_payload(
     payload: Mapping[str, object],
     _offered_tokens: frozenset[str],
+    *, source_lanes: object = _PROACTIVE_SOURCE_LANES_ABSENT,
 ) -> None:
     # Import locally so the deep Module's generic role contract does not make
     # proactive scheduling a dependency of every CharacterInterior import.
     from ..expression_draft import (
+        ProactiveWorldClaimSourceLanes,
         bind_proactive_expression_wire,
         normalize_expression_draft_wire,
     )
@@ -583,7 +588,10 @@ def _validate_proactive_payload(
             }
         )
     )
-    ProactiveDraft.model_validate_json(_canonical(normalized), strict=True)
+    draft = ProactiveDraft.model_validate_json(_canonical(normalized), strict=True)
+    if source_lanes is not _PROACTIVE_SOURCE_LANES_ABSENT:
+        lanes = ProactiveWorldClaimSourceLanes.model_validate_json(_canonical(source_lanes), strict=True)
+        lanes.validate_claims(draft.world_claims)
 
 
 def _validate_life_choice_payload(
@@ -2508,7 +2516,15 @@ class StructuredCharacterRoleFaculty:
                 self._raise("selected_token_not_offered", response_hash=response_hash)
         if contract.validator is not None:
             try:
-                contract.validator(payload, offered)
+                if request.purpose == "proactive_contact" and request.capability_manifest is not None:
+                    _validate_proactive_payload(
+                        payload, offered,
+                        source_lanes=request.capability_manifest.payload.get(
+                            "world_claim_source_lanes", _PROACTIVE_SOURCE_LANES_ABSENT,
+                        ),
+                    )
+                else:
+                    contract.validator(payload, offered)
             except StructuredRoleResultError:
                 raise
             except (TypeError, ValueError) as exc:

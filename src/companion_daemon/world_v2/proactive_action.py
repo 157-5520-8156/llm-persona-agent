@@ -34,6 +34,7 @@ from .deliberation import (
     ModelInput,
     ModelOutput,
     ModelRouterAdapter,
+    TriggerMessage,
     ValidationTechnicalFailure,
 )
 from .production_proposal_grammar import compose_production_deliberation
@@ -51,6 +52,7 @@ from .expression_draft import (
     PrivateTurnStateValidationError,
     bind_proactive_expression_wire,
     bind_proactive_world_claims,
+    compile_proactive_world_claim_source_lanes,
     materialize_expression_plan_beats,
     normalize_expression_draft_wire,
     validate_expression_draft_capabilities,
@@ -788,6 +790,7 @@ class _CharacterInteriorProactiveTransport:
             raise ValueError("proactive Interior opportunity lacks trigger evidence")
         capability = self._capability_from_parts(
             attempt_id=attempt_id,
+            trigger_ref=trigger_ref,
             source_refs=source_refs,
             model_content_json=model_content_json,
         )
@@ -953,8 +956,10 @@ class _CharacterInteriorProactiveTransport:
     ) -> _InteriorCapabilityManifest:
         manifest = self._capability_from_parts(
             attempt_id=request.attempt_id,
+            trigger_ref=request.trigger_ref,
             source_refs=source_refs,
             model_content_json=request.model_content_json,
+            trigger_message=request.trigger_message,
         )
         if not self._visible_source_review_required:
             return manifest
@@ -976,8 +981,10 @@ class _CharacterInteriorProactiveTransport:
         self,
         *,
         attempt_id: str,
+        trigger_ref: str,
         source_refs: tuple[str, ...],
         model_content_json: str,
+        trigger_message: TriggerMessage | None = None,
     ) -> _InteriorCapabilityManifest:
         payload = {
             "contract": "character-interior-proactive-capability.1",
@@ -987,6 +994,10 @@ class _CharacterInteriorProactiveTransport:
         }
         if isinstance(self._counterpart_actor_ref, str) and self._counterpart_actor_ref:
             payload["counterpart_ref"] = self._counterpart_actor_ref
+        payload["world_claim_source_lanes"] = compile_proactive_world_claim_source_lanes(
+            model_content_json=model_content_json, trigger_ref=trigger_ref,
+            trigger_message=trigger_message,
+        ).model_dump(mode="json")
         payload_json = _canonical(payload)
         return _InteriorCapabilityManifest(
             capability_ref=f"capability:proactive:{attempt_id}",

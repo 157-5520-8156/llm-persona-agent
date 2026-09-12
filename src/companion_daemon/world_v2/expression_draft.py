@@ -20,7 +20,7 @@ from .biographical_claim_authority import (
     biographical_coordinate_authorities,
     biographical_parent_attention_refs,
 )
-from .deliberation import ModelInput
+from .deliberation import ModelInput, TriggerMessage
 from .expression_cadence import (
     CADENCE_POLICY_VERSION,
     CadenceDraw,
@@ -645,6 +645,14 @@ def current_counterpart_report_source_refs(
     context: dict[str, object],
     request: ModelInput,
 ) -> frozenset[str]:
+    return _current_counterpart_report_source_refs(
+        context=context, trigger_ref=request.trigger_ref, trigger=request.trigger_message,
+    )
+
+
+def _current_counterpart_report_source_refs(
+    *, context: dict[str, object], trigger_ref: str, trigger: TriggerMessage | None,
+) -> frozenset[str]:
     """Return refs for the bounded current counterpart-message packet.
 
     The packet contains the exact trigger plus the Context compiler's already
@@ -660,15 +668,14 @@ def current_counterpart_report_source_refs(
     citing the source observation cannot bind to ``counterpart_history``.
     """
 
-    trigger = request.trigger_message
     if trigger is None:
-        if isinstance(request.trigger_ref, str) and request.trigger_ref.startswith(
+        if isinstance(trigger_ref, str) and trigger_ref.startswith(
             "event:trigger:observation:"
         ):
-            return frozenset({request.trigger_ref})
+            return frozenset({trigger_ref})
         return frozenset()
     refs = {
-        request.trigger_ref,
+        trigger_ref,
         trigger.event_ref,
         trigger.observation_ref,
     }
@@ -2191,7 +2198,7 @@ _PROACTIVE_EXPRESSION_WIRE_KEYS = frozenset(
         "world_claims",
     }
 )
-_WORLD_CLAIM_SCOPE_PREFERENCE = (
+_GROUNDED_WORLD_CLAIM_SCOPES = (
     "current_world",
     "past_world",
     "shared_history",
@@ -2276,17 +2283,51 @@ def bind_proactive_world_claims(
     request: ModelInput,
     stable_identity_source_refs: frozenset[str] = frozenset(),
 ) -> ExpressionDraft:
-    """Rebind or drop lane-mismatched world claims without silencing the draft.
+    """Validate source-lane permission without changing any authored claim."""
 
-    A cited ref that belongs to exactly one factual lane is moved onto that
-    lane. Refs that prove nothing are dropped. ``subjective_or_hypothetical``
-    is a legal no-fact marker on this wire and is kept. If every grounded
-    claim was unsupported, the caller still fail-closes; mixed legal/illegal
-    sets keep the legal remainder so a later/now choice can still go out.
-    """
+    lanes = compile_proactive_world_claim_source_lanes(
+        model_content_json=request.model_content_json, trigger_ref=request.trigger_ref,
+        trigger_message=request.trigger_message, stable_identity_source_refs=stable_identity_source_refs,
+    )
+    lanes.validate_claims(draft.world_claims)
+    return draft
+
+
+class ProactiveWorldClaimSourceLanes(FrozenModel):
+    """Pinned structural citation permission, never semantic support."""
+
+    contract: Literal["proactive-world-claim-source-lanes.1"]
+    source_refs_by_scope: dict[str, tuple[str, ...]]
+
+    @model_validator(mode="after")
+    def complete_canonical_lanes(self) -> "ProactiveWorldClaimSourceLanes":
+        if set(self.source_refs_by_scope) != set(_GROUNDED_WORLD_CLAIM_SCOPES):
+            raise ValueError("proactive world claim source lanes are incomplete")
+        if any(refs != tuple(sorted(set(refs))) or any(not ref for ref in refs)
+               for refs in self.source_refs_by_scope.values()):
+            raise ValueError("proactive world claim source lanes are not canonical")
+        return self
+
+    def validate_claims(self, claims: tuple[WorldClaimDraft, ...]) -> None:
+        for index, claim in enumerate(claims):
+            if claim.scope == "subjective_or_hypothetical":
+                continue
+            if not set(claim.source_refs).issubset(self.source_refs_by_scope[claim.scope]):
+                raise ValueError(
+                    "world claim cites authority outside its semantic source lane: "
+                    f"world_claims[{index}].source_refs scope={claim.scope}; "
+                    "keep the original pinned evidence and choose the complete result again"
+                )
+
+
+def compile_proactive_world_claim_source_lanes(
+    *, model_content_json: str, trigger_ref: str, trigger_message: TriggerMessage | None = None,
+    stable_identity_source_refs: frozenset[str] = frozenset(),
+) -> ProactiveWorldClaimSourceLanes:
+    """Reuse the exact existing source inventory for pre-terminal validation."""
 
     try:
-        context = json.loads(request.model_content_json)
+        context = json.loads(model_content_json)
     except (TypeError, json.JSONDecodeError) as exc:
         raise ValueError("world claim binding requires Context JSON") from exc
     if not isinstance(context, dict):
@@ -2294,36 +2335,13 @@ def bind_proactive_world_claims(
     allowed = world_claim_source_refs_by_scope(
         context=context,
         stable_identity_source_refs=stable_identity_source_refs,
-        counterpart_message_source_refs=current_counterpart_report_source_refs(
-            context=context,
-            request=request,
+        counterpart_message_source_refs=_current_counterpart_report_source_refs(
+            context=context, trigger_ref=trigger_ref, trigger=trigger_message,
         ),
     )
-    rebound: list[WorldClaimDraft] = []
-    dropped_grounded = 0
-    for claim in draft.world_claims:
-        if claim.scope == "subjective_or_hypothetical":
-            rebound.append(claim)
-            continue
-        refs = set(claim.source_refs)
-        permitted = allowed.get(claim.scope, frozenset())
-        if refs <= permitted:
-            rebound.append(claim)
-            continue
-        matching = tuple(
-            scope
-            for scope in _WORLD_CLAIM_SCOPE_PREFERENCE
-            if refs <= allowed.get(scope, frozenset())
-        )
-        if matching:
-            rebound.append(claim.model_copy(update={"scope": matching[0]}))
-            continue
-        dropped_grounded += 1
-    if dropped_grounded and not rebound:
-        raise ValueError("world claim cites authority outside its semantic source lane")
-    if rebound == list(draft.world_claims):
-        return draft
-    return draft.model_copy(update={"world_claims": tuple(rebound)})
+    return ProactiveWorldClaimSourceLanes(contract="proactive-world-claim-source-lanes.1", source_refs_by_scope={
+        scope: tuple(sorted(allowed.get(scope, ()))) for scope in _GROUNDED_WORLD_CLAIM_SCOPES
+    })
 
 
 class ExpressionPlanBeatMaterialization(NamedTuple):

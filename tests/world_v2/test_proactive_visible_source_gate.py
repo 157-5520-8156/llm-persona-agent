@@ -34,6 +34,26 @@ SAFE_TEXTS = ("我想和你说句话。", "这会儿有点想念你。")
 
 UNSOURCED_TEXT = "我刚刚在冥王星签收了编号 PX-UNSOURCED-772 的包裹。"
 SOURCE_PROBLEM = "原材料没有这段已经发生经历的依据"
+HISTORY_TEXT = "我之前说想先把自己的想法说完整。"
+CLAIM_TEXTS = (HISTORY_TEXT, SAFE_TEXTS[0])
+
+
+def _install_historical_claim_capability(monkeypatch):
+    from companion_daemon.world_v2.proactive_action import _CharacterInteriorProactiveTransport
+
+    original = _CharacterInteriorProactiveTransport._capability_from_parts
+
+    def historical_capability(self, **kwargs):
+        manifest = original(self, **kwargs)
+        payload = dict(manifest.payload)
+        payload.pop("world_claim_source_lanes")
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return type(manifest).model_validate({
+            **manifest.model_dump(), "payload_json": raw,
+            "payload_hash": "sha256:" + hashlib.sha256(raw.encode()).hexdigest(),
+        })
+
+    monkeypatch.setattr(_CharacterInteriorProactiveTransport, "_capability_from_parts", historical_capability)
 
 
 async def _run_scenario(
@@ -42,6 +62,7 @@ async def _run_scenario(
     scenario: str,
     *,
     pause_before_acceptance=False,
+    pause_after_role_preparation=False,
     external_cancel=False,
     review_version="1",
     review_required=None,
@@ -65,6 +86,11 @@ async def _run_scenario(
             gate, "prepare_proactive_visible_source_author_request", invalid_preparation
         )
     timing_failure = scenario in {"timing_reselect", "timing_twice", "silence_reselect", "silence_twice"}
+    source_claim_scenario = scenario in {
+        "valid_claim", "scope_claim_reselect", "scope_claim_twice",
+        "mixed_claim_reselect", "mixed_claim_twice",
+    }
+    expected_texts = CLAIM_TEXTS if source_claim_scenario else SAFE_TEXTS
     legacy_whole = scenario == "legacy_whole"
     if review_required is None:
         review_required = not legacy_whole
@@ -152,6 +178,28 @@ async def _run_scenario(
             "confidence": 7000,
             "world_claims": [],
         }
+        if source_claim_scenario:
+            packet = json.loads(body["messages"][-1]["content"])
+            source = next(item for item in packet["citeable_sources"]["items"]
+                          if item["ref"].startswith("dialogue:expression:")
+                          and item["ref"].endswith(":1"))
+            invalid = scenario != "valid_claim" and (
+                len(proactive_requests) == 1 or scenario.endswith("twice")
+            )
+            texts = CLAIM_TEXTS
+            payload["world_claims"] = [{
+                "claim_text": HISTORY_TEXT,
+                "scope": "current_world" if invalid and scenario.startswith("scope_")
+                         else "shared_history",
+                "source_refs": [source["ref"]],
+            }]
+            if invalid and scenario.startswith("mixed_"):
+                texts = (HISTORY_TEXT, UNSOURCED_TEXT)
+                payload["world_claims"].append({
+                    "claim_text": UNSOURCED_TEXT, "scope": "past_world",
+                    "source_refs": ["event:user:chengdu:not-in-context"],
+                })
+            payload["beats"] = [{"modality": "text", "text": text} for text in texts]
         if scenario in {"bad_claim_twice", "bad_claim_reselect"} and texts != SAFE_TEXTS:
             payload["world_claims"] = [
                 {
@@ -201,7 +249,8 @@ async def _run_scenario(
         assert body["tool_choice"]["function"]["name"] == f"visible_beat_source_verdict_v{review_version}"
         packet = json.loads(body["messages"][-1]["content"])
         texts = tuple(beat["text"] for beat in packet["visible_beats"])
-        assert texts in (BEATS, SAFE_TEXTS, (UNSOURCED_TEXT,)), texts
+        assert texts in (BEATS, SAFE_TEXTS, (UNSOURCED_TEXT,), CLAIM_TEXTS,
+                         (HISTORY_TEXT, UNSOURCED_TEXT)), texts
         if texts != BEATS:
             capture_limits()
             assert not any(
@@ -246,6 +295,28 @@ async def _run_scenario(
         if review_version in {"3", "4"}:
             for decision in verdict["decisions"]:
                 assert decision.pop("source_ref_indexes") == []
+        if source_claim_scenario and texts != BEATS:
+            assert review_version == "4"
+            refs = [dict(zip(table["columns"], row, strict=True))
+                    for table in packet["source_reference_tables"] for row in table["rows"]]
+            source = next(row for row in refs
+                          if row["source_ref"].startswith("dialogue:expression:")
+                          and row["source_ref"].endswith(":1"))
+            assert source["subject_role"] == "companion"
+            verdict["decisions"][0] = {
+                "beat_index": 0, "verdict": "closed", "semantic_role": "external_proposition",
+                "subject_role": "companion", "first_source_ref_index": source["source_ref_index"],
+                "additional_source_ref_indexes": [],
+            }
+            if texts[1] == UNSOURCED_TEXT:
+                verdict["decisions"][1] = {
+                    "beat_index": 1, "verdict": "unclosed", "semantic_role": "external_proposition",
+                    "subject_role": "companion",
+                }
+                verdict["rejections"] = [{
+                    "beat_index": 1, "char_start": 0, "char_end": len(UNSOURCED_TEXT),
+                    "related_source_ref_indexes": [], "source_problem": SOURCE_PROBLEM,
+                }]
         return _http_result(body, verdict)
 
     from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
@@ -315,6 +386,24 @@ async def _run_scenario(
             # The host owns and shields its scheduler task. Cancelling this
             # waiter leaves that task running until explicit aclose below.
             assert not provider_cancelled.is_set()
+        elif pause_after_role_preparation:
+            from companion_daemon.world_v2.character_interior.core import CharacterInterior
+
+            class CrashAfterRolePreparation(BaseException):
+                pass
+
+            checkpoint = CharacterInterior._checkpoint_turn
+
+            def crash_after_checkpoint(self, **kwargs):
+                recorded = checkpoint(self, **kwargs)
+                if kwargs["durable"][0].purpose == "proactive_contact":
+                    raise CrashAfterRolePreparation()
+                return recorded
+
+            with monkeypatch.context() as patch:
+                patch.setattr(CharacterInterior, "_checkpoint_turn", crash_after_checkpoint)
+                with pytest.raises(CrashAfterRolePreparation):
+                    await host.drain(max_action_units=8, max_background_units=2)
         elif pause_before_acceptance:
             from companion_daemon.world_v2.expression_plan_atomic_recorder import (
                 ExpressionPlanAtomicRecorder,
@@ -343,6 +432,11 @@ async def _run_scenario(
     )
     proactive_review_count = len(reviewer_requests) - initial_review_count
     assert proactive_requests, "public tick/drain must reach the real proactive author"
+    if pause_after_role_preparation:
+        assert not proactive_actions
+        assert not any(row.proposal_id.startswith("proposal:proactive:")
+                       for row in evidence.projection.proposal_audits)
+        return evidence, proactive_requests, reviewer_requests, delivery
     if external_cancel:
         assert provider_cancelled.is_set(), "host shutdown must cancel its provider task"
         assert not proactive_actions
@@ -388,6 +482,7 @@ async def _run_scenario(
             "bad_claim_twice",
             "bad_claim_reselect",
             "empty_claim_twice", "empty_claim_reselect",
+            "scope_claim_reselect", "scope_claim_twice", "mixed_claim_reselect", "mixed_claim_twice",
             "author_timeout",
             "author_deadline",
             "review_deadline_second",
@@ -402,6 +497,9 @@ async def _run_scenario(
         "bad_claim_reselect": 1,
         "empty_claim_twice": 0,
         "empty_claim_reselect": int(review_required),
+        "valid_claim": int(review_required),
+        "scope_claim_reselect": int(review_required), "scope_claim_twice": 0,
+        "mixed_claim_reselect": int(review_required), "mixed_claim_twice": 0,
         "author_timeout": 1,
         "author_deadline": 1,
         "prepare_error": 0,
@@ -465,9 +563,9 @@ async def _run_scenario(
             for a in evidence.projection.proposal_audits
         )
         return evidence, proactive_requests, reviewer_requests, delivery
-    if scenario in {"source_free", "reselect", "bad_claim_reselect", "empty_claim_reselect", "timing_reselect", "silence_reselect"}:
-        assert len(proactive_actions) == len(SAFE_TEXTS)
-        assert tuple(text for _recipient, text in delivery.sent)[-2:] == SAFE_TEXTS
+    if scenario in {"source_free", "reselect", "bad_claim_reselect", "empty_claim_reselect", "timing_reselect", "silence_reselect", "valid_claim", "scope_claim_reselect", "mixed_claim_reselect"}:
+        assert len(proactive_actions) == len(expected_texts)
+        assert tuple(text for _recipient, text in delivery.sent)[-2:] == expected_texts
         assert all(action.state == "provider_accepted" for action in proactive_actions)
         from companion_daemon.world_v2.visible_source_runtime import verify_recorded_candidate
 
@@ -605,15 +703,24 @@ async def test_external_cancellation_and_close_leave_proactive_turn_unfinished(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("pause_before_acceptance", (False, True))
 @pytest.mark.parametrize("review_version", ("1", "2", "3", "4"))
+@pytest.mark.parametrize(
+    "legacy_claim_lanes,pause_before_acceptance",
+    [(False, False), (False, True), (True, True)],
+    ids=["committed-current", "audited-current", "audited-legacy"],
+)
 async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_actions(
-    tmp_path, monkeypatch, pause_before_acceptance, review_version
+    tmp_path, monkeypatch, pause_before_acceptance, review_version, legacy_claim_lanes,
 ):
-    before, authors, reviews, delivery = await _run_scenario(
-        tmp_path, monkeypatch, "source_free", pause_before_acceptance=pause_before_acceptance,
-        review_version=review_version,
-    )
+    with monkeypatch.context() as first_run:
+        if legacy_claim_lanes:
+            _install_historical_claim_capability(first_run)
+        before, authors, reviews, delivery = await _run_scenario(
+            tmp_path, monkeypatch, "source_free", pause_before_acceptance=pause_before_acceptance,
+            review_version=review_version,
+        )
+    authored_manifest = json.loads(authors[0]["messages"][-1]["content"])["capability_manifest"]
+    assert ("world_claim_source_lanes" in authored_manifest["payload"]) is not legacy_claim_lanes
 
     async def forbidden(request):
         raise AssertionError("cold replay made a new provider call")
@@ -705,8 +812,135 @@ async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_acti
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("review_required", [False, True])
+async def test_old_prepared_proactive_choice_cannot_bypass_new_claim_lanes(
+    tmp_path, monkeypatch, review_required,
+):
+    historical_raw = []
+    with monkeypatch.context() as first_run:
+        _install_historical_claim_capability(first_run)
+        before, _, _, delivery = await _run_scenario(
+            tmp_path, monkeypatch, "source_free", review_version="4" if review_required else "1",
+            review_required=review_required, pause_after_role_preparation=True,
+            authored_outputs=historical_raw,
+        )
+
+    def stored_turns():
+        with sqlite3.connect(tmp_path / "world.sqlite") as connection:
+            return connection.execute(
+                "SELECT inner_turn_id, request_hash, capability_hash, state, "
+                "authored_state_json, authored_state_hash, terminal_result_json "
+                "FROM world_v2_character_interior_turns WHERE purpose='proactive_contact'"
+            ).fetchall()
+
+    (old,) = stored_turns()
+    assert old[3] == "checkpointed" and old[4] and old[5] and old[6] is None
+    assert "world_claim_source_lanes" not in old[4]
+    authors, reviews = [], []
+
+    async def provider_http(request):
+        body = json.loads(request.content)
+        packet = json.loads(body["messages"][-1]["content"])
+        name = body["tool_choice"]["function"]["name"]
+        if name == "character_role_proactive_contact_v1":
+            authors.append(packet)
+            assert len(authors) <= 2
+            assert packet["capability_manifest"]["payload"]["world_claim_source_lanes"]["contract"] == "proactive-world-claim-source-lanes.1"
+            authored = json.loads(historical_raw[0])
+            authored["decision"]["source_refs"] = [
+                _ProactiveRoleScript._capability_source_ref(body["messages"])
+            ]
+            if len(authors) == 1:
+                authored["decision"]["payload"].update(
+                    beats=[{"modality": "text", "text": UNSOURCED_TEXT}],
+                    world_claims=[{
+                        "claim_text": UNSOURCED_TEXT, "scope": "past_world",
+                        "source_refs": ["event:user:chengdu:not-in-context"],
+                    }],
+                )
+            else:
+                assert packet["correction"]["failure_code"] == "role_result_schema_invalid"
+                assert "world_claims[0].source_refs" in packet["correction"]["failure_detail"]
+            return _http_result(body, authored)
+        assert review_required and name == "visible_beat_source_verdict_v4"
+        reviews.append(packet)
+        assert tuple(beat["text"] for beat in packet["visible_beats"]) == SAFE_TEXTS
+        return _http_result(body, {
+            "contract": "visible-beat-source-verdict.4", "rejections": [],
+            "decisions": [{
+                "beat_index": index, "verdict": "source_free",
+                "semantic_role": "commitment", "subject_role": "companion",
+            } for index in range(2)],
+        })
+
+    from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
+
+    model = DeepSeekChatModel(
+        "offline-fixture", "https://fixture.invalid", "deepseek-v4-flash",
+        thinking_enabled=False, transport=httpx.MockTransport(provider_http),
+        usage_observer=WorldV2UsageStore(path=str(tmp_path / "world.sqlite")).record,
+    )
+    host = build_qq_c2c_host(
+        settings=Settings(
+            _env_file=None, database_path=tmp_path / "world.sqlite", PRIMARY_USER_ID="geoff",
+            WORLD_V2_EXPRESSION_EPISODE_MODE="off", WORLD_V2_TEXT_ENDPOINT_ENABLED=False,
+        ),
+        recipient_id="10001", bootstrap_at=NOW, model=model,
+        world_support_model=FakeCompanionModel(), visible_source_review_required=review_required,
+        visible_source_review_model=model if review_required else None,
+        visible_source_review_version="4" if review_required else "1",
+        delivery=delivery, use_configured_recall_embedding=False,
+    )
+    try:
+        assert host.export_replay_evidence().projection.semantic_hash == before.projection.semantic_hash
+        await host._semantic_chat.character_interior._drain_proactive_once()
+        await host.drain(max_action_units=8, max_background_units=0)
+        evidence = host.export_replay_evidence()
+        assert len(authors) == 2 and len(reviews) == int(review_required)
+        assert authors[0]["inner_turn"] == authors[1]["inner_turn"]
+        assert authors[0]["inner_life_snapshot"] == authors[1]["inner_life_snapshot"]
+        assert authors[0]["capability_manifest"] == authors[1]["capability_manifest"]
+        assert old in stored_turns(), "new request rewrote a historical checkpoint"
+        (new,) = (row for row in stored_turns() if row[0] != old[0])
+        assert new[1] != old[1] and new[2] != old[2] and new[3] == "terminal"
+        # The ordinary prepared snapshot stores the immutable capability
+        # binding hash, while required review additionally carries author wire.
+        binding = json.loads(json.loads(new[4])["snapshot"]["capability_scope"]["payload_json"])
+        assert binding["payload_hash"] == authors[0]["capability_manifest"]["payload_hash"]
+        if review_required:
+            # Reviewed wire omits its host-only requirement; its complete
+            # capability and author-body binding is checked by receipt replay.
+            assert "world_claim_source_lanes" in new[4]
+        else:
+            manifest = _manifest_from_role_packet(authors[0])
+            canonical = json.dumps(manifest.model_dump(mode="json"), ensure_ascii=False,
+                                   sort_keys=True, separators=(",", ":"))
+            assert new[2] == hashlib.sha256(canonical.encode()).hexdigest()
+        actions = [a for a in evidence.projection.actions if a.kind == "proactive_message"]
+        assert len(actions) == 2 and all(a.state == "provider_accepted" for a in actions)
+        assert tuple(text for _, text in delivery.sent[-2:]) == SAFE_TEXTS
+        assert all(text != UNSOURCED_TEXT for _, text in delivery.sent)
+        assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
+    finally:
+        await host.aclose()
+        await model.aclose()
+
+
+def _manifest_from_role_packet(packet):
+    from companion_daemon.world_v2.character_interior.contracts import _InteriorCapabilityManifest
+
+    view = packet["capability_manifest"]
+    return _InteriorCapabilityManifest(
+        capability_ref=view["capability_ref"], capability_kind=view["capability_kind"],
+        payload_hash=view["payload_hash"], source_refs=tuple(view["source_refs"]),
+        payload_json=json.dumps(view["payload"], ensure_ascii=False,
+                                sort_keys=True, separators=(",", ":")),
+    )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "tamper", ("source_table", "actual_alias", "capability", "purpose", "receipt")
+    "tamper", ("source_table", "actual_alias", "claim_lanes", "capability", "purpose", "receipt")
 )
 async def test_proactive_receipt_cannot_replace_original_capability_or_author_body(
     tmp_path, monkeypatch, tamper
@@ -736,10 +970,13 @@ async def test_proactive_receipt_cannot_replace_original_capability_or_author_bo
         table["pin"]["world_id"] = "world:forged"
         requirement["source_table_json"] = canonical(table)
         carrier["requirement_json"] = canonical(requirement)
-    elif tamper == "actual_alias":
+    elif tamper in {"actual_alias", "claim_lanes"}:
         body = json.loads(carrier["author_request_json"])
         user = json.loads(body["messages"][1]["content"])
-        user["citeable_sources"]["items"][0]["ref"] = "event:forged"
+        if tamper == "actual_alias":
+            user["citeable_sources"]["items"][0]["ref"] = "event:forged"
+        else:
+            user["capability_manifest"]["payload"].pop("world_claim_source_lanes")
         body["messages"][1]["content"] = canonical(user)
         carrier["author_request_json"] = canonical(body)
     elif tamper == "capability":
@@ -932,3 +1169,84 @@ async def test_proactive_empty_source_claim_reaches_same_role_correction(
         assert len(rejected) == (2 if scenario.endswith("twice") else 1)
         assert all(row.usage is not None for row in rejected)
         assert any(row.failure_code is not None for row in rejected)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("review_required", [False, True])
+@pytest.mark.parametrize("scenario", [
+    "valid_claim", "scope_claim_reselect", "scope_claim_twice",
+    "mixed_claim_reselect", "mixed_claim_twice",
+])
+async def test_proactive_source_lane_and_mixed_claims_require_role_reselection(
+    tmp_path, monkeypatch, scenario, review_required,
+):
+    from companion_daemon.world_v2.character_interior import core
+
+    snapshot_keys = []
+    snapshot_key = core._snapshot_cache_key
+
+    def record_snapshot_key(subject):
+        key = snapshot_key(subject)
+        if subject.purpose == "proactive_contact":
+            snapshot_keys.append(key)
+        return key
+
+    monkeypatch.setattr(core, "_snapshot_cache_key", record_snapshot_key)
+    raws = []
+    evidence, authors, reviews, _delivery = await _run_scenario(
+        tmp_path, monkeypatch, scenario, review_version="4" if review_required else "1",
+        review_required=review_required, authored_outputs=raws,
+    )
+    raw_payloads = [json.loads(raw)["decision"]["payload"] for raw in raws]
+    if not review_required:
+        assert len(snapshot_keys) >= 2, "the public owner must prepare and use its snapshot"
+        assert len(set(snapshot_keys)) == 1, "new claim metadata broke the prepared snapshot identity"
+    initial = json.loads(authors[0]["messages"][-1]["content"])
+    lanes = initial["capability_manifest"]["payload"]["world_claim_source_lanes"]
+    assert lanes["contract"] == "proactive-world-claim-source-lanes.1"
+    if not review_required:
+        _manifest_from_role_packet(initial)
+        tampered = json.loads(json.dumps(initial))
+        tampered["capability_manifest"]["payload"].pop("world_claim_source_lanes")
+        with pytest.raises(ValueError, match="payload hash is invalid"):
+            _manifest_from_role_packet(tampered)
+    ref = raw_payloads[0]["world_claims"][0]["source_refs"][0]
+    assert ref in lanes["source_refs_by_scope"]["shared_history"]
+    assert ref not in lanes["source_refs_by_scope"]["current_world"]
+    if scenario != "valid_claim":
+        corrected = json.loads(authors[1]["messages"][-1]["content"])
+        for key in ("inner_turn", "inner_life_snapshot", "capability_manifest"):
+            assert corrected[key] == initial[key]
+        assert corrected["correction"]["failure_code"] == "role_result_schema_invalid"
+        assert "outside its semantic source lane" in corrected["correction"]["failure_detail"]
+        index = 1 if scenario.startswith("mixed_") else 0
+        assert f"world_claims[{index}].source_refs" in corrected["correction"]["failure_detail"]
+        if review_required:
+            rejected_hash = hashlib.sha256(raws[0].encode()).hexdigest()
+            audits = [RecordedModelResultAudit.model_validate_json(row.audit_json)
+                      for row in evidence.projection.model_result_audits]
+            rejected = [row for row in audits if row.response_hash == rejected_hash]
+            assert len(rejected) == (2 if scenario.endswith("twice") else 1)
+            assert all(row.usage is not None and row.failure_code is not None for row in rejected)
+    if scenario.endswith("twice"):
+        assert raw_payloads[0] == raw_payloads[1]
+        assert len(reviews) == int(review_required), "only the initial inbound may reach the reviewer"
+    else:
+        expected_claims = raw_payloads[-1]["world_claims"]
+        assert len(expected_claims) == 1
+        assert expected_claims[0]["scope"] == "shared_history"
+        assert expected_claims[0]["claim_text"] == HISTORY_TEXT
+        if review_required:
+            assert json.loads(reviews[-1]["messages"][-1]["content"])["world_claims"] == expected_claims
+        (audit,) = [row for row in evidence.projection.proposal_audits
+                    if row.proposal_id.startswith("proposal:proactive:")]
+        plan = next(change["payload"]["canonical_json"]
+                    for change in json.loads(audit.proposal_json)["proposed_changes"]
+                    if change["kind"] == "expression_plan_transition")
+        assert json.loads(plan)["world_claims"] == expected_claims
+        if scenario.startswith("scope_"):
+            first, second = raw_payloads
+            assert first["world_claims"][0]["scope"] == "current_world"
+            assert second == {**first, "world_claims": [
+                {**first["world_claims"][0], "scope": "shared_history"},
+            ]}, "only the role authored this changed semantic scope"
