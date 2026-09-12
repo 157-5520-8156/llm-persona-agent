@@ -1642,10 +1642,8 @@ async def test_proactive_mood_lands_appraisal_without_killing_the_message(
 
 
 @pytest.mark.asyncio
-async def test_grounding_rejection_completes_consideration_without_retry_or_visible_effect() -> (
-    None
-):
-    """A semantic rejection is terminal for this choice, not a technical outage."""
+async def test_repeated_unpinned_claim_ends_proactive_turn_without_outer_retry_or_action() -> None:
+    """Invalid evidence gets one same-role correction, then a technical failure."""
 
     ledger, _model, _runtime_value, _turn = _runtime(choice="silent")
     unsupported_claim = {
@@ -1657,7 +1655,16 @@ async def test_grounding_rejection_completes_consideration_without_retry_or_visi
         "突然想起你之前说去成都看熊猫。",
         claims=[unsupported_claim],
     )
-    model = _ProactiveReplySequence([rejected, rejected])
+    original = deepcopy(rejected)
+    second = deepcopy(rejected)
+
+    class RepeatedUnpinnedClaimRole(_ProactiveReplySequence):
+        async def complete(self, messages, *, temperature=0.8):
+            assert ledger.project().actions == ()
+            assert ledger.project().proposal_audits == ()
+            return await super().complete(messages, temperature=temperature)
+
+    model = RepeatedUnpinnedClaimRole([rejected, second])
     runtime, _ = _make_proactive_runtime(
         ledger=ledger,
         issuer=ledger._accepted_batch_issuer,  # noqa: SLF001 - acceptance seam fixture
@@ -1668,16 +1675,51 @@ async def test_grounding_rejection_completes_consideration_without_retry_or_visi
     assert (await runtime.drain_one()).status == "opened"
     rejected_result = await runtime.drain_one()
 
-    assert rejected_result.status == "grounding_rejected"
-    assert rejected_result.reason_code == "proactive.grounding_rejected"
-    assert model.calls == 1
+    assert rejected_result.status == "failed_safe"
+    assert rejected_result.reason_code == "proactive.deliberation_failed"
+    assert model.calls == len(model.messages) == 2
+    assert model.replies == [], "both invalid authored replies must be consumed"
+    assert rejected == second == original
+    initial, correction = [json.loads(messages[1]["content"]) for messages in model.messages]
+    failure = correction.pop("correction")
+    failure_detail = (
+        "world claim cites authority outside its semantic source lane: "
+        "world_claims[0].source_refs scope=counterpart_history; "
+        "keep the original pinned evidence and choose the complete result again"
+    )
+    assert failure["ordinal"] == 1
+    assert failure["failure_code"] == "role_result_schema_invalid"
+    assert failure["failure_detail"] == failure_detail
+    assert failure["scope"] == "return_a_complete_new_result_for_the_same_pinned_request"
+    assert correction == initial
+    assert model.messages[0][0] == model.messages[1][0]
     projection = ledger.project()
     assert projection.actions == ()
-    process = projection.trigger_processes[-1]
+    assert projection.proposal_audits == ()
+    assert projection.expression_plans == ()
+    assert projection.stored_message_payloads == ()
+    (recorded,) = projection.model_result_audits
+    audit = json.loads(recorded.audit_json)
+    assert audit["status"] == "main_exception"
+    assert audit["slot"] == "primary"
+    assert audit["failure_code"] == "authored_expression_reselection_invalid"
+    rejection = audit["role_rejection"]
+    assert rejection["original_failure_code"] == "role_result_schema_invalid"
+    assert rejection["failure_detail"] == failure_detail
+    authored_response = _ProactiveInteriorWireModel._wrap(
+        json.dumps(original, ensure_ascii=False), messages=model.messages[1],
+    )
+    assert rejection["rejected_raw_hash"] == sha256(authored_response.encode()).hexdigest()
+    assert rejection["rejected_raw_excerpt"] == authored_response[:800]
+    (process,) = tuple(
+        item for item in projection.trigger_processes
+        if item.process_kind == "proactive_action_deliberation"
+    )
     assert process.state == "terminal"
-    assert process.runtime_outcome_ref == "proactive:grounding-rejected"
+    assert process.runtime_outcome_ref == "proactive:deliberation-failed:" + recorded.model_result_ref
     assert (await runtime.drain_one()).status == "idle"
-    assert model.calls == 1
+    assert model.calls == 2
+    assert ledger.project().model_result_audits == projection.model_result_audits
 
 
 @pytest.mark.asyncio
