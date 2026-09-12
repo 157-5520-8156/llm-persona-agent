@@ -987,3 +987,17 @@ def test_oversized_appraisal_is_skipped_instead_of_truncating_source_closure() -
         document.source_item_ref != appraisal.appraisal_id
         for document in documents
     )
+
+def test_bounded_recall_texts_skips_empty_memory_excerpts() -> None:
+    from companion_daemon.world_v2.ledger_context_resolver import _bounded_recall_texts
+
+    assert _bounded_recall_texts(("kept", "", None, "also kept")) == (
+        "kept",
+        "also kept",
+    )
+    assert _bounded_recall_texts(()) == ()
+    assert _bounded_recall_texts(None) == ()
+    # A candidate whose every excerpt is empty is omitted from lexical
+    # continuity instead of aborting the whole inbound turn.
+    assert _bounded_recall_texts(("", None)) == ()
+

@@ -250,6 +250,21 @@ class ContextRelevanceScope(BaseModel):
         ).hexdigest()
 
 
+def _bounded_recall_texts(values: object) -> tuple[str, ...]:
+    """Keep only usable lexical-recall source text from one domain item.
+
+    A memory candidate or fact can exist with an empty projected excerpt.  It
+    is still valid ledger state, but it carries no surface form for lexical
+    prefetch; skipping its text must not fail the whole Context resolution.
+    """
+
+    if not isinstance(values, (list, tuple)):
+        return ()
+    return tuple(
+        value for value in values if isinstance(value, str) and value
+    )
+
+
 def context_capsule_compiler_from_ledger(
     *,
     ledger: LedgerPort,
@@ -2065,44 +2080,51 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             if len(memory_retrievals.items) <= MAX_RESOLVER_DOMAIN_SCAN_ITEMS
             else ()
         )
+        bounded_texts = _bounded_recall_texts
+        retrieval_candidates: list[ContinuityRetrievalCandidate] = []
+        for item in facts_for_continuity:
+            texts = bounded_texts((item.source_excerpt,))
+            if texts:
+                retrieval_candidates.append(
+                    ContinuityRetrievalCandidate(
+                        slice_name="relevant_facts",
+                        item_ref=item.fact_id,
+                        texts=texts,
+                    )
+                )
+        for item in memories_for_continuity:
+            texts = bounded_texts(
+                tuple(source.text for source in item.source_excerpts)
+            )
+            if texts:
+                retrieval_candidates.append(
+                    ContinuityRetrievalCandidate(
+                        slice_name="active_memory_candidates",
+                        item_ref=item.candidate_id,
+                        texts=texts,
+                    )
+                )
+        for item in open_threads_for_continuity:
+            texts = bounded_texts(
+                tuple(
+                    dialogue_text_by_ref[ref.ref_id]
+                    for ref in item.values.anchor_evidence_refs
+                    if ref.ref_id in dialogue_text_by_ref
+                )
+            )
+            if texts:
+                retrieval_candidates.append(
+                    ContinuityRetrievalCandidate(
+                        slice_name="open_threads",
+                        item_ref=item.thread_id,
+                        texts=texts,
+                    )
+                )
         continuity = self._conversation_continuity.compile(
             dialogue=dialogue_candidates,
             trigger_ref=query.trigger_ref,
             acknowledged_observation_event_refs=recent_dialogue.acknowledged_observation_event_refs,
-            retrieval_candidates=(
-                *(
-                    ContinuityRetrievalCandidate(
-                        slice_name="relevant_facts",
-                        item_ref=item.fact_id,
-                        texts=(item.source_excerpt,),
-                    )
-                    for item in facts_for_continuity
-                ),
-                *(
-                    ContinuityRetrievalCandidate(
-                        slice_name="active_memory_candidates",
-                        item_ref=item.candidate_id,
-                        texts=tuple(source.text for source in item.source_excerpts),
-                    )
-                    for item in memories_for_continuity
-                ),
-                *(
-                    ContinuityRetrievalCandidate(
-                        slice_name="open_threads",
-                        item_ref=item.thread_id,
-                        texts=tuple(
-                            dialogue_text_by_ref[ref.ref_id]
-                            for ref in item.values.anchor_evidence_refs
-                            if ref.ref_id in dialogue_text_by_ref
-                        ),
-                    )
-                    for item in open_threads_for_continuity
-                    and any(
-                        ref.ref_id in dialogue_text_by_ref
-                        for ref in item.values.anchor_evidence_refs
-                    )
-                ),
-            ),
+            retrieval_candidates=tuple(retrieval_candidates),
         )
         recent_dialogue = continuity.dialogue
         continuity_rank_overrides = continuity.rank_overrides

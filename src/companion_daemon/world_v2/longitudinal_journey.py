@@ -18,6 +18,7 @@ import math
 from pathlib import Path
 import sqlite3
 import time
+import traceback
 from typing import Awaitable, Callable
 
 from .longitudinal_review import context_evidence_visibility
@@ -667,6 +668,7 @@ async def run_journey(
         final_wake_snapshot = await bounded(host.scheduler_wake_snapshot())
         due_snapshot_sequence_after = sequence + len(read_events(database, sequence))
     except Exception as exc:
+        traceback.print_exc()
         stop_reason = (
             "wall_time_limit"
             if isinstance(exc, JourneyDeadlineExceeded)
