@@ -97,6 +97,7 @@ from .life_development_source_closure import (
     life_development_source_closure_correction_message,
     life_development_source_closure_messages,
     parse_life_development_novel_origin_review,
+    resolve_cited_pinned_material,
 )
 from .life_events import (
     ActivityPlannedPayload,
@@ -4610,11 +4611,16 @@ class LifeDevelopmentRuntime:
         correlation_id: str,
     ) -> tuple[LifeDevelopmentSourceClosureReview, _RecordedDeliberation] | LifeDevelopmentResult:
         try:
-            cited_events = self._source_closure_cited_events(draft=draft)
+            cited_events, cited_pinned_materials = self._source_closure_cited_sources(
+                draft=draft,
+                context=context,
+                manifest=manifest,
+            )
         except ValueError as exc:
             _LOG.warning(
-                "Life Development source evidence unavailable error_type=%s",
+                "Life Development source evidence unavailable error_type=%s detail=%s",
                 type(exc).__name__,
+                str(exc)[:300],
             )
             return LifeDevelopmentResult(
                 status="technical_failure",
@@ -4625,6 +4631,7 @@ class LifeDevelopmentRuntime:
             manifest=manifest,
             draft=draft,
             cited_events=cited_events,
+            cited_pinned_materials=cited_pinned_materials,
             execution_authority=execution_authority,
         )
         packet_contract, _packet_hash = life_development_review_packet_identity(messages)
@@ -4984,6 +4991,51 @@ class LifeDevelopmentRuntime:
                 raise ValueError(f"cited source event is unavailable: {ref}")
             events.append(commit[0])
         return tuple(events)
+
+    def _source_closure_cited_sources(
+        self,
+        *,
+        draft: LifeDevelopmentPossibilityDraft,
+        context: dict[str, object],
+        manifest: LifeDevelopmentCapabilityManifest,
+    ) -> tuple[tuple[WorldEvent, ...], tuple[dict[str, object], ...]]:
+        """Resolve every cited existing-world ref to exact reviewable material.
+
+        Committed ledger events supply their full immutable payload.  The
+        capability manifest also exposes reviewed catalog/location policies,
+        biography coordinates, timeline refs and facts as citable refs; those
+        must reach the reviewer as the exact pinned material the World Author
+        read instead of failing as an unavailable event.
+        """
+
+        cited_refs = tuple(
+            sorted(
+                {
+                    ref
+                    for claim in draft.claim_declarations
+                    if claim.scope == "existing_world"
+                    for ref in claim.source_refs
+                }
+            )
+        )
+        events: list[WorldEvent] = []
+        materials: list[dict[str, object]] = []
+        for ref in cited_refs:
+            commit = self._ledger.lookup_event_commit(ref)
+            if commit is not None and commit[0].event_id == ref:
+                events.append(commit[0])
+                continue
+            if ref.startswith("event:"):
+                raise ValueError(f"cited source event is unavailable: {ref}")
+            material = resolve_cited_pinned_material(
+                context=context,
+                manifest=manifest,
+                ref=ref,
+            )
+            if material is None:
+                raise ValueError(f"cited source material is unavailable: {ref}")
+            materials.append(material)
+        return tuple(events), tuple(materials)
 
     async def _novel_origin_review(
         self,

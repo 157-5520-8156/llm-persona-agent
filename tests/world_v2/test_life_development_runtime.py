@@ -1555,6 +1555,129 @@ def test_world_author_drops_unused_claim_declarations_before_closure_validation(
     )
 
 
+def test_source_closure_cited_sources_resolves_pinned_non_event_refs() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    capability = _location_capability()
+    manifest = _manifest(
+        wake,
+        pinned_cursor=_projection_cursor(ledger),
+        location_capability=capability,
+    )
+    ref = "biography:" + "a" * 64
+    manifest = manifest.model_copy(
+        update={"grounding_refs": tuple(sorted(set(manifest.grounding_refs) | {ref}))}
+    )
+    raw = json.loads(
+        _location_bound_world_draft(
+            wake=wake,
+            capability=capability,
+            timing={"mode": "now", "duration_minutes": 30},
+            privacy_class="shareable",
+        )
+    )
+    raw["claim_declarations"][0].update(
+        scope="existing_world",
+        subject_scope="existing_entity",
+        source_refs=[ref],
+    )
+    draft = parse_world_author_draft(raw=json.dumps(raw), manifest=manifest, logical_time=NOW)
+    item = {
+        "item_ref": ref,
+        "privacy_class": "personal",
+        "value": {"biography_id": ref, "age": 21, "academic_year": 3},
+    }
+    context = {"slices": {"world_life": {"items": [item]}}}
+    runtime, _store = _runtime(
+        ledger=ledger,
+        wake=wake,
+        world_author=_SequenceModel(model="unused", outputs=()),
+        character_interior=_SequenceModel(model="unused", outputs=()),
+        location_capability=capability,
+    )
+
+    events, materials = runtime._source_closure_cited_sources(
+        draft=draft,
+        context=context,
+        manifest=manifest,
+    )
+
+    assert events == ()
+    assert materials == (
+        {
+            "source_ref": ref,
+            "authority_kind": "pinned_context_item",
+            "materials": [{"slice": "world_life", "item": item}],
+        },
+    )
+
+
+def test_world_author_keeps_declarations_when_a_referenced_id_is_undeclared() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    capability = _location_capability()
+    raw = json.loads(
+        _location_bound_world_draft(
+            wake=wake,
+            capability=capability,
+            timing={"mode": "now", "duration_minutes": 30},
+            privacy_class="shareable",
+        )
+    )
+    raw["premise_claim_refs"] = ["local:claim:missing"]
+    raw["claim_declarations"][0]["claim_id"] = "local:claim:declared"
+    for outcome in raw["outcomes"]:
+        outcome["claim_refs"] = ["local:claim:missing"]
+        visual = outcome.get("visual_evidence")
+        if isinstance(visual, dict):
+            visual["claim_refs"] = ["local:claim:missing"]
+    manifest = _manifest(
+        wake,
+        pinned_cursor=_projection_cursor(ledger),
+        location_capability=capability,
+    )
+
+    with pytest.raises(LifeDevelopmentDraftError) as raised:
+        parse_world_author_draft(
+            raw=json.dumps(raw, ensure_ascii=False),
+            manifest=manifest,
+            logical_time=NOW,
+        )
+
+    # The unreferenced-declaration transport repair must not erase the only
+    # declaration and misreport the failure as too few declarations.
+    assert "close over claim declarations" in raised.value.detail
+    assert "too_short" not in raised.value.detail
+
+
+def test_world_author_drops_unanchored_extra_refs_before_validation() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    capability = _location_capability()
+    raw = json.loads(
+        _location_bound_world_draft(
+            wake=wake,
+            capability=capability,
+            timing={"mode": "now", "duration_minutes": 30},
+            privacy_class="shareable",
+        )
+    )
+    raw["anchor_refs"].append("biography:" + "a" * 64)
+    manifest = _manifest(
+        wake,
+        pinned_cursor=_projection_cursor(ledger),
+        location_capability=capability,
+    )
+
+    parsed = parse_world_author_draft(
+        raw=json.dumps(raw, ensure_ascii=False),
+        manifest=manifest,
+        logical_time=NOW,
+    )
+
+    assert parsed.anchor_refs == (wake.event_id,)
+
+
 def test_world_author_normalizes_local_claim_identifiers_before_validation() -> None:
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
     wake = _seed_clock(ledger)

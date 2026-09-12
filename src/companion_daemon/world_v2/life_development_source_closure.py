@@ -1507,12 +1507,114 @@ def life_development_review_packet_identity(
     return contract, packet_hash
 
 
+def _iter_pinned_context_items(
+    context: dict[str, object],
+) -> "list[tuple[str, dict[str, object]]]":
+    """Enumerate (slice_name, item) pairs already exposed to the World Author."""
+
+    slices = context.get("slices") if isinstance(context, dict) else None
+    nested = context.get("pinned_world_context") if isinstance(context, dict) else None
+    if isinstance(nested, dict) and isinstance(nested.get("slices"), (dict, list)):
+        slices = nested.get("slices")
+    pairs: list[tuple[str, dict[str, object]]] = []
+    if isinstance(slices, dict):
+        iterable = slices.items()
+    elif isinstance(slices, list):
+        iterable = (
+            (str(item.get("slice") or item.get("name") or index), item)
+            for index, item in enumerate(slices)
+            if isinstance(item, dict)
+        )
+    else:
+        iterable = ()
+    for name, slice_value in iterable:
+        if not isinstance(slice_value, dict):
+            continue
+        items = slice_value.get("items")
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    pairs.append((str(name), item))
+    return pairs
+
+
+def _item_matches_ref(item: dict[str, object], ref: str) -> bool:
+    if item.get("item_ref") == ref or item.get("source_ref") == ref:
+        return True
+    bindings = item.get("source_bindings")
+    if isinstance(bindings, list):
+        for binding in bindings:
+            if not isinstance(binding, dict):
+                continue
+            if ref in {
+                binding.get("ref"),
+                binding.get("authority_event_ref"),
+                binding.get("authority_type"),
+            }:
+                return True
+    value = item.get("value")
+    if isinstance(value, dict):
+        for key in (
+            "fact_id",
+            "biography_id",
+            "reviewed_timeline_ref",
+            "timeline_source_event_ref",
+            "source_ref",
+            "ref",
+        ):
+            if value.get(key) == ref:
+                return True
+        try:
+            serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        except (TypeError, ValueError):
+            serialized = ""
+        if ref in serialized:
+            return True
+    return False
+
+
+def resolve_cited_pinned_material(
+    *, context: dict[str, object], manifest, ref: str
+) -> dict[str, object] | None:
+    """Resolve one citable non-ledger ref to its exact pinned material.
+
+    The World Author is offered these refs in the same pinned Context or
+    capability manifest.  The reviewer must judge entailment against exactly
+    the material the author could read, never against the bare opaque ref.
+    """
+
+    matches = [
+        {"slice": name, "item": item}
+        for name, item in _iter_pinned_context_items(context)
+        if _item_matches_ref(item, ref)
+    ]
+    if matches:
+        return {
+            "source_ref": ref,
+            "authority_kind": "pinned_context_item",
+            "materials": matches,
+        }
+    capabilities = [
+        item.model_dump(mode="json")
+        for item in manifest.location_capabilities
+        if ref in item.authority_refs
+    ]
+    if capabilities:
+        return {
+            "source_ref": ref,
+            "authority_kind": "reviewed_location_catalog_policy",
+            "materials": capabilities,
+        }
+    return None
+
+
 def life_development_source_closure_messages(
     *,
     context: dict[str, object],
     manifest: LifeDevelopmentCapabilityManifest,
     draft: LifeDevelopmentPossibilityDraft,
     cited_events: tuple[WorldEvent, ...],
+    cited_pinned_materials: tuple[dict[str, object], ...] = (),
     execution_authority: dict[str, object] | None = None,
 ) -> list[dict[str, str]]:
     """Compile the independent reviewer request from the exact pinned inputs."""
@@ -1526,12 +1628,17 @@ def life_development_source_closure_messages(
     }
     cited_by_ref = {event.event_id: event for event in cited_events}
     cited_ids = tuple(event.event_id for event in cited_events)
+    material_by_ref = {str(item["source_ref"]): item for item in cited_pinned_materials}
+    material_ids = tuple(str(item["source_ref"]) for item in cited_pinned_materials)
     if (
         len(cited_ids) != len(cited_by_ref)
-        or set(cited_by_ref) != existing_claim_refs
+        or len(material_ids) != len(material_by_ref)
+        or set(cited_by_ref) & set(material_by_ref)
+        or set(cited_by_ref) | set(material_by_ref) != existing_claim_refs
     ):
         raise ValueError(
-            "source-review cited events must exactly close existing-world claim refs"
+            "source-review cited events and pinned materials must exactly close "
+            "existing-world claim refs"
         )
     event_material = [
         {
@@ -1544,7 +1651,7 @@ def life_development_source_closure_messages(
             "payload_hash": event.payload_hash,
             "payload": event.payload(),
         }
-        for event in (cited_by_ref[ref] for ref in sorted(existing_claim_refs))
+        for event in (cited_by_ref[ref] for ref in sorted(cited_by_ref))
     ]
     system = (
         "You are an independent semantic source-closure reviewer, not the World "
@@ -1601,6 +1708,16 @@ def life_development_source_closure_messages(
         "the supplied output contract, with the complete verdict inside its required "
         "review envelope."
     )
+    if cited_pinned_materials:
+        system += (
+            "\ncited_pinned_materials contains the exact pinned Context or manifest "
+            "material selected by an existing_world claim's source_refs. Judge those "
+            "claims against the exact listed fields only; an absent field is not "
+            "evidence and an opaque ref adds no unstated fact. A reviewed "
+            "location/catalog-policy material proves only the recorded schedules and "
+            "affordances of its listed locations; it never proves the protagonist's "
+            "presence, a completed action, or any fact absent from its recorded fields."
+        )
     reviewed_surface = _general_reviewed_surface(draft)
     pinned_source_evidence = {
         "contract": "life-development-source-evidence.1",
@@ -1617,6 +1734,8 @@ def life_development_source_closure_messages(
             "claims. Opaque ids and broad event types add no unstated facts."
         ),
     }
+    if cited_pinned_materials:
+        pinned_source_evidence["cited_pinned_materials"] = list(cited_pinned_materials)
     if current:
         pinned_source_evidence["execution_authority"] = _required_execution_authority(
             execution_authority

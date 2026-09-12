@@ -7,7 +7,11 @@ import json
 
 REQUIRED_POLICY = "visible-source-review-required.1"
 EVIDENCE_CONTRACT = "visible-source-runtime-evidence.1"
-MAX_EVIDENCE_BYTES = 512_000
+# The review evidence carries the original requirement, the complete author
+# request and the accepted receipt.  Successful records reached 423KB, so the
+# former 512KB carrier bound rejected otherwise-valid, already-billed reviews.
+# Align the evidence with the 1MB visible-review audit carrier instead.
+MAX_EVIDENCE_BYTES = 1_048_576
 REQUIRED_CAPABILITY_PREFIX = "inbound-reviewed-turn-capability:sha256:"
 
 
@@ -124,6 +128,7 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
         VisibleSourceReviewRejected,
     )
     from .visible_source_author_request import verify_visible_source_author_request
+    from .visible_source_closure_protocol import VisibleSourceClosureWireFailure
 
     aliases = verify_visible_source_author_request(
         author_request_json, expected_request_hash=output.winning_request_hash
@@ -240,12 +245,20 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
                 outcome="timeout" if isinstance(exc, TimeoutError) else "exception",
                 failure_code=failure_code,
             )
-        detail = (
-            "visible_source_review.admission."
-            + str(getattr(exc, "reason", "usage_admission_failed"))
-            if isinstance(exc, ModelUsageAdmissionError)
-            else "visible_source_review." + type(exc).__name__
-        )
+        if isinstance(exc, ModelUsageAdmissionError):
+            detail = "visible_source_review.admission." + str(
+                getattr(exc, "reason", "usage_admission_failed")
+            )
+        elif isinstance(exc, VisibleSourceClosureWireFailure):
+            detail = "visible_source_review." + type(exc).__name__ + "." + str(
+                getattr(exc, "code", "unknown")
+            )
+            if getattr(exc, "beat_index", None) is not None:
+                detail += ".beat:" + str(exc.beat_index)
+            if getattr(exc, "field", None):
+                detail += ".field:" + str(exc.field)[:80]
+        else:
+            detail = "visible_source_review." + type(exc).__name__
         raise ValidationTechnicalFailure(
             failure_code,
             model_call_id=parent,

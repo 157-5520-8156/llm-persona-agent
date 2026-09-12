@@ -65,6 +65,9 @@ MAX_MODEL_OUTPUT_NODES = 16_384
 # itself is bounded to 1MB elsewhere, so the completed record needs a
 # larger transport budget without widening raw role output validation.
 MAX_COMPLETED_INBOUND_OUTPUT_BYTES = 4_000_000
+# The visible-review evidence itself is independently bounded; this is the
+# carrier for it.  It must never truncate an accepted, already-billed review.
+MAX_VISIBLE_SOURCE_REVIEW_BYTES = 1_048_576
 MAX_ROUTE_REASON_CHARACTERS = 128
 MAX_REPORTED_TOKENS = 10_000_000
 # Process-wide ceilings cover unrelated lanes and detached cancellation audit.
@@ -1185,7 +1188,7 @@ class PhysicalProviderInvocationAudit(_FrozenModel):
 
 
 class ModelOutput(_FrozenModel):
-    visible_source_review_json: str | None = Field(default=None, max_length=512_000, exclude_if=lambda v: v is None)
+    visible_source_review_json: str | None = Field(default=None, max_length=MAX_VISIBLE_SOURCE_REVIEW_BYTES, exclude_if=lambda v: v is None)
     model_id: str = Field(min_length=1, max_length=256)
     model_version: str = Field(min_length=1, max_length=256)
     raw_proposal: dict[str, Any]
@@ -1416,7 +1419,7 @@ def _map_terminal_validation_failure(
 
 
 class ModelResultAudit(_FrozenModel):
-    visible_source_review_json: str | None = Field(default=None, max_length=512_000, exclude_if=lambda v: v is None)
+    visible_source_review_json: str | None = Field(default=None, max_length=MAX_VISIBLE_SOURCE_REVIEW_BYTES, exclude_if=lambda v: v is None)
     model_call_id: str = Field(min_length=1)
     parent_model_call_id: str | None = Field(
         default=None,

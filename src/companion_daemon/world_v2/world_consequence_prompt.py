@@ -54,6 +54,84 @@ def validate_world_consequence_offered_bindings(*, draft, messages) -> None:
             )
 
 
+def _compliant_propose_example(*, manifest: dict[str, object]) -> dict[str, object] | None:
+    """One exact current-contract shape using only refs offered in this request.
+
+    The example is generated per request so it never contains an invented
+    placeholder anchor.  It intentionally omits location fields: a location is
+    optional and, when used, must copy one exact offered capability pair and
+    one exact offered window.
+    """
+
+    anchors = manifest.get("anchor_refs")
+    anchor = next(
+        (item for item in anchors if isinstance(item, str) and item),
+        None,
+    ) if isinstance(anchors, (list, tuple)) else None
+    if anchor is None:
+        return None
+    owner = manifest.get("owner_actor_ref")
+    if not isinstance(owner, str) or not owner:
+        return None
+    return {
+        "decision": "propose",
+        "authored_subject_ref": owner,
+        "causal_authority": "character_choice",
+        "outcome_resolution_authority": "character_choice",
+        "premise_scope": "external_opportunity",
+        "premise": (
+            "One concrete external development is available in the current "
+            "environment as a candidate opportunity."
+        ),
+        "premise_claim_refs": ["local:claim:candidate-development"],
+        "claim_declarations": [
+            {
+                "claim_id": "local:claim:candidate-development",
+                "summary": (
+                    "A new proposal-scoped external development and its candidate "
+                    "environmental consequences are offered; no prior relationship, "
+                    "shared history, or completed character experience is asserted."
+                ),
+                "scope": "novel_world_generation",
+                "subject_scope": "world_environment",
+                "source_refs": [],
+            }
+        ],
+        "timing": {"mode": "now", "duration_minutes": 30},
+        "anchor_refs": [anchor],
+        "entity_refs": [],
+        "privacy_class": "shareable",
+        "outcomes": [
+            {
+                "experienced_by_ref": owner,
+                "world_consequence": {
+                    "contract": "world-consequence.2",
+                    "environment_text": (
+                        "A concrete, observable change in the external situation."
+                    ),
+                },
+                "user_channel_completion": "none",
+                "privacy_class": "shareable",
+                "relative_plausibility_weight": 6000,
+                "claim_refs": ["local:claim:candidate-development"],
+            },
+            {
+                "experienced_by_ref": owner,
+                "world_consequence": {
+                    "contract": "world-consequence.2",
+                    "environment_text": (
+                        "A different concrete, observable external situation."
+                    ),
+                },
+                "user_channel_completion": "none",
+                "privacy_class": "shareable",
+                "relative_plausibility_weight": 4000,
+                "claim_refs": ["local:claim:candidate-development"],
+            },
+        ],
+    }
+
+
 def compile_world_consequence_messages(
     *, user_context: dict[str, object], authority: WorldConsequenceAuthority,
     execution_materials: tuple[WorldConsequenceExecutionMaterial, ...],
@@ -95,6 +173,42 @@ def compile_world_consequence_messages(
     value["output_contract"] = {"no_op": {"decision": "no_op"}, "propose": schema}
     value["execution_authority"] = authority.model_dump(mode="json")
     value["execution_materials"] = [item.model_dump(mode="json") for item in execution_materials]
+    if value.get("occasion_mode") == "disturbance" or value.get("pressure_surfaces"):
+        disturbance_guidance = (
+            "This is a disturbance occasion. At least one outcome must carry a durable "
+            "world consequence: include dynamic_life_direction with a summary of the "
+            "same external change, a nonempty context_tags array, duration_days, and "
+            "the same privacy_class as that outcome (or a stronger one). The claim "
+            "declarations must cover that durable material. Compliant shape: "
+            + json.dumps(
+                {
+                    "dynamic_life_direction": {
+                        "summary": "The same durable external change the outcome describes.",
+                        "context_tags": ["constraint:example-duration"],
+                        "duration_days": 3,
+                        "privacy_class": "personal",
+                    }
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+    else:
+        disturbance_guidance = ""
+    example = _compliant_propose_example(manifest=manifest)
+    if example is None:
+        example_guidance = (
+            "capability_manifest.anchor_refs is empty, so no propose decision is "
+            "authorized; return the no_op object. "
+        )
+    else:
+        example_guidance = (
+            "Here is one exact compliant propose example for this request; mirror "
+            "its field names and structure, but do not copy its premise, claim "
+            "summary, anchor choice, or timestamps: "
+            + json.dumps(example, ensure_ascii=False)
+            + "\n"
+        )
     return [
         {
             "role": "system",
@@ -139,8 +253,26 @@ def compile_world_consequence_messages(
                 "example or a claim declaration.\n"
                 "recent_life_texture and any pressure_surfaces are evidence and opportunities, "
                 "not novelty targets, plot menus, or behavior instructions. The full "
-                "output_contract and cross_field_authority govern the complete object. "
-                "Return exactly one JSON object."
+                "output_contract and cross_field_authority govern the complete object.\n"
+                "anchor_refs is required and must copy exact members of "
+                "capability_manifest.anchor_refs; never invent an anchor ref. "
+                "location_ref and location_capability_ref are optional and must be "
+                "supplied together. When you use a location, copy one exact offered pair "
+                "from timing_coordinates.location_capability_coordinates and choose an "
+                "opens_at/closes_at inside that location's offered near_term_later_interval "
+                "when timing.mode is later, keeping closes_at - opens_at at or below "
+                "capability_manifest.max_window_minutes; when timing.mode is now, keep "
+                "duration_minutes at or below that capability's maximum_now_duration_minutes "
+                "and inside its offered schedule; "
+                "never use a placeholder location ref. When the possibility does not "
+                "need a location, omit both location fields and every visual location. "
+                "If a proposal location is present and an outcome has ordinary-life "
+                "privacy, that outcome must include visual_evidence; within it use "
+                "location null or exactly the proposal location_ref, never a different "
+                "place.\n"
+                + example_guidance
+                + disturbance_guidance
+                + "Return exactly one JSON object."
             ),
         },
         {"role": "user", "content": json.dumps(value, ensure_ascii=False, separators=(",", ":"))},

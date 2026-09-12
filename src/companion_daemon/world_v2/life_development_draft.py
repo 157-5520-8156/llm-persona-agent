@@ -1188,7 +1188,12 @@ def parse_world_author_draft(
                     claim_refs = outcome.get("claim_refs") if isinstance(outcome, dict) else None
                     if isinstance(claim_refs, list):
                         used_refs.update(item for item in claim_refs if isinstance(item, str))
-            if used_refs:
+            declared_ids = {item["claim_id"] for item in declarations}
+            # Drop only when every referenced declaration is actually declared.
+            # If the draft references an undeclared id, filtering here would
+            # silently erase every declaration and turn a repairable closure
+            # violation into a misleading "too few declarations" schema error.
+            if used_refs and used_refs <= declared_ids:
                 filtered = [item for item in declarations if item["claim_id"] in used_refs]
                 if len(filtered) != len(declarations):
                     decoded = {**decoded, "claim_declarations": filtered}
@@ -1197,6 +1202,27 @@ def parse_world_author_draft(
                         ensure_ascii=False,
                         separators=(",", ":"),
                     )
+    # Transport repair: a provider may copy a grounded identity or timeline
+    # ref into anchor_refs.  Only exact manifest anchor members carry anchor
+    # authority; dropping other refs preserves every authored premise,
+    # outcome and anchor that was actually offered.  If no offered anchor
+    # remains, strict validation still fails closed.
+    if isinstance(decoded, dict) and decoded.get("decision") != "no_op":
+        anchors = decoded.get("anchor_refs")
+        if isinstance(anchors, list) and anchors:
+            allowed_anchors = set(manifest.anchor_refs)
+            filtered_anchors = [
+                anchor
+                for anchor in anchors
+                if isinstance(anchor, str) and anchor in allowed_anchors
+            ]
+            if filtered_anchors and filtered_anchors != anchors:
+                decoded = {**decoded, "anchor_refs": filtered_anchors}
+                json_text = json.dumps(
+                    decoded,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
     if isinstance(decoded, dict) and decoded.get("decision") != "no_op":
         normalized_decoded = _normalize_claim_identifiers(decoded)
         if normalized_decoded is not decoded:

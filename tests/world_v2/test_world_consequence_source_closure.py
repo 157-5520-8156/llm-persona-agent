@@ -25,6 +25,7 @@ from companion_daemon.world_v2.life_development_source_closure import (
     life_development_review_packet_identity,
     parse_life_development_novel_origin_review,
     parse_life_development_source_closure_review,
+    resolve_cited_pinned_material,
 )
 from companion_daemon.world_v2.world_consequence_contract import (
     ActivityExecutionBinding,
@@ -332,3 +333,83 @@ async def test_actual_provider_request_carries_new_fields_and_rejection_stays_va
         assert len(requests) == 1
     finally:
         await provider.aclose()
+
+def _existing_world_material_for_ref(manifest, legacy, ref):
+    manifest = type(manifest).model_validate_json(
+        json.dumps(
+            manifest.model_dump(mode="json", exclude_computed_fields=True)
+            | {"grounding_refs": sorted(set(manifest.grounding_refs) | {ref})}
+        )
+    )
+    value = legacy.model_dump(mode="json")
+    value["claim_declarations"][0].update(
+        scope="existing_world",
+        subject_scope="existing_entity",
+        source_refs=[ref],
+    )
+    draft = parse_world_author_draft(
+        raw=json.dumps(value),
+        manifest=manifest,
+        logical_time=NOW,
+    )
+    return manifest, draft
+
+
+def test_cited_pinned_materials_resolve_exact_context_and_location_policy():
+    manifest, _legacy = _legacy_material()
+    ref = "biography:" + "a" * 64
+    item = {
+        "item_ref": ref,
+        "privacy_class": "personal",
+        "value": {"biography_id": ref, "age": 21, "academic_year": 3},
+    }
+    context = {"slices": {"world_life": {"items": [item]}}}
+
+    material = resolve_cited_pinned_material(context=context, manifest=manifest, ref=ref)
+
+    assert material is not None
+    assert material["authority_kind"] == "pinned_context_item"
+    assert material["materials"] == [{"slice": "world_life", "item": item}]
+
+    policy_ref = manifest.location_capabilities[0].authority_refs[0]
+    policy = resolve_cited_pinned_material(context={}, manifest=manifest, ref=policy_ref)
+
+    assert policy is not None
+    assert policy["authority_kind"] == "reviewed_location_catalog_policy"
+    assert policy["materials"][0]["location_ref"] == manifest.location_capabilities[0].location_ref
+    assert resolve_cited_pinned_material(context={}, manifest=manifest, ref="fact:" + "b" * 64) is None
+
+
+def test_general_review_packet_carries_exact_cited_pinned_materials():
+    manifest, legacy = _legacy_material()
+    ref = "biography:" + "a" * 64
+    manifest, draft = _existing_world_material_for_ref(manifest, legacy, ref)
+    item = {
+        "item_ref": ref,
+        "privacy_class": "personal",
+        "value": {"biography_id": ref, "age": 21, "academic_year": 3},
+    }
+    context = {"slices": {"world_life": {"items": [item]}}}
+    material = resolve_cited_pinned_material(context=context, manifest=manifest, ref=ref)
+    assert material is not None
+
+    messages = life_development_source_closure_messages(
+        context=context,
+        manifest=manifest,
+        draft=draft,
+        cited_events=(),
+        cited_pinned_materials=(material,),
+    )
+    packet = json.loads(messages[-1]["content"])
+
+    assert packet["pinned_source_evidence"]["cited_pinned_materials"] == [material]
+    assert packet["pinned_source_evidence"]["cited_committed_events"] == []
+    assert "cited_pinned_materials" in messages[0]["content"]
+    with pytest.raises(ValueError, match="exactly close existing-world claim refs"):
+        life_development_source_closure_messages(
+            context=context,
+            manifest=manifest,
+            draft=draft,
+            cited_events=(),
+        )
+

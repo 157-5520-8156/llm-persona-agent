@@ -1295,6 +1295,15 @@ def validate_expression_private_turn_state(
             list(state.attended_source_refs),
             catalog,
         )
+        # A known visible alias can still point outside this turn's
+        # attention-eligible subset.  Drop only those exact known-but-
+        # ineligible refs from audit-only attention provenance; unknown or
+        # forged refs remain and still fail closed below.
+        restored = [
+            ref
+            for ref in restored
+            if ref in allowed_attention_refs or ref not in aliases.canonical_refs
+        ]
         if tuple(restored) != state.attended_source_refs:
             state = state.model_copy(update={"attended_source_refs": tuple(restored)})
     try:
@@ -2086,6 +2095,55 @@ def _normalize_later_envelope(value: dict[str, object]) -> dict[str, object]:
     return normalized
 
 
+def bind_bounded_expression_windows(value: dict[str, object]) -> dict[str, object]:
+    """Keep provider-authored timing inside the published hard bounds.
+
+    The provider occasionally expresses an expectation or revisit horizon in
+    days (for example 3 * 86400) although the schema caps it at two days.  The
+    authored prose, beats and meaning stay untouched; only the numeric horizon
+    is capped to the maximum the contract already publishes, and an expiry is
+    kept strictly after its wait.  Missing, mistyped or lower-bound violations
+    remain strict validation failures.
+    """
+
+    if not isinstance(value, dict):
+        return value
+    bound = dict(value)
+
+    def _int(item: object) -> bool:
+        return isinstance(item, int) and not isinstance(item, bool)
+
+    for key in ("response_expectation", "revisit"):
+        container = bound.get(key)
+        if not isinstance(container, dict):
+            continue
+        repaired = dict(container)
+        wait = repaired.get("wait_seconds")
+        expiry = repaired.get("expires_after_seconds")
+        if _int(wait) and wait > RESPONSE_EXPECTATION_WAIT_MAX_SECONDS:
+            repaired["wait_seconds"] = RESPONSE_EXPECTATION_WAIT_MAX_SECONDS
+            wait = repaired["wait_seconds"]
+        if _int(expiry) and expiry > 172_800:
+            repaired["expires_after_seconds"] = 172_800
+            expiry = repaired["expires_after_seconds"]
+        if _int(wait) and _int(expiry) and expiry <= wait:
+            repaired["expires_after_seconds"] = min(172_800, wait + 60)
+        bound[key] = repaired
+
+    if bound.get("timing_choice") == "later":
+        delay = bound.get("delay_seconds")
+        expiry = bound.get("expires_after_seconds")
+        if _int(delay) and delay > EXPRESSION_DELAY_MAX_SECONDS:
+            bound["delay_seconds"] = EXPRESSION_DELAY_MAX_SECONDS
+            delay = bound["delay_seconds"]
+        if _int(expiry) and expiry > 172_800:
+            bound["expires_after_seconds"] = 172_800
+            expiry = bound["expires_after_seconds"]
+        if _int(delay) and _int(expiry) and expiry <= delay:
+            bound["expires_after_seconds"] = min(172_800, delay + 1)
+    return bound
+
+
 def normalize_expression_draft_wire(value: dict[str, object]) -> dict[str, object]:
     """Normalize only exact, lossless provider wire aliases before parsing."""
 
@@ -2543,6 +2601,7 @@ def materialize_expression_draft(
         source_ref_aliases=aliases,
     )
     value = normalize_expression_draft_wire(value)
+    value = bind_bounded_expression_windows(value)
     # JSON arrays are the natural wire representation of immutable tuples.
     # Field validators remain strict about every scalar and cross-field rule.
     draft = ExpressionDraft.model_validate_json(_canonical_json(value), strict=True)

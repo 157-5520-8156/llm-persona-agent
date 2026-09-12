@@ -277,12 +277,12 @@ def test_v9_does_not_expand_stream_or_physical_authority(version: int) -> None:
 
 def test_v9_checks_entire_utf8_audit_limit_without_truncation() -> None:
     audit = _audit()
-    # Multibyte carrier is below its 512,000-character limit throughout.
+    # Multibyte carrier stays below its 1,048,576-character field limit too.
     empty = _with_carrier(audit, canonical_json({"proof": ""}))
-    available = 1_048_576 - len(empty.encode("utf-8"))
+    available = 2_000_000 - len(empty.encode("utf-8"))
     text = "证" * (available // 3) + "x" * (available % 3)
     at_limit = _with_carrier(audit, canonical_json({"proof": text}))
-    assert len(at_limit.encode("utf-8")) == 1_048_576
+    assert len(at_limit.encode("utf-8")) == 2_000_000
     assert _payload(at_limit, 9).audit_json == at_limit
     over_limit = _with_carrier(audit, canonical_json({"proof": text + "x"}))
     with pytest.raises(ValueError, match="byte limit"):
@@ -301,8 +301,8 @@ def test_legacy_audit_byte_limit_is_not_increased(version: int) -> None:
 
 
 def test_v9_rejects_carrier_character_overflow_and_audit_hash_tampering() -> None:
-    with pytest.raises(ValueError, match="512000"):
-        _payload(_with_carrier(_audit(), "x" * 512_001), 9)
+    with pytest.raises(ValueError, match="1048576"):
+        _payload(_with_carrier(_audit(), "x" * 1_048_577), 9)
     payload = _payload(_with_carrier(_audit()), 9)
     with pytest.raises(ValueError, match="bytes/hash"):
         ModelResultRecordedPayload.model_validate(

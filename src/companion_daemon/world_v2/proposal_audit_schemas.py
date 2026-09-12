@@ -38,7 +38,10 @@ _MAX_PROPOSAL_BYTES = 262_144
 _MAX_AUDIT_BYTES = 262_144
 # Only audit.9 carries the complete visible-source review material.  Keep the
 # historical cap for every older contract, including on replay.
-_MAX_VISIBLE_REVIEW_AUDIT_BYTES = 1_048_576
+_MAX_VISIBLE_REVIEW_FIELD_BYTES = 1_048_576
+# The outer canonical audit embeds the evidence string with JSON escaping, so
+# its carrier needs headroom beyond the field bound.
+_MAX_VISIBLE_REVIEW_AUDIT_BYTES = 2_000_000
 _PROPOSAL_ADAPTER = TypeAdapter(ProposalInput)
 
 
@@ -393,7 +396,7 @@ class RecordedModelResultAudit(FrozenModel):
     visible_source_review_json: str | None = Field(
         default=None,
         min_length=2,
-        max_length=512_000,
+        max_length=_MAX_VISIBLE_REVIEW_FIELD_BYTES,
         exclude_if=lambda value: value is None,
     )
     response_storage: RecordedModelResponseStorage | None = Field(

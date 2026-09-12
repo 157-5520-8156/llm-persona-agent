@@ -4795,6 +4795,11 @@ class _InboundCharacterAuthor:
                 **_role_failure_payload_kwargs(raw, target_error),
             ) from target_error
         except (TypeError, ValueError) as appraisal_error:
+            logger.warning(
+                "combined appraisal failed its exact contract: error_type=%s detail=%s",
+                type(appraisal_error).__name__,
+                str(appraisal_error)[:300],
+            )
             raise ValidationTechnicalFailure(
                 "appraisal_reselection_invalid",
                 model_call_id=winning_provider_identity.model_call_id,

@@ -855,7 +855,14 @@ _SYSTEM_CONTRACT_V3 = (
     + """
 VERDICT BRANCH TRANSPORT V3:
 Every decision has beat_index, verdict, semantic_role and subject_role. A closed decision also requires first_source_ref_index (one integer) and additional_source_ref_indexes (an array, empty when no additional support is needed). Select the actual first supporting source index yourself from the supplied pinned table. All selected indexes together must be unique, in range and at most eight; their evidence must entail the exact claim with the same actor, polarity, time, status and disclosure authority. Never invent, guess or default a source index. If no eligible evidence supports an external proposition, return unclosed and its rejection diagnostic.
-source_free and unclosed decisions have no source fields: omit first_source_ref_index, additional_source_ref_indexes and source_ref_indexes entirely, including null or empty padding. closed also has no source_ref_indexes field. The host only combines the explicit closed first/additional indexes or normalizes a source-free/unclosed branch to an empty source set; it never chooses support. Diagnostic related_source_ref_indexes explain a problem and cannot close a Beat."""
+source_free and unclosed decisions have no source fields: omit first_source_ref_index, additional_source_ref_indexes and source_ref_indexes entirely, including null or empty padding. closed also has no source_ref_indexes field. The host only combines the explicit closed first/additional indexes or normalizes a source-free/unclosed branch to an empty source set; it never chooses support. Diagnostic related_source_ref_indexes explain a problem and cannot close a Beat.
+HARD CLASSIFICATION MATRIX (any violation makes the whole verdict wire invalid):
+- private_state: verdict MUST be source_free and subject_role MUST be companion.
+- commitment: verdict MUST be source_free and subject_role MUST be companion; a promise, offer, intention or commitment is always performed by the companion speaker.
+- generalization: verdict MUST be source_free and subject_role MUST be general or none.
+- external_proposition or mixed: verdict MUST be closed or unclosed. closed requires at least one selected row with support_eligibility exactly "eligible" whose support_subject_role equals the decision subject_role. Rows marked baseline_only, host_only, context_only or any value other than "eligible" can never close a Beat. If no such row exists, return unclosed with its rejection.
+- A diagnostic span must satisfy char_start >= 0 and char_start < char_end <= the supplied text_length of its Beat.
+Do not choose a verdict first and a role second: read the text, then apply this matrix exactly."""
 )
 
 
@@ -888,7 +895,12 @@ def visible_source_closure_messages(
             "authority": "correlated_source_guard_not_character_author",
         },
         "visible_beats": tuple(
-            {"beat_index": index, "text": text} for index, text in enumerate(visible_beats)
+            (
+                {"beat_index": index, "text": text, "text_length": len(text)}
+                if version in {"3", "4"}
+                else {"beat_index": index, "text": text}
+            )
+            for index, text in enumerate(visible_beats)
         ),
         "dialogue_subject_contract": {
             "candidate_first_person": "companion_actor",

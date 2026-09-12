@@ -75,3 +75,26 @@ def test_current_prompt_cannot_relabel_another_or_historical_manifest(wrong):
         compile_world_consequence_messages(
             user_context=context, authority=authority, execution_materials=(),
         )
+
+def test_current_prompt_example_uses_only_offered_refs_and_teaches_windows():
+    authority, context = _inputs()
+    context["capability_manifest"].update(
+        {
+            "anchor_refs": ["event:anchor:offered"],
+            "max_window_minutes": 720,
+        }
+    )
+    context["occasion_mode"] = "disturbance"
+
+    messages = compile_world_consequence_messages(
+        user_context=context, authority=authority, execution_materials=(),
+    )
+    system = messages[0]["content"]
+
+    assert 'event:anchor:offered' in system
+    assert 'event:anchor:1' not in system
+    assert 'location:reviewed-place' not in system
+    assert "capability_manifest.max_window_minutes" in system
+    assert "location_capability_coordinates" in system
+    assert '"dynamic_life_direction"' in system
+
