@@ -41,7 +41,11 @@ from .proposal_envelope import (
     validate_proposal_envelope,
 )
 from .qq_face_render_catalog import InboundSurfaceFact
-from .proposal_audit_schemas import RecordedCharacterInteriorTurnLineage, RecordedRoleRejectionEvidence
+from .proposal_audit_schemas import (
+    RecordedCharacterInteriorTurnLineage,
+    RecordedRoleRejectionEvidence,
+    completed_backup_failure_outcome,
+)
 from .recall_audit import PrefetchPresentationAudit, RecallAuditTrace
 from .recall_index import RecallCursor
 from .recall_runtime import (
@@ -1803,12 +1807,37 @@ class DeliberationResult(_FrozenModel):
                 raise ValueError("single successful attempt must validate a proposal")
         else:
             main, quick = self.attempt_audits
+            completed_backup_lost = (
+                main.slot == "backup"
+                and quick.slot in {"primary", "corrective"}
+                and quick.outcome == "winner"
+                and (
+                    (
+                        main.status == "candidate_returned"
+                        and main.failure_code is None
+                        and main.outcome == "returned"
+                    )
+                    or (
+                        main.status == "recovery_failed"
+                        and main.outcome == completed_backup_failure_outcome(main.failure_code)
+                        and main.outcome is not None
+                    )
+                )
+            )
             primary_won_race = (
                 self.proposal is not None
                 and self.audit == quick
                 and quick.status == "proposal_validated"
-                and main.status == "recovery_failed"
-                and main.failure_code in {"backup_cancelled", "backup_lost"}
+                and (
+                    completed_backup_lost
+                    or (
+                        # Historical cancelled/lost audit pairs retain their
+                        # recorded identity; new completed losers keep their
+                        # precise terminal evidence above.
+                        main.status == "recovery_failed"
+                        and main.failure_code in {"backup_cancelled", "backup_lost"}
+                    )
+                )
             )
             if not primary_won_race:
                 expected = {
@@ -2726,6 +2755,50 @@ class Deliberation:
         backup_validation: _ValidationAttemptState | None = None
         primary_failure_for_recovery = "main_timeout"
         corrective_claimed_before_backup = False
+
+        async def retire_backup_candidate() -> ModelResultAudit:
+            """Audit a terminal loser; cancel only work that is still pending."""
+
+            assert backup_task is not None
+            assert backup_call_id is not None and backup_request_hash is not None
+            if not backup_task.done():
+                backup_task.cancel()
+                await asyncio.gather(backup_task, return_exceptions=True)
+            discarded = None if backup_task.cancelled() else backup_task.result()
+            discard_candidate = getattr(self._quick, "discard_candidate", None)
+            if callable(discard_candidate) and backup_input is not None:
+                discard_candidate(backup_input)
+            if discarded is None:
+                budget.mark("hedge_cancelled")
+                return self._audit(
+                    model_call_id=backup_call_id,
+                    attempt_id=attempt_id,
+                    route=route,
+                    request_hash=backup_request_hash,
+                    output=None,
+                    status="recovery_failed",
+                    failure_code="backup_cancelled",
+                    slot="backup",
+                    outcome="hedge_cancelled",
+                )
+            loser_proposal, loser_output, loser_failure = discarded
+            valid = loser_proposal is not None and loser_failure is None
+            if valid:
+                budget.mark("hedge_lost")
+            return self._audit(
+                model_call_id=backup_call_id,
+                attempt_id=attempt_id,
+                route=route,
+                request_hash=backup_request_hash,
+                output=loser_output,
+                status="candidate_returned" if valid else "recovery_failed",
+                failure_code=None if valid else f"backup_{loser_failure or 'exception'}",
+                candidate_failure_detail=candidate_failure_details.get(backup_call_id),
+                technical_failure=terminal_validation_failures.get(backup_call_id),
+                slot="backup",
+                outcome="returned" if valid else _terminal_failure_audit_outcome(loser_failure),
+            )
+
         isolated_shadow_task: (
             asyncio.Task[tuple[ProposalInput | None, ModelOutput | None, str | None]] | None
         ) = None
@@ -3089,30 +3162,11 @@ class Deliberation:
                             # The head won: retire any losing hedge as audit
                             # evidence only -- never a result, never an Action
                             # -- and then open the accepted head's continuation
-                            # exactly as the eager path would have.  Cancelling
-                            # the loser here is what makes "the first validated
-                            # result wins" cost one provider call, not two.
+                            # exactly as the eager path would have. Cancellation
+                            # limits unfinished work; an already returned loser
+                            # retains its response and metering evidence.
                             if backup_role == "hedge":
-                                if backup_task is not None and not backup_task.done():
-                                    backup_task.cancel()
-                                    await asyncio.gather(backup_task, return_exceptions=True)
-                                discard_hedge = getattr(self._quick, "discard_candidate", None)
-                                if callable(discard_hedge) and backup_input is not None:
-                                    discard_hedge(backup_input)
-                                assert backup_call_id is not None
-                                assert backup_request_hash is not None
-                                loser_audit = self._audit(
-                                    model_call_id=backup_call_id,
-                                    attempt_id=attempt_id,
-                                    route=route,
-                                    request_hash=backup_request_hash,
-                                    output=None,
-                                    status="recovery_failed",
-                                    failure_code="backup_cancelled",
-                                    slot="backup",
-                                    outcome="hedge_cancelled",
-                                )
-                                budget.mark("hedge_cancelled")
+                                loser_audit = await retire_backup_candidate()
                             backup_task = None
                             backup_result = None
                             backup_call_id = None
@@ -3445,25 +3499,7 @@ class Deliberation:
                                 backup_task.add_done_callback(finish_shadow)
                             backup_task = None
                         elif backup_task is not None:
-                            if not backup_task.done():
-                                backup_task.cancel()
-                                await asyncio.gather(backup_task, return_exceptions=True)
-                            discard_candidate = getattr(self._quick, "discard_candidate", None)
-                            if callable(discard_candidate) and backup_input is not None:
-                                discard_candidate(backup_input)
-                            assert backup_call_id is not None and backup_request_hash is not None
-                            loser_audit = self._audit(
-                                model_call_id=backup_call_id,
-                                attempt_id=attempt_id,
-                                route=route,
-                                request_hash=backup_request_hash,
-                                output=None,
-                                status="recovery_failed",
-                                failure_code="backup_cancelled",
-                                slot="backup",
-                                outcome="hedge_cancelled",
-                            )
-                            budget.mark("hedge_cancelled")
+                            loser_audit = await retire_backup_candidate()
                         winner_slot = (
                             "corrective" if slot_coordinator.used_corrective else "primary"
                         )
@@ -4262,6 +4298,7 @@ class Deliberation:
         output: ModelOutput | None,
         status: AuditStatus,
         failure_code: str | None,
+        candidate_failure_detail: str | None = None,
         technical_failure: ValidationTechnicalFailure | None = None,
         slot: Literal["primary", "backup", "corrective"] | None = None,
         outcome: Literal[
@@ -4313,7 +4350,11 @@ class Deliberation:
             physical_provider_audits = output.physical_provider_audits
         response_hash = _output_response_hash(output) if output is not None else None
         role_rejection = _role_rejection_from_technical_failure(technical_failure)
-        failure_detail: str | None = None
+        failure_detail = (
+            candidate_failure_detail[:4_000]
+            if isinstance(candidate_failure_detail, str) and candidate_failure_detail.strip()
+            else None
+        )
         if (
             role_rejection is None
             and technical_failure is not None

@@ -4547,9 +4547,12 @@ async def test_slow_valid_primary_still_wins_when_the_hedge_is_invalid() -> None
         assert result.audit.status == "proposal_validated"
         # The rejected hedge is recorded as evidence, never as the winner.
         assert [audit.outcome for audit in result.attempt_audits] == [
-            "hedge_cancelled",
+            "invalid",
             "winner",
         ]
+        assert result.attempt_audits[0].failure_code == "backup_invalid"
+        assert result.attempt_audits[0].model_id == "hedge"
+        assert result.attempt_audits[0].response_hash is not None
         assert result.proposal is not None
         assert deliberation.has_expression_episode_tail(_capsule().capsule.trigger_ref)
         assert len(primary.head_requests) == 1

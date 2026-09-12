@@ -1106,8 +1106,30 @@ def validate_recorded_attempt_lineage(
         primary_won_race = (
             proposal_hash is not None
             and quick.status == "proposal_validated"
-            and main.status == "recovery_failed"
-            and main.failure_code in {"backup_cancelled", "backup_lost"}
+            and (
+                (
+                    # Preserve historical cancelled/lost audit identities.
+                    main.status == "recovery_failed"
+                    and main.failure_code in {"backup_cancelled", "backup_lost"}
+                )
+                or (
+                    main.slot == "backup"
+                    and quick.slot in {"primary", "corrective"}
+                    and quick.outcome == "winner"
+                    and (
+                        (
+                            main.status == "candidate_returned"
+                            and main.failure_code is None
+                            and main.outcome == "returned"
+                        )
+                        or (
+                            main.status == "recovery_failed"
+                            and main.outcome == completed_backup_failure_outcome(main.failure_code)
+                            and main.outcome is not None
+                        )
+                    )
+                )
+            )
         )
         if character_recall_followup:
             pass
@@ -1171,6 +1193,27 @@ def validate_recorded_attempt_lineage(
     }
     if deliberation_result_id != f"deliberation:{sha256(canonical_json(identity))}":
         raise ValueError("deliberation result identity is invalid")
+
+
+def completed_backup_failure_outcome(
+    failure_code: str | None,
+) -> Literal["invalid", "timeout", "exception"] | None:
+    """The exact terminal vocabulary for a completed, non-winning backup."""
+
+    if failure_code is None or not failure_code.startswith("backup_"):
+        return None
+    failure = failure_code.removeprefix("backup_")
+    if failure not in {
+        "invalid", "exception", "timeout", "cancelled",
+        *VALIDATION_MAIN_TIMEOUT_FAILURE_CODES,
+        *VALIDATION_MAIN_EXCEPTION_FAILURE_CODES,
+    }:
+        return None
+    if failure in {"invalid", "inventory_invalid", "coverage_invalid"}:
+        return "invalid"
+    if failure in {"timeout", "source_review_timeout", "authored_subcall_timeout"}:
+        return "timeout"
+    return "exception"
 
 
 class ProposalRecordedV2Payload(FrozenModel):
