@@ -1359,7 +1359,22 @@ class SocialInitiativeCompiler:
                 delay_seconds = int(draw.selected_candidate_ref.removeprefix("delay:"))
             except (AttributeError, ValueError):
                 raise ValueError("post-silent initiative draw did not select a delay")
-            if delay_seconds not in profile.delay_candidates_seconds:
+            # A committed draw is replayed by attempt id, and that identity
+            # deliberately excludes the candidate set ("must not mint another
+            # draw").  Re-validating it against a profile recompiled from the
+            # *current* relationship stage therefore wedged forever as soon as
+            # the stage moved the band: production threw
+            # "post-silent initiative draw selected an unknown delay" on every
+            # scheduler pass and never advanced its clock again.  The draw's own
+            # recorded candidates are the only authority that survives a stage
+            # change; a fresh draw records exactly the band it was drawn from,
+            # so the sampler is still checked in both paths.
+            recorded_delays = {
+                int(ref.removeprefix("delay:"))
+                for ref in draw.candidate_refs
+                if ref.startswith("delay:")
+            }
+            if recorded_delays and delay_seconds not in recorded_delays:
                 raise ValueError("post-silent initiative draw selected an unknown delay")
             scheduled_for = completion_ref.logical_time + timedelta(seconds=delay_seconds)
             consideration_id = post_silent_consideration_id(

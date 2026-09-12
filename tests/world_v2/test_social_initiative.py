@@ -1888,6 +1888,246 @@ async def test_settled_post_silent_releases_ambient_cadence() -> None:
     assert released.consideration_epoch == 1
 
 
+def _attach_silent_epoch(compiler, projection, *, source, completion_at, trigger_id: str):
+    """Wire one role-owned silence plus its terminal completion into the fixture."""
+
+    from companion_daemon.world_v2.social_initiative import (
+        SocialInitiativeContextPolicy,
+    )
+
+    completion_event = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:proactive:completed:" + trigger_id,
+        world_id=projection.world_id,
+        event_type="TriggerProcessCompleted",
+        logical_time=completion_at,
+        created_at=completion_at,
+        actor="worker:proactive",
+        source="test",
+        trace_id="trace:" + trigger_id,
+        causation_id="cause:" + trigger_id,
+        correlation_id="conversation:" + trigger_id,
+        idempotency_key="proactive:completed:" + trigger_id,
+        payload={
+            "trigger_id": trigger_id,
+            "runtime_outcome_ref": "proactive:silent",
+            "attempt_id": "attempt:" + trigger_id,
+        },
+    )
+    original_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
+
+    def lookup(event_id):  # type: ignore[no-untyped-def]
+        if event_id == source.event_id:
+            return source, SimpleNamespace(world_revision=1)
+        if event_id == completion_event.event_id:
+            return completion_event, SimpleNamespace(world_revision=1)
+        return original_lookup(event_id)
+
+    compiler._ledger.lookup_event_commit = lookup  # type: ignore[attr-defined]
+    compiler._ledger.find_trigger_completion = (  # type: ignore[attr-defined]
+        lambda candidate: (
+            SimpleNamespace(
+                event_id=completion_event.event_id,
+                event_type=completion_event.event_type,
+                payload_hash="a" * 64,
+                logical_time=completion_event.logical_time,
+            )
+            if candidate == trigger_id
+            else None
+        )
+    )
+    projection.trigger_processes = (
+        SimpleNamespace(
+            trigger_id=trigger_id,
+            process_kind="proactive_action_deliberation",
+            trigger_ref="proactive-consideration:consideration:social-initiative:"
+            + "0" * 64,
+            source_evidence_ref=source.event_id,
+            state="terminal",
+            runtime_outcome_ref="proactive:silent",
+        ),
+    )
+    assert SocialInitiativeContextPolicy.version
+    return completion_event
+
+
+def _post_silent_morning_source(projection, *, morning: datetime):
+    return WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:observation:message:source",
+        world_id=projection.world_id,
+        event_type="ObservationRecorded",
+        logical_time=morning,
+        created_at=morning,
+        actor="user:primary",
+        source="test",
+        trace_id="trace:post-silent-wedge",
+        causation_id="cause:post-silent-wedge",
+        correlation_id="conversation:post-silent-wedge",
+        idempotency_key="observation:message:source",
+        payload={"observation_id": "message:source", "text": "source"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_post_silent_replayed_draw_survives_a_moved_delay_band() -> None:
+    """A committed post-silent draw is replayed, never re-validated against a new band.
+
+    Production wedged here: the post-silent ``attempt_id`` deliberately excludes
+    the candidate set, so the draw committed under one relationship band was
+    replayed forever while a later stage recompiled a different band.  The
+    membership check then raised
+    "post-silent initiative draw selected an unknown delay" on every scheduler
+    pass and the clock never advanced again.  The draw's own recorded
+    ``candidate_refs`` are the only authority that survives the stage move.
+    """
+
+    from companion_daemon.world_v2.social_initiative import (
+        post_silent_attempt_id,
+        post_silent_consideration_id,
+    )
+
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    morning = datetime(2026, 7, 18, 1, 0, tzinfo=UTC)  # 09:00 Asia/Shanghai
+    source = _post_silent_morning_source(projection, morning=morning)
+    silent_trigger_id = "trigger:proactive:silent-moved-band"
+    projection.logical_time = morning
+    completion_event = _attach_silent_epoch(
+        compiler,
+        projection,
+        source=source,
+        completion_at=morning,
+        trigger_id=silent_trigger_id,
+    )
+    attempt_id = post_silent_attempt_id(
+        completion_event_ref=completion_event.event_id,
+        prior_trigger_id=silent_trigger_id,
+        policy_version=compiler._context.version,  # noqa: SLF001
+    )
+    # The committed draw was taken while the relationship compiled the stranger
+    # band; the fixture's current close_friend stage compiles a disjoint band.
+    receptive_states = projection.relationship_states
+    projection.relationship_states = (
+        SimpleNamespace(
+            stage="stranger",
+            variables=SimpleNamespace(
+                trust_bp=120,
+                closeness_bp=200,
+                respect_bp=80,
+                reliability_bp=0,
+                mutuality_bp=110,
+                repair_confidence_bp=0,
+            ),
+        ),
+    )
+    old_profile = compiler._context.compile(  # noqa: SLF001
+        projection=projection, logical_time=morning
+    )
+    assert old_profile.delay_candidates_seconds == (21_600, 25_200, 28_800)
+    projection.relationship_states = receptive_states
+    draw = compiler._random.draw(  # noqa: SLF001
+        attempt_id=attempt_id,
+        candidate_refs=tuple(
+            f"delay:{seconds}" for seconds in old_profile.delay_candidates_seconds
+        ),
+        candidate_weights=old_profile.candidate_weights,
+        weight_policy_version=compiler._context.version,  # noqa: SLF001
+        catalog_version="social-initiative-post-silent-delay.1",
+        logical_time=morning,
+        seed_instant=completion_event.logical_time,
+        actor="system:social-initiative",
+        trace_id="trace:social-initiative:post-silent:wedge",
+        correlation_id="correlation:social-initiative:post-silent:wedge",
+    )
+    assert draw.candidate_refs == ("delay:21600", "delay:25200", "delay:28800")
+    selected = int(draw.selected_candidate_ref.removeprefix("delay:"))
+    due_at = completion_event.logical_time + timedelta(seconds=28_800 + 3_600)
+    projection.logical_time = due_at
+    current_profile = compiler._context.compile(  # noqa: SLF001
+        projection=projection, logical_time=due_at
+    )
+    assert current_profile.delay_candidates_seconds == (3_600, 5_400, 7_200)
+    # Exactly the state the old guard raised on.
+    assert selected not in current_profile.delay_candidates_seconds
+    projection.committed_world_event_refs = (
+        SimpleNamespace(
+            event_id=source.event_id,
+            event_type=source.event_type,
+            logical_time=source.logical_time,
+            world_revision=1,
+        ),
+        SimpleNamespace(
+            event_id="event:random-draw:" + draw.draw_id,
+            event_type="RandomDrawRecorded",
+            logical_time=morning,
+            world_revision=1,
+        ),
+    )
+    compiler._random = SimpleNamespace(  # noqa: SLF001
+        draw=lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("a committed post-silent draw must be replayed, not re-minted")
+        )
+    )
+
+    opportunity = await compiler.next_opportunity(projection)
+
+    assert opportunity is not None
+    assert opportunity.source_kind == "post_silent"
+    assert opportunity.consideration_id == post_silent_consideration_id(
+        attempt_id=attempt_id,
+        delay_seconds=selected,
+        epoch=0,
+        prior_trigger_id=silent_trigger_id,
+    )
+    assert opportunity.scheduled_for == completion_event.logical_time + timedelta(
+        seconds=selected
+    )
+
+
+@pytest.mark.asyncio
+async def test_post_silent_draw_outside_its_own_candidates_still_fails_loudly() -> None:
+    """The replayed-draw check still rejects a delay its own candidates exclude.
+
+    ``RandomDrawRecordedPayload`` already refuses a selection outside its own
+    candidate set, so a committed draw can never carry this state; the guard is
+    exercised with a draw object the sampler itself could not have produced.
+    """
+
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    morning = datetime(2026, 7, 18, 1, 0, tzinfo=UTC)
+    source = _post_silent_morning_source(projection, morning=morning)
+    projection.logical_time = morning
+    completion_event = _attach_silent_epoch(
+        compiler,
+        projection,
+        source=source,
+        completion_at=morning,
+        trigger_id="trigger:proactive:silent-bad-draw",
+    )
+    projection.logical_time = completion_event.logical_time + timedelta(hours=10)
+    projection.committed_world_event_refs = (
+        SimpleNamespace(
+            event_id=source.event_id,
+            event_type=source.event_type,
+            logical_time=source.logical_time,
+            world_revision=1,
+        ),
+    )
+    compiler._random = SimpleNamespace(  # noqa: SLF001
+        draw=lambda **_kwargs: SimpleNamespace(
+            # Outside its own recorded candidates and outside the currently
+            # compiled band, so neither the replay authority nor a recompiled
+            # profile can vouch for it.
+            selected_candidate_ref="delay:99999",
+            candidate_refs=("delay:21600", "delay:25200", "delay:28800"),
+        )
+    )
+
+    with pytest.raises(ValueError) as raised:
+        await compiler.next_opportunity(projection)
+    assert "post-silent initiative draw selected an unknown delay" in str(raised.value)
+
+
 def _advance_past_ambient(compiler, projection, *, hours: float = 40.0):
     """Move logical time past the short ambient window with a ClockAdvanced."""
 
