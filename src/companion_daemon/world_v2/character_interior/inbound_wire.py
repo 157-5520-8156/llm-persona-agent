@@ -10564,7 +10564,9 @@ class _ExpressionDraftWire:
                 current_details = _activity_details(current_activities)
                 planned_details = _activity_details(planned_activities)
                 rule = (
-                    "Activity source rule: do not claim any current or past activity beyond the exact facts below. "
+                    "These activity lifecycle sources establish their recorded status and bound intention; "
+                    "they do not exhaust the other pinned World sources. Each source retains its own authority "
+                    "and temporal scope. "
                 )
                 if current_details:
                     rule += (
@@ -10572,7 +10574,7 @@ class _ExpressionDraftWire:
                         + json.dumps(current_details, ensure_ascii=False)
                         + ". If you state it, include a current_world world_claim whose source_refs contain that "
                         "exact source_ref. Do not add a different activity, place, object, duration, outcome or "
-                        "evaluation that is not present in that exact text. "
+                        "other factual detail that is not present in that exact text. "
                     )
                 if planned_details:
                     rule += (
@@ -10588,9 +10590,10 @@ class _ExpressionDraftWire:
                     )
                 if not current_details:
                     rule += (
-                        "There is no exact current-activity source. Do not state a specific activity, place or "
-                        "routine as what you are doing now. If asked about your day, speak only about a future "
-                        "plan, a feeling, uncertainty, or ask instead. "
+                        "No exact current-activity source is listed here. This absence does not establish a "
+                        "specific current activity or location, and does not invalidate separately sourced "
+                        "settled events or past activity status. Claims about those sources still require their "
+                        "exact source_ref and matching world_claim scope. What to express remains your choice. "
                     )
                 user_material["activity_source_rule"] = rule
         if quick_recovery and source_closure_failure is not None:
