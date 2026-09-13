@@ -1605,6 +1605,10 @@ class StructuredCharacterRoleFaculty:
                 return compiler.world_stimulus_appraisal(
                     capability_payload=manifest.payload,
                     recall_allowed=not request.recall_completed,
+                    source_tokens=tuple(
+                        (item.token, item.source_ref)
+                        for item in _citeable_catalog_for_request(request).items
+                    ),
                 )
             if request.purpose == "private_impression_reflection":
                 return compiler.private_impression_reflection(
@@ -1909,7 +1913,12 @@ class StructuredCharacterRoleFaculty:
         except json.JSONDecodeError as exc:
             raise StructuredRoleResultError(
                 "role_result_not_json",
-                detail=_FAILURE_DETAILS["role_result_not_json"],
+                detail=(
+                    f"{_FAILURE_DETAILS['role_result_not_json']} "
+                    f"JSON syntax error at line {exc.lineno}, column {exc.colno}, "
+                    f"character {exc.pos}: {exc.msg[:160]}. "
+                    "Return one complete JSON object for the same pinned request."
+                ),
                 response_hash=response_hash,
             ) from exc
         if not isinstance(decoded, dict):
@@ -2011,6 +2020,26 @@ class StructuredCharacterRoleFaculty:
         """
 
         normalized = dict(decoded)
+        if contract.purpose == "world_stimulus_appraisal":
+            catalog = _citeable_catalog_for_request(request)
+            proposals = normalized.get("proposals")
+            if isinstance(proposals, list):
+                restored = []
+                for proposal in proposals:
+                    if isinstance(proposal, dict):
+                        transition = proposal.get("experience_transition")
+                        if isinstance(transition, dict) and isinstance(transition.get("source_refs"), list):
+                            # Exact catalog ids only: never guess, drop extras,
+                            # or collapse two choices of the same authority.
+                            proposal = {**proposal, "experience_transition": {
+                                **transition, "source_refs": [
+                                    catalog.token_to_ref.get(ref, ref)
+                                    if isinstance(ref, str) else ref
+                                    for ref in transition["source_refs"]
+                                ],
+                            }}
+                    restored.append(proposal)
+                normalized["proposals"] = restored
         if contract.purpose != "private_impression_reflection":
             _restore_unique_pinned_source_refs(
                 normalized,

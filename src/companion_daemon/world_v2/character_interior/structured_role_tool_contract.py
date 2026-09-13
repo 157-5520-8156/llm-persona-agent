@@ -833,6 +833,7 @@ class StructuredRoleToolContracts:
         *,
         capability_payload: Mapping[str, object],
         recall_allowed: bool,
+        source_tokens: tuple[tuple[str, str], ...] | None = None,
     ) -> StructuredRoleToolContract:
         """Compile the typed appraisal proposal envelope for one pinned wake.
 
@@ -846,6 +847,7 @@ class StructuredRoleToolContracts:
         return self._cached_world_stimulus_appraisal(
             _canonical_json(capability_payload),
             recall_allowed,
+            source_tokens,
         )
 
     def private_impression_reflection(
@@ -1322,6 +1324,7 @@ class StructuredRoleToolContracts:
     def _cached_world_stimulus_appraisal(
         capability_payload_json: str,
         recall_allowed: bool,
+        source_tokens: tuple[tuple[str, str], ...] | None = None,
     ) -> StructuredRoleToolContract:
         # These imports are intentionally local: structured_role imports this
         # compiler during module initialization, while the canonical payload
@@ -1342,6 +1345,14 @@ class StructuredRoleToolContracts:
         }
         proposal_schema = _provider_schema(_WorldStimulusAppraisalResult)
         proposal_properties = _required_object_properties(proposal_schema)
+        if source_tokens is not None and "experience_transitions" in capability_payload:
+            from .experience_transition_tool_schema import specialize_experience_transition_schema
+
+            proposal_properties["experience_transition"] = specialize_experience_transition_schema(
+                proposal_properties["experience_transition"],
+                capability_payload=capability_payload["experience_transitions"],
+                source_tokens=source_tokens,
+            )
         intent_capability = capability_payload.get("world_life_intent")
         if isinstance(intent_capability, dict):
             source_refs = intent_capability.get("source_event_refs")
