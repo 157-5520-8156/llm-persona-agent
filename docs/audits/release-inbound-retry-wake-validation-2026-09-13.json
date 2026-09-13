@@ -1,0 +1,57 @@
+{
+  "contract": "release-inbound-retry-wake-validation.1",
+  "base_code": "2b3c128c",
+  "source_trial": "release-recovery-continuation-20260913-04",
+  "source_manifest_sha256": "2accf6a6a836b9e87c859bc980a4730447d8d7b785ac8a614313bdf5b2471eeb",
+  "source_trial_still_completed": false,
+  "source_trial_stop_reason": "unprocessed_due_before_end",
+  "source_artifact_hashes_unchanged": true,
+  "read_only_sqlite_copy": true,
+  "logical_time": "2026-09-14T12:03:30+00:00",
+  "ledger_sequence": 841,
+  "original_expression_lease_due": "2026-09-14T12:03:30+00:00",
+  "original_appraisal_lease_due": "2026-09-14T12:03:00+00:00",
+  "authoritative_expression_retry_due": "2026-09-14T12:31:30+00:00",
+  "dependent_appraisal_retry_due": "2026-09-14T12:31:30+00:00",
+  "collected_lease_dues": [
+    {
+      "kind": "expression.technical_retry",
+      "due_at": "2026-09-14T12:31:30+00:00"
+    },
+    {
+      "kind": "action.authorized_due",
+      "due_at": "2026-09-14T12:31:30+00:00"
+    },
+    {
+      "kind": "expression.technical_retry",
+      "due_at": "2026-09-14T12:31:30+00:00"
+    }
+  ],
+  "claimed_states_retained": true,
+  "historical_receipts_verified": 6,
+  "replay_hash_matches": true,
+  "new_model_calls": 0,
+  "new_qq_deliveries": 0,
+  "known_failure": "The latest real return chat produced no character reply. This read-only scheduling check does not repair or qualify its source review/latency.",
+  "scope": "Generic lease expiry no longer outranks the existing technical retry after immutable current-attempt failure. Inline appraisal waits only for the exact shared missing author result; durable proposals or incomplete binding preserve its own lease wake. No change to provider backoff, notices, lease events, or final journey gate.",
+  "other_declared_dues_at_or_before_logical_time": [
+    {
+      "kind": "life.ecology",
+      "field": "LifeEcologyScheduleProjection.next_consideration_at",
+      "due_at": "2026-09-14T12:01:00+00:00"
+    }
+  ],
+  "regression": {
+    "before_fix": "2 failed, 8 passed in 1.00s; actual wake was old lease expiry instead of 30-minute retry",
+    "after_fix": "52 passed in 1.29s",
+    "files": [
+      "tests/world_v2/test_inbound_retry_declared_due.py",
+      "tests/world_v2/test_expression_episode_lifecycle.py",
+      "tests/world_v2/test_declared_due_wake.py"
+    ],
+    "runtime_recovery": "3 passed, 16 deselected in 4.80s: capped retry without spin, concurrent retry joins one provider call, new inbound supersedes old retry after restart",
+    "system_notice": "4 passed, 82 deselected, 1 warning in 1.45s: notice before long backoff, effect-once restart, in-flight protection, cancel after role completion",
+    "ruff": "changed Python files passed",
+    "full_suite": "not repeated for this bounded scheduling change; earlier full gate belongs to 6da134d7"
+  }
+}

@@ -485,6 +485,11 @@ def _extract_media_opportunities(projection: object) -> tuple[DeclaredDueTarget,
 
 
 def _extract_trigger_leases(projection: object) -> tuple[DeclaredDueTarget, ...]:
+    from .expression_episode_lifecycle import (
+        expression_episode_work_due,
+        inbound_appraisal_retry_due,
+    )
+
     found: list[DeclaredDueTarget] = []
     for process in _iter(getattr(projection, "trigger_processes", ())):
         if getattr(process, "state", None) not in {"claimed", "open"}:
@@ -498,6 +503,19 @@ def _extract_trigger_leases(projection: object) -> tuple[DeclaredDueTarget, ...]
             if getattr(process, "process_kind", None) == "proactive_action_deliberation"
             else "action.authorized_due"
         )
+        try:
+            if getattr(process, "process_kind", None) == "expression_episode":
+                # A completed technical attempt has a separate retry deadline;
+                # its old in-flight lease is no longer actionable provider work.
+                owned_due = expression_episode_work_due(projection, process)
+                if owned_due is not None:
+                    due = owned_due
+                    kind = "expression.technical_retry"
+            elif getattr(process, "process_kind", None) == "interaction_appraisal":
+                due = inbound_appraisal_retry_due(projection, process) or due
+        except AttributeError:
+            # Partial/older readers do not prove a dependency. Keep the lease.
+            pass
         found.append(
             DeclaredDueTarget(
                 kind=kind,
@@ -635,7 +653,7 @@ _PROJECTION_EXTRACTORS: tuple[_ProjectionExtractor, ...] = (
     ),
     _ProjectionExtractor(
         name="_extract_trigger_leases",
-        kinds=frozenset({"action.authorized_due", "proactive.technical_retry"}),
+        kinds=frozenset({"action.authorized_due", "proactive.technical_retry", "expression.technical_retry"}),
         fields=frozenset({"ClaimLease.expires_at"}),
         extract=_extract_trigger_leases,
     ),

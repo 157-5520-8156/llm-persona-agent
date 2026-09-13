@@ -717,6 +717,56 @@ def expression_episode_work_due(
     return lease_bound(process.claim_lease.acquired_at)
 
 
+def inbound_appraisal_retry_due(
+    projection: _ExpressionRetryProjection,
+    appraisal: TriggerProcess,
+) -> datetime | None:
+    """Read a proven wait for the shared inbound author, never finish a facet.
+
+    Ingress claims the inline appraisal before that author runs. If the author
+    failed without a durable result, its appraisal cannot be settled by waking
+    the expired ingress lease; it depends on the same expression retry. Any
+    persisted role/appraisal proposal or missing binding preserves the ordinary
+    lease wake so acceptance recovery is never hidden by provider backoff.
+    """
+    from .appraisal_trigger import (
+        CHARACTER_INTERIOR_INBOUND_ATTEMPT_PREFIX,
+        is_interaction_appraisal_audit,
+    )
+
+    if (
+        appraisal.process_kind != "interaction_appraisal"
+        or appraisal.state != "claimed"
+        or appraisal.claim_lease is None
+        or not appraisal.claim_lease.attempt_id.startswith(CHARACTER_INTERIOR_INBOUND_ATTEMPT_PREFIX)
+        or not appraisal.source_evidence_ref
+    ):
+        return None
+    matches = tuple(process for process in projection.trigger_processes
+        if process.process_kind == PROCESS_KIND
+        and process.state == "claimed"
+        and process.source_evidence_ref == appraisal.source_evidence_ref)
+    if len(matches) != 1:
+        return None
+    expression = matches[0]
+    observation_ref = _observation_event_ref(projection, expression)
+    if observation_ref is None or not _current_attempt_has_terminal_technical_failure(
+        projection, process=expression, observation_event_ref=observation_ref,
+    ):
+        return None
+    if any(
+        audit.trigger_ref == observation_ref
+        and (
+            audit.attempt_id in expression.attempt_ids
+            or audit.proposal_id.startswith(_INBOUND_EXPRESSION_PROPOSAL_PREFIXES)
+            or is_interaction_appraisal_audit(audit)
+        )
+        for audit in projection.proposal_audits
+    ):
+        return None
+    return expression_episode_work_due(projection, expression)
+
+
 def _eligible_expression_retry_processes(
     projection: _ExpressionRetryProjection,
     *,
@@ -1133,4 +1183,5 @@ __all__ = [
     "expression_episode_trigger_id",
     "expression_episode_technical_notice_candidates",
     "next_expression_retry_due",
+    "inbound_appraisal_retry_due",
 ]

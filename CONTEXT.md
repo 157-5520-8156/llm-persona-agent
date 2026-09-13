@@ -695,6 +695,14 @@ The compare-and-swap revision advanced only by events that change authoritative 
 
 The effect-once processing lifecycle for one Observation, clock trigger, recovery item, or settlement input. Concurrent callers join the same process instead of independently deliberating and authorizing duplicate Actions.
 
+An in-flight Claim Lease and a technical retry deadline are separate coordinates.
+Once the current expression attempt has a recorded terminal technical failure,
+clock wake readers use its authoritative retry schedule. The ingress-claimed
+inline appraisal may wait for that same missing role result only when its
+Observation and failure binding are proven and no role/appraisal Proposal is
+already durable. This changes no claim state or retry policy; durable results,
+unproven dependencies and external Action leases retain their recovery work.
+
 ## Action Intent
 
 A stable-identity value object inside a Proposal describing a candidate external effect. It is not an Action and gains no execution authority until Proposal Acceptance creates an authorized Action.
