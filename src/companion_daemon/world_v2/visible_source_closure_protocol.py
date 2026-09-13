@@ -16,6 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from .context_capsule import ResolvedSourceBinding, source_bindings_hash
+from .visible_life_source import settled_life_source_support
 from .world_life_context import ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem
 
 
@@ -670,6 +671,13 @@ def _eligible_reference(row: dict[str, object]) -> bool:
     material = row.get("review_material")
     if not isinstance(material, dict):
         return False
+    if "settled_life_support" in row:
+        support = settled_life_source_support(material, row.get("source_ref"))
+        return bool(
+            support is not None
+            and support[0] == row.get("support_subject_ref")
+            and support[1] == row["settled_life_support"]
+        )
     if "activity_support" in row:
         support = _activity_support(material, row.get("source_ref"))
         return bool(
@@ -771,9 +779,11 @@ def compact_source_reference_table(
                 continue
             seen.add(normalized)
             activity = _activity_support(material, normalized)
+            settled_life = settled_life_source_support(material, normalized)
             row_subject, row_role, row_eligible = support_subject, support_role, eligible
-            if activity is not None:
-                row_subject = activity[0]
+            specific_support = activity if activity is not None else settled_life
+            if specific_support is not None:
+                row_subject = specific_support[0]
                 row_role = (
                     "companion"
                     if row_subject == companion_actor_ref
@@ -816,6 +826,7 @@ def compact_source_reference_table(
                     "support_subject_ref": row_subject,
                     "support_subject_role": row_role,
                     **({"activity_support": activity[1]} if activity is not None else {}),
+                    **({"settled_life_support": settled_life[1]} if settled_life is not None else {}),
                 }
             )
     return tuple(rows)
@@ -927,6 +938,19 @@ def visible_source_closure_messages(
                 ),
             }
         )
+        if any("settled_life_support" in row for row in source_references):
+            packet["settled_life_support_contract"] = {
+                "contract": "visible-settled-life-source.1",
+                "scope": (
+                    "A settlement proves only its recorded environment at settled_at. "
+                    "It does not establish the companion's current location or activity. "
+                    "An authorized_attempt_result proves only the result bound to that exact "
+                    "execution. A character response or composite Experience is a private "
+                    "reading, not evidence that a new external event or action occurred. "
+                    "Truncated material proves no omitted detail; private source visibility "
+                    "is not permission to disclose it. Judge entailment for each full Beat."
+                ),
+            }
         if any("activity_support" in row for row in source_references):
             packet["activity_support_contract"] = {
                 "contract": "visible-activity-source.1",

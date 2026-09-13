@@ -16,6 +16,7 @@ import json
 from .biographical_claim_authority import biographical_coordinate_authorities
 from .context_capsule import CapsuleItem, ContextCapsule
 from .deliberation import ModelInput
+from .life_content import RecentExperienceContextItem
 from .situation_compiler import SituationProjection
 from .visible_review_context import compile_visible_selected_source_context
 from .visible_source_closure_protocol import compact_source_reference_table
@@ -24,11 +25,13 @@ from .world_life_context import (
     BiographicalWorldContextItem,
     CompletedActivityContextItem,
     PlannedActivityContextItem,
+    WorldLifeContextItem,
 )
 
 
 VISIBLE_SOURCE_TABLE_CONTRACT = "visible-source-row-table.1"
 PLANNED_SOURCE_TABLE_CONTRACT = "visible-source-row-table.2"
+SETTLED_LIFE_SOURCE_TABLE_CONTRACT = "visible-source-row-table.3"
 
 
 def _json(value: object) -> str:
@@ -123,10 +126,19 @@ def _world_entries(capsule: ContextCapsule) -> tuple[list[dict], dict, set[str]]
             else:
                 kind = value.get("context_kind")
                 model = world_types.get(kind) if isinstance(kind, str) else None
+                if kind is None and "occurrence_id" in value and "settled_at" in value:
+                    model = WorldLifeContextItem
                 if model is None:
                     unsupported.add(kind if isinstance(kind, str) else "unrecognized_world_life")
                     continue
                 typed = model.model_validate_json(item.payload_json, strict=True)
+                if isinstance(typed, WorldLifeContextItem):
+                    if capsule.actor_ref not in typed.participant_refs or (
+                        capsule.logical_time is None or typed.settled_at > capsule.logical_time
+                    ):
+                        raise ValueError("selected settlement differs from its original actor or time")
+                    entries.append({**_entry(lane, item), "actor_ref": capsule.actor_ref})
+                    continue
                 if isinstance(typed, BiographicalWorldContextItem):
                     # The broad parent is attention context. Only the existing
                     # coordinate reader may expose its narrow claim materials.
@@ -135,6 +147,33 @@ def _world_entries(capsule: ContextCapsule) -> tuple[list[dict], dict, set[str]]
                 if typed.owner_actor_ref != capsule.actor_ref:
                     raise ValueError("selected activity does not belong to the original actor")
             entries.append(_entry(lane, item))
+    selected = capsule.recent_experiences
+    if selected.availability == "available":
+        for item in selected.items:
+            value = json.loads(item.payload_json)
+            if value.get("authority_contract_version") != "experience.2":
+                continue
+            experience = RecentExperienceContextItem.model_validate_json(item.payload_json)
+            if (
+                experience.status != "committed"
+                or capsule.actor_ref not in experience.values.participant_refs
+                or item.privacy_class == "withhold"
+                or experience.values.privacy_class == "withhold"
+            ):
+                raise ValueError("selected Experience differs from its original actor or privacy")
+            # Its two authors remain readable, but the composite's private
+            # interpretation cannot authorize a new external event or action.
+            entries.append({
+                **_entry("recent_experiences", item),
+                "authority": "non_authoritative_advisory_not_external_fact",
+                "actor_ref": capsule.actor_ref,
+            })
+            selections["recent_experiences"] = {
+                "availability": selected.availability,
+                "unavailable_reason": selected.unavailable_reason,
+                "slice_hash": selected.slice_hash,
+                "item_refs": [item.item_ref for item in selected.items],
+            }
     coordinates = biographical_coordinate_authorities(
         {
             "logical_time": capsule.logical_time.isoformat() if capsule.logical_time else None,
@@ -253,11 +292,23 @@ def compile_visible_source_table(
         entry.get("item", {}).get("value", {}).get("context_kind") == "planned_activity"
         for entry in entries
     )
+    includes_settled_life = any(
+        "settled_at" in entry.get("item", {}).get("value", {})
+        or entry.get("lane") == "recent_experiences"
+        for entry in entries
+    )
     payload = {
-        "contract": PLANNED_SOURCE_TABLE_CONTRACT if includes_planned else VISIBLE_SOURCE_TABLE_CONTRACT,
+        "contract": (
+            SETTLED_LIFE_SOURCE_TABLE_CONTRACT if includes_settled_life
+            else PLANNED_SOURCE_TABLE_CONTRACT if includes_planned
+            else VISIBLE_SOURCE_TABLE_CONTRACT
+        ),
         "pin": proof["visible_review_projection"],
         "additional_selection": selections,
-        "coverage_scope": "selected_situation_activity_biography_fact_dialogue_only",
+        "coverage_scope": (
+            "selected_situation_activity_settled_life_biography_fact_dialogue_and_private_readings"
+            if includes_settled_life else "selected_situation_activity_biography_fact_dialogue_only"
+        ),
         "subjects": proof["subjects"],
         "logical_time": proof["logical_time"],
         "unsupported_source_kinds": sorted(unsupported | {"identity_source"}),

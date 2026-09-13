@@ -107,7 +107,8 @@ def prepare_visible_source_review(
     """
     from companion_daemon.llm import provider_invocation_request_hash
     from .visible_source_composer import (
-        PLANNED_SOURCE_TABLE_CONTRACT, VISIBLE_SOURCE_TABLE_CONTRACT, VisibleSourceTable,
+        PLANNED_SOURCE_TABLE_CONTRACT, SETTLED_LIFE_SOURCE_TABLE_CONTRACT,
+        VISIBLE_SOURCE_TABLE_CONTRACT, VisibleSourceTable,
     )
 
     if not isinstance(candidate, DecisionProposal) or not isinstance(
@@ -118,7 +119,10 @@ def prepare_visible_source_review(
     candidate_json = _json(candidate.model_dump(mode="json"))
     _bounded_json(candidate_json)
     table = _bounded_json(source_table.payload_json)
-    if table.get("contract") not in {VISIBLE_SOURCE_TABLE_CONTRACT, PLANNED_SOURCE_TABLE_CONTRACT}:
+    if table.get("contract") not in {
+        VISIBLE_SOURCE_TABLE_CONTRACT, PLANNED_SOURCE_TABLE_CONTRACT,
+        SETTLED_LIFE_SOURCE_TABLE_CONTRACT,
+    }:
         raise ValueError("visible review source table contract is unsupported")
     if (
         candidate.trigger_ref != table["pin"]["trigger_ref"]

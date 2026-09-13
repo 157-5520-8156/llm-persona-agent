@@ -10,6 +10,7 @@ from pydantic import Field, model_validator
 
 from .commitment_events import CommitmentChangedPayload, commitment_mutation_hash
 from .expression_plan_acceptance import (
+    ExpressionPlanAcceptanceError,
     ExpressionPlanAcceptanceMaterial,
     ExpressionPlanBudgetPolicy,
     derive_expression_plan_material,
@@ -29,6 +30,7 @@ from .schemas import (
     CommitmentValues,
     EvidenceRef,
     MessageObservationRef,
+    Observation,
     ProjectionCursor,
     commitment_semantic_fingerprint,
 )
@@ -277,9 +279,20 @@ def derive_social_deferred_material(
     correlation_id: str,
     thread_payload: ThreadChangedPayload,
     model_result_audits: tuple = (),
+    original_observation: Observation | None = None,
 ) -> SocialDeferredAcceptanceMaterial:
     if audit.trigger_ref != source_observation_event_ref:
         raise ValueError("social deferred source event does not match proposal trigger")
+    if original_observation is not None and (
+        original_observation.world_id != world_id
+        or original_observation.observation_id != source_observation.observation_id
+        or original_observation.source != source_observation.source
+        or original_observation.source_event_id != source_observation.source_event_id
+        or _digest(original_observation.model_dump(mode="json")) != source_observation.event_payload_hash
+        or (source_observation.actor is not None and original_observation.actor != source_observation.actor)
+        or (source_observation.channel is not None and original_observation.channel != source_observation.channel)
+    ):
+        raise ExpressionPlanAcceptanceError("source_observation_invalid")
     expression = derive_expression_plan_material(
         model_result_audits=model_result_audits,
         audit=audit,
@@ -291,6 +304,7 @@ def derive_social_deferred_material(
         created_at=created_at,
         trace_id=trace_id,
         correlation_id=correlation_id,
+        source_observation=original_observation,
     )
     if not expression.beats or any(
         item.action.kind != "followup" for item in expression.beats

@@ -229,6 +229,7 @@ class SocialActionWorker:
                 account=account,
                 source_observation=source_ref,
                 source_observation_event_ref=observation_event.event_id,
+                original_observation=observation,
                 logical_time=projection.logical_time or observation.logical_time,
                 created_at=observation.created_at,
                 trace_id=observation.trace_id,

@@ -410,7 +410,8 @@ def test_event_share_acceptance_rejects_forged_source_recipient_or_visible_claim
         )
 
 
-def test_event_share_acceptance_rejects_free_text_without_claim_binding() -> None:
+@pytest.mark.parametrize("other_trigger", [False, True])
+def test_event_share_acceptance_rejects_free_text_without_claim_binding(other_trigger) -> None:
     audit = _event_share_audit(claim_updates={})
     proposal = DecisionProposal.model_validate_json(audit.proposal_json)
     change = proposal.proposed_changes[0]
@@ -424,11 +425,15 @@ def test_event_share_acceptance_rejects_free_text_without_claim_binding() -> Non
             )
         }
     )
-    proposal = proposal.model_copy(update={"proposed_changes": (change,)})
+    proposal = proposal.model_copy(update={
+        "proposed_changes": (change,),
+        **({"trigger_ref": "event:unbound-observation"} if other_trigger else {}),
+    })
     audit = audit.model_copy(
         update={
             "proposal_json": canonical_json(proposal.model_dump(mode="json")),
             "proposal_hash": proposal.proposal_hash,
+            "trigger_ref": proposal.trigger_ref,
         }
     )
 

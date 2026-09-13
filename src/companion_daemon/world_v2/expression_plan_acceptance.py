@@ -234,6 +234,14 @@ def derive_expression_plan_material(
         drafts=drafts,
         intents=external_intents,
         policy=policy,
+        reviewed_inbound_observation=(
+            any(item.evidence_kind == "settled_world_event" for item in proposal.evidence_refs)
+            and _reviewed_inbound_observation_matches(
+                audit=audit, model_result_audits=model_result_audits,
+                review_hash=review_hash, observation=source_observation,
+                world_id=world_id, actor_ref=policy.actor,
+            )
+        ),
     )
     _validate_proactive_plan_source_binding(
         proposal=proposal,
@@ -580,6 +588,44 @@ def _validate_audit(
         raise ExpressionPlanAcceptanceError("authority_mismatch")
 
 
+def _reviewed_inbound_observation_matches(
+    *, audit, model_result_audits, review_hash, observation, world_id, actor_ref,
+) -> bool:
+    """Distinguish an already reviewed reply from an event-share trigger.
+
+    The full receipt was verified above. Reuse its immutable original input,
+    never a candidate-authored origin flag or today's reconstructed Context.
+    """
+    if review_hash is None or observation is None or observation.world_id != world_id:
+        return False
+    from .deliberation import ModelInput
+    from .proposal_audit_schemas import RecordedModelResultAudit
+
+    matches = [row for row in model_result_audits if row.model_result_ref == audit.model_result_ref]
+    if len(matches) != 1:
+        return False
+    try:
+        recorded = RecordedModelResultAudit.model_validate_json(matches[0].audit_json)
+        lineage = recorded.character_interior_lineage
+        if lineage is None or lineage.purpose != "inbound_turn":
+            return False
+        evidence = json.loads(recorded.visible_source_review_json)
+        requirement = json.loads(evidence["requirement_json"])
+        original = ModelInput.model_validate_json(requirement["original_input_json"])
+        pin = json.loads(requirement["source_table_json"])["pin"]
+        trigger = original.trigger_message
+    except (ValueError, TypeError, KeyError):
+        return False
+    return (
+        pin.get("world_id") == world_id and pin.get("actor_ref") == actor_ref
+        and trigger is not None and trigger.event_ref == audit.trigger_ref
+        and trigger.observation_ref == observation.observation_id
+        and trigger.actor == observation.actor and trigger.channel == observation.channel
+        and trigger.text == observation.text
+        and trigger.event_payload_hash == "sha256:" + _digest(observation.model_dump(mode="json"))
+    )
+
+
 def _validate_event_share_claim(
     *,
     proposal: ProposalInput,
@@ -588,6 +634,7 @@ def _validate_event_share_claim(
     drafts: list[object],
     intents: tuple[object, ...],
     policy: ExpressionPlanBudgetPolicy,
+    reviewed_inbound_observation: bool = False,
 ) -> None:
     settled = tuple(
         item for item in proposal.evidence_refs if item.evidence_kind == "settled_world_event"
@@ -595,6 +642,14 @@ def _validate_event_share_claim(
     raw_claim = payload.get("event_share_claim")
     raw_plan_claim = payload.get("event_share_plan_claim_v2")
     if not settled and raw_claim is None and raw_plan_claim is None:
+        return
+    if (
+        reviewed_inbound_observation and raw_claim is None and raw_plan_claim is None
+        and proposal.trigger_ref not in {item.ref_id for item in settled}
+        and all(getattr(intent, "kind", None) != "proactive_message" for intent in intents)
+    ):
+        # Past settlement evidence in a normal reply is closed by that reply's
+        # original full review. It is not authority to emit an event-share.
         return
     if len(settled) != 1:
         raise ExpressionPlanAcceptanceError("event_share_claim_invalid")
