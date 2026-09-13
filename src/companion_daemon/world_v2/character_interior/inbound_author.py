@@ -790,6 +790,34 @@ def _role_result_correction_instruction(correction: Mapping[str, object]) -> str
     )
 
 
+def _append_atomic_v3_correction(
+    messages: list[dict[str, str]], correction: Mapping[str, object],
+) -> None:
+    """Move only Core's feedback to the outgoing JSON tail, keeping its pin.
+
+    The owned ModelInput is unchanged. The original instruction and complete
+    coordinate remain in the actual hashed request; no role choice is reused.
+    """
+
+    user = json.loads(messages[1]["content"])
+    snapshot = user.get("inner_life_snapshot") if isinstance(user, dict) else None
+    if (
+        not isinstance(snapshot, dict)
+        or snapshot.get("role_result_correction") != correction
+        or "role_result_correction" in user
+    ):
+        raise ValueError("atomic v3 correction lacks its original wire coordinate")
+    coordinate = snapshot.pop("role_result_correction")
+    user["role_result_correction"] = {
+        "instruction": _role_result_correction_instruction(correction),
+        "coordinate": coordinate,
+    }
+    messages[1] = {
+        "role": "user",
+        "content": json.dumps(user, ensure_ascii=False, separators=(",", ":")),
+    }
+
+
 # Optional PrivateTurnState keys shown as JSON null in envelope specimens.
 # Null is absence: seeing the key is not a request to fill it. Keep this
 # tuple aligned with PrivateTurnState.model_fields minus the three required
@@ -4151,8 +4179,6 @@ class _InboundCharacterAuthor:
                 "instead choose the available recall-first option, return that exact recall "
                 "object normally; it has no expression continuation."
             )
-        if isinstance(correction, dict):
-            messages[0]["content"] += _role_result_correction_instruction(correction)
         model_id = self._model_id_for_provider(request, provider)
         cognition_contract = (
             InboundToolContracts().compact_gate_for(
@@ -4204,6 +4230,16 @@ class _InboundCharacterAuthor:
         use_forced_tool = (callable(metered) or transport_provider is not None) and bool(
             getattr(provider, "supports_required_tool_choice", False)
         )
+        if isinstance(correction, dict):
+            if (
+                self._atomic_tool_envelope_version == "3"
+                and transport_provider is None
+                and not compact_gate
+                and use_forced_tool
+            ):
+                _append_atomic_v3_correction(messages, correction)
+            else:
+                messages[0]["content"] += _role_result_correction_instruction(correction)
         if use_forced_tool and not compact_gate:
             decision_transport = (
                 "For result_kind=decision include result_kind, protocol, appraisal_draft, "

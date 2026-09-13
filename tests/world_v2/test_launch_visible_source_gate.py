@@ -217,8 +217,14 @@ async def test_unclosed_allows_one_same_role_reselection_and_reviews_whole_repla
         assert (http.authors, http.reviews) == (2, 2)
         first_author, first_review, corrected_author, second_review = http.requests
         correction_context = json.loads(corrected_author["messages"][1]["content"])
-        correction = correction_context["inner_life_snapshot"]["role_result_correction"]
-        correction_instruction = corrected_author["messages"][0]["content"]
+        if tool_version == "3":
+            feedback = correction_context["role_result_correction"]
+            correction = feedback["coordinate"]
+            correction_instruction = feedback["instruction"]
+            assert corrected_author["messages"][0] == first_author["messages"][0]
+        else:
+            correction = correction_context["inner_life_snapshot"]["role_result_correction"]
+            correction_instruction = corrected_author["messages"][0]["content"]
         assert "上一轮结果未通过校验" in correction_instruction
         assert "这只说明上一轮的投递形状不合法" not in correction_instruction
         assert correction["failure_code"] in correction_instruction
@@ -264,7 +270,10 @@ async def test_unclosed_allows_one_same_role_reselection_and_reviews_whole_repla
         ) == correction_context["expression_hard_boundaries"]["source_ref_aliases"]
         # The cold verifier must bind the actual correction message, not merely
         # the unchanged source pin or a stale initial-author identity.
-        carrier["messages"][0]["content"] = first_author["messages"][0]["content"]
+        feedback_message = 1 if tool_version == "3" else 0
+        carrier["messages"][feedback_message]["content"] = (
+            first_author["messages"][feedback_message]["content"]
+        )
         with pytest.raises(ValueError, match="request hash"):
             verify_visible_source_author_request(
                 json.dumps(carrier, ensure_ascii=False, sort_keys=True, separators=(",", ":")),

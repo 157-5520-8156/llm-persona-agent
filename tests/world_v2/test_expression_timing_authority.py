@@ -122,7 +122,7 @@ async def test_public_inbound_reselects_once_and_never_authorizes_the_clamped_ti
         authors = [body for body in http.requests
                    if body["tool_choice"]["function"]["name"].startswith("character_inbound_")]
         original, correction = [json.loads(body["messages"][-1]["content"]) for body in authors]
-        failure = correction["inner_life_snapshot"]["role_result_correction"]
+        failure = correction["role_result_correction"]["coordinate"]
         assert "delay_seconds" in failure["failure_detail"]
         assert "86400" in failure["failure_detail"] or "86,400" in failure["failure_detail"]
         assert correction["request"] == original["request"]

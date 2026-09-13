@@ -439,7 +439,7 @@ async def test_exact_settlement_does_not_close_invented_character_action(tmp_pat
         assert (len(provider.authors), len(provider.reviews), len(provider.usages)) == (2, 2, 4)
         original = json.loads(provider.authors[0]["messages"][-1]["content"])
         corrected = json.loads(provider.authors[1]["messages"][-1]["content"])
-        correction = corrected["inner_life_snapshot"].pop("role_result_correction")
+        correction = corrected["role_result_correction"]["coordinate"]
         assert correction["failure_detail"]
         assert original["inner_life_snapshot"] == corrected["inner_life_snapshot"]
         assert original["expression_hard_boundaries"] == corrected["expression_hard_boundaries"]

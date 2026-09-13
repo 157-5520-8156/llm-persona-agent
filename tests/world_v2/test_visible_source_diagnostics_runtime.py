@@ -74,9 +74,10 @@ async def test_diagnostics_reach_same_role_and_complete_replacement_cold_verifie
         first, initial_review, corrected, final_review = http.requests
         initial_context = json.loads(first["messages"][1]["content"])
         corrected_context = json.loads(corrected["messages"][1]["content"])
-        correction = corrected_context["inner_life_snapshot"]["role_result_correction"]
+        correction = corrected_context["role_result_correction"]["coordinate"]
         detail = correction["failure_detail"]
-        assert detail in corrected["messages"][0]["content"]
+        assert detail in corrected_context["role_result_correction"]["instruction"]
+        assert corrected["messages"][0] == first["messages"][0]
         assert len(detail) <= 3900
         data = json.loads(detail.split("\n", 1)[1])
         assert data["rows"][0][:3] == [0, 0, len(BEATS[0])]
