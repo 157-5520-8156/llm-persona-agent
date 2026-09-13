@@ -49,6 +49,13 @@ _MANIFEST_BINDING_CONTRACT = "life-development-review-manifest-binding.2"
 _EXISTING_WORLD_EVIDENCE_CONTRACT = (
     "life-development-novel-origin-existing-world-evidence.1"
 )
+_OUTCOME_PREREQUISITE_AUTHORITY_KINDS = (
+    "retroactive_relationship_or_shared_history",
+    "existing_entity_or_fact_masquerading_as_novel",
+    "imported_current_or_prior_prerequisite",
+    "completed_user_channel_act",
+    "character_interior_authorship",
+)
 # These slices carry existing-world semantics needed to distinguish a genuinely
 # novel branch from imported current/prior truth.  Context Capsule is already
 # the bounded/ranked retrieval authority.  This transport boundary keeps every
@@ -248,18 +255,7 @@ class LifeDevelopmentOutcomePrerequisiteFinding(FrozenModel):
     ) -> "LifeDevelopmentOutcomePrerequisiteFinding":
         if any(not item.strip() for item in self.exact_fragments):
             raise ValueError("outcome-prerequisite fragments cannot be blank")
-        external_origin_kinds = {
-            "retroactive_relationship_or_shared_history",
-            "existing_entity_or_fact_masquerading_as_novel",
-            "imported_current_or_prior_prerequisite",
-        }
-        actor_authority_kinds = {
-            "completed_user_channel_act", "character_interior_authorship"
-        }
-        if not (
-            external_origin_kinds.intersection(self.violation_kinds)
-            or actor_authority_kinds.intersection(self.violation_kinds)
-        ):
+        if not set(_OUTCOME_PREREQUISITE_AUTHORITY_KINDS).intersection(self.violation_kinds):
             raise ValueError(
                 "outcome-prerequisite findings must identify truth imported from "
                 "outside the current proposal branch or an actor-authority violation"
@@ -429,6 +425,19 @@ class LifeDevelopmentNovelOriginReview(FrozenModel):
 class LifeDevelopmentWorldConsequenceFinding(LifeDevelopmentOutcomePrerequisiteFinding):
     """An exact authored field in the new carrier, never a legacy text alias."""
 
+    # Keep the full existing vocabulary: supplementary classifications remain
+    # legal alongside an authority finding. The legacy text-carrier schema is
+    # frozen; only the current carrier publishes this existing parser rule.
+    violation_kinds: tuple[
+        NovelOriginViolationKind | Literal["character_interior_authorship"], ...
+    ] = Field(
+        min_length=1,
+        max_length=4,
+        json_schema_extra={
+            "contains": {"enum": list(_OUTCOME_PREREQUISITE_AUTHORITY_KINDS)},
+            "uniqueItems": True,
+        },
+    )
     prose_path: str = Field(
         pattern=(
             r"^outcomes\.(0|[1-9][0-9]*)\.world_consequence\."
