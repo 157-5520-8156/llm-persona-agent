@@ -1,0 +1,221 @@
+{
+  "contract": "release-two-input-validation.1",
+  "real_trial_code": {
+    "head": "c0d428f0b093af2a97a3770edba618ff253f1f8b",
+    "tracked_dirty": false
+  },
+  "completed": false,
+  "stop_reason": "unprocessed_due_before_end",
+  "process_exit_code": 1,
+  "scope": "Closed trial07 restored into a new private database after fixing inherited-denial stop detection; normal12s full v7 review, no hedge, no production database or realQQ. Two planned new inputs about afternoon/evening life and lamp-repair aftermath. Actual coverage must be read from the timeline. No concurrent full test suite.",
+  "new_provider_calls": 10,
+  "new_usage_rows": 10,
+  "admission_denied_without_provider_call": 0,
+  "known_calls": 8,
+  "unknown_calls": 2,
+  "new_estimate_cny": "0.2882709000000000078",
+  "new_unknown_hold_cny": "1.234626",
+  "captured_tokens_match_known_usage": true,
+  "original_rows_and_reservations_unchanged": true,
+  "artifact_hashes_verified": true,
+  "cold_expression_receipts": 7,
+  "receipt_hashes": [
+    "4121546435e60bfd2ff6b0b0228a40a3027f48c3cab16b6a984aae49e089ba96",
+    "5e4b44b2e6471a9fa528c23bc66da773148d915a75c1374b8ac46386fe77fd14",
+    "501405e5323d8a6b4f4ae3977154e8fb013467df347494e1685b48502ba5f348",
+    "e83811ca2dd4f4f1ac92aed37210e9aeffd91f7ac7e285511a4338839c6c5fe4",
+    "4bac102eaf6bc49d5262177e65c4dbd39a2dedc38b7738687ec770a50573d63d",
+    "90c019cbdece4cb27bebb3654aa8f9ec6b2cf992b5efb229f49031180e8222b1",
+    "6ffb2139f4daafd448ee984f24015b712339d56555a8bf122087c2b251cacf78"
+  ],
+  "replay_hash_matches": true,
+  "timeline": [
+    {
+      "deliveries": [
+        {
+          "kind": "text",
+          "message_id": "journey-message-18",
+          "text": "【系统提示】回复服务暂时没有完成这次响应，请稍后再试。这不是角色选择了沉默。",
+          "virtual_at": "2026-09-14T12:35:30.050000+00:00"
+        }
+      ],
+      "kind": "scheduler",
+      "model_failures": [],
+      "status": "scheduled",
+      "wall_seconds": 6.330763665959239
+    },
+    {
+      "deliveries": [],
+      "kind": "inbound",
+      "model_failures": [
+        {
+          "event_ref": "event:ModelResultRecorded:5bf3febd784f4e3e6c282583b1a0f4e844bb387555079870686727d3d914a25c",
+          "failure_code": "primary_timeout",
+          "status": "main_timeout"
+        }
+      ],
+      "status": "deferred",
+      "user_text": "我歇了一会儿。你今天下午和晚上都怎么过的？",
+      "wall_seconds": 15.286155083100311
+    },
+    {
+      "deliveries": [],
+      "kind": "scheduler",
+      "model_failures": [
+        {
+          "event_ref": "event:ModelResultRecorded:4f1514a0855418e8c0d370f2549da87d515225f460232748be23892fa9976967",
+          "failure_code": "primary_timeout",
+          "status": "main_timeout"
+        }
+      ],
+      "status": "scheduled",
+      "wall_seconds": 13.76387145894114
+    },
+    {
+      "deliveries": [
+        {
+          "kind": "text",
+          "message_id": "journey-message-19",
+          "text": "修好啦，比通知说的还早",
+          "virtual_at": "2026-09-14T12:39:00+00:00"
+        },
+        {
+          "kind": "text",
+          "message_id": "journey-message-20",
+          "text": "东边那排灯全亮回来了，梯子车也推走了，窗边就剩张小纸片写着维修完成",
+          "virtual_at": "2026-09-14T12:39:00+00:00"
+        },
+        {
+          "kind": "text",
+          "message_id": "journey-message-21",
+          "text": "我上午还坐在那一片呢 黑着的时候是真安静",
+          "virtual_at": "2026-09-14T12:39:00+00:00"
+        },
+        {
+          "kind": "text",
+          "message_id": "journey-message-22",
+          "text": "你倒是记着这茬",
+          "virtual_at": "2026-09-14T12:39:00+00:00"
+        }
+      ],
+      "kind": "inbound",
+      "model_failures": [],
+      "status": "action_authorized",
+      "user_text": "上午说的图书馆那排灯，后来怎样了？",
+      "wall_seconds": 13.395383083028719
+    }
+  ],
+  "new_usage_latency": [
+    {
+      "purpose": "inbound_turn",
+      "status": "succeeded",
+      "latency_ms": 6086,
+      "prompt_tokens": 45597,
+      "completion_tokens": 1020,
+      "cache_hit_tokens": 16256
+    },
+    {
+      "purpose": "source_review",
+      "status": "succeeded",
+      "latency_ms": 2203,
+      "prompt_tokens": 35017,
+      "completion_tokens": 366,
+      "cache_hit_tokens": 2688
+    },
+    {
+      "purpose": "inbound_turn",
+      "status": "failed",
+      "latency_ms": 2144,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "cache_hit_tokens": 0
+    },
+    {
+      "purpose": "interaction_fact_draft",
+      "status": "succeeded",
+      "latency_ms": 757,
+      "prompt_tokens": 1705,
+      "completion_tokens": 6,
+      "cache_hit_tokens": 896
+    },
+    {
+      "purpose": "inbound_turn",
+      "status": "succeeded",
+      "latency_ms": 5469,
+      "prompt_tokens": 45505,
+      "completion_tokens": 964,
+      "cache_hit_tokens": 20096
+    },
+    {
+      "purpose": "source_review",
+      "status": "succeeded",
+      "latency_ms": 2759,
+      "prompt_tokens": 34684,
+      "completion_tokens": 349,
+      "cache_hit_tokens": 2688
+    },
+    {
+      "purpose": "inbound_turn",
+      "status": "failed",
+      "latency_ms": 2254,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "cache_hit_tokens": 0
+    },
+    {
+      "purpose": "inbound_turn",
+      "status": "succeeded",
+      "latency_ms": 5340,
+      "prompt_tokens": 44299,
+      "completion_tokens": 908,
+      "cache_hit_tokens": 16000
+    },
+    {
+      "purpose": "source_review",
+      "status": "succeeded",
+      "latency_ms": 2054,
+      "prompt_tokens": 32099,
+      "completion_tokens": 283,
+      "cache_hit_tokens": 2688
+    },
+    {
+      "purpose": "interaction_fact_draft",
+      "status": "succeeded",
+      "latency_ms": 823,
+      "prompt_tokens": 1703,
+      "completion_tokens": 6,
+      "cache_hit_tokens": 896
+    }
+  ],
+  "limits": [
+    "Prior failed v6 attempts remain in history; a successful deferred retry is not proof of prompt first-response recovery.",
+    "Small representative continuation only; no week-long naturalness, real QQ or monthly production cost qualification."
+  ],
+  "semantic_assessment": {
+    "planned_user_inputs_reached": 2,
+    "role_text_deliveries": 4,
+    "system_notice_deliveries": 1,
+    "ordinary_life_question": "initial and durable retry primary_timeout; drafts invented afternoon notes/reading/rest and evening walk/photos",
+    "aftermath_question": "4 captured text deliveries; independently inspected evidence does not support the complete candidate",
+    "unsupported_delivered_beat": "我上午还坐在那一片呢 黑着的时候是真安静",
+    "reviewer_false_acceptance": {
+      "beat_index": 2,
+      "cited_source_ref_indexes": [
+        20,
+        11,
+        12,
+        13
+      ],
+      "source20": "Morning activity lifecycle ended at11:42 with original reading intention; scope explicitly does not establish intention fulfillment, arrival or seating.",
+      "sources11_12_13": "Same13:29 settled environment: east side dim, repair notice, cart and ladder. It does not establish morning seating in the east area.",
+      "finding": "Combination does not support the claimed morning seating; record a semantic source-review counterexample despite valid receipt/transport."
+    },
+    "release_gate_passed": false,
+    "long_term_human_likeness_assessed": false
+  },
+  "next_work": [
+    "Reproduce full reviewer false acceptance of plan/lifecycle plus later environmental evidence for a claimed earlier character action.",
+    "Reduce first-draft unsupported life narration and author/review/correction latency from actual captured requests; preserve full review and character agency.",
+    "No additional identical paid retry until an evidence-backed change exists."
+  ]
+}
