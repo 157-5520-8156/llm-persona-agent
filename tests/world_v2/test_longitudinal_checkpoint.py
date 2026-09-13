@@ -13,6 +13,71 @@ from test_longitudinal_cli import _cli
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("deny_again", [False, True])
+async def test_resumed_journey_distinguishes_inherited_and_new_budget_denials(
+    tmp_path, monkeypatch, deny_again,
+):
+    import companion_daemon.world_v2.longitudinal_journey as runner
+    from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
+
+    real_run = runner.run_journey
+    source = None
+    inject_denial = True
+
+    async def continued(**kwargs):
+        factory = kwargs["host_factory"]
+
+        def create_host(database, clock, delivery):
+            host = factory(database, clock, delivery)
+            if inject_denial:
+                store = WorldV2UsageStore(path=str(database), monthly_budget_cny=0.01)
+                with pytest.raises(ValueError):
+                    store.admit_provider_call(
+                        purpose="inbound_turn", actor="agent:companion", provider="fixture",
+                        model="fixture", prompt_characters=100, estimated_cny=0.25,
+                    )
+            return host
+
+        kwargs["host_factory"] = create_host
+        return await real_run(**kwargs, resume_from=source)
+
+    monkeypatch.setattr(runner, "run_journey", continued)
+    at = datetime(2026, 9, 1, tzinfo=UTC)
+    for index in range(2):
+        scenario = tmp_path / f"budget-scenario-{index}.json"
+        scenario.write_text(json.dumps({
+            "scenario_id": f"budget-continuation-{index}",
+            "started_at": at.isoformat(), "duration_minutes": 4 if index else 1,
+            "restart_minutes": [2] if index else [],
+            "turns": [{"id": "after-history", "at_minutes": 3, "text": "今天怎么样？"}]
+            if index else [],
+        }))
+        output = tmp_path / f"budget-run-{index}"
+        cli = _cli()
+        result = await cli.run(cli.parse_options([
+            "--scenario", str(scenario), "--output", str(output), "--max-wall-seconds", "30",
+        ]))
+        usage = json.loads((output / "provider-usage.json").read_text())
+        if not index:
+            assert result["stop_reason"] == "budget_admission_denied"
+            inherited_usage = usage["usage_records"]
+            source = output
+            inject_denial = deny_again
+            continue
+        assert usage["usage_records"][:len(inherited_usage)] == inherited_usage
+        if deny_again:
+            assert result["stop_reason"] == "budget_admission_denied"
+            assert result["turns_consumed"] == 0
+            assert len(usage["usage_records"]) > len(inherited_usage)
+        else:
+            assert result["completed"], result["stop_reason"]
+            assert result["turns_consumed"] == 1
+            assert len(result["restarts"]) == 1
+            assert result["restarts"][0]["same_state"]
+            assert usage["usage_records"] == inherited_usage
+
+
+@pytest.mark.asyncio
 async def test_closed_capture_continuation_preserves_history_across_two_copies(tmp_path, monkeypatch):
     import companion_daemon.world_v2.longitudinal_journey as runner
 

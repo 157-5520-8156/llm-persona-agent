@@ -301,7 +301,20 @@ def read_provider_usage_evidence(database: Path) -> dict:
     }
 
 
-def budget_was_denied(database: Path) -> bool:
+def _usage_high_watermark(database: Path) -> int:
+    if not database.exists():
+        return 0
+    with sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True) as connection:
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='world_v2_model_usage'"
+        ).fetchone() is None:
+            return 0
+        return connection.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM world_v2_model_usage"
+        ).fetchone()[0]
+
+
+def budget_was_denied(database: Path, *, after_usage_id: int = 0) -> bool:
     with sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True) as connection:
         if (
             connection.execute(
@@ -312,7 +325,9 @@ def budget_was_denied(database: Path) -> bool:
             return False
         return (
             connection.execute(
-                "SELECT 1 FROM world_v2_model_usage WHERE status='budget_denied' LIMIT 1"
+                "SELECT 1 FROM world_v2_model_usage "
+                "WHERE status='budget_denied' AND id > ? LIMIT 1",
+                (after_usage_id,),
             ).fetchone()
             is not None
         )
@@ -373,6 +388,10 @@ async def run_journey(
             raise ValueError("continuation inputs and restarts must not replay the past")
         clock.advance(restored.logical_at)
         delivery.records.extend(restored.delivery_records)
+    # Historical denials remain in the inherited billing ledger. Only a new
+    # denial stops this continuation; native admission still counts all costs
+    # and reservations. Capture before host construction, never after restart.
+    inherited_usage_id = _usage_high_watermark(database)
     host = None
     shutdown_task: asyncio.Task | None = None
     wall_started = time.monotonic()
@@ -675,7 +694,7 @@ async def run_journey(
                 row["errors"].append("drain_limit_reached")
             row["wall_seconds"] = time.monotonic() - started
             capture(row)
-            if budget_was_denied(database):
+            if budget_was_denied(database, after_usage_id=inherited_usage_id):
                 stop_reason = "budget_admission_denied"
                 break
             if row["errors"]:

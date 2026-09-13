@@ -1,0 +1,59 @@
+{
+  "contract": "release-inherited-budget-stop-validation.1",
+  "real_trial_code": {
+    "head": "9f752e591bd050593e63958281e004f7db0865ff",
+    "tracked_dirty": false
+  },
+  "completed": false,
+  "stop_reason": "budget_admission_denied",
+  "process_exit_code": 1,
+  "scope": "Closed trial06 restored with higher authorized cap. No calls occurred: the runner treated an inherited budget_denied row as a new failure and stopped before either planned input. This is a runner defect; neither provider reliability nor budget exhaustion is established by this run.",
+  "new_provider_calls": 0,
+  "new_usage_rows": 0,
+  "admission_denied_without_provider_call": 0,
+  "known_calls": 0,
+  "unknown_calls": 0,
+  "new_estimate_cny": "0",
+  "new_unknown_hold_cny": "0",
+  "captured_tokens_match_known_usage": true,
+  "original_rows_and_reservations_unchanged": true,
+  "artifact_hashes_verified": true,
+  "cold_expression_receipts": 6,
+  "receipt_hashes": [
+    "4121546435e60bfd2ff6b0b0228a40a3027f48c3cab16b6a984aae49e089ba96",
+    "5e4b44b2e6471a9fa528c23bc66da773148d915a75c1374b8ac46386fe77fd14",
+    "501405e5323d8a6b4f4ae3977154e8fb013467df347494e1685b48502ba5f348",
+    "e83811ca2dd4f4f1ac92aed37210e9aeffd91f7ac7e285511a4338839c6c5fe4",
+    "4bac102eaf6bc49d5262177e65c4dbd39a2dedc38b7738687ec770a50573d63d",
+    "90c019cbdece4cb27bebb3654aa8f9ec6b2cf992b5efb229f49031180e8222b1"
+  ],
+  "replay_hash_matches": true,
+  "timeline": [],
+  "new_usage_latency": [],
+  "limits": [
+    "Prior failed v6 attempts remain in history; a successful deferred retry is not proof of prompt first-response recovery.",
+    "Small representative continuation only; no week-long naturalness, real QQ or monthly production cost qualification."
+  ],
+  "repair": {
+    "cause": "The runner queried any historical budget_denied row after every step, so copied trial05 denial stopped trials06 and07. No new denial row exists in either suffix.",
+    "change": "Pin usage max id after verified restore and before host construction; stop only on a denial with a newer id. Keep all inherited costs and reservations in native admission. Keep the same watermark across host restarts.",
+    "red": "1 failed,1 passed in4.91s at actual synthetic CLI/host continuation seam",
+    "green": "72 passed in24.31s across checkpoint,runner boundaries,usage evidence andCLI",
+    "real_read_only_counterexample": [
+      {
+        "trial": "06",
+        "historical_denial": true,
+        "new_denial": false,
+        "baseline_usage_id": 87
+      },
+      {
+        "trial": "07",
+        "historical_denial": true,
+        "new_denial": false,
+        "baseline_usage_id": 90
+      }
+    ],
+    "ruff": "passed",
+    "production_runtime_changed": false
+  }
+}
