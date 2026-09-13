@@ -1,0 +1,45 @@
+{
+  "contract": "release-cost-inheritance-summary.2",
+  "trial_id": "release-v3-schema-compatibility-20260913-01",
+  "code_head": "70091dacbfe7ccd29b12b91af11e5d12d5c68484",
+  "status": "terminal_provider_rejection_not_billed_whole_allocation_retained",
+  "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-canary-02.json",
+  "parent_snapshot_sha256": "542c479f9f613d1801650b99a192e7e1b16026e7ca48ac31c11f1009b4473712",
+  "trial": {
+    "usage_rows": 1,
+    "not_billed_rows": 1,
+    "known_rows": 0,
+    "unknown_rows": 0,
+    "legacy_rows": 0,
+    "pending_reservations": 0,
+    "settled_reservations": 1,
+    "reservation_id": "reservation:54caa45912fb41e48d528ebc9b014042",
+    "original_exact_request_reserve_cny": "0.386955",
+    "stored_cost_cny": "0",
+    "repository_repriced_cost_cny": "0",
+    "known_cost_increment_cny": "0",
+    "unknown_full_hold_cny": "0",
+    "pending_full_hold_cny": "0",
+    "whole_allocation_still_retained_cny": "0.6",
+    "budget_release_authorized": false,
+    "billing_basis": "definite HTTP 400 provider rejection; repository client classifies not_billed; no supplier account reconciliation"
+  },
+  "combined_inheritance": {
+    "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-canary-02.json",
+    "parent_conservative_committed_cny": "67.38385329999999992007",
+    "conservative_committed_cny": "67.98385329999999992007",
+    "known_repository_price_estimate_cny": "42.26819029999999986547",
+    "observed_estimate_plus_unresolved_hold_cny": "65.72185429999999991347",
+    "all_parent_unknown_and_whole_allocations_retained": true,
+    "additional_authorized_budget_cny": null
+  },
+  "audit_path": "output/private-audits/release-v3-schema-compatibility-20260913-01/release-v3-schema-compatibility-cost-audit-20260913.json",
+  "audit_sha256": "d4f924bb5936f25a9ed60f0e867d058714416668f2682b71bba7e4d1408fd1fc",
+  "limitations": [
+    "Only this captured provider call and recognized isolated accounting tables; not the supplier account or uncaptured direct calls.",
+    "HTTP 400 is provider schema rejection, not a model role result or visible-source-review verdict.",
+    "Repository not_billed zero does not authorize releasing the separately retained 0.6 CNY allocation or any inherited unknown.",
+    "No latency, semantic behavior, real QQ, World effect, product release, or full-goal qualification.",
+    "No credentials, credential reader, provider, launcher, old runner, or production database was accessed by this audit."
+  ]
+}
