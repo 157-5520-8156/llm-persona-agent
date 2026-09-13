@@ -885,7 +885,17 @@ def _checked_output(value: object) -> ModelOutput:
     else:
         material = value
         raw = value.get("raw_proposal") if isinstance(value, dict) else None
-    _bounded_raw(material, label="model output")
+    bounded_material = material
+    if isinstance(material, dict) and isinstance(
+        (review := material.get("visible_source_review_json")), str
+    ):
+        # Review evidence is a separately bounded carrier, not role-authored
+        # proposal text. Preserve every byte for the downstream receipt check.
+        _bounded_raw(
+            review, label="visible source review", limit_bytes=MAX_VISIBLE_SOURCE_REVIEW_BYTES
+        )
+        bounded_material = {**material, "visible_source_review_json": None}
+    _bounded_raw(bounded_material, label="model output")
     return ModelOutput.model_validate(material)
 
 

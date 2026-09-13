@@ -1,0 +1,27 @@
+{
+  "contract": "release-cost-inheritance-summary.2",
+  "trial_id": "release-real-canary-20260913-07",
+  "status": "closed_all_known_whole_allocation_retained",
+  "trial": {
+    "known_calls": 26,
+    "unknown_calls": 0,
+    "pending_model_reservations": 0,
+    "known_repository_price_estimate_cny": "0.989978199999999998",
+    "whole_allocation_retained_cny": "2"
+  },
+  "combined_inheritance": {
+    "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-canary-06.json",
+    "parent_snapshot_sha256": "2db77f44772e37c77064cd6da4cfa8ce70e1760df80b1e82eec1073b16edd523",
+    "known_repository_price_estimate_cny": "44.22217149999999987337",
+    "conservative_committed_cny": "78.38385329999999992007",
+    "observed_estimate_plus_unresolved_hold_cny": "67.84034649999999992137",
+    "all_parent_unknown_and_whole_allocations_retained": true,
+    "additional_authorized_budget_cny": null
+  },
+  "budget_release_authorized": false,
+  "completed": false,
+  "stop_reason": "operator_stopped",
+  "turns_consumed": 3,
+  "finding": "First two turns delivered; second completed real v6 rejection and same-role correction. Life occurrence, aftermath and memory ran. Third author and v6 review succeeded, then the completed output hit the combined 512000-byte preflight and no reply was delivered. Stopped before restart.",
+  "verification": "Captured usage multisets match ledger; complete body/request hashes verified; all physical reservations settled. No QQ or deployment."
+}

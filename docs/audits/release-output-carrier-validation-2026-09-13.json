@@ -1,0 +1,24 @@
+{
+  "contract": "release-output-carrier-validation.1",
+  "red": {
+    "passed": 4,
+    "failed": 2,
+    "symptom": "model output exceeds byte limit at _checked_output despite review carrier being below declared independent bound"
+  },
+  "green": {
+    "passed": 67,
+    "failed": 0,
+    "seconds": 49.97
+  },
+  "hostile_adapter_regression": {
+    "passed": 2,
+    "failed": 0,
+    "seconds": 1.26
+  },
+  "change": "Validate the visible-source-review carrier under its existing 1048576-byte ceiling, then apply the unchanged 512000-byte and node limits to all remaining adapter output. Do not truncate, skip receipt verification or change role decisions.",
+  "original_trial": "canary07 third turn: complete author and closed v6 review, then no visible delivery at completed-output preflight.",
+  "offline_capture_replay": "Stopped without network after five exactly matching requests; next snapshot_id differed. This replay does not qualify the fix against the original full chain.",
+  "log_path": "output/private-audits/release-real-canary-20260913-07/carrier-targeted.log",
+  "log_sha256": "0820819c6ad489575959bef783456a36ccd8f914c46237b39b76113fa81c982b",
+  "qualification": "Targeted offline tests only; fresh real-provider Life-to-chat validation pending."
+}
