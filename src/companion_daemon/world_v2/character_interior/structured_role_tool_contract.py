@@ -265,18 +265,12 @@ def _proactive_payload_schema(
     # Optional lasting Affect self-select stays in appraisal_draft, whose
     # component targets require the role-authored target_intensity_bp.  A
     # one-word mood shortcut would force the host to invent that intensity.
-    # Same slim hope pair as inbound. Bind compiles waiting_for+wait into
-    # response_expectation; waiting_for alone does not mint a hope (H21).
-    properties["waiting_for"] = _nullable_provider_schema({"type": "string"})
-    properties["wait"] = _nullable_provider_schema(
-        {"type": "integer", "minimum": 1, "maximum": 86_400}
-    )
-    properties["pressure_bp"] = _nullable_provider_schema(
-        {"type": "integer", "minimum": 0, "maximum": 10_000}
-    )
-    properties["importance_bp"] = _nullable_provider_schema(
-        {"type": "integer", "minimum": 0, "maximum": 10_000}
-    )
+    # New requests use the canonical complete object or null. Exposing the
+    # independent aliases alongside it allowed corrections to leave orphaned
+    # strength values. Keep the keys as inert padding and keep the historical
+    # decoder intact; exact schema bytes already participate in request identity.
+    for legacy_key in ("waiting_for", "wait", "pressure_bp", "importance_bp"):
+        properties[legacy_key] = {"type": "null"}
     # Same inbound hitchhike keys. Bind copies complete residue onto
     # private_turn_state / appraisal_draft; half-written pairs fail visibly.
     properties["about_us"] = _nullable_provider_schema({"type": "string"})

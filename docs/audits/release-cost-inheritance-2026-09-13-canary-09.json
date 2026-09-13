@@ -1,0 +1,29 @@
+{
+  "contract": "release-cost-inheritance-summary.2",
+  "trial_id": "release-real-canary-20260913-09",
+  "status": "closed_one_unknown_whole_allocation_retained",
+  "trial": {
+    "known_calls": 28,
+    "unknown_calls": 1,
+    "pending_model_reservations": 0,
+    "billing_unknown_reservations": 1,
+    "unknown_cost_hold_cny": "0.488001",
+    "known_repository_price_estimate_cny": "0.994398600000000001",
+    "whole_allocation_retained_cny": "2.5"
+  },
+  "combined_inheritance": {
+    "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-canary-08.json",
+    "parent_snapshot_sha256": "66f6ed1ecdfdeb234464b31cffa2718b233c765da5fb0ed926f233043b361205",
+    "known_repository_price_estimate_cny": "46.91421369999999987447",
+    "conservative_committed_cny": "82.88385329999999992007",
+    "observed_estimate_plus_unresolved_hold_cny": "71.02038969999999992247",
+    "all_parent_unknown_and_whole_allocations_retained": true,
+    "additional_authorized_budget_cny": null
+  },
+  "budget_release_authorized": false,
+  "completed": false,
+  "stop_reason": "operator_stopped",
+  "turns_consumed": 3,
+  "finding": "First two user inputs delivered five messages. Focused life review strict tool succeeds; the life occurrence activates and triggers role appraisal. Third input at minute158 is deferred with primary_timeout during full role correction after source status_mismatch. No third delivery, no restart, no settled-life-to-later-chat qualification. Proactive correction has orphaned pressure/importance fields.",
+  "verification": "29 captured requests; 28 complete responses match known usage and settled reservations. One cancelled author correction has no complete response and retains its entire CNY0.488001 unknown reservation. Artifact hashes and read-only SQLite usage match the frozen manifest. No QQ or deployment."
+}

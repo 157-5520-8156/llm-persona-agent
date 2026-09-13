@@ -4039,6 +4039,11 @@ class _InboundCharacterAuthor:
             failure_code=None,
             stream_part=("head" if transport_provider is not None else None),
             source_ref_aliases=source_ref_aliases,
+            activity_status_authority=(
+                self._whole_candidate_mode
+                and self._atomic_tool_envelope_version == "3"
+                and transport_provider is None
+            ),
         )
         expression_user_material = json.loads(expression_messages[1]["content"])
         if not isinstance(expression_user_material, dict):

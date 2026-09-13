@@ -1,0 +1,51 @@
+{
+  "contract": "release-source-status-validation.1",
+  "date": "2026-09-13",
+  "baseline": "fcb23b00d719af8957748d1000683d760d125a73",
+  "changes": [
+    "Proactive provider schema uses canonical response_expectation object/null. Four historical aliases remain null-only padding in new prompts; historical decoder and all character-owned strengths remain intact. Request identity includes actual changed schema bytes.",
+    "Explicit whole-candidate author v3 replaces ambiguous permission to state accepted intention verbatim with lifecycle status/attempt authority. Default legacy compiler, v1/v2, facts, capabilities, source review and 12-second deadline remain unchanged."
+  ],
+  "real_canary09": {
+    "code": "fcb23b00 before these two changes",
+    "user_inputs_delivered": 2,
+    "user_inputs_attempted": 3,
+    "visible_messages": 5,
+    "focused_life_strict_review": "supported via life_novel_origin_review_v1",
+    "life_state": "occurrence active; settled experience and later-chat continuity not qualified",
+    "third_input": "primary_timeout during full role correction after status_mismatch; zero delivery",
+    "proactive": "orphan pressure_bp/importance_bp after same-role correction; zero delivery",
+    "restart": "not executed",
+    "stop_reason": "operator_stopped after terminal no-reply",
+    "complete": false
+  },
+  "tests": [
+    {
+      "command": "python -m pytest -q tests/world_v2/test_character_interior_structured_role.py -k \"proactive and not cached and not budget\"",
+      "result": "54 passed, 92 deselected in 1.46s"
+    },
+    {
+      "command": "python -m pytest -q tests/world_v2/test_whole_activity_authority_prompt.py",
+      "result": "1 passed in 1.41s"
+    },
+    {
+      "command": "python -m pytest -q tests/world_v2/test_visible_settled_life_sources.py tests/world_v2/test_visible_source_author_request.py",
+      "result": "37 passed in 9.19s"
+    }
+  ],
+  "offline_verification": {
+    "script": "output/private-audits/release-source-status-20260913/verify.py",
+    "command_prefix": "PYTHONPATH=src /Users/geoff/Projects/Girl-Agent/.venv/bin/python",
+    "compiler_scope": "Captured provider ModelInput reconstructed from displayed request plus its exact top-level trigger and snapshot; two transport-only capability hints removed before typed validation. Compare old/new expression prompt compilation, not a byte-identical full author re-invocation. Only user activity rule changes; pinned evidence and source S22 retained.",
+    "historical_receipts": "canary08: 3 (including 1 proactive); canary09: 2; each verified on read-only original SQLite backup with matching semantic replay hash",
+    "additional_provider_calls": 0
+  },
+  "remaining": [
+    "Actual model qualification of these changes on the saved failed context",
+    "Reliable complete life settlement -> later chat -> restart path",
+    "Production OneBot profile integration, representative long-term human-likeness and production monthly cost qualification"
+  ],
+  "readiness": "qualification_incomplete; invitation release not recommended",
+  "deployment": "none; isolated repair branch; no real QQ",
+  "cost_report": "docs/audits/release-cost-inheritance-2026-09-13-canary-09.json"
+}

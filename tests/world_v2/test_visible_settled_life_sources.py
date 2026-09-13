@@ -59,6 +59,8 @@ class _LifeChatHTTP:
         name = body["tool_choice"]["function"]["name"]
         if name.startswith("character_inbound_"):
             assert name in {"character_inbound_initial_v3", "character_inbound_final_atomic_v3"}
+            assert "accepted_intention.text remains an intention" in body["messages"][0]["content"]
+            assert "use only the exact accepted_intention.text" not in body["messages"][0]["content"]
             self.authors.append(body)
             candidate = _decision()
             candidate["expression_draft"]["beats"] = [

@@ -10217,6 +10217,7 @@ class _ExpressionDraftWire:
         stream_part: Literal["head", "tail"] | None = None,
         source_ref_aliases: SourceRefAliasTable | None = None,
         source_closure_failure: _SourceClosureRecoveryFailure | None = None,
+        activity_status_authority: bool = False,
     ) -> list[dict[str, str]]:
         return self._model_led_messages(
             request=request,
@@ -10226,6 +10227,7 @@ class _ExpressionDraftWire:
             stream_part=stream_part,
             source_ref_aliases=source_ref_aliases,
             source_closure_failure=source_closure_failure,
+            activity_status_authority=activity_status_authority,
         )
 
     def _model_led_messages(
@@ -10238,6 +10240,7 @@ class _ExpressionDraftWire:
         stream_part: Literal["head", "tail"] | None = None,
         source_ref_aliases: SourceRefAliasTable | None = None,
         source_closure_failure: _SourceClosureRecoveryFailure | None = None,
+        activity_status_authority: bool = False,
     ) -> list[dict[str, str]]:
         """Expose capability and truth boundaries without directing behavior."""
 
@@ -10450,6 +10453,14 @@ class _ExpressionDraftWire:
                 "providers, prompts, retries, systems, evidence, or this recovery mode."
             )
         system += (
+            " ACTIVITY SOURCE DISCIPLINE: a current activity proves its recorded lifecycle status and "
+            "the scope of the accepted attempt. accepted_intention.text remains an intention even when "
+            "status is active. Its embedded place, progress and desired outcome are not execution evidence. "
+            "A started attempt does not establish arrival, continuous performance or successful completion. "
+            "Use separately sourced World evidence for those facts. An ended lifecycle proves the end, "
+            "not fulfillment. A planned activity proves only its future intention. Wording, feelings, "
+            "questions and silence remain your choice."
+            if activity_status_authority else
             " ACTIVITY SOURCE DISCIPLINE: current_activities prove only that the lifecycle is in progress; "
             "when you speak about what you are doing now, use only the exact accepted_intention.text from the entry, "
             "without substituting a different activity, place, object, duration or outcome. planned_activities prove "
@@ -10570,6 +10581,13 @@ class _ExpressionDraftWire:
                 )
                 if current_details:
                     rule += (
+                        "Read the original current_activities entries with their status, active_since and "
+                        "accepted_intention.epistemic_scope. Their source_ref supports that an attempt of the "
+                        "bound intention is in progress, not that every clause in its intention text happened. "
+                        "Do not copy intention text as a statement of completed progress, physical presence "
+                        "or outcome. Those claims need independently recorded execution or settled consequences. "
+                        "Other pinned sources retain their own authority; choose what to express yourself. "
+                        if activity_status_authority else
                         "The only current-activity content you may state is exactly: "
                         + json.dumps(current_details, ensure_ascii=False)
                         + ". If you state it, include a current_world world_claim whose source_refs contain that "

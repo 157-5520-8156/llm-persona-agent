@@ -2522,6 +2522,44 @@ def test_deepseek_strict_proactive_schema_has_no_object_type_arrays() -> None:
     ]
 
 
+@pytest.mark.parametrize("strict", [False, True])
+def test_proactive_transport_has_one_complete_expectation_representation(strict: bool) -> None:
+    """A source correction must not strand strength values after removing a hope."""
+    from companion_daemon.world_v2.expression_draft import bind_proactive_expression_wire
+
+    schema = _strict_proactive_payload_schema() if strict else _proactive_provider_payload_schema()
+    # Exercise the canonical object/null choice and each reserved legacy key
+    # against the actual emitted provider schema.
+    properties = schema["properties"]
+    for name, bad_value in (
+        ("waiting_for", "reply when free"), ("wait", 7200),
+        ("pressure_bp", 1800), ("importance_bp", 3600),
+    ):
+        validator = Draft202012Validator(properties[name])
+        validator.validate(None)
+        assert list(validator.iter_errors(bad_value)), name
+    hope = {
+        "hoped_response": "reply when free", "wait_seconds": 7200,
+        "expires_after_seconds": 14400, "pressure_bp": 1800, "importance_bp": 3600,
+    }
+    validator = Draft202012Validator(properties["response_expectation"])
+    validator.validate(None)
+    validator.validate(hope)
+    incomplete = {key: item for key, item in hope.items() if key != "hoped_response"}
+    assert list(validator.iter_errors(incomplete))
+    payload = _valid_proactive_payload(response_expectation=hope)
+    assert bind_proactive_expression_wire(payload)["response_expectation"] == hope
+    # Historical aliases still decode identically; malformed ones still fail.
+    legacy = _valid_proactive_payload(
+        waiting_for=hope["hoped_response"], wait=7200, pressure_bp=1800, importance_bp=3600,
+    )
+    assert bind_proactive_expression_wire(legacy)["response_expectation"]["pressure_bp"] == 1800
+    with pytest.raises(ValueError, match="盼头必须"):
+        bind_proactive_expression_wire(_valid_proactive_payload(
+            waiting_for=None, wait=None, pressure_bp=1800, importance_bp=3600,
+        ))
+
+
 def test_deepseek_strict_proactive_schema_does_not_weaken_host_object_validation() -> None:
     from pydantic import ValidationError
 
