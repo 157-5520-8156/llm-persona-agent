@@ -19,8 +19,6 @@ from dataclasses import dataclass
 from datetime import datetime
 import hashlib
 import logging
-
-_LOG = logging.getLogger(__name__)
 import json
 from typing import Annotated, Literal
 
@@ -76,6 +74,9 @@ from ..schemas import (
     thread_semantic_fingerprint,
 )
 from ..thread_events import ThreadChangedPayload, thread_mutation_hash
+
+
+_LOG = logging.getLogger(__name__)
 
 
 _GOAL_REASON_KINDS = (
@@ -195,6 +196,11 @@ class ThreadExperienceTransitionDraft(_ExperienceDraftBase):
         if self.due_at is not None and self.expires_at is not None:
             if self.expires_at < self.due_at:
                 raise ValueError("thread expiry cannot precede due time")
+        if self.operation != "open" and self.thread_kind is not None:
+            raise ValueError(
+                "thread_kind must be null for thread update, resolve or cancel; "
+                "it is a creation-only field"
+            )
         if self.operation == "open":
             if (
                 self.target_id is not None

@@ -472,3 +472,40 @@ async def test_core_keeps_one_same_pin_json_correction_then_technical_failure():
     assert second["correction"]["ordinal"] == 1
     assert "line 1" in second["correction"]["failure_detail"]
     assert model.tool_calls[0] == model.tool_calls[1]
+
+
+@pytest.mark.parametrize("operation", ["update", "resolve", "cancel"])
+def test_existing_thread_cannot_redeclare_creation_kind_in_provider_schema(operation):
+    """Real life-response retries repeated this field despite a valid offered head."""
+    from pydantic import TypeAdapter, ValidationError
+    from companion_daemon.world_v2.character_interior.experience_transitions import (
+        ExperienceTransitionDraft,
+    )
+
+    capability = _capability().model_dump(mode="json")
+    source = capability["current_source_ref"]
+    contract = StructuredRoleToolContracts().world_stimulus_appraisal(
+        capability_payload={"experience_transitions": capability},
+        recall_allowed=False,
+        source_tokens=(("s0", source), ("s1", "event:head")),
+    )
+    validator = Draft202012Validator(contract.provider_tools[0]["function"]["parameters"])
+    value = _result([source, "event:head"])
+    transition = value["proposals"][0]["experience_transition"]
+    transition.update(
+        operation=operation,
+        target_id="thread:existing",
+        expected_entity_revision=2,
+        thread_kind=None,
+        importance_bp=4400 if operation == "update" else None,
+        due_at="2026-09-18T01:00:00Z" if operation == "update" else None,
+        expires_at="2026-09-18T12:00:00Z" if operation == "update" else None,
+        resolution_kind="answered" if operation == "resolve" else None,
+        cancellation_reason_code="obsolete" if operation == "cancel" else None,
+    )
+    assert validator.is_valid(value)
+    TypeAdapter(ExperienceTransitionDraft).validate_json(json.dumps(transition))
+    transition["thread_kind"] = "external_result_pending"
+    with pytest.raises(ValidationError, match="thread_kind must be null"):
+        TypeAdapter(ExperienceTransitionDraft).validate_json(json.dumps(transition))
+    assert not validator.is_valid(value)

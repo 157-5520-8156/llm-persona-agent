@@ -99,6 +99,7 @@ def specialize_experience_transition_schema(
                 operation=head.allowed_operations,
                 target_id=head.target_id,
                 expected_entity_revision=head.entity_revision,
+                thread_kind=None,
             )
     for thread in capability.commitment_open_threads:
         branch(

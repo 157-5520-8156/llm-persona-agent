@@ -1,0 +1,46 @@
+{
+  "contract": "release-recovery-validation.1",
+  "code_under_real_trial": "899d42d5acb2567c63ee623b6938631cc6b28a01",
+  "new_provider_calls": 18,
+  "new_estimated_cny": "0.3907773999999999999",
+  "new_unknown_calls": 0,
+  "capture_only": true,
+  "real_qq": false,
+  "ordinary_deadline_seconds": 12,
+  "durable_inbound_retry": "action_authorized with three captured message beats after prior timeout",
+  "restart": [
+    {
+      "after_hash": "26662868fb039cc4fafa90708d8bf5da340251c345196edfff9cefeb3d259dd6",
+      "before_hash": "26662868fb039cc4fafa90708d8bf5da340251c345196edfff9cefeb3d259dd6",
+      "checkpoint": "checkpoint-190.sqlite",
+      "checkpoint_sha256": "00988d8cf18b4afad9fed71a0239d418915252513f6509f03ff4db0a13e63f9a",
+      "construction_delivery_delta": 0,
+      "duplicate_recovery_status": "unverified",
+      "same_state": true,
+      "virtual_at": "2026-09-14T04:10:00+00:00"
+    }
+  ],
+  "post_restart_inbound": "action_authorized with two captured message beats acknowledging Saturday correction",
+  "life": "CharacterLifeResponseRecorded sequence385; ExperienceCommitted388; ExperienceMemoryDecisionRecorded476. One invalid response/correction preceded successful later retry.",
+  "cold_expression_receipt_count": 4,
+  "receipt_hashes": [
+    "4121546435e60bfd2ff6b0b0228a40a3027f48c3cab16b6a984aae49e089ba96",
+    "5e4b44b2e6471a9fa528c23bc66da773148d915a75c1374b8ac46386fe77fd14",
+    "501405e5323d8a6b4f4ae3977154e8fb013467df347494e1685b48502ba5f348",
+    "e83811ca2dd4f4f1ac92aed37210e9aeffd91f7ac7e285511a4338839c6c5fe4"
+  ],
+  "replay_hash_matches": true,
+  "completion": {
+    "completed": false,
+    "stop_reason": "unprocessed_due_before_end",
+    "diagnosis": "Projection retains historical commitment due, expectation not_before and affect decay times before final cursor. Whether these are unprocessed work or historical wake coordinates needs owner-specific confirmation; do not waive the completion gate."
+  },
+  "schema_fix": {
+    "captured_corrected_response_accepted_by_previous_schema": true,
+    "accepted_by_new_schema": false,
+    "creation_only_thread_kind_nulls_pass_new_schema": true,
+    "model_output_not_mutated_or_submitted": true,
+    "tests": "32 passed in 1.29s; pre-fix 3 cases failed; no new paid calls for fix validation"
+  },
+  "release_status": "manual_only / qualification_incomplete; production profile and QQ receipt not qualified"
+}
