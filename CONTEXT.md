@@ -48,6 +48,16 @@ timeline facts plus accepted World Events; it is not copied from a static
 persona prompt and does not decide what the companion should do.
 _Avoid_: Static age label, behavior script
 
+## Routine Background
+
+A captured configuration of habitual windows, supplied as advisory context.
+It is neither today's Plan nor evidence of a lived episode. Canonical snapshot
+compilers .23/.24 bind it into snapshot identity separately from the dated
+calendar view, retain all configured habits, and preserve it through Recall,
+prefetch and capability binding. Reading the same new snapshot cannot reload
+a changed global routine configuration. Earlier snapshot identities retain
+their legacy decoding and rendering. Habit data grants no World fact refs.
+
 ## Life Arc
 
 An accepted, long-lived chapter such as an internship, job, residence, trip,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import asdict
 from datetime import datetime
 from types import MappingProxyType
 
@@ -165,6 +166,7 @@ POST_REDACTION_ONLY_KEYS = frozenset(
     {
         "conversation",
         "day_sheet",
+        "routine_background",
         "lived_moment",
         "since_he_last_spoke",
         "我最近留下的",
@@ -526,21 +528,72 @@ def _rendered_lived_moment(
 _DAY_SKELETON = None
 
 
-def _rendered_day_sheet(
-    materials: Mapping[str, object], logical_time: datetime | None
-) -> str | None:
-    """Rebuild today's sheet from already-redacted biography plus the seed.
+class _RoutineWindow(FrozenModel):
+    slot: str
+    title: str
+    starts_hour: int
+    ends_hour: int
+    location: str = ""
+    kind: str = ""
 
-    Compile-time assembly was a sourceless string, so redacting biographical
-    context could not drop age/phase/season copied into it. Habitual windows
-    come from the reviewed seed and remain non-authoritative background when
-    biography is hidden. Neither the clock nor those windows establish weather
-    or actual activity.
-    """
 
-    from ..day_skeleton import compile_day_sheet, load_world_day_skeleton
+class _RoutineTheme(FrozenModel):
+    theme_id: str
+    title: str
+    weekdays: tuple[int, ...]
+    starts_hour: int
+    duration_hours: int
+    location: str = ""
+
+
+class _RoutineBackground(FrozenModel):
+    contract: Literal["routine-background.1"] = "routine-background.1"
+    authority: Literal["habit_background_not_a_plan_or_experience"] = "habit_background_not_a_plan_or_experience"
+    source: Literal["configured_world_seed"] = "configured_world_seed"
+    availability: Literal["available", "unavailable"]
+    daily_habits: tuple[_RoutineWindow, ...] = ()
+    weekly_habits: tuple[_RoutineTheme, ...] = ()
+
+
+def _configured_day_skeleton():
+    from ..day_skeleton import load_world_day_skeleton
 
     global _DAY_SKELETON
+    if _DAY_SKELETON is None:
+        try:
+            _DAY_SKELETON = load_world_day_skeleton()
+        except (OSError, TypeError, ValueError):
+            return None
+    return _DAY_SKELETON
+
+
+def capture_routine_background() -> _RoutineBackground:
+    """Pin configuration as advisory habits, without minting World facts."""
+    skeleton = _configured_day_skeleton()
+    if skeleton is None:
+        return _RoutineBackground(availability="unavailable")
+    return _RoutineBackground(
+        availability="available",
+        daily_habits=tuple(_RoutineWindow(**asdict(slot)) for slot in skeleton.slots),
+        weekly_habits=tuple(_RoutineTheme(**asdict(theme)) for theme in skeleton.themes),
+    )
+
+
+def _rendered_day_sheet(
+    materials: Mapping[str, object], logical_time: datetime | None,
+    *, include_seed_routines: bool = True,
+) -> str | None:
+    """Render calendar and already-redacted biography; retain the legacy option.
+
+    Compile-time assembly was a sourceless string, so redacting biographical
+    context could not drop age/phase/season copied into it. New snapshots keep
+    configured habits in their separate, identity-bound background and do not
+    read the seed here. Older snapshots retain their historical rendering.
+    Neither calendar nor habits establish weather or actual activity.
+    """
+
+    from ..day_skeleton import WorldDaySkeleton, compile_day_sheet
+
     biography = materials.get("biographical_context")
     head = biography[0] if isinstance(biography, list) and biography else None
     instant = logical_time
@@ -552,18 +605,16 @@ def _rendered_day_sheet(
         instant = _instant(materials.get("logical_time"))
     if instant is None:
         return None
-    if _DAY_SKELETON is None:
-        try:
-            _DAY_SKELETON = load_world_day_skeleton()
-        except (OSError, TypeError, ValueError):
-            return None
+    skeleton = _configured_day_skeleton() if include_seed_routines else WorldDaySkeleton((), ())
+    if skeleton is None:
+        return None
     phase = head.get("academic_phase") if isinstance(head, dict) else None
     year = head.get("academic_year") if isinstance(head, dict) else None
     age = head.get("age") if isinstance(head, dict) else None
     season = head.get("season") if isinstance(head, dict) else None
     return compile_day_sheet(
         logical_at=instant,
-        skeleton=_DAY_SKELETON,
+        skeleton=skeleton,
         academic_phase=phase if isinstance(phase, str) else None,
         academic_year=year if isinstance(year, int) else None,
         age=age if isinstance(age, int) else None,
@@ -1271,6 +1322,9 @@ class InnerLifeSnapshot(FrozenModel):
     facet_views: tuple[_InteriorFacet, ...] = Field(min_length=8, max_length=8)
     materials_json: str
     materials_hash: str = Field(min_length=64, max_length=64)
+    # Absent only on historical snapshots. New compilers pin the complete
+    # habit configuration separately from calendar and episode materials.
+    routine_background: _RoutineBackground | None = None
     # Live-only trusted retrieval capability carried between the core and its
     # private Faculty. It is identity-bound but deliberately excluded from the
     # provider view; the Faculty expands its verified audit into typed Context
@@ -1298,7 +1352,7 @@ class InnerLifeSnapshot(FrozenModel):
         return _decoded_object(self.materials_json)
 
     def _identity_material(self) -> dict[str, object]:
-        return {
+        identity = {
             "contract": self.contract,
             "availability": self.availability,
             "world_id": self.world_id,
@@ -1327,6 +1381,9 @@ class InnerLifeSnapshot(FrozenModel):
             "snapshot_compiler": self.snapshot_compiler.model_dump(mode="json"),
             "truncation": self.truncation.model_dump(mode="json"),
         }
+        if self.routine_background is not None:
+            identity["routine_background"] = self.routine_background.model_dump(mode="json")
+        return identity
 
     @model_validator(mode="after")
     def identity_and_inventory_are_complete(self) -> "InnerLifeSnapshot":
@@ -1426,6 +1483,7 @@ class InnerLifeSnapshot(FrozenModel):
         truncation: _InteriorBinding,
         recall_trace_json: str | None = None,
         prefetch_trace_json: str | None = None,
+        routine_background: _RoutineBackground | None = None,
     ) -> "InnerLifeSnapshot":
         materials_json = _canonical_json(dict(materials))
         common: dict[str, object] = {
@@ -1440,6 +1498,7 @@ class InnerLifeSnapshot(FrozenModel):
             "facet_views": facet_views,
             "materials_json": materials_json,
             "materials_hash": _digest(dict(materials)),
+            "routine_background": routine_background,
             "recall_trace_json": recall_trace_json,
             "prefetch_trace_json": prefetch_trace_json,
             "source_refs": source_refs,
@@ -1477,9 +1536,14 @@ class InnerLifeSnapshot(FrozenModel):
         )
         materials = _redact_materials(dict(self.materials), visible)
         materials = _refresh_stimulus_excerpts(materials)
-        day_sheet = _rendered_day_sheet(materials, self.logical_time)
+        day_sheet = _rendered_day_sheet(
+            materials, self.logical_time,
+            include_seed_routines=self.routine_background is None,
+        )
         if day_sheet:
             materials = {**materials, "day_sheet": day_sheet}
+        if self.routine_background is not None:
+            materials = {**materials, "routine_background": self.routine_background.model_dump(mode="json")}
         week_diary = _regroup_week_diary(materials.get("week_diary"))
         if week_diary:
             materials = {**materials, "week_diary": week_diary}

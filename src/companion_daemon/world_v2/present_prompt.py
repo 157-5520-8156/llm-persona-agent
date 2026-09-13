@@ -58,6 +58,7 @@ _SNAPSHOT_VOLATILE_LAST = (
 )
 _MATERIAL_ORDER = (
     "stable_self",
+    "routine_background",
     "biographical_context",
     "day_sheet",
     "week_diary",

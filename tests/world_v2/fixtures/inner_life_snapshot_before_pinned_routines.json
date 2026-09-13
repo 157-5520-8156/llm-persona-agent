@@ -1,0 +1,124 @@
+{
+  "contract": "inner-life-snapshot.1",
+  "snapshot_id": "inner-life-snapshot:sha256:1b7aca1d3ec2271ee1108795d64ee1da3e8b9329b5f6638e32e020bda1828275",
+  "snapshot_hash": "1b7aca1d3ec2271ee1108795d64ee1da3e8b9329b5f6638e32e020bda1828275",
+  "availability": "unavailable",
+  "world_id": "world:routine-authority",
+  "actor_ref": "agent:companion",
+  "cursor": {
+    "world_revision": 0,
+    "deliberation_revision": 0,
+    "ledger_sequence": 0
+  },
+  "logical_time": "2026-09-07T11:00:00+08:00",
+  "situation": {
+    "availability": "unavailable",
+    "payload_json": "{}",
+    "source_refs": [],
+    "content_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "continuity": {
+    "availability": "unavailable",
+    "payload_json": "{}",
+    "source_refs": [],
+    "content_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "facet_views": [
+    {
+      "availability": "unavailable",
+      "payload_json": "{}",
+      "source_refs": [],
+      "content_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "name": "private_self"
+    },
+    {
+      "availability": "unavailable",
+      "payload_json": "{}",
+      "source_refs": [],
+      "content_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "name": "selective_memory"
+    },
+    {
+      "availability": "unavailable",
+      "payload_json": "{}",
+      "source_refs": [],
+      "content_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "name": "appraisal_affect"
+    },
+    {
+      "availability": "unavailable",
+      "payload_json": "{}",
+      "source_refs": [],
+      "content_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "name": "emotional_continuity"
+    },
+    {
+      "availability": "unavailable",
+      "payload_json": "{}",
+      "source_refs": [],
+      "content_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "name": "subjective_relationship"
+    },
+    {
+      "availability": "unavailable",
+      "payload_json": "{}",
+      "source_refs": [],
+      "content_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "name": "aspirations_conflicts"
+    },
+    {
+      "availability": "unavailable",
+      "payload_json": "{}",
+      "source_refs": [],
+      "content_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "name": "autonomous_impulses"
+    },
+    {
+      "availability": "unavailable",
+      "payload_json": "{}",
+      "source_refs": [],
+      "content_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "name": "expression_stance"
+    }
+  ],
+  "materials_json": "{\"logical_time\":\"2026-09-07T11:00:00+08:00\",\"recent_self_experiences\":{\"availability\":\"unavailable\"}}",
+  "materials_hash": "9c5a839c1ba0be095f970a6ffb9f9c1a2c3f18bd1c0e50aff8a8f389f7499124",
+  "source_refs": [],
+  "source_inventory": [],
+  "viewer_scope": {
+    "availability": "unavailable",
+    "payload_json": "null",
+    "content_hash": null,
+    "reason": "viewer_scope_unavailable"
+  },
+  "privacy_scope": {
+    "availability": "unavailable",
+    "payload_json": "null",
+    "content_hash": null,
+    "reason": "viewer_privacy_scope_unavailable"
+  },
+  "capability_scope": {
+    "availability": "unavailable",
+    "payload_json": "null",
+    "content_hash": null,
+    "reason": "capability_scope_unavailable"
+  },
+  "context_compiler": {
+    "availability": "unavailable",
+    "payload_json": "null",
+    "content_hash": null,
+    "reason": "context_compiler_unavailable"
+  },
+  "snapshot_compiler": {
+    "availability": "available",
+    "payload_json": "\"inner-life-snapshot-compiler.21\"",
+    "content_hash": "f8985e7093ec7be24df9e8215eea91e83c9aba94bfcdda306c494cd2a32d62b0",
+    "reason": null
+  },
+  "truncation": {
+    "availability": "unavailable",
+    "payload_json": "null",
+    "content_hash": null,
+    "reason": "truncation_metadata_unavailable"
+  }
+}

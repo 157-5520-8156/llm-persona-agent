@@ -1,0 +1,38 @@
+{
+  "contract": "release-routine-background-validation.1",
+  "base_code": "41c9df30",
+  "observed_input": {
+    "trial": "release-recovery-continuation-20260913-05",
+    "request_content_sha256": "dc40047a7f2115cae2680c1c3d0c9fb126af355e95a4e65f5f7d211a8c6d7ab1",
+    "path": "messages[1].inner_life_snapshot.materials.day_sheet",
+    "routine_text": "今天是2026-09-14，当地20:31。21岁，第3学年term，autumn。惯常作息（背景，不代表今天的计划或实际活动）：00:00–08:00 夜间睡眠 @ 华东师范大学宿舍；09:00–12:00 图书馆看书 @ 华东师范大学；14:00–17:00 整理课程笔记或参加社团活动 @ 华东师范大学；18:00–19:00 整理摄影作品 @ 上海；20:00–22:00 傍晚散步或整理照片 @ 华东师范大学。",
+    "finding": "The dated day sheet includes the same afternoon note-taking and evening-walk habits later asserted as actual episodes. This is an input ambiguity supported by captured bytes, not proof that it is the sole causal source of hallucination."
+  },
+  "deterministic_defect": "Changing the global cached routine configuration changed model_view() of an already-created snapshot without changing its snapshot_id. The same routine data was not bound into the snapshot identity.",
+  "repair": [
+    "Canonical compilers .23/.24 capture configured routines in a frozen, typed routine-background.1 field included in snapshot identity.",
+    "New model views render only calendar/redacted biography in day_sheet, with daily and weekly habits in a separate advisory routine_background material. All configured habits remain available; no actor behavior or dialogue is selected by code.",
+    "Recall, prefetch, aspiration/capability binding preserve the captured field. Background profiles retain the habit material. Stable habit material is placed before volatile context in provider presentation.",
+    "Historical snapshots with no new field retain their old identity material and legacy reader. No World citations are created from habits."
+  ],
+  "validation": {
+    "red": "2 failed, 1 passed in 0.99s: same-snapshot config drift and calendar/habit conflation",
+    "main_chain": "93 passed in 25.14s",
+    "main_chain_log": "/tmp/girl-pinned-routine-integration-final.log",
+    "identity_and_activity": "22 passed in 2.13s; overlaps 3 tests in main_chain, plus one added identity-tamper case",
+    "distinct_targeted_tests": 112,
+    "historical_snapshot_sha256": "1b7aca1d3ec2271ee1108795d64ee1da3e8b9329b5f6638e32e020bda1828275",
+    "historical_expression_receipts_cold_verified": 6,
+    "replay_hash_matches": true,
+    "original_trial_artifact_hashes_unchanged": true,
+    "ruff": "changed Python files passed",
+    "full_suite": "not rerun; prior full 8148-pass gate belongs to6da134d7"
+  },
+  "new_paid_calls": 0,
+  "limits": [
+    "No real model retest; fewer false past-life claims and lower latency are not yet demonstrated.",
+    "The last real v7 sample remains failed, and its cancelled calls/unknown billing holds remain retained.",
+    "New snapshots pin advisory configuration; habits are not accepted World facts, fulfilled intentions or a new source of life events.",
+    "Old snapshots keep their historical rendering behavior; the new immutable routine-view guarantee applies to .23/.24 canonical snapshots."
+  ]
+}

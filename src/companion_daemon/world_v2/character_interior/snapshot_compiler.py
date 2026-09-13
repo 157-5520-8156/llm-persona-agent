@@ -44,6 +44,7 @@ from .contracts import (
     FACET_NAMES,
     InnerLifeSnapshot,
     assert_compile_time_materials_are_source_bound,
+    capture_routine_background,
     _InteriorBinding,
     _InteriorContextView,
     _InteriorFacet,
@@ -54,8 +55,8 @@ from .contracts import (
 )
 
 
-SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.21"
-STRUCTURED_LIFE_SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.22"
+SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.23"
+STRUCTURED_LIFE_SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.24"
 
 
 def _has_structured_life(value: object) -> bool:
@@ -1751,6 +1752,7 @@ def compile_inner_life_snapshot(
         world_id=world_id, actor_ref=actor_ref, cursor=cursor, logical_time=logical_time,
         situation=situation, continuity=continuity, facet_views=tuple(facets),
         materials=materials, source_refs=source_refs, source_inventory=tuple(inventory),
+        routine_background=capture_routine_background() if logical_time is not None else None,
         viewer_scope=_binding(context, "consumer_scope", "viewer_scope_unavailable"),
         privacy_scope=_binding(context, "viewer_privacy_ceiling", "viewer_privacy_scope_unavailable"),
         capability_scope=capability_scope,
