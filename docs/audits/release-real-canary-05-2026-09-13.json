@@ -1,0 +1,106 @@
+{
+  "contract": "release-short-chat-audit.1",
+  "trial_id": "release-real-canary-20260913-05",
+  "code_head": "3c6c80a0a9804898f47696129e2f10ede4c1e7ee",
+  "process_exit_code": 1,
+  "completed": false,
+  "stop_reason": "unprocessed_due_before_end",
+  "scope": "3 real-provider turns, 5 virtual minutes and one cold-host restart, CaptureDelivery only.",
+  "turns_consumed": 3,
+  "turns_action_authorized": 3,
+  "captured_messages": 7,
+  "whole_source_receipts_cold_verified": [
+    "076526b752d0f1015f84f12e040e3af51bbcaff8227528d195b2c38a159f4f55",
+    "45b17889086bc5199dad4902bcdc1b47ed44a84c6072cd2a61c9009347de8142",
+    "6a5a422927674a45d2bf14f7818f16a259da3c230befcc8fbec29c911bbdb85c"
+  ],
+  "replay": {
+    "evaluator_version": "world-v2-replay-evaluator.1",
+    "findings": [],
+    "mechanism_checks": [
+      "same_cursor_replay_evidence",
+      "replay_semantic_hash",
+      "reply_expression_payload_binding",
+      "reply_budget_action_binding",
+      "action_recovery_liveness"
+    ],
+    "replay_hash_matches": true,
+    "world_id": "world:companion-v2:qq-c2c:longitudinal-audit",
+    "world_revision": 133
+  },
+  "restarts": [
+    {
+      "after_hash": "17dea3e48984b7e28d7b6597150877c53e94fe84262312feb967e2b41a6091f5",
+      "before_hash": "17dea3e48984b7e28d7b6597150877c53e94fe84262312feb967e2b41a6091f5",
+      "checkpoint": "checkpoint-3.sqlite",
+      "checkpoint_sha256": "75aba87eac51757cc85e441d81bd3be9a938f498b352605dd32371125cdc1615",
+      "construction_delivery_delta": 0,
+      "duplicate_recovery_status": "unverified",
+      "same_state": true,
+      "virtual_at": "2026-09-14T01:03:00+00:00"
+    }
+  ],
+  "original_action_states": {
+    "delivered": 5,
+    "provider_accepted": 2
+  },
+  "offline_receipt_tail": {
+    "scope": "offline cold copy; original captured messages restored; lease expiry reached; model HTTP denied; original DB unchanged",
+    "before": [
+      "delivered",
+      "delivered",
+      "delivered",
+      "delivered",
+      "delivered",
+      "provider_accepted",
+      "provider_accepted"
+    ],
+    "after": [
+      "delivered",
+      "delivered",
+      "delivered",
+      "delivered",
+      "delivered",
+      "delivered",
+      "delivered"
+    ],
+    "action_statuses": [
+      "settled",
+      "settled"
+    ],
+    "model_http_calls": 0,
+    "captured_message_count": 7
+  },
+  "wall_seconds": 166.84500379196834,
+  "known_calls": 16,
+  "unknown_calls": 0,
+  "pending_model_reservations": 0,
+  "known_repository_price_estimate_cny": "0.4873576000000000088",
+  "whole_allocation_retained_cny": "1.5",
+  "combined_inheritance": {
+    "parent_snapshot": "output/private-audits/release-real-canary-20260913-04/cost-closure.json",
+    "parent_snapshot_sha256": "d20653e81f34cca017201f1b72bb672f4e8c74e98e38c450063e9558fc96c631",
+    "known_repository_price_estimate_cny": "43.06006349999999987227",
+    "conservative_committed_cny": "74.38385329999999992007",
+    "observed_estimate_plus_unresolved_hold_cny": "66.67823849999999992027",
+    "all_parent_unknown_and_whole_allocations_retained": true,
+    "additional_authorized_budget_cny": null
+  },
+  "second_turn_four_model_latencies_ms": [
+    3858,
+    1534,
+    3713,
+    1214
+  ],
+  "private_archive_exact_key_matches": 0,
+  "limitations": [
+    "Original scenario ended before the last two receipt leases at 01:06, so its manifest remains incomplete. At lease expiry a separate offline cold copy settled both using original CaptureDelivery records, zero model HTTP and no duplicate messages; this does not rewrite the original run.",
+    "Four-call correction succeeded once; latency variability and statistical reliability not qualified.",
+    "Reviewer rejected plan-like wording then accepted a near-paraphrase; possible over-rejection remains.",
+    "All four author outputs retained insignificant whitespace despite the compact JSON instruction; no serialization savings established.",
+    "No new settled Life event chain, long-term behavior or complete monthly-cost qualification.",
+    "No real QQ or deployment."
+  ],
+  "audit_path": "output/private-audits/release-real-canary-20260913-05/short-audit.json",
+  "audit_sha256": "b09c237d714e38d7c733c0da4b134150b1d2ef2461b7673b962114db049f0fa4"
+}

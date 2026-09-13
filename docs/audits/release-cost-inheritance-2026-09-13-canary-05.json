@@ -1,0 +1,25 @@
+{
+  "contract": "release-cost-inheritance-summary.2",
+  "trial_id": "release-real-canary-20260913-05",
+  "status": "closed_all_known_whole_allocation_retained",
+  "trial": {
+    "known_calls": 16,
+    "unknown_calls": 0,
+    "pending_model_reservations": 0,
+    "known_repository_price_estimate_cny": "0.4873576000000000088",
+    "whole_allocation_retained_cny": "1.5"
+  },
+  "combined_inheritance": {
+    "parent_snapshot": "output/private-audits/release-real-canary-20260913-04/cost-closure.json",
+    "parent_snapshot_sha256": "d20653e81f34cca017201f1b72bb672f4e8c74e98e38c450063e9558fc96c631",
+    "known_repository_price_estimate_cny": "43.06006349999999987227",
+    "conservative_committed_cny": "74.38385329999999992007",
+    "observed_estimate_plus_unresolved_hold_cny": "66.67823849999999992027",
+    "all_parent_unknown_and_whole_allocations_retained": true,
+    "additional_authorized_budget_cny": null
+  },
+  "audit_path": "output/private-audits/release-real-canary-20260913-05/short-audit.json",
+  "audit_sha256": "b09c237d714e38d7c733c0da4b134150b1d2ef2461b7673b962114db049f0fa4",
+  "prior_trial_04": "Zero requests, invalid operator input, full 1.5 allocation retained; included in parent.",
+  "budget_release_authorized": false
+}
