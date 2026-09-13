@@ -1,0 +1,23 @@
+{
+  "contract": "release-life-due-readiness-check.1",
+  "code": "7df19568",
+  "source_trial": "release-recovery-continuation-20260913-04",
+  "source_manifest_sha256": "2accf6a6a836b9e87c859bc980a4730447d8d7b785ac8a614313bdf5b2471eeb",
+  "read_only_source_copied_to_temporary_sqlite": true,
+  "new_model_calls": 0,
+  "logical_time": "2026-09-14T12:03:30+00:00",
+  "last_semantic_schedule_due": "2026-09-14T12:01:00+00:00",
+  "effective_overlay_due": "2026-09-14T16:29:00+00:00",
+  "production_application_life_due": "2026-09-14T16:29:00+00:00",
+  "overlay_last_completed_at": "2026-09-14T10:29:00+00:00",
+  "overlay_last_silent_outcome": "life_development_occurrence_committed",
+  "combined_collector_life_due": "2026-09-14T16:29:00+00:00",
+  "semantic_hash_unchanged": true,
+  "finding": "No additional Life deadline bug in this sample. Quiet completion advanced the persisted runtime overlay; the production application reads it and the combined clock collector replaces the old semantic schedule. The previous projection-only diagnostic did not include this computed authority.",
+  "limits": [
+    "This isolates the Life computed reader; other computed lanes are not assessed by substituting None.",
+    "The original trial is still completed=false with no evening character reply; no new execution or delivery is claimed."
+  ],
+  "source_artifact_hashes_verified": true,
+  "probe_exit": "clean; first diagnostic completed checks but its temporary sidecar cleanup used a nonexistent public close method; repeated with the actual connection close and passed"
+}
