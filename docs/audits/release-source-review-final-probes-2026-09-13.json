@@ -1,0 +1,160 @@
+{
+  "contract": "release-installed-review-and-scope-probe.1",
+  "code_head": "ff189f37fa1b605e7a397e0685cb5ed7902162fe",
+  "status": "closed_not_qualified",
+  "trials": [
+    {
+      "trial": "release-source-v8-installed-20260913-01",
+      "physical_calls": 1,
+      "known_estimate_cny": "0.0498885",
+      "new_unknown_calls": 0,
+      "inherited_usage_rows": 108,
+      "inherited_usage_and_reservations_unchanged": true,
+      "token_counts_and_response_arguments_verified": true,
+      "stable_artifact_hashes_verified": true,
+      "sqlite_wal_shm_excluded_from_immutable_hash_claim": true,
+      "call_latency_ms": [
+        2411
+      ],
+      "results": [
+        {
+          "case_id": "original-installed-v8",
+          "status": "semantic_mismatch",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "closed",
+            "closed",
+            "closed",
+            "source_free"
+          ],
+          "receipt_admission": "incorrectly_accepted"
+        }
+      ]
+    },
+    {
+      "trial": "release-source-scope-probe-20260913-01",
+      "physical_calls": 3,
+      "known_estimate_cny": "0.108532499999999999",
+      "new_unknown_calls": 0,
+      "inherited_usage_rows": 109,
+      "inherited_usage_and_reservations_unchanged": true,
+      "token_counts_and_response_arguments_verified": true,
+      "stable_artifact_hashes_verified": true,
+      "sqlite_wal_shm_excluded_from_immutable_hash_claim": true,
+      "call_latency_ms": [
+        2096,
+        2946,
+        1559
+      ],
+      "results": [
+        {
+          "case_id": "original-scope-check",
+          "status": "matched",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "authority_scope_blocked_beats": [],
+          "evidence_uses": {
+            "0": "other_external_fact",
+            "1": "other_external_fact"
+          }
+        },
+        {
+          "case_id": "controls-scope-check",
+          "status": "semantic_mismatch",
+          "expected": [
+            "closed",
+            "closed",
+            "source_free",
+            "unclosed",
+            "unclosed",
+            "unclosed",
+            "source_free",
+            "closed"
+          ],
+          "actual": [
+            "source_free",
+            "closed",
+            "source_free",
+            "unclosed",
+            "unclosed",
+            "unclosed",
+            "source_free",
+            "closed"
+          ],
+          "authority_scope_blocked_beats": [],
+          "evidence_uses": {
+            "1": "other_external_fact",
+            "7": "other_external_fact"
+          }
+        },
+        {
+          "case_id": "active-activity-positive-control",
+          "status": "matched",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "unclosed"
+          ],
+          "actual": [
+            "closed",
+            "closed",
+            "unclosed",
+            "unclosed"
+          ],
+          "authority_scope_blocked_beats": [],
+          "evidence_uses": {
+            "0": "activity_lifecycle_or_intention",
+            "1": "activity_lifecycle_or_intention"
+          }
+        }
+      ]
+    }
+  ],
+  "physical_calls": 4,
+  "known_estimate_cny": "0.158420999999999999",
+  "new_unknown_calls": 0,
+  "inherited_unknown_reservations_retained": 8,
+  "shared_allocation_owner": "release-recovery-continuation-20260913-08",
+  "new_whole_allocation_cny": "0",
+  "combined_inheritance": {
+    "parent_snapshot": "docs/audits/release-source-composition-v8-validation-2026-09-13.json",
+    "known_repository_price_estimate_cny": "49.22716709999999987367",
+    "conservative_committed_cny": "114.68385329999999992007",
+    "observed_estimate_plus_unresolved_hold_cny": "77.05172009999999992167",
+    "all_parent_unknown_and_whole_allocations_retained": true,
+    "additional_authorized_budget_cny": "10",
+    "additional_authorization_allocated_cny": "10",
+    "additional_authorization_unallocated_cny": "0",
+    "parent_cost_evidence": "output/private-audits/release-source-composition-comparison-20260913-04/reconciliation.json",
+    "parent_cost_evidence_sha256": "acc42d8d4d3d347a7e9b51d8948562c6c8fa919cf58b5ad2f2d3d5a7c3246f67"
+  },
+  "additional10_authorization_usage": {
+    "physical_calls": 25,
+    "known_calls": 22,
+    "unknown_calls": 3,
+    "known_estimate_cny": "0.7062705999999999996",
+    "new_unresolved_hold_cny": "1.847505",
+    "all_old_holds_retained": true
+  },
+  "conclusions": {
+    "installed_v8": "Actual compiled request incorrectly accepted the original unrecorded morning seating; isolated receipt admission also accepted. Semantic blocker remains.",
+    "scope_prototype": "Original and active-activity fixture matched once; historical-intention control remained source_free. No companion_episode authority guard fired in these samples, so guard efficacy is unproven. Not installed.",
+    "limits": "No new role dialogue, correction, Action, delivery, production access, longevity, monthly cost or latency qualification. Captured token estimates use repository price revision, not an invoice or ChatGPT quota."
+  }
+}

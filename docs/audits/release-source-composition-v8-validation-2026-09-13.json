@@ -176,7 +176,7 @@
   "limits": "Isolated source-review comparisons, not production protocol, role correction, delivery, longevity or monthly cost qualification. Historical-intention control remains a source-free misclassification.",
   "integration": {
     "version": "8",
-    "status": "installed_opt_in_actual_v8_request_not_yet_retested",
+    "status": "installed_opt_in_actual_v8_retest_failed_false_acceptance",
     "root_cause": "Review could combine intention/lifecycle and later environment into an action none of those sources records.",
     "chosen_change": "Only the tested composition-boundary paragraph; separate v8 request/tool/receipt identity. No historical-intention paragraph or root clock experiment installed.",
     "source_materials_and_reference_indexes": "unchanged",
@@ -197,13 +197,16 @@
       "slim_instruction_chars_in_actual_atomic_v3_request": 8536,
       "actual_system_message_chars": 36377,
       "status": "Confirmed unnecessary legacy-format surface in full request; no removal or performance qualification in this patch."
-    }
+    },
+    "actual_retest_evidence": "release-source-review-final-probes-2026-09-13.json"
   },
   "semantic_results": {
     "original_v7_recorded_and_replayed": "incorrectly closed morning seating",
     "composition_rule_original": "unclosed as expected",
     "historical_intention_control": "source_free in both baseline and all experimental variants; remains unresolved, never counted as passed",
     "extra_history_paragraph_and_root_clock": "did not improve that control; not installed",
-    "first_evaluation_helper_error": "Used compact model evidence as canonical parser input. Already-paid response was re-parsed against exact immutable source table without another provider call."
+    "first_evaluation_helper_error": "Used compact model evidence as canonical parser input. Already-paid response was re-parsed against exact immutable source table without another provider call.",
+    "actual_compiled_v8": "incorrectly closed morning seating; isolated receipt admission incorrectly accepted; no World or delivery effects",
+    "scope_probe": "Original case matched once, but historical intention still misclassified; deterministic scope guard never fired; not promoted."
   }
 }
