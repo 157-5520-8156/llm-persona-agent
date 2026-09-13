@@ -293,7 +293,7 @@ async def _run_scenario(
                     }
                     for index, text in enumerate(texts)
                     if unclosed
-                ]} if review_version in {"2", "3", "4"} else {}),
+                ]} if review_version in {"2", "3", "4", "5"} else {}),
                 "decisions": [
                     {
                         "beat_index": index,
@@ -313,14 +313,14 @@ async def _run_scenario(
                     )
                 ],
             }
-        if review_version in {"3", "4"}:
+        if review_version in {"3", "4", "5"}:
             for decision in verdict["decisions"]:
                 assert decision.pop("source_ref_indexes") == []
         if source_claim_scenario and texts != BEATS:
-            assert review_version in {"3", "4"}
+            assert review_version in {"3", "4", "5"}
             refs = ([dict(zip(table["columns"], row, strict=True))
                      for table in packet["source_reference_tables"] for row in table["rows"]]
-                    if review_version == "4" else packet["source_references"])
+                    if review_version in {"4", "5"} else packet["source_references"])
             source = next(row for row in refs if history_source(row))
             if history_subject == "companion":
                 assert source["subject_role"] == "companion"
@@ -660,7 +660,7 @@ async def test_required_proactive_review_public_host(tmp_path, monkeypatch, scen
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ("2", "3", "4"))
+@pytest.mark.parametrize("review_version", ("2", "3", "4", "5"))
 @pytest.mark.parametrize(
     "scenario",
     ("source_free", "reselect", "reject_twice", "review_invalid_second", "review_deadline_second"),
@@ -725,7 +725,7 @@ async def test_external_cancellation_and_close_leave_proactive_turn_unfinished(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ("1", "2", "3", "4"))
+@pytest.mark.parametrize("review_version", ("1", "2", "3", "4", "5"))
 @pytest.mark.parametrize(
     "legacy_claim_lanes,pause_before_acceptance",
     [(False, False), (False, True), (True, True)],

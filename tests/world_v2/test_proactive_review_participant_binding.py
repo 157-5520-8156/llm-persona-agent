@@ -26,7 +26,7 @@ def _binding(case, **changes):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["3", "4"])
+@pytest.mark.parametrize("review_version", ["3", "4", "5"])
 async def test_proactive_clock_can_cite_observed_counterpart_history(
     tmp_path, monkeypatch, review_version,
 ):
@@ -42,7 +42,7 @@ async def test_proactive_clock_can_cite_observed_counterpart_history(
     assert claim["scope"] == "counterpart_history"
     rows = ([dict(zip(table["columns"], row, strict=True))
              for table in review["source_reference_tables"] for row in table["rows"]]
-            if review_version == "4" else review["source_references"])
+            if review_version in {"4", "5"} else review["source_references"])
     (source,) = [row for row in rows if row["source_ref"] == claim["source_refs"][0]]
     assert source["support_subject_ref"] == "user:geoff"
     assert source["support_subject_role"] == "counterpart"
@@ -72,7 +72,7 @@ async def test_proactive_clock_can_cite_observed_counterpart_history(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["3", "4"])
+@pytest.mark.parametrize("review_version", ["3", "4", "5"])
 async def test_proactive_counterpart_source_cannot_be_relabelled_as_companion(
     tmp_path, monkeypatch, review_version,
 ):
@@ -148,7 +148,7 @@ async def test_participant_binding_rejects_mismatched_original_pin(tmp_path, mut
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["3", "4"])
+@pytest.mark.parametrize("review_version", ["3", "4", "5"])
 @pytest.mark.parametrize("legacy", [False, True])
 async def test_participant_identity_cold_recovery_uses_the_original_audited_choice(
     tmp_path, monkeypatch, review_version, legacy,

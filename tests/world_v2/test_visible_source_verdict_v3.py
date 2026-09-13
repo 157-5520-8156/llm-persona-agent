@@ -87,6 +87,8 @@ def test_v3_explicit_source_choice_normalizes_through_original_closure():
     [
         ("1", "ac9f97c9e4b3909219db752e1a48e0c4a54842d6e9099003162fabf8f75255c4"),
         ("2", "90775ac3fb757b423af6fea1821b587f4e0640e1bd9c97533bf3330a0570a85e"),
+        ("3", "da6f39d18400d51ca56fb506e2699328b6204bb62e1b71479b9a40bf7b47b754"),
+        ("4", "72b89415983e5d2ff9b3724aede62e01ec94b991c5a08bfb90f3bf531392ca66"),
     ],
 )
 def test_older_request_messages_tools_and_repair_keep_frozen_bytes(version, expected):

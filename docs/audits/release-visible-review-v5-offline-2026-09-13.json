@@ -1,0 +1,58 @@
+{
+  "contract": "release-visible-review-v5-offline-gate.1",
+  "parent_code_head": "f7271f51537d7460dfa21aff79d04addb397835e",
+  "change": "Explicit v5 self-history semantics; v1-v4 static compilers preserved; no default or deadline changes",
+  "runs": [
+    {
+      "scope": "8 targeted files",
+      "passed": 319,
+      "failed": 1,
+      "seconds": 373.61,
+      "failure": "CLI fixture still treated now-supported version 5 as invalid; fixture updated to version 6."
+    },
+    {
+      "scope": "6 closure and historical compatibility files",
+      "passed": 127,
+      "failed": 1,
+      "seconds": 22.57,
+      "failure": "Unknown-version protocol fixture still used now-supported version 5; fixture updated to 6."
+    },
+    {
+      "scope": "Both affected version-test files in final state",
+      "passed": 183,
+      "failed": 0,
+      "seconds": 20.29
+    },
+    {
+      "scope": "New v5 identity/history and corrected CLI check",
+      "passed": 4,
+      "failed": 0,
+      "seconds": 1.86
+    }
+  ],
+  "final_state_coverage": "448 distinct test cases across the first two disjoint file sets, with both initial fixture-only failures replaced by passing final-file reruns. This is a combined gate, not one 448-pass run.",
+  "historical_full_gate": "8022 passed / 19 skipped at 70091dac; not rerun on this change",
+  "model_semantics": "unqualified_pending_bounded_real_probe",
+  "logs": [
+    {
+      "path": "output/private-audits/release-source-v5-semantics-20260913-01/release-visible-source-v5-targeted.log",
+      "sha256": "5d1e6750b68b4f083eacb24e34d97c35a4a1a63ef3f4f7956646c8021ca696ce"
+    },
+    {
+      "path": "output/private-audits/release-source-v5-semantics-20260913-01/release-visible-source-v5-closure-compat.log",
+      "sha256": "e1961248f7fbfd7b2a6c7d07bcb53ad6b2a7452cbad67f087b216fa84f090d1f"
+    },
+    {
+      "path": "output/private-audits/release-source-v5-semantics-20260913-01/release-visible-source-v5-version-final.log",
+      "sha256": "ac3d0a2f5d3e068057775cb8c5aecda4621728d2d46ae283b420bfe4a1728fa0"
+    },
+    {
+      "path": "output/private-audits/release-source-v5-semantics-20260913-01/release-visible-source-v5-cli-fix.log",
+      "sha256": "c0b1f07d706af4782dca47b26075bed08b8fc2cfc09674e7b064589fcaca54c1"
+    }
+  ],
+  "scope_limits": [
+    "Mocked reviewer outcomes verify transport/authority/correction/replay, not the accuracy of semantic labels.",
+    "No real QQ, production database changes, deployment, full author correction latency or long-term qualification."
+  ]
+}

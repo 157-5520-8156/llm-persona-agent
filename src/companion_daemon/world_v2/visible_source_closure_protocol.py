@@ -24,6 +24,7 @@ VISIBLE_SOURCE_CLOSURE_CONTRACT = "visible-beat-source-verdict.1"
 VISIBLE_SOURCE_VERDICT_V2_CONTRACT = "visible-beat-source-verdict.2"
 VISIBLE_SOURCE_VERDICT_V3_CONTRACT = "visible-beat-source-verdict.3"
 VISIBLE_SOURCE_VERDICT_V4_CONTRACT = "visible-beat-source-verdict.4"
+VISIBLE_SOURCE_VERDICT_V5_CONTRACT = "visible-beat-source-verdict.5"
 MAX_VISIBLE_SOURCE_PROBLEM_CHARS = 64
 MAX_VISIBLE_SOURCE_PROBLEM_JSON_CHARS = 96
 MAX_VISIBLE_SOURCE_VERDICT_V2_BYTES = 32_768
@@ -200,6 +201,10 @@ class _ProviderVisibleBeatVerdictWireV4(_ProviderVisibleBeatVerdictWireV3):
     contract: Literal["visible-beat-source-verdict.4"]
 
 
+class _ProviderVisibleBeatVerdictWireV5(_ProviderVisibleBeatVerdictWireV3):
+    contract: Literal["visible-beat-source-verdict.5"]
+
+
 class VisibleSourceClosureWireFailure(ValueError):
     """Content-free structural coordinate for one invalid reviewer wire."""
 
@@ -287,7 +292,7 @@ _VISIBLE_BEAT_VERDICT_SCHEMA: dict[str, object] = {
 }
 
 
-def _versioned_contract(version: Literal["1", "2", "3", "4"]) -> str:
+def _versioned_contract(version: Literal["1", "2", "3", "4", "5"]) -> str:
     if version == "1":
         return VISIBLE_SOURCE_CLOSURE_CONTRACT
     if version == "2":
@@ -296,14 +301,16 @@ def _versioned_contract(version: Literal["1", "2", "3", "4"]) -> str:
         return VISIBLE_SOURCE_VERDICT_V3_CONTRACT
     if version == "4":
         return VISIBLE_SOURCE_VERDICT_V4_CONTRACT
-    raise ValueError("visible source verdict version must be 1, 2, 3 or 4")
+    if version == "5":
+        return VISIBLE_SOURCE_VERDICT_V5_CONTRACT
+    raise ValueError("visible source verdict version must be 1, 2, 3, 4 or 5")
 
 
-def visible_source_closure_schema(*, version: Literal["1", "2", "3", "4"] = "1") -> dict[str, object]:
+def visible_source_closure_schema(*, version: Literal["1", "2", "3", "4", "5"] = "1") -> dict[str, object]:
     """Return an isolated provider schema for the exact strict-tool wire."""
 
     contract = _versioned_contract(version)
-    if version in {"3", "4"}:
+    if version in {"3", "4", "5"}:
         schema = visible_source_closure_schema(version="2")
         schema["properties"]["contract"]["enum"] = [contract]
         original = schema["properties"]["decisions"]["items"]["properties"]
@@ -887,13 +894,25 @@ ACTIVITY SOURCE READING: An active activity source proves that its lifecycle is 
 """ + _SYSTEM_CONTRACT_V3.replace("Version 3", "Version 4").replace("TRANSPORT V3", "TRANSPORT V4")
 
 
+# Version 4 is a historical receipt compiler. New semantic instructions must
+# have a new request/tool identity so old preparations remain reproducible.
+_SYSTEM_CONTRACT_V5 = """IMMEDIATE EXPERIENCE AND SELF-HISTORY V5:
+Read what the complete utterance asserts, including presupposed causes and transitions. First-person wording and recent timing do not make an event private_state. A report of having slept, woken, left, arrived, eaten, checked something or met someone asserts an episode or transition even when casual, bodily, or only moments old. Classify it as external_proposition (mixed if combined with private state); require eligible pinned evidence for the same actor, time and event status. Without it the whole Beat is unclosed. This is an entailment distinction, not a word or tense blacklist.
+A present sensation, feeling, preference or self-assessment alone can be source_free/private_state. For example, "还有点困" or "脑子有点懵" alone reports current experience; "早 才醒没多久" additionally asserts a recent waking episode and needs evidence. "刚醒，脑子有点懵" still needs evidence for waking. A habitual sleep schedule, day sheet, routine, persona, current clock time, or newly authored private appraisal cannot independently prove that this episode occurred today. Absence of evidence does not prove that it did not occur.
+Keep the companion's present conversational agency: "刚才我听偏了" may acknowledge her interpretation in the ongoing conversation as private_state, without claiming an offscreen event. "我去查过了才发现听偏了" additionally claims a completed check and needs its source. A pure intention such as "等会儿想睡一会儿" remains source_free/commitment. An eligible record of the exact episode can close self-history; do not reject it merely for being personal. Use the full pinned context and preserve every source's authority limits.
+
+""" + _SYSTEM_CONTRACT_V4.replace("EVIDENCE CARDS V4", "EVIDENCE CARDS V5").replace(
+    "Version 4", "Version 5"
+).replace("TRANSPORT V4", "TRANSPORT V5")
+
+
 def visible_source_closure_messages(
     *,
     visible_beats: tuple[str, ...],
     world_claims: tuple[dict[str, object], ...],
     source_references: tuple[dict[str, object], ...],
     invalid_reason: VisibleSourceClosureWireFailure | None = None,
-    version: Literal["1", "2", "3", "4"] = "1",
+    version: Literal["1", "2", "3", "4", "5"] = "1",
 ) -> list[dict[str, str]]:
     """Compile one compact request; correction never echoes invalid bytes."""
 
@@ -908,7 +927,7 @@ def visible_source_closure_messages(
         "visible_beats": tuple(
             (
                 {"beat_index": index, "text": text, "text_length": len(text)}
-                if version in {"3", "4"}
+                if version in {"3", "4", "5"}
                 else {"beat_index": index, "text": text}
             )
             for index, text in enumerate(visible_beats)
@@ -974,7 +993,7 @@ def visible_source_closure_messages(
                     "past experience, embedded backstory, completion or objective outcome."
                 ),
             }
-    if version == "4":
+    if version in {"4", "5"}:
         from .visible_source_evidence_cards import compile_visible_evidence_cards
 
         references, materials = _packet_materials(source_references)
@@ -984,7 +1003,8 @@ def visible_source_closure_messages(
         {
             "role": "system",
             "content": (
-                _SYSTEM_CONTRACT_V4 if version == "4"
+                _SYSTEM_CONTRACT_V5 if version == "5"
+                else _SYSTEM_CONTRACT_V4 if version == "4"
                 else _SYSTEM_CONTRACT_V3 if version == "3"
                 else _SYSTEM_CONTRACT + (_DIAGNOSTICS_SYSTEM_CONTRACT if version == "2" else "")
             ),
@@ -1064,7 +1084,7 @@ def visible_source_closure_messages(
                 ),
             }
         )
-    if version in {"3", "4"} and invalid_reason is not None:
+    if version in {"3", "4", "5"} and invalid_reason is not None:
         repair = json.loads(messages[-1]["content"])
         matrix = repair["structural_constraints"]["verdict_role_ref_matrix"]
         for verdict, constraints in matrix.items():
@@ -1357,13 +1377,17 @@ def _unique_verdict_members(pairs: list[tuple[str, object]]) -> dict[str, object
     return value
 
 
-def _normalize_verdict_v3_transport(raw: str, *, version: Literal["3", "4"] = "3") -> str:
+def _normalize_verdict_v3_transport(raw: str, *, version: Literal["3", "4", "5"] = "3") -> str:
     """Merge explicit fields only; the unchanged v2 chain decides all authority."""
     try:
         if not isinstance(raw, str) or len(raw.encode("utf-8")) > MAX_VISIBLE_SOURCE_VERDICT_V2_BYTES:
             raise ValueError("verdict branch transport is not bounded JSON")
         json.loads(raw, object_pairs_hook=_unique_verdict_members)
-        model = _ProviderVisibleBeatVerdictWireV3 if version == "3" else _ProviderVisibleBeatVerdictWireV4
+        model = {
+            "3": _ProviderVisibleBeatVerdictWireV3,
+            "4": _ProviderVisibleBeatVerdictWireV4,
+            "5": _ProviderVisibleBeatVerdictWireV5,
+        }[version]
         wire = model.model_validate_json(raw)
     except (ValueError, TypeError, RecursionError):
         raise VisibleSourceClosureWireFailure(
@@ -1390,7 +1414,7 @@ def _normalize_verdict_v3_transport(raw: str, *, version: Literal["3", "4"] = "3
 def parse_visible_source_verdict(
     raw: str,
     *,
-    version: Literal["1", "2", "3", "4"] = "1",
+    version: Literal["1", "2", "3", "4", "5"] = "1",
     visible_beats: tuple[str, ...],
     source_ref_kinds: tuple[str | None, ...],
     source_ref_subject_roles: tuple[str | None, ...] = (),
@@ -1399,7 +1423,7 @@ def parse_visible_source_verdict(
     """Keep original whole-Beat closure authoritative; diagnostics only explain rejection."""
 
     _versioned_contract(version)
-    if version in {"3", "4"}:
+    if version in {"3", "4", "5"}:
         return parse_visible_source_verdict(
             _normalize_verdict_v3_transport(raw, version=version), version="2",
             visible_beats=visible_beats, source_ref_kinds=source_ref_kinds,
@@ -1460,7 +1484,7 @@ def parse_visible_source_verdict(
     )
 
 
-def visible_source_verdict_schema_digest(*, version: Literal["1", "2", "3", "4"] = "1") -> str:
+def visible_source_verdict_schema_digest(*, version: Literal["1", "2", "3", "4", "5"] = "1") -> str:
     encoded = json.dumps(
         visible_source_closure_schema(version=version),
         ensure_ascii=False,
@@ -1471,7 +1495,7 @@ def visible_source_verdict_schema_digest(*, version: Literal["1", "2", "3", "4"]
 
 
 def visible_source_verdict_provider_request_contract(
-    *, version: Literal["1", "2", "3", "4"] = "1",
+    *, version: Literal["1", "2", "3", "4", "5"] = "1",
 ) -> dict[str, object]:
     """Compile the one canonical strict-tool request contract for this protocol."""
 
@@ -1503,6 +1527,7 @@ __all__ = [
     "VISIBLE_SOURCE_VERDICT_V2_CONTRACT",
     "VISIBLE_SOURCE_VERDICT_V3_CONTRACT",
     "VISIBLE_SOURCE_VERDICT_V4_CONTRACT",
+    "VISIBLE_SOURCE_VERDICT_V5_CONTRACT",
     "MAX_VISIBLE_SOURCE_PROBLEM_CHARS",
     "MAX_VISIBLE_SOURCE_PROBLEM_JSON_CHARS",
     "MAX_VISIBLE_SOURCE_VERDICT_V2_BYTES",

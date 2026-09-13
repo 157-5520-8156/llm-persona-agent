@@ -732,6 +732,17 @@ _Avoid_: Unlogged model answer, replay-time inference
 
 ## Source Review Qualification
 
+Visible Beat reviewer version 5 explicitly distinguishes an immediate sensation
+or conversational self-assessment from a recently completed personal episode.
+This remains a model entailment judgment against the pinned source table, not a
+local word/tense filter. A routine or a newly authored appraisal cannot establish
+that a bodily transition occurred. Eligible same-actor activity evidence retains
+its exact time/status authority; pure feelings and intentions remain available.
+Version 5 is opt-in, with separate tool, schema, preparation and receipt identity.
+Versions 1–4 retain their historical compiler bytes for cold receipt verification.
+Offline wiring and replay checks do not establish reviewer semantic quality or
+authorize a release; real-provider qualification is recorded separately.
+
 Evidence that one installed review lane, exact request/schema contract and
 provider route performed its bounded responsibility. Configuration, successful
 transport, valid JSON and local reference checks are distinct from semantic
