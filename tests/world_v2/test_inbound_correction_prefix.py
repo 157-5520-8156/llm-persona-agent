@@ -244,7 +244,7 @@ async def _compiler_bytes():
     return rows
 
 
-def test_initial_and_legacy_compiler_bytes_match_c48d23d7():
+def test_legacy_compiler_bytes_stay_frozen_and_v3_reminder_has_new_identity():
     # Captured from c48d23d7 with the same synthetic compiler input. Legacy
     # tools have set-derived list order, so compare under the original seed.
     expected = {
@@ -256,7 +256,6 @@ def test_initial_and_legacy_compiler_bytes_match_c48d23d7():
         "1:True:True:True": "1f1cb26f47f317917abf41a5e1b014cf823d80cbc3e0277831edc1f8750196ba",
         "2:False:True:False": "afe2fb6bae3e9ae3cd2b12ce54d26bac84c7ac3e797e9469f66fbbd0957a4ad7",
         "2:False:True:True": "f1ae2dbad43c312177f523c55b4f2851cf3f25a43f1fed0d9cc96d2fcf8bfc2f",
-        "3:False:True:False": "034ccdc3d01ee7c31892c0a66dd767011e38a6c11248c3be51f1d441295f5f65",
     }
     root = Path(__file__).resolve().parents[2]
     result = subprocess.run(
@@ -267,4 +266,7 @@ def test_initial_and_legacy_compiler_bytes_match_c48d23d7():
     )
     current = json.loads(result.stdout)
     assert {key: current[key] for key in expected} == expected
+    # The intentional whole-v3 status reminder changes its initial request;
+    # old author requests are stored/verifiable, not rebuilt by this compiler.
+    assert current["3:False:True:False"] == "1b310441a37d66265a4127949f7de63c71759aff076e092763755e657543861b"
     assert current["3:False:True:True"] != "1b442d1c35e6b454f587b332676fe8efcfa04c7453ce3f6ad72e562089bfc61e"

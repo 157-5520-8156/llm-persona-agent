@@ -1,0 +1,90 @@
+{
+  "contract": "source-semantic-qualification-reconciliation.1",
+  "trial_id": "release-source-v5-semantics-20260913-01",
+  "generated_at_utc": "2026-09-13T08:05:11.143547+00:00",
+  "code_head": "cde92349d5d827454d78e7ce928e88c673e14c44",
+  "status": "three_fixed_requests_matched_and_cost_reconciled",
+  "request_count": 3,
+  "beat_count": 16,
+  "known_calls": 3,
+  "unknown_calls": 0,
+  "pending_reservations": 0,
+  "known_repository_price_estimate_cny": "0.0521958",
+  "stored_rounded_cny": "0.0522",
+  "whole_allocation_retained_cny": "0.8",
+  "combined_inheritance": {
+    "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-canary-03.json",
+    "parent_snapshot_sha256": "a1122cf0074496d11fb8d9e29207f021742c854edd8a06a25d7fba537ae12d39",
+    "known_repository_price_estimate_cny": "42.57270589999999986347",
+    "conservative_committed_cny": "71.38385329999999992007",
+    "observed_estimate_plus_unresolved_hold_cny": "66.19088089999999991147",
+    "all_parent_unknown_and_whole_allocations_retained": true,
+    "additional_authorized_budget_cny": null
+  },
+  "checks": [
+    {
+      "case_id": "recorded-canary03",
+      "beats": 2,
+      "matched": true,
+      "capture_id": "model-input:e27f2f6f54f94515a890d7cff3a3cf3b",
+      "actual_request_sha256": "642912f1dea979625ca4c86364e5640585e1e8b7f8dbef8a59bcc3da17ff52aa",
+      "body_sha256": "1b4de653ee81794fdde8860edb07a08ddc5e778bb58d44182a2906816cbf65f1",
+      "usage_id": 1,
+      "reservation_id": "reservation:928f4b99c88c4c4f99ac5ce7587be1b7",
+      "selected_source_checks": [],
+      "observed_model": "deepseek-flash",
+      "latency_ms": 1573,
+      "known_repository_price_estimate_cny": "0.019491"
+    },
+    {
+      "case_id": "sensations-and-episodes",
+      "beats": 10,
+      "matched": true,
+      "capture_id": "model-input:f340d86bdf48499f8bf32ce81a28d22d",
+      "actual_request_sha256": "a4b1423216e6c58a98fa7bfe6f19cad2a57794716994e66c784475a9f82d3ed0",
+      "body_sha256": "39b12cd046770ab8447bfe012d43e0f57c81b0667fed2dfae79fb015455f7cd5",
+      "usage_id": 2,
+      "reservation_id": "reservation:3b8d5b1d52cf4b88a363272da76f20bc",
+      "selected_source_checks": [],
+      "observed_model": "deepseek-flash",
+      "latency_ms": 3276,
+      "known_repository_price_estimate_cny": "0.01815"
+    },
+    {
+      "case_id": "accepted-activity-authority",
+      "beats": 4,
+      "matched": true,
+      "capture_id": "model-input:a1157674b7664ee78e88d68b1e854b33",
+      "actual_request_sha256": "431df02293da4675ead1e6fae6f4ee4b3e39c85dd3da79b8bb3d49b16e8790af",
+      "body_sha256": "85d68318d176012f76f1999d209520032d891cf6923548a3edafa49206c6610b",
+      "usage_id": 3,
+      "reservation_id": "reservation:27f23b00f6614eed85b674c8550f1fc7",
+      "selected_source_checks": [
+        {
+          "beat_index": 0,
+          "source_ref_index": 7,
+          "source_event_type": "ActivityStarted"
+        },
+        {
+          "beat_index": 1,
+          "source_ref_index": 7,
+          "source_event_type": "ActivityStarted"
+        }
+      ],
+      "observed_model": "deepseek-flash",
+      "latency_ms": 2092,
+      "known_repository_price_estimate_cny": "0.0145548"
+    }
+  ],
+  "credential_matches_in_owned_files_at_close": 0,
+  "limitations": [
+    "Only one observation per predeclared request, with several prompt examples and two sensation/action examples absent from the prompt; no statistical semantic accuracy estimate.",
+    "Original canary candidate and source table retained; new review only, no author correction or World acceptance/delivery.",
+    "Positive activity source produced by public acceptance using synthetic model choices; not a new real-model life journey.",
+    "Observed single-call latency is not complete-turn latency qualification.",
+    "CNY repriced using stored repository schedule, not current supplier invoice or production monthly cost.",
+    "No provider, credentials, old runners or production database accessed by this reconciliation."
+  ],
+  "audit_path": "output/private-audits/release-source-v5-semantics-20260913-01/reconciliation.json",
+  "audit_sha256": "6ce81bef8ec65347e0ff909ce66ffaf75141202927baf9bde5acb43554c2b155"
+}
