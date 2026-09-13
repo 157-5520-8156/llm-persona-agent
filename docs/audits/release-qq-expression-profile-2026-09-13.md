@@ -18,3 +18,8 @@ WORLD_V2_INTERACTIVE_HEDGE_ENABLED=false
 验证入口：`tests/world_v2/test_qq_visible_release_profile.py`。测试构造真实 OneBot 应用组合，禁止所有 HTTP，检查配置传递、默认路径、计费观察器、独立客户端及关闭；不能据此宣称已向 QQ 用户交付。
 
 实际供应商表达证据：`release-life-followup-validation-2026-09-13.json`。该试验使用相同 author/review 版本和捕获交付。下一步部署验收仍须检查实际账号、收件人、入站、授权、发送及终态回执，不能用健康接口代替。
+
+
+## v7 证据前缀选项（尚未真实验收）
+
+`WORLD_V2_VISIBLE_EXPRESSION_PROFILE=whole_v3_review_v7` 选择相同的 v3 角色工具与 v7 全量来源审核。v7只将证据放在变化的表达之前，为同轮改写提供稳定前缀；协议独立编号，旧 v6 配置与历史回执仍有效。审核者继续使用同一预算观察器，拥有独立关闭生命周期。该选项没有自动启用，真实延迟、语义审核效果及QQ交付尚未验收。

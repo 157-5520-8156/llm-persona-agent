@@ -1,0 +1,49 @@
+{
+  "contract": "release-evidence-prefix-validation.1",
+  "base_code": "6da134d7",
+  "change": "Explicit review protocol v7 moves all candidate-specific fields after the complete source evidence; v1-v6 compiler output unchanged. No source selection, verdict, deadline, or deployment default change.",
+  "validation": {
+    "focused_result": "230 passed in 46.16s",
+    "log": "/tmp/girl-release-prefix-tests-final.log",
+    "scope": [
+      "all 6 legacy preparation golden hashes",
+      "v7 full packet/schema equivalence except contract identity and key order",
+      "required source references and actor boundary",
+      "rejection and whole-candidate correction",
+      "malformed review refuses authorization",
+      "cold receipt replay and no duplicate model calls",
+      "inbound/proactive and CLI version routing",
+      "OneBot profile lifecycle, budget observer and nonatomic mode refusal"
+    ],
+    "provider": "HTTP fixtures only; no paid model or QQ call"
+  },
+  "base_full_regression": {
+    "result": "8148 passed, 19 skipped, 1 warning in 1298.71s",
+    "code": "6da134d7",
+    "applies_to_v7_change": false
+  },
+  "historical_real_evidence": "continuation04 inherited 6 v6 expression receipts cold-verified with replay hash equality after the v7 implementation; original trial artifacts hash-verified unchanged.",
+  "captured_request_order_evidence": "release-evening-return-validation-2026-09-13.json",
+  "limits": [
+    "No real v7 provider call; cache hit rate, latency and billing improvement are unqualified.",
+    "Latest real return chat still failed under v6. Full real-delivery, source semantic accuracy and claimed process recovery gates remain open.",
+    "No deployment, production database write, or real QQ delivery."
+  ],
+  "changed_code_and_tests_sha256": {
+    "scripts/run_world_v2_longitudinal_audit.py": "e891654c12d01de6d79447b22fb92b9242d64609beabc0dd9ee9a380a9ecaa4b",
+    "src/companion_daemon/config.py": "ae6ca2fae4fd9905cc433adb618e46396355731837332df3cba2c49635826c85",
+    "src/companion_daemon/world_v2/character_interior/inbound_author.py": "88688052bf28b1a5e2040c644551c71adaff27887d625dd675d44a8b8a36ce0f",
+    "src/companion_daemon/world_v2/character_interior/proactive_visible_review.py": "096e93aae8145595aa497abb53d72b42a48d9ca63d6342b910d62f91267b4bc9",
+    "src/companion_daemon/world_v2/qq_c2c_host.py": "ea769f57ed46c3af01e90888454f3bf7c6675ab00230b0328da9da03a76ee1a4",
+    "src/companion_daemon/world_v2/semantic_chat_composition.py": "6fdb53f93200fad9514f21e2a85bcaaca5f9c089709c6ba0d7535fc277784cf8",
+    "src/companion_daemon/world_v2/visible_source_closure_protocol.py": "8de4d2b25381e68a12b00f1f1b8903d3e82f0d769d454bcb133628b7e7631925",
+    "src/companion_daemon/world_v2/visible_source_review_receipt.py": "5b27c1f4111c1897aab8eeb941a8ca8d45e29f9a4561d06775cdadda141f653d",
+    "src/companion_daemon/world_v2/visible_source_runtime.py": "e502c3c320f73b2a7ab94fe12e87433b17af36a04d38980d7d4fe3909d96969e",
+    "tests/world_v2/test_qq_visible_release_profile.py": "e03faae8d2d7d3d9d9f1336cfe8e72796b4000dc5800b7cbb46f61c8b15e30cc",
+    "tests/world_v2/test_visible_source_diagnostics_runtime.py": "b4b8db39b3961f3c4d7f2a29cd1bcc08c078a8de1d5a74db8d35ab5afa5d65ea",
+    "tests/world_v2/test_visible_source_required_reference_receipt.py": "bcd20888b87e89d085825692cbd75bae9a151bdf798f07d3e4c140fef97653f2",
+    "tests/world_v2/test_visible_source_required_reference_runtime.py": "f5750effd8d812476724a8ce42b83d84daf6986b2ccd1c3f5cb2a9bdb3990f00",
+    "tests/world_v2/test_visible_source_review_version_wiring.py": "911cfd56772c9c2c9af4715a6e88d08aa303d6c1543ce9b02e92a859a2930ce2",
+    "tests/world_v2/test_visible_source_evidence_prefix.py": "48a981fc2a6ab475ac285a03b10e5fadf9170ebe8c628ec7aa5db3314f30962a"
+  }
+}

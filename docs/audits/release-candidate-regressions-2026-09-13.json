@@ -18,5 +18,11 @@
     "network": "fixture-only; no paid model or QQ call"
   },
   "historical_receipts_after_prompt_reordering": "continuation03: all 6 stored expression receipts cold-verified; semantic replay matches; original requests not recompiled or rewritten",
-  "required_final_full_gate": "pending frozen candidate run; diagnostic counts do not qualify release"
+  "required_final_full_gate": {
+    "status": "passed_before_v7_evidence_order_change",
+    "code": "6da134d7",
+    "result": "8148 passed, 19 skipped, 1 warning in 1298.71s",
+    "log": "/tmp/girl-release-final-full-20260913.log",
+    "limit": "Offline regression only; does not override continuation04 real-provider return-chat failure. v7 changes use a separate focused gate."
+  }
 }

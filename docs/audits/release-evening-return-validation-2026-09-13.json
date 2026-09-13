@@ -1,0 +1,67 @@
+{
+  "contract": "release-evening-return-validation.1",
+  "real_trial_code": {
+    "head": "6da134d7d4461003bb24271c777fbb73736523ce",
+    "tracked_dirty": false
+  },
+  "completed": false,
+  "stop_reason": "unprocessed_due_before_end",
+  "scope": "Read-only restored private world, real providers, full v6 review, 12-second ordinary deadline, no real QQ or production database writes.",
+  "absence": {
+    "virtual_duration": "almost seven hours",
+    "proactive_deliveries": 0,
+    "model_failures": 0,
+    "limit": "One absence sample; not weekly behavior qualification."
+  },
+  "return_chat": {
+    "input_count": 1,
+    "attempts": 2,
+    "character_deliveries": 0,
+    "failure": "primary_timeout twice after rejection and role correction; final reviews cancelled after 150 and 307 ms",
+    "system_notices": 1,
+    "system_notice_is_character_silence": false,
+    "pending_claimed_processes": [
+      "expression_episode",
+      "interaction_appraisal"
+    ],
+    "known_semantic_gap": "Initial drafts included unsupported offscreen activity; reviewer also rejected a question/private self-assessment. The offline request-order fix does not qualify those semantic judgments."
+  },
+  "timing_limit": "Full offline regression ran concurrently; this is failure evidence, not a clean latency benchmark.",
+  "new_provider_calls": 22,
+  "new_known_calls": 20,
+  "new_unknown_calls": 2,
+  "known_repository_price_estimate_cny": "0.6208098999999999921",
+  "new_unknown_hold_cny": "0.656574",
+  "captured_tokens_match_known_usage": true,
+  "artifact_hashes_verified": true,
+  "historical_expression_receipts_cold_verified": 6,
+  "receipt_hashes": [
+    "4121546435e60bfd2ff6b0b0228a40a3027f48c3cab16b6a984aae49e089ba96",
+    "5e4b44b2e6471a9fa528c23bc66da773148d915a75c1374b8ac46386fe77fd14",
+    "501405e5323d8a6b4f4ae3977154e8fb013467df347494e1685b48502ba5f348",
+    "e83811ca2dd4f4f1ac92aed37210e9aeffd91f7ac7e285511a4338839c6c5fe4",
+    "4bac102eaf6bc49d5262177e65c4dbd39a2dedc38b7738687ec770a50573d63d",
+    "90c019cbdece4cb27bebb3654aa8f9ec6b2cf992b5efb229f49031180e8222b1"
+  ],
+  "replay_hash_matches": true,
+  "offline_evidence_prefix_comparison": [
+    {
+      "old_shared_user_packet_bytes": 170,
+      "new_shared_user_packet_bytes": 77359,
+      "total_first_user_packet_bytes": 77608,
+      "all_source_values_and_indexes_preserved": true
+    },
+    {
+      "old_shared_user_packet_bytes": 164,
+      "new_shared_user_packet_bytes": 80681,
+      "total_first_user_packet_bytes": 81047,
+      "all_source_values_and_indexes_preserved": true
+    }
+  ],
+  "limits": [
+    "Reordering retains the full review. It does not prove cache billing hits or actual latency improvement.",
+    "No new paid trial. Return-chat reliability, source semantics and pending process recovery remain unqualified.",
+    "Prior continuation03 completed=true remains historical; it does not override this failed longer sample."
+  ],
+  "cost_report": "docs/audits/release-cost-inheritance-2026-09-13-continuation-04.json"
+}

@@ -809,7 +809,7 @@ def build_semantic_chat_composition(
 
     if not model_id_prefix:
         raise ValueError("semantic chat composition requires a model id prefix")
-    if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6"}:
+    if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7"}:
         raise ValueError("unsupported visible source review version")
     if visible_source_review_version != "1" and visible_source_review_required is not True:
         raise ValueError("versioned source reviewer requires explicit visible source review")
@@ -963,7 +963,7 @@ def build_semantic_chat_composition(
     del _unused
     if (
         visible_source_review_required
-        and settings.world_v2_visible_expression_profile == "whole_v3_review_v6"
+        and settings.world_v2_visible_expression_profile in {"whole_v3_review_v6", "whole_v3_review_v7"}
         and auto_flash
         and source_closure_model is None
     ):

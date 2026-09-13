@@ -18,7 +18,7 @@ def settings(tmp_path, **overrides):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("profile", [None, "whole_v3_review_v6"])
+@pytest.mark.parametrize("profile", [None, "whole_v3_review_v6", "whole_v3_review_v7"])
 async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_path, monkeypatch, profile):
     async def forbidden(*args, **kwargs):
         pytest.fail("composition check must not send HTTP")
@@ -36,7 +36,7 @@ async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_p
     try:
         assert captured["visible_source_review_required"] is bool(profile)
         assert captured["visible_author_tool_version"] == ("3" if profile else "1")
-        assert captured["visible_source_review_version"] == ("6" if profile else "1")
+        assert captured["visible_source_review_version"] == (profile[-1] if profile else "1")
         assert captured["usage_observer"] is not None
         reviewer = semantic.source_closure_model
         if profile:
@@ -51,10 +51,11 @@ async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_p
     assert semantic._models_closed
 
 
+@pytest.mark.parametrize("profile", ["whole_v3_review_v6", "whole_v3_review_v7"])
 @pytest.mark.parametrize("mode", ["shadow", "stream"])
-def test_release_profile_refuses_nonatomic_expression_before_database_creation(tmp_path, mode):
+def test_release_profile_refuses_nonatomic_expression_before_database_creation(tmp_path, mode, profile):
     with pytest.raises(ValueError, match="atomic expression"):
         create_qq_c2c_onebot_app(adapter="napcat", settings=settings(
-            tmp_path, WORLD_V2_VISIBLE_EXPRESSION_PROFILE="whole_v3_review_v6",
+            tmp_path, WORLD_V2_VISIBLE_EXPRESSION_PROFILE=profile,
             WORLD_V2_EXPRESSION_EPISODE_MODE=mode))
     assert not (tmp_path / "world.sqlite").exists()

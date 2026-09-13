@@ -27,7 +27,7 @@ def _settings(tmp_path, **updates):
     )
 
 
-@pytest.mark.parametrize("version", ["0", "7", "", 1, 2, 3, 4, 5, True, None, [], {}])
+@pytest.mark.parametrize("version", ["0", "8", "", 1, 2, 3, 4, 5, True, None, [], {}])
 @pytest.mark.parametrize("entry", ["host", "composition", "author", "proactive"])
 def test_unknown_review_versions_fail_at_each_entry(tmp_path, version, entry):
     with pytest.raises(ValueError, match="unsupported visible source review version"):
@@ -58,7 +58,7 @@ def test_unknown_review_versions_fail_at_each_entry(tmp_path, version, entry):
 
 
 @pytest.mark.parametrize("entry", ["host", "composition", "author"])
-@pytest.mark.parametrize("review_version", ["2", "3", "4", "5", "6"])
+@pytest.mark.parametrize("review_version", ["2", "3", "4", "5", "6", "7"])
 def test_versioned_reviewer_cannot_enable_review_implicitly(tmp_path, entry, review_version):
     with pytest.raises(ValueError, match="explicit visible source review|whole-candidate"):
         if entry == "host":
@@ -79,7 +79,7 @@ def test_versioned_reviewer_cannot_enable_review_implicitly(tmp_path, entry, rev
 
 
 @pytest.mark.parametrize("flag", [1, "yes"])
-@pytest.mark.parametrize("review_version", ["2", "3", "4", "5", "6"])
+@pytest.mark.parametrize("review_version", ["2", "3", "4", "5", "6", "7"])
 def test_direct_composition_versioned_review_requires_true_boolean_before_model_setup(
     tmp_path, flag, review_version
 ):
@@ -92,7 +92,7 @@ def test_direct_composition_versioned_review_requires_true_boolean_before_model_
 
 
 @pytest.mark.parametrize("entry", ["author", "proactive"])
-@pytest.mark.parametrize("review_version", ["2", "3", "4", "5", "6"])
+@pytest.mark.parametrize("review_version", ["2", "3", "4", "5", "6", "7"])
 def test_versioned_reviewer_requires_metered_reviewer_even_with_v1_author(entry, review_version):
     with pytest.raises(ValueError, match="metered source reviewer"):
         if entry == "author":
@@ -112,7 +112,7 @@ def test_versioned_reviewer_requires_metered_reviewer_even_with_v1_author(entry,
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["1", "2", "3", "4", "5", "6"])
+@pytest.mark.parametrize("review_version", ["1", "2", "3", "4", "5", "6", "7"])
 async def test_public_host_forwards_review_version_to_inbound_and_proactive(
     tmp_path, monkeypatch, review_version
 ):
@@ -146,7 +146,7 @@ async def test_public_host_forwards_review_version_to_inbound_and_proactive(
 
 
 @pytest.mark.parametrize("author_version", ["1", "2", "3"])
-@pytest.mark.parametrize("review_version", ["1", "2", "3", "4", "5", "6"])
+@pytest.mark.parametrize("review_version", ["1", "2", "3", "4", "5", "6", "7"])
 def test_review_version_is_independent_of_author_tool_version(
     tmp_path, monkeypatch, author_version, review_version
 ):
@@ -173,7 +173,7 @@ def test_review_version_is_independent_of_author_tool_version(
 
 
 @pytest.mark.parametrize("change", ["stream", "shadow", "no_reviewer", "second_reviewer"])
-@pytest.mark.parametrize("review_version", ["2", "3", "4", "5", "6"])
+@pytest.mark.parametrize("review_version", ["2", "3", "4", "5", "6", "7"])
 def test_versioned_reviewer_keeps_existing_host_deployment_checks(tmp_path, change, review_version):
     settings = _settings(tmp_path)
     reviewer = _MeteredFixture()
@@ -210,7 +210,8 @@ def test_cli_requires_explicit_review_and_retains_default_v1(tmp_path):
         ["--visible-source-review-version", "5"],
         ["--model-mode", "real-provider", "--allow-real-provider", "--visible-source-review-version", "5"],
         ["--visible-source-review-version", "6"],
-        ["--model-mode", "real-provider", "--allow-real-provider", "--require-visible-source-review", "--visible-source-review-version", "7"],
+        ["--visible-source-review-version", "7"],
+        ["--model-mode", "real-provider", "--allow-real-provider", "--require-visible-source-review", "--visible-source-review-version", "8"],
     ):
         with pytest.raises(SystemExit) as exc:
             cli.parse_options(["--output", str(output), *options])
@@ -219,7 +220,7 @@ def test_cli_requires_explicit_review_and_retains_default_v1(tmp_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["1", "2", "3", "4", "5", "6"])
+@pytest.mark.parametrize("review_version", ["1", "2", "3", "4", "5", "6", "7"])
 async def test_cli_passes_selected_review_version_and_only_records_nondefault(
     tmp_path, monkeypatch, review_version
 ):
@@ -272,7 +273,7 @@ async def test_cli_passes_selected_review_version_and_only_records_nondefault(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["1", "4", "5", "6"])
+@pytest.mark.parametrize("review_version", ["1", "4", "5", "6", "7"])
 async def test_actual_cli_manifest_preserves_explicit_reviewer_identity_without_provider_calls(
     tmp_path, monkeypatch, review_version,
 ):
