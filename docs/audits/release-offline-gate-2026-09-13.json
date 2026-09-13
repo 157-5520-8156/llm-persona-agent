@@ -1,0 +1,66 @@
+{
+  "contract": "release-offline-gate.1",
+  "observed_at_utc": "2026-09-13T04:34:44.831057+00:00",
+  "tested_code": {
+    "head": "067a3fdf800731516fb82dd06ed45a41911c55b9",
+    "tree": "1f751aafc33d1cd291a3d42057a8771bdad6aa48",
+    "tracked_dirty_before": false,
+    "tracked_dirty_after": false
+  },
+  "full_gate": {
+    "status": "passed_with_existing_skips",
+    "command": "COMPANION_DISABLE_DEBUG_USAGE_LEDGER=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests/support:tests/world_v2 /Users/geoff/Projects/Girl-Agent/.venv/bin/python scripts/test_fast.py --tier full -- -p no:cacheprovider --tb=short",
+    "exit_code": 0,
+    "passed": 7876,
+    "failed": 0,
+    "skipped": 19,
+    "warnings": 1,
+    "duration_seconds": 1069.57,
+    "terminal_session_id": 6278,
+    "log": "output/private-audits/release-offline-gate-20260913/full-067a3fdf.log",
+    "log_sha256": "f2e840bfb12ec73e90ebec4057f2f52b339916b7fc8ad981ec8378a898d3ad8e",
+    "warning": "StarletteDeprecationWarning: httpx with starlette.testclient is deprecated",
+    "skip_scope": "Existing retired v9 narrow-verdict tests; not counted as passed or fully equivalent coverage."
+  },
+  "staged_fixture_preflight": {
+    "report": "output/private-audits/release-canary-staged-preflight-20260913/preflight-report.json",
+    "report_sha256": "023c03fed9b407894bea23e3c01a39d3163b76f4ab93448fcf9a0e397a9ed3f5",
+    "manifest": "output/private-audits/release-canary-staged-preflight-20260913/fixture/manifest.json",
+    "manifest_sha256": "9322dff1eb0d2b2d1635afcfd70d2ebfd79b0755ad59e4847f00350259eb836a",
+    "scenario_sha256": "bc41eb4963afa406e5e70f13d32b0a47fb3d7a435e5e109ffb1a8f7d1e309461",
+    "completed": true,
+    "turns": 7,
+    "virtual_minutes": 240,
+    "restart_minute": 190,
+    "wall_seconds": 8.976783209014684,
+    "usage_records": 0,
+    "reservation_records": 0,
+    "replay_hash_matches": true,
+    "host_construction_delivery_delta": 0,
+    "duplicate_recovery_status": "unverified",
+    "human_likeness_status": "unassessed",
+    "scope": "Fixture tools only; not real-provider v3/v4 protocol qualification."
+  },
+  "real_trial": {
+    "admitted": false,
+    "executed": false,
+    "new_paid_calls": 0,
+    "required_test_credential_available": false,
+    "planned_single_shared_budget_cny": "2.0",
+    "plan": "docs/audits/release-canary-plan-2026-09-13.md"
+  },
+  "qualification": {
+    "release_ready": false,
+    "representative_real_dialogue": "not_executed_on_repaired_candidate",
+    "post_life_memory_use": "unverified",
+    "long_term_human_likeness": "unverified",
+    "full_monthly_cost": "unverified",
+    "real_qq_receipt": "unverified",
+    "invited_deployment": "not_performed"
+  },
+  "limitations": [
+    "Current full-gate pass does not erase earlier failure or cold-recovery instability records.",
+    "No production database, deployment or real QQ activity.",
+    "Complete real source semantics and character behavior remain to be observed."
+  ]
+}

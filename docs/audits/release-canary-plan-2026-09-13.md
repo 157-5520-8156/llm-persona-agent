@@ -1,7 +1,9 @@
 # 修复后真实对话试验：执行前计划
 
 状态：**prepared / not admitted / not executed**。这份计划不是已完成试验或发布资格。
-当前专用测试凭据不可用；最终候选还须包含主动 grounding 修复并通过对应离线门。
+当前专用测试凭据不可用；修复候选 `067a3fdf` 已通过完整离线门：7876 passed、19 个
+原有 skipped、1 warning，详见 [离线检查记录](release-offline-gate-2026-09-13.json)。
+执行时仍须绑定最终 clean HEAD，并确认与这份已测试产品代码之间的差异。
 不启动旧 Trial17/18 启动器，不改生产数据库、不发真实 QQ、不部署。
 
 ## 单批费用边界
@@ -12,8 +14,9 @@
 预算占用，不是供应商账户实付或月费预测。执行时记录基线文件 hash、最终 clean HEAD、
 唯一输出目录、实际配置与开始状态。未执行前不把这 2 元记成新增实付。
 
-本次 CLI 的月、日、soft-day 上限均为 2 元，背景上限也为 2 元，共用同一新 SQLite
-的逐请求预算。完整可见审查的 `source_review` purpose 也计入背景，不能把背景额
+`--max-cost-cny 2` 固定 CLI 的月、日、soft-day 上限；背景默认仍为 1.5 元，真实启动须
+另设 `WORLD_V2_BACKGROUND_DAILY_BUDGET_CNY=2`。两者共用同一新 SQLite 的逐请求
+预算。完整可见审查的 `source_review` purpose 也计入背景，不能把背景额
 解释成独立生活额度。HTTP 前按最终请求和输出上限预留；pending/unknown 保留占用。
 预算不足即保存部分结果，不提高额度、不重开目录续跑、不用本地话术补成功。
 
@@ -42,6 +45,46 @@
 --heartbeat-seconds 900 --max-steps 1000 --drain-passes 8 --background-units 4
 ```
 
+专用凭据单独注入，不写入场景、命令记录或日志。该次进程的非秘密配置显式固定为：
+
+```text
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_CHARACTER_THINKING_ENABLED=false
+WORLD_V2_SELECTIVE_SOURCE_REVIEW_ENABLED=true
+WORLD_V2_SELECTIVE_SOURCE_REVIEW_MODEL=deepseek-v4-flash
+WORLD_V2_LIFE_SOURCE_REVIEW_ENABLED=true
+WORLD_V2_LIFE_SELF_REVIEW_ALLOWED=true
+WORLD_V2_BACKGROUND_DAILY_BUDGET_CNY=2
+WORLD_V2_INTERACTIVE_TURN_BUDGET_SECONDS=12
+WORLD_V2_INTERACTIVE_HEDGE_AFTER_SECONDS=6.5
+WORLD_V2_INTERACTIVE_HEDGE_ENABLED=false
+COMPANION_DISABLE_DEBUG_USAGE_LEDGER=1
+```
+
+移除该次子进程的 `DSH_INTERACTIVE_TURN_BUDGET_SECONDS`，避免旧变量覆盖普通期限；
+不继承旧 reply/expressive/deep-appraisal/local-appraisal 配置或未使用的独立审核凭据、
+URL。完整可见 reviewer 由此 CLI 显式注入，使用同一所选模型与专用测试凭据。
+这些是尚未执行的配置要求，不表示已有新的模型调用或试验额度。
+
+## 运行中的费用观察
+
+交互 stdout 的 `operator_observation` 没有费用字段；`manifest.usage` 和
+`provider-usage.json` 在终局才导出。每个阶段检查点只读同一 `world.sqlite`，
+不能依靠最终文件或新建数据库来决定能否继续探索。
+
+已有 `read_provider_usage_evidence(Path(db))` 使用只读事务取得逐模型调用和预留记录。
+不要为查询而构造 `WorldV2UsageStore` 或调用 `usage_store_for_settings`，其初始化会
+建表和迁移。以纯函数 `price_usage_row(row).cny` 重计价，不能直接把四位舍入的
+`SUM(cost_cny)` 当精确实付。
+
+探索停点可使用“所见调用的重计价金额 + pending/billing_unknown 预留全额”的
+`conservative_guard_upper`。它可能重复包含 unknown 的部分金额，只作为提前停止
+探索的保守上界，不能当作正式 committed、余额或实付。未能计价、记录不全，或发现
+本 profile 之外的外部/图片/embedding 账务时停止新探索并保存缺口；不得默默漏算。
+现成 reader 只读取模型两张表，额外账务的范围核对须在同一个只读事务中完成。
+终局以正式 `manifest.usage`、完整逐调用与预留证据回写继承账本，保留 pending/unknown。
+
 ## 按证据调整顺序
 
 旧 r3-proactive / r3-proactive-2 分别花费 2.1002086 / 2.3570784 元，只有一条用户输入，
@@ -53,7 +96,7 @@
    Action 和捕获交付链成立。若出现技术失败，先保存准确失败输入与费用；不连续
    重试来寻找一次看起来成功的输出。
 2. 推进短生活窗口，在自然观察点核对实际结算、CharacterLifeResponse、Experience
-   和记忆处理。首次探索最多约 180 虚拟分钟；保守占用达到 1 元时停止继续探索，
+   和记忆处理。首次探索最多约 180 虚拟分钟；阶段费用上界达到 1 元时停止继续探索，
    这个控制点不保证余款够完成聊天。角色不回应或不保留记忆都允许，记录为对应证据。
 3. 一旦形成可核对的链，立即问“你今天后来怎么样”。下一句只引用她刚在聊天中
    实际披露的内容，询问感受或确认是已发生还是计划；不把隐藏世界草稿提供给她当
@@ -85,4 +128,17 @@
 replay hash 一致。输出位于本工作树
 `output/private-audits/release-canary-preflight-20260913/fixture/`。
 这验证了交互输入、推进、重建与导出的工具链；不验证 v3/v4 真实协议、费用、真人感或
-新分阶段场景。后者实际输入和重建点须在最终执行前固定并另做零费用预演。
+新分阶段场景。
+
+新分阶段场景 `release-life-chat-canary.2` 已在 `067a3fdf` 上完成零费用预演：7 条输入、
+240 虚拟分钟、minute 190 宿主重建，8.98 秒完成；前后 hash 相同、构造交付增量为零，
+replay hash 一致，零 usage/reservation。证据位于
+`output/private-audits/release-canary-staged-preflight-20260913/`，哈希已列入离线检查记录。
+其中两条开场输入后每 30 分钟观察，minute 180 接着聊天，184 更正用户安排，187 问未知
+信息，192 在重建后回忆安排，240 结束。真实交互一旦产生可核对的生活链就提前聊天；
+不能把 fixture 的整批 stdin 重定向给真实模型。固定 minute 190 若预算内未能到达，
+保留恢复缺项，不追加配额。这个短窗口也不验收长期无人回复后的行为。
+
+fixture CLI 不接受完整可见审核或作者 v3 / 审核 v4 参数，且使用默认背景上限 1.5 元；
+它不证明真实配置或语义质量。仍须人工核对真实输入、实际选择和计费，不能将
+manual_only / human_likeness unassessed 改成已验收。
