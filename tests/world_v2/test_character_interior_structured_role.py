@@ -4813,7 +4813,7 @@ async def test_proactive_contract_copy_keeps_private_state_out_of_payload() -> N
 
 
 @pytest.mark.asyncio
-async def test_proactive_contact_citeable_sources_cap_at_eight() -> None:
+async def test_proactive_contact_catalog_preserves_sources_beyond_eight_attention_slots() -> None:
     extra_refs = tuple(f"dialogue:observation:extra:{index}" for index in range(20))
     model = _RequiredToolQueueModel(json.dumps(_silent_proactive_role_object(), ensure_ascii=False))
     role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
@@ -4822,7 +4822,8 @@ async def test_proactive_contact_citeable_sources_cap_at_eight() -> None:
 
     user = json.loads(model.calls[0][0][1]["content"])
     items = user["citeable_sources"]["items"]
-    assert len(items) == 8
+    assert set(extra_refs).issubset({item["ref"] for item in items})
+    assert len(items) > 8
     assert "attended_source_refs 最多 8 条" in user["purpose_instruction"]
 
 
@@ -4860,7 +4861,9 @@ class _PinnedDialogueProjection(_Projection):
 
 async def _pinned_dialogue_request(
     extra_refs: tuple[str, ...],
+    capability_manifest: _InteriorCapabilityManifest | None = None,
 ) -> _InteriorRoleRequest:
+    manifest = capability_manifest or _proactive_manifest()
     opportunity = InteriorOpportunity(
         opportunity_ref="opportunity:71",
         inner_turn_ref="turn:71",
@@ -4871,7 +4874,7 @@ async def _pinned_dialogue_request(
         logical_time=_NOW,
         purpose="proactive_contact",
         source_refs=("source:private_self",),
-        capability_manifest=_proactive_manifest(),
+        capability_manifest=manifest,
         context_note="One source-bound opportunity became available.",
     )
     interior = CharacterInterior(
@@ -4887,7 +4890,7 @@ async def _pinned_dialogue_request(
         purpose="proactive_contact",
         context_note=opportunity.context_note,
         subject_source_refs=opportunity.source_refs,
-        capability_manifest=_proactive_manifest(),
+        capability_manifest=manifest,
         snapshot=snapshot,
     )
 
@@ -5006,3 +5009,50 @@ async def test_ambiguous_beat_index_fails_closed_with_precise_chinese_detail() -
     assert "不能猜" in raised.value.detail or "无法唯一" in raised.value.detail
     assert "s0" in raised.value.detail
     assert "不要手写拼接" in raised.value.detail
+
+
+@pytest.mark.asyncio
+async def test_proactive_role_can_select_late_fact_alias_with_exact_scope_permission():
+    extra_refs = tuple(f"dialogue:observation:extra:{index}" for index in range(20))
+    selected_ref = extra_refs[-1]
+    base = _proactive_manifest()
+    payload = json.loads(base.payload_json)
+    payload["world_claim_source_lanes"] = {
+        "contract": "proactive-world-claim-source-lanes.1",
+        "source_refs_by_scope": {
+            "counterpart_history": [selected_ref], "shared_history": [],
+            "current_world": [], "past_world": [], "stable_identity": [],
+        },
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    manifest = base.model_copy(update={
+        "payload_json": raw, "payload_hash": "sha256:" + hashlib.sha256(raw.encode()).hexdigest(),
+    })
+
+    class LateSourceRole(_RequiredToolQueueModel):
+        async def complete_json(self, messages, **kwargs):
+            packet = json.loads(messages[1]["content"])
+            catalog = packet["citeable_sources"]["items"]
+            selected = next(item for item in catalog if item["ref"] == selected_ref)
+            assert catalog.index(selected) >= 8
+            assert selected["world_claim_scopes"] == ["counterpart_history"]
+            private = next(item for item in catalog if item["ref"] == "source:private_self")
+            assert private["world_claim_scopes"] == []
+            value = _silent_proactive_role_object()
+            value["attended_source_refs"] = [selected["id"]]
+            value["decision"]["source_refs"] = [selected["id"]]
+            value["decision"]["payload"].update(
+                timing_choice="now", beats=[{"modality": "text", "text": "你说周五要分享。"}],
+                world_claims=[{"claim_text": "你说周五要分享。", "scope": "counterpart_history",
+                               "source_refs": [selected["id"]]}],
+            )
+            self.responses.append(json.dumps(value, ensure_ascii=False))
+            return await super().complete_json(messages, **kwargs)
+
+    model = LateSourceRole()
+    role = StructuredCharacterRoleFaculty(model=model, model_id="fixture")
+    request = await _pinned_dialogue_request(extra_refs, capability_manifest=manifest)
+    result = await role.consider(request)
+    assert len(model.calls) == 1
+    assert tuple(result["attended_source_refs"]) == (selected_ref,)
+    assert tuple(result["decision"]["payload"]["world_claims"][0]["source_refs"]) == (selected_ref,)

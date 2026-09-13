@@ -200,15 +200,37 @@ def _citeable_catalog_for_request(request: _InteriorRoleRequest) -> PinnedSource
     extra.extend(request.subject_source_refs)
     extra.append(request.trigger_ref)
     refs = _unique_refs_in_order(extra, request.snapshot.source_refs)
-    if request.purpose == "proactive_contact":
-        # The role wire caps attended_source_refs at eight.  Proactive turns
-        # still compile a wider snapshot for replay authority, but the model
-        # must not see more citeable ids than she is allowed to name.
-        refs = refs[:_MAX_CITEABLE_SOURCES_FOR_ATTENTION]
+    # The attention result has eight slots; that is not a limit on the
+    # evidence she may read or cite. Keep the complete pinned catalog and
+    # preserve its original prefix so existing source ids retain their meaning.
     return PinnedSourceCatalog.from_refs(
         refs,
         labels=citeable_source_labels(request.snapshot),
     )
+
+
+def _citeable_prompt_for_request(request: _InteriorRoleRequest) -> dict[str, object]:
+    view = _citeable_catalog_for_request(request).prompt_value()
+    manifest = request.capability_manifest
+    if request.purpose != "proactive_contact" or manifest is None:
+        return view
+    raw = manifest.payload.get("world_claim_source_lanes")
+    if raw is None:
+        return view
+    from ..expression_draft import ProactiveWorldClaimSourceLanes
+
+    lanes = ProactiveWorldClaimSourceLanes.model_validate_json(json.dumps(raw))
+    for item in view["items"]:
+        item["world_claim_scopes"] = [
+            scope for scope, refs in sorted(lanes.source_refs_by_scope.items())
+            if item["ref"] in refs
+        ]
+    view["instruction"] += (
+        " world_claim_scopes 仅说明该来源允许用于哪些事实范围，不代表它支持你准备说的内容。"
+        "空列表的来源可供理解和注意，但不能用来证明世界事实。"
+        "最多注意8条不等于只能阅读或引用目录前8条；请自行选取与本次判断相关的来源。"
+    )
+    return view
 
 
 def _rewrite_unique_source_refs(
@@ -1802,9 +1824,7 @@ class StructuredCharacterRoleFaculty:
             },
         }
         if request.purpose != "private_impression_reflection":
-            user_payload["citeable_sources"] = _citeable_catalog_for_request(
-                request
-            ).prompt_value()
+            user_payload["citeable_sources"] = _citeable_prompt_for_request(request)
         if request.purpose == "proactive_contact":
             user_payload["purpose_instruction"] = (
                 "对 proactive_contact：私人状态只写在外层 summary 和 attended_source_refs；"

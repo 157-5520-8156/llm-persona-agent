@@ -1,0 +1,115 @@
+{
+  "contract": "release-proactive-catalog-validation.1",
+  "finding": "Attention-result capacity was incorrectly applied to the entire citation catalog. All counterpart-history sources in five captured proactive prompts fell outside the eight shown aliases.",
+  "change": "Expose all originally pinned source aliases. Project exact world_claim_scopes from the existing capability; empty scopes grant no factual authority. Keep original alias order, eight attention-result slots and complete source review.",
+  "targeted_combined": {
+    "passed": 256,
+    "failed": 1,
+    "deselected": 11,
+    "seconds": 146.87,
+    "failure": "Cold replay test saw a legitimate due-clock/receipt transition between projection snapshots; isolated same test passed in4.17s with no product change. Not represented as a single clean run."
+  },
+  "final_proactive_faculty": {
+    "passed": 8,
+    "failed": 0,
+    "seconds": 1.4
+  },
+  "distinct_targeted_cases_satisfied_across_runs": 258,
+  "captured_catalog": {
+    "contract": "captured-proactive-catalog-check.1",
+    "source_path": "output/private-audits/release-real-canary-20260913-08/run/model-inputs.jsonl",
+    "source_sha256": "9aae7e1aa0e6f954ddd47ac6983e0a64a977164d7c1dd4b7f1657bc28f11f441",
+    "cases": [
+      {
+        "original_request_sha256": "f2d231717a5646b55b9e2492f8a6d90b52214a38178c38077140f35fe19b6b10",
+        "old_entries": 8,
+        "new_entries": 19,
+        "scope_counts": {
+          "counterpart_history": {
+            "old": 0,
+            "new": 3
+          },
+          "current_world": {
+            "old": 0,
+            "new": 1
+          },
+          "past_world": {
+            "old": 0,
+            "new": 0
+          },
+          "shared_history": {
+            "old": 1,
+            "new": 6
+          },
+          "stable_identity": {
+            "old": 0,
+            "new": 0
+          }
+        },
+        "original_alias_prefix_unchanged": true,
+        "only_original_pinned_sources": true
+      }
+    ],
+    "scope": "Offline catalog compilation of one captured proactive request joined to its exact persisted snapshot. Four failed requests have no persisted authored snapshot and are not claimed as exact compiler replays. No model calls; does not prove model decision quality or full delivery."
+  },
+  "historical_receipts": {
+    "source_trial": "canary08, before catalog fix",
+    "mode": "read-only SQLite backup and cold evidence verification; zero provider calls",
+    "verified_receipts": [
+      {
+        "proposal_id": "proposal:expression:de86bb047d416e80ad42bc0108e8dad37a29fa36070f9bf38e0e5c41ca29d425",
+        "proactive": false,
+        "receipt_hash": "c60cc806b3fa1021bfd9b76d96d27a9d90682e20a2834699052b3029ee660201"
+      },
+      {
+        "proposal_id": "proposal:expression:f61b47ef47bb96f1c0b96479c9d2d50318c6c2dd7cc1066a4c59402450ebffa5",
+        "proactive": false,
+        "receipt_hash": "f15f977aff7378148ec1a5e96a671eeae2b768ca324946efd0aa658591def18a"
+      },
+      {
+        "proposal_id": "proposal:proactive:fc066e5b16c86755429ee2eed8987468dd43b1b0ef2df7fa3c5dd67bac0f56ca",
+        "proactive": true,
+        "receipt_hash": "c28b36851a4ea4a08d72163db1ae8418c801e4a09dcdd62678c26f5641accf2d"
+      }
+    ],
+    "replay_semantic_hash_matches": true
+  },
+  "paid_provider_calls": 0,
+  "inherited_cost_summary": "docs/audits/release-cost-inheritance-2026-09-13-canary-08.json",
+  "limits": [
+    "Model-level improvement of repetitive contact and source selection requires fresh bounded validation.",
+    "Cold integration test has a timing-sensitive projection assertion; isolated pass does not establish statistical stability.",
+    "The captured Life origin critic failure is malformed JSON with an extra closing brace; both original and correction repeated the identical1588-character text. No semantic acceptance or syntax repair was performed.",
+    "Full Life-to-later-chat, restart and release configuration gates remain incomplete."
+  ],
+  "evidence_files": [
+    {
+      "path": "output/private-audits/release-proactive-catalog-20260913/original-receipts-cold.json",
+      "sha256": "067402baca1de499b2a46da216eeaf9f19ded7765a50ea24055954a40141b784"
+    },
+    {
+      "path": "output/private-audits/release-proactive-catalog-20260913/girl-proactive-cold-check.log",
+      "sha256": "ba195f682b374dd026a9d98b72afd84f763a4f99c81f96f6ddacf23c51825edd"
+    },
+    {
+      "path": "output/private-audits/release-proactive-catalog-20260913/girl-proactive-catalog-final.log",
+      "sha256": "14df943a046ae15a978871c76ad1306b0fa73d87fd5e898325f137c8cceb3798"
+    },
+    {
+      "path": "output/private-audits/release-proactive-catalog-20260913/captured-catalog-check.json",
+      "sha256": "c1835c64af11090c5327978da3c406c915bd4399380130529f5e3ec4c69cb8ac"
+    },
+    {
+      "path": "output/private-audits/release-proactive-catalog-20260913/girl-catalog-faculty-final.log",
+      "sha256": "be03bb1e49cc9a18324c3a3d02dadaff95ecde4440a847ee4068cb80b6f33613"
+    },
+    {
+      "path": "output/private-audits/release-proactive-catalog-20260913/girl-catalog-captured.py",
+      "sha256": "7728abc6b742a233ac4a074504ccac71bde5676e00a40f1e959809bbc1056ff5"
+    },
+    {
+      "path": "output/private-audits/release-proactive-catalog-20260913/girl-catalog-cold-original.py",
+      "sha256": "14a347670cb43e478719057323fbbf3710443498036a333d8dd1cc6a7ae0023b"
+    }
+  ]
+}
