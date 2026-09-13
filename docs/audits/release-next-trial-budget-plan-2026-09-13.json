@@ -1,0 +1,53 @@
+{
+  "contract": "release-next-trial-budget-plan.1",
+  "status": "prepared_awaiting_budget_adjustment_confirmation",
+  "base_code": "8da54834e3b80a681fdbece8129bff43f8d97f36",
+  "source_trial": "release-recovery-continuation-20260913-05",
+  "trial_id": "release-recovery-continuation-20260913-06",
+  "source_usage_rows": 87,
+  "source_reservations": 86,
+  "known_accounted_cny": "2.5424",
+  "unresolved_hold_cny": "2.358873",
+  "charged_plus_held_cny": "4.901273",
+  "prior_native_total_cap_cny": "5",
+  "proposed_native_total_cap_cny": "5.90",
+  "maximum_new_estimated_headroom_cny": "0.998727",
+  "new_allocation_to_retain_if_admitted_cny": "1",
+  "source_rows_reservations_and_unknowns_must_remain_unchanged": true,
+  "scenario": {
+    "scenario_id": "release-recovery-continuation.6",
+    "started_at": "2026-09-14T09:00:00+08:00",
+    "duration_minutes": 701,
+    "restart_minutes": [],
+    "turns": [
+      {
+        "at_minutes": 697,
+        "id": "routine-retest",
+        "text": "我歇了一会儿。你今天下午和晚上都怎么过的？"
+      },
+      {
+        "at_minutes": 699,
+        "id": "life-aftermath-retest",
+        "text": "上午说的图书馆那排灯，后来怎样了？"
+      }
+    ]
+  },
+  "limits": {
+    "max_wall_seconds": 180,
+    "ordinary_turn_seconds": 12,
+    "source_review": "full_v7",
+    "hedging": false,
+    "new_trials": 1,
+    "real_qq": false,
+    "production_database": false,
+    "deployment": false
+  },
+  "acceptance": [
+    "Both specified user turns must reach a valid character decision and captured delivery; inspect actual text and full-source receipts.",
+    "Do not count completed=true or a system notice as a role reply. Stop on budget denial; no automatic second trial or cap increase.",
+    "Record physical calls separately from admission-denied usage rows; preserve all unknown holds.",
+    "Small representative release check only; no weekly human-likeness or production monthly-cost claim."
+  ],
+  "why_confirmation_is_needed": "The prior trial used an explicit 5-CNY total cap and ended budget_admission_denied. The last user-facing plan committed not to increase it automatically. This proposal changes that concrete cap while retaining all prior charges and unknowns. It does not reset or consume ChatGPT quota.",
+  "new_provider_calls": 0
+}
