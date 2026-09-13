@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
@@ -836,16 +837,42 @@ async def test_public_host_technical_retry_survives_restart_and_is_effect_once(
         await restarted.aclose()
 
 
-@pytest.mark.asyncio
-async def test_public_host_new_inbound_supersedes_old_technical_retry(
-    tmp_path: Path, request: pytest.FixtureRequest
+class _ActionTimerClock:
+    """Public timer injection: release one real callback without sleeping."""
+
+    def __init__(self) -> None:
+        self.current = NOW
+        self.armed: asyncio.Queue[
+            tuple[float, asyncio.Future[None], asyncio.Task[None]]
+        ] = asyncio.Queue()
+
+    def now(self) -> datetime:
+        return self.current
+
+    async def sleep(self, seconds: float) -> None:
+        release = asyncio.get_running_loop().create_future()
+        owner = asyncio.current_task()
+        assert owner is not None
+        self.armed.put_nowait((seconds, release, owner))
+        await release
+
+    async def fire_pending(self) -> float:
+        # Refresh may cancel an obsolete timer. Join the live callback task
+        # captured at the public sleep seam, rather than polling private state.
+        async with asyncio.timeout(5):
+            while True:
+                seconds, release, owner = await self.armed.get()
+                if release.done() or owner.done():
+                    continue
+                release.set_result(None)
+                await asyncio.shield(owner)
+                return seconds
+
+
+async def _assert_new_inbound_supersedes_old_technical_retry(
+    tmp_path: Path, *, timer_first: bool,
 ) -> None:
-    _host_scenario(
-        "proactive.technical-retry-superseded-by-inbound.1",
-        request.node.nodeid,
-        mechanism_ids=("proactive.technical_retry",),
-        qualification_scope="public_host_proactive_retry_supersession",
-    )
+    scheduler_clock = _ActionTimerClock()
     model = _ProactiveRoleScript(("timeout",))
     host = build_qq_c2c_host(
         settings=Settings(
@@ -861,6 +888,8 @@ async def test_public_host_new_inbound_supersedes_old_technical_retry(
         world_support_model=FakeCompanionModel(),
         delivery=_DeliveredQQ(),
         use_configured_recall_embedding=False,
+        action_due_now=scheduler_clock.now,
+        action_due_sleep=scheduler_clock.sleep,
     )
     initial_due = NOW + timedelta(hours=8, seconds=1)
     superseded_at = initial_due + timedelta(minutes=1)
@@ -872,6 +901,7 @@ async def test_public_host_new_inbound_supersedes_old_technical_retry(
             text="我先去忙一会儿。",
             observed_at=NOW,
         )
+        scheduler_clock.current = initial_due
         await host.tick(
             tick_id="tick:public-host-superseded:initial",
             logical_time_from=NOW,
@@ -903,13 +933,32 @@ async def test_public_host_new_inbound_supersedes_old_technical_retry(
         assert failed_process.source_evidence_ref == source_event.event_id
         assert proactive_technical_retry_states(failed_projection)[0].retry_ordinal == 1
 
+        scheduler_clock.current = superseded_at
         await host.inbound_text(
             message_id="message:public-host-new-context",
             recipient_id="10001",
             text="我回来了，刚才又发生了一件事。",
             observed_at=superseded_at,
         )
-        await host.drain(max_action_units=8, max_background_units=16)
+        if not timer_first:
+            await host.drain(max_action_units=8, max_background_units=16)
+        waiting = host.export_replay_evidence().projection
+        (lease_due,) = tuple(
+            action.claim_lease.expires_at for action in waiting.actions
+            if action.state == "provider_accepted" and action.claim_lease is not None
+        )
+        remaining_lease_seconds = (lease_due - superseded_at).total_seconds()
+        assert remaining_lease_seconds > 0
+        wakes_before = host.action_due_wake_diagnostics()["wake_count"]
+        # Release a stale wake before the lease is due. With the fixture's
+        # virtual wall clock it must not advance Logical Time. A real-date
+        # default would incorrectly consider this August lease overdue.
+        timer_delay = await scheduler_clock.fire_pending()
+        time_after_timer = host.export_replay_evidence().projection.logical_time
+        assert host.action_due_wake_diagnostics()["wake_count"] == wakes_before + 1
+        if timer_first:
+            await host.drain(max_action_units=8, max_background_units=16)
+        scheduler_clock.current = old_retry_due
         await host.tick(
             tick_id="tick:public-host-superseded:old-retry-due",
             logical_time_from=superseded_at,
@@ -920,6 +969,8 @@ async def test_public_host_new_inbound_supersedes_old_technical_retry(
         )
         await host.drain(max_action_units=8, max_background_units=16)
 
+        assert time_after_timer == superseded_at
+        assert timer_delay >= remaining_lease_seconds
         assert model.proactive_calls == 1
         assert _proactive_action_count(host) == 0
         assert _proactive_terminal_outcomes(host) == failed_outcomes
@@ -948,3 +999,23 @@ async def test_public_host_new_inbound_supersedes_old_technical_retry(
         assert proactive_technical_retry_states(projection) == ()
     finally:
         await host.aclose()
+
+
+@pytest.mark.asyncio
+async def test_public_host_new_inbound_supersedes_old_technical_retry(
+    tmp_path: Path, request: pytest.FixtureRequest,
+) -> None:
+    _host_scenario(
+        "proactive.technical-retry-superseded-by-inbound.1",
+        request.node.nodeid,
+        mechanism_ids=("proactive.technical_retry",),
+        qualification_scope="public_host_proactive_retry_supersession",
+    )
+    await _assert_new_inbound_supersedes_old_technical_retry(tmp_path, timer_first=False)
+
+
+@pytest.mark.asyncio
+async def test_public_host_due_timer_before_drain_keeps_new_inbound_supersession(
+    tmp_path: Path,
+) -> None:
+    await _assert_new_inbound_supersedes_old_technical_retry(tmp_path, timer_first=True)
