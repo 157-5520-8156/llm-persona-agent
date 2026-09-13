@@ -1,0 +1,64 @@
+{
+  "contract": "release-cost-inheritance-summary.2",
+  "generated_at": "2026-09-13T06:16:42.954608+00:00",
+  "status": "real_trial_terminal_full_allocation_retained",
+  "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-canary-01.json",
+  "parent_snapshot_sha256": "b3bf78e93fc838b562e8689dc296a0169d4962232509681b491f0355d95a1279",
+  "trial_id": "release-real-canary-20260913-02",
+  "code_head": "6a91fb63990542fcccc87c3cb9a8e905613c9fcf",
+  "trial": {
+    "completed": false,
+    "stop_reason": "operator_stopped_after_visible_primary_timeout",
+    "usage_rows": 26,
+    "known_usage_rows": 25,
+    "unknown_usage_rows": 1,
+    "pending_reservations": 0,
+    "known_repository_price_estimate_cny": "0.656935799999999997",
+    "unknown_reservation_full_hold_cny": "0.492825",
+    "pending_full_hold_cny": "0",
+    "observed_usage_plus_unresolved_hold_cny": "1.149760799999999997",
+    "declared_single_allocation_cny": "2.0",
+    "whole_allocation_still_retained_cny": "2.0",
+    "unreleased_margin_above_observed_cny": "0.850239200000000003"
+  },
+  "combined_inheritance": {
+    "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-canary-01.json",
+    "parent_conservative_committed_cny": "65.38385329999999992007",
+    "conservative_committed_cny": "67.38385329999999992007",
+    "known_repository_price_estimate_cny": "42.26819029999999986547",
+    "observed_estimate_plus_unresolved_hold_cny": "65.72185429999999991347",
+    "status": "all_parent_unknown_and_whole_allocations_plus_new_full_2_cny_retained",
+    "additional_authorized_budget_cny": null
+  },
+  "integrity": {
+    "sqlite_export_usage_exact_equal": true,
+    "sqlite_export_reservations_exact_equal": true,
+    "inherited_reservation_ids_available": 1593,
+    "new_vs_inherited_reservation_overlap": [],
+    "capture_requests": 26,
+    "complete_response_bodies": 25,
+    "unique_provider_response_ids": 25,
+    "request_content_hashes_and_sizes_match": true,
+    "all_captured_body_hashes_and_sizes_match": true,
+    "known_token_usage_multiset_matches_capture": true,
+    "capture_usage_join": "aggregate full token tuple multiset equality only; no stored reservation-to-capture foreign key"
+  },
+  "artifact_sha256": {
+    "output/private-audits/release-real-canary-20260913-02/prepared.json": "fbcafe67bd001e16eae0bac95404995f8a36d467e174c3bc16fc4bfe02d2b885",
+    "output/private-audits/release-real-canary-20260913-02/admitted.json": "7cc8b446a777028b3d31b3f8a817ebd642dc6636605293ace3f51c89c94d7575",
+    "output/private-audits/release-real-canary-20260913-02/finished.json": "35d7ad73fd39ab0f2732d722464e27c78fac96f1211e8c516449d3fb8be44ff5",
+    "output/private-audits/release-real-canary-20260913-02/run/manifest.json": "a73c8f3b4ad523028a463d0a5678a2a76b82f8be9c64d6e98dc83ca573d95a2d",
+    "output/private-audits/release-real-canary-20260913-02/release-real-canary-02-cost-audit.json": "420891d23b1b68ef3741aeef9ddf58a06759311c4029d1ada880771cee3b6c11",
+    "output/private-audits/release-real-canary-20260913-02/archive-integrity.json": "0e5854795534d41416e8b26af85956af922d3bae7d61a061c6bac48d576f9a69"
+  },
+  "limitations": [
+    "Captured calls and recognized accounting tables only, not the supplier account or uncaptured/direct calls.",
+    "Known means returned token usage; monetary values are repository estimates, not actual payment.",
+    "A complete response and succeeded usage do not imply semantic acceptance, visible delivery, or role success.",
+    "The single empty cancelled capture is consistent with the one unknown call; no fabricated per-row foreign key.",
+    "Unknown reservation remains held once in observed+hold; advisory guard counts its usage-side estimate a second time and is not formal spend.",
+    "Every inherited unknown and whole-allocation margin remains retained; this report releases nothing and admits no new trial.",
+    "The root owns terminal launcher verification; this audit verified finished/manifest hashes and stable artifacts without contacting the process.",
+    "No latency qualification: full offline regression ran concurrently on the same machine."
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "contract": "release-real-canary-result.1",
+  "trial_id": "release-real-canary-20260913-02",
+  "code_head": "6a91fb63990542fcccc87c3cb9a8e905613c9fcf",
+  "status": "incomplete_visible_reply_blocker",
+  "completed": false,
+  "stop_reason": "operator_stopped",
+  "operator_stop_reason": "return-after-life produced primary_timeout and no visible delivery; stopped and did not reopen",
+  "turns_consumed": 3,
+  "virtual_minutes": 158,
+  "wall_seconds": 404.1351769589819,
+  "first_two_turns_captured_messages": 4,
+  "second_turn_initial_source_rejection_corrected": true,
+  "first_life_chain": {
+    "occurrence_commit_sequence": 186,
+    "settlement_sequence": 201,
+    "model_result_sequence": 216,
+    "character_response_sequence": 218,
+    "experience_sequence": 221,
+    "source_binding_verified": true
+  },
+  "separate_background_failure": {
+    "model_result_sequence": 214,
+    "trigger_kind": "delivered_receipt_silence_appraisal",
+    "first_result": "invalid JSON due to unescaped inner quotes; complete body, no evidence of truncation",
+    "correction_result": "valid JSON; nested source tokens not restored; extra source still unauthorized even after identity-only restoration",
+    "not_same_chain_as_successful_life_response": true,
+    "original_response_parser_replay": "reproduced without provider calls or altered arguments"
+  },
+  "third_turn": {
+    "timeline_step": "step-00020",
+    "delivered_messages": 0,
+    "status": "deferred",
+    "failure_code": "primary_timeout",
+    "author_contains_recent_settled_life_material": true,
+    "review_contains_corresponding_life_sources": true,
+    "author_contains_private_appraisal": true,
+    "original_full_character_life_response_or_composite_experience_directly_recalled": false,
+    "claim_scope": "past_world",
+    "review_result": "rejected unsupported intensity, quantity and own-action additions; no source transport gap in this sample",
+    "physical_call_latency_ms": {
+      "author": 5796,
+      "review": 2338,
+      "cancelled_correction": 2563
+    },
+    "ordinary_total_budget_seconds": 12,
+    "dispatch_reserve_seconds": 1,
+    "same_pinned_correction": true,
+    "cancelled_correction_body_bytes": 0
+  },
+  "replay_hash_matches": true,
+  "restarts_performed": 0,
+  "qualification_status": "manual_only",
+  "human_likeness_status": "unassessed",
+  "release_ready": false,
+  "concurrent_full_gate": {
+    "code_head": "6a91fb63990542fcccc87c3cb9a8e905613c9fcf",
+    "status_at_admission": "running_not_passed",
+    "terminal_exit_code": 1,
+    "passed": 7998,
+    "failed": 1,
+    "skipped": 19,
+    "seconds": 1070.3,
+    "failed_test": "tests/world_v2/test_delayed_trigger_proactive_host_qualification.py::test_public_host_new_inbound_supersedes_old_technical_retry",
+    "failure_diagnosis": "pending isolated clock/fixture investigation",
+    "log_path": "output/private-audits/release-real-canary-20260913-02/full-6a91fb63.log",
+    "log_sha256": "91185a2a421f3eab7932f07f4a9b3846890ef027d938a960d4a559792ed1678b"
+  },
+  "latency_qualification": "not performed; same-machine full offline regression ran concurrently",
+  "next_work": [
+    "Repair and regress appraisal nested source codec and capability schema without accepting original extra source.",
+    "Diagnose full-gate clock failure; do not weaken clock authority.",
+    "Investigate author authority presentation and correction latency without increasing ordinary deadline or disabling review."
+  ],
+  "cost_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-canary-02.json",
+  "private_run_directory": "output/private-audits/release-real-canary-20260913-02/run",
+  "diagnostic_report_sha256": {
+    "output/private-audits/release-real-canary-20260913-02/release-real-canary-02-initial-turn-audit.md": "4a87ae93ef9e84d9524692ee13aa1b76dd40ac47a195652e34be600bcf0823d9",
+    "output/private-audits/release-real-canary-20260913-02/release-real-canary-02-life-json-diagnosis.md": "ede94f979c0b88d5a8314ebe4964432519c94d08700d1f542b6422b9fed9b76b",
+    "output/private-audits/release-real-canary-20260913-02/release-real-canary-02-cost-audit.json": "420891d23b1b68ef3741aeef9ddf58a06759311c4029d1ada880771cee3b6c11",
+    "output/private-audits/release-real-canary-20260913-02/release-real-canary-02-third-turn-audit.md": "14355aeed694db451c8b1859d53030f2e3d1c8e10b267008ae3b844a0568ca77"
+  },
+  "manifest_sha256": "a73c8f3b4ad523028a463d0a5678a2a76b82f8be9c64d6e98dc83ca573d95a2d",
+  "credentials": {
+    "user_authorized": true,
+    "available": true,
+    "raw_value_in_report": false
+  },
+  "real_qq": false,
+  "production_database_modified": false,
+  "deployed": false,
+  "failed_turn_audit_limit": "World timeout event does not preserve original author/review hashes or full .9 carrier; raw HTTP and usage evidence retained separately, no claim of complete World-only failed-candidate recovery"
+}
