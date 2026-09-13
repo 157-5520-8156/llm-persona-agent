@@ -1,0 +1,85 @@
+{
+  "contract": "release-routine-retest-validation.1",
+  "real_trial_code": {
+    "head": "eb5366d49d48409d92c66e29b04d28ae7933a177",
+    "tracked_dirty": false
+  },
+  "completed": false,
+  "stop_reason": "budget_admission_denied",
+  "process_exit_code": 1,
+  "scope": "Closed trial05 restored into a new private database; routine background fix, normal 12s full v7 review, no hedge, no production database or real QQ. The inherited retry failed before either of the two planned user inputs. No concurrent full test suite.",
+  "new_provider_calls": 3,
+  "new_usage_rows": 3,
+  "admission_denied_without_provider_call": 0,
+  "known_calls": 2,
+  "unknown_calls": 1,
+  "new_estimate_cny": "0.093278099999999996",
+  "new_unknown_hold_cny": "0.612879",
+  "captured_tokens_match_known_usage": true,
+  "original_rows_and_reservations_unchanged": true,
+  "artifact_hashes_verified": true,
+  "cold_expression_receipts": 6,
+  "receipt_hashes": [
+    "4121546435e60bfd2ff6b0b0228a40a3027f48c3cab16b6a984aae49e089ba96",
+    "5e4b44b2e6471a9fa528c23bc66da773148d915a75c1374b8ac46386fe77fd14",
+    "501405e5323d8a6b4f4ae3977154e8fb013467df347494e1685b48502ba5f348",
+    "e83811ca2dd4f4f1ac92aed37210e9aeffd91f7ac7e285511a4338839c6c5fe4",
+    "4bac102eaf6bc49d5262177e65c4dbd39a2dedc38b7738687ec770a50573d63d",
+    "90c019cbdece4cb27bebb3654aa8f9ec6b2cf992b5efb229f49031180e8222b1"
+  ],
+  "replay_hash_matches": true,
+  "timeline": [
+    {
+      "deliveries": [],
+      "kind": "scheduler",
+      "model_failures": [
+        {
+          "event_ref": "event:ModelResultRecorded:9a37b97c6cc5cc1932b6227a3bd93dce8ebc2609ea5bccf781933dfd300441ce",
+          "failure_code": "primary_timeout",
+          "status": "main_timeout"
+        }
+      ],
+      "status": "scheduled",
+      "wall_seconds": 17.55575666599907
+    }
+  ],
+  "new_usage_latency": [
+    {
+      "purpose": "inbound_turn",
+      "status": "succeeded",
+      "latency_ms": 6368,
+      "prompt_tokens": 45075,
+      "completion_tokens": 966,
+      "cache_hit_tokens": 19584
+    },
+    {
+      "purpose": "source_review",
+      "status": "succeeded",
+      "latency_ms": 2219,
+      "prompt_tokens": 34743,
+      "completion_tokens": 333,
+      "cache_hit_tokens": 2688
+    },
+    {
+      "purpose": "inbound_turn",
+      "status": "failed",
+      "latency_ms": 1855,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "cache_hit_tokens": 0
+    }
+  ],
+  "limits": [
+    "Prior failed v6 attempts remain in history; a successful deferred retry is not proof of prompt first-response recovery.",
+    "Small representative continuation only; no week-long naturalness, real QQ or monthly production cost qualification."
+  ],
+  "diagnosis": {
+    "routine_background_present_in_actual_author_and_correction_requests": true,
+    "dated_day_sheet_contains_calendar_only": true,
+    "unsupported_claim": "我刚从图书馆那边回来，下午基本在宿舍窝着",
+    "full_reviewer_rejected_unsourced_visit_and_temporal_comparison": true,
+    "correction_cancelled_before_complete_response": true,
+    "planned_user_inputs_reached": 0,
+    "result": "Separating habitual context does not by itself solve fabricated lived history or ordinary-deadline reliability."
+  }
+}
