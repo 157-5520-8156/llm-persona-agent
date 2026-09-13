@@ -48,6 +48,21 @@ timeline facts plus accepted World Events; it is not copied from a static
 persona prompt and does not decide what the companion should do.
 _Avoid_: Static age label, behavior script
 
+## Character Prehistory
+
+The companion's accepted fictional history before this World's original
+runtime boundary, with its own creation provenance. It may become remembered
+personal history but cannot establish a runtime activity or an unconfirmed
+shared event with the real user.
+_Avoid_: Retroactive runtime Experience, improvised chat evidence
+
+## Autobiographical Memory
+
+The companion's accessible recollection and interpretation of sourced personal
+history, whether Character Prehistory or runtime Experience. Its detail,
+accessibility and interpretation may change without rewriting the source history.
+_Avoid_: Complete historical archive, unsourced factual authority
+
 ## Routine Background
 
 A captured configuration of habitual windows, supplied as advisory context.
