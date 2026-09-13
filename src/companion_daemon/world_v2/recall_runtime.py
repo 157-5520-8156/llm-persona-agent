@@ -1742,6 +1742,8 @@ def recall_evidence_json(trace: RecallAuditTrace) -> str:
                     "memory_kind": hit.document.memory_kind,
                     "authority": hit.document.authority,
                     "epistemic_scope": hit.document.effective_epistemic_scope,
+                    **({"prehistory": hit.document.prehistory.model_dump(mode="json")}
+                       if hit.document.prehistory is not None else {}),
                     "actor_ref": hit.document.actor_ref,
                     "speaker_ref": hit.document.speaker_ref,
                     "subject_refs": hit.document.subject_refs,
@@ -1840,6 +1842,8 @@ def augment_model_content_with_recall(
                     "memory_kind": document.memory_kind,
                     "authority": document.authority,
                     "epistemic_scope": document.effective_epistemic_scope,
+                    **({"prehistory": document.prehistory.model_dump(mode="json")}
+                       if document.prehistory is not None else {}),
                     "actor_ref": document.actor_ref,
                     "speaker_ref": document.speaker_ref,
                     "subject_refs": document.subject_refs,

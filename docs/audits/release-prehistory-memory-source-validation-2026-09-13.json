@@ -1,0 +1,69 @@
+{
+  "qualification_status": "manual_only / qualification_incomplete",
+  "scope": "Prehistory source authority and retrieval foundation in the existing MemoryCandidate system; character retention and production selection are not connected.",
+  "base_commit": "8d9a23b1",
+  "tests": {
+    "passed": 156,
+    "seconds": 6.27,
+    "dedicated_source_cases": 22,
+    "real_provider_calls": 0,
+    "full_suite_run": false
+  },
+  "covered": [
+    "Real SQLite Proposal/Acceptance/MemoryCandidate open, accept, forget and cold reconstruction with explicit fixture choices.",
+    "Separate prehistory source binds exact record and reviewed archive events, record hash, actor, original World boundary and privacy.",
+    "Reject missing source/manifest events and altered body, actor, cutoff, identity, event revision, event hash, values hash or source kind.",
+    "Missing/wrong actor and insufficient privacy cannot read historical excerpts.",
+    "Forgotten candidate and stale active before-image do not supply source text or recall documents; archive remains intact.",
+    "Compressed/replaced historical summary does not fall back to the full archive; summary reading remains unavailable.",
+    "Recall uses actual historical interval, time precision and identity scope; old remembered events participate in ordinary recall and fail a runtime-only occurrence filter.",
+    "Same-source recall coalesces cue links; both record and archive proof are required.",
+    "Recall evidence and model context adapters retain historical scope without adding unrelated archive content.",
+    "Fact/Experience memory, resolver, recall index, inbound recall HTTP fixtures and existing memory authority regressions."
+  ],
+  "red_baseline": {
+    "failure": "MemorySourceBinding rejected the prehistory source kind",
+    "failed": 1
+  },
+  "legacy_frozen_world": {
+    "source_trial": "release-recovery-continuation-20260913-09",
+    "world_revision": 518,
+    "semantic_hash": "3b6d2402f817feadf2ea13e4ab51bfdf78a358b3bb25c6447f9729f6179dfc33",
+    "cold_replay_matches": true,
+    "source_unchanged": true,
+    "new_provider_calls": 0,
+    "existing_world_prehistory_records": 0
+  },
+  "new_physical_provider_calls": 0,
+  "new_paid_allocation_cny": "0",
+  "production_modified": false,
+  "actual_qq_sent": false,
+  "ruff": "passed",
+  "git_diff_check": "passed",
+  "code_and_test_sha256": {
+    "src/companion_daemon/world_v2/fact_memory_candidate_lifecycle.py": "fe9cfbaa05c76100931234f7e740e53ea96e61a46f71ec92afe4a4f6ddcd6ad6",
+    "src/companion_daemon/world_v2/memory_events.py": "57db2fc105fa4a9e1b09cb9c7cf997366d7480b2eac00470794cbedbb24155a8",
+    "src/companion_daemon/world_v2/memory_reducers.py": "0d2e4fda38eadcc5b29752b8fa01a712d452660513a30cdd9c855943457590df",
+    "src/companion_daemon/world_v2/memory_retrieval.py": "5856630e132bc0a53cbe03d0fe3b2d8b253240947cab0ace9ee0a5f2d42304d5",
+    "src/companion_daemon/world_v2/prehistory_memory_source.py": "d58ae531b8b30fadf4cc4a319bbc3556812809e80f1ff77bd76147ee6b320b9d",
+    "src/companion_daemon/world_v2/recall_corpus.py": "682dada5cf2b4d79dd111ca559dd04b83704b2c83310fb87fa4d4ed8cba83b54",
+    "src/companion_daemon/world_v2/recall_index.py": "6fc2f359138f1c97595f6e533eaa6a031aad437ab718b40e0afe8d7fda34c223",
+    "src/companion_daemon/world_v2/recall_runtime.py": "50befad8b22f63be212b09b286591b9461993d1205c96ee6d6b812d4bf344133",
+    "src/companion_daemon/world_v2/reducers.py": "2283ce64f5b9151a8c8abd7d195fe2521bb17ef70ad6a5b2f0b99e5c945488b4",
+    "src/companion_daemon/world_v2/schemas.py": "a6d5dd7e048e63ee559ff202ede67e781dbc4e1fe6eefabdbea4b9682fbebe88",
+    "tests/world_v2/test_prehistory_memory_source.py": "58b2275187e8479cce13fc09f8f7aff1ffe3b135c635f0535dbc278cac89ad65"
+  },
+  "evidence_log_sha256": {
+    "red.log": "6b07a78b789f870888a4c8bef93edddf046e257853b9aad00d49ceb216d4f460",
+    "final.log": "9d194e5acb88d5ac9b1e8c0b9b78064442b2b6e4447b5afcd4a644a39576cefe",
+    "legacy.json": "7f451b8858f271212b642aed002645e68d303e21bb6fb18a15151d9cf0bf6277"
+  },
+  "private_evidence_directory": "output/private-audits/release-prehistory-memory-source-20260913",
+  "remaining_required_work": [
+    "CharacterInterior-owned retain/no-change with exact capability/model-result authority, durable recovery, technical retry and initialization/background cost accounting.",
+    "Production context selection and expression source-review proof for historical sources; imported archives remain excluded from ordinary chat selection.",
+    "Source-verified compressed historical representation, later reinforcement and withdrawal/forgetting decisions through the role; current guards are not complete memory evolution.",
+    "Actual reviewed character archive, semantic consistency review, accelerated longitudinal interference/repetition tests and bounded real-model conversations.",
+    "Existing unsupported post-start experiences, false source-review acceptance and correction timeouts remain release blockers; monthly cost and real QQ are unqualified."
+  ]
+}

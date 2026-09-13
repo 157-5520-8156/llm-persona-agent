@@ -5041,7 +5041,7 @@ class ThreadProposalProjection(FrozenModel):
         return self
 
 
-MemorySourceKind = Literal["fact", "experience", "terminal_thread"]
+MemorySourceKind = Literal["fact", "experience", "terminal_thread", "prehistory"]
 MemoryCandidateStatus = Literal["pending", "active", "rejected", "forgotten"]
 MemoryRetentionRationale = Literal[
     "identity_relevance",

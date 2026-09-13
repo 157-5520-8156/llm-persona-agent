@@ -6,6 +6,8 @@ from datetime import datetime
 import hashlib
 import json
 
+from .character_prehistory import PrehistoryArchiveProjection, PrehistoryRecordProjection
+from .prehistory_memory_source import resolve_prehistory_memory_source
 from .fact_events import FACT_PAYLOAD_MODELS
 from .memory_events import (
     MemoryCandidateChangedPayload,
@@ -120,6 +122,8 @@ def reduce_memory_candidate(
     threads: tuple[ThreadProjection, ...],
     thread_history: tuple[ThreadTransitionProjection, ...],
     committed_events: tuple[CommittedWorldEventRef, ...],
+    prehistory_records: tuple[PrehistoryRecordProjection, ...] = (),
+    prehistory_archives: tuple[PrehistoryArchiveProjection, ...] = (),
 ) -> tuple[
     tuple[MemoryCandidateProjection, ...],
     tuple[MemoryCandidateTransitionProjection, ...],
@@ -147,6 +151,8 @@ def reduce_memory_candidate(
         threads=threads,
         thread_history=thread_history,
         committed_events=committed_events,
+        prehistory_records=prehistory_records,
+        prehistory_archives=prehistory_archives,
         require_current=require_current_sources,
     )
     required_privacy = max(_PRIVACY_RANK[item] for item in source_privacies)
@@ -194,6 +200,8 @@ def reduce_memory_candidate(
                 threads=threads,
                 thread_history=thread_history,
                 committed_events=committed_events,
+                prehistory_records=prehistory_records,
+                prehistory_archives=prehistory_archives,
             )
         if payload.operation == "forget":
             _validate_forget_authority(
@@ -206,6 +214,8 @@ def reduce_memory_candidate(
                 threads=threads,
                 thread_history=thread_history,
                 committed_events=committed_events,
+                prehistory_records=prehistory_records,
+                prehistory_archives=prehistory_archives,
                 logical_time=logical_time,
             )
         updated = tuple(
@@ -451,6 +461,8 @@ def _validate_forget_authority(
     threads: tuple[ThreadProjection, ...],
     thread_history: tuple[ThreadTransitionProjection, ...],
     committed_events: tuple[CommittedWorldEventRef, ...],
+    prehistory_records: tuple[PrehistoryRecordProjection, ...] = (),
+    prehistory_archives: tuple[PrehistoryArchiveProjection, ...] = (),
     logical_time: datetime,
 ) -> None:
     authority = payload.forget_authority
@@ -514,6 +526,8 @@ def _validate_forget_authority(
                     threads=threads,
                     thread_history=thread_history,
                     committed_events=committed_events,
+                    prehistory_records=prehistory_records,
+                    prehistory_archives=prehistory_archives,
                     require_current=True,
                 )
             except ValueError:
@@ -564,6 +578,8 @@ def _validate_sources(
     threads: tuple[ThreadProjection, ...],
     thread_history: tuple[ThreadTransitionProjection, ...],
     committed_events: tuple[CommittedWorldEventRef, ...],
+    prehistory_records: tuple[PrehistoryRecordProjection, ...] = (),
+    prehistory_archives: tuple[PrehistoryArchiveProjection, ...] = (),
     require_current: bool,
 ) -> tuple[PrivacyClass, ...]:
     return tuple(
@@ -576,6 +592,8 @@ def _validate_sources(
             threads=threads,
             thread_history=thread_history,
             committed_events=committed_events,
+            prehistory_records=prehistory_records,
+            prehistory_archives=prehistory_archives,
             require_current=require_current,
         )
         for binding in bindings
@@ -592,6 +610,8 @@ def _resolve_source(
     threads: tuple[ThreadProjection, ...],
     thread_history: tuple[ThreadTransitionProjection, ...],
     committed_events: tuple[CommittedWorldEventRef, ...],
+    prehistory_records: tuple[PrehistoryRecordProjection, ...] = (),
+    prehistory_archives: tuple[PrehistoryArchiveProjection, ...] = (),
     require_current: bool,
 ) -> PrivacyClass:
     authority = next(
@@ -608,6 +628,12 @@ def _resolve_source(
         or authority.payload_hash != binding.authority_payload_hash
     ):
         raise ValueError("memory source does not resolve exact event authority")
+    if binding.source_kind == "prehistory":
+        row, _ = resolve_prehistory_memory_source(
+            binding, records=prehistory_records, archives=prehistory_archives,
+            committed_events=committed_events,
+        )
+        return row.record.privacy_class
     if binding.source_kind == "fact":
         transition = next(
             (
@@ -706,6 +732,8 @@ def evaluate_memory_retrieval(
     threads: tuple[ThreadProjection, ...],
     thread_history: tuple[ThreadTransitionProjection, ...],
     committed_events: tuple[CommittedWorldEventRef, ...],
+    prehistory_records: tuple[PrehistoryRecordProjection, ...] = (),
+    prehistory_archives: tuple[PrehistoryArchiveProjection, ...] = (),
     viewer_privacy_ceiling: PrivacyClass,
 ) -> tuple[MemoryRetrievalDecision, ...]:
     decisions: list[MemoryRetrievalDecision] = []
@@ -725,6 +753,8 @@ def evaluate_memory_retrieval(
                     threads=threads,
                     thread_history=thread_history,
                     committed_events=committed_events,
+                    prehistory_records=prehistory_records,
+                    prehistory_archives=prehistory_archives,
                     require_current=True,
                 )
             except ValueError:

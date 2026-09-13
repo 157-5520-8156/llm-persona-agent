@@ -17,6 +17,7 @@ from .schemas import (
     MemoryCandidateProjection,
     MemoryRetentionRationale,
     MemorySourceBinding,
+    MemorySourceKind,
 )
 from .proposal_audit_schemas import ModelResultRecordedPayload
 
@@ -63,7 +64,7 @@ class MemoryEvidenceForgetAuthority(FrozenModel):
 
 
 class MemorySourceIdentityRef(FrozenModel):
-    source_kind: Literal["fact", "experience", "terminal_thread"]
+    source_kind: MemorySourceKind
     source_id: str = Field(min_length=1)
     source_entity_revision: int = Field(ge=1)
     source_authority_id: str = Field(min_length=64, max_length=64)

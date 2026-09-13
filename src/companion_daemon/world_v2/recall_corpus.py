@@ -20,6 +20,7 @@ from .context_capsule import FactRecallItem, HistoricalFactRecallItem
 from .fact_reducers import INSTALLED_FACT_PREDICATE_GUIDE
 from .life_content import RecentExperienceContextItem
 from .memory_retrieval import MemoryRetrievalItem
+from .prehistory_memory_source import PrehistoryMemoryReading
 from .recall_index import (
     RecallCursor,
     RecallDocument,
@@ -101,6 +102,8 @@ def required_recall_authority_refs(sources: RecallCorpusSources) -> frozenset[st
             refs.add(item.content.descriptor_event_ref)
     for item in sources.active_memory_candidates:
         refs.update(excerpt.authority_event_ref for excerpt in item.source_excerpts)
+        refs.update(excerpt.prehistory.archive_event_ref for excerpt in item.source_excerpts
+                    if excerpt.prehistory is not None)
     for item in sources.affect_openings:
         refs.add(item.episode.origin.accepted_event_ref)
         refs.update(ref.ref_id for ref in item.episode.evidence_refs)
@@ -368,6 +371,52 @@ class RecallCorpusCompiler:
                     privacy_class=item.privacy_class,
                 )
             )
+
+        historical_documents: dict[str, RecallDocument] = {}
+        for candidate in sources.active_memory_candidates:
+            for excerpt in candidate.source_excerpts:
+                historical = excerpt.prehistory
+                if historical is None or historical.actor_ref != actor_ref:
+                    continue
+                bindings = (
+                    RecallSourceBinding(
+                        source_kind="committed_event", authority_type="CharacterPrehistoryRecordImported",
+                        ref=excerpt.authority_event_ref, source_world_revision=excerpt.authority_world_revision,
+                        immutable_hash=excerpt.authority_payload_hash,
+                    ),
+                    RecallSourceBinding(
+                        source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
+                        ref=historical.archive_event_ref, source_world_revision=historical.archive_world_revision,
+                        immutable_hash=historical.archive_payload_hash,
+                    ),
+                )
+                # Both proofs must be reachable in this pinned corpus. The
+                # archive contributes identity labels, never additional text.
+                if not all(authority.get(binding.ref) == binding for binding in bindings):
+                    continue
+                assert excerpt.text is not None
+                document = self._document(
+                    memory_kind="episodic", source_item_ref=excerpt.source_id,
+                    source_slice="active_memory_candidates", bindings=bindings,
+                    text=excerpt.text, actor_ref=actor_ref, subject_refs=(actor_ref,),
+                    link_refs=(candidate.candidate_id,), occurred_from=historical.occurred_from,
+                    occurred_to=historical.occurred_until, status="active",
+                    privacy_class=candidate.privacy_ceiling, epistemic_scope="character_prehistory",
+                    prehistory=historical,
+                )
+                previous = historical_documents.get(document.document_id)
+                if previous is not None:
+                    if previous.model_dump(exclude={"link_refs", "privacy_class"}) != document.model_dump(
+                        exclude={"link_refs", "privacy_class"},
+                    ):
+                        raise ValueError("prehistory recall contains conflicting readings of one source")
+                    privacy_order = ("public", "shareable", "personal", "private", "withhold")
+                    document = document.model_copy(update={
+                        "link_refs": tuple(sorted(set(previous.link_refs) | set(document.link_refs))),
+                        "privacy_class": max((previous.privacy_class, document.privacy_class), key=privacy_order.index),
+                    })
+                historical_documents[document.document_id] = document
+        documents.extend(historical_documents.values())
 
         experiences_by_id = {item.experience_id: item for item in sources.recent_experiences}
         experience_memory_links: dict[str, set[str]] = {}
@@ -829,6 +878,7 @@ class RecallCorpusCompiler:
         authority: str = "world_fact",
         epistemic_scope: str | None = None,
         speaker_ref: str | None = None,
+        prehistory: PrehistoryMemoryReading | None = None,
     ) -> RecallDocument:
         canonical = _canonical_bindings(bindings)
         return RecallDocument(
@@ -867,6 +917,7 @@ class RecallCorpusCompiler:
                 )
             ),
             speaker_ref=speaker_ref,
+            prehistory=prehistory,
         )
 
 

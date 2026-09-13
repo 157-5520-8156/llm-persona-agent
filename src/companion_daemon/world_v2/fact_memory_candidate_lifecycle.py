@@ -514,6 +514,8 @@ class FactMemoryCandidateLifecycle:
                 threads=projection.threads,
                 thread_history=projection.thread_transitions,
                 committed_events=projection.committed_world_event_refs,
+                prehistory_records=projection.prehistory_records,
+                prehistory_archives=projection.prehistory_archives,
                 viewer_privacy_ceiling="withhold",
             )[0]
             if retrieval.stale_source_ids != (fact.fact_id,):

@@ -35,10 +35,15 @@ from .schemas import (
 )
 
 
+from .prehistory_memory_source import (
+    PrehistoryMemoryReading, prehistory_memory_reading, resolve_prehistory_memory_source,
+)
+
+
 class MemorySourceExcerpt(FrozenModel):
     """A bounded source-text view, pinned to a Memory source authority."""
 
-    source_kind: Literal["fact", "experience"]
+    source_kind: Literal["fact", "experience", "prehistory"]
     source_id: str = Field(min_length=1)
     source_entity_revision: int = Field(ge=1)
     authority_event_ref: str = Field(min_length=1)
@@ -49,6 +54,9 @@ class MemorySourceExcerpt(FrozenModel):
     excerpt_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     text: str | None = Field(default=None, min_length=1, exclude_if=lambda value: value is None)
     truncated: bool
+    prehistory: PrehistoryMemoryReading | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     world_consequence: WorldConsequenceReading | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
@@ -58,6 +66,13 @@ class MemorySourceExcerpt(FrozenModel):
 
     @model_validator(mode="after")
     def one_source_carrier(self):
+        if (self.source_kind == "prehistory") != (self.prehistory is not None):
+            raise ValueError("prehistory memory must retain its historical scope")
+        if self.prehistory is not None and (
+            self.text is None
+            or hashlib.sha256(self.text.encode("utf-8")).hexdigest() != self.excerpt_payload_hash
+        ):
+            raise ValueError("prehistory memory excerpt hash does not match its text")
         if (self.text is None) == (self.world_consequence is None):
             raise ValueError("memory source requires one exact content carrier")
         if self.world_consequence is not None and (
@@ -130,6 +145,7 @@ class MemoryRetrievalCompiler:
         candidates: tuple[MemoryCandidateProjection, ...],
         viewer_privacy_ceiling: PrivacyClass,
         projection=None,
+        actor_ref: str | None = None,
     ) -> MemoryRetrievalResult:
         projection = projection if projection is not None else self._ledger.project_at(cursor)
         if (
@@ -153,6 +169,8 @@ class MemoryRetrievalCompiler:
                 threads=projection.threads,
                 thread_history=projection.thread_transitions,
                 committed_events=projection.committed_world_event_refs,
+                prehistory_records=projection.prehistory_records,
+                prehistory_archives=projection.prehistory_archives,
                 viewer_privacy_ceiling=viewer_privacy_ceiling,
             )
         }
@@ -214,6 +232,31 @@ class MemoryRetrievalCompiler:
                     )
                 )
                 continue
+            has_prehistory = any(binding.source_kind == "prehistory" for binding in candidate.values.source_bindings)
+            if has_prehistory and candidate not in projection.memory_candidates:
+                # A caller holding an old active image must not revive a
+                # forgotten memory at a newer cursor by supplying that image.
+                suppressions.append(MemoryRetrievalSuppression(
+                    candidate_id=candidate.candidate_id, reasons=("source_proof_failed",),
+                ))
+                continue
+            if has_prehistory and any(
+                transition.candidate_id == candidate.candidate_id
+                and transition.values_before is not None
+                and (
+                    transition.revise_kind == "compress"
+                    or (transition.values_before.summary_ref, transition.values_before.summary_payload_hash)
+                    != (transition.values_after.summary_ref, transition.values_after.summary_payload_hash)
+                )
+                for transition in projection.memory_candidate_transitions
+            ):
+                # A compressed/replaced representation requires its own
+                # source-verified reader. Until installed, do not recover
+                # discarded detail by falling back to the original archive.
+                suppressions.append(MemoryRetrievalSuppression(
+                    candidate_id=candidate.candidate_id, reasons=("content_unavailable",),
+                ))
+                continue
             excerpts: list[MemorySourceExcerpt] = []
             unavailable = False
             for binding in candidate.values.source_bindings:
@@ -230,6 +273,10 @@ class MemoryRetrievalCompiler:
                         projection=projection,
                         viewer_privacy_ceiling=viewer_privacy_ceiling,
                         user_channel_limited_content_refs=limited_content_refs,
+                    )
+                elif binding.source_kind == "prehistory":
+                    excerpt = self._prehistory_excerpt(
+                        binding=binding, projection=projection, actor_ref=actor_ref,
                     )
                 else:
                     excerpt = None
@@ -264,6 +311,22 @@ class MemoryRetrievalCompiler:
                 )
             )
         return MemoryRetrievalResult(items=tuple(items), suppressions=tuple(suppressions))
+
+    def _prehistory_excerpt(self, *, binding, projection, actor_ref):
+        row, archive = resolve_prehistory_memory_source(
+            binding, records=projection.prehistory_records,
+            archives=projection.prehistory_archives,
+            committed_events=projection.committed_world_event_refs,
+        )
+        if actor_ref is None or row.actor_ref != actor_ref:
+            return None
+        text = row.record.statement[:self._max_excerpt_characters]
+        return MemorySourceExcerpt(
+            **binding.model_dump(), excerpt_ref=row.record.record_id,
+            excerpt_payload_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            text=text, truncated=len(text) < len(row.record.statement),
+            prehistory=prehistory_memory_reading(row, archive),
+        )
 
     def _experience_excerpt(
         self,

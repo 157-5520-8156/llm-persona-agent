@@ -70,6 +70,12 @@ and individual record hashes. Import records acceptance at current Logical Time
 and creates no MemoryCandidate; remembering remains a separate character choice.
 The operator review artifact binds content but does not itself prove semantic
 consistency. Ordinary chat must not bypass memory access by reading the archive.
+MemoryCandidate now recognizes a separate `prehistory` source; source reads require
+both the imported record and reviewed archive, exact actor, current candidate and
+privacy. Recall retains occurrence precision and the `character_prehistory` scope.
+This reader foundation does not yet connect character retention or production
+context selection. A compressed/replaced summary has no installed historical
+summary reader and must not fall back to the original archive's details.
 _Avoid_: Retroactive runtime Experience, improvised chat evidence
 
 ## Autobiographical Memory

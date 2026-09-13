@@ -19,6 +19,7 @@ import unicodedata
 
 from pydantic import Field, model_validator
 
+from .prehistory_memory_source import PrehistoryMemoryReading
 from .schema_core import FrozenModel, PrivacyClass
 from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_write_lock
 
@@ -124,12 +125,16 @@ class RecallDocument(FrozenModel):
     ] = "world_fact"
     epistemic_scope: Literal[
         "world_fact",
+        "character_prehistory",
         "counterpart_report_only",
         "companion_expression_record",
         "private_interpretation",
     ] | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
+    )
+    prehistory: PrehistoryMemoryReading | None = Field(
+        default=None, exclude_if=lambda value: value is None,
     )
     speaker_ref: str | None = Field(
         default=None,
@@ -210,12 +215,33 @@ class RecallDocument(FrozenModel):
             raise ValueError("non-dialogue recall cannot declare a dialogue speaker")
         elif (
             self.authority == "world_fact"
-            and self.epistemic_scope not in {None, "world_fact"}
+            and self.epistemic_scope not in {None, "world_fact", "character_prehistory"}
         ) or (
             self.authority == "defeasible_interpretation"
             and self.epistemic_scope not in {None, "private_interpretation"}
         ):
             raise ValueError("recall authority and epistemic scope disagree")
+        if (self.epistemic_scope == "character_prehistory") != (self.prehistory is not None):
+            raise ValueError("historical recall requires its separate prehistory scope")
+        if self.prehistory is not None:
+            scope = self.prehistory
+            if (
+                self.actor_ref != scope.actor_ref
+                or self.occurred_from != scope.occurred_from
+                or self.occurred_to != scope.occurred_until
+                or self.memory_kind != "episodic"
+                or self.status != "active"
+                or self.source_slice != "active_memory_candidates"
+                or len(bindings) != 2
+                or not any(item.authority_type == "CharacterPrehistoryRecordImported"
+                           and item.source_kind == "committed_event" for item in bindings)
+                or not any(item == RecallSourceBinding(
+                    source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
+                    ref=scope.archive_event_ref, source_world_revision=scope.archive_world_revision,
+                    immutable_hash=scope.archive_payload_hash,
+                ) for item in bindings)
+            ):
+                raise ValueError("historical recall changed source ownership, interval or authority")
         return self
 
     @property
@@ -223,6 +249,7 @@ class RecallDocument(FrozenModel):
         self,
     ) -> Literal[
         "world_fact",
+        "character_prehistory",
         "counterpart_report_only",
         "companion_expression_record",
         "private_interpretation",

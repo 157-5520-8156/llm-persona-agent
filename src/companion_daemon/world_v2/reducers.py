@@ -4675,6 +4675,8 @@ def _memory_candidate_proposal_recorded(
         threads=state.threads,
         thread_history=state.thread_transitions,
         committed_events=state.committed_world_event_refs,
+        prehistory_records=state.prehistory_records,
+        prehistory_archives=state.prehistory_archives,
     )
     return state.model_copy(
         update={
@@ -13652,6 +13654,8 @@ def _memory_candidate_changed(state: ReducerState, event: WorldEvent) -> Reducer
         threads=state.threads,
         thread_history=state.thread_transitions,
         committed_events=state.committed_world_event_refs,
+        prehistory_records=state.prehistory_records,
+        prehistory_archives=state.prehistory_archives,
     )
     return state.model_copy(
         update={
