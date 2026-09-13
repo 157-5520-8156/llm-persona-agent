@@ -1,0 +1,81 @@
+{
+  "contract": "release-real-canary-result.1",
+  "trial_id": "release-real-canary-20260913-03",
+  "code_head": "c76740f55abea75858d026029419ea299a53c3d6",
+  "terminal_exit_code": 1,
+  "status": "incomplete_visible_reply_blocker",
+  "completed": false,
+  "stop_reason": "operator_stopped",
+  "operator_stop_reason": "Second user turn primary_timeout with no delivery; null closed the process; not reopened.",
+  "turns_consumed": 2,
+  "virtual_minutes": 2,
+  "wall_seconds": 175.65890216699336,
+  "first_turn_captured_messages": 2,
+  "first_turn_semantic_issue": {
+    "actual_v4_result": "private_state/source_free for recent waking claim",
+    "manual_evidence_finding": "Only explicitly habitual day-sheet background found; no independent source for recently waking today.",
+    "not_a_new_formal_model_verdict": true
+  },
+  "second_turn": {
+    "timeline_step": "step-00003",
+    "delivered_messages": 0,
+    "new_actions": 0,
+    "status": "deferred",
+    "failure_code": "primary_timeout",
+    "first_author_rejection": "Already going out claimed from future plan; original v4 unsupported.",
+    "physical_call_latency_ms": {
+      "initial_author": 3277,
+      "initial_review": 1321,
+      "completed_correction": 5286,
+      "cancelled_final_review": 830
+    },
+    "author_completion_tokens": {
+      "initial": 699,
+      "correction": 949
+    },
+    "new_correction_prefix_used": true,
+    "same_pinned_context_and_tools": true,
+    "correction_complete_body_returned": true,
+    "correction_prompt_tokens": 24759,
+    "correction_cache_hit_tokens": 23808,
+    "final_review_http_headers": 200,
+    "final_review_body_bytes": 0,
+    "final_review_verdict_available": false,
+    "final_review_billing_state": "unknown",
+    "ordinary_total_budget_seconds": 12,
+    "dispatch_reserve_seconds": 1
+  },
+  "failed_turn_world_audit_gap": "Ledger sequence 97 retains timeout, not the three completed subaudit/receipt records; separate private HTTP and usage evidence retained. No claim of World-only failed-candidate audit closure.",
+  "replay_hash_matches": true,
+  "restarts_performed": 0,
+  "settled_life_chat_chain_qualified": false,
+  "qualification_status": "manual_only",
+  "human_likeness_status": "unassessed",
+  "release_ready": false,
+  "latency_qualification": "single adaptive journey, no comparative latency qualification; prefix cache hit is an observation only",
+  "cost_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-canary-03.json",
+  "private_run_directory": "output/private-audits/release-real-canary-20260913-03/run",
+  "manifest_sha256": "3825d97eb5f412ff4f725d2de075ffe685a06ccb980a449399260eeec559d268",
+  "diagnostic_report_sha256": {
+    "output/private-audits/release-real-canary-20260913-03/release-canary03-self-history-review-diagnosis.md": "c15ea69de32c1847ff0506706b7a1950470fb8199914d3bfd4f750decc1347ac",
+    "output/private-audits/release-real-canary-20260913-03/release-real-canary-03-cost-audit.json": "46404abd2ef9eadbc6c0e3c308187e3f9a9d83565e2593f046ecb38282a6c20a",
+    "output/private-audits/release-real-canary-20260913-03/release-real-canary-03-turn-audit.json": "e63036527f4bb6339e4b9b08db1f89fd70c8c244a8a425fd5da43cc2e7931423",
+    "output/private-audits/release-real-canary-20260913-03/release-real-canary-03-turn-audit.md": "40a740e2a8a91d6470ea1cf3ca8c604d0d05f12bdce82b13b820d9f2fe9ebb2c"
+  },
+  "archive_integrity_path": "output/private-audits/release-real-canary-20260913-03/archive-integrity.json",
+  "archive_integrity_sha256": "c7b89c22d09193628822a728ebc01b8f26cc2f462b3e26bb72c1fd610ae60134",
+  "next_work": [
+    "Preserve old review compilers and add explicit new semantic revision for source-free bodily feelings versus recently completed self episodes; current real qualification examples remain missing.",
+    "Investigate reducing repeated same-role result generation without choosing or reusing character decisions locally; preserve ordinary deadline and final full source review.",
+    "Return to fresh bounded life/chat/memory/recovery qualification after actual fixes; no reopening this failed trial."
+  ],
+  "credentials": {
+    "user_authorized": true,
+    "available": true,
+    "raw_value_in_report": false,
+    "exact_matches_in_owned_archive_files": 0
+  },
+  "real_qq": false,
+  "production_database_modified": false,
+  "deployed": false
+}

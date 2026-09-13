@@ -1,0 +1,44 @@
+{
+  "contract": "release-canary-candidate-validation.1",
+  "code_head": "c76740f55abea75858d026029419ea299a53c3d6",
+  "status": "related_checks_passed",
+  "full_gate_base": {
+    "head": "70091dacbfe7ccd29b12b91af11e5d12d5c68484",
+    "passed": 8022,
+    "skipped": 19,
+    "terminal_exit_code": 0,
+    "record": "docs/audits/release-offline-gate-2026-09-13-70091dac.json"
+  },
+  "change_since_full_gate": "Only atomic v3 correction wire layout plus tests and audit docs. Original system preserved, full correction moved to outgoing JSON user tail; owned Context, original authority, single rechoice, actual request identity, review and deadlines unchanged.",
+  "owner_targeted": {
+    "commit": "cad06e5a4487bfab8f0012611ff4e7993b7b6fbb",
+    "passed": 177,
+    "seconds": 47.45
+  },
+  "root_integration": {
+    "passed": 10,
+    "seconds": 48.15,
+    "entire_120_fixed_scenarios_included": true,
+    "frozen_baseline_103_unchanged": true,
+    "terminal_exit_code": 0
+  },
+  "independent_review": {
+    "blocking_findings": 0,
+    "p1_p2_findings": 0,
+    "independent_public_tests_passed": 4,
+    "seconds": 8.3,
+    "report_sha256": "8ff53072b77f638f75cf491385f9b1f8fa5563f1e906e0a80d404ebfa4da7fde"
+  },
+  "full_gate_on_this_exact_commit_rerun": false,
+  "new_real_chain_still_unqualified": true,
+  "cache_and_latency_gain_unqualified": true,
+  "artifact_sha256": {
+    "output/private-audits/correction-prefix-20260913/root-integration.log": "6eea515d7af105c457fc0da9083bd706855183ac0823eae90e90035c16a1bee2",
+    "output/private-audits/correction-prefix-20260913/release-correction-prefix-independent-review-20260913.md": "8ff53072b77f638f75cf491385f9b1f8fa5563f1e906e0a80d404ebfa4da7fde",
+    "output/private-audits/correction-prefix-20260913/release-correction-prefix-seam-20260913.md": "d8fe3ebb07eff9f8b8e0e5d275295b8abb1be82d2b01bba027a694596020cb90",
+    "output/private-audits/correction-prefix-20260913/release-correction-prefix-reconstruction-20260913.json": "ced66b352f44bc5c7aa3d9e61ed1affafcc7eb2f370ec854cc74e34013496941",
+    "output/private-audits/correction-prefix-20260913/correction-prefix-final-targeted-tests.log": "831d468f14eee6624cc4e563e9671361642dbf46665e16de925ebdc00234c41a",
+    "output/private-audits/correction-prefix-20260913/release-correction-prefix-original-proof-20260913.json": "4a7d37d58e25a81e4b429d78d0238a5351da84bf98ee72b3aca1108a40d94c2a"
+  },
+  "canary_qualification": "Third canary stopped on second user input: corrected author completed but final reviewer timed out; no whole journey qualification."
+}

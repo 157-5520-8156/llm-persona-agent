@@ -1,0 +1,130 @@
+{
+  "contract": "release-cost-inheritance-summary.2",
+  "trial_id": "release-real-canary-20260913-03",
+  "code_head": "c76740f55abea75858d026029419ea299a53c3d6",
+  "status": "operator_stopped_terminal_unknown_and_whole_allocation_retained",
+  "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-schema-02.json",
+  "parent_snapshot_sha256": "9010b200e7af36c913cb0a2a6ec4fe59bf9e37cd2a068e3f3fd3316cda83b233",
+  "trial": {
+    "usage_rows": 11,
+    "known_rows": 10,
+    "unknown_rows": 1,
+    "legacy_rows": 0,
+    "not_billed_rows": 0,
+    "reservation_rows": 11,
+    "settled_reservations": 10,
+    "unknown_reservations": 1,
+    "pending_reservations": 0,
+    "known_repository_price_estimate_cny": "0.183792999999999998",
+    "known_stored_rounded_cny": "0.1838",
+    "repriced_minus_stored_cny": "-0.000007000000000002",
+    "unknown_reservation_full_hold_cny": "0.164511",
+    "pending_full_hold_cny": "0",
+    "observed_estimate_plus_unresolved_hold_cny": "0.348303999999999998",
+    "manifest_daily_committed_rounded_cny": 0.3483,
+    "advisory_guard_double_counted_unknown_cny": "0.164511",
+    "advisory_guard_upper_cny": "0.512814999999999998",
+    "whole_allocation_still_retained_cny": "2.0",
+    "unreleased_margin_above_observed_cny": "1.651696000000000002",
+    "purpose_summary": {
+      "activity_lifecycle_choice": {
+        "calls": 1,
+        "known_calls": 1,
+        "unknown_calls": 0,
+        "known_cost": "0.0263264"
+      },
+      "fact_memory_retention": {
+        "calls": 1,
+        "known_calls": 1,
+        "unknown_calls": 0,
+        "known_cost": "0.0209522"
+      },
+      "inbound_turn": {
+        "calls": 3,
+        "known_calls": 3,
+        "unknown_calls": 0,
+        "known_cost": "0.052789799999999999"
+      },
+      "interaction_fact_draft": {
+        "calls": 2,
+        "known_calls": 2,
+        "unknown_calls": 0,
+        "known_cost": "0.0018038"
+      },
+      "source_review": {
+        "calls": 3,
+        "known_calls": 2,
+        "unknown_calls": 1,
+        "known_cost": "0.044863799999999999"
+      },
+      "world_stimulus_appraisal": {
+        "calls": 1,
+        "known_calls": 1,
+        "unknown_calls": 0,
+        "known_cost": "0.037057"
+      }
+    },
+    "unknown_usage_records": [
+      {
+        "id": 9,
+        "recorded_at": "2026-09-13T07:27:37.221022+00:00",
+        "world_id": "",
+        "turn_id": "",
+        "purpose": "source_review",
+        "model": "deepseek-v4-flash",
+        "status": "failed",
+        "provider": "deepseek",
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "cache_hit_tokens": 0,
+        "cache_miss_tokens": 0,
+        "total_tokens": 0,
+        "error": "caller_cancelled",
+        "cost_cny": 0.0,
+        "latency_ms": 830,
+        "actor": "agent:companion",
+        "reservation_id": "reservation:f2486d459f7b417a86aa20fa50ca7f21",
+        "estimated_cny": 0.164511,
+        "attempt": 1,
+        "reasoning_tokens": 0,
+        "pricing_version": "deepseek-2026-08-17-peak",
+        "spend_account": "debug",
+        "billing_state": "unknown"
+      }
+    ],
+    "unknown_reservation_records": [
+      {
+        "reservation_id": "reservation:f2486d459f7b417a86aa20fa50ca7f21",
+        "created_at": "2026-09-13T07:27:37.221022+00:00",
+        "purpose": "source_review",
+        "actor": "agent:companion",
+        "provider": "deepseek",
+        "estimated_cny": 0.164511,
+        "world_id": "",
+        "turn_id": "",
+        "status": "billing_unknown"
+      }
+    ],
+    "budget_release_authorized": false
+  },
+  "combined_inheritance": {
+    "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-schema-02.json",
+    "parent_conservative_committed_cny": "68.58385329999999992007",
+    "conservative_committed_cny": "70.58385329999999992007",
+    "known_repository_price_estimate_cny": "42.52051009999999986347",
+    "observed_estimate_plus_unresolved_hold_cny": "66.13868509999999991147",
+    "all_parent_unknown_and_whole_allocations_retained": true,
+    "additional_authorized_budget_cny": null
+  },
+  "audit_path": "output/private-audits/release-real-canary-20260913-03/release-real-canary-03-cost-audit.json",
+  "audit_sha256": "46404abd2ef9eadbc6c0e3c308187e3f9a9d83565e2593f046ecb38282a6c20a",
+  "limitations": [
+    "Only captured calls and recognized accounting tables; not supplier account or uncaptured direct calls.",
+    "Known CNY is repository token-price estimation, not actual supplier payment.",
+    "The empty cancelled HTTP-200 capture is consistent with the sole unknown source_review bill; no fabricated per-call foreign key.",
+    "The 0.512815 advisory upper bound counts unknown on usage and reservation sides; formal observed-plus-hold counts it once (about 0.348304).",
+    "All prior unknown and whole allocations plus this full 2 CNY remain retained; no automatic release or new-trial admission.",
+    "Two inputs over 120 virtual seconds without restart do not qualify the planned life-to-memory, later-chat or long unanswered interval.",
+    "No key/credential reader, provider, launcher, old runner or production database was accessed by this audit."
+  ]
+}
