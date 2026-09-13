@@ -1,0 +1,97 @@
+{
+  "contract": "release-activity-continuation-validation.1",
+  "base_commit": "1e0159408b480a7051f69ebe84df7fe37c698d80",
+  "result": "offline_chain_passed_real_model_qualification_pending",
+  "problem": "After the daily empty-catalog decision and an ActivityCompleted, no completion-bound self-directed planning opportunity existed.",
+  "baseline": {
+    "method": "Run the new completion integration cases with the HEAD day_open_life_worker loaded in memory; keep the compatible surrounding contracts.",
+    "failed": 2,
+    "evidence": "ActivityCompleted exists, but only one planning request reaches HTTP."
+  },
+  "implementation": [
+    "Reuse empty-catalog CharacterInterior planning, existing LifeIntent acceptance and activity lifecycle.",
+    "Only latest completed activity owned by this actor; defer while any owned planned/active/paused Plan remains.",
+    "One opportunity and at most one Plan effect per world/actor/completion event, independent of day and retry Clock.",
+    "Explicit capability .4 / nested .2 / origin .2 / journal .2; absent continuation fields are excluded from legacy serialized values.",
+    "Bind exact completion event revision/hash and owned Plan revision/authority, plus original and retry Clock proofs, at acceptance and replay.",
+    "A fresh Clock is scheduled through existing ecology due reading; background capacity pause suppresses this new wake.",
+    "Role chooses future intention or no_op. No_op is terminal; transport retry and recovery of an already paid terminal remain distinct.",
+    "Full ordered capability source set is checked before role terminal persistence, allowing one same-role correction for a malformed set."
+  ],
+  "additional_failure_found": {
+    "problem": "A subset of required source refs could persist as a terminal role result, fail Plan materialization and prevent recovery.",
+    "red_failed": 2,
+    "focused_green_passed": 6,
+    "fixture_change": "Synthetic longitudinal self-directed no_op now returns all declared capability refs; it does not generate new life."
+  },
+  "final_test_groups": [
+    {
+      "name": "role_compiler_activity_context_budget_and_continuation",
+      "passed": 231,
+      "seconds": 37.75,
+      "log": "compatibility.log"
+    },
+    {
+      "name": "intent_authority_ecology_chat_and_world_response",
+      "passed": 117,
+      "seconds": 49.17,
+      "log": "core.log"
+    }
+  ],
+  "distinct_final_tests_passed": 348,
+  "covered": [
+    "Completion -> automatic due -> role choice -> future Plan -> actual lifecycle start -> another completion and another choice.",
+    "Role no_op and missing-source correction for both choice branches; no duplicate after restart.",
+    "Restart before consideration, provider retry, interruption before audit and before Plan; retained original paid decision without new call.",
+    "Completion event/hash/revision/Plan/actor/cursor tampering, explicit version mismatch, stable effect identity across changed day/Clock.",
+    "Existing ordinary day-open, source-bound intention readers, background budget checks and cold replay."
+  ],
+  "frozen_real_world_check": {
+    "source_trial": "release-recovery-continuation-20260913-09",
+    "world_revision": 518,
+    "logical_time": "2026-09-14T12:44:00+00:00",
+    "plan_count": 1,
+    "completion_source_valid": true,
+    "completed_at": "2026-09-14T03:42:00+00:00",
+    "other_actor_has_source": false,
+    "source_files_unchanged": true,
+    "physical_calls": 0,
+    "cold_rebuild_semantic_hash_matches": true
+  },
+  "ruff": "passed",
+  "git_diff_check": "passed",
+  "new_physical_provider_calls": 0,
+  "new_paid_allocations_cny": "0",
+  "production_modified": false,
+  "actual_qq_sent": false,
+  "code_and_test_sha256": {
+    "src/companion_daemon/world_v2/character_interior/structured_role.py": "71bbdce78611dfbe5c687f06f8bf18b2345dd4685c218a54438670c31228ad7f",
+    "src/companion_daemon/world_v2/character_interior/structured_role_tool_contract.py": "b30690c4b80692709a0a5bb418066bb2035a47175496aa31e4707097f286e985",
+    "src/companion_daemon/world_v2/day_open_life_intent_contract.py": "7fd0b47dcf1f10f07ebe50371464043bedf7fb59374f4d654e6931a9ccd4244b",
+    "src/companion_daemon/world_v2/day_open_life_intent_runtime.py": "b65fcdde319a7f2757acdc172054c060b949858b62b2d5bfe0547350387bdca9",
+    "src/companion_daemon/world_v2/day_open_life_worker.py": "9815190bd62a725d8bfea34ab0f0a0db7295d27b9695f35388770a389e3bbca8",
+    "src/companion_daemon/world_v2/day_open_opportunity.py": "a045424d060ec89465f21c0f85b1e77419b1a3eaf7e79f78e92cb78250a777b1",
+    "src/companion_daemon/world_v2/life_ecology_runtime.py": "227de9385c2d856191598f0b7a60038f8b1467734c381c831468062ed8c3d7db",
+    "src/companion_daemon/world_v2/longitudinal_fixture_model.py": "eb0463c6436605dab7dbf5a3e41e6c2a06a3c7b99efd83d035f7ecefb1c1a5dc",
+    "src/companion_daemon/world_v2/production_turn_application.py": "f8f8126346c4d0869b1057b7ef9526a52d9016bd31d017d3da38916b2aaa11b5",
+    "tests/world_v2/test_chat_life_intent_runtime.py": "5cfa07bf0ece189c92c42fa4f349400175a11485e0b232acc0355dafa47f2536",
+    "tests/world_v2/test_day_open_self_directed_intent.py": "9d68a5247424209a6ee27af41574bc131eb64412565cbe908af3c75fdaffbfd3",
+    "tests/world_v2/test_world_stimulus_life_intent.py": "4d4869c01f95b082277ccb0e310e5130798e141baef545e3c75e50c42a9ce536",
+    "src/companion_daemon/world_v2/activity_continuation_source.py": "630947719d3c660360723ffcba669a6f9751574c11bdff58b4f5b872819e0a08"
+  },
+  "evidence_logs": {
+    "baseline": "ee93eeb984e0a7fc1572a9946e8ee28e1ee54f83d2a14bb6d2376b5433d13337",
+    "partial_source_red": "781483c02364d57d433e754b8676634ae5ebaa050603a40163f54265835655ef",
+    "partial_source_green": "ffaa75c89f0113c618d1abca8375b1998e494770316e84e7bbcf5ceb753fda6a",
+    "compatibility": "edf34af9a51a7c17ea78f6692a854568e2ac3d6b988dd8933f39c23521ddd8de",
+    "core": "e3d437b8db8006cbc2875a927adc6aaa5160051672f5e0bed4932927bdaf3016"
+  },
+  "private_evidence_directory": "output/private-audits/release-activity-continuation-20260913",
+  "limits": [
+    "This closes a missing opportunity chain; it does not prove it was the sole cause of the frozen afternoon gap.",
+    "No historical activity was inserted, and completion proves lifecycle status rather than fulfilled intention or an invented Experience.",
+    "Real model life quality, repetition, longitudinal behavior, dialogue reliability and monthly cost are not qualified by HTTP fixtures.",
+    "Latest paid conversation still has unsupported experiences and correction timeouts; source-review false acceptance remains a separate blocker.",
+    "Accepted Character Prehistory and unified autobiographical memory are on the Goal acceptance list; runtime integration remains outstanding."
+  ]
+}

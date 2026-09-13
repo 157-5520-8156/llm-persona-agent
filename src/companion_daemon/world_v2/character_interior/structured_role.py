@@ -2010,6 +2010,19 @@ class StructuredCharacterRoleFaculty:
                         catalog=catalog,
                     ),
                 )
+            manifest = request.capability_manifest
+            if (
+                request.purpose == "activity_lifecycle_choice"
+                and manifest is not None
+                and manifest.payload.get("self_directed_intent") is not None
+                and tuple(result.decision.source_refs) != manifest.source_refs
+            ):
+                self._raise(
+                    "decision_source_unpinned", response_hash=response_hash,
+                    detail="decision.source_refs must preserve the complete ordered capability source_refs: "
+                    + json.dumps(manifest.source_refs, ensure_ascii=False)
+                    + ". These bind this opportunity, including no_op; they do not require an intention.",
+                )
             self._validate_decision_payload(
                 result.decision.payload,
                 decision_source_refs=frozenset(result.decision.source_refs),
@@ -2526,8 +2539,14 @@ class StructuredCharacterRoleFaculty:
                 detail=_FAILURE_DETAILS["capability_kind_mismatch"],
             )
         if request.purpose == "activity_lifecycle_choice" and manifest.payload.get("self_directed_intent") is not None:
-            if manifest.payload.get("contract") != "character-interior-activity-lifecycle-capability.3":
-                raise StructuredRoleResultError("capability_kind_mismatch")
+            from ..day_open_life_intent_contract import DayOpenActivityCapability
+
+            try:
+                DayOpenActivityCapability.model_validate_json(manifest.payload_json)
+            except ValueError as exc:
+                raise StructuredRoleResultError(
+                    "capability_kind_mismatch", detail=str(exc),
+                ) from exc
             return replace(
                 contract,
                 payload_contract="character-interior-activity-lifecycle-choice.2",

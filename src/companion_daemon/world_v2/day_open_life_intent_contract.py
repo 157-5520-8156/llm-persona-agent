@@ -12,6 +12,7 @@ from pydantic import Field, model_validator
 
 from .chat_life_intent_contract import LifeIntentDraft
 from .schema_core import FrozenModel
+from .activity_continuation_source import ActivityCompletionSource
 
 DAY_OPEN_LIFE_INTENT_REGISTRY_VERSION = "world-v2-proposals.6"
 DAY_OPEN_LIFE_INTENT_POLICY_REF = "policy:day-open-life-intent.1"
@@ -27,14 +28,19 @@ def digest(value: object) -> str:
 
 
 def day_open_opportunity_ref(*, world_id: str, actor_ref: str, day_key: str,
-                             first_clock_ref: str) -> str:
+                             first_clock_ref: str, completion_source=None) -> str:
+    if completion_source is not None:
+        return "activity-continuation:" + digest([world_id, actor_ref, completion_source.event_ref])
     return "day-open:" + digest([world_id, actor_ref, day_key, first_clock_ref])
 
 
 class DayOpenLifeIntentCapability(FrozenModel):
-    contract: Literal["day-open-life-intent-capability.1"]
+    contract: Literal["day-open-life-intent-capability.1", "day-open-life-intent-capability.2"]
     execution_scope: Literal["self_directed"]
-    opportunity_ref: str = Field(pattern=r"^day-open:[0-9a-f]{64}$")
+    opportunity_ref: str = Field(pattern=r"^(day-open|activity-continuation):[0-9a-f]{64}$")
+    completion_source: ActivityCompletionSource | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     day_key: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     timezone_name: str = Field(min_length=1, max_length=128)
     first_clock_ref: str = Field(min_length=1, max_length=512)
@@ -47,6 +53,8 @@ class DayOpenLifeIntentCapability(FrozenModel):
 
     @model_validator(mode="after")
     def clock_sequence_is_possible(self):
+        if (self.contract == "day-open-life-intent-capability.2") != (self.completion_source is not None):
+            raise ValueError("continuation capability requires its exact completed activity")
         ZoneInfo(self.timezone_name)
         datetime.strptime(self.day_key, "%Y-%m-%d")
         first = (self.first_clock_ref, self.first_clock_world_revision, self.first_clock_payload_hash)
@@ -64,12 +72,18 @@ class DayOpenLifeIntentCapability(FrozenModel):
 
 
 class DayOpenActivityCapability(FrozenModel):
-    contract: Literal["character-interior-activity-lifecycle-capability.3"]
+    contract: Literal["character-interior-activity-lifecycle-capability.3", "character-interior-activity-lifecycle-capability.4"]
     catalog_version: str = Field(min_length=1, max_length=128)
     catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     offered_tokens: tuple[str, ...] = Field(max_length=0)
     openings: tuple[dict, ...] = Field(max_length=0)
     self_directed_intent: DayOpenLifeIntentCapability
+
+    @model_validator(mode="after")
+    def continuation_version_is_explicit(self):
+        if (self.contract.endswith(".4")) != (self.self_directed_intent.completion_source is not None):
+            raise ValueError("activity capability version disagrees with continuation source")
+        return self
 
 
 class DayOpenLifeIntentPayload(LifeIntentDraft):
@@ -87,7 +101,10 @@ class DayOpenEvaluatedCursor(FrozenModel):
 
 
 class DayOpenLifeIntentOrigin(FrozenModel):
-    contract: Literal["day-open-life-intent-origin.1"] = "day-open-life-intent-origin.1"
+    contract: Literal["day-open-life-intent-origin.1", "day-open-life-intent-origin.2"] = "day-open-life-intent-origin.1"
+    completion_source: ActivityCompletionSource | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     world_id: str = Field(min_length=1)
     actor_ref: str = Field(min_length=1)
     opportunity_ref: str = Field(min_length=1)
@@ -117,3 +134,9 @@ class DayOpenLifeIntentOrigin(FrozenModel):
     role_opportunity_ref: str
     snapshot_id: str
     snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def continuation_version_is_explicit(self):
+        if self.contract.endswith(".2") != (self.completion_source is not None):
+            raise ValueError("activity origin version disagrees with continuation source")
+        return self

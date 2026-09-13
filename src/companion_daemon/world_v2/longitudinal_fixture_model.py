@@ -195,5 +195,7 @@ class LongitudinalFixtureModel(FakeCompanionModel):
             decision = {"completion": {"decision": "no_op"}}
         else:
             decision = {"decision": "no_op"}
-        result.update(status="decision", decision={"source_refs": refs[:1], "payload": decision})
+        # Self-directed choices bind the whole opportunity even when declining.
+        decision_refs = refs if capability.get("payload", {}).get("self_directed_intent") else refs[:1]
+        result.update(status="decision", decision={"source_refs": decision_refs, "payload": decision})
         return result

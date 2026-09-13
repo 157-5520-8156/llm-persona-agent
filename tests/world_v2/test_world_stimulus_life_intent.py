@@ -237,7 +237,7 @@ def _http_result(body, authored):
     )
 
 
-def _build(path: Path, model: DeepSeekChatModel, *, ecology=False):
+def _build(path: Path, model: DeepSeekChatModel, *, ecology=False, background_budget_paused=None):
     capabilities = QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
         update={"private_turn_state_mode": "required"}
     )
@@ -261,6 +261,7 @@ def _build(path: Path, model: DeepSeekChatModel, *, ecology=False):
             reply_target="user:user.1",
             action_pump_owner="pump:world-life-intent",
             character_memory_enabled=False,
+            background_budget_paused=background_budget_paused,
             expression_capabilities=capabilities,
             life_ecology=LifeEcologyComposition.production_v1() if ecology else None,
         ),

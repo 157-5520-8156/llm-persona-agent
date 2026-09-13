@@ -28,7 +28,7 @@ A sourced, confirmed fact about the user. A current User Fact may supersede an o
 
 An intention or scheduled future activity that has not happened. A Plan is never an Experience.
 
-An accepted self-directed Plan from chat, a World Life Response, or day opening
+An accepted self-directed Plan from chat, a World Life Response, day opening, or an Activity Continuation
 retains its original role-authored intention in `planned_activities` before it
 starts. This source-bound view proves the intention and scheduled window only;
 it grants no present location, started activity, embedded history or completed
@@ -39,6 +39,17 @@ Character-authorized intention to World Consequence authoring through its
 source-specific reader. That reading authorizes an attempt's scope, not the
 intention's embedded history or successful fulfillment. A recorded reader
 identity preserves the original source set when older requests are replayed.
+
+## Activity Continuation
+
+A source-bound opportunity to consider a future self-directed Plan after the
+companion's latest owned ActivityCompleted, once no live owned Plan remains.
+It reuses empty-catalog planning and the existing background budget, with one
+journal identity per completion event across days and restarts. The character
+may choose an intention or no_op; refusal consumes this opportunity, and a
+technical failure retains bounded retry rather than becoming refusal.
+The source proves that an activity ended, not that its intention succeeded.
+_Avoid_: Automatic next activity, daily behavior script, invented Experience
 
 ## Biographical Context
 

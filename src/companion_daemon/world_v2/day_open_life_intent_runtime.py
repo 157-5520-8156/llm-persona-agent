@@ -41,8 +41,10 @@ class DayOpenLifeIntentError(ValueError):
         super().__init__(self.code)
 
 
-def day_open_life_plan_id(*, world_id: str, actor_ref: str, day_key: str) -> str:
-    """One effect per world/actor/day, even if a caller substitutes a first Clock."""
+def day_open_life_plan_id(*, world_id: str, actor_ref: str, day_key: str, completion_source=None) -> str:
+    """One effect per daily opening or completion, independent of retry Clock."""
+    if completion_source is not None:
+        return PLAN_PREFIX + digest([world_id, actor_ref, "activity-completed", completion_source.event_ref])
     return PLAN_PREFIX + digest([world_id, actor_ref, day_key])
 
 
@@ -52,7 +54,9 @@ def _role_material(result, capability_payload, *, world_id):
     result = InnerDecision.model_validate_json(result.model_dump_json())
     capability = DayOpenActivityCapability.model_validate_json(canonical_json(capability_payload))
     supplied = capability.self_directed_intent
-    sources = tuple(sorted({supplied.first_clock_ref, supplied.selected_clock_ref}))
+    sources = tuple(sorted({supplied.first_clock_ref, supplied.selected_clock_ref} | (
+        {supplied.completion_source.event_ref} if supplied.completion_source is not None else set()
+    )))
     decision = result.decision
     if (
         result.status != "decided"
@@ -66,6 +70,7 @@ def _role_material(result, capability_payload, *, world_id):
         or supplied.opportunity_ref != day_open_opportunity_ref(
             world_id=world_id, actor_ref=result.actor_ref, day_key=supplied.day_key,
             first_clock_ref=supplied.first_clock_ref,
+            completion_source=supplied.completion_source,
         )
     ):
         raise DayOpenLifeIntentError("role_capability_binding_invalid")
@@ -101,6 +106,9 @@ def materialize_day_open_proposal(result, capability_payload, *, world_id: str):
             supplied.selected_clock_world_revision, supplied.selected_clock_payload_hash
         ),
     }
+    if supplied.completion_source is not None:
+        source = supplied.completion_source
+        source_material[source.event_ref] = (source.world_revision, source.payload_hash)
     evidence = tuple(
         ProposalEvidenceRef(
             ref_id=ref, evidence_kind="committed_world_event", source_world_revision=revision,
@@ -124,6 +132,7 @@ def materialize_day_open_proposal(result, capability_payload, *, world_id: str):
             change_id="change:day-open-life-intent:" + identity,
             target_id=day_open_life_plan_id(
                 world_id=world_id, actor_ref=result.actor_ref, day_key=supplied.day_key,
+                completion_source=supplied.completion_source,
             ),
             kind="day_open_life_intent", transition="plan", expected_entity_revision=0,
             evidence_refs=tuple(item.ref_id for item in evidence),
@@ -211,8 +220,20 @@ def derive_day_open_life_plan(*, state, world_id: str, proposal_id: str, owner_a
         ):
             raise DayOpenLifeIntentError("audit_event_hash_invalid")
     sources = {x.event_id: x for x in state.committed_world_event_refs}
+    completion = supplied.completion_source
+    if completion is not None:
+        from .activity_continuation_source import validate_completion_source
+
+        validate_completion_source(
+            state, completion, actor_ref=owner_actor_ref, cursor_revision=result.cursor.world_revision,
+        )
     for declared in proposal.evidence_refs:
         source = sources.get(declared.ref_id)
+        if completion is not None and declared.ref_id == completion.event_ref:
+            if (declared.source_world_revision != completion.world_revision
+                    or declared.immutable_hash != "sha256:" + completion.payload_hash):
+                raise DayOpenLifeIntentError("completion_source_invalid")
+            continue
         if source is None or any((
             source.event_type != "ClockAdvanced",
             source.world_revision != declared.source_world_revision,
@@ -223,11 +244,15 @@ def derive_day_open_life_plan(*, state, world_id: str, proposal_id: str, owner_a
         )):
             raise DayOpenLifeIntentError("clock_source_invalid")
     selected = sources[supplied.selected_clock_ref]
+    if completion is not None and sources[completion.event_ref].logical_time > selected.logical_time:
+        raise DayOpenLifeIntentError("completion_source_is_in_future")
     selected_head = next((x for x in sources.values()
                           if x.world_revision == result.cursor.world_revision), None)
     if selected_head is None or selected_head.logical_time != selected.logical_time:
         raise DayOpenLifeIntentError("selection_clock_invalid")
     origin = DayOpenLifeIntentOrigin(
+        contract="day-open-life-intent-origin.2" if completion else "day-open-life-intent-origin.1",
+        completion_source=completion,
         world_id=world_id, actor_ref=owner_actor_ref, opportunity_ref=supplied.opportunity_ref,
         day_key=supplied.day_key, timezone_name=supplied.timezone_name,
         first_clock_ref=supplied.first_clock_ref,

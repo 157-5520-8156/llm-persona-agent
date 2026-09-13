@@ -1018,6 +1018,7 @@ async def test_life_clock_peek_preserves_ready_work_and_future_boundaries(
     projection = SimpleNamespace(logical_time=now)
     application = SimpleNamespace(
         _life_ecology=SimpleNamespace(
+            background_budget_paused=lambda: False,
             _trigger_store=SimpleNamespace(
                 next_consideration_at=lambda: now + timedelta(seconds=ordinary)
             )

@@ -1,6 +1,6 @@
-"""The empty-catalog branch of the existing activity day_open worker.
+"""Empty-catalog planning at day opening or an owned activity completion.
 
-One Clock-backed opportunity, one character decision, then replayable Plan
+One source-bound opportunity, one character decision, then replayable Plan
 acceptance. This object has no scheduler and authors no life content.
 """
 
@@ -17,9 +17,10 @@ from .character_interior.run_result import CausalOpportunityRuntime
 from .daily_occasion import local_day_key
 from .day_open_opportunity import DayOpenAttempt, DayOpenJournal, day_open_store_for_ledger
 from .event_identity import domain_idempotency_key
-from .occasion import mint_day_open
+from .occasion import mint_day_open, mint_life_beat
 from .proposal_audit_schemas import ProposalRecordedV2Payload
 from .schemas import ProjectionCursor, WorldEvent
+from .activity_continuation_source import latest_completion_source
 
 
 def _canonical(value):
@@ -43,7 +44,7 @@ class DayOpenLifeWorker:
     def pending(self):
         return next((x for x in self.store.records(self.actor_ref) if not x.terminal), None)
 
-    def _opportunity(self, *, projection, wake_event_ref, catalog, previous=None):
+    def _opportunity(self, *, projection, wake_event_ref, catalog, previous=None, completion_source=None):
         from .day_open_life_intent_contract import day_open_opportunity_ref
 
         if catalog.status != "no_openings":
@@ -59,6 +60,7 @@ class DayOpenLifeWorker:
             raise ValueError("day_open.clock_authority_invalid")
         day = local_day_key(wake.logical_time, self.timezone)
         ordinal = len(previous.attempts) + 1 if previous else 1
+        completion_source = previous.completion_source if previous else completion_source
         first = (
             previous.attempts[0].opportunity.capability_manifest.payload["self_directed_intent"]
             if previous
@@ -73,21 +75,28 @@ class DayOpenLifeWorker:
             actor_ref=self.actor_ref,
             day_key=day,
             first_clock_ref=first["first_clock_ref"],
+            completion_source=completion_source,
         )
-        sources = tuple(sorted({first["first_clock_ref"], wake.event_id}))
+        sources = tuple(sorted({first["first_clock_ref"], wake.event_id} | (
+            {completion_source.event_ref} if completion_source is not None else set()
+        )))
         identity = CausalOpportunityRuntime(
             world_id=self.ledger.world_id,
             actor_ref=self.actor_ref,
             purpose="activity_lifecycle_choice",
         ).identity_for_refs(sources, epoch=f"{day_ref}:attempt:{ordinal}")
         payload = {
-            "contract": "character-interior-activity-lifecycle-capability.3",
+            "contract": ("character-interior-activity-lifecycle-capability.4"
+                         if completion_source else "character-interior-activity-lifecycle-capability.3"),
             "catalog_version": catalog.catalog_version,
             "catalog_hash": catalog.catalog_hash,
             "offered_tokens": [],
             "openings": [],
             "self_directed_intent": {
-                "contract": "day-open-life-intent-capability.1",
+                "contract": ("day-open-life-intent-capability.2"
+                             if completion_source else "day-open-life-intent-capability.1"),
+                **({"completion_source": completion_source.model_dump(mode="json")}
+                   if completion_source else {}),
                 "execution_scope": "self_directed",
                 "opportunity_ref": day_ref,
                 "day_key": day,
@@ -126,12 +135,13 @@ class DayOpenLifeWorker:
             purpose="activity_lifecycle_choice",
             source_refs=sources,
             capability_manifest=manifest,
-            occasion=mint_day_open(
-                source_event_ref=first["first_clock_ref"],
+            occasion=(mint_life_beat if completion_source else mint_day_open)(
+                source_event_ref=(completion_source.event_ref if completion_source else first["first_clock_ref"]),
                 created_at=wake.logical_time,
-                merge_key=day,
+                merge_key=day_ref if completion_source else day,
             ),
-            context_note="This is the daily opportunity to consider a future private self-directed "
+            context_note=("One owned activity has ended. This is one opportunity to consider a future private self-directed "
+            if completion_source else "This is the daily opportunity to consider a future private self-directed ") +
             "intention in an empty activity catalog. Choose your own intention or no_op. "
             "Routine windows are background, not actions. A Plan is neither a started activity "
             "nor a completed result; this opportunity cannot move anyone or send a message.",
@@ -170,21 +180,31 @@ class DayOpenLifeWorker:
         row = self.pending()
         day = local_day_key(projection.logical_time, self.timezone)
         if row is None:
-            if self.daily.spent("day_open", day) or self.spends.spent("occasion:day_open:" + day):
+            records = self.store.records(self.actor_ref)
+            completion = latest_completion_source(projection, actor_ref=self.actor_ref)
+            if completion is not None and any(
+                x.completion_source is not None and x.completion_source.event_ref == completion.event_ref
+                for x in records
+            ):
+                completion = None
+            if completion is None and (self.daily.spent("day_open", day) or self.spends.spent("occasion:day_open:" + day)):
                 return ActivityLifecycleFollowupResult(
                     status="no_op", reason_code="activity_lifecycle.day_open_already_spent"
                 )
-            if any(x.day_key == day for x in self.store.records(self.actor_ref)):
+            if completion is None and any(x.day_key == day and x.completion_source is None for x in records):
                 return ActivityLifecycleFollowupResult(
                     status="no_op", reason_code="day_open.already_terminal"
                 )
             opportunity = self._opportunity(
-                projection=projection, wake_event_ref=wake_event_ref, catalog=catalog
+                projection=projection, wake_event_ref=wake_event_ref, catalog=catalog,
+                completion_source=completion,
             )
             row = self.store.save(
                 DayOpenJournal(
+                    contract="day-open-opportunity-journal.2" if completion else "day-open-opportunity-journal.1",
                     actor_ref=self.actor_ref,
                     day_key=day,
+                    completion_source=completion,
                     attempts=(DayOpenAttempt(ordinal=1, opportunity=opportunity),),
                 )
             )
@@ -248,7 +268,8 @@ class DayOpenLifeWorker:
             json.loads(opportunity.capability_manifest.payload_json),
             world_id=self.ledger.world_id,
         )
-        self.daily.mark("day_open", row.day_key)
+        if row.completion_source is None:
+            self.daily.mark("day_open", row.day_key)
         if proposal is None:
             model_result = self._model_result(
                 result=result, opportunity=opportunity, proposal_hash=None
@@ -323,7 +344,7 @@ class DayOpenLifeWorker:
             capability_ref=opportunity.capability_manifest.capability_ref,
             route_tier="flash",
             route_reason_code="activity_lifecycle.day_open_intent",
-            router_version="character-interior-activity-lifecycle-capability.3",
+            router_version=opportunity.capability_manifest.payload["contract"],
             proposal_hash=proposal_hash,
             causal_opportunity=causal,
         )

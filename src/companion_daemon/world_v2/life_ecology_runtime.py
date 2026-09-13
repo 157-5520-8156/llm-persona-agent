@@ -251,6 +251,10 @@ class LifeEcologyRuntime:
         # to have every provider call denied one by one.
         self._background_budget_paused = background_budget_paused
 
+    def background_budget_paused(self) -> bool:
+        """Capacity for background opportunities, independent of character choice."""
+        return bool(self._background_budget_paused and self._background_budget_paused())
+
     def availability(self) -> LifeEcologyAvailability:
         return self._availability
 
@@ -307,7 +311,7 @@ class LifeEcologyRuntime:
                 trigger_id=claim.trigger_id,
                 reason_code="life_ecology.run_in_progress",
             )
-        if self._background_budget_paused is not None and self._background_budget_paused():
+        if self.background_budget_paused():
             # This is a capacity fact, not a character decision and not a
             # technical failure: today's background envelope is spent, so the
             # wake closes quietly and the next wake may still live.  Visible

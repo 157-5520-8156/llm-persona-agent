@@ -1838,13 +1838,9 @@ class StructuredRoleToolContracts:
         if not isinstance(capability_payload, dict):
             raise ValueError("activity lifecycle capability must be one object")
         if capability_payload.get("self_directed_intent") is not None:
-            if (
-                capability_payload.get("contract") != "character-interior-activity-lifecycle-capability.3"
-                or capability_payload.get("offered_tokens") != []
-                or capability_payload.get("openings") != []
-                or capability_payload["self_directed_intent"].get("execution_scope") != "self_directed"
-            ):
-                raise ValueError("day_open capability is not an empty-catalog private intention opportunity")
+            from ..day_open_life_intent_contract import DayOpenActivityCapability
+
+            DayOpenActivityCapability.model_validate_json(capability_payload_json)
             schema = _provider_schema(_DayOpenPayload)
             schema["required"] = ["decision"]
             schema["anyOf"] = [
@@ -1859,7 +1855,9 @@ class StructuredRoleToolContracts:
                 capability_identity=capability_payload,
                 source_refs=tuple(json.loads(source_refs_json)),
                 recall_allowed=recall_allowed,
-                description="Consider this daily opportunity with the pinned context. Freely choose one "
+                description=("Consider this activity-completion opportunity with the pinned context. Freely choose one "
+                if capability_payload["contract"].endswith(".4")
+                else "Consider this daily opportunity with the pinned context. Freely choose one ") +
                 "self_directed private future intention or no_op. The intention requests a Plan; "
                 "it does not start or complete it, move anyone, control another person, or author "
                 "a World result. No action or intention is required. Return the same source-bound "

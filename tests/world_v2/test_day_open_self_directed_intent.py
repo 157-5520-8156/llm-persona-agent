@@ -29,7 +29,7 @@ def build_app(monkeypatch):
     original = shared.compose_production_character_interior
     stores = []
 
-    def build(path, model, *, ecology):
+    def build(path, model, *, ecology, background_budget_paused=None):
         store = open_sqlite_character_interior_turn_store(path=path, world_id=shared.WORLD)
         stores.append(store)
         with monkeypatch.context() as patch:
@@ -38,7 +38,7 @@ def build_app(monkeypatch):
                 "compose_production_character_interior",
                 lambda **kwargs: original(**kwargs, turn_store=store),
             )
-            return shared._build(path, model, ecology=ecology)
+            return shared._build(path, model, ecology=ecology, background_budget_paused=background_budget_paused)
 
     yield build
     for store in stores:
@@ -54,13 +54,155 @@ INTENT = {
 }
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("choose_next", [False, True])
+@pytest.mark.parametrize("repair_sources", [False, True])
+async def test_completed_activity_offers_one_new_self_directed_choice(
+    tmp_path, monkeypatch, build_app, choose_next, repair_sources,
+):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+
+    class ContinuingRole(_DayOpenHTTP):
+        async def __call__(self, request):
+            if self.day_requests:
+                self.choose = choose_next
+            return await super().__call__(request)
+
+    provider = ContinuingRole(repair_sources=repair_sources)
+    model = DeepSeekChatModel(
+        "offline-fixture", "https://fixture.invalid", "deepseek-v4-flash",
+        thinking_enabled=False, transport=httpx.MockTransport(provider),
+    )
+    path = tmp_path / "life-continuation.sqlite"
+    paused = [False]
+    app = build_app(path, model, ecology=True, background_budget_paused=lambda: paused[0])
+    previous = NOW
+    try:
+        for minute in (1, 2, 6, 7, 8, 9):
+            provider.lifecycle_choice = "complete" if minute == 6 else "start"
+            at = NOW + timedelta(minutes=minute)
+            await app.tick(
+                tick_id=f"continuity-{minute}", logical_time_from=previous,
+                logical_time_to=at, observed_at=at, trace_id=f"trace:continuity-{minute}",
+                causation_id=f"clock:continuity-{minute}", correlation_id="life-continuation",
+                reason="test_clock",
+            )
+            previous = at
+            if minute == 6:
+                projection = app.export_replay_evidence().projection
+                _assert_completion_authority_boundaries(projection)
+                assert await app.life_ecology_next_due() == at + timedelta(seconds=1)
+                paused[0] = True
+                assert await app.life_ecology_next_due() > at + timedelta(seconds=1)
+                paused[0] = False
+                # Cold restart before consideration must reconstruct its due time.
+                app.close()
+                app = build_app(path, model, ecology=True)
+                assert await app.life_ecology_next_due() == at + timedelta(seconds=1)
+        evidence = app.export_replay_evidence()
+        assert any(x.event.event_type == "ActivityCompleted" for x in evidence.events), [
+            (p.status, p.scheduled_window) for p in evidence.projection.plans
+        ]
+        assert len(provider.day_requests) == 2 + int(repair_sources), "completion never reached the character as a new choice"
+        assert len(evidence.projection.plans) == (2 if choose_next else 1)
+        assert evidence.projection.actions == ()
+        if choose_next:
+            assert sum(p.status == "active" for p in evidence.projection.plans) == 1
+        next_request = json.loads(provider.day_requests[1]["messages"][1]["content"])
+        capability = next_request["capability_manifest"]["payload"]["self_directed_intent"]
+        assert capability["contract"] == "day-open-life-intent-capability.2"
+        completed = next(x.event for x in evidence.events if x.event.event_type == "ActivityCompleted")
+        assert capability["completion_source"]["event_ref"] == completed.event_id
+        from companion_daemon.world_v2.day_open_life_intent_contract import DayOpenActivityCapability
+        from copy import deepcopy
+
+        full_capability = next_request["capability_manifest"]["payload"]
+        for mutation in ("outer_version", "inner_version", "missing_source"):
+            changed = deepcopy(full_capability)
+            if mutation == "outer_version":
+                changed["contract"] = "character-interior-activity-lifecycle-capability.3"
+            elif mutation == "inner_version":
+                changed["self_directed_intent"]["contract"] = "day-open-life-intent-capability.1"
+            else:
+                del changed["self_directed_intent"]["completion_source"]
+            with pytest.raises(ValueError):
+                DayOpenActivityCapability.model_validate_json(json.dumps(changed))
+        app.close()
+        app = build_app(path, model, ecology=True)
+        at = NOW + timedelta(minutes=10)
+        await app.tick(
+            tick_id="continuity-restart", logical_time_from=previous,
+            logical_time_to=at, observed_at=at, trace_id="trace:continuity-restart",
+            causation_id="clock:continuity-restart", correlation_id="life-continuation",
+            reason="test_clock",
+        )
+        assert len(provider.day_requests) == 2 + int(repair_sources), "the same completion was offered again after restart"
+        assert len(app.export_replay_evidence().projection.plans) == (2 if choose_next else 1)
+        if choose_next:
+            provider.lifecycle_choice = "complete"
+            at = NOW + timedelta(minutes=13)
+            await app.tick(
+                tick_id="second-completion", logical_time_from=NOW + timedelta(minutes=10),
+                logical_time_to=at, observed_at=at, trace_id="trace:second-completion",
+                causation_id="clock:second-completion", correlation_id="life-continuation",
+                reason="test_clock",
+            )
+            provider.lifecycle_choice = "start"
+            due = await app.life_ecology_next_due()
+            assert due == at + timedelta(seconds=1)
+            await app.tick(
+                tick_id="third-choice", logical_time_from=at,
+                logical_time_to=due, observed_at=due, trace_id="trace:third-choice",
+                causation_id="clock:third-choice", correlation_id="life-continuation",
+                reason="test_clock",
+            )
+            assert len(provider.day_requests) == 3 + int(repair_sources)
+            assert len(app.export_replay_evidence().projection.plans) == 3
+    finally:
+        app.close()
+        await model.aclose()
+
+
+def _assert_completion_authority_boundaries(projection):
+    from companion_daemon.world_v2.activity_continuation_source import (
+        latest_completion_source, validate_completion_source,
+    )
+    from companion_daemon.world_v2.day_open_life_intent_runtime import day_open_life_plan_id
+    from companion_daemon.world_v2.day_open_life_intent_contract import day_open_opportunity_ref
+
+    source = latest_completion_source(projection, actor_ref=ACTOR)
+    assert source is not None
+    assert latest_completion_source(projection, actor_ref="actor:other") is None
+    for update in (
+        {"event_ref": "event:missing"}, {"payload_hash": "f" * 64},
+        {"world_revision": source.world_revision + 1}, {"plan_revision": source.plan_revision + 1},
+        {"plan_id": "plan:other"},
+    ):
+        with pytest.raises(ValueError, match="completion_authority_invalid"):
+            validate_completion_source(
+                projection, source.model_copy(update=update), actor_ref=ACTOR,
+                cursor_revision=projection.world_revision,
+            )
+    for actor, cursor in (("actor:other", projection.world_revision), (ACTOR, source.world_revision - 1)):
+        with pytest.raises(ValueError, match="completion_authority_invalid"):
+            validate_completion_source(projection, source, actor_ref=actor, cursor_revision=cursor)
+    common = dict(world_id="world:test", actor_ref=ACTOR, completion_source=source)
+    assert day_open_life_plan_id(**common, day_key="2026-09-13") == day_open_life_plan_id(
+        **common, day_key="2026-09-14",
+    )
+    assert day_open_opportunity_ref(**common, day_key="2026-09-13", first_clock_ref="clock:1") == day_open_opportunity_ref(
+        **common, day_key="2026-09-14", first_clock_ref="clock:2",
+    )
+
+
 class _DayOpenHTTP(_RoleHTTP):
-    def __init__(self, *, choose=True, fail=False, repair=False):
+    def __init__(self, *, choose=True, fail=False, repair=False, repair_sources=False):
         super().__init__()
         self.choose = choose
         self.day_requests = []
         self.fail = fail
         self.repair = repair
+        self.repair_sources = repair_sources
         self.chat_intent = None
 
     async def __call__(self, request):
@@ -118,7 +260,9 @@ class _DayOpenHTTP(_RoleHTTP):
                 "recall_query": None,
                 "proposals": [],
                 "decision": {
-                    "source_refs": capability["source_refs"],
+                    "source_refs": capability["source_refs"][:1]
+                    if self.repair_sources and len(self.day_requests) == 2
+                    else capability["source_refs"],
                     "payload": {
                         "decision": "self_directed_intent",
                         "life_intent": {**INTENT, "execution_scope": "control_others"}
@@ -596,6 +740,86 @@ async def test_paid_day_open_choice_recovers_original_intention_after_new_clock(
         assert payload.day_open_intent_origin.source_event_ref == "event:trigger:clock:original"
         assert planned[0].logical_time == recovered_at
         assert len(evidence.projection.plans) == 1 + int(intervening_chat)
+    finally:
+        app.close()
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_seam", ["transport", "before_audit", "before_plan"])
+async def test_completion_choice_retry_or_paid_recovery_preserves_original_source(
+    tmp_path, monkeypatch, build_app, failure_seam,
+):
+    from companion_daemon.world_v2.day_open_life_worker import DayOpenLifeWorker
+    from companion_daemon.world_v2.day_open_life_intent_runtime import DayOpenLifeIntentRuntime
+    from companion_daemon.world_v2.life_events import ActivityPlannedPayload
+
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    provider = _DayOpenHTTP()
+    model = DeepSeekChatModel(
+        "offline-fixture", "https://fixture.invalid", "deepseek-v4-flash",
+        thinking_enabled=False, transport=httpx.MockTransport(provider),
+    )
+    path = tmp_path / "completion-recovery.sqlite"
+    app = build_app(path, model, ecology=True)
+    previous = NOW
+
+    async def tick(name, at):
+        nonlocal previous
+        await app.tick(
+            tick_id=name, logical_time_from=previous, logical_time_to=at,
+            observed_at=at, trace_id="trace:" + name, causation_id="clock:" + name,
+            correlation_id="completion-recovery", reason="test_clock",
+        )
+        previous = at
+
+    try:
+        for minute in (1, 2, 6):
+            provider.lifecycle_choice = "complete" if minute == 6 else "start"
+            await tick(f"setup-{minute}", NOW + timedelta(minutes=minute))
+        target, method = (
+            (DayOpenLifeWorker, "_record") if failure_seam == "before_audit"
+            else (DayOpenLifeIntentRuntime, "accept")
+        )
+        original = getattr(target, method)
+        failures = []
+
+        def fail_once(self, *args, **kwargs):
+            if not failures:
+                failures.append(True)
+                raise RuntimeError("injected after durable completion choice")
+            return original(self, *args, **kwargs)
+
+        if failure_seam == "transport":
+            provider.fail = True
+        else:
+            monkeypatch.setattr(target, method, fail_once)
+        selected = NOW + timedelta(minutes=7)
+        await tick("continuation", selected)
+        assert len(provider.day_requests) == 2
+        assert len(app.export_replay_evidence().projection.plans) == 1
+        app.close()
+        app = build_app(path, model, ecology=True)
+        provider.fail = False
+        provider.lifecycle_choice = "start"
+        await tick("recover", selected + timedelta(seconds=30))
+        assert len(provider.day_requests) == (3 if failure_seam == "transport" else 2)
+        evidence = app.export_replay_evidence()
+        plans = [ActivityPlannedPayload.model_validate_json(row.event.payload_json)
+                 for row in evidence.events if row.event.event_type == "ActivityPlanned"]
+        assert len(plans) == 2
+        continuation = next(p for p in plans if p.day_open_intent_origin.completion_source is not None)
+        origin = continuation.day_open_intent_origin
+        assert origin.attempt_ordinal == (2 if failure_seam == "transport" else 1)
+        assert origin.selected_at == (selected + timedelta(seconds=30) if failure_seam == "transport" else selected)
+        assert origin.completion_source.event_ref == next(
+            row.event.event_id for row in evidence.events if row.event.event_type == "ActivityCompleted"
+        )
+        app.close()
+        app = build_app(path, model, ecology=True)
+        assert app.export_replay_evidence().projection == evidence.projection
+        await tick("later", selected + timedelta(seconds=31))
+        assert len(provider.day_requests) == (3 if failure_seam == "transport" else 2)
     finally:
         app.close()
         await model.aclose()
