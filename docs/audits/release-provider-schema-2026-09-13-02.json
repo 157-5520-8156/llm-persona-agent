@@ -1,0 +1,71 @@
+{
+  "contract": "release-provider-schema-compatibility-result.1",
+  "trial_id": "release-v3-schema-compatibility-20260913-02",
+  "code_head": "c48d23d7ac32108ca6a2de2dbdce2694f388f74d",
+  "terminal_exit_code": 0,
+  "status": "single_call_syntax_compatible_no_prompt_token_saving",
+  "provider_evidence": {
+    "http_status": 200,
+    "capture_id": "model-input:6d78cb2c2b7e42a990bf3dd2c30162ee",
+    "response_id": "e9710992-1168-46ac-97fa-9e1754aebf73",
+    "requested_model": "deepseek-v4-flash",
+    "served_model": "deepseek-flash",
+    "request_bytes": 116516,
+    "request_sha256": "ddfb50b32a8933d6c664d723c492cc7cc9d105218faba6033908368df153deb1",
+    "body_bytes": 4330,
+    "body_sha256": "9e3c5ea4a04fb9562c3c98c336dd80644887e402931c06cf7c33f02aba000e7b",
+    "arguments_sha256": "9c32253a884b30ba257abbc5e2cea527bf35cf17d1ef3b413c1cca9457904f7f",
+    "complete_body": true,
+    "finish_reason": "tool_calls",
+    "token_usage_matches_sqlite_and_returned": true,
+    "token_usage": {
+      "prompt_tokens": 30628,
+      "completion_tokens": 1158,
+      "cache_hit_tokens": 11648,
+      "cache_miss_tokens": 18980,
+      "total_tokens": 31786,
+      "reasoning_tokens": 0
+    },
+    "validation": {
+      "original_schema_valid": true,
+      "factored_schema_valid": true
+    },
+    "world_role_semantic_acceptance": "not_executed"
+  },
+  "comparison": {
+    "original_inline_prompt_tokens": 30493,
+    "new_prompt_tokens": 30628,
+    "prompt_tokens_delta": 135,
+    "prompt_token_saving_observed": false,
+    "single_observed_latency_ms": 5706,
+    "latency_qualified": false,
+    "interpretation": "schema request bytes shrink but this provider observation used 135 more prompt tokens; no token/cost saving or latency qualification inferred"
+  },
+  "product_decision": "Do not implement factoring; 21% HTTP bytes saved but observed prompt tokens 30628 versus original inline 30493. No model token benefit demonstrated.",
+  "provider_schema_scope": "One frozen initial request only; no whole capability or phase qualification.",
+  "changed_product": false,
+  "semantic_acceptance": false,
+  "latency_qualification": false,
+  "release_ready": false,
+  "whole_allocation_retained_cny": "0.6",
+  "cost_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-schema-02.json",
+  "private_directory": "output/private-audits/release-v3-schema-compatibility-20260913-02",
+  "official_reference": "https://api-docs.deepseek.com/guides/tool_calls/",
+  "artifact_sha256": {
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/request.json": "ddfb50b32a8933d6c664d723c492cc7cc9d105218faba6033908368df153deb1",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/release-v3-schema-compatibility-cost-audit-02-20260913.md": "f926b3e207ddce472722e2d4733846f8c0fd8552676a2b9a80ab9989bf5ad5a1",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/admitted.json": "265e8aa37b47ce2371938cac0b1c177f450c0dff3745e97d3ed83a29c2f91068",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/factoring-prototype.py": "3ab6672cd1063246f3468709af0158b508e743311abd47b563ee7a04c0082b7e",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/prepared.json": "5544f633b8557e343585990f35f10d927ac28f58a280d34ffce379e75172bdba",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/original-parameters.json": "451c442421e93a7e4d6dd2d164caaad2c2b4cc46ac5bad505f8dac4229856a8a",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/strict-compatibility-report.md": "7e2e777a4c73d95916ed288b300c8e2c23e4dc924bd403d0e745f7e7676adba8",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/release-v3-schema-probe-02-result-audit.json": "50d24ca91deb85e38a44912a3535e8d07719e209375e1465f9930bf602933c16",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/release-v3-schema-probe-02-result-audit.md": "3c24693a5a2e17dcb252cfb8cc6dd513b3afc894005d5e4e6a037fbe93265613",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/launch.py": "9772ae071b61eddab47238f644d0de0d07057a1a174921cd7be4ac83ab3e177f",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/release-v3-schema-compatibility-cost-audit-02-20260913.json": "40f2ed202bf0c2f31ab4eec412a35353301bfea5d620d0c5d42bb62bf1fa4d39",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/finished.json": "7f990b6f1120dedc50afe81c2dedff0b096ae0079e355023b7856d1e039aa27e",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/factoring-proof.json": "7bd042dcfc865c54a4f0b8bcd3d2aab3572f64005976bf2b8cc415f02d32b145",
+    "output/private-audits/release-v3-schema-compatibility-20260913-02/diagnosis-report.md": "5b45060b7ad7dd13b0c5b9927c238e9c22cf68cfa188c4105f7add9bc4de58b4"
+  },
+  "next_work": "Investigate actual correction input duplication without changing character authority or validation. Never reopen this admission."
+}
