@@ -7,6 +7,7 @@ import json
 
 REQUIRED_POLICY = "visible-source-review-required.1"
 EVIDENCE_CONTRACT = "visible-source-runtime-evidence.1"
+RECALL_EVIDENCE_CONTRACT = "visible-source-runtime-evidence.2"
 # The review evidence carries the original requirement, the complete author
 # request and the accepted receipt.  Successful records reached 423KB, so the
 # former 512KB carrier bound rejected otherwise-valid, already-billed reviews.
@@ -28,6 +29,24 @@ def canonical(value):
 
 def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def result_recall_audits(result):
+    """Use the independently recorded author result, not the review carrier."""
+    from .recall_runtime import TrustedRecallTrace, verify_trusted_recall_trace
+    from .recall_audit import RecallAuditTrace
+
+    traces = [getattr(result, "recall_trace", None), getattr(result, "prefetch_trace", None)]
+    call = getattr(result, "winning_model_call_id", None) or getattr(result, "model_call_id", None)
+    traces.extend(item.trace for item in getattr(result, "presented_prefetch_traces", ())
+                  if item.model_call_id == call)
+    audits = []
+    for trace in traces:
+        if isinstance(trace, TrustedRecallTrace):
+            trace = verify_trusted_recall_trace(trace)
+        if isinstance(trace, RecallAuditTrace) and trace not in audits:
+            audits.append(trace)
+    return tuple(audits)
 
 
 def compile_requirement(*, request, capsule):
@@ -160,6 +179,14 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
                 )
             }
         )
+    from .recall_runtime import verify_trusted_recall_trace
+    from .visible_recall_sources import supplement_recalled_prehistory
+
+    table, recall_audits = supplement_recalled_prehistory(
+        table=table,
+        audits=tuple(verify_trusted_recall_trace(trace) for trace in request.visible_source_recall_traces),
+        author_request_json=author_request_json,
+    ) if request.visible_source_recall_traces else (table, ())
     prepared = prepare_visible_source_review(
         candidate=proposal, source_table=table, source_ref_aliases=aliases,
         review_version=review_version,
@@ -285,10 +312,12 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
         ) from rejection
     evidence = canonical(
         {
-            "contract": EVIDENCE_CONTRACT,
+            "contract": RECALL_EVIDENCE_CONTRACT if recall_audits else EVIDENCE_CONTRACT,
             "requirement_json": requirement,
             "author_request_json": author_request_json,
             "receipt": receipt.model_dump(mode="json"),
+            **({"recall_audits": [audit.model_dump(mode="json") for audit in recall_audits]}
+               if recall_audits else {}),
         }
     )
     if len(evidence.encode()) > MAX_EVIDENCE_BYTES:
@@ -321,6 +350,7 @@ def verify_output(*, request, output):
         return
     if raw is None:
         raise ValueError("required visible review receipt is missing")
+    from .recall_runtime import verify_trusted_recall_trace
     verify_evidence(
         raw=raw,
         proposal=output.raw_proposal,
@@ -328,10 +358,13 @@ def verify_output(*, request, output):
         author_call=output.winning_model_call_id,
         author_request_hash=output.winning_request_hash,
         subcalls=output.provider_subcall_audits,
+        recall_audits=tuple(verify_trusted_recall_trace(trace)
+                            for trace in request.visible_source_recall_traces),
     )
 
 
-def verify_evidence(*, raw, proposal, requirement, author_call, author_request_hash, subcalls):
+def verify_evidence(*, raw, proposal, requirement, author_call, author_request_hash, subcalls,
+                    recall_audits=()):
     from .proposal_envelope import validate_proposal_envelope, DecisionProposal
     from .visible_source_review_receipt import (
         VisibleSourceReviewReceipt,
@@ -346,7 +379,7 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
         raise ValueError("visible review evidence is missing or oversized")
     value = json.loads(raw)
     if (
-        value.get("contract") != EVIDENCE_CONTRACT
+        value.get("contract") not in {EVIDENCE_CONTRACT, RECALL_EVIDENCE_CONTRACT}
         or value.get("requirement_json") != requirement
         or canonical(value) != raw
     ):
@@ -376,6 +409,23 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
     aliases = verify_visible_source_author_request(
         value["author_request_json"], expected_request_hash=author_request_hash
     )
+    if value["contract"] == RECALL_EVIDENCE_CONTRACT:
+        from .recall_audit import RecallAuditTrace
+        from .visible_recall_sources import supplement_recalled_prehistory
+
+        recorded = value.get("recall_audits")
+        if not isinstance(recorded, list) or not 1 <= len(recorded) <= 2:
+            raise ValueError("visible review lacks its bounded recall audits")
+        selected = tuple(RecallAuditTrace.model_validate_json(canonical(item)) for item in recorded)
+        if any(audit not in recall_audits for audit in selected):
+            raise ValueError("visible review recall differs from the independently recorded author result")
+        table, used = supplement_recalled_prehistory(
+            table=table, audits=selected, author_request_json=value["author_request_json"],
+        )
+        if used != selected:
+            raise ValueError("visible review recall was not presented to its author")
+    elif "recall_audits" in value:
+        raise ValueError("legacy visible review cannot carry new recall authority")
     prepared = prepare_visible_source_review(
         candidate=proposal, source_table=table, source_ref_aliases=aliases,
         review_version=review_version_for_contract(receipt.contract, family="receipt"),
@@ -490,6 +540,7 @@ def verify_recorded_candidate(*, audit, model_result_audits):
         author_call=parent.model_call_id,
         author_request_hash=parent.request_hash,
         subcalls=subcalls,
+        recall_audits=result_recall_audits(parent),
     )
     if receipt is None:
         raise ValueError("visible candidate has no passing receipt")

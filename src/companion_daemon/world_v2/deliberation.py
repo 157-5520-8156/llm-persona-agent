@@ -1056,6 +1056,12 @@ class VisibleReviewParticipantBinding(_FrozenModel):
 
 
 class ModelInput(_FrozenModel):
+    # Issued by the Core's recall port, never serialized into a capability or
+    # accepted from author JSON. Audits and actual presentation are bound in
+    # the visible-review carrier and independently checked on replay.
+    visible_source_recall_traces: tuple[TrustedRecallTrace, ...] = Field(
+        default=(), max_length=2, exclude=True,
+    )
     visible_source_requirement_json: str | None = Field(default=None, max_length=512_000, exclude_if=lambda v: v is None)
     visible_review_participants: VisibleReviewParticipantBinding | None = Field(
         default=None, exclude_if=lambda value: value is None,
@@ -4146,10 +4152,14 @@ class Deliberation:
     ) -> ProposalInput:
         checked = _checked_output(output)
         if self._visible_source_review_required:
-            from .visible_source_runtime import verify_evidence
+            from .visible_source_runtime import verify_evidence, result_recall_audits
             if expected_review_requirement is None or checked.visible_source_review_json is None:
                 raise ValueError("required visible review evidence is missing")
-            verify_evidence(raw=checked.visible_source_review_json, proposal=checked.raw_proposal, requirement=expected_review_requirement, author_call=checked.winning_model_call_id, author_request_hash=checked.winning_request_hash, subcalls=checked.provider_subcall_audits)
+            verify_evidence(raw=checked.visible_source_review_json, proposal=checked.raw_proposal,
+                            requirement=expected_review_requirement, author_call=checked.winning_model_call_id,
+                            author_request_hash=checked.winning_request_hash,
+                            subcalls=checked.provider_subcall_audits,
+                            recall_audits=result_recall_audits(checked))
         proposal = validate_proposal_envelope(checked.raw_proposal)
         if proposal.trigger_ref != capsule.trigger_ref:
             raise ValueError("proposal trigger does not match Capsule")

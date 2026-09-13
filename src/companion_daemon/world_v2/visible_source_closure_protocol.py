@@ -508,6 +508,18 @@ def _historical_memory(value: object):
     return memory
 
 
+def _historical_recall(value: object):
+    from .recall_index import RecallDocument
+
+    if not isinstance(value, dict) or value.get("prehistory") is None:
+        return None
+    try:
+        document = RecallDocument.model_validate_json(json.dumps(value), strict=True)
+    except (TypeError, ValueError):
+        return None
+    return document if document.status == "active" and document.privacy_class != "withhold" else None
+
+
 def _review_item(raw: object) -> tuple[dict[str, object], bool]:
     item = _selected_fields(raw, _ITEM_FIELDS)
     value = item.get("value")
@@ -544,6 +556,13 @@ def _review_item(raw: object) -> tuple[dict[str, object], bool]:
             (binding.ref, binding.source_world_revision, binding.immutable_hash)
             for binding in bindings if binding.source_kind == "committed_event"
         } if exact_sources else set()
+        has_body = expected == actual
+    recalled = _historical_recall(value)
+    if recalled is not None:
+        expected = {(source.ref, source.source_world_revision, source.immutable_hash)
+                    for source in recalled.source_bindings}
+        actual = {(binding.ref, binding.source_world_revision, binding.immutable_hash)
+                  for binding in bindings} if exact_sources else set()
         has_body = expected == actual
     return item, bool(exact_value and exact_sources and has_body)
 
@@ -800,6 +819,10 @@ def _material_subject(
         actor = subjects.get("companion_actor_ref")
     elif material.get("kind") == "current_counterpart_report":
         actor = material.get("message", {}).get("actor")
+    elif (material.get("lane") == "recalled_prehistory"
+          and material.get("authority") == "retained_character_prehistory_exact_excerpt_only"):
+        document = _historical_recall(material.get("item", {}).get("value"))
+        actor = document.actor_ref if document is not None else None
     elif (material.get("lane") == "active_memory_candidates"
           and material.get("authority") == "retained_character_prehistory_exact_excerpt_only"):
         memory = _historical_memory(material.get("item", {}).get("value"))

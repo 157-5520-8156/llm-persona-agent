@@ -111,6 +111,7 @@ def prepare_visible_source_review(
         PREHISTORY_SOURCE_TABLE_CONTRACT,
         VISIBLE_SOURCE_TABLE_CONTRACT, VisibleSourceTable,
     )
+    from .visible_recall_sources import RECALLED_SOURCE_TABLE_CONTRACT
 
     if not isinstance(candidate, DecisionProposal) or not isinstance(
         source_table, VisibleSourceTable
@@ -123,6 +124,7 @@ def prepare_visible_source_review(
     if table.get("contract") not in {
         VISIBLE_SOURCE_TABLE_CONTRACT, PLANNED_SOURCE_TABLE_CONTRACT,
         SETTLED_LIFE_SOURCE_TABLE_CONTRACT, PREHISTORY_SOURCE_TABLE_CONTRACT,
+        RECALLED_SOURCE_TABLE_CONTRACT,
     }:
         raise ValueError("visible review source table contract is unsupported")
     if (

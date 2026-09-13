@@ -1,0 +1,94 @@
+{
+  "qualification_status": "manual_only / qualification_incomplete",
+  "base_commit": "9989faa8",
+  "scope": "Core-owned historical recall and independently verified visible-review supplementation, through offline production composition, action pump, simulated receipt and cold replay.",
+  "confirmed_gaps": [
+    "Production Recall to InnerLifeSnapshot reading omitted prehistory identities and precise historical metadata.",
+    "The required whole-candidate review table was frozen before selective Recall; newly retrieved history was unavailable to the reviewer."
+  ],
+  "implementation": [
+    "One shared bounded Interior reading preserves historical metadata. Ordinary nonhistorical reading fields remain unchanged.",
+    "Live-only ModelInput recall capabilities come from the Core snapshot and are excluded from provider/capability serialization; seals are verified before use.",
+    "Supplementation requires original trigger, actor and exact cursor, at most one prefetch and one pull, active accessible historical documents, and exact presentation to the winning author after existing UTC canonicalization and proof compaction.",
+    "Original table pin and row indexes remain unchanged; .5 appends qualified historical rows only. It does not query the archive or add a model call.",
+    "Runtime evidence .2 binds used recall audits. Acceptance and cold receipt verification require matching independently recorded author recall evidence, not a self-authenticating review carrier.",
+    "Paths without presented historical recall preserve previous evidence/table contracts."
+  ],
+  "tests": {
+    "unique_passed": 641,
+    "full_suite_run": false,
+    "runs": [
+      {
+        "passed": 233,
+        "seconds": 28.52,
+        "modules": [
+          "test_prehistory_recall_review",
+          "test_launch_visible_source_gate",
+          "test_visible_source_review_receipt",
+          "test_character_interior_architecture_guard",
+          "test_character_interior_production_invariants",
+          "test_whole_candidate_author",
+          "test_prehistory_chat_context",
+          "test_prehistory_memory_runtime"
+        ],
+        "note": "Included initial v1 dedicated chain; final revised dedicated chains are recorded separately."
+      },
+      {
+        "passed": 407,
+        "seconds": 344.87,
+        "modules": [
+          "test_visible_source_closure_protocol",
+          "test_visible_source_evidence_cards",
+          "test_visible_source_review_version_wiring",
+          "test_proactive_visible_source_gate",
+          "test_character_interior_inbound_author"
+        ]
+      },
+      {
+        "passed": 2,
+        "seconds": 3.4,
+        "modules": [
+          "test_prehistory_recall_review"
+        ],
+        "note": "Final code and tests: v1/v1 and v3/v8; one case overlaps the first run.",
+        "log": "output/private-audits/release-prehistory-recall-20260914/chain-final.log",
+        "log_sha256": "92077a18b51db23aaf2ad81197ea7ddf9e1c9b5a168df3992bdac3f49d145238"
+      }
+    ],
+    "chain_assertions": [
+      "One forced retention choice, one initial role-selected Recall, one follow-up author, one existing whole-review call per offline case.",
+      "Broad inbound school-life question has no history statement in the original review table; the role fixture chooses a precise school-magazine query.",
+      "The follow-up actual HTTP author request contains exact recalled history and historical identities; the actual reviewer request has an eligible recalled source.",
+      "ActionAuthorized is followed by explicit public drain_actions_once returning settled, and the simulated transport captures exactly the source statement.",
+      "Both review versions retain verifiable persisted receipts after a new SQLite ledger opens the same database; no further model calls.",
+      "Removed reading, changed prose and changed historical identity add no source; wrong actor, trigger or cursor and excess traces reject.",
+      "Review-carrier recall without matching independently recorded author evidence rejects."
+    ]
+  },
+  "new_physical_provider_calls": 0,
+  "new_paid_allocation_cny": "0",
+  "production_modified": false,
+  "actual_qq_sent": false,
+  "cost_scope": "No new review round or model provider introduced; all four calls per case use HTTP MockTransport. Authorized real-test cumulative billing/unknown holds remain untouched. Real monthly cost is unqualified.",
+  "limitations": [
+    "Fixture role choices and review verdicts do not qualify real LLM recall, factual entailment, personality, or long-term naturalness.",
+    "Only retained prehistory currently receives this new whole-review supplementation. Other selectively recalled source types remain separately unqualified.",
+    "Paired-cognition carried older cursors are not qualified for historical supplementation; no stale-detail fallback is added.",
+    "Formal reviewed persona dataset, compressed history reading, forgetting/compression behavior over weeks and real-provider cost remain open.",
+    "Previously observed runtime-experience fabrication, source-review false acceptance and correction timeouts remain release blockers.",
+    "No full suite, frozen real-world DB replay, deployment, real QQ delivery or production changes in this stage."
+  ],
+  "ruff": "passed",
+  "git_diff_check": "passed",
+  "code_and_test_sha256": {
+    "src/companion_daemon/world_v2/character_interior/inbound_turn.py": "42ff7a6b866516800f069e4ad6a4eca85020caeb599d7249c7303f0ded4c768e",
+    "src/companion_daemon/world_v2/character_interior/production.py": "1ecbb8ff5de3fdf84ebeca74b27c2595593b0319fe0a6afff9990b6ee24d57a0",
+    "src/companion_daemon/world_v2/deliberation.py": "a00dedf6b1fa93360a1491a2ccbf8e107fcda77a2575649d32e607edf2cbcd6a",
+    "src/companion_daemon/world_v2/visible_source_closure_protocol.py": "788744dc2d6df64d148b158474a73cab43a0a59f16437899c8069c619074b770",
+    "src/companion_daemon/world_v2/visible_source_review_receipt.py": "bc2282f77ae89233aa73dc46c517e46f371b28f251ff9eb2b122d5c799374e54",
+    "src/companion_daemon/world_v2/visible_source_runtime.py": "565acdf2dc80c6ca02695eb9631da4e9ae5c676645357da86082652211e9bdda",
+    "src/companion_daemon/world_v2/recall_model_reading.py": "b184d406acb0650230ebec6c3ef38b7fbd0fd0a0a1305453aa15ac8fc5888ec4",
+    "src/companion_daemon/world_v2/visible_recall_sources.py": "cd823ea99c859f5e5fddffd3dba67f79a05aabab29dea8ea42f0621d6acbf02e",
+    "tests/world_v2/test_prehistory_recall_review.py": "aa71d24c67b1c7466c63671314c4de234b299f4a2c6e09db67c4dd1859c88cde"
+  }
+}

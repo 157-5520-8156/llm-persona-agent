@@ -82,6 +82,12 @@ dates/identities remain visible, without exposing the whole archive or granting
 runtime occurrence/current-user shared-history authority. This is offline chain
 coverage, not real-model semantic qualification. A compressed/replaced summary has no installed historical
 summary reader and must not fall back to the original archive's details.
+Core-owned selective Recall now carries historical identities into InnerLifeSnapshot.
+Visible review can append same-cursor history actually presented to the winning
+author, using the sealed recall result rather than new archive reads. Original
+source indexes remain fixed; replay requires matching independent author recall
+audits. This path has offline application/receipt coverage for v1 and v3/v8,
+not real-provider recall or factual-entailment qualification.
 _Avoid_: Retroactive runtime Experience, improvised chat evidence
 
 ## Autobiographical Memory
