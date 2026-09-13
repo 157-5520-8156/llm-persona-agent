@@ -2472,7 +2472,7 @@ class _InboundCharacterAuthor:
         if type(whole_candidate_mode) is not bool:
             raise TypeError("whole_candidate_mode must be an explicit boolean")
         self._whole_candidate_mode = whole_candidate_mode
-        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7"}:
+        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7", "8"}:
             raise ValueError("unsupported visible source review version")
         if visible_source_review_version != "1":
             if not whole_candidate_mode:

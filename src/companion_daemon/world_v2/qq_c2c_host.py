@@ -3111,11 +3111,11 @@ def build_qq_c2c_host(
     if not recipient_id:
         raise ValueError("QQ C2C v2 requires one configured private recipient")
     configured_whole_review = (
-        settings.world_v2_visible_expression_profile in {"whole_v3_review_v6", "whole_v3_review_v7"}
+        settings.world_v2_visible_expression_profile in {"whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8"}
     )
     if configured_whole_review:
         configured_review_version = (
-            "7" if settings.world_v2_visible_expression_profile == "whole_v3_review_v7" else "6"
+            settings.world_v2_visible_expression_profile.rsplit("_v", 1)[1]
         )
         if visible_author_tool_version not in {"1", "3"} or visible_source_review_version not in {"1", configured_review_version}:
             raise ValueError("explicit wire versions conflict with configured visible expression profile")
@@ -3134,7 +3134,7 @@ def build_qq_c2c_host(
     )
     if type(visible_source_review_required) is not bool:
         raise TypeError("visible source review deployment flag must be a bool")
-    if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7"}:
+    if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7", "8"}:
         raise ValueError("unsupported visible source review version")
     if visible_source_review_version != "1" and not visible_source_review_required:
         raise ValueError("versioned source reviewer requires explicit visible source review")

@@ -18,7 +18,7 @@ def settings(tmp_path, **overrides):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("profile", [None, "whole_v3_review_v6", "whole_v3_review_v7"])
+@pytest.mark.parametrize("profile", [None, "whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8"])
 async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_path, monkeypatch, profile):
     async def forbidden(*args, **kwargs):
         pytest.fail("composition check must not send HTTP")
@@ -51,7 +51,7 @@ async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_p
     assert semantic._models_closed
 
 
-@pytest.mark.parametrize("profile", ["whole_v3_review_v6", "whole_v3_review_v7"])
+@pytest.mark.parametrize("profile", ["whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8"])
 @pytest.mark.parametrize("mode", ["shadow", "stream"])
 def test_release_profile_refuses_nonatomic_expression_before_database_creation(tmp_path, mode, profile):
     with pytest.raises(ValueError, match="atomic expression"):

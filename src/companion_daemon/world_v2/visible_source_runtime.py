@@ -133,7 +133,7 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
     aliases = verify_visible_source_author_request(
         author_request_json, expected_request_hash=output.winning_request_hash
     )
-    if review_version not in {"1", "2", "3", "4", "5", "6", "7"}:
+    if review_version not in {"1", "2", "3", "4", "5", "6", "7", "8"}:
         raise ValueError("visible source review version is unsupported")
     requirement = request.visible_source_requirement_json
     table = requirement_table(requirement)
@@ -219,7 +219,7 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
             )
         except VisibleSourceReviewRejected as exc:
             rejection = exc
-            if review_version in {"2", "3", "4", "5", "6", "7"}:
+            if review_version in {"2", "3", "4", "5", "6", "7", "8"}:
                 from .visible_source_rejection_feedback import rejection_feedback
 
                 failure_detail = rejection_feedback(prepared=prepared, rejection=exc, review=binding)

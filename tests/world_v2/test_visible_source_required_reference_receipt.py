@@ -21,7 +21,7 @@ def test_frozen_v2_receipt_keeps_exact_complete_preparation_and_bytes():
     assert _json(receipt.model_dump(mode="json")) == raw
 
 
-@pytest.mark.parametrize("review_version", ["3", "4", "5", "6", "7"])
+@pytest.mark.parametrize("review_version", ["3", "4", "5", "6", "7", "8"])
 def test_passing_receipt_requires_model_selected_first_source(review_version):
     fixture = Path(__file__).parent / "fixtures/visible_source_review_receipt_v2.json"
     old = VisibleSourceReviewReceipt.model_validate_json(fixture.read_text(), strict=True)

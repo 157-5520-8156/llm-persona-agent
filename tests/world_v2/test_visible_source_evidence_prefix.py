@@ -24,11 +24,12 @@ LEGACY_HASHES = (
     "b67427d064283ac3b8883b248c04718053351b9143dd308179fb84b8224f32e5",
     "83372b6c5e8066060b6dbb05d7bc6a98812f10b2d1c06c8fbaf6af38e1b9ff86",
     "2ecae5110afa69e00cc3ab2a1859414173cb6ed846a4e194e7424540052841b2",
+    "a8b5e20b3c5a1c7a72760d34d52ced67230735e1539334199217af344d52af02",
 )
 
 
 @pytest.mark.parametrize("version,digest", tuple(enumerate(LEGACY_HASHES, 1)))
-def test_v1_to_v6_preparations_keep_exact_bytes(version, digest):
+def test_v1_to_v7_preparations_keep_exact_bytes(version, digest):
     fixture = Path(__file__).parent / "fixtures/visible_source_review_receipt_v2.json"
     value = json.loads(json.loads(fixture.read_text())["prepared_json"])
     prepared = prepare_visible_source_review(
@@ -65,3 +66,32 @@ def test_v7_corrections_share_all_evidence_before_different_candidate(repair):
     old_schema = visible_source_closure_schema(version="6")
     old_schema["properties"]["contract"]["enum"] = ["visible-beat-source-verdict.7"]
     assert visible_source_closure_schema(version="7") == old_schema
+
+
+@pytest.mark.parametrize("repair", [False, True])
+def test_v8_composition_boundary_preserves_complete_evidence_and_prefix(repair):
+    fixture = Path(__file__).parent / "fixtures/visible_source_review_receipt_v2.json"
+    value = json.loads(json.loads(fixture.read_text())["prepared_json"])
+    sources = VisibleSourceTable(payload_json=value["source_table_json"]).source_references()
+    kwargs = dict(source_references=sources, invalid_reason=(
+        VisibleSourceClosureWireFailure("schema_invalid", "fixture") if repair else None
+    ))
+    original = dict(visible_beats=("她刚回来。",), world_claims=())
+    old = visible_source_closure_messages(**kwargs, **original, version="7")
+    new = visible_source_closure_messages(**kwargs, **original, version="8")
+    correction = visible_source_closure_messages(
+        **kwargs, visible_beats=("她还没回来。",), world_claims=(), version="8",
+    )
+    expected_packet = json.loads(old[1]["content"])
+    expected_packet["output_contract"]["contract"] = "visible-beat-source-verdict.8"
+    assert json.loads(new[1]["content"]) == expected_packet
+    prefix = new[1]["content"].split(',"visible_beats":', 1)[0]
+    assert correction[1]["content"].startswith(prefix + ',"visible_beats":')
+    assert new[0] == correction[0]
+    assert "Selecting several eligible references does not grant a new combined authority" in new[0]["content"]
+    assert "each asserted factual link already has its own support" in new[0]["content"]
+    assert "unrecorded action, arrival, position" in new[0]["content"]
+    assert "independent record" in new[0]["content"]
+    schema = visible_source_closure_schema(version="7")
+    schema["properties"]["contract"]["enum"] = ["visible-beat-source-verdict.8"]
+    assert visible_source_closure_schema(version="8") == schema

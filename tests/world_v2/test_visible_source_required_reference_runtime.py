@@ -38,7 +38,7 @@ class RequiredReferenceHTTP:
         self.reviews += 1
         packet = json.loads(body["messages"][-1]["content"])
         references = packet.get("source_references")
-        if self.review_version in {"4", "5", "6", "7"}:
+        if self.review_version in {"4", "5", "6", "7", "8"}:
             references = [dict(zip(table["columns"], row, strict=True))
                           for table in packet["source_reference_tables"] for row in table["rows"]]
         source = next(row for row in references if row["kind"] == "current_counterpart_report")
@@ -64,7 +64,7 @@ class RequiredReferenceHTTP:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["3", "4", "5", "6", "7"])
+@pytest.mark.parametrize("review_version", ["3", "4", "5", "6", "7", "8"])
 @pytest.mark.parametrize("fault", [None, "missing_first", "old_empty_refs", "wrong_actor"])
 async def test_real_shaped_closed_uptake_uses_model_index_and_keeps_actor_boundary(tmp_path, fault, review_version):
     http = RequiredReferenceHTTP(fault=fault)

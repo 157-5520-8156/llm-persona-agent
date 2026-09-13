@@ -35,7 +35,7 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         help="Explicit whole-author wire version; v2/v3 require whole-source review and is unqualified with real providers.",
     )
     parser.add_argument(
-        "--visible-source-review-version", choices=("1", "2", "3", "4", "5", "6", "7"), default="1",
+        "--visible-source-review-version", choices=("1", "2", "3", "4", "5", "6", "7", "8"), default="1",
         help="Explicit whole-source reviewer wire version; v2/v3/v4/v5/v6 require whole-source review and remain unqualified with real providers.",
     )
     parser.add_argument(

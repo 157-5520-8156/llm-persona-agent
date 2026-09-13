@@ -51,16 +51,16 @@ class _DiagnosticHTTP(_ReviewHTTP):
             "char_end": len(beats[rejected_index]["text"]),
             "related_source_ref_indexes": [], "source_problem": "材料没有支持该陈述所表达的已发生经历。",
         }
-        if self.review_version in {"6", "7"}:
+        if self.review_version in {"6", "7", "8"}:
             diagnostic.pop("char_start")
             diagnostic.pop("char_end")
             diagnostic["source_problem"] = "support_missing"
         if scenario == "invalid_diagnostic":
-            if self.review_version in {"6", "7"}:
+            if self.review_version in {"6", "7", "8"}:
                 diagnostic["beat_index"] = len(beats)
             else:
                 diagnostic["char_end"] += 1
-        if self.review_version in {"3", "4", "5", "6", "7"}:
+        if self.review_version in {"3", "4", "5", "6", "7", "8"}:
             for decision in decisions:
                 assert decision.pop("source_ref_indexes") == []
         return _http_result(body, {
@@ -70,7 +70,7 @@ class _DiagnosticHTTP(_ReviewHTTP):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["2", "3", "4", "5", "6", "7"])
+@pytest.mark.parametrize("review_version", ["2", "3", "4", "5", "6", "7", "8"])
 async def test_diagnostics_reach_same_role_and_complete_replacement_cold_verifies(tmp_path, review_version):
     http = _DiagnosticHTTP(["unclosed", "pass"], tool_version="3")
     http.review_version = review_version
@@ -89,7 +89,7 @@ async def test_diagnostics_reach_same_role_and_complete_replacement_cold_verifie
         data = json.loads(detail.split("\n", 1)[1])
         assert data["rows"][0][:3] == [0, 0, len(BEATS[0])]
         assert BEATS[0].startswith(data["rows"][0][3])
-        assert data["rows"][0][4] == ("support_missing" if review_version in {"6", "7"} else "材料没有支持该陈述所表达的已发生经历。")
+        assert data["rows"][0][4] == ("support_missing" if review_version in {"6", "7", "8"} else "材料没有支持该陈述所表达的已发生经历。")
         assert corrected_context["request"] == initial_context["request"]
         assert corrected_context["inner_life_snapshot"]["materials"] == initial_context["inner_life_snapshot"]["materials"]
         assert corrected_context["expression_capabilities"] == initial_context["expression_capabilities"]
@@ -97,7 +97,7 @@ async def test_diagnostics_reach_same_role_and_complete_replacement_cold_verifie
         last_packet = json.loads(final_review["messages"][-1]["content"])
         assert len(last_packet["visible_beats"]) == len(BEATS)
         assert first_packet["source_materials"] == last_packet["source_materials"]
-        references_key = "source_reference_tables" if review_version in {"4", "5", "6", "7"} else "source_references"
+        references_key = "source_reference_tables" if review_version in {"4", "5", "6", "7", "8"} else "source_references"
         assert first_packet[references_key] == last_packet[references_key]
         audits = _audits(app)
         assert len([a for a in audits if a.usage is not None]) == 4
@@ -123,7 +123,7 @@ async def test_diagnostics_reach_same_role_and_complete_replacement_cold_verifie
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ["2", "3", "4", "5", "6", "7"])
+@pytest.mark.parametrize("review_version", ["2", "3", "4", "5", "6", "7", "8"])
 @pytest.mark.parametrize("verdicts,expected", [(["unclosed", "new_unclosed"], (2, 2)), (["invalid_diagnostic"], (1, 1))])
 async def test_changed_other_beat_and_bad_locator_authorize_nothing(tmp_path, verdicts, expected, review_version):
     http = _DiagnosticHTTP(verdicts, tool_version="3")
@@ -233,17 +233,17 @@ async def test_fully_recompiled_version_forgery_cannot_replace_independent_revie
     )
     raw = json.loads(receipt.raw_verdict)
     raw["contract"] = f"visible-beat-source-verdict.{target}"
-    if target in {"2", "3", "4", "5", "6", "7"}:
+    if target in {"2", "3", "4", "5", "6", "7", "8"}:
         raw["rejections"] = []
     else:
         raw.pop("rejections")
     for decision in raw["decisions"]:
-        if version in {"3", "4", "5", "6", "7"}:
+        if version in {"3", "4", "5", "6", "7", "8"}:
             refs = ([decision.pop("first_source_ref_index"), *decision.pop("additional_source_ref_indexes")]
                     if decision["verdict"] == "closed" else [])
         else:
             refs = decision.pop("source_ref_indexes")
-        if target in {"3", "4", "5", "6", "7"}:
+        if target in {"3", "4", "5", "6", "7", "8"}:
             if decision["verdict"] == "closed":
                 decision.update(first_source_ref_index=refs[0], additional_source_ref_indexes=refs[1:])
         else:

@@ -1,0 +1,209 @@
+{
+  "contract": "release-source-composition-comparison.1",
+  "trials": [
+    {
+      "trial": "release-source-composition-comparison-20260913-01",
+      "physical_calls": 1,
+      "known_estimate_cny": "0.0032076000000000006",
+      "unknown_calls": 0,
+      "inherited_usage_rows": 100,
+      "inherited_reservations_unchanged": true,
+      "captured_tokens_and_stable_artifact_hashes_verified": true,
+      "sqlite_wal_shm_excluded_from_immutable_hash_claim": true,
+      "results": [
+        {
+          "case_id": "original-baseline",
+          "status": "failed"
+        }
+      ],
+      "call_latency_ms": [
+        1810
+      ]
+    },
+    {
+      "trial": "release-source-composition-comparison-20260913-02",
+      "physical_calls": 3,
+      "known_estimate_cny": "0.0585640999999999995",
+      "unknown_calls": 0,
+      "inherited_usage_rows": 101,
+      "inherited_reservations_unchanged": true,
+      "captured_tokens_and_stable_artifact_hashes_verified": true,
+      "sqlite_wal_shm_excluded_from_immutable_hash_claim": true,
+      "results": [
+        {
+          "case_id": "original-composition-rule",
+          "status": "matched",
+          "actual": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ]
+        },
+        {
+          "case_id": "controls-baseline",
+          "status": "semantic_mismatch",
+          "actual": [
+            "source_free",
+            "closed",
+            "source_free",
+            "unclosed",
+            "unclosed",
+            "unclosed",
+            "source_free",
+            "closed"
+          ]
+        },
+        {
+          "case_id": "controls-composition-rule",
+          "status": "semantic_mismatch",
+          "actual": [
+            "source_free",
+            "closed",
+            "source_free",
+            "unclosed",
+            "unclosed",
+            "unclosed",
+            "source_free",
+            "closed"
+          ]
+        }
+      ],
+      "call_latency_ms": [
+        2431,
+        2085,
+        1926
+      ]
+    },
+    {
+      "trial": "release-source-composition-comparison-20260913-03",
+      "physical_calls": 2,
+      "known_estimate_cny": "0.0543351000000000005",
+      "unknown_calls": 0,
+      "inherited_usage_rows": 104,
+      "inherited_reservations_unchanged": true,
+      "captured_tokens_and_stable_artifact_hashes_verified": true,
+      "sqlite_wal_shm_excluded_from_immutable_hash_claim": true,
+      "results": [
+        {
+          "case_id": "original-composition-and-history",
+          "status": "matched",
+          "actual": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ]
+        },
+        {
+          "case_id": "controls-composition-and-history",
+          "status": "semantic_mismatch",
+          "actual": [
+            "source_free",
+            "closed",
+            "source_free",
+            "unclosed",
+            "unclosed",
+            "unclosed",
+            "source_free",
+            "closed"
+          ]
+        }
+      ],
+      "call_latency_ms": [
+        2265,
+        1716
+      ]
+    },
+    {
+      "trial": "release-source-composition-comparison-20260913-04",
+      "physical_calls": 2,
+      "known_estimate_cny": "0.0501938",
+      "unknown_calls": 0,
+      "inherited_usage_rows": 106,
+      "inherited_reservations_unchanged": true,
+      "captured_tokens_and_stable_artifact_hashes_verified": true,
+      "sqlite_wal_shm_excluded_from_immutable_hash_claim": true,
+      "results": [
+        {
+          "case_id": "original-composition-clock",
+          "status": "matched",
+          "actual": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ]
+        },
+        {
+          "case_id": "controls-composition-clock",
+          "status": "semantic_mismatch",
+          "actual": [
+            "source_free",
+            "closed",
+            "source_free",
+            "unclosed",
+            "unclosed",
+            "unclosed",
+            "source_free",
+            "closed"
+          ]
+        }
+      ],
+      "call_latency_ms": [
+        2916,
+        2061
+      ]
+    }
+  ],
+  "known_estimate_cny": "0.1663006000000000006",
+  "physical_calls": 8,
+  "unknown_new_calls": 0,
+  "inherited_unknowns_retained": 8,
+  "shared_allocation_owner": "release-recovery-continuation-20260913-08",
+  "new_whole_allocation_cny": "0",
+  "combined_inheritance": {
+    "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-continuation-08.json",
+    "parent_snapshot_sha256": "845d5b0d670f1665b04a3544dc4c97e646580c57fc43fd65aabca9d009df06cc",
+    "known_repository_price_estimate_cny": "49.06874609999999987467",
+    "conservative_committed_cny": "114.68385329999999992007",
+    "observed_estimate_plus_unresolved_hold_cny": "76.89329909999999992267",
+    "all_parent_unknown_and_whole_allocations_retained": true,
+    "additional_authorized_budget_cny": "10",
+    "additional_authorization_allocated_cny": "10",
+    "additional_authorization_unallocated_cny": "0"
+  },
+  "limits": "Isolated source-review comparisons, not production protocol, role correction, delivery, longevity or monthly cost qualification. Historical-intention control remains a source-free misclassification.",
+  "integration": {
+    "version": "8",
+    "status": "installed_opt_in_actual_v8_request_not_yet_retested",
+    "root_cause": "Review could combine intention/lifecycle and later environment into an action none of those sources records.",
+    "chosen_change": "Only the tested composition-boundary paragraph; separate v8 request/tool/receipt identity. No historical-intention paragraph or root clock experiment installed.",
+    "source_materials_and_reference_indexes": "unchanged",
+    "character_authority": "untouched",
+    "ordinary_deadline_seconds": 12,
+    "defaults": "compact remains default; new whole_v3_review_v8 explicit profile",
+    "tests": {
+      "red": "2 failed in1.03s for unavailable v8",
+      "integration": "261 passed in54.84s",
+      "final_prefix": "11 passed in1.13s; subset already included in261",
+      "legacy_request_golden_versions": "1 through7 unchanged",
+      "cold_receipts_verified": 7,
+      "replay_hash_matches": true,
+      "ruff": "passed",
+      "diff_check": "passed"
+    },
+    "author_input_observation": {
+      "slim_instruction_chars_in_actual_atomic_v3_request": 8536,
+      "actual_system_message_chars": 36377,
+      "status": "Confirmed unnecessary legacy-format surface in full request; no removal or performance qualification in this patch."
+    }
+  },
+  "semantic_results": {
+    "original_v7_recorded_and_replayed": "incorrectly closed morning seating",
+    "composition_rule_original": "unclosed as expected",
+    "historical_intention_control": "source_free in both baseline and all experimental variants; remains unresolved, never counted as passed",
+    "extra_history_paragraph_and_root_clock": "did not improve that control; not installed",
+    "first_evaluation_helper_error": "Used compact model evidence as canonical parser input. Already-paid response was re-parsed against exact immutable source table without another provider call."
+  }
+}
