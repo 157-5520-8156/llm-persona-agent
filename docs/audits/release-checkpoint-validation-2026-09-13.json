@@ -1,0 +1,28 @@
+{
+  "contract": "release-checkpoint-validation.1",
+  "baseline": "22d734c5",
+  "finding": "Canary09 source state has one durable inbound expression retry due 30 virtual seconds after the failed input. The prior trial was stopped before that due; permanent silence/recovery had not been observed.",
+  "targeted_real_probe": {
+    "trial": "release-return-context-20260913-01",
+    "result": "source_rejected",
+    "provider_pair_seconds": 5.615697166998871,
+    "calls": 2,
+    "known_repository_price_estimate_cny": "0.0584538",
+    "scope": "Complete author and full v6 reviewer on the saved context; no Core/receipt/correction qualification; new source-status prompt did not eliminate the initial status_mismatch."
+  },
+  "change": "Optional API continuation of a closed capture journey through a verified read-only SQLite backup, retaining calendar, every event, all usage/reservations and complete CaptureDelivery history. Existing outputs are never reused. Manifest marks fresh_database=false and identifies inherited history. Past inputs/restarts are refused.",
+  "validation": {
+    "tests": "16 passed in 5.97s, including real capture-host execution through three runs and two continuation copies, restart identity, no repeated inputs, no duplicate message IDs, source artifact preservation and invalid source rejection",
+    "actual_canary09_restore": {
+      "events": "exact closed history retained",
+      "captured_messages": 5,
+      "usage_rows": 29,
+      "reservation_rows": 29,
+      "unknown_reservations": 1,
+      "due": "2026-09-14T03:38:30+00:00",
+      "original_files_unchanged": true,
+      "provider_calls": 0
+    }
+  },
+  "not_yet_qualified": "Actual resumed-provider retry, settled life, later dialogue and restart remain to be run. No production or real QQ changes."
+}

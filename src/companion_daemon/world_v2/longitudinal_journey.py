@@ -341,12 +341,15 @@ async def run_journey(
     model_input_capture=None,
     close_resources: Callable | None = None,
     next_command: Callable[[dict], Awaitable[dict | None]] | None = None,
+    resume_from: Path | None = None,
 ) -> dict:
-    """Create a fresh world and retain reviewable evidence even on early stop.
+    """Create an isolated world and retain reviewable evidence even on early stop.
 
     host_factory(database, clock, delivery) must construct the installed host.
-    A nonempty/existing output is never removed or reused. The production DB
-    cannot enter this interface. Limits stop the experiment, not the character.
+    A nonempty/existing output is never removed or reused. An optional closed
+    capture journey is verified and copied, including billing and delivery
+    history. Production DBs cannot enter this interface. Limits stop the
+    experiment, not the character; continuation does not grant fresh credit.
     next_command observes settled steps and supplies a user turn, a future
     wait_until_minutes checkpoint, or None to stop. It cannot author World state.
     """
@@ -354,6 +357,22 @@ async def run_journey(
     database = output / "world.sqlite"
     clock = JourneyClock(journey.started_at)
     delivery = CaptureDelivery(clock)
+    restored = None
+    if resume_from is not None:
+        from .longitudinal_checkpoint import restore_closed_journey
+
+        restored = restore_closed_journey(
+            source=resume_from, destination=database, started_at=journey.started_at,
+        )
+        elapsed_minutes = (restored.logical_at - journey.started_at).total_seconds() / 60
+        if (
+            elapsed_minutes >= journey.duration_minutes
+            or any(turn["at_minutes"] < elapsed_minutes for turn in journey.turns)
+            or any(minute <= elapsed_minutes for minute in journey.restart_minutes)
+        ):
+            raise ValueError("continuation inputs and restarts must not replay the past")
+        clock.advance(restored.logical_at)
+        delivery.records.extend(restored.delivery_records)
     host = None
     shutdown_task: asyncio.Task | None = None
     wall_started = time.monotonic()
@@ -363,7 +382,7 @@ async def run_journey(
     restarts: list[dict] = []
     end = journey.started_at + timedelta(minutes=journey.duration_minutes)
     sequence = 0
-    delivery_offset = 0
+    delivery_offset = len(delivery.records)
     capture_offset = 0
     turn_index = restart_index = 0
     turns = list(journey.turns)
@@ -712,6 +731,7 @@ async def run_journey(
 
     provider_usage_evidence = read_provider_usage_evidence(database)
     (output / "provider-usage.json").write_text(_json(provider_usage_evidence) + "\n")
+    (output / "capture-delivery-history.json").write_text(_json(delivery.records) + "\n")
     manifest = {
         "contract": CONTRACT,
         "scenario_id": journey.scenario_id,
@@ -753,7 +773,7 @@ async def run_journey(
         "life_source_review": (provenance or {}).get(
             "life_source_review", {"status": "unverified"}
         ),
-        "safety": {"real_qq": False, "fresh_database": True, "external_world_feeds": False},
+        "safety": {"real_qq": False, "fresh_database": restored is None, "external_world_feeds": False},
         "exclusions": [
             "real QQ receipts",
             "real-time endurance",
@@ -769,10 +789,13 @@ async def run_journey(
                 "model-inputs.jsonl",
                 "operator-commands.jsonl",
                 "provider-usage.json",
+                "capture-delivery-history.json",
             )
             if (output / name).exists()
         },
     }
+    if restored is not None:
+        manifest["continuation"] = restored.provenance
     if next_command is not None:
         # Final settlement/shutdown can deliver after the last operator read.
         # Expose that unread tail without opening another command or model call.

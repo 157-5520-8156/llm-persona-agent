@@ -1,0 +1,51 @@
+{
+  "contract": "release-cost-inheritance-summary.2",
+  "trial_id": "release-return-context-20260913-01",
+  "status": "closed_all_known_whole_allocation_retained",
+  "trial": {
+    "known_calls": 2,
+    "unknown_calls": 0,
+    "pending_model_reservations": 0,
+    "known_repository_price_estimate_cny": "0.0584538",
+    "whole_allocation_retained_cny": "0.8"
+  },
+  "combined_inheritance": {
+    "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-canary-09.json",
+    "parent_snapshot_sha256": "930b21fb24ae24f5a397097d297427bf85d6486f42b72dfdeedad2282d3f3589",
+    "known_repository_price_estimate_cny": "46.97266749999999987447",
+    "conservative_committed_cny": "83.68385329999999992007",
+    "observed_estimate_plus_unresolved_hold_cny": "71.07884349999999992247",
+    "all_parent_unknown_and_whole_allocations_retained": true,
+    "additional_authorized_budget_cny": null
+  },
+  "budget_release_authorized": false,
+  "result": {
+    "status": "source_rejected",
+    "scope": "Fixed captured provider context, complete author and full v6 source reviewer, first pass only. No Core/Proposal/Action/receipt; not full-turn latency or delivery qualification.",
+    "author_seconds": 4.639304791926406,
+    "texts": [
+      "回来了啊",
+      "我上午就在图书馆坐着看书，没干嘛",
+      "你这一段忙得怎么样"
+    ],
+    "shape_status": "canonical_drafts_valid",
+    "verdicts": [
+      "source_free",
+      "unclosed",
+      "source_free"
+    ],
+    "rejections": [
+      {
+        "beat_index": 1,
+        "char_start": 0,
+        "char_end": 16,
+        "related_source_ref_indexes": [
+          7
+        ],
+        "source_problem": "status_mismatch"
+      }
+    ],
+    "elapsed_seconds": 5.615697166998871
+  },
+  "verification": "Two physical requests and complete response usage match settled SQLite rows; full allocation and every historical unknown retained. No World/QQ effects."
+}
