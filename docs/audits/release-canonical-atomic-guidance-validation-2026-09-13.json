@@ -1,0 +1,23 @@
+{
+  "contract": "release-canonical-atomic-guidance-validation.1",
+  "status": "offline_passed_real_retest_pending",
+  "problem": "Whole atomic v3 requests included the 8536-character slim field tutorial despite requiring canonical appraisal_draft and expression_draft.",
+  "change": "Use canonical-draft guidance only on the opt-in whole atomic v3 lane. Keep full appraisal/expression contracts, capabilities, source material, review and deadline.",
+  "red": "Actual CLI/host/Core HTTP capture: 1 failed, 6 deselected in2.70s; both initial and after-Recall were captured.",
+  "checks": {
+    "targeted": "81 passed in16.41s",
+    "scope": "Actual CLI/host/Core, Recall, correction, source review-before-Action, billing, cold restart/replay, atomic envelope rejection and legacy compiler golden bytes.",
+    "legacy_v1_v2_and_stream_request_golden_bytes": "unchanged",
+    "v3_initial_request_sha256": "cce3a74ab15a6ee7fa867d34bf0c875bb8e4cb2cb71e1bc055b5d4f4f752232a",
+    "v3_corrected_request_sha256": "5333ee2d943eb3bd286b4d1cdc5acc721b1aeae4d2a7e8d0df537edee5a63545",
+    "ruff": "passed",
+    "diff_check": "passed"
+  },
+  "source_sha256": {
+    "src/companion_daemon/world_v2/present_prompt.py": "494e5321f102a69c4833a93db14a6d6fd8269f68c4e9aa2ee0860970914e2a4e",
+    "src/companion_daemon/world_v2/character_interior/inbound_author.py": "8bf2e0f3bfa08c0ed47a4ae0881b9b3fb61abc9ae429d4c223388c5ba8b7aa1b"
+  },
+  "provider_calls_for_this_patch": 0,
+  "prehistory_memory": "Accepted into goal and release acceptance list; source ingestion and unified memory runtime not yet implemented.",
+  "limits": "No claim of reduced real latency, fewer invented episodes, successful real role correction or release qualification. Source-review false acceptance remains open."
+}

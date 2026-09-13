@@ -266,8 +266,8 @@ def test_legacy_compiler_bytes_stay_frozen_and_v3_reminder_has_new_identity():
     )
     current = json.loads(result.stdout)
     assert {key: current[key] for key in expected} == expected
-    # The whole-v3 activity authority and status reminder precede the final
-    # branch table, preserving final/Recall schema refresh and changing identity;
+    # Whole-v3 now has its own canonical-draft guidance instead of the slim
+    # tutorial. Activity authority/status and the final branch table remain;
     # old author requests are stored/verifiable, not rebuilt by this compiler.
-    assert current["3:False:True:False"] == "50b93d29c5506595980672aa41e88ab615714b8accba0cc4bbba1d1a156dc083"
-    assert current["3:False:True:True"] != "1b442d1c35e6b454f587b332676fe8efcfa04c7453ce3f6ad72e562089bfc61e"
+    assert current["3:False:True:False"] == "cce3a74ab15a6ee7fa867d34bf0c875bb8e4cb2cb71e1bc055b5d4f4f752232a"
+    assert current["3:False:True:True"] == "5333ee2d943eb3bd286b4d1cdc5acc721b1aeae4d2a7e8d0df537edee5a63545"

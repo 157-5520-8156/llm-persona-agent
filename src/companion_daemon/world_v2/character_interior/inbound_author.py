@@ -4078,7 +4078,12 @@ class _InboundCharacterAuthor:
                     combined_turn_system_lead(
                         private_turn_state_required=(
                             self._capabilities.private_turn_state_mode == "required"
-                        )
+                        ),
+                        atomic_drafts=(
+                            self._whole_candidate_mode
+                            and self._atomic_tool_envelope_version == "3"
+                            and transport_provider is None
+                        ),
                     )
                     + "Both draft values must be JSON objects. This is one simultaneous "
                     "cognition pass. Treat appraisal, affect, attention, relationship, memory and "

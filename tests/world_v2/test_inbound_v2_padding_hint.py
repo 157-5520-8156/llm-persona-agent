@@ -68,6 +68,15 @@ async def test_captured_author_padding_hint_matches_initial_and_after_recall_sch
             assert _PADDING_MARKER not in system
             continue
         if tool_version == "3":
+            # This actual CLI/host/Core request uses canonical drafts. Slim
+            # field names describe a different protocol and must not instruct
+            # either the first author call or the resumed call after Recall.
+            assert "一个 slim 对象就够了" not in system
+            assert "photo 写 true" not in system
+            assert "CANONICAL ATOMIC ROLE GUIDANCE .1" in system
+            assert "appraisal_draft.life_intent" in system
+            assert "expression_draft.media_request" in system
+            assert "expression_draft.private_turn_state" in system
             assert _PADDING_MARKER not in system
             assert "ATOMIC TOOL ENVELOPE V2:" not in system
             assert "ATOMIC TOOL ENVELOPE V3:" in system

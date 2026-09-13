@@ -1332,7 +1332,60 @@ def slim_consider_json_schema() -> dict[str, object]:
     }
 
 
-def combined_turn_system_lead(*, private_turn_state_required: bool) -> str:
+def canonical_atomic_consider_instruction() -> str:
+    """Role guidance for the complete draft dialect, without slim aliases.
+
+    Capability schemas and the full appraisal/expression contracts remain the
+    authority for fields and bounds. This replaces only the slim tutorial in
+    opt-in atomic v3 requests; historical v1/v2 leads retain their exact bytes.
+    """
+
+    return (
+        "\nCANONICAL ATOMIC ROLE GUIDANCE .1:\n"
+        "这一轮使用完整的 appraisal_draft 与 expression_draft；"
+        "字段层级和可选能力以它们的完整合同与本次工具 schema 为准。"
+        "appraisal_draft 是你对眼前事情的暂定理解，"
+        "expression_draft.private_turn_state 是表达前你自己的感受、注意和想法；"
+        "它们不会自动成为说给对方的话，也不会产生新的外部事实。"
+        "你的动机、态度、措辞、消息条数、是否追问、是否主动联系、是否沉默都由你决定。"
+        "理解和回忆可以只改变你的回应方式，不需要为了证明记得而复述背景。\n"
+        "expression_draft.beats 是你选择表达的内容；timing_choice 决定现在说、稍后说或沉默。"
+        "延后须同时提供 delay_seconds 与 expires_after_seconds；沉默时 beats 为空。"
+        "持续情绪用 appraisal_draft.affect 和相应生命周期字段表达，"
+        "components 的 target_intensity_bp 是绝对强度基点，不是增量或表达指令。"
+        "状态强弱不会替你决定语气或消息数量。"
+        "若你选择保留私下理解，在 expression_draft.private_turn_state 中填写"
+        "非空 stuck_with_me 和 keep_impression=true，并提供这轮有来源的 appraisal；"
+        "否则可以不保留。私下解释可以有不确定性，不能充当新经历的来源。\n"
+        "appraisal_draft.life_intent 表达你选择的一项未来自主活动，"
+        "只在本次能力允许时填写；意图、愿望和普通台词不证明活动已经完成。"
+        "expression_draft.response_expectation 和 revisit 分别记录你选择的等待与回访；"
+        "普通台词不会自动建立它们。关系理解、变化和可见承诺分别使用合同中的"
+        "relationship_signal、relationship_commitment 与 interaction_act；"
+        "是否使用由你决定，字段本身不能冒充已经交付或完成的外部结果。\n"
+        "可见外部事实在 expression_draft.world_claims 中声明，并使用 Context 的"
+        "source_ref_aliases 短标识或原样 source_ref，遵守该来源的对象、时间和事实范围。"
+        "一般背景或习惯不能代替具体经历的来源；当前感受和计划不能证明行动已经完成。"
+        "appraisals、private_impressions 和相关事实是理解情境的材料，不是台词清单；"
+        "user_channel_limited 的私人内容不能用于当前对话。\n"
+        "本次允许媒体能力时，expression_draft.media_request 配合 media_source_refs "
+        "表达考虑或选择可用候选的意图；只说要发图不等于请求，更不等于已经发出。"
+        "媒体请求仅能配 timing_choice=now。photos_i_shared 表示已成功发送的照片，"
+        "messages_waiting_to_send 表示尚未发送的内容，两者不能互换。"
+        "moments_i_can_share 的 available_count 和 photo_in_hand 描述已有可选存货，"
+        "now.photographable 描述此刻能否新拍；此刻不能新拍不等于没有可发的存货。"
+        "候选的 hold_reason、隐私和权限继续有效，提不提、选不选由你决定。\n"
+        "只有本次明确允许 Recall 时才可请求检索；"
+        "检索提供你所选范围的记忆材料，不替你决定表达。"
+    )
+
+
+def combined_turn_system_lead(
+    *, private_turn_state_required: bool, atomic_drafts: bool = False,
+) -> str:
+    instruction = (
+        canonical_atomic_consider_instruction() if atomic_drafts else slim_consider_instruction()
+    )
     epistemic_expression_clause = (
         "appraisal_draft 负责你私下怎么理解，expression_draft 负责你决定说什么；"
         "后者不需要复述、解释或证明前者，让那份理解改变回应方式就已经够了。"
@@ -1355,7 +1408,7 @@ def combined_turn_system_lead(*, private_turn_state_required: bool) -> str:
             "when the occasion (last user object) says recall is available. "
             "If recall is unavailable, return only the two-draft envelope. "
             + epistemic_expression_clause
-            + slim_consider_instruction()
+            + instruction
         )
     return (
         "Return either one JSON object with exactly two keys, "
@@ -1363,7 +1416,7 @@ def combined_turn_system_lead(*, private_turn_state_required: bool) -> str:
         "object described below when the occasion says recall is available. "
         "If recall is unavailable, return only the two-draft envelope. "
         + epistemic_expression_clause
-        + slim_consider_instruction()
+        + instruction
     )
 
 
