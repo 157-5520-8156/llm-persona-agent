@@ -1,0 +1,151 @@
+{
+  "contract": "release-v7-recovery-validation.1",
+  "real_trial_code": {
+    "head": "e0390898e863edfac09c3c45b4d0bd4a07465d57",
+    "tracked_dirty": false
+  },
+  "completed": false,
+  "stop_reason": "budget_admission_denied",
+  "process_exit_code": 1,
+  "scope": "Closed trial04 restored into a new private database; normal 12s full v7 review, no hedge, no production database or real QQ. One inherited retry and one new ordinary turn. No concurrent full test suite.",
+  "new_provider_calls": 8,
+  "new_usage_rows": 9,
+  "admission_denied_without_provider_call": 1,
+  "known_calls": 6,
+  "unknown_calls": 2,
+  "new_estimate_cny": "0.259854100000000004",
+  "new_unknown_hold_cny": "1.214298",
+  "captured_tokens_match_known_usage": true,
+  "original_rows_and_reservations_unchanged": true,
+  "artifact_hashes_verified": true,
+  "cold_expression_receipts": 6,
+  "receipt_hashes": [
+    "4121546435e60bfd2ff6b0b0228a40a3027f48c3cab16b6a984aae49e089ba96",
+    "5e4b44b2e6471a9fa528c23bc66da773148d915a75c1374b8ac46386fe77fd14",
+    "501405e5323d8a6b4f4ae3977154e8fb013467df347494e1685b48502ba5f348",
+    "e83811ca2dd4f4f1ac92aed37210e9aeffd91f7ac7e285511a4338839c6c5fe4",
+    "4bac102eaf6bc49d5262177e65c4dbd39a2dedc38b7738687ec770a50573d63d",
+    "90c019cbdece4cb27bebb3654aa8f9ec6b2cf992b5efb229f49031180e8222b1"
+  ],
+  "replay_hash_matches": true,
+  "timeline": [
+    {
+      "deliveries": [],
+      "kind": "scheduler",
+      "model_failures": [
+        {
+          "event_ref": "event:ModelResultRecorded:0caec7b9396f3c2a8422255271a6bad50bffcf1f59a0dab6d786603aa3e4d2d8",
+          "failure_code": "primary_timeout",
+          "status": "main_timeout"
+        }
+      ],
+      "status": "scheduled",
+      "wall_seconds": 13.92983529099729
+    },
+    {
+      "deliveries": [],
+      "kind": "inbound",
+      "model_failures": [
+        {
+          "event_ref": "event:ModelResultRecorded:be9724daf7911b92ec7176b599ccfea74a6541ced8bcb2fd4d0b1ef966ea8962",
+          "failure_code": "primary_timeout",
+          "status": "main_timeout"
+        }
+      ],
+      "status": "deferred",
+      "user_text": "稿子交上去，终于能喘口气了。你这会儿想聊点什么？",
+      "wall_seconds": 16.023726249928586
+    }
+  ],
+  "new_usage_latency": [
+    {
+      "purpose": "world_stimulus_appraisal",
+      "status": "succeeded",
+      "latency_ms": 5769,
+      "prompt_tokens": 42907,
+      "completion_tokens": 918,
+      "cache_hit_tokens": 2560
+    },
+    {
+      "purpose": "inbound_turn",
+      "status": "succeeded",
+      "latency_ms": 6020,
+      "prompt_tokens": 44553,
+      "completion_tokens": 982,
+      "cache_hit_tokens": 16000
+    },
+    {
+      "purpose": "source_review",
+      "status": "succeeded",
+      "latency_ms": 2227,
+      "prompt_tokens": 33552,
+      "completion_tokens": 248,
+      "cache_hit_tokens": 0
+    },
+    {
+      "purpose": "inbound_turn",
+      "status": "failed",
+      "latency_ms": 2257,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "cache_hit_tokens": 0
+    },
+    {
+      "purpose": "inbound_turn",
+      "status": "succeeded",
+      "latency_ms": 4678,
+      "prompt_tokens": 44633,
+      "completion_tokens": 912,
+      "cache_hit_tokens": 16768
+    },
+    {
+      "purpose": "source_review",
+      "status": "succeeded",
+      "latency_ms": 2296,
+      "prompt_tokens": 33456,
+      "completion_tokens": 285,
+      "cache_hit_tokens": 2688
+    },
+    {
+      "purpose": "inbound_turn",
+      "status": "failed",
+      "latency_ms": 3390,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "cache_hit_tokens": 0
+    },
+    {
+      "purpose": "interaction_fact_draft",
+      "status": "succeeded",
+      "latency_ms": 926,
+      "prompt_tokens": 1544,
+      "completion_tokens": 57,
+      "cache_hit_tokens": 896
+    }
+  ],
+  "limits": [
+    "Prior failed v6 attempts remain in history; a successful deferred retry is not proof of prompt first-response recovery.",
+    "Small representative continuation only; no week-long naturalness, real QQ or monthly production cost qualification."
+  ],
+  "diagnosis": {
+    "new_character_deliveries": 0,
+    "new_primary_timeouts": 2,
+    "v7_rejection_count": 2,
+    "corrections_cancelled_before_final_review": 2,
+    "first_attempt_ms": {
+      "author": 6020,
+      "review": 2227,
+      "cancelled_correction": 2257
+    },
+    "second_attempt_ms": {
+      "author": 4678,
+      "review": 2296,
+      "cancelled_correction": 3390
+    },
+    "source_mismatch": "Both drafts assert afternoon writing/notes and a recent walk. The cited/related activity material instead describes a morning library reading intention and a lifecycle ended at03:42Z; it supplies no afternoon writing or evening walk evidence. Current library lamp-repair aftermath was separately supported and both reviews closed it.",
+    "review_question_boundary": "The second review accepted the present conversational/private-state beat; this sample does not reproduce the earlier question false-positive suspicion.",
+    "cache_fix_limit": "Neither correction completed, so neither final review was reached. The v7 evidence prefix cannot improve a call that has not yet begun.",
+    "budget_denial_stage": "After both expression failures, fact_memory_retention was denied before a provider call; do not attribute the preceding timeouts to that later denial.",
+    "next_investigation": "Inspect whether static persona/lifestyle materials or historical conversation are being presented as current lived facts; also identify redundant author output/context costs before any further real admission. Do not delete factual review, lengthen normal deadlines, or rewrite role dialogue in code."
+  }
+}

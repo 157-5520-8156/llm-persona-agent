@@ -1,0 +1,29 @@
+{
+  "contract": "release-cost-inheritance-summary.2",
+  "trial_id": "release-recovery-continuation-20260913-05",
+  "status": "closed_whole_allocation_and_all_unknown_holds_retained",
+  "trial": {
+    "known_calls": 6,
+    "unknown_calls": 2,
+    "new_usage_rows": 9,
+    "admission_denied_without_provider_call": 1,
+    "pending_model_reservations": 0,
+    "inherited_usage_rows": 78,
+    "inherited_unknown_reservations": 3,
+    "inherited_rows_and_reservations_unchanged": true,
+    "known_repository_price_estimate_cny": "0.259854100000000004",
+    "new_unresolved_hold_cny": "1.214298",
+    "whole_allocation_retained_cny": "5"
+  },
+  "combined_inheritance": {
+    "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-continuation-04.json",
+    "parent_snapshot_sha256": "5fc45a79ed343dc3ce4dbc79963a57fc96b04686783240e58e66f847ad482f51",
+    "known_repository_price_estimate_cny": "48.52089649999999987027",
+    "conservative_committed_cny": "104.68385329999999992007",
+    "observed_estimate_plus_unresolved_hold_cny": "74.49794449999999991827",
+    "all_parent_unknown_and_whole_allocations_retained": true,
+    "additional_authorized_budget_cny": null
+  },
+  "budget_release_authorized": false,
+  "finding": "One short bounded real verification after offline issues converged. User-facing plan explicitly updated before admission; all older allocations and unknowns retained. Estimated provider costs are not ChatGPT quota, invoices, or production monthly cost."
+}
