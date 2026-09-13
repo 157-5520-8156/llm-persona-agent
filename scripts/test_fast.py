@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -115,7 +116,13 @@ def main() -> int:
     if args.last_failed and not _has_last_failed():
         print("No pytest last-failed cache; nothing to run.", flush=True)
         return 0
-    completed = subprocess.run(command, cwd=ROOT)
+    # pytest modifies its own sys.path; child CLIs must inherit this checkout
+    # too when the interpreter belongs to another worktree's editable install.
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join(filter(None, (
+        str(ROOT / "src"), environment.get("PYTHONPATH", ""),
+    )))
+    completed = subprocess.run(command, cwd=ROOT, env=environment)
     return completed.returncode
 
 

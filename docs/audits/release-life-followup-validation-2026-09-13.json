@@ -1,0 +1,54 @@
+{
+  "contract": "release-life-followup-validation.1",
+  "real_trial_code": {
+    "head": "4a80e027fe836883110d0bb5e65f73790ea110a6",
+    "tracked_dirty": false
+  },
+  "completed": true,
+  "input_count": 2,
+  "new_provider_calls": 9,
+  "new_estimated_cny": "0.2767875999999999998",
+  "new_unknown_calls": 0,
+  "scope": "Same historical life and chat state continued; real provider and full review, captured delivery only. No production DB or real QQ.",
+  "observations": [
+    {
+      "user_text": "你刚才说在图书馆待着，那里今天有没有什么小插曲？",
+      "delivered_texts": [
+        "有啊，三楼东边那排台灯今天全灭着",
+        "入口贴了张维修通知，窗边还杵着个梯子车",
+        "我上午就坐在那一片，难怪那么安静",
+        "你这是想听我讲点具体的吧"
+      ],
+      "status": "action_authorized",
+      "whole_step_wall_seconds": 13.050581292016432
+    },
+    {
+      "user_text": "我先去改分享的稿子，今晚想自己安静一会儿，你也忙自己的吧，不用等我回复。",
+      "delivered_texts": [
+        "行，那你安心改",
+        "我下午也有自己的事，不用管我"
+      ],
+      "status": "action_authorized",
+      "whole_step_wall_seconds": 17.410375958075747
+    }
+  ],
+  "cold_expression_receipts": 6,
+  "receipt_hashes": [
+    "4121546435e60bfd2ff6b0b0228a40a3027f48c3cab16b6a984aae49e089ba96",
+    "5e4b44b2e6471a9fa528c23bc66da773148d915a75c1374b8ac46386fe77fd14",
+    "501405e5323d8a6b4f4ae3977154e8fb013467df347494e1685b48502ba5f348",
+    "e83811ca2dd4f4f1ac92aed37210e9aeffd91f7ac7e285511a4338839c6c5fe4",
+    "4bac102eaf6bc49d5262177e65c4dbd39a2dedc38b7738687ec770a50573d63d",
+    "90c019cbdece4cb27bebb3654aa8f9ec6b2cf992b5efb229f49031180e8222b1"
+  ],
+  "replay_hash_matches": true,
+  "evidence_chain": "Parent canary09 -> continuation02: recovered inbound, settled life, CharacterLifeResponse and Experience, restart same-state, later memory decision -> continuation03: life-specific question answered, request for space acknowledged, completed without leftover due work.",
+  "limits": [
+    "Full-step durations include scheduler/drain work; no first-visible latency target qualified.",
+    "Three virtual minutes after the space request cannot prove no repeated questioning over an evening or week.",
+    "One small life event cannot prove event richness or long-term human likeness.",
+    "The extra line interpreting why the user asked feels mechanical; an experience issue, not grounds for a deterministic speech filter.",
+    "New QQ configuration wiring is separately checked without external delivery; no real QQ receipt claimed."
+  ],
+  "cost_report": "docs/audits/release-cost-inheritance-2026-09-13-continuation-03.json"
+}

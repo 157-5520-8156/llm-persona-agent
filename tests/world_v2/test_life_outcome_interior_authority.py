@@ -106,7 +106,7 @@ async def test_http_review_keeps_objective_candidates_but_rejects_authored_inter
         return httpx.Response(
             200,
             json={
-                "choices": [{"message": {"content": raw}}],
+                "choices": [{"message": ({"tool_calls": [{"type": "function", "function": {"name": body["tools"][0]["function"]["name"], "arguments": raw}}]} if body.get("tools") else {"role": "assistant", "content": raw})}],
                 "usage": {"prompt_tokens": 100, "completion_tokens": 100},
             },
         )

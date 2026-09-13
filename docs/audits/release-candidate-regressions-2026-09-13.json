@@ -1,0 +1,22 @@
+{
+  "contract": "release-candidate-regressions.1",
+  "diagnostic_full_run": {
+    "status": "interrupted_after_reproduced_failures; not a release pass",
+    "result": "25 failed, 5768 passed, 1 warning in 806.86s",
+    "log": "/tmp/girl-release-full-20260913.log"
+  },
+  "repairs": [
+    "Test runner now exports this checkout's src before inherited PYTHONPATH. A child static-catalog CLI previously loaded the other worktree's editable install; correct import path passed the same CLI test.",
+    "Move the unchanged v3 factual-status reminder ahead of the final machine-readable branch table. Recall/final schema refresh requires that table as the complete suffix. Existing v1/v2 compiler byte checks remain unchanged, and only the intentional v3 identity snapshot is updated.",
+    "Two HTTP fixture providers now return requested tool-call envelopes. Their old text-only responses no longer satisfy the already-installed strict Life novel-origin tool. Source-closure assertions and cold-recovery rejection checks remain in place.",
+    "Explicit whole_v3_review_v6 Settings profile connects normal QQ host construction to owned, metered full-review providers. Default compact composition remains unchanged."
+  ],
+  "focused_validation": {
+    "result": "48 passed in 22.79s",
+    "log": "/tmp/girl-release-focused-regressions.log",
+    "scope": "all reproduced Life HTTP fixture failures, prefix binding/cold receipts, initial/recall/final tool formatting, checkout subprocess environment, normal OneBot profile/default/atomic-mode rejection",
+    "network": "fixture-only; no paid model or QQ call"
+  },
+  "historical_receipts_after_prompt_reordering": "continuation03: all 6 stored expression receipts cold-verified; semantic replay matches; original requests not recompiled or rewritten",
+  "required_final_full_gate": "pending frozen candidate run; diagnostic counts do not qualify release"
+}

@@ -3110,6 +3110,19 @@ def build_qq_c2c_host(
 
     if not recipient_id:
         raise ValueError("QQ C2C v2 requires one configured private recipient")
+    configured_whole_review = (
+        settings.world_v2_visible_expression_profile == "whole_v3_review_v6"
+    )
+    if configured_whole_review:
+        if visible_author_tool_version not in {"1", "3"} or visible_source_review_version not in {"1", "6"}:
+            raise ValueError("explicit wire versions conflict with configured visible expression profile")
+        visible_source_review_required = True
+        visible_author_tool_version = "3"
+        visible_source_review_version = "6"
+    auto_whole_reviewer = (
+        configured_whole_review and model is None
+        and visible_source_review_model is None and source_closure_model is None
+    )
     configured_expression_episode_mode = settings.world_v2_expression_episode_mode
     if configured_expression_episode_mode not in {"off", "shadow", "stream"}:
         raise ValueError("production QQ expression episode mode must be off, shadow, or stream")
@@ -3129,7 +3142,7 @@ def build_qq_c2c_host(
     if visible_source_review_required:
         if expression_episode_mode != "off":
             raise ValueError("required whole visible review requires explicit atomic expression mode")
-        if not callable(getattr(visible_source_review_model, "complete_json_with_usage", None)):
+        if not auto_whole_reviewer and not callable(getattr(visible_source_review_model, "complete_json_with_usage", None)):
             raise ValueError("required visible review requires the injected metered provider")
         if source_closure_model is not None and source_closure_model is not visible_source_review_model:
             raise ValueError("required visible review cannot install a second source reviewer")

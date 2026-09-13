@@ -4296,6 +4296,25 @@ class _InboundCharacterAuthor:
                 "timing, expression, and silence remain your choices wherever that branch "
                 "exposes them."
             )
+        if (
+            self._whole_candidate_mode
+            and self._atomic_tool_envelope_version == "3"
+            and transport_provider is None
+            and use_forced_tool
+        ):
+            messages[0]["content"] += (
+                "\n\nWHOLE-CANDIDATE FACTUAL STATUS:\n"
+                "Before returning, check your entire visible expression against this pinned "
+                "World. A routine/day sheet describes habits; an accepted plan describes an "
+                "intention. Neither establishes that you woke, left, arrived, ate, or completed "
+                "an action today. Your newly authored private appraisal cannot independently "
+                "establish that history either. Report an actual episode only within an "
+                "eligible source's actor, time and status. Immediate sensations, feelings and "
+                "intentions remain yours to express; they do not establish an implied past "
+                "event. No particular wording, emotion, contact or silence is required. "
+                "Return the complete role result as compact JSON, omitting insignificant "
+                "whitespace outside string values without changing authored string contents."
+            )
         if self._atomic_tool_envelope_version == "2":
             messages[0]["content"] += (
                 "\n\nATOMIC TOOL ENVELOPE V2:\n"
@@ -4318,25 +4337,6 @@ class _InboundCharacterAuthor:
                 "envelope: every field inside appraisal_draft, expression_draft, "
                 "private_turn_state or recall_request still follows its complete schema."
                 + _atomic_branch_instruction(cognition_contract)
-            )
-        if (
-            self._whole_candidate_mode
-            and self._atomic_tool_envelope_version == "3"
-            and transport_provider is None
-            and use_forced_tool
-        ):
-            messages[0]["content"] += (
-                "\n\nWHOLE-CANDIDATE FACTUAL STATUS:\n"
-                "Before returning, check your entire visible expression against this pinned "
-                "World. A routine/day sheet describes habits; an accepted plan describes an "
-                "intention. Neither establishes that you woke, left, arrived, ate, or completed "
-                "an action today. Your newly authored private appraisal cannot independently "
-                "establish that history either. Report an actual episode only within an "
-                "eligible source's actor, time and status. Immediate sensations, feelings and "
-                "intentions remain yours to express; they do not establish an implied past "
-                "event. No particular wording, emotion, contact or silence is required. "
-                "Return the complete role result as compact JSON, omitting insignificant "
-                "whitespace outside string values without changing authored string contents."
             )
         winning_provider_identity = _provider_invocation_identity(
             parent_call_id=provider_request.call_id,

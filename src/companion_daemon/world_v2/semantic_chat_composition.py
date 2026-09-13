@@ -961,6 +961,23 @@ def build_semantic_chat_composition(
         first_message=character.first_message,
     )
     del _unused
+    if (
+        visible_source_review_required
+        and settings.world_v2_visible_expression_profile == "whole_v3_review_v6"
+        and auto_flash
+        and source_closure_model is None
+    ):
+        # The same production usage ledger reserves and settles this separate
+        # reviewer client. The composition's shutdown lease owns its lifetime.
+        source_closure_model = DeepSeekChatModel(
+            api_key=effective_deepseek_key,
+            base_url=settings.deepseek_base_url,
+            model=settings.deepseek_model,
+            thinking_enabled=False,
+            max_completion_tokens=4096,
+            usage_observer=usage_observer,
+        )
+        owned.append(source_closure_model)
     if visible_source_review_required and not callable(getattr(source_closure_model, "complete_json_with_usage", None)):
         raise ValueError("required whole-candidate source reviewer is not configured")
     background_model = world_support_model

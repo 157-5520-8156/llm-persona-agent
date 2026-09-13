@@ -86,7 +86,7 @@ class _HTTP:
             raw = _json(value)
         return httpx.Response(200, json={
             "id": "offline-manifest", "model": wire["model"],
-            "choices": [{"message": {"role": "assistant", "content": raw}, "finish_reason": "stop"}],
+            "choices": [{"message": ({"tool_calls": [{"type": "function", "function": {"name": wire["tools"][0]["function"]["name"], "arguments": raw}}]} if wire.get("tools") else {"role": "assistant", "content": raw})}],
             "usage": {"prompt_tokens": 100, "completion_tokens": 200, "total_tokens": 300},
         })
 

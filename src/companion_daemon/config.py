@@ -536,6 +536,15 @@ class Settings(BaseSettings):
             "on visible chat; Life owns its independent review topology separately."
         ),
     )
+    world_v2_visible_expression_profile: Literal["compact", "whole_v3_review_v6"] = Field(
+        default="compact",
+        alias="WORLD_V2_VISIBLE_EXPRESSION_PROFILE",
+        description=(
+            "Explicit QQ expression composition. whole_v3_review_v6 installs the "
+            "whole author v3 and full source reviewer v6 with metered, owned providers; "
+            "requires expression episode mode off. Selection is not release qualification."
+        ),
+    )
     world_v2_chat_source_review_enabled: bool = Field(
         default=True,
         alias="WORLD_V2_CHAT_SOURCE_REVIEW_ENABLED",
