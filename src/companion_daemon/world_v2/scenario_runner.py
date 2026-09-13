@@ -356,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.102"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.103"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -651,8 +651,14 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.102
 # No assertion, case, output or cost limit is weakened. This records offline
 # mechanism identity, not model semantics or release qualification. Evidence:
 # docs/audits/scenario-baseline-102-2026-09-13.json.
+# 2026-09-13: .103 records the capability-bound appraisal tool schema. In a
+# complete 120-case comparison with 6a91fb63, only npc_world_impact.01's replay
+# hash changes, starting with the author request identity at event 19. Every
+# other case field, visible output, model-call count and predicate is unchanged.
+# The old 81-event database still replays with its original bytes and hash.
+# See docs/audits/scenario-baseline-103-2026-09-13.json; no guard is relaxed.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "816f73723f0c969524bacffcf64201e906dd380228ca8b91086edce9efc83485"
+    "ea10ea20e6113383cc5ad1cde62c8b993166338deb776d3e7c32fd0d61aed71d"
 )
 
 

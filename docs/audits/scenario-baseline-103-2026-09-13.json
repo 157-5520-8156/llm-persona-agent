@@ -1,0 +1,186 @@
+{
+  "contract": "offline-scenario-rebaseline-evidence.1",
+  "new_version": "world-v2-offline-mechanism-baseline.103",
+  "old_manifest_hash": "816f73723f0c969524bacffcf64201e906dd380228ca8b91086edce9efc83485",
+  "new_run_hash_with_old_version": "1dbbaeb2aac44895456ff3e5625d827a52a21228e91f06a5243ad11148571e54",
+  "new_manifest_hash": "ea10ea20e6113383cc5ad1cde62c8b993166338deb776d3e7c32fd0d61aed71d",
+  "base_code_head": "6a91fb63990542fcccc87c3cb9a8e905613c9fcf",
+  "codec_commit": "59c9e98dbea10f1b1c0ed79d5e85824fbd869eac",
+  "root_codec_commit": "04747871",
+  "cases": 120,
+  "all_case_predicates_passed": true,
+  "changed_cases": [
+    {
+      "case": "npc_world_impact.01",
+      "fields": [
+        "replay_hash"
+      ]
+    }
+  ],
+  "unchanged_case_fields": [
+    "background_model_calls",
+    "background_work_statuses",
+    "emotional_gold",
+    "event_types",
+    "fault",
+    "model_calls",
+    "observation_count",
+    "output_hash",
+    "replay_passed",
+    "restarted_after_seed",
+    "room_view_hash",
+    "scenario_family",
+    "scenario_turn_id",
+    "terminal_action_states",
+    "trigger_kinds",
+    "verification_errors",
+    "world_id"
+  ],
+  "changed_case_probe": {
+    "scenario": "npc_world_impact.01",
+    "event_count_each": 81,
+    "first_changed_ledger_sequence": 19,
+    "first_changed_event_type": "ModelResultRecorded",
+    "first_event_changed_paths": [
+      "/event_id",
+      "/idempotency_key",
+      "/payload_hash",
+      "/payload_json/audit_hash",
+      "/payload_json/audit_json/character_interior_lineage/author_model_call_id",
+      "/payload_json/audit_json/character_interior_lineage/author_request_hash",
+      "/payload_json/audit_json/character_interior_lineage/decision_hash",
+      "/payload_json/audit_json/character_interior_lineage/private_self_lineage_hash",
+      "/payload_json/audit_json/model_call_id",
+      "/payload_json/audit_json/model_result_ref",
+      "/payload_json/audit_json/request_hash",
+      "/payload_json/deliberation_result_id",
+      "/payload_json/model_call_id",
+      "/payload_json/model_result_ref"
+    ],
+    "role_text_or_numeric_value_drift": "none in compared event leaves; subsequent differences are derived identity/reference/hash leaves"
+  },
+  "old_committed_cold_replay": {
+    "provider_calls": 0,
+    "source_candidate": "6a91fb63",
+    "event_count": 81,
+    "source_db": "/var/folders/7k/qjs2crmx5gd_t15vlw24wg6h0000gn/T/world-appraisal-scenario-base-u7yqyso4/npc_world_impact.01.sqlite",
+    "private_copy": "/var/folders/7k/qjs2crmx5gd_t15vlw24wg6h0000gn/T/world-appraisal-cold-read-9i56utjl/old-accepted.sqlite",
+    "new_code_semantic_hash": "20a0f692c852a1a625e0e38aaa8d1a576c1c5a805c33edbf9997a35a1488ffbd",
+    "expected_old_semantic_hash": "20a0f692c852a1a625e0e38aaa8d1a576c1c5a805c33edbf9997a35a1488ffbd",
+    "replay_passed": true,
+    "all_old_event_json_and_hash_bytes_unchanged": true,
+    "before_event_rows_sha256": "57138acd17b1a6b1b079fad0884150f99f0362e104be8ac7d8291d4b2085f8e0",
+    "after_event_rows_sha256": "57138acd17b1a6b1b079fad0884150f99f0362e104be8ac7d8291d4b2085f8e0"
+  },
+  "artifacts": [
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-schema-factor-proof.json",
+      "sha256": "deb4a6032ba94e4795fa33d012349db555d3f51cec0a5255ddfb03a55783344a"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-scenario-compare.py",
+      "sha256": "1ab50832fc284008891cd1f9c6d9fbcc7ae97f5332c78e4095196edaa1b96424"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-codec-final-tests.log",
+      "sha256": "9e95704a90d686d8e4af8187575ed45a9f32d17a0d49ff701996e2c022a134a0"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-cold-read-proof.py",
+      "sha256": "7d26e9e5211d3a6349047bf063fd0608f0da2ffbf11d22d9e7060095bdae0cd8"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-first-request-base.json",
+      "sha256": "b3c59f8009c41c251093a25c061e8f57ae10604050bf7421d6b55284e3d6266e"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-scenario-base.json",
+      "sha256": "b17d46a38e7f6c780dbfe04326f8ba83dfbdee99a7f17b2a71902dfe39acf786"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-fat-schemas.json",
+      "sha256": "bce26bbc089dfcf8753f3fc3a7213268b4c1f0b4a63047d8386566fd15c1b69f"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-schema-factor-proof.py",
+      "sha256": "f7a4f1d10c195155636e160f61ddb8dca6f9835dde02a1987e48147de67794fb"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-scenario-diff.json",
+      "sha256": "ed2d366b210f0d0f495560eb073a3fca56fdbb64f19c2051c6da456a3198e41b"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-scenario-candidate.json",
+      "sha256": "b6b0bef189761aac576622f08b498b5a67356abf3497689673a4fabcf762f2ed"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-first-request-candidate.json",
+      "sha256": "f9cb02dd02fc281ef9199802f603e3077e0af51ad81d8d75b3ad00468642d39a"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-codec-canary-replay.json",
+      "sha256": "8abb38727f3dfa318b703d34fd474a6e0fe1d35a3750a3ad0d2826fb85d167dc"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-cold-read-proof.json",
+      "sha256": "e727cdbf67f0cd50f9717bdbf455d80b72f353a3b3e31aece047c1886e603151"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-codec-red.log",
+      "sha256": "fa155d375caa01cff7b770016e87dc997a6ec4b2317dce168cd4feeda0856a8d"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-scenario-ledger-diff.json",
+      "sha256": "60ccc1a02841181bb11ec1b32d69a1db9d1cc93e06b5de851d7473b74e04714a"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-codec-regression.log",
+      "sha256": "39498a3f1c46a3c3831ebf5e1782ad246463f70289b522733c0ae95876b63016"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-first-request-proof.py",
+      "sha256": "ae07f0484b2ec0fc4b23498e9d8c96b51f33467f1f675d945d00a63b112ccaf4"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-thin-schemas.json",
+      "sha256": "cd5a89c92ee4c54e2e2b4527dea0d24ff4166aacbfd482ab15bda72d4f12d2a6"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-codec-replay-gate.log",
+      "sha256": "48916308372e574bd62a9bc8e35c0a440e1f136d7c20604e91f5742a6e4af46b"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-codec-size.py",
+      "sha256": "e2f78ac6aa11f5540e19139929cfbbb53e88174ba58ddc8f2be7e0d442b34ae6"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-scenario-candidate.log",
+      "sha256": "4aea89ebcb5b70979e5a2f0cdb5ab4a726df878866083b9009ba86ee70905975"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/world-appraisal-scenario-base.log",
+      "sha256": "d8b3b6e71140201ab01be61b5aac7153300c54fcdd79c744084fd68ebcb036d6"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/old-npc_world_impact.01.sqlite",
+      "sha256": "da766d9eb518623c45f32de036785711bc9a73c2afdff6bd11894a4215d91f6e"
+    },
+    {
+      "path": "output/private-audits/appraisal-codec-20260913/new-npc_world_impact.01.sqlite",
+      "sha256": "291d41bec42d7e15cdb32b8a66983b7c8566fe1c40065e02e8b6d6a64390f0b5"
+    }
+  ],
+  "limitations": [
+    "Fixed fake models/providers only; no real model quality, latency, cost or human-likeness qualification.",
+    "Full 120-case fields compared; event-leaf comparison and old database cold replay cover the single changed case.",
+    "The new version manifest is computed from the complete observed candidate manifest; the normal full scenario gate is run separately without bypassing its hash check."
+  ],
+  "normal_gate": {
+    "status": "passed",
+    "scope": "unmodified full scenario gate included in root codec + timer integration run",
+    "combined_passed": 44,
+    "combined_seconds": 59.21,
+    "log_path": "output/private-audits/appraisal-codec-20260913/root-codec-timer-scenario-integrated.log",
+    "log_sha256": "618c30bbebd790ab4b48e40af667049c376c0c3487b1d8e95b8016d31f2b7472"
+  }
+}
