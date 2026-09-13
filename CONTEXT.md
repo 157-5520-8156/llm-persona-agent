@@ -73,8 +73,11 @@ consistency. Ordinary chat must not bypass memory access by reading the archive.
 MemoryCandidate now recognizes a separate `prehistory` source; source reads require
 both the imported record and reviewed archive, exact actor, current candidate and
 privacy. Recall retains occurrence precision and the `character_prehistory` scope.
-This reader foundation does not yet connect character retention or production
-context selection. A compressed/replaced summary has no installed historical
+Explicit initialization now calls the same CharacterInterior memory purpose at
+the original import commit cursor. Each call considers at most one record;
+retain/no-change, bounded technical retries and paid-result recovery have durable
+records. It does not yet enable ordinary chat context selection or expression
+source review. A compressed/replaced summary has no installed historical
 summary reader and must not fall back to the original archive's details.
 _Avoid_: Retroactive runtime Experience, improvised chat evidence
 

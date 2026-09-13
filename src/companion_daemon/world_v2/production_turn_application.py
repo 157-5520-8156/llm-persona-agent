@@ -964,6 +964,7 @@ class WorldV2TurnApplication:
         self._character_interior = character_interior
         self._companion_actor_ref = companion_actor_ref
         self._ledger = ledger
+        self._prehistory_memory = None
         self._life_content_store = life_content_store
         self._expression_payload_store = expression_payload_store
         self._media_payload_store = media_payload_store
@@ -1043,6 +1044,23 @@ class WorldV2TurnApplication:
         outcome = await self._turns.respond(inbound)
         self._last_character_outcome = outcome.status
         return outcome
+
+    async def initialize_prehistory_once(self, *, allow_model_call: bool = False):
+        """Initialize one imported memory through the existing character model.
+
+        The host explicitly enables new calls for setup. Ordinary background
+        ticks do not launch initialization, and recovery can run without new calls.
+        """
+        if self._closed:
+            raise RuntimeError("World application is closed")
+        if self._prehistory_memory is None:
+            from .prehistory_memory_runtime import PrehistoryMemoryRuntime
+
+            self._prehistory_memory = PrehistoryMemoryRuntime(
+                ledger=self._ledger, owner_actor_ref=self._companion_actor_ref,
+                character_interior=self._character_interior,
+            )
+        return await self._prehistory_memory.advance_once(allow_model_call=allow_model_call)
 
     async def cancel_superseded_expression_streams(self, current_trigger_ref: str) -> None:
         """Drop only process-local, not-yet-visible units for newer ingress."""

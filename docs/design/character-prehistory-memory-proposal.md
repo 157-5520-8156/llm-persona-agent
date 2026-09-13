@@ -1,6 +1,6 @@
 # 启动前人生档案与统一记忆：讨论草案
 
-状态：用户已确认纳入当前Goal。已实现权威导入层及统一记忆的历史来源、检索底层；仍需接通角色保留、生产上下文选择与表达来源审核。没有改写生产角色数据，不构成完整功能或发布承诺。
+状态：用户已确认纳入当前Goal。已实现权威导入、角色保留初始化及统一记忆来源、检索底层；仍需接通生产聊天的上下文选择与表达来源审核。没有改写生产角色数据，不构成完整功能或发布承诺。
 
 ## 问题与当前证据
 
@@ -11,7 +11,7 @@
 - `configs/character.yaml` 的 background 包含“高中做过校刊”等过去设定，但 `companion_identity_source_material` 明确排除 background；较小的 canonical_facts 另外提供稳定事实。设定文本和可引用事实目前并不等价。
 - `BiographicalTimelineConfigured` 保存审核过的时间线，主要支撑年龄、学业与住处；不能由这些坐标推导任意历史事件。
 - `Committed Experience` 绑定结算后的活动或确认的共同事件；启动前人物背景不属于此来源。
-- `MemoryRetrievalCompiler` 支持 fact/experience/prehistory 来源；历史来源仍须完成角色保留和生产选择接线。`RecallCorpusCompiler` 和 `WorldRecallIndex` 能区分事件、语义事实、启动前历史与主观解释，并保持原始来源。
+- `MemoryRetrievalCompiler` 支持 fact/experience/prehistory 来源；历史来源可经显式角色初始化进入候选，仍须完成生产聊天选择接线。`RecallCorpusCompiler` 和 `WorldRecallIndex` 能区分事件、语义事实、启动前历史与主观解释，并保持原始来源。
 - 记忆已有保留、强化、遗忘、压缩来源覆盖等约束。这里不把这些代码约束当作长期行为已经验证的证据。
 
 因此需要扩展合法历史来源及其读写链，不能简单将更多背景文本塞进提示词，或把导入数据冒充运行后亲历事件。
@@ -111,3 +111,24 @@
 生产上下文仍不选择档案记忆，后台也没有自动开启档案保留调用。下一步需接上有持久化恢复和预算的
 CharacterInterior 保留选择，再接上下文及表达审核；现有运行后编造经历和纠错超时仍是独立阻断。
 证据见 `docs/audits/release-prehistory-memory-source-validation-2026-09-13.json`。
+
+## 角色初始化与恢复
+
+`WorldV2TurnApplication.initialize_prehistory_once` 显式初始化至多一个片段，复用唯一角色模块的
+`fact_memory_retention` 决策能力，能力材料仍明确标注 `character_prehistory`，不生成当前 Fact。
+角色决定是否保留及线索、理由和显著性。初始化使用该记录导入提交的完整游标和受审材料；它是
+初始化时的记忆选择，当前如何理解、感受和披露这段历史仍由之后的角色决定。
+
+`PrehistoryMemoryDecisionRecorded` 保存原始能力、角色结果和模型来源记录。保留后走现有
+MemoryCandidate 提案/接受链；不保留也持久化，重启后不重新询问。技术失败另有最多三次的有界
+尝试和退避记录，等待、耗尽与未开启模型调用有单独状态，不记为角色不保留。角色终态已保存时，
+即使尚未写决定记录或只创建了 pending 候选，也恢复原结果；推进逻辑时间不会换用新快照重问。
+
+入口默认只恢复已完成的决定，`allow_model_call=True` 才允许通过已安装的同一角色模型新增调用。
+普通后台 tick 不会自动启动这段初始化，当前也未增加新的模型或独立记忆模型接口。付费试验仍须
+沿用累计预算；初始化路由和模型调用身份可从决定记录追溯，一次性费用与在线月成本的实测归集仍待完成。
+
+已用真实应用构造、HTTP 边界的离线响应、角色终态库和 SQLite 接受/重放验证这条链。记忆决定的
+完整来源校验移到角色终态保存之前，缺少档案来源时由同一角色纠正一次，避免反复恢复无效终态。
+这不代表真实模型保留选择的自然度或长期记忆已通过；正式档案、聊天事实审核、压缩读取及真人感
+验证仍为后续必需工作。证据见 `docs/audits/release-prehistory-retention-validation-2026-09-14.json`。

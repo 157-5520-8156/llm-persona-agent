@@ -402,6 +402,10 @@ def _life_identity_components(
             payload.get("fact_authority_event_ref"),
             payload.get("decision_id"),
         )
+    if event_type == "PrehistoryMemoryDecisionRecorded":
+        binding = payload.get("source_binding")
+        return (world_id, binding.get("authority_event_ref") if isinstance(binding, dict) else None,
+                payload.get("attempt_ordinal") if payload.get("status") == "technical_failure" else "terminal")
     if event_type == "ExperienceMemoryDecisionRecorded":
         return (
             world_id,

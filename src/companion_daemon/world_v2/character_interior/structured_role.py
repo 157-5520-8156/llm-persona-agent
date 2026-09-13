@@ -2012,16 +2012,17 @@ class StructuredCharacterRoleFaculty:
                 )
             manifest = request.capability_manifest
             if (
-                request.purpose == "activity_lifecycle_choice"
-                and manifest is not None
-                and manifest.payload.get("self_directed_intent") is not None
+                manifest is not None
+                and (request.purpose in {"fact_memory_retention", "experience_memory_retention", "memory_withdrawal_review"}
+                     or (request.purpose == "activity_lifecycle_choice"
+                         and manifest.payload.get("self_directed_intent") is not None))
                 and tuple(result.decision.source_refs) != manifest.source_refs
             ):
                 self._raise(
                     "decision_source_unpinned", response_hash=response_hash,
                     detail="decision.source_refs must preserve the complete ordered capability source_refs: "
                     + json.dumps(manifest.source_refs, ensure_ascii=False)
-                    + ". These bind this opportunity, including no_op; they do not require an intention.",
+                    + ". These bind this opportunity, including a decline; they do not require a particular choice.",
                 )
             self._validate_decision_payload(
                 result.decision.payload,

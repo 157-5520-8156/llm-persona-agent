@@ -1,0 +1,60 @@
+{
+  "qualification_status": "manual_only / qualification_incomplete",
+  "scope": "Explicit application initialization through CharacterInterior, durable retain/no-change, bounded technical retries, recovery and existing MemoryCandidate acceptance. Ordinary chat selection and source review are not connected.",
+  "base_commit": "46558f44",
+  "tests": {
+    "passed": 447,
+    "seconds": 29.23,
+    "dedicated_runtime_cases": 10,
+    "transport": "offline role fixtures and HTTP MockTransport through the real application/provider interface",
+    "full_suite_run": false
+  },
+  "covered": [
+    "Public application initialization reaches the existing forced fact-memory tool with an explicitly historical source; one fixture HTTP call retains a MemoryCandidate.",
+    "Default initializer does not open model calls. Completed choices are recoverable without enabling new calls.",
+    "Retain and explicit no-change persist and do not reauthor on restart; historical read source remains distinct from current Fact/Experience.",
+    "Completed Interior terminal recovers before decision audit after logical Clock advancement without a second model call.",
+    "Decision-audited and pending-open interruption points recover acceptance without reauthoring or duplicate MemoryCandidate transitions.",
+    "Technical failures retain separate three-attempt/30s/120s retry state; waiting, exhausted and disabled-call states do not become character no-change.",
+    "A different character cannot initialize private history; a later source cursor cannot replace the original complete import commit pin.",
+    "Missing one of the two exact sources triggers same-role correction before terminal storage; only the corrected terminal is durable.",
+    "Application, character architecture, structured-role, event catalog, prehistory reader/import and existing memory authority regressions."
+  ],
+  "partial_source_counterexample": {
+    "method": "Temporarily restore the previous activity-only exact-source condition in the isolated checkout, run the new production-role test, then restore identical current bytes.",
+    "failed": 1,
+    "failure_code": "character_interior_decision_binding_invalid:source_refs",
+    "meaning": "An incomplete memory choice was accepted as terminal before the consumer rejected it; the current role guard corrects it before terminal persistence.",
+    "restored_guard_targeted_test_passed": 1
+  },
+  "new_physical_provider_calls": 0,
+  "new_paid_allocation_cny": "0",
+  "production_modified": false,
+  "actual_qq_sent": false,
+  "cost_scope": "Initializer uses the installed character model and records its call identity and initialization route. Native accounting classification of initialization versus ongoing costs and real monthly cost remain unqualified.",
+  "ruff": "passed",
+  "git_diff_check": "passed",
+  "code_and_test_sha256": {
+    "src/companion_daemon/world_v2/character_interior/structured_role.py": "dec40f7129e4d9f1bd36e11664c77e45ccc380f2adc5b7f38c029546ab90c989",
+    "src/companion_daemon/world_v2/event_catalog.py": "749924c0895bf62f8be60f52e3635afe2f326e57a3f9d0591a1977839dd3f388",
+    "src/companion_daemon/world_v2/event_identity.py": "03ff4a58b22f369f18af386252137c2b0b1cf9053e26a829f1d34fa1ddea2d11",
+    "src/companion_daemon/world_v2/prehistory_memory_decision.py": "ee53dee2e76bfa31c4f0e0087ce1f7a0fcf15e42fc2990824ba9982a8a0d67e5",
+    "src/companion_daemon/world_v2/prehistory_memory_runtime.py": "b74d336ce9eeb9c5f643089baa219d1feaf4b905302fd69e9775e0e1b3f927aa",
+    "src/companion_daemon/world_v2/production_turn_application.py": "900dc720ca185ae9885ab6a831d63cba5c54b497f8d27034cfb62f3d30a17f51",
+    "src/companion_daemon/world_v2/reducers.py": "a7f7afa147c1e3c11003e7dd0cee5932f3a2584e3bc8bb4469a86902739514a5",
+    "tests/world_v2/test_prehistory_memory_runtime.py": "47dc181428263108421ec6e35facd9bb64cc340ff61d29749411c11ea38c8d94"
+  },
+  "evidence_log_sha256": {
+    "final.log": "dc6e523e769e373928aec2304eeb0bc069c184ea8b9e073f41da53fbfcb02c5c",
+    "partial-source-red.log": "8d7a513befba3f532fae9272e2a43c3f92d85fbe064e913e5ca77e7ca93c928e",
+    "partial-source-green.log": "4b6d07f3dd9162cdd77e3e17e4080e549552f0916da64fe26a751d430973d321"
+  },
+  "private_evidence_directory": "output/private-audits/release-prehistory-retention-20260914",
+  "remaining_required_work": [
+    "Connect historical memory to ordinary chat context selection and expression source material, preserving historical actor/time/evidence permissions and no full-archive fallback.",
+    "Install a source-verified compressed historical representation and exercise role-owned memory evolution and withdrawal.",
+    "Build and independently review the actual character archive; verify accelerated interference/repetition and real-model retention and dialogue.",
+    "Measure and separate initialization costs from ongoing memory maintenance under the cumulative paid budget.",
+    "Close the existing unsupported runtime-experience, source-review false acceptance and correction timeout blockers, then qualify representative real conversation/life chains; no release qualification is claimed."
+  ]
+}

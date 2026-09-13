@@ -33,6 +33,7 @@ from .fact_trigger import (
     InteractionFactTechnicalFailurePayload,
 )
 from .experience_memory_decision import ExperienceMemoryDecisionRecordedPayload
+from .prehistory_memory_decision import PrehistoryMemoryDecisionRecordedPayload
 from .fact_proposal_audit_v2 import FactCommitProposalRecordedPayloadV2
 from .activity_lifecycle_acceptance_manifest import ACTIVITY_LIFECYCLE_ACCEPTANCE_MANIFEST_VERSION
 from .media_selection_acceptance_manifest import (
@@ -469,6 +470,7 @@ _PAYLOAD_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "InteractionFactDecisionRecorded": InteractionFactDecisionRecordedPayload,
         "FactMemoryDecisionRecorded": FactMemoryDecisionRecordedPayload,
         "ExperienceMemoryDecisionRecorded": ExperienceMemoryDecisionRecordedPayload,
+        "PrehistoryMemoryDecisionRecorded": PrehistoryMemoryDecisionRecordedPayload,
         "ToolRequestAccepted": ToolRequestAcceptedPayload,
         "ToolResultAccepted": ToolResultAcceptedPayload,
         "PerceptionRequestAccepted": PerceptionRequestAcceptedPayload,
@@ -628,6 +630,7 @@ _IDEMPOTENCY_IDENTITIES: Mapping[str, str] = MappingProxyType(
         "InteractionFactDecisionRecorded": ("world_id+trigger_id+fact_context_hash+decision_id"),
         "FactMemoryDecisionRecorded": ("world_id+trigger_id+fact_authority_event_ref+decision_id"),
         "ExperienceMemoryDecisionRecorded": ("world_id+experience_authority_event_ref+decision_id"),
+        "PrehistoryMemoryDecisionRecorded": "world_id+source_authority_event_ref+terminal_or_failure_ordinal",
         "ToolRequestAccepted": "world_id+request_id",
         "ToolResultAccepted": "world_id+result_id",
         "PerceptionRequestAccepted": "world_id+request_id",
@@ -1175,6 +1178,9 @@ _CONTRACTS: Mapping[str, EventContract] = MappingProxyType(
                 evidence_types=("model_result", "accepted_experience"),
                 successors=("MemoryCandidateOpened",),
             ),
+            _contract("PrehistoryMemoryDecisionRecorded", "prehistory_memory_initialization", "deliberation",
+                "PrehistoryMemoryDecisionRecordedPayload", allowed_predecessors=("CharacterPrehistoryRecordImported",),
+                evidence_types=("model_result", "committed_world_event"), successors=("MemoryCandidateOpened",)),
             _contract(
                 "ModelResultRecorded",
                 "deliberation",
