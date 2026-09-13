@@ -1,0 +1,46 @@
+{
+  "qualification_status": "manual_only / qualification_incomplete",
+  "base_commit": "2b787285",
+  "scope": "Owner-scoped retained prehistory through ordinary chat Capsule, visible source table, review request and fixture receipt verification. No real provider semantic qualification.",
+  "tests": {
+    "passed": 190,
+    "seconds": 13.1,
+    "dedicated_chat_cases": 7,
+    "full_suite_run": false,
+    "log": "output/private-audits/release-prehistory-chat-20260914/final.log",
+    "log_sha256": "61697d7dee9f6f917480d28af94b0ed1a79b3a2858b15eb18cf8117352e876ab"
+  },
+  "covered": [
+    "Existing application HTTP MockTransport retention choice reaches the shared ledger-backed chat compiler and historical review source table.",
+    "Only active owner memories provide excerpts; imported or pending records are absent. Forgotten history leaves current chat/review while immutable archive remains.",
+    "Capsule binds both exact record and reviewed archive event, retaining original historical dates and referenced historical identities.",
+    "Cold SQLite reopening reproduces identical chat Capsule bytes.",
+    "Review refuses missing archive, changed archive binding even with recomputed outer digest, and modified source excerpt.",
+    "Committed incoming question with matching cues reaches historical review source table .4 and actual v1/v8 prepared review requests; offline v1 verdict receipt survives serialization and verification.",
+    "Older context, recall, source tables, frozen receipt and source-review regressions passed."
+  ],
+  "limitations": [
+    "Review fixture acceptance validates protocol mechanics only; no new real-model factual entailment or humanlike behavior evidence.",
+    "Incoming direct context still uses existing relevance filtering. A broad school-life question without matching cues did not select this fixture memory; no bypass was added. Semantic recall and reviewer closure after role-directed retrieval need dedicated end-to-end qualification.",
+    "Historical compressed/replaced summary reader remains unavailable and cannot fall back to archive details.",
+    "Mixed-source historical memory cues remain advisory in review until each source kind has qualified support.",
+    "Formal character archive and independent semantic review, longitudinal retention/forgetting/interference, runtime fabricated experiences, source-review false acceptance and correction timeouts remain open.",
+    "No fresh production qualification, old-real-world replay, full suite, real QQ delivery or monthly cost measurement in this stage."
+  ],
+  "new_physical_provider_calls": 0,
+  "new_paid_allocation_cny": "0",
+  "production_modified": false,
+  "actual_qq_sent": false,
+  "ruff": "passed",
+  "git_diff_check": "passed",
+  "code_and_test_sha256": {
+    "src/companion_daemon/world_v2/memory_retrieval.py": "e6173e22e0dbcf5de44441147d41f03b9b3e3b4bb9b223679091b7adfa5fc092",
+    "src/companion_daemon/world_v2/ledger_context_resolver.py": "54b9719fcb5e68df9a03ac530d42e1faa25f0751c2bbf0ea2a9ae2738605e7de",
+    "src/companion_daemon/world_v2/context_capsule.py": "4e20ecdba4328b4600556e7e2132a2e9d03b1b053df24f88b3fae9b390a24258",
+    "src/companion_daemon/world_v2/visible_source_composer.py": "7dfd06de3d241eb46d0dc679f539c159388367753372ba5a863e8b666ef67c8e",
+    "src/companion_daemon/world_v2/visible_source_closure_protocol.py": "a2c58215f68b1254fdc1dc2c00bcff9cbd75c046d879df874718e5b168ca6c1e",
+    "src/companion_daemon/world_v2/visible_source_review_receipt.py": "25e3cf3c33595d86c15e6740e94c61c38b7c249f80b17189eab91d63909daf0f",
+    "tests/world_v2/test_prehistory_chat_context.py": "436c762e40aa0b4469ab751d4636fad159dcd9e1dfaba4c0ac045bd581c399c2",
+    "tests/world_v2/test_prehistory_memory_runtime.py": "a29dd55c320d87c735f0b0170b89fbbba480fcdd65fbda93a329d4004607b332"
+  }
+}

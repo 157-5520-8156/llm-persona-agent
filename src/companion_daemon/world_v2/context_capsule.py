@@ -1315,7 +1315,7 @@ def _typed_source_refs(slice_name: SliceName, item: BaseModel) -> tuple[str, ...
     if slice_name == "affect_episodes" and isinstance(item, AffectEpisodeProjection):
         return (item.origin.accepted_event_ref,)
     if slice_name == "active_memory_candidates" and isinstance(item, MemoryRetrievalItem):
-        return tuple(sorted({source.authority_event_ref for source in item.source_excerpts}))
+        return tuple(claim[0] for claim in item.committed_source_claims())
 
     refs: set[str] = set()
     origin = getattr(item, "origin", None)
@@ -1504,13 +1504,13 @@ def _typed_source_authorities(item: BaseModel) -> tuple[tuple[str, str, int, str
         if ref is not None and revision is not None and immutable_hash is not None:
             authorities.add(("committed_event", ref, revision, immutable_hash))
     if isinstance(item, MemoryRetrievalItem):
-        for source in item.source_excerpts:
+        for ref, revision, payload_hash in item.committed_source_claims():
             authorities.add(
                 (
                     "committed_event",
-                    source.authority_event_ref,
-                    source.authority_world_revision,
-                    source.authority_payload_hash,
+                    ref,
+                    revision,
+                    payload_hash,
                 )
             )
     return tuple(sorted(authorities))

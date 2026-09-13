@@ -362,7 +362,7 @@ def _typed_refs(item: BaseModel, *, observation_aliases: dict[str, str]) -> tupl
     if isinstance(item, PendingOutboundExpressionItem):
         return (item.authority_event_ref,)
     if isinstance(item, MemoryRetrievalItem):
-        return tuple(sorted({source.authority_event_ref for source in item.source_excerpts}))
+        return tuple(claim[0] for claim in item.committed_source_claims())
     if isinstance(item, RecentExperienceContextItem):
         return tuple(
             sorted(
@@ -655,14 +655,7 @@ def _typed_authority_claims(
             return None
         claims.add((ref, revision, immutable_hash))
     if isinstance(item, MemoryRetrievalItem):
-        claims.update(
-            (
-                source.authority_event_ref,
-                source.authority_world_revision,
-                source.authority_payload_hash,
-            )
-            for source in item.source_excerpts
-        )
+        claims.update(item.committed_source_claims())
     return tuple(sorted(claims))
 
 
@@ -2013,6 +2006,8 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             *(item.fact_id for item in scoped_facts),
             *(item.thread_id for item in scoped_threads),
             *(item.experience_id for item in scoped_experiences),
+            *(item.record.record_id for item in projection.prehistory_records
+              if item.actor_ref == query.actor_ref),
         }
         scoped_memories = tuple(
             item
@@ -2027,6 +2022,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             candidates=scoped_memories,
             viewer_privacy_ceiling="private",
             projection=projection,
+            actor_ref=query.actor_ref,
         )
         open_threads_for_continuity = tuple(
             item for item in scoped_threads if item.values.status == "open"

@@ -95,6 +95,20 @@ class MemoryRetrievalItem(FrozenModel):
     source_excerpts: tuple[MemorySourceExcerpt, ...] = Field(min_length=1)
     truncated: bool
 
+    def committed_source_claims(self) -> tuple[tuple[str, int, str], ...]:
+        """Include the reviewed archive proof without exposing its other records."""
+        claims = {
+            (source.authority_event_ref, source.authority_world_revision,
+             source.authority_payload_hash)
+            for source in self.source_excerpts
+        }
+        claims.update(
+            (source.prehistory.archive_event_ref, source.prehistory.archive_world_revision,
+             source.prehistory.archive_payload_hash)
+            for source in self.source_excerpts if source.prehistory is not None
+        )
+        return tuple(sorted(claims))
+
 
 class MemoryRetrievalSuppression(FrozenModel):
     """Trace-only reason why an active-looking candidate supplied no text."""

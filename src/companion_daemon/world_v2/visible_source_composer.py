@@ -17,6 +17,7 @@ from .biographical_claim_authority import biographical_coordinate_authorities
 from .context_capsule import CapsuleItem, ContextCapsule
 from .deliberation import ModelInput
 from .life_content import RecentExperienceContextItem
+from .memory_retrieval import MemoryRetrievalItem
 from .situation_compiler import SituationProjection
 from .visible_review_context import compile_visible_selected_source_context
 from .visible_source_closure_protocol import compact_source_reference_table
@@ -32,6 +33,7 @@ from .world_life_context import (
 VISIBLE_SOURCE_TABLE_CONTRACT = "visible-source-row-table.1"
 PLANNED_SOURCE_TABLE_CONTRACT = "visible-source-row-table.2"
 SETTLED_LIFE_SOURCE_TABLE_CONTRACT = "visible-source-row-table.3"
+PREHISTORY_SOURCE_TABLE_CONTRACT = "visible-source-row-table.4"
 
 
 def _json(value: object) -> str:
@@ -228,6 +230,44 @@ def _current_report(request: ModelInput, proof: dict) -> dict | None:
     }
 
 
+def _prehistory_entries(capsule: ContextCapsule) -> list[dict]:
+    """Read only retained excerpts already selected in the original Capsule."""
+    selected = capsule.active_memory_candidates
+    if selected.availability != "available":
+        return []
+    entries = []
+    for item in selected.items:
+        raw = json.loads(item.payload_json)
+        if "source_excerpts" not in raw:
+            continue
+        memory = MemoryRetrievalItem.model_validate_json(item.payload_json, strict=True)
+        historical = [source for source in memory.source_excerpts if source.prehistory is not None]
+        if not historical:
+            continue
+        if (item.privacy_class == "withhold" or memory.privacy_ceiling == "withhold"
+            or any(source.prehistory.actor_ref != capsule.actor_ref for source in historical)):
+            raise ValueError("selected prehistory differs from its original actor or privacy")
+        # Mixed-source cues have no whole-item historical qualification. They
+        # remain readable context; each other source kind needs its own reader.
+        entries.append({
+            **_entry("active_memory_candidates", item),
+            "authority": (
+                "retained_character_prehistory_exact_excerpt_only"
+                if len(historical) == len(memory.source_excerpts)
+                else "non_authoritative_advisory_not_external_fact"
+            ),
+            "actor_ref": capsule.actor_ref,
+            "does_not_authorize": [
+                "runtime_occurrence_or_current_activity",
+                "unretrieved_or_forgotten_archive_detail",
+                "historical_person_as_current_counterpart_or_live_npc",
+                "new_shared_history_with_the_current_user",
+                "present_emotion_or_behavior_from_retention_rationale",
+            ],
+        })
+    return entries
+
+
 def _indexed_materials(entries: list[dict], subjects: dict) -> tuple[list[dict], list[dict]]:
     rows, materials = [], []
     material_indexes = {}
@@ -284,6 +324,15 @@ def compile_visible_source_table(
     proof = compile_visible_selected_source_context(request=request, capsule=capsule)
     entries, selections, unsupported = _world_entries(capsule)
     entries.extend(proof["entries"])
+    history_entries = _prehistory_entries(capsule)
+    entries.extend(history_entries)
+    if history_entries:
+        selected = capsule.active_memory_candidates
+        selections["active_memory_candidates"] = {
+            "availability": selected.availability,
+            "slice_hash": selected.slice_hash,
+            "item_refs": [entry["item"]["item_ref"] for entry in history_entries],
+        }
     report = _current_report(request, proof)
     if report is not None:
         entries.append(report)
@@ -299,13 +348,16 @@ def compile_visible_source_table(
     )
     payload = {
         "contract": (
-            SETTLED_LIFE_SOURCE_TABLE_CONTRACT if includes_settled_life
+            PREHISTORY_SOURCE_TABLE_CONTRACT if history_entries
+            else SETTLED_LIFE_SOURCE_TABLE_CONTRACT if includes_settled_life
             else PLANNED_SOURCE_TABLE_CONTRACT if includes_planned
             else VISIBLE_SOURCE_TABLE_CONTRACT
         ),
         "pin": proof["visible_review_projection"],
         "additional_selection": selections,
         "coverage_scope": (
+            "selected_context_with_retained_prehistory_excerpts"
+            if history_entries else
             "selected_situation_activity_settled_life_biography_fact_dialogue_and_private_readings"
             if includes_settled_life else "selected_situation_activity_biography_fact_dialogue_only"
         ),

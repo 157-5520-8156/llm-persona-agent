@@ -108,6 +108,7 @@ def prepare_visible_source_review(
     from companion_daemon.llm import provider_invocation_request_hash
     from .visible_source_composer import (
         PLANNED_SOURCE_TABLE_CONTRACT, SETTLED_LIFE_SOURCE_TABLE_CONTRACT,
+        PREHISTORY_SOURCE_TABLE_CONTRACT,
         VISIBLE_SOURCE_TABLE_CONTRACT, VisibleSourceTable,
     )
 
@@ -121,7 +122,7 @@ def prepare_visible_source_review(
     table = _bounded_json(source_table.payload_json)
     if table.get("contract") not in {
         VISIBLE_SOURCE_TABLE_CONTRACT, PLANNED_SOURCE_TABLE_CONTRACT,
-        SETTLED_LIFE_SOURCE_TABLE_CONTRACT,
+        SETTLED_LIFE_SOURCE_TABLE_CONTRACT, PREHISTORY_SOURCE_TABLE_CONTRACT,
     }:
         raise ValueError("visible review source table contract is unsupported")
     if (

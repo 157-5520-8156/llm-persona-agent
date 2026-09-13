@@ -492,6 +492,22 @@ def _material_hash(value: object) -> str:
     ).hexdigest()
 
 
+def _historical_memory(value: object):
+    from .memory_retrieval import MemoryRetrievalItem
+
+    if not isinstance(value, dict) or "source_excerpts" not in value:
+        return None
+    try:
+        memory = MemoryRetrievalItem.model_validate_json(json.dumps(value), strict=True)
+    except (TypeError, ValueError):
+        return None
+    if memory.privacy_ceiling == "withhold" or any(
+        source.prehistory is None for source in memory.source_excerpts
+    ):
+        return None
+    return memory
+
+
 def _review_item(raw: object) -> tuple[dict[str, object], bool]:
     item = _selected_fields(raw, _ITEM_FIELDS)
     value = item.get("value")
@@ -521,6 +537,14 @@ def _review_item(raw: object) -> tuple[dict[str, object], bool]:
     has_body = isinstance(value, dict) and any(
         _readable(value.get(field)) for field in ("text", "summary", "source_excerpt")
     )
+    historical = _historical_memory(value)
+    if historical is not None:
+        expected = set(historical.committed_source_claims())
+        actual = {
+            (binding.ref, binding.source_world_revision, binding.immutable_hash)
+            for binding in bindings if binding.source_kind == "committed_event"
+        } if exact_sources else set()
+        has_body = expected == actual
     return item, bool(exact_value and exact_sources and has_body)
 
 
@@ -776,6 +800,13 @@ def _material_subject(
         actor = subjects.get("companion_actor_ref")
     elif material.get("kind") == "current_counterpart_report":
         actor = material.get("message", {}).get("actor")
+    elif (material.get("lane") == "active_memory_candidates"
+          and material.get("authority") == "retained_character_prehistory_exact_excerpt_only"):
+        memory = _historical_memory(material.get("item", {}).get("value"))
+        if memory is None:
+            return None, None
+        actors = {source.prehistory.actor_ref for source in memory.source_excerpts}
+        actor = next(iter(actors)) if len(actors) == 1 else None
     else:
         items = (
             [material["item"]] if "item" in material else material.get("slice", {}).get("items", ())

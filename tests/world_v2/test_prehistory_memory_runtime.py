@@ -266,6 +266,18 @@ async def test_public_application_initialization_reaches_existing_provider_seam(
         assert len(requests) == 1
         projection = app.export_replay_evidence().projection
         assert projection.memory_candidates[0].values.source_bindings[0].source_kind == "prehistory"
+        from companion_daemon.world_v2.context_resolver import query_from_projection
+        from companion_daemon.world_v2.ledger_context_resolver import context_capsule_compiler_from_ledger
+        from test_prehistory_chat_context import _table
+
+        capsule = context_capsule_compiler_from_ledger(ledger=app._ledger).compile(
+            query_from_projection(projection, actor_ref=shared.ACTOR,
+                                  trigger_ref=projection.prehistory_records[0].accepted_event_ref),
+        )
+        remembered, = capsule.active_memory_candidates.items
+        assert len(remembered.source_bindings) == 2
+        assert archive.document.records[0].statement in capsule.model_content_json
+        assert _table(capsule)["contract"] == "visible-source-row-table.4"
         assert (await app.initialize_prehistory_once(allow_model_call=True))["status"] == "idle"
         assert len(requests) == 1
     finally:

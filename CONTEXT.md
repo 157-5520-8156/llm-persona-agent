@@ -76,8 +76,11 @@ privacy. Recall retains occurrence precision and the `character_prehistory` scop
 Explicit initialization now calls the same CharacterInterior memory purpose at
 the original import commit cursor. Each call considers at most one record;
 retain/no-change, bounded technical retries and paid-result recovery have durable
-records. It does not yet enable ordinary chat context selection or expression
-source review. A compressed/replaced summary has no installed historical
+records. Ordinary chat now selects only the owner's active retained excerpts;
+Capsule and visible review bind both the record and reviewed archive. Historical
+dates/identities remain visible, without exposing the whole archive or granting
+runtime occurrence/current-user shared-history authority. This is offline chain
+coverage, not real-model semantic qualification. A compressed/replaced summary has no installed historical
 summary reader and must not fall back to the original archive's details.
 _Avoid_: Retroactive runtime Experience, improvised chat evidence
 
