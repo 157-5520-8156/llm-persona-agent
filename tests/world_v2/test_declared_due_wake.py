@@ -246,3 +246,62 @@ def test_silence_formula_is_explicitly_non_waking() -> None:
     )
     assert silence.trigger_mode == "derived_formula"
     assert set(silence.projection_due_fields) == set(NON_WAKING_PROJECTION_DUE_FIELDS)
+
+
+@pytest.mark.parametrize("answered", [False, True])
+def test_expectation_wake_uses_receipt_owner_eligibility(answered):
+    due = NOW - timedelta(minutes=1)
+    p = SimpleNamespace(
+        logical_time=NOW,
+        expression_plan_manifests=(SimpleNamespace(
+            plan_id="plan:hope",
+            response_expectation=SimpleNamespace(
+                source_beat_id="beat:hope", hoped_response="project news",
+                not_before=due, expires_at=NOW + timedelta(hours=1),
+            ),
+            beats=(SimpleNamespace(beat_id="beat:hope", action=SimpleNamespace(action_id="action:hope")),),
+        ),),
+        execution_receipts=(SimpleNamespace(action_id="action:hope", observed_state="delivered"),),
+        committed_world_event_refs=(SimpleNamespace(
+            event_type="ExecutionReceiptRecorded", event_id="event:receipt",
+            world_revision=1, logical_time=NOW - timedelta(hours=1),
+        ),),
+        message_observations=(SimpleNamespace(world_revision=2),) if answered else (),
+        response_expectation_assessments=(),
+    )
+    from companion_daemon.world_v2.response_expectation_view import unanswered_response_expectations
+    assert bool(unanswered_response_expectations(p)) is not answered
+    openings = [d for d in collect_projection_declared_dues(p)
+                if d.field == "ResponseExpectationAuthority.not_before"]
+    assert bool(openings) is not answered
+
+
+def test_due_commitment_keeps_unprocessed_close_instead_of_consumed_open():
+    opens, closes = NOW - timedelta(hours=2), NOW - timedelta(hours=1)
+    p = SimpleNamespace(logical_time=NOW, commitments=(SimpleNamespace(
+        values=SimpleNamespace(status="due", due_window=SimpleNamespace(opens_at=opens, closes_at=closes)),
+    ),))
+    dues = collect_projection_declared_dues(p)
+    assert len(dues) == 1 and dues[0].due_at == closes
+
+
+def test_passed_thread_opening_is_context_but_pending_action_remains_due():
+    past = NOW - timedelta(minutes=1)
+    p = SimpleNamespace(logical_time=NOW,
+        threads=(SimpleNamespace(values=SimpleNamespace(status="open", due_window=SimpleNamespace(opens_at=past))),),
+        actions=(SimpleNamespace(state="authorized", not_before=past),))
+    dues = collect_projection_declared_dues(p)
+    assert [d.kind for d in dues] == ["action.authorized_due"]
+
+
+def test_affect_anchor_is_history_until_its_actual_residue_close_is_pending():
+    from test_affect_module import episode
+    from companion_daemon.world_v2.affect_live import episode_at_residue_floor
+    active = episode(at=NOW - timedelta(minutes=2))
+    p = SimpleNamespace(logical_time=NOW, affect_episodes=(active,), affect_baselines=())
+    assert not episode_at_residue_floor(active, logical_time=NOW)
+    assert collect_projection_declared_dues(p) == ()
+    # Reaching the anchor is not enough to waive an overdue residue close.
+    p.logical_time = NOW + timedelta(days=30)
+    assert episode_at_residue_floor(active, logical_time=p.logical_time)
+    assert any(d.kind == "affect.decay" for d in collect_projection_declared_dues(p))

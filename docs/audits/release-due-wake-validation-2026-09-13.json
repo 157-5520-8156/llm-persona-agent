@@ -1,0 +1,15 @@
+{
+  "contract": "release-due-wake-validation.1",
+  "baseline": "4283fd02",
+  "finding": "The closed continuation's final projection had three historical coordinates reported as overdue: an answered hope opening, an open Thread's past opening, and an Affect decay anchor whose live intensity had not reached its residue floor.",
+  "changes": [
+    "Expectation openings now use the existing receipt-bound unanswered_response_expectations reader; expiry remains a future context wake.",
+    "Threads retain their past opening as context without claiming an unconsumed automatic transition.",
+    "Affect keeps future anchors and actual pending residue closure; ordinary continuous decay reads do not leave an overdue work item.",
+    "Commitments in due status wake at closes_at, preserving an unprocessed overdue deadline instead of rereading consumed opens_at."
+  ],
+  "tests": "4 regression cases failed before the change; 52 targeted declared-due, runner completion, expectation and deferred-reply checks passed in 2.54s. Pending Action, unanswered hope, missed commitment close and actual Affect residue close remain visible.",
+  "real_saved_projection": "Read-only SQLite backup of continuation02: zero past pending dues after correction; next occurrence boundary remains 05:29 UTC. Original manifest completed=false is unchanged. This is a cold projection check, not a fresh successful journey.",
+  "production_changes": "None deployed; source patch in isolated release repair worktree.",
+  "additional_provider_calls": 0
+}

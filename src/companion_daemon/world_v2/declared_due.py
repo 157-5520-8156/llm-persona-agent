@@ -144,6 +144,12 @@ def _as_datetime(value: object) -> datetime | None:
     return value if isinstance(value, datetime) else None
 
 
+def _coordinate_passed(projection: object, due: datetime | None) -> bool:
+    """Read-time coordinates need a future wake, not a consuming event."""
+    now = _as_datetime(getattr(projection, "logical_time", None))
+    return due is not None and now is not None and due <= now
+
+
 def _window_open(value: object) -> datetime | None:
     if value is None:
         return None
@@ -214,6 +220,13 @@ def _extract_life_ecology(projection: object) -> tuple[DeclaredDueTarget, ...]:
 
 
 def _extract_expression_beats(projection: object) -> tuple[DeclaredDueTarget, ...]:
+    from .response_expectation_view import unanswered_response_expectations
+
+    # Share the consideration owner's delivered/answered/terminal authority.
+    # A historical manifest alone is not proof of an outstanding hope wake.
+    hopes = {
+        item.plan_id for item in unanswered_response_expectations(projection, due_only=False)
+    }
     found: list[DeclaredDueTarget] = []
     for manifest in _iter(getattr(projection, "expression_plan_manifests", ())):
         expectation = getattr(manifest, "response_expectation", None)
@@ -223,6 +236,10 @@ def _extract_expression_beats(projection: object) -> tuple[DeclaredDueTarget, ..
                 ("ResponseExpectationAuthority.expires_at", "expires_at"),
             ):
                 due = _as_datetime(getattr(expectation, attr, None))
+                if attr == "not_before" and getattr(manifest, "plan_id", None) not in hopes:
+                    continue
+                if attr == "expires_at" and _coordinate_passed(projection, due):
+                    continue
                 if due is not None:
                     found.append(
                         DeclaredDueTarget(
@@ -256,7 +273,13 @@ def _extract_commitments(projection: object) -> tuple[DeclaredDueTarget, ...]:
         values = getattr(commitment, "values", None)
         if values is None or getattr(values, "status", None) not in _LIVE_COMMITMENT_STATUSES:
             continue
-        due = _window_open(getattr(values, "due_window", None))
+        window = getattr(values, "due_window", None)
+        # DeferredReplyRuntime consumes open -> due and due -> broken at
+        # different boundaries. Preserve an overdue close until it settles.
+        due = (
+            _window_open(window) if values.status == "open"
+            else _as_datetime(getattr(window, "closes_at", None))
+        )
         if due is not None:
             found.append(
                 DeclaredDueTarget(
@@ -278,6 +301,10 @@ def _extract_threads(projection: object) -> tuple[DeclaredDueTarget, ...]:
             continue
         due_window = getattr(values, "due_window", None) if values is not None else getattr(thread, "due_window", None)
         due = _window_open(due_window)
+        # Threads remain open until a Character decision; crossing their
+        # opening only changes the context. It does not mandate resolution.
+        if _coordinate_passed(projection, due):
+            continue
         if due is not None:
             found.append(
                 DeclaredDueTarget(
@@ -384,6 +411,21 @@ def _extract_affect(projection: object) -> tuple[DeclaredDueTarget, ...]:
             continue
         for component in _iter(getattr(episode, "components", ())):
             due = _as_datetime(getattr(component, "decay_not_before", None))
+            if _coordinate_passed(projection, due):
+                from .affect_live import episode_at_residue_floor
+
+                # Live intensity is a read-time formula. Only a reached
+                # residue floor still requires WorldRuntime's close event.
+                try:
+                    pending_close = episode_at_residue_floor(
+                        episode,
+                        logical_time=projection.logical_time,
+                        baselines=getattr(projection, "affect_baselines", ()),
+                    )
+                except (AttributeError, TypeError, ValueError):
+                    pending_close = True
+                if not pending_close:
+                    continue
             if due is not None:
                 found.append(
                     DeclaredDueTarget(
