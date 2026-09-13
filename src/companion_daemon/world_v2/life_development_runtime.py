@@ -93,6 +93,7 @@ from .life_development_source_closure import (
     life_development_review_packet_identity,
     life_development_source_closure_correction_message,
     life_development_source_closure_messages,
+    novel_origin_review_tool_contract,
     parse_life_development_novel_origin_review,
     parse_life_development_source_closure_review,
     resolve_cited_pinned_material,
@@ -5065,6 +5066,11 @@ class LifeDevelopmentRuntime:
                         completion_critic,
                         review_messages,
                         temperature=0.0,
+                        **(
+                            novel_origin_review_tool_contract(draft)
+                            if getattr(completion_critic, "supports_strict_tool_choice", False) is True
+                            else {}
+                        ),
                     )
             except Exception as exc:
                 if not _is_expected_model_transport_failure(exc):

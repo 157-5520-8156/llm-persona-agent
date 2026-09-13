@@ -1,0 +1,33 @@
+{
+  "contract": "release-life-origin-tool-validation.1",
+  "cause": "canary08 focused source critic and its one correction both returned an extra closing brace in JSON-object mode.",
+  "change": "Project the existing canonical focused-review schema into the existing DeepSeek strict-tool dialect, through the same role-bound provider. Preserve strict local parser, source/coordinate checks, one full correction, ordinary model budgets, historical messages and logical review request hashes. Physical provider capture records the tool-bearing request. Other provider lanes retain the existing JSON-object path.",
+  "targeted_core": {
+    "passed": 8,
+    "seconds": 1.25
+  },
+  "life_runtime_selected": {
+    "passed": 15,
+    "deselected": 107,
+    "seconds": 1.49
+  },
+  "final_transport_and_manifest_log": "output/private-audits/release-life-origin-tool-20260913/girl-life-tool-all-final.log",
+  "limitations": [
+    "Strict-tool server behavior for this exact focused schema still needs real-provider qualification.",
+    "This changes transport enforcement only; source semantics, repetition, full Life chain and monthly cost remain separate acceptance work."
+  ],
+  "evidence_files": [
+    {
+      "path": "output/private-audits/release-life-origin-tool-20260913/girl-life-tool-all-final.log",
+      "sha256": "3bb7ca51a429e1b58d12998ad8811e08cba0b4d939f6f721b83ab0043fa0f54e"
+    },
+    {
+      "path": "output/private-audits/release-life-origin-tool-20260913/girl-life-tool-unit-final.log",
+      "sha256": "95b1973c2c2935dd95b9d9f294c6bdb912473de39f4c33e8b74d6a95237b7a75"
+    },
+    {
+      "path": "output/private-audits/release-life-origin-tool-20260913/girl-life-tool-regression-final.log",
+      "sha256": "38ec16eca12b9569a3ebd4faa1d376a27b77becf1e3b961b133761636eaa3aef"
+    }
+  ]
+}

@@ -51,6 +51,23 @@ class RoleBoundLifeDevelopmentModelAdapter:
     def role(self) -> str:
         return self._role
 
+    @property
+    def supports_strict_tool_choice(self) -> bool:
+        return getattr(self._model, "supports_strict_tool_choice", False) is True
+
+    async def complete_json(
+        self, messages: list[dict[str, str]], *, temperature: float = 0.2,
+        tools: list[dict[str, object]] | None = None, tool_choice: object | None = None,
+    ) -> str:
+        if tools is None:
+            return await self.complete(messages, temperature=temperature)
+        operation = getattr(self._model, "complete_json", None)
+        if not callable(operation):
+            raise TypeError("required life-review tool completion is unavailable")
+        return await operation(
+            messages, temperature=temperature, tools=tools, tool_choice=tool_choice,
+        )
+
     async def complete(
         self,
         messages: list[dict[str, str]],

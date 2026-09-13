@@ -119,13 +119,27 @@ class _HTTP:
                     }
             self.draft = value
             raw = _json(value)
+        message = {"role": "assistant", "content": raw}
+        if wire.get("tools"):
+            from jsonschema import Draft202012Validator
+
+            review = json.loads(raw)
+            review["unsupported_dynamic_life_directions"] = []
+            arguments = {"review": review}
+            Draft202012Validator(wire["tools"][0]["function"]["parameters"]).validate(arguments)
+            message = {"role": "assistant", "content": None, "tool_calls": [{
+                "id": "offline-review", "type": "function", "function": {
+                    "name": wire["tool_choice"]["function"]["name"],
+                    "arguments": json.dumps(arguments),
+                },
+            }]}
         return httpx.Response(
             200,
             json={
                 "id": "offline-manifest",
                 "model": wire["model"],
                 "choices": [
-                    {"message": {"role": "assistant", "content": raw}, "finish_reason": "stop"}
+                    {"message": message, "finish_reason": "tool_calls" if wire.get("tools") else "stop"}
                 ],
                 "usage": {"prompt_tokens": 100, "completion_tokens": 200, "total_tokens": 300},
             },
@@ -338,6 +352,7 @@ async def test_original_legacy_author_and_reviews_recover_without_new_http_or_pr
     wake = _seed_clock(ledger)
     provider = _HTTP(wake, legacy=True)
     model = _model(provider)
+    model.supports_strict_tool_choice = False  # Capture the original JSON-object transport.
     catalog = _catalog(tmp_path)
     try:
         commit = ledger.commit_at_cursor

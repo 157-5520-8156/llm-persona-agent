@@ -659,6 +659,46 @@ def parse_life_development_source_closure_review(
     return review
 
 
+def novel_origin_review_tool_contract(
+    draft: LifeDevelopmentPossibilityDraft,
+) -> dict[str, object]:
+    """Enforce the existing review object's transport, never its verdict.
+
+    The logical review request already carries this canonical model's schema.
+    Provider usage/capture retains the actual tool-bearing HTTP request too.
+    Historical message compilation and parsing remain unchanged.
+    """
+    from .character_interior.structured_role_tool_contract import _provider_schema
+    from .character_interior.inbound_tool_contract import deepseek_strict_tool_schema
+
+    def require_fields(value):
+        if isinstance(value, list):
+            return [require_fields(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        result = {key: require_fields(item) for key, item in value.items()}
+        if isinstance(result.get("properties"), dict):
+            result["required"] = list(result["properties"])
+        return result
+
+    # Canonical default-empty finding arrays must remain arrays, not the
+    # nullable placeholders used by optional role-result union branches.
+    review_schema = require_fields(_provider_schema(_novel_review_model(draft)))
+    parameters = deepseek_strict_tool_schema({
+        "type": "object", "properties": {"review": review_schema},
+        "required": ["review"], "additionalProperties": False,
+    })
+    name = "life_novel_origin_review_v1"
+    return {
+        "tools": [{"type": "function", "function": {
+            "name": name, "strict": True,
+            "description": "Return one complete source-origin review using the supplied evidence.",
+            "parameters": parameters,
+        }}],
+        "tool_choice": {"type": "function", "function": {"name": name}},
+    }
+
+
 def parse_life_development_novel_origin_review(
     *,
     raw: str,
