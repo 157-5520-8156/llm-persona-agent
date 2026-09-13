@@ -1,0 +1,84 @@
+{
+  "contract": "release-real-canary-result.1",
+  "trial_id": "release-real-canary-20260913-01",
+  "code_head": "1eb6d1c5138487745469632103f01d114482fccb",
+  "status": "incomplete_visible_reply_blocker",
+  "completed": false,
+  "stop_reason": "operator_stopped",
+  "operator_stop_reason": "return-after-life produced primary_timeout, no visible delivery; no trial restart",
+  "turns_consumed": 3,
+  "virtual_minutes": 148,
+  "wall_seconds": 517.743786499952,
+  "first_two_turns_captured": true,
+  "first_life_chain": {
+    "occurrence_commit_sequence": 231,
+    "settlement_sequence": 287,
+    "character_response_sequence": 300,
+    "experience_sequence": 303,
+    "source_binding_verified": true
+  },
+  "third_turn": {
+    "timeline_step": "step-00023",
+    "delivered_messages": 0,
+    "status": "deferred",
+    "failure_code": "primary_timeout",
+    "author_contains_recent_settled_life_material": true,
+    "review_missing_corresponding_life_sources": true,
+    "semantic_support_of_original_claims": "not_proven; source transport, scope and role-response authority must be separated"
+  },
+  "life_reviewer_findings": [
+    "Initial general place-source rejection had evidence; fields were changed.",
+    "Focused rejection reasoning did not sufficiently distinguish authorized attempt scope from proof of earlier completion; entire candidate legality remains unproven.",
+    "One focused response shape was schema-permitted but rejected by additional runtime combination rules."
+  ],
+  "replay_hash_matches": true,
+  "restarts_performed": 0,
+  "qualification_status": "manual_only",
+  "human_likeness_status": "unassessed",
+  "release_ready": false,
+  "next_work": [
+    "Repair and regress visible settled-life source transport on isolated branch.",
+    "Align focused-review wire schema with unchanged runtime constraints.",
+    "Re-evaluate real dialogue only after fixed candidate and bounded cost declaration."
+  ],
+  "cost_snapshot": "docs/audits/release-cost-inheritance-2026-09-13-canary-01.json",
+  "private_run_directory": "output/private-audits/release-real-canary-20260913-01/run",
+  "diagnostic_report_sha256": {
+    "output/private-audits/release-real-canary-20260913-01/release-real-canary-first-turn-audit.md": "0d7f4a2e21abedce91ef0f2cd94a0b7c27616bf4fcee9e8c38f570689b392838",
+    "output/private-audits/release-real-canary-20260913-01/release-real-canary-first-life-third-turn-audit.md": "4dd664d02d0debf3f04e5f163b18577d6520b19a38e7941a579d2e30ea69e0e6",
+    "output/private-audits/release-real-canary-20260913-01/release-real-canary-life-rejection-audit.md": "c5cc51399938482dc7373bedd9a2b02390293f9173ec34f9877d42e5bbb3f7df"
+  },
+  "manifest_sha256": "2c9dfac8571c519c3ff81b38f0a689222706418b3d9fcfee448ab079a893da4f",
+  "provider_documentation": {
+    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "observed_at_utc": "2026-09-13T05:07:30.524956+00:00",
+    "requested_model": "deepseek-v4-flash",
+    "documented_serving_version": "DeepSeek-V4.1-Flash",
+    "documented_legacy_alias_supported": true,
+    "models_endpoint_http_status": 200,
+    "models_endpoint_lists_legacy_alias": false,
+    "models_endpoint_lists_deepseek_flash": true,
+    "official_cny_per_million": {
+      "offpeak": {
+        "cache_hit": 0.02,
+        "cache_miss": 1,
+        "output": 4
+      },
+      "peak": {
+        "cache_hit": 0.04,
+        "cache_miss": 2,
+        "output": 8
+      }
+    },
+    "runtime_pricing": "unchanged installed 2026-08-17 table, conservatively higher than currently published Flash table",
+    "billing_claim": "runtime amount is an estimate, not actual account debit; do not reprice inherited historical rows with the new public rate"
+  },
+  "credentials": {
+    "user_authorized": true,
+    "available": true,
+    "raw_value_in_report": false
+  },
+  "real_qq": false,
+  "production_database_modified": false,
+  "deployed": false
+}

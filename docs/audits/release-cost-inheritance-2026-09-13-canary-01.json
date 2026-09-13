@@ -1,0 +1,82 @@
+{
+  "contract": "release-cost-inheritance-summary.2",
+  "generated_at": "2026-09-13T05:27:09.410506+00:00",
+  "status": "real_trial_terminal_full_allocation_retained",
+  "parent_snapshot": "docs/audits/release-cost-inheritance-2026-09-13.json",
+  "parent_snapshot_sha256": "5bd1da37075fc119b55dbff4b027976ef1c642588db5badbfe8a69e549d3e5d3",
+  "trial_id": "release-real-canary-20260913-01",
+  "code_head": "1eb6d1c5138487745469632103f01d114482fccb",
+  "trial": {
+    "completed": false,
+    "stop_reason": "operator_stopped_after_visible_primary_timeout",
+    "usage_rows": 38,
+    "known_usage_rows": 37,
+    "unknown_usage_rows": 1,
+    "pending_reservations": 0,
+    "known_repository_price_estimate_cny": "0.6946111999999999964",
+    "unknown_reservation_full_hold_cny": "0.493629",
+    "pending_full_hold_cny": "0",
+    "observed_usage_plus_unresolved_hold_cny": "1.1882401999999999964",
+    "declared_single_allocation_cny": "2.0",
+    "whole_allocation_still_retained_cny": "2.0",
+    "unreleased_margin_above_observed_cny": "0.8117598000000000036",
+    "current_public_price_known_token_estimate_cny": "0.48057848"
+  },
+  "combined_inheritance": {
+    "known_repository_price_estimate_cny": "41.61125449999999986847",
+    "observed_estimate_plus_unresolved_hold_cny": "64.57209349999999991647",
+    "conservative_committed_cny": "65.38385329999999992007",
+    "status": "whole_new_allocation_and_all_inherited_unknown_retained",
+    "additional_authorized_budget_cny": null
+  },
+  "integrity": {
+    "capture_requests": 38,
+    "complete_response_bodies": 37,
+    "incomplete_response_bodies": [
+      {
+        "capture_id": "model-input:11ada42c346246c0a4f76bd21b993a07",
+        "body_complete": false,
+        "captured_bytes": 0,
+        "stream_status": "cancelled"
+      }
+    ],
+    "known_usage_rows": 37,
+    "unknown_usage_rows": 1,
+    "reservations": 38,
+    "known_response_usage_token_multiset_matches": true,
+    "unique_provider_response_ids": 37,
+    "per_row_capture_foreign_key": "unavailable; full aggregate token matching plus individual visible-chain evidence retained",
+    "captured_body_hashes_match": true,
+    "new_vs_inherited_reservation_overlap": [],
+    "inherited_reservation_ids_available_for_overlap_check": 1500,
+    "current_public_price_known_token_estimate_cny": "0.48057848",
+    "current_public_price_scope": "current official Flash CNY table applied only to this run known token rows; not provider account debit; unknown excluded and retained separately"
+  },
+  "artifact_sha256": {
+    "output/private-audits/release-real-canary-20260913-01/prepared.json": "29f28ddff1c73c57852da978101fbfd83a8be24243ab2c5677a8a3156b255074",
+    "output/private-audits/release-real-canary-20260913-01/admitted.json": "7634d79cf540f79ba928b0d984a9f7b64182130f010ff51deff321171dfa2622",
+    "output/private-audits/release-real-canary-20260913-01/finished.json": "40c092dd39ab8460df813cf931676e20dcc8d8e4e1ec38788cbd338f7d1669ab",
+    "output/private-audits/release-real-canary-20260913-01/launch.py": "aded82ff354b1f23bd2a4c37f605425cf4f13561f23323d80760a91b8f7237e4",
+    "output/private-audits/release-real-canary-20260913-01/scenario.json": "bc41eb4963afa406e5e70f13d32b0a47fb3d7a435e5e109ffb1a8f7d1e309461",
+    "output/private-audits/release-real-canary-20260913-01/run/manifest.json": "2c9dfac8571c519c3ff81b38f0a689222706418b3d9fcfee448ab079a893da4f",
+    "output/private-audits/release-real-canary-20260913-01/run/provider-usage.json": "347665a94d9bac8ca8bb433386a0c73cc9f991809c09df07c8974027e4092d18",
+    "output/private-audits/release-real-canary-20260913-01/run/evidence.jsonl": "a540931ec568379ca51afab5aafcb583e2847f0c609742f0ddbfb1106e226be6",
+    "output/private-audits/release-real-canary-20260913-01/run/timeline.jsonl": "e4634ee9372838d26f5b24603f4c638ba43cef4d02315b1e1330681aa39bb807",
+    "output/private-audits/release-real-canary-20260913-01/run/model-inputs.jsonl": "ce1e1a8c19d6952a9fcadf1276c6a5d6d791e7b3aa8b0faf6424e2bfcafc5ac0",
+    "output/private-audits/release-real-canary-20260913-01/capture-cost-integrity.json": "1de9a37172f40f109186d176f37c90ba30f2a26accfd6f73676c42ce2177f55c",
+    "output/private-audits/release-real-canary-20260913-01/budget-final.json": "42af0bfd5c7f4a0bf305a0e4ae9e4cbe89869325b2ea04a79ad5bc62cda4a4f7"
+  },
+  "diagnostic_report_sha256": {
+    "output/private-audits/release-real-canary-20260913-01/release-real-canary-first-turn-audit.md": "0d7f4a2e21abedce91ef0f2cd94a0b7c27616bf4fcee9e8c38f570689b392838",
+    "output/private-audits/release-real-canary-20260913-01/release-real-canary-first-life-third-turn-audit.md": "4dd664d02d0debf3f04e5f163b18577d6520b19a38e7941a579d2e30ea69e0e6",
+    "output/private-audits/release-real-canary-20260913-01/release-real-canary-life-rejection-audit.md": "c5cc51399938482dc7373bedd9a2b02390293f9173ec34f9877d42e5bbb3f7df"
+  },
+  "limitations": [
+    "Known means provider token usage was returned; all monetary amounts remain estimates, not provider account debit.",
+    "Current public price estimate applies only to this run known token rows, not historical rows; cancelled-call cost remains unknown.",
+    "Advisory guard 1.6818692 double-counts the one unknown row/reservation; it is not formal committed spend.",
+    "No historical hold was released; the new full 2 CNY allocation is retained, including 0.8117598 unspent/unreconciled margin.",
+    "No new paid window is admitted by this result.",
+    "Capture/request aggregate matching is not a fabricated per-row foreign key."
+  ]
+}
