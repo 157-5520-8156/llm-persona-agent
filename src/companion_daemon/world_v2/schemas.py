@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .character_prehistory import PrehistoryArchiveProjection, PrehistoryRecordProjection, validate_prehistory_state
+
 from .chat_life_intent_contract import ChatLifeIntentFailure
 from .chat_life_plan_consideration_contract import ChatLifePlanConsideration
 from .character_life_response_contract import CharacterLifeResponseRecordedPayload
@@ -6066,6 +6068,8 @@ class LedgerProjection(FrozenModel):
     experience_transitions: tuple[ExperienceTransitionProjection, ...] = ()
     experience_proposals: tuple[ExperienceProposalProjection, ...] = ()
     experience_proposal_ids: tuple[str, ...] = ()
+    prehistory_archives: tuple[PrehistoryArchiveProjection, ...] = Field(default=(), exclude_if=lambda value: not value)
+    prehistory_records: tuple[PrehistoryRecordProjection, ...] = Field(default=(), exclude_if=lambda value: not value)
     memory_candidates: tuple[MemoryCandidateProjection, ...] = ()
     memory_candidate_transitions: tuple[MemoryCandidateTransitionProjection, ...] = ()
     memory_candidate_proposals: tuple[MemoryCandidateProposalProjection, ...] = ()
@@ -6132,6 +6136,10 @@ class LedgerProjection(FrozenModel):
         expected = tuple(action for action in self.actions if action.state not in terminal)
         if self.pending_actions != expected:
             raise ValueError("pending_actions must equal the non-terminal action index")
+        validate_prehistory_state(
+            self.prehistory_archives, self.prehistory_records, self.committed_world_event_refs,
+            logical_time=self.logical_time, world_id=self.world_id,
+        )
         validate_actor_authority_event_bindings(
             self.actor_authorities,
             self.actor_authority_transitions,

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from .character_prehistory import PrehistoryArchiveProjection, PrehistoryRecordProjection, validate_prehistory_state
+from .character_prehistory_reducers import (
+    archive_accepted as _prehistory_archive_accepted, record_imported as _prehistory_record_imported,
+)
+
 from pydantic import Field
 
 from .chat_life_intent_contract import ChatLifeIntentFailure
@@ -1138,6 +1143,8 @@ class ReducerState(FrozenModel):
     fact_proposal_ids: tuple[str, ...] = ()
     experience_proposals: tuple[ExperienceProposalProjection, ...] = ()
     experience_proposal_ids: tuple[str, ...] = ()
+    prehistory_archives: tuple[PrehistoryArchiveProjection, ...] = Field(default=(), exclude_if=lambda value: not value)
+    prehistory_records: tuple[PrehistoryRecordProjection, ...] = Field(default=(), exclude_if=lambda value: not value)
     memory_candidates: tuple[MemoryCandidateProjection, ...] = ()
     memory_candidate_transitions: tuple[MemoryCandidateTransitionProjection, ...] = ()
     memory_candidate_proposals: tuple[MemoryCandidateProposalProjection, ...] = ()
@@ -1182,6 +1189,10 @@ class ReducerState(FrozenModel):
             or len(acceptance_ids) != len(set(acceptance_ids))
         ):
             raise ValueError("external perception projection identities must be unique")
+        validate_prehistory_state(
+            self.prehistory_archives, self.prehistory_records, self.committed_world_event_refs,
+            logical_time=self.logical_time,
+        )
         validate_actor_authority_event_bindings(
             self.actor_authorities,
             self.actor_authority_transitions,
@@ -2645,6 +2656,10 @@ class ReducerState(FrozenModel):
                 _expression_beat_semantic_dump(item, reducer_bundle_version=reducer_bundle_version)
                 for item in self.expression_beats
             )
+        if self.prehistory_archives:
+            payload["prehistory_archives"] = [x.model_dump(mode="json") for x in self.prehistory_archives]
+        if self.prehistory_records:
+            payload["prehistory_records"] = [x.model_dump(mode="json") for x in self.prehistory_records]
         return payload
 
 
@@ -15535,6 +15550,8 @@ _EVENTS = {
             RevisionClass.WORLD,
             _biographical_timeline_configured,
         ),
+        EventDefinition("CharacterPrehistoryArchiveAccepted", RevisionClass.WORLD, _prehistory_archive_accepted),
+        EventDefinition("CharacterPrehistoryRecordImported", RevisionClass.WORLD, _prehistory_record_imported),
         EventDefinition("LifeArcChanged", RevisionClass.WORLD, _life_arc_changed),
         EventDefinition("AspirationPlanted", RevisionClass.WORLD, _aspiration_planted),
         EventDefinition("AspirationReinforced", RevisionClass.WORLD, _aspiration_reinforced),
@@ -16377,6 +16394,8 @@ def make_projection(
         experience_transitions=state.experience_transitions,
         experience_proposals=state.experience_proposals,
         experience_proposal_ids=state.experience_proposal_ids,
+        prehistory_archives=state.prehistory_archives,
+        prehistory_records=state.prehistory_records,
         memory_candidates=state.memory_candidates,
         memory_candidate_transitions=state.memory_candidate_transitions,
         memory_candidate_proposals=state.memory_candidate_proposals,

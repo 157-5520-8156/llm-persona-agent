@@ -74,6 +74,7 @@ from .aspiration_events import ASPIRATION_PAYLOAD_MODELS
 from .life_events import LIFE_PAYLOAD_MODELS
 from .biographical_lifecycle import BIOGRAPHICAL_LIFECYCLE_PAYLOAD_MODELS
 from .biographical_timeline_authority import BIOGRAPHICAL_TIMELINE_PAYLOAD_MODELS
+from .character_prehistory import PREHISTORY_PAYLOAD_MODELS
 from .life_content_events import LIFE_CONTENT_PAYLOAD_MODELS
 from .expression_payload_events import EXPRESSION_PAYLOAD_EVENT_MODELS
 from .memory_events import MEMORY_CANDIDATE_PAYLOAD_MODELS
@@ -573,6 +574,7 @@ _PAYLOAD_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType(
         **LIFE_PAYLOAD_MODELS,
         **BIOGRAPHICAL_LIFECYCLE_PAYLOAD_MODELS,
         **BIOGRAPHICAL_TIMELINE_PAYLOAD_MODELS,
+        **PREHISTORY_PAYLOAD_MODELS,
         **ASPIRATION_PAYLOAD_MODELS,
         **APPRAISAL_PAYLOAD_MODELS,
         **AFFECT_PAYLOAD_MODELS,
@@ -710,6 +712,8 @@ _IDEMPOTENCY_IDENTITIES: Mapping[str, str] = MappingProxyType(
         "NpcStateChanged": "world_id+npc_id+expected_entity_revision+transition_id",
         "LifeArcChanged": "world_id+arc_id+expected_entity_revision+transition_id",
         "BiographicalTimelineConfigured": "world_id+timeline_id+document_hash+timezone_name",
+        "CharacterPrehistoryArchiveAccepted": "world_id+event_type+reviewed_payload_hash",
+        "CharacterPrehistoryRecordImported": "world_id+event_type+reviewed_payload_hash",
         "AspirationPlanted": "world_id+aspiration_id+transition_id",
         "AspirationReinforced": "world_id+aspiration_id+expected_entity_revision+transition_id",
         "AspirationRevised": "world_id+aspiration_id+expected_entity_revision+transition_id",
@@ -1954,6 +1958,15 @@ _CONTRACTS: Mapping[str, EventContract] = MappingProxyType(
                 "BiographicalTimelineConfiguredPayload",
                 allowed_predecessors=("WorldStarted",),
                 successors=("ClockAdvanced", "LifeArcChanged"),
+            ),
+            _contract(
+                "CharacterPrehistoryArchiveAccepted", "reviewed_prehistory_import", "world",
+                "PrehistoryArchiveAcceptedPayload", allowed_predecessors=("WorldStarted",),
+                successors=("CharacterPrehistoryRecordImported",),
+            ),
+            _contract(
+                "CharacterPrehistoryRecordImported", "reviewed_prehistory_import", "world",
+                "PrehistoryRecordImportedPayload", allowed_predecessors=("CharacterPrehistoryArchiveAccepted",),
             ),
             _contract(
                 "LifeArcChanged",

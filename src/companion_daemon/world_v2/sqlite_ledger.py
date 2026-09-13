@@ -166,6 +166,8 @@ _SEMANTIC_CUSTOM_FIELDS = frozenset(
 # Semantic-payload keys whose presence toggles with field emptiness.
 _SEMANTIC_CONDITIONAL_FIELDS = frozenset(
     {
+        "prehistory_archives",
+        "prehistory_records",
         "appearance_states",
         "visible_physical_states",
         "aspirations",
@@ -1854,6 +1856,8 @@ class SQLiteWorldLedger:
                 "contextual_life_retries",
                 "chat_life_intent_failures",
                 "chat_life_plan_considerations",
+                "prehistory_archives",
+                "prehistory_records",
                 "pending_biographical_settlements",
                 "world_places",
                 "biographical_coordinates",
@@ -3992,6 +3996,8 @@ class SQLiteWorldLedger:
             experience_transitions=projection.experience_transitions,
             experience_proposals=projection.experience_proposals,
             experience_proposal_ids=projection.experience_proposal_ids,
+            prehistory_archives=projection.prehistory_archives,
+            prehistory_records=projection.prehistory_records,
             memory_candidates=projection.memory_candidates,
             memory_candidate_transitions=projection.memory_candidate_transitions,
             memory_candidate_proposals=projection.memory_candidate_proposals,

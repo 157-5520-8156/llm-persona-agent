@@ -624,6 +624,8 @@ _LEDGER_FIELDS_BY_SECTION: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "commitment_proposal_ids",
         ),
         "facts_memory_inner": (
+            "prehistory_archives",
+            "prehistory_records",
             "memory_candidates",
             "memory_candidate_transitions",
             "memory_candidate_proposals",
@@ -1579,6 +1581,8 @@ def _facts_memory_inner_metrics(
         _metric("fact_transitions", "事实变更", projection.fact_transitions),
         _metric("fact_proposals", "事实提议", projection.fact_proposals),
         _metric("fact_proposal_ids", "事实提议标识", projection.fact_proposal_ids),
+        _metric("prehistory_archives", "启动前人生档案", projection.prehistory_archives),
+        _metric("prehistory_records", "启动前历史片段", projection.prehistory_records),
         _metric("memory_candidates", "记忆候选", projection.memory_candidates),
         _metric("memory_candidate_transitions", "记忆变更", projection.memory_candidate_transitions),
         _metric("memory_candidate_proposals", "记忆提议", projection.memory_candidate_proposals),

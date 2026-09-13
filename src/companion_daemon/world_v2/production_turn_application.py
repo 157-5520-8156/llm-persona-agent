@@ -161,6 +161,7 @@ from .life_development_runtime import (
     LifeDevelopmentRuntime,
 )
 from .life_aftermath_runtime import LifeAftermathRuntime
+from .character_prehistory import ReviewedPrehistoryArchive
 from .biographical_lifecycle import BiographicalLifecycleCatalog
 from .biographical_lifecycle_runtime import BiographicalLifecycleRuntime
 from .biographical_timeline_authority import (
@@ -785,6 +786,8 @@ class WorldV2TurnApplicationConfig:
     # Fact/Experience retention and withdrawal review all use the one
     # CharacterInterior author at an exact ledger cursor.
     character_memory_enabled: bool = True
+    # Explicit operator-reviewed initialization input; never a role draft.
+    reviewed_prehistory: ReviewedPrehistoryArchive | None = None
     outcome_worker_owner: str = "worker:world-v2:outcome"
     expression_reconsideration_owner: str = "worker:world-v2:expression-reconsideration"
     social_action_worker_owner: str = "worker:world-v2:social-action"
@@ -3763,6 +3766,12 @@ def build_sqlite_world_v2_turn_application(
             life_seed_catalog=life_seed_catalog,
             biographical_timeline=biographical_timeline,
         )
+        if config.reviewed_prehistory is not None:
+            from .character_prehistory_runtime import PrehistoryArchiveRuntime
+
+            PrehistoryArchiveRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref).import_reviewed(
+                config.reviewed_prehistory, created_at=now,
+            )
         _LOG.warning(
             "world v2 application bootstrap ready world=%s duration_ms=%.1f",
             config.world_id,

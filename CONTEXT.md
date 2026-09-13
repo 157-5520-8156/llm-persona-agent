@@ -65,6 +65,11 @@ The companion's accepted fictional history before this World's original
 runtime boundary, with its own creation provenance. It may become remembered
 personal history but cannot establish a runtime activity or an unconfirmed
 shared event with the real user.
+Reviewed archives bind the original WorldStarted, explicit historical identities
+and individual record hashes. Import records acceptance at current Logical Time
+and creates no MemoryCandidate; remembering remains a separate character choice.
+The operator review artifact binds content but does not itself prove semantic
+consistency. Ordinary chat must not bypass memory access by reading the archive.
 _Avoid_: Retroactive runtime Experience, improvised chat evidence
 
 ## Autobiographical Memory

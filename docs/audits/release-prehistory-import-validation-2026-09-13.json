@@ -1,0 +1,77 @@
+{
+  "contract": "release-prehistory-import-validation.1",
+  "base_commit": "036a752171fed3210e2c64f54e628216ee03d2c5",
+  "result": "reviewed_import_authority_passed_memory_integration_incomplete",
+  "implementation": [
+    "Separate reviewed manifest and individual immutable pre-start records; explicit operator-reviewed application config, absent by default.",
+    "Each record has a source event and payload hash, original WorldStarted binding, actor, historical identity references, time interval, timezone, precision and privacy class.",
+    "Import uses current logical acceptance time and actual review/created timestamps; it cannot move the original runtime boundary.",
+    "One atomic batch; canonical content binding, stable idempotency, interrupted transaction rollback and cold reconstruction.",
+    "Dedicated historical identity namespace does not register NPCs or grant presence, action or runtime Experience authority.",
+    "Projection integrity and incremental semantic hashing include nonempty history fields; empty fields do not change old serialized data.",
+    "Owner dashboard exposes archive and record counts without archive body or raw historical references."
+  ],
+  "tests": {
+    "passed": 143,
+    "seconds": 27.61,
+    "transport": "offline HTTP fixtures where a provider is needed",
+    "full_suite_run": false
+  },
+  "covered": [
+    "Real SQLite and public application import, restart, cold replay, import twice and subsequent Clock advancement.",
+    "Wrong actor/World and review-content mismatch; even independently approved dates at or after original start are rejected.",
+    "A later import cannot fill an earlier runtime gap; source precision remains local-month correct across canonical UTC serialization.",
+    "Historical entity/type and real-user reference rejection; cross-actor related history rejection.",
+    "Forged importer, modified record with recomputed event hash, changed cached actor/source/start/body and missing cached history.",
+    "Mid-batch failure leaves no archive or records and permits retry.",
+    "Import produces no MemoryCandidate, Experience, Plan or NPC; ordinary chat does not receive the complete archive statement.",
+    "Existing memory retrieval/corpus, ledger, event catalog, owner snapshot, World response and activity continuation regression coverage."
+  ],
+  "issues_found_and_fixed": [
+    "Owner field exposure policy initially lacked the new fields; explicit aggregate-only counters added.",
+    "Incremental semantic hashing initially omitted newly nonempty fields; conditional fragments and projection-to-state reconstruction updated.",
+    "Explicit source timezone and canonical content hashing preserve local interval precision across ledger UTC normalization."
+  ],
+  "legacy_frozen_world": {
+    "source_trial": "release-recovery-continuation-20260913-09",
+    "world_revision": 518,
+    "semantic_hash": "3b6d2402f817feadf2ea13e4ab51bfdf78a358b3bb25c6447f9729f6179dfc33",
+    "cold_replay_matches": true,
+    "empty_fields_omitted": true,
+    "source_unchanged": true,
+    "new_provider_calls": 0,
+    "existing_world_prehistory_records": 0
+  },
+  "new_physical_provider_calls": 0,
+  "new_paid_allocation_cny": "0",
+  "production_modified": false,
+  "actual_qq_sent": false,
+  "ruff": "passed",
+  "git_diff_check": "passed",
+  "code_and_test_sha256": {
+    "src/companion_daemon/world_v2/dashboard_home_snapshot.py": "ce248a46adb01f066ba3bedf7fcc89bb29726b7cf89826666458fb58c4f4aad0",
+    "src/companion_daemon/world_v2/event_catalog.py": "e090e85d0e093c5103df8de2332bb1e52f4c6d1c70c05c070a942ee00b0d841c",
+    "src/companion_daemon/world_v2/production_turn_application.py": "7004ab845c65e1929d3da169613a2479c106fcb35cbb0ee5da36a3e78392cadc",
+    "src/companion_daemon/world_v2/reducers.py": "d718a80886d9bf9e796354f9edcda06c0063ba1d1e3f1b110a6c5540f03faf94",
+    "src/companion_daemon/world_v2/schemas.py": "57817e5f5714b61309b77dcba54cf3567a4f35a74d1facf948f17331c4b7aad9",
+    "src/companion_daemon/world_v2/sqlite_ledger.py": "5a511cc386fed616d7e0bd1b12e45b71f9c6688906ca9023907dfe59184607b6",
+    "tests/world_v2/test_world_stimulus_life_intent.py": "8656e23b596ba04700d441be737bde903a2d5256b90fab22d84f887620e3cf03",
+    "src/companion_daemon/world_v2/character_prehistory.py": "dc7f8c274d3e1ccbb2cd544c54a48e5009b4163a73f3471e785315940ad5a9cb",
+    "src/companion_daemon/world_v2/character_prehistory_reducers.py": "882af5ff5a4fd57caaec183e74c3056a67c911297897b33c99c45aca113f84be",
+    "src/companion_daemon/world_v2/character_prehistory_runtime.py": "ab6d34e4a2179ce32ae3d47d5b6177131993f4a3db7540fefb2691e1538b06ea",
+    "tests/world_v2/test_character_prehistory.py": "aee5703120aa19dd9555ba7f9bb4c6aeb1d4d9757900900c5e91e873cd8d52e1"
+  },
+  "evidence_log_sha256": {
+    "red.log": "6fe93bbf7a426bb5f301a67359a9d1b359e81ef257b094b1762a8caaeb92f18e",
+    "legacy.json": "be6e7fe4b0ce3713836186d117bca1612268c70e7f35d85cb216d87e941dfd95",
+    "final.log": "ef08c16682285d0a7750f7fa6a51bd18e14800d087c4f1cf7bd810c13da91af2"
+  },
+  "private_evidence_directory": "output/private-audits/release-prehistory-import-20260913",
+  "remaining_required_work": [
+    "Create the actual character archive and independently check semantic consistency against accepted identity, timeline and existing history. Review metadata and hashes alone do not establish semantic validity.",
+    "Connect a prehistory source kind to character-authored retention, durable MemoryCandidate authority, unified retrieval and visible expression source review.",
+    "Use the same memory access state for forgetting, compression, withdrawal and reinforcement; no direct full-archive access shortcut.",
+    "Verify complete chain replay, accelerated longitudinal recall/interference and real-model behavior, including ongoing cost.",
+    "Existing post-start unsupported experiences, source-review false acceptance and correction timeouts remain release blockers."
+  ]
+}
