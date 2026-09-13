@@ -293,7 +293,7 @@ async def _run_scenario(
                     }
                     for index, text in enumerate(texts)
                     if unclosed
-                ]} if review_version in {"2", "3", "4", "5"} else {}),
+                ]} if review_version in {"2", "3", "4", "5", "6"} else {}),
                 "decisions": [
                     {
                         "beat_index": index,
@@ -313,14 +313,14 @@ async def _run_scenario(
                     )
                 ],
             }
-        if review_version in {"3", "4", "5"}:
+        if review_version in {"3", "4", "5", "6"}:
             for decision in verdict["decisions"]:
                 assert decision.pop("source_ref_indexes") == []
         if source_claim_scenario and texts != BEATS:
-            assert review_version in {"3", "4", "5"}
+            assert review_version in {"3", "4", "5", "6"}
             refs = ([dict(zip(table["columns"], row, strict=True))
                      for table in packet["source_reference_tables"] for row in table["rows"]]
-                    if review_version in {"4", "5"} else packet["source_references"])
+                    if review_version in {"4", "5", "6"} else packet["source_references"])
             source = next(row for row in refs if history_source(row))
             if history_subject == "companion":
                 assert source["subject_role"] == "companion"
@@ -339,6 +339,11 @@ async def _run_scenario(
                     "beat_index": 1, "char_start": 0, "char_end": len(UNSOURCED_TEXT),
                     "related_source_ref_indexes": [], "source_problem": SOURCE_PROBLEM,
                 }]
+        if review_version == "6":
+            for rejection in verdict["rejections"]:
+                rejection.pop("char_start")
+                rejection.pop("char_end")
+                rejection["source_problem"] = "support_missing"
         return _http_result(body, verdict)
 
     from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
@@ -660,7 +665,7 @@ async def test_required_proactive_review_public_host(tmp_path, monkeypatch, scen
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ("2", "3", "4", "5"))
+@pytest.mark.parametrize("review_version", ("2", "3", "4", "5", "6"))
 @pytest.mark.parametrize(
     "scenario",
     ("source_free", "reselect", "reject_twice", "review_invalid_second", "review_deadline_second"),
@@ -678,7 +683,7 @@ async def test_versioned_proactive_review_and_reselection_use_actual_protocol(
     if scenario != "source_free":
         assert len(authors) == 2
         correction_body = json.dumps(authors[1]["messages"], ensure_ascii=False)
-        assert SOURCE_PROBLEM in correction_body
+        assert ("support_missing" if review_version == "6" else SOURCE_PROBLEM) in correction_body
         assert UNSOURCED_TEXT[:10] in correction_body
         corrected_user = json.loads(authors[1]["messages"][1]["content"])
         detail = corrected_user["correction"]["failure_detail"]
@@ -687,7 +692,7 @@ async def test_versioned_proactive_review_and_reselection_use_actual_protocol(
         (row,) = feedback["rows"]
         assert dict(zip(feedback["columns"], row, strict=True)) == {
             "beat_index": 0, "start": 0, "end": len(UNSOURCED_TEXT),
-            "excerpt_prefix": row[3], "source_problem": SOURCE_PROBLEM,
+            "excerpt_prefix": row[3], "source_problem": "support_missing" if review_version == "6" else SOURCE_PROBLEM,
             "related_source_ref_indexes": [],
         }
         assert UNSOURCED_TEXT.startswith(row[3]) and row[3] != UNSOURCED_TEXT
@@ -725,7 +730,7 @@ async def test_external_cancellation_and_close_leave_proactive_turn_unfinished(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("review_version", ("1", "2", "3", "4", "5"))
+@pytest.mark.parametrize("review_version", ("1", "2", "3", "4", "5", "6"))
 @pytest.mark.parametrize(
     "legacy_claim_lanes,pause_before_acceptance",
     [(False, False), (False, True), (True, True)],

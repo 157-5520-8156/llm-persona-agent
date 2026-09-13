@@ -74,7 +74,7 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
     def __init__(
         self, *, reviewer, expression_capabilities, visible_source_review_version="1", **kwargs
     ):
-        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5"}:
+        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6"}:
             raise ValueError("unsupported visible source review version")
         if visible_source_review_version != "1" and not callable(
             getattr(reviewer, "complete_json_with_usage", None)

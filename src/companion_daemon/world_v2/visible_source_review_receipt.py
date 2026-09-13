@@ -32,9 +32,9 @@ if TYPE_CHECKING:
 _MAX_BYTES = 512_000
 
 
-def review_version_for_contract(contract: str, *, family: str) -> Literal["1", "2", "3", "4", "5"]:
+def review_version_for_contract(contract: str, *, family: str) -> Literal["1", "2", "3", "4", "5", "6"]:
     """Select a known static compiler, never code supplied by a receipt."""
-    for version in ("1", "2", "3", "4", "5"):
+    for version in ("1", "2", "3", "4", "5", "6"):
         if contract == f"visible-source-review-{family}.{version}":
             return version
     raise ValueError("visible review contract is unsupported")
@@ -96,7 +96,7 @@ def prepare_visible_source_review(
     candidate: DecisionProposal,
     source_table: VisibleSourceTable,
     source_ref_aliases: Mapping[str, str],
-    review_version: Literal["1", "2", "3", "4", "5"] = "1",
+    review_version: Literal["1", "2", "3", "4", "5", "6"] = "1",
 ) -> PreparedVisibleSourceReview:
     """Prepare every inline text Beat of one complete typed decision.
 
@@ -284,7 +284,7 @@ class VisibleSourceReviewRejected(ValueError):
 
 
 class VisibleSourceReviewReceipt(FrozenModel):
-    contract: Literal["visible-source-review-receipt.1", "visible-source-review-receipt.2", "visible-source-review-receipt.3", "visible-source-review-receipt.4", "visible-source-review-receipt.5"] = "visible-source-review-receipt.1"
+    contract: Literal["visible-source-review-receipt.1", "visible-source-review-receipt.2", "visible-source-review-receipt.3", "visible-source-review-receipt.4", "visible-source-review-receipt.5", "visible-source-review-receipt.6"] = "visible-source-review-receipt.1"
     prepared_json: str = Field(min_length=2, max_length=_MAX_BYTES)
     author: VisibleReviewAuthorBinding
     review: VisibleReviewInvocationBinding

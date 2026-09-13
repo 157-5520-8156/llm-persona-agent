@@ -1,0 +1,19 @@
+{
+  "contract": "release-visible-review-v6-validation.1",
+  "targeted_run": {
+    "passed": 426,
+    "failed": 1,
+    "seconds": 385.44,
+    "failure": "New test incorrectly expected a code repeated in prose; schema already carries the enum. Corrected assertion only; product unchanged."
+  },
+  "final_v6_file": {
+    "passed": 11,
+    "failed": 0,
+    "seconds": 1.31
+  },
+  "distinct_cases_satisfied": 427,
+  "ruff": "passed",
+  "log_path": "output/private-audits/release-review-v6-offline-20260913/targeted.log",
+  "log_sha256": "843c5c94acb86546adf61e593b1c5c0522914253ac72c299b2d168f91f5bdf46",
+  "scope": "Versioned transport, old compiler/receipt compatibility, same-role full correction, double rejection, source and participant authority, billing, public inbound/proactive chain and cold replay. Default version unchanged. No full-suite rerun or real-provider qualification implied."
+}
