@@ -197,6 +197,10 @@ class PreparedWitnessExperiment:
 
     def inspect_response(self, raw: str) -> dict:
         packet = json.loads(self.payload_json)
+        from .visible_source_subject_authority import CONTRACT as SUBJECT_CONTRACT, permits_source_subject
+
+        if packet.get("source_subject_contract") not in {None, SUBJECT_CONTRACT}:
+            raise ValueError("unsupported source subject authority contract")
         if len(raw.encode()) > 131072:
             raise ValueError("witness response exceeds bound")
         response = WitnessResponse.model_validate_json(
@@ -241,13 +245,19 @@ class PreparedWitnessExperiment:
                     if reading.use == "direct":
                         if not _eligible_reference(row):
                             raise ValueError("witness source is not eligible")
-                        if (
+                        if packet.get("source_subject_contract") is not None:
+                            if part.verdict == "closed" and not permits_source_subject(
+                                row=row, pointer=pointer, claim_scope=part.claim_scope,
+                                subject_role=part.subject_role,
+                            ):
+                                raise ValueError("witness exceeds source subject authority")
+                        elif (
                             part.verdict == "closed"
                             and part.subject_role in {"companion", "counterpart"}
                             and row.get("support_subject_role") != part.subject_role
                         ):
                             raise ValueError("witness subject differs from source actor")
-                        if part.verdict == "closed" and not _permits(
+                        if packet.get("source_subject_contract") is None and part.verdict == "closed" and not _permits(
                             row, part.claim_scope, pointer
                         ):
                             raise ValueError("witness scope exceeds source authority")
@@ -263,7 +273,10 @@ class PreparedWitnessExperiment:
             )
         return {
             "contract": CONTRACT,
-            "inspection_contract": INSPECTION_CONTRACT,
+            "inspection_contract": (
+                "visible-source-witness-inspection.3"
+                if packet.get("source_subject_contract") is not None else INSPECTION_CONTRACT
+            ),
             "preparation_sha256": self.sha256,
             "structural_validation": "passed",
             "model_verdicts": outcomes,
@@ -274,7 +287,8 @@ class PreparedWitnessExperiment:
 
 
 def prepare_witness_experiment(
-    *, beats: tuple[str, ...], sources: tuple[dict, ...], relative_pointer_choices: bool = False
+    *, beats: tuple[str, ...], sources: tuple[dict, ...], relative_pointer_choices: bool = False,
+    source_owner_semantics: bool = False,
 ) -> PreparedWitnessExperiment:
     if not 1 <= len(beats) <= 16 or any(not isinstance(b, str) or not b for b in beats):
         raise ValueError("experiment requires one to sixteen nonempty Beats")
@@ -305,6 +319,24 @@ def prepare_witness_experiment(
         "contract": CONTRACT,
         "authority": "experimental_no_receipt_or_action_authority",
     }
+    subject_contract = None
+    if source_owner_semantics:
+        from .visible_source_subject_authority import CONTRACT as subject_contract
+
+        names = {
+            "support_subject_role": "source_owner_role", "support_subject_ref": "source_owner_ref",
+            "subject_role": "legacy_source_actor_role", "actor_ref": "source_actor_ref",
+        }
+        for table in body["source_reference_tables"]:
+            table["columns"] = [names.get(name, name) for name in table["columns"]]
+        body["source_support_contract"] = (
+            "Only eligible original source indexes may support a closed part. "
+            "source_owner_ref/source_owner_role identify the report speaker or material participant; "
+            "they do not identify every actor described in the source text. "
+            "Resolve pronouns separately in source and candidate, preserving actor, object, time, "
+            "polarity and status. Exact quotes still need semantic entailment and disclosure authority."
+        )
+        body["source_subject_contract"] = subject_contract
     messages[1]["content"] = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
     references, _ = _packet_materials(sources)
     messages[0]["content"] = (
@@ -342,6 +374,23 @@ def prepare_witness_experiment(
             "Never include /source_materials/<index> in a pointer. "
             "A listed field may be absent from some sources; it must resolve in your selected source."
         )
+    if source_owner_semantics:
+        name = "review_visible_source_witness_subject_v1"
+        messages[0]["content"] += (
+            " SOURCE OWNERSHIP: A settled environment's participant is not the actor of every "
+            "environmental event. Environmental facts may use environment or external_fact with "
+            "a nonpersonal subject; they never establish companion/counterpart presence or actions. "
+            "A bound attempt supports only its recorded actor and result. A counterpart report "
+            "can support natural uptake about its counterpart or third-party subjects without "
+            "proving objective World truth; it cannot create the companion's own experience. "
+            "Own recorded speech proves only speech, never the episode it describes. "
+            "QUESTION READING: Separate the requested unknown answer from the factual premises "
+            "the question treats as true. Check those premises, including embedded actors, against "
+            "the source. Do not require evidence for the unknown answer itself. A question with "
+            "grounded premises can be closed using those sources; one with unsupported premises "
+            "is unclosed. Immediate private responses and truly open questions can remain source_free. "
+            "Use short, precise support explanations."
+        )
     request = {
         "messages": messages,
         "temperature": 0.0,
@@ -367,6 +416,7 @@ def prepare_witness_experiment(
                 "shown_materials": body["source_materials"],
                 "material_indexes": [r["material_index"] for r in references],
                 **({"relative_pointer_choices": pointer_choices} if pointer_choices is not None else {}),
+                **({"source_subject_contract": subject_contract} if subject_contract is not None else {}),
             }
         )
     )
