@@ -6,6 +6,8 @@
 
 最新增加只评固定事实的来源探针后，两轮五组目标及一轮九组串行诊断符合预期；候选v4独立表示问句前提。探针不批准原始候选，无事实项保持未评估，完整审核权威及聊天接线仍待完成。最新证据见`docs/audits/release-fixed-meaning-chain-validation-2026-09-14.json`。
 
+后续独立完整性审核也暴露了被待检解释带偏的问题：逐项类别检查和原句摘录仍未稳定拒绝被调换的送行参与者。最终12组11组符合预期，不接正式聊天。142项本地检查通过；最新证据为`docs/audits/release-meaning-fidelity-validation-2026-09-14.json`，下一步独立双读取方向见[两步审核分析](two-stage-visible-meaning-review.md)。
+
 ## 后续实验结论（2026-09-14）
 
 新增的 `visible_source_subject_authority` 将来源持有者与陈述主体分开；原环境正例可以使用非个人主体，旧自述不能按 external_fact 支持经历，意图与生命周期仍不等于执行结果。证据说明实验增加了相对字段、合格来源枚举，以及拒绝分支无需补填支持性摘录的协议。
@@ -50,4 +52,4 @@
 - 验证必须成对覆盖：错误共享历史/有来源的用户历史、环境事实/角色在场、报告者/第三方、纯问题/带前提问题；随后再跑真实角色纠错和交付链，记录延迟及费用。
 
 完整本轮记录见 `docs/audits/release-unlimited-real-dialogue-validation-2026-09-14.json`。
-当前费用继续点为 `release-fixed-meaning-chain-20260914-02/run/world.sqlite`（323条usage/320条reservation），运行状态继续点为 `release-chat-unlimited-20260914-01/run`。两者不能混同，也不能回到较便宜的旧费用副本。测试金额上限已由用户取消，历史未知预留与产品每月约100元目标继续保留。
+当前费用继续点为 `release-meaning-fidelity-20260914-05/run/world.sqlite`（383条usage/380条reservation），运行状态继续点为 `release-chat-unlimited-20260914-01/run`。两者不能混同，也不能回到较便宜的旧费用副本。测试金额上限已由用户取消，历史未知预留与产品每月约100元目标继续保留。

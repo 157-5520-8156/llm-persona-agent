@@ -1,0 +1,903 @@
+{
+  "contract": "release-meaning-fidelity-validation.1",
+  "code_head": "f77d5f8a5cf74c4bc4b03e6227434829b1336d67",
+  "tests": {
+    "related_passed": 142,
+    "ruff": "passed",
+    "frozen_successes_identical": 55,
+    "frozen_failures_identical": 5
+  },
+  "billing": {
+    "physical_calls": 60,
+    "states": {
+      "known": 60
+    },
+    "all_native_request_reservation_associations_and_terminal_body_hashes_verified": true,
+    "all_known_provider_token_usage_checked": true,
+    "inherited_rows_unchanged": true,
+    "known_repository_estimate_cny": "0.2320082999999999987",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 383,
+    "reservation_rows": 380,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "latest_checkpoint": "output/private-audits/release-meaning-fidelity-20260914-05/run/world.sqlite",
+    "runtime_checkpoint": "output/private-audits/release-chat-unlimited-20260914-01/run"
+  },
+  "trials": [
+    {
+      "directory": "output/private-audits/release-meaning-fidelity-20260914-01",
+      "code_head": "eacbdb02d02e60e6d55753ac18516d0e7a0acbd1",
+      "physical_calls": 12,
+      "latencies_ms": [
+        1004,
+        1177,
+        1061,
+        692,
+        1026,
+        880,
+        696,
+        1004,
+        956,
+        1357,
+        618,
+        1131
+      ],
+      "known_estimate_cny": "0.0141113999999999996",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "observed-v3-missing-question-premise",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "misclassified-past-emotion",
+          "expected": [
+            "faithful_complete",
+            "rejected"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "swapped-question-participants",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "status": "matched_fidelity_expectations"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-meaning-fidelity-20260914-02",
+      "code_head": "eacbdb02d02e60e6d55753ac18516d0e7a0acbd1",
+      "physical_calls": 12,
+      "latencies_ms": [
+        2179,
+        2091,
+        2251,
+        1453,
+        1620,
+        1664,
+        1810,
+        1464,
+        2020,
+        2185,
+        1572,
+        3596
+      ],
+      "known_estimate_cny": "0.0417470999999999988",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "observed-v3-missing-question-premise",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "misclassified-past-emotion",
+          "expected": [
+            "faithful_complete",
+            "rejected"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "swapped-question-participants",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "status": "matched_fidelity_expectations"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-meaning-fidelity-20260914-03",
+      "code_head": "b817b07765c72fbd304943c1117dc24c8023dab1",
+      "physical_calls": 12,
+      "latencies_ms": [
+        3631,
+        2235,
+        1768,
+        1580,
+        1592,
+        2008,
+        1781,
+        1657,
+        1469,
+        3524,
+        2188,
+        2605
+      ],
+      "known_estimate_cny": "0.0352477000000000000",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "observed-v3-missing-question-premise",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "misclassified-past-emotion",
+          "expected": [
+            "faithful_complete",
+            "rejected"
+          ],
+          "actual": [
+            "faithful_complete",
+            "rejected"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "swapped-question-participants",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "semantic_mismatch"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-meaning-fidelity-20260914-04",
+      "code_head": "b817b07765c72fbd304943c1117dc24c8023dab1",
+      "physical_calls": 12,
+      "latencies_ms": [
+        7482,
+        6495,
+        4004,
+        3566,
+        4467,
+        4783,
+        3801,
+        3965,
+        3082,
+        5514,
+        6136,
+        5409
+      ],
+      "known_estimate_cny": "0.105496800000000000",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "technical_failure",
+          "error_type": "JSONDecodeError",
+          "error_detail": "Extra data: line 1 column 702 (char 701)"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "technical_failure",
+          "error_type": "JSONDecodeError",
+          "error_detail": "Extra data: line 1 column 613 (char 612)"
+        },
+        {
+          "case_id": "observed-v3-missing-question-premise",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "status": "technical_failure",
+          "error_type": "JSONDecodeError",
+          "error_detail": "Extra data: line 1 column 1177 (char 1176)"
+        },
+        {
+          "case_id": "misclassified-past-emotion",
+          "expected": [
+            "faithful_complete",
+            "rejected"
+          ],
+          "status": "technical_failure",
+          "error_type": "JSONDecodeError",
+          "error_detail": "Extra data: line 1 column 1155 (char 1154)"
+        },
+        {
+          "case_id": "swapped-question-participants",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "status": "technical_failure",
+          "error_type": "JSONDecodeError",
+          "error_detail": "Extra data: line 1 column 1158 (char 1157)"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-meaning-fidelity-20260914-05",
+      "code_head": "f77d5f8a5cf74c4bc4b03e6227434829b1336d67",
+      "physical_calls": 12,
+      "latencies_ms": [
+        3795,
+        2188,
+        1912,
+        1569,
+        1896,
+        1957,
+        1961,
+        1815,
+        1070,
+        2497,
+        1569,
+        2350
+      ],
+      "known_estimate_cny": "0.0354053000000000003",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "observed-v3-missing-question-premise",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "misclassified-past-emotion",
+          "expected": [
+            "faithful_complete",
+            "rejected"
+          ],
+          "actual": [
+            "faithful_complete",
+            "rejected"
+          ],
+          "status": "matched_fidelity_expectations"
+        },
+        {
+          "case_id": "swapped-question-participants",
+          "expected": [
+            "faithful_complete",
+            "faithful_complete",
+            "rejected"
+          ],
+          "actual": [
+            "faithful_complete",
+            "faithful_complete",
+            "faithful_complete"
+          ],
+          "status": "semantic_mismatch"
+        }
+      ]
+    }
+  ],
+  "new_character_turns": 0,
+  "new_receipts": 0,
+  "production_changes": false,
+  "receipt_authority": false,
+  "qualification": "manual_only / qualification_incomplete",
+  "qualification_limit": "Evidence-blind fidelity checks on frozen interpretations; composed source support uses previously captured source probes. No new author, runtime receipt, delivery, or complete chat latency qualification. Prior false endorsements and malformed outputs are preserved."
+}
