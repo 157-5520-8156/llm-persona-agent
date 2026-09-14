@@ -98,6 +98,13 @@ not qualify substantive history recall: lexical-ngram.1 rejects a lone two-CJK-
 character cue even when the active historical memory is readable. Fixing bounded
 recall requires preserving old context/receipt reproducibility; it must not force
 the character to answer or authorize persona prose as a runtime occurrence.
+Automatic recall hybrid.4 supplements exact lexical coverage with inverse
+frequency over eligible documents only. This gives short distinctive cues access
+under the existing byte cap without altering the legacy Context rank policy or
+requiring another provider call. Direct prefetch readings and wrapped selected
+recall have separate presentation shapes; source review verifies each exact
+shape. The frozen failed corpus now retrieves the school memory offline; real
+conversation qualification after this change remains pending.
 _Avoid_: Retroactive runtime Experience, improvised chat evidence
 
 ## Autobiographical Memory

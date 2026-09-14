@@ -1,0 +1,50 @@
+{
+  "contract": "release-short-cue-recall-validation.1",
+  "implementation": "hybrid.4 eligible-corpus inverse-frequency scoring with exact-query-coverage floor; current source and byte bounds unchanged",
+  "former_goal_turn": "progress: fixed multi-record initialization and produced real failure evidence",
+  "tests": {
+    "passed": 112,
+    "seconds": 7.72,
+    "coverage": [
+      "18 short-cue/topic combinations",
+      "four excluded-corpus frequency isolation cases",
+      "SQLite disposable index migration and cold equality",
+      "production HTTP pull and automatic prefetch through v1 and v3/v8 review and simulated delivery",
+      "recall, corpus, attention, continuity and ledger-context regressions"
+    ]
+  },
+  "exact_real_corpus_counterfactual": {
+    "documents": 35,
+    "cursor": {
+      "world_revision": 569,
+      "deliberation_revision": 599,
+      "ledger_sequence": 1168
+    },
+    "legacy_result_hash_reproduced": true,
+    "old_index": "world-v2-recall-index.hybrid.3+embedding:feature-hash-ngram.1",
+    "new_index": "world-v2-recall-index.hybrid.4+embedding:feature-hash-ngram.1",
+    "old_hits": 2,
+    "new_hits": 2,
+    "old_contains_school_memory": false,
+    "new_contains_school_memory": true,
+    "bytes_limit": 6000
+  },
+  "second_fix": "Automatic prefetch is installed directly as materials.automatic_prefetch.items, unlike wrapped selected_recall.content.items. Source review now checks the actual presented shape. Unshown/changed/foreign/stale historical sources still fail.",
+  "compatibility": {
+    "old_receipts_cold_verified": 9,
+    "old_trace_validation": true,
+    "ledger_semantic_replay_unchanged": true,
+    "legacy_context_rank_policy_unchanged": true,
+    "old_index_rows": "disposable and rebuilt with new version; old recorded results remain independently verifiable"
+  },
+  "model_calls_added_by_mechanism": 0,
+  "new_paid_trials": 0,
+  "qualification": "manual_only / qualification_incomplete. This is offline counterfactual and fixture evidence, not a new real model conversation. Original unsupported-experience, semantic-review, correction failure, longevity and monthly-cost blockers remain.",
+  "sha256": {
+    "output/private-audits/release-recall-cues-20260914/before.json": "0eda73bcdb253ebaa13bb0ba2ff7bcf831fdd00c5f60003da0c2c73200fa82f1",
+    "output/private-audits/release-recall-cues-20260914/after.json": "e8bb1c9bc258040d66df27d16af6d1701b0878032618788c94e3b54a7bc86b37",
+    "output/private-audits/release-recall-cues-20260914/corpus.json": "8ac4ca97443a21c8c1e6b358560088b6f48957118c6f87db6ac94b26f7a2a9f9",
+    "output/private-audits/release-recall-cues-20260914/final.log": "186405c4f52fdb117f550e9ec43e59847a8a1697546608049a677179f32de087",
+    "output/private-audits/release-recall-cues-20260914/cold.log": "5e307270e647ebd39cfa94e86031b87684b421266ec8acafe6fa5960be82f669"
+  }
+}

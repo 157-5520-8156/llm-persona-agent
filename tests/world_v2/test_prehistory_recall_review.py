@@ -32,7 +32,8 @@ from test_world_stimulus_life_intent import _http_result
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("tool_version,review_version", [("1", "1"), ("3", "8")])
-async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_receipt(tmp_path, monkeypatch, tool_version, review_version):
+@pytest.mark.parametrize("recall_mode", ["pull", "prefetch"])
+async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_receipt(tmp_path, monkeypatch, tool_version, review_version, recall_mode):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     config = _config()
     data = reviewed_archive().document.model_dump(mode="json")
@@ -67,6 +68,15 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
                     "cue_kind": "identity", "retention_rationales": ["identity_relevance"],
                     "salience": salience().model_dump(mode="json", exclude={"matrix_digest", "matrix_version"})}}})
         if name == f"character_inbound_initial_v{tool_version}":
+            if recall_mode == "prefetch":
+                items = user["inner_life_snapshot"]["materials"]["automatic_prefetch"]["items"]
+                history = next(item for item in items if item.get("epistemic_scope") == "character_prehistory")
+                assert history["text"] == statement
+                value = _decision()
+                value["expression_draft"]["beats"] = [{"modality": "text", "text": statement}]
+                fields = body["tools"][0]["function"]["parameters"]["properties"]
+                return _http_result(body, {"result": value} if tool_version == "3" else
+                                    {key: value.get(key) for key in fields})
             value = {"result_kind": "recall", "private_turn_state": {
                 "contract": "private-turn-state.1", "inner_state_summary": "我想回想一下高中校刊的事。",
                 "attended_source_refs": [],
@@ -151,7 +161,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
         # Returning the same source bytes after two writes does not call the
         # provider or authorize a new choice/action.
         assert len(requests) == 2
-        outcome = await app.respond(replace(_inbound(), text="你上学时有什么印象深的事？"))
+        outcome = await app.respond(replace(_inbound(), text=("你上学时有什么印象深的事？" if recall_mode == "pull" else "所以你今天也忙着校刊的事吗？")))
         delivery = await app.drain_actions_once()
         assert delivery is not None and delivery.status == "settled"
         projection = app.export_replay_evidence().projection
@@ -159,7 +169,8 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
         assert [request["tool_choice"]["function"]["name"] for request in requests] == [
             "character_role_fact_memory_retention_v1", "character_role_fact_memory_retention_v1",
             f"character_inbound_initial_v{tool_version}",
-            f"character_inbound_after_recall_v{tool_version}", f"visible_beat_source_verdict_v{review_version}",
+            *([f"character_inbound_after_recall_v{tool_version}"] if recall_mode == "pull" else []),
+            f"visible_beat_source_verdict_v{review_version}",
         ]
         assert tuple(item.text for item in projection.stored_message_payloads) == (statement,)
         assert transport.bodies == [statement]
@@ -194,13 +205,15 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
         for mutation in ("removed", "changed_text", "changed_historical_identity"):
             changed = json.loads(evidence["author_request_json"])
             body = json.loads(changed["messages"][1]["content"])
-            selection = body["inner_life_snapshot"]["materials"]["selected_recall"]
+            materials = body["inner_life_snapshot"]["materials"]
+            selection = (materials["selected_recall"]["content"] if recall_mode == "pull"
+                         else materials["automatic_prefetch"])
             if mutation == "removed":
-                selection["content"]["items"] = []
+                selection["items"] = []
             elif mutation == "changed_text":
-                selection["content"]["items"][0]["text"] = "今天去了校刊编辑室。"
+                selection["items"][0]["text"] = "今天去了校刊编辑室。"
             else:
-                selection["content"]["items"][0]["prehistory"]["entities"][0]["label"] = "现在的用户"
+                selection["items"][0]["prehistory"]["entities"][0]["label"] = "现在的用户"
             changed["messages"][1]["content"] = json.dumps(body, ensure_ascii=False)
             unchanged, ignored = supplement_recalled_prehistory(table=base, audits=used,
                                                                 author_request_json=json.dumps(changed))
@@ -224,7 +237,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
             for audit in replayed.proposal_audits:
                 if audit.model_call_id == parent.model_call_id:
                     assert verify_recorded_candidate(audit=audit, model_result_audits=replayed.model_result_audits)
-            assert len(requests) == 5
+            assert len(requests) == (5 if recall_mode == "pull" else 4)
         finally:
             cold.close()
     finally:

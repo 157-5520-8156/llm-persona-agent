@@ -24,7 +24,7 @@ from .schema_core import FrozenModel, PrivacyClass
 from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_write_lock
 
 
-RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.3"
+RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.4"
 RECALL_RESULT_MAX_BYTES = 6_000
 MAX_RECALL_QUERY_CHARACTERS = 1_024
 _PRIVACY_RANK: dict[PrivacyClass, int] = {
@@ -448,14 +448,14 @@ class _RecallIndexCore:
             raise ValueError("recall query embedding count is invalid")
         query_vector = self._normalize_vector(query_vector_values[0])
         query_features = _lexical_features(query.lexical_text or query.query_text)
+        eligible_rows = tuple((document, vector) for document, vector in rows
+                              if self._eligible(document, query))
+        lexical_scores = _corpus_lexical_scores(query_features, tuple(
+            _lexical_features(document.retrieval_text or document.text)
+            for document, _ in eligible_rows
+        ))
         ranked: list[tuple[int, str, RecallHit]] = []
-        for document, vector in rows:
-            if not self._eligible(document, query):
-                continue
-            lexical = _lexical_score(
-                query_features,
-                _lexical_features(document.retrieval_text or document.text),
-            )
+        for (document, vector), lexical in zip(eligible_rows, lexical_scores, strict=True):
             dense = max(0, min(10_000, round(_cosine(query_vector, vector) * 10_000)))
             structured = _structured_score(query.link_refs, document.link_refs)
             temporal = _temporal_score(query, document)
@@ -1035,18 +1035,29 @@ def _lexical_features(text: str) -> frozenset[str]:
     return frozenset(features)
 
 
-def _lexical_score(
-    query: frozenset[str],
-    document: frozenset[str],
-) -> int:
-    if not query or not document:
-        return 0
-    overlap = query & document
-    if not overlap:
-        return 0
-    numerator = sum(len(item) ** 2 for item in overlap)
-    denominator = max(1, sum(len(item) ** 2 for item in query))
-    return min(10_000, round(numerator / denominator * 10_000))
+def _corpus_lexical_scores(
+    query: frozenset[str], documents: tuple[frozenset[str], ...],
+) -> tuple[int, ...]:
+    """Saturating inverse-frequency evidence, independent of query padding.
+
+    A short distinctive cue should compete with dense matches to the already
+    present emotional context. Exact query coverage retains its previous score;
+    rarity supplements partial matches rather than weakening complete matches.
+    Frequencies only use eligible documents: private,
+    foreign, inactive or out-of-time material cannot change another view's rank.
+    No term is assigned a semantic label or a special-case stopword rule.
+    """
+    frequencies = {term: sum(term in document for document in documents) for term in query}
+    weights = {term: math.log1p((len(documents) - count + 0.5) / (count + 0.5))
+               for term, count in frequencies.items() if count}
+    query_weight = max(1, sum(len(term) ** 2 for term in query))
+    scores = []
+    for document in documents:
+        overlap = query & document
+        evidence = sum(weights[term] for term in sorted(overlap))
+        coverage = sum(len(term) ** 2 for term in overlap) / query_weight
+        scores.append(round(10_000 * max(coverage, evidence / (evidence + 1.0))))
+    return tuple(scores)
 
 
 def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:

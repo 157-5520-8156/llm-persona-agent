@@ -53,7 +53,10 @@ def supplement_recalled_prehistory(
             != (pin["world_revision"], pin["deliberation_revision"], pin["ledger_sequence"])):
             raise ValueError("recalled history does not bind the original review cursor and actor")
         key = "selected_recall" if audit.mode == "character_pull" else "automatic_prefetch"
-        shown = materials.get(key, {}).get("content", {}).get("items", [])
+        material = materials.get(key, {})
+        # Core installs automatic prefetch content directly; selected recall
+        # retains its result wrapper. Neither path may infer unshown sources.
+        shown = (material.get("content", {}) if audit.mode == "character_pull" else material).get("items", [])
         included = False
         for document in documents:
             if (document.actor_ref != actor or document.privacy_class == "withhold"
