@@ -128,6 +128,29 @@ def test_direct_source_schema_excludes_baseline_aliases_but_keeps_context_readin
     part['witnesses'][0]['source_ref_index'] = 1
     assert list(validator.iter_errors(raw))
     part['witnesses'][0]['use'] = 'context'
-    part['verdict'] = 'unclosed'
+    direct = deepcopy(part['witnesses'][0])
+    direct.update(source_ref_index=0, use='direct')
+    part['witnesses'].append(direct)
     validator.validate(raw)
-    assert prepared.inspect_response(_json(raw))['model_verdicts'] == ['unclosed']
+    assert prepared.inspect_response(_json(raw))['model_verdicts'] == ['closed']
+
+
+@pytest.mark.parametrize('verdict,scope', [('unclosed', 'external_fact'), ('source_free', 'source_free')])
+def test_non_authoritative_branch_does_not_require_a_support_quote(verdict, scope):
+    from jsonschema import Draft202012Validator
+    raw = _response('你上次送我出发的时候呢？', scope)
+    part = raw['decisions'][0]['parts'][0]
+    part['verdict'] = verdict
+    prepared = prepare_witness_experiment(beats=(part['text'],), sources=_report_sources(), source_owner_semantics=True)
+    validator = Draft202012Validator(prepared.request()['tools'][0]['function']['parameters'])
+    assert list(validator.iter_errors(raw))
+    with pytest.raises(ValueError, match='omit witnesses'):
+        prepared.inspect_response(_json(raw))
+    del part['witnesses']
+    validator.validate(raw)
+    result = prepared.inspect_response(_json(raw))
+    assert result['model_verdicts'] == [verdict]
+    assert result['readings']['decisions'][0]['parts'][0]['witnesses'] == []
+    assert result['receipt_authority'] is False
+    # An incorrect source-free classification is still a semantic model error;
+    # no character text or meaning is inferred by this structural normalizer.

@@ -204,8 +204,22 @@ class PreparedWitnessExperiment:
             raise ValueError("unsupported source subject authority contract")
         if len(raw.encode()) > 131072:
             raise ValueError("witness response exceeds bound")
+        value = json.loads(raw, object_pairs_hook=_unique)
+        if packet.get("negative_witness_contract") is not None:
+            if packet["negative_witness_contract"] != "negative-witness-omission.1":
+                raise ValueError("unsupported negative witness contract")
+            decisions = value.get("decisions") if isinstance(value, dict) else None
+            for decision in decisions if isinstance(decisions, list) else ():
+                parts = decision.get("parts") if isinstance(decision, dict) else None
+                for part in parts if isinstance(parts, list) else ():
+                    if isinstance(part, dict) and part.get("verdict") in {"unclosed", "source_free"}:
+                        if "witnesses" in part:
+                            raise ValueError("non-authoritative verdict must omit witnesses")
+                        # Explicit negative/free branches have no source fields.
+                        # Normalize their empty authority, never a model choice.
+                        part["witnesses"] = []
         response = WitnessResponse.model_validate_json(
-            _json(json.loads(raw, object_pairs_hook=_unique)), strict=True
+            _json(value), strict=True
         )
         beats, rows = packet["beats"], packet["sources"]
         if [d.beat_index for d in response.decisions] != list(range(len(beats))):
@@ -391,8 +405,21 @@ def prepare_witness_experiment(
             witness_schema["items"] = {"anyOf": [direct_reading, context_reading]}
         else:
             witness_schema["items"] = context_reading
-        name = "review_visible_source_witness_subject_v2"
+        parts_schema = schema["properties"]["decisions"]["items"]["properties"]["parts"]
+        closed = deepcopy(parts_schema["items"])
+        closed["properties"]["verdict"] = {"type": "string", "enum": ["closed"]}
+        non_authoritative = deepcopy(parts_schema["items"])
+        non_authoritative["properties"]["verdict"] = {
+            "type": "string", "enum": ["unclosed", "source_free"],
+        }
+        del non_authoritative["properties"]["witnesses"]
+        non_authoritative["required"].remove("witnesses")
+        parts_schema["items"] = {"anyOf": [closed, non_authoritative]}
+        name = "review_visible_source_witness_subject_v3"
         messages[0]["content"] += (
+            " VERDICT BRANCHES: Only a closed part has witnesses. For unclosed and source_free "
+            "parts omit witnesses entirely; explain the missing support or nonassertive reading "
+            "in support_explanation. Do not cite an invented or approximate quote to reject a claim. "
             " DIRECT SOURCE SELECTION: the direct witness branch lists only eligible original "
             "source indexes. Other readable aliases may be context but never direct support. "
             " SOURCE OWNERSHIP: A settled environment's participant is not the actor of every "
@@ -435,6 +462,7 @@ def prepare_witness_experiment(
                 "material_indexes": [r["material_index"] for r in references],
                 **({"relative_pointer_choices": pointer_choices} if pointer_choices is not None else {}),
                 **({"source_subject_contract": subject_contract} if subject_contract is not None else {}),
+                **({"negative_witness_contract": "negative-witness-omission.1"} if source_owner_semantics else {}),
             }
         )
     )
