@@ -74,7 +74,7 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
     def __init__(
         self, *, reviewer, expression_capabilities, visible_source_review_version="1", **kwargs
     ):
-        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7", "8", "9"}:
+        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}:
             raise ValueError("unsupported visible source review version")
         from ..visible_independent_review_runtime import validate_independent_reviewer_configuration
         validate_independent_reviewer_configuration(reviewer, visible_source_review_version)
@@ -90,8 +90,8 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
         self._rejected: OrderedDict[str, tuple[tuple, tuple]] = OrderedDict()
 
     def visible_review_protocol(self):
-        from ..visible_independent_review_receipt import PROTOCOL
-        return PROTOCOL if self._visible_source_review_version == "9" else None
+        from ..visible_independent_review_receipt import independent_review_protocol
+        return independent_review_protocol(self._visible_source_review_version)
 
     def _remember_rejected(self, request, candidate, reviews):
         previous, _ = self._rejected.get(request.inner_turn_id, ((), ()))

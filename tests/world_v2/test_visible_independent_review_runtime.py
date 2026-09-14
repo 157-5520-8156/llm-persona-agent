@@ -21,7 +21,8 @@ from test_world_stimulus_life_intent import _http_result
 
 
 class ReviewHTTP:
-    def __init__(self, fault=None):
+    def __init__(self, fault=None, version="9"):
+        self.version = version
         self.fault = fault
         self.requests = []
         self.authors = 0
@@ -41,8 +42,9 @@ class ReviewHTTP:
                                   ('我想听你说。' if self.fault == 'source_free' else '你取消了周五的报告。', '我想先听你说。'), strict=True):
                 beat['text'] = text
             return _http_result(body, {'result': {k: authored[k] for k in ('result_kind', 'appraisal_draft', 'expression_draft')}})
-        if name == 'interpret_visible_candidate_complete_v7':
-            assert set(packet) == {'contract', 'visible_beats'}
+        if name == ('interpret_visible_candidate_complete_v7' if self.version == "9" else 'interpret_visible_candidate_complete_v9'):
+            is_reselection = 'invalid_prior_reading' in packet
+            assert set(packet) == ({'contract', 'visible_beats', 'invalid_prior_reading', 'structural_failure'} if is_reselection else {'contract', 'visible_beats'})
             self.reader_count += 1
             if self.reader_count == 2:
                 self.readers_started.set()
@@ -64,7 +66,9 @@ class ReviewHTTP:
                     decisions.pop()
                 if self.fault == 'inconclusive':
                     decisions[0].update(reading_complete=False, unresolved_details=['uncertain reference'])
-            return _http_result(body, {'contract': 'visible-candidate-meaning.7', 'decisions': decisions})
+            if self.fault in {'repair_once', 'repair_twice'} and body['model'] == 'deepseek-v4-flash' and (not is_reselection or self.fault == 'repair_twice'):
+                del decisions[0]['reading_complete']
+            return _http_result(body, {'contract': 'visible-candidate-meaning.7' if self.version == '9' else 'visible-candidate-meaning.9', 'decisions': decisions})
         assert name == 'review_independent_fixed_meanings_v1'
         assert 'visible_beats' not in packet
         reject = self.fault == 'reselect' and self.authors == 1
@@ -82,7 +86,7 @@ async def application(path, handler):
               for name in ('deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-v4-flash')]
     reviewer = IndependentVisibleReviewer(meaning_models=(models[1], models[2]), source_model=models[2])
     author = _InboundCharacterAuthor(flash_model=models[0], whole_candidate_mode=True,
-        visible_source_review_model=reviewer, visible_source_review_version='9', atomic_tool_envelope_version='3')
+        visible_source_review_model=reviewer, visible_source_review_version=handler.version, atomic_tool_envelope_version='3')
     app = build_sqlite_world_v2_test_application(path=path, config=replace(_config(), visible_source_review_required=True),
         identities=_Identities(), router=_Router(), character_interior=compose_fixture_character_interior(inbound_author=author),
         transport=_DeliveredTransport(), now=NOW)
@@ -95,8 +99,9 @@ async def application(path, handler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('fault,calls', [(None, 4), ('source_free', 3), ('reselect', 8)])
-async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_replays(tmp_path, fault, calls):
-    handler = ReviewHTTP(fault)
+@pytest.mark.parametrize('version', ['9', '10'])
+async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_replays(tmp_path, fault, calls, version):
+    handler = ReviewHTTP(fault, version)
     path = tmp_path / 'world.sqlite'
     inbound = replace(_inbound(), text='我取消了周五的报告。')
     async with application(path, handler) as app:
@@ -107,8 +112,8 @@ async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_r
         audit = next(a for a in evidence.projection.proposal_audits if a.proposal_kind == 'decision')
         winner = next(a for a in _audits(app) if a.visible_source_review_json)
         data = json.loads(winner.visible_source_review_json)
-        assert json.loads(data['requirement_json'])['review_protocol'] == 'visible-independent-review.1'
-        assert data['receipt']['contract'] == 'visible-source-review-receipt.9'
+        assert json.loads(data['requirement_json'])['review_protocol'] == ('visible-independent-review.1' if version == '9' else 'visible-independent-review.2')
+        assert data['receipt']['contract'] == f'visible-source-review-receipt.{version}'
         assert verify_recorded_candidate(audit=audit, model_result_audits=evidence.projection.model_result_audits) == data['receipt']['receipt_hash']
         assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
         if fault == 'reselect':
@@ -119,7 +124,7 @@ async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_r
             assert len(json.loads(detail.split('\n', 1)[1])['rows']) == 2
         with sqlite3.connect(path.with_name('usage.sqlite')) as db:
             assert db.execute("SELECT COUNT(*) FROM world_v2_model_usage WHERE billing_state='known'").fetchone() == (calls,)
-    cold = ReviewHTTP()
+    cold = ReviewHTTP(version=version)
     async with application(path, cold) as app:
         assert (await app.respond(inbound)).status == 'action_authorized'
         assert cold.requests == []
@@ -190,7 +195,8 @@ async def test_cold_runtime_requires_original_protocol_and_each_actual_review_ca
 
 
 @pytest.mark.asyncio
-async def test_public_proactive_contact_pins_and_replays_independent_protocol(tmp_path, monkeypatch):
+@pytest.mark.parametrize('version', ['9', '10'])
+async def test_public_proactive_contact_pins_and_replays_independent_protocol(tmp_path, monkeypatch, version):
     from datetime import timedelta
     import companion_daemon.config as config_module
     from companion_daemon.config import Settings
@@ -199,7 +205,7 @@ async def test_public_proactive_contact_pins_and_replays_independent_protocol(tm
     from test_delayed_trigger_proactive_host_qualification import _DeliveredQQ, _ProactiveRoleScript, NOW as START
     monkeypatch.setenv('COMPANION_DISABLE_DEBUG_USAGE_LEDGER', '1')
     monkeypatch.setattr(config_module, '_macos_launchctl_env', lambda _name: None)
-    handler = ReviewHTTP('source_free')
+    handler = ReviewHTTP('source_free', version)
     script = _ProactiveRoleScript((dict(timing_choice='now', cadence='conversational',
         beats=[dict(modality='text', text='我想和你说句话。')], stance='主动分享',
         brief_rationale='fixture character choice', impulse_summary='想说句话', confidence=7000, world_claims=[]),))
@@ -217,7 +223,7 @@ async def test_public_proactive_contact_pins_and_replays_independent_protocol(tm
     host = build_qq_c2c_host(settings=Settings(_env_file=None, database_path=tmp_path / 'world.sqlite',
         PRIMARY_USER_ID='geoff', WORLD_V2_EXPRESSION_EPISODE_MODE='off', WORLD_V2_TEXT_ENDPOINT_ENABLED=False),
         recipient_id='10001', bootstrap_at=START, model=models[0], world_support_model=FakeCompanionModel(),
-        visible_source_review_required=True, visible_source_review_version='9', visible_author_tool_version='3',
+        visible_source_review_required=True, visible_source_review_version=version, visible_author_tool_version='3',
         visible_source_review_model=IndependentVisibleReviewer(meaning_models=(models[1], models[2]), source_model=models[2]),
         delivery=_DeliveredQQ(), use_configured_recall_embedding=False)
     try:
@@ -236,3 +242,33 @@ async def test_public_proactive_contact_pins_and_replays_independent_protocol(tm
     finally:
         await host.aclose()
         await asyncio.gather(*(m.aclose() for m in models))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('fault', ['repair_once', 'repair_twice'])
+async def test_structural_reselection_records_failed_and_replacement_calls_without_local_filling(tmp_path, fault):
+    handler = ReviewHTTP(fault, '10')
+    async with application(tmp_path / 'world.sqlite', handler) as app:
+        outcome = await app.respond(_inbound())
+        assert (outcome.status == 'action_authorized') == (fault == 'repair_once')
+        audits = _audits(app)
+        sources = [a for a in audits if a.route.reason_code == 'validation.source_review']
+        assert len(sources) == (4 if fault == 'repair_once' else 3)
+        assert all(a.usage is not None for a in sources)
+        retries = [b for b in handler.requests if 'invalid_prior_reading' in json.loads(b['messages'][1]['content'])]
+        assert len(retries) == 1 and retries[0]['model'] == 'deepseek-v4-flash'
+        if fault == 'repair_once':
+            projection = app.export_replay_evidence().projection
+            audit = next(a for a in projection.proposal_audits if a.proposal_kind == 'decision')
+            assert verify_recorded_candidate(audit=audit, model_result_audits=projection.model_result_audits)
+            winner = next(a for a in audits if a.visible_source_review_json)
+            receipt = json.loads(winner.visible_source_review_json)['receipt']
+            previous = receipt['rejected_meanings'][1]
+            assert previous['review']['model_call_id'] != receipt['meaning_reviews'][1]['model_call_id']
+            assert 'reading_complete' not in json.loads(previous['raw_response'])['decisions'][0]
+            without_failed = tuple(r for r in projection.model_result_audits if r.model_call_id != previous['review']['model_call_id'])
+            with pytest.raises(ValueError):
+                verify_recorded_candidate(audit=audit, model_result_audits=without_failed)
+        else:
+            assert not app.export_replay_evidence().projection.actions
+            assert not any(a.visible_source_review_json for a in audits)

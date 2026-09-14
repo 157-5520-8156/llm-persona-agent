@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from .visible_independent_review_receipt import (
     IndependentReviewInconclusive, IndependentVisibleReviewRejected,
     prepare_independent_visible_review, prepare_meaning_call, prepare_source_call,
-    record_independent_visible_review,
+    record_independent_visible_review, independent_review_protocol, REVIEW_PROTOCOLS,
+    RejectedMeaningAttempt, meaning_preparation,
 )
 from .visible_source_runtime import canonical, digest, INDEPENDENT_EVIDENCE_CONTRACT, MAX_EVIDENCE_BYTES
 
@@ -32,8 +33,8 @@ class IndependentVisibleReviewer:
 
 
 def validate_independent_reviewer_configuration(reviewer, version):
-    if (version == "9") != isinstance(reviewer, IndependentVisibleReviewer):
-        raise ValueError("version 9 requires an explicit independent reviewer; legacy versions cannot consume one")
+    if (version in REVIEW_PROTOCOLS) != isinstance(reviewer, IndependentVisibleReviewer):
+        raise ValueError("versions 9/10 require an explicit independent reviewer; legacy versions cannot consume one")
 
 
 def rejection_feedback(prepared, rejected, bindings):
@@ -67,7 +68,7 @@ def rejection_feedback(prepared, rejected, bindings):
 
 
 async def review_independent_candidate(
-    *, request, output, proposal, source_table, aliases, author_request_json, reviewer, recall_audits=(),
+    *, request, output, proposal, source_table, aliases, author_request_json, reviewer, recall_audits=(), review_version="9",
 ):
     from companion_daemon.llm import model_call_scope, model_provider_request_identity_scope, model_request_emission_scope
     from .deliberation import ModelUsageProvenance, ProviderSubcallAudit, ValidationTechnicalFailure
@@ -76,7 +77,7 @@ async def review_independent_candidate(
 
     if not isinstance(reviewer, IndependentVisibleReviewer):
         raise ValidationTechnicalFailure("source_review_exception", failure_detail="independent visible reviewer is not configured")
-    prepared = prepare_independent_visible_review(candidate=proposal, source_table=source_table, source_ref_aliases=aliases)
+    prepared = prepare_independent_visible_review(candidate=proposal, source_table=source_table, source_ref_aliases=aliases, review_protocol=independent_review_protocol(review_version))
     author = VisibleReviewAuthorBinding(model_call_id=output.winning_model_call_id, request_hash=output.winning_request_hash,
                                        proposal_material_hash=digest(prepared.as_dict()["candidate_json"]))
     audits = {}
@@ -116,9 +117,22 @@ async def review_independent_candidate(
     def subcalls():
         return (*output.provider_subcall_audits, *(audits[i] for i in sorted(audits)))
 
+    rejected_meanings = [None, None] if review_version == "10" else None
+
+    async def read_meaning(call, model, index):
+        raw, binding = await invoke(call, model, index)
+        if rejected_meanings is not None:
+            try:
+                meaning_preparation(prepared).inspect_response(raw)
+            except ValueError:
+                correction = prepare_meaning_call(prepared=prepared, meaning_index=index, rejected_raw=raw)
+                rejected_meanings[index] = RejectedMeaningAttempt(review=binding, raw_response=raw)
+                return await invoke(correction, model, index + 2)
+        return raw, binding
+
     try:
         calls = [prepare_meaning_call(prepared=prepared, meaning_index=i) for i in range(2)]
-        returned = await asyncio.gather(*(invoke(call, model, i) for i, (call, model) in enumerate(zip(calls, reviewer.meaning_models, strict=True))), return_exceptions=True)
+        returned = await asyncio.gather(*(read_meaning(call, model, i) for i, (call, model) in enumerate(zip(calls, reviewer.meaning_models, strict=True))), return_exceptions=True)
         for result in returned:
             if isinstance(result, BaseException):
                 raise result
@@ -127,10 +141,11 @@ async def review_independent_candidate(
         source_call = prepare_source_call(prepared=prepared, meaning_raw_responses=meaning_raws)
         source_raw = source_binding = None
         if source_call is not None:
-            source_raw, source_binding = await invoke(source_call, reviewer.source_model, 2)
+            source_raw, source_binding = await invoke(source_call, reviewer.source_model, 4)
         receipt = record_independent_visible_review(
             prepared=prepared, author=author, meaning_reviews=meaning_bindings, meaning_raw_responses=meaning_raws,
             source_review=source_binding, source_raw_response=source_raw,
+            rejected_meanings=tuple(rejected_meanings) if rejected_meanings is not None else None,
         )
         evidence = canonical({
             "contract": INDEPENDENT_EVIDENCE_CONTRACT, "requirement_json": request.visible_source_requirement_json,
@@ -153,7 +168,7 @@ async def review_independent_candidate(
         if isinstance(exc, IndependentVisibleReviewRejected):
             code = "paired_expression_reselection_invalid"
             try:
-                detail = rejection_feedback(prepared, exc, (*meaning_bindings, source_binding))
+                detail = rejection_feedback(prepared, exc, tuple(audits[i] for i in sorted(audits)))
             except ValueError:
                 code = "source_review_exception"
                 detail = "visible_independent_review.feedback_bound_exceeded"

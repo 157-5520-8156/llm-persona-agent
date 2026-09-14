@@ -810,7 +810,7 @@ def build_semantic_chat_composition(
 
     if not model_id_prefix:
         raise ValueError("semantic chat composition requires a model id prefix")
-    if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7", "8", "9"}:
+    if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}:
         raise ValueError("unsupported visible source review version")
     from .visible_independent_review_runtime import validate_independent_reviewer_configuration
     validate_independent_reviewer_configuration(source_closure_model, visible_source_review_version)

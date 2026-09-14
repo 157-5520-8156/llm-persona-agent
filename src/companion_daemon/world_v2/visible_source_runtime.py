@@ -53,9 +53,9 @@ def result_recall_audits(result):
 
 def compile_requirement(*, request, capsule, review_protocol=None):
     from .visible_source_composer import compile_visible_source_table
-    from .visible_independent_review_receipt import PROTOCOL
+    from .visible_independent_review_receipt import REVIEW_PROTOCOLS
 
-    if review_protocol not in {None, PROTOCOL}:
+    if review_protocol not in {None, *REVIEW_PROTOCOLS.values()}:
         raise ValueError("unsupported pinned visible review protocol")
 
     table = compile_visible_source_table(request=request, capsule=capsule)
@@ -77,7 +77,7 @@ def requirement_table(raw):
     if not isinstance(raw, str) or len(raw.encode()) > MAX_EVIDENCE_BYTES:
         raise ValueError("visible review requirement is unavailable or oversized")
     value = json.loads(raw)
-    from .visible_independent_review_receipt import PROTOCOL
+    from .visible_independent_review_receipt import REVIEW_PROTOCOLS
 
     pinned = value.get("contract") == PINNED_PROTOCOL_REQUIREMENT
     keys = {"contract", "original_input_json", "original_input_hash", "source_table_json"}
@@ -86,7 +86,7 @@ def requirement_table(raw):
     if (
         set(value) != keys
         or value.get("contract") not in {REQUIRED_POLICY, PINNED_PROTOCOL_REQUIREMENT}
-        or (pinned and value.get("review_protocol") != PROTOCOL)
+        or (pinned and value.get("review_protocol") not in REVIEW_PROTOCOLS.values())
         or canonical(value) != raw
     ):
         raise ValueError("visible review requirement contract is invalid")
@@ -165,12 +165,13 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
     aliases = verify_visible_source_author_request(
         author_request_json, expected_request_hash=output.winning_request_hash
     )
-    if review_version not in {"1", "2", "3", "4", "5", "6", "7", "8", "9"}:
+    if review_version not in {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}:
         raise ValueError("visible source review version is unsupported")
     requirement = request.visible_source_requirement_json
     table = requirement_table(requirement)
-    from .visible_independent_review_receipt import PROTOCOL
-    if json.loads(requirement).get("review_protocol") != (PROTOCOL if review_version == "9" else None):
+    from .visible_independent_review_receipt import REVIEW_PROTOCOLS
+    from .visible_independent_review_receipt import independent_review_protocol
+    if json.loads(requirement).get("review_protocol") != independent_review_protocol(review_version):
         raise ValidationTechnicalFailure("source_review_exception", failure_detail="visible review protocol differs from original requirement")
     proposal = validate_proposal_envelope(output.raw_proposal)
     if not isinstance(proposal, DecisionProposal) and (
@@ -187,7 +188,7 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
             update={
                 "visible_source_review_json": canonical(
                     {
-                        "contract": INDEPENDENT_EVIDENCE_CONTRACT if review_version == "9" else EVIDENCE_CONTRACT,
+                        "contract": INDEPENDENT_EVIDENCE_CONTRACT if review_version in REVIEW_PROTOCOLS else EVIDENCE_CONTRACT,
                         "requirement_json": requirement,
                         "author_request_json": author_request_json,
                         "receipt": None,
@@ -203,11 +204,11 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
         audits=tuple(verify_trusted_recall_trace(trace) for trace in request.visible_source_recall_traces),
         author_request_json=author_request_json,
     ) if request.visible_source_recall_traces else (table, ())
-    if review_version == "9":
+    if review_version in REVIEW_PROTOCOLS:
         from .visible_independent_review_runtime import review_independent_candidate
         return await review_independent_candidate(
             request=request, output=output, proposal=proposal, source_table=table, aliases=aliases,
-            author_request_json=author_request_json, reviewer=reviewer, recall_audits=recall_audits,
+            author_request_json=author_request_json, reviewer=reviewer, recall_audits=recall_audits, review_version=review_version,
         )
     prepared = prepare_visible_source_review(
         candidate=proposal, source_table=table, source_ref_aliases=aliases,
@@ -407,9 +408,10 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
     ):
         raise ValueError("visible review requirement mismatch")
     table = requirement_table(requirement)
-    from .visible_independent_review_receipt import PROTOCOL
+    from .visible_independent_review_receipt import REVIEW_PROTOCOLS
     independent = value["contract"] == INDEPENDENT_EVIDENCE_CONTRACT
-    if json.loads(requirement).get("review_protocol") != (PROTOCOL if independent else None):
+    pinned_protocol = json.loads(requirement).get("review_protocol")
+    if independent != (pinned_protocol in REVIEW_PROTOCOLS.values()):
         raise ValueError("visible receipt protocol differs from original requirement")
     proposal = validate_proposal_envelope(proposal)
     if not isinstance(proposal, DecisionProposal) and (
@@ -458,9 +460,9 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
         raise ValueError("legacy visible review cannot carry new recall authority")
     if independent:
         from .visible_independent_review_receipt import (
-            prepare_independent_visible_review, verify_independent_visible_review_receipt,
+            prepare_independent_visible_review, verify_independent_visible_review_receipt, receipt_invocations,
         )
-        bindings = (*receipt.meaning_reviews, *((receipt.source_review,) if receipt.source_review else ()))
+        bindings = receipt_invocations(receipt)
         expected = []
         for binding in bindings:
             matching = [s for s in subcalls if s.purpose == "source_review" and s.model_call_id == binding.model_call_id and s.outcome == "winner"]
@@ -469,7 +471,7 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
             expected.append(VisibleReviewInvocationBinding(**{k: getattr(matching[0], k) for k in VisibleReviewInvocationBinding.model_fields}))
         return verify_independent_visible_review_receipt(
             receipt=receipt,
-            expected_prepared=prepare_independent_visible_review(candidate=proposal, source_table=table, source_ref_aliases=aliases),
+            expected_prepared=prepare_independent_visible_review(candidate=proposal, source_table=table, source_ref_aliases=aliases, review_protocol=pinned_protocol),
             expected_author=VisibleReviewAuthorBinding(model_call_id=author_call, request_hash=author_request_hash,
                                                        proposal_material_hash=digest(canonical(proposal.model_dump(mode="json")))),
             expected_invocations=tuple(expected),

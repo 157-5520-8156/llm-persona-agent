@@ -21,6 +21,13 @@ from .visible_source_review_receipt import (
 from .visible_source_witness_experiment import _json, _unique
 
 PROTOCOL = "visible-independent-review.1"
+RESELECTING_PROTOCOL = "visible-independent-review.2"
+REVIEW_PROTOCOLS = {"9": PROTOCOL, "10": RESELECTING_PROTOCOL}
+
+
+def independent_review_protocol(version):
+    return REVIEW_PROTOCOLS.get(version)
+
 CANDIDATE_CONTRACT = "visible-independent-candidate.1"
 RECEIPT_CONTRACT = "visible-source-review-receipt.9"
 MAX_BYTES = 1_048_576
@@ -51,14 +58,16 @@ class PreparedIndependentVisibleReview:
         return _packet(self.payload_json)
 
 
-def prepare_independent_visible_review(*, candidate, source_table, source_ref_aliases):
+def prepare_independent_visible_review(*, candidate, source_table, source_ref_aliases, review_protocol=PROTOCOL):
+    if review_protocol not in REVIEW_PROTOCOLS.values():
+        raise ValueError("unsupported independent review protocol")
     material = compile_visible_candidate_material(
         candidate=candidate, source_table=source_table, source_ref_aliases=source_ref_aliases,
     )
     # The complete proposal already owns these claims. They are not an
     # independent inventory of the candidate's visible factual assertions.
     material.pop("world_claims")
-    raw = _json({"contract": CANDIDATE_CONTRACT, "protocol": PROTOCOL, **material})
+    raw = _json({"contract": CANDIDATE_CONTRACT, "protocol": review_protocol, **material})
     _packet(raw)
     return PreparedIndependentVisibleReview(raw)
 
@@ -70,7 +79,7 @@ def _restore(prepared):
     expected = prepare_independent_visible_review(
         candidate=DecisionProposal.model_validate_json(pin["candidate_json"], strict=True),
         source_table=VisibleSourceTable(payload_json=pin["source_table_json"]),
-        source_ref_aliases=pin["source_ref_aliases"],
+        source_ref_aliases=pin["source_ref_aliases"], review_protocol=pin["protocol"],
     )
     if prepared.payload_json != expected.payload_json:
         raise ValueError("independent review candidate/source preparation changed")
@@ -83,6 +92,7 @@ def meaning_preparation(prepared):
         beats=tuple(b["text"] for b in pin["beat_mapping"]), compact=True, explicit_questions=True,
         question_conditions=True, beat_conditions=True, require_complete_reading=True,
         closing_tail_transport=True,
+        complete_reading_version="9" if pin["protocol"] == RESELECTING_PROTOCOL else "7",
     )
 
 
@@ -98,7 +108,7 @@ def _call(prepared, *, stage, request, preparation_hash, dependencies=()):
     from companion_daemon.llm import provider_invocation_request_hash
 
     extras = {"visible_independent_review": {
-        "protocol": PROTOCOL, "candidate_preparation_sha256": prepared.sha256,
+        "protocol": prepared.as_dict()["protocol"], "candidate_preparation_sha256": prepared.sha256,
         "stage": stage, "stage_preparation_sha256": preparation_hash,
         "meaning_response_sha256": list(dependencies),
     }}
@@ -107,10 +117,17 @@ def _call(prepared, *, stage, request, preparation_hash, dependencies=()):
     )
 
 
-def prepare_meaning_call(*, prepared, meaning_index):
+def prepare_meaning_call(*, prepared, meaning_index, rejected_raw=None):
     if type(meaning_index) is not int or meaning_index not in {0, 1}:
         raise ValueError("independent review requires meaning stage zero or one")
     meaning = meaning_preparation(prepared)
+    if rejected_raw is not None:
+        if prepared.as_dict()["protocol"] != RESELECTING_PROTOCOL:
+            raise ValueError("original independent protocol cannot reselect a meaning")
+        from .visible_meaning_reselection import prepare_meaning_reselection
+        correction = prepare_meaning_reselection(meaning=meaning, rejected_raw=rejected_raw)
+        return _call(prepared, stage=f"meaning:{meaning_index}:structural-reselection", request=correction.request(),
+                     preparation_hash=correction.sha256, dependencies=(_hash(rejected_raw),))
     return _call(prepared, stage=f"meaning:{meaning_index}", request=meaning.request(), preparation_hash=meaning.sha256)
 
 
@@ -152,7 +169,19 @@ def _invocation(*, call, author, binding, raw):
         raise ValueError("independent review invocation differs from its original stage")
 
 
-def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, source_review, source_raw_response):
+class RejectedMeaningAttempt(FrozenModel):
+    review: VisibleReviewInvocationBinding
+    raw_response: str = Field(min_length=1, max_length=131072)
+
+
+def receipt_invocations(receipt):
+    prior = receipt.rejected_meanings
+    original = tuple(p.review if p is not None else b for p, b in zip(prior, receipt.meaning_reviews, strict=True)) if prior is not None else receipt.meaning_reviews
+    retries = tuple(b for p, b in zip(prior, receipt.meaning_reviews, strict=True) if p is not None) if prior is not None else ()
+    return (*original, *retries, *((receipt.source_review,) if receipt.source_review else ()))
+
+
+def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, source_review, source_raw_response, rejected_meanings=None):
     pin = _restore(prepared)
     author = VisibleReviewAuthorBinding.model_validate_json(author.model_dump_json(), strict=True)
     if author.proposal_material_hash != _hash(pin["candidate_json"]):
@@ -161,11 +190,23 @@ def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, sourc
         raise ValueError("independent review requires exactly two meaning invocations")
     if meaning_reviews[0].model_id == meaning_reviews[1].model_id:
         raise ValueError("independent review requires two distinct reader model identities")
-    bindings = [*meaning_reviews, *([source_review] if source_review is not None else [])]
+    if pin["protocol"] == RESELECTING_PROTOCOL:
+        if rejected_meanings is None or len(rejected_meanings) != 2:
+            raise ValueError("reselecting protocol requires both reader attempt histories")
+    elif rejected_meanings is not None:
+        raise ValueError("original independent protocol cannot carry reselections")
+    prior = rejected_meanings or (None, None)
+    bindings = [*meaning_reviews, *(p.review for p in prior if p is not None), *([source_review] if source_review is not None else [])]
     if len({b.model_call_id for b in bindings}) != len(bindings):
         raise ValueError("independent review cannot reuse an invocation for another stage")
     for index, (binding, raw) in enumerate(zip(meaning_reviews, meaning_raw_responses, strict=True)):
-        _invocation(call=prepare_meaning_call(prepared=prepared, meaning_index=index), author=author, binding=binding, raw=raw)
+        previous = prior[index]
+        if previous is not None:
+            _invocation(call=prepare_meaning_call(prepared=prepared, meaning_index=index), author=author, binding=previous.review, raw=previous.raw_response)
+            if (previous.review.model_id, previous.review.model_version) != (binding.model_id, binding.model_version):
+                raise ValueError("meaning structural reselection must use the same reader")
+        _invocation(call=prepare_meaning_call(prepared=prepared, meaning_index=index,
+                    rejected_raw=previous.raw_response if previous else None), author=author, binding=binding, raw=raw)
     meaning, readings = _interpreted(prepared, meaning_raw_responses)
     source_call = prepare_source_call(prepared=prepared, meaning_raw_responses=meaning_raw_responses)
     support = None
@@ -206,11 +247,12 @@ class IndependentVisibleReviewRejected(ValueError):
 
 
 class IndependentVisibleReviewReceipt(FrozenModel):
-    contract: Literal["visible-source-review-receipt.9"] = RECEIPT_CONTRACT
+    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10"] = RECEIPT_CONTRACT
     prepared_json: str = Field(min_length=2, max_length=MAX_BYTES)
     author: VisibleReviewAuthorBinding
     meaning_reviews: tuple[VisibleReviewInvocationBinding, VisibleReviewInvocationBinding]
     meaning_raw_responses: tuple[str, str]
+    rejected_meanings: tuple[RejectedMeaningAttempt | None, RejectedMeaningAttempt | None] | None = Field(default=None, exclude_if=lambda v: v is None)
     source_review: VisibleReviewInvocationBinding | None
     source_raw_response: str | None
     beat_outcomes: tuple[Literal["closed", "source_free"], ...] = Field(min_length=1, max_length=16)
@@ -220,10 +262,14 @@ class IndependentVisibleReviewReceipt(FrozenModel):
     def record_is_self_consistent(self):
         if len(self.model_dump_json().encode()) > MAX_BYTES:
             raise ValueError("independent receipt exceeds its byte bound")
+        prepared = PreparedIndependentVisibleReview(self.prepared_json)
+        expected_contract = "visible-source-review-receipt.10" if prepared.as_dict()["protocol"] == RESELECTING_PROTOCOL else RECEIPT_CONTRACT
+        if self.contract != expected_contract:
+            raise ValueError("independent receipt contract differs from original protocol")
         outcomes, _, _ = _outcomes(
-            prepared=PreparedIndependentVisibleReview(self.prepared_json), author=self.author,
+            prepared=prepared, author=self.author,
             meaning_reviews=self.meaning_reviews, meaning_raw_responses=self.meaning_raw_responses,
-            source_review=self.source_review, source_raw_response=self.source_raw_response,
+            source_review=self.source_review, source_raw_response=self.source_raw_response, rejected_meanings=self.rejected_meanings,
         )
         if outcomes != self.beat_outcomes or "unclosed" in outcomes:
             raise ValueError("independent receipt requires the exact passing outcome for every Beat")
@@ -233,22 +279,27 @@ class IndependentVisibleReviewReceipt(FrozenModel):
 
 
 def record_independent_visible_review(
-    *, prepared, author, meaning_reviews, meaning_raw_responses, source_review=None, source_raw_response=None,
+    *, prepared, author, meaning_reviews, meaning_raw_responses, source_review=None, source_raw_response=None, rejected_meanings=None,
 ):
+    reselecting = prepared.as_dict()["protocol"] == RESELECTING_PROTOCOL
+    if reselecting and rejected_meanings is None:
+        rejected_meanings = (None, None)
     outcomes, readings, support = _outcomes(
         prepared=prepared, author=author, meaning_reviews=meaning_reviews,
-        meaning_raw_responses=meaning_raw_responses, source_review=source_review, source_raw_response=source_raw_response,
+        meaning_raw_responses=meaning_raw_responses, source_review=source_review, source_raw_response=source_raw_response, rejected_meanings=rejected_meanings,
     )
     if "unclosed" in outcomes:
         raise IndependentVisibleReviewRejected(outcomes=outcomes, readings=readings, support=support)
     value = {
-        "contract": RECEIPT_CONTRACT, "prepared_json": prepared.payload_json,
+        "contract": "visible-source-review-receipt.10" if reselecting else RECEIPT_CONTRACT, "prepared_json": prepared.payload_json,
         "author": author.model_dump(mode="json"),
         "meaning_reviews": [b.model_dump(mode="json") for b in meaning_reviews],
         "meaning_raw_responses": meaning_raw_responses,
         "source_review": source_review.model_dump(mode="json") if source_review else None,
         "source_raw_response": source_raw_response, "beat_outcomes": outcomes,
     }
+    if rejected_meanings is not None:
+        value["rejected_meanings"] = [p.model_dump(mode="json") if p is not None else None for p in rejected_meanings]
     value["receipt_hash"] = _hash(_json(value))
     return IndependentVisibleReviewReceipt.model_validate_json(_json(value), strict=True)
 
@@ -257,7 +308,7 @@ def verify_independent_visible_review_receipt(*, receipt, expected_prepared, exp
     """Expected bindings must come from immutable audits, never this record."""
     receipt = IndependentVisibleReviewReceipt.model_validate_json(receipt.model_dump_json(), strict=True)
     _restore(expected_prepared)
-    bindings = (*receipt.meaning_reviews, *((receipt.source_review,) if receipt.source_review else ()))
+    bindings = receipt_invocations(receipt)
     if (receipt.prepared_json != expected_prepared.payload_json or receipt.author != expected_author
             or bindings != tuple(expected_invocations)):
         raise ValueError("independent receipt differs from original candidate or immutable invocation audits")

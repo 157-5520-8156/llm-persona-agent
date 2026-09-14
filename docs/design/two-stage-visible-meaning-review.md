@@ -153,3 +153,22 @@ JSON errors. Another reader's interpretation and source support are never input.
 A structurally valid inconclusive reading cannot use this path. The original
 failed call remains billed and preserved, and a second bad result stays failed.
 This is not a semantic retry-until-accepted loop and does not extend deadlines.
+
+
+## Independent runtime protocol `.2` / visible review 10
+
+The next explicit runtime selector pins `visible-independent-review.2` before
+character authoring. It uses meaning `.9` and permits one same-reader structural
+reselection per invalid original reading. Receipt `.10` stores each original
+failed response/invocation as well as its replacement; cold verification requires
+both, the same reader identity and a compiler-proven original structural failure.
+Valid semantic judgments, including uncertainty, cannot use this retry path.
+The source reviewer still receives every final reading, never the original
+sentence to reinterpret. Source-call identity binds the final response bytes.
+Version 9 remains fixed to its original `.7` meaning and has no reader retries.
+Production defaults and the 12-second interactive deadline remain unchanged.
+
+The fresh reviewer-only `.9` + structural reselection trial matched all twelve
+diagnostic cases, recovering two invalid reader outputs. Full chat, runtime
+receipt/provider linkage and author-plus-review latency still need live checks;
+these probe outcomes alone do not qualify version 10 for deployment.

@@ -39,8 +39,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         help="Explicit whole-author wire version; v2/v3 require whole-source review and is unqualified with real providers.",
     )
     parser.add_argument(
-        "--visible-source-review-version", choices=("1", "2", "3", "4", "5", "6", "7", "8", "9"), default="1",
-        help="Explicit whole-source reviewer wire version; Nonlegacy versions require whole-source review; v9 is an experimental independent review pipeline.",
+        "--visible-source-review-version", choices=("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"), default="1",
+        help="Explicit whole-source reviewer wire version; Nonlegacy versions require whole-source review; v9/v10 are experimental independent review pipelines.",
     )
     parser.add_argument(
         "--interactive",
@@ -347,7 +347,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
             )
             if required_review:
                 visible_reviewer = provider("visible_source_review")
-                if options.visible_source_review_version == "9":
+                if options.visible_source_review_version in {"9", "10"}:
                     from companion_daemon.world_v2.visible_independent_review_runtime import IndependentVisibleReviewer
                     visible_reviewer = IndependentVisibleReviewer(
                         meaning_models=(provider("visible_meaning_pro", model_override="deepseek-v4-pro"),
