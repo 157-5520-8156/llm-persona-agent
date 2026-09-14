@@ -109,3 +109,24 @@ rewriting or example-specific phrase filter is an acceptable repair. Version 9
 remains explicit and unqualified; this first frozen contract and all raw failures
 must remain reconstructible when a revised protocol is introduced. See
 `docs/audits/release-independent-complete-validation-2026-09-14.json`.
+
+
+## Complete semantic reading `.8` (experimental)
+
+The next compiler distinguishes unbound referents from unrepresented semantics:
+readers keep the original deictic relationship and unspecified time/object rather
+than inventing a real identity or refusing otherwise complete syntax. A language
+ambiguity that changes who did what still remains inconclusive. Meaning modes
+remain reader judgments; local code neither converts attitude into fact nor
+removes unsupported facts. Output instructions now explicitly place coverage
+fields before nested arrays. Missing coverage fields and malformed objects still
+fail; no values are locally filled in. `.7` compiler bytes remain frozen and the
+existing version 9 runtime still uses `.7` pending actual `.8` qualification.
+
+Provider diagnosis checked the captured native `tool_calls[].function.arguments`:
+the two bad `.7` results were already malformed/missing fields before local
+parsing. The tool had `strict: true`, and the current client selects `/beta` for
+such requests. The [official DeepSeek strict guide](https://api-docs.deepseek.com/zh-cn/guides/tool_calls/)
+requires both, but that documented promise cannot override observed failures.
+This experiment changes output instructions; it does not claim provider schema
+reliability or silently relax validation.

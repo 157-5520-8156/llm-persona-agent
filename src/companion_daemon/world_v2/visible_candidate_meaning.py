@@ -22,6 +22,7 @@ QUESTION_CONTRACT = "visible-candidate-meaning.4"
 CONDITIONAL_QUESTION_CONTRACT = "visible-candidate-meaning.5"
 CONDITIONAL_BEAT_CONTRACT = "visible-candidate-meaning.6"
 COMPLETE_READING_CONTRACT = "visible-candidate-meaning.7"
+SEMANTIC_COMPLETE_CONTRACT = "visible-candidate-meaning.8"
 TAIL_TRANSPORT = "single-object-closing-tail.1"
 Role = Literal["companion", "counterpart", "other", "none"]
 
@@ -174,6 +175,10 @@ class CompleteMeaningResponse(FrozenModel):
     decisions: tuple[CompleteMeaningBeat, ...] = Field(min_length=1, max_length=16)
 
 
+class SemanticCompleteMeaningResponse(CompleteMeaningResponse):
+    contract: Literal["visible-candidate-meaning.8"]
+
+
 @dataclass(frozen=True)
 class PreparedCandidateMeaning:
     payload_json: str
@@ -187,7 +192,7 @@ class PreparedCandidateMeaning:
 
     def inspect_response(self, raw: str) -> dict:
         packet = json.loads(self.payload_json)
-        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT}:
+        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT}:
             raise ValueError("unsupported candidate meaning contract")
         if len(raw.encode()) > 131072:
             raise ValueError("candidate meaning response exceeds bound")
@@ -199,6 +204,7 @@ class PreparedCandidateMeaning:
             CONDITIONAL_QUESTION_CONTRACT: ConditionalQuestionMeaningResponse,
             CONDITIONAL_BEAT_CONTRACT: ConditionalMeaningResponse,
             COMPLETE_READING_CONTRACT: CompleteMeaningResponse,
+            SEMANTIC_COMPLETE_CONTRACT: SemanticCompleteMeaningResponse,
         }[packet["contract"]]
         response = response_type.model_validate_json(_json(value), strict=True)
         if [d.beat_index for d in response.decisions] != list(range(len(packet["beats"]))):
@@ -257,6 +263,7 @@ def prepare_candidate_meaning(
     closing_tail_transport: bool = False, question_conditions: bool = False,
     beat_conditions: bool = False,
     require_complete_reading: bool = False,
+    complete_reading_version: str = "7",
 ) -> PreparedCandidateMeaning:
     if not 1 <= len(beats) <= 16 or any(not isinstance(b, str) or not b or len(b) > 4096 for b in beats):
         raise ValueError("candidate meaning requires one to sixteen bounded nonempty Beats")
@@ -268,6 +275,10 @@ def prepare_candidate_meaning(
         raise ValueError("Beat conditions require the conditional meaning transport")
     if require_complete_reading and not beat_conditions:
         raise ValueError("complete reading requires the Beat condition transport")
+    if type(complete_reading_version) is not str or complete_reading_version not in {"7", "8"}:
+        raise ValueError("unsupported complete reading version")
+    if complete_reading_version != "7" and not require_complete_reading:
+        raise ValueError("versioned complete reading requires explicit completeness")
     system = (
         "你是候选发言的语义读取器，不扮演角色，也不判断它是否真实或允许发送。"
         "输入只有角色即将说的原句，没有事实证据。请先忠实解释原句，不要修正错误、找借口或把句子读成更容易被证明的意思。"
@@ -357,6 +368,25 @@ def prepare_candidate_meaning(
             "reading_complete=false，不猜测或补成方便核对的读法。完整读取不能漏掉整条非空发言的全部表达，"
             "包括简短回应、招呼或情绪表达；没有事实不等于没有含义。"
         )
+    if complete_reading_version == "8":
+        contract = SEMANTIC_COMPLETE_CONTRACT
+        name = "interpret_visible_candidate_complete_v8"
+        response_type = SemanticCompleteMeaningResponse
+        system = system[:system.index("每条Beat必须明确reading_complete：")] + (
+            "逐条Beat完整读取原句明示的含义与不可缺少的前提。reading_complete只回答是否忠实覆盖了这些语言含义，"
+            "不是是否知道原句真假或其中省略对象的现实身份；后者属于另一个证据阶段。"
+            "可以用同批原句理解语言上的指代。对象、时间或地点未被具体命名时，保留原句的关系和指示范围，"
+            "如原句中的未指明对象或相对时间，不添加现实身份、日期或地点。能完整保留这些限制就不算含义缺失。"
+            "只有无法忠实表达句意、存在会改变断言的语言歧义、无法分清谁对谁做什么，或仍有遗漏时，"
+            "才reading_complete=false，并在unresolved_details说明无法覆盖的含义。证据是否支持留给来源阶段。"
+            "meanings只列原句真正断言的命题或当前表达，不把同一种言语功能额外复制成客观事实。"
+            "判断依赖什么才能成立：当前意愿、态度和交流边界由这次表达成立；实际技能、外部许可、"
+            "过去经历与已发生行为需要相应事实。混合表达仍保留其中独立断言的事实。"
+            "每个Beat对象都必须具备beat_index、reading_complete、unresolved_details、hypothetical_conditions、"
+            "meanings、questions六个字段。先输出beat_index、reading_complete和unresolved_details，再输出其余字段。"
+            "reading_complete=true时unresolved_details必须为空；完整读取不能把一条非空发言的所有含义都省略。"
+            "所有字段都在同一个Beat对象内，questions数组结束不代表Beat对象已结束；严格返回完整工具JSON。"
+        )
     request = {
         "messages": [
             {"role": "system", "content": system},
@@ -382,15 +412,16 @@ def verify_candidate_meaning_preparation(meaning: PreparedCandidateMeaning) -> d
     """Recompile the exact evidence-blind request; do not trust a supplied pin."""
     packet = json.loads(meaning.payload_json, object_pairs_hook=_unique)
     contract = packet.get("contract")
-    if contract not in {CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT}:
+    if contract not in {CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT}:
         raise ValueError("unsupported meaning compiler for fidelity review")
     expected = prepare_candidate_meaning(
         beats=tuple(packet["beats"]), compact=contract != CONTRACT,
-        explicit_questions=contract in {QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT},
+        explicit_questions=contract in {QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT},
         closing_tail_transport=packet.get("wire_transport") == TAIL_TRANSPORT,
-        question_conditions=contract in {CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT},
-        beat_conditions=contract in {CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT},
-        require_complete_reading=contract == COMPLETE_READING_CONTRACT,
+        question_conditions=contract in {CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT},
+        beat_conditions=contract in {CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT},
+        require_complete_reading=contract in {COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT},
+        complete_reading_version="8" if contract == SEMANTIC_COMPLETE_CONTRACT else "7",
     )
     if expected.payload_json != meaning.payload_json:
         raise ValueError("meaning preparation differs from its fixed compiler")
