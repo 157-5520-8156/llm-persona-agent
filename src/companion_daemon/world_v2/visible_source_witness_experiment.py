@@ -270,6 +270,13 @@ def prepare_witness_experiment(
     # Reuse the current lossless semantic cards and keep one copy per material.
     # Quotes must resolve both in the displayed card and the original host proof.
     body = json.loads(messages[1]["content"])
+    # Reuse evidence, not the receipt-bearing protocol's output declaration.
+    # The forced tool and the user packet must request the same response shape.
+    body["output_contract"] = {
+        "contract": CONTRACT,
+        "authority": "experimental_no_receipt_or_action_authority",
+    }
+    messages[1]["content"] = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
     references, _ = _packet_materials(sources)
     messages[0]["content"] = (
         "Experimental factual support audit. Return the forced witness tool only. "

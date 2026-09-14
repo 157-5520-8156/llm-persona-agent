@@ -276,3 +276,31 @@ def test_explanation_bound_remains_finite_without_changing_the_model_request(len
     else:
         with pytest.raises(ValueError):
             prepared.inspect_response(_json(raw))
+
+
+def test_witness_request_declares_the_forced_tool_contract_without_changing_evidence():
+    from companion_daemon.world_v2.visible_source_closure_protocol import (
+        visible_source_closure_messages,
+    )
+
+    sources = _sources()
+    legacy = visible_source_closure_messages(
+        visible_beats=(TEXT,), world_claims=(), source_references=sources, version="8"
+    )
+    legacy_packet = json.loads(legacy[1]["content"])
+    legacy_before = _json(legacy)
+    prepared = prepare_witness_experiment(beats=(TEXT,), sources=sources)
+    request = prepared.request()
+    packet = json.loads(request["messages"][1]["content"])
+    function = request["tools"][0]["function"]
+    schema_contract = function["parameters"]["properties"]["contract"]
+    assert packet["output_contract"]["contract"] in schema_contract["enum"]
+    assert packet["output_contract"] == {
+        "contract": CONTRACT,
+        "authority": "experimental_no_receipt_or_action_authority",
+    }
+    assert request["tool_choice"]["function"]["name"] == function["name"]
+    assert {k: v for k, v in packet.items() if k != "output_contract"} == {
+        k: v for k, v in legacy_packet.items() if k != "output_contract"
+    }
+    assert _json(legacy) == legacy_before

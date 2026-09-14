@@ -1,0 +1,57 @@
+{
+  "contract": "release-witness-request-contract-validation.1",
+  "changed_user_packet_fields": [
+    "output_contract"
+  ],
+  "old_declared_output_contract": {
+    "contract": "visible-beat-source-verdict.8",
+    "authority": "correlated_source_guard_not_character_author"
+  },
+  "corrected_declared_output_contract": {
+    "contract": "visible-source-witness-experiment.1",
+    "authority": "experimental_no_receipt_or_action_authority"
+  },
+  "system_tool_schema_source_materials_and_indexes_unchanged": true,
+  "old_frozen_response_replay": [
+    "closed",
+    "closed",
+    "unclosed",
+    "closed"
+  ],
+  "same_raw_on_new_preparation": "offline_consumer_compatibility_only_not_provider_validation",
+  "v8_recorded_response_actual": [
+    "closed",
+    "closed",
+    "closed",
+    "source_free"
+  ],
+  "v8_recorded_response_expected": [
+    "closed",
+    "closed",
+    "unclosed",
+    "source_free"
+  ],
+  "v8_semantic_release_gate": "failed",
+  "physical_calls": 0,
+  "database_writes": 0,
+  "new_receipts": 0,
+  "receipt_authority": false,
+  "original_artifact_hashes_unchanged": {
+    "output/private-audits/release-witness-real-20260914-01/witness-preparation.json": "afe55d71e73cd4abb7f4e17ced31b4065b11d6383fce3aad909e58b5136874e4",
+    "output/private-audits/release-witness-real-20260914-01/run/original-witness-experiment.json": "5436d67bd8646359791eae0b8874825e5699a74598ba112691e902be492b3421",
+    "output/private-audits/release-utterance-review-20260914-02/formal-preparation.json": "2487704a79dae43a19b62229341241bebc8a5791a84dcf33caf82f7669006ae7",
+    "output/private-audits/release-utterance-review-20260914-02/run/original-formal-utterance-scope.json": "9668e97f87879b5750dc8836df001c955acdaf831ba69bc933048608850cc9d5"
+  },
+  "limits": [
+    "No evidence that the contract contradiction caused prior provider failures.",
+    "Corrected request has not been sent to a provider.",
+    "Witness scope classification remains model judgment, not structural proof.",
+    "The historical v8 false acceptance remains unresolved."
+  ],
+  "validation": {
+    "tests_passed": 44,
+    "ruff": "passed",
+    "regression_before_fix": "failed: packet requested v8 but forced tool only accepted witness.1"
+  },
+  "qualification": "manual_only / qualification_incomplete"
+}
