@@ -69,6 +69,24 @@ PYTHONPATH=src python scripts/prepare_character_prehistory.py package-reviewed \
 
 审核哈希绑定规范化的完整review payload，不是任意缩进文件的原始字节哈希。审核者标识是运维提供的来源说明；工具不能凭一个不同标识证明审核确实独立执行，需要保存实际审核原文与调用/人工审核证据。任何草稿或brief变化都使旧审核失效。
 
+模型审核建议使用 `semantic-review-request` 代替 `review-request`：输入仍保留完整档案与来源，输出只包含从0开始的记录下标、判断及理由，不要求模型复写哈希。`cross_record_findings` 只放阻断批准的问题；没有问题时为 `[]`，通过依据写在逐条 `rationale` 中。
+
+保存实际提交的请求包和原始模型答复后，使用下列命令产生供 `package-reviewed` 使用的完整review。绑定只读取实际提交包，不重新读取可能已变的草稿；缺项、重复下标、矛盾结论都拒绝。新协议不会接受或修补旧格式的错误哈希答复。
+
+```sh
+PYTHONPATH=src python scripts/prepare_character_prehistory.py semantic-review-request \
+  --brief output/prehistory-review/brief.json \
+  --draft configs/prehistory/celia-life-draft-20260914.json \
+  --out output/prehistory-review/semantic-request.json
+PYTHONPATH=src python scripts/prepare_character_prehistory.py bind-semantic-review \
+  --request output/prehistory-review/semantic-request.json \
+  --response output/prehistory-review/semantic-response.json \
+  --reviewer-ref reviewer:ACTUAL-REVIEWER --reviewed-at ACTUAL-REVIEW-TIME-ISO \
+  --out output/prehistory-review/review.json
+```
+
+该CLI仍信任运维提供的请求—答复对应关系与审核者信息，不能凭离线文件证明调用真实发生。真实调用方必须另外保存并核对实际请求、完整供应商响应、用量和身份；通过这些检查后才可声称完成独立模型审核。
+
 生成reviewed包不会导入；正式导入仍使用 `PrehistoryArchiveRuntime.import_reviewed` 的World、原始启动时间、身份和原子写入检查。导入后也不自动保留全部记录，角色通过现有记忆初始化决定哪些值得记住。
 
 ## 当前验收范围

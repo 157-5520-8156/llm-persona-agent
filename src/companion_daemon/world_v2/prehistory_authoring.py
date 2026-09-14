@@ -157,6 +157,79 @@ def review_request(brief: PrehistoryAuthoringBrief, document: PrehistoryArchiveD
             "output_schema": PrehistoryCreationReview.model_json_schema()})
 
 
+class PrehistorySemanticRecordVerdict(FrozenModel):
+    record_index: int = Field(ge=0, le=255, strict=True,
+        description="Zero-based position in the submitted document.records array.")
+    verdict: Literal["approve", "reject"]
+    rationale: str = Field(min_length=1, max_length=4096)
+
+
+class PrehistorySemanticReview(FrozenModel):
+    """Model judgment only; the caller owns request identity and provenance."""
+
+    contract: Literal["prehistory-semantic-review.1"] = "prehistory-semantic-review.1"
+    decision: Literal["approved", "rejected"] = Field(
+        description="approved iff every record is approve and cross_record_findings is empty; otherwise rejected",
+    )
+    records: tuple[PrehistorySemanticRecordVerdict, ...] = Field(min_length=1, max_length=256)
+    cross_record_findings: tuple[str, ...] = Field(default=(), max_length=256,
+        description="Blocking cross-record problems only; [] when none. No positive summaries.")
+
+    @model_validator(mode="after")
+    def verdict_is_consistent(self):
+        if len({item.record_index for item in self.records}) != len(self.records):
+            raise ValueError("review duplicates a record index")
+        all_approved = not self.cross_record_findings and all(item.verdict == "approve" for item in self.records)
+        if (self.decision == "approved") != all_approved:
+            raise ValueError("review decision disagrees with record or cross-record findings")
+        return self
+
+
+def semantic_review_request(brief: PrehistoryAuthoringBrief, document: PrehistoryArchiveDocument) -> dict:
+    """Keep the full evidence, but do not ask a model to transcribe hashes."""
+    packet = review_request(brief, document)
+    packet.update(contract="prehistory-semantic-review-request.1",
+        instruction=REVIEW_INSTRUCTION + "按document.records的从0开始的数组下标逐条返回record_index；"
+        "每个下标必须出现一次。不输出哈希、记录ID、审核者或时间，这些由调用方绑定实际输入。",
+        output_schema=PrehistorySemanticReview.model_json_schema())
+    return _bounded_packet(packet)
+
+
+def bind_semantic_review(
+    submitted_request: dict, response: PrehistorySemanticReview, *,
+    reviewer_ref: str, reviewed_at: datetime,
+) -> PrehistoryCreationReview:
+    """Bind to the submitted packet, never a fresh read of the mutable draft.
+
+    This offline boundary trusts caller-provided request/response pairing and
+    reviewer metadata, just like operator-supplied reviews. A provider runner must
+    independently capture and verify that pairing before claiming real review.
+    It cannot rehabilitate a failed hash-bearing legacy review.
+    """
+    _bounded_packet(submitted_request)
+    brief = PrehistoryAuthoringBrief.model_validate_json(json.dumps(submitted_request["brief"]))
+    document = PrehistoryArchiveDocument.model_validate_json(json.dumps(submitted_request["document"]))
+    if submitted_request != semantic_review_request(brief, document):
+        raise ValueError("submitted semantic review packet differs from its bound content or contract")
+    response = PrehistorySemanticReview.model_validate_json(response.model_dump_json())
+    by_index = {item.record_index: item for item in response.records}
+    if set(by_index) != set(range(len(document.records))):
+        raise ValueError("semantic review must cover every submitted record index exactly once")
+    if reviewer_ref == brief.author_ref:
+        raise ValueError("author cannot supply the separate reviewer identity")
+    if reviewed_at.tzinfo is None or reviewed_at.utcoffset() is None or reviewed_at < brief.created_at:
+        raise ValueError("review time must be aware and cannot predate the authoring brief")
+    return PrehistoryCreationReview(
+        brief_hash=digest(brief), document_hash=digest(document),
+        reviewer_ref=reviewer_ref, reviewed_at=reviewed_at, decision=response.decision,
+        cross_record_findings=response.cross_record_findings,
+        records=tuple(PrehistoryRecordVerdict(
+            record_id=record.record_id, record_hash=digest(record),
+            verdict=by_index[index].verdict, rationale=by_index[index].rationale,
+        ) for index, record in enumerate(document.records)),
+    )
+
+
 def package_reviewed(
     brief: PrehistoryAuthoringBrief, document: PrehistoryArchiveDocument,
     review: PrehistoryCreationReview, *, review_artifact_ref: str,

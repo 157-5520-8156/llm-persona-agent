@@ -15,6 +15,7 @@ from companion_daemon.world_v2.character_prehistory import (
 )
 from companion_daemon.world_v2.prehistory_authoring import (
     PrehistoryAuthoringBrief, PrehistoryCreationReview, author_request, package_reviewed, review_request,
+    PrehistorySemanticReview, bind_semantic_review, semantic_review_request,
 )
 from companion_daemon.world_v2.schemas import WorldEvent
 
@@ -83,7 +84,7 @@ def main(argv=None):
     for flag in ("database", "profile", "world-id", "actor-ref", "born-at", "author-ref", "source-ref"):
         brief.add_argument("--" + flag, required=True)
     brief.add_argument("--out", required=True)
-    for name in ("author-request", "review-request", "package-reviewed"):
+    for name in ("author-request", "review-request", "semantic-review-request", "package-reviewed"):
         command = commands.add_parser(name)
         command.add_argument("--brief", required=True)
         command.add_argument("--out", required=True)
@@ -92,11 +93,20 @@ def main(argv=None):
         if name == "package-reviewed":
             command.add_argument("--review", required=True)
             command.add_argument("--review-artifact-ref", required=True)
+    binding = commands.add_parser("bind-semantic-review")
+    for flag in ("request", "response", "reviewer-ref", "reviewed-at", "out"):
+        binding.add_argument("--" + flag, required=True)
     args = parser.parse_args(argv)
     if args.command == "brief":
         value = brief_from_database(database=args.database, profile_path=args.profile,
             world_id=args.world_id, actor_ref=args.actor_ref,
             born_at=datetime.fromisoformat(args.born_at), author_ref=args.author_ref, source_ref=args.source_ref)
+    elif args.command == "bind-semantic-review":
+        value = bind_semantic_review(
+            json.loads(Path(args.request).read_text()),
+            PrehistorySemanticReview.model_validate_json(Path(args.response).read_text()),
+            reviewer_ref=args.reviewer_ref, reviewed_at=datetime.fromisoformat(args.reviewed_at),
+        )
     else:
         brief = PrehistoryAuthoringBrief.model_validate_json(Path(args.brief).read_text())
         if args.command == "author-request":
@@ -105,6 +115,8 @@ def main(argv=None):
             draft = PrehistoryArchiveDocument.model_validate_json(Path(args.draft).read_text())
             if args.command == "review-request":
                 value = review_request(brief, draft)
+            elif args.command == "semantic-review-request":
+                value = semantic_review_request(brief, draft)
             else:
                 review = PrehistoryCreationReview.model_validate_json(Path(args.review).read_text())
                 value = package_reviewed(brief, draft, review, review_artifact_ref=args.review_artifact_ref)
