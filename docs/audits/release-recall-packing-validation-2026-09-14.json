@@ -248,6 +248,15 @@
     "output/private-audits/release-recall-packing-20260914/regression.log": "602b3566fefcf0d1441379eefa052bc2b25110dbd30fe05b5443103959769545",
     "output/private-audits/release-recall-packing-20260914/cold.log": "5e307270e647ebd39cfa94e86031b87684b421266ec8acafe6fa5960be82f669",
     "output/private-audits/release-recall-packing-20260914/reconstruct.log": "5eb1d65022666a49b03489c5d7bed68f2e632e82de3a5f80e23475349db22121",
-    "output/private-audits/release-recall-packing-20260914/varied-queries.json": "c9365c31f4a090913c431ba36023f7524bc88800c6bc574e18a3c39d4fdcccfa"
-  }
+    "output/private-audits/release-recall-packing-20260914/varied-queries.json": "c9365c31f4a090913c431ba36023f7524bc88800c6bc574e18a3c39d4fdcccfa",
+    "output/private-audits/release-recall-packing-20260914/audit-sizes.json": "e90c554ef0e25cca9bc784ef2cd3b8311593b4b90598993664544f9ee968c060",
+    "output/private-audits/release-recall-packing-20260914/verified-after-trace.json": "bb3db189357806a2e8b2d549fe08fa8967cb90381bfe34d996e567794ba1efef"
+  },
+  "exact_reconstructed_full_audit": {
+    "model_reading_bytes": 2578,
+    "full_hit_bytes": 9111,
+    "full_audit_bytes": 14957,
+    "validated_by_RecallAuditTrace": true
+  },
+  "closed_paid_trial_artifact_hashes_unchanged": true
 }
