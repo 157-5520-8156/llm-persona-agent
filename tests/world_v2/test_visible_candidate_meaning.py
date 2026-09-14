@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from companion_daemon.world_v2.visible_candidate_meaning import CONTRACT, COMPACT_CONTRACT, prepare_candidate_meaning
+from companion_daemon.world_v2.visible_candidate_meaning import CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, prepare_candidate_meaning
 
 TEXT = "你先说说你送我出发那会儿，家里什么样"
 
@@ -137,3 +137,48 @@ def test_compact_omission_is_not_hidden_as_semantic_qualification():
     result = prepare_candidate_meaning(beats=(TEXT,), compact=True).inspect_response(json.dumps(raw))
     assert result["facts"] == []
     assert result["semantic_qualification"] == "unproven"
+
+
+def _question_raw():
+    return {"contract": QUESTION_CONTRACT, "decisions": [{
+        "beat_index": 0, "meanings": [], "questions": [{
+            "requested_information": "当时家里是什么情况", "premises": _compact_raw()["decisions"][0]["meanings"],
+        }],
+    }]}
+
+
+def test_question_premise_has_its_own_binding_and_cannot_disappear_into_requested_answer():
+    prep = prepare_candidate_meaning(beats=(TEXT,), compact=True, explicit_questions=True)
+    result = prep.inspect_response(json.dumps(_question_raw()))
+    assert result["facts"][0]["fact_id"] == "b0.q0.f0"
+    assert result["facts"][0]["assertion_status"] == "presupposed"
+    assert result["facts"][0]["proposition"] == "用户曾送角色出发。"
+    assert result["facts"][0]["original_text"] == TEXT
+    assert result["receipt_authority"] is False
+    assert "requested_unknowns" not in prep.request()["messages"][0]["content"]
+    raw = _question_raw()
+    raw["decisions"][0]["questions"][0]["premises"][0]["mode"] = "current_private_expression"
+    with pytest.raises(ValueError):
+        prep.inspect_response(json.dumps(raw))
+
+
+def test_question_premise_mapping_is_usable_without_giving_source_probe_original_text():
+    from companion_daemon.world_v2.visible_meaning_source_review import prepare_meaning_source_review
+    from test_visible_source_subject_authority import _report_sources
+
+    meaning = prepare_candidate_meaning(beats=(TEXT,), compact=True, explicit_questions=True)
+    source = prepare_meaning_source_review(meaning=meaning, meaning_raw=json.dumps(_question_raw()), sources=_report_sources(), source_only=True)
+    body = json.loads(source.request()["messages"][1]["content"])
+    assert body["fixed_facts"][0]["assertion_status"] == "presupposed"
+    assert body["fixed_facts"][0]["eligible_reading_ids"] == ["r0"]
+    assert "original_text" not in body["fixed_facts"][0]
+
+
+def test_open_question_has_empty_premises_but_does_not_acquire_semantic_qualification():
+    raw = _question_raw()
+    raw["decisions"][0]["questions"][0]["premises"] = []
+    result = prepare_candidate_meaning(beats=("想换个话题吗？",), compact=True, explicit_questions=True).inspect_response(json.dumps(raw))
+    assert result["facts"] == []
+    assert result["semantic_qualification"] == "unproven"
+    with pytest.raises(ValueError, match="require the compact"):
+        prepare_candidate_meaning(beats=(TEXT,), explicit_questions=True)

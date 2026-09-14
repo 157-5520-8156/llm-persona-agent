@@ -18,6 +18,7 @@ from .visible_source_witness_experiment import _json, _unique
 LEGACY_CONTRACT = "visible-candidate-meaning.1"
 CONTRACT = "visible-candidate-meaning.2"
 COMPACT_CONTRACT = "visible-candidate-meaning.3"
+QUESTION_CONTRACT = "visible-candidate-meaning.4"
 Role = Literal["companion", "counterpart", "other", "none"]
 
 
@@ -90,6 +91,26 @@ class CompactMeaningResponse(FrozenModel):
     decisions: tuple[CompactMeaningBeat, ...] = Field(min_length=1, max_length=16)
 
 
+class QuestionPremise(CompactMeaningStatement):
+    mode: Literal["actual_event_or_state", "past_intention", "past_utterance"]
+
+
+class QuestionMeaning(FrozenModel):
+    requested_information: str = Field(min_length=1, max_length=1024)
+    premises: tuple[QuestionPremise, ...] = Field(max_length=8)
+
+
+class QuestionMeaningBeat(FrozenModel):
+    beat_index: int = Field(ge=0, le=15)
+    meanings: tuple[CompactMeaningStatement, ...] = Field(max_length=16)
+    questions: tuple[QuestionMeaning, ...] = Field(max_length=8)
+
+
+class QuestionMeaningResponse(FrozenModel):
+    contract: Literal["visible-candidate-meaning.4"]
+    decisions: tuple[QuestionMeaningBeat, ...] = Field(min_length=1, max_length=16)
+
+
 @dataclass(frozen=True)
 class PreparedCandidateMeaning:
     payload_json: str
@@ -103,7 +124,7 @@ class PreparedCandidateMeaning:
 
     def inspect_response(self, raw: str) -> dict:
         packet = json.loads(self.payload_json)
-        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT, COMPACT_CONTRACT}:
+        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT}:
             raise ValueError("unsupported candidate meaning contract")
         if len(raw.encode()) > 131072:
             raise ValueError("candidate meaning response exceeds bound")
@@ -111,6 +132,7 @@ class PreparedCandidateMeaning:
         response_type = {
             LEGACY_CONTRACT: MeaningResponse, CONTRACT: MeaningResponseV2,
             COMPACT_CONTRACT: CompactMeaningResponse,
+            QUESTION_CONTRACT: QuestionMeaningResponse,
         }[packet["contract"]]
         response = response_type.model_validate_json(_json(value), strict=True)
         if [d.beat_index for d in response.decisions] != list(range(len(packet["beats"]))):
@@ -118,7 +140,7 @@ class PreparedCandidateMeaning:
         facts = []
         private_meanings = []
         for beat, original in zip(response.decisions, packet["beats"], strict=True):
-            if isinstance(beat, CompactMeaningBeat):
+            if isinstance(beat, (CompactMeaningBeat, QuestionMeaningBeat)):
                 # The input Beat index owns its original text. The model does
                 # not recopy it or generate fragment offsets. Every Beat must
                 # still appear exactly once; semantic exhaustiveness remains a
@@ -130,6 +152,15 @@ class PreparedCandidateMeaning:
                         "beat_index": beat.beat_index, "part_index": 0,
                         "original_text": original, **fact.model_dump(mode="json"),
                     })
+                if isinstance(beat, QuestionMeaningBeat):
+                    for question_index, question in enumerate(beat.questions):
+                        for fact_index, fact in enumerate(question.premises):
+                            facts.append({
+                                "fact_id": f"b{beat.beat_index}.q{question_index}.f{fact_index}",
+                                "beat_index": beat.beat_index, "part_index": 0,
+                                "question_index": question_index, "assertion_status": "presupposed",
+                                "original_text": original, **fact.model_dump(mode="json"),
+                            })
                 continue
             if "".join(p.text for p in beat.parts) != original:
                 raise ValueError("candidate meaning must preserve complete verbatim coverage")
@@ -152,9 +183,13 @@ class PreparedCandidateMeaning:
         }
 
 
-def prepare_candidate_meaning(*, beats: tuple[str, ...], compact: bool = False) -> PreparedCandidateMeaning:
+def prepare_candidate_meaning(
+    *, beats: tuple[str, ...], compact: bool = False, explicit_questions: bool = False,
+) -> PreparedCandidateMeaning:
     if not 1 <= len(beats) <= 16 or any(not isinstance(b, str) or not b or len(b) > 4096 for b in beats):
         raise ValueError("candidate meaning requires one to sixteen bounded nonempty Beats")
+    if explicit_questions and not compact:
+        raise ValueError("explicit questions require the compact meaning transport")
     system = (
         "你是候选发言的语义读取器，不扮演角色，也不判断它是否真实或允许发送。"
         "输入只有角色即将说的原句，没有事实证据。请先忠实解释原句，不要修正错误、找借口或把句子读成更容易被证明的意思。"
@@ -197,6 +232,17 @@ def prepare_candidate_meaning(*, beats: tuple[str, ...], compact: bool = False) 
         ).replace(
             "time_expression保留原句时间含义，不明确时写不明确；polarity必须填affirmative（肯定）、negative（否定）或uncertain（不确定）。",
             "不明确的时间保持不明确，不能自行补成今天、某天或某个年龄。",
+        )
+    if explicit_questions:
+        contract = QUESTION_CONTRACT
+        name = "interpret_visible_candidate_questions_v4"
+        response_type = QuestionMeaningResponse
+        system = system.replace("requested_unknowns", "questions").replace(
+            "问句需分开：questions记录正在询问的未知答案，meanings记录已经当作真的前提。",
+            "问句及要求对方描述的请求放入questions：requested_information写要知道的答案；premises逐项写该问题已预设的命题。"
+            "前提不等于世界已证实的事实，也不等于用户给出的答案；它是原句成立所依赖的过去事件、当前状态或主体关系。"
+            "不要因为事件被包在问句里，就把它整个放进requested_information后漏掉premises。"
+            "开放问题可有空premises；有前提的问题必须展开其施事、受事和时间。不要在meanings重复同一问题前提。",
         )
     request = {
         "messages": [
