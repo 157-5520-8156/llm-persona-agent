@@ -1,0 +1,100 @@
+{
+  "contract": "release-prehistory-real-validation.2",
+  "trial_id": "release-prehistory-real-20260914-03",
+  "code_head": "a0585cfb2161977a21058c255180ad00b50363ad",
+  "completed": false,
+  "stop_reason": "budget_admission_denied",
+  "physical_calls": 8,
+  "known_calls": 6,
+  "unknown_calls": 2,
+  "known_repository_price_estimate_cny": "0.191344299999999996",
+  "new_unresolved_hold_cny": "1.144092",
+  "inherited_usage_and_reservations_unchanged": true,
+  "final_usage_rows": 142,
+  "final_reservation_rows": 140,
+  "source_artifact_hashes_verified": true,
+  "token_counts_and_body_hashes_verified": true,
+  "credential_matches": 0,
+  "turns_consumed": 2,
+  "cold_receipts_verified": 9,
+  "new_cold_receipts_verified": 0,
+  "replay_hash_matches": true,
+  "new_capture_deliveries": [],
+  "additional10_authorization_usage": {
+    "physical_calls": 54,
+    "known_calls": 47,
+    "unknown_calls": 7,
+    "known_estimate_cny": "1.5584023999999999965",
+    "new_unresolved_hold_cny": "4.125843",
+    "all_old_holds_retained": true
+  },
+  "native_known_estimate_cny": "4.1010299999999999969",
+  "native_unknown_hold_cny": "6.484716",
+  "native_committed_estimate_cny": "10.5857459999999999969",
+  "new_whole_allocation_cny": "0",
+  "shared_allocation_owner": "release-recovery-continuation-20260913-08",
+  "result": "real_longer_cue_still_starved_history_and_failed_delivery",
+  "actual_inputs": [
+    {
+      "capture_id": "model-input:e6e9ed4e81df47dea8e6b7f6555fea93",
+      "tool": "character_inbound_initial_v3",
+      "prefetched_history_count": 0,
+      "reviewed_history_count": 0,
+      "prefetched_sources_also_named_in_working_materials": 1
+    },
+    {
+      "capture_id": "model-input:d231b77c1b184cf699c2f51c835e3bbd",
+      "tool": "visible_beat_source_verdict_v8",
+      "prefetched_history_count": 0,
+      "reviewed_history_count": 0,
+      "prefetched_sources_also_named_in_working_materials": 0
+    },
+    {
+      "capture_id": "model-input:c04aa2c27b474de09ea6f09b1ec43b87",
+      "tool": "character_inbound_initial_v3",
+      "prefetched_history_count": 0,
+      "reviewed_history_count": 0,
+      "prefetched_sources_also_named_in_working_materials": 1
+    },
+    {
+      "capture_id": "model-input:a3a6726aa5a843bd9beb27be0e4320d1",
+      "tool": "character_inbound_initial_v3",
+      "prefetched_history_count": 0,
+      "reviewed_history_count": 0,
+      "prefetched_sources_also_named_in_working_materials": 1
+    },
+    {
+      "capture_id": "model-input:303631c3b8c24d7bbbd75dee5d5eb735",
+      "tool": "visible_beat_source_verdict_v8",
+      "prefetched_history_count": 0,
+      "reviewed_history_count": 0,
+      "prefetched_sources_also_named_in_working_materials": 0
+    },
+    {
+      "capture_id": "model-input:20b4c71e5a5c49d4ac2de395ced99b21",
+      "tool": "character_inbound_initial_v3",
+      "prefetched_history_count": 0,
+      "reviewed_history_count": 0,
+      "prefetched_sources_also_named_in_working_materials": 1
+    }
+  ],
+  "findings": [
+    "The hybrid.4 change fixes the original frozen-corpus cue and automatic-prefetch review wiring offline, but did not provide historical evidence in this new natural-language conversation.",
+    "The first longer, more considerate question still produced prefetch of old appraisal and private-impression material; a returned appraisal identity was already named in the current working context. Exact source/proof and selection effects require further diagnosis before implementing exclusion.",
+    "Actual author drafts attempted to mention high-school journal participation, but reviewer requests had no recalled historical source and rejected the statement. Draft willingness to respond is not successful memory retrieval or delivered speech.",
+    "The first input ended primary_timeout; the second ended primary_exception. Two cancelled calls have unknown billing. No new character delivery or review receipt exists.",
+    "The native cap of 11 CNY stopped another reservation after committed spend plus unresolved holds reached 10.585746 CNY. This does not mean 11 CNY was spent or the additional 10 CNY pool was wholly consumed. All unknown holds are retained."
+  ],
+  "next_work": [
+    "Reproduce the longer cue against its exact context/corpus and test whether source-exact removal of already-present readings frees recall space. Avoid semantic keyword rules or dropping unshown/changed historical versions.",
+    "Evaluate query-cue coverage and byte-budget allocation across ordinary varied wording, alongside subjective memory and relationship continuity. No automatic forced disclosure.",
+    "Resolve legacy persona-background claims versus retrieved/retained autobiography, formal rich history and summary/forgetting support; original source-review and correction-latency release blockers remain.",
+    "No new paid trial until the new counterexample and review pipeline are covered offline; reuse this closed world and all billing records in any future trial."
+  ],
+  "qualification": "manual_only / qualification_incomplete; no release, real QQ or production changes; goal active",
+  "evidence_sha256": {
+    "output/private-audits/release-prehistory-real-20260914-03/reconciliation.json": "db252784f1befa3ca4687712bb888990f93f3a0df95ef63f5429070d0804b597",
+    "output/private-audits/release-prehistory-real-20260914-03/run/manifest.json": "82b3df8e664c1bc8ca05b128b8d5cfd98e5455ea73797db10c2176abd6f9ee65",
+    "output/private-audits/release-prehistory-real-20260914-03/run/model-inputs.jsonl": "15a08ad93a2892af3fde834a2cc971a7ca45216e25b55e966f58981ef3efd2d5"
+  }
+}

@@ -104,7 +104,11 @@ under the existing byte cap without altering the legacy Context rank policy or
 requiring another provider call. Direct prefetch readings and wrapped selected
 recall have separate presentation shapes; source review verifies each exact
 shape. The frozen failed corpus now retrieves the school memory offline; real
-conversation qualification after this change remains pending.
+conversation qualification after this change failed on longer ordinary wording:
+old appraisal/private-impression hits still displaced history; reviewer inputs
+lacked historical evidence, and no reply was delivered. Source-exact overlap
+with already-present working context and allocation under the existing byte cap
+remain the next diagnosis. Do not infer role silence from these technical failures.
 _Avoid_: Retroactive runtime Experience, improvised chat evidence
 
 ## Autobiographical Memory
