@@ -150,7 +150,86 @@
       "new_version_10_receipts": 0,
       "artifact_directory": "output/private-audits/release-chat-independent-20260914-03",
       "finding": "Matching type alongside union $ref still rejected by beta parser: missing items. Branch roots need inline schemas; no new character output."
+    },
+    {
+      "code_head": "ea074bf5fdffd2ab8c1be99f92cab8d507d24d81",
+      "stop_reason": "operator_stopped",
+      "completed": false,
+      "physical_calls": 9,
+      "billing_states": {
+        "known": 7,
+        "unknown": 2
+      },
+      "known_native_token_joins_verified": 7,
+      "all_captured_terminal_body_hashes_verified": true,
+      "transport_only_unknown_calls": [],
+      "inherited_rows_unchanged": true,
+      "known_repository_estimate_cny": "0.113818999999999999",
+      "new_unknown_hold_cny": "0.607353",
+      "usage_rows": 640,
+      "reservation_rows": 637,
+      "author_requests": [
+        {
+          "capture_id": "model-input:4f65667340024668961a3f196bc88f8a",
+          "tool_bytes": 24827,
+          "schema_reference_count": 70,
+          "latency_ms": 4629,
+          "prompt_tokens": 41107,
+          "billing_state": "known"
+        },
+        {
+          "capture_id": "model-input:c2cb6b7b36d14b8cb51167ac6e344ffc",
+          "tool_bytes": 24827,
+          "schema_reference_count": 70,
+          "latency_ms": 4848,
+          "prompt_tokens": 40479,
+          "billing_state": "known"
+        }
+      ],
+      "cold_receipt_versions": {
+        "visible-source-review-receipt.6": 6,
+        "visible-source-review-receipt.7": 1,
+        "visible-source-review-receipt.8": 6
+      },
+      "replay_hash_matches": true,
+      "test_spend_cap_cny": null,
+      "monthly_product_cost_target_cny": 100,
+      "real_qq": false,
+      "production_database": false,
+      "qualification": "manual_only / qualification_incomplete",
+      "captured_delivery_count": 0,
+      "new_character_deliveries": 0,
+      "new_version_10_receipts": 0,
+      "artifact_directory": "output/private-audits/release-chat-independent-20260914-04",
+      "finding": "Native strict provider accepts both 24827-byte tool requests. Both authors and both reader pairs complete; both source calls cancelled at unchanged deadline. Wire reduction did not show a corresponding prompt-token decrease; contexts differ, so this is not a controlled token-savings measurement.",
+      "native_schema_accepted": true,
+      "original_failed_schemas_exact_expansion_verified": 3,
+      "stage_latency_ms": [
+        {
+          "author": 4629,
+          "readers_parallel": [
+            3300,
+            1908
+          ],
+          "source_cancelled_after": 2085
+        },
+        {
+          "author": 4848,
+          "readers_parallel": [
+            3574,
+            1661
+          ],
+          "source_cancelled_after": 1797
+        }
+      ]
     }
   ],
-  "qualification": "manual_only / qualification_incomplete"
+  "qualification": "manual_only / qualification_incomplete",
+  "continuation": {
+    "run": "output/private-audits/release-chat-independent-20260914-04/run",
+    "usage_rows": 640,
+    "reservation_rows": 637,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100
+  }
 }
