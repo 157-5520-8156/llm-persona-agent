@@ -1,0 +1,139 @@
+{
+  "contract": "release-prehistory-real-boundary-validation.1",
+  "date": "2026-09-14",
+  "real_trial": {
+    "trial_id": "release-prehistory-real-20260914-05",
+    "code_head": "df7b199a80f9e1355ae4de43bc108c20fce64d1c",
+    "completed": true,
+    "stop_reason": "completed",
+    "physical_calls": 7,
+    "known_calls": 5,
+    "unknown_calls": 2,
+    "known_repository_price_estimate_cny": "0.202164800000000004",
+    "new_unresolved_hold_cny": "1.165359",
+    "inherited_usage_and_reservations_unchanged": true,
+    "final_usage_rows": 156,
+    "final_reservation_rows": 153,
+    "turns_consumed": 1,
+    "cold_receipts_verified": 9,
+    "new_cold_receipts_verified": 0,
+    "replay_hash_matches": true,
+    "call_costs": [
+      {
+        "id": 150,
+        "purpose": "inbound_turn",
+        "status": "succeeded",
+        "billing_state": "known",
+        "latency_ms": 6729,
+        "known_estimate_cny": "0.0510419"
+      },
+      {
+        "id": 151,
+        "purpose": "source_review",
+        "status": "succeeded",
+        "billing_state": "known",
+        "latency_ms": 2220,
+        "known_estimate_cny": "0.0524706"
+      },
+      {
+        "id": 152,
+        "purpose": "inbound_turn",
+        "status": "failed",
+        "billing_state": "unknown",
+        "latency_ms": 1406,
+        "known_estimate_cny": null
+      },
+      {
+        "id": 153,
+        "purpose": "interaction_fact_draft",
+        "status": "succeeded",
+        "billing_state": "known",
+        "latency_ms": 1066,
+        "known_estimate_cny": "0.0012883"
+      },
+      {
+        "id": 154,
+        "purpose": "inbound_turn",
+        "status": "succeeded",
+        "billing_state": "known",
+        "latency_ms": 5550,
+        "known_estimate_cny": "0.045098900000000004"
+      },
+      {
+        "id": 155,
+        "purpose": "source_review",
+        "status": "succeeded",
+        "billing_state": "known",
+        "latency_ms": 2732,
+        "known_estimate_cny": "0.0522651"
+      },
+      {
+        "id": 156,
+        "purpose": "inbound_turn",
+        "status": "failed",
+        "billing_state": "unknown",
+        "latency_ms": 2097,
+        "known_estimate_cny": null
+      }
+    ],
+    "additional10_authorization_usage": {
+      "physical_calls": 67,
+      "known_calls": 56,
+      "unknown_calls": 11,
+      "known_estimate_cny": "1.8679413000000000004",
+      "new_unresolved_hold_cny": "6.223329",
+      "all_old_holds_retained": true
+    },
+    "native_known_estimate_cny": "4.4105689000000000008",
+    "native_unknown_hold_cny": "8.582202",
+    "native_committed_estimate_cny": "12.9927709000000000008",
+    "new_whole_allocation_cny": "0",
+    "shared_allocation_owner": "release-recovery-continuation-20260913-08"
+  },
+  "native_cap_cny": "14.00",
+  "original_shared_native_cap_cny": "14.60",
+  "behavior_findings": {
+    "fresh_inputs": 1,
+    "new_deliveries": 0,
+    "new_accepted_review_receipts": 0,
+    "author_attempts_with_complete_draft": 2,
+    "explicit_world_claims_in_both_drafts": [],
+    "unsupported_content": [
+      "arguing over a title for half an evening and finding the printed result ugly",
+      "several people arguing over page layout"
+    ],
+    "whole_body_review": "Both real v8 reviews rejected the unsupported autobiographical beat despite empty world_claims; other private-state beats remained source-free.",
+    "correction": "Both Core correction calls were cancelled by the ordinary deadline; 1406 ms and 2097 ms of recorded provider latency respectively.",
+    "meaning_of_completed": "Bounded scenario exhausted normally, not conversational or release qualification."
+  },
+  "prompt_findings": {
+    "observed_in_actual_author_request": [
+      "Chinese boundary allowed unwritten color and fuzzy recall",
+      "Identity instruction allowed fuzzy private memory",
+      "General author instruction allowed fuzzy memory without world_claim"
+    ],
+    "causality": "The conflicting permission is verified; causal contribution versus archive sparsity or provider adherence remains unqualified.",
+    "fix": "Shipped configuration and shared author prompt distinguish private feelings/imagination from assertions of autobiographical events, including pre-start history. Uncertainty cannot supply missing details. No local prose classifier, automatic fact promotion, extra model call or forced reply.",
+    "new_profile_sha256": "f36badcfb16554b29c8654b43b929ad039c84e78f7538b9d8a1f18bc10457046",
+    "next_trial_profile_requirement": "Use this new profile hash, not inherited plan.profile_sha256. Keep the already-reviewed imported records and original source provenance unchanged."
+  },
+  "offline_verification": {
+    "regression_tests": 68,
+    "red_test": "shipped identity previously licensed unwritten autobiography",
+    "existing_cold_receipts": 9,
+    "real_calls_after_prompt_change": 0
+  },
+  "qualification": "manual_only / qualification_incomplete",
+  "remaining": [
+    "Real behavior after prompt change",
+    "Original source-review false acceptance counterexample",
+    "World Author authority and life continuity qualification",
+    "Rich reviewed archive, historical summary/forgetting",
+    "Longitudinal and monthly-cost acceptance",
+    "Invitation/demo final acceptance"
+  ],
+  "private_evidence": [
+    "output/private-audits/release-prehistory-real-20260914-05/reconciliation.json",
+    "output/private-audits/release-memory-color-boundary-20260914/"
+  ]
+}

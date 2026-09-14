@@ -15,8 +15,6 @@ from companion_daemon.world_v2.companion_identity import (
 from companion_daemon.world_v2.present_prompt import (
     affect_material_entries,
     appraisal_material_rows,
-    cache_stable_affect,
-    cache_stable_appraisals,
     cache_stable_recent_dialogue,
     combined_turn_system_lead,
     dialogue_attention_reasons,
@@ -257,7 +255,7 @@ def test_slim_later_with_photo_still_visible_reject() -> None:
         assert "photo" in str(exc).lower() or SLIM_LATER_REQUIRES_TEXT in str(exc)
 
 
-def test_identity_instruction_allows_color_without_silent_fact_upgrade() -> None:
+def test_identity_instruction_allows_private_color_without_invented_history() -> None:
     frame = CompanionIdentityFrame(
         companion_name="沈知栀",
         counterpart_name="geoff",
@@ -271,7 +269,7 @@ def test_identity_instruction_allows_color_without_silent_fact_upgrade() -> None
         first_message="你好呀，我是沈知栀。",
         not_an_assistant=True,
         boundaries=(
-            "主观印象、模糊回忆、未写入的色彩可以出现在聊天里，但不会自动变成 World 硬事实。",
+            "当前感受和联想由你决定；记忆模糊不提供新增经历的依据。",
         ),
     )
     wire = _ExpressionDraftWire.__new__(_ExpressionDraftWire)
@@ -283,7 +281,7 @@ def test_identity_instruction_allows_color_without_silent_fact_upgrade() -> None
     assert "picture already went out" in text
     assert "invent a scene" not in text
     assert "tonight's report" in text
-    assert "不会自动变成 World 硬事实" in text
+    assert "记忆模糊不提供新增经历的依据" in text
 
 
 def test_identity_instruction_leads_with_character_yaml_prose() -> None:
@@ -1358,3 +1356,20 @@ def test_presenting_twice_is_presenting_once() -> None:
     assert recent_dialogue_material_entries(
         twice["inner_life_snapshot"]["materials"]["recent_dialogue"]
     ) == canonical
+
+
+def test_shipped_identity_does_not_license_unwritten_autobiography():
+    from pathlib import Path
+    from companion_daemon.character import load_character
+
+    profile = load_character(str(Path(__file__).resolve().parents[2] / "configs/character.yaml"))
+    wire = _ExpressionDraftWire.__new__(_ExpressionDraftWire)
+    wire._identity_frame = CompanionIdentityFrame(
+        companion_name=profile.name, counterpart_name="用户", base_prompt=profile.base_prompt,
+        background=profile.background, boundaries=tuple(profile.boundaries),
+    )
+    text = wire._identity_instruction()
+    assert "未写入的色彩可以出现在聊天里" not in text
+    assert "fuzzy private memory" not in text
+    assert "uncertainty does not supply missing events" in text
+    assert "do not need external proof" in text

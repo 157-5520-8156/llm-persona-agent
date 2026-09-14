@@ -61,6 +61,17 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Latest boundary evidence: the next real trial produced two unsupported historical
+episodes with empty claims; whole-body v8 review correctly rejected both, followed
+by correction timeouts and zero deliveries. Shipped profile/shared prompt wording
+that allowed unwritten color or fuzzy private memory has been clarified: private
+feelings and imagination remain character-owned; uncertain recall does not supply
+missing autobiographical events, including pre-start ones. This is a prompt fix,
+not a semantic filter or automatic memory creation. 68 checks and 9 old cold
+receipts pass; no real-provider acceptance after this prompt change. Future trials
+must pin the changed profile hash while retaining old archive provenance and all
+usage/unknown holds. Original review/life/longitudinal release gates remain open.
+
 Current 2026-09-14 qualification: hybrid.5 real calls now received the retained
 school excerpt, but explicit `past_world` bookkeeping rejected its Recall ref.
 The request-aware claim matrix now accepts only original selected or sealed,

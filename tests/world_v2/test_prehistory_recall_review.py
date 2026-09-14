@@ -79,6 +79,9 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
                     "cue_kind": "identity", "retention_rationales": ["identity_relevance"],
                     "salience": salience().model_dump(mode="json", exclude={"matrix_digest", "matrix_version"})}}})
         if name == f"character_inbound_initial_v{tool_version}":
+            assert "Subjective color, fuzzy memory" not in body["messages"][0]["content"]
+            assert "uncertainty does not supply missing events" in body["messages"][0]["content"]
+
             if recall_mode == "prefetch":
                 items = user["inner_life_snapshot"]["materials"]["automatic_prefetch"]["items"]
                 history = next(item for item in items if item.get("epistemic_scope") == "character_prehistory")
