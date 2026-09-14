@@ -19,7 +19,8 @@ from .visible_meaning_source_review import (
 from .visible_source_witness_experiment import _json, _unique
 
 LEGACY_CONTRACT = "visible-meaning-fidelity.1"
-CONTRACT = "visible-meaning-fidelity.2"
+DETAILED_CONTRACT = "visible-meaning-fidelity.2"
+CONTRACT = "visible-meaning-fidelity.3"
 CHAIN_CONTRACT = "visible-independent-review-inspection.1"
 
 
@@ -61,7 +62,7 @@ class PreparedMeaningFidelity:
         if indexes != list(range(len(_meaning_pin(meaning)["beats"]))):
             raise ValueError("fidelity must cover every Beat exactly once in order")
         classification_ok = [True] * len(decisions)
-        if pin["contract"] == CONTRACT:
+        if pin["contract"] != LEGACY_CONTRACT:
             interpreted = meaning.inspect_response(pin["meaning_raw"])
             inventory = [*interpreted["facts"], *interpreted.get("private_meanings", [])]
             for index, decision in enumerate(decisions):
@@ -73,6 +74,11 @@ class PreparedMeaningFidelity:
                 classification_ok[index] = decision["factual_coverage_complete"] and all(
                     c["mode_correct"] and c["subject_correct"] for c in checks
                 )
+                if pin["contract"] == CONTRACT:
+                    original = _meaning_pin(meaning)["beats"][index]
+                    if any(not c["original_quote"] or c["original_quote"] not in original for c in checks):
+                        raise ValueError("fidelity quote must occur in the original Beat, not the interpretation")
+                    classification_ok[index] = classification_ok[index] and all(c["proposition_faithful"] for c in checks)
         return {
             "contract": pin["contract"], "preparation_sha256": self.sha256,
             "meaning_preparation_sha256": meaning.sha256,
@@ -91,7 +97,7 @@ def prepare_meaning_fidelity(
     *, meaning: PreparedCandidateMeaning, meaning_raw: str,
     contract: str = CONTRACT,
 ) -> PreparedMeaningFidelity:
-    if contract not in {LEGACY_CONTRACT, CONTRACT}:
+    if contract not in {LEGACY_CONTRACT, DETAILED_CONTRACT, CONTRACT}:
         raise ValueError("unsupported fidelity compilation")
     packet = _meaning_pin(meaning)
     interpreted = meaning.inspect_response(meaning_raw)
@@ -143,7 +149,7 @@ def prepare_meaning_fidelity(
         }}],
         "tool_choice": {"type": "function", "function": {"name": name}},
     }
-    if contract == CONTRACT:
+    if contract != LEGACY_CONTRACT:
         inventory = [*interpreted["facts"], *interpreted.get("private_meanings", [])]
         item = schema["properties"]["decisions"]["items"]
         item["properties"].update({
@@ -183,6 +189,33 @@ def prepare_meaning_fidelity(
         name = "review_candidate_meaning_fidelity_v2"
         request["tools"][0]["function"]["name"] = name
         request["tool_choice"]["function"]["name"] = name
+        if contract == CONTRACT:
+            check = item["properties"]["meaning_checks"]["items"]
+            check["properties"].update({
+                "original_quote": {"type": "string"},
+                "proposition_faithful": {"type": "boolean"},
+            })
+            check["required"].extend(["original_quote", "proposition_faithful"])
+            # Keep each original adjacent to its fallible interpretation. The
+            # former trailing global inventory invited judging its internal
+            # consistency instead of checking it against the original words.
+            body = {"contract": contract, "visible_beats": [{
+                "beat_index": i, "text": text,
+                "candidate_interpretation": interpreted["interpretation"]["decisions"][i],
+                "meaning_inventory": [m for m in body["meaning_inventory"] if m["beat_index"] == i],
+            } for i, text in enumerate(packet["beats"])]}
+            request["messages"][1]["content"] = _json(body)
+            request["messages"][0]["content"] += (
+                "原句text和待检解释现在逐Beat相邻。每个meaning_check先从该Beat的text摘录original_quote（原文子串），"
+                "再将待检proposition与这段原句比较：proposition_faithful检查其施事、受事、事件、时间和肯否是否忠实。"
+                "subject_correct也必须对照原句，不能只检查subject_role与待检proposition自己是否一致。"
+                "解释可能把原句中的我、你或第三方换掉；即使解释内部自洽也必须拒绝。"
+                "original_quote只能复制text，不得复制待检proposition或其他Beat。"
+                "每项explanation和coverage_explanation各用一个简短分句，避免重复整句解释。"
+            )
+            name = "review_candidate_meaning_fidelity_v3"
+            request["tools"][0]["function"]["name"] = name
+            request["tool_choice"]["function"]["name"] = name
     return PreparedMeaningFidelity(_json({
         "contract": contract, "meaning_preparation_json": meaning.payload_json,
         "meaning_raw": meaning_raw, "request": request,

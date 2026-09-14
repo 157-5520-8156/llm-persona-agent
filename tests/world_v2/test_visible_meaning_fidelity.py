@@ -8,7 +8,7 @@ from companion_daemon.world_v2.visible_candidate_meaning import (
     PreparedCandidateMeaning, prepare_candidate_meaning,
 )
 from companion_daemon.world_v2.visible_meaning_fidelity import (
-    CONTRACT, LEGACY_CONTRACT, PreparedMeaningFidelity, inspect_independent_review, prepare_meaning_fidelity,
+    CONTRACT, DETAILED_CONTRACT, LEGACY_CONTRACT, PreparedMeaningFidelity, inspect_independent_review, prepare_meaning_fidelity,
 )
 from companion_daemon.world_v2.visible_meaning_source_review import (
     SOURCE_ONLY_CONTRACT, prepare_meaning_source_review,
@@ -171,8 +171,8 @@ def _v2_fixture():
     part = value["decisions"][0]["parts"][0]
     part["meanings"].append({**part["meanings"][0], "mode": "current_private_expression"})
     raw = json.dumps(value)
-    prep = prepare_meaning_fidelity(meaning=meaning, meaning_raw=raw)
-    response = {"contract": CONTRACT, "decisions": [{
+    prep = prepare_meaning_fidelity(meaning=meaning, meaning_raw=raw, contract=DETAILED_CONTRACT)
+    response = {"contract": DETAILED_CONTRACT, "decisions": [{
         "beat_index": 0, "faithful_complete": True, "issues": [],
         "factual_coverage_complete": True, "coverage_explanation": "Test assessment",
         "meaning_checks": [{"meaning_id": f"b0.p0.f{i}", "mode_correct": True,
@@ -214,9 +214,31 @@ def test_v2_must_check_all_classifications_including_private(fault):
 
 def test_v2_empty_inventory_requires_empty_checks_and_explicit_coverage_assessment():
     meaning, raw, _ = _fixture(no_facts=True)
-    prep = prepare_meaning_fidelity(meaning=meaning, meaning_raw=raw)
+    prep = prepare_meaning_fidelity(meaning=meaning, meaning_raw=raw, contract=DETAILED_CONTRACT)
     _, response = _v2_fixture()
     response["decisions"][0]["meaning_checks"] = []
     response["decisions"][0]["factual_coverage_complete"] = False
     assert prep.inspect_response(json.dumps(response))["beat_fidelity"] == ["rejected"]
     assert prep.request()["tools"][0]["function"]["parameters"]["properties"]["decisions"]["items"]["properties"]["meaning_checks"]["items"]["properties"]["meaning_id"] == {"type": "string"}
+
+
+@pytest.mark.parametrize("fault", ["valid", "foreign_quote", "empty_quote", "altered_proposition"])
+def test_v3_quotes_original_and_rejects_self_consistent_but_unfaithful_interpretation(fault):
+    old, response = _v2_fixture()
+    pin = json.loads(old.payload_json)
+    prep = prepare_meaning_fidelity(meaning=PreparedCandidateMeaning(pin["meaning_preparation_json"]), meaning_raw=pin["meaning_raw"])
+    body = json.loads(prep.request()["messages"][1]["content"])
+    assert set(body) == {"contract", "visible_beats"}
+    assert body["visible_beats"][0]["text"] == TEXT
+    assert len(body["visible_beats"][0]["meaning_inventory"]) == 2
+    response["contract"] = CONTRACT
+    checks = response["decisions"][0]["meaning_checks"]
+    for check in checks:
+        check.update(original_quote="你送我出发", proposition_faithful=True)
+    if fault in {"foreign_quote", "empty_quote"}:
+        checks[0]["original_quote"] = "家人送用户出发" if fault == "foreign_quote" else ""
+        with pytest.raises(ValueError, match="quote"):
+            prep.inspect_response(json.dumps(response))
+    else:
+        checks[0]["proposition_faithful"] = fault == "valid"
+        assert prep.inspect_response(json.dumps(response))["beat_fidelity"] == ["faithful_complete" if fault == "valid" else "rejected"]
