@@ -61,6 +61,16 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Offline creation tooling now prepares bounded author/reviewer requests from a
+read-only original WorldStarted, accepted archive manifests and pinned profile.
+A review package must cover the exact brief, document and every record before it
+can become a ReviewedPrehistoryArchive; importing and remembering remain separate.
+Reviewer identity is operator-provided provenance, not independent-execution proof.
+A 24-record Celia life draft (2012-2026) is shipped with a readable timeline, still
+unreviewed and inactive. 23 workflow checks and 50 adjacent regressions pass with
+no paid calls or ledger writes. Independent semantic review, real retention/recall
+and historical summaries remain outstanding, alongside the original release gates.
+
 Paired expression now compares selected historical readings using the same chat
 semantic normalization and exact source_ref at both materializations. Full record
 and archive proof remains independently validated in the original requirement.

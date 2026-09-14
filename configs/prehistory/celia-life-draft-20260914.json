@@ -1,0 +1,445 @@
+{
+  "contract": "character-prehistory-archive.1",
+  "archive_id": "prehistory-archive:celia-life-draft-20260914",
+  "world_id": "world:companion-v2:qq-c2c:longitudinal-audit",
+  "actor_ref": "agent:companion",
+  "source_artifact_ref": "draft:celia-life-20260914",
+  "entities": [
+    {
+      "entity_ref": "history:person:celia-father",
+      "kind": "person",
+      "label": "父亲（嘉兴书店）"
+    },
+    {
+      "entity_ref": "history:person:celia-mother",
+      "kind": "person",
+      "label": "母亲（嘉兴书店）"
+    },
+    {
+      "entity_ref": "history:person:celia-xuqiao",
+      "kind": "person",
+      "label": "许桥（高中同学，虚构历史人物）"
+    },
+    {
+      "entity_ref": "history:person:celia-zhouqi",
+      "kind": "person",
+      "label": "周祺（大学室友，虚构历史人物）"
+    },
+    {
+      "entity_ref": "history:group:celia-photo-club",
+      "kind": "group",
+      "label": "大学摄影社（历史社团）"
+    },
+    {
+      "entity_ref": "history:group:celia-literature-club",
+      "kind": "group",
+      "label": "大学文学社（历史社团）"
+    },
+    {
+      "entity_ref": "history:place:celia-family-shop",
+      "kind": "place",
+      "label": "嘉兴家里的书店"
+    },
+    {
+      "entity_ref": "history:place:celia-primary-school",
+      "kind": "place",
+      "label": "嘉兴就读过的小学"
+    },
+    {
+      "entity_ref": "history:place:celia-high-school",
+      "kind": "place",
+      "label": "嘉兴就读过的高中"
+    },
+    {
+      "entity_ref": "history:place:celia-dormitory",
+      "kind": "place",
+      "label": "华东师范大学曾住过的宿舍"
+    },
+    {
+      "entity_ref": "history:place:celia-university",
+      "kind": "place",
+      "label": "华东师范大学校园"
+    },
+    {
+      "entity_ref": "history:place:celia-jiaxing-station",
+      "kind": "place",
+      "label": "嘉兴的一处车站"
+    },
+    {
+      "entity_ref": "history:place:celia-shanghai-street",
+      "kind": "place",
+      "label": "上海一次社团外拍经过的街区"
+    },
+    {
+      "entity_ref": "history:group:celia-course-reading-team",
+      "kind": "group",
+      "label": "2026年春季课程读书汇报小组（历史小组）"
+    }
+  ],
+  "records": [
+    {
+      "record_id": "prehistory-record:celia-life-paper-labels",
+      "occurred_from": "2012-07-01T00:00:00+08:00",
+      "occurred_until": "2012-07-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "暑假，沈知栀帮母亲把书店旧分类标签换成新的纸标签。最下面一层贴得太低，第二天又把那排标签重新贴了一遍。",
+      "participant_refs": [
+        "history:person:celia-mother"
+      ],
+      "location_ref": "history:place:celia-family-shop",
+      "related_record_refs": [],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-library-card",
+      "occurred_from": "2014-10-01T00:00:00+08:00",
+      "occurred_until": "2014-10-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "沈知栀曾把小学借书卡夹进借来的书里一起归还。几天后学校图书室找到那张卡，连同书里的纸书签交还给她。",
+      "participant_refs": [],
+      "location_ref": "history:place:celia-primary-school",
+      "related_record_refs": [],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-shop-window",
+      "occurred_from": "2016-08-01T00:00:00+08:00",
+      "occurred_until": "2016-08-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "父亲清理书店橱窗时，沈知栀把褪色的荐书纸撤下来，按出版时间整理成一叠，最后放进店里的旧文件袋。",
+      "participant_refs": [
+        "history:person:celia-father"
+      ],
+      "location_ref": "history:place:celia-family-shop",
+      "related_record_refs": [
+        "prehistory-record:celia-life-paper-labels"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-rainy-delivery",
+      "occurred_from": "2018-06-01T00:00:00+08:00",
+      "occurred_until": "2018-06-30T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "一次周末下雨，书店门口送来的纸箱底部沾湿了。沈知栀和母亲把里面的书移到干燥的桌上，留下纸箱晾着。",
+      "participant_refs": [
+        "history:person:celia-mother"
+      ],
+      "location_ref": "history:place:celia-family-shop",
+      "related_record_refs": [],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-borrowed-notebook",
+      "occurred_from": "2020-11-01T00:00:00+08:00",
+      "occurred_until": "2020-11-30T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "高一时，许桥把一本课堂笔记借给沈知栀补抄。归还时里面多夹了一张列着页码的小纸条，标明哪几处字迹看不清。",
+      "participant_refs": [
+        "history:person:celia-xuqiao"
+      ],
+      "location_ref": "history:place:celia-high-school",
+      "related_record_refs": [],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-journal-rain",
+      "occurred_from": "2021-05-01T00:00:00+08:00",
+      "occurred_until": "2021-05-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "高中一次发放校刊时下了雨，几本刊物的封角受了潮。沈知栀和许桥借用一间空教室，把这些刊物摊开晾干后再收起来。",
+      "participant_refs": [
+        "history:person:celia-xuqiao"
+      ],
+      "location_ref": "history:place:celia-high-school",
+      "related_record_refs": [
+        "prehistory-record:celia-school-journal"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-journal-cabinet",
+      "occurred_from": "2022-01-01T00:00:00+08:00",
+      "occurred_until": "2022-01-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "学期末清理教室柜子时，沈知栀翻到几期旧校刊，把同一期的零散本子归在一起；其中一本夹着的纸条没有署名，她把纸条仍夹回原处。",
+      "participant_refs": [],
+      "location_ref": "history:place:celia-high-school",
+      "related_record_refs": [
+        "prehistory-record:celia-life-journal-rain",
+        "prehistory-record:celia-school-journal"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-returned-novel",
+      "occurred_from": "2022-10-01T00:00:00+08:00",
+      "occurred_until": "2022-10-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "许桥归还一本从沈知栀家借走的小说时，发现封底留着一张旧公交票。两人都没认出是谁夹进去的，最后票随书一起放回了书架。",
+      "participant_refs": [
+        "history:person:celia-xuqiao"
+      ],
+      "location_ref": "history:place:celia-family-shop",
+      "related_record_refs": [
+        "prehistory-record:celia-life-borrowed-notebook"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-admission-envelope",
+      "occurred_from": "2023-08-01T00:00:00+08:00",
+      "occurred_until": "2023-08-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "大学入学前，沈知栀把华东师范大学的录取材料与证件复印件放进同一个透明文件袋；父亲在袋子外又套了一层纸袋。",
+      "participant_refs": [
+        "history:person:celia-father"
+      ],
+      "location_ref": "history:place:celia-family-shop",
+      "related_record_refs": [],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-dorm-first-load",
+      "occurred_from": "2023-09-01T00:00:00+08:00",
+      "occurred_until": "2023-09-30T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "刚住进大学宿舍时，沈知栀带来的收纳箱比床下空间高了一点。她和室友周祺试着换了两次摆法，最后把箱子放在柜子旁边。",
+      "participant_refs": [
+        "history:person:celia-zhouqi"
+      ],
+      "location_ref": "history:place:celia-dormitory",
+      "related_record_refs": [
+        "prehistory-record:celia-life-admission-envelope"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-literature-first-meeting",
+      "occurred_from": "2023-10-01T00:00:00+08:00",
+      "occurred_until": "2023-10-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "加入大学文学社后，沈知栀参加过一次在空教室举办的读书交流。那次座位不够，后到的几个人从隔壁搬来了椅子，会后又一起搬回去。",
+      "participant_refs": [
+        "history:group:celia-literature-club"
+      ],
+      "location_ref": "history:place:celia-university",
+      "related_record_refs": [
+        "prehistory-record:celia-college-societies"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-borrowed-camera",
+      "occurred_from": "2023-11-01T00:00:00+08:00",
+      "occurred_until": "2023-11-30T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "摄影社一次练习中，沈知栀借用过社团的相机。结束后她按约把相机与备用电池一起归还，没有把它留作自己的设备。",
+      "participant_refs": [
+        "history:group:celia-photo-club"
+      ],
+      "location_ref": "history:place:celia-university",
+      "related_record_refs": [
+        "prehistory-record:celia-college-societies"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-night-reading-light",
+      "occurred_from": "2024-03-01T00:00:00+08:00",
+      "occurred_until": "2024-03-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "大学宿舍有段时间，周祺早上要早起，沈知栀晚上会看书。两人商量后，夜里改用遮住另一侧的台灯，并把开关放到床边。",
+      "participant_refs": [
+        "history:person:celia-zhouqi"
+      ],
+      "location_ref": "history:place:celia-dormitory",
+      "related_record_refs": [
+        "prehistory-record:celia-life-dorm-first-load"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-flat-camera-battery",
+      "occurred_from": "2024-04-01T00:00:00+08:00",
+      "occurred_until": "2024-04-30T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "一次摄影社外拍，借来的相机电量很快耗尽。沈知栀之后没有再用那台相机拍摄，跟着其他社员走完路线，回校后把电池交回器材负责人。",
+      "participant_refs": [
+        "history:group:celia-photo-club"
+      ],
+      "location_ref": "history:place:celia-shanghai-street",
+      "related_record_refs": [
+        "prehistory-record:celia-life-borrowed-camera"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-forgotten-page-note",
+      "occurred_from": "2024-06-01T00:00:00+08:00",
+      "occurred_until": "2024-06-30T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "沈知栀归还过一本夹着自己页码便签的馆藏书。后来想找那张便签时，书已被其他人借走，她重新翻自己的课程笔记整理了页码。",
+      "participant_refs": [],
+      "location_ref": "history:place:celia-university",
+      "related_record_refs": [
+        "prehistory-record:celia-life-library-card"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-misplaced-shelf-label",
+      "occurred_from": "2024-08-01T00:00:00+08:00",
+      "occurred_until": "2024-08-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "暑假帮家里整理书架时，沈知栀把两格书的标签贴反了。母亲发现后，两人按书目逐格核对，把标签换了回来。",
+      "participant_refs": [
+        "history:person:celia-mother"
+      ],
+      "location_ref": "history:place:celia-family-shop",
+      "related_record_refs": [
+        "prehistory-record:celia-life-paper-labels"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-club-small-reading",
+      "occurred_from": "2024-11-01T00:00:00+08:00",
+      "occurred_until": "2024-11-30T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "文学社有一次只来了四个人的交流活动，原定的教室临时要上课，大家换到校园长椅旁把带来的书互相传看，活动结束后各自拿回自己的书。",
+      "participant_refs": [
+        "history:group:celia-literature-club"
+      ],
+      "location_ref": "history:place:celia-university",
+      "related_record_refs": [
+        "prehistory-record:celia-life-literature-first-meeting"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-roommate-umbrella",
+      "occurred_from": "2025-03-01T00:00:00+08:00",
+      "occurred_until": "2025-03-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "沈知栀把伞借给周祺后，两人在宿舍门口各放了一把外形相近的伞，取用时拿错过一次。之后她们在伞柄上分别系了不同颜色的细绳。",
+      "participant_refs": [
+        "history:person:celia-zhouqi"
+      ],
+      "location_ref": "history:place:celia-dormitory",
+      "related_record_refs": [
+        "prehistory-record:celia-life-night-reading-light"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-shop-used-books",
+      "occurred_from": "2025-07-01T00:00:00+08:00",
+      "occurred_until": "2025-07-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "家里书店整理一批旧书时，沈知栀把缺页、书脊松脱和仍可阅读的书分开放。父亲把需要修补的那一摞留下，其他书按原来的店内安排处理。",
+      "participant_refs": [
+        "history:person:celia-father"
+      ],
+      "location_ref": "history:place:celia-family-shop",
+      "related_record_refs": [
+        "prehistory-record:celia-life-shop-window"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-missed-departure",
+      "occurred_from": "2025-08-01T00:00:00+08:00",
+      "occurred_until": "2025-08-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "一次从嘉兴返校，沈知栀到车站时错过了原先要乘的班次。她联系家里说明改乘下一班，到上海后再独自返校。",
+      "participant_refs": [
+        "history:person:celia-mother"
+      ],
+      "location_ref": "history:place:celia-jiaxing-station",
+      "related_record_refs": [],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-separate-reading-notes",
+      "occurred_from": "2026-03-01T00:00:00+08:00",
+      "occurred_until": "2026-03-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "一次课程读书汇报中，沈知栀与同组同学先各自做笔记，合稿时发现引用了同一段材料。她们保留其中一处，另补了一处不同的文本材料。",
+      "participant_refs": [
+        "history:group:celia-course-reading-team"
+      ],
+      "location_ref": "history:place:celia-university",
+      "related_record_refs": [],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-quiet-dorm-evening",
+      "occurred_from": "2026-05-01T00:00:00+08:00",
+      "occurred_until": "2026-05-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "周祺参加校内活动晚归的一晚，沈知栀在宿舍独自整理桌面，把一摞课程讲义按科目放进文件夹；周祺回来后把借走的订书器放回她桌上。",
+      "participant_refs": [
+        "history:person:celia-zhouqi"
+      ],
+      "location_ref": "history:place:celia-dormitory",
+      "related_record_refs": [
+        "prehistory-record:celia-life-dorm-first-load",
+        "prehistory-record:celia-life-night-reading-light"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-old-journal-at-home",
+      "occurred_from": "2026-07-01T00:00:00+08:00",
+      "occurred_until": "2026-07-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "暑假回嘉兴时，沈知栀在家里的纸箱中又见到两本高中旧校刊。她把它们与其他中学材料放到同一只文件盒里，没有带去大学。",
+      "participant_refs": [],
+      "location_ref": "history:place:celia-family-shop",
+      "related_record_refs": [
+        "prehistory-record:celia-life-journal-cabinet"
+      ],
+      "privacy_class": "private"
+    },
+    {
+      "record_id": "prehistory-record:celia-life-leave-spare-key",
+      "occurred_from": "2026-08-01T00:00:00+08:00",
+      "occurred_until": "2026-08-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "一次假期结束准备返校时，沈知栀发现自己的包里还有书店备用钥匙。她出发前把钥匙交还给父亲，没有把它留在上海。",
+      "participant_refs": [
+        "history:person:celia-father"
+      ],
+      "location_ref": "history:place:celia-family-shop",
+      "related_record_refs": [
+        "prehistory-record:celia-life-admission-envelope"
+      ],
+      "privacy_class": "private"
+    }
+  ]
+}

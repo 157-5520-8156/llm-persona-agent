@@ -1,0 +1,61 @@
+{
+  "contract": "release-prehistory-authoring-validation.1",
+  "date": "2026-09-14",
+  "previous_goal_turn": "progress: historical claim compaction mismatch fixed and real trials06/07 closed",
+  "draft": {
+    "path": "configs/prehistory/celia-life-draft-20260914.json",
+    "readable_timeline": "configs/prehistory/README.md",
+    "record_count": 24,
+    "historical_entities": 14,
+    "years": "2012-2026",
+    "status": "unreviewed_creation_candidate",
+    "document_hash": "b014d7a8b0d3ad850e8f54fd508d76f1169b82e7e86c4d18a595d336848eb32a",
+    "manifest_hash": "dd10ba7097c7d1e4640bbab3bc40446ca9f438fe834b7884b348898aabb94fc3",
+    "new_fiction_author": "Codex in this goal turn; not source-extracted and not approved",
+    "accepted_history_anchors_preserved": 2
+  },
+  "workflow": {
+    "cli": "scripts/prepare_character_prehistory.py",
+    "operations": [
+      "brief from read-only original WorldStarted and accepted manifests",
+      "author-request",
+      "review-request with exact brief/document/record hashes",
+      "package-reviewed after complete approved operator-supplied review"
+    ],
+    "canonical_packet_byte_limit": 96000,
+    "author_request_bytes": 8081,
+    "review_request_bytes": 25311,
+    "reviewer_provenance": "Operator-supplied identity and canonical review payload hash; different labels alone do not establish independent execution.",
+    "runtime_side_effects": "None. No provider calls, ledger writes, default activation or automatic memory retention."
+  },
+  "verification": {
+    "workflow_tests": 23,
+    "adjacent_existing_tests": 50,
+    "distinct_total_tests": 73,
+    "real_closed_database_read": {
+      "original_start": "2026-09-14T01:00:00+00:00",
+      "accepted_records": 2,
+      "draft_records": 24,
+      "historical_entities": 14,
+      "document_hash": "b014d7a8b0d3ad850e8f54fd508d76f1169b82e7e86c4d18a595d336848eb32a",
+      "manifest_hash": "dd10ba7097c7d1e4640bbab3bc40446ca9f438fe834b7884b348898aabb94fc3",
+      "source_event_hashes_verified": true,
+      "source_frozen_files_unchanged": true,
+      "review_status": "pending",
+      "paid_calls": 0,
+      "ledger_writes": 0
+    },
+    "approved_fixture_import": "real SQLite import; idempotent, replay consistent, no automatic MemoryCandidate/Experience/NPC",
+    "ruff": "passed",
+    "diff_check": "passed"
+  },
+  "qualification": "manual_only / qualification_incomplete",
+  "not_done": [
+    "Independent semantic review of these 24 records",
+    "Model-backed creation/review execution with recorded usage evidence",
+    "Import/character retention/real recall of the approved rich archive",
+    "Historical summary reading and long-term forgetting/compression",
+    "Original factuality, Appraisal active-head, World Author and monthly-cost release gates"
+  ],
+  "next": "Run a separately recorded semantic review of the full draft within inherited remaining budget, revise any rejected records, then test role-owned retention and recall without creating current-world or user-shared history."
+}
