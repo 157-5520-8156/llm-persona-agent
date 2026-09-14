@@ -129,6 +129,19 @@ def compile_visible_selected_source_context(
                 "kind": "pinned_context_item",
                 "lane": lane,
                 "authority": authority,
+                **({
+                    "scope": "recorded_companion_utterance_only",
+                    "does_not_authorize": (
+                        "This record proves only the companion expression recorded here, "
+                        "with its original actor, time and delivery state. Its quoted content "
+                        "does not independently prove an external action, location, event or "
+                        "past experience. Prior acceptance or repeated telling is not new "
+                        "evidence of that content. A claim about what she previously said may "
+                        "use this record; a claim that the described event actually happened "
+                        "needs the original event evidence. Do not infer that an unsupported "
+                        "event never happened, or that an undelivered expression was heard."
+                    ),
+                } if authority == "companion_expression_record" else {}),
                 "actor_ref": actor,
                 "privacy_class": item["privacy_class"],
                 "availability": selected.availability,

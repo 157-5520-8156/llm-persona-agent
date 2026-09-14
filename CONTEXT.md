@@ -61,6 +61,18 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Latest source-review inspection identifies a concrete self-citation path: the
+frozen v8 false acceptance first cites source 55, an earlier companion utterance
+of the same unsupported seating claim, before lifecycle/environment references.
+The selected-source producer now attaches `recorded_companion_utterance_only`
+scope plus explicit content/delivery non-authority boundaries. This preserves
+speech-recollection evidence, original text and proofs; it does not make a local
+semantic decision. All eight reviewer views carry the annotation. 64 related
+checks and 10 old cold receipts pass. The frozen incorrect verdict still passes
+the structural parser: real entailment improvement remains unqualified, with no
+new paid call. See `docs/audits/release-companion-utterance-scope-validation-2026-09-14.json`.
+
+
 Strict atomic v3 now has an explicit, default-off local schema reference option.
 It factors exact repeated schemas using DeepSeek's documented `$ref` / `$def`;
 expansion must equal the original, and the final wire remains digest-bound.

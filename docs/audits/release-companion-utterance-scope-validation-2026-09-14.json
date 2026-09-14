@@ -1,0 +1,79 @@
+{
+  "scope": "offline evidence inspection and cold receipt compatibility, not semantic repair qualification",
+  "cold_receipts_verified": 10,
+  "source_database_sha256": "897c1ce4d17d353a0da8631de55dc0de1c939e2b0d0ef6eaf84e03b3e88c5ea9",
+  "source_database_unchanged": true,
+  "frozen_false_acceptance": {
+    "beat": "我上午还坐在那一片呢 黑着的时候是真安静",
+    "first_reference_index": 55,
+    "prior_utterance": "我上午就坐在那一片，难怪那么安静",
+    "prior_utterance_at": "2026-09-14T05:01:00Z",
+    "prior_utterance_delivery": "delivered",
+    "other_reference_indexes": [
+      20,
+      11,
+      12,
+      13
+    ],
+    "still_accepted_by_structural_parser": true
+  },
+  "source_table_sha256": "95ffa810020a511417b550e4291e48c1501a51b57f30f1c7be56bb4c37eb6d12",
+  "new_paid_calls": 0,
+  "new_ledger_allocation": 0,
+  "known_release_blocker_remains": true,
+  "contract": "release-companion-utterance-scope-validation.1",
+  "change": "The selected-source producer attaches a recorded-utterance scope and explicit non-authority boundaries to companion dialogue only. Existing scope/does_not_authorize fields survive canonical table and all eight provider views.",
+  "preserved": [
+    "Original dialogue body, actor, timestamp, delivery state and source proofs",
+    "Eligibility to support a claim about recorded speech",
+    "Counterpart report and accepted Fact authority",
+    "Character choice and single constrained correction lifecycle",
+    "Old stored review requests and receipts"
+  ],
+  "validation": {
+    "distinct_tests_passed": 64,
+    "new_http_journey_test": 1,
+    "provider_versions_covered": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "cold_receipts_verified": 10
+  },
+  "semantic_limitation": "The structural parser still accepts the frozen incorrect semantic verdict. This patch supplies missing source-scope information; no model behavior or original false-acceptance fix has been qualified.",
+  "evaluation_controls": [
+    {
+      "beat": "我之前说过上午坐在那里。",
+      "expected": "closed",
+      "required_source": 55,
+      "reason": "recorded utterance only"
+    },
+    {
+      "beat": "我上午还坐在那一片呢 黑着的时候是真安静",
+      "expected": "unclosed",
+      "reason": "speech, plan, lifecycle and environment do not establish seating"
+    },
+    {
+      "beat": "上午去图书馆坐着看书，是我当时的打算。",
+      "expected": "closed",
+      "required_source": 20,
+      "reason": "historical accepted intention only"
+    },
+    {
+      "beat": "我从来没坐过那里。",
+      "expected": "unclosed",
+      "reason": "missing evidence does not establish nonoccurrence"
+    }
+  ],
+  "next_gate": "Metered full-source reviewer comparison of original occurrence claim, recorded-speech positive control and recorded-intention positive control. Preserve all existing budget holds; do not count a source-only comparison as complete dialogue/receipt qualification.",
+  "budget_authority": "release-prehistory-real-20260914-08/run",
+  "remaining_native_budget_cny": "0.4916446",
+  "qualification": "manual_only / qualification_incomplete"
+}
