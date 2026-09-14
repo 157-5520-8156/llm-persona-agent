@@ -1,0 +1,49 @@
+{
+  "contract": "release-unlimited-testing-phase.1",
+  "code_head": "7570c01aed0b11b29bc9061cbf6615baff6968c7",
+  "authorization": {
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "source": "User explicitly removed test budget cap; old unknown reservations retained."
+  },
+  "validation": {
+    "witness_related_tests": 47,
+    "journey_cli_tests": 41,
+    "actual_user_turns": 3,
+    "new_capture_delivered_beats": 8,
+    "all_cold_receipts_structurally_verified": 13,
+    "warning": "Structural receipt verification includes the false-accepted question; it does not prove semantic correctness."
+  },
+  "billing": {
+    "physical_calls": 23,
+    "billing_state_counts": {
+      "known": 20,
+      "unknown": 2,
+      "not_billed": 1
+    },
+    "known_repository_estimate_cny": "2.3782967999999999897",
+    "new_unresolved_reservation_cny": "0.933033",
+    "usage_rows": 196,
+    "reservation_rows": 193,
+    "all_pre_authorization_rows_unchanged": true,
+    "all_terminal_capture_hashes_and_native_associations_checked": true,
+    "all_successful_known_usage_matches_provider_response": true,
+    "latest_budget_checkpoint": "output/private-audits/release-source-question-reading-20260914-02/run/world.sqlite",
+    "runtime_checkpoint": "output/private-audits/release-chat-unlimited-20260914-01/run",
+    "reservation_is_not_actual_spend": true
+  },
+  "findings": {
+    "actual_memory_reading": "Admission-envelope history is in the actual first author/reviewer inputs; character declines to tell it.",
+    "journal_details": "Unsupported revision-work detail rejected; same-character correction timed out.",
+    "delivered_failure": "Question changes counterpart family seeing counterpart off into counterpart seeing companion off; v8 labels it source_free and it is delivered.",
+    "user_correction": "Character acknowledges the subject confusion and corrects it after the user points it out.",
+    "witness_transport": "Relative path selection fixes duplicate material-coordinate choice; source scope taxonomy still rejects environmental external_fact readings.",
+    "pro_model": "Stronger non-thinking reviewer also falsely accepts the shared-history question; positive control passes. Its correct rejection of the seating claim is unusable because supported environmental Beats with subject none conflict with the current owner/subject contract.",
+    "thinking": "Forced tool choice rejected with HTTP400; the provider-advertised auto selection then times out at 11 seconds.",
+    "question_guidance": "Two candidate-independent-reading prompt variants reject the false shared-history question but also reject the grounded positive question. First variant contained a case-related family example; neither is a release-qualified repair."
+  },
+  "production_changes": false,
+  "new_review_variants_have_receipt_authority": false,
+  "qualification": "manual_only / qualification_incomplete",
+  "next": "Address source-owner versus asserted-subject semantics and paired positive/negative question coverage before installing any new reviewer. Preserve old frozen receipts; do not replace character decisions with local sentence rules."
+}
