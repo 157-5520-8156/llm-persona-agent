@@ -10,8 +10,7 @@ import hashlib
 import json
 
 from .visible_candidate_meaning import (
-    COMPACT_CONTRACT, CONTRACT as MEANING_CONTRACT, QUESTION_CONTRACT,
-    TAIL_TRANSPORT, PreparedCandidateMeaning, prepare_candidate_meaning,
+    PreparedCandidateMeaning, verify_candidate_meaning_preparation as _meaning_pin,
 )
 from .visible_meaning_source_review import (
     PreparedMeaningSourceReview, _validation, prepare_meaning_source_review,
@@ -22,21 +21,6 @@ LEGACY_CONTRACT = "visible-meaning-fidelity.1"
 DETAILED_CONTRACT = "visible-meaning-fidelity.2"
 CONTRACT = "visible-meaning-fidelity.3"
 CHAIN_CONTRACT = "visible-independent-review-inspection.1"
-
-
-def _meaning_pin(meaning: PreparedCandidateMeaning) -> dict:
-    packet = json.loads(meaning.payload_json, object_pairs_hook=_unique)
-    contract = packet.get("contract")
-    if contract not in {MEANING_CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT}:
-        raise ValueError("unsupported meaning compiler for fidelity review")
-    expected = prepare_candidate_meaning(
-        beats=tuple(packet["beats"]), compact=contract != MEANING_CONTRACT,
-        explicit_questions=contract == QUESTION_CONTRACT,
-        closing_tail_transport=packet.get("wire_transport") == TAIL_TRANSPORT,
-    )
-    if expected.payload_json != meaning.payload_json:
-        raise ValueError("meaning preparation differs from its fixed compiler")
-    return packet
 
 
 @dataclass(frozen=True)

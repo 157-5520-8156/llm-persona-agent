@@ -289,3 +289,19 @@ def prepare_candidate_meaning(
         "contract": contract, "beats": beats, "request": request,
         **({"wire_transport": TAIL_TRANSPORT} if closing_tail_transport else {}),
     }))
+
+
+def verify_candidate_meaning_preparation(meaning: PreparedCandidateMeaning) -> dict:
+    """Recompile the exact evidence-blind request; do not trust a supplied pin."""
+    packet = json.loads(meaning.payload_json, object_pairs_hook=_unique)
+    contract = packet.get("contract")
+    if contract not in {CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT}:
+        raise ValueError("unsupported meaning compiler for fidelity review")
+    expected = prepare_candidate_meaning(
+        beats=tuple(packet["beats"]), compact=contract != CONTRACT,
+        explicit_questions=contract == QUESTION_CONTRACT,
+        closing_tail_transport=packet.get("wire_transport") == TAIL_TRANSPORT,
+    )
+    if expected.payload_json != meaning.payload_json:
+        raise ValueError("meaning preparation differs from its fixed compiler")
+    return packet
