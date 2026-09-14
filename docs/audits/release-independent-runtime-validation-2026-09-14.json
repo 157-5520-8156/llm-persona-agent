@@ -98,6 +98,58 @@
       "new_version_10_receipts": 0,
       "artifact_directory": "output/private-audits/release-chat-independent-20260914-02",
       "finding": "Schema forwarding effective; provider HTTP 400 rejects bare reference inside anyOf (missing type). One explicit system notice is not a character reply."
+    },
+    {
+      "code_head": "7a37dc1d506b13104e2c0ce96db0cd33de00f7a1",
+      "stop_reason": "operator_stopped",
+      "completed": false,
+      "physical_calls": 3,
+      "billing_states": {
+        "not_billed": 2,
+        "known": 1
+      },
+      "known_native_token_joins_verified": 1,
+      "all_captured_terminal_body_hashes_verified": true,
+      "transport_only_unknown_calls": [],
+      "inherited_rows_unchanged": true,
+      "known_repository_estimate_cny": "0.0015493",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 631,
+      "reservation_rows": 628,
+      "author_requests": [
+        {
+          "capture_id": "model-input:15a3a87243534782831fd48564b6333b",
+          "tool_bytes": 26114,
+          "schema_reference_count": 67,
+          "latency_ms": 598,
+          "prompt_tokens": 0,
+          "billing_state": "not_billed"
+        },
+        {
+          "capture_id": "model-input:2287d684002f4c1a9c0e199e370dd9da",
+          "tool_bytes": 26114,
+          "schema_reference_count": 67,
+          "latency_ms": 400,
+          "prompt_tokens": 0,
+          "billing_state": "not_billed"
+        }
+      ],
+      "cold_receipt_versions": {
+        "visible-source-review-receipt.6": 6,
+        "visible-source-review-receipt.7": 1,
+        "visible-source-review-receipt.8": 6
+      },
+      "replay_hash_matches": true,
+      "test_spend_cap_cny": null,
+      "monthly_product_cost_target_cny": 100,
+      "real_qq": false,
+      "production_database": false,
+      "qualification": "manual_only / qualification_incomplete",
+      "captured_delivery_count": 0,
+      "new_character_deliveries": 0,
+      "new_version_10_receipts": 0,
+      "artifact_directory": "output/private-audits/release-chat-independent-20260914-03",
+      "finding": "Matching type alongside union $ref still rejected by beta parser: missing items. Branch roots need inline schemas; no new character output."
     }
   ],
   "qualification": "manual_only / qualification_incomplete"

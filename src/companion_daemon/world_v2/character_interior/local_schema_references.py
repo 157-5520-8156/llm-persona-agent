@@ -68,7 +68,7 @@ def factor_local_schema_references(schema: dict) -> dict:
     count(schema)
     names = {
         wire: f"s{index}" for index, wire in enumerate(sorted(
-            wire for wire, count in counts.items() if count > 1 and len(wire.encode()) >= 160 and "type" in json.loads(wire)
+            wire for wire, count in counts.items() if count > 1 and len(wire.encode()) >= 160
         ))
     }
     definitions = {}
@@ -79,12 +79,9 @@ def factor_local_schema_references(schema: dict) -> dict:
         return _children(node, replace, union_visit=replace_union_branch)
 
     def replace_union_branch(node):
-        result = replace(node)
-        # The actual beta parser requires a type directly on each anyOf branch.
-        # A redundant, matching type keeps the reference losslessly expandable.
-        if isinstance(result, dict) and "$ref" in result:
-            result["type"] = node["type"]
-        return result
+        # Native strict parsing requires the complete branch (type alone still
+        # fails for arrays/objects). References remain valid below that root.
+        return replace_children(node)
 
     def replace(node):
         if not isinstance(node, dict):

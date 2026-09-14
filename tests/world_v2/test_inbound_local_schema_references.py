@@ -36,6 +36,7 @@ def test_all_phase_grammars_expand_exactly_and_keep_decoder(phase, allowed):
         if isinstance(node, dict):
             for branch in node.get("anyOf", []):
                 assert "type" in branch
+                assert "$ref" not in branch
             for child in node.values():
                 check_union_branches(child)
         elif isinstance(node, list):

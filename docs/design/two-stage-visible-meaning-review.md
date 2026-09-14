@@ -178,3 +178,5 @@ these probe outcomes alone do not qualify version 10 for deployment.
 version 10 的两次真实运行仍没有新增角色交付或正式凭据。首次入站及重试均耗尽12秒链路截止；传入的 schema references 开关在 production composer 被吞掉，实际作者仍收到53550字节工具定义。修复开关透传后，实际请求缩至23784字节，但供应商返回400：anyOf分支缺少type。完整失败捕获与累计用量保留于[运行验证](../audits/release-independent-runtime-validation-2026-09-14.json)。
 
 [供应商文档](https://api-docs.deepseek.com/guides/tool_calls/)支持singular `$def`及`$ref`，实际beta解析器仍要求union分支显式type。修复候选只抽取带type的重复定义，在引用的union分支保留同值type；展开器只接受与定义完全相同的type，其他兄弟约束仍拒绝。所有阶段展开后与原始语法完全一致，实际工具定义26114字节（约为原来的49%）。41项schema和完整运行时接线检查通过；原始失败请求仍可展开。供应商实际接受及12秒完整链路需下一次真实运行确认。
+
+第三次实际运行证实仅补type仍不兼容：两次作者请求均返回400，缺少items。最终候选保留每个union分支的完整根结构，仅抽取分支以下及其他位置的重复结构；允许引用完整anyOf容器，既不删除分支也不扩大语法。原有带冗余type的失败schema继续可展开。原40%以上压缩目标和全阶段语法等价检查均保留，下一次实际调用确认供应商兼容性。
