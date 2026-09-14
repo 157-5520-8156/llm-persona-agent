@@ -304,3 +304,46 @@ def test_witness_request_declares_the_forced_tool_contract_without_changing_evid
         k: v for k, v in legacy_packet.items() if k != "output_contract"
     }
     assert _json(legacy) == legacy_before
+
+
+def test_relative_pointer_transport_removes_the_second_material_selection():
+    raw = _response()
+    text = raw['decisions'][0]['parts'][0]['text']
+    prepared = prepare_witness_experiment(
+        beats=(text,), sources=_sources(), relative_pointer_choices=True,
+    )
+    request = prepared.request()
+    schema = request['tools'][0]['function']['parameters']
+    pointer = schema['properties']['decisions']['items']['properties']['parts']['items']['properties']['witnesses']['items']['properties']['pointer']
+    assert '/item/value/text' in pointer['enum']
+    assert not any(p.startswith('/source_materials/') for p in pointer['enum'])
+    Draft202012Validator(schema).validate(raw)
+    assert prepared.inspect_response(_json(raw))['model_verdicts'] == ['closed']
+    raw['decisions'][0]['parts'][0]['witnesses'][0]['pointer'] = '/source_materials/0/item/value/text'
+    assert list(Draft202012Validator(schema).iter_errors(raw))
+    with pytest.raises(ValueError, match='relative pointer choice'):
+        prepared.inspect_response(_json(raw))
+
+
+def test_relative_pointer_mode_keeps_all_source_values_and_old_request_replayable():
+    sources = _sources()
+    old = prepare_witness_experiment(beats=(TEXT,), sources=sources)
+    before = old.payload_json
+    new = prepare_witness_experiment(beats=(TEXT,), sources=sources, relative_pointer_choices=True)
+    a, b = (json.loads(p.payload_json) for p in (old, new))
+    for key in ('sources', 'shown_materials', 'material_indexes', 'beats'):
+        assert a[key] == b[key]
+    assert old.payload_json == before
+    assert a['request']['tool_choice'] != b['request']['tool_choice']
+    assert '/item/value/source_claims/0/authority_payload_hash' not in b['relative_pointer_choices']
+
+
+def test_pointer_choices_preserve_json_pointer_escaping_and_source_resolution():
+    from companion_daemon.world_v2.visible_source_witness_experiment import _relative_pointer_choices, _reading
+    material = {'item': {'value': {'a/b~c': ['quoted', True, None], 'empty': ''}}}
+    paths = _relative_pointer_choices([material])
+    assert '/item/value/a~1b~0c/0' in paths
+    assert '/item/value/a~1b~0c/1' in paths
+    assert '/item/value/empty' not in paths
+    for path in paths:
+        assert _reading(material, path)[0]

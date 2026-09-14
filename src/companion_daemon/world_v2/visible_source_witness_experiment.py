@@ -160,6 +160,30 @@ def _permits(row: dict, scope: Scope, pointer: str) -> bool:
     return True
 
 
+def _relative_pointer_choices(materials: list[dict]) -> list[str]:
+    """Enumerate readable scalar coordinates, never select their semantic use."""
+    paths: set[str] = set()
+
+    def visit(material, value, path):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                visit(material, child, path + "/" + key.replace("~", "~0").replace("/", "~1"))
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(material, child, path + "/" + str(index))
+        elif len(path) <= 512:
+            try:
+                reading, _ = _reading(material, path)
+            except ValueError:
+                return
+            if reading:
+                paths.add(path)
+
+    for material in materials:
+        visit(material, material, "")
+    return sorted(paths)
+
+
 @dataclass(frozen=True)
 class PreparedWitnessExperiment:
     payload_json: str
@@ -192,6 +216,11 @@ class PreparedWitnessExperiment:
                     raise ValueError("source-free part cannot borrow evidence authority")
                 direct = 0
                 for reading in part.witnesses:
+                    if (
+                        "relative_pointer_choices" in packet
+                        and reading.pointer not in packet["relative_pointer_choices"]
+                    ):
+                        raise ValueError("witness must use a displayed relative pointer choice")
                     if reading.source_ref_index >= len(rows):
                         raise ValueError("witness source index is outside the pin")
                     row = rows[reading.source_ref_index]
@@ -245,7 +274,7 @@ class PreparedWitnessExperiment:
 
 
 def prepare_witness_experiment(
-    *, beats: tuple[str, ...], sources: tuple[dict, ...]
+    *, beats: tuple[str, ...], sources: tuple[dict, ...], relative_pointer_choices: bool = False
 ) -> PreparedWitnessExperiment:
     if not 1 <= len(beats) <= 16 or any(not isinstance(b, str) or not b for b in beats):
         raise ValueError("experiment requires one to sixteen nonempty Beats")
@@ -294,6 +323,25 @@ def prepare_witness_experiment(
     )
     schema = deepseek_strict_tool_schema(_provider_schema(WitnessResponse))
     name = "review_visible_source_witness_experiment_v1"
+    pointer_choices = None
+    if relative_pointer_choices:
+        pointer_choices = _relative_pointer_choices(body["source_materials"])
+        if not pointer_choices:
+            raise ValueError("relative pointer transport requires readable source scalars")
+        # One source selection, followed by a field within that selected source.
+        # Do not ask the model to restate the host-owned material index as well.
+        schema["properties"]["decisions"]["items"]["properties"]["parts"]["items"][
+            "properties"
+        ]["witnesses"]["items"]["properties"]["pointer"] = {
+            "type": "string", "enum": pointer_choices,
+        }
+        name = "review_visible_source_witness_relative_v1"
+        messages[0]["content"] += (
+            " POINTER TRANSPORT: source_ref_index alone selects the source. "
+            "Choose pointer from the tool's enumerated source-relative paths. "
+            "Never include /source_materials/<index> in a pointer. "
+            "A listed field may be absent from some sources; it must resolve in your selected source."
+        )
     request = {
         "messages": messages,
         "temperature": 0.0,
@@ -318,6 +366,7 @@ def prepare_witness_experiment(
                 "request": request,
                 "shown_materials": body["source_materials"],
                 "material_indexes": [r["material_index"] for r in references],
+                **({"relative_pointer_choices": pointer_choices} if pointer_choices is not None else {}),
             }
         )
     )
