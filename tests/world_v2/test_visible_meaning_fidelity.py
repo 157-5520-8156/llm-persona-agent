@@ -8,7 +8,7 @@ from companion_daemon.world_v2.visible_candidate_meaning import (
     PreparedCandidateMeaning, prepare_candidate_meaning,
 )
 from companion_daemon.world_v2.visible_meaning_fidelity import (
-    CONTRACT, PreparedMeaningFidelity, inspect_independent_review, prepare_meaning_fidelity,
+    CONTRACT, LEGACY_CONTRACT, PreparedMeaningFidelity, inspect_independent_review, prepare_meaning_fidelity,
 )
 from companion_daemon.world_v2.visible_meaning_source_review import (
     SOURCE_ONLY_CONTRACT, prepare_meaning_source_review,
@@ -24,11 +24,11 @@ def _fixture(*, no_facts=False, text=TEXT):
     if no_facts:
         value["decisions"][0]["parts"][0]["meanings"] = []
     raw = json.dumps(value, ensure_ascii=False)
-    return meaning, raw, prepare_meaning_fidelity(meaning=meaning, meaning_raw=raw)
+    return meaning, raw, prepare_meaning_fidelity(meaning=meaning, meaning_raw=raw, contract=LEGACY_CONTRACT)
 
 
 def _fidelity(*, complete=True, issues=()):
-    return json.dumps({"contract": CONTRACT, "decisions": [{
+    return json.dumps({"contract": LEGACY_CONTRACT, "decisions": [{
         "beat_index": 0, "faithful_complete": complete, "issues": list(issues),
     }]})
 
@@ -119,7 +119,7 @@ def _speech_chain():
     part.update(text=text, interpretation="回忆过去的话", requested_unknowns=[])
     part["meanings"][0].update(mode="past_utterance", subject_role="companion", proposition="角色以前说过上午坐在那里。")
     raw = json.dumps(value)
-    fidelity = prepare_meaning_fidelity(meaning=meaning, meaning_raw=raw)
+    fidelity = prepare_meaning_fidelity(meaning=meaning, meaning_raw=raw, contract=LEGACY_CONTRACT)
     source = prepare_meaning_source_review(meaning=meaning, meaning_raw=raw, sources=_sources(), source_only=True)
     source_raw = json.dumps({"contract": SOURCE_ONLY_CONTRACT, "fact_decisions": [{
         "fact_id": "b0.p0.f0", "source_support": True, "reading_ids": ["r0"], "explanation": "Recorded speech only",
@@ -163,3 +163,60 @@ def test_no_fact_candidate_cannot_borrow_a_source_probe_from_another_candidate()
     args.update(meaning=meaning, meaning_raw=raw, fidelity=fidelity)
     with pytest.raises(ValueError, match="unrelated"):
         inspect_independent_review(**args)
+
+
+def _v2_fixture():
+    meaning, raw, _ = _fixture()
+    value = json.loads(raw)
+    part = value["decisions"][0]["parts"][0]
+    part["meanings"].append({**part["meanings"][0], "mode": "current_private_expression"})
+    raw = json.dumps(value)
+    prep = prepare_meaning_fidelity(meaning=meaning, meaning_raw=raw)
+    response = {"contract": CONTRACT, "decisions": [{
+        "beat_index": 0, "faithful_complete": True, "issues": [],
+        "factual_coverage_complete": True, "coverage_explanation": "Test assessment",
+        "meaning_checks": [{"meaning_id": f"b0.p0.f{i}", "mode_correct": True,
+                            "subject_correct": True, "explanation": "Test classification"} for i in range(2)],
+    }]}
+    return prep, response
+
+
+@pytest.mark.parametrize("field", ["mode_correct", "subject_correct", "factual_coverage_complete"])
+def test_v2_separate_checks_override_generic_endorsement(field):
+    prep, response = _v2_fixture()
+    body = json.loads(prep.request()["messages"][1]["content"])
+    assert set(body) == {"contract", "visible_beats", "candidate_interpretation", "meaning_inventory"}
+    assert [m["meaning_id"] for m in body["meaning_inventory"]] == ["b0.p0.f0", "b0.p0.f1"]
+    assert prep.inspect_response(json.dumps(response))["beat_fidelity"] == ["faithful_complete"]
+    decision = response["decisions"][0]
+    if field == "factual_coverage_complete":
+        decision[field] = False
+    else:
+        decision["meaning_checks"][1][field] = False
+    assert prep.inspect_response(json.dumps(response))["beat_fidelity"] == ["rejected"]
+
+
+@pytest.mark.parametrize("fault", ["omit_private", "omit_fact", "duplicate", "foreign"])
+def test_v2_must_check_all_classifications_including_private(fault):
+    prep, response = _v2_fixture()
+    checks = response["decisions"][0]["meaning_checks"]
+    if fault == "omit_private":
+        checks.pop()
+    elif fault == "omit_fact":
+        checks.pop(0)
+    elif fault == "duplicate":
+        checks.append(deepcopy(checks[0]))
+    else:
+        checks[0]["meaning_id"] = "b1.p0.f0"
+    with pytest.raises(ValueError):
+        prep.inspect_response(json.dumps(response))
+
+
+def test_v2_empty_inventory_requires_empty_checks_and_explicit_coverage_assessment():
+    meaning, raw, _ = _fixture(no_facts=True)
+    prep = prepare_meaning_fidelity(meaning=meaning, meaning_raw=raw)
+    _, response = _v2_fixture()
+    response["decisions"][0]["meaning_checks"] = []
+    response["decisions"][0]["factual_coverage_complete"] = False
+    assert prep.inspect_response(json.dumps(response))["beat_fidelity"] == ["rejected"]
+    assert prep.request()["tools"][0]["function"]["parameters"]["properties"]["decisions"]["items"]["properties"]["meaning_checks"]["items"]["properties"]["meaning_id"] == {"type": "string"}
