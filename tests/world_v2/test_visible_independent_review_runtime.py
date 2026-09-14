@@ -196,7 +196,8 @@ async def test_cold_runtime_requires_original_protocol_and_each_actual_review_ca
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('version', ['9', '10'])
-async def test_public_proactive_contact_pins_and_replays_independent_protocol(tmp_path, monkeypatch, version):
+@pytest.mark.parametrize('schema_references', [False, True])
+async def test_public_proactive_contact_pins_and_replays_independent_protocol(tmp_path, monkeypatch, version, schema_references):
     from datetime import timedelta
     import companion_daemon.config as config_module
     from companion_daemon.config import Settings
@@ -224,10 +225,20 @@ async def test_public_proactive_contact_pins_and_replays_independent_protocol(tm
         PRIMARY_USER_ID='geoff', WORLD_V2_EXPRESSION_EPISODE_MODE='off', WORLD_V2_TEXT_ENDPOINT_ENABLED=False),
         recipient_id='10001', bootstrap_at=START, model=models[0], world_support_model=FakeCompanionModel(),
         visible_source_review_required=True, visible_source_review_version=version, visible_author_tool_version='3',
+        visible_author_schema_references=schema_references,
         visible_source_review_model=IndependentVisibleReviewer(meaning_models=(models[1], models[2]), source_model=models[2]),
         delivery=_DeliveredQQ(), use_configured_recall_embedding=False)
     try:
         assert (await host.inbound_text(message_id='independent-proactive', recipient_id='10001', text='我先去忙一会儿。', observed_at=START)).status == 'action_authorized'
+        author_request = next(b for b in handler.requests if b['tool_choice']['function']['name'] == 'character_inbound_initial_v3')
+        parameters = author_request['tools'][0]['function']['parameters']
+        assert ('$def' in parameters) is schema_references
+        assert ('"$ref"' in json.dumps(parameters)) is schema_references
+        if schema_references:
+            from companion_daemon.world_v2.character_interior.local_schema_references import expand_local_schema_references
+            expanded = expand_local_schema_references(parameters)
+            assert '"$ref"' not in json.dumps(expanded)
+            assert len(json.dumps(parameters)) < len(json.dumps(expanded)) * .6
         due = START + timedelta(hours=12, seconds=1)
         await host.tick(tick_id='independent-proactive-due', logical_time_from=START, logical_time_to=due,
             observed_at=due, reason='offline_protocol_test', run_life_ecology=False)

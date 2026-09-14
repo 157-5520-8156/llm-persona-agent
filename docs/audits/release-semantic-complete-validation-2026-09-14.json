@@ -1,0 +1,534 @@
+{
+  "contract": "release-semantic-complete-validation.1",
+  "trials": [
+    {
+      "directory": "output/private-audits/release-independent-complete-20260914-02",
+      "code_head": "f05c99946a077a0ff034a506ac720fddbbaba4cc",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_supported",
+            "facts_rejected",
+            "facts_supported"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_rejected",
+            "facts_rejected"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_supported"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "expected": [
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "expected": [
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "facts_rejected",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "expected": [
+            "unclosed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "future-condition-with-past-event",
+          "expected": [
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "past-counterfactual-injury",
+          "expected": [
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "pure-future-condition",
+          "expected": [
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        }
+      ],
+      "physical_calls": 34,
+      "known_estimate_cny": "0.1934955999999999990",
+      "pipeline_elapsed_ms": [
+        10073,
+        8613,
+        5489,
+        5352,
+        5341,
+        6716,
+        4542,
+        5418,
+        4376,
+        6107,
+        2595,
+        3034
+      ],
+      "cold_checks": {
+        "meaning_successes": 24,
+        "meaning_wire_failures_preserved": 0,
+        "inconclusive_readers": 0,
+        "source_results_identical": 10,
+        "actual_evidence_blind_distinct_pairs": 12
+      }
+    },
+    {
+      "directory": "output/private-audits/release-independent-complete-20260914-03",
+      "code_head": "c2f14e38e5c816acab40407dcc2dbacb8789f939",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_supported",
+            "facts_rejected",
+            "facts_supported"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "status": "technical_failure",
+          "error_type": "ValidationError",
+          "error_detail": "2 validation errors for PragmaticCompleteMeaningResponse\ndecisions.2.reading_complete\n  Field required [type=missing, input_value={'beat_index': 2, 'hypoth...rt家里是什么样'}]}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndecisions.2.unresolved_details\n  Field required [type=missing, input_value={'beat_index': 2, 'hypoth...rt家里是什么样'}]}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_supported"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "expected": [
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "expected": [
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "facts_rejected",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "expected": [
+            "unclosed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "future-condition-with-past-event",
+          "expected": [
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "past-counterfactual-injury",
+          "expected": [
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "pure-future-condition",
+          "expected": [
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "status": "technical_failure",
+          "error_type": "ValidationError",
+          "error_detail": "2 validation errors for PragmaticCompleteMeaningResponse\ndecisions.0.reading_complete\n  Field required [type=missing, input_value={'beat_index': 0, 'hypoth...想去哪儿走走'}]}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndecisions.0.unresolved_details\n  Field required [type=missing, input_value={'beat_index': 0, 'hypoth...想去哪儿走走'}]}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+        }
+      ],
+      "physical_calls": 33,
+      "known_estimate_cny": "0.2196871999999999989",
+      "pipeline_elapsed_ms": [
+        10530,
+        4286,
+        7377,
+        5706,
+        5443,
+        5467,
+        4592,
+        4728,
+        4869,
+        5086,
+        2344,
+        2741
+      ],
+      "cold_checks": {
+        "meaning_successes": 22,
+        "meaning_wire_failures_preserved": 2,
+        "inconclusive_readers": 0,
+        "source_results_identical": 9,
+        "actual_evidence_blind_distinct_pairs": 12
+      }
+    },
+    {
+      "directory": "output/private-audits/release-independent-complete-20260914-04",
+      "code_head": "4063e518fad96db0fe2d5874d3216c68a611e67a",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_supported",
+            "facts_rejected",
+            "facts_supported"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "not_assessed",
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_supported"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "expected": [
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "expected": [
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "facts_rejected",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "expected": [
+            "unclosed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "future-condition-with-past-event",
+          "expected": [
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "past-counterfactual-injury",
+          "expected": [
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "pure-future-condition",
+          "expected": [
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        }
+      ],
+      "physical_calls": 36,
+      "known_estimate_cny": "0.1859137999999999983",
+      "pipeline_elapsed_ms": [
+        9069,
+        6964,
+        5955,
+        4944,
+        5135,
+        4730,
+        4661,
+        5053,
+        5216,
+        5839,
+        2703,
+        4967
+      ],
+      "cold_checks": {
+        "actual_independent_initial_pairs": 12,
+        "same_reader_structural_reselections": 2,
+        "source_results_identical": 10,
+        "native_billing_token_joins_verified": true,
+        "inherited_rows_unchanged": true
+      }
+    }
+  ],
+  "physical_calls": 103,
+  "known_repository_estimate_cny": "0.5990965999999999962",
+  "new_unknown_hold_cny": "0",
+  "latest_diagnostic_cases": 12,
+  "latest_diagnostic_matches": 12,
+  "semantic_scope": "Reviewer probes only. Meaning .8: 11/12 with false ability reading. Meaning .9: 10/12 with two wire failures. Same-reader structural reselection: 12/12 with two retained invalid originals and successful replacements. No local value filling or semantic retry of a valid reading.",
+  "runtime_scope": "Version 10 is explicitly wired and offline tested; live full author-to-receipt and 12-second interaction qualification remains separate.",
+  "test_spend_cap_cny": null,
+  "monthly_product_cost_target_cny": 100,
+  "latest_reviewer_ledger": "output/private-audits/release-independent-complete-20260914-04/run/world.sqlite",
+  "reviewer_ledger_usage_rows": 616,
+  "reviewer_ledger_reservation_rows": 613,
+  "new_character_turns": 0,
+  "new_receipts": 0,
+  "qualification": "manual_only / qualification_incomplete"
+}
