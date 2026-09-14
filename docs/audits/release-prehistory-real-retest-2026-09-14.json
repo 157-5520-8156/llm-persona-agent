@@ -1,0 +1,154 @@
+{
+  "contract": "release-prehistory-real-validation.2",
+  "trial_id": "release-prehistory-real-20260914-02",
+  "code_head": "6ea6853c49665bf79e434aa95507bdc8957fc70a",
+  "completed": true,
+  "stop_reason": "completed",
+  "physical_calls": 11,
+  "known_calls": 11,
+  "unknown_calls": 0,
+  "known_repository_price_estimate_cny": "0.3677441000000000009",
+  "new_unresolved_hold_cny": "0",
+  "inherited_usage_and_reservations_unchanged": true,
+  "final_usage_rows": 133,
+  "final_reservation_rows": 132,
+  "source_artifact_hashes_verified": true,
+  "token_counts_and_body_hashes_verified": true,
+  "credential_matches": 0,
+  "turns_consumed": 2,
+  "cold_receipts_verified": 9,
+  "new_cold_receipts_verified": 2,
+  "replay_hash_matches": true,
+  "initialization": [
+    {
+      "status": "retry_wait"
+    },
+    {
+      "status": "retry_wait"
+    },
+    {
+      "status": "retry_wait"
+    },
+    {
+      "status": "retry_wait"
+    },
+    {
+      "status": "retry_wait"
+    },
+    {
+      "status": "retry_wait"
+    },
+    {
+      "status": "retained",
+      "record_id": "prehistory-record:celia-school-journal"
+    }
+  ],
+  "new_capture_deliveries": [
+    {
+      "kind": "text",
+      "message_id": "journey-message-23",
+      "text": "【系统提示】回复服务暂时没有完成这次响应，请稍后再试。这不是角色选择了沉默。",
+      "virtual_at": "2026-09-14T12:44:30.050000+00:00"
+    },
+    {
+      "kind": "text",
+      "message_id": "journey-message-24",
+      "text": "怎么突然问起这个",
+      "virtual_at": "2026-09-14T12:46:00+00:00"
+    },
+    {
+      "kind": "text",
+      "message_id": "journey-message-25",
+      "text": "你今天是不是把问题都攒着一起问了",
+      "virtual_at": "2026-09-14T12:46:00+00:00"
+    },
+    {
+      "kind": "text",
+      "message_id": "journey-message-26",
+      "text": "校刊？",
+      "virtual_at": "2026-09-14T12:48:30+00:00"
+    },
+    {
+      "kind": "text",
+      "message_id": "journey-message-27",
+      "text": "你从哪听来的",
+      "virtual_at": "2026-09-14T12:48:30+00:00"
+    },
+    {
+      "kind": "text",
+      "message_id": "journey-message-28",
+      "text": "你今天问的这几个问题，怎么像照着单子来的",
+      "virtual_at": "2026-09-14T12:48:30+00:00"
+    }
+  ],
+  "additional10_authorization_usage": {
+    "physical_calls": 46,
+    "known_calls": 41,
+    "unknown_calls": 5,
+    "known_estimate_cny": "1.3670581000000000005",
+    "new_unresolved_hold_cny": "2.981751",
+    "all_old_holds_retained": true
+  },
+  "native_known_estimate_cny": "3.9096857000000000009",
+  "native_unknown_hold_cny": "5.340624",
+  "native_committed_estimate_cny": "9.2503097000000000009",
+  "new_whole_allocation_cny": "0",
+  "shared_allocation_owner": "release-recovery-continuation-20260913-08",
+  "qualification": "manual_only / qualification_incomplete; substantive recall and factual-entailment need manual answer review; capture receipts are not real QQ",
+  "result": "multi_record_initialization_repaired_but_substantive_history_recall_failed",
+  "both_trials_known_repository_price_estimate_cny": "0.4133833000000000009",
+  "retrieval_diagnosis": {
+    "cursor": {
+      "world_revision": 568,
+      "deliberation_revision": 591,
+      "ledger_sequence": 1159
+    },
+    "active_historical_candidates": 2,
+    "readable_historical_excerpts": [
+      "上大学后进过文学社和摄影社。",
+      "高中做过校刊。"
+    ],
+    "lexical_selection": {
+      "所以你今天也忙着校刊的事吗？": [],
+      "校刊": [],
+      "你高中校刊的经历呢？": [
+        [
+          "active_memory_candidates",
+          "memory:prehistory:3766a556261b38abf47363b4f6ea4f33c90421ee371f4da697dbc358d0dcbfa4"
+        ]
+      ]
+    },
+    "actual_author_prehistory_sources": [],
+    "finding": "The exact current memory state retains and can read the historical source. The v1 lexical continuity selector rejects its only shared two-character cue. No semantic recall was selected in these actual turns."
+  },
+  "real_dialogue_findings": [
+    "First broad school-life question received two character beats; role deliberately declined an information-collection style question. This is not a semantic-choice bug or a successful history-recall test.",
+    "Second question explicitly mentioned the school journal. Both retained history records were readable at the exact author cursor, but lexical continuity rejected the sole two-character match and actual author/reviewer lacked a qualified history source.",
+    "Initial second-turn expression also failed private-turn-state validation. Corrected draft added a current cessation claim and was rejected by v8 source review. The immediate turn ended deferred with paired_expression_reselection_invalid, primary_invalid and corrective_invalid, not character silence.",
+    "A later scheduler retry delivered three question beats at 20:48:30; this is a real model result with capture receipts, not success at historical recollection or ordinary response latency.",
+    "A resumed older failure produced one explicit system notice before the two planned inputs; it is not counted as character speech."
+  ],
+  "life_continuation": {
+    "new_activity_planned": 1,
+    "origin_contract": "day-open-life-intent-origin.2",
+    "completion_source_bound": true,
+    "character_choice": "self-directed campus walk",
+    "scheduled_local_window": [
+      "2026-09-14T21:24:01+08:00",
+      "2026-09-14T22:24:01+08:00"
+    ],
+    "new_activity_started": 0,
+    "claim": "Real role choice -> typed future plan observed. Starting, completion and later recall of this activity were outside the trial."
+  },
+  "next_work": [
+    "Improve bounded attention to short Chinese memory cues with independently varied recall/false-positive samples; no special-case school-journal keyword, forced disclosure, or new per-turn model call by default.",
+    "Preserve historical context/receipt reproducibility when changing selection policy; do not silently rewrite the lexical policy behind old receipts.",
+    "Retest real prehistory retrieval and distinction from runtime events; continue original unsupported-experience/source-review and correction-failure blockers.",
+    "Formal rich autobiography, historical summary retrieval, forgetting/compression maintenance, week-scale diversity and monthly-cost validation remain required."
+  ],
+  "evidence_hashes": {
+    "output/private-audits/release-prehistory-real-20260914-02/reconciliation.json": "855018e9a7fb8a1ad97e2213731cea3c731f7d58a5c8ba4a7c5a038814ac3ba9",
+    "output/private-audits/release-prehistory-real-20260914-02/retrieval-diagnosis.json": "76a97bb121e3696be627f3b1eaaf81279d7f30bfb2813c7fcaf4515bf36accf0",
+    "output/private-audits/release-prehistory-real-20260914-02/run/manifest.json": "8a0720073dae9e4660a79b487a6aaabf2ef3458f37a8a2961f789f68f4c2fa37"
+  }
+}

@@ -92,8 +92,12 @@ Multi-record initialization uses the bounded historical Context reader only
 for an opportunity that exactly matches its durable original import commit.
 This prevents the first retention write from invalidating later initialization;
 ordinary stale role/chat requests keep the live-head guard. A real trial retained
-one record, then exposed this bug before a second provider call; the repaired
-multi-record path has offline coverage, with real dialogue still pending.
+one record, then exposed this bug before a second provider call. A subsequent
+real continuation retained the second and delivered two chat responses, but did
+not qualify substantive history recall: lexical-ngram.1 rejects a lone two-CJK-
+character cue even when the active historical memory is readable. Fixing bounded
+recall requires preserving old context/receipt reproducibility; it must not force
+the character to answer or authorize persona prose as a runtime occurrence.
 _Avoid_: Retroactive runtime Experience, improvised chat evidence
 
 ## Autobiographical Memory
