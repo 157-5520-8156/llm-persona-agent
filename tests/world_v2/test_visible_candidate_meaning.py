@@ -115,6 +115,24 @@ def test_conditional_question_is_opt_in_and_does_not_grant_missing_history_autho
         legacy.inspect_response(json.dumps(raw))
 
 
+def test_beat_condition_does_not_require_inventing_a_question():
+    from companion_daemon.world_v2.visible_candidate_meaning import CONDITIONAL_BEAT_CONTRACT, verify_candidate_meaning_preparation
+    prep = prepare_candidate_meaning(beats=("如果你忙，我可能会失落。",), compact=True, explicit_questions=True,
+                                     question_conditions=True, beat_conditions=True)
+    raw = {"contract": CONDITIONAL_BEAT_CONTRACT, "decisions": [{
+        "beat_index": 0, "meanings": [{"proposition": "角色表示如果用户忙，自己可能失落", "mode": "current_private_expression", "subject_role": "companion"}],
+        "questions": [], "hypothetical_conditions": ["用户忙"],
+    }]}
+    result = prep.inspect_response(json.dumps(raw))
+    assert result["facts"] == [] and len(result["private_meanings"]) == 1
+    assert verify_candidate_meaning_preparation(prep)["contract"] == CONDITIONAL_BEAT_CONTRACT
+    raw["decisions"][0]["questions"] = [{"requested_information": "", "premises": []}]
+    with pytest.raises(ValueError):
+        prep.inspect_response(json.dumps(raw))
+    with pytest.raises(ValueError, match="Beat conditions require"):
+        prepare_candidate_meaning(beats=(TEXT,), beat_conditions=True)
+
+
 def test_current_expression_and_embedded_past_event_remain_separate_model_readings():
     text = "我上午坐在那里，现在想想还挺开心的。"
     raw = _raw()
