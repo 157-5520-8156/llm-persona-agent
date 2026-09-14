@@ -19,6 +19,7 @@ LEGACY_CONTRACT = "visible-candidate-meaning.1"
 CONTRACT = "visible-candidate-meaning.2"
 COMPACT_CONTRACT = "visible-candidate-meaning.3"
 QUESTION_CONTRACT = "visible-candidate-meaning.4"
+CONDITIONAL_QUESTION_CONTRACT = "visible-candidate-meaning.5"
 TAIL_TRANSPORT = "single-object-closing-tail.1"
 Role = Literal["companion", "counterpart", "other", "none"]
 
@@ -133,6 +134,19 @@ class QuestionMeaningResponse(FrozenModel):
     decisions: tuple[QuestionMeaningBeat, ...] = Field(min_length=1, max_length=16)
 
 
+class ConditionalQuestionMeaning(QuestionMeaning):
+    hypothetical_conditions: tuple[str, ...] = Field(max_length=8)
+
+
+class ConditionalQuestionMeaningBeat(QuestionMeaningBeat):
+    questions: tuple[ConditionalQuestionMeaning, ...] = Field(max_length=8)
+
+
+class ConditionalQuestionMeaningResponse(FrozenModel):
+    contract: Literal["visible-candidate-meaning.5"]
+    decisions: tuple[ConditionalQuestionMeaningBeat, ...] = Field(min_length=1, max_length=16)
+
+
 @dataclass(frozen=True)
 class PreparedCandidateMeaning:
     payload_json: str
@@ -146,7 +160,7 @@ class PreparedCandidateMeaning:
 
     def inspect_response(self, raw: str) -> dict:
         packet = json.loads(self.payload_json)
-        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT}:
+        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT}:
             raise ValueError("unsupported candidate meaning contract")
         if len(raw.encode()) > 131072:
             raise ValueError("candidate meaning response exceeds bound")
@@ -155,6 +169,7 @@ class PreparedCandidateMeaning:
             LEGACY_CONTRACT: MeaningResponse, CONTRACT: MeaningResponseV2,
             COMPACT_CONTRACT: CompactMeaningResponse,
             QUESTION_CONTRACT: QuestionMeaningResponse,
+            CONDITIONAL_QUESTION_CONTRACT: ConditionalQuestionMeaningResponse,
         }[packet["contract"]]
         response = response_type.model_validate_json(_json(value), strict=True)
         if [d.beat_index for d in response.decisions] != list(range(len(packet["beats"]))):
@@ -210,12 +225,14 @@ class PreparedCandidateMeaning:
 
 def prepare_candidate_meaning(
     *, beats: tuple[str, ...], compact: bool = False, explicit_questions: bool = False,
-    closing_tail_transport: bool = False,
+    closing_tail_transport: bool = False, question_conditions: bool = False,
 ) -> PreparedCandidateMeaning:
     if not 1 <= len(beats) <= 16 or any(not isinstance(b, str) or not b or len(b) > 4096 for b in beats):
         raise ValueError("candidate meaning requires one to sixteen bounded nonempty Beats")
     if explicit_questions and not compact:
         raise ValueError("explicit questions require the compact meaning transport")
+    if question_conditions and not explicit_questions:
+        raise ValueError("question conditions require explicit questions")
     system = (
         "你是候选发言的语义读取器，不扮演角色，也不判断它是否真实或允许发送。"
         "输入只有角色即将说的原句，没有事实证据。请先忠实解释原句，不要修正错误、找借口或把句子读成更容易被证明的意思。"
@@ -270,6 +287,18 @@ def prepare_candidate_meaning(
             "不要因为事件被包在问句里，就把它整个放进requested_information后漏掉premises。"
             "开放问题可有空premises；有前提的问题必须展开其施事、受事和时间。不要在meanings重复同一问题前提。",
         )
+    if question_conditions:
+        contract = CONDITIONAL_QUESTION_CONTRACT
+        name = "interpret_visible_candidate_conditions_v5"
+        response_type = ConditionalQuestionMeaningResponse
+        system += (
+            "questions另含hypothetical_conditions，写原句没有断言已发生的条件、未来设想或选择范围。"
+            "premises只写原句已当作发生或成立的事件与状态，不把未来条件当成已发生事实。"
+            "例如询问下次有空时的选择，并没有断言对方某时必然有空、已有计划或做过此事；条件应与已发生前提分开。"
+            "提问不自动构成提问者已决定同行或行动的current_intention，不额外添加原句没有的承诺。"
+            "但条件句中另外断言的既往经历、类比过去的锚点，以及过去反事实所预设的实际情况，仍必须保留为事实命题。"
+            "不能把含有过去经历的整句都归入hypothetical_conditions来隐藏它；逐项区分什么只是设想，什么被当作已发生。"
+        )
     request = {
         "messages": [
             {"role": "system", "content": system},
@@ -295,12 +324,13 @@ def verify_candidate_meaning_preparation(meaning: PreparedCandidateMeaning) -> d
     """Recompile the exact evidence-blind request; do not trust a supplied pin."""
     packet = json.loads(meaning.payload_json, object_pairs_hook=_unique)
     contract = packet.get("contract")
-    if contract not in {CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT}:
+    if contract not in {CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT}:
         raise ValueError("unsupported meaning compiler for fidelity review")
     expected = prepare_candidate_meaning(
         beats=tuple(packet["beats"]), compact=contract != CONTRACT,
-        explicit_questions=contract == QUESTION_CONTRACT,
+        explicit_questions=contract in {QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT},
         closing_tail_transport=packet.get("wire_transport") == TAIL_TRANSPORT,
+        question_conditions=contract == CONDITIONAL_QUESTION_CONTRACT,
     )
     if expected.payload_json != meaning.payload_json:
         raise ValueError("meaning preparation differs from its fixed compiler")

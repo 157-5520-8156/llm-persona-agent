@@ -77,6 +77,44 @@ def test_json_members_and_candidate_boundaries_are_not_silently_repaired():
             prepare_candidate_meaning(beats=beats)
 
 
+def test_conditional_question_keeps_hypothesis_distinct_from_embedded_history():
+    from companion_daemon.world_v2.visible_candidate_meaning import (
+        CONDITIONAL_QUESTION_CONTRACT, verify_candidate_meaning_preparation,
+    )
+    text = "下次如果你又像昨晚那样没回我，我该怎么办？"
+    prep = prepare_candidate_meaning(beats=(text,), compact=True, explicit_questions=True, question_conditions=True)
+    raw = {"contract": CONDITIONAL_QUESTION_CONTRACT, "decisions": [{
+        "beat_index": 0, "meanings": [], "questions": [{
+            "requested_information": "角色在下次用户没有回复时该怎么办",
+            "hypothetical_conditions": ["用户在某个未来时间不回复角色"],
+            "premises": [{"proposition": "用户昨晚没有回复角色", "mode": "actual_event_or_state", "subject_role": "counterpart"}],
+        }],
+    }]}
+    result = prep.inspect_response(json.dumps(raw))
+    assert len(result["facts"]) == 1 and result["facts"][0]["proposition"] == "用户昨晚没有回复角色"
+    assert result["interpretation"]["decisions"][0]["questions"][0]["hypothetical_conditions"] == ["用户在某个未来时间不回复角色"]
+    assert verify_candidate_meaning_preparation(prep)["contract"] == CONDITIONAL_QUESTION_CONTRACT
+    assert not result["receipt_authority"]
+
+
+def test_conditional_question_is_opt_in_and_does_not_grant_missing_history_authority():
+    from companion_daemon.world_v2.visible_candidate_meaning import CONDITIONAL_QUESTION_CONTRACT
+    with pytest.raises(ValueError, match="require explicit"):
+        prepare_candidate_meaning(beats=(TEXT,), question_conditions=True)
+    prep = prepare_candidate_meaning(beats=(TEXT,), compact=True, explicit_questions=True, question_conditions=True)
+    raw = {"contract": CONDITIONAL_QUESTION_CONTRACT, "decisions": [{
+        "beat_index": 0, "meanings": [], "questions": [{
+            "requested_information": "当时家里是什么情况", "hypothetical_conditions": ["用户送角色出发"], "premises": [],
+        }],
+    }]}
+    result = prep.inspect_response(json.dumps(raw))
+    assert result["facts"] == [] and result["semantic_qualification"] == "unproven"
+    assert not result["receipt_authority"]  # a model hiding a premise is still a qualification failure
+    legacy = prepare_candidate_meaning(beats=(TEXT,), compact=True, explicit_questions=True)
+    with pytest.raises(ValueError):
+        legacy.inspect_response(json.dumps(raw))
+
+
 def test_current_expression_and_embedded_past_event_remain_separate_model_readings():
     text = "我上午坐在那里，现在想想还挺开心的。"
     raw = _raw()
