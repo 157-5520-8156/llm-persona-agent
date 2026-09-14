@@ -5,7 +5,7 @@ import pytest
 
 from companion_daemon.world_v2.visible_candidate_meaning import prepare_candidate_meaning
 from companion_daemon.world_v2.visible_meaning_source_review import (
-    CONTRACT, PreparedMeaningSourceReview, prepare_meaning_source_review,
+    CONTRACT, SOURCE_ONLY_CONTRACT, PreparedMeaningSourceReview, prepare_meaning_source_review,
 )
 from test_visible_candidate_meaning import _raw, TEXT
 from test_visible_source_witness_experiment import _sources
@@ -132,3 +132,45 @@ def test_report_uptake_preserves_explicit_actor_and_object_in_the_reviewer_packe
     # The deliberately bad original-to-meaning interpretation is not magically
     # detected by structural tests; both semantic stages remain unqualified.
     assert prep.inspect_response(json.dumps(_review()))["receipt_authority"] is False
+
+
+def _source_only(*, facts=True):
+    raw = _raw()
+    if not facts:
+        raw["decisions"][0]["parts"][0]["meanings"] = []
+    return prepare_meaning_source_review(
+        meaning=prepare_candidate_meaning(beats=(TEXT,)), meaning_raw=json.dumps(raw),
+        sources=_report_sources(), source_only=True,
+    )
+
+
+def test_source_only_probe_cannot_see_original_candidate_or_reinterpretation_fields():
+    prep = _source_only()
+    body = json.loads(prep.request()["messages"][1]["content"])
+    assert not {"visible_beats", "candidate_interpretation", "world_claims"} & body.keys()
+    assert all("original_text" not in f for f in body["fixed_facts"])
+    assert TEXT not in prep.request()["messages"][1]["content"]
+    pinned_raw = json.loads(json.loads(prep.payload_json)["meaning_raw_response"])
+    assert pinned_raw["decisions"][0]["parts"][0]["text"] == TEXT
+    schema = prep.request()["tools"][0]["function"]["parameters"]
+    assert set(schema["properties"]) == {"contract", "fact_decisions"}
+
+
+@pytest.mark.parametrize("support", [False, True])
+def test_fixed_fact_support_does_not_approve_original_candidate_or_free_text(support):
+    prep = _source_only()
+    raw = _review(support=support)
+    raw = {"contract": SOURCE_ONLY_CONTRACT, "fact_decisions": raw["fact_decisions"]}
+    result = prep.inspect_response(json.dumps(raw))
+    assert "beat_outcomes" not in result
+    assert result["fixed_fact_beat_outcomes"] == ["facts_supported" if support else "facts_rejected"]
+    assert result["original_candidate_qualification"] == "not_assessed_by_source_stage"
+    assert result["receipt_authority"] is False
+    raw["candidate_reading_faithful"] = True
+    with pytest.raises(ValueError, match="schema"):
+        prep.inspect_response(json.dumps(raw))
+
+
+def test_source_only_probe_cannot_be_used_as_a_source_free_approval_path():
+    with pytest.raises(ValueError, match="cannot qualify source-free"):
+        _source_only(facts=False)
