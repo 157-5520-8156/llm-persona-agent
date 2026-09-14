@@ -14,7 +14,7 @@ def _wire(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def _children(node, visit):
+def _children(node, visit, *, union_visit=None):
     result = deepcopy(node)
     for key in ("properties", "patternProperties", "dependentSchemas"):
         if isinstance(node.get(key), dict):
@@ -24,7 +24,7 @@ def _children(node, visit):
             result[key] = visit(node[key])
     for key in ("anyOf", "allOf", "oneOf", "prefixItems"):
         if isinstance(node.get(key), list):
-            result[key] = [visit(child) for child in node[key]]
+            result[key] = [(union_visit or visit)(child) if key in {"anyOf", "allOf", "oneOf"} else visit(child) for child in node[key]]
     return result
 
 
@@ -39,12 +39,15 @@ def expand_local_schema_references(schema: dict) -> dict:
             return deepcopy(node)
         if "$ref" in node:
             ref = node["$ref"]
-            if set(node) != {"$ref"} or not isinstance(ref, str) or not ref.startswith("#/$def/"):
+            if set(node) not in ({"$ref"}, {"$ref", "type"}) or not isinstance(ref, str) or not ref.startswith("#/$def/"):
                 raise ValueError("only standalone local schema references are supported")
             name = ref.removeprefix("#/$def/")
             if name not in definitions or name in active:
                 raise ValueError("unresolved or cyclic local schema reference")
-            return expand(definitions[name], (*active, name))
+            expanded = expand(definitions[name], (*active, name))
+            if "type" in node and node["type"] != expanded.get("type"):
+                raise ValueError("local reference type must match its definition")
+            return expanded
         return _children(node, lambda child: expand(child, active))
 
     return expand({key: value for key, value in schema.items() if key != "$def"})
@@ -65,22 +68,35 @@ def factor_local_schema_references(schema: dict) -> dict:
     count(schema)
     names = {
         wire: f"s{index}" for index, wire in enumerate(sorted(
-            wire for wire, count in counts.items() if count > 1 and len(wire.encode()) >= 160
+            wire for wire, count in counts.items() if count > 1 and len(wire.encode()) >= 160 and "type" in json.loads(wire)
         ))
     }
     definitions = {}
+
+    def replace_children(node):
+        if not isinstance(node, dict):
+            return deepcopy(node)
+        return _children(node, replace, union_visit=replace_union_branch)
+
+    def replace_union_branch(node):
+        result = replace(node)
+        # The actual beta parser requires a type directly on each anyOf branch.
+        # A redundant, matching type keeps the reference losslessly expandable.
+        if isinstance(result, dict) and "$ref" in result:
+            result["type"] = node["type"]
+        return result
 
     def replace(node):
         if not isinstance(node, dict):
             return deepcopy(node)
         name = names.get(_wire(node))
         if name is None:
-            return _children(node, replace)
+            return replace_children(node)
         if name not in definitions:
-            definitions[name] = _children(node, replace)
+            definitions[name] = replace_children(node)
         return {"$ref": f"#/$def/{name}"}
 
-    result = _children(schema, replace)
+    result = replace_children(schema)
     # A duplicated parent can make its duplicated children single-use. Inline
     # those definitions rather than paying for an unnecessary registry entry.
     while definitions:

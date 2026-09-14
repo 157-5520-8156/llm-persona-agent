@@ -31,6 +31,18 @@ def test_all_phase_grammars_expand_exactly_and_keep_decoder(phase, allowed):
     old = inline.provider_tools[0]["function"]["parameters"]
     new = compact.provider_tools[0]["function"]["parameters"]
     assert expand_local_schema_references(new) == old
+
+    def check_union_branches(node):
+        if isinstance(node, dict):
+            for branch in node.get("anyOf", []):
+                assert "type" in branch
+            for child in node.values():
+                check_union_branches(child)
+        elif isinstance(node, list):
+            for child in node:
+                check_union_branches(child)
+
+    check_union_branches(new)
     assert len(json.dumps(new)) < len(json.dumps(old)) * .6
     assert compact.identity.schema_sha256 != inline.identity.schema_sha256
     assert compact.identity.contract_sha256 != inline.identity.contract_sha256
@@ -173,3 +185,11 @@ def test_cli_rejects_incompatible_option_before_creating_output(tmp_path):
     with pytest.raises(SystemExit):
         _cli().parse_options(["--output", str(output), "--visible-author-schema-references"])
     assert not output.exists()
+
+
+def test_redundant_reference_type_requires_exact_definition_type():
+    schema = {"$def": {"x": {"type": "string", "enum": ["yes"]}}, "anyOf": [{"$ref": "#/$def/x", "type": "string"}, {"type": "null"}]}
+    assert expand_local_schema_references(schema) == {"anyOf": [{"type": "string", "enum": ["yes"]}, {"type": "null"}]}
+    schema["anyOf"][0]["type"] = "object"
+    with pytest.raises(ValueError, match="must match"):
+        expand_local_schema_references(schema)

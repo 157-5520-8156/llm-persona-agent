@@ -172,3 +172,9 @@ The fresh reviewer-only `.9` + structural reselection trial matched all twelve
 diagnostic cases, recovering two invalid reader outputs. Full chat, runtime
 receipt/provider linkage and author-plus-review latency still need live checks;
 these probe outcomes alone do not qualify version 10 for deployment.
+
+## 2026-09-14 实际聊天接线反例
+
+version 10 的两次真实运行仍没有新增角色交付或正式凭据。首次入站及重试均耗尽12秒链路截止；传入的 schema references 开关在 production composer 被吞掉，实际作者仍收到53550字节工具定义。修复开关透传后，实际请求缩至23784字节，但供应商返回400：anyOf分支缺少type。完整失败捕获与累计用量保留于[运行验证](../audits/release-independent-runtime-validation-2026-09-14.json)。
+
+[供应商文档](https://api-docs.deepseek.com/guides/tool_calls/)支持singular `$def`及`$ref`，实际beta解析器仍要求union分支显式type。修复候选只抽取带type的重复定义，在引用的union分支保留同值type；展开器只接受与定义完全相同的type，其他兄弟约束仍拒绝。所有阶段展开后与原始语法完全一致，实际工具定义26114字节（约为原来的49%）。41项schema和完整运行时接线检查通过；原始失败请求仍可展开。供应商实际接受及12秒完整链路需下一次真实运行确认。

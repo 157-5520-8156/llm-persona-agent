@@ -1,0 +1,104 @@
+{
+  "scope": "Isolated real character/runtime calls; no QQ; diagnostic and historical receipts do not prove current character acceptance.",
+  "trials": [
+    {
+      "code_head": "7cb399dfef9ce3afc207067a6da035ce79b7173e",
+      "stop_reason": "operator_stopped",
+      "completed": false,
+      "physical_calls": 10,
+      "billing_states": {
+        "known": 8,
+        "unknown": 2
+      },
+      "known_native_token_joins_verified": 8,
+      "all_captured_terminal_body_hashes_verified": true,
+      "transport_only_unknown_calls": [
+        "model-input:a6f0a0a0c173444eb7b7964e2ef94be0"
+      ],
+      "inherited_rows_unchanged": true,
+      "known_repository_estimate_cny": "0.1350761",
+      "new_unknown_hold_cny": "0.613920",
+      "usage_rows": 626,
+      "reservation_rows": 623,
+      "author_requests": [
+        {
+          "capture_id": "model-input:e725ca023fd24bf1b0d87fe364156f96",
+          "tool_bytes": 53550,
+          "schema_reference_count": 0,
+          "latency_ms": 4676,
+          "prompt_tokens": 40284,
+          "billing_state": "known"
+        },
+        {
+          "capture_id": "model-input:890ba9905b4d4f7b95866a823974b302",
+          "tool_bytes": 53550,
+          "schema_reference_count": 0,
+          "latency_ms": 5756,
+          "prompt_tokens": 40906,
+          "billing_state": "known"
+        }
+      ],
+      "cold_receipt_versions": {
+        "visible-source-review-receipt.6": 6,
+        "visible-source-review-receipt.7": 1,
+        "visible-source-review-receipt.8": 6
+      },
+      "replay_hash_matches": true,
+      "test_spend_cap_cny": null,
+      "monthly_product_cost_target_cny": 100,
+      "real_qq": false,
+      "production_database": false,
+      "qualification": "manual_only / qualification_incomplete",
+      "captured_delivery_count": 0,
+      "new_character_deliveries": 0,
+      "new_version_10_receipts": 0,
+      "artifact_directory": "output/private-audits/release-chat-independent-20260914-01",
+      "finding": "Initial author and retry exhausted source review deadline; explicit schema flag never reached production author."
+    },
+    {
+      "code_head": "60e5a32a7880c95124a8a1c3ec1a4dde3f712143",
+      "stop_reason": "operator_stopped",
+      "completed": false,
+      "physical_calls": 2,
+      "billing_states": {
+        "not_billed": 1,
+        "known": 1
+      },
+      "known_native_token_joins_verified": 1,
+      "all_captured_terminal_body_hashes_verified": true,
+      "transport_only_unknown_calls": [],
+      "inherited_rows_unchanged": true,
+      "known_repository_estimate_cny": "0.0015417999999999999",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 628,
+      "reservation_rows": 625,
+      "author_requests": [
+        {
+          "capture_id": "model-input:d635e67c805346f3a4857346b429ed81",
+          "tool_bytes": 23784,
+          "schema_reference_count": 70,
+          "latency_ms": 443,
+          "prompt_tokens": 0,
+          "billing_state": "not_billed"
+        }
+      ],
+      "cold_receipt_versions": {
+        "visible-source-review-receipt.6": 6,
+        "visible-source-review-receipt.7": 1,
+        "visible-source-review-receipt.8": 6
+      },
+      "replay_hash_matches": true,
+      "test_spend_cap_cny": null,
+      "monthly_product_cost_target_cny": 100,
+      "real_qq": false,
+      "production_database": false,
+      "qualification": "manual_only / qualification_incomplete",
+      "captured_delivery_count": 1,
+      "new_character_deliveries": 0,
+      "new_version_10_receipts": 0,
+      "artifact_directory": "output/private-audits/release-chat-independent-20260914-02",
+      "finding": "Schema forwarding effective; provider HTTP 400 rejects bare reference inside anyOf (missing type). One explicit system notice is not a character reply."
+    }
+  ],
+  "qualification": "manual_only / qualification_incomplete"
+}
