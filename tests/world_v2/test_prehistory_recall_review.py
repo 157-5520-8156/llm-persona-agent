@@ -33,7 +33,8 @@ from test_world_stimulus_life_intent import _http_result
 @pytest.mark.asyncio
 @pytest.mark.parametrize("tool_version,review_version", [("1", "1"), ("3", "8")])
 @pytest.mark.parametrize("recall_mode", ["pull", "prefetch"])
-async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_receipt(tmp_path, monkeypatch, tool_version, review_version, recall_mode):
+@pytest.mark.parametrize("correct_wrong_scope", [False, True, "always"])
+async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_receipt(tmp_path, monkeypatch, tool_version, review_version, recall_mode, correct_wrong_scope):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     config = _config()
     data = reviewed_archive().document.model_dump(mode="json")
@@ -47,6 +48,14 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
     archive = archive.model_copy(update={"review": archive.review.model_copy(update={"reviewed_at": NOW})})
     statement = archive.document.records[0].statement
     requests = []
+    authored_contexts = []
+    def historical_decision(user, history):
+        authored_contexts.append(user)
+        value = _decision()
+        value["expression_draft"]["beats"] = [{"modality": "text", "text": statement}]
+        scope = "current_world" if correct_wrong_scope == "always" or (correct_wrong_scope and len(authored_contexts) == 1) else "past_world"
+        value["expression_draft"]["world_claims"] = [{"claim_text": statement, "scope": scope, "source_refs": [history["source_ref"]]}]
+        return value
     import companion_daemon.world_v2.visible_source_runtime as visible_runtime
     original_review = visible_runtime.review_candidate
     live_traces = []
@@ -74,9 +83,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
                 items = user["inner_life_snapshot"]["materials"]["automatic_prefetch"]["items"]
                 history = next(item for item in items if item.get("epistemic_scope") == "character_prehistory")
                 assert history["text"] == statement
-                value = _decision()
-                value["expression_draft"]["beats"] = [{"modality": "text", "text": statement}]
-                value["expression_draft"]["world_claims"] = [{"claim_text": statement, "scope": "past_world", "source_refs": [history["source_ref"]]}]
+                value = historical_decision(user, history)
                 fields = body["tools"][0]["function"]["parameters"]["properties"]
                 return _http_result(body, {"result": value} if tool_version == "3" else
                                     {key: value.get(key) for key in fields})
@@ -89,9 +96,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
             history = next(item for item in selected if item.get("epistemic_scope") == "character_prehistory")
             assert history["text"] == statement
             assert history["prehistory"]["entities"][0]["entity_ref"].startswith("history:")
-            value = _decision()
-            value["expression_draft"]["beats"] = [{"modality": "text", "text": statement}]
-            value["expression_draft"]["world_claims"] = [{"claim_text": statement, "scope": "past_world", "source_refs": [history["source_ref"]]}]
+            value = historical_decision(user, history)
         else:
             assert name == f"visible_beat_source_verdict_v{review_version}", name
             rows = (user["source_references"] if review_version == "1" else
@@ -167,6 +172,18 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
         assert len(requests) == 2
         outcome = await app.respond(replace(_inbound(), text=("你上学时有什么印象深的事？" if recall_mode == "pull" else "所以你今天也忙着校刊的事吗？")))
         delivery = await app.drain_actions_once()
+        if correct_wrong_scope == "always":
+            assert outcome.status == "deferred"
+            assert delivery is not None and delivery.status == "idle"
+            assert len(authored_contexts) == 2
+            assert len(requests) == (5 if recall_mode == "pull" else 4)
+            assert not any(body["tool_choice"]["function"]["name"].startswith("visible_beat_source")
+                           for body in requests)
+            assert transport.bodies == []
+            failed = app.export_replay_evidence().projection
+            assert failed.actions == () and failed.stored_message_payloads == ()
+            assert app._ledger.rebuild().semantic_hash == failed.semantic_hash
+            return
         assert delivery is not None and delivery.status == "settled"
         projection = app.export_replay_evidence().projection
         assert outcome.status == "action_authorized", [len(traces) for traces in live_traces]
@@ -174,10 +191,24 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
             "character_role_fact_memory_retention_v1", "character_role_fact_memory_retention_v1",
             f"character_inbound_initial_v{tool_version}",
             *([f"character_inbound_after_recall_v{tool_version}"] if recall_mode == "pull" else []),
+            *([f"character_inbound_after_recall_v{tool_version}" if recall_mode == "pull" else
+               f"character_inbound_initial_v{tool_version}"] if correct_wrong_scope else []),
             f"visible_beat_source_verdict_v{review_version}",
         ]
         assert tuple(item.text for item in projection.stored_message_payloads) == (statement,)
         assert transport.bodies == [statement]
+        assert len(authored_contexts) == (2 if correct_wrong_scope else 1)
+        if correct_wrong_scope:
+            first, corrected = authored_contexts
+            correction = (corrected["role_result_correction"]["coordinate"] if tool_version == "3" else
+                          corrected["inner_life_snapshot"]["role_result_correction"])
+            assert "semantic source lane" in correction["failure_detail"]
+            assert "current_world" in correction["failure_detail"]
+            assert corrected["inner_life_snapshot"]["materials"] == first["inner_life_snapshot"]["materials"]
+            for field in ("capsule_id", "trigger_ref", "evaluated_world_revision",
+                          "evaluated_deliberation_revision", "evaluated_ledger_sequence"):
+                assert corrected["request"][field] == first["request"][field]
+
         audits = [RecordedModelResultAudit.model_validate_json(row.audit_json)
                   for row in projection.model_result_audits]
         parent = next(audit for audit in audits if audit.visible_source_review_json is not None)
@@ -261,7 +292,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
             for audit in replayed.proposal_audits:
                 if audit.model_call_id == parent.model_call_id:
                     assert verify_recorded_candidate(audit=audit, model_result_audits=replayed.model_result_audits)
-            assert len(requests) == (5 if recall_mode == "pull" else 4)
+            assert len(requests) == (5 if recall_mode == "pull" else 4) + int(correct_wrong_scope)
         finally:
             cold.close()
     finally:

@@ -1,0 +1,38 @@
+{
+  "contract": "release-prehistory-core-correction-validation.1",
+  "date": "2026-09-14",
+  "base_code_head": "e774e52d",
+  "previous_goal_turn": "progress: historical claim permissions committed and verified",
+  "real_evidence": {
+    "trial": "release-prehistory-real-20260914-04",
+    "verified_correction_requests": 2,
+    "same_original_pin": true,
+    "same_historical_materials": true,
+    "exact_scope_failure_feedback_present": true,
+    "v3_feedback_location": "top-level role_result_correction.coordinate",
+    "qualification": "request evidence only; no successful corrected delivery in this trial"
+  },
+  "finding": "SameContractRetryForbidden is the intentionally disabled legacy local correction entry, not proof that Core made no correction call. Do not reenable it alongside Core correction.",
+  "offline_verification": {
+    "production_http_cases": 12,
+    "new_cases": 8,
+    "matrix": [
+      "prefetch / character pull",
+      "v1+review1 / v3+review8",
+      "valid first / wrong scope corrected / wrong scope twice"
+    ],
+    "verified": [
+      "same pin and materials after correction",
+      "precise source-lane feedback",
+      "exactly one replacement author response",
+      "review plus capture delivery and cold receipt after valid correction",
+      "no review, Action or capture delivery when correction remains invalid",
+      "replay unchanged"
+    ],
+    "adjacent_regression_tests": 16,
+    "new_physical_paid_calls": 0
+  },
+  "runtime_code_changed": false,
+  "qualification": "manual_only / qualification_incomplete",
+  "next": "Controlled real continuation from closed trial04 with inherited usage and unresolved holds, to test claim fix and remaining semantic/review latency failures. Existing World Author, long-term memory and monthly-cost gates remain."
+}
