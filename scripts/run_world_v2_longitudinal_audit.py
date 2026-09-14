@@ -47,11 +47,16 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Read adaptive user turns, {wait_until_minutes: N}, or null from stdin JSON lines.",
     )
-    parser.add_argument(
+    cost = parser.add_mutually_exclusive_group()
+    cost.add_argument(
         "--max-cost-cny",
         type=float,
         default=0.5,
         help="One experiment's shared month/day/soft-day hard ceiling (default: 0.5).",
+    )
+    cost.add_argument(
+        "--no-cost-cap", dest="max_cost_cny", action="store_const", const=None,
+        help="Explicitly remove this isolated experiment's spend caps; retain usage accounting.",
     )
     parser.add_argument("--heartbeat-seconds", type=float, default=300)
     parser.add_argument("--max-steps", type=int, default=5000)
@@ -71,16 +76,30 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--visible-author-tool-version 2/3 requires --require-visible-source-review")
     if options.visible_source_review_version != "1" and not options.require_visible_source_review:
         parser.error("--visible-source-review-version 2/3/4/5/6/7 requires --require-visible-source-review")
-    if not math.isfinite(options.max_cost_cny) or not 0 < options.max_cost_cny <= 100:
+    if options.max_cost_cny is not None and (
+        not math.isfinite(options.max_cost_cny) or not 0 < options.max_cost_cny <= 100
+    ):
         parser.error("--max-cost-cny must be finite, greater than 0 and at most 100")
     if options.output.exists() or options.output.is_symlink():
         parser.error("output must be a fresh path; existing data is never removed")
     return options
 
 
-def experiment_settings(*, database: Path, synthetic: bool, max_cost_cny: float):
+def experiment_settings(*, database: Path, synthetic: bool, max_cost_cny: float | None):
     from companion_daemon.config import Settings
 
+    settings_type = Settings
+    if max_cost_cny is None:
+        from pydantic import Field
+
+        # WorldV2UsageStore already supports None. Keep the production/legacy
+        # Settings contract unchanged; uncapped values belong to this CLI only.
+        class UncappedJourneySettings(Settings):
+            monthly_budget_cny: float | None = Field(default=None, alias="MONTHLY_BUDGET_CNY")
+            daily_budget_cny: float | None = Field(default=None, alias="DAILY_BUDGET_CNY")
+            soft_daily_budget_cny: float | None = Field(default=None, alias="SOFT_DAILY_BUDGET_CNY")
+
+        settings_type = UncappedJourneySettings
     overrides = dict(
         database_path=database,
         character_path=ROOT / "configs/character.yaml",
@@ -101,12 +120,14 @@ def experiment_settings(*, database: Path, synthetic: bool, max_cost_cny: float)
         attachment_cache_path=database.parent / "attachments",
         world_v2_external_perception_sidecar_path=database.parent / "external-perception.sqlite",
     )
+    if max_cost_cny is None:
+        overrides["world_v2_background_daily_budget_cny"] = 0.0
     if synthetic:
         # Explicit fixture settings never inherit .env, credentials, or endpoints.
-        return Settings.model_construct(**overrides)
+        return settings_type.model_construct(**overrides)
     # Environment-only credentials; never read, print or copy the production .env.
     aliases = {Settings.model_fields[key].alias or key: value for key, value in overrides.items()}
-    settings = Settings(_env_file=None, **aliases)
+    settings = settings_type(_env_file=None, **aliases)
     if not settings.deepseek_debug_api_key:
         raise ValueError("real-provider requires DEEPSEEK_DEBUG_API_KEY for the isolated database")
     return settings

@@ -786,3 +786,35 @@ async def test_fixture_required_tool_checks_selected_name_and_preserves_role_sch
     result = _WireRoleResult.model_validate(json.loads(raw)["result"])
     assert result.status == "no_change"
     assert result.proposals == []
+
+
+def test_explicit_uncapped_trial_keeps_default_cap_and_overrides_ambient_caps(tmp_path, monkeypatch):
+    cli = _cli()
+    args = ['--output', str(tmp_path / 'fresh')]
+    assert cli.parse_options(args).max_cost_cny == 0.5
+    options = cli.parse_options([*args, '--no-cost-cap'])
+    assert options.max_cost_cny is None
+    with pytest.raises(SystemExit):
+        cli.parse_options([*args, '--no-cost-cap', '--max-cost-cny', '1'])
+    monkeypatch.setenv('DEEPSEEK_DEBUG_API_KEY', 'fixture-key')
+    for name in ('MONTHLY_BUDGET_CNY', 'DAILY_BUDGET_CNY', 'SOFT_DAILY_BUDGET_CNY', 'WORLD_V2_BACKGROUND_DAILY_BUDGET_CNY'):
+        monkeypatch.setenv(name, '1')
+    settings = cli.experiment_settings(database=tmp_path / 'world.sqlite', synthetic=False, max_cost_cny=options.max_cost_cny)
+    assert settings.monthly_budget_cny is None
+    assert settings.daily_budget_cny is None
+    assert settings.soft_daily_budget_cny is None
+    assert settings.world_v2_background_daily_budget_cny == 0.0
+    assert settings.world_v2_text_endpoint_enabled is False
+    assert settings.world_v2_media_preview_enabled is False
+
+    from companion_daemon.world_v2.model_usage_budget import usage_store_for_settings
+    store = usage_store_for_settings(settings)
+    for purpose in ("source_review", "world_life"):
+        reservation = store.admit_provider_call(
+            purpose=purpose, actor="agent:companion", provider="deepseek",
+            model="deepseek-v4-flash", prompt_characters=1, estimated_cny=101,
+        )
+        assert reservation.startswith("reservation:")
+    import sqlite3
+    with sqlite3.connect(settings.database_path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM world_v2_model_reservations").fetchone()[0] == 2
