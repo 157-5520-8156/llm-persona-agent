@@ -46,6 +46,9 @@ REVIEW_INSTRUCTION = (
     "或把启动后事件伪装成历史。新增片段应有普通生活的多样性和联系。"
     "结构校验通过不代表语义通过；不能只凭格式与哈希批准。"
     "只评审给定内容，不替作者润色或补充事实；有问题则退回修改后重新审核。"
+    "cross_record_findings只记录阻止批准的跨记录问题，不放通过说明、正面总结或建议；"
+    "没有阻断问题时必须为[]。只有每条记录均approve且该列表为空，decision才为approved；"
+    "其他情况必须为rejected。逐条审核依据写入对应rationale，不将推断说成已有设定。"
 )
 
 
@@ -124,9 +127,14 @@ class PrehistoryCreationReview(FrozenModel):
     document_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     reviewer_ref: str = Field(min_length=1)
     reviewed_at: datetime
-    decision: Literal["approved", "rejected"]
+    decision: Literal["approved", "rejected"] = Field(
+        description="approved iff every record is approve and cross_record_findings is empty; otherwise rejected",
+    )
     records: tuple[PrehistoryRecordVerdict, ...] = Field(min_length=1, max_length=256)
-    cross_record_findings: tuple[str, ...] = Field(default=(), max_length=256)
+    cross_record_findings: tuple[str, ...] = Field(
+        default=(), max_length=256,
+        description="Blocking cross-record problems only. Empty [] when none; never approval explanations, positive summaries or nonblocking suggestions.",
+    )
 
     @model_validator(mode="after")
     def verdict_is_consistent(self):
