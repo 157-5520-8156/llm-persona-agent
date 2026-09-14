@@ -131,7 +131,7 @@ def prepare_candidate_meaning(*, beats: tuple[str, ...]) -> PreparedCandidateMea
         "current_private_expression是角色此刻的感受、评价、意愿边界和即时承认；current_intention是此刻选择的未来打算。"
         "这两类由发言本身表达，不是需要外部证据证明的既往事件。不要强行把它们归入actual_event_or_state。"
         "subject_role是命题施事/主体，affected_roles列出该命题涉及的受事/对象角色；第三方关系在proposition中保留完整。"
-        "time_expression保留原句时间含义，不明确时写不明确；polarity为肯定、否定或不确定。"
+        "time_expression保留原句时间含义，不明确时写不明确；polarity必须填affirmative（肯定）、negative（否定）或uncertain（不确定）。"
         "问句需分开：requested_unknowns记录正在询问的未知答案，meanings记录已经当作真的前提。"
         "不能把答案还不知道当成虚假前提，也不能把问题自带的过去经历或主体关系忽略掉。"
         "纯粹的当下感受、态度、意愿、即时回应使用对应current模式；没有事实前提的开放问题可用空meanings。"
