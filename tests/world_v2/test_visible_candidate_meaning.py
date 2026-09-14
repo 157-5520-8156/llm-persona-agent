@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from companion_daemon.world_v2.visible_candidate_meaning import CONTRACT, prepare_candidate_meaning
+from companion_daemon.world_v2.visible_candidate_meaning import CONTRACT, COMPACT_CONTRACT, prepare_candidate_meaning
 
 TEXT = "你先说说你送我出发那会儿，家里什么样"
 
@@ -91,3 +91,49 @@ def test_current_expression_and_embedded_past_event_remain_separate_model_readin
     assert result["facts"][0]["mode"] == "actual_event_or_state"
     assert result["private_meanings"][0]["mode"] == "current_private_expression"
     assert result["receipt_authority"] is False
+
+
+def _compact_raw():
+    fact = _raw()["decisions"][0]["parts"][0]["meanings"][0]
+    return {"contract": COMPACT_CONTRACT, "decisions": [{
+        "beat_index": 0, "meanings": [{k:fact[k] for k in ("proposition", "mode", "subject_role")}],
+        "requested_unknowns": ["当时家里是什么情况"],
+    }]}
+
+
+def test_compact_reading_binds_original_text_by_index_without_recopy_or_reclassification():
+    prep = prepare_candidate_meaning(beats=(TEXT,), compact=True)
+    raw = _compact_raw()
+    result = prep.inspect_response(json.dumps(raw))
+    assert result["facts"][0]["original_text"] == TEXT
+    assert result["facts"][0]["proposition"] == "用户曾送角色出发。"
+    assert result["facts"][0]["mode"] == "actual_event_or_state"
+    assert "affected_roles" not in result["facts"][0]  # not invented by the host
+    system = prep.request()["messages"][0]["content"]
+    for obsolete in ("text拼接", "interpretation用", "affected_roles", "time_expression", "polarity"):
+        assert obsolete not in system
+    assert result["receipt_authority"] is False and result["semantic_qualification"] == "unproven"
+
+
+@pytest.mark.parametrize("fault", ["missing_beat", "duplicate_beat", "wrong_beat", "extra_original"])
+def test_compact_wire_still_requires_complete_unique_beat_mapping(fault):
+    prep = prepare_candidate_meaning(beats=(TEXT,), compact=True)
+    raw = _compact_raw()
+    if fault == "missing_beat":
+        raw["decisions"] = []
+    elif fault == "duplicate_beat":
+        raw["decisions"] *= 2
+    elif fault == "wrong_beat":
+        raw["decisions"][0]["beat_index"] = 1
+    else:
+        raw["decisions"][0]["text"] = TEXT
+    with pytest.raises(ValueError):
+        prep.inspect_response(json.dumps(raw))
+
+
+def test_compact_omission_is_not_hidden_as_semantic_qualification():
+    raw = _compact_raw()
+    raw["decisions"][0]["meanings"] = []
+    result = prepare_candidate_meaning(beats=(TEXT,), compact=True).inspect_response(json.dumps(raw))
+    assert result["facts"] == []
+    assert result["semantic_qualification"] == "unproven"

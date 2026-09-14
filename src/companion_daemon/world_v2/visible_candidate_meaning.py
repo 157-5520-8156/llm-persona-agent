@@ -17,6 +17,7 @@ from .visible_source_witness_experiment import _json, _unique
 
 LEGACY_CONTRACT = "visible-candidate-meaning.1"
 CONTRACT = "visible-candidate-meaning.2"
+COMPACT_CONTRACT = "visible-candidate-meaning.3"
 Role = Literal["companion", "counterpart", "other", "none"]
 
 
@@ -69,6 +70,26 @@ class MeaningResponseV2(MeaningResponse):
     decisions: tuple[MeaningBeatV2, ...] = Field(min_length=1, max_length=16)
 
 
+class CompactMeaningStatement(FrozenModel):
+    proposition: str = Field(min_length=1, max_length=1024)
+    mode: Literal[
+        "actual_event_or_state", "past_intention", "past_utterance",
+        "current_private_expression", "current_intention",
+    ]
+    subject_role: Role
+
+
+class CompactMeaningBeat(FrozenModel):
+    beat_index: int = Field(ge=0, le=15)
+    meanings: tuple[CompactMeaningStatement, ...] = Field(max_length=16)
+    requested_unknowns: tuple[str, ...] = Field(max_length=8)
+
+
+class CompactMeaningResponse(FrozenModel):
+    contract: Literal["visible-candidate-meaning.3"]
+    decisions: tuple[CompactMeaningBeat, ...] = Field(min_length=1, max_length=16)
+
+
 @dataclass(frozen=True)
 class PreparedCandidateMeaning:
     payload_json: str
@@ -82,18 +103,34 @@ class PreparedCandidateMeaning:
 
     def inspect_response(self, raw: str) -> dict:
         packet = json.loads(self.payload_json)
-        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT}:
+        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT, COMPACT_CONTRACT}:
             raise ValueError("unsupported candidate meaning contract")
         if len(raw.encode()) > 131072:
             raise ValueError("candidate meaning response exceeds bound")
         value = json.loads(raw, object_pairs_hook=_unique)
-        response_type = MeaningResponseV2 if packet["contract"] == CONTRACT else MeaningResponse
+        response_type = {
+            LEGACY_CONTRACT: MeaningResponse, CONTRACT: MeaningResponseV2,
+            COMPACT_CONTRACT: CompactMeaningResponse,
+        }[packet["contract"]]
         response = response_type.model_validate_json(_json(value), strict=True)
         if [d.beat_index for d in response.decisions] != list(range(len(packet["beats"]))):
             raise ValueError("candidate meaning must cover every Beat in order")
         facts = []
         private_meanings = []
         for beat, original in zip(response.decisions, packet["beats"], strict=True):
+            if isinstance(beat, CompactMeaningBeat):
+                # The input Beat index owns its original text. The model does
+                # not recopy it or generate fragment offsets. Every Beat must
+                # still appear exactly once; semantic exhaustiveness remains a
+                # model obligation and is never inferred from index coverage.
+                for fact_index, fact in enumerate(beat.meanings):
+                    target = private_meanings if fact.mode in {"current_private_expression", "current_intention"} else facts
+                    target.append({
+                        "fact_id": f"b{beat.beat_index}.p0.f{fact_index}",
+                        "beat_index": beat.beat_index, "part_index": 0,
+                        "original_text": original, **fact.model_dump(mode="json"),
+                    })
+                continue
             if "".join(p.text for p in beat.parts) != original:
                 raise ValueError("candidate meaning must preserve complete verbatim coverage")
             for part_index, part in enumerate(beat.parts):
@@ -111,11 +148,11 @@ class PreparedCandidateMeaning:
             "structural_validation": "passed", "semantic_qualification": "unproven",
             "receipt_authority": False, "facts": facts,
             "interpretation": response.model_dump(mode="json"),
-            **({"private_meanings": private_meanings} if packet["contract"] == CONTRACT else {}),
+            **({"private_meanings": private_meanings} if packet["contract"] != LEGACY_CONTRACT else {}),
         }
 
 
-def prepare_candidate_meaning(*, beats: tuple[str, ...]) -> PreparedCandidateMeaning:
+def prepare_candidate_meaning(*, beats: tuple[str, ...], compact: bool = False) -> PreparedCandidateMeaning:
     if not 1 <= len(beats) <= 16 or any(not isinstance(b, str) or not b or len(b) > 4096 for b in beats):
         raise ValueError("candidate meaning requires one to sixteen bounded nonempty Beats")
     system = (
@@ -142,19 +179,38 @@ def prepare_candidate_meaning(*, beats: tuple[str, ...]) -> PreparedCandidateMea
         "只返回指定工具，解释保持简短精确。"
     )
     name = "interpret_visible_candidate_v2"
+    contract = CONTRACT
+    response_type = MeaningResponseV2
+    if compact:
+        contract = COMPACT_CONTRACT
+        name = "interpret_visible_candidate_compact_v3"
+        response_type = CompactMeaningResponse
+        start = system.index("按顺序逐条读取")
+        end = system.index("meanings逐项", start)
+        system = system[:start] + (
+            "按顺序为每条Beat返回beat_index、meanings、requested_unknowns，不重抄原句或增加另一段释义。"
+            "每项proposition必须独立展开代词，保留具体施事、受事、时间、否定与事件状态；不要添加原句没有的猜测或主观限定来弱化它。"
+        ) + system[end:]
+        system = system.replace(
+            "subject_role是命题施事/主体，affected_roles列出该命题涉及的受事/对象角色；第三方关系在proposition中保留完整。",
+            "subject_role是命题施事/主体；受事与第三方关系、时间和肯否全部在proposition中保留完整。",
+        ).replace(
+            "time_expression保留原句时间含义，不明确时写不明确；polarity必须填affirmative（肯定）、negative（否定）或uncertain（不确定）。",
+            "不明确的时间保持不明确，不能自行补成今天、某天或某个年龄。",
+        )
     request = {
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps({
-                "contract": CONTRACT,
+                "contract": contract,
                 "visible_beats": [{"beat_index": i, "text": b} for i, b in enumerate(beats)],
             }, ensure_ascii=False, separators=(",", ":"))},
         ],
         "temperature": 0.0,
         "tools": [{"type": "function", "function": {
             "name": name, "description": "读取原句实际含义，不读取证据或授予事实权限。",
-            "strict": True, "parameters": deepseek_strict_tool_schema(_provider_schema(MeaningResponseV2)),
+            "strict": True, "parameters": deepseek_strict_tool_schema(_provider_schema(response_type)),
         }}],
         "tool_choice": {"type": "function", "function": {"name": name}},
     }
-    return PreparedCandidateMeaning(_json({"contract": CONTRACT, "beats": beats, "request": request}))
+    return PreparedCandidateMeaning(_json({"contract": contract, "beats": beats, "request": request}))
