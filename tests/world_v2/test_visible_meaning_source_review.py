@@ -160,7 +160,9 @@ def test_source_only_probe_cannot_see_original_candidate_or_reinterpretation_fie
 def test_fixed_fact_support_does_not_approve_original_candidate_or_free_text(support):
     prep = _source_only()
     raw = _review(support=support)
-    raw = {"contract": SOURCE_ONLY_CONTRACT, "fact_decisions": raw["fact_decisions"]}
+    raw = {"contract": SOURCE_ONLY_CONTRACT, "fact_decisions": [
+        {"fact_id": k, **v} for k, v in raw["fact_decisions"].items()
+    ]}
     result = prep.inspect_response(json.dumps(raw))
     assert "beat_outcomes" not in result
     assert result["fixed_fact_beat_outcomes"] == ["facts_supported" if support else "facts_rejected"]
@@ -174,3 +176,18 @@ def test_fixed_fact_support_does_not_approve_original_candidate_or_free_text(sup
 def test_source_only_probe_cannot_be_used_as_a_source_free_approval_path():
     with pytest.raises(ValueError, match="cannot qualify source-free"):
         _source_only(facts=False)
+
+
+@pytest.mark.parametrize("fault", ["omitted", "duplicated", "invented"])
+def test_source_array_transport_requires_complete_unique_fixed_fact_ids(fault):
+    prep = _source_only()
+    item = {"fact_id": "b0.p0.f0", **_review()["fact_decisions"]["b0.p0.f0"]}
+    raw = {"contract": SOURCE_ONLY_CONTRACT, "fact_decisions": [item]}
+    if fault == "omitted":
+        raw["fact_decisions"] = []
+    elif fault == "duplicated":
+        raw["fact_decisions"].append(dict(item))
+    else:
+        item["fact_id"] = "b0.p0.f0 补充"
+    with pytest.raises(ValueError):
+        prep.inspect_response(json.dumps(raw))
