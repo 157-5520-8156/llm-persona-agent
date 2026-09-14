@@ -1,5 +1,10 @@
 # Girl-Agent Domain Glossary
 
+For current release qualification and the separate runtime/billing continuation
+checkpoints, read `docs/audits/release-status-2026-09-13-current.md`. Dated trial
+observations below retain their historical scope; they do not supersede that
+current index or authorize resuming an older, cheaper usage ledger.
+
 ## World
 
 A continuous fictional life epoch centred on the companion. A World has one authoritative history and one Logical Time.

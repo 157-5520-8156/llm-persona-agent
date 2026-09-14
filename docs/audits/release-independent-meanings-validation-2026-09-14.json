@@ -1,0 +1,679 @@
+{
+  "contract": "release-independent-meanings-validation.1",
+  "code_head": "049b583b96ea06d4a34f0491d9bad676b81f895f",
+  "tests": {
+    "related_passed": 162,
+    "ruff": "passed",
+    "frozen_meaning_successes_identical": 64,
+    "frozen_meaning_failures_preserved": 2,
+    "frozen_source_results_identical": 31,
+    "actual_evidence_blind_distinct_invocation_pairs_verified": 33
+  },
+  "billing": {
+    "physical_calls": 97,
+    "states": {
+      "known": 97
+    },
+    "all_native_request_reservation_associations_and_terminal_body_hashes_verified": true,
+    "all_known_provider_token_usage_checked": true,
+    "inherited_rows_unchanged": true,
+    "known_repository_estimate_cny": "0.9260332999999999907",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 480,
+    "reservation_rows": 477,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "latest_checkpoint": "output/private-audits/release-independent-meanings-20260914-04/run/world.sqlite",
+    "runtime_checkpoint": "output/private-audits/release-chat-unlimited-20260914-01/run"
+  },
+  "trials": [
+    {
+      "directory": "output/private-audits/release-independent-meanings-20260914-01",
+      "code_head": "91108d5d398a72461d951cc320fb25aa6addf981",
+      "physical_calls": 27,
+      "latencies_ms": [
+        2335,
+        3995,
+        4714,
+        1993,
+        4186,
+        2422,
+        1850,
+        2625,
+        1976,
+        1011,
+        2245,
+        1936,
+        1029,
+        2070,
+        2001,
+        1262,
+        2282,
+        2154,
+        961,
+        2161,
+        2012,
+        1035,
+        2593,
+        2248,
+        1463,
+        2696,
+        1600
+      ],
+      "pipeline_elapsed_ms": [
+        9107,
+        6982,
+        5714,
+        4529,
+        4541,
+        4803,
+        4532,
+        5205,
+        4653
+      ],
+      "known_estimate_cny": "0.3326137999999999916",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_supported",
+            "facts_rejected",
+            "facts_supported"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "not_assessed",
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_supported"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "expected": [
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "expected": [
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "facts_rejected",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "expected": [
+            "unclosed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "facts_rejected",
+            "not_assessed"
+          ],
+          "status": "semantic_mismatch"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-independent-meanings-20260914-02",
+      "code_head": "ff149c75a3941ec16d89d520662ad0097d43ef0f",
+      "physical_calls": 33,
+      "latencies_ms": [
+        2034,
+        4124,
+        3501,
+        1654,
+        4202,
+        3787,
+        1828,
+        2803,
+        2057,
+        1138,
+        1957,
+        1966,
+        1143,
+        2165,
+        2279,
+        1607,
+        2674,
+        1230,
+        2041,
+        2115,
+        1018,
+        2391,
+        1531,
+        1376,
+        2410,
+        2205,
+        1655,
+        2422,
+        1854,
+        1331,
+        2132,
+        1057,
+        2467
+      ],
+      "pipeline_elapsed_ms": [
+        8003,
+        8362,
+        5965,
+        4295,
+        4803,
+        2680,
+        4521,
+        4281,
+        4981,
+        4627,
+        2141,
+        2479
+      ],
+      "known_estimate_cny": "0.2912585000000000006",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_supported",
+            "facts_rejected",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_rejected",
+            "facts_rejected"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "expected": [
+            "source_free",
+            "unclosed"
+          ],
+          "status": "technical_failure",
+          "error_type": "ValidationError",
+          "error_detail": "1 validation error for ConditionalQuestionMeaningResponse\ndecisions.0.questions.0.requested_information\n  String should have at least 1 character [type=string_too_short, input_value='', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_too_short"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "expected": [
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "facts_rejected",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "expected": [
+            "unclosed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "future-condition-with-past-event",
+          "expected": [
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "past-counterfactual-injury",
+          "expected": [
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "pure-future-condition",
+          "expected": [
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-independent-meanings-20260914-03",
+      "code_head": "049b583b96ea06d4a34f0491d9bad676b81f895f",
+      "physical_calls": 34,
+      "latencies_ms": [
+        2059,
+        4113,
+        4084,
+        1763,
+        3506,
+        2283,
+        1709,
+        2916,
+        1644,
+        1098,
+        2522,
+        2057,
+        947,
+        2651,
+        2416,
+        1048,
+        2996,
+        2071,
+        1355,
+        2514,
+        1856,
+        995,
+        1935,
+        2041,
+        1500,
+        3138,
+        2375,
+        1424,
+        2669,
+        2200,
+        920,
+        2352,
+        1444,
+        2932
+      ],
+      "pipeline_elapsed_ms": [
+        8591,
+        6162,
+        5675,
+        4943,
+        5435,
+        5427,
+        4734,
+        4339,
+        5875,
+        5229,
+        2360,
+        2946
+      ],
+      "known_estimate_cny": "0.2230595999999999988",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_supported",
+            "facts_rejected",
+            "facts_supported"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "not_assessed",
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_supported"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "expected": [
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "expected": [
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "facts_rejected",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "expected": [
+            "unclosed",
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "future-condition-with-past-event",
+          "expected": [
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "past-counterfactual-injury",
+          "expected": [
+            "unclosed"
+          ],
+          "actual": [
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "pure-future-condition",
+          "expected": [
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "not_assessed",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-independent-meanings-20260914-04",
+      "code_head": "049b583b96ea06d4a34f0491d9bad676b81f895f",
+      "physical_calls": 3,
+      "latencies_ms": [
+        2218,
+        1602,
+        1381
+      ],
+      "pipeline_elapsed_ms": [
+        2438,
+        1792,
+        1569
+      ],
+      "known_estimate_cny": "0.0791013999999999997",
+      "results": [
+        {
+          "case_id": "one-reader-swapped-participants",
+          "expected": [
+            [
+              "not_assessed"
+            ],
+            [
+              "not_assessed"
+            ],
+            [
+              "facts_rejected"
+            ]
+          ],
+          "status": "technical_failure",
+          "error_type": "AssertionError",
+          "error_detail": ""
+        },
+        {
+          "case_id": "one-reader-omitted-premise",
+          "expected": [
+            [
+              "not_assessed"
+            ],
+            [
+              "not_assessed"
+            ],
+            [
+              "facts_rejected"
+            ]
+          ],
+          "actual": [
+            "not_assessed",
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "one-reader-private-past",
+          "expected": [
+            [
+              "not_assessed"
+            ],
+            [
+              "facts_rejected"
+            ]
+          ],
+          "actual": [
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        }
+      ]
+    }
+  ],
+  "latest_fresh_pipeline_cases": 12,
+  "latest_fresh_pipeline_matches": 12,
+  "fault_injection": {
+    "cases": 3,
+    "all_original_bad_beats_rejected": true,
+    "full_expected_precision_matches": 2,
+    "remaining_issue": "The swapped-participant probe rejected both readings. The reader asserting user sent companion was correctly rejected; the family-sent-user positive was also rejected as insufficiently objective despite report-uptake policy. The runner AssertionError records this oracle failure, not a provider wire failure. No original result has been rewritten."
+  },
+  "new_character_turns": 0,
+  "new_receipts": 0,
+  "production_changes": false,
+  "receipt_authority": false,
+  "qualification": "manual_only / qualification_incomplete",
+  "qualification_limit": "Independent factual extraction/support diagnostics only. Two no-fact readings are not candidate approval. No original author time, production receipt, runtime delivery, or whole-chat latency qualification. Future-condition and precision failures remain in the record."
+}
