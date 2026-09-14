@@ -1,0 +1,98 @@
+{
+  "scope": "Offline preparation on complete frozen evidence and deliberately fabricated witness wires; no model calls",
+  "declared_external_fact_from_self_speech": "witness scope exceeds source authority",
+  "misclassified_external_fact_as_speech": {
+    "structural_validation": "passed",
+    "model_verdicts": [
+      "closed"
+    ],
+    "receipt_authority": false,
+    "semantic_qualification": "unproven"
+  },
+  "source_scope_probes": [
+    {
+      "case": "intention_as_action",
+      "source_ref_index": 20,
+      "declared_scope": "external_fact",
+      "structural_validation_passed": false,
+      "expected": false,
+      "error": "witness scope exceeds source authority"
+    },
+    {
+      "case": "intention_as_intention",
+      "source_ref_index": 20,
+      "declared_scope": "accepted_intention",
+      "structural_validation_passed": true,
+      "expected": true,
+      "error": null
+    },
+    {
+      "case": "completed_lifecycle",
+      "source_ref_index": 20,
+      "declared_scope": "activity_lifecycle",
+      "structural_validation_passed": true,
+      "expected": true,
+      "error": null
+    },
+    {
+      "case": "environment_as_action",
+      "source_ref_index": 11,
+      "declared_scope": "external_fact",
+      "structural_validation_passed": false,
+      "expected": false,
+      "error": "witness scope exceeds source authority"
+    },
+    {
+      "case": "environment_as_environment",
+      "source_ref_index": 11,
+      "declared_scope": "environment",
+      "structural_validation_passed": true,
+      "expected": true,
+      "error": null
+    }
+  ],
+  "witness_request_reserve_cny": 0.317904,
+  "last_v8_request_reserve_cny": 0.352002,
+  "remaining_budget_cny": 0.3216716,
+  "fits_current_budget": true,
+  "new_paid_calls": 0,
+  "preparation_sha256": "afe55d71e73cd4abb7f4e17ced31b4065b11d6383fce3aad909e58b5136874e4",
+  "source_ref_count": 101,
+  "source_file_sha256": "a8675baed3c1d052f3fbf68b11a26d6b4a39ac8b44f56799207c854086dc999c",
+  "contract": "release-source-witness-experiment-validation.1",
+  "qualification": "experimental / no_receipt_authority",
+  "implementation": {
+    "module": "src/companion_daemon/world_v2/visible_source_witness_experiment.py",
+    "consumer": "scripts/inspect_visible_source_witness.py",
+    "provider_contract": "visible-source-witness-experiment.1",
+    "production_wiring": "none; deployed review versions and defaults unchanged",
+    "single_call_design": true
+  },
+  "validation": {
+    "tests_passed": 19,
+    "frozen_scope_probes": 5,
+    "ruff": "passed",
+    "diff_check": "passed",
+    "cli_request_bytes": 92579
+  },
+  "preserved": [
+    "Original reference indexes and complete semantic evidence cards",
+    "Source text must be present at the declared pointer in both original evidence and displayed card",
+    "Full contiguous candidate text coverage including whitespace",
+    "Existing source eligibility and explicit companion/counterpart actor checks",
+    "Original source permissions; no behavior or speech templates"
+  ],
+  "limits": [
+    "Scope and entailment classification still belong to the model; a misclassified action-as-speech wire passes structural checks",
+    "No production receipt or Action authority is returned under any result",
+    "No actual provider request, canonical role correction, delivery or release qualification",
+    "The original formal v8 false-acceptance counterexample remains open"
+  ],
+  "budget_authority": "release-utterance-review-20260914-02/run/world.sqlite",
+  "runtime_checkpoint": "release-prehistory-real-20260914-08/run",
+  "evidence_hashes": {
+    "output/private-audits/release-witness-experiment-20260914/inspection.json": "ccef06b1a2e2954281ad2cceb098964c17ffe9f5c023c53c9a3d53cd59c59482",
+    "output/private-audits/release-witness-experiment-20260914/request.json": "80f72c46294095f6711e056d953148504e8cac7fe55721fc2b29da99ccdd8ada",
+    "output/private-audits/release-witness-experiment-20260914/verify_experiment.py": "e6b6330064d082a512d16bb2953db899c6a222ad4310fd6aad49d885a489e153"
+  }
+}

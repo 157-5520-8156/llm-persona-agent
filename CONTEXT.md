@@ -61,6 +61,21 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+A non-authorizing, single-call witness experiment now prepares complete evidence
+and inspects per-clause model readings: exact text coverage, original/displayed
+quotes, source indexes, explicit participant roles, and declared source scopes.
+The offline CLI is `scripts/inspect_visible_source_witness.py`. It is not v9 and
+is not wired to production review, receipts or Actions. 19 checks and 5 frozen
+source permission probes pass. Crucially, a model that misclassifies an actual
+occurrence as recorded speech still passes structural checks; the result always
+says semantic qualification unproven and receipt_authority false. Do not count
+this as closing the original semantic blocker. The complete frozen request's
+reservation projects to CNY0.317904 at the unchanged 4096 output ceiling, versus
+remaining0.3216716; no paid call or ledger change was made. Next measure actual
+model classification and evidence readings before considering deployment.
+See `docs/audits/release-source-witness-experiment-validation-2026-09-14.json`.
+
+
 Latest paid utterance-scope qualification is FAILED. Two full-source semantic
 comparisons matched all expected judgments, including prior speech and historical
 intention positives. Offline formal-preparation comparison found JSON key ordering
