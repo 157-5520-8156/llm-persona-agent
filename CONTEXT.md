@@ -61,6 +61,20 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Latest offline recall inspection reproduced trial08's exact prefetch at cursor
+1386. The target memory was eligible but not selected. Corpus.5 now indexes only
+the participant/place labels already carried by each retained historical reading;
+record text, privacy and dual proof stay unchanged. Specific place cues improve,
+but the original natural question still misses the target. Scoring was not changed.
+Provider Affect views now omit accepted change/transition IDs from otherwise intact
+appraisal references, after redaction. Canonical snapshot bytes/id/hash and full
+authority remain unchanged. Applied alone to the frozen request, this saves 8087
+wire bytes and projects its reserve from CNY0.573108 to 0.548847; that still exceeds
+the remaining CNY0.4916446. This is offline projection, not measured provider savings.
+171 distinct tests and 10 cold receipts pass, with no paid call or new allocation.
+Trial08 remains the budget authority. Natural recall, larger prompt/tool costs,
+and all original live release gates remain open.
+
 Latest real trial08 imported the independently reviewed 24-record archive into
 the isolated World. The role retained admission preparation, a borrowed camera,
 and a borrowed notebook in three explicit choices; 21 remain uninitialized.

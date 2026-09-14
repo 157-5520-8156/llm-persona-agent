@@ -1,0 +1,303 @@
+{
+  "contract": "release-recall-identity-and-affect-view-validation.1",
+  "date": "2026-09-14",
+  "goal_status": "active",
+  "qualification": "manual_only / qualification_incomplete",
+  "previous_turn": "progress: real import/retention and valid reply, removal of local Affect decision coercion",
+  "source_trial": "release-prehistory-real-20260914-08",
+  "source_cursor": {
+    "world_revision": 677,
+    "deliberation_revision": 709,
+    "ledger_sequence": 1386
+  },
+  "diagnosis": {
+    "same_cursor_prefetch_reproduced": true,
+    "old_hits": [
+      "prior private appraisal",
+      "broad college-societies prehistory",
+      "old private impression"
+    ],
+    "retained_target_in_corpus": true,
+    "missing_feature": "Historical participant/place labels were already in the source-bound model reading but absent from the retrieval text.",
+    "remaining_retrieval_factors": [
+      "Short common Chinese n-gram overlap can rank old interpretations above relevant episodes.",
+      "Full context contributes to dense retrieval; temporal scoring gives broad historical intervals freshness at their latest possible bound. These factors were probed, not changed in production in this turn."
+    ],
+    "wire_material_inventory_bytes": {
+      "system_content": 39020,
+      "tools_canonical_json": 53550,
+      "affect_canonical_json": 21636
+    }
+  },
+  "recall_change": {
+    "corpus_version": "world-v2-recall-corpus.5",
+    "indexed_text": "Retained excerpt plus only the historical identity labels already carried by that exact reading. No archive scan, name invention, new source authority or current-NPC creation.",
+    "document_source_identity_and_display_unchanged": true,
+    "record_and_archive_proofs_preserved": true,
+    "index_scoring_limits_and_privacy_unchanged": true,
+    "cue_probe_scope": "Offline frozen-corpus cue probes, not real conversation or a held-out benchmark. Full Context, query limits, scoring, privacy and deterministic seed retained; source proof and displayed readings unchanged.",
+    "cue_probes": [
+      {
+        "query": "说起去上海上大学，出发前家里有没有让你记得的小事？",
+        "expected_record": "prehistory-record:celia-life-admission-envelope",
+        "before": {
+          "sources": [
+            "appraisal:compiled:84aab22f884c8b51f6b72dcd88a966dd8f5d61090df647fbe2d4ee60c9d588cb",
+            "prehistory-record:celia-college-societies",
+            "impression:431237aafbeabeb5b786e3659a6928bcaf31800d7cd0d0641a25d9ab8701d781"
+          ],
+          "expected_present": false
+        },
+        "after": {
+          "sources": [
+            "appraisal:compiled:84aab22f884c8b51f6b72dcd88a966dd8f5d61090df647fbe2d4ee60c9d588cb",
+            "prehistory-record:celia-college-societies",
+            "impression:431237aafbeabeb5b786e3659a6928bcaf31800d7cd0d0641a25d9ab8701d781"
+          ],
+          "expected_present": false
+        }
+      },
+      {
+        "query": "嘉兴家里的书店",
+        "expected_record": "prehistory-record:celia-life-admission-envelope",
+        "before": {
+          "sources": [
+            "appraisal:compiled:c2ad44fe29842de608676d6c6b2d80b4959bee1d3a640d41532d54b8f58ec4c8",
+            "appraisal:compiled:1b244a5815dde0fe4c1e91dc27a960f5ce2e8d0c8762ce81b35554bb43c75ca5",
+            "appraisal:compiled:6988b329d88c0f594b72da8074756ddd0471aa8592a600f091ca29cd77980259",
+            "appraisal:compiled:e865c5bd28cb2276c0389bbdd59b04bca36881f64742257f49c12f8785ffdd45"
+          ],
+          "expected_present": false
+        },
+        "after": {
+          "sources": [
+            "appraisal:compiled:c2ad44fe29842de608676d6c6b2d80b4959bee1d3a640d41532d54b8f58ec4c8",
+            "prehistory-record:celia-life-admission-envelope",
+            "appraisal:compiled:1b244a5815dde0fe4c1e91dc27a960f5ce2e8d0c8762ce81b35554bb43c75ca5",
+            "prehistory-record:celia-life-borrowed-notebook"
+          ],
+          "expected_present": true
+        }
+      },
+      {
+        "query": "你家里书店那边，留着什么跟上大学有关的回忆？",
+        "expected_record": "prehistory-record:celia-life-admission-envelope",
+        "before": {
+          "sources": [
+            "appraisal:compiled:c2ad44fe29842de608676d6c6b2d80b4959bee1d3a640d41532d54b8f58ec4c8",
+            "prehistory-record:celia-college-societies",
+            "impression:d19c26b5a6bade790debca829b7474299ae7d68235927d5e5666c9b838ce468e",
+            "fact:331120ccf8387a2fcc065f8a2f79787ac202737adfd5d8ea92301a95333bf4a2"
+          ],
+          "expected_present": false
+        },
+        "after": {
+          "sources": [
+            "appraisal:compiled:c2ad44fe29842de608676d6c6b2d80b4959bee1d3a640d41532d54b8f58ec4c8",
+            "prehistory-record:celia-college-societies",
+            "impression:d19c26b5a6bade790debca829b7474299ae7d68235927d5e5666c9b838ce468e",
+            "fact:331120ccf8387a2fcc065f8a2f79787ac202737adfd5d8ea92301a95333bf4a2"
+          ],
+          "expected_present": false
+        }
+      },
+      {
+        "query": "你父亲当时有没有帮忙准备入学的东西？",
+        "expected_record": "prehistory-record:celia-life-admission-envelope",
+        "before": {
+          "sources": [
+            "appraisal:compiled:84aab22f884c8b51f6b72dcd88a966dd8f5d61090df647fbe2d4ee60c9d588cb",
+            "impression:431237aafbeabeb5b786e3659a6928bcaf31800d7cd0d0641a25d9ab8701d781",
+            "prehistory-record:celia-life-admission-envelope"
+          ],
+          "expected_present": true
+        },
+        "after": {
+          "sources": [
+            "appraisal:compiled:84aab22f884c8b51f6b72dcd88a966dd8f5d61090df647fbe2d4ee60c9d588cb",
+            "impression:431237aafbeabeb5b786e3659a6928bcaf31800d7cd0d0641a25d9ab8701d781",
+            "prehistory-record:celia-life-admission-envelope"
+          ],
+          "expected_present": true
+        }
+      },
+      {
+        "query": "许桥（高中同学）",
+        "expected_record": "prehistory-record:celia-life-borrowed-notebook",
+        "before": {
+          "sources": [
+            "prehistory-record:celia-school-journal",
+            "appraisal:compiled:c2ad44fe29842de608676d6c6b2d80b4959bee1d3a640d41532d54b8f58ec4c8",
+            "appraisal:compiled:1b244a5815dde0fe4c1e91dc27a960f5ce2e8d0c8762ce81b35554bb43c75ca5",
+            "prehistory-record:celia-life-borrowed-notebook"
+          ],
+          "expected_present": true
+        },
+        "after": {
+          "sources": [
+            "prehistory-record:celia-school-journal",
+            "appraisal:compiled:c2ad44fe29842de608676d6c6b2d80b4959bee1d3a640d41532d54b8f58ec4c8",
+            "prehistory-record:celia-life-borrowed-notebook",
+            "appraisal:compiled:1b244a5815dde0fe4c1e91dc27a960f5ce2e8d0c8762ce81b35554bb43c75ca5"
+          ],
+          "expected_present": true
+        }
+      },
+      {
+        "query": "高中同学有没有帮过你什么？",
+        "expected_record": "prehistory-record:celia-life-borrowed-notebook",
+        "before": {
+          "sources": [
+            "appraisal:compiled:c2ad44fe29842de608676d6c6b2d80b4959bee1d3a640d41532d54b8f58ec4c8",
+            "prehistory-record:celia-school-journal",
+            "impression:431237aafbeabeb5b786e3659a6928bcaf31800d7cd0d0641a25d9ab8701d781"
+          ],
+          "expected_present": false
+        },
+        "after": {
+          "sources": [
+            "appraisal:compiled:c2ad44fe29842de608676d6c6b2d80b4959bee1d3a640d41532d54b8f58ec4c8",
+            "impression:431237aafbeabeb5b786e3659a6928bcaf31800d7cd0d0641a25d9ab8701d781",
+            "prehistory-record:celia-school-journal"
+          ],
+          "expected_present": false
+        }
+      },
+      {
+        "query": "华东师范大学校园里的摄影社有什么旧事？",
+        "expected_record": "prehistory-record:celia-life-borrowed-camera",
+        "before": {
+          "sources": [
+            "appraisal:compiled:c2ad44fe29842de608676d6c6b2d80b4959bee1d3a640d41532d54b8f58ec4c8",
+            "prehistory-record:celia-college-societies",
+            "experience:character-life-response:cf178898f9ea4fc795522d076e52f3ba844b270c782b623096285f351bd0a84b",
+            "fact:331120ccf8387a2fcc065f8a2f79787ac202737adfd5d8ea92301a95333bf4a2"
+          ],
+          "expected_present": false
+        },
+        "after": {
+          "sources": [
+            "appraisal:compiled:c2ad44fe29842de608676d6c6b2d80b4959bee1d3a640d41532d54b8f58ec4c8",
+            "prehistory-record:celia-college-societies",
+            "experience:character-life-response:cf178898f9ea4fc795522d076e52f3ba844b270c782b623096285f351bd0a84b",
+            "fact:331120ccf8387a2fcc065f8a2f79787ac202737adfd5d8ea92301a95333bf4a2"
+          ],
+          "expected_present": false
+        }
+      },
+      {
+        "query": "以前有什么小事你还记得？",
+        "expected_record": null,
+        "before": {
+          "sources": [
+            "appraisal:compiled:c2ad44fe29842de608676d6c6b2d80b4959bee1d3a640d41532d54b8f58ec4c8",
+            "experience:character-life-response:cf178898f9ea4fc795522d076e52f3ba844b270c782b623096285f351bd0a84b",
+            "fact:331120ccf8387a2fcc065f8a2f79787ac202737adfd5d8ea92301a95333bf4a2",
+            "appraisal:compiled:694997661a6b46e7e37a97fca786756dcdb9123bb046734cfded82ed77743d6c"
+          ],
+          "expected_present": null
+        },
+        "after": {
+          "sources": [
+            "appraisal:compiled:c2ad44fe29842de608676d6c6b2d80b4959bee1d3a640d41532d54b8f58ec4c8",
+            "experience:character-life-response:cf178898f9ea4fc795522d076e52f3ba844b270c782b623096285f351bd0a84b",
+            "fact:331120ccf8387a2fcc065f8a2f79787ac202737adfd5d8ea92301a95333bf4a2",
+            "appraisal:compiled:694997661a6b46e7e37a97fca786756dcdb9123bb046734cfded82ed77743d6c"
+          ],
+          "expected_present": null
+        }
+      }
+    ],
+    "original_natural_question_fixed": false,
+    "code_commit": "73f2ac416f2261d8665f9e669b287321f9d39c8f"
+  },
+  "view_change": {
+    "scope": "Provider view only, after privacy redaction. Canonical InnerLifeSnapshot and all ledger proof remain unchanged.",
+    "omitted_fields": [
+      "accepted_change_id",
+      "accepted_transition_id"
+    ],
+    "location": "Typed appraisal references inside Affect components only.",
+    "preserved": [
+      "Every episode and component",
+      "Every appraisal/hypothesis identity, accepted entity revision and source cluster",
+      "Intensities, residue, decay and lifecycle times",
+      "Canonical snapshot id/hash and full proof",
+      "Unknown/partial reference shapes and extra semantic fields"
+    ],
+    "no_semantic_decision_substitution": true,
+    "cost_projection": {
+      "scope": "Offline projection of only the provider Affect view change onto the captured request; no new provider or invoice measurement.",
+      "old_request_wire_bytes": 177724,
+      "new_request_wire_bytes": 169637,
+      "saved_wire_bytes": 8087,
+      "old_affect_json_bytes": 21636,
+      "new_affect_json_bytes": 13797,
+      "old_reserve_cny": 0.573108,
+      "new_reserve_cny": 0.548847,
+      "remaining_native_budget_cny": "0.4916446",
+      "admits_new_chat": false,
+      "other_request_materials_unchanged": true
+    },
+    "code_commit": "fd5b119e122abfe22eecbc4417c1aacda4508812"
+  },
+  "verification": {
+    "base_tests_passed": 56,
+    "integration_tests_passed": 116,
+    "repeated_target_case": 1,
+    "distinct_tests_passed": 171,
+    "coverage": [
+      "Historical label absent from episode prose becomes a lexical cue",
+      "Retained reading and both proofs are preserved",
+      "Forgotten source does not return through a stale active image",
+      "Model-view compaction leaves canonical bytes and identity unchanged",
+      "Privacy redaction precedes compaction",
+      "Partial/unknown references remain intact",
+      "Existing inbound author and historical source-closure integration"
+    ],
+    "cold": {
+      "cold_receipts_verified": 10,
+      "replay_matches": true,
+      "source_artifact_hashes_unchanged": true,
+      "new_paid_calls": 0,
+      "semantic_hash": "cd1b55d59df0e684f703bdbec557dd79cc45e91f42fa1cfdfeaf44d389d41082"
+    },
+    "ruff": "passed",
+    "git_diff_check": "passed"
+  },
+  "budget": {
+    "new_paid_calls": 0,
+    "new_world_effects_in_source": 0,
+    "production_modified": false,
+    "real_qq": false,
+    "authority_source": "output/private-audits/release-prehistory-real-20260914-08/run",
+    "usage_rows": 169,
+    "reservation_rows": 166,
+    "native_committed_estimate_cny": "14.1083554",
+    "native_unknown_hold_cny": "9.157287",
+    "native_ceiling_cny": "14.60",
+    "new_whole_allocation_cny": "0",
+    "unknown_holds_released": false,
+    "monthly_cost_qualified": false
+  },
+  "not_done": [
+    "Original natural-question recall and broader semantic retrieval",
+    "Real provider qualification after these changes",
+    "Context/tool-contract cost reduction sufficient for ordinary chat under current held budget",
+    "Original unsupported-experience, source-review false-acceptance, World Author, life, longitudinal and QQ release gates"
+  ],
+  "next": "Inspect broader natural recall and large prompt/tool-contract inputs; preserve character choice and source closure. Do not infer live cost savings or resume paid chat from the projected byte reduction.",
+  "artifact_sha256": {
+    "output/private-audits/release-rich-recall-inspection-20260914/reconstruct.log": "7654830af5a2e2e61af5b66322f6acf595a92cc90fd12da719c8cea65024cd31",
+    "output/private-audits/release-rich-recall-inspection-20260914/corpus.json": "c8629ac12defff8d9ba0112f812a892bffb5f42d8d574ac942074f449c42548e",
+    "output/private-audits/release-rich-recall-inspection-20260914/trace.json": "c5974501c24bac0071486f3216c699668137be2b0fc7164731af2a0749ffc793",
+    "output/private-audits/release-rich-recall-inspection-20260914/tests.log": "26c3c2e139bc0edcf06f4c71faa80d052945a8d1a9e0d039a79d6e2c23431421",
+    "output/private-audits/release-rich-recall-inspection-20260914/integration-tests.log": "8ae7169722a1cd3f10842623e6add898527d5bbcd0d116aa81acc5a57b686f48",
+    "output/private-audits/release-rich-recall-inspection-20260914/cost-projection.json": "7248a628e523616e9ea948507a8a0726c268a755536173534bcbe0fe10da47f7",
+    "output/private-audits/release-rich-recall-labels-20260914/reconstruct.log": "57d0bb61fef5098ed651d686c911c325103e004352058105d60dd2f741156985",
+    "output/private-audits/release-rich-recall-labels-20260914/corpus.json": "b091a3c1b2523f87c09126764087b22d5653fe6e4294b2980c2ef5272435ae23",
+    "output/private-audits/release-rich-recall-labels-20260914/trace.json": "dbdc5611b364b9c35d67036b59703a07aeccb9ad1061ad4732db0f413812e0ff",
+    "output/private-audits/release-rich-recall-labels-20260914/cue-probes.json": "772d40f3a887cdd7f7a02d847a0b35d8400dd1f37b4cc787de61f154aa5e1227",
+    "output/private-audits/release-rich-recall-labels-20260914/cold-validation.json": "92ac53a95f9efacc1865f187facf0f11d009653aaeaad7be54860c1053b18f23"
+  }
+}
