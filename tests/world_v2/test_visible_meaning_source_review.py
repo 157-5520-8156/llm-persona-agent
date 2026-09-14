@@ -109,7 +109,10 @@ def test_source_free_interpretation_is_still_reviewed_for_omitted_factual_meanin
         meaning=prepare_candidate_meaning(beats=(TEXT,)), meaning_raw=json.dumps(raw), sources=_sources(),
     )
     review = _review()
-    review["fact_decisions"] = {}
+    del review["fact_decisions"]
+    schema = prep.request()["tools"][0]["function"]["parameters"]
+    assert "fact_decisions" not in schema["properties"]
+    assert "fact_decisions" not in schema["required"]
     assert prep.inspect_response(json.dumps(review))["beat_outcomes"] == ["source_free"]
     review["candidate_reading_faithful"] = False
     assert prep.inspect_response(json.dumps(review))["beat_outcomes"] == ["unclosed"]

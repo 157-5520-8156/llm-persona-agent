@@ -13,7 +13,8 @@ from .visible_candidate_meaning import PreparedCandidateMeaning
 from .visible_source_reading_experiment import _catalog, prepare_reading_experiment
 from .visible_source_witness_experiment import _json, _unique
 
-CONTRACT = "visible-meaning-source-review.1"
+LEGACY_CONTRACT = "visible-meaning-source-review.1"
+CONTRACT = "visible-meaning-source-review.2"
 _SCOPES = {
     "actual_event_or_state": ("environment", "external_fact", "report_uptake"),
     "past_intention": ("accepted_intention", "report_uptake"),
@@ -57,7 +58,7 @@ class PreparedMeaningSourceReview:
 
     def inspect_response(self, raw: str) -> dict:
         packet = json.loads(self.payload_json)
-        if packet.get("contract") != CONTRACT:
+        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT}:
             raise ValueError("unsupported meaning source contract")
         meaning = PreparedCandidateMeaning(packet["meaning_preparation_json"])
         interpreted = meaning.inspect_response(packet["meaning_raw_response"])
@@ -104,7 +105,7 @@ class PreparedMeaningSourceReview:
                 else "closed" if facts else "source_free"
             )
         return {
-            "contract": CONTRACT, "preparation_sha256": self.sha256,
+            "contract": packet["contract"], "preparation_sha256": self.sha256,
             "meaning_preparation_sha256": meaning.sha256,
             "structural_validation": "passed", "semantic_qualification": "unproven",
             "receipt_authority": False, "beat_outcomes": outcomes,
@@ -156,7 +157,13 @@ def prepare_meaning_source_review(
         },
         "required": ["contract", "candidate_reading_faithful", "unrepresented_facts", "interpretation_explanation", "fact_decisions"],
     }
-    name = "review_fixed_candidate_meanings_v1"
+    if not interpreted["facts"]:
+        # DeepSeek rejects a strict object with no properties. A source-free
+        # candidate still receives a semantic completeness/fidelity review;
+        # only the nonexistent per-fact object is absent in this wire branch.
+        del schema["properties"]["fact_decisions"]
+        schema["required"].remove("fact_decisions")
+    name = "review_fixed_candidate_meanings_v2"
     request = {
         "messages": [
             {"role": "system", "content": (
@@ -164,6 +171,7 @@ def prepare_meaning_source_review(
                 "不要改变它们的事件类别、代词指向、主体、对象、时间或肯否来迁就现有证据。"
                 "先检查candidate_interpretation忠实且完整地解释了原句；如有遗漏事实/前提，列在unrepresented_facts，"
                 "如解释有错令candidate_reading_faithful=false，不能在本步骤修正解释后放行。"
+                "如果fixed_facts为空，只审核解释是否完整忠实，返回工具中的全局字段，不生成fact_decisions。"
                 "纯当下感受、态度、即时承认和当前意愿不是过去事实；问题的未知答案不是其前提。"
                 "对每个fixed_fact判断source_support。source_materials中的readings选择完整原文材料里的固定字段，"
                 "只填写reading_ids，不复制来源坐标和摘录。source_support=true时必须有合格来源，且只能选择该事实"

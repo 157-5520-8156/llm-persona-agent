@@ -130,6 +130,8 @@ def prepare_candidate_meaning(*, beats: tuple[str, ...]) -> PreparedCandidateMea
         "past_utterance只用于原句本身在回顾某人说过什么，不可因为说话行为现在发生就把所有发言归入它。"
         "current_private_expression是角色此刻的感受、评价、意愿边界和即时承认；current_intention是此刻选择的未来打算。"
         "这两类由发言本身表达，不是需要外部证据证明的既往事件。不要强行把它们归入actual_event_or_state。"
+        "角色对当前对话中自己措辞、理解和态度的即时自评或认错属于current_private_expression；"
+        "这不同于承认过去发生的离屏行为，后者仍是actual_event_or_state。不要把即时自评改写成客观事故或认知病史。"
         "subject_role是命题施事/主体，affected_roles列出该命题涉及的受事/对象角色；第三方关系在proposition中保留完整。"
         "time_expression保留原句时间含义，不明确时写不明确；polarity必须填affirmative（肯定）、negative（否定）或uncertain（不确定）。"
         "问句需分开：requested_unknowns记录正在询问的未知答案，meanings记录已经当作真的前提。"
