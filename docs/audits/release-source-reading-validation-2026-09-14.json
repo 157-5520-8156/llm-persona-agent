@@ -1,0 +1,455 @@
+{
+  "contract": "release-source-reading-phase-validation.1",
+  "code_head": "47949b5998b75afe4182c4c2f49c307b6bc1bc04",
+  "tests": {
+    "related_passed": 59,
+    "ruff": "passed",
+    "frozen_reading_v1_v2_results_identical": 12
+  },
+  "billing": {
+    "physical_calls": 27,
+    "all_known_token_usage_matches_terminal_provider_body": true,
+    "terminal_capture_hashes_and_native_reservation_associations_verified": true,
+    "known_repository_estimate_cny": "2.042973700000000032",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 223,
+    "reservation_rows": 220,
+    "all_inherited_rows_unchanged": true,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "latest_checkpoint": "output/private-audits/release-source-reading-pro-20260914-01/run/world.sqlite",
+    "runtime_checkpoint": "output/private-audits/release-chat-unlimited-20260914-01/run"
+  },
+  "trials": [
+    {
+      "directory": "output/private-audits/release-source-owner-20260914-01",
+      "code_head": "185dd6c5992ceb63f9be6e7b0534d521ee882c4d",
+      "physical_calls": 3,
+      "latencies_ms": [
+        5012,
+        3000,
+        3002
+      ],
+      "known_estimate_cny": "0.32662060000000001",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "status": "technical_failure",
+          "error_type": "ValueError",
+          "error_detail": "witness source is not eligible"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "status": "matched"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "source_free",
+            "closed"
+          ],
+          "status": "matched"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-source-owner-20260914-02",
+      "code_head": "53baa6d38d14b4ab6de6dadde70de2d3bebf75bf",
+      "physical_calls": 3,
+      "latencies_ms": [
+        4386,
+        3203,
+        2760
+      ],
+      "known_estimate_cny": "0.34261660000000001",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "status": "technical_failure",
+          "error_type": "ValueError",
+          "error_detail": "witness quote differs from pinned evidence"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "status": "matched"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "source_free",
+            "unclosed"
+          ],
+          "status": "semantic_mismatch"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-source-owner-20260914-03",
+      "code_head": "1582daec3285ba577e89a3597fd73d030dc52857",
+      "physical_calls": 3,
+      "latencies_ms": [
+        4398,
+        3188,
+        2568
+      ],
+      "known_estimate_cny": "0.34304420000000000",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "status": "technical_failure",
+          "error_type": "ValueError",
+          "error_detail": "witness exceeds source subject authority"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "status": "matched"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "closed",
+            "closed"
+          ],
+          "status": "semantic_mismatch"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-source-reading-20260914-01",
+      "code_head": "e408c4700664b823009bd4bfa7298cee39e34658",
+      "physical_calls": 6,
+      "latencies_ms": [
+        3113,
+        3013,
+        2486,
+        1780,
+        2295,
+        1437
+      ],
+      "known_estimate_cny": "0.27259360000000001",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "status": "technical_failure",
+          "error_type": "ValueError",
+          "error_detail": "selected reading exceeds declared source authority"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "status": "matched"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "source_free",
+            "unclosed"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "matched"
+        },
+        {
+          "case_id": "speech-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "matched"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "source_free",
+            "source_free"
+          ],
+          "status": "matched"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-source-reading-20260914-02",
+      "code_head": "b67843478304a6edfd491495fae490ef71f9d893",
+      "physical_calls": 6,
+      "latencies_ms": [
+        3549,
+        2554,
+        2303,
+        1356,
+        2413,
+        1446
+      ],
+      "known_estimate_cny": "0.286262600000000002",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "closed",
+            "closed",
+            "closed",
+            "closed"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "source_free",
+            "source_free",
+            "closed"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "closed",
+            "closed"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "technical_failure",
+          "error_type": "ValueError",
+          "error_detail": "response violates reading tool schema at /decisions/1/parts/0"
+        },
+        {
+          "case_id": "speech-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "technical_failure",
+          "error_type": "ValueError",
+          "error_detail": "response violates reading tool schema at /decisions/1/parts/0"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "source_free",
+            "source_free"
+          ],
+          "status": "matched"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-source-reading-pro-20260914-01",
+      "code_head": "47949b5998b75afe4182c4c2f49c307b6bc1bc04",
+      "physical_calls": 6,
+      "latencies_ms": [
+        8421,
+        9079,
+        10823,
+        4638,
+        5587,
+        4319
+      ],
+      "known_estimate_cny": "0.4718361",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "closed",
+            "closed",
+            "closed",
+            "source_free"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "source_free",
+            "source_free",
+            "closed"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "closed",
+            "closed"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "technical_failure",
+          "error_type": "ValueError",
+          "error_detail": "response violates reading tool schema at /decisions/1/parts/0"
+        },
+        {
+          "case_id": "speech-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "matched"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "source_free",
+            "source_free"
+          ],
+          "status": "matched"
+        }
+      ]
+    }
+  ],
+  "new_character_turns": 0,
+  "new_receipts": 0,
+  "production_changes": false,
+  "receipt_authority": false,
+  "qualification": "manual_only / qualification_incomplete"
+}
