@@ -23,6 +23,8 @@ from uuid import uuid4
 
 import httpx
 
+from ..provider_request_audit import captured_usage_correlation
+
 
 _SCOPE: ContextVar[tuple[str, str] | None] = ContextVar(
     "longitudinal_model_input_scope", default=None
@@ -438,6 +440,7 @@ class ModelInputCaptureTransport(httpx.AsyncBaseTransport):
             "scope": {"step_id": scope[0], "virtual_at": scope[1]} if scope else None,
             "provider_acceptance": "unverified",
             "audit_association": "unverified",
+            **captured_usage_correlation(request.extensions),
         }
         try:
             material = _request_material(request)

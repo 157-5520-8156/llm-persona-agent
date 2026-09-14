@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from companion_daemon.model_call_policy import ProviderCircuitState
+from companion_daemon.provider_request_audit import request_usage_extensions
 from companion_daemon.usage_metrics import (
     CNY_PER_USD,
     HERMES_4_70B_PRICE,
@@ -1425,6 +1426,7 @@ class DeepSeekChatModel:
                         **capture_identity_headers,
                     },
                     json=request_payload,
+                    **request_usage_extensions(reservation_id),
                 ) as response:
                     await _raise_for_provider_status_async(response)
                     content_type = response.headers.get("content-type", "").lower()
@@ -1750,6 +1752,7 @@ class DeepSeekChatModel:
                         **capture_identity_headers,
                     },
                     json=request_payload,
+                    **request_usage_extensions(reservation_id),
                 )
             finally:
                 mark_model_request_completed(request_span)

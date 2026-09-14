@@ -1,0 +1,43 @@
+{
+  "contract": "release-reservation-capture-validation.1",
+  "unknown_bill_audit": {
+    "capture_files": 39,
+    "unique_requests": 347,
+    "unknown_usage_rows": 17,
+    "unknown_reservation_estimate_sum_cny": "9.157287",
+    "finding": "All positive usage candidates in the inspected temporal windows also match already-known token records. No uniquely associated, previously uncounted complete usage was found; temporal/token similarity alone is not settlement authority.",
+    "database_unchanged": true,
+    "released_hold_cny": 0
+  },
+  "change": {
+    "transport": "Both streaming and non-streaming HTTPX requests attach the native reservation identifier only in local extensions.",
+    "capture": "Private request/result/body records whitelist that identifier and label usage_association client_declared. Existing audit_association remains unverified.",
+    "authority": "Correlation only; no automatic settlement, billing verification or semantic acceptance.",
+    "wire_body_headers_url_changed": false,
+    "malformed_or_missing_identifier": "Omitted; arbitrary extension values are never copied."
+  },
+  "validation": {
+    "tests_passed": 119,
+    "suites": [
+      "tests/test_provider_request_audit.py",
+      "tests/test_llm_request_budget.py",
+      "tests/world_v2/test_longitudinal_model_input_capture.py",
+      "tests/test_llm.py"
+    ],
+    "scope": "Concurrent reverse completion, cancellation with retained unknown holds, both request modes, unchanged model input, capture privacy and existing provider regressions. Mock transport only.",
+    "ruff": "passed"
+  },
+  "cost": {
+    "new_paid_calls": 0,
+    "new_allocation_cny": 0,
+    "released_hold_cny": 0,
+    "headroom_cny": "0.2182706000000000046",
+    "budget_checkpoint": "release-witness-real-20260914-01/run/world.sqlite",
+    "runtime_checkpoint": "release-prehistory-real-20260914-08/run"
+  },
+  "release_status": "manual_only / qualification_incomplete",
+  "remaining_gates": "Deployed source-review false acceptance, character correction, natural historical recall and compression/forgetting, representative life/dialogue, monthly cost and QQ release remain open.",
+  "evidence_hashes": {
+    "output/private-audits/release-unknown-bill-inspection-20260914/inspection-with-known-matches.json": "418565e3c673a2d846ab9f8d3028750eb47e10df93d0149ee18d718847704e99"
+  }
+}

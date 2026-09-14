@@ -61,6 +61,15 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+A subsequent read-only unknown-bill audit found no uniquely associated uncounted
+usage across 39 capture files / 347 requests; all 17 cumulative unknown holds
+remain. Future native reservation IDs now travel in local HTTPX extensions to
+private capture records, labeled client_declared, with audit association still
+unverified. This changes neither provider input nor settlement authority.
+119 provider/capture checks pass; no paid calls or budget release in this step.
+See `docs/audits/release-reservation-capture-validation-2026-09-14.json`.
+
+
 Latest witness experiment made one actual paid call on the full frozen evidence.
 The model correctly called the unrecorded seating an external_fact/unclosed,
 explicitly distinguishing self-speech, intention and environment. The actual
