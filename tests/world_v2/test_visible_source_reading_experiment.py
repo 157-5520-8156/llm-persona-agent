@@ -97,9 +97,12 @@ def test_negative_and_free_decisions_need_no_evidence_selection(verdict):
 def test_counterpart_report_keeps_speaker_and_third_party_permissions_separate():
     text = "家里人来接你啦。"
     prepared = prepare_reading_experiment(beats=(text,), sources=_report_sources())
-    assert prepared.inspect_response(_json(_reply(text, scope="external_fact", role="other")))["model_verdicts"] == ["closed"]
-    with pytest.raises(ValueError, match="source authority"):
-        prepared.inspect_response(_json(_reply(text, scope="external_fact", role="companion")))
+    result = prepared.inspect_response(_json(_reply(text, scope="report_uptake", role="other")))
+    assert result["model_verdicts"] == ["closed"]
+    assert result["transport_readings"]["decisions"][0]["parts"][0]["claim_scope"] == "report_uptake"
+    for scope, role in [("report_uptake", "companion"), ("external_fact", "other")]:
+        with pytest.raises(ValueError, match="tool schema"):
+            prepared.inspect_response(_json(_reply(text, scope=scope, role=role)))
 
 
 @pytest.mark.asyncio
@@ -126,7 +129,7 @@ async def test_native_environment_reading_cannot_grant_personal_presence(tmp_pat
         raw = _reply("雨停了。", reading["reading_id"], "environment", "none")
         assert prepared.inspect_response(_json(raw))["model_verdicts"] == ["closed"]
         raw["decisions"][0]["parts"][0]["subject_role"] = "companion"
-        with pytest.raises(ValueError, match="source authority"):
+        with pytest.raises(ValueError, match="tool schema"):
             prepared.inspect_response(_json(raw))
     finally:
         ledger.close()

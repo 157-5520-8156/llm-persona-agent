@@ -21,7 +21,8 @@ from .visible_source_witness_experiment import (
     prepare_witness_experiment,
 )
 
-CONTRACT = "visible-source-reading-experiment.1"
+LEGACY_CONTRACT = "visible-source-reading-experiment.1"
+CONTRACT = "visible-source-reading-experiment.2"
 
 
 def _direct_paths(row: dict, shown: dict) -> list[str]:
@@ -48,7 +49,7 @@ def _direct_paths(row: dict, shown: dict) -> list[str]:
     return paths
 
 
-def _catalog(packet: dict) -> list[dict]:
+def _catalog(packet: dict, *, report_uptake: bool = False) -> list[dict]:
     """Merge only exact scalar/material/owner/permission equivalents.
 
     Original aliases and proofs remain in the host preparation. Baseline and
@@ -81,6 +82,15 @@ def _catalog(packet: dict) -> list[dict]:
                     row=row, pointer=pointer, claim_scope=scope, subject_role=role,
                 )
             ]
+            material = row["review_material"]
+            if report_uptake and (
+                material.get("kind") == "current_counterpart_report"
+                or material.get("authority") == "counterpart_report_only"
+            ):
+                permissions = [
+                    ["report_uptake" if scope == "external_fact" else scope, role]
+                    for scope, role in permissions
+                ]
             if not permissions:
                 continue
             descriptor = {
@@ -116,16 +126,20 @@ class PreparedReadingExperiment:
         from jsonschema import Draft202012Validator
 
         packet = json.loads(self.payload_json)
-        if packet.get("contract") != CONTRACT:
+        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT}:
             raise ValueError("unsupported reading transport contract")
         if len(raw.encode()) > 131072:
             raise ValueError("reading response exceeds bound")
         value = json.loads(raw, object_pairs_hook=_unique)
-        Draft202012Validator(packet["request"]["tools"][0]["function"]["parameters"]).validate(value)
+        validator = Draft202012Validator(packet["request"]["tools"][0]["function"]["parameters"])
+        error = next(validator.iter_errors(value), None)
+        if error is not None:
+            path = "/" + "/".join(str(p) for p in error.absolute_path)
+            raise ValueError(f"response violates reading tool schema at {path}")
         base = PreparedWitnessExperiment(packet["witness_preparation_json"])
         # Reject altered mappings even when the substituted text is also in the
         # pin. A reading ID denotes precisely the compiled evidence selection.
-        catalog = _catalog(json.loads(base.payload_json))
+        catalog = _catalog(json.loads(base.payload_json), report_uptake=packet["contract"] == CONTRACT)
         if catalog != packet["catalog"]:
             raise ValueError("reading catalog differs from pinned compilation")
         by_id = {r["reading_id"]: r for r in catalog}
@@ -134,6 +148,8 @@ class PreparedReadingExperiment:
         for decision in expanded["decisions"]:
             for part in decision["parts"]:
                 if part["verdict"] != "closed":
+                    if part["claim_scope"] == "report_uptake":
+                        part["claim_scope"] = "external_fact"
                     continue
                 ids = part.pop("reading_ids")
                 if len(set(ids)) != len(ids):
@@ -141,6 +157,13 @@ class PreparedReadingExperiment:
                 readings = [by_id[ref] for ref in ids]
                 if any([part["claim_scope"], part["subject_role"]] not in r["permissions"] for r in readings):
                     raise ValueError("selected reading exceeds declared source authority")
+                # The frozen witness inspector used external_fact for natural
+                # report uptake as well. This is an explicit transport mapping
+                # after the stricter new scope/role/reading checks; the original
+                # report_uptake decision remains in transport_readings. It grants
+                # no objective World authority, receipt or Action.
+                if part["claim_scope"] == "report_uptake":
+                    part["claim_scope"] = "external_fact"
                 part["witnesses"] = [
                     {
                         "source_ref_index": r["source_ref_indexes"][0],
@@ -150,7 +173,7 @@ class PreparedReadingExperiment:
                 ]
         result = base.inspect_response(_json(expanded))
         return {
-            **result, "contract": CONTRACT,
+            **result, "contract": packet["contract"],
             "preparation_sha256": self.sha256,
             "transport_readings": value,
             "receipt_authority": False,
@@ -162,7 +185,7 @@ def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, .
         beats=beats, sources=sources, relative_pointer_choices=True, source_owner_semantics=True,
     )
     pin = json.loads(base.payload_json)
-    catalog = _catalog(pin)
+    catalog = _catalog(pin, report_uptake=True)
     if not catalog:
         raise ValueError("reading experiment requires eligible scalar evidence")
     request = base.request()
@@ -188,7 +211,9 @@ def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, .
         }
     schema = request["tools"][0]["function"]["parameters"]
     schema["properties"]["contract"] = {"type": "string", "enum": [CONTRACT]}
-    closed = schema["properties"]["decisions"]["items"]["properties"]["parts"]["items"]["anyOf"][0]
+    parts_schema = schema["properties"]["decisions"]["items"]["properties"]["parts"]
+    closed, non_authoritative = parts_schema["items"]["anyOf"]
+    non_authoritative["properties"]["claim_scope"]["enum"].append("report_uptake")
     del closed["properties"]["witnesses"]
     closed["required"].remove("witnesses")
     closed["properties"]["reading_ids"] = {
@@ -196,7 +221,24 @@ def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, .
         "items": {"type": "string", "enum": [r["reading_id"] for r in catalog]},
     }
     closed["required"].append("reading_ids")
-    name = "review_visible_source_readings_v1"
+    # A source permission is a host-owned ceiling. Constrain source selection
+    # in the provider schema as well as in the consumer, rather than asking the
+    # model to remember that an eligible source may be ineligible for this scope.
+    branches = []
+    for scope in ("utterance_record", "accepted_intention", "activity_lifecycle", "environment", "external_fact", "report_uptake"):
+        groups: dict[tuple[str, ...], list[str]] = {}
+        for role in ("companion", "counterpart", "general", "other", "none"):
+            ids = tuple(r["reading_id"] for r in catalog if [scope, role] in r["permissions"])
+            if ids:
+                groups.setdefault(ids, []).append(role)
+        for ids, roles in groups.items():
+            branch = deepcopy(closed)
+            branch["properties"]["claim_scope"] = {"type": "string", "enum": [scope]}
+            branch["properties"]["subject_role"] = {"type": "string", "enum": roles}
+            branch["properties"]["reading_ids"]["items"]["enum"] = list(ids)
+            branches.append(branch)
+    parts_schema["items"] = {"anyOf": [*branches, non_authoritative]}
+    name = "review_visible_source_readings_v2"
     request["tools"][0]["function"]["name"] = name
     request["tool_choice"]["function"]["name"] = name
     # Use the same semantic audit rules, but remove superseded coordinate and
@@ -215,6 +257,13 @@ def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, .
         "A source allowing utterance_record supports a claim that someone previously said "
         "something; it does not make the present candidate a record of speech merely because "
         "a similar sentence is in the dialogue. Read both actual texts, not their labels."
+        " REPORT UPTAKE: report_uptake means naturally replying to a counterpart's "
+        "reported circumstance, including a question based on it. This scope requires the "
+        "report, not independent proof that the reported event occurred. It does not require "
+        "an attribution phrase. Preserve the report's actors, objects, time, polarity and "
+        "status exactly; unsupported changes remain unclosed. external_fact means a claim "
+        "using event/fact authority beyond mere report uptake. A factual premise grounded "
+        "in a report should use report_uptake; the requested unknown answer needs no source."
     )
     request["messages"][1]["content"] = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
     return PreparedReadingExperiment(_json({
