@@ -1,0 +1,199 @@
+{
+  "contract": "release-independent-complete-validation.1",
+  "code_head": "a01f4fc5e66ce90efc7f4c215ace6ae4343d182a",
+  "billing": {
+    "physical_calls": 33,
+    "states": {
+      "known": 33
+    },
+    "native_capture_hashes_and_reservation_token_joins_verified": true,
+    "inherited_rows_unchanged": true,
+    "known_repository_estimate_cny": "0.1161120000000000016",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 513,
+    "reservation_rows": 510,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "latest_checkpoint": "output/private-audits/release-independent-complete-20260914-01/run/world.sqlite",
+    "runtime_checkpoint": "output/private-audits/release-chat-unlimited-20260914-01/run"
+  },
+  "cold_checks": {
+    "meaning_successes": 22,
+    "meaning_wire_failures_preserved": 2,
+    "inconclusive_readers": 1,
+    "source_results_identical": 9,
+    "actual_evidence_blind_distinct_pairs": 12
+  },
+  "case_statuses": {
+    "technical_failure": 3,
+    "semantic_mismatch": 1,
+    "matched_diagnostic_expectations": 8
+  },
+  "results": [
+    {
+      "case_id": "unsupported-seating",
+      "expected": [
+        "closed",
+        "closed",
+        "unclosed",
+        "source_free"
+      ],
+      "status": "technical_failure",
+      "error_type": "ValueError",
+      "error_detail": "complete reader was inconclusive"
+    },
+    {
+      "case_id": "shared-history-question",
+      "expected": [
+        "source_free",
+        "source_free",
+        "unclosed"
+      ],
+      "actual": [
+        "not_assessed",
+        "facts_rejected",
+        "facts_rejected"
+      ],
+      "status": "semantic_mismatch"
+    },
+    {
+      "case_id": "corrected-subject-positive",
+      "expected": [
+        "source_free",
+        "source_free"
+      ],
+      "actual": [
+        "not_assessed",
+        "facts_supported"
+      ],
+      "status": "matched_diagnostic_expectations"
+    },
+    {
+      "case_id": "intention-versus-completion",
+      "expected": [
+        "closed",
+        "unclosed"
+      ],
+      "actual": [
+        "facts_supported",
+        "facts_rejected"
+      ],
+      "status": "matched_diagnostic_expectations"
+    },
+    {
+      "case_id": "speech-recollection-versus-action",
+      "expected": [
+        "closed",
+        "unclosed"
+      ],
+      "actual": [
+        "facts_supported",
+        "facts_rejected"
+      ],
+      "status": "matched_diagnostic_expectations"
+    },
+    {
+      "case_id": "conditional-feeling-versus-history",
+      "expected": [
+        "source_free",
+        "unclosed"
+      ],
+      "actual": [
+        "not_assessed",
+        "facts_rejected"
+      ],
+      "status": "matched_diagnostic_expectations"
+    },
+    {
+      "case_id": "negated-event-versus-current-wish",
+      "expected": [
+        "unclosed",
+        "source_free"
+      ],
+      "actual": [
+        "facts_rejected",
+        "not_assessed"
+      ],
+      "status": "matched_diagnostic_expectations"
+    },
+    {
+      "case_id": "reported-skill-versus-action",
+      "expected": [
+        "unclosed",
+        "unclosed"
+      ],
+      "actual": [
+        "facts_rejected",
+        "facts_rejected"
+      ],
+      "status": "matched_diagnostic_expectations"
+    },
+    {
+      "case_id": "future-condition-with-past-event",
+      "expected": [
+        "unclosed"
+      ],
+      "actual": [
+        "facts_rejected"
+      ],
+      "status": "matched_diagnostic_expectations"
+    },
+    {
+      "case_id": "past-counterfactual-injury",
+      "expected": [
+        "unclosed"
+      ],
+      "actual": [
+        "facts_rejected"
+      ],
+      "status": "matched_diagnostic_expectations"
+    },
+    {
+      "case_id": "pure-future-condition",
+      "expected": [
+        "source_free"
+      ],
+      "status": "technical_failure",
+      "error_type": "ValidationError",
+      "error_detail": "3 validation errors for CompleteMeaningResponse\ndecisions.0.reading_complete\n  Field required [type=missing, input_value={'beat_index': 0, 'hypoth...nion 一起逛书店'}]}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndecisions.0.unresolved_details\n  Field required [type=missing, input_value={'beat_index': 0, 'hypoth...nion 一起逛书店'}]}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndecisions\n  Tuple should have at least 1 item after validation, not 0 [type=too_short, input_value=[{'beat_index': 0, 'hypot...ion 一起逛书店'}]}], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/too_short"
+    },
+    {
+      "case_id": "open-future-question",
+      "expected": [
+        "source_free",
+        "source_free"
+      ],
+      "status": "technical_failure",
+      "error_type": "JSONDecodeError",
+      "error_detail": "Expecting ',' delimiter: line 1 column 266 (char 265)"
+    }
+  ],
+  "pipeline_elapsed_ms": [
+    6229,
+    7369,
+    6276,
+    4859,
+    4918,
+    5141,
+    4978,
+    4702,
+    5850,
+    5736,
+    2080,
+    3003
+  ],
+  "interpretation": "Meaning .7 was tested with actual providers. Eight of twelve cases matched diagnostic expectations. A reader confused unresolved source references with incomplete sentence reading; another treated present willingness as an objective fact. Pro omitted required completeness fields once and emitted malformed JSON once. The positive corrected-participant report uptake passed. Preserve all failures.",
+  "runtime_scope": "New version 9 receipt and application plumbing is offline tested only. These fresh reviewer probes do not issue formal candidate receipts, author new character turns, dispatch messages, or qualify whole-turn latency.",
+  "new_character_turns": 0,
+  "new_receipts": 0,
+  "production_changes": false,
+  "qualification": "manual_only / qualification_incomplete",
+  "offline_validation": {
+    "related_tests_passed": 421,
+    "existing_related_group": 410,
+    "new_public_runtime_cases": 11,
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "scope": "Offline mechanism and application-chain validation only; actual model semantic failures remain open."
+  }
+}

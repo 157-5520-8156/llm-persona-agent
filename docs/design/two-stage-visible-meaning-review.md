@@ -97,3 +97,15 @@ rejection/reselection, failure accounting, tamper rejection and cold replay.
 These tests qualify plumbing, not model semantics. Previous `.6` diagnostic
 successes do not qualify new `.7` wire behavior, latency, complete real chat,
 production delivery or monthly cost. Those real checks remain pending.
+
+
+The first real `.7` trial did not qualify the port: 8/12 diagnostic matches,
+one false factual reading of current willingness, one inconclusive reading due
+to unresolved omitted referents, one missing-field result, and one malformed
+JSON result. This suggests the next design must distinguish complete semantic
+representation from evidence-level referent resolution, and explicitly test
+actual provider structure enforcement. No local field filling, factual-mode
+rewriting or example-specific phrase filter is an acceptable repair. Version 9
+remains explicit and unqualified; this first frozen contract and all raw failures
+must remain reconstructible when a revised protocol is introduced. See
+`docs/audits/release-independent-complete-validation-2026-09-14.json`.
