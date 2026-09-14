@@ -9,7 +9,7 @@ import json
 from typing import TYPE_CHECKING
 
 from .context_capsule import ResolvedSourceBinding
-from .model_facing_context import compact_model_facing_context
+from .model_facing_context import compact_chat_model_facing_context
 from .schema_core import canonicalize_json_value
 
 if TYPE_CHECKING:
@@ -17,7 +17,10 @@ if TYPE_CHECKING:
 
 
 def _compact(value):
-    return json.loads(compact_model_facing_context(json.dumps(
+    # Initial and paired materialization use full and chat-compacted inputs.
+    # Compare their same bounded semantic view; immutable proof stays in the
+    # original requirement table and is validated independently below.
+    return json.loads(compact_chat_model_facing_context(json.dumps(
         canonicalize_json_value(value), ensure_ascii=False,
     )))
 
@@ -88,7 +91,7 @@ def prehistory_claim_bindings(
                 "availability": "available", "items": [item],
             }}})["slices"][lane]["items"][0]
             if selected.get("availability") != "available" or not any(
-                shown.get("item_ref") == expected.get("item_ref")
+                shown.get("source_ref") == expected["source_ref"]
                 and shown.get("value") == expected.get("value")
                 for shown in selected.get("items", [])
             ):

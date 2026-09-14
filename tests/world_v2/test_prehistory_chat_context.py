@@ -203,6 +203,14 @@ def test_explicit_historical_claim_permissions_bind_dual_proof_without_current_a
             compile_requirement(request=original, capsule=capsule)})
         item, = capsule.active_memory_candidates.items
         refs = prehistory_claim_bindings(request)
+        from companion_daemon.world_v2.model_facing_context import compact_chat_model_facing_context
+        paired = request.model_copy(update={"model_content_json":
+            compact_chat_model_facing_context(request.model_content_json)})
+        assert prehistory_claim_bindings(paired) == refs
+        wrong_identity = json.loads(paired.model_content_json)
+        wrong_identity["slices"]["active_memory_candidates"]["items"][0]["source_ref"] = "memory:other"
+        assert not prehistory_claim_bindings(paired, context=wrong_identity)
+
         assert item.item_ref in refs
         assert {binding.ref for binding in refs[item.item_ref]} == {binding.ref for binding in item.source_bindings}
         context = json.loads(request.model_content_json)
@@ -219,7 +227,9 @@ def test_explicit_historical_claim_permissions_bind_dual_proof_without_current_a
                                  "source_refs": [item.item_ref]}]}
         draft = expression.ExpressionDraft.model_validate_json(json.dumps(raw))
         expression._validate_world_claims(draft=draft, request=request)
+        expression._validate_world_claims(draft=draft, request=paired)
         evidence = expression._world_claim_evidence(draft=draft, request=request)
+        assert expression._world_claim_evidence(draft=draft, request=paired) == evidence
         assert {binding.ref for binding in item.source_bindings} <= {ref.ref_id for ref in evidence}
         for scope in ("current_world", "counterpart_history", "shared_history", "stable_identity"):
             changed = deepcopy(raw)

@@ -1,0 +1,124 @@
+{
+  "contract": "release-prehistory-paired-validation.1",
+  "date": "2026-09-14",
+  "previous_goal_turn": "progress: clarified the conflicting memory prompt and closed real trial05",
+  "no_input_continuation": {
+    "trial": "release-prehistory-real-20260914-06",
+    "physical_calls": 0,
+    "new_capture_system_notices": 1,
+    "new_character_deliveries": 0,
+    "finding": "Old reply retries were already exhausted; continuation did not exercise the new prompt."
+  },
+  "real_trial": {
+    "trial_id": "release-prehistory-real-20260914-07",
+    "code_head": "6622349f7474f050b5a599f64a062bc6c082bbf2",
+    "completed": false,
+    "stop_reason": "wall_time_limit",
+    "physical_calls": 4,
+    "known_calls": 3,
+    "unknown_calls": 1,
+    "known_repository_price_estimate_cny": "0.1123545",
+    "new_unresolved_hold_cny": "0.575085",
+    "inherited_usage_and_reservations_unchanged": true,
+    "final_usage_rows": 160,
+    "final_reservation_rows": 157,
+    "turns_consumed": 1,
+    "cold_receipts_verified": 9,
+    "new_cold_receipts_verified": 0,
+    "replay_hash_matches": true,
+    "call_costs": [
+      {
+        "id": 157,
+        "purpose": "inbound_turn",
+        "status": "succeeded",
+        "billing_state": "known",
+        "latency_ms": 6945,
+        "known_estimate_cny": "0.0655413"
+      },
+      {
+        "id": 158,
+        "purpose": "inbound_turn",
+        "status": "failed",
+        "billing_state": "unknown",
+        "latency_ms": 3508,
+        "known_estimate_cny": null
+      },
+      {
+        "id": 159,
+        "purpose": "interaction_fact_draft",
+        "status": "succeeded",
+        "billing_state": "known",
+        "latency_ms": 984,
+        "known_estimate_cny": "0.0012973"
+      },
+      {
+        "id": 160,
+        "purpose": "inbound_turn",
+        "status": "succeeded",
+        "billing_state": "known",
+        "latency_ms": 6649,
+        "known_estimate_cny": "0.0455159"
+      }
+    ],
+    "additional10_authorization_usage": {
+      "physical_calls": 71,
+      "known_calls": 59,
+      "unknown_calls": 12,
+      "known_estimate_cny": "1.9802958000000000004",
+      "new_unresolved_hold_cny": "6.798414",
+      "all_old_holds_retained": true
+    },
+    "native_known_estimate_cny": "4.5229234000000000008",
+    "native_unknown_hold_cny": "9.157287",
+    "native_committed_estimate_cny": "13.6802104000000000008",
+    "new_whole_allocation_cny": "0",
+    "shared_allocation_owner": "release-recovery-continuation-20260913-08"
+  },
+  "real_findings": {
+    "new_character_deliveries": 0,
+    "new_source_reviews": 0,
+    "first_attempt": "Appraisal Affect update chose a component outside the active head; Core correction timed out.",
+    "second_attempt": "Historical memory claim passed initial materialization and failed after chat compaction with paired_expression_materialization_changed.",
+    "unsupported_prose": "New prompt still produced unsourced revision/layout/teacher/office details. Because no review ran, this trial does not measure reviewer performance."
+  },
+  "offline_fix": {
+    "problem": "Selected prehistory compared full proof-bearing values against chat-compacted values; both normalized items lacked item_ref and the identity comparison could collapse to None==None.",
+    "change": "Normalize both to the same bounded chat semantic view, compare exact source_ref, retain independent full record/archive proof validation.",
+    "does_not_change": [
+      "character decisions",
+      "original World or archive",
+      "provider deadline",
+      "semantic source review",
+      "production defaults or QQ delivery"
+    ]
+  },
+  "verification": {
+    "targeted_tests": 75,
+    "cold_old_receipts": 9,
+    "real_ledger_cursor": {
+      "world_revision": 637,
+      "deliberation_revision": 692,
+      "ledger_sequence": 1329
+    },
+    "real_claim_old_initial_allowed": true,
+    "real_claim_old_paired_allowed": false,
+    "fixed_both_allowed_with_identical_dual_proof": true,
+    "reconstructed_capsule_id_matches_actual": false,
+    "reconstruction_limit": "Same failed ledger cursor and claim source; bounded reconstruction is not an exact full original Capsule reproduction.",
+    "new_paid_calls_after_fix": 0
+  },
+  "qualification": "manual_only / qualification_incomplete",
+  "remaining": [
+    "Real verification of the paired fix",
+    "Appraisal active-head component mismatch",
+    "Unsupported historical embellishment and original v8 false acceptance",
+    "Rich reviewed archive data and author/review tooling",
+    "Historical compression/forgetting and long-term/monthly-cost acceptance",
+    "World Author/life continuity and invite/demo acceptance"
+  ],
+  "private_evidence": [
+    "output/private-audits/release-prehistory-real-20260914-06/reconciliation.json",
+    "output/private-audits/release-prehistory-real-20260914-07/reconciliation.json",
+    "output/private-audits/release-prehistory-paired-20260914/reproduction.json"
+  ]
+}

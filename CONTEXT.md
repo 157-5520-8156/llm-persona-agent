@@ -61,6 +61,15 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Paired expression now compares selected historical readings using the same chat
+semantic normalization and exact source_ref at both materializations. Full record
+and archive proof remains independently validated in the original requirement.
+This fixes the observed full-vs-compacted claim capability mismatch; it does not
+implement long-term memory compression. 75 checks and 9 old cold receipts pass.
+Real trial07 still authored unsupported details and also exposed an Appraisal
+component outside the active head. The new paired fix is offline-qualified only;
+rich reviewed archives and author/review tooling remain part of the active goal.
+
 Latest boundary evidence: the next real trial produced two unsupported historical
 episodes with empty claims; whole-body v8 review correctly rejected both, followed
 by correction timeouts and zero deliveries. Shipped profile/shared prompt wording
