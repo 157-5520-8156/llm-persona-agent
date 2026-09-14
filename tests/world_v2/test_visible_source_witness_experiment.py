@@ -233,3 +233,46 @@ def test_boolean_is_not_an_original_integer_source_index():
     rows[0]["source_ref_index"] = False
     with pytest.raises(ValueError, match="ordered original source table"):
         prepare_witness_experiment(beats=(TEXT,), sources=rows)
+
+
+@pytest.mark.parametrize("source_index", [0, 1])
+def test_full_packet_pointer_binds_the_references_shared_material(source_index):
+    raw = _response()
+    part = raw["decisions"][0]["parts"][0]
+    part["witnesses"][0].update(
+        source_ref_index=source_index, pointer="/source_materials/0/item/value/text"
+    )
+    prepared = prepare_witness_experiment(beats=(part["text"],), sources=_sources())
+    result = prepared.inspect_response(_json(raw))
+    assert result["model_verdicts"] == ["closed"]
+    assert result["inspection_contract"] == "visible-source-witness-inspection.2"
+    assert (
+        result["readings"]["decisions"][0]["parts"][0]["witnesses"][0]["pointer"]
+        == "/source_materials/0/item/value/text"
+    )
+    assert result["receipt_authority"] is False
+
+
+@pytest.mark.parametrize("index", ["1", "00", "-1", "true", "", "０"])
+def test_packet_pointer_cannot_select_another_or_ambiguous_material(index):
+    raw = _response()
+    part = raw["decisions"][0]["parts"][0]
+    part["witnesses"][0].update(
+        source_ref_index=1, pointer=f"/source_materials/{index}/item/value/text"
+    )
+    prepared = prepare_witness_experiment(beats=(part["text"],), sources=_sources())
+    with pytest.raises(ValueError, match="selected material"):
+        prepared.inspect_response(_json(raw))
+
+
+@pytest.mark.parametrize("length", [512, 513, 1024, 1025])
+def test_explanation_bound_remains_finite_without_changing_the_model_request(length):
+    raw = _response()
+    part = raw["decisions"][0]["parts"][0]
+    prepared = prepare_witness_experiment(beats=(part["text"],), sources=_sources())
+    part["support_explanation"] = "a" * length
+    if length <= 1024:
+        assert prepared.inspect_response(_json(raw))["structural_validation"] == "passed"
+    else:
+        with pytest.raises(ValueError):
+            prepared.inspect_response(_json(raw))

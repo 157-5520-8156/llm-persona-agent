@@ -24,6 +24,7 @@ from .visible_source_closure_protocol import (
 from .character_interior.inbound_tool_contract import _provider_schema, deepseek_strict_tool_schema
 
 CONTRACT = "visible-source-witness-experiment.1"
+INSPECTION_CONTRACT = "visible-source-witness-inspection.2"
 Scope = Literal[
     "utterance_record",
     "accepted_intention",
@@ -47,7 +48,7 @@ class ClaimReading(FrozenModel):
     subject_role: Literal["companion", "counterpart", "general", "other", "none"]
     verdict: Literal["closed", "unclosed", "source_free"]
     witnesses: tuple[EvidenceReading, ...] = Field(max_length=8)
-    support_explanation: str = Field(min_length=1, max_length=512)
+    support_explanation: str = Field(min_length=1, max_length=1024)
 
 
 class BeatReading(FrozenModel):
@@ -73,6 +74,27 @@ def _unique(pairs):
             raise ValueError("duplicate witness member")
         result[key] = value
     return result
+
+
+def _material_pointer(pointer: str, material_index: int) -> str:
+    """Accept a displayed-packet path only for this exact reference's material.
+
+    This changes a coordinate, never a quote, source selection or role decision.
+    The raw pointer remains in the recorded model reading.
+    """
+    if not pointer.startswith("/source_materials/"):
+        return pointer
+    segments = pointer.split("/", 3)
+    index = segments[2]
+    if (
+        len(segments) != 4
+        or not index.isascii()
+        or not index.isdecimal()
+        or str(int(index)) != index
+        or int(index) != material_index
+    ):
+        raise ValueError("witness packet pointer does not bind the selected material")
+    return "/" + segments[3]
 
 
 def _reading(material: dict, pointer: str) -> tuple[str, bool]:
@@ -173,12 +195,15 @@ class PreparedWitnessExperiment:
                     if reading.source_ref_index >= len(rows):
                         raise ValueError("witness source index is outside the pin")
                     row = rows[reading.source_ref_index]
+                    pointer = _material_pointer(
+                        reading.pointer, packet["material_indexes"][reading.source_ref_index]
+                    )
                     shown = packet["shown_materials"][
                         packet["material_indexes"][reading.source_ref_index]
                     ]
                     for evidence, whole_scalar in (
-                        _reading(row["review_material"], reading.pointer),
-                        _reading(shown, reading.pointer),
+                        _reading(row["review_material"], pointer),
+                        _reading(shown, pointer),
                     ):
                         if reading.quote not in evidence or (
                             whole_scalar and reading.quote != evidence
@@ -194,7 +219,7 @@ class PreparedWitnessExperiment:
                         ):
                             raise ValueError("witness subject differs from source actor")
                         if part.verdict == "closed" and not _permits(
-                            row, part.claim_scope, reading.pointer
+                            row, part.claim_scope, pointer
                         ):
                             raise ValueError("witness scope exceeds source authority")
                         direct += 1
@@ -209,6 +234,7 @@ class PreparedWitnessExperiment:
             )
         return {
             "contract": CONTRACT,
+            "inspection_contract": INSPECTION_CONTRACT,
             "preparation_sha256": self.sha256,
             "structural_validation": "passed",
             "model_verdicts": outcomes,

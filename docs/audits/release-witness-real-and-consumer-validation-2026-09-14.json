@@ -1,0 +1,98 @@
+{
+  "contract": "release-witness-real-and-consumer-validation.1",
+  "paid_code_head": "f0159575eb13f8243c4dee690e81a0efe6113b49",
+  "original_trial_status": "technical_failure",
+  "original_failure": {
+    "error_type": "ValidationError",
+    "explanation_lengths": [
+      609,
+      501,
+      798,
+      462
+    ],
+    "original_limit": 512,
+    "additional_coordinate_mismatch": "Model supplied full /source_materials/<index>/... packet paths rather than material-relative paths."
+  },
+  "semantic_observation": {
+    "unsupported_seating": "Model explicitly classified it as an external fact and unclosed: old self-speech proves only speech; the accepted plan proves intention; environment does not establish presence.",
+    "raw_model_part_verdicts": [
+      [
+        "closed"
+      ],
+      [
+        "closed"
+      ],
+      [
+        "unclosed"
+      ],
+      [
+        "closed"
+      ]
+    ],
+    "last_beat_difference": "Original fixed expectation was source_free. Model instead cited counterpart source 30 for the conversational acknowledgement. This label difference is reported separately; expected values were not retroactively rewritten.",
+    "sample_size": 1
+  },
+  "consumer_repair": {
+    "inspection_contract": "visible-source-witness-inspection.2",
+    "changes": [
+      "Accept full packet pointers only when their exact canonical material index matches the selected source reference; retain the original model pointer in the audit.",
+      "Keep source-relative pointers valid; reject other, ambiguous, negative and noncanonical material indexes.",
+      "Bound explanation text at 1024 characters, while keeping the original total response-byte and provider-output ceilings."
+    ],
+    "provider_request_and_preparation_unchanged": true,
+    "raw_response_unchanged_sha256": "e3bd9f263d406328b10dc2f779122a8cc98ee0be44471856030d5ee146a5a130",
+    "replayed_model_verdicts": [
+      "closed",
+      "closed",
+      "unclosed",
+      "closed"
+    ],
+    "receipt_authority": false,
+    "qualification": "Offline consumer replay of the original paid bytes, not a new successful provider run."
+  },
+  "validation": {
+    "tests_passed": 31,
+    "old_cold_receipts_verified": 10,
+    "unchanged_nonbilling_tables": 29,
+    "ruff": "passed",
+    "diff_check": "passed"
+  },
+  "cost": {
+    "physical_calls": 1,
+    "known_repository_price_estimate_cny": "0.103401",
+    "unknown_new_calls": 0,
+    "native_committed_cny": "14.3817293999999999954",
+    "headroom_cny": "0.2182706000000000046",
+    "new_allocation_cny": 0,
+    "additional10_authorization_usage": {
+      "physical_calls": 84,
+      "known_calls": 72,
+      "unknown_calls": 12,
+      "known_estimate_cny": "2.6818147999999999950",
+      "new_unresolved_hold_cny": "6.798414",
+      "all_old_holds_retained": true
+    },
+    "latency_ms": [
+      5469
+    ],
+    "price_estimate_not_invoice": true
+  },
+  "continuation": {
+    "runtime_checkpoint": "release-prehistory-real-20260914-08/run",
+    "budget_checkpoint": "release-witness-real-20260914-01/run/world.sqlite",
+    "usage_rows": 173,
+    "reservation_rows": 170,
+    "rule": "Use the original closed runtime journey plus the complete newest cost ledger; never resume an older cheaper ledger alone."
+  },
+  "remaining_gates": [
+    "Actual consumer success on a fresh provider run and representative positive/negative controls",
+    "Model scope misclassification still cannot be ruled out by structural witnesses",
+    "Original deployed v8 false acceptance and role correction remain unresolved",
+    "Real character dialogue, life continuity, long memory, monthly production cost and QQ release remain unqualified"
+  ],
+  "evidence_hashes": {
+    "output/private-audits/release-witness-real-20260914-01/reconciliation.json": "fc6a0af1037fe987bdb8dbd62bb3a849512d5d9f8718260c2affb4cc3c1d7bdf",
+    "output/private-audits/release-witness-real-20260914-01/consumer-replay.json": "9d2f58754fa15ff864d6b0d549e1d2260352ebf4d99378ef55bece17045c3897",
+    "output/private-audits/release-witness-real-20260914-01/run/original-witness-experiment.json": "5436d67bd8646359791eae0b8874825e5699a74598ba112691e902be492b3421"
+  }
+}

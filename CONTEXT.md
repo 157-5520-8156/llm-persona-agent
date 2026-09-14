@@ -61,6 +61,24 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Latest witness experiment made one actual paid call on the full frozen evidence.
+The model correctly called the unrecorded seating an external_fact/unclosed,
+explicitly distinguishing self-speech, intention and environment. The actual
+trial still failed consumer validation: explanations were 609/501/798/462 chars
+against the original hidden512 limit; pointers used the full source_materials
+packet path. Inspection.2 accepts only the exact selected material's canonical
+packet index (or the original relative pointer), and bounds explanations at1024.
+The same preparation/provider request and raw returned bytes replay unchanged.
+31 checks pass; model verdicts are closed/closed/unclosed/closed (the last Beat
+was originally expected source_free, now grounded in counterpart source30).
+No accepted receipt/Action authority is conferred and fresh model qualification
+remains open. One known call cost estimated CNY0.103401, latency5469ms, no new
+unknown hold. Latest budget: `release-witness-real-20260914-01/run/world.sqlite`,
+173 usage/170 reservation rows, native committed14.3817294, remaining0.2182706.
+Runtime remains trial08; always inherit the newest cost ledger alongside it.
+See `docs/audits/release-witness-real-and-consumer-validation-2026-09-14.json`.
+
+
 A non-authorizing, single-call witness experiment now prepares complete evidence
 and inspects per-clause model readings: exact text coverage, original/displayed
 quotes, source indexes, explicit participant roles, and declared source scopes.
