@@ -111,6 +111,44 @@ def test_memory_accepts_a_distinct_exact_prehistory_source(tmp_path):
         ledger.close()
 
 
+def test_recall_indexes_only_retained_historical_identity_labels(tmp_path):
+    ledger = started_ledger(tmp_path / "identity-cues.sqlite")
+    try:
+        row = _install(ledger)
+        source = prehistory_memory_binding(row)
+        pending = _choice(ledger, source)
+        active = _choice(ledger, source, before=pending, status="active")
+        documents = _corpus(ledger, _read(ledger))
+        document, = documents
+        assert "编辑室" not in document.text
+        assert "校刊编辑室" in document.retrieval_text
+        assert document.text == row.record.statement
+        assert len(document.source_bindings) == 2
+        projection = ledger.project()
+        cursor = RecallCursor(
+            world_revision=projection.world_revision,
+            deliberation_revision=projection.deliberation_revision,
+            ledger_sequence=projection.ledger_sequence,
+        )
+        query = RecallQuery(query_text="编辑室", cursor=cursor, actor_ref=ACTOR, subject_refs=(ACTOR,),
+            viewer_privacy_ceiling="private", at=START, accessibility_seed="identity-label-fixture")
+        class LexicalProbeEmbedding(FeatureHashRecallEmbedding):
+            dense_match_threshold_bp = 10_000
+        index = InMemoryRecallIndex(embedding=LexicalProbeEmbedding())
+        index.rebuild(cursor=cursor, documents=(document.model_copy(update={"retrieval_text": None}),))
+        assert not index.search(query).hits
+        index.rebuild(cursor=cursor, documents=documents)
+        hit, = index.search(query).hits
+        assert hit.document.source_bindings == document.source_bindings
+        assert hit.document.prehistory == document.prehistory
+        # Neither archive authority nor an old active image can recover a
+        # forgotten identity cue through the newly indexed label.
+        _choice(ledger, source, before=active, status="forgotten")
+        assert not _corpus(ledger, _read(ledger, candidates=(active,)))
+    finally:
+        ledger.close()
+
+
 def test_active_history_uses_exact_source_and_occurrence_dates_after_cold_replay(tmp_path):
     path = tmp_path / "retained.sqlite"
     ledger = started_ledger(path)

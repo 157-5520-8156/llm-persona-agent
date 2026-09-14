@@ -174,7 +174,7 @@ def _subjects(*values: str) -> tuple[str, ...]:
 class RecallCorpusCompiler:
     """Deep compiler for a source-closed hybrid recall corpus."""
 
-    VERSION = "world-v2-recall-corpus.4"
+    VERSION = "world-v2-recall-corpus.5"
 
     def compile(
         self,
@@ -398,7 +398,14 @@ class RecallCorpusCompiler:
                 document = self._document(
                     memory_kind="episodic", source_item_ref=excerpt.source_id,
                     source_slice="active_memory_candidates", bindings=bindings,
-                    text=excerpt.text, actor_ref=actor_ref, subject_refs=(actor_ref,),
+                    text=excerpt.text,
+                    # Index only identity labels already present in this
+                    # retained reading, never the archive's other people or
+                    # places. Labels aid access; they add no occurrence text.
+                    retrieval_text=(excerpt.text + "\n" + "\n".join(
+                        entity.label for entity in historical.entities
+                    )) if historical.entities else None,
+                    actor_ref=actor_ref, subject_refs=(actor_ref,),
                     link_refs=(candidate.candidate_id,), occurred_from=historical.occurred_from,
                     occurred_to=historical.occurred_until, status="active",
                     privacy_class=candidate.privacy_ceiling, epistemic_scope="character_prehistory",
