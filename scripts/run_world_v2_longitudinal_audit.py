@@ -39,8 +39,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         help="Explicit whole-author wire version; v2/v3 require whole-source review and is unqualified with real providers.",
     )
     parser.add_argument(
-        "--visible-source-review-version", choices=("1", "2", "3", "4", "5", "6", "7", "8"), default="1",
-        help="Explicit whole-source reviewer wire version; v2/v3/v4/v5/v6 require whole-source review and remain unqualified with real providers.",
+        "--visible-source-review-version", choices=("1", "2", "3", "4", "5", "6", "7", "8", "9"), default="1",
+        help="Explicit whole-source reviewer wire version; Nonlegacy versions require whole-source review; v9 is an experimental independent review pipeline.",
     )
     parser.add_argument(
         "--interactive",
@@ -75,7 +75,7 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
     if options.visible_author_tool_version != "1" and not options.require_visible_source_review:
         parser.error("--visible-author-tool-version 2/3 requires --require-visible-source-review")
     if options.visible_source_review_version != "1" and not options.require_visible_source_review:
-        parser.error("--visible-source-review-version 2/3/4/5/6/7 requires --require-visible-source-review")
+        parser.error("nonlegacy --visible-source-review-version requires --require-visible-source-review")
     if options.max_cost_cny is not None and (
         not math.isfinite(options.max_cost_cny) or not 0 < options.max_cost_cny <= 100
     ):
@@ -314,11 +314,11 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
 
             usage = usage_store_for_settings(settings)
 
-            def provider(role, *, thinking=False):
+            def provider(role, *, thinking=False, model_override=None):
                 client = DeepSeekChatModel(
                     api_key=settings.deepseek_debug_api_key,
                     base_url=settings.deepseek_base_url,
-                    model=(
+                    model=model_override or (
                         settings.deepseek_character_thinking_model
                         if thinking
                         else settings.deepseek_model
@@ -346,9 +346,17 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                 world_support_model=provider("world_support"),
             )
             if required_review:
+                visible_reviewer = provider("visible_source_review")
+                if options.visible_source_review_version == "9":
+                    from companion_daemon.world_v2.visible_independent_review_runtime import IndependentVisibleReviewer
+                    visible_reviewer = IndependentVisibleReviewer(
+                        meaning_models=(provider("visible_meaning_pro", model_override="deepseek-v4-pro"),
+                                        provider("visible_meaning_flash")),
+                        source_model=visible_reviewer,
+                    )
                 injected.update(
                     visible_source_review_required=True,
-                    visible_source_review_model=provider("visible_source_review"),
+                    visible_source_review_model=visible_reviewer,
                     visible_author_tool_version=options.visible_author_tool_version,
                     visible_author_schema_references=options.visible_author_schema_references,
                     visible_source_review_version=options.visible_source_review_version,

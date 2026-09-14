@@ -68,3 +68,32 @@ v4双读取曾共同把未来有空/散步当成已发生前提，误拒开放�
 当前原型最多处理32个事实命题，沿用条目传输的标量和摘录长度上限；还没有完整细分“活动生命周期本身的陈述”等所有生产reader语义。超过原型范围时拒绝准备，不静默丢弃事实。这些限制也必须在正式接线前处理。
 
 本阶段82项本地检查通过；25份含义结果与11份来源结果按冻结准备记录重读一致。这些都是结构与可恢复性证据。38次物理调用、费用、未知预留和逐轮结果见[验证记录](../audits/release-candidate-meaning-validation-2026-09-14.json)。
+
+
+## Explicit independent runtime protocol (2026-09-14)
+
+The experimental version 9 port now pins `visible-independent-review.1` in the
+original Deliberation requirement before character authoring. It requires two
+explicit metered clients with distinct model identities. Both read exactly the
+original Beats, without World evidence or the other reading; all factual readings
+remain separate when the source model receives the original evidence catalog.
+Meaning `.7` adds an explicit completeness assertion and unresolved-detail list.
+Incomplete or ambiguous reading is a technical failure, not proof of fabrication.
+Two positively complete, represented nonfactual readings permit source-free
+classification; empty fact arrays alone do not.
+
+The `.9` receipt retains the entire candidate/source bundle, both raw readings,
+the optional source result, and each actual provider binding. Source-call identity
+also binds both original reader response hashes. Cold verification joins the
+original author capability and every independently recorded provider subcall;
+rehashed receipts and protocol downgrades cannot select weaker approval rules.
+Native usage and cancellation audits survive failed interpretation, source
+rejection and the same character's single constrained reselection.
+
+This port is explicit-only; production settings/defaults remain unchanged. The
+longitudinal CLI can select version 9 with separate Pro and Flash reader clients.
+Offline public application tests cover inbound/proactive authorization, source
+rejection/reselection, failure accounting, tamper rejection and cold replay.
+These tests qualify plumbing, not model semantics. Previous `.6` diagnostic
+successes do not qualify new `.7` wire behavior, latency, complete real chat,
+production delivery or monthly cost. Those real checks remain pending.

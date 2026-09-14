@@ -2473,8 +2473,10 @@ class _InboundCharacterAuthor:
         if type(whole_candidate_mode) is not bool:
             raise TypeError("whole_candidate_mode must be an explicit boolean")
         self._whole_candidate_mode = whole_candidate_mode
-        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7", "8"}:
+        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7", "8", "9"}:
             raise ValueError("unsupported visible source review version")
+        from ..visible_independent_review_runtime import validate_independent_reviewer_configuration
+        validate_independent_reviewer_configuration(visible_source_review_model, visible_source_review_version)
         if visible_source_review_version != "1":
             if not whole_candidate_mode:
                 raise ValueError("versioned source review requires whole-candidate authoring")
@@ -2740,6 +2742,10 @@ class _InboundCharacterAuthor:
         """Report that selective retrieval execution belongs to the outer core."""
 
         return self._character_interior_recall_delegate and self._recall is None
+
+    def visible_review_protocol(self):
+        from ..visible_independent_review_receipt import PROTOCOL
+        return PROTOCOL if self._visible_source_review_version == "9" else None
 
     def source_closure_review_enabled(self) -> bool:
         """Report the source review owned by this same character author."""

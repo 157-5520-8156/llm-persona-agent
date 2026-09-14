@@ -806,6 +806,11 @@ class _CharacterInteriorProactiveTransport:
             )
         )
 
+    def visible_review_protocol(self):
+        faculty = self._interior._registry.for_purpose("proactive_contact")  # noqa: SLF001
+        operation = getattr(faculty, "visible_review_protocol", None)
+        return operation() if callable(operation) else None
+
     def source_closure_review_enabled(self) -> bool:
         return self._visible_source_review_required or self._source_closure_reviewer is not None or self._inventory_model is not None
 

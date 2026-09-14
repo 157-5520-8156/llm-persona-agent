@@ -74,8 +74,10 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
     def __init__(
         self, *, reviewer, expression_capabilities, visible_source_review_version="1", **kwargs
     ):
-        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7", "8"}:
+        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7", "8", "9"}:
             raise ValueError("unsupported visible source review version")
+        from ..visible_independent_review_runtime import validate_independent_reviewer_configuration
+        validate_independent_reviewer_configuration(reviewer, visible_source_review_version)
         if visible_source_review_version != "1" and not callable(
             getattr(reviewer, "complete_json_with_usage", None)
         ):
@@ -86,6 +88,10 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
         self._visible_reviewer = reviewer
         self._visible_capabilities = expression_capabilities
         self._rejected: OrderedDict[str, tuple[tuple, tuple]] = OrderedDict()
+
+    def visible_review_protocol(self):
+        from ..visible_independent_review_receipt import PROTOCOL
+        return PROTOCOL if self._visible_source_review_version == "9" else None
 
     def _remember_rejected(self, request, candidate, reviews):
         previous, _ = self._rejected.get(request.inner_turn_id, ((), ()))
@@ -357,6 +363,7 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
             # The current author completed, but its pending review did not.
             # Preserve only completed evidence; the provider usage ledger
             # independently retains any unknown charge for the cancelled RPC.
+            nested_failure = getattr(exc, "world_v2_validation_technical_failure", None)
             exc.world_v2_validation_technical_failure = ValidationTechnicalFailure(
                 "source_review_timeout",
                 attempted_model_id=str(
@@ -369,7 +376,8 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
                     *prior_candidates,
                     candidate.model_copy(update={"outcome": "validation_unresolved"}),
                 ),
-                provider_subcall_audits=prior_reviews,
+                provider_subcall_audits=(nested_failure.provider_subcall_audits
+                                         if isinstance(nested_failure, ValidationTechnicalFailure) else prior_reviews),
             )
             raise
         except ValidationTechnicalFailure as exc:

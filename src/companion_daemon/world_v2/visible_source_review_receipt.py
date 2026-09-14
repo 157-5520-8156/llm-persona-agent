@@ -91,21 +91,11 @@ class VisibleReviewInvocationBinding(FrozenModel):
     response_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
-def prepare_visible_source_review(
-    *,
-    candidate: DecisionProposal,
-    source_table: VisibleSourceTable,
+def compile_visible_candidate_material(
+    *, candidate: DecisionProposal, source_table: VisibleSourceTable,
     source_ref_aliases: Mapping[str, str],
-    review_version: Literal["1", "2", "3", "4", "5", "6", "7", "8"] = "1",
-) -> PreparedVisibleSourceReview:
-    """Prepare every inline text Beat of one complete typed decision.
-
-    This first record contract rejects non-inline payloads and more than the
-    existing verdict protocol's sixteen Beats; it never skips or truncates
-    them. Non-visible decisions do not need an accepted visible receipt.
-    Source provenance is established by the original source compiler/caller.
-    """
-    from companion_daemon.llm import provider_invocation_request_hash
+) -> dict:
+    """Bind the entire typed candidate and original sources before any reviewer call."""
     from .visible_source_composer import (
         PLANNED_SOURCE_TABLE_CONTRACT, SETTLED_LIFE_SOURCE_TABLE_CONTRACT,
         PREHISTORY_SOURCE_TABLE_CONTRACT,
@@ -181,6 +171,35 @@ def prepare_visible_source_review(
             )
     if not 1 <= len(beats) <= 16:
         raise ValueError("visible review record requires one to sixteen complete inline Beats")
+    return {
+        "candidate_json": candidate_json, "source_table_json": source_table.payload_json,
+        "source_ref_aliases": aliases, "beat_mapping": beats, "world_claims": claims,
+    }
+
+
+def prepare_visible_source_review(
+    *,
+    candidate: DecisionProposal,
+    source_table: VisibleSourceTable,
+    source_ref_aliases: Mapping[str, str],
+    review_version: Literal["1", "2", "3", "4", "5", "6", "7", "8"] = "1",
+) -> PreparedVisibleSourceReview:
+    """Prepare every inline text Beat of one complete typed decision.
+
+    This first record contract rejects non-inline payloads and more than the
+    existing verdict protocol's sixteen Beats; it never skips or truncates
+    them. Non-visible decisions do not need an accepted visible receipt.
+    Source provenance is established by the original source compiler/caller.
+    """
+    from companion_daemon.llm import provider_invocation_request_hash
+
+    candidate_material = compile_visible_candidate_material(
+        candidate=candidate, source_table=source_table, source_ref_aliases=source_ref_aliases,
+    )
+    candidate_json = candidate_material["candidate_json"]
+    aliases = candidate_material["source_ref_aliases"]
+    beats = candidate_material["beat_mapping"]
+    claims = candidate_material["world_claims"]
     contract = visible_source_verdict_provider_request_contract(version=review_version)
     request = {
         "messages": visible_source_closure_messages(

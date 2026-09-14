@@ -2269,7 +2269,9 @@ class Deliberation:
         )
         if self._visible_source_review_required:
             from .visible_source_runtime import compile_requirement
-            model_input = model_input.model_copy(update={"visible_source_requirement_json": compile_requirement(request=model_input, capsule=trusted)})
+            protocol_reader = getattr(self._main, "visible_review_protocol", None)
+            protocol = protocol_reader() if callable(protocol_reader) else None
+            model_input = model_input.model_copy(update={"visible_source_requirement_json": compile_requirement(request=model_input, capsule=trusted, review_protocol=protocol)})
         request_hash = _digest(model_input.model_dump(mode="json"))
         if budget is not None:
             return await self._deliberate_first_valid(

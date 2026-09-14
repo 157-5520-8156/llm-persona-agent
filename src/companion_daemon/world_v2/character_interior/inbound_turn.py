@@ -427,6 +427,10 @@ class InboundTurnFaculty:
             return bool(owns_recall())
         return getattr(self._author, "_recall", None) is None
 
+    def visible_review_protocol(self):
+        operation = getattr(self._author, "visible_review_protocol", None)
+        return operation() if callable(operation) else None
+
     def source_closure_review_enabled(self) -> bool:
         """Expose the reviewer phase owned by this same inbound author."""
 
@@ -952,6 +956,11 @@ class CharacterInteriorInboundDeliberationAdapter:
         self._world_id = world_id
         self._actor_ref = actor_ref
         self._speculative_hedge_enabled = speculative_hedge_enabled
+
+    def visible_review_protocol(self):
+        faculty = self._interior._registry.for_purpose(_PURPOSE)  # noqa: SLF001
+        operation = getattr(faculty, "visible_review_protocol", None)
+        return operation() if callable(operation) else None
 
     def source_closure_review_enabled(self) -> bool:
         # The combined internal Faculty owns the source-closure pass.  Surface
