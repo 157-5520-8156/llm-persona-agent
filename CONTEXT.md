@@ -61,6 +61,12 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Historical dating windows now average the existing recency curve (recall hybrid.6);
+an unknown birth-to-start interval no longer inherits its newest possible date.
+This does not change source dates or close the natural-query recall failure.
+The missing compressed representation chain is recorded in
+`docs/design/memory-representation-gap-2026-09-14.md` and remains unimplemented.
+
 A subsequent read-only unknown-bill audit found no uniquely associated uncounted
 usage across 39 capture files / 347 requests; all 17 cumulative unknown holds
 remain. Future native reservation IDs now travel in local HTTPX extensions to

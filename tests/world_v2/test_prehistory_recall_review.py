@@ -47,6 +47,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
     archive = reapprove(PrehistoryArchiveDocument.model_validate_json(json.dumps(data)))
     archive = archive.model_copy(update={"review": archive.review.model_copy(update={"reviewed_at": NOW})})
     statement = archive.document.records[0].statement
+    target_ref = archive.document.records[0].record_id
     requests = []
     authored_contexts = []
     def historical_decision(user, history):
@@ -84,7 +85,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
 
             if recall_mode == "prefetch":
                 items = user["inner_life_snapshot"]["materials"]["automatic_prefetch"]["items"]
-                history = next(item for item in items if item.get("epistemic_scope") == "character_prehistory")
+                history = next(item for item in items if item.get("source_ref") == target_ref)
                 assert history["text"] == statement
                 value = historical_decision(user, history)
                 fields = body["tools"][0]["function"]["parameters"]["properties"]
@@ -96,7 +97,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
             }, "recall_request": {"query_text": "高中校刊核对稿件", "memory_kinds": ["episodic"], "limit": 4}}
         elif name == f"character_inbound_after_recall_v{tool_version}":
             selected = user["inner_life_snapshot"]["materials"]["selected_recall"]["content"]["items"]
-            history = next(item for item in selected if item.get("epistemic_scope") == "character_prehistory")
+            history = next(item for item in selected if item.get("source_ref") == target_ref)
             assert history["text"] == statement
             assert history["prehistory"]["entities"][0]["entity_ref"].startswith("history:")
             value = historical_decision(user, history)
@@ -108,7 +109,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
             sources = [row for row in rows
                        if user["source_materials"][row["material_index"]].get("lane") == "recalled_prehistory"]
             assert sources, (len(live_traces[-1]), user["source_materials"])
-            source = sources[0]
+            source = next(row for row in sources if user["source_materials"][row["material_index"]]["item"]["item_ref"] == target_ref)
             assert source["support_eligibility"] == "eligible"
             material = user["source_materials"][source["material_index"]]
             assert material["item"]["value"]["text"] == statement
@@ -260,22 +261,36 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
         count = len(base.as_dict()["source_references"])
         assert restored.as_dict()["source_references"][:count] == base.as_dict()["source_references"]
         assert restored.as_dict()["pin"] == base.as_dict()["pin"]
-        for mutation in ("removed", "changed_text", "changed_historical_identity"):
+        for mutation in ("removed", "changed_text", "changed_historical_identity", "changed_all_text"):
             changed = json.loads(evidence["author_request_json"])
             body = json.loads(changed["messages"][1]["content"])
             materials = body["inner_life_snapshot"]["materials"]
             selection = (materials["selected_recall"]["content"] if recall_mode == "pull"
                          else materials["automatic_prefetch"])
+            target = next(item for item in selection["items"] if item.get("source_ref") == target_ref)
+            remaining_refs = {item["source_ref"] for item in selection["items"]
+                              if item.get("epistemic_scope") == "character_prehistory"
+                              and item["source_ref"] != target_ref}
             if mutation == "removed":
                 selection["items"] = []
+            elif mutation == "changed_all_text":
+                for item in selection["items"]:
+                    item["text"] = "今天去了校刊编辑室。"
             elif mutation == "changed_text":
-                selection["items"][0]["text"] = "今天去了校刊编辑室。"
+                target["text"] = "今天去了校刊编辑室。"
             else:
-                selection["items"][0]["prehistory"]["entities"][0]["label"] = "现在的用户"
+                target["prehistory"]["entities"][0]["label"] = "现在的用户"
             changed["messages"][1]["content"] = json.dumps(body, ensure_ascii=False)
             unchanged, ignored = supplement_recalled_prehistory(table=base, audits=used,
                                                                 author_request_json=json.dumps(changed))
-            assert unchanged == base and ignored == ()
+            if mutation in {"removed", "changed_all_text"} or not remaining_refs:
+                assert unchanged == base and ignored == ()
+            else:
+                # A changed reading loses only its own authority. Other
+                # exactly presented memories remain valid independent sources.
+                added = unchanged.as_dict()["source_materials"][len(base.as_dict()["source_materials"]):]
+                assert {item["material"]["item"]["item_ref"] for item in added} == remaining_refs
+                assert ignored == used
         for mutation in ("cursor", "actor", "trigger"):
             other = deepcopy(base.as_dict())
             if mutation == "cursor":

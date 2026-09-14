@@ -25,7 +25,7 @@ from .schema_core import FrozenModel, PrivacyClass
 from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_write_lock
 
 
-RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.5"
+RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.6"
 # Model context and local evidence have different costs. Full immutable proof
 # envelopes never enter the role's reading; charging them to its context budget
 # silently discards small memories. The complete trace retains its independent
@@ -1089,12 +1089,39 @@ def _temporal_score(query: RecallQuery, document: RecallDocument) -> int:
         return 0
     if query.occurred_to is not None and document.occurred_from > query.occurred_to:
         return 0
+    if document.prehistory is not None:
+        # A historical dating window is not evidence that the remembered
+        # occurrence happened at its newest possible instant. Average the
+        # existing accessibility decay over that window; this is an index
+        # prior, never a new occurrence date or a character decision.
+        return _historical_window_accessibility(
+            youngest_days=max(0.0, (query.at - end).total_seconds() / 86_400),
+            oldest_days=max(0.0, (query.at - document.occurred_from).total_seconds() / 86_400),
+        )
     distance_seconds = max(
         0.0,
         (query.at - end).total_seconds(),
     )
     # Smooth 30-day accessibility decay; validity is handled separately.
     return max(500, round(10_000 / (1 + distance_seconds / (30 * 86_400))))
+
+
+def _historical_window_accessibility(*, youngest_days: float, oldest_days: float) -> int:
+    """Uniform window average of max(500, 10000 / (1 + age / 30)).
+
+    The uniform prior expresses absent finer timing information, not a claim
+    about when the event occurred. Point dates retain the previous policy.
+    log1p of the interval width avoids subtracting nearly equal logarithms.
+    """
+    young, old = youngest_days / 30, oldest_days / 30
+    width = old - young
+    if width <= 1e-9:
+        return max(500, round(10_000 / (1 + young)))
+    # The existing curve reaches its 500 floor at age 570 days (19 units).
+    curved_width = min(old, 19.0) - min(young, 19.0)
+    area = 10_000 * math.log1p(curved_width / (1 + min(young, 19.0)))
+    area += 500 * max(0.0, old - max(young, 19.0))
+    return max(500, min(10_000, round(area / width)))
 
 
 def _accessibility_offset(*, seed: str, document_id: str) -> int:

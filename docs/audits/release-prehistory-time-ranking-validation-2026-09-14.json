@@ -1,0 +1,81 @@
+{
+  "contract": "release-prehistory-time-ranking-validation.1",
+  "change": {
+    "index_policy": "world-v2-recall-index.hybrid.6",
+    "finding": "Previously, a historical dating window extending from birth to World start inherited the recency of its newest endpoint.",
+    "policy": "Average the existing 30-day recency curve with its 500 floor uniformly over the historical date window. The uniform prior is an accessibility heuristic, not a factual date estimate.",
+    "boundaries": [
+      "Point dates preserve prior scores.",
+      "Recorded runtime activity intervals still use their observed end.",
+      "Source text, dates, ownership, privacy, authority and query time filters are unchanged.",
+      "The index version changes; source event and historical receipt formats do not."
+    ]
+  },
+  "frozen_real_query": {
+    "scope": "Temporal-only comparison using the exact saved 39-document corpus and natural-query trace. This does not claim a newly compiled provider input or new dialogue.",
+    "documents": 39,
+    "historical_scores": [
+      {
+        "source_item_ref": "prehistory-record:celia-life-admission-envelope",
+        "before": 500,
+        "after": 500
+      },
+      {
+        "source_item_ref": "prehistory-record:celia-life-borrowed-notebook",
+        "before": 500,
+        "after": 500
+      },
+      {
+        "source_item_ref": "prehistory-record:celia-college-societies",
+        "before": 9835,
+        "after": 578
+      },
+      {
+        "source_item_ref": "prehistory-record:celia-school-journal",
+        "before": 9835,
+        "after": 578
+      },
+      {
+        "source_item_ref": "prehistory-record:celia-life-borrowed-camera",
+        "before": 500,
+        "after": 500
+      }
+    ],
+    "selected_source_set_unchanged": true,
+    "target_admission_memory_retrieved": false,
+    "qualification": "Ranking bias corrected; the original natural-query recall case still fails. No new character dialogue or provider-input qualification."
+  },
+  "validation": {
+    "tests_passed": 125,
+    "old_cold_receipts_verified": 10,
+    "source_database_unchanged": true,
+    "ruff": "passed",
+    "diff_check": "passed",
+    "existing_test_failures": {
+      "count": 10,
+      "baseline": "Same 10 failures reproduced using the committed hybrid.5 scorer and version.",
+      "repair": "Fixture author/reviewer now select the intended historical record by identity. Single-record tamper checks assert only that record loses authority; removing or changing all presented readings still yields no supplement. All 12 pull/prefetch/reselection/receipt cases pass."
+    }
+  },
+  "compression_gap": {
+    "status": "unimplemented",
+    "design": "docs/design/memory-representation-gap-2026-09-14.md",
+    "finding": "Candidate compression revisions exist, but immutable compressed content plus an authorized reader and role-driven lifecycle are missing. Existing historical content_unavailable guard remains."
+  },
+  "cost": {
+    "new_paid_calls": 0,
+    "new_allocation_cny": 0,
+    "released_hold_cny": 0,
+    "headroom_cny": "0.2182706000000000046",
+    "budget_checkpoint": "release-witness-real-20260914-01/run/world.sqlite"
+  },
+  "release_status": "manual_only / qualification_incomplete",
+  "remaining_gates": [
+    "Source-review false acceptance and role correction",
+    "Natural historical recall, compressed representations and longitudinal memory",
+    "Representative life/dialogue, monthly production cost and QQ release"
+  ],
+  "evidence_hashes": {
+    "output/private-audits/release-prehistory-time-ranking-20260914/inspection.json": "4e169dffbd2bc5553da10fca48b64dd6d352905f4736b49a4afe3ab08f5f9c62"
+  }
+}
