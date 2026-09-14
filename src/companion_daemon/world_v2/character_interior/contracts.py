@@ -14,6 +14,7 @@ from datetime import datetime
 from types import MappingProxyType
 
 from .appraisal_model_view import compact_appraisals_for_model_view
+from .affect_model_view import compact_affect_for_model_view
 from typing import Annotated, Any, Literal, Mapping
 from zoneinfo import ZoneInfo
 
@@ -1576,6 +1577,9 @@ class InnerLifeSnapshot(FrozenModel):
         )
         if compact_appraisals is not materials.get("appraisals"):
             materials = {**materials, "appraisals": compact_appraisals}
+        compact_affect = compact_affect_for_model_view(materials.get("affect"))
+        if compact_affect is not materials.get("affect"):
+            materials = {**materials, "affect": compact_affect}
         faculties: dict[str, object] = {}
         for facet in self.facet_views:
             raw_keys = facet.content.get("material_keys")
