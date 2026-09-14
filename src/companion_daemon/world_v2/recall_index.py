@@ -20,12 +20,18 @@ import unicodedata
 from pydantic import Field, model_validator
 
 from .prehistory_memory_source import PrehistoryMemoryReading
+from .recall_model_reading import interior_recall_item
 from .schema_core import FrozenModel, PrivacyClass
 from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_write_lock
 
 
-RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.4"
-RECALL_RESULT_MAX_BYTES = 6_000
+RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.5"
+# Model context and local evidence have different costs. Full immutable proof
+# envelopes never enter the role's reading; charging them to its context budget
+# silently discards small memories. The complete trace retains its independent
+# 32 KB audit limit, including query and request, in RecallAuditTrace.
+RECALL_MODEL_READING_MAX_BYTES = 6_000
+RECALL_RESULT_MAX_BYTES = 12_000
 MAX_RECALL_QUERY_CHARACTERS = 1_024
 _PRIVACY_RANK: dict[PrivacyClass, int] = {
     "public": 0,
@@ -514,6 +520,10 @@ class _RecallIndexCore:
             if len(selected) >= query.limit:
                 return False
             candidate = (*selected, hit)
+            if len(_canonical_json({"items": [
+                interior_recall_item(item.document) for item in candidate
+            ]}).encode("utf-8")) > RECALL_MODEL_READING_MAX_BYTES:
+                return False
             if (
                 len(
                     _canonical_json([item.model_dump(mode="json") for item in candidate]).encode(
@@ -1129,6 +1139,7 @@ __all__ = [
     "InMemoryRecallIndex",
     "RECALL_INDEX_POLICY_VERSION",
     "RECALL_RESULT_MAX_BYTES",
+    "RECALL_MODEL_READING_MAX_BYTES",
     "RecallCursor",
     "RecallDocument",
     "RecallEmbedding",

@@ -1,7 +1,10 @@
 """The bounded recall reading presented by CharacterInterior to its author."""
 from __future__ import annotations
 
-from .recall_index import RecallDocument
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .recall_index import RecallDocument
 
 
 def interior_recall_item(document: RecallDocument) -> dict[str, object]:

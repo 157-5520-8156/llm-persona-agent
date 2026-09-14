@@ -109,6 +109,12 @@ old appraisal/private-impression hits still displaced history; reviewer inputs
 lacked historical evidence, and no reply was delivered. Source-exact overlap
 with already-present working context and allocation under the existing byte cap
 remain the next diagnosis. Do not infer role silence from these technical failures.
+Hybrid.5 separates source-proof storage from the character reading budget:
+readings retain a 6 KB UTF-8 cap, complete result hits have a 12 KB cap, and the
+complete replay audit retains its existing 32 KB limit. No proof is stripped to
+make an excerpt fit. The failed longer query now retrieves history offline;
+seven anchored wording probes pass on the frozen corpus. Real-model behavior,
+unanchored semantic recall and the other release gates remain unqualified.
 _Avoid_: Retroactive runtime Experience, improvised chat evidence
 
 ## Autobiographical Memory

@@ -1,0 +1,253 @@
+{
+  "contract": "release-recall-packing-validation.1",
+  "diagnosis": "Exact failed first-author prefetch source selection reproduced at cursor 1255 using a copy of the closed trial. Full local proof was charged to the character reading budget.",
+  "policy_version": "world-v2-recall-index.hybrid.5",
+  "limits": {
+    "model_reading_bytes": 6000,
+    "complete_result_hit_bytes": 12000,
+    "complete_recall_audit_bytes": 32000,
+    "query_limit_unchanged": true,
+    "full_proof_retained": true,
+    "previous_complete_result_limit_bytes": 6000
+  },
+  "exact_failure_counterfactual": {
+    "case": "actual_long_question",
+    "query_text": "刚才问得像在查户口，抱歉。我对校刊这段过去有点好奇，愿意的话聊一点就好；不想聊也没关系。",
+    "scope": "same frozen corpus/context with counterfactual inbound cue, not real model behavior",
+    "results": {
+      "6000": {
+        "history_refs": [],
+        "target_found": false,
+        "model_reading_bytes": 1329,
+        "audit_hit_bytes": 4661
+      },
+      "12000": {
+        "history_refs": [
+          "prehistory-record:celia-school-journal"
+        ],
+        "target_found": true,
+        "model_reading_bytes": 2578,
+        "audit_hit_bytes": 9111
+      }
+    }
+  },
+  "varied_queries": [
+    {
+      "case": "actual_long_question",
+      "query_text": "刚才问得像在查户口，抱歉。我对校刊这段过去有点好奇，愿意的话聊一点就好；不想聊也没关系。",
+      "scope": "same frozen corpus/context with counterfactual inbound cue, not real model behavior",
+      "results": {
+        "6000": {
+          "history_refs": [],
+          "target_found": false,
+          "model_reading_bytes": 1329,
+          "audit_hit_bytes": 4661
+        },
+        "12000": {
+          "history_refs": [
+            "prehistory-record:celia-school-journal"
+          ],
+          "target_found": true,
+          "model_reading_bytes": 2578,
+          "audit_hit_bytes": 9111
+        }
+      }
+    },
+    {
+      "case": "confirmation",
+      "query_text": "所以校刊说的是以前那段经历，并不是你今天又去做校刊，对吧？",
+      "scope": "same frozen corpus/context with counterfactual inbound cue, not real model behavior",
+      "results": {
+        "6000": {
+          "history_refs": [
+            "prehistory-record:celia-school-journal"
+          ],
+          "target_found": true,
+          "model_reading_bytes": 1550,
+          "audit_hit_bytes": 4741
+        },
+        "12000": {
+          "history_refs": [
+            "prehistory-record:celia-school-journal"
+          ],
+          "target_found": true,
+          "model_reading_bytes": 2633,
+          "audit_hit_bytes": 10327
+        }
+      }
+    },
+    {
+      "case": "original_short",
+      "query_text": "所以你今天也忙着校刊的事吗？",
+      "scope": "same frozen corpus/context with counterfactual inbound cue, not real model behavior",
+      "results": {
+        "6000": {
+          "history_refs": [],
+          "target_found": false,
+          "model_reading_bytes": 1081,
+          "audit_hit_bytes": 4894
+        },
+        "12000": {
+          "history_refs": [
+            "prehistory-record:celia-school-journal"
+          ],
+          "target_found": true,
+          "model_reading_bytes": 2539,
+          "audit_hit_bytes": 9074
+        }
+      }
+    },
+    {
+      "case": "minimal",
+      "query_text": "校刊",
+      "scope": "same frozen corpus/context with counterfactual inbound cue, not real model behavior",
+      "results": {
+        "6000": {
+          "history_refs": [
+            "prehistory-record:celia-school-journal"
+          ],
+          "target_found": true,
+          "model_reading_bytes": 1495,
+          "audit_hit_bytes": 4606
+        },
+        "12000": {
+          "history_refs": [
+            "prehistory-record:celia-school-journal"
+          ],
+          "target_found": true,
+          "model_reading_bytes": 2632,
+          "audit_hit_bytes": 9259
+        }
+      }
+    },
+    {
+      "case": "open_invitation",
+      "query_text": "我想听听校刊那段日子，你愿意聊吗？",
+      "scope": "same frozen corpus/context with counterfactual inbound cue, not real model behavior",
+      "results": {
+        "6000": {
+          "history_refs": [
+            "prehistory-record:celia-school-journal"
+          ],
+          "target_found": true,
+          "model_reading_bytes": 1550,
+          "audit_hit_bytes": 4741
+        },
+        "12000": {
+          "history_refs": [
+            "prehistory-record:celia-school-journal"
+          ],
+          "target_found": true,
+          "model_reading_bytes": 2633,
+          "audit_hit_bytes": 10327
+        }
+      }
+    },
+    {
+      "case": "literature_club",
+      "query_text": "说到文学社，你会想起什么？",
+      "scope": "same frozen corpus/context with counterfactual inbound cue, not real model behavior",
+      "results": {
+        "6000": {
+          "history_refs": [],
+          "target_found": false,
+          "model_reading_bytes": 966,
+          "audit_hit_bytes": 4178
+        },
+        "12000": {
+          "history_refs": [
+            "prehistory-record:celia-college-societies"
+          ],
+          "target_found": true,
+          "model_reading_bytes": 2239,
+          "audit_hit_bytes": 8649
+        }
+      }
+    },
+    {
+      "case": "photography_club",
+      "query_text": "摄影社是什么时候的事？",
+      "scope": "same frozen corpus/context with counterfactual inbound cue, not real model behavior",
+      "results": {
+        "6000": {
+          "history_refs": [],
+          "target_found": false,
+          "model_reading_bytes": 1329,
+          "audit_hit_bytes": 4661
+        },
+        "12000": {
+          "history_refs": [
+            "prehistory-record:celia-college-societies"
+          ],
+          "target_found": true,
+          "model_reading_bytes": 2602,
+          "audit_hit_bytes": 9132
+        }
+      }
+    },
+    {
+      "case": "broad_school",
+      "query_text": "你以前上学时，除了上课，还参加过什么活动？",
+      "scope": "same frozen corpus/context with counterfactual inbound cue, not real model behavior",
+      "results": {
+        "6000": {
+          "history_refs": [],
+          "target_found": null,
+          "model_reading_bytes": 1045,
+          "audit_hit_bytes": 4853
+        },
+        "12000": {
+          "history_refs": [],
+          "target_found": null,
+          "model_reading_bytes": 2308,
+          "audit_hit_bytes": 9376
+        }
+      }
+    },
+    {
+      "case": "current_activity",
+      "query_text": "你现在在干什么？",
+      "scope": "same frozen corpus/context with counterfactual inbound cue, not real model behavior",
+      "results": {
+        "6000": {
+          "history_refs": [],
+          "target_found": null,
+          "model_reading_bytes": 1329,
+          "audit_hit_bytes": 4661
+        },
+        "12000": {
+          "history_refs": [],
+          "target_found": null,
+          "model_reading_bytes": 2390,
+          "audit_hit_bytes": 9534
+        }
+      }
+    }
+  ],
+  "tests": {
+    "passed": 115,
+    "targeted_passed": 52,
+    "regression_passed": 63,
+    "scope": [
+      "full-proof retrieval beyond former 6 KB audit-hit ceiling",
+      "separate UTF-8 model-reading cap",
+      "oversized proof is excluded rather than stripped",
+      "durable audit round-trip",
+      "short-cue, recall, corpus, attention, context and continuity regressions",
+      "production automatic/manual historical recall to review and simulated delivery"
+    ]
+  },
+  "old_source_review_receipts_cold_verified": 9,
+  "old_world_replay_hash_unchanged": true,
+  "paid_calls_in_this_stage": 0,
+  "qualification": "offline only / manual_only / qualification_incomplete; no real provider qualification of hybrid.5, no new delivery claim. Generic unanchored queries, rich autobiography, summary/forgetting, original unsupported-experience and semantic-review/correction issues remain open.",
+  "sha256": {
+    "output/private-audits/release-recall-packing-20260914/corpus.json": "70d22b24eff119269d6f52aeca080ef0ca88ae64d7221e90ce14751a6995f899",
+    "output/private-audits/release-recall-packing-20260914/trace.json": "11ee38d21b1af091409665a4f2fff5032ba5ddb433f7f40ae8a2f3d0c6f41a66",
+    "output/private-audits/release-recall-packing-20260914/tests.log": "c19cf2f226d5c7d593f5a98b9459bebd12ed0abb660d637a0505449a3a067222",
+    "output/private-audits/release-recall-packing-20260914/regression.log": "602b3566fefcf0d1441379eefa052bc2b25110dbd30fe05b5443103959769545",
+    "output/private-audits/release-recall-packing-20260914/cold.log": "5e307270e647ebd39cfa94e86031b87684b421266ec8acafe6fa5960be82f669",
+    "output/private-audits/release-recall-packing-20260914/reconstruct.log": "5eb1d65022666a49b03489c5d7bed68f2e632e82de3a5f80e23475349db22121",
+    "output/private-audits/release-recall-packing-20260914/varied-queries.json": "c9365c31f4a090913c431ba36023f7524bc88800c6bc574e18a3c39d4fdcccfa"
+  }
+}
