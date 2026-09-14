@@ -14,7 +14,7 @@ def _raw():
     return {"contract": CONTRACT, "decisions": [{"beat_index": 0, "parts": [{
         "text": TEXT,
         "interpretation": "角色要求用户描述用户送角色出发时的家中情况。",
-        "factual_meanings": [{
+        "meanings": [{
             "proposition": "用户曾送角色出发。", "mode": "actual_event_or_state",
             "subject_role": "counterpart", "affected_roles": ["companion"],
             "time_expression": "过去那次", "polarity": "affirmative",
@@ -31,7 +31,7 @@ def test_meaning_request_has_no_evidence_and_pins_role_resolved_question_premise
     result = prep.inspect_response(raw)
     assert result["facts"] == [{
         "fact_id": "b0.p0.f0", "beat_index": 0, "part_index": 0, "original_text": TEXT,
-        **_raw()["decisions"][0]["parts"][0]["factual_meanings"][0],
+        **_raw()["decisions"][0]["parts"][0]["meanings"][0],
     }]
     assert result["raw_response_sha256"] == hashlib.sha256(raw.encode()).hexdigest()
     assert result["semantic_qualification"] == "unproven"
@@ -61,7 +61,7 @@ def test_invalid_interpretation_cannot_masquerade_as_a_complete_reading(fault):
 
 def test_semantic_misreading_is_explicitly_not_structural_qualification():
     raw = _raw()
-    raw["decisions"][0]["parts"][0]["factual_meanings"] = []
+    raw["decisions"][0]["parts"][0]["meanings"] = []
     result = prepare_candidate_meaning(beats=(TEXT,)).inspect_response(json.dumps(raw, ensure_ascii=False))
     assert result["facts"] == []
     assert result["semantic_qualification"] == "unproven" and result["receipt_authority"] is False
@@ -75,3 +75,19 @@ def test_json_members_and_candidate_boundaries_are_not_silently_repaired():
     for beats in [(), ("",), ("a" * 4097,), ("a",) * 17]:
         with pytest.raises(ValueError):
             prepare_candidate_meaning(beats=beats)
+
+
+def test_current_expression_and_embedded_past_event_remain_separate_model_readings():
+    text = "我上午坐在那里，现在想想还挺开心的。"
+    raw = _raw()
+    part = raw["decisions"][0]["parts"][0]
+    part.update(text=text, interpretation="角色说上午坐在那里，并表达此刻想起时的开心。", requested_unknowns=[])
+    past = part["meanings"][0]
+    past.update(proposition="角色上午坐在那里。", subject_role="companion", affected_roles=[], time_expression="上午")
+    private = {**past, "proposition": "角色此刻想起时感到开心。", "mode": "current_private_expression", "time_expression": "此刻"}
+    part["meanings"].append(private)
+    result = prepare_candidate_meaning(beats=(text,)).inspect_response(json.dumps(raw, ensure_ascii=False))
+    assert len(result["facts"]) == len(result["private_meanings"]) == 1
+    assert result["facts"][0]["mode"] == "actual_event_or_state"
+    assert result["private_meanings"][0]["mode"] == "current_private_expression"
+    assert result["receipt_authority"] is False
