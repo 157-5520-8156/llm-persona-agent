@@ -431,29 +431,38 @@ def test_materializer_can_author_exact_existing_affect_lifecycle_transition(
     )
 
 
-def test_materializer_degrades_unoffered_existing_affect_identity_to_no_change() -> None:
-    # A broken episode reference must not kill the turn. resolve carries no
-    # affect coordinates, so it degrades to the explicit no_change; update
-    # keeps its components and degrades to a new episode.
-    resolved = _materialize(
-        _appraisal(
-            affect="resolve",
-            episode_id="affect:not-offered",
-            resolution_summary="done",
-        ),
-        request=_request(active_affect=True),
-    )
-    assert resolved.affect_decision == "no_change"
+@pytest.mark.parametrize("active_affect", [False, True])
+@pytest.mark.parametrize("operation", ["update", "resolve", "supersede"])
+def test_materializer_rejects_unoffered_identity_without_changing_role_decision(operation, active_affect) -> None:
+    with pytest.raises(ValueError, match="not an offered active Affect head"):
+        _materialize(
+            _appraisal(affect=operation, episode_id="affect:not-offered", resolution_summary="done",
+                components=[{"dimension": "warmth", "target_intensity_bp": 3000}]),
+            request=_request(active_affect=active_affect),
+        )
 
-    updated = _materialize(
-        _appraisal(
-            affect="update",
-            episode_id="affect:not-offered",
-            components=[{"dimension": "warmth", "target_intensity_bp": 3000}],
-        ),
-        request=_request(active_affect=True),
-    )
-    assert updated.affect_decision == "propose"
+
+def test_update_cannot_mix_components_from_two_offered_episodes() -> None:
+    request = _request(active_affect=True)
+    content = json.loads(request.model_content_json)
+    items = content["slices"]["affect_episodes"]["items"]
+    second = json.loads(json.dumps(items[0]))
+    second["source_ref"] = "affect:existing:2"
+    second["value"].update(episode_id="affect:existing:2", origin={"accepted_event_ref": "event:affect:existing:2"})
+    second["value"]["components"][0].update(component_id="component:warmth:2", dimension="warmth")
+    items.append(second)
+    request = request.model_copy(update={"model_content_json": json.dumps(content)})
+    components = [
+        {"component_id": "component:hurt:1", "dimension": "hurt", "target_intensity_bp": 1700},
+        {"component_id": "component:warmth:2", "dimension": "warmth", "target_intensity_bp": 1500},
+    ]
+    with pytest.raises(ValueError, match="component:warmth:2.*does not belong to episode_id='affect:existing:1'"):
+        _materialize(_appraisal(affect="update", episode_id="affect:existing:1", components=components), request=request)
+    # Either individual update remains available; code does not pick one.
+    for index, component in enumerate(components, 1):
+        proposal = _materialize(_appraisal(affect="update", episode_id=f"affect:existing:{index}",
+            components=[component]), request=request)
+        assert proposal.proposed_changes[1].payload.value()["component_targets"] == [component]
 
 
 def test_materialized_fields_are_part_of_proposal_identity() -> None:

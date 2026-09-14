@@ -541,7 +541,8 @@ def _appraisal_draft_messages(
         + ", and target_intensity_bp (1-10000), the absolute intensity that component should have "
         "after this appraisal rather than an amount to add. For update, choose one exact episode_id from "
         "active_affect_heads and components must name one or more exact offered component_id and dimension "
-        "with a new absolute target_intensity_bp. For resolve, choose one offered episode_id and return "
+        "from that selected episode only, with a new absolute target_intensity_bp. Components from "
+        "different episodes cannot be combined into one update. For resolve, choose one offered episode_id and return "
         "resolution_summary (1-1200 characters). For supersede, choose one offered episode_id and return "
         "new components in the same shape as open. If active_affect_heads is empty, update, resolve and "
         "supersede are unavailable. Never invent or alter an episode_id, component_id, entity_revision, "
@@ -796,23 +797,11 @@ def _base_decision_proposal_from_draft(*, raw: str, request: ModelInput) -> Deci
         components = _affect_components(draft.get("components"))
         validate_model_authored_targets(components, request.affect_target_bounds)
     if affect in {"update", "resolve", "supersede"}:
-        try:
-            selected_head = _selected_affect_head(request, draft.get("episode_id"))
-            episode_id = str(selected_head["episode_id"])
-        except ValueError:
-            # The role model routinely picks an existing-episode transition
-            # with an invented episode_id that is not an offered active head.
-            # Preserve the felt change by opening a new episode instead of
-            # killing the whole turn: a broken episode reference is not a
-            # reason to drop the visible reply. resolve carries no components
-            # (it ends an episode), so it degrades to the explicit no_change
-            # rather than inventing affect coordinates.
-            if affect == "resolve":
-                affect = "no_change"
-            else:
-                affect = "open"
-                components = _affect_components(draft.get("components"))
-                validate_model_authored_targets(components, request.affect_target_bounds)
+        # An invalid reference is a technical failure, not permission to open
+        # another episode or change the character's decision to no_change.
+        # The existing Core correction owns any subsequent semantic selection.
+        selected_head = _selected_affect_head(request, draft.get("episode_id"))
+        episode_id = str(selected_head["episode_id"])
     if affect == "update":
         components = _existing_affect_components(
             draft.get("components"),
@@ -1044,9 +1033,14 @@ def _existing_affect_components(
         dimension = item.get("dimension")
         intensity = item.get("target_intensity_bp")
         selected = offered.get(component_id)
+        if selected is None:
+            raise ValueError(
+                "AppraisalDraft Affect update component is outside active head: "
+                f"component_id={component_id!r} does not belong to episode_id={head['episode_id']!r}; "
+                "use only components from the selected episode"
+            )
         if (
-            selected is None
-            or dimension != selected["dimension"]
+            dimension != selected["dimension"]
             or isinstance(intensity, bool)
             or not isinstance(intensity, int)
             or not 1 <= intensity <= 10_000

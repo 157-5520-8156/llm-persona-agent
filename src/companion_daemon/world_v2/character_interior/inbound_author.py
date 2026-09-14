@@ -4050,6 +4050,7 @@ class _InboundCharacterAuthor:
             raise ValueError("paired expression provider material must be an object")
         expression_user_material["appraisal_affect_hard_boundaries"] = {
             "active_affect_heads": _active_affect_heads(request),
+            "update_scope": "Choose one offered episode_id; every updated component_id and dimension must belong to that same episode. Do not combine components across episodes.",
         }
         recall_context_available = model_content_allows_recall(request.model_content_json)
         recall_available = self._recall_available(request) or (
