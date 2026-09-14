@@ -185,3 +185,78 @@ def test_forgotten_history_leaves_chat_and_review_while_archive_remains(tmp_path
         assert ledger.project().prehistory_records[0].record.statement == row.record.statement
     finally:
         ledger.close()
+
+
+def test_explicit_historical_claim_permissions_bind_dual_proof_without_current_authority(tmp_path):
+    from companion_daemon.world_v2 import expression_draft as expression
+    from companion_daemon.world_v2.prehistory_claim_authority import prehistory_claim_bindings
+    from companion_daemon.world_v2.visible_source_runtime import compile_requirement
+
+    ledger = started_ledger(tmp_path / "claim.sqlite")
+    try:
+        row = _install(ledger)
+        pending = _choice(ledger, prehistory_memory_binding(row))
+        _choice(ledger, prehistory_memory_binding(row), before=pending, status="active")
+        capsule = _capsule(ledger)
+        original = _request(capsule)
+        request = original.model_copy(update={"visible_source_requirement_json":
+            compile_requirement(request=original, capsule=capsule)})
+        item, = capsule.active_memory_candidates.items
+        refs = prehistory_claim_bindings(request)
+        assert item.item_ref in refs
+        assert {binding.ref for binding in refs[item.item_ref]} == {binding.ref for binding in item.source_bindings}
+        context = json.loads(request.model_content_json)
+        allowed = expression.world_claim_source_refs_by_scope(context=context, request=request)
+        assert item.item_ref in allowed["past_world"]
+        assert all(item.item_ref not in allowed[scope] for scope in (
+            "current_world", "counterpart_history", "shared_history", "stable_identity"))
+        aliases = expression.build_source_ref_alias_table(request=request)
+        vocabulary = expression.world_claim_source_ref_aliases_by_scope(request=request, source_ref_aliases=aliases)
+        assert (aliases.alias_for(item.item_ref) or item.item_ref) in vocabulary["past_world"]
+        raw = {"timing_choice": "now", "stance": "fixture", "brief_rationale": "fixture",
+               "beats": [{"modality": "text", "text": row.record.statement}],
+               "world_claims": [{"claim_text": row.record.statement, "scope": "past_world",
+                                 "source_refs": [item.item_ref]}]}
+        draft = expression.ExpressionDraft.model_validate_json(json.dumps(raw))
+        expression._validate_world_claims(draft=draft, request=request)
+        evidence = expression._world_claim_evidence(draft=draft, request=request)
+        assert {binding.ref for binding in item.source_bindings} <= {ref.ref_id for ref in evidence}
+        for scope in ("current_world", "counterpart_history", "shared_history", "stable_identity"):
+            changed = deepcopy(raw)
+            changed["world_claims"][0]["scope"] = scope
+            with pytest.raises(ValueError, match="semantic source lane"):
+                expression._validate_world_claims(
+                    draft=expression.ExpressionDraft.model_validate_json(json.dumps(changed)), request=request)
+        assert not prehistory_claim_bindings(original)
+        changed = deepcopy(context)
+        changed["slices"]["active_memory_candidates"]["items"] = []
+        assert not prehistory_claim_bindings(request, context=changed)
+        changed = deepcopy(context)
+        changed["slices"]["active_memory_candidates"]["items"][0]["value"]["source_excerpts"][0]["text"] = "forged"
+        assert not prehistory_claim_bindings(request, context=changed)
+        with pytest.raises(ValueError, match="original input pin"):
+            prehistory_claim_bindings(request.model_copy(update={"evaluated_world_revision": 9999}))
+        changed = deepcopy(context)
+        changed["actor_ref"] = "actor:someone-else"
+        with pytest.raises(ValueError, match="presented actor"):
+            prehistory_claim_bindings(request, context=changed)
+        requirement = json.loads(request.visible_source_requirement_json)
+        table = json.loads(requirement["source_table_json"])
+        for wrapped in table["source_materials"]:
+            material = wrapped["material"]
+            if material.get("lane") != "active_memory_candidates":
+                continue
+            damaged = material["item"]
+            damaged["source_bindings"] = [binding for binding in damaged["source_bindings"]
+                if binding["authority_type"] != "CharacterPrehistoryArchiveAccepted"]
+            damaged["source_hash"] = source_bindings_hash(tuple(
+                ResolvedSourceBinding.model_validate(binding) for binding in damaged["source_bindings"]))
+        def canonical(value):
+            return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        requirement["source_table_json"] = canonical(table)
+        with pytest.raises(ValueError, match="exact record and archive proof"):
+            prehistory_claim_bindings(request.model_copy(update={
+                "visible_source_requirement_json": canonical(requirement)}))
+
+    finally:
+        ledger.close()

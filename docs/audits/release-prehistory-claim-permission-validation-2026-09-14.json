@@ -1,0 +1,72 @@
+{
+  "contract": "release-prehistory-claim-permission-validation.1",
+  "date": "2026-09-14",
+  "branch": "codex/release-repair-20260913",
+  "real_trial": {
+    "trial_id": "release-prehistory-real-20260914-04",
+    "code_head": "97eaf53be504e181c5acfdb0afdcd590a0be6b9b",
+    "completed": false,
+    "stop_reason": "budget_admission_denied",
+    "physical_calls": 6,
+    "known_calls": 4,
+    "unknown_calls": 2,
+    "known_repository_price_estimate_cny": "0.1073740999999999999",
+    "new_unresolved_hold_cny": "0.932127",
+    "inherited_usage_and_reservations_unchanged": true,
+    "final_usage_rows": 149,
+    "final_reservation_rows": 146,
+    "turns_consumed": 1,
+    "cold_receipts_verified": 9,
+    "new_cold_receipts_verified": 0,
+    "replay_hash_matches": true,
+    "additional10_authorization_usage": {
+      "physical_calls": 60,
+      "known_calls": 51,
+      "unknown_calls": 9,
+      "known_estimate_cny": "1.6657764999999999964",
+      "new_unresolved_hold_cny": "5.057970",
+      "all_old_holds_retained": true
+    },
+    "native_known_estimate_cny": "4.2084040999999999968",
+    "native_unknown_hold_cny": "7.416843",
+    "native_committed_estimate_cny": "11.6252470999999999968",
+    "new_whole_allocation_cny": "0",
+    "shared_allocation_owner": "release-recovery-continuation-20260913-08"
+  },
+  "real_findings": [
+    "Historical school excerpt was present in actual author requests and one v8 reviewer request.",
+    "past_world rejected the recalled source mechanically before review; corrective retry encountered SameContractRetryForbidden.",
+    "Extra writing and layout details were not in the minimal archive and remain unsupported.",
+    "Review and another author call timed out with unknown billing. No new capture delivery or review receipt."
+  ],
+  "offline_fix": {
+    "authority": "Only original selected or sealed same-cursor actually presented owner prehistory may enter past_world.",
+    "proof": "Citing the retained item or record event binds both imported record and accepted archive events into Proposal evidence.",
+    "not_authorized": [
+      "current activity",
+      "counterpart history",
+      "shared user history",
+      "stable identity from prehistory alone",
+      "unretrieved or unavailable archive details"
+    ],
+    "behavior": "Role still chooses disclosure and wording; no new model call, timeout extension or prose template."
+  },
+  "verification": {
+    "targeted_tests": 101,
+    "updated_boundary_tests": 8,
+    "updated_boundary_tests_are_subset": true,
+    "production_fixture_cases": 4,
+    "cold_existing_receipts": 9,
+    "mock_transport_only": true,
+    "real_trial_after_claim_fix": false
+  },
+  "qualification": "manual_only / qualification_incomplete",
+  "remaining": [
+    "Unsupported prose and review false acceptance",
+    "Correction timeout and same-contract retry behavior",
+    "Rich reviewed persona archive and compressed historical summaries",
+    "Representative longitudinal and monthly-cost qualification",
+    "Invitation/demo acceptance"
+  ],
+  "private_evidence": "output/private-audits/release-prehistory-real-20260914-04/reconciliation.json; output/private-audits/release-prehistory-claims-20260914/"
+}

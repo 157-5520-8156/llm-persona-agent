@@ -50,8 +50,10 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
     import companion_daemon.world_v2.visible_source_runtime as visible_runtime
     original_review = visible_runtime.review_candidate
     live_traces = []
+    live_inputs = []
     async def capture_review(**kwargs):
         live_traces.append(kwargs["request"].visible_source_recall_traces)
+        live_inputs.append(kwargs["request"])
         return await original_review(**kwargs)
     monkeypatch.setattr(visible_runtime, "review_candidate", capture_review)
 
@@ -74,6 +76,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
                 assert history["text"] == statement
                 value = _decision()
                 value["expression_draft"]["beats"] = [{"modality": "text", "text": statement}]
+                value["expression_draft"]["world_claims"] = [{"claim_text": statement, "scope": "past_world", "source_refs": [history["source_ref"]]}]
                 fields = body["tools"][0]["function"]["parameters"]["properties"]
                 return _http_result(body, {"result": value} if tool_version == "3" else
                                     {key: value.get(key) for key in fields})
@@ -88,6 +91,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
             assert history["prehistory"]["entities"][0]["entity_ref"].startswith("history:")
             value = _decision()
             value["expression_draft"]["beats"] = [{"modality": "text", "text": statement}]
+            value["expression_draft"]["world_claims"] = [{"claim_text": statement, "scope": "past_world", "source_refs": [history["source_ref"]]}]
         else:
             assert name == f"visible_beat_source_verdict_v{review_version}", name
             rows = (user["source_references"] if review_version == "1" else
@@ -179,6 +183,26 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
         parent = next(audit for audit in audits if audit.visible_source_review_json is not None)
         evidence = json.loads(parent.visible_source_review_json)
         assert evidence["contract"] == "visible-source-runtime-evidence.2"
+        from companion_daemon.world_v2.prehistory_claim_authority import prehistory_claim_bindings
+        from companion_daemon.world_v2.expression_draft import world_claim_source_refs_by_scope
+        owned = live_inputs[-1]
+        historical = prehistory_claim_bindings(owned)
+        record_ref = archive.document.records[0].record_id
+        assert record_ref in historical
+        allowed = world_claim_source_refs_by_scope(context=json.loads(owned.model_content_json), request=owned)
+        assert record_ref in allowed["past_world"]
+        assert all(record_ref not in allowed[scope] for scope in (
+            "current_world", "counterpart_history", "shared_history", "stable_identity"))
+        assert not prehistory_claim_bindings(owned.model_copy(update={"visible_source_recall_traces": ()}))
+        hidden = json.loads(owned.model_content_json)
+        hidden["inner_life_snapshot"]["materials"] = {}
+        assert not prehistory_claim_bindings(owned, context=hidden)
+        with pytest.raises(ValueError, match="original input pin"):
+            prehistory_claim_bindings(owned.model_copy(update={"evaluated_ledger_sequence": 99999}))
+        candidate = json.loads(json.loads(evidence["receipt"]["prepared_json"])["candidate_json"])
+        actual_refs = {ref["ref_id"] for ref in candidate["evidence_refs"]}
+        assert {binding.ref for binding in historical[record_ref]} <= actual_refs
+
         base = requirement_table(evidence["requirement_json"])
         assert "recalled_prehistory" not in base.payload_json
         assert statement not in base.payload_json

@@ -42,6 +42,7 @@ from .private_turn_state import (
     validate_private_turn_state_sources,
 )
 from .schema_core import FrozenModel
+from .prehistory_claim_authority import prehistory_claim_bindings
 
 
 ExpressionModality = Literal["text", "reaction", "sticker", "typing"]
@@ -1357,6 +1358,7 @@ def request_requires_response_expectation_assessment(request: ModelInput) -> boo
 def _world_claim_source_refs_by_scope(
     *,
     context: dict[str, object],
+    request: ModelInput | None = None,
     stable_identity_source_refs: frozenset[str],
     counterpart_message_source_refs: frozenset[str] = frozenset(),
 ) -> dict[str, set[str]]:
@@ -1389,7 +1391,8 @@ def _world_claim_source_refs_by_scope(
             context,
             include_active=False,
         )
-        | _slice_claim_authority_tokens(context, "recent_experiences"),
+        | _slice_claim_authority_tokens(context, "recent_experiences")
+        | (set(prehistory_claim_bindings(request, context=context)) if request is not None else set()),
         "counterpart_history": _slice_claim_authority_tokens(
             context,
             "relevant_facts",
@@ -1417,6 +1420,7 @@ def _world_claim_source_refs_by_scope(
 def world_claim_source_refs_by_scope(
     *,
     context: dict[str, object],
+    request: ModelInput | None = None,
     stable_identity_source_refs: frozenset[str] = frozenset(),
     counterpart_message_source_refs: frozenset[str] = frozenset(),
 ) -> dict[str, frozenset[str]]:
@@ -1432,6 +1436,7 @@ def world_claim_source_refs_by_scope(
         scope: frozenset(refs)
         for scope, refs in _world_claim_source_refs_by_scope(
             context=context,
+            request=request,
             stable_identity_source_refs=stable_identity_source_refs,
             counterpart_message_source_refs=counterpart_message_source_refs,
         ).items()
@@ -1471,6 +1476,7 @@ def world_claim_source_ref_aliases_by_scope(
     )
     source_refs = world_claim_source_refs_by_scope(
         context=context,
+        request=request,
         stable_identity_source_refs=stable_identity_source_refs,
         counterpart_message_source_refs=current_counterpart_report_source_refs(
             context=context,
@@ -1597,6 +1603,7 @@ def expression_hard_boundary_manifest(
     )
     source_refs = _world_claim_source_refs_by_scope(
         context=context,
+        request=request,
         stable_identity_source_refs=stable_identity_source_refs,
         counterpart_message_source_refs=current_report_refs,
     )
@@ -1810,6 +1817,7 @@ def invalid_world_claim_source_indexes(
         raise ValueError("world claim validation requires a Context object")
     allowed = _world_claim_source_refs_by_scope(
         context=context,
+        request=request,
         stable_identity_source_refs=stable_identity_source_refs,
         counterpart_message_source_refs=current_counterpart_report_source_refs(
             context=context,
@@ -1930,7 +1938,13 @@ def _bound_context_event_evidence(
     # binding (different hash/revision/source kind) still fails closed.
     candidates: dict[str, set[tuple[str, int, str]]] = {}
     candidate_authority_types: dict[str, set[str]] = {}
-    for lane in slices.values():
+    historical = prehistory_claim_bindings(request)
+    historical_bindings = {binding for ref in cited for binding in historical.get(ref, ())}
+    expanded_cited.update(binding.ref for binding in historical_bindings)
+    evidence_lanes = [*slices.values(), {"items": [{
+        "source_bindings": [binding.model_dump(mode="json") for binding in historical_bindings],
+    }]}]
+    for lane in evidence_lanes:
         if not isinstance(lane, dict):
             continue
         items = lane.get("items")

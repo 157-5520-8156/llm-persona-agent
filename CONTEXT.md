@@ -61,6 +61,17 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Current 2026-09-14 qualification: hybrid.5 real calls now received the retained
+school excerpt, but explicit `past_world` bookkeeping rejected its Recall ref.
+The request-aware claim matrix now accepts only original selected or sealed,
+same-cursor, actually presented historical readings. Citing the item or record
+binds both record and reviewed archive events into Proposal evidence. This adds
+no current-world, counterpart/shared-history or stable-identity capability.
+101 offline checks and 9 old cold receipts pass; the claim fix has no subsequent
+real-provider acceptance. Unsupported embellishments and correction failures
+still block release. The real trial added 6 calls, estimated CNY0.1073741 known
+and CNY0.932127 unresolved holds; no new delivery or fresh budget allocation.
+
 The companion's accepted fictional history before this World's original
 runtime boundary, with its own creation provenance. It may become remembered
 personal history but cannot establish a runtime activity or an unconfirmed
