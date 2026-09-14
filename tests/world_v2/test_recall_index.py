@@ -355,8 +355,14 @@ def test_hybrid_recall_keeps_exact_lexical_cue_separate_from_dense_attention() -
         )
     )
 
-    assert result.hits[0].document.source_item_ref == "fact:oolong"
-    assert "lexical" in result.hits[0].match_channels
+    # Both attention lanes must remain available. A below-threshold dense
+    # similarity cannot boost the tea fact merely to fix its first position.
+    hits = {hit.document.source_item_ref: hit for hit in result.hits}
+    assert set(hits) == {"fact:oolong", "experience:rain"}
+    assert "lexical" in hits["fact:oolong"].match_channels
+    assert "dense" not in hits["fact:oolong"].match_channels
+    assert "dense" in hits["experience:rain"].match_channels
+    assert "lexical" not in hits["experience:rain"].match_channels
 
 
 def test_small_recall_set_preserves_memory_kind_and_subject_diversity() -> None:

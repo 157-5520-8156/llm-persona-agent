@@ -61,6 +61,15 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Recall hybrid.7 now counts independent query overlap groups, excludes unqualified
+dense similarity from fusion, and packs complementary query cues before source
+diversity ties. The original natural question now retrieves the admission-envelope
+memory in an offline recompile of the same 39 documents and pinned query; exact
+model reading and both archive/record proofs survive the original byte ceilings.
+174 related tests and 10 old cold receipts pass. No new model turn occurred, so
+natural character use remains unqualified. See
+`docs/audits/release-independent-recall-cues-validation-2026-09-14.json`.
+
 Historical dating windows now average the existing recency curve (recall hybrid.6);
 an unknown birth-to-start interval no longer inherits its newest possible date.
 This does not change source dates or close the natural-query recall failure.

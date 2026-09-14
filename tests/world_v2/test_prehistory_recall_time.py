@@ -14,6 +14,7 @@ from companion_daemon.world_v2.recall_index import (
     RecallSourceBinding,
     SQLiteRecallIndex,
     _historical_window_accessibility,
+    RECALL_INDEX_POLICY_VERSION,
 )
 
 NOW = datetime(2026, 9, 14, tzinfo=UTC)
@@ -145,7 +146,7 @@ def test_uncertain_old_memory_does_not_outrank_recent_precise_memory(tmp_path, p
         assert {h.document.source_item_ref: h.document for h in result.hits} == {
             d.source_item_ref: d for d in docs
         }
-        assert "hybrid.6" in result.index_version
+        assert result.index_version.startswith(RECALL_INDEX_POLICY_VERSION)
         if persistent:
             index.close()
             index = factory()

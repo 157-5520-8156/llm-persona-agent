@@ -1,0 +1,67 @@
+{
+  "contract": "release-independent-recall-cues-validation.1",
+  "policy": "world-v2-recall-index.hybrid.7",
+  "problem": "Overlapping ngrams counted as independent rarity evidence, below-threshold dense similarity still raised the fused score, and source-lane diversity could repeatedly spend the small result budget on the same query cue.",
+  "changes": [
+    "Count the strongest rarity match per connected query-overlap group; repeated copies of a cue count once. Exact query coverage remains available.",
+    "Keep raw dense similarity in audit fields, but only a qualified dense channel contributes to the fused score. Apply the integer accessibility offset after rounding.",
+    "Keep the highest fused result, then prefer remaining candidates that cover independent unrepresented query cues; use type/source/subject diversity and score for ties. Eligibility and both byte limits remain enforced."
+  ],
+  "frozen_pipeline": {
+    "query_and_corpus_unchanged": true,
+    "corpus_documents": 39,
+    "before_sources": [
+      "appraisal:compiled:84aab22f884c8b51f6b72dcd88a966dd8f5d61090df647fbe2d4ee60c9d588cb",
+      "impression:431237aafbeabeb5b786e3659a6928bcaf31800d7cd0d0641a25d9ab8701d781",
+      "prehistory-record:celia-life-borrowed-camera"
+    ],
+    "after_sources": [
+      "appraisal:compiled:694997661a6b46e7e37a97fca786756dcdb9123bb046734cfded82ed77743d6c",
+      "prehistory-record:celia-life-borrowed-camera",
+      "prehistory-record:celia-life-admission-envelope",
+      "appraisal:compiled:34cf5cd75c5662ae5d100f1e30b47e3f9b60520b770fdc5344a4ca1aab0724ac"
+    ],
+    "target_available_before": false,
+    "target_available_after": true,
+    "target_model_reading_exact": true,
+    "target_record_and_archive_proofs_present": true,
+    "model_reading_bytes": 3943,
+    "result_with_proofs_bytes": 10754,
+    "whole_recall_evidence_bytes": 11033,
+    "qualification": "Offline pinned-ledger recompile through retrieval, model-reading augmentation and review evidence. No new model response, semantic judgment, dispatch or receipt was produced."
+  },
+  "validation": {
+    "related_tests_passed": 174,
+    "test_batches": [
+      144,
+      30
+    ],
+    "coverage": "Independent cues across four unrelated topic pairs, repeated query wording, dense calibration and raw audit scores, source-lane echoes, semantic-only retrieval, privacy/time/actor/status, byte budgets, SQLite reopen, production Core pull/prefetch and constrained reselection, forgotten/compressed memory suppression.",
+    "unchanged_tokenizer_cases": 239,
+    "old_cold_receipts_verified": 10,
+    "source_database_unchanged": true,
+    "ruff": "passed",
+    "diff_check": "passed",
+    "updated_existing_assertion": "The separate lexical/dense attention test now requires both the tea fact and rain experience with their exact qualifying channels, rather than relying on unqualified dense noise to put the tea fact first."
+  },
+  "cost": {
+    "new_paid_calls": 0,
+    "new_character_turns": 0,
+    "new_allocation_cny": 0,
+    "released_hold_cny": 0,
+    "model_reading_bytes_before": 3014,
+    "model_reading_bytes_after": 3943,
+    "note": "More useful material within the unchanged context ceiling; not a claim of reduced token cost or monthly-budget qualification.",
+    "headroom_cny": "0.2182706000000000046",
+    "budget_checkpoint": "release-witness-real-20260914-01/run/world.sqlite"
+  },
+  "release_status": "manual_only / qualification_incomplete",
+  "remaining_gates": [
+    "A fresh real character dialogue using the corrected recall; offline availability is not humanlike memory behavior.",
+    "Historical/current compressed representation storage, role-owned lifecycle and authorized reading.",
+    "Source-review false acceptance, role correction, representative life continuity, monthly production cost and QQ release."
+  ],
+  "evidence_hashes": {
+    "output/private-audits/release-recall-query-focus-host-20260914/inspection.json": "60c399f5687ae349ce260be19217a5a9f111a19c5c941e05e045bafb79cb76f3"
+  }
+}

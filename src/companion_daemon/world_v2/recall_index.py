@@ -25,7 +25,7 @@ from .schema_core import FrozenModel, PrivacyClass
 from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_write_lock
 
 
-RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.6"
+RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.7"
 # Model context and local evidence have different costs. Full immutable proof
 # envelopes never enter the role's reading; charging them to its context budget
 # silently discards small memories. The complete trace retains its independent
@@ -453,10 +453,10 @@ class _RecallIndexCore:
         if len(query_vector_values) != 1:
             raise ValueError("recall query embedding count is invalid")
         query_vector = self._normalize_vector(query_vector_values[0])
-        query_features = _lexical_features(query.lexical_text or query.query_text)
+        lexical_text = query.lexical_text or query.query_text
         eligible_rows = tuple((document, vector) for document, vector in rows
                               if self._eligible(document, query))
-        lexical_scores = _corpus_lexical_scores(query_features, tuple(
+        lexical_scores = _corpus_lexical_scores(lexical_text, tuple(
             _lexical_features(document.retrieval_text or document.text)
             for document, _ in eligible_rows
         ))
@@ -489,17 +489,19 @@ class _RecallIndexCore:
                 seed=query.accessibility_seed,
                 document_id=document.document_id,
             )
+            # Keep raw dense similarity in the audit, but below-threshold
+            # values are not evidence in the fused ranking. Apply the integer
+            # accessibility draw after rounding so it remains exactly additive.
             score = max(
                 0,
                 min(
                     10_000,
                     round(
                         lexical * 0.35
-                        + dense * 0.35
+                        + (dense * 0.35 if "dense" in channels else 0)
                         + structured * 0.20
                         + temporal * 0.10
-                        + accessibility
-                    ),
+                    ) + accessibility,
                 ),
             )
             hit = RecallHit(
@@ -536,37 +538,53 @@ class _RecallIndexCore:
             selected.append(hit)
             return True
 
-        # Accessibility should not collapse a small result set into several
-        # near-duplicate facts merely because they share the strongest token.
-        # First retain the best hit, then prefer candidates that add a memory
-        # kind, source lane, or self/counterpart subject. This is deterministic
-        # evidence diversity, not a preference about what the character should
-        # say or which memory she must use.
+        # The first result keeps the fused ranking. Subsequent candidates
+        # should add independent query evidence rather than repeat the same
+        # phrase through another source lane. Source/type diversity breaks
+        # ties when cues are already covered (including semantic-only recall).
+        # Eligibility and both byte budgets still apply before each selection.
+        query_spans = _lexical_feature_spans(lexical_text)
+        groups_by_id = {
+            hit.document.document_id: _matched_query_groups(
+                query_spans, _lexical_features(hit.document.retrieval_text or hit.document.text),
+            ) for _, _, hit in ranked
+        }
+        covered_spans: list[tuple[int, int]] = []
+        covered_terms: set[str] = set()
         seen_kinds: set[str] = set()
         seen_slices: set[str] = set()
         seen_subjects: set[str] = set()
-        for _, _, hit in ranked:
+        remaining = list(ranked)
+
+        def novelty(hit: RecallHit) -> tuple[int, int]:
             document = hit.document
-            adds_axis = (
-                not selected
-                or document.memory_kind not in seen_kinds
-                or document.source_slice not in seen_slices
-                or bool(set(document.subject_refs) - seen_subjects)
-            )
-            if not adds_axis:
+            novel_groups = [
+                terms for start, end, terms in groups_by_id[document.document_id]
+                if not terms & covered_terms
+                and not any(start < old_end and old_start < end for old_start, old_end in covered_spans)
+            ]
+            # Repeated wording does not create additional independent cues.
+            cue_count = len(set(novel_groups))
+            axes = (int(document.memory_kind not in seen_kinds)
+                    + int(document.source_slice not in seen_slices)
+                    + int(bool(set(document.subject_refs) - seen_subjects)))
+            return cue_count, axes
+
+        while remaining and len(selected) < query.limit:
+            if selected:
+                remaining.sort(key=lambda item: (
+                    -novelty(item[2])[0], -novelty(item[2])[1], -item[0], item[1],
+                ))
+            _, _, hit = remaining.pop(0)
+            if not add_if_within_budget(hit):
                 continue
-            if add_if_within_budget(hit):
-                seen_kinds.add(document.memory_kind)
-                seen_slices.add(document.source_slice)
-                seen_subjects.update(document.subject_refs)
-        selected_ids = {item.document.document_id for item in selected}
-        for _, _, hit in ranked:
-            if len(selected) >= query.limit:
-                break
-            if hit.document.document_id in selected_ids:
-                continue
-            if add_if_within_budget(hit):
-                selected_ids.add(hit.document.document_id)
+            document = hit.document
+            seen_kinds.add(document.memory_kind)
+            seen_slices.add(document.source_slice)
+            seen_subjects.update(document.subject_refs)
+            for start, end, terms in groups_by_id[document.document_id]:
+                covered_spans.append((start, end))
+                covered_terms.update(terms)
         hits = tuple(selected)
         query_hash = recall_query_hash(
             index_version=self._index_version,
@@ -999,30 +1017,22 @@ class SQLiteRecallIndex(_RecallIndexCore):
             close_embedding()
 
 
-def _flush_run(
-    features: set[str],
-    *,
-    run: list[str],
-    kind: str | None,
-) -> None:
-    if not run or kind is None:
-        return
-    value = "".join(run)
-    if kind == "cjk":
-        for width in (2, 3):
-            features.update(
-                value[offset : offset + width] for offset in range(max(0, len(value) - width + 1))
-            )
-    elif len(value) >= 3:
-        features.add(value)
-
-
-def _lexical_features(text: str) -> frozenset[str]:
-    features: set[str] = set()
+def _lexical_feature_spans(text: str) -> tuple[tuple[int, int, str], ...]:
+    """The existing normalized features with their exact query coordinates."""
     normalized = unicodedata.normalize("NFKC", text).casefold()
-    run: list[str] = []
+    spans: list[tuple[int, int, str]] = []
+    run_start = 0
     kind: str | None = None
-    for character in normalized:
+
+    def flush(end: int) -> None:
+        if kind == "cjk":
+            for width in (2, 3):
+                spans.extend((offset, offset + width, normalized[offset:offset + width])
+                             for offset in range(run_start, end - width + 1))
+        elif kind == "word" and end - run_start >= 3:
+            spans.append((run_start, end, normalized[run_start:end]))
+
+    for offset, character in enumerate(normalized):
         codepoint = ord(character)
         next_kind = (
             "cjk"
@@ -1036,27 +1046,57 @@ def _lexical_features(text: str) -> frozenset[str]:
             else None
         )
         if next_kind != kind:
-            _flush_run(features, run=run, kind=kind)
-            run = []
-            kind = next_kind
-        if next_kind is not None:
-            run.append(character)
-    _flush_run(features, run=run, kind=kind)
-    return frozenset(features)
+            flush(offset)
+            run_start, kind = offset, next_kind
+    flush(len(normalized))
+    return tuple(spans)
+
+
+def _lexical_features(text: str) -> frozenset[str]:
+    return frozenset(term for _, _, term in _lexical_feature_spans(text))
+
+
+def _matched_query_groups(
+    spans: tuple[tuple[int, int, str], ...], document: frozenset[str],
+) -> tuple[tuple[int, int, frozenset[str]], ...]:
+    """Connected overlapping matches; adjacent independent spans stay separate."""
+    groups: list[tuple[int, int, frozenset[str]]] = []
+    start, end, terms = -1, -1, set()
+    for left, right, term in sorted(span for span in spans if span[2] in document):
+        if left >= end:
+            if terms:
+                groups.append((start, end, frozenset(terms)))
+            start, terms = left, set()
+        end = max(end, right)
+        terms.add(term)
+    if terms:
+        groups.append((start, end, frozenset(terms)))
+    return tuple(groups)
+
+
+def _independent_match_terms(
+    spans: tuple[tuple[int, int, str], ...], document: frozenset[str], weights: dict[str, float],
+) -> frozenset[str]:
+    """One rarity contribution per overlapping query span, without stopwords.
+
+    Repeated copies of a cue also count once. The strongest term represents
+    each connected overlap group; no phrase is assigned semantic importance.
+    """
+    return frozenset(max(terms, key=lambda term: (weights[term], len(term), term))
+                     for _, _, terms in _matched_query_groups(spans, document))
 
 
 def _corpus_lexical_scores(
-    query: frozenset[str], documents: tuple[frozenset[str], ...],
+    query_text: str, documents: tuple[frozenset[str], ...],
 ) -> tuple[int, ...]:
-    """Saturating inverse-frequency evidence, independent of query padding.
+    """Saturating independent-cue rarity plus exact query coverage.
 
-    A short distinctive cue should compete with dense matches to the already
-    present emotional context. Exact query coverage retains its previous score;
-    rarity supplements partial matches rather than weakening complete matches.
-    Frequencies only use eligible documents: private,
-    foreign, inactive or out-of-time material cannot change another view's rank.
-    No term is assigned a semantic label or a special-case stopword rule.
+    Overlapping n-grams from one phrase are correlated evidence. Count the
+    strongest match per overlap group, preserving full-query coverage and
+    distinct separated cues. Frequencies use eligible documents only.
     """
+    spans = _lexical_feature_spans(query_text)
+    query = frozenset(term for _, _, term in spans)
     frequencies = {term: sum(term in document for document in documents) for term in query}
     weights = {term: math.log1p((len(documents) - count + 0.5) / (count + 0.5))
                for term, count in frequencies.items() if count}
@@ -1064,7 +1104,8 @@ def _corpus_lexical_scores(
     scores = []
     for document in documents:
         overlap = query & document
-        evidence = sum(weights[term] for term in sorted(overlap))
+        independent = _independent_match_terms(spans, document, weights)
+        evidence = sum(weights[term] for term in sorted(independent))
         coverage = sum(len(term) ** 2 for term in overlap) / query_weight
         scores.append(round(10_000 * max(coverage, evidence / (evidence + 1.0))))
     return tuple(scores)
