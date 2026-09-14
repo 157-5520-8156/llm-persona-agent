@@ -61,6 +61,18 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Strict atomic v3 now has an explicit, default-off local schema reference option.
+It factors exact repeated schemas using DeepSeek's documented `$ref` / `$def`;
+expansion must equal the original, and the final wire remains digest-bound.
+Initial, after-recall and final contracts share the option. Host composition and
+isolated CLI record it; no production default is changed. The frozen trial08
+request saves 29766 bytes in tools (53550 to 23784), projecting the single author
+reservation from CNY0.573108 to 0.483810. This is not provider acceptance, actual
+billing, or admission for the whole author/correction/review chain. 361 distinct
+checks pass, with no paid calls, hold releases or live-state changes. See
+`docs/audits/release-local-schema-reference-validation-2026-09-14.json`.
+
+
 Latest offline recall inspection reproduced trial08's exact prefetch at cursor
 1386. The target memory was eligible but not selected. Corpus.5 now indexes only
 the participant/place labels already carried by each retained historical reading;

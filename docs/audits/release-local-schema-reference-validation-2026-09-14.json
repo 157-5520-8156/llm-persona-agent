@@ -1,0 +1,40 @@
+{
+  "scope": "Offline projection on trial08 frozen request; no provider acceptance or billing evidence",
+  "source_capture_id": "model-input:e58918f7dcd9429b9c1fe391f73bfd4a",
+  "source_file_sha256": "4888b61e79159fb14345a70591b632ad48cc33911dd4c07a45e783ee0cdbbccc",
+  "source_request_sha256": "17a85a6fc94ab3ed07bd8bb856c5c1249ed7a7e63c95b651b3960aa83c7a488b",
+  "tools_before_bytes": 53550,
+  "tools_after_bytes": 23784,
+  "request_before_bytes": 177724,
+  "request_after_schema_only_bytes": 147958,
+  "schema_saved_bytes": 29766,
+  "definitions": 15,
+  "expanded_schema_equal": true,
+  "new_paid_calls": 0,
+  "qualification": "manual_only / qualification_incomplete",
+  "old_request_reserve_cny": 0.573108,
+  "schema_only_request_reserve_cny": 0.48381,
+  "remaining_native_budget_cny": "0.4916446",
+  "budget_limitation": "An individual request projection is not admission for an entire dialogue, correction and review chain. Existing unknown holds remain committed.",
+  "official_dialect_reference": "https://api-docs.deepseek.com/guides/tool_calls/",
+  "deployment": "Default disabled; --visible-author-schema-references requires atomic v3 and explicit visible source review; all phases share the option and schema digests bind the final wire.",
+  "validation": {
+    "distinct_tests_passed": 361,
+    "new_tests_passed": 21,
+    "legacy_tool_fingerprints": "v1/v2 original byte checks pass",
+    "phases": [
+      "initial with recall",
+      "initial without recall",
+      "after_recall",
+      "final"
+    ],
+    "constraints": "Exact expansion equality, required and foreign fields, invalid types, source capability identity, decoder, reference scope rejection, literal preservation, host and CLI propagation.",
+    "no_live_provider_qualification": true
+  },
+  "release_gates": [
+    "Natural autobiographical recall still misses original broad cue",
+    "Unsupported experience claims and false source-review acceptance remain unresolved",
+    "Correction timeout and long-run life continuity remain unresolved",
+    "Monthly production cost and real QQ invitation release remain unqualified"
+  ]
+}

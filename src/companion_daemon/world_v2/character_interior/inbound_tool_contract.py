@@ -27,6 +27,7 @@ from ..private_turn_state import PrivateTurnState
 from ..chat_life_intent_contract import LifeIntentDraft
 from ..recall_audit import CharacterRecallRequest
 from .inbound_appraisal_wire import AppraisalDraftWire
+from .local_schema_references import expand_local_schema_references, factor_local_schema_references
 from ..present_prompt import (
     SLIM_CONSIDER_KEYS,
     compact_gate_recall_instruction,
@@ -1006,9 +1007,10 @@ class InboundToolContract:
 
         if self.identity.version != "3":
             raise ValueError("branch-local fields require atomic v3")
-        branches = self.provider_tools[0]["function"]["parameters"]["properties"][
-            "result"
-        ]["anyOf"]
+        parameters = self.provider_tools[0]["function"]["parameters"]
+        if "$def" in parameters:
+            parameters = expand_local_schema_references(parameters)
+        branches = parameters["properties"]["result"]["anyOf"]
         return {
             branch["properties"]["result_kind"]["enum"][0]: tuple(branch["required"])
             for branch in branches
@@ -1274,6 +1276,7 @@ class InboundToolContracts:
         response_expectation_assessment_required: bool = False,
         schema_dialect: InboundToolSchemaDialect = "standard",
         atomic_envelope_version: InboundAtomicEnvelopeVersion = "1",
+        use_schema_references: bool = False,
     ) -> InboundToolContract:
         if phase not in {"initial", "after_recall", "final"}:
             raise ValueError("unsupported inbound tool phase")
@@ -1287,6 +1290,10 @@ class InboundToolContracts:
             transport != "atomic" or schema_dialect != "deepseek-strict"
         ):
             raise ValueError("versioned atomic transport requires the DeepSeek strict atomic dialect")
+        if type(use_schema_references) is not bool:
+            raise TypeError("schema references flag must be a boolean")
+        if use_schema_references and atomic_envelope_version != "3":
+            raise ValueError("schema references require strict atomic v3")
         contract_version = atomic_envelope_version
         recall_allowed = phase == "initial" and recall_allowed
         schema_includes_recall = phase == "initial" and (
@@ -1611,6 +1618,8 @@ class InboundToolContracts:
             elif atomic_envelope_version == "3":
                 wrapped_result_fields = tuple(parameters["properties"])
                 parameters = deepseek_strict_tool_schema(branch_local_parameters)
+        if use_schema_references:
+            parameters = factor_local_schema_references(parameters)
         function = {
             "name": tool_name,
             "description": (

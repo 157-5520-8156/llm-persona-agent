@@ -31,6 +31,10 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         help="Require whole-candidate source review in the real-provider capture host (atomic expression).",
     )
     parser.add_argument(
+        "--visible-author-schema-references", action="store_true",
+        help="Opt-in local schema references for strict atomic v3; provider qualification pending.",
+    )
+    parser.add_argument(
         "--visible-author-tool-version", choices=("1", "2", "3"), default="1",
         help="Explicit whole-author wire version; v2/v3 require whole-source review and is unqualified with real providers.",
     )
@@ -61,6 +65,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--allow-real-provider requires --model-mode real-provider")
     if options.require_visible_source_review and options.model_mode != "real-provider":
         parser.error("--require-visible-source-review requires the real-provider capture profile")
+    if options.visible_author_schema_references and options.visible_author_tool_version != "3":
+        parser.error("--visible-author-schema-references requires --visible-author-tool-version 3")
     if options.visible_author_tool_version != "1" and not options.require_visible_source_review:
         parser.error("--visible-author-tool-version 2/3 requires --require-visible-source-review")
     if options.visible_source_review_version != "1" and not options.require_visible_source_review:
@@ -323,6 +329,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                     visible_source_review_required=True,
                     visible_source_review_model=provider("visible_source_review"),
                     visible_author_tool_version=options.visible_author_tool_version,
+                    visible_author_schema_references=options.visible_author_schema_references,
                     visible_source_review_version=options.visible_source_review_version,
                 )
         return build_qq_c2c_host(
@@ -351,6 +358,8 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
         close_resources=close_models,
         next_command=next_command,
         provenance={
+            **({"visible_author_schema_references": True}
+               if options.visible_author_schema_references else {}),
             **({"visible_source_review_version": options.visible_source_review_version}
                if options.visible_source_review_version != "1" else {}),
             **({"visible_author_tool_version": options.visible_author_tool_version}

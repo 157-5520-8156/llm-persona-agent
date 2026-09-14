@@ -2465,6 +2465,7 @@ class _InboundCharacterAuthor:
         whole_candidate_mode: bool = False,
         visible_source_review_model: object | None = None,
         atomic_tool_envelope_version: str = "1",
+        use_schema_references: bool = False,
         visible_source_review_version: str = "1",
         **_unused: object,
     ) -> None:
@@ -2488,6 +2489,11 @@ class _InboundCharacterAuthor:
             getattr(visible_source_review_model, "complete_json_with_usage", None)
         ):
             raise ValueError("versioned atomic author requires the explicit metered source reviewer")
+        if type(use_schema_references) is not bool:
+            raise TypeError("schema references flag must be a boolean")
+        if use_schema_references and atomic_tool_envelope_version != "3":
+            raise ValueError("schema references require strict atomic v3")
+        self._use_schema_references = use_schema_references
         self._atomic_tool_envelope_version = atomic_tool_envelope_version
         self._visible_source_review_model = visible_source_review_model
         self._visible_review_rejections = OrderedDict()
@@ -3258,6 +3264,7 @@ class _InboundCharacterAuthor:
             phase="final",
             transport="atomic",
             atomic_envelope_version=self._atomic_tool_envelope_version,
+            use_schema_references=self._use_schema_references,
             capabilities=self._capabilities,
             recall_allowed=False,
             require_turn_posture=(
@@ -4205,6 +4212,7 @@ class _InboundCharacterAuthor:
                 phase=("initial" if recall_context_available else "after_recall"),
                 transport=("stream" if transport_provider is not None else "atomic"),
                 atomic_envelope_version=self._atomic_tool_envelope_version,
+                use_schema_references=self._use_schema_references,
                 capabilities=self._capabilities,
                 recall_allowed=recall_available,
                 require_turn_posture=(
