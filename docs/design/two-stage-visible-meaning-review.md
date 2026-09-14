@@ -141,3 +141,15 @@ and its modal/conditional qualifications first, then extract independently
 asserted propositions. It preserves the same explicit coverage and schema
 checks. This is a model-task repair, not a phrase filter or local fact rewriter;
 new live qualification is required. All `.7`/`.8` compiler bytes remain readable.
+
+
+The `.9` fresh trial had 10/12 matches and two structural failures. The formerly
+misread willingness was now private in both readings; one of those outputs
+omitted required coverage fields and its question premise. A missing field is
+not filled locally. The new `visible_meaning_reselection` experiment prepares
+one same-reader retry only when the raw result fails structural validation, using
+exact original Beats, that reader's own failed raw output and precise schema or
+JSON errors. Another reader's interpretation and source support are never input.
+A structurally valid inconclusive reading cannot use this path. The original
+failed call remains billed and preserved, and a second bad result stays failed.
+This is not a semantic retry-until-accepted loop and does not extend deadlines.
