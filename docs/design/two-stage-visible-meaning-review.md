@@ -130,3 +130,14 @@ such requests. The [official DeepSeek strict guide](https://api-docs.deepseek.co
 requires both, but that documented promise cannot override observed failures.
 This experiment changes output instructions; it does not claim provider schema
 reliability or silently relax validation.
+
+
+`.8` fresh results improved to 11/12 matches, with no missing coverage or JSON
+failure. Pro still expanded conversational willingness into objective ability or
+permission. Inspection found the inherited instruction to extract each predicate
+can conflict with pragmatic interpretation of an entire qualified utterance.
+Experimental meaning `.9` uses one cohesive instruction: read the full utterance
+and its modal/conditional qualifications first, then extract independently
+asserted propositions. It preserves the same explicit coverage and schema
+checks. This is a model-task repair, not a phrase filter or local fact rewriter;
+new live qualification is required. All `.7`/`.8` compiler bytes remain readable.
