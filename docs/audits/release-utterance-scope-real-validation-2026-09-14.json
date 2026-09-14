@@ -1,0 +1,151 @@
+{
+  "contract": "release-utterance-scope-real-validation.1",
+  "code_head": "fbb670be844b525d04d164f8779f39e057abc22b",
+  "qualification": "manual_only / qualification_incomplete",
+  "outcome": "Exact formal reviewer request still falsely accepts the unsupported seating claim; annotation alone is insufficient.",
+  "trials": [
+    {
+      "id": "release-utterance-review-20260914-01",
+      "results": [
+        {
+          "case_id": "original-with-utterance-scope",
+          "status": "matched",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ]
+        },
+        {
+          "case_id": "speech-intention-and-negative-controls",
+          "status": "matched",
+          "expected": [
+            "closed",
+            "unclosed",
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "closed",
+            "unclosed",
+            "closed",
+            "unclosed"
+          ]
+        }
+      ],
+      "physical_calls": 2,
+      "known_estimate_cny": "0.1033674000000000006",
+      "new_unknown_calls": 0,
+      "latency_ms": [
+        2028,
+        2276
+      ],
+      "formal_request_matches": false
+    },
+    {
+      "id": "release-utterance-review-20260914-02",
+      "results": [
+        {
+          "case_id": "original-formal-utterance-scope",
+          "status": "semantic_mismatch",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "closed",
+            "closed",
+            "closed",
+            "source_free"
+          ]
+        }
+      ],
+      "physical_calls": 1,
+      "known_estimate_cny": "0.0666056",
+      "new_unknown_calls": 0,
+      "latency_ms": [
+        2337
+      ],
+      "formal_request_matches": true
+    }
+  ],
+  "source_inspection": {
+    "original_beat": "我上午还坐在那一片呢 黑着的时候是真安静",
+    "incorrect_formal_references": [
+      55,
+      57,
+      20,
+      11,
+      12,
+      13
+    ],
+    "speech_positive_control_reference": 55,
+    "historical_intention_positive_control_reference": 20,
+    "source_prose_actors_times_delivery_and_indexes_preserved": true,
+    "scope_annotation_origin": "Current compile_visible_selected_source_context on an isolated copy of the closed runtime World",
+    "formal_comparison": "First two calls had semantically identical packets but different JSON object key ordering from formal preparation. A third fresh call used exact formal messages/tools/choice/temperature and reproduced the failure.",
+    "no_causal_attribution_to_key_order": true
+  },
+  "admission": {
+    "original_formal_candidate": "incorrectly_accepted",
+    "receipt_sha256": "63dc5e28519e40b1d7bbdd3eac24a56136f1470020bab6e2ec60ae10c85f24ff",
+    "world_receipt_written": false,
+    "new_character_turns": 0,
+    "real_qq_messages": 0,
+    "old_cold_receipts_verified": 10,
+    "unchanged_nonbilling_tables": 29
+  },
+  "cost": {
+    "physical_calls": 3,
+    "known_calls": 3,
+    "unknown_calls": 0,
+    "known_repository_price_estimate_cny": "0.1699730000000000006",
+    "native_committed_cny": "14.2783283999999999954",
+    "native_ceiling_cny": "14.60",
+    "remaining_cny": "0.3216716000000000046",
+    "all_old_unknown_holds_retained": true,
+    "new_allocation_cny": 0,
+    "additional10_authorization_usage": {
+      "physical_calls": 83,
+      "known_calls": 71,
+      "unknown_calls": 12,
+      "known_estimate_cny": "2.5784137999999999950",
+      "new_unresolved_hold_cny": "6.798414",
+      "all_old_holds_retained": true
+    },
+    "not_invoice_or_monthly_production_estimate": true
+  },
+  "continuation": {
+    "runtime_checkpoint": "release-prehistory-real-20260914-08/run",
+    "budget_checkpoint": "release-utterance-review-20260914-02/run/world.sqlite",
+    "usage_rows": 172,
+    "reservation_rows": 169,
+    "rule": "Use the original closed runtime journey plus the complete newest cost ledger; never resume an older cheaper ledger alone."
+  },
+  "next_work": [
+    "Investigate a review contract that exposes which proposition each source actually establishes, including source scope and temporal/actor links, before an overall closed verdict.",
+    "Keep semantic interpretation in a model; deterministic checks may verify exact evidence references and permissions but must not use local phrase rules to decide character expression.",
+    "Retest actual formal requests with supported speech/intent/action controls and unsupported assertions; a passing prompt comparison cannot substitute for current preparation and receipt admission."
+  ],
+  "remaining_gates": [
+    "Source-review false acceptance and unsupported autobiographical claims",
+    "Actual character constrained correction and end-to-end dialogue",
+    "World Author authority and life continuity",
+    "Natural historical recall, forgetting/compression and longitudinal diversity",
+    "Production monthly cost, real QQ and invitation release"
+  ],
+  "evidence_hashes": {
+    "output/private-audits/release-utterance-review-20260914-01/reconciliation.json": "e728b7849f808042c3a46715411c8068189b1ae5320a1d6925b6b014333a1d3d",
+    "output/private-audits/release-utterance-review-20260914-02/reconciliation.json": "093161e2b2c4f9e57c2a05c83b72b0e519e81601ec16da9cc85541f3d81e8eac",
+    "output/private-audits/release-utterance-review-20260914-02/formal-request-check.json": "1d440358e46ad49d23359d2d38935baeb7ca1860d9460c0ef0e44ef6e72389ca"
+  }
+}

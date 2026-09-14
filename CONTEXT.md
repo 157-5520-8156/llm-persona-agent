@@ -61,6 +61,26 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Latest paid utterance-scope qualification is FAILED. Two full-source semantic
+comparisons matched all expected judgments, including prior speech and historical
+intention positives. Offline formal-preparation comparison found JSON key ordering
+different despite identical parsed content. A third fresh call using the exact
+formal request again closed the unsupported morning seating with refs 55/57
+(prior self-expression), 20 (lifecycle/intention), and 11/12/13 (environment).
+Isolated receipt admission incorrectly accepted it. No causal claim about key
+order is supported; the annotation alone is insufficient. No World receipt or
+new character dialogue was created; 10 old receipts still cold-verify.
+Three known calls cost an estimated CNY0.169973, no new unknowns. Latest budget
+source is `release-utterance-review-20260914-02/run/world.sqlite` (172 usage rows,
+169 reservations), native committed CNY14.2783284 against 14.60; headroom0.3216716.
+Runtime remains `release-prehistory-real-20260914-08/run`. A continuation must
+combine that closed runtime with the newest complete cost ledger, never resume
+an older cheaper ledger. Next investigate inspectable proposition/source support
+in reviewer output instead of further prompt-only scope assertions. All original
+release gates remain open. See
+`docs/audits/release-utterance-scope-real-validation-2026-09-14.json`.
+
+
 Latest source-review inspection identifies a concrete self-citation path: the
 frozen v8 false acceptance first cites source 55, an earlier companion utterance
 of the same unsupported seating claim, before lifecycle/environment references.
