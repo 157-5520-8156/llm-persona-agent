@@ -66,10 +66,18 @@ read-only original WorldStarted, accepted archive manifests and pinned profile.
 A review package must cover the exact brief, document and every record before it
 can become a ReviewedPrehistoryArchive; importing and remembering remain separate.
 Reviewer identity is operator-provided provenance, not independent-execution proof.
-A 24-record Celia life draft (2012-2026) is shipped with a readable timeline, still
-unreviewed and inactive. 23 workflow checks and 50 adjacent regressions pass with
-no paid calls or ledger writes. Independent semantic review, real retention/recall
-and historical summaries remain outstanding, alongside the original release gates.
+A 24-record Celia life candidate (2012-2026) now has an independently captured
+DeepSeek semantic approval, still inactive and not imported. Two earlier outputs
+failed on positive findings in a blocking-only field, then a copied hash typo;
+neither was repaired locally or retrospectively approved. A new semantic protocol
+returns indexed judgments while code binds hashes to the exact submitted packet.
+The offline binder trusts operator provenance; the real runner separately checked
+the actual request, full response and usage. 41 workflow/binding tests pass.
+Three calls cost an estimated CNY0.082023, with no new unknown holds. Budget authority
+is review03's 163 usage rows / 160 reservations, native committed CNY13.7622334 under
+the existing CNY14.60 cap; World events remain trial07's. Never resume the older
+trial07 budget alone. Real retention/recall of the richer archive and historical
+summaries remain outstanding, alongside the original release gates.
 
 Paired expression now compares selected historical readings using the same chat
 semantic normalization and exact source_ref at both materializations. Full record
@@ -78,7 +86,7 @@ This fixes the observed full-vs-compacted claim capability mismatch; it does not
 implement long-term memory compression. 75 checks and 9 old cold receipts pass.
 Real trial07 still authored unsupported details and also exposed an Appraisal
 component outside the active head. The new paired fix is offline-qualified only;
-rich reviewed archives and author/review tooling remain part of the active goal.
+real retention and recall of richer reviewed archives remain part of the active goal.
 
 Latest boundary evidence: the next real trial produced two unsupported historical
 episodes with empty claims; whole-body v8 review correctly rejected both, followed

@@ -1,0 +1,248 @@
+{
+  "contract": "release-prehistory-independent-review-validation.1",
+  "date": "2026-09-14",
+  "code_head": "bd758c624a7fe6d51b76f3b11fddec5c16256a68",
+  "goal_status": "active",
+  "qualification": "manual_only / qualification_incomplete",
+  "draft": {
+    "path": "configs/prehistory/celia-life-draft-20260914.json",
+    "records": 24,
+    "historical_entities": 14,
+    "status": "independent_model_review_approved_not_imported",
+    "document_hash": "b014d7a8b0d3ad850e8f54fd508d76f1169b82e7e86c4d18a595d336848eb32a",
+    "brief_hash": "0cdc4e33486db7092bfa046b393c60d3dc060aaa13bb038469900928d8b16189",
+    "author": "Codex",
+    "reviewer": "reviewer:deepseek-v4-flash:prehistory-20260914-03",
+    "reviewed_at": "2026-09-14T06:04:05.723717Z",
+    "semantic_verdict": {
+      "contract": "prehistory-semantic-review.1",
+      "decision": "approved",
+      "records": [
+        {
+          "record_index": 0,
+          "verdict": "approve",
+          "rationale": "2012年暑假帮母亲换书店标签，符合家庭书店背景与童年生活，无隐私或越界内容。"
+        },
+        {
+          "record_index": 1,
+          "verdict": "approve",
+          "rationale": "2014年小学借书卡事件与小学地点实体一致，属普通校园生活片段。"
+        },
+        {
+          "record_index": 2,
+          "verdict": "approve",
+          "rationale": "2016年与父亲整理书店橱窗，符合父母经营书店的设定，关联标签记录合理。"
+        },
+        {
+          "record_index": 3,
+          "verdict": "approve",
+          "rationale": "2018年雨天与母亲处理受潮纸箱，属书店日常，无矛盾或隐私问题。"
+        },
+        {
+          "record_index": 4,
+          "verdict": "approve",
+          "rationale": "2020年高一与许桥借笔记，符合高中阶段与虚构同学身份，时间合理。"
+        },
+        {
+          "record_index": 5,
+          "verdict": "approve",
+          "rationale": "2021年高中校刊受潮晾干，与已接受的高中校刊记录一致，关联恰当。"
+        },
+        {
+          "record_index": 6,
+          "verdict": "approve",
+          "rationale": "2022年清理教室柜子旧校刊，延续高中校刊经历，未夹带未确认关系。"
+        },
+        {
+          "record_index": 7,
+          "verdict": "approve",
+          "rationale": "2022年许桥归还小说发现旧公交票，属普通借还事件，与高中同学身份相符。"
+        },
+        {
+          "record_index": 8,
+          "verdict": "approve",
+          "rationale": "2023年入学前整理录取材料，符合华东师范大学入学时间与家庭地点。"
+        },
+        {
+          "record_index": 9,
+          "verdict": "approve",
+          "rationale": "2023年9月入住宿舍与室友周祺调整收纳箱，符合住校设定与时间线。"
+        },
+        {
+          "record_index": 10,
+          "verdict": "approve",
+          "rationale": "2023年10月文学社读书交流，与已接受的文学社记录一致，属普通社团活动。"
+        },
+        {
+          "record_index": 11,
+          "verdict": "approve",
+          "rationale": "2023年11月摄影社借用相机并归还，与已接受的摄影社记录一致。"
+        },
+        {
+          "record_index": 12,
+          "verdict": "approve",
+          "rationale": "2024年3月与周祺协商夜间台灯，符合室友生活，无隐私或越界内容。"
+        },
+        {
+          "record_index": 13,
+          "verdict": "approve",
+          "rationale": "2024年4月摄影社外拍相机没电，延续借用相机记录，地点为上海街区合理。"
+        },
+        {
+          "record_index": 14,
+          "verdict": "approve",
+          "rationale": "2024年6月归还夹便签的馆藏书，与小学借书卡经历呼应，属普通校园事件。"
+        },
+        {
+          "record_index": 15,
+          "verdict": "approve",
+          "rationale": "2024年8月暑假帮母亲整理书架贴反标签，符合家庭书店背景与母亲身份。"
+        },
+        {
+          "record_index": 16,
+          "verdict": "approve",
+          "rationale": "2024年11月文学社四人小交流，延续文学社记录，属普通社团生活。"
+        },
+        {
+          "record_index": 17,
+          "verdict": "approve",
+          "rationale": "2025年3月与周祺借伞拿错并系细绳区分，符合室友关系，无矛盾。"
+        },
+        {
+          "record_index": 18,
+          "verdict": "approve",
+          "rationale": "2025年7月与父亲整理旧书分类，符合书店经营设定，关联橱窗记录合理。"
+        },
+        {
+          "record_index": 19,
+          "verdict": "approve",
+          "rationale": "2025年8月从嘉兴返校错过班次，符合嘉兴至上海通勤情境，无越界内容。"
+        },
+        {
+          "record_index": 20,
+          "verdict": "approve",
+          "rationale": "2026年3月课程读书汇报合稿，符合汉语言文学专业学习，属普通学业事件。"
+        },
+        {
+          "record_index": 21,
+          "verdict": "approve",
+          "rationale": "2026年5月宿舍独自整理讲义与周祺归还订书器，符合住校生活与室友关系。"
+        },
+        {
+          "record_index": 22,
+          "verdict": "approve",
+          "rationale": "2026年7月暑假回嘉兴见到旧校刊并归档，延续高中校刊记录，时间合理。"
+        },
+        {
+          "record_index": 23,
+          "verdict": "approve",
+          "rationale": "2026年8月返校前归还书店备用钥匙，符合家庭书店背景与父亲身份，无隐私问题。"
+        }
+      ],
+      "cross_record_findings": []
+    },
+    "approved_package_private_path": "output/private-audits/release-prehistory-review-20260914-03/run/reviewed-archive.json"
+  },
+  "iterations": [
+    {
+      "trial_id": "release-prehistory-review-20260914-01",
+      "status": "technical_failure",
+      "physical_calls": 1,
+      "known_estimate_cny": "0.0233925",
+      "unknown_calls": 0,
+      "reason": "Legacy response approved every record but included positive cross-record findings; schema rejected contradictory status. No approval package."
+    },
+    {
+      "trial_id": "release-prehistory-review-20260914-02",
+      "status": "technical_failure",
+      "physical_calls": 1,
+      "known_estimate_cny": "0.0268785",
+      "unknown_calls": 0,
+      "reason": "One constrained correction fixed the findings but copied one record hash incorrectly; exact coverage rejected it. No approval package."
+    },
+    {
+      "trial_id": "release-prehistory-review-20260914-03",
+      "status": "approved",
+      "physical_calls": 1,
+      "known_estimate_cny": "0.031752",
+      "unknown_calls": 0,
+      "reason": "Fresh semantic protocol review, without either prior answer in context. All 24 indexed judgments bound to the actual submitted input; full request/response and usage verified."
+    }
+  ],
+  "implementation": {
+    "findings_contract": "Only blocking cross-record issues; positive explanations belong in per-record rationale. Existing fail-closed validator unchanged.",
+    "semantic_protocol": "prehistory-semantic-review.1",
+    "binding": "Program computes hashes from the exact submitted packet and preserves the model judgments. No hash repair or retrospective approval of failed legacy responses.",
+    "operator_trust": "Offline CLI trusts supplied pairing/identity; the real trial additionally verifies actual captured request, complete raw response, token counts and body hashes.",
+    "schema_input": "Full profile, original World start, accepted archives and all candidate records remain present.",
+    "completion_ceiling_tokens": 4096,
+    "previous_hash_copy_ceiling_tokens": 8192,
+    "automatic_import_or_retention": false
+  },
+  "verification": {
+    "workflow_tests": 23,
+    "new_semantic_binding_tests": 18,
+    "distinct_tests_passed": 41,
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "captured_review_requests": 1,
+    "complete_review_bodies": 1,
+    "review_coverage": 24,
+    "raw_response_matches_captured_body": true,
+    "token_counts_and_body_hashes_verified": true,
+    "inherited_usage_and_reservations_unchanged": true,
+    "world_events_unchanged": true,
+    "production_modified": false,
+    "real_qq": false,
+    "new_source_review_or_delivery_receipts": 0,
+    "new_cold_receipt_retest": false,
+    "credential_matches": 0
+  },
+  "cost": {
+    "physical_calls": 3,
+    "known_calls": 3,
+    "unknown_calls": 0,
+    "known_repository_price_estimate_cny": "0.0820230",
+    "new_unknown_hold_cny": "0",
+    "native_known_estimate_cny": "4.6049464000000000008",
+    "native_unknown_hold_cny": "9.157287",
+    "native_committed_estimate_cny": "13.7622334000000000008",
+    "native_ceiling_cny": "14.60",
+    "native_remaining_before_new_reservation_cny": "0.8377665999999999992",
+    "final_usage_rows": 163,
+    "final_reservation_rows": 160,
+    "additional10_authorization_usage": {
+      "physical_calls": 74,
+      "known_calls": 62,
+      "unknown_calls": 12,
+      "known_estimate_cny": "2.0623188000000000004",
+      "new_unresolved_hold_cny": "6.798414",
+      "all_old_holds_retained": true
+    },
+    "new_whole_allocation_cny": "0",
+    "scope": "One-time creation/review estimates, not a provider invoice, ChatGPT quota or monthly production measurement."
+  },
+  "continuation": {
+    "authoritative_paid_database": "output/private-audits/release-prehistory-review-20260914-03/run/world.sqlite",
+    "runtime_manifest_and_delivery_evidence": "output/private-audits/release-prehistory-real-20260914-07/run",
+    "instruction": "Inherit the latest 163 usage rows and 160 reservations from review03. Runtime events are unchanged from trial07. Never resume its older budget alone.",
+    "next": "Import approved archive in an isolated continuation and test representative role-owned retention/recall under the inherited cap; never automatically retain all records."
+  },
+  "not_done": [
+    "Import or real character retention/recall of these 24 records",
+    "Historical summaries, forgetting/compression and longitudinal consistency",
+    "Original unsupported-experience, source-review false acceptance, Appraisal active-head and World Author release gates",
+    "Real QQ invitation/demo delivery and monthly production cost qualification"
+  ],
+  "artifact_sha256": {
+    "output/private-audits/release-prehistory-review-20260914-03/request.json": "6b3567baf88cb2cc89fd95d029f83537dab55800d55c4fcc85d97367c58f281d",
+    "output/private-audits/release-prehistory-review-20260914-03/review-request.json": "a4ec6670590326dd61accfde2d0faba432ca9f38759f58b1ee817ca0d337d33d",
+    "output/private-audits/release-prehistory-review-20260914-03/run/semantic-review.json": "9e26c377fbc83b69603b2a606af5c8fe47749215d4c426505ab894da348f9385",
+    "output/private-audits/release-prehistory-review-20260914-03/run/review.json": "e4b14a7b8a360cbab07ef0cc6eaba7717aca04305aae03bb414f390af06d1c33",
+    "output/private-audits/release-prehistory-review-20260914-03/run/reviewed-archive.json": "626e43e60048995902cad44134c3cc9dd368141d93165e33c1c976337b17c33c",
+    "output/private-audits/release-prehistory-review-20260914-03/run/raw-review.json": "0a1fd6dd53fe9340e2d5d8d7341f6d7d0726c7de136e4088691b98713b3eee24",
+    "output/private-audits/release-prehistory-review-20260914-03/run/model-inputs.jsonl": "fbae242d6b6abb67936e24b445502c0abeaaebfaba3d46820596ebc501382dad",
+    "output/private-audits/release-prehistory-review-20260914-03/reconciliation.json": "0cfd436147014cc5b2529ba6343952c4cd65bf38f26cb240ca951b12fb32d402",
+    "output/private-audits/release-prehistory-authoring-20260914/brief.json": "fa689d20dc7656df630011df60e0342427b8bf085da019831097e02eb2903452"
+  }
+}
