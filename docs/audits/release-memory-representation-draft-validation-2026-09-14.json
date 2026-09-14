@@ -1,0 +1,54 @@
+{
+  "contract": "release-memory-representation-draft-validation.1",
+  "stage": "Unaccepted draft input, immutable storage and audit read; not a functioning compression lifecycle.",
+  "implemented": [
+    "Prepare input using the exact candidate at a pinned cursor through the existing memory reader; unavailable, forgotten, withheld or incomplete readings cannot be used.",
+    "Bind world, declared actor, candidate revision/fingerprint, previous summary identity and actual reading into the input hash.",
+    "Store content-addressed drafts in the existing immutable life sidecar; no new retrieval database or World visibility descriptor.",
+    "Keep author association unverified and authority unaccepted_draft. Reading against another input or altered/wrong-lane bytes fails. Persistence verifies a readback."
+  ],
+  "validation": {
+    "tests_passed": 82,
+    "coverage": "Immutable duplicate writes, separate revisions, SQLite reopen and world partition, actor/cursor/candidate/reading/hash binding, corrupt bytes and wrong lanes, invalid authority labels and size bounds, actual historical ledger retention/forgetting, ordinary recall exclusion and a native compression event pointing at a still-unaccepted draft.",
+    "old_cold_receipts_verified": 10,
+    "real_log_clone": {
+      "contract": "memory-representation-draft-storage-validation.1",
+      "draft_author": "offline_fixture",
+      "draft_author_association": "unverified",
+      "draft_authority": "unaccepted_draft",
+      "persistence_and_reopen": "passed",
+      "projection_and_memory_readings_unchanged": true,
+      "old_cold_receipts_verified": 10,
+      "source_database_unchanged": true,
+      "new_paid_calls": 0,
+      "new_role_decisions": 0,
+      "new_memory_acceptances": 0,
+      "draft_bytes": 3596,
+      "evidence_hashes": {
+        "/Users/geoff/Projects/Girl-Agent-release-repair/output/private-audits/release-witness-real-20260914-01/run/world.sqlite": "a4f629252a1907cfd78e1141c5e786a448a261cedc2be72e177d40406b7e9f6e",
+        "/Users/geoff/Projects/Girl-Agent-release-repair/output/private-audits/release-memory-representation-draft-20260914/draft.json": "8f180b999c17bf5443402609f99fafc0d557cf73750b443321c1a8f6432c591a"
+      }
+    },
+    "ruff": "passed",
+    "diff_check": "passed"
+  },
+  "not_implemented": [
+    "CharacterInterior compression purpose and authored result binding",
+    "Independent semantic/source validation and accepted representation event",
+    "Authorized compressed-memory reader, repeated compression and scheduling"
+  ],
+  "cost": {
+    "new_paid_calls": 0,
+    "new_role_decisions": 0,
+    "new_memory_acceptances": 0,
+    "new_allocation_cny": 0,
+    "released_hold_cny": 0,
+    "headroom_cny": "0.2182706000000000046",
+    "budget_checkpoint": "release-witness-real-20260914-01/run/world.sqlite"
+  },
+  "release_status": "manual_only / qualification_incomplete",
+  "evidence_hashes": {
+    "output/private-audits/release-memory-representation-draft-20260914/inspection.json": "fa892371c58d2cd6a143138cc3013397962340473c895dd2ef505d78b8abe6c6",
+    "output/private-audits/release-memory-representation-draft-20260914/tests.log": "8483d9564c7319ea428f46f5d397e387ed2350329547d9421df116ae94cbee7f"
+  }
+}

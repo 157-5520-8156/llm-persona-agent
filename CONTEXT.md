@@ -61,6 +61,15 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+The new memory_representation_draft module stages exact-reader-bound compression
+inputs and content-addressed unaccepted drafts in the existing life sidecar.
+Drafts have no World visibility descriptor, verified author association, or
+ordinary retrieval authority. 82 checks and 10 old cold receipts pass; a real
+log clone retained identical projection/readings after draft persistence/reopen.
+CharacterInterior authoring, semantic acceptance and the authorized compressed
+reader remain to be connected. See
+`docs/audits/release-memory-representation-draft-validation-2026-09-14.json`.
+
 All memory lanes now require the exact candidate image at the pinned cursor
 before original-content reads. Compression/opaque replacement cannot restore
 source detail; native correction aliases require exact source event/hash and

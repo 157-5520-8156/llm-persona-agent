@@ -1,6 +1,7 @@
 # 历史记忆压缩的未完成链（2026-09-14）
 
-状态：待实现。此文不代表压缩功能已可用，也不替代真实长期验收。
+状态：草稿输入、不可变存储和审计读取已实现；角色概括、接受与正式读取待实现。
+此文不代表完整压缩功能已可用，也不替代真实长期验收。
 
 读取权限前置修复已完成：Fact、Experience 与历史记忆都要求调用方提供当前游标下的
 精确候选镜像；检查先于原始内容读取。压缩或未知摘要替换统一返回内容不可用。
@@ -11,10 +12,18 @@
 
 当前 `MemoryCandidateValues` 有 `summary_ref` 和 `summary_payload_hash`；
 `memory_reducers.py` 能接受绑定来源、保持隐私和 CAS 的 `compress` 修订。
-但这些字段还没有对应的压缩文本读写链。`memory_retrieval.py` 对经过压缩或
+但这些字段还没有接入已接受的压缩文本读写链。`memory_retrieval.py` 对经过压缩或
 替换摘要的历史候选返回 `content_unavailable`，避免回退到原始档案而恢复丢失细节。
 `test_compression_cannot_restore_discarded_details_from_full_archive` 验证了此边界。
 这说明状态迁移存在，而可用的压缩表示尚不存在。
+
+当前新增 `memory_representation_draft.py`，复用原不可变 LifeContent 存储，
+没有新增检索数据库。输入来自同一记忆读取器，并绑定当前候选版本、先前摘要身份和
+确切阅读内容；草稿绑定输入哈希与声明的角色结果引用，后者始终标记为未验证。
+草稿有自己的内容寻址引用，可审计重读，但没有 World 可见描述符或普通召回权限。
+即使压缩事件引用了它，也不能据此直接成为可读记忆；正式接受仍需独立的角色、
+来源与生命周期证明。详见
+[草稿阶段验证](../audits/release-memory-representation-draft-validation-2026-09-14.json)。
 
 后续实现须贯通以下链条，不应仅删除读取保护：
 

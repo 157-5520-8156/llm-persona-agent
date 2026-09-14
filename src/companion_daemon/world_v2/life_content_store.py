@@ -6,7 +6,8 @@ occurrence, Experience, Context, or proposal semantics.  Keeping that policy
 out of the store is what lets :mod:`life_content` remain the one read module
 that validates a descriptor against a pinned ledger cursor.  The
 ``raw_model_result`` and ``raw_model_request`` kinds are internal audit material and have no
-``LifeContentRecorded`` visibility descriptor.
+``LifeContentRecorded`` visibility descriptor. The ``memory_representation_draft``
+kind likewise stores unaccepted bytes only; it has no visibility descriptor.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ LifeContentKind = Literal[
     "npc_goal",
     "raw_model_result",
     "raw_model_request",
+    "memory_representation_draft",
 ]
 MAX_LIFE_CONTENT_CHARACTERS = 12_000
 MAX_RAW_MODEL_RESULT_UTF8_BYTES = 64_000
@@ -72,6 +74,7 @@ class StoredLifeContent:
             "npc_goal",
             "raw_model_result",
             "raw_model_request",
+            "memory_representation_draft",
         }:
             raise ValueError("unsupported life content kind")
         if (
