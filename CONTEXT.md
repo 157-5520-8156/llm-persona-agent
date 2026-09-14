@@ -61,23 +61,39 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Latest real trial08 imported the independently reviewed 24-record archive into
+the isolated World. The role retained admission preparation, a borrowed camera,
+and a borrowed notebook in three explicit choices; 21 remain uninitialized.
+One natural question produced a delivered objection to interview-style questioning,
+but none of the three new memories was in the actual author input. This proves
+retention and a valid reply, not natural autobiographical recall. Six known calls
+cost about CNY0.346122 (initialization 0.1418256, online chain 0.2042964), no new
+unknown holds. Trial08/run is now the continuation source: 169 usage rows, 166
+reservations, native committed CNY14.1083554 / 14.60. The remaining CNY0.4916446
+cannot reserve the prior author's CNY0.573108 request; continue offline first.
+Offline inspection also removed invalid Affect ID coercion: update/supersede must
+not become open, and resolve must not become no_change. The role must reselect
+through existing Core correction. Cross-episode component failure now identifies
+the exact parent mismatch; 138 checks and 10 cold receipts pass. No live test of
+this stricter path yet; original recall, factuality, life and cost gates stay open.
+
 Offline creation tooling now prepares bounded author/reviewer requests from a
 read-only original WorldStarted, accepted archive manifests and pinned profile.
 A review package must cover the exact brief, document and every record before it
 can become a ReviewedPrehistoryArchive; importing and remembering remain separate.
 Reviewer identity is operator-provided provenance, not independent-execution proof.
-A 24-record Celia life candidate (2012-2026) now has an independently captured
-DeepSeek semantic approval, still inactive and not imported. Two earlier outputs
+A 24-record Celia life candidate (2012-2026) has an independently captured
+DeepSeek semantic approval; trial08 above is the later import evidence. Two earlier outputs
 failed on positive findings in a blocking-only field, then a copied hash typo;
 neither was repaired locally or retrospectively approved. A new semantic protocol
 returns indexed judgments while code binds hashes to the exact submitted packet.
 The offline binder trusts operator provenance; the real runner separately checked
 the actual request, full response and usage. 41 workflow/binding tests pass.
-Three calls cost an estimated CNY0.082023, with no new unknown holds. Budget authority
-is review03's 163 usage rows / 160 reservations, native committed CNY13.7622334 under
-the existing CNY14.60 cap; World events remain trial07's. Never resume the older
-trial07 budget alone. Real retention/recall of the richer archive and historical
-summaries remain outstanding, alongside the original release gates.
+At that review-only stage, three calls cost an estimated CNY0.082023 with no new
+unknown holds; review03 carried 163 usage rows / 160 reservations and native
+committed CNY13.7622334. Trial08 above supersedes this continuation source.
+Natural recall of the richer archive and historical summaries remain outstanding,
+alongside the original release gates.
 
 Paired expression now compares selected historical readings using the same chat
 semantic normalization and exact source_ref at both materializations. Full record

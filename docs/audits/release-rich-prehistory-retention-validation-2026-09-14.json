@@ -1,0 +1,133 @@
+{
+  "contract": "release-rich-prehistory-retention-validation.1",
+  "date": "2026-09-14",
+  "goal_status": "active",
+  "real_trial_code_head": "21565c27d9a2f0251643b18787d18f829a58bc22",
+  "trial_id": "release-prehistory-real-20260914-08",
+  "qualification": "manual_only / qualification_incomplete",
+  "stage_result": "Three independently chosen retentions and one delivered character reply; natural autobiographical recall unqualified.",
+  "import": {
+    "reviewed_new_records": 24,
+    "total_historical_records": 26,
+    "total_archives": 2,
+    "original_world_start_preserved": true,
+    "production_import": false,
+    "role_decisions": [
+      {
+        "status": "retained",
+        "record_id": "prehistory-record:celia-life-admission-envelope"
+      },
+      {
+        "status": "retained",
+        "record_id": "prehistory-record:celia-life-borrowed-camera"
+      },
+      {
+        "status": "retained",
+        "record_id": "prehistory-record:celia-life-borrowed-notebook"
+      }
+    ],
+    "remaining_new_records_uninitialized": 21
+  },
+  "dialogue": {
+    "input": "说起去上海上大学，出发前家里有没有让你记得的小事？",
+    "captured_reply": [
+      "校刊那段我还没答呢",
+      "你这问题怎么一个接一个的",
+      "像在采访我"
+    ],
+    "new_source_review_receipts": 1,
+    "new_retained_sources_in_actual_author_messages": false,
+    "retained_memory_evidence": [
+      {
+        "record_id": "prehistory-record:celia-life-admission-envelope",
+        "candidate_id": "memory:prehistory:7d56371f29584a02e06ea4c73a3d694dbd42f1309ddc691ea54117eb3904a5bc",
+        "status": "active",
+        "present_in_author_messages": false,
+        "record_ref_present": false
+      },
+      {
+        "record_id": "prehistory-record:celia-life-borrowed-camera",
+        "candidate_id": "memory:prehistory:266c1cb1e565e6f5ae24b57a286e150d0171f754655d4049d2775d0724f3eb6f",
+        "status": "active",
+        "present_in_author_messages": false,
+        "record_ref_present": false
+      },
+      {
+        "record_id": "prehistory-record:celia-life-borrowed-notebook",
+        "candidate_id": "memory:prehistory:0351acaf75aaacf8a783c7b0afb64089e908daac8066335305fe5c22d4555ad6",
+        "status": "active",
+        "present_in_author_messages": false,
+        "record_ref_present": false
+      }
+    ],
+    "interpretation": "Character rejected further interview-style questioning. The new memories were not supplied to the author, so this sample cannot distinguish willingness from successful access or prove natural recollection. No forced response or retroactive historical fact creation."
+  },
+  "affect_fix": {
+    "code_finding": "Unknown update/supersede episode IDs were silently rewritten to open; unknown resolve IDs were rewritten to no_change. These changes were semantic decisions by infrastructure.",
+    "change": "Remove local operation replacement; require the selected offered head. Existing Core correction remains responsible for any reselection.",
+    "actual_prior_trial07_failure": "The model combined a joy component from the selected episode with a warmth component owned by another offered episode; neither ID was globally absent.",
+    "feedback": "Cross-episode error now names the selected episode and foreign component. Both appraisal and unified author instructions state that one update cannot combine heads.",
+    "exact_failure": "AppraisalDraft Affect update component is outside active head: component_id='component:warmth:compiled:2c804a543f35a4229749491642770710d7ff035527590a07d83b6fc0d4565b4a' does not belong to episode_id='affect:compiled:09cebe5f1e61abeae53ecf6136a9da3ff1061638e6e1bb494d21bf700eb75913'; use only components from the selected episode",
+    "normal_valid_choices_unchanged": true,
+    "new_live_qualification_after_fix": false,
+    "risk": "Previously coerced invalid responses now fail validation and may expose the existing correction timeout. Technical failure must not be disguised as character no_change.",
+    "code_commit": "51be74344ea996cff4a1dfebc0fd68d01fac7156"
+  },
+  "verification": {
+    "real_trial_completed": true,
+    "real_trial_stop_reason": "completed",
+    "turns_consumed": 1,
+    "appraisal_and_inbound_author_tests_passed": 138,
+    "cross_episode_and_unknown_identity_cases_included": 7,
+    "cold_receipts_after_fix": 10,
+    "cold_replay_matches": true,
+    "source_world_hash": "cd1b55d59df0e684f703bdbec557dd79cc45e91f42fa1cfdfeaf44d389d41082",
+    "token_counts_and_body_hashes_verified": true,
+    "source_artifact_hashes_verified": true,
+    "all_inherited_usage_and_reservations_unchanged": true,
+    "credential_matches": 0,
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "real_qq": false,
+    "production_changes": false
+  },
+  "cost": {
+    "new_physical_calls": 6,
+    "known_calls": 6,
+    "unknown_calls": 0,
+    "known_repository_price_estimate_cny": "0.346121999999999994",
+    "one_time_retention_estimate_cny": "0.141825599999999994",
+    "one_online_turn_chain_estimate_cny": "0.204296400000000000",
+    "new_unknown_hold_cny": "0",
+    "native_known_estimate_cny": "4.9510683999999999948",
+    "native_unknown_hold_cny": "9.157287",
+    "native_committed_estimate_cny": "14.1083553999999999948",
+    "native_ceiling_cny": "14.60",
+    "remaining_before_new_reservation_cny": "0.4916446000000000052",
+    "previous_actual_author_request_reserve_cny": "0.573108",
+    "further_paid_chat_admitted": false,
+    "final_usage_rows": 169,
+    "final_reservation_rows": 166,
+    "additional10_authorization_usage": {
+      "physical_calls": 80,
+      "known_calls": 68,
+      "unknown_calls": 12,
+      "known_estimate_cny": "2.4084407999999999944",
+      "new_unresolved_hold_cny": "6.798414",
+      "all_old_holds_retained": true
+    },
+    "new_whole_allocation_cny": "0",
+    "scope": "Repository token-price estimates, not supplier invoice, ChatGPT quota or monthly production proof."
+  },
+  "next": "Continue offline analysis of recall selection and context/request cost using the frozen actual author input; preserve role willingness and full evidence. Keep the original factuality, source-review, World Author, life continuity, longitudinal and QQ release gates open.",
+  "continuation_source": "output/private-audits/release-prehistory-real-20260914-08/run",
+  "artifact_sha256": {
+    "output/private-audits/release-prehistory-real-20260914-08/reconciliation.json": "c6586e6ac183967e114dea6eaef1ac99e11c60c00d73940675fed27661c44814",
+    "output/private-audits/release-prehistory-real-20260914-08/initialization.json": "51a676d67b76d84b6933a86de0471c707cdea9afcbcfc34e3fe869785cd68737",
+    "output/private-audits/release-prehistory-real-20260914-08/initialization-summary.json": "a0af480f0d98d0dc74a19f131706252ca7cc72194cb6d6c86cdb04fca4b6f89a",
+    "output/private-audits/release-prehistory-real-20260914-08/run/manifest.json": "7094e0545b59be84488917886efcbc3ccb651cd0bb8e73bca4085ff971948461",
+    "output/private-audits/release-prehistory-real-20260914-08/run/model-inputs.jsonl": "4888b61e79159fb14345a70591b632ad48cc33911dd4c07a45e783ee0cdbbccc",
+    "output/private-audits/release-prehistory-real-20260914-08/appraisal-tests.log": "cc7cf382e9465bda17d074606582081fb205834bd54f2be57f7e1f8f806d09c1",
+    "output/private-audits/release-prehistory-retention-inspection-20260914/inspection.json": "3922adb4ffb5f16f8f8a3e0673ba0759f5fd1ec668e155ca275a388070139d7d"
+  }
+}
