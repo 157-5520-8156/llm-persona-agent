@@ -1,0 +1,432 @@
+{
+  "contract": "release-candidate-meaning-phase-validation.1",
+  "code_head": "cd73a72738fb1640e7572eea3a6ad2eed3cb824e",
+  "tests": {
+    "related_passed": 82,
+    "ruff": "passed",
+    "frozen_meaning_results_identical": 25,
+    "frozen_source_results_identical": 11
+  },
+  "billing": {
+    "physical_calls": 38,
+    "states": {
+      "known": 36,
+      "unknown": 1,
+      "not_billed": 1
+    },
+    "known_calls_provider_tokens_checked": 36,
+    "terminal_capture_hashes_and_native_reservation_associations_verified": true,
+    "known_repository_estimate_cny": "0.5123052999999999866",
+    "new_unknown_hold_cny": "0.298803",
+    "usage_rows": 261,
+    "reservation_rows": 258,
+    "all_inherited_rows_unchanged": true,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "latest_checkpoint": "output/private-audits/release-meaning-pipeline-20260914-03/run/world.sqlite",
+    "runtime_checkpoint": "output/private-audits/release-chat-unlimited-20260914-01/run"
+  },
+  "trials": [
+    {
+      "directory": "output/private-audits/release-candidate-meaning-20260914-01",
+      "code_head": "2f15ba42d5c159f6e8797073fd4bb012cea83fe5",
+      "physical_calls": 6,
+      "latencies_ms": [
+        3302,
+        2227,
+        2201,
+        1440,
+        1769,
+        944
+      ],
+      "pipeline_elapsed_ms": null,
+      "known_estimate_cny": "0.0155795000000000004",
+      "new_unknown_hold_cny": "0",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "technical_failure",
+          "error_type": "JSONDecodeError",
+          "error_detail": "Expecting ',' delimiter: line 1 column 759 (char 758)"
+        },
+        {
+          "case_id": "speech-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "status": "structure_valid_semantics_pending"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-candidate-meaning-20260914-02",
+      "code_head": "679b5d54951bb6b42bbfa90afc65c0fb701846cb",
+      "physical_calls": 6,
+      "latencies_ms": [
+        3361,
+        2535,
+        2724,
+        1266,
+        1808,
+        1127
+      ],
+      "pipeline_elapsed_ms": null,
+      "known_estimate_cny": "0.0169104999999999996",
+      "new_unknown_hold_cny": "0",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "status": "technical_failure",
+          "error_type": "ValidationError",
+          "error_detail": "1 validation error for MeaningResponseV2\ndecisions.1.parts.0.meanings.0.polarity\n  Input should be 'affirmative', 'negative' or 'uncertain' [type=literal_error, input_value='否定', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/literal_error"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "speech-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "status": "structure_valid_semantics_pending"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-meaning-pipeline-20260914-01",
+      "code_head": "b3b07565d1aa7970fbd4cd6c6a9810ea20570751",
+      "physical_calls": 2,
+      "latencies_ms": [
+        8767,
+        2060
+      ],
+      "pipeline_elapsed_ms": [
+        11007
+      ],
+      "known_estimate_cny": "0.017172",
+      "new_unknown_hold_cny": "0.298803",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "status": "technical_failure",
+          "error_type": "TimeoutError",
+          "error_detail": ""
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-meaning-pipeline-20260914-02",
+      "code_head": "b3b07565d1aa7970fbd4cd6c6a9810ea20570751",
+      "physical_calls": 12,
+      "latencies_ms": [
+        3326,
+        4381,
+        2770,
+        2431,
+        1625,
+        3334,
+        1166,
+        2532,
+        1416,
+        3960,
+        1231,
+        130
+      ],
+      "pipeline_elapsed_ms": [
+        8065,
+        5529,
+        6022,
+        4015,
+        5692,
+        1520
+      ],
+      "known_estimate_cny": "0.2292715999999999905",
+      "new_unknown_hold_cny": "0",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "status": "matched"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "status": "matched"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "unclosed",
+            "closed"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "matched"
+        },
+        {
+          "case_id": "speech-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "unclosed",
+            "unclosed"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "status": "technical_failure",
+          "error_type": "HTTPStatusError",
+          "error_detail": "Client error '400 Bad Request' for url 'api.deepseek.com/beta/chat/completions' body={\"error\":{\"message\":\"An object with no properties is not allowed.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"invalid_request_error\"}}"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-meaning-pipeline-20260914-03",
+      "code_head": "cd73a72738fb1640e7572eea3a6ad2eed3cb824e",
+      "physical_calls": 12,
+      "latencies_ms": [
+        3439,
+        4715,
+        2687,
+        4320,
+        1711,
+        3482,
+        1072,
+        2200,
+        1535,
+        3160,
+        1147,
+        2713
+      ],
+      "pipeline_elapsed_ms": [
+        8487,
+        7333,
+        6256,
+        3588,
+        5000,
+        4179
+      ],
+      "known_estimate_cny": "0.2333716999999999961",
+      "new_unknown_hold_cny": "0",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "expected": [
+            "closed",
+            "closed",
+            "unclosed",
+            "source_free"
+          ],
+          "actual": [
+            "unclosed",
+            "unclosed",
+            "unclosed",
+            "unclosed"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "shared-history-question",
+          "expected": [
+            "source_free",
+            "source_free",
+            "unclosed"
+          ],
+          "actual": [
+            "unclosed",
+            "unclosed",
+            "unclosed"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "source_free",
+            "unclosed"
+          ],
+          "status": "semantic_mismatch"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "matched"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "expected": [
+            "closed",
+            "unclosed"
+          ],
+          "actual": [
+            "closed",
+            "unclosed"
+          ],
+          "status": "matched"
+        },
+        {
+          "case_id": "open-future-question",
+          "expected": [
+            "source_free",
+            "source_free"
+          ],
+          "actual": [
+            "source_free",
+            "source_free"
+          ],
+          "status": "matched"
+        }
+      ]
+    }
+  ],
+  "fixture_correction": {
+    "old_case": "speech-versus-action",
+    "old_supposed_positive": "我上午跟你提过图书馆那排灯。",
+    "source_utc": "2026-09-14T05:01:00Z",
+    "source_world_local": "2026-09-14T13:01:00+08:00",
+    "old_positive_expectation_invalid": true,
+    "new_case": "speech-recollection-versus-action",
+    "new_positive": "我之前跟你提过图书馆那排灯。",
+    "old_results_preserved": true
+  },
+  "new_character_turns": 0,
+  "new_receipts": 0,
+  "production_changes": false,
+  "receipt_authority": false,
+  "qualification": "manual_only / qualification_incomplete"
+}
