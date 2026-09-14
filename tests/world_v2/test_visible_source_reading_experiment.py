@@ -87,9 +87,12 @@ def test_negative_and_free_decisions_need_no_evidence_selection(verdict):
     raw = _reply(TEXT)
     part = raw["decisions"][0]["parts"][0]
     part.update(verdict=verdict, claim_scope="source_free" if verdict == "source_free" else "external_fact")
-    del part["reading_ids"]
+    part["reading_ids"] = []
     Draft202012Validator(prepared.request()["tools"][0]["function"]["parameters"]).validate(raw)
     assert prepared.inspect_response(_json(raw))["model_verdicts"] == [verdict]
+    part["reading_ids"] = ["r0"]
+    with pytest.raises(ValueError, match="tool schema"):
+        prepared.inspect_response(_json(raw))
     # A false source-free classification still passes structure; this is why
     # this experiment has no production or receipt authority.
 

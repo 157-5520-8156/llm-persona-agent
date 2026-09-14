@@ -22,7 +22,8 @@ from .visible_source_witness_experiment import (
 )
 
 LEGACY_CONTRACT = "visible-source-reading-experiment.1"
-CONTRACT = "visible-source-reading-experiment.2"
+REPORT_UPTAKE_CONTRACT = "visible-source-reading-experiment.2"
+CONTRACT = "visible-source-reading-experiment.3"
 
 
 def _direct_paths(row: dict, shown: dict) -> list[str]:
@@ -126,7 +127,7 @@ class PreparedReadingExperiment:
         from jsonschema import Draft202012Validator
 
         packet = json.loads(self.payload_json)
-        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT}:
+        if packet.get("contract") not in {LEGACY_CONTRACT, REPORT_UPTAKE_CONTRACT, CONTRACT}:
             raise ValueError("unsupported reading transport contract")
         if len(raw.encode()) > 131072:
             raise ValueError("reading response exceeds bound")
@@ -139,7 +140,7 @@ class PreparedReadingExperiment:
         base = PreparedWitnessExperiment(packet["witness_preparation_json"])
         # Reject altered mappings even when the substituted text is also in the
         # pin. A reading ID denotes precisely the compiled evidence selection.
-        catalog = _catalog(json.loads(base.payload_json), report_uptake=packet["contract"] == CONTRACT)
+        catalog = _catalog(json.loads(base.payload_json), report_uptake=packet["contract"] != LEGACY_CONTRACT)
         if catalog != packet["catalog"]:
             raise ValueError("reading catalog differs from pinned compilation")
         by_id = {r["reading_id"]: r for r in catalog}
@@ -148,6 +149,10 @@ class PreparedReadingExperiment:
         for decision in expanded["decisions"]:
             for part in decision["parts"]:
                 if part["verdict"] != "closed":
+                    # v3 explicitly carries an empty selection on negative/free
+                    # branches. v1/v2 use absence. Neither has evidence authority;
+                    # the pinned schema rejects a nonempty negative selection.
+                    part.pop("reading_ids", None)
                     if part["claim_scope"] == "report_uptake":
                         part["claim_scope"] = "external_fact"
                     continue
@@ -214,6 +219,10 @@ def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, .
     parts_schema = schema["properties"]["decisions"]["items"]["properties"]["parts"]
     closed, non_authoritative = parts_schema["items"]["anyOf"]
     non_authoritative["properties"]["claim_scope"]["enum"].append("report_uptake")
+    non_authoritative["properties"]["reading_ids"] = {
+        "type": "array", "maxItems": 0, "items": {"type": "string"},
+    }
+    non_authoritative["required"].append("reading_ids")
     del closed["properties"]["witnesses"]
     closed["required"].remove("witnesses")
     closed["properties"]["reading_ids"] = {
@@ -238,7 +247,7 @@ def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, .
             branch["properties"]["reading_ids"]["items"]["enum"] = list(ids)
             branches.append(branch)
     parts_schema["items"] = {"anyOf": [*branches, non_authoritative]}
-    name = "review_visible_source_readings_v2"
+    name = "review_visible_source_readings_v3"
     request["tools"][0]["function"]["name"] = name
     request["tool_choice"]["function"]["name"] = name
     # Use the same semantic audit rules, but remove superseded coordinate and
@@ -252,8 +261,8 @@ def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, .
     system = system[:start] + system[end:]
     request["messages"][0]["content"] = system + (
         " EVIDENCE TRANSPORT: A closed part selects reading_ids from displayed field choices. "
-        "Never copy quotes, source indexes or paths into the response. Nonclosed parts omit "
-        "reading_ids. Explain what the selected material actually entails before the verdict. "
+        "Never copy quotes, source indexes or paths into the response. Nonclosed parts use "
+        "an empty reading_ids array. Explain what the selected material actually entails before the verdict. "
         "A source allowing utterance_record supports a claim that someone previously said "
         "something; it does not make the present candidate a record of speech merely because "
         "a similar sentence is in the dialogue. Read both actual texts, not their labels."
