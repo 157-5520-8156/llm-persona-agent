@@ -1,0 +1,497 @@
+{
+  "contract": "release-fixed-meaning-chain-validation.1",
+  "code_head": "f9dd49159ed372e045fbf47558d66bd9bab4e725",
+  "tests": {
+    "related_passed": 110,
+    "ruff": "passed",
+    "frozen_meaning_results_identical": 36,
+    "frozen_source_results_identical": 25,
+    "live_chain_closing_tail_normalizations": 4
+  },
+  "billing": {
+    "physical_calls": 62,
+    "states": {
+      "known": 62
+    },
+    "all_native_request_reservation_associations_and_terminal_body_hashes_verified": true,
+    "all_known_provider_token_usage_checked": true,
+    "all_inherited_rows_unchanged": true,
+    "known_repository_estimate_cny": "0.7689844999999999899",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 323,
+    "reservation_rows": 320,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "latest_checkpoint": "output/private-audits/release-fixed-meaning-chain-20260914-02/run/world.sqlite",
+    "runtime_checkpoint": "output/private-audits/release-chat-unlimited-20260914-01/run"
+  },
+  "trials": [
+    {
+      "directory": "output/private-audits/release-fixed-fact-source-20260914-01",
+      "code_head": "23b3d876df883165640e42fcf080c31fa906eba8",
+      "physical_calls": 5,
+      "latencies_ms": [
+        3049,
+        1808,
+        1949,
+        1470,
+        1281
+      ],
+      "pipeline_elapsed_ms": null,
+      "known_estimate_cny": "0.1701230000000000005",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "actual": {
+            "b0.p0.f0": "supported",
+            "b0.p1.f0": "supported",
+            "b1.p0.f0": "supported",
+            "b1.p1.f0": "supported",
+            "b1.p2.f0": "supported",
+            "b1.p2.f1": "supported",
+            "b2.p0.f0": "rejected",
+            "b3.p0.f0": "supported"
+          },
+          "status": "matched_target_facts"
+        },
+        {
+          "case_id": "shared-history-question",
+          "actual": {
+            "b2.p0.f0": "rejected"
+          },
+          "status": "matched_target_facts"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "actual": {
+            "b1.p1.f0": "supported"
+          },
+          "status": "matched_target_facts"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "actual": {
+            "b0.p0.f0": "supported",
+            "b1.p0.f0": "rejected"
+          },
+          "status": "matched_target_facts"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "actual": {
+            "b0.p0.f0": "supported",
+            "b1.p0.f0": "rejected"
+          },
+          "status": "matched_target_facts"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-fixed-fact-source-20260914-02",
+      "code_head": "23b3d876df883165640e42fcf080c31fa906eba8",
+      "physical_calls": 5,
+      "latencies_ms": [
+        3250,
+        1456,
+        1904,
+        2046,
+        2315
+      ],
+      "pipeline_elapsed_ms": null,
+      "known_estimate_cny": "0.0154663999999999999",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "actual": {
+            "b0.p0.f0": "supported",
+            "b0.p1.f0": "supported",
+            "b1.p0.f0": "supported",
+            "b1.p1.f0": "supported",
+            "b1.p2.f0": "supported",
+            "b1.p2.f1": "supported",
+            "b2.p0.f0": "rejected",
+            "b3.p0.f0": "supported"
+          },
+          "status": "matched_target_facts"
+        },
+        {
+          "case_id": "shared-history-question",
+          "actual": {
+            "b2.p0.f0": "rejected"
+          },
+          "status": "matched_target_facts"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "actual": {
+            "b1.p1.f0": "supported"
+          },
+          "status": "matched_target_facts"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "actual": {
+            "b0.p0.f0": "supported",
+            "b1.p0.f0": "rejected"
+          },
+          "status": "matched_target_facts"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "actual": {
+            "b0.p0.f0": "supported",
+            "b1.p0.f0": "rejected"
+          },
+          "status": "matched_target_facts"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-compact-meaning-20260914-01",
+      "code_head": "49fa07a229c4c303d3968f4685191203aab24eaa",
+      "physical_calls": 9,
+      "latencies_ms": [
+        4300,
+        3449,
+        2625,
+        2311,
+        2289,
+        2582,
+        2451,
+        2167,
+        2018
+      ],
+      "pipeline_elapsed_ms": null,
+      "known_estimate_cny": "0.0346637999999999995",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "shared-history-question",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "open-future-question",
+          "status": "structure_valid_semantics_pending"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-compact-meaning-20260914-02",
+      "code_head": "07a8fdd6a94dc89435799723d5a14b6d66873492",
+      "physical_calls": 9,
+      "latencies_ms": [
+        3954,
+        3363,
+        2255,
+        2405,
+        2024,
+        3538,
+        1972,
+        1648,
+        1583
+      ],
+      "pipeline_elapsed_ms": null,
+      "known_estimate_cny": "0.0351645",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "shared-history-question",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "status": "technical_failure",
+          "error_type": "JSONDecodeError",
+          "error_detail": "Extra data: line 1 column 465 (char 464)"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "status": "structure_valid_semantics_pending"
+        },
+        {
+          "case_id": "open-future-question",
+          "status": "technical_failure",
+          "error_type": "JSONDecodeError",
+          "error_detail": "Extra data: line 1 column 294 (char 293)"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-fixed-meaning-chain-20260914-01",
+      "code_head": "daebc63f23374d3e2a142a93b36116d87d792f56",
+      "physical_calls": 17,
+      "latencies_ms": [
+        4535,
+        4229,
+        3039,
+        2025,
+        2447,
+        1915,
+        2107,
+        1717,
+        2600,
+        1888,
+        2397,
+        2347,
+        2272,
+        1984,
+        2432,
+        2217,
+        2262
+      ],
+      "pipeline_elapsed_ms": [
+        9089,
+        5386,
+        5408,
+        4132,
+        4801,
+        5055,
+        4558,
+        4965,
+        2269
+      ],
+      "known_estimate_cny": "0.2428398999999999943",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "status": "technical_failure",
+          "error_type": "ValueError",
+          "error_detail": "response violates meaning review schema at /fact_decisions"
+        },
+        {
+          "case_id": "shared-history-question",
+          "actual": [
+            "not_assessed",
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "actual": [
+            "not_assessed",
+            "facts_supported"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "actual": [
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "actual": [
+            "facts_rejected",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "actual": [
+            "facts_rejected",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "actual": [
+            "not_assessed",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        }
+      ]
+    },
+    {
+      "directory": "output/private-audits/release-fixed-meaning-chain-20260914-02",
+      "code_head": "f9dd49159ed372e045fbf47558d66bd9bab4e725",
+      "physical_calls": 17,
+      "latencies_ms": [
+        4402,
+        3268,
+        3155,
+        1848,
+        2315,
+        1508,
+        2380,
+        1981,
+        2192,
+        1706,
+        2076,
+        2212,
+        2026,
+        1891,
+        2087,
+        1960,
+        2288
+      ],
+      "pipeline_elapsed_ms": [
+        8002,
+        5329,
+        4860,
+        4676,
+        4209,
+        4595,
+        4227,
+        4353,
+        2295
+      ],
+      "known_estimate_cny": "0.2707268999999999957",
+      "results": [
+        {
+          "case_id": "unsupported-seating",
+          "actual": [
+            "facts_supported",
+            "facts_supported",
+            "facts_rejected",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "shared-history-question",
+          "actual": [
+            "not_assessed",
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "corrected-subject-positive",
+          "actual": [
+            "not_assessed",
+            "facts_supported"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "intention-versus-completion",
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "speech-recollection-versus-action",
+          "actual": [
+            "facts_supported",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "conditional-feeling-versus-history",
+          "actual": [
+            "not_assessed",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "negated-event-versus-current-wish",
+          "actual": [
+            "facts_rejected",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "reported-skill-versus-action",
+          "actual": [
+            "facts_rejected",
+            "facts_rejected"
+          ],
+          "status": "matched_diagnostic_expectations"
+        },
+        {
+          "case_id": "open-future-question",
+          "actual": [
+            "not_assessed",
+            "not_assessed"
+          ],
+          "status": "matched_diagnostic_expectations"
+        }
+      ]
+    }
+  ],
+  "final_diagnostic_cases": 9,
+  "final_cases_matching_predeclared_diagnostic_expectations": 9,
+  "final_full_candidate_approvals": 0,
+  "qualification_limit": "Fixed fact support plus candidate interpretation diagnostics only. Source-free Beats remain not_assessed; no production receipt or full candidate approval. No character author time is included in pipeline latency.",
+  "new_character_turns": 0,
+  "new_receipts": 0,
+  "production_changes": false,
+  "receipt_authority": false,
+  "qualification": "manual_only / qualification_incomplete"
+}
