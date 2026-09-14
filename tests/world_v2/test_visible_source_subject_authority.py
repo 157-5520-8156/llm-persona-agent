@@ -110,3 +110,24 @@ def test_owner_policy_does_not_restore_ineligible_or_altered_sources():
     part['witnesses'][0]['quote'] = '我妈妈来车站接你了。'
     with pytest.raises(ValueError, match='quote differs'):
         valid.inspect_response(_json(raw))
+
+
+def test_direct_source_schema_excludes_baseline_aliases_but_keeps_context_readings():
+    from jsonschema import Draft202012Validator
+    rows = list(deepcopy(_report_sources()))
+    alias = deepcopy(rows[0])
+    alias.update(source_ref_index=1, source_ref='alias:context', support_eligibility='baseline_only')
+    rows.append(alias)
+    raw = _response('家里人来接你了呀。', 'external_fact')
+    part = raw['decisions'][0]['parts'][0]
+    part['subject_role'] = 'counterpart'
+    part['witnesses'][0].update(pointer='/message/text', quote='我妈妈来车站接我了。')
+    prepared = prepare_witness_experiment(beats=(part['text'],), sources=tuple(rows), source_owner_semantics=True)
+    validator = Draft202012Validator(prepared.request()['tools'][0]['function']['parameters'])
+    validator.validate(raw)
+    part['witnesses'][0]['source_ref_index'] = 1
+    assert list(validator.iter_errors(raw))
+    part['witnesses'][0]['use'] = 'context'
+    part['verdict'] = 'unclosed'
+    validator.validate(raw)
+    assert prepared.inspect_response(_json(raw))['model_verdicts'] == ['unclosed']

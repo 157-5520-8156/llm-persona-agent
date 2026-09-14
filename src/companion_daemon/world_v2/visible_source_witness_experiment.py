@@ -8,6 +8,7 @@ It is deliberately not a deployed review version or a fallback for v1-v8.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
 import json
@@ -375,8 +376,25 @@ def prepare_witness_experiment(
             "A listed field may be absent from some sources; it must resolve in your selected source."
         )
     if source_owner_semantics:
-        name = "review_visible_source_witness_subject_v1"
+        witness_schema = schema["properties"]["decisions"]["items"]["properties"][
+            "parts"
+        ]["items"]["properties"]["witnesses"]
+        context_reading = deepcopy(witness_schema["items"])
+        context_reading["properties"]["use"] = {"type": "string", "enum": ["context"]}
+        eligible_indexes = [index for index, row in enumerate(sources) if _eligible_reference(row)]
+        if eligible_indexes:
+            direct_reading = deepcopy(witness_schema["items"])
+            direct_reading["properties"]["use"] = {"type": "string", "enum": ["direct"]}
+            direct_reading["properties"]["source_ref_index"] = {
+                "type": "integer", "enum": eligible_indexes,
+            }
+            witness_schema["items"] = {"anyOf": [direct_reading, context_reading]}
+        else:
+            witness_schema["items"] = context_reading
+        name = "review_visible_source_witness_subject_v2"
         messages[0]["content"] += (
+            " DIRECT SOURCE SELECTION: the direct witness branch lists only eligible original "
+            "source indexes. Other readable aliases may be context but never direct support. "
             " SOURCE OWNERSHIP: A settled environment's participant is not the actor of every "
             "environmental event. Environmental facts may use environment or external_fact with "
             "a nonpersonal subject; they never establish companion/counterpart presence or actions. "
