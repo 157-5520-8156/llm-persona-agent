@@ -37,6 +37,11 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
     config = _config()
     data = reviewed_archive().document.model_dump(mode="json")
     data.update(world_id=config.world_id, actor_ref=config.companion_actor_ref)
+    # Both records share the original import cursor. Accepting the first must
+    # not make the second depend on the now-newer live head.
+    second = deepcopy(data["records"][0])
+    second.update(record_id="prehistory-record:university-clubs", statement="上大学后进过文学社和摄影社。")
+    data["records"].append(second)
     archive = reapprove(PrehistoryArchiveDocument.model_validate_json(json.dumps(data)))
     archive = archive.model_copy(update={"review": archive.review.model_copy(update={"reviewed_at": NOW})})
     statement = archive.document.records[0].statement
@@ -120,13 +125,40 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
     try:
         retained = await app.initialize_prehistory_once(allow_model_call=True)
         assert retained["status"] == "retained", retained
+        second_retained = await app.initialize_prehistory_once(allow_model_call=True)
+        assert second_retained["status"] == "retained", second_retained
+        assert second_retained["record_id"] != retained["record_id"]
+        assert (await app.initialize_prehistory_once())["status"] == "idle"
+        assert len(requests) == 2
+        from companion_daemon.world_v2.prehistory_memory_source import prehistory_memory_binding
+        from companion_daemon.world_v2.schemas import ProjectionCursor
+        row = app._ledger.project().prehistory_records[0]
+        opportunity = app._prehistory_memory._opportunity(prehistory_memory_binding(row))
+        projected = await app._character_interior._projection.project(subject=opportunity)
+        assert projected.logical_time == opportunity.logical_time
+        head = app._ledger.project()
+        live_cursor = ProjectionCursor(world_revision=head.world_revision,
+            deliberation_revision=head.deliberation_revision, ledger_sequence=head.ledger_sequence)
+        for changed in (
+            opportunity.model_copy(update={"cursor": live_cursor}),
+            opportunity.model_copy(update={"actor_ref": "actor:someone-else"}),
+            opportunity.model_copy(update={"source_refs": ()}),
+            opportunity.model_copy(update={"capability_manifest": opportunity.capability_manifest.model_copy(
+                update={"payload_json": json.dumps({**opportunity.capability_manifest.payload, "verified_source_text": "uncommitted story"})})}),
+        ):
+            with pytest.raises(ValueError):
+                await app._character_interior._projection.project(subject=changed)
+        # Returning the same source bytes after two writes does not call the
+        # provider or authorize a new choice/action.
+        assert len(requests) == 2
         outcome = await app.respond(replace(_inbound(), text="你上学时有什么印象深的事？"))
         delivery = await app.drain_actions_once()
         assert delivery is not None and delivery.status == "settled"
         projection = app.export_replay_evidence().projection
         assert outcome.status == "action_authorized", [len(traces) for traces in live_traces]
         assert [request["tool_choice"]["function"]["name"] for request in requests] == [
-            "character_role_fact_memory_retention_v1", f"character_inbound_initial_v{tool_version}",
+            "character_role_fact_memory_retention_v1", "character_role_fact_memory_retention_v1",
+            f"character_inbound_initial_v{tool_version}",
             f"character_inbound_after_recall_v{tool_version}", f"visible_beat_source_verdict_v{review_version}",
         ]
         assert tuple(item.text for item in projection.stored_message_payloads) == (statement,)
@@ -192,7 +224,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
             for audit in replayed.proposal_audits:
                 if audit.model_call_id == parent.model_call_id:
                     assert verify_recorded_candidate(audit=audit, model_result_audits=replayed.model_result_audits)
-            assert len(requests) == 4
+            assert len(requests) == 5
         finally:
             cold.close()
     finally:

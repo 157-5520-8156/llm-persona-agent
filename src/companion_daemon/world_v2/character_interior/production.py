@@ -70,7 +70,7 @@ from ..recall_runtime import verify_trusted_recall_trace
 from .inbound_author import _InboundCharacterAuthor
 from ..social_initiative import SocialInitiativeCompiler, SocialInitiativePolicy
 from ..silence_appraisal_trigger import SilenceAppraisalTriggerOpener
-from ..schemas import LedgerProjection
+from ..schemas import LedgerProjection, ProjectionCursor
 from .authority import _DeferredInteriorAuthority
 from .core import CharacterInterior
 from .contracts import (
@@ -155,10 +155,40 @@ class _LedgerCapsuleInteriorProjection:
             actor_ref=subject.actor_ref,
             trigger_ref=subject.trigger_ref,
         )
+        compile_capsule = self.capsules.compile
+        if (
+            isinstance(subject, InteriorOpportunity)
+            and subject.capability_manifest.payload.get("source_kind") == "character_prehistory"
+        ):
+            # Initialization deliberately retains the complete import snapshot
+            # across earlier retention writes. Only the exact durable import
+            # opportunity may use the bounded historical reader; an ordinary
+            # stale chat/role request still fails the live-head check.
+            from ..prehistory_memory_decision import initialization_opportunity
+            from ..prehistory_memory_source import prehistory_memory_binding, resolve_prehistory_memory_source
+
+            row = next((item for item in projection.prehistory_records
+                        if item.accepted_event_ref == subject.trigger_ref), None)
+            found = self.ledger.lookup_event_commit(subject.trigger_ref)
+            if row is None or found is None:
+                raise ValueError("prehistory initialization import authority is missing")
+            row, archive = resolve_prehistory_memory_source(prehistory_memory_binding(row),
+                records=projection.prehistory_records, archives=projection.prehistory_archives,
+                committed_events=projection.committed_world_event_refs)
+            _, commit = found
+            imported_cursor = ProjectionCursor(world_revision=commit.world_revision,
+                deliberation_revision=commit.deliberation_revision, ledger_sequence=commit.ledger_sequence)
+            expected = initialization_opportunity(world_id=self.ledger.world_id,
+                row=row, archive=archive, cursor=imported_cursor)
+            if subject != expected:
+                raise ValueError("prehistory initialization must bind its exact import opportunity")
+            # Returns source-bound bytes, never a new action/deliberation
+            # authorization. Nested readers are restricted to this prefix.
+            compile_capsule = self.capsules.compile_for_audit_recovery
         capsule = (
-            await asyncio.to_thread(self.capsules.compile, query)
+            await asyncio.to_thread(compile_capsule, query)
             if self.ledger.blocks_event_loop
-            else self.capsules.compile(query)
+            else compile_capsule(query)
         )
         context = json.loads(capsule.model_content_json)
         if not isinstance(context, dict):

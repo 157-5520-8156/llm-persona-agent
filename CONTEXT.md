@@ -88,6 +88,12 @@ author, using the sealed recall result rather than new archive reads. Original
 source indexes remain fixed; replay requires matching independent author recall
 audits. This path has offline application/receipt coverage for v1 and v3/v8,
 not real-provider recall or factual-entailment qualification.
+Multi-record initialization uses the bounded historical Context reader only
+for an opportunity that exactly matches its durable original import commit.
+This prevents the first retention write from invalidating later initialization;
+ordinary stale role/chat requests keep the live-head guard. A real trial retained
+one record, then exposed this bug before a second provider call; the repaired
+multi-record path has offline coverage, with real dialogue still pending.
 _Avoid_: Retroactive runtime Experience, improvised chat evidence
 
 ## Autobiographical Memory

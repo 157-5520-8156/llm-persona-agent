@@ -1,0 +1,51 @@
+{
+  "contract": "release-prehistory-real-validation.1",
+  "trial_id": "release-prehistory-real-20260914-01",
+  "code_head": "180f208c6b77e9848f3a8036340e193b95b360e7",
+  "result": "first_record_retained_second_record_invalid_projection_before_provider",
+  "physical_calls": 1,
+  "known_calls": 1,
+  "unknown_calls": 0,
+  "known_repository_price_estimate_cny": "0.0456392",
+  "admission_estimate_cny": "0.165681",
+  "cost_correction": "The earlier 0.165681 commentary amount was the admission reserve, not the token-priced known cost.",
+  "new_unresolved_hold_cny": "0",
+  "inherited_usage_and_reservations_unchanged": true,
+  "final_usage_rows": 122,
+  "final_reservation_rows": 121,
+  "turns_consumed": 0,
+  "new_character_deliveries": 0,
+  "role_selected_silence": false,
+  "cold_inherited_receipts_verified": 7,
+  "replay_hash_matches": true,
+  "source_artifact_hashes_verified": true,
+  "token_counts_and_body_hashes_verified": true,
+  "credential_matches": 0,
+  "additional10_authorization_usage": {
+    "physical_calls": 35,
+    "known_calls": 30,
+    "unknown_calls": 5,
+    "known_estimate_cny": "0.9993139999999999996",
+    "new_unresolved_hold_cny": "2.981751",
+    "all_old_holds_retained": true
+  },
+  "new_whole_allocation_cny": "0",
+  "shared_allocation_owner": "release-recovery-continuation-20260913-08",
+  "native_known_estimate_cny": "3.5419416",
+  "native_unknown_hold_cny": "5.340624",
+  "native_committed_estimate_cny": "8.8825656",
+  "qualification": "manual_only / qualification_incomplete; zero new chat turns; no real QQ or monthly cost acceptance",
+  "repair": "Exact imported prehistory opportunities use the existing bounded historical Context reader; ordinary stale queries still fail.",
+  "offline_tests": {
+    "passed": 39,
+    "log_sha256": "55358ee55856bb3f58571eb60f7dab22c93084b1c91a60492f01ae826831320d",
+    "coverage": [
+      "two-record production initialization in v1 and v3/v8",
+      "selective recall, source review, simulated delivery and cold receipt",
+      "wrong actor/cursor/source/capability rejected",
+      "existing live-head stale-query and retention recovery tests"
+    ],
+    "frozen_real_world_projection_after_repair": "passed_on_disposable_copy"
+  },
+  "real_retest": "pending"
+}
