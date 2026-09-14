@@ -2,6 +2,13 @@
 
 状态：待实现。此文不代表压缩功能已可用，也不替代真实长期验收。
 
+读取权限前置修复已完成：Fact、Experience 与历史记忆都要求调用方提供当前游标下的
+精确候选镜像；检查先于原始内容读取。压缩或未知摘要替换统一返回内容不可用。
+原有来源更正/退役的 `summary:source:<event>` 别名，必须同时匹配保留来源的事件引用
+与哈希才可继续使用原来源读取器；它不能覆盖更早的压缩。下文内容存储、角色概括、
+表示准入与读取链仍待实现。详见
+[读取生命周期验证](../audits/release-memory-read-lifecycle-validation-2026-09-14.json)。
+
 当前 `MemoryCandidateValues` 有 `summary_ref` 和 `summary_payload_hash`；
 `memory_reducers.py` 能接受绑定来源、保持隐私和 CAS 的 `compress` 修订。
 但这些字段还没有对应的压缩文本读写链。`memory_retrieval.py` 对经过压缩或

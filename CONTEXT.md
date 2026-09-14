@@ -61,6 +61,14 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+All memory lanes now require the exact candidate image at the pinned cursor
+before original-content reads. Compression/opaque replacement cannot restore
+source detail; native correction aliases require exact source event/hash and
+cannot erase prior compression. 140 checks and 10 old cold receipts pass;
+the previous real-cursor recall trace is unchanged. Compressed representation
+storage/authoring/reading itself remains unimplemented. See
+`docs/audits/release-memory-read-lifecycle-validation-2026-09-14.json`.
+
 Recall hybrid.7 now counts independent query overlap groups, excludes unqualified
 dense similarity from fusion, and packs complementary query cues before source
 diversity ties. The original natural question now retrieves the admission-envelope

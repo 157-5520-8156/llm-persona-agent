@@ -205,6 +205,7 @@ def test_memory_retrieval_does_not_turn_an_operator_fact_ref_into_model_content(
     result = MemoryRetrievalCompiler(ledger=ledger).compile(
         cursor=cursor,
         candidates=(candidate,),
+        projection=ledger.project().model_copy(update={"memory_candidates": (candidate,)}),
         viewer_privacy_ceiling="private",
     )
 

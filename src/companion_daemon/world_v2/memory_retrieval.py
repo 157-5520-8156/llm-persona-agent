@@ -29,6 +29,7 @@ from .schemas import (
     LifeContentDescriptorProjection,
     FactTransitionProjection,
     MemoryCandidateProjection,
+    MemoryCandidateValues,
     MemorySourceBinding,
     Observation,
     ProjectionCursor,
@@ -131,6 +132,20 @@ class MemoryRetrievalResult(FrozenModel):
     suppressions: tuple[MemoryRetrievalSuppression, ...]
 
 
+def _source_summary_is_bound(values: MemoryCandidateValues) -> bool:
+    """The existing source-alias format used by correction/retirement writers.
+
+    These aliases carry no authored summary bytes: the hash is the exact
+    retained source event hash. An arbitrary replacement ref/hash cannot use
+    this exception, and an earlier compression still requires its own reader.
+    """
+    return any(
+        values.summary_ref == f"summary:source:{binding.authority_event_ref}"
+        and values.summary_payload_hash == binding.authority_payload_hash
+        for binding in values.source_bindings
+    )
+
+
 class MemoryRetrievalCompiler:
     """Deep read module for source-bound memory excerpts.
 
@@ -190,6 +205,31 @@ class MemoryRetrievalCompiler:
         }
         items: list[MemoryRetrievalItem] = []
         suppressions: list[MemoryRetrievalSuppression] = []
+        current_candidates = {item.candidate_id: item for item in projection.memory_candidates}
+        unavailable_representations = {
+            transition.candidate_id
+            for transition in projection.memory_candidate_transitions
+            if transition.values_before is not None and (
+                transition.revise_kind == "compress"
+                or (
+                    (transition.values_before.summary_ref, transition.values_before.summary_payload_hash)
+                    != (transition.values_after.summary_ref, transition.values_after.summary_payload_hash)
+                    and not _source_summary_is_bound(transition.values_after)
+                )
+            )
+        }
+
+        def read_boundary(candidate: MemoryCandidateProjection) -> Literal["source_proof_failed", "content_unavailable"] | None:
+            # Every memory lane must use its exact current projection image.
+            # An old active/public image is not authority after forgetting,
+            # privacy tightening, source correction or removal.
+            if current_candidates.get(candidate.candidate_id) != candidate:
+                return "source_proof_failed"
+            if candidate.candidate_id in unavailable_representations:
+                # Until an authorized representation reader is installed,
+                # never recover compressed detail from an original source.
+                return "content_unavailable"
+            return None
 
         # A context compile can expose several retained facts.  Reading each
         # source through ``observation_events_at`` separately repeats the
@@ -201,7 +241,7 @@ class MemoryRetrievalCompiler:
         source_locators: dict[str, ObservationEventLocator] = {}
         for candidate in candidates:
             decision = decisions[candidate.candidate_id]
-            if not decision.eligible:
+            if not decision.eligible or read_boundary(candidate) is not None:
                 continue
             for binding in candidate.values.source_bindings:
                 if binding.source_kind != "fact":
@@ -246,29 +286,10 @@ class MemoryRetrievalCompiler:
                     )
                 )
                 continue
-            has_prehistory = any(binding.source_kind == "prehistory" for binding in candidate.values.source_bindings)
-            if has_prehistory and candidate not in projection.memory_candidates:
-                # A caller holding an old active image must not revive a
-                # forgotten memory at a newer cursor by supplying that image.
+            boundary = read_boundary(candidate)
+            if boundary is not None:
                 suppressions.append(MemoryRetrievalSuppression(
-                    candidate_id=candidate.candidate_id, reasons=("source_proof_failed",),
-                ))
-                continue
-            if has_prehistory and any(
-                transition.candidate_id == candidate.candidate_id
-                and transition.values_before is not None
-                and (
-                    transition.revise_kind == "compress"
-                    or (transition.values_before.summary_ref, transition.values_before.summary_payload_hash)
-                    != (transition.values_after.summary_ref, transition.values_after.summary_payload_hash)
-                )
-                for transition in projection.memory_candidate_transitions
-            ):
-                # A compressed/replaced representation requires its own
-                # source-verified reader. Until installed, do not recover
-                # discarded detail by falling back to the original archive.
-                suppressions.append(MemoryRetrievalSuppression(
-                    candidate_id=candidate.candidate_id, reasons=("content_unavailable",),
+                    candidate_id=candidate.candidate_id, reasons=(boundary,),
                 ))
                 continue
             excerpts: list[MemorySourceExcerpt] = []

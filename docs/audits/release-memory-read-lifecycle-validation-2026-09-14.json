@@ -1,0 +1,49 @@
+{
+  "contract": "release-memory-read-lifecycle-validation.1",
+  "problem": "Only historical memory required the exact candidate image at the pinned cursor. A stale Fact/Experience image could otherwise reach original source content after forgetting, privacy tightening, removal or replacement.",
+  "scope": "Reader-interface counterexamples, not evidence of an observed production privacy incident.",
+  "change": [
+    "Require exact current candidate equality for every memory lane before observation or sidecar reads.",
+    "Apply unavailable-representation checks to Fact/Experience as well as prehistory; a compression or opaque summary replacement cannot read back the original source.",
+    "Preserve the existing correction/retirement source-alias format only when both event reference and hash bind a retained source. Such an alias cannot undo an earlier compression.",
+    "Keep current inactive/privacy rejection reasons and allow historical reads at their own pinned cursor."
+  ],
+  "validation": {
+    "committed_old_reader_counterexamples_failed": 8,
+    "baseline_commit": "b89d58ae",
+    "tests_passed": 140,
+    "batches": [
+      99,
+      41
+    ],
+    "test_scope": "Fact/Experience projection fixtures for stale images and content-read blocking; exact native source aliases and corrupted bindings; memory authority, lifecycle, source withdrawal, Core historical recall and cold receipts.",
+    "pinned_real_journey_trace_exactly_unchanged": true,
+    "target_admission_memory_still_available": true,
+    "old_cold_receipts_verified": 10,
+    "ruff": "passed",
+    "diff_check": "passed"
+  },
+  "compression_status": "Full immutable compressed content, CharacterInterior authoring/acceptance and authorized representation reader remain unimplemented. The current guard deliberately reports content_unavailable, including after an earlier compression is followed by a source alias.",
+  "cost": {
+    "new_paid_calls": 0,
+    "new_character_turns": 0,
+    "new_allocation_cny": 0,
+    "released_hold_cny": 0,
+    "headroom_cny": "0.2182706000000000046",
+    "budget_checkpoint": "release-witness-real-20260914-01/run/world.sqlite",
+    "offline_clone": "runtime08 clone only; not a fresh paid budget"
+  },
+  "release_status": "manual_only / qualification_incomplete",
+  "remaining_gates": [
+    "Complete compressed representation lifecycle",
+    "Fresh real dialogue with corrected recall and source review",
+    "Source-review false acceptance, role correction, long-term life/memory behavior, monthly cost and QQ release"
+  ],
+  "evidence_hashes": {
+    "output/private-audits/release-memory-read-lifecycle-20260914/baseline.log": "52c5ad6b0a03a170ebd82480fbf75a0191fb00e9ad5ccc89cd27162c434c2b7a",
+    "output/private-audits/release-memory-read-lifecycle-20260914/tests.log": "bbe9312fd099b54c028342d26ed41391becde46d7f8e56b09ac3275d5b2c62b1",
+    "output/private-audits/release-memory-read-lifecycle-20260914/source-producers.log": "0991e7486b33080ece94ba0f4a52c498e02f4da43509df59d46a5dfb868fa325",
+    "output/private-audits/release-memory-read-lifecycle-20260914/trace.json": "c0e5f4631b1430a100447361d5f94552ec6592c40a8ddcf8496b9930d6d7873a",
+    "output/private-audits/release-memory-read-lifecycle-20260914/cold.json": "a73eb84f5a35539a6e9250ef38d49b98ca50024d0a41fc2d14dc3917a47c1aa3"
+  }
+}
