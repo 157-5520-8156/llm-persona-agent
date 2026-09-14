@@ -19,7 +19,29 @@ LEGACY_CONTRACT = "visible-candidate-meaning.1"
 CONTRACT = "visible-candidate-meaning.2"
 COMPACT_CONTRACT = "visible-candidate-meaning.3"
 QUESTION_CONTRACT = "visible-candidate-meaning.4"
+TAIL_TRANSPORT = "single-object-closing-tail.1"
 Role = Literal["companion", "counterpart", "other", "none"]
+
+
+def _decode_meaning(raw: str, transport: str | None) -> tuple[dict, bool]:
+    """Only redundant closers after one already complete object may be removed.
+
+    No quote repair, missing fields/containers, alternate objects, or text tails
+    are accepted. The original response and its hash remain in the audit pin.
+    """
+    if transport not in {None, TAIL_TRANSPORT}:
+        raise ValueError("unsupported candidate meaning transport")
+    try:
+        return json.loads(raw, object_pairs_hook=_unique), False
+    except json.JSONDecodeError as exc:
+        if transport is None or exc.msg != "Extra data":
+            raise
+        text = raw.lstrip(" \t\r\n")
+        value, end = json.JSONDecoder(object_pairs_hook=_unique).raw_decode(text)
+        tail = text[end:].strip(" \t\r\n")
+        if not isinstance(value, dict) or not tail or len(tail) > 64 or any(c not in "}] \t\r\n" for c in tail):
+            raise ValueError("candidate meaning has an ambiguous or non-closing tail") from exc
+        return value, True
 
 
 class FactualMeaning(FrozenModel):
@@ -128,7 +150,7 @@ class PreparedCandidateMeaning:
             raise ValueError("unsupported candidate meaning contract")
         if len(raw.encode()) > 131072:
             raise ValueError("candidate meaning response exceeds bound")
-        value = json.loads(raw, object_pairs_hook=_unique)
+        value, normalized_tail = _decode_meaning(raw, packet.get("wire_transport"))
         response_type = {
             LEGACY_CONTRACT: MeaningResponse, CONTRACT: MeaningResponseV2,
             COMPACT_CONTRACT: CompactMeaningResponse,
@@ -180,11 +202,15 @@ class PreparedCandidateMeaning:
             "receipt_authority": False, "facts": facts,
             "interpretation": response.model_dump(mode="json"),
             **({"private_meanings": private_meanings} if packet["contract"] != LEGACY_CONTRACT else {}),
+            **({"wire_transport": TAIL_TRANSPORT, "redundant_closing_tail_removed": normalized_tail,
+                "decoded_content_sha256": hashlib.sha256(_json(value).encode()).hexdigest()}
+               if packet.get("wire_transport") is not None else {}),
         }
 
 
 def prepare_candidate_meaning(
     *, beats: tuple[str, ...], compact: bool = False, explicit_questions: bool = False,
+    closing_tail_transport: bool = False,
 ) -> PreparedCandidateMeaning:
     if not 1 <= len(beats) <= 16 or any(not isinstance(b, str) or not b or len(b) > 4096 for b in beats):
         raise ValueError("candidate meaning requires one to sixteen bounded nonempty Beats")
@@ -259,4 +285,7 @@ def prepare_candidate_meaning(
         }}],
         "tool_choice": {"type": "function", "function": {"name": name}},
     }
-    return PreparedCandidateMeaning(_json({"contract": contract, "beats": beats, "request": request}))
+    return PreparedCandidateMeaning(_json({
+        "contract": contract, "beats": beats, "request": request,
+        **({"wire_transport": TAIL_TRANSPORT} if closing_tail_transport else {}),
+    }))

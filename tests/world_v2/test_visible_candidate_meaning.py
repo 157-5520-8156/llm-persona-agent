@@ -182,3 +182,36 @@ def test_open_question_has_empty_premises_but_does_not_acquire_semantic_qualific
     assert result["semantic_qualification"] == "unproven"
     with pytest.raises(ValueError, match="require the compact"):
         prepare_candidate_meaning(beats=(TEXT,), explicit_questions=True)
+
+
+@pytest.mark.parametrize("tail", ["}", "]}", "\n } ] } \t"])
+def test_opt_in_closing_tail_transport_preserves_every_decoded_field_and_raw_hash(tail):
+    prep = prepare_candidate_meaning(beats=(TEXT,), compact=True, explicit_questions=True, closing_tail_transport=True)
+    strict = prepare_candidate_meaning(beats=(TEXT,), compact=True, explicit_questions=True)
+    assert prep.request() == strict.request()  # normalization never changes the request/decision
+    clean = json.dumps(_question_raw(), ensure_ascii=False)
+    raw = clean + tail
+    with pytest.raises(ValueError):
+        strict.inspect_response(raw)
+    result = prep.inspect_response(raw)
+    assert result["interpretation"] == strict.inspect_response(clean)["interpretation"]
+    assert result["redundant_closing_tail_removed"] is True
+    assert result["raw_response_sha256"] == hashlib.sha256(raw.encode()).hexdigest()
+    assert result["decoded_content_sha256"] == prep.inspect_response(clean)["decoded_content_sha256"]
+    assert result["receipt_authority"] is False
+
+
+@pytest.mark.parametrize("tail", ['{}', '{"decision":"alternative"}', ' true', ' explanation', ',]', '"}"', '\x00}', '}' * 65])
+def test_closing_tail_transport_rejects_alternative_content_or_excessive_noise(tail):
+    prep = prepare_candidate_meaning(beats=(TEXT,), compact=True, explicit_questions=True, closing_tail_transport=True)
+    with pytest.raises(ValueError):
+        prep.inspect_response(json.dumps(_question_raw()) + tail)
+
+
+def test_closing_tail_transport_does_not_complete_truncation_or_hide_duplicate_fields():
+    prep = prepare_candidate_meaning(beats=(TEXT,), compact=True, explicit_questions=True, closing_tail_transport=True)
+    raw = json.dumps(_question_raw())
+    with pytest.raises(ValueError):
+        prep.inspect_response(raw[:-1])
+    with pytest.raises(ValueError, match="duplicate"):
+        prep.inspect_response(raw.replace('"contract":', '"contract":"duplicate", "contract":', 1) + '}')
