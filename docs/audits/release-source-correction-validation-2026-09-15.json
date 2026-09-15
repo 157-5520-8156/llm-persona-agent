@@ -1,0 +1,137 @@
+{
+  "date": "2026-09-15",
+  "code_commit": "1f6c94d1b43b585021b428ba628ce961610c0554",
+  "qualification": "manual_only / qualification_incomplete",
+  "implementation": "Typed exact rejected expression shared by inbound and proactive same-author source correction; no new facts or retry window",
+  "tests": {
+    "passed": 273,
+    "seconds": 361.38,
+    "files": [
+      "test_visible_rejection_context.py",
+      "test_visible_independent_review_runtime.py",
+      "test_proactive_visible_source_gate.py",
+      "test_character_interior_structured_role.py"
+    ],
+    "ruff": "passed",
+    "diff_check": "passed"
+  },
+  "previous_shared_appraisal_retest": {
+    "run": "output/private-audits/release-chat-pinned-appraisals-20260915-02/run",
+    "usage_rows": 729,
+    "reservation_rows": 726,
+    "physical_calls": 9,
+    "known_repository_estimate_cny": "0.2269849999999999952",
+    "new_deliveries": 0,
+    "finding": "Past subjective tired/interviewed feelings received source support; mixed actual-action proposition remained rejected after correction."
+  },
+  "real_chat": {
+    "physical_calls": 14,
+    "billing_states": {
+      "known": 14
+    },
+    "known_native_token_joins_verified": 14,
+    "all_captured_terminal_body_hashes_verified": true,
+    "inherited_rows_unchanged": true,
+    "known_repository_estimate_cny": "0.375750699999999988",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 743,
+    "reservation_rows": 740,
+    "author_requests": [
+      {
+        "capture_id": "model-input:d84997912576418290746e5bb20d4838",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 5062,
+        "prompt_tokens": 41861,
+        "billing_state": "known"
+      },
+      {
+        "capture_id": "model-input:793b27eccc1a47b782a7e538607695bd",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 5493,
+        "prompt_tokens": 42580,
+        "billing_state": "known"
+      },
+      {
+        "capture_id": "model-input:39779525479141d9a43ac78157fe40a2",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 4751,
+        "prompt_tokens": 44244,
+        "billing_state": "known"
+      }
+    ],
+    "cold_receipt_versions": {
+      "visible-source-review-receipt.6": 6,
+      "visible-source-review-receipt.7": 1,
+      "visible-source-review-receipt.8": 6,
+      "visible-source-review-receipt.12": 3
+    },
+    "replay_hash_matches": true
+  },
+  "run": "output/private-audits/release-chat-source-correction-20260915-01/run",
+  "runtime_logical_at": "2026-09-14T13:45:00Z",
+  "new_delivery_count": 4,
+  "new_review_receipts": 1,
+  "correction_verification": {
+    "exact_original_beats_preserved": true,
+    "same_entire_inner_life_snapshot": true,
+    "source_failure_code_correct": true,
+    "outside_world_materials": true,
+    "author_capture_ids": [
+      "model-input:d84997912576418290746e5bb20d4838",
+      "model-input:793b27eccc1a47b782a7e538607695bd",
+      "model-input:39779525479141d9a43ac78157fe40a2"
+    ],
+    "original_rejected_beats": [
+      {
+        "beat_index": 0,
+        "text": "我这边挺好的，刚在外面走"
+      },
+      {
+        "beat_index": 1,
+        "text": "风有点凉，路灯一盏一盏亮着，人不多"
+      },
+      {
+        "beat_index": 2,
+        "text": "走一走脑子就清静了"
+      }
+    ],
+    "corrected_beats": [
+      "我这边啊，还在外面晃",
+      "走了一段，风有点凉，路灯亮着，人不多",
+      "走一走确实比坐着舒服，脑子清静了"
+    ],
+    "candidate_sha256": "4a518a5838d001285a246dd8d6bb1af00be358bf8764a9aac9c41a4be503dee9",
+    "source_table_sha256": "b4f2e2b7ba5d3645cfdcf8d77e06b3372ae1298d940a496d723ae12619c80faf"
+  },
+  "observations": [
+    "The past-feeling question delivered four original author beats with one new v12 receipt; no correction was needed for that turn.",
+    "The current-life question needed one same-author source correction; exact original prose and failures were present at the same complete snapshot.",
+    "The corrective author repeated unsupported wind, lamp and crowd details; no delivery. Original-text transport is fixed, semantic correction reliability is not qualified.",
+    "Current activities explicitly contain active_since, active status, original intention and its limited scope; this is not a missing-status-field diagnosis.",
+    "16 cold receipts include six historical v8 receipts with known semantic false acceptance; replay validity is not semantic acceptance."
+  ],
+  "test_spend_cap_cny": null,
+  "monthly_product_cost_target_cny": 100,
+  "real_qq": false,
+  "production_database": false,
+  "remaining": [
+    "Faithful rewriting and ordinary-expression review accuracy",
+    "Actual activity attempts/results and life consequence grounding",
+    "Historical Affect revision authority",
+    "Memory compression acceptance and long-term diversity/cost qualification",
+    "QQ receipts, soak, invitation isolation and recording panel acceptance"
+  ],
+  "references": [
+    "https://arxiv.org/abs/2303.17651",
+    "https://arxiv.org/abs/2506.11930"
+  ],
+  "artifacts_sha256": {
+    "output/private-audits/release-chat-source-correction-20260915-01/reconciliation.json": "c4febf8f877450851ed0a5242acec7fe6ea873d72b594ff478fb37de9bd91f36",
+    "output/private-audits/release-chat-source-correction-20260915-01/correction-verification.json": "8d6ab028c1ed3a0048e2e22bb5c9edd7b9440437ab667ab625c9dd958e46277b",
+    "output/private-audits/release-chat-source-correction-20260915-01/run/manifest.json": "c93fd9710c3a0bed9ebacb838df94ec8db23a9d8de96b9dbc47d5076ac1d44f3",
+    "output/private-audits/release-chat-pinned-appraisals-20260915-02/reconciliation.json": "8f7f9aa43eb22aba6bf3a0bd7726be739e144df0a1a4c231f89fc3ff5779abb5"
+  }
+}
