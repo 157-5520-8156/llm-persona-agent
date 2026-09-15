@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .associative_recall import ASSOCIATIVE_PREFETCH_POLICY_VERSION
 from .fact_predicate_stability import fact_predicate_is_stable
+from .pinned_appraisal_context import PinnedAppraisalContext
 from .context_resolver import (
     ContextCompileQuery,
     TrustedInternalContextResolver,
@@ -782,6 +783,7 @@ class ContextCapsuleRequest(_FrozenModel):
     advisories: ResolvedSlice[tuple[InnerAdvisoryProjection, ...]] | None = None
     media_deliveries: ResolvedSlice[tuple[SharedMediaDeliveryContextItem, ...]] | None = None
     pending_outbound: ResolvedSlice[tuple[PendingOutboundExpressionItem, ...]] | None = None
+    pinned_appraisals: PinnedAppraisalContext | None = None
 
     @field_validator("logical_time")
     @classmethod
@@ -1024,6 +1026,7 @@ class ContextCapsule(_FrozenModel):
     media_deliveries: CapsuleSlice | None = None
     pending_outbound: CapsuleSlice | None = None
     relationship_evaluation: RelationshipEvaluationContext | None = None
+    pinned_appraisals: PinnedAppraisalContext | None = None
     model_content_json: str
     budget: ContextBudgetAudit
 
@@ -1071,6 +1074,9 @@ class ContextCapsule(_FrozenModel):
             material["media_deliveries"] = self.media_deliveries.model_dump(mode="json")
         if self.pending_outbound is not None:
             material["pending_outbound"] = self.pending_outbound.model_dump(mode="json")
+        if self.pinned_appraisals is not None:
+            _validate_appraisal_pin(self.pinned_appraisals, self)
+            material["pinned_appraisals"] = self.pinned_appraisals.model_dump(mode="json")
         result_material = dict(material)
         for field in ("provenance_kind", "compiler_result_hash", "compiler_result_tag"):
             result_material.pop(field)
@@ -1983,7 +1989,20 @@ def _companion_core_actor_matches(core_actor_ref: str, request_actor_ref: str) -
     return request_actor_ref == "agent:companion" and core_actor_ref == "actor:companion"
 
 
+def _validate_appraisal_pin(inventory: PinnedAppraisalContext, context) -> None:
+    if (inventory.world_id != context.world_id
+            or inventory.owner_actor_ref != context.actor_ref
+            or inventory.snapshot_hash != context.snapshot_hash
+            or inventory.logical_at != context.logical_time
+            or (inventory.cursor.world_revision, inventory.cursor.deliberation_revision,
+                inventory.cursor.ledger_sequence) != (context.world_revision,
+                    context.deliberation_revision, context.ledger_sequence)):
+        raise ValueError("appraisal inventory belongs to another Context pin")
+
+
 def _validate_input_contract(request: ContextCapsuleRequest) -> None:
+    if request.pinned_appraisals is not None:
+        _validate_appraisal_pin(request.pinned_appraisals, request)
     bound_slices: tuple[tuple[SliceName, ResolvedSlice[object] | None], ...] = (
         ("current_situation", request.situation),
         ("recent_dialogue", request.recent_dialogue),
@@ -2919,6 +2938,8 @@ def _compile_resolved_context(
     }
     if relationship_evaluation is not None:
         result_material["relationship_evaluation"] = relationship_evaluation.model_dump(mode="json")
+    if request.pinned_appraisals is not None:
+        result_material["pinned_appraisals"] = request.pinned_appraisals.model_dump(mode="json")
     compiler_result_hash = _hash(result_material)
     trusted = _authority is _COMPILER_AUTHORITY
     provenance_kind = "trusted_resolver_compiled" if trusted else "test_only_untrusted"
@@ -2945,6 +2966,7 @@ def _compile_resolved_context(
         ledger_sequence=request.ledger_sequence,
         logical_time=request.logical_time,
         relationship_evaluation=relationship_evaluation,
+        pinned_appraisals=request.pinned_appraisals,
         model_content_json=model_content,
         budget=budget,
         **slices,

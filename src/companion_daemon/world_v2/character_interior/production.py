@@ -210,6 +210,7 @@ class _LedgerCapsuleInteriorProjection:
         context = install_living_state_context(
             context,
             projection,
+            pinned_appraisals=capsule.pinned_appraisals,
             user_channel_limited_impression_ids=(
                 collect_user_channel_limited_impression_ids(
                     ledger=self.ledger, projection=projection

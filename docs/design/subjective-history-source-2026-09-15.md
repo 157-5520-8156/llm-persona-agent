@@ -60,3 +60,30 @@ supports keeping sufficient focused context and retrieving additional material
 when needed. It does not prescribe this project's authority model; shared pinned
 source identities and replayable acceptance are requirements from our own code
 and the observed mismatch. Increasing both prompt budgets is not a substitute.
+
+## Shared accepted appraisal inventory (implemented after the coverage finding)
+
+`pinned_appraisal_context` now owns a native acceptance read. At the validated
+World cursor it selects active, unexpired appraisals and joins each unchanged
+value to AppraisalAccepted or the successor in AppraisalSuperseded. Event id,
+revision, payload hash and full native value must match the projection. Another
+person being the interpreted subject does not make them the private record owner.
+
+The immutable inventory carries owner, World, snapshot hash, full cursor and
+logical time. It is included in the compiler result hash, tag and Capsule id,
+but its proof fields are not appended to the normal model-content JSON. Only
+explicit subjective-history review deployments request it. Old Capsules without
+this optional field retain their identities and default content. Historical
+reconstruction preserves the configured reader at its audited prefix.
+
+Both the role living-appraisal installer and the source composer consume that
+same inventory. They no longer independently select this lane. Role inventory
+proofs also use these exact native envelopes. Review v12 continues to enforce
+subjective-only permission; author text never becomes acceptance evidence.
+
+The present inventory has a 128-record attention ceiling, ordered by acceptance
+time and identity, with an explicit omitted count. Both consumers receive the
+same selected set; this is not a whole-lifetime memory archive or completed
+retrieval qualification. Working Affect is unchanged: full historical Affect
+revision support remains separate work. The live checkpoint contains 24 current
+appraisals, all matched to native acceptances without omissions.

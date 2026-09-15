@@ -280,6 +280,7 @@ def context_capsule_compiler_from_ledger(
     biographical_timeline: BiographicalTimelineConfiguredPayload | None = None,
     reviewed_npc_identity_summaries: dict[str, str] | None = None,
     archive_ledger: LedgerPort | None = None,
+    retain_pinned_appraisals: bool = False,
 ) -> ContextCapsuleCompiler:
     """Composition-root factory for the production ledger-backed seam."""
 
@@ -297,6 +298,7 @@ def context_capsule_compiler_from_ledger(
             biographical_timeline=biographical_timeline,
             reviewed_npc_identity_summaries=reviewed_npc_identity_summaries,
             archive_ledger=archive_ledger,
+            retain_pinned_appraisals=retain_pinned_appraisals,
         ),
         policy=policy,
     )
@@ -1452,6 +1454,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         biographical_timeline: BiographicalTimelineConfiguredPayload | None = None,
         reviewed_npc_identity_summaries: dict[str, str] | None = None,
         archive_ledger: LedgerPort | None = None,
+        retain_pinned_appraisals: bool = False,
     ) -> None:
         super().__init__()
         if (biographical_catalog is None) != (biographical_timezone_name is None):
@@ -1470,6 +1473,9 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             )
         ):
             raise ValueError("biographical Context catalog does not match its timeline authority")
+        if type(retain_pinned_appraisals) is not bool:
+            raise TypeError("pinned appraisal context option must be boolean")
+        self._retain_pinned_appraisals = retain_pinned_appraisals
         self._ledger = ledger
         # Reconstruct the same configured readers at an audited prefix. In
         # particular, nested activity readers must not consult the live head.
@@ -1485,6 +1491,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             "biographical_timeline": biographical_timeline,
             "reviewed_npc_identity_summaries": reviewed_npc_identity_summaries,
             "archive_ledger": archive_ledger,
+            "retain_pinned_appraisals": retain_pinned_appraisals,
         }
         self._archive_ledger = archive_ledger
         self._situation_compiler = situation_compiler
@@ -2617,6 +2624,11 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             )
             resolved[field] = built
 
+        if self._retain_pinned_appraisals:
+            from .pinned_appraisal_context import compile_pinned_appraisals
+            resolved["pinned_appraisals"] = compile_pinned_appraisals(
+                projection=projection, query=query, ledger=self._ledger,
+            )
         request = ContextCapsuleRequest(
             world_id=query.world_id,
             snapshot_id=query.snapshot_id,

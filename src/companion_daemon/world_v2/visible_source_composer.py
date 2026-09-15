@@ -339,6 +339,31 @@ def compile_visible_source_table(
     if include_subjective_history:
         from .visible_subjective_source import AUTHORITY, CONTRACT
         for lane in ("appraisals", "affect_episodes"):
+            if lane == "appraisals" and capsule.pinned_appraisals is not None:
+                from .pinned_appraisal_context import appraisal_context_envelopes
+                inventory = capsule.pinned_appraisals
+                envelopes = appraisal_context_envelopes(inventory)
+                selections[lane] = {
+                    "availability": "available", "inventory_contract": inventory.contract,
+                    "inventory_hash": _hash(inventory.model_dump(mode="json")),
+                    "item_refs": [item["item_ref"] for item in envelopes],
+                    "omitted_count": inventory.omitted_count,
+                }
+                for item in envelopes:
+                    entries.append({
+                        "kind": "pinned_context_item", "lane": lane,
+                        "privacy_class": "private", "availability": "available",
+                        "item": item, "source_refs": sorted({item["item_ref"],
+                            item["source_hash"], item["value_hash"],
+                            *(b["ref"] for b in item["source_bindings"])}),
+                        "authority": AUTHORITY, "actor_ref": capsule.actor_ref,
+                        "scope": {"contract": CONTRACT, "owner_actor_ref": capsule.actor_ref,
+                            "owner_basis": "pinned_companion_private_context",
+                            "logical_at": capsule.logical_time.isoformat(),
+                            "world_revision": capsule.world_revision},
+                        "does_not_authorize": "Accepted subjective history only. The contents of a belief do not establish external facts, actions, causes, or another person's mind.",
+                    })
+                continue
             selected = getattr(capsule, lane)
             selections[lane] = {
                 "availability": selected.availability, "slice_hash": selected.slice_hash,

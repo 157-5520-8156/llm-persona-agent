@@ -62,10 +62,11 @@ def _hypotheses(value: object) -> list[dict[str, object]]:
 
 
 def living_appraisal_slice_items(
-    projection: object, *, logical_time: datetime | None
+    projection: object, *, logical_time: datetime | None, appraisal_values=None
 ) -> list[dict[str, object]]:
     items: list[dict[str, object]] = []
-    for appraisal in getattr(projection, "appraisals", ()) or ():
+    values = getattr(projection, "appraisals", ()) if appraisal_values is None else appraisal_values
+    for appraisal in values or ():
         if getattr(appraisal, "status", None) != "active":
             continue
         expires_at = getattr(appraisal, "expires_at", None)
@@ -249,6 +250,7 @@ def install_living_state_context(
     projection: object,
     *,
     user_channel_limited_impression_ids: frozenset[str] = frozenset(),
+    pinned_appraisals=None,
 ) -> dict[str, object]:
     """Pin living interior state the capsule may have omitted or truncated."""
 
@@ -256,7 +258,9 @@ def install_living_state_context(
     slices = dict(context.get("slices") or {})
     logical_time = getattr(projection, "logical_time", None)
     slices["living_appraisals"] = _available_slice(
-        living_appraisal_slice_items(projection, logical_time=logical_time)
+        living_appraisal_slice_items(projection, logical_time=logical_time,
+            appraisal_values=(tuple(r.value for r in pinned_appraisals.records)
+                              if pinned_appraisals is not None else None))
     )
     slices["living_threads"] = _available_slice(living_thread_slice_items(projection))
     slices["living_impressions"] = _available_slice(

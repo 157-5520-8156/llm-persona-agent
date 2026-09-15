@@ -1036,6 +1036,13 @@ def source_envelopes_from_capsule(capsule: object) -> dict[str, dict[str, object
             if existing is not None and existing != envelope:
                 raise ValueError("Capsule reused an item ref with conflicting authority")
             result[item_ref] = envelope
+    inventory = getattr(capsule, "pinned_appraisals", None)
+    if inventory is not None:
+        from ..pinned_appraisal_context import appraisal_context_envelopes
+        # These native records replace the selected lane's normalized views.
+        # Both are compiler-owned at this exact capsule pin.
+        for envelope in appraisal_context_envelopes(inventory):
+            result[envelope["item_ref"]] = envelope
     return result
 
 

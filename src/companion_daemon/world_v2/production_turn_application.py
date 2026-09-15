@@ -3804,8 +3804,12 @@ def build_sqlite_world_v2_turn_application(
             actor_ref=config.companion_actor_ref,
             related_subject_refs=(config.counterpart_actor_ref or config.reply_target,),
         )
+        from .visible_review_protocols import SUBJECTIVE_HISTORY_PROTOCOL
+        retain_pinned_appraisals = (config.visible_source_review_required
+            and inbound_model.visible_review_protocol() == SUBJECTIVE_HISTORY_PROTOCOL)
         capsules = context_capsule_compiler_from_ledger(
             ledger=ledger,
+            retain_pinned_appraisals=retain_pinned_appraisals,
             situation_compiler=SituationCompiler(
                 local_chronology=LocalChronology(config.local_timezone)
             ),
@@ -3836,6 +3840,7 @@ def build_sqlite_world_v2_turn_application(
         )
         chat_capsules = context_capsule_compiler_from_ledger(
             ledger=ledger,
+            retain_pinned_appraisals=retain_pinned_appraisals,
             situation_compiler=SituationCompiler(
                 local_chronology=LocalChronology(config.local_timezone)
             ),
