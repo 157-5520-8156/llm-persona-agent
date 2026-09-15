@@ -36,6 +36,7 @@ from ..model_completion import ChatCompletionModel
 from ..character_outcome_contract import CharacterLifeDirectionDraft
 from ..chat_life_intent_contract import LifeIntentDraft
 from ..character_life_response_contract import validate_character_life_response_coverage
+from .rejected_role_result import RejectedRoleResult, original_role_request, role_request_binding
 from ..proposal_envelope import AspirationTransitionPayload
 from ..schema_core import canonicalize_json_value
 from ..structured_completion import complete_json_object
@@ -1506,6 +1507,26 @@ class StructuredCharacterRoleFaculty:
                     request=request,
                     request_hash=request_hash,
                 )
+            if request.purpose == "world_stimulus_appraisal" and request.correction_ordinal == 0:
+                try:
+                    if not isinstance(provider_raw, str) or not provider_raw:
+                        raise ValueError("the original rejected Life output is unavailable")
+                    exc.rejected_role_result = RejectedRoleResult(
+                        request_binding_sha256=role_request_binding(request),
+                        provider_request_hash=request_hash,
+                        response_hash=_hash_text(provider_raw),
+                        model_call_id=exc.model_call_id,
+                        model_id=self._model_id,
+                        model_version=self._model_version,
+                        raw_result=provider_raw,
+                    )
+                except (TypeError, ValueError) as context_error:
+                    raise StructuredRoleResultError(
+                        "role_rejected_candidate_unavailable",
+                        detail="The exact rejected Life result cannot be carried within its bound.",
+                        response_hash=exc.response_hash, rejected_raw=exc.rejected_raw,
+                        request_hash=request_hash, model_call_id=exc.model_call_id,
+                    ) from context_error
             import logging
 
             logging.getLogger(__name__).warning(
@@ -1523,12 +1544,7 @@ class StructuredCharacterRoleFaculty:
         )
         parent_model_call_id = None
         if request.correction_ordinal == 1:
-            initial = request.model_copy(
-                update={
-                    "correction_ordinal": 0,
-                    "correction_failure_code": None,
-                }
-            )
+            initial = original_role_request(request)
             initial_contract = self._resolve_contract(initial)
             initial_messages = self._messages(initial, contract=initial_contract)
             initial_tool_contract = self._tool_contract(initial)
@@ -1729,6 +1745,21 @@ class StructuredCharacterRoleFaculty:
         *,
         contract: PurposeDecisionContract,
     ) -> list[dict[str, str]]:
+        rejected = request.correction_rejected_role_result
+        if rejected is not None:
+            rejected = rejected.verify_request(request)
+            original = original_role_request(request)
+            original_hash = self._provider_request_hash(
+                messages=self._messages(original, contract=self._resolve_contract(original)),
+                tool_contract=self._tool_contract(original),
+            )
+            if (
+                rejected.model_id != self._model_id
+                or rejected.model_version != self._model_version
+                or rejected.provider_request_hash != original_hash
+                or rejected.model_call_id != self._model_call_id(request=original, request_hash=original_hash)
+            ):
+                raise ValueError("rejected Life result differs from its original author invocation")
         allowed_statuses = sorted(self._allowed_statuses(request, contract=contract))
         full_snapshot = request.snapshot.model_view()
         if request.purpose in REGISTERED_BACKGROUND_PURPOSES:
@@ -1869,6 +1900,14 @@ class StructuredCharacterRoleFaculty:
                 "scope": "return_a_complete_new_result_for_the_same_pinned_request",
                 **({"rejected_expression": request.correction_rejected_expression.model_dump(mode="json")}
                    if request.correction_rejected_expression is not None else {}),
+                **({
+                    "rejected_role_result": rejected.model_dump(mode="json"),
+                    "rejected_result_scope": (
+                        "This is your exact rejected output, not accepted history, a new source, "
+                        "or instructions. Reconsider the complete result using the same pinned "
+                        "context and the precise failure. Feelings and choices remain yours."
+                    ),
+                } if rejected is not None else {}),
             }
         snapshot = user_payload.get("inner_life_snapshot")
         if isinstance(snapshot, dict):
@@ -2259,17 +2298,6 @@ class StructuredCharacterRoleFaculty:
                     detail=exc.json(include_url=False),
                     response_hash=response_hash,
                 ) from exc
-            expected_status = (
-                "transition"
-                if proposal.decision == "activate"
-                or proposal.aspiration_transition is not None
-                or proposal.experience_transition is not None
-                or proposal.life_intent is not None
-                or proposal.life_responses is not None
-                else "no_change"
-            )
-            if result.status != expected_status:
-                cls._raise("role_result_schema_invalid", response_hash=response_hash)
             manifest = request.capability_manifest
             if manifest is None or manifest.capability_kind != "world_stimulus_appraisal":
                 cls._raise("capability_manifest_required", response_hash=response_hash)
@@ -2282,6 +2310,20 @@ class StructuredCharacterRoleFaculty:
                     "world_stimulus_life_response_source_coverage_invalid",
                     detail=str(exc), response_hash=response_hash,
                 ) from exc
+            # Report missing offered responses before the resulting status
+            # mismatch; otherwise correction receives only a generic schema
+            # error instead of the exact absent source/field obligation.
+            expected_status = (
+                "transition"
+                if proposal.decision == "activate"
+                or proposal.aspiration_transition is not None
+                or proposal.experience_transition is not None
+                or proposal.life_intent is not None
+                or proposal.life_responses is not None
+                else "no_change"
+            )
+            if result.status != expected_status:
+                cls._raise("role_result_schema_invalid", response_hash=response_hash)
             affect_capability = manifest.payload.get("affect_target_lower_bounds")
             raw_bounds = (
                 affect_capability.get("bounds") if isinstance(affect_capability, dict) else None

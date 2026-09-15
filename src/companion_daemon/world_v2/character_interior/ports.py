@@ -17,6 +17,7 @@ from .contracts import (
     _InteriorAuthorLineage,
     _InteriorCapabilityManifest,
 )
+from .rejected_role_result import RejectedRoleResult
 
 
 class _RoleResultContractError(ValueError):
@@ -37,10 +38,14 @@ class _RoleResultContractError(ValueError):
         request_hash: str | None = None,
         model_call_id: str | None = None,
         rejected_expression: RejectedVisibleExpression | None = None,
+        rejected_role_result: RejectedRoleResult | None = None,
     ) -> None:
         if rejected_expression is not None and type(rejected_expression) is not RejectedVisibleExpression:
             raise TypeError("role rejection must use the exact correction context")
         self.rejected_expression = rejected_expression
+        if rejected_role_result is not None and type(rejected_role_result) is not RejectedRoleResult:
+            raise TypeError("role rejection must use the exact rejected role result")
+        self.rejected_role_result = rejected_role_result
         self.code = code
         self.detail = detail
         self.response_hash = response_hash
@@ -160,9 +165,14 @@ class _InteriorRoleRequest(FrozenModel):
     correction_rejected_expression: RejectedVisibleExpression | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
+    correction_rejected_role_result: RejectedRoleResult | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
 
     @model_validator(mode="after")
     def correction_lineage_is_explicit(self) -> "_InteriorRoleRequest":
+        if self.correction_rejected_role_result is not None:
+            self.correction_rejected_role_result.verify_request(self)
         if (self.correction_ordinal == 1) != (self.correction_failure_code is not None):
             raise ValueError("role correction lineage is incomplete")
         if self.correction_ordinal == 0 and self.correction_failure_detail is not None:

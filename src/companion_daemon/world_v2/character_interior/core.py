@@ -79,6 +79,7 @@ _NON_RETRYABLE_ROLE_ERRORS = frozenset(
         # capability and would erase the useful terminal failure code.
         "required_tool_choice_unsupported",
         "capability_manifest_required",
+        "role_rejected_candidate_unavailable",
     }
 )
 
@@ -2505,6 +2506,10 @@ class CharacterInterior:
                     "correction_failure_code": structural_failure_code,
                     "correction_rejected_expression": (
                         last_contract_error.rejected_expression
+                        if last_contract_error is not None else None
+                    ),
+                    "correction_rejected_role_result": (
+                        last_contract_error.rejected_role_result
                         if last_contract_error is not None else None
                     ),
                     "correction_failure_detail": (
