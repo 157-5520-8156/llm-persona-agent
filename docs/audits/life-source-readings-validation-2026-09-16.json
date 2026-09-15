@@ -1,0 +1,97 @@
+{
+  "baseline": "23693bf8",
+  "fixture": "Closed public SQLite environment settlement with captured MockTransport Life input; no new author call.",
+  "readings": 1,
+  "reading": {
+    "source_family": "settled_life",
+    "pointer": "/item/value/content/world_consequence/environment/text",
+    "value": "一阵短雨已经停了。",
+    "shown_scopes": [
+      "recent_self_experiences",
+      "week_diary"
+    ],
+    "permissions": [
+      [
+        "environment",
+        "general"
+      ],
+      [
+        "environment",
+        "other"
+      ],
+      [
+        "environment",
+        "none"
+      ],
+      [
+        "external_fact",
+        "general"
+      ],
+      [
+        "external_fact",
+        "other"
+      ],
+      [
+        "external_fact",
+        "none"
+      ]
+    ]
+  },
+  "excluded_reasons": {
+    "no_qualified_field_reader": 6
+  },
+  "denied_companion_scopes": [
+    "external_fact",
+    "accepted_intention",
+    "subjective_history",
+    "utterance_record"
+  ],
+  "write_authority": false,
+  "semantic_coverage": "not_assessed",
+  "complete_source_coverage": false,
+  "real_provider_calls": 0,
+  "qualification": "manual_only / qualification_incomplete",
+  "contract": "life-source-readings-validation.1",
+  "implementation_sha256": "341b080019173c462ece1f423dcc6ddc54a8fb67fc37d6591bbd8fe337dfeb63",
+  "tests": {
+    "passed": 66,
+    "strict_xfailed": 2,
+    "xfail_scope": "Unsupported LifeResponse/Experience episodes remain accepted; not qualification passes.",
+    "ruff": "passed",
+    "diff_check": "passed",
+    "files": [
+      "test_life_source_readings.py",
+      "test_life_source_view.py",
+      "test_visible_prehistory_readings.py",
+      "test_visible_subjective_source.py",
+      "test_world_stimulus_life_response.py",
+      "test_life_response_factual_acceptance_gap.py",
+      "test_selected_source_composer.py"
+    ]
+  },
+  "continuation": {
+    "runtime": "output/private-audits/release-chat-evidence-order-20260915-01/run",
+    "billing": "output/private-audits/release-life-candidate-reading-20260915-02/run/world.sqlite",
+    "counts": {
+      "world_v2_model_usage": 1040,
+      "world_v2_model_reservations": 1037,
+      "unknown_holds": 37
+    }
+  },
+  "limitations": [
+    "No semantic reviewer or Life acceptance gate installed.",
+    "Fact predicate readers, biographical displayed-coordinate readers and other source families remain incomplete.",
+    "Exact field presentation and source permission do not prove semantic completeness or entailment.",
+    "No new real-provider, long-term human-likeness, monthly-cost or delivery qualification."
+  ],
+  "boundaries": {
+    "new_real_calls": 0,
+    "world_writes": false,
+    "production_database": false,
+    "real_qq": false,
+    "deployment": false,
+    "existing_chat_protocol_changed": false,
+    "monthly_target_cny": 100,
+    "monthly_target_qualified": false
+  }
+}
