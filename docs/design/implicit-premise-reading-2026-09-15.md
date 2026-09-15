@@ -100,3 +100,41 @@ iterations must not be adopted based on repairing just one counterexample.
 The source-review and character-correction stages remain separate responsibilities;
 no local expression heuristic or new production behavior rule was added.
 See [metered probe evidence](../audits/implicit-premise-validation-2026-09-15.json).
+
+## Consolidated inventory experiment
+
+`visible_fact_inventory.py` now owns two experimental schemas and compilers;
+provider invocation, billing, same-reader structural correction and source
+authority remain in their existing owners. The original preparation facade
+dispatches explicitly versioned requests, and historical wire bytes stay fixed.
+No inventory can issue a receipt or choose the character's behavior.
+
+Reader v14 consolidates assertions and background facts into one factual list,
+with a separate free-text account of other meanings. The actual reminder's
+illustrative Pro request shrank from 8,473 to 3,625 UTF-8 bytes. That did not
+solve semantics: readers promoted current expressions to historical/external
+facts, reversed actors, and missed background facts. Low-effort thinking
+corrected some errors but retained others, including current willingness being
+treated as an external factual state.
+
+Reader v15 retains one typed meaning list, restoring explicit current expression
+and intention modes beside historical modes. Pure hypothetical/unknown scope has
+its own bounded list; facts from the typed list flow through the same source
+review, while separate readers cannot erase each other's propositions. This
+fixed several current-expression errors in the nonthinking trial, but both
+readers still missed the actual reminder's phone history. In the low-thinking
+trial, Flash found that history, Pro missed it and added tiredness; Pro then
+timed out on plain advice. Only two cases were attempted in that trial.
+
+Neither reader is adopted. All four trials are closed and reconciled, including
+one additional unknown billing reservation. 95 structural/source/preparation
+checks pass, including byte freezes for forced and auto carriers in both versions.
+See [unified inventory trial evidence](../audits/unified-inventory-validation-2026-09-15.json).
+
+The next diagnostic should examine the original candidate in its recorded
+conversation, then follow interpretation through source judgment and correction.
+Original speaker-labelled utterances can disambiguate conversational meaning;
+they must not silently become authority for the truth of their embedded content.
+This is a direction to investigate, not a qualified new context API or proof
+that absent context explains every observed error. Avoid another prompt-only
+revision based solely on a fixed isolated sentence passing once.

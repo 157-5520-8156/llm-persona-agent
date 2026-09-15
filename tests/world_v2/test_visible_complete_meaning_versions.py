@@ -84,3 +84,17 @@ def test_auto_selection_cannot_reinterpret_historical_readers(version, mode):
         prepare_candidate_meaning(beats=('原句',), compact=True, explicit_questions=True,
             question_conditions=True, beat_conditions=True, require_complete_reading=True,
             complete_reading_version=version, tool_selection_mode=mode)
+
+
+@pytest.mark.parametrize('version,mode,expected', [
+    ('14', 'forced', '117f3c643248d53e6a38943406f40e75684b98c27a78b8c8754acba826d985a3'),
+    ('14', 'auto', '2a71bd0ad431b5f6d4fd4ed59a1539a7446ea36d3cd011d97dc8c7ec21953fb0'),
+    ('15', 'forced', 'b31d622ec261a9661a4d34c02e3fd9f03c786da92034e2e5cc7660189c5edd15'),
+    ('15', 'auto', 'f5def803c0ab648090f0636add8ff8b74a2dc3e8f9d2cc73f455244ed4db7d56'),
+])
+def test_inventory_preparations_preserve_actual_probe_compilers(version, mode, expected):
+    prep = prepare_candidate_meaning(beats=('刚修好啦。',), compact=True, explicit_questions=True,
+        question_conditions=True, beat_conditions=True, require_complete_reading=True,
+        closing_tail_transport=True, complete_reading_version=version, tool_selection_mode=mode)
+    assert prep.sha256 == expected
+    verify_candidate_meaning_preparation(prep)

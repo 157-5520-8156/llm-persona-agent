@@ -1,0 +1,207 @@
+{
+  "scope": "Two experimental unified inventory schemas, provider readings only; no runtime adoption, World events, role turns, receipts, deployment, or QQ.",
+  "trials": [
+    {
+      "artifact": "output/private-audits/release-implicit-premise-readings-20260915-07",
+      "finished_sha256": "066cd129f8fb29d9f314fb58a81b44c036feb5cbe151d53a437fd53d5ede900f",
+      "reader_version": 14,
+      "thinking": "disabled",
+      "code_head": "179e394aef87ea0157c7e9ddea4ed8b2e93f4811",
+      "physical_calls": 24,
+      "billing_states": {
+        "known": 24
+      },
+      "known_repository_estimate_cny": "0.0490893000000000005",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 914,
+      "reservation_rows": 911,
+      "usage_reconciliation": "verified",
+      "stop_reason": "completed_fixed_cases",
+      "world_tables_unchanged": true,
+      "findings": [
+        {
+          "case_id": "actual-reminder",
+          "reader": 0,
+          "issue": "Missed prior phone use."
+        },
+        {
+          "case_id": "actual-reminder",
+          "reader": 1,
+          "issue": "Missed prior phone use; invented current speech-act events."
+        },
+        {
+          "case_id": "unknown-history",
+          "reader": 1,
+          "issue": "Current uncertainty/reminder became external factual events."
+        },
+        {
+          "case_id": "past-thanks",
+          "reader": 1,
+          "issue": "Reversed who accompanied whom."
+        },
+        {
+          "case_id": "past-comparison",
+          "reader": 1,
+          "issue": "Assigned user all-night history to companion."
+        },
+        {
+          "case_id": "current-boundary",
+          "reader": 0,
+          "issue": "Current willingness became past subjective state."
+        },
+        {
+          "case_id": "current-boundary",
+          "reader": 1,
+          "issue": "Current willingness became past subjective state."
+        },
+        {
+          "case_id": "quoted-reminder",
+          "reader": 1,
+          "issue": "Current evaluation and willingness became external or historical facts."
+        }
+      ]
+    },
+    {
+      "artifact": "output/private-audits/release-implicit-premise-readings-20260915-08",
+      "finished_sha256": "a1bff16c05867dc1fcf3401b8ebb25f81535ac929f38b89f47a212767aa63d55",
+      "reader_version": 14,
+      "thinking": "low",
+      "code_head": "179e394aef87ea0157c7e9ddea4ed8b2e93f4811",
+      "physical_calls": 24,
+      "billing_states": {
+        "known": 24
+      },
+      "known_repository_estimate_cny": "0.1384541999999999956",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 938,
+      "reservation_rows": 935,
+      "usage_reconciliation": "verified",
+      "stop_reason": "completed_fixed_cases",
+      "world_tables_unchanged": true,
+      "findings": [
+        {
+          "case_id": "actual-reminder",
+          "reader": 1,
+          "issue": "Prior phone use retained, but current communicative stance became external factual claims."
+        },
+        {
+          "case_id": "unknown-history",
+          "reader": 0,
+          "issue": "Current unknown became external factual state."
+        },
+        {
+          "case_id": "unknown-history",
+          "reader": 1,
+          "issue": "Current uncertainty/reminder became external factual events."
+        },
+        {
+          "case_id": "past-comparison",
+          "reader": 0,
+          "issue": "Assigned user all-night history to companion."
+        },
+        {
+          "case_id": "current-boundary",
+          "reader": 0,
+          "issue": "Current willingness became external factual state."
+        },
+        {
+          "case_id": "current-boundary",
+          "reader": 1,
+          "issue": "Current willingness became external factual state."
+        }
+      ]
+    },
+    {
+      "artifact": "output/private-audits/release-implicit-premise-readings-20260915-09",
+      "finished_sha256": "c89bcf6734ce704aa084a84833e7b57795ec68eb51b318af7dd1aca6b9e5e8aa",
+      "reader_version": 15,
+      "thinking": "disabled",
+      "code_head": "eac28ae6d813e4aee5b76b453989b04058e7b8ca",
+      "physical_calls": 24,
+      "billing_states": {
+        "known": 24
+      },
+      "known_repository_estimate_cny": "0.0535678999999999994",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 962,
+      "reservation_rows": 959,
+      "usage_reconciliation": "verified",
+      "stop_reason": "completed_fixed_cases",
+      "world_tables_unchanged": true,
+      "findings": [
+        {
+          "case_id": "actual-reminder",
+          "reader": 0,
+          "issue": "Missed prior phone use."
+        },
+        {
+          "case_id": "actual-reminder",
+          "reader": 1,
+          "issue": "Missed prior phone use."
+        },
+        {
+          "case_id": "past-comparison",
+          "reader": 1,
+          "issue": "Missed implied user all-night history last week."
+        }
+      ]
+    },
+    {
+      "artifact": "output/private-audits/release-implicit-premise-readings-20260915-10",
+      "finished_sha256": "a6a24af857d9ced289a8c960884c7de2816216688fcce488210e25c045d2b75f",
+      "reader_version": 15,
+      "thinking": "low",
+      "code_head": "eac28ae6d813e4aee5b76b453989b04058e7b8ca",
+      "physical_calls": 4,
+      "billing_states": {
+        "known": 3,
+        "unknown": 1
+      },
+      "known_repository_estimate_cny": "0.0341914000000000005",
+      "new_unknown_hold_cny": "0.155673",
+      "usage_rows": 966,
+      "reservation_rows": 963,
+      "usage_reconciliation": "verified",
+      "stop_reason": "provider_failure",
+      "world_tables_unchanged": true,
+      "findings": [
+        {
+          "case_id": "actual-reminder",
+          "reader": 0,
+          "issue": "Missed prior phone use; promoted conditional tiredness to fact in this evidence-blind diagnostic."
+        },
+        {
+          "case_id": "plain-advice",
+          "reader": 0,
+          "issue": "Technical timeout at 22 seconds; remaining ten cases not attempted."
+        }
+      ]
+    }
+  ],
+  "physical_calls": 76,
+  "known_repository_estimate_cny": "0.2753027999999999960",
+  "new_unknown_hold_cny": "0.155673",
+  "baseline_usage_rows": 890,
+  "baseline_reservation_rows": 887,
+  "usage_rows": 966,
+  "reservation_rows": 963,
+  "billing_checkpoint": "output/private-audits/release-implicit-premise-readings-20260915-10/run/world.sqlite",
+  "runtime_checkpoint": "output/private-audits/release-chat-content-evidence-20260915-03/run",
+  "virtual_at": "2026-09-14T14:25:00Z",
+  "fixed_cases": "implicit-premise-cases-2026-09-15.json",
+  "expected_criteria_in_provider_inputs": false,
+  "tests": {
+    "reader_source_and_frozen_request_checks": 95,
+    "ruff": "passed",
+    "diff_check": "passed"
+  },
+  "request_bytes_example": {
+    "v11_pro_actual_reminder": 8473,
+    "v14_pro_actual_reminder": 3625,
+    "encoding": "canonical compact JSON, ensure_ascii false; illustrative payload size, not native provider token count"
+  },
+  "decision": "Neither inventory qualifies for runtime. Explicit current modes reduce category errors, but do not establish completeness. Isolated sentence rewrites have diminishing returns; next diagnose the original candidate in its provenance-bound conversation and full source-review chain.",
+  "qualification": "manual_only / qualification_incomplete",
+  "test_spend_cap_cny": null,
+  "monthly_product_cost_target_cny": 100
+}

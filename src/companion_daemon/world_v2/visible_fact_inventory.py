@@ -98,14 +98,8 @@ def typed_inventory_request(*, beats: tuple[str, ...], tool_selection_mode: str)
         "无法保留的语言歧义或遗漏则false并说明。只是不知道现实身份或真假不算语言歧义。"
         "每条Beat按原序恰好读取一次，只返回指定工具JSON。"
     )
-    request = inventory_request(beats=beats, tool_selection_mode=tool_selection_mode)
-    request['messages'][0]['content'] = system
-    body = json.loads(request['messages'][1]['content'])
-    body['contract'] = TYPED_CONTRACT
-    request['messages'][1]['content'] = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
-    request['tools'][0]['function'].update(name=name, parameters=deepseek_strict_tool_schema(_provider_schema(TypedInventoryResponse)))
-    request['tool_choice'] = 'auto' if tool_selection_mode == 'auto' else {'type': 'function', 'function': {'name': name}}
-    return request
+    return _request(beats=beats, tool_selection_mode=tool_selection_mode, name=name,
+                    contract=TYPED_CONTRACT, system=system, response_type=TypedInventoryResponse)
 
 
 def inventory_request(*, beats: tuple[str, ...], tool_selection_mode: str) -> dict:
@@ -129,14 +123,19 @@ def inventory_request(*, beats: tuple[str, ...], tool_selection_mode: str) -> di
         "reading_complete=true且unresolved_details为空；无法保留的语言歧义或遗漏写入unresolved_details并设false。"
         "不知道现实身份或真假本身不是语言歧义。每条Beat按原序恰好读取一次，只返回指定工具JSON。"
     )
+    return _request(beats=beats, tool_selection_mode=tool_selection_mode, name=name,
+                    contract=CONTRACT, system=system, response_type=InventoryResponse)
+
+
+def _request(*, beats, tool_selection_mode, name, contract, system, response_type):
     return {
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": json.dumps({
-            "contract": CONTRACT, "visible_beats": [{"beat_index": i, "text": b} for i, b in enumerate(beats)],
+            "contract": contract, "visible_beats": [{"beat_index": i, "text": b} for i, b in enumerate(beats)],
         }, ensure_ascii=False, separators=(",", ":"))}],
         "temperature": 0.0,
         "tools": [{"type": "function", "function": {
             "name": name, "description": "完整读取事实与非事实含义；不授予来源权限。", "strict": True,
-            "parameters": deepseek_strict_tool_schema(_provider_schema(InventoryResponse)),
+            "parameters": deepseek_strict_tool_schema(_provider_schema(response_type)),
         }}],
         "tool_choice": "auto" if tool_selection_mode == "auto" else {"type": "function", "function": {"name": name}},
     }
