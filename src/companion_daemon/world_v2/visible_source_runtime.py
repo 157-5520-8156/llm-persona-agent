@@ -5,6 +5,7 @@ from __future__ import annotations
 from companion_daemon.world_v2.visible_review_protocols import SUPPORTED_REVIEW_VERSIONS
 import hashlib
 import json
+from .visible_review_evidence_storage import read_review_evidence, store_review_evidence
 
 REQUIRED_POLICY = "visible-source-review-required.1"
 PINNED_PROTOCOL_REQUIREMENT = "visible-source-review-required.2"
@@ -190,14 +191,14 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
     ):
         return output.model_copy(
             update={
-                "visible_source_review_json": canonical(
+                "visible_source_review_json": store_review_evidence(canonical(
                     {
                         "contract": INDEPENDENT_EVIDENCE_CONTRACT if review_version in REVIEW_PROTOCOLS else EVIDENCE_CONTRACT,
                         "requirement_json": requirement,
                         "author_request_json": author_request_json,
                         "receipt": None,
                     }
-                )
+                ))
             }
         )
     from .recall_runtime import verify_trusted_recall_trace
@@ -404,11 +405,10 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
 
     if not isinstance(raw, str) or len(raw.encode()) > MAX_EVIDENCE_BYTES:
         raise ValueError("visible review evidence is missing or oversized")
-    value = json.loads(raw)
+    value = read_review_evidence(raw)
     if (
         value.get("contract") not in {EVIDENCE_CONTRACT, RECALL_EVIDENCE_CONTRACT, INDEPENDENT_EVIDENCE_CONTRACT}
         or value.get("requirement_json") != requirement
-        or canonical(value) != raw
     ):
         raise ValueError("visible review requirement mismatch")
     table = requirement_table(requirement)
@@ -538,7 +538,7 @@ def verify_recorded_candidate(*, audit, model_result_audits):
     parent = RecordedModelResultAudit.model_validate_json(row.audit_json)
     if parent.visible_source_review_json is None:
         raise ValueError("required review carrier is missing")
-    value = json.loads(parent.visible_source_review_json)
+    value = read_review_evidence(parent.visible_source_review_json)
     requirement = value["requirement_json"]
     original = _verify_original_capability(
         requirement, parent.character_interior_lineage, value.get("author_request_json")

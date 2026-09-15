@@ -609,7 +609,8 @@ def _reviewed_inbound_observation_matches(
         lineage = recorded.character_interior_lineage
         if lineage is None or lineage.purpose != "inbound_turn":
             return False
-        evidence = json.loads(recorded.visible_source_review_json)
+        from .visible_review_evidence_storage import read_review_evidence
+        evidence = read_review_evidence(recorded.visible_source_review_json)
         requirement = json.loads(evidence["requirement_json"])
         original = ModelInput.model_validate_json(requirement["original_input_json"])
         pin = json.loads(requirement["source_table_json"])["pin"]

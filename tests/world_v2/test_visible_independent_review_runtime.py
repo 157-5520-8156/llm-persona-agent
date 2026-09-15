@@ -145,6 +145,39 @@ async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_r
 
 
 @pytest.mark.asyncio
+async def test_compressed_public_review_authorizes_and_cold_replays_with_original_bindings(tmp_path, monkeypatch):
+    from companion_daemon.world_v2 import visible_review_evidence_storage as storage
+    from companion_daemon.world_v2.proposal_audit_schemas import RecordedModelResultAudit
+    from companion_daemon.world_v2.visible_source_runtime import canonical, digest
+
+    monkeypatch.setattr(storage, 'MAX_STORED_BYTES', 60_000)
+    path = tmp_path / 'world.sqlite'
+    inbound = replace(_inbound(), text='我取消了周五的报告。')
+    async with application(path, ReviewHTTP(version='13')) as app:
+        assert (await app.respond(inbound)).status == 'action_authorized'
+        projection = app.export_replay_evidence().projection
+        winner = next(a for a in _audits(app) if a.visible_source_review_json)
+        assert json.loads(winner.visible_source_review_json)['contract'] == storage.STORAGE_CONTRACT
+        data = storage.read_review_evidence(winner.visible_source_review_json)
+        assert data['receipt']['contract'] == 'visible-source-review-receipt.13'
+        audit = next(a for a in projection.proposal_audits if a.proposal_kind == 'decision')
+        assert verify_recorded_candidate(audit=audit, model_result_audits=projection.model_result_audits)
+    handler = ReviewHTTP(version='13')
+    async with application(path, handler) as cold:
+        assert (await cold.respond(inbound)).status == 'action_authorized'
+        assert not handler.requests
+    rows = list(projection.model_result_audits)
+    index = next(i for i, r in enumerate(rows) if r.model_result_ref == audit.model_result_ref)
+    parent = RecordedModelResultAudit.model_validate_json(rows[index].audit_json)
+    data['receipt']['meaning_reviews'][0]['response_hash'] = 'a' * 64
+    forged = storage.store_review_evidence(canonical(data))
+    changed = parent.model_copy(update={'visible_source_review_json': forged}).model_dump_json()
+    rows[index] = rows[index].model_copy(update={'audit_json': changed, 'audit_hash': digest(changed)})
+    with pytest.raises(ValueError):
+        verify_recorded_candidate(audit=audit, model_result_audits=tuple(rows))
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('stage', ['receipt', 'evidence'])
 async def test_post_review_technical_failure_names_stage_without_character_reselection(tmp_path, monkeypatch, stage):
     import companion_daemon.world_v2.visible_independent_review_runtime as runtime

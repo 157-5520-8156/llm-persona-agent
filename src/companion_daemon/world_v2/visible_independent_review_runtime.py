@@ -10,6 +10,7 @@ from .visible_independent_review_receipt import (
 )
 from .visible_source_runtime import canonical, digest, INDEPENDENT_EVIDENCE_CONTRACT, MAX_EVIDENCE_BYTES
 from .visible_rejection_context import rejected_expression_from_review
+from .visible_review_evidence_storage import store_review_evidence
 
 
 @dataclass(frozen=True)
@@ -162,11 +163,11 @@ async def review_independent_candidate(
             rejected_meanings=tuple(rejected_meanings) if rejected_meanings is not None else None,
         )
         failure_stage = "evidence"
-        evidence = canonical({
+        evidence = store_review_evidence(canonical({
             "contract": INDEPENDENT_EVIDENCE_CONTRACT, "requirement_json": request.visible_source_requirement_json,
             "author_request_json": author_request_json, "receipt": receipt.model_dump(mode="json"),
             **({"recall_audits": [a.model_dump(mode="json") for a in recall_audits]} if recall_audits else {}),
-        })
+        }))
         if len(evidence.encode()) > MAX_EVIDENCE_BYTES:
             raise ValueError("independent visible evidence size exceeded")
         return evidence

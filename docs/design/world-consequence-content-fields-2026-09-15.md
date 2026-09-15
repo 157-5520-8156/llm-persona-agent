@@ -37,3 +37,29 @@ Tests cover native environment ownership, unchanged source material,
 catalog substitution, subjective-history scope, public inbound/proactive
 v13 review, semantic reselection, cold replay and post-review technical
 failure. Real provider delivery and semantic qualification remain separate.
+
+## Aggregate evidence overflow
+
+The closed `release-chat-content-evidence-20260915-02` trial reached
+`visible_independent_review.evidence.ValueError` for a hypothetical leisure
+answer. Both complete readings finished; this stage's size check rejected the
+aggregate before delivery. This establishes the new run's failure, not the
+precise cause of the earlier undifferentiated v12 error.
+
+`visible_review_evidence_storage` now owns a lossless storage envelope. Small
+records keep their exact bytes. Only a pinned v13 independent record may use
+`visible-source-runtime-evidence.deflate.1` when the aggregate exceeds 1 MiB.
+The stored field remains bounded at 1 MiB, and decompressed aggregate bytes
+are bounded at 4 MiB. The individual requirement, receipt and author request
+bounds and all source/candidate/invocation checks remain unchanged. This is
+storage compaction, not character memory compression or a new review verdict.
+
+The reader verifies canonical JSON, declared length, SHA-256, one complete
+zlib stream and the pinned protocol. It bounds output allocation before
+decoding and rejects truncated, concatenated or over-expanding streams.
+These checks follow the Python standard library's
+[decompressobj/max_length/eof semantics](https://docs.python.org/3/library/zlib.html).
+The storage hash cannot authenticate an altered review: the original full
+receipt and immutable provider joins still decide acceptance. The online
+gate, cold candidate verifier and inbound event-share classifier all use the
+same storage reader. No model prompt or provider retry is added.
