@@ -10,7 +10,7 @@ import hashlib
 import json
 
 from .visible_candidate_meaning import PreparedCandidateMeaning
-from .visible_source_reading_experiment import CONTENT_FIELD_CONTRACT, _catalog, prepare_reading_experiment
+from .visible_source_reading_experiment import CONTENT_FIELD_CONTRACTS, PREHISTORY_CONTRACT, _catalog, prepare_reading_experiment
 from .visible_source_witness_experiment import _json, _unique
 
 LEGACY_CONTRACT = "visible-meaning-source-review.1"
@@ -69,7 +69,8 @@ class PreparedMeaningSourceReview:
             raise ValueError("meaning differs from pinned interpretation")
         reading_pin = json.loads(packet["reading_preparation_json"])
         catalog = _catalog(json.loads(reading_pin["witness_preparation_json"]), report_uptake=True,
-                           content_fields_only=reading_pin["contract"] == CONTENT_FIELD_CONTRACT)
+                           content_fields_only=reading_pin["contract"] in CONTENT_FIELD_CONTRACTS,
+                           prehistory_authority=reading_pin["contract"] == PREHISTORY_CONTRACT)
         if catalog != reading_pin["catalog"]:
             raise ValueError("source readings differ from pinned compilation")
         value = _validation(raw, packet["request"]["tools"][0]["function"]["parameters"])
@@ -137,13 +138,13 @@ class PreparedMeaningSourceReview:
 def prepare_meaning_source_review(
     *, meaning: PreparedCandidateMeaning, meaning_raw: str, sources: tuple[dict, ...],
     source_only: bool = False,
-    content_fields_only: bool = False,
+    content_fields_only: bool = False, prehistory_authority: bool = False,
 ) -> PreparedMeaningSourceReview:
     interpreted = meaning.inspect_response(meaning_raw)
     if source_only and not interpreted["facts"]:
         raise ValueError("source-only probe requires factual meanings; it cannot qualify source-free speech")
     original_beats = tuple(json.loads(meaning.payload_json)["beats"])
-    reading = prepare_reading_experiment(beats=original_beats, sources=sources, content_fields_only=content_fields_only)
+    reading = prepare_reading_experiment(beats=original_beats, sources=sources, content_fields_only=content_fields_only, prehistory_authority=prehistory_authority)
     pin = json.loads(reading.payload_json)
     catalog = pin["catalog"]
     if len(interpreted["facts"]) > 32:

@@ -261,6 +261,9 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
         count = len(base.as_dict()["source_references"])
         assert restored.as_dict()["source_references"][:count] == base.as_dict()["source_references"]
         assert restored.as_dict()["pin"] == base.as_dict()["pin"]
+        from test_visible_prehistory_readings import check_historical_reading
+        check_historical_reading(restored.source_references(), lane="recalled_prehistory",
+                                 text=statement, pointer="/item/value/text")
         for mutation in ("removed", "changed_text", "changed_historical_identity", "changed_all_text"):
             changed = json.loads(evidence["author_request_json"])
             body = json.loads(changed["messages"][1]["content"])

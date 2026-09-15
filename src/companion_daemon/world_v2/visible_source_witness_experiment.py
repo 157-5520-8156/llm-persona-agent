@@ -198,9 +198,9 @@ class PreparedWitnessExperiment:
 
     def inspect_response(self, raw: str) -> dict:
         packet = json.loads(self.payload_json)
-        from .visible_source_subject_authority import CONTRACT as SUBJECT_CONTRACT, permits_source_subject
+        from .visible_source_subject_authority import CONTRACT as SUBJECT_CONTRACT, PREHISTORY_CONTRACT, permits_source_subject
 
-        if packet.get("source_subject_contract") not in {None, SUBJECT_CONTRACT}:
+        if packet.get("source_subject_contract") not in {None, SUBJECT_CONTRACT, PREHISTORY_CONTRACT}:
             raise ValueError("unsupported source subject authority contract")
         if len(raw.encode()) > 131072:
             raise ValueError("witness response exceeds bound")
@@ -264,6 +264,7 @@ class PreparedWitnessExperiment:
                             if part.verdict == "closed" and not permits_source_subject(
                                 row=row, pointer=pointer, claim_scope=part.claim_scope,
                                 subject_role=part.subject_role,
+                                prehistory_authority=packet.get("source_subject_contract") == PREHISTORY_CONTRACT,
                             ):
                                 raise ValueError("witness exceeds source subject authority")
                         elif (
@@ -289,6 +290,7 @@ class PreparedWitnessExperiment:
         return {
             "contract": CONTRACT,
             "inspection_contract": (
+                "visible-source-witness-inspection.4" if packet.get("source_subject_contract") == PREHISTORY_CONTRACT else
                 "visible-source-witness-inspection.3"
                 if packet.get("source_subject_contract") is not None else INSPECTION_CONTRACT
             ),
@@ -303,8 +305,10 @@ class PreparedWitnessExperiment:
 
 def prepare_witness_experiment(
     *, beats: tuple[str, ...], sources: tuple[dict, ...], relative_pointer_choices: bool = False,
-    source_owner_semantics: bool = False,
+    source_owner_semantics: bool = False, prehistory_authority: bool = False,
 ) -> PreparedWitnessExperiment:
+    if type(prehistory_authority) is not bool or (prehistory_authority and not source_owner_semantics):
+        raise ValueError("prehistory field authority requires source owner semantics")
     if not 1 <= len(beats) <= 16 or any(not isinstance(b, str) or not b for b in beats):
         raise ValueError("experiment requires one to sixteen nonempty Beats")
     if any(
@@ -337,6 +341,8 @@ def prepare_witness_experiment(
     subject_contract = None
     if source_owner_semantics:
         from .visible_source_subject_authority import CONTRACT as subject_contract
+        if prehistory_authority:
+            from .visible_source_subject_authority import PREHISTORY_CONTRACT as subject_contract
 
         names = {
             "support_subject_role": "source_owner_role", "support_subject_ref": "source_owner_ref",
@@ -436,6 +442,10 @@ def prepare_witness_experiment(
             "is unclosed. Immediate private responses and truly open questions can remain source_free. "
             "Use short, precise support explanations."
         )
+    if prehistory_authority:
+        from .visible_prehistory_readings import INSTRUCTION
+        name = "review_visible_source_witness_subject_v4"
+        messages[0]["content"] += " " + INSTRUCTION
     request = {
         "messages": messages,
         "temperature": 0.0,

@@ -25,15 +25,22 @@ LEGACY_CONTRACT = "visible-source-reading-experiment.1"
 REPORT_UPTAKE_CONTRACT = "visible-source-reading-experiment.2"
 CONTRACT = "visible-source-reading-experiment.3"
 CONTENT_FIELD_CONTRACT = "visible-source-reading-experiment.4"
+PREHISTORY_CONTRACT = "visible-source-reading-experiment.5"
+CONTENT_FIELD_CONTRACTS = frozenset((CONTENT_FIELD_CONTRACT, PREHISTORY_CONTRACT))
 
 
-def _direct_paths(row: dict, shown: dict, *, content_fields_only: bool = False) -> list[str]:
+def _direct_paths(row: dict, shown: dict, *, content_fields_only: bool = False, prehistory_authority: bool = False) -> list[str]:
     """Choose typed evidence bodies, not hashes or bookkeeping identifiers.
 
     Surrounding actor/time/status/qualification data stays in the full card.
     Unknown readers retain their existing scalar surface in this experiment.
     """
     paths = _relative_pointer_choices([shown])
+    if prehistory_authority:
+        from .visible_prehistory_readings import prehistory_field_permissions
+        historical = prehistory_field_permissions(row)
+        if historical is not None:
+            return [p for p in paths if p in historical]
     material = row["review_material"]
     if "subjective_history_support" in row:
         from .visible_subjective_source import subjective_direct_paths
@@ -59,7 +66,7 @@ def _direct_paths(row: dict, shown: dict, *, content_fields_only: bool = False) 
     return paths
 
 
-def _catalog(packet: dict, *, report_uptake: bool = False, content_fields_only: bool = False) -> list[dict]:
+def _catalog(packet: dict, *, report_uptake: bool = False, content_fields_only: bool = False, prehistory_authority: bool = False) -> list[dict]:
     """Merge only exact scalar/material/owner/permission equivalents.
 
     Original aliases and proofs remain in the host preparation. Baseline and
@@ -72,8 +79,8 @@ def _catalog(packet: dict, *, report_uptake: bool = False, content_fields_only: 
         if not _eligible_reference(row):
             continue
         shown = packet["shown_materials"][material_index]
-        paths = _direct_paths(row, shown, content_fields_only=content_fields_only)
-        permissions_by_pointer = source_subject_permissions(row=row, pointers=paths)
+        paths = _direct_paths(row, shown, content_fields_only=content_fields_only, prehistory_authority=prehistory_authority)
+        permissions_by_pointer = source_subject_permissions(row=row, pointers=paths, prehistory_authority=prehistory_authority)
         for pointer in paths:
             value, _ = _reading(shown, pointer)
             original, _ = _reading(row["review_material"], pointer)
@@ -128,7 +135,7 @@ class PreparedReadingExperiment:
         from jsonschema import Draft202012Validator
 
         packet = json.loads(self.payload_json)
-        if packet.get("contract") not in {LEGACY_CONTRACT, REPORT_UPTAKE_CONTRACT, CONTRACT, CONTENT_FIELD_CONTRACT}:
+        if packet.get("contract") not in {LEGACY_CONTRACT, REPORT_UPTAKE_CONTRACT, CONTRACT, *CONTENT_FIELD_CONTRACTS}:
             raise ValueError("unsupported reading transport contract")
         if len(raw.encode()) > 131072:
             raise ValueError("reading response exceeds bound")
@@ -142,7 +149,8 @@ class PreparedReadingExperiment:
         # Reject altered mappings even when the substituted text is also in the
         # pin. A reading ID denotes precisely the compiled evidence selection.
         catalog = _catalog(json.loads(base.payload_json), report_uptake=packet["contract"] != LEGACY_CONTRACT,
-                           content_fields_only=packet["contract"] == CONTENT_FIELD_CONTRACT)
+                           content_fields_only=packet["contract"] in CONTENT_FIELD_CONTRACTS,
+                           prehistory_authority=packet["contract"] == PREHISTORY_CONTRACT)
         if catalog != packet["catalog"]:
             raise ValueError("reading catalog differs from pinned compilation")
         by_id = {r["reading_id"]: r for r in catalog}
@@ -187,15 +195,17 @@ class PreparedReadingExperiment:
         }
 
 
-def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, ...], content_fields_only: bool = False) -> PreparedReadingExperiment:
+def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, ...], content_fields_only: bool = False, prehistory_authority: bool = False) -> PreparedReadingExperiment:
     if type(content_fields_only) is not bool:
         raise TypeError("content field authority must be boolean")
-    contract = CONTENT_FIELD_CONTRACT if content_fields_only else CONTRACT
+    if type(prehistory_authority) is not bool or (prehistory_authority and not content_fields_only):
+        raise ValueError("prehistory authority requires content field authority")
+    contract = PREHISTORY_CONTRACT if prehistory_authority else CONTENT_FIELD_CONTRACT if content_fields_only else CONTRACT
     base = prepare_witness_experiment(
-        beats=beats, sources=sources, relative_pointer_choices=True, source_owner_semantics=True,
+        beats=beats, sources=sources, relative_pointer_choices=True, source_owner_semantics=True, prehistory_authority=prehistory_authority,
     )
     pin = json.loads(base.payload_json)
-    catalog = _catalog(pin, report_uptake=True, content_fields_only=content_fields_only)
+    catalog = _catalog(pin, report_uptake=True, content_fields_only=content_fields_only, prehistory_authority=prehistory_authority)
     if not catalog:
         raise ValueError("reading experiment requires eligible scalar evidence")
     request = base.request()
@@ -252,7 +262,7 @@ def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, .
             branch["properties"]["reading_ids"]["items"]["enum"] = list(ids)
             branches.append(branch)
     parts_schema["items"] = {"anyOf": [*branches, non_authoritative]}
-    name = "review_visible_source_readings_v4" if content_fields_only else "review_visible_source_readings_v3"
+    name = "review_visible_source_readings_v5" if prehistory_authority else "review_visible_source_readings_v4" if content_fields_only else "review_visible_source_readings_v3"
     request["tools"][0]["function"]["name"] = name
     request["tool_choice"]["function"]["name"] = name
     # Use the same semantic audit rules, but remove superseded coordinate and

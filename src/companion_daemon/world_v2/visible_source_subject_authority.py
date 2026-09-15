@@ -9,19 +9,20 @@ from __future__ import annotations
 from .visible_source_closure_protocol import _eligible_reference
 
 CONTRACT = "visible-source-subject-authority.1"
+PREHISTORY_CONTRACT = "visible-source-subject-authority.2"
 NONPERSONAL = frozenset({"general", "other", "none"})
 
 
-def permits_source_subject(*, row: dict, pointer: str, claim_scope: str, subject_role: str) -> bool:
+def permits_source_subject(*, row: dict, pointer: str, claim_scope: str, subject_role: str, prehistory_authority: bool = False) -> bool:
     """Check an already exact-quoted field against its existing typed authority."""
     if not _eligible_reference(row):
         return False
     return _permits_eligible_source_subject(
-        row=row, pointer=pointer, claim_scope=claim_scope, subject_role=subject_role,
+        row=row, pointer=pointer, claim_scope=claim_scope, subject_role=subject_role, prehistory_authority=prehistory_authority,
     )
 
 
-def source_subject_permissions(*, row: dict, pointers: list[str]) -> dict[str, list[list[str]]]:
+def source_subject_permissions(*, row: dict, pointers: list[str], prehistory_authority: bool = False) -> dict[str, list[list[str]]]:
     """Compile field permissions with one source validation for this batch.
 
     The result is local to this invocation; no model verdict or authority is
@@ -29,6 +30,11 @@ def source_subject_permissions(*, row: dict, pointers: list[str]) -> dict[str, l
     """
     if not _eligible_reference(row):
         return {}
+    if prehistory_authority:
+        from .visible_prehistory_readings import prehistory_field_permissions
+        historical = prehistory_field_permissions(row)
+        if historical is not None:
+            return {pointer: historical.get(pointer, []) for pointer in pointers}
     return {pointer: [
         [scope, role]
         for scope in (
@@ -37,12 +43,17 @@ def source_subject_permissions(*, row: dict, pointers: list[str]) -> dict[str, l
         )
         for role in ("companion", "counterpart", "general", "other", "none")
         if _permits_eligible_source_subject(
-            row=row, pointer=pointer, claim_scope=scope, subject_role=role,
+            row=row, pointer=pointer, claim_scope=scope, subject_role=role, prehistory_authority=prehistory_authority,
         )
     ] for pointer in pointers}
 
 
-def _permits_eligible_source_subject(*, row: dict, pointer: str, claim_scope: str, subject_role: str) -> bool:
+def _permits_eligible_source_subject(*, row: dict, pointer: str, claim_scope: str, subject_role: str, prehistory_authority: bool = False) -> bool:
+    if prehistory_authority:
+        from .visible_prehistory_readings import prehistory_field_permissions
+        historical = prehistory_field_permissions(row)
+        if historical is not None:
+            return [claim_scope, subject_role] in historical.get(pointer, [])
     material = row["review_material"]
     owner = row.get("support_subject_role")
     if "subjective_history_support" in row:

@@ -19,6 +19,8 @@ from .visible_source_witness_experiment import _json, _unique
 CONTRACT = "visible-independent-meanings-source-probe.1"
 SHARED_STRING_CONTRACT = "visible-independent-meanings-source-probe.2"
 CONTENT_FIELD_CONTRACT = "visible-independent-meanings-source-probe.3"
+PREHISTORY_CONTRACT = "visible-independent-meanings-source-probe.4"
+CONTENT_FIELD_CONTRACTS = frozenset((CONTENT_FIELD_CONTRACT, PREHISTORY_CONTRACT))
 
 
 @dataclass(frozen=True)
@@ -51,11 +53,12 @@ class PreparedIndependentMeanings:
         pin = json.loads(self.payload_json, object_pairs_hook=_unique)
         meanings = tuple(IndependentMeaning(PreparedCandidateMeaning(m["preparation_json"]), m["raw_response"])
                          for m in pin["meanings"])
-        if pin["contract"] not in {CONTRACT, SHARED_STRING_CONTRACT, CONTENT_FIELD_CONTRACT}:
+        if pin["contract"] not in {CONTRACT, SHARED_STRING_CONTRACT, *CONTENT_FIELD_CONTRACTS}:
             raise ValueError("unsupported independent source presentation")
         expected = prepare_independent_meanings_sources(meanings=meanings, sources=tuple(pin["sources"]),
-                                                        shared_strings=pin["contract"] in {SHARED_STRING_CONTRACT, CONTENT_FIELD_CONTRACT},
-                                                        content_fields_only=pin["contract"] == CONTENT_FIELD_CONTRACT)
+                                                        shared_strings=pin["contract"] in {SHARED_STRING_CONTRACT, *CONTENT_FIELD_CONTRACTS},
+                                                        content_fields_only=pin["contract"] in CONTENT_FIELD_CONTRACTS,
+                                                        prehistory_authority=pin["contract"] == PREHISTORY_CONTRACT)
         if expected is None or expected.payload_json != self.payload_json:
             raise ValueError("independent source preparation differs from its fixed compilation")
         value = _validation(raw, pin["request"]["tools"][0]["function"]["parameters"])
@@ -101,13 +104,15 @@ class PreparedIndependentMeanings:
 
 def prepare_independent_meanings_sources(
     *, meanings: tuple[IndependentMeaning, IndependentMeaning], sources: tuple[dict, ...], shared_strings: bool = False,
-    content_fields_only: bool = False,
+    content_fields_only: bool = False, prehistory_authority: bool = False,
 ) -> PreparedIndependentMeanings | None:
     if type(shared_strings) is not bool:
         raise TypeError("shared string presentation flag must be boolean")
     if type(content_fields_only) is not bool or (content_fields_only and not shared_strings):
         raise ValueError("content field authority requires the shared source presentation")
-    contract = CONTENT_FIELD_CONTRACT if content_fields_only else SHARED_STRING_CONTRACT if shared_strings else CONTRACT
+    if type(prehistory_authority) is not bool or (prehistory_authority and not content_fields_only):
+        raise ValueError("prehistory authority requires content field authority")
+    contract = PREHISTORY_CONTRACT if prehistory_authority else CONTENT_FIELD_CONTRACT if content_fields_only else SHARED_STRING_CONTRACT if shared_strings else CONTRACT
     interpreted, beats = _readings(meanings)
     factual = [i for i, value in enumerate(interpreted) if value["facts"]]
     if not factual:
@@ -122,7 +127,7 @@ def prepare_independent_meanings_sources(
     first = meanings[factual[0]]
     base = prepare_meaning_source_review(
         meaning=first.preparation, meaning_raw=first.raw_response, sources=sources, source_only=True,
-        content_fields_only=content_fields_only,
+        content_fields_only=content_fields_only, prehistory_authority=prehistory_authority,
     )
     base_pin = json.loads(base.payload_json)
     catalog = json.loads(base_pin["reading_preparation_json"])["catalog"]
@@ -139,7 +144,7 @@ def prepare_independent_meanings_sources(
     schema = function["parameters"]
     schema["properties"]["contract"]["enum"] = [contract]
     schema["properties"]["fact_decisions"]["items"]["properties"]["fact_id"]["enum"] = [f["fact_id"] for f in facts]
-    name = "review_independent_fixed_meanings_v3" if content_fields_only else "review_independent_fixed_meanings_v2" if shared_strings else "review_independent_fixed_meanings_v1"
+    name = "review_independent_fixed_meanings_v4" if prehistory_authority else "review_independent_fixed_meanings_v3" if content_fields_only else "review_independent_fixed_meanings_v2" if shared_strings else "review_independent_fixed_meanings_v1"
     function["name"] = name
     request["tool_choice"]["function"]["name"] = name
     request["messages"][0]["content"] += (
@@ -175,6 +180,14 @@ def prepare_independent_meanings_sources(
             "不能补出正文未记录的动作或结果。只有目录中的正文reading可支持其实际记载的内容；"
             "正文的存在仍不等于待证命题成立。"
         )
+    if prehistory_authority:
+        from .visible_prehistory_readings import CONTRACT as history_contract, INSTRUCTION
+        body["prehistory_field_authority"] = {
+            "contract": history_contract, "direct_content": "exact_retained_text_only",
+            "other_subjects": "declared_historical_participants_only",
+            "provenance_is_not_event_content": True,
+        }
+        request["messages"][0]["content"] += INSTRUCTION
     request["messages"][1]["content"] = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
     return PreparedIndependentMeanings(_json({
         "contract": contract, "beats": beats,
