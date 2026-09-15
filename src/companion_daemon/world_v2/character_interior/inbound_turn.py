@@ -646,6 +646,8 @@ class InboundTurnFaculty:
                 "failure_code": request.correction_failure_code,
                 "failure_detail": request.correction_failure_detail,
                 "task": "return_one_fresh_complete_role_result",
+                **({"rejected_expression": request.correction_rejected_expression.model_dump(mode="json")}
+                   if request.correction_rejected_expression is not None else {}),
             }
         model_content_json = _canonical(content)
         recall_trace: TrustedRecallTrace | None = None
@@ -787,8 +789,9 @@ class InboundTurnFaculty:
                 while len(self._decision_parents) > _CACHE_LIMIT:
                     self._decision_parents.popitem(last=False)
                 raise _RoleResultContractError(
-                    "role_result_schema_invalid",
+                    "role_result_source_invalid" if exc.rejected_expression is not None else "role_result_schema_invalid",
                     detail=exc.failure_detail.strip()[:4_096],
+                    rejected_expression=exc.rejected_expression,
                     rejected_raw=(
                         exc.rejected_raw_excerpt
                         if isinstance(exc.rejected_raw_excerpt, str)

@@ -123,8 +123,9 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
         self._remember_rejected(request, candidate, failure.provider_subcall_audits)
         if semantic_rejection and request.correction_ordinal == 0:
             raise _RoleResultContractError(
-                "role_result_schema_invalid",
+                "role_result_source_invalid" if failure.rejected_expression is not None else "role_result_schema_invalid",
                 detail=failure.failure_detail[:4096],
+                rejected_expression=failure.rejected_expression,
                 response_hash=author.response_hash,
                 request_hash=author.request_hash,
                 model_call_id=author.model_call_id,

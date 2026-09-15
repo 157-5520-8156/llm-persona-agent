@@ -126,6 +126,16 @@ async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_r
             detail = context['role_result_correction']['coordinate']['failure_detail']
             assert len(detail) <= 3900
             assert len(json.loads(detail.split('\n', 1)[1])['rows']) == 2
+            coordinate = context['role_result_correction']['coordinate']
+            assert coordinate['failure_code'] == 'role_result_source_invalid'
+            rejected = coordinate['rejected_expression']
+            assert rejected['authority'] == 'rejected_candidate_not_world_evidence'
+            assert rejected['candidate_sha256'] == json.loads(detail.split('\n', 1)[1])['candidate_sha256']
+            original_reading = next(b for b in handler.requests
+                                    if b['tool_choice']['function']['name'].startswith('interpret_visible_candidate_'))
+            original_beats = json.loads(original_reading['messages'][1]['content'])['visible_beats']
+            assert rejected['beats'] == original_beats
+            assert 'rejected_expression' not in context['inner_life_snapshot']['materials']
         with sqlite3.connect(path.with_name('usage.sqlite')) as db:
             assert db.execute("SELECT COUNT(*) FROM world_v2_model_usage WHERE billing_state='known'").fetchone() == (calls,)
     cold = ReviewHTTP(version=version)

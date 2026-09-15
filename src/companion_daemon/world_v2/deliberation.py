@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from companion_daemon.llm import model_request_emission_scope
 
 from .affect_target_bounds import AffectTargetLowerBounds
+from .visible_rejection_context import RejectedVisibleExpression
 from .context_capsule import ContextCapsule, TrustedContextCapsuleHandle
 from .interactive_turn_budget import (
     FIRST_PROVIDER_ENTRY_RESERVE_SECONDS,
@@ -438,6 +439,7 @@ class ValidationTechnicalFailure(RuntimeError):
         failure_detail: str | None = None,
         rejected_raw_hash: str | None = None,
         rejected_raw_excerpt: str | None = None,
+        rejected_expression: RejectedVisibleExpression | None = None,
     ):
         identity = (model_call_id, request_hash)
         if (identity[0] is None) != (identity[1] is None):
@@ -460,6 +462,9 @@ class ValidationTechnicalFailure(RuntimeError):
         self.original_failure_code = original_failure_code
         self.failure_detail = failure_detail
         self.rejected_raw_hash = rejected_raw_hash
+        if rejected_expression is not None and type(rejected_expression) is not RejectedVisibleExpression:
+            raise TypeError("visible rejection must use the exact correction context")
+        self.rejected_expression = rejected_expression
         self.rejected_raw_excerpt = rejected_raw_excerpt
 
 

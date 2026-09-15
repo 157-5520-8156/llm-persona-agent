@@ -2503,6 +2503,10 @@ class CharacterInterior:
                 update={
                     "correction_ordinal": 1,
                     "correction_failure_code": structural_failure_code,
+                    "correction_rejected_expression": (
+                        last_contract_error.rejected_expression
+                        if last_contract_error is not None else None
+                    ),
                     "correction_failure_detail": (
                         structural_failure_detail[:4_096]
                         if isinstance(structural_failure_detail, str)

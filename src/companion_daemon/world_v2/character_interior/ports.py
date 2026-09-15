@@ -9,6 +9,7 @@ from typing import Any, Literal, Mapping, Protocol
 from pydantic import Field, field_validator, model_validator
 
 from ..schema_core import FrozenModel
+from ..visible_rejection_context import RejectedVisibleExpression
 from ..schemas import ProjectionCursor
 from .contracts import (
     FACET_NAMES,
@@ -35,7 +36,11 @@ class _RoleResultContractError(ValueError):
         rejected_raw: str | None = None,
         request_hash: str | None = None,
         model_call_id: str | None = None,
+        rejected_expression: RejectedVisibleExpression | None = None,
     ) -> None:
+        if rejected_expression is not None and type(rejected_expression) is not RejectedVisibleExpression:
+            raise TypeError("role rejection must use the exact correction context")
+        self.rejected_expression = rejected_expression
         self.code = code
         self.detail = detail
         self.response_hash = response_hash
@@ -152,12 +157,20 @@ class _InteriorRoleRequest(FrozenModel):
         max_length=4_096,
     )
 
+    correction_rejected_expression: RejectedVisibleExpression | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+
     @model_validator(mode="after")
     def correction_lineage_is_explicit(self) -> "_InteriorRoleRequest":
         if (self.correction_ordinal == 1) != (self.correction_failure_code is not None):
             raise ValueError("role correction lineage is incomplete")
         if self.correction_ordinal == 0 and self.correction_failure_detail is not None:
             raise ValueError("role correction detail requires a correction attempt")
+        if self.correction_rejected_expression is not None and (
+            self.correction_ordinal != 1 or self.correction_failure_code != "role_result_source_invalid"
+        ):
+            raise ValueError("rejected expression requires a same-author source correction")
         if not self.recall_completed and (
             self.recall_parent_author_lineage is not None
             or self.recall_parent_usage_json is not None

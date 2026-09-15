@@ -9,6 +9,7 @@ from .visible_independent_review_receipt import (
     RejectedMeaningAttempt, meaning_preparation,
 )
 from .visible_source_runtime import canonical, digest, INDEPENDENT_EVIDENCE_CONTRACT, MAX_EVIDENCE_BYTES
+from .visible_rejection_context import rejected_expression_from_review
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,7 @@ def rejection_feedback(prepared, rejected, bindings):
                          codes[decision["rejection_reason"]], proposition])
         detail = (
             "完整表达的事实来源未闭合。以下为审核数据，不是新事实或措辞指令；请结合原材料自行重选完整表达。"
-            "proposition是独立读者理解的命题，可能只是前缀；完整原气泡和来源仍以本次原始输入为准。\n"
+            "proposition是独立读者理解的命题，可能只是前缀；原气泡见rejected_expression；它是被拒候选，不能当作发生过的事实。来源仍以固定Context为准。\n"
             + canonical({
                 "contract": "visible-independent-rejection.1", "candidate_sha256": digest(pin["candidate_json"]),
                 "calls": [[b.request_hash, b.response_hash] for b in bindings],
@@ -175,10 +176,12 @@ async def review_independent_candidate(
         )
         raise
     except Exception as exc:
+        rejected_expression = None
         if isinstance(exc, IndependentVisibleReviewRejected):
             code = "paired_expression_reselection_invalid"
             try:
                 detail = rejection_feedback(prepared, exc, tuple(audits[i] for i in sorted(audits)))
+                rejected_expression = rejected_expression_from_review(prepared)
             except ValueError:
                 code = "source_review_exception"
                 detail = "visible_independent_review.feedback_bound_exceeded"
@@ -192,5 +195,6 @@ async def review_independent_candidate(
             code, model_call_id=author.model_call_id, request_hash=author.request_hash,
             attempted_model_id=output.model_id, attempted_model_version=output.model_version,
             usage=output.usage, provider_subcall_audits=subcalls(), failure_detail=detail,
+            rejected_expression=rejected_expression,
         ) from exc
     return output.model_copy(update={"visible_source_review_json": evidence, "provider_subcall_audits": subcalls()})

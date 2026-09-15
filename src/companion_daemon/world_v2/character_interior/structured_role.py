@@ -1867,6 +1867,8 @@ class StructuredCharacterRoleFaculty:
                 "failure_detail": request.correction_failure_detail
                 or _FAILURE_DETAILS.get(code, code),
                 "scope": "return_a_complete_new_result_for_the_same_pinned_request",
+                **({"rejected_expression": request.correction_rejected_expression.model_dump(mode="json")}
+                   if request.correction_rejected_expression is not None else {}),
             }
         snapshot = user_payload.get("inner_life_snapshot")
         if isinstance(snapshot, dict):
