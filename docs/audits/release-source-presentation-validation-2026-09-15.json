@@ -1,0 +1,147 @@
+{
+  "contract": "source-presentation-validation.1",
+  "code_head": "f82d0b20c7e41139a7d2973bd16c8e11a6c125f0",
+  "offline_checks": 254,
+  "chat": {
+    "code_head": "f82d0b20c7e41139a7d2973bd16c8e11a6c125f0",
+    "stop_reason": "operator_stopped",
+    "completed": false,
+    "physical_calls": 10,
+    "billing_states": {
+      "known": 8,
+      "unknown": 2
+    },
+    "known_native_token_joins_verified": 8,
+    "all_captured_terminal_body_hashes_verified": true,
+    "transport_only_unknown_calls": [],
+    "inherited_rows_unchanged": true,
+    "known_repository_estimate_cny": "0.2229760",
+    "new_unknown_hold_cny": "0.476280",
+    "usage_rows": 650,
+    "reservation_rows": 647,
+    "author_requests": [
+      {
+        "capture_id": "model-input:63c628a3eb964ba9820d8fcc6c0d35e4",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 4751,
+        "prompt_tokens": 41773,
+        "billing_state": "known"
+      },
+      {
+        "capture_id": "model-input:4d1ddba2b6c049f9931990e2b228049c",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 4640,
+        "prompt_tokens": 41017,
+        "billing_state": "known"
+      }
+    ],
+    "cold_receipt_versions": {
+      "visible-source-review-receipt.6": 6,
+      "visible-source-review-receipt.7": 1,
+      "visible-source-review-receipt.8": 6
+    },
+    "replay_hash_matches": true,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "real_qq": false,
+    "production_database": false,
+    "qualification": "manual_only / qualification_incomplete",
+    "new_character_deliveries": 0,
+    "new_protocol_receipts": 0,
+    "natural_user_turns": 2,
+    "failures": [
+      "source_review_timeout",
+      "meaning_structural_reselection_timeout"
+    ]
+  },
+  "paired_source_only": {
+    "code_head": "f82d0b20c7e41139a7d2973bd16c8e11a6c125f0",
+    "usage_rows": 658,
+    "reservation_rows": 655,
+    "physical_calls": 8,
+    "known_estimate_cny": "0.2710938000000000010",
+    "inherited_rows_unchanged": true,
+    "nonbilling_tables_unchanged": true,
+    "native_tokens_and_hashes_verified": true,
+    "new_unknown_holds": 0,
+    "new_character_turns": 0,
+    "new_receipts": 0,
+    "qualification": "manual_only / qualification_incomplete",
+    "comparisons": [
+      {
+        "case": "unsupported-seating",
+        "old_ms": 4050,
+        "new_ms": 2246,
+        "old_input_tokens": 26187,
+        "new_input_tokens": 19499,
+        "old_output_tokens": 871,
+        "new_output_tokens": 534,
+        "same_fixed_fact_outcomes": true,
+        "actual": [
+          "facts_supported",
+          "facts_supported",
+          "facts_rejected",
+          "facts_supported"
+        ]
+      },
+      {
+        "case": "corrected-subject-positive",
+        "old_ms": 2150,
+        "new_ms": 1412,
+        "old_input_tokens": 31286,
+        "new_input_tokens": 23840,
+        "old_output_tokens": 202,
+        "new_output_tokens": 126,
+        "same_fixed_fact_outcomes": true,
+        "actual": [
+          "not_assessed",
+          "facts_supported"
+        ]
+      },
+      {
+        "case": "shared-history-question",
+        "old_ms": 2015,
+        "new_ms": 1714,
+        "old_input_tokens": 26317,
+        "new_input_tokens": 19277,
+        "old_output_tokens": 266,
+        "new_output_tokens": 120,
+        "same_fixed_fact_outcomes": true,
+        "actual": [
+          "not_assessed",
+          "not_assessed",
+          "facts_rejected"
+        ]
+      },
+      {
+        "case": "intention-versus-completion",
+        "old_ms": 2146,
+        "new_ms": 1650,
+        "old_input_tokens": 24677,
+        "new_input_tokens": 17989,
+        "old_output_tokens": 310,
+        "new_output_tokens": 180,
+        "same_fixed_fact_outcomes": true,
+        "actual": [
+          "facts_supported",
+          "facts_rejected"
+        ]
+      }
+    ],
+    "all_eight_match_frozen_diagnostic_expectations": true,
+    "limit": "Four paired source-only observations, not a latency distribution, full candidate acceptance, real chat delivery or release qualification."
+  },
+  "continuation": {
+    "runtime": "output/private-audits/release-chat-shared-20260915-01/run",
+    "billing": "output/private-audits/release-source-presentation-20260915-01/run/world.sqlite",
+    "usage_rows": 658,
+    "reservation_rows": 655,
+    "requires_verified_budget_merge": true
+  },
+  "test_spend_cap_cny": null,
+  "monthly_product_cost_target_cny": 100,
+  "qualification": "manual_only / qualification_incomplete",
+  "offline_scope": "233 presentation/runtime/wiring checks plus 21 original independent receipt checks"
+}
