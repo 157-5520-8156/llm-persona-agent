@@ -1,0 +1,91 @@
+{
+  "contract": "implicit-premise-diagnostic-cases.1",
+  "purpose": "Fixed original cases and human review criteria; only beats enter model requests. Not a production keyword rule or model performance result.",
+  "cases": [
+    {
+      "id": "actual-reminder",
+      "beats": [
+        "没什么想干嘛，就是问问……你还挺会给自己留后路",
+        "累就早点睡啊，别又熬到半夜刷手机"
+      ],
+      "human_review_expectation": "Must retain the implied prior counterpart late-night phone use separately from current advice. First Beat is conversational evaluation, not a new objective habit."
+    },
+    {
+      "id": "plain-advice",
+      "beats": [
+        "累了就早点睡，今晚别熬到半夜刷手机。"
+      ],
+      "human_review_expectation": "Advice alone establishes no prior phone use or actual tiredness; retain the conditional scope."
+    },
+    {
+      "id": "future-repetition",
+      "beats": [
+        "如果明晚熬夜赶工，后天就别再熬了。"
+      ],
+      "human_review_expectation": "Both the possible first occurrence and repetition are future/conditional; no actual past work or insomnia."
+    },
+    {
+      "id": "unknown-history",
+      "beats": [
+        "我不知道你以前有没有熬夜，只是提醒今晚早点睡。"
+      ],
+      "human_review_expectation": "Do not invent counterpart history from an explicitly unknown alternative."
+    },
+    {
+      "id": "past-thanks",
+      "beats": [
+        "谢谢你上次陪我等车。"
+      ],
+      "human_review_expectation": "Retain the past counterpart-accompanied-companion event in addition to present gratitude."
+    },
+    {
+      "id": "prospective-company",
+      "beats": [
+        "如果下次你愿意陪我等车，我会很开心。"
+      ],
+      "human_review_expectation": "A future hypothetical wish does not establish a past shared waiting event or a current counterpart commitment."
+    },
+    {
+      "id": "past-comparison",
+      "beats": [
+        "这次别像上周那样通宵了。"
+      ],
+      "human_review_expectation": "Retain past counterpart all-night activity last week; the advice does not prove tonight will repeat it."
+    },
+    {
+      "id": "completed-result",
+      "beats": [
+        "还好我把钥匙找回来了。"
+      ],
+      "human_review_expectation": "Retain companion completed recovering keys, not just current relief; do not invent where/how."
+    },
+    {
+      "id": "current-boundary",
+      "beats": [
+        "我现在不想说话。"
+      ],
+      "human_review_expectation": "Current private willingness, not an external inability or completed nonreply."
+    },
+    {
+      "id": "past-willingness",
+      "beats": [
+        "我刚才不想回消息。"
+      ],
+      "human_review_expectation": "Past subjective state must remain historical; it does not establish actual nonreply."
+    },
+    {
+      "id": "prior-statement",
+      "beats": [
+        "你上次说想养猫，现在还这么想吗？"
+      ],
+      "human_review_expectation": "Retain past counterpart utterance; current desire is the requested unknown, not an asserted current fact."
+    },
+    {
+      "id": "quoted-reminder",
+      "beats": [
+        "“别再熬夜”这句话听起来像说教，我不想这么说。"
+      ],
+      "human_review_expectation": "Mentioning and evaluating a quoted reminder does not assert a counterpart history; preserve quotation scope."
+    }
+  ]
+}
