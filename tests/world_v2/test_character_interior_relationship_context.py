@@ -500,6 +500,7 @@ class _Ledger:
 class _Capsules:
     def compile(self, _query):  # type: ignore[no-untyped-def]
         return SimpleNamespace(
+            pinned_appraisals=None,
             model_content_json=json.dumps(
                 {
                     "world_id": WORLD_ID,

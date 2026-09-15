@@ -158,6 +158,7 @@ class _LedgerCapsuleInteriorProjection:
         compile_capsule = self.capsules.compile
         if (
             isinstance(subject, InteriorOpportunity)
+            and subject.capability_manifest is not None
             and subject.capability_manifest.payload.get("source_kind") == "character_prehistory"
         ):
             # Initialization deliberately retains the complete import snapshot
