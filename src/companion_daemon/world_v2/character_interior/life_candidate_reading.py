@@ -13,7 +13,10 @@ import json
 
 from jsonschema import Draft202012Validator
 
-CONTRACT = "life-candidate-reading.1"
+LEGACY_CONTRACT = "life-candidate-reading.1"
+CONTRACT = "life-candidate-reading.2"
+_FACTUAL_MODES = ("actual_event_or_state", "past_utterance", "past_intention", "past_subjective_state")
+_CURRENT_MODES = ("current_expression", "future_intention", "hypothesis_or_question", "protocol_value")
 MAX_CANDIDATE_BYTES = 131_072
 MAX_FIELDS = 256
 MAX_FACTS = 128
@@ -80,10 +83,12 @@ def _candidate(raw):
     return value, fields
 
 
-def _schema(paths):
+def _schema(paths, version):
+    contract = LEGACY_CONTRACT if version == "1" else CONTRACT
+    readings_key = "facts" if version == "1" else "readings"
     fact = _object({
         "proposition": {"type": "string", "minLength": 1, "maxLength": 2048},
-        "mode": {"type": "string", "enum": ["actual_event_or_state", "past_utterance", "past_intention", "past_subjective_state"]},
+        "mode": {"type": "string", "enum": [*_FACTUAL_MODES, *(() if version == "1" else _CURRENT_MODES)]},
         "subject_role": {"type": "string", "enum": ["companion", "counterpart", "other", "environment", "unresolved"]},
         "time_expression": {"type": "string", "maxLength": 256},
         "polarity": {"type": "string", "enum": ["affirmative", "negative", "uncertain"]},
@@ -91,10 +96,10 @@ def _schema(paths):
     field = _object({
         "path": {"type": "string", "enum": paths},
         "interpretation": {"type": "string", "minLength": 1, "maxLength": 2048},
-        "facts": {"type": "array", "maxItems": MAX_FACTS, "items": fact},
+        readings_key: {"type": "array", "maxItems": MAX_FACTS, "items": fact},
     })
     return _object({
-        "contract": {"type": "string", "enum": [CONTRACT]},
+        "contract": {"type": "string", "enum": [contract]},
         "fields": {"type": "array", "minItems": len(paths), "maxItems": len(paths), "items": field},
     })
 
@@ -112,7 +117,10 @@ class PreparedLifeCandidateReading:
 
     def inspect_response(self, raw):
         pin = json.loads(self.payload_json, object_pairs_hook=_unique)
-        expected = prepare_life_candidate_reading(candidate_json=pin["candidate_json"])
+        if pin.get("contract") not in {LEGACY_CONTRACT, CONTRACT}:
+            raise ValueError("unsupported Life reading contract")
+        version = "1" if pin["contract"] == LEGACY_CONTRACT else "2"
+        expected = prepare_life_candidate_reading(candidate_json=pin["candidate_json"], version=version)
         if self.payload_json != expected.payload_json:
             raise ValueError("Life reading preparation differs from its exact compilation")
         if not isinstance(raw, str) or len(raw.encode()) > 262_144:
@@ -127,33 +135,42 @@ class PreparedLifeCandidateReading:
         if len(returned) != len(set(returned)) or set(returned) != set(expected_paths):
             raise ValueError("Life reading must interpret each original text field exactly once")
         by_path = {item["path"]: item for item in value["fields"]}
-        facts = []
+        facts, nonfactual = [], []
+        readings_key = "facts" if version == "1" else "readings"
         for field in pin["text_fields"]:
-            for index, fact in enumerate(by_path[field["path"]]["facts"]):
-                facts.append({
-                    "fact_id": f"f{len(facts)}", "field_path": field["path"],
+            for index, fact in enumerate(by_path[field["path"]][readings_key]):
+                item = {
+                    "field_path": field["path"],
                     "field_fact_index": index, "original_text": field["text"], **fact,
-                })
-        if len(facts) > MAX_FACTS:
+                }
+                if fact["mode"] in _FACTUAL_MODES:
+                    facts.append({"fact_id": f"f{len(facts)}", **item})
+                else:
+                    nonfactual.append(item)
+        if len(facts) + len(nonfactual) > MAX_FACTS:
             raise ValueError("Life reading total fact inventory exceeds its bound")
         return {
-            "contract": CONTRACT, "preparation_sha256": self.sha256,
+            "contract": pin["contract"], "preparation_sha256": self.sha256,
             "candidate_sha256": pin["candidate_sha256"], "response_sha256": _hash(raw),
             "fields": [by_path[path] for path in expected_paths], "facts": facts,
             "all_text_fields_represented": True,
             "semantic_coverage": "unproven", "source_support": "not_assessed",
             "life_write_authority": False,
+            **({"nonfactual_readings": nonfactual} if version == "2" else {}),
         }
 
 
-def prepare_life_candidate_reading(*, candidate_json: str) -> PreparedLifeCandidateReading:
+def prepare_life_candidate_reading(*, candidate_json: str, version: str = "2") -> PreparedLifeCandidateReading:
+    if type(version) is not str or version not in {"1", "2"}:
+        raise ValueError("unsupported Life reading version")
+    contract = LEGACY_CONTRACT if version == "1" else CONTRACT
     value, fields = _candidate(candidate_json)
     body = {
-        "contract": CONTRACT, "candidate": value, "text_fields": fields,
+        "contract": contract, "candidate": value, "text_fields": fields,
         "field_scope": "All string values are inventoried, including protocol/identity values. "
         "Their presence does not mean they assert facts. Preserve the surrounding JSON structure.",
     }
-    name = "read_life_candidate_fields_v1"
+    name = "read_life_candidate_fields_v" + version
     request = {
         "messages": [
             {"role": "system", "content": (
@@ -176,11 +193,28 @@ def prepare_life_candidate_reading(*, candidate_json: str) -> PreparedLifeCandid
         "tools": [{"type": "function", "function": {
             "name": name, "strict": True,
             "description": "Read every text field of the fixed Life candidate; no source or Life write authority.",
-            "parameters": _schema([item["path"] for item in fields]),
+            "parameters": _schema([item["path"] for item in fields], version),
         }}],
         "tool_choice": {"type": "function", "function": {"name": name}},
     }
+    if version == "2":
+        request["messages"][0]["content"] = request["messages"][0]["content"].replace(
+            "每个path恰好返回一次interpretation及facts。",
+            "每个path恰好返回一次interpretation及readings，每个reading有独立的proposition和mode。",
+        ).replace(
+            "facts提取原文实际断言及预设的事件",
+            "readings逐条记录原文表达；其中actual_event_or_state等四种过去/实际事实类型提取原文断言及预设的事件",
+        ).replace(
+            "允许facts为空；", "在readings中分别使用current_expression、future_intention或hypothesis_or_question；",
+        ) + (
+            "protocol_value记录协议常量、ID与来源编号；它们本身不作事实核验。"
+            "过去想过才是past_intention，当前选择今后去做属于future_intention；"
+            "当前自述的感受属于current_expression，不要因为体验刚刚形成就使用past_subjective_state。"
+            "这些类型不豁免嵌入事实：拆出其中已发生事件和前提，按各自单一主体分别记录；"
+            "不得把角色过去在场或做过某事藏进一个environment命题而不单列角色事实。"
+            "本步骤的所有类型都是可出错的语义读取，不批准候选、不创建事实或生活经历。"
+        )
     return PreparedLifeCandidateReading(_json({
-        "contract": CONTRACT, "candidate_json": candidate_json,
+        "contract": contract, "candidate_json": candidate_json,
         "candidate_sha256": _hash(candidate_json), "text_fields": fields, "request": request,
     }))

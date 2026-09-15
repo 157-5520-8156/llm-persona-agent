@@ -34,7 +34,7 @@ def _prepare(value=None):
 
 def _response(prepared):
     return {"contract": CONTRACT, "fields": [
-        {"path": item["path"], "interpretation": "fixture reading, not semantic evidence", "facts": []}
+        {"path": item["path"], "interpretation": "fixture reading, not semantic evidence", "readings": []}
         for item in json.loads(prepared.payload_json)["text_fields"]
     ]}
 
@@ -79,7 +79,7 @@ def test_facts_keep_field_and_original_text_even_when_same_claim_repeats():
     response = _response(prepared)
     for field in response["fields"]:
         if field["path"] in {"/summary", "/proposals/0/brief_rationale"}:
-            field["facts"] = [_fact()]
+            field["readings"] = [_fact()]
     result = prepared.inspect_response(json.dumps(response))
     assert len(result["facts"]) == 2
     assert {f["fact_id"] for f in result["facts"]} == {"f0", "f1"}
@@ -109,10 +109,51 @@ def test_reader_cannot_omit_repeat_replace_or_grant_authority(fault):
 def test_total_fact_limit_applies_across_all_fields():
     prepared = _prepare()
     response = _response(prepared)
-    response["fields"][0]["facts"] = [_fact()] * MAX_FACTS
-    response["fields"][1]["facts"] = [_fact()]
+    response["fields"][0]["readings"] = [_fact()] * MAX_FACTS
+    response["fields"][1]["readings"] = [_fact()]
     with pytest.raises(ValueError, match="total fact"):
         prepared.inspect_response(json.dumps(response))
+
+
+def test_explicit_current_and_future_readings_do_not_gain_source_or_write_authority():
+    prepared = _prepare()
+    response = _response(prepared)
+    response["fields"][0]["readings"] = [
+        {**_fact(), "mode": "current_expression", "proposition": "我有点舍不得。"},
+        {**_fact(), "mode": "future_intention", "proposition": "明天我想去看看。"},
+        _fact(),
+    ]
+    result = prepared.inspect_response(json.dumps(response))
+    assert len(result["facts"]) == 1
+    assert len(result["nonfactual_readings"]) == 2
+    assert result["life_write_authority"] is False
+    assert result["semantic_coverage"] == "unproven"
+
+
+def test_consumer_does_not_reclassify_semantic_errors_using_temporal_keywords():
+    prepared = _prepare()
+    response = _response(prepared)
+    response["fields"][0]["readings"] = [{
+        **_fact(), "mode": "past_intention", "time_expression": "明天",
+        "proposition": "明天我想去看看。",
+    }]
+    result = prepared.inspect_response(json.dumps(response))
+    assert result["facts"][0]["mode"] == "past_intention"
+    assert result["semantic_coverage"] == "unproven"
+
+
+def test_legacy_compilation_and_inspection_remain_version_bound():
+    raw = json.dumps(_candidate(), ensure_ascii=False)
+    legacy = prepare_life_candidate_reading(candidate_json=raw, version="1")
+    pin = json.loads(legacy.payload_json)
+    response = {"contract": "life-candidate-reading.1", "fields": [
+        {"path": f["path"], "interpretation": "fixture", "facts": []}
+        for f in pin["text_fields"]
+    ]}
+    result = legacy.inspect_response(json.dumps(response))
+    assert "nonfactual_readings" not in result
+    assert legacy.sha256 != prepare_life_candidate_reading(candidate_json=raw).sha256
+    assert legacy.request()["tool_choice"]["function"]["name"] == "read_life_candidate_fields_v1"
 
 
 @pytest.mark.parametrize("field", ["candidate_sha256", "text_fields", "request"])
