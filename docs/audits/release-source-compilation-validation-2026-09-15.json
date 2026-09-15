@@ -1,0 +1,390 @@
+{
+  "implementation_commit": "062413801ae125c8924bd20105f97a4e2e16e1c7",
+  "change": "Validate each source once per permission batch, retaining the preliminary catalog eligibility guard and all source/scalar/receipt recompilation checks. No persistent cache, protocol or provider request change.",
+  "local_compilation": {
+    "baseline_commit": "03ccfe85",
+    "real_provider_calls": 0,
+    "cases": [
+      {
+        "case": "corrected-subject-positive-original-preparation",
+        "preparation_sha256": "bb29f1255834da2154c7ea7d88e0bb46e57417d263d58ff572e02101ec821edd",
+        "exact_preparation_and_result_match": true,
+        "before": {
+          "median_ms": 523.453,
+          "samples_ms": [
+            528.049,
+            515.281,
+            523.453,
+            517.387,
+            524.809
+          ]
+        },
+        "after": {
+          "median_ms": 56.306,
+          "samples_ms": [
+            56.232,
+            56.337,
+            56.306,
+            58.671,
+            56.244
+          ]
+        }
+      },
+      {
+        "case": "corrected-subject-positive-shared-preparation",
+        "preparation_sha256": "7e4fe90470d0d647ba684025bc41bbe2d8ed9d6a399eb583660ba6e0b15a4411",
+        "exact_preparation_and_result_match": true,
+        "before": {
+          "median_ms": 500.13,
+          "samples_ms": [
+            503.578,
+            505.656,
+            498.653,
+            496.434,
+            500.13
+          ]
+        },
+        "after": {
+          "median_ms": 59.555,
+          "samples_ms": [
+            59.716,
+            59.204,
+            60.583,
+            59.555,
+            59.44
+          ]
+        }
+      },
+      {
+        "case": "intention-versus-completion-original-preparation",
+        "preparation_sha256": "2a19ddb32423681275575a22b6679f4069d4c074ca368a923d20492d565c8fda",
+        "exact_preparation_and_result_match": true,
+        "before": {
+          "median_ms": 146.246,
+          "samples_ms": [
+            146.526,
+            146.246,
+            142.883,
+            142.709,
+            149.244
+          ]
+        },
+        "after": {
+          "median_ms": 49.013,
+          "samples_ms": [
+            48.617,
+            48.973,
+            49.062,
+            49.013,
+            49.593
+          ]
+        }
+      },
+      {
+        "case": "intention-versus-completion-shared-preparation",
+        "preparation_sha256": "9ee28404f45e210ceb38769f48cd195a286c9e97d092d8cb63cca542772c50ba",
+        "exact_preparation_and_result_match": true,
+        "before": {
+          "median_ms": 145.855,
+          "samples_ms": [
+            147.441,
+            145.683,
+            145.855,
+            145.632,
+            190.732
+          ]
+        },
+        "after": {
+          "median_ms": 50.331,
+          "samples_ms": [
+            50.39,
+            53.7,
+            49.403,
+            48.991,
+            50.331
+          ]
+        }
+      },
+      {
+        "case": "shared-history-question-original-preparation",
+        "preparation_sha256": "03afdefe2da3eef29e5a3fe9ee442e2cd8b61ca99adbee95dc41cdbd6cb355e1",
+        "exact_preparation_and_result_match": true,
+        "before": {
+          "median_ms": 149.623,
+          "samples_ms": [
+            148.913,
+            150.117,
+            149.623,
+            149.302,
+            150.232
+          ]
+        },
+        "after": {
+          "median_ms": 50.72,
+          "samples_ms": [
+            52.268,
+            50.526,
+            50.979,
+            50.43,
+            50.72
+          ]
+        }
+      },
+      {
+        "case": "shared-history-question-shared-preparation",
+        "preparation_sha256": "131cf78e17ed373ea2401588f159d4922f37386cd4b6046286965efd04c33181",
+        "exact_preparation_and_result_match": true,
+        "before": {
+          "median_ms": 151.92,
+          "samples_ms": [
+            150.494,
+            151.177,
+            153.35,
+            151.92,
+            154.346
+          ]
+        },
+        "after": {
+          "median_ms": 53.291,
+          "samples_ms": [
+            53.291,
+            54.167,
+            52.409,
+            54.247,
+            51.907
+          ]
+        }
+      },
+      {
+        "case": "unsupported-seating-original-preparation",
+        "preparation_sha256": "df11783d0e25016bae11b957c1b31763d1b7d0f835720a69ab4e100924de262c",
+        "exact_preparation_and_result_match": true,
+        "before": {
+          "median_ms": 146.917,
+          "samples_ms": [
+            145.597,
+            144.238,
+            146.917,
+            148.78,
+            148.535
+          ]
+        },
+        "after": {
+          "median_ms": 50.554,
+          "samples_ms": [
+            49.885,
+            50.804,
+            50.554,
+            53.172,
+            48.965
+          ]
+        }
+      },
+      {
+        "case": "unsupported-seating-shared-preparation",
+        "preparation_sha256": "67cb0fcba709725b7bf90f8b5d00b455984db176c8fd2b7e85954357778515f0",
+        "exact_preparation_and_result_match": true,
+        "before": {
+          "median_ms": 147.562,
+          "samples_ms": [
+            147.636,
+            145.359,
+            147.562,
+            148.255,
+            145.232
+          ]
+        },
+        "after": {
+          "median_ms": 50.601,
+          "samples_ms": [
+            50.601,
+            50.539,
+            53.257,
+            50.812,
+            50.214
+          ]
+        }
+      }
+    ],
+    "scope": "local full compilation and frozen response verification; not full-chat latency"
+  },
+  "tests": {
+    "selected_tests_passed": 131,
+    "ruff": "passed",
+    "git_diff_check": "passed"
+  },
+  "harness_setup_failure": {
+    "run": "output/private-audits/release-chat-compiled-20260915-01",
+    "cause": "Operator supplied turn_id instead of required id; parser raised KeyError before provider entry. Corrected operator input in a derived continuation; original evidence retained.",
+    "physical_calls": 0,
+    "usage_rows": 658,
+    "reservation_rows": 655,
+    "cold_receipts_verified": 13
+  },
+  "whole_chat": {
+    "code_head": "062413801ae125c8924bd20105f97a4e2e16e1c7",
+    "stop_reason": "operator_stopped",
+    "completed": false,
+    "physical_calls": 11,
+    "billing_states": {
+      "known": 9,
+      "unknown": 2
+    },
+    "known_native_token_joins_verified": 9,
+    "all_captured_terminal_body_hashes_verified": true,
+    "transport_only_unknown_calls": [],
+    "inherited_rows_unchanged": true,
+    "known_repository_estimate_cny": "0.1348084999999999999",
+    "new_unknown_hold_cny": "0.430140",
+    "usage_rows": 669,
+    "reservation_rows": 666,
+    "author_requests": [
+      {
+        "capture_id": "model-input:b8c9e3fe24414947bb5dd2a904b3b68b",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 5223,
+        "prompt_tokens": 40833,
+        "billing_state": "known"
+      },
+      {
+        "capture_id": "model-input:13631b3c1fc74447af98951ccaa2ec36",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 5776,
+        "prompt_tokens": 42215,
+        "billing_state": "known"
+      }
+    ],
+    "new_deliveries": [],
+    "cold_receipt_versions": {
+      "visible-source-review-receipt.6": 6,
+      "visible-source-review-receipt.7": 1,
+      "visible-source-review-receipt.8": 6
+    },
+    "steps": [
+      {
+        "deliveries": [],
+        "errors": [],
+        "kind": "inbound",
+        "model_failures": [
+          {
+            "event_ref": "event:ModelResultRecorded:1cd239e06401b36ad39874b213dd90d7eed66a7e39ce9e645827e6354e467cdd",
+            "failure_code": "source_review_timeout",
+            "status": "main_timeout"
+          },
+          {
+            "event_ref": "event:ModelResultRecorded:ea73dbf0dd08b984be2b98cf254dcc6e665f5af83d51d605d2a668ae316313aa",
+            "failure_code": "provider_timeout",
+            "status": "main_timeout"
+          }
+        ],
+        "status": "deferred",
+        "step_id": "step-00002",
+        "terminal_outcomes": [
+          {
+            "event_ref": "event:expression-episode:completed:a7c9f9633c9b73a63aae350fa4b6f7797cbc3a9d0093817bb555f50e938020ce",
+            "outcome_ref": "expression-episode:superseded-by-newer-inbound",
+            "terminal_outcome": "unknown"
+          },
+          {
+            "event_ref": "event:interaction-appraisal:trigger:completed:8f078df328f70e4df79e2ce3a41300911e3d1c723f4cb659b6a9f5b01d61649a",
+            "outcome_ref": "interaction-appraisal:folded-into-newer-inbound",
+            "terminal_outcome": "unknown"
+          },
+          {
+            "event_ref": "event:interaction-fact:completed:d84603dc6cda9a76c5bd76497e14ec4b217618122bc27a907f98df151e7303c6",
+            "outcome_ref": "outcome:trigger:interaction-fact:905fe6a49fdbae89e359dfc04843575d1c33563a14be97b8271b8d42a0f36149:accepted:proposal:fact-observation:f1676645a265ad36dd6f68e3005c38c10b22ea371540d801c3c290038212dc28",
+            "terminal_outcome": "unknown"
+          }
+        ],
+        "turn_id": "evening-reading",
+        "user_text": "我刚放了首很慢的歌，准备翻两页书。你这会儿想聊就聊，不想说话也可以。",
+        "virtual_at": "2026-09-14T13:13:00+00:00"
+      },
+      {
+        "deliveries": [],
+        "errors": [],
+        "kind": "inbound",
+        "model_failures": [
+          {
+            "event_ref": "event:ModelResultRecorded:cea318bd774e0c40aa0e67d81f7aabc5a05dd5c6b8ad32423959fa5a7669318c",
+            "failure_code": "source_review_timeout",
+            "status": "main_timeout"
+          },
+          {
+            "event_ref": "event:ModelResultRecorded:b3f089d2533aba5c8f45e341f411af8effd47372b9ad00b917bc2d4ce47a1942",
+            "failure_code": "provider_timeout",
+            "status": "main_timeout"
+          }
+        ],
+        "status": "deferred",
+        "step_id": "step-00003",
+        "terminal_outcomes": [
+          {
+            "event_ref": "event:expression-episode:completed:60cec0bec2a57bbc286658cf5c174479d507ec8c7e47bd6a788fe22c01c39d8e",
+            "outcome_ref": "expression-episode:superseded-by-newer-inbound",
+            "terminal_outcome": "unknown"
+          },
+          {
+            "event_ref": "event:interaction-appraisal:trigger:completed:d077ca67f3e609ea2fbd3d4ebfdcb9534a66ac15753c6863fabb0ea5dde99f18",
+            "outcome_ref": "interaction-appraisal:folded-into-newer-inbound",
+            "terminal_outcome": "unknown"
+          },
+          {
+            "event_ref": "event:interaction-fact:completed:72d8a72cbf2d0b3c3203f1c0f14f4167743a5356b6be0b2a305ed75fb0422cc5",
+            "outcome_ref": "outcome:trigger:interaction-fact:5ed8e38c34e3c73e22a24ee7a201a588b50745461a2451744ea8e112caa284d4:no-change",
+            "terminal_outcome": "unknown"
+          }
+        ],
+        "turn_id": "own-topic-preference",
+        "user_text": "如果现在能随便挑一个话题，你更想聊什么？我想听听你自己的想法。",
+        "virtual_at": "2026-09-14T13:13:00+00:00"
+      }
+    ],
+    "replay_hash_matches": true,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "real_qq": false,
+    "production_database": false,
+    "qualification": "manual_only / qualification_incomplete"
+  },
+  "actual_stage_timings_ms": [
+    {
+      "turn": "evening-reading",
+      "author": 5223,
+      "meaning_pro": 4399,
+      "meaning_flash": 2328,
+      "source_cancelled": 562,
+      "world_fact_support": 876,
+      "character_fact_memory_retention": 3542
+    },
+    {
+      "turn": "own-topic-preference",
+      "author": 5776,
+      "meaning_pro_cancelled": 4581,
+      "meaning_flash": 2064,
+      "meaning_flash_structural_retry": 2170,
+      "world_fact_support": 825
+    }
+  ],
+  "observations": [
+    "Neither natural user input produced a character delivery or new protocol-11 receipt.",
+    "First author says she is also reading a book; both independent readers correctly classify this as an actual companion state. Source stage timed out, so this run establishes neither support nor a final semantic rejection.",
+    "Second author returns to prior availability/library/history topics despite an open invitation to choose a topic. The source chain does not finish; no new semantic acceptance is established.",
+    "Current input includes recent dialogue and current trigger but does not expose prior source_review_timeout/provider_timeout as typed delivery status. pending_outbound resolver covers queued later Actions, not author/reviewer failure. This is a bounded context gap observation, not a proved complete cause of the role response.",
+    "Performance comparisons verify eight full frozen preparations and response results are exactly unchanged, including original and shared-string variants. Local speed is not end-to-end latency qualification."
+  ],
+  "continuation": {
+    "runtime_and_billing": "output/private-audits/release-chat-compiled-20260915-02/run",
+    "usage_rows": 669,
+    "reservation_rows": 666,
+    "logical_at": "2026-09-14T13:13:00+00:00",
+    "old_unknown_holds": "preserved",
+    "ordinary_turn_seconds": 12,
+    "test_spend_cap_cny": null,
+    "monthly_product_target_cny": 100
+  },
+  "next_work": "Reduce author/meaning critical-path wire output overhead without changing normalized character decisions or source interpretation; profile before-provider work if material. Add source-bound failed-delivery awareness through the context owner after verifying its event/receipt joins, rather than assigning motives in a prompt.",
+  "qualification": "manual_only / qualification_incomplete"
+}
