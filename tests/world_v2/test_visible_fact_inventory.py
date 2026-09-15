@@ -81,3 +81,30 @@ def test_empty_inventory_is_not_a_semantic_qualification_or_an_eraser():
     second['decisions'][0]['non_factual_reading'] = '  '
     with pytest.raises(ValueError):
         preparation().inspect_response(json.dumps(second))
+
+
+def test_typed_single_inventory_preserves_current_gratitude_and_past_event_separately():
+    prep = prepare_candidate_meaning(beats=('谢谢你上次陪我等车。',), compact=True,
+        explicit_questions=True, question_conditions=True, beat_conditions=True,
+        require_complete_reading=True, complete_reading_version='15')
+    verify_candidate_meaning_preparation(prep)
+    value = {'contract': 'visible-candidate-meaning.15', 'decisions': [{
+        'beat_index': 0, 'reading_complete': True, 'unresolved_details': [], 'hypothetical_or_unknowns': [],
+        'meanings': [
+            {'proposition': '角色当前感谢用户', 'mode': 'current_private_expression', 'subject_role': 'companion'},
+            {'proposition': '用户上次陪角色等车', 'mode': 'actual_event_or_state', 'subject_role': 'counterpart'},
+        ],
+    }]}
+    raw = json.dumps(value)
+    inspected = prep.inspect_response(raw)
+    assert len(inspected['facts']) == len(inspected['private_meanings']) == 1
+    assert inspected['facts'][0]['fact_id'] == 'b0.p0.f1'
+    assert inspected['private_meanings'][0]['fact_id'] == 'b0.p0.f0'
+    probe = prepare_independent_meanings_sources(
+        meanings=(IndependentMeaning(prep, raw), IndependentMeaning(prep, raw)),
+        sources=_sources(), shared_strings=True, content_fields_only=True,
+    )
+    assert len(json.loads(probe.payload_json)['facts']) == 2
+    del value['decisions'][0]['hypothetical_or_unknowns']
+    correction = prepare_meaning_reselection(meaning=prep, rejected_raw=json.dumps(value))
+    assert correction.inspect_response(raw)['facts'] == inspected['facts']
