@@ -1,0 +1,130 @@
+{
+  "contract": "prehistory-field-authority-validation.1",
+  "code_head": "9d3df9def8475107c4c4499b0001ea6214acd8dd",
+  "previous_goal_turn_classification": "progress",
+  "implementation": "Explicit review15 uses frozen meaning11 and retained narrative field authority; old protocol compilers and defaults preserved.",
+  "isolated_source_probe": {
+    "physical_calls": 2,
+    "known_repository_estimate_cny": "0.0291687",
+    "new_unknown_hold_cny": "0",
+    "results": [
+      {
+        "model": "deepseek-v4-pro",
+        "status": "inspected",
+        "expected_support": [
+          true,
+          false,
+          false,
+          false,
+          true,
+          false
+        ],
+        "actual_support": [
+          true,
+          false,
+          false,
+          false,
+          true,
+          false
+        ],
+        "matches_expected": true,
+        "elapsed_ms": 3641
+      },
+      {
+        "model": "deepseek-v4-flash",
+        "status": "inspected",
+        "expected_support": [
+          true,
+          false,
+          false,
+          false,
+          true,
+          false
+        ],
+        "actual_support": [
+          true,
+          false,
+          false,
+          false,
+          true,
+          false
+        ],
+        "matches_expected": true,
+        "elapsed_ms": 2116
+      }
+    ],
+    "scope": "Source-only diagnostic over one actual retained recall card. Meanings are manually authored fixtures, not model interpretation or character output. Host wrapper proof restored from exact document bindings and independently matched committed event hashes. Model-facing card equals original capture material62. No receipt or Action authority."
+  },
+  "actual_dialogue": {
+    "operator_turns": 1,
+    "author_attempts": 2,
+    "delivered_messages": 0,
+    "status": "deferred after source rejection and failed same-role correction",
+    "memory_retrieved_and_used": true,
+    "past_father_action_source_supported_in_correction_by_both_readers": true,
+    "support_lanes": [
+      "active_memory_candidates",
+      "recalled_prehistory"
+    ],
+    "rejected_additions": [
+      "father disliked the bag for being thin",
+      "past opinion of the father being unnecessary",
+      "carrying the bag to Shanghai",
+      "bag stayed unwrinkled",
+      "kept the bag afterward"
+    ],
+    "correction_received_original_rejected_expression": true,
+    "new_visible_receipts": 0,
+    "physical_calls": 9,
+    "known_repository_estimate_cny": "0.2682030999999999935",
+    "private_interior_followup": "Correction inner_state_summary mentions returning from a walk. Its original life/plan/result authority still needs inspection; the prehistory card does not establish it."
+  },
+  "regression": {
+    "final_related_group": "122 passed: independent runtime, witness, meaning/source and new prehistory tests",
+    "core_recall_and_prehistory_group": "21 passed; overlaps new prehistory checks",
+    "new_version_binding_subset": "6 passed; overlaps final related group",
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "cold_receipts": {
+      "visible-source-review-receipt.6": 6,
+      "visible-source-review-receipt.7": 1,
+      "visible-source-review-receipt.8": 6,
+      "visible-source-review-receipt.12": 3,
+      "visible-source-review-receipt.13": 2,
+      "visible-source-review-receipt.14": 2
+    },
+    "replay_hash_matches": true
+  },
+  "billing": {
+    "new_physical_calls": 11,
+    "all_new_calls_known": true,
+    "known_repository_estimate_cny": "0.2973718",
+    "new_unknown_hold_cny": "0",
+    "old_unknown_holds_inherited": true,
+    "usage_rows": 1017,
+    "reservation_rows": 1014,
+    "all_request_and_terminal_body_hashes_and_native_tokens_verified": true,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "monthly_cost_qualified": false
+  },
+  "continuation": {
+    "runtime_and_billing": "output/private-audits/release-chat-prehistory-field-review-20260915-01/run",
+    "operator_elapsed_minutes": 825,
+    "all_trials_closed": true,
+    "goal_status": "active",
+    "next": "Diagnose unsupported autobiographical embellishment and failed same-role correction against actual source scope, including historical self-opinion and private interior origins; no template reply or automatic role silence."
+  },
+  "qualification": "manual_only / qualification_incomplete",
+  "real_qq": false,
+  "production_database_modified": false,
+  "deployed": false,
+  "private_evidence": {
+    "output/private-audits/release-prehistory-field-review-20260915-01/finished.json": "2c37435dbea00cada1aa092c5023e7bb05a809ac47418391785a8d5b9254891e",
+    "output/private-audits/release-prehistory-field-review-20260915-01/expectations.json": "42b2d388464c79caa14ff23f7f2c0d8b07abfe5b1371c8d27e2a6be9ff845c73",
+    "output/private-audits/release-prehistory-field-review-20260915-01/cold-verification.json": "279b90b9d071bb45d96fa3d4c67dcd641730edee9cb321903695aea478038c40",
+    "output/private-audits/release-chat-prehistory-field-review-20260915-01/reconciliation.json": "9b89e87591873c5f95443f800c7f0a22cac6db29d9789465f90f2244de584215",
+    "output/private-audits/release-chat-prehistory-field-review-20260915-01/dialogue-review.json": "81fa1e5f223f2f6b954fd92d0ea43ea2343e8e8862e1a355b28a6ff110cc3590",
+    "output/private-audits/release-chat-prehistory-field-review-20260915-01/finished.json": "26de745f1ac068624d645ba472891b0b6035af009a09758ed19e7f304c003476"
+  }
+}

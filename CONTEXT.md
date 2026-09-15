@@ -66,6 +66,20 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+Explicit review15 now restricts retained prehistory direct readings to narrative
+text and permits the record's declared historical people/groups alongside the
+companion. Metadata remains context, not direct event evidence; old protocols
+and deployment defaults are preserved. Two real source-only calls passed six
+fixed cases each. A subsequent natural question retrieved the admission-envelope
+memory, and both readers' corrected father-action facts passed source review;
+the author still invented an old opinion and keeping the bag, so nothing was
+delivered. 122 related checks and 21 Core/recall checks pass with overlap; all20
+old receipts cold-verify. Latest unified runtime/billing checkpoint is trial
+release-chat-prehistory-field-review-20260915-01/run, 1017 usage/1014 reservations.
+See `docs/audits/prehistory-field-authority-validation-2026-09-15.json`. This does
+not qualify autobiographical correction, private history, long-term life or cost.
+
+
 The new memory_representation_draft module stages exact-reader-bound compression
 inputs and content-addressed unaccepted drafts in the existing life sidecar.
 Drafts have no World visibility descriptor, verified author association, or
