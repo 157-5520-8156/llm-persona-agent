@@ -66,19 +66,26 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
-Explicit review15 now restricts retained prehistory direct readings to narrative
-text and permits the record's declared historical people/groups alongside the
-companion. Metadata remains context, not direct event evidence; old protocols
-and deployment defaults are preserved. Two real source-only calls passed six
-fixed cases each. A subsequent natural question retrieved the admission-envelope
-memory, and both readers' corrected father-action facts passed source review;
-the author still invented an old opinion and keeping the bag, so nothing was
-delivered. 122 related checks and 21 Core/recall checks pass with overlap; all20
-old receipts cold-verify. Latest unified runtime/billing checkpoint is trial
-release-chat-prehistory-field-review-20260915-01/run, 1017 usage/1014 reservations.
-See `docs/audits/prehistory-field-authority-validation-2026-09-15.json`. This does
-not qualify autobiographical correction, private history, long-term life or cost.
+Explicit review15 restricts retained prehistory direct readings to narrative text
+and permits declared historical people/groups alongside the companion. The latest
+opt-in author schema ordering places evidence before Beats in actual provider
+requests and all four author responses, but two real turns still failed delivery.
+The author embellished autobiographical detail; source review also rejected an
+exact supported father action. A conversational denial was read as an external
+historical fact. Ordering alone does not qualify natural expression or correction.
 
+The actual earlier Life author received a walk-under-way result and an explicit
+activity-ended-not-intention-fulfilled boundary, but wrote a finished walk across
+its response, summary, appraisal meanings and thread reason. Response, Experience
+and Appraisal were accepted; current acceptance checks provenance, not embedded
+factual semantics. A public SQLite regression reproduces the gap (14 passed,
+2 strict xfailed); the latter are unresolved blockers, not qualification passes.
+See `docs/design/life-response-factual-acceptance-gap-2026-09-15.md`.
+Latest unified runtime/billing checkpoint is
+release-chat-evidence-order-20260915-01/run, 1037 usage/1034 reservations, closed
+and reconciled; 20 new known calls cost approximately CNY0.466526. All20 old
+receipts cold-verify, without erasing 7 known historical semantic false accepts.
+See `docs/audits/expression-evidence-order-validation-2026-09-15.json`.
 
 The new memory_representation_draft module stages exact-reader-bound compression
 inputs and content-addressed unaccepted drafts in the existing life sidecar.

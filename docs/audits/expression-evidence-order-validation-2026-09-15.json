@@ -1,0 +1,155 @@
+{
+  "contract": "expression-evidence-order-validation.1",
+  "code_head": "783ce3d98b1046be2ab41b17bebc7b06d265a476",
+  "previous_goal_turn_classification": "progress",
+  "implementation": "Opt-in evidence-first strict v3 schema ordering. Constraints unchanged; ordered wire identity bound. Deployment defaults unchanged.",
+  "actual_dialogue": {
+    "operator_turns": 2,
+    "author_attempts": 4,
+    "all_actual_author_schemas_and_outputs_put_beats_last": true,
+    "delivered_messages": 0,
+    "new_visible_receipts": 0,
+    "status": "Both turns deferred after failed same-role correction",
+    "autobiographical_additions": [
+      "father dialogue about rain",
+      "past opinion of father being unnecessary",
+      "keeping the bag afterward"
+    ],
+    "source_false_negative": {
+      "capture_id": "model-input:c08fc91a1aef42d4a7e66bc31868ab1a",
+      "fact_id": "m0:b2.p0.f2",
+      "proposition": "companion的父亲又在透明文件袋外面套了一个纸袋",
+      "actual_source_support": false,
+      "exact_narrative_and_permissions_present": [
+        "r30",
+        "r104"
+      ],
+      "scope": "Direct father-action counterexample; not a judgment that every surrounding temporal or dialogue detail is grounded"
+    },
+    "conversational_scope_counterexample": {
+      "initial": "我又没说不想聊",
+      "correction": "我又没说要跑",
+      "reader_classification": "actual_event_or_state / companion",
+      "source_support": false,
+      "scope": "A rhetoric/utterance-scope failure candidate; do not infer global absence of past speech from a partial transcript or reclassify by keywords"
+    }
+  },
+  "life_ingestion_gap": {
+    "actual_author_capture_id": "model-input:215c67697a2e49fb8b6946dab8cb8678",
+    "actual_native_body_sha256": "9d4728c45e874e57013d1739438e9871cdc29b83535d7b851eaf33bc126ecdd9",
+    "input": "Settled walk result says under way; ended activity explicitly does not prove intention fulfilled",
+    "output": "Summary, rationale, meaning candidates, thread reason and life response repeat completed walk",
+    "accepted_events": [
+      {
+        "ledger_sequence": 2368,
+        "event_type": "CharacterLifeResponseRecorded",
+        "event_id": "event:character-life-response:8bebfda4040a869da7398d9fe0e919f608057349f51bf09a71d56e469c7984c8",
+        "payload_hash": "c83bebbb4f92720c2bb9beb81d9d733ab6e8470ce0936a6e71737927c6a2bd5b"
+      },
+      {
+        "ledger_sequence": 2371,
+        "event_type": "ExperienceCommitted",
+        "event_id": "event:character-life-experience:8bebfda4040a869da7398d9fe0e919f608057349f51bf09a71d56e469c7984c8",
+        "payload_hash": "635104c5f887173776529e40fa239a528be012a1122f7dfb9b0ffe58092cbb48"
+      },
+      {
+        "ledger_sequence": 2378,
+        "event_type": "AppraisalAccepted",
+        "event_id": "event:appraisal-mutation:8030325c3d9c68e18dfc97d4a28cdc3f252527ec8cd474b5103fbba79018443c",
+        "payload_hash": "969a9414d49962fc6879a0f8a6ec9796261a2bfbbc4c92bf7eaab98456c76d42"
+      }
+    ],
+    "status": "Unfixed; source/proposal provenance is checked but embedded factual meaning is not",
+    "full_stack_reproduction": "14 passed, 2 strict xfailed in 7.96s; HTTP role mocked, SQLite/event/response/Experience acceptance real",
+    "all_historical_seating_sources_audited": false
+  },
+  "regression": {
+    "prior_final_related_group": "171 passed: schema ordering, references, inbound contracts, atomic v3, CLI",
+    "prior_author_runtime_group": "75 passed; overlaps the final group",
+    "cold_receipts": {
+      "visible-source-review-receipt.6": 6,
+      "visible-source-review-receipt.7": 1,
+      "visible-source-review-receipt.8": 6,
+      "visible-source-review-receipt.12": 3,
+      "visible-source-review-receipt.13": 2,
+      "visible-source-review-receipt.14": 2
+    },
+    "replay_hash_matches": true,
+    "known_historical_semantic_false_acceptances_retained": 7
+  },
+  "source_view_sizing": {
+    "offline_only": true,
+    "permission_filtered_card_counts": [
+      {
+        "capture_id": "model-input:c08fc91a1aef42d4a7e66bc31868ab1a",
+        "facts": 18,
+        "full_material_cards": 64,
+        "cards_with_permitted_readings": 26,
+        "unpacked_full_bytes": 209508,
+        "unpacked_permitted_card_bytes": 69483,
+        "qualification": "offline sizing only; no changed source request sent, no receipt authority"
+      },
+      {
+        "capture_id": "model-input:5790b473f2dd4f71b7b48ae9055df9e0",
+        "facts": 10,
+        "full_material_cards": 64,
+        "cards_with_permitted_readings": 49,
+        "unpacked_full_bytes": 209508,
+        "unpacked_permitted_card_bytes": 165071,
+        "qualification": "offline sizing only; no changed source request sent, no receipt authority"
+      },
+      {
+        "capture_id": "model-input:226474a4e83d460394046e4270d54ae9",
+        "facts": 6,
+        "full_material_cards": 62,
+        "cards_with_permitted_readings": 15,
+        "unpacked_full_bytes": 206787,
+        "unpacked_permitted_card_bytes": 36534,
+        "qualification": "offline sizing only; no changed source request sent, no receipt authority"
+      },
+      {
+        "capture_id": "model-input:c19c9a69cca04c0fabc161e8590b2290",
+        "facts": 6,
+        "full_material_cards": 62,
+        "cards_with_permitted_readings": 15,
+        "unpacked_full_bytes": 206787,
+        "unpacked_permitted_card_bytes": 36534,
+        "qualification": "offline sizing only; no changed source request sent, no receipt authority"
+      }
+    ],
+    "runtime_integrated": false,
+    "reason": "Deleting ineligible context may hide contradiction or correction; size reduction is not semantic qualification"
+  },
+  "billing": {
+    "physical_calls": 20,
+    "billing_states": {
+      "known": 20
+    },
+    "known_native_token_joins_verified": 20,
+    "all_captured_terminal_body_hashes_verified": true,
+    "inherited_rows_unchanged": true,
+    "known_repository_estimate_cny": "0.4665260999999999997",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 1037,
+    "reservation_rows": 1034,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100
+  },
+  "continuation": {
+    "runtime_and_billing": "output/private-audits/release-chat-evidence-order-20260915-01/run",
+    "operator_elapsed_minutes": 825,
+    "all_trials_closed": true,
+    "goal_status": "active"
+  },
+  "qualification": "manual_only / qualification_incomplete",
+  "deployed": false,
+  "real_qq": false,
+  "production_database_modified": false,
+  "private_evidence": {
+    "output/private-audits/release-chat-evidence-order-20260915-01/reconciliation.json": "88935511897f055097cb02868d81f7703b24c6c3cea13081b9d21b444c40cbdc",
+    "output/private-audits/release-chat-evidence-order-20260915-01/dialogue-review.json": "8f649ce723e449621700742701aec6db6ede6cf6efabd550b4d92c10736ab0de",
+    "output/private-audits/release-chat-evidence-order-20260915-01/life-author-origin.json": "e4aa9825c4904a85a90a602d15dd57e88d4b4b2050a9dce219b4060660871170",
+    "output/private-audits/release-chat-evidence-order-20260915-01/finished.json": "c7e44ec1372542ff1798eb356a5b70a6a5123ffff551d9cbe25aa5af8d4e4c11",
+    "output/private-audits/release-chat-evidence-order-20260915-01/source-view-sizing.json": "a7208bc489027251bb829ab7efebf2f182917222c5f41fa1df8d55bff41bbc5a"
+  }
+}
