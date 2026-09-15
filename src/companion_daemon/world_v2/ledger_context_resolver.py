@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .affect_events import AffectEpisodeOpenedPayload
 from .appraisal_events import AppraisalAcceptedPayload
+from .fact_observation_value import FactObservationValueBinding
 from .biographical_lifecycle import BiographicalLifecycleCatalog
 from .biographical_timeline_authority import (
     BiographicalTimelineConfiguredPayload,
@@ -1131,6 +1132,7 @@ def _epoch_genesis_fact_recall_item(
         source_observation_id=observation.observation_id,
         assertion_payload_ref=observation.payload_ref,
         assertion_payload_hash=observation.payload_hash,
+        accepted_value_binding=FactObservationValueBinding.from_fact_values(fact.values),
     )
 
 
@@ -1284,6 +1286,7 @@ def fact_recall_items(
                 source_observation_id=observation.observation_id,
                 assertion_payload_ref=observation.payload_ref,
                 assertion_payload_hash=observation.payload_hash,
+                accepted_value_binding=FactObservationValueBinding.from_fact_values(fact.values),
             )
         )
     return tuple(output)

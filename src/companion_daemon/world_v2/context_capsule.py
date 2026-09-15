@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .associative_recall import ASSOCIATIVE_PREFETCH_POLICY_VERSION
 from .fact_predicate_stability import fact_predicate_is_stable
+from .fact_observation_value import FactObservationValueBinding
 from .pinned_appraisal_context import PinnedAppraisalContext
 from .context_resolver import (
     ContextCompileQuery,
@@ -115,7 +116,9 @@ class FactRecallItem(_FrozenModel):
 
     The persistent Fact deliberately retains an opaque value ref/hash.  This
     read model recovers no value by inference: it exposes only the exact text
-    of the Observation which the accepted Fact assertion binds.
+    of the Observation which the accepted Fact assertion binds. An optional
+    accepted-value binding can verify a consumer-selected exact substring;
+    it does not elevate the enclosing Observation to the accepted value.
     """
 
     fact_id: str = Field(min_length=1)
@@ -137,6 +140,11 @@ class FactRecallItem(_FrozenModel):
     source_observation_id: str = Field(min_length=1)
     assertion_payload_ref: str = Field(min_length=1)
     assertion_payload_hash: str = Field(min_length=64, max_length=64)
+    # Optional for old capsules and other opaque value producers. This is a
+    # binding, not a reconstruction or semantic endorsement of the whole text.
+    accepted_value_binding: FactObservationValueBinding | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
 
     @model_validator(mode="after")
     def authority_is_distinct_and_ordered(self) -> "FactRecallItem":
@@ -1642,6 +1650,9 @@ def _slice_model_content(
                         "privacy_class",
                         "occurred_at",
                         "updated_at",
+                        "status",
+                        "valid_from",
+                        "valid_to",
                     }
                 }
         if model_content_profile == "proactive_decision" and slice_name in {

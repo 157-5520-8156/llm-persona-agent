@@ -1,0 +1,85 @@
+{
+  "baseline": "d0bcd6eb",
+  "contract": "life-source-readings.3",
+  "fixture": "Public temporary SQLite Fact acceptance and actual StructuredCharacterRoleFaculty input with a queued offline model; source view/snapshot serialized and restored. No Life write acceptance test in this artifact.",
+  "source_families": {
+    "accepted_fact_value": 1,
+    "counterpart_report": 1
+  },
+  "selected": {
+    "reading_id": "life-reading:sha256:6bf89f7c176cf3c48757c3bad44e2d4419676952594ef12943d746d6263dc9f6",
+    "quoted_value": "保留周四的约定",
+    "claim_scope": "accepted_fact",
+    "subject_ref": "user:interaction-fact",
+    "fact_context": {
+      "confidence_bp": 9000,
+      "fact_id": "fact:f1bcc07b49bf113097b741aa3d4324061d3534471d6700963171529776dcca57",
+      "occurred_at": "2026-07-15T19:00:00Z",
+      "predicate_code": "schedule.commitment",
+      "status": "active",
+      "subject_ref": "user:interaction-fact",
+      "updated_at": "2026-07-15T19:00:00Z"
+    },
+    "observation_context": "用户决定取消周五的报告，仍保留周四的约定。",
+    "write_authority": false,
+    "semantic_coverage": "not_assessed"
+  },
+  "original_observation": "用户决定取消周五的报告，仍保留周四的约定。",
+  "denied_quotes": [
+    "用户决定取消周五的报告，仍保留周四的约定。",
+    "用户决定取消周五的报告",
+    "保留周四的约定。"
+  ],
+  "cold_receipts": {
+    "visible-source-review-receipt.6": 6,
+    "visible-source-review-receipt.7": 1,
+    "visible-source-review-receipt.8": 6,
+    "visible-source-review-receipt.12": 3,
+    "visible-source-review-receipt.13": 2,
+    "visible-source-review-receipt.14": 2
+  },
+  "known_historical_semantic_false_acceptances": 7,
+  "real_provider_calls": 0,
+  "write_authority": false,
+  "semantic_coverage": "not_assessed",
+  "complete_source_coverage": false,
+  "qualification": "manual_only / qualification_incomplete",
+  "validation_contract": "life-fact-readings-validation.1",
+  "implementation_sha256": {
+    "src/companion_daemon/world_v2/fact_observation_value.py": "b98e1570ab65ae9857fcb57ed65b4035d12343f38d29426c8886d1e6d5012738",
+    "src/companion_daemon/world_v2/context_capsule.py": "273db4ac158529392a873908a47b7c0517f167129f2b8a8c94601a5ff971371f",
+    "src/companion_daemon/world_v2/ledger_context_resolver.py": "55a5614dde1a6d1039dd3feb6c0230f8af1e2b9c07397045020a6baf4aedadb5",
+    "src/companion_daemon/world_v2/character_interior/life_fact_readings.py": "9746e0d5eca0abc82bc38d09d491d41b00446a4dde6bc965624421eb29b6cd06",
+    "src/companion_daemon/world_v2/character_interior/life_source_readings.py": "2d53aae89052bef78c9657325cb6ddee960b798b725e47f072f8aeffb0f4e35a",
+    "src/companion_daemon/world_v2/character_interior/snapshot_compiler.py": "99f272b19c1eda3b1e52c220fdf353184f3665cff09cf12a2549d1c2fcaf19cb"
+  },
+  "tests": {
+    "passed": 200,
+    "strict_xfailed": 2,
+    "duration_seconds": 37.38,
+    "ruff": "passed",
+    "diff_check": "passed",
+    "scope": "Fact producer, withdrawal/replay/legacy recovery, Capsule resolver and epoch sources, Life field/source view, biography, selected/visible source compilation and existing Life factual gap. Historical Fact reader fixture does not qualify RecallDocument-to-Life adaptation.",
+    "final_targeted": {
+      "passed": 5,
+      "duration_seconds": 2.3,
+      "reason": "Rechecked the Fact reader after retaining full observation context in the returned selection."
+    }
+  },
+  "continuation": {
+    "runtime": "output/private-audits/release-chat-evidence-order-20260915-01/run",
+    "billing": "output/private-audits/release-life-candidate-reading-20260915-02/run/world.sqlite",
+    "counts": {
+      "world_v2_model_usage": 1040,
+      "world_v2_model_reservations": 1037,
+      "unknown_holds": 37
+    }
+  },
+  "limitations": [
+    "No Life semantic admission or complete candidate verification installed; two known unsupported-episode cases still strict xfail.",
+    "Legacy missing value bindings, unknown value producers and historical Fact RecallDocument adaptation do not acquire default value permission.",
+    "Exact value hash and predicate metadata do not prove candidate entailment or semantic completeness.",
+    "No new real-provider or dialogue/delivery/monthly-cost/long-term human-likeness qualification.",
+    "No production database, QQ or deployment writes."
+  ]
+}

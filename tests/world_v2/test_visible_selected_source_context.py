@@ -47,7 +47,7 @@ def _draft():
 
 
 @asynccontextmanager
-async def _sources(tmp_path, *, extra=False, policy=None, privacy="personal"):
+async def _sources(tmp_path, *, extra=False, policy=None, privacy="personal", retained_value=None):
     issuer = AcceptedLedgerBatchIssuer()
     ledger = SQLiteWorldLedger(
         path=tmp_path / "selected-visible.sqlite",
@@ -58,7 +58,7 @@ async def _sources(tmp_path, *, extra=False, policy=None, privacy="personal"):
         model = _FactModel()
         runtime = _runtime(ledger, issuer, model)
         observation = _record(ledger, 1, "用户决定取消周五的报告，仍保留周四的约定。")
-        model.results.append({**_retain(observation.text), "privacy_class": privacy})
+        model.results.append({**_retain(observation.text if retained_value is None else retained_value), "privacy_class": privacy})
         assert (await runtime.drain_one()).work_status == "accepted"
         if extra:
             for index, actor in ((2, observation.actor), (3, "user:unrelated")):
@@ -106,6 +106,7 @@ async def _sources(tmp_path, *, extra=False, policy=None, privacy="personal"):
         )
         yield SimpleNamespace(
             ledger=ledger, capsule=capsule, request=request, observation=observation, wake=wake,
+            fact_runtime=runtime, fact_model=model, compiler=compiler,
         )
     finally:
         ledger.close()

@@ -80,8 +80,11 @@ actions, intention, lifecycle, speech, subjective history and retained prehistor
 unknown types have no scalar fallback. Version 2 additionally re-derives typed
 biographical coordinates from the exact displayed parent, field/ID and logical
 time; this grants coordinate use only, never an unlisted event or activity.
-Fact predicate-value readings remain unqualified, and the directory is not
-installed as semantic admission. No real
+Version 3 retains the accepted observation-value hash and requires an exact
+consumer-selected quotation before granting predicate-bound Fact use; the whole
+Observation has no direct Fact-value permission. Current and historical scopes
+remain distinct. Historical Fact RecallDocument adaptation and semantic admission
+remain incomplete. No real
 provider calls or continuation changes. See
 `docs/design/life-source-field-readings-2026-09-16.md`.
 

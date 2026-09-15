@@ -17,8 +17,9 @@ from ..visible_subjective_source import subjective_direct_paths
 from .life_source_origin import canonical, digest
 from .life_source_view import LifeSourceView
 from .life_biographical_readings import biographical_reading
+from .life_fact_readings import fact_value_reading
 
-CONTRACT = "life-source-readings.2"
+CONTRACT = "life-source-readings.3"
 
 
 def _fields(row):
@@ -66,7 +67,8 @@ def _fields(row):
         scope = {'appraisals': 'appraisals', 'affect_episodes': 'affect'}.get(material.get('lane'))
         if scope is not None:
             return 'subjective_history', (scope,), source_subject_permissions(row=row, pointers=paths)
-    # Fact excerpts need predicate-specific support, with no catch-all grant.
+    # Fact values use the separate hash-bound quotation reader, never this
+    # scalar path's unconditional field permission.
     return None
 
 
@@ -134,6 +136,24 @@ class PreparedLifeSourceReadings:
         # Returning an exact source field never establishes candidate entailment.
         return reading
 
+    def require_fact_value(self, *, reading_id: str, quoted_value: str, claim_scope: str,
+                           subject_ref: str, view: LifeSourceView, snapshot):
+        from ..fact_observation_value import FactObservationValueBinding
+
+        checked = self.verify(view=view, snapshot=snapshot)
+        reading = next((item for item in checked.as_dict()['readings'] if item['reading_id'] == reading_id), None)
+        if (reading is None or reading['source_family'] != 'accepted_fact_value'
+            or subject_ref != reading['source_owner_ref']
+            or [claim_scope, 'source_owner'] not in reading['value_selection_permissions']):
+            raise ValueError('Life Fact selection exceeds its predicate/subject/status permission')
+        binding = FactObservationValueBinding.model_validate_json(canonical(reading['value_binding']), strict=True)
+        value = binding.select(source_excerpt=reading['value'], quoted_value=quoted_value)
+        # The candidate's semantic relation to this predicate still needs review.
+        return {'reading_id': reading_id, 'quoted_value': value, 'claim_scope': claim_scope,
+                'subject_ref': subject_ref, 'fact_context': reading['fact_context'],
+                'observation_context': reading['value'],
+                'write_authority': False, 'semantic_coverage': 'not_assessed'}
+
 
 def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedLifeSourceReadings:
     view = view.verify_snapshot(snapshot)
@@ -144,8 +164,12 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
     for source in table['source_references']:
         material = table['source_materials'][source['material_index']]['material']
         row = {**source, 'review_material': material}
-        if material.get('kind') == 'biographical_coordinate':
-            descriptor, reason = biographical_reading(row, rendered=rendered)
+        structured_reader = (
+            biographical_reading if material.get('kind') == 'biographical_coordinate' else
+            fact_value_reading if material.get('lane') == 'relevant_facts' else None
+        )
+        if structured_reader is not None:
+            descriptor, reason = structured_reader(row, rendered=rendered)
             if descriptor is None:
                 excluded.append({'source_ref_index': source['source_ref_index'], 'reason': reason})
                 continue
@@ -153,8 +177,13 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
                               material_identity=source['material_identity'],
                               source_owner_ref=source.get('support_subject_ref'))
             identity = canonical(descriptor)
-            readings.append({'reading_id': 'life-reading:sha256:' + digest(identity), **descriptor,
-                             'source_ref_indexes': [source['source_ref_index']]})
+            if identity in identities:
+                identities[identity]['source_ref_indexes'].append(source['source_ref_index'])
+                continue
+            reading = {'reading_id': 'life-reading:sha256:' + digest(identity), **descriptor,
+                       'source_ref_indexes': [source['source_ref_index']]}
+            identities[identity] = reading
+            readings.append(reading)
             continue
         specification = _fields(row)
         if specification is None:

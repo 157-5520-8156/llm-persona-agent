@@ -84,6 +84,7 @@ _AUTHORITY_VALUE_KEYS = frozenset(
         "policy_versions",
         "policy_refs",
         "resolver_proof",
+        "accepted_value_binding",
         "accepted_event_ref",
         "entity_revision",
         "authority_contract_version",

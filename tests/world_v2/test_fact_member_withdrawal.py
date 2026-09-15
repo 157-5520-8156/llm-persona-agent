@@ -54,7 +54,7 @@ def _retain(value):
     }
 
 
-def _record(ledger, index, text, *, actor=None):
+def _record(ledger, index, text, *, actor=None, logical_time=None):
     original, _ = _observation()
     observation = original.model_copy(
         update={
@@ -64,6 +64,7 @@ def _record(ledger, index, text, *, actor=None):
             "text": text,
             "payload_hash": hashlib.sha256(text.encode()).hexdigest(),
             "actor": actor or original.actor,
+            "logical_time": logical_time if logical_time is not None else original.logical_time,
         }
     )
     payload = observation.model_dump(mode="json")
