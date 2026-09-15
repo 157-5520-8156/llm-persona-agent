@@ -1,0 +1,340 @@
+{
+  "date": "2026-09-15",
+  "implementation_commit": "5aae282a2466c3f9863c6e4f9930e45d9b367614",
+  "chronology_followup_commit": "d1fc62d4",
+  "optional_capability_fix_commit": "a3d46867",
+  "qualification": "manual_only / qualification_incomplete",
+  "tests": {
+    "passed": 120,
+    "groups": [
+      {
+        "passed": 66,
+        "seconds": 12.84,
+        "scope": "life presentation, redaction, background profile, prefix identity, completed activity"
+      },
+      {
+        "passed": 44,
+        "seconds": 49.31,
+        "scope": "relationship context and independent complete review runtime"
+      },
+      {
+        "passed": 10,
+        "seconds": 5.49,
+        "scope": "native active occurrence context and world consequence agency"
+      }
+    ],
+    "ruff": "passed",
+    "diff_check": "passed",
+    "chronology_followup_real_provider_retest": false
+  },
+  "run": "output/private-audits/release-chat-life-context-20260915-01/run",
+  "logical_at": "2026-09-14T14:25:00Z",
+  "real_provider": {
+    "physical_calls": 36,
+    "billing_states": {
+      "known": 36
+    },
+    "known_native_token_joins_verified": 36,
+    "all_captured_terminal_body_hashes_verified": true,
+    "inherited_rows_unchanged": true,
+    "known_repository_estimate_cny": "1.0830186999999999456",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 779,
+    "reservation_rows": 776,
+    "cold_receipt_versions": {
+      "visible-source-review-receipt.6": 6,
+      "visible-source-review-receipt.7": 1,
+      "visible-source-review-receipt.8": 6,
+      "visible-source-review-receipt.12": 3
+    },
+    "replay_hash_matches": true
+  },
+  "model_input_and_native_event_proof": {
+    "before_settlement_author_capture_id": "model-input:b8eda3c6672a45ab9c115c860e74e0f7",
+    "after_settlement_author_capture_id": "model-input:205f4c58bb2b4d6491085d2869457e97",
+    "pending_occurrence_ref": "occurrence:life-development:aa74cfe3ee4a3b3170512cef2b6eb6169b832d0e391de3b6535aa468979e61be",
+    "pending_not_in_diary_lived_moment_or_experiences": true,
+    "old_structured_environment_readings_visible": 2,
+    "settled_world_and_bound_attempt_visible": true,
+    "native_life_chain_events": [
+      {
+        "ledger_sequence": 2352,
+        "event_id": "event:activity-lifecycle-effect:d4fac982fdadc2932c3b32ffcdb8badba79eb4dfa5119eb54189673c78b98552",
+        "event_type": "ActivityCompleted",
+        "logical_time": "2026-09-14T14:24:01Z",
+        "payload_hash": "8787ae4a4692f1dc1248fd681a44d39166c21655280298e94fb4305fc2e0c24c"
+      },
+      {
+        "ledger_sequence": 2357,
+        "event_id": "event:life-aftermath:settlement:occurrence:life-development:aa74cfe3ee4a3b3170512cef2b6eb6169b832d0e391de3b6535aa468979e61be",
+        "event_type": "WorldOccurrenceSettled",
+        "logical_time": "2026-09-14T14:24:01Z",
+        "payload_hash": "21ca47a0801e0e1609feb75ecba5b1d6d73f04d20f3e588796f8cb7d07fc373b"
+      },
+      {
+        "ledger_sequence": 2368,
+        "event_id": "event:character-life-response:8bebfda4040a869da7398d9fe0e919f608057349f51bf09a71d56e469c7984c8",
+        "event_type": "CharacterLifeResponseRecorded",
+        "logical_time": "2026-09-14T14:24:01Z",
+        "payload_hash": "c83bebbb4f92720c2bb9beb81d9d733ab6e8470ce0936a6e71737927c6a2bd5b"
+      },
+      {
+        "ledger_sequence": 2371,
+        "event_id": "event:character-life-experience:8bebfda4040a869da7398d9fe0e919f608057349f51bf09a71d56e469c7984c8",
+        "event_type": "ExperienceCommitted",
+        "logical_time": "2026-09-14T14:24:01Z",
+        "payload_hash": "635104c5f887173776529e40fa239a528be012a1122f7dfb9b0ffe58092cbb48"
+      },
+      {
+        "ledger_sequence": 2390,
+        "event_id": "event:day-open-life-intent:0e0beb6fd12d20fc2669c092ec633af78e576713c598074edb6ac7bc8e20c59c",
+        "event_type": "ActivityPlanned",
+        "logical_time": "2026-09-14T14:24:02Z",
+        "payload_hash": "0d913420169ed314e1752a496370505f351b9acdb80769d977de9ed0755f5e47"
+      },
+      {
+        "ledger_sequence": 2391,
+        "event_id": "event:experience-memory:decision:1d4f19db575fbb612583ab82f1bb03856059b7f72d06ae437f7b24a704d6ab47",
+        "event_type": "ExperienceMemoryDecisionRecorded",
+        "logical_time": "2026-09-14T14:24:02Z",
+        "payload_hash": "c21b686c64462f25271c909bf0eef40221cebf1fbdcae15b9c893c6084fca2d1"
+      },
+      {
+        "ledger_sequence": 2397,
+        "event_id": "event:memory:accepted:498a6ee35dfa9436b47a8636deee7a2a3ac819378c582031e5feaf5e03e895ea",
+        "event_type": "MemoryCandidateAccepted",
+        "logical_time": "2026-09-14T14:24:02Z",
+        "payload_hash": "99d22a37ef4af53220692f806c1218b6f466f971130fd71761edd86de4bbefed"
+      }
+    ],
+    "native_payload_hashes_verified": true,
+    "later_dialogue_correction_rejected_propositions": [
+      [
+        1,
+        0,
+        "b1.p0.f0",
+        "s",
+        "companion刚从外面走回来"
+      ],
+      [
+        1,
+        1,
+        "b1.p0.f0",
+        "s",
+        "companion刚从外面走回来"
+      ]
+    ]
+  },
+  "new_character_deliveries": 0,
+  "new_review_receipts": 0,
+  "system_notice_deliveries": [
+    {
+      "kind": "text",
+      "message_id": "journey-message-51",
+      "text": "【系统提示】回复服务暂时没有完成这次响应，请稍后再试。这不是角色选择了沉默。",
+      "virtual_at": "2026-09-14T13:47:30.050000+00:00"
+    }
+  ],
+  "chat_results": [
+    {
+      "turn_id": "life-context-after-settlement",
+      "status": "deferred",
+      "failures": [
+        {
+          "event_ref": "event:ModelResultRecorded:6279a586c54cbb4c188ee482a6aa45f8e217c5d555719186d230e34fa7a6f5fa",
+          "failure_code": "paired_expression_reselection_invalid",
+          "status": "main_exception"
+        },
+        {
+          "event_ref": "event:ModelResultRecorded:19bc620ca350889f5b059e3336334f74264a679e76284fa37e1300609798503e",
+          "failure_code": "primary_invalid",
+          "status": "main_invalid"
+        },
+        {
+          "event_ref": "event:ModelResultRecorded:b842e4b1d128a7ba694b7469d5e8f35f76b2f7f8cde1263d110b15cbcf65ed70",
+          "failure_code": "corrective_invalid",
+          "status": "main_invalid"
+        }
+      ]
+    },
+    {
+      "turn_id": "life-context-next-choice",
+      "status": "deferred",
+      "failures": [
+        {
+          "event_ref": "event:ModelResultRecorded:87e346ec81b842f7a4c8331701eca954a76abb060e18559c13e78aaa8a3842a5",
+          "failure_code": "source_review_exception",
+          "status": "main_exception"
+        },
+        {
+          "event_ref": "event:ModelResultRecorded:0bfe0d53783ec1781a2285f426f92f06cbd8927f8b999fb537e7c11b5707a4da",
+          "failure_code": "primary_invalid",
+          "status": "main_invalid"
+        }
+      ]
+    }
+  ],
+  "remaining_findings": [
+    "At 14:25 the initial and corrective author still claimed returning from the walk; no return was recorded. The initial source feedback rejected exactly that proposition in both readings.",
+    "The next-choice author repeated return and increased light mist to heavy fog. Source response claimed support; the runtime ended with source_review_exception / visible_independent_review.ValueError. Its provider JSON validates against the supplied schema; the exact internal failure remains unresolved.",
+    "The selected action evidence catalog incorrectly advertises execution IDs, version, hash and scope metadata as external-fact support. These are provenance, not proof of a return. Preserve this semantic counterexample even though no candidate was delivered.",
+    "The new character life response includes a past morning library seating description whose source has not been qualified in this audit. Native memory acceptance does not prove every embedded past claim.",
+    "The diary followup preserves individual source times. This was locally verified after the paid run; it has no new paid behavior evidence."
+  ],
+  "metadata_catalog_counterexample": [
+    {
+      "reading_id": "r3",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/epistemic_scope",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": "settled_result_of_bound_attempt"
+    },
+    {
+      "reading_id": "r4",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/execution_binding/activity_id",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": "activity:day-open-life-intent:0ee006aa76407214a7480c377530182754b7483afd9de2d558c8d77cd6419d73"
+    },
+    {
+      "reading_id": "r5",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/execution_binding/actor_ref",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": "agent:companion"
+    },
+    {
+      "reading_id": "r6",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/execution_binding/plan_entity_revision",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": 2
+    },
+    {
+      "reading_id": "r7",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/execution_binding/plan_id",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": "plan:day-open-life-intent:0ee006aa76407214a7480c377530182754b7483afd9de2d558c8d77cd6419d73"
+    },
+    {
+      "reading_id": "r8",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/execution_binding/privacy_class",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": "private"
+    },
+    {
+      "reading_id": "r9",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/execution_binding/source_event_ref",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": "event:activity-lifecycle-effect:4a958f99acac72616084b02eb1e7b3b3faaeba168709e9740a2782cbbc67ac96"
+    },
+    {
+      "reading_id": "r10",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/execution_binding/source_event_type",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": "ActivityStarted"
+    },
+    {
+      "reading_id": "r11",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/execution_binding/source_kind",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": "activity_execution"
+    },
+    {
+      "reading_id": "r12",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/execution_binding/source_payload_hash",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": "0d4665bd710c372209ec65a148b4457533dfa85bbbd075a71bfd7ef8276ce8a3"
+    },
+    {
+      "reading_id": "r13",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/execution_binding/source_world_revision",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": 993
+    },
+    {
+      "reading_id": "r14",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/text",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": "The evening walk along the campus paths is under way; the route out from the library side is open and the outdoor air is cool and still."
+    },
+    {
+      "reading_id": "r15",
+      "field": "/item/value/content/world_consequence/authorized_attempt_result/truncated",
+      "allowed_claims": [
+        [
+          "external_fact",
+          "companion"
+        ]
+      ],
+      "text": false
+    }
+  ],
+  "product_monthly_target_cny": 100,
+  "test_spend_cap_cny": null,
+  "real_qq": false,
+  "production_database": false,
+  "artifacts_sha256": {
+    "output/private-audits/release-chat-life-context-20260915-01/reconciliation.json": "8135ea66279a9d5209d6ef1c8be021cbfeb2034b98920c9873c257ae98a1beae",
+    "output/private-audits/release-chat-life-context-20260915-01/life-context-verification.json": "574908cb10cf5f7d4a06037a5a1c82bd61ece5b0001e7836b6d76a5cded4c89f",
+    "output/private-audits/release-chat-life-context-20260915-01/return-claim-selected-sources.json": "52a41b7079b3ef74240f89bd2109bba13411b5a1ab79f7799ae474b6eecf1c00",
+    "output/private-audits/release-chat-life-context-20260915-01/source-response-schema-diagnostic.json": "592188b201a2f62067fd29d932b752015f0b23232f79656b32f27b4bc9f084fd",
+    "output/private-audits/release-chat-life-context-20260915-01/run/manifest.json": "b3e2cc977c49162eb2a1e5abe49b529ad8e6591667d6cbf35a9d832a0941a6c4"
+  }
+}
