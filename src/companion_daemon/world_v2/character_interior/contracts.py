@@ -14,6 +14,7 @@ from datetime import datetime
 from types import MappingProxyType
 
 from .appraisal_model_view import compact_appraisals_for_model_view
+from .life_source_origin import LifeSourceOrigin
 from .affect_model_view import compact_affect_for_model_view
 from .life_context_presentation import LIFE_CONTEXT_COMPILER_VERSION, regroup_scoped_week_diary
 from typing import Annotated, Any, Literal, Mapping
@@ -1327,6 +1328,11 @@ class InnerLifeSnapshot(FrozenModel):
     # Absent only on historical snapshots. New compilers pin the complete
     # habit configuration separately from calendar and episode materials.
     routine_background: _RoutineBackground | None = None
+    # Private durable source selection; never rendered in model_view. Older
+    # snapshots omit this field and retain their historical byte/hash identity.
+    life_source_origin: LifeSourceOrigin | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     # Live-only trusted retrieval capability carried between the core and its
     # private Faculty. It is identity-bound but deliberately excluded from the
     # provider view; the Faculty expands its verified audit into typed Context
@@ -1385,10 +1391,14 @@ class InnerLifeSnapshot(FrozenModel):
         }
         if self.routine_background is not None:
             identity["routine_background"] = self.routine_background.model_dump(mode="json")
+        if self.life_source_origin is not None:
+            identity["life_source_origin_sha256"] = self.life_source_origin.capsule_sha256
         return identity
 
     @model_validator(mode="after")
     def identity_and_inventory_are_complete(self) -> "InnerLifeSnapshot":
+        if self.life_source_origin is not None:
+            self.life_source_origin.verify_snapshot(self)
         names = tuple(item.name for item in self.facet_views)
         if names != FACET_NAMES:
             raise ValueError("character interior snapshot must contain all eight ordered facets")
@@ -1486,6 +1496,7 @@ class InnerLifeSnapshot(FrozenModel):
         recall_trace_json: str | None = None,
         prefetch_trace_json: str | None = None,
         routine_background: _RoutineBackground | None = None,
+        life_source_origin: LifeSourceOrigin | None = None,
     ) -> "InnerLifeSnapshot":
         materials_json = _canonical_json(dict(materials))
         common: dict[str, object] = {
@@ -1501,6 +1512,7 @@ class InnerLifeSnapshot(FrozenModel):
             "materials_json": materials_json,
             "materials_hash": _digest(dict(materials)),
             "routine_background": routine_background,
+            "life_source_origin": life_source_origin,
             "recall_trace_json": recall_trace_json,
             "prefetch_trace_json": prefetch_trace_json,
             "source_refs": source_refs,

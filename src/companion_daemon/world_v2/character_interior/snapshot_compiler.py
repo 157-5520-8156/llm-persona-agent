@@ -40,6 +40,7 @@ from ..present_prompt import (
     PRESENT_WEEK_DIARY_LINES_PER_DAY,
 )
 from ..schemas import ProjectionCursor
+from .life_source_origin import LifeSourceOrigin
 from .contracts import (
     FACET_NAMES,
     InnerLifeSnapshot,
@@ -1280,6 +1281,7 @@ def compile_inner_life_snapshot(
     context: Mapping[str, object],
     *,
     source_envelopes: Mapping[str, Mapping[str, object]] | None = None,
+    life_source_origin: LifeSourceOrigin | None = None,
 ) -> InnerLifeSnapshot:
     """Compile the canonical typed snapshot from verified Capsule material."""
 
@@ -1773,6 +1775,7 @@ def compile_inner_life_snapshot(
         situation=situation, continuity=continuity, facet_views=tuple(facets),
         materials=materials, source_refs=source_refs, source_inventory=tuple(inventory),
         routine_background=capture_routine_background() if logical_time is not None else None,
+        life_source_origin=life_source_origin,
         viewer_scope=_binding(context, "consumer_scope", "viewer_scope_unavailable"),
         privacy_scope=_binding(context, "viewer_privacy_ceiling", "viewer_privacy_scope_unavailable"),
         capability_scope=capability_scope,

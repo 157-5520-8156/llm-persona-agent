@@ -510,6 +510,10 @@ def _prepared_turn_json(
         _validated_initial_snapshot,
     )
 
+    if snapshot.life_source_origin is not None and result.life_source_view is None:
+        raise _InteriorTechnicalError("life_source_preparation_missing", snapshot=snapshot)
+    if result.life_source_view is not None:
+        result.life_source_view.verify_snapshot(snapshot)
     payload = {
         "contract": "character-interior-prepared-turn.1",
         "result": result.model_dump(mode="json"),
@@ -594,6 +598,10 @@ def _restore_prepared_turn(
         snapshot = InnerLifeSnapshot.model_validate_json(
             json.dumps(payload["snapshot"], ensure_ascii=False)
         )
+        if snapshot.life_source_origin is not None and result.life_source_view is None:
+            raise ValueError("prepared Life result lost its source preparation")
+        if result.life_source_view is not None:
+            result.life_source_view.verify_snapshot(snapshot)
         lineage = _PrivateSelfLineage.model_validate_json(
             json.dumps(payload["private_self_lineage"], ensure_ascii=False)
         )
@@ -2200,6 +2208,7 @@ class CharacterInterior:
             cursor=snapshot.cursor,
             logical_time=snapshot.logical_time,
             routine_background=snapshot.routine_background,
+            life_source_origin=snapshot.life_source_origin,
             situation=snapshot.situation,
             continuity=snapshot.continuity,
             facet_views=tuple(facets),
@@ -2287,6 +2296,7 @@ class CharacterInterior:
             cursor=snapshot.cursor,
             logical_time=snapshot.logical_time,
             routine_background=snapshot.routine_background,
+            life_source_origin=snapshot.life_source_origin,
             situation=snapshot.situation,
             continuity=snapshot.continuity,
             facet_views=tuple(facets),
@@ -2321,6 +2331,7 @@ class CharacterInterior:
             cursor=snapshot.cursor,
             logical_time=snapshot.logical_time,
             routine_background=snapshot.routine_background,
+            life_source_origin=snapshot.life_source_origin,
             situation=snapshot.situation,
             continuity=snapshot.continuity,
             facet_views=snapshot.facet_views,
@@ -2470,6 +2481,10 @@ class CharacterInterior:
                             getattr(faculty, "requires_author_lineage", False)
                         ),
                     )
+                    if current_request.snapshot.life_source_origin is not None and validated.life_source_view is None:
+                        raise _InteriorTechnicalError("life_source_preparation_missing", snapshot=current_request.snapshot)
+                    if validated.life_source_view is not None:
+                        validated.life_source_view.verify_request(current_request)
                     await self._record_prefetch_presentation(
                         faculty=faculty,
                         request=current_request,

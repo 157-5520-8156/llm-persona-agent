@@ -18,6 +18,7 @@ from .contracts import (
     _InteriorCapabilityManifest,
 )
 from .rejected_role_result import RejectedRoleResult
+from .life_source_view import LifeSourceView
 
 
 class _RoleResultContractError(ValueError):
@@ -204,8 +205,17 @@ class _InteriorRoleResult(FrozenModel):
     author_lineage: _InteriorAuthorLineage | None = None
     author_usage_json: str | None = Field(default=None, max_length=8_192)
 
+    life_source_view: LifeSourceView | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+
     @model_validator(mode="after")
     def decision_payload_matches_status(self) -> "_InteriorRoleResult":
+        if self.life_source_view is not None and (
+            self.author_lineage is None
+            or self.life_source_view.provider_request_hash != self.author_lineage.request_hash
+        ):
+            raise ValueError("Life source view differs from its actual author invocation")
         if self.status == "decision" and self.decision is None:
             raise ValueError("role decision requires a decision payload")
         if self.status != "decision" and self.decision is not None:

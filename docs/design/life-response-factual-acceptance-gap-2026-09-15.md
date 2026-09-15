@@ -85,6 +85,15 @@ ModelInput 和当前参与者，四组新旧输出逐字一致；生活结算能
 然后再接全候选事实核验、同角色纠正与持久化接受。
 见[共享来源编译](shared-selected-source-compilation-2026-09-15.md)。
 
+## 原始来源和实际作者视图已保留
+
+`LifeSourceOrigin` 与 `LifeSourceView` 已连接原始投影、结构化作者和配置后的持久化回合
+存储：完整 Capsule 随快照身份保留，实际 messages/工具/参数与来源表绑定，存储和恢复
+会重验。265 项相关检查通过，两个原始反例仍 strict xfail；没有真实模型调用。
+这不使未展示的目录内容、附加材料或来源字段自动获得支持权限，也不是语义接受凭据。
+下一步转向实际字段来源权限与完整候选事实核验。
+见[实际输入绑定](life-source-view-binding-2026-09-16.md)。
+
 ## 下一步实现边界
 
 1. 在同一角色候选进入可消费的生活反应、Appraisal、Thread、Experience 前执行事实核验。

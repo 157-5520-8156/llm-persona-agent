@@ -73,6 +73,7 @@ from ..silence_appraisal_trigger import SilenceAppraisalTriggerOpener
 from ..schemas import LedgerProjection, ProjectionCursor
 from .authority import _DeferredInteriorAuthority
 from .core import CharacterInterior
+from .life_source_origin import LifeSourceOrigin
 from .contracts import (
     InnerLifeSnapshot,
     InteriorOpportunity,
@@ -241,6 +242,10 @@ class _LedgerCapsuleInteriorProjection:
         snapshot = compile_inner_life_snapshot(
             context,
             source_envelopes=source_envelopes,
+            life_source_origin=(
+                LifeSourceOrigin.from_capsule(capsule)
+                if subject.purpose == "world_stimulus_appraisal" else None
+            ),
         )
         if snapshot.logical_time != subject.logical_time:
             raise ValueError("character interior Capsule logical time is stale")
@@ -450,6 +455,7 @@ class _LedgerCapsuleInteriorProjection:
             cursor=snapshot.cursor,
             logical_time=snapshot.logical_time,
             routine_background=snapshot.routine_background,
+            life_source_origin=snapshot.life_source_origin,
             situation=snapshot.situation,
             continuity=continuity,
             facet_views=tuple(facets),
@@ -527,6 +533,7 @@ class _LedgerCapsuleInteriorProjection:
             cursor=snapshot.cursor,
             logical_time=snapshot.logical_time,
             routine_background=snapshot.routine_background,
+            life_source_origin=snapshot.life_source_origin,
             situation=snapshot.situation,
             continuity=snapshot.continuity,
             facet_views=snapshot.facet_views,

@@ -1,0 +1,89 @@
+{
+  "baseline": "749539b3",
+  "fixture": {
+    "transport": "httpx.MockTransport",
+    "provider_calls": 1,
+    "prepared_utf8_bytes": 165641,
+    "origin_utf8_bytes": 76583,
+    "view_utf8_bytes": 60258,
+    "cold_restore_ms": 16.761,
+    "unmatched_visible_source_refs": [],
+    "actual_messages_equal": true,
+    "write_authority": false
+  },
+  "cold_receipts": {
+    "visible-source-review-receipt.6": 6,
+    "visible-source-review-receipt.7": 1,
+    "visible-source-review-receipt.8": 6,
+    "visible-source-review-receipt.12": 3,
+    "visible-source-review-receipt.13": 2,
+    "visible-source-review-receipt.14": 2
+  },
+  "real_cursor_origin": {
+    "cursor": 2957,
+    "capsule_utf8_bytes": 316805,
+    "qualification": "Current-cursor archive sizing only, not the original Life author view or a new model call."
+  },
+  "billing": {
+    "world_v2_model_usage": 1040,
+    "world_v2_model_reservations": 1037,
+    "unknown_holds": 37
+  },
+  "real_provider_calls": 0,
+  "known_historical_semantic_false_acceptances": 7,
+  "qualification": "manual_only / qualification_incomplete",
+  "contract": "life-source-view-validation.1",
+  "implementation_sha256": {
+    "life_source_origin.py": "daff8f7d9a8a79c434fdb72f826b4a7df0ef26f5a86ae522b2af9bffd02d9c6b",
+    "life_source_view.py": "0d296c1a0c8df3608970619606ec2c0f8f177afbb5d986739d76f667bc9ff48b",
+    "contracts.py": "302daddf93aaa3c19ef987366abb625ef810b4b10555bab5cc23ffc165412d92",
+    "snapshot_compiler.py": "b097b7e92ade9b3432217b6a6c9fa9517091633b4adee565d5115587f4c26c54",
+    "production.py": "f67caaa56e4d47efcc1078bdf4d9f707af25571de6ec501bbc9f2791bd3533a1",
+    "core.py": "cf56a95fcef509296ea4cd925fa3cf3ad1f3662f71d0fa7e42fab4f1d5eea122",
+    "ports.py": "37ad9f381d1c1f6a49754e5f3becb6a8172bad5f8f5d3922e145091abd941eec",
+    "structured_role.py": "50853408d609bb83521c650d5bf34b9044d2a5a8304ddcd91dbf533b472bf70e"
+  },
+  "tests": {
+    "passed": 265,
+    "strict_xfailed": 2,
+    "xfail_scope": "Unverified personal episodes still accepted into LifeResponse/Experience; not qualified passes.",
+    "targeted_after_origin_contract_guard": 12,
+    "ruff": "passed",
+    "diff_check": "passed",
+    "files": [
+      "test_life_source_view.py",
+      "test_world_stimulus_life_response.py",
+      "test_life_response_factual_acceptance_gap.py",
+      "test_rejected_life_role_result.py",
+      "test_character_interior.py",
+      "test_character_interior_structured_role.py",
+      "test_character_interior_turn_store.py",
+      "test_character_interior_private_self_lineage.py",
+      "test_character_interior_production_invariants.py",
+      "test_character_interior_single_author_composition.py",
+      "test_background_context_profile.py",
+      "test_selected_source_composer.py"
+    ]
+  },
+  "continuation": {
+    "runtime": "output/private-audits/release-chat-evidence-order-20260915-01/run",
+    "billing": "output/private-audits/release-life-candidate-reading-20260915-02/run/world.sqlite"
+  },
+  "limitations": [
+    "Source catalogue is not purpose/field permission qualification. Unmatched source refs being empty proves no semantic coverage.",
+    "Relationship/aspiration/capability additions and later Recall/prefetch still need qualified source readers.",
+    "Life semantic review/admission is not installed; real reader false negatives and false positives remain.",
+    "Durable retention applies only when a turn store is configured. Deployment upgrade of pending production turns is untested.",
+    "No real-provider semantic, long-term human-likeness, monthly-cost or latency qualification in this step."
+  ],
+  "boundaries": {
+    "new_real_provider_calls": 0,
+    "deployment": false,
+    "production_database_write": false,
+    "real_qq": false,
+    "semantic_author_changed": false,
+    "source_archive_added_to_model_material": false,
+    "monthly_cost_target_cny": 100,
+    "monthly_cost_qualified": false
+  }
+}

@@ -1445,6 +1445,18 @@ class StructuredCharacterRoleFaculty:
             tool_contract=tool_contract,
         )
         identity_extras = self._provider_identity_extras(tool_contract=tool_contract)
+        life_source_view = None
+        if request.purpose == "world_stimulus_appraisal" and request.snapshot.life_source_origin is not None:
+            from .life_source_view import prepare_life_source_view
+            life_source_view = prepare_life_source_view(
+                request=request, messages=messages, provider_request_hash=request_hash,
+                provider_controls={
+                    "temperature": self._temperature,
+                    "tools": list(tool_contract.provider_tools) if tool_contract is not None else None,
+                    "tool_choice": transport.tool_choice if transport is not None else None,
+                    "identity_extras": identity_extras,
+                },
+            )
         with model_call_scope(
             request.purpose,
             actor=request.subject_ref,
@@ -1582,6 +1594,7 @@ class StructuredCharacterRoleFaculty:
                 contract=contract,
             ),
             author_lineage=lineage,
+            life_source_view=life_source_view,
         )
         return normalized.model_dump(mode="python")
 
