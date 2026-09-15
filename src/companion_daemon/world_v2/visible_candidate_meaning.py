@@ -13,6 +13,7 @@ from pydantic import Field, model_validator
 
 from .character_interior.inbound_tool_contract import _provider_schema, deepseek_strict_tool_schema
 from .schema_core import FrozenModel
+from .visible_fact_inventory import CONTRACT as FACT_INVENTORY_CONTRACT, InventoryBeat, InventoryResponse, inventory_request
 from .visible_source_witness_experiment import _json, _unique
 
 LEGACY_CONTRACT = "visible-candidate-meaning.1"
@@ -249,7 +250,7 @@ class PreparedCandidateMeaning:
 
     def inspect_response(self, raw: str) -> dict:
         packet = json.loads(self.payload_json)
-        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT}:
+        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT, FACT_INVENTORY_CONTRACT}:
             raise ValueError("unsupported candidate meaning contract")
         if len(raw.encode()) > 131072:
             raise ValueError("candidate meaning response exceeds bound")
@@ -267,6 +268,7 @@ class PreparedCandidateMeaning:
             PRESUPPOSITION_CONTRACT: PresuppositionResponse,
             SCOPED_PRESUPPOSITION_CONTRACT: ScopedPresuppositionResponse,
             UNIFIED_PRESUPPOSITION_CONTRACT: UnifiedPresuppositionResponse,
+            FACT_INVENTORY_CONTRACT: InventoryResponse,
         }[packet["contract"]]
         response = response_type.model_validate_json(_json(value), strict=True)
         if [d.beat_index for d in response.decisions] != list(range(len(packet["beats"]))):
@@ -274,6 +276,14 @@ class PreparedCandidateMeaning:
         facts = []
         private_meanings = []
         for beat, original in zip(response.decisions, packet["beats"], strict=True):
+            if isinstance(beat, InventoryBeat):
+                for fact_index, fact in enumerate(beat.facts):
+                    facts.append({
+                        "fact_id": f"b{beat.beat_index}.p0.f{fact_index}",
+                        "beat_index": beat.beat_index, "part_index": 0,
+                        "original_text": original, **fact.model_dump(mode="json"),
+                    })
+                continue
             if isinstance(beat, (CompactMeaningBeat, QuestionMeaningBeat)):
                 # The input Beat index owns its original text. The model does
                 # not recopy it or generate fragment offsets. Every Beat must
@@ -346,14 +356,21 @@ def prepare_candidate_meaning(
         raise ValueError("Beat conditions require the conditional meaning transport")
     if require_complete_reading and not beat_conditions:
         raise ValueError("complete reading requires the Beat condition transport")
-    if type(complete_reading_version) is not str or complete_reading_version not in {"7", "8", "9", "10", "11", "12", "13"}:
+    if type(complete_reading_version) is not str or complete_reading_version not in {"7", "8", "9", "10", "11", "12", "13", "14"}:
         raise ValueError("unsupported complete reading version")
     if complete_reading_version != "7" and not require_complete_reading:
         raise ValueError("versioned complete reading requires explicit completeness")
     if tool_selection_mode not in ("forced", "auto"):
         raise ValueError("unsupported meaning tool selection mode")
-    if tool_selection_mode == "auto" and complete_reading_version not in {"11", "12", "13"}:
+    if tool_selection_mode == "auto" and complete_reading_version not in {"11", "12", "13", "14"}:
         raise ValueError("auto selection requires an experimental presupposition reader")
+    if complete_reading_version == "14":
+        return PreparedCandidateMeaning(_json({
+            "contract": FACT_INVENTORY_CONTRACT, "beats": beats,
+            "request": inventory_request(beats=beats, tool_selection_mode=tool_selection_mode),
+            **({"wire_transport": TAIL_TRANSPORT} if closing_tail_transport else {}),
+            **({"tool_selection_mode": "auto"} if tool_selection_mode == "auto" else {}),
+        }))
     system = (
         "你是候选发言的语义读取器，不扮演角色，也不判断它是否真实或允许发送。"
         "输入只有角色即将说的原句，没有事实证据。请先忠实解释原句，不要修正错误、找借口或把句子读成更容易被证明的意思。"
@@ -546,17 +563,17 @@ def verify_candidate_meaning_preparation(meaning: PreparedCandidateMeaning) -> d
     """Recompile the exact evidence-blind request; do not trust a supplied pin."""
     packet = json.loads(meaning.payload_json, object_pairs_hook=_unique)
     contract = packet.get("contract")
-    if contract not in {CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT}:
+    if contract not in {CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT, FACT_INVENTORY_CONTRACT}:
         raise ValueError("unsupported meaning compiler for fidelity review")
     expected = prepare_candidate_meaning(
         beats=tuple(packet["beats"]), compact=contract != CONTRACT,
-        explicit_questions=contract in {QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT},
+        explicit_questions=contract in {QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT, FACT_INVENTORY_CONTRACT},
         closing_tail_transport=packet.get("wire_transport") == TAIL_TRANSPORT,
         tool_selection_mode=packet.get("tool_selection_mode", "forced"),
-        question_conditions=contract in {CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT},
-        beat_conditions=contract in {CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT},
-        require_complete_reading=contract in {COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT},
-        complete_reading_version=("13" if contract == UNIFIED_PRESUPPOSITION_CONTRACT else "12" if contract == SCOPED_PRESUPPOSITION_CONTRACT else "11" if contract == PRESUPPOSITION_CONTRACT else "10" if contract == SUBJECTIVE_HISTORY_CONTRACT else "9" if contract == PRAGMATIC_COMPLETE_CONTRACT else "8" if contract == SEMANTIC_COMPLETE_CONTRACT else "7"),
+        question_conditions=contract in {CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT, FACT_INVENTORY_CONTRACT},
+        beat_conditions=contract in {CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT, FACT_INVENTORY_CONTRACT},
+        require_complete_reading=contract in {COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT, FACT_INVENTORY_CONTRACT},
+        complete_reading_version=("14" if contract == FACT_INVENTORY_CONTRACT else "13" if contract == UNIFIED_PRESUPPOSITION_CONTRACT else "12" if contract == SCOPED_PRESUPPOSITION_CONTRACT else "11" if contract == PRESUPPOSITION_CONTRACT else "10" if contract == SUBJECTIVE_HISTORY_CONTRACT else "9" if contract == PRAGMATIC_COMPLETE_CONTRACT else "8" if contract == SEMANTIC_COMPLETE_CONTRACT else "7"),
     )
     if expected.payload_json != meaning.payload_json:
         raise ValueError("meaning preparation differs from its fixed compiler")
