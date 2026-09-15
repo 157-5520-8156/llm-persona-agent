@@ -138,3 +138,33 @@ they must not silently become authority for the truth of their embedded content.
 This is a direction to investigate, not a qualified new context API or proof
 that absent context explains every observed error. Avoid another prompt-only
 revision based solely on a fixed isolated sentence passing once.
+
+## Full-chain diagnostic and explicit trial protocol
+
+The original accepted reminder was cold-verified against its stored candidate
+and source table. Its author had the current user utterance and selected
+dialogue; the original readers only had candidate Beats. The source inventory
+contains reported tiredness, but no supporting prior phone-use report.
+
+The bounded `visible_dialogue_reading_context` compiler preserves original
+speakers, recorded order, whole utterances, delivery state, source bindings and
+selection gaps. A private request-adapter experiment compared readers v10/v11
+with and without this language context, then checked their facts against the
+original source table. Context did not repair v10's omission and produced a
+structurally invalid Flash response. For v11 it introduced extra interpretation
+errors. Context is therefore not integrated into any review protocol.
+
+Both isolated v11 readers retained the unsupported phone history and the actual
+source model rejected both readings. This is evidence for a controlled end-to-end
+trial, not broad semantic qualification. Explicit review version 14
+(`visible-independent-review.6`) therefore uses the frozen v11 reader with the
+existing content-field source permissions, subjective history, bounded same-role
+correction, receipt binding and lossless evidence storage. Older protocols and
+deployment defaults stay unchanged. Earlier v11 reported-speech scope errors
+remain a known limitation; release qualification is still incomplete.
+
+A public application test verifies that a current advice act's background fact
+reaches source rejection, the same author receives its original rejected text
+and exact failed proposition, a corrected candidate is fully reviewed, and the
+result cold-replays. HTTP fixtures prove that wiring, not real model behavior.
+The next real conversation must validate the new protocol in the full chain.

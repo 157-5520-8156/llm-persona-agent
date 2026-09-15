@@ -42,7 +42,7 @@ class ReviewHTTP:
                                   ('我想听你说。' if self.fault == 'source_free' else '你取消了周五的报告。', '我想先听你说。'), strict=True):
                 beat['text'] = text
             return _http_result(body, {'result': {k: authored[k] for k in ('result_kind', 'appraisal_draft', 'expression_draft')}})
-        if name == ('interpret_visible_candidate_complete_v7' if self.version == "9" else 'interpret_visible_candidate_complete_v10' if self.version in {'12', '13'} else 'interpret_visible_candidate_complete_v9'):
+        if name == ('interpret_visible_candidate_complete_v11' if self.version == '14' else 'interpret_visible_candidate_complete_v7' if self.version == "9" else 'interpret_visible_candidate_complete_v10' if self.version in {'12', '13'} else 'interpret_visible_candidate_complete_v9'):
             is_reselection = 'invalid_prior_reading' in packet
             assert set(packet) == ({'contract', 'visible_beats', 'invalid_prior_reading', 'structural_failure'} if is_reselection else {'contract', 'visible_beats'})
             self.reader_count += 1
@@ -61,6 +61,9 @@ class ReviewHTTP:
                     hypothetical_conditions=[], questions=[], meanings=[dict(
                         proposition=beat['text'], subject_role='counterpart' if i == 0 and factual else 'companion',
                         mode='actual_event_or_state' if i == 0 and factual else 'current_private_expression')]))
+            if self.version == '14':
+                for decision in decisions:
+                    decision['presuppositions'] = []
             if body['model'] == 'deepseek-v4-pro':
                 if self.fault == 'malformed':
                     decisions.pop()
@@ -68,15 +71,62 @@ class ReviewHTTP:
                     decisions[0].update(reading_complete=False, unresolved_details=['uncertain reference'])
             if self.fault in {'repair_once', 'repair_twice'} and body['model'] == 'deepseek-v4-flash' and (not is_reselection or self.fault == 'repair_twice'):
                 del decisions[0]['reading_complete']
-            return _http_result(body, {'contract': 'visible-candidate-meaning.7' if self.version == '9' else 'visible-candidate-meaning.10' if self.version in {'12', '13'} else 'visible-candidate-meaning.9', 'decisions': decisions})
-        assert name == ('review_independent_fixed_meanings_v3' if self.version == '13' else 'review_independent_fixed_meanings_v2' if self.version in {'11', '12', '13'} else 'review_independent_fixed_meanings_v1')
+            return _http_result(body, {'contract': 'visible-candidate-meaning.11' if self.version == '14' else 'visible-candidate-meaning.7' if self.version == '9' else 'visible-candidate-meaning.10' if self.version in {'12', '13'} else 'visible-candidate-meaning.9', 'decisions': decisions})
+        assert name == ('review_independent_fixed_meanings_v3' if self.version in {'13', '14'} else 'review_independent_fixed_meanings_v2' if self.version in {'11', '12', '13', '14'} else 'review_independent_fixed_meanings_v1')
         assert 'visible_beats' not in packet
         reject = self.fault == 'reselect' and self.authors == 1
         return _http_result(body, dict(contract=packet['output_contract']['contract'], fact_decisions=[dict(
             fact_id=f['fact_id'], source_support=not reject,
             reading_ids=[] if reject else [f['eligible_reading_ids'][0]],
-            **({} if self.version in {'11', '12', '13'} else {'explanation': 'offline fixture'}))
+            **({} if self.version in {'11', '12', '13', '14'} else {'explanation': 'offline fixture'}))
             for f in packet['fixed_facts']]))
+
+
+class ImplicitHistoryHTTP(ReviewHTTP):
+    """A current advice act with an unsupported background fact, then correction."""
+
+    async def __call__(self, request):
+        body = json.loads(request.content)
+        name = body['tool_choice']['function']['name']
+        packet = json.loads(body['messages'][1]['content'])
+        if name.startswith('character_inbound_'):
+            self.requests.append(body)
+            self.authors += 1
+            authored = _decision()
+            texts = ('别又熬到半夜刷手机。' if self.authors == 1 else '累了就早点休息吧。', '我想听你说。')
+            for beat, text in zip(authored['expression_draft']['beats'], texts, strict=True):
+                beat['text'] = text
+            return _http_result(body, {'result': {k: authored[k] for k in ('result_kind', 'appraisal_draft', 'expression_draft')}})
+        if name == 'interpret_visible_candidate_complete_v11':
+            self.requests.append(body)
+            decisions = [dict(beat_index=i, reading_complete=True, unresolved_details=[],
+                hypothetical_conditions=[], questions=[], meanings=[dict(proposition=b['text'],
+                mode='current_private_expression', subject_role='companion')], presuppositions=[])
+                for i, b in enumerate(packet['visible_beats'])]
+            if self.authors == 1:
+                decisions[0]['presuppositions'] = [dict(proposition='用户以前熬到半夜刷手机',
+                    mode='actual_event_or_state', subject_role='counterpart')]
+            return _http_result(body, dict(contract=packet['contract'], decisions=decisions))
+        return await super().__call__(request)
+
+
+@pytest.mark.asyncio
+async def test_implicit_history_reaches_source_rejection_and_same_character_correction(tmp_path):
+    handler = ImplicitHistoryHTTP('reselect', '14')
+    async with application(tmp_path / 'world.sqlite', handler) as app:
+        assert (await app.respond(replace(_inbound(), text='最近有点累。'))).status == 'action_authorized'
+        assert handler.authors == 2 and len(handler.requests) == 7
+        sources = [json.loads(b['messages'][1]['content']) for b in handler.requests
+                   if b['tool_choice']['function']['name'] == 'review_independent_fixed_meanings_v3']
+        assert {f['fact_id'] for f in sources[0]['fixed_facts']} == {'m0:b0.s0.f0', 'm1:b0.s0.f0'}
+        authors = [json.loads(b['messages'][1]['content']) for b in handler.requests
+                   if b['tool_choice']['function']['name'].startswith('character_inbound_')]
+        correction = authors[1]['role_result_correction']['coordinate']
+        assert correction['rejected_expression']['beats'][0]['text'] == '别又熬到半夜刷手机。'
+        assert '用户以前熬到半夜刷手机' in correction['failure_detail']
+        evidence = app.export_replay_evidence()
+        accepted = next(a for a in evidence.projection.proposal_audits if a.proposal_kind == 'decision')
+        assert verify_recorded_candidate(audit=accepted, model_result_audits=evidence.projection.model_result_audits)
 
 
 @asynccontextmanager
@@ -103,7 +153,7 @@ async def application(path, handler, *, budget_policy=None):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('fault,calls', [(None, 4), ('source_free', 3), ('reselect', 8)])
-@pytest.mark.parametrize('version', ['9', '10', '11', '12', '13'])
+@pytest.mark.parametrize('version', ['9', '10', '11', '12', '13', '14'])
 async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_replays(tmp_path, fault, calls, version):
     handler = ReviewHTTP(fault, version)
     path = tmp_path / 'world.sqlite'
@@ -116,7 +166,7 @@ async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_r
         audit = next(a for a in evidence.projection.proposal_audits if a.proposal_kind == 'decision')
         winner = next(a for a in _audits(app) if a.visible_source_review_json)
         data = json.loads(winner.visible_source_review_json)
-        assert json.loads(data['requirement_json'])['review_protocol'] == {'9': 'visible-independent-review.1', '10': 'visible-independent-review.2', '11': 'visible-independent-review.3', '12': 'visible-independent-review.4', '13': 'visible-independent-review.5'}[version]
+        assert json.loads(data['requirement_json'])['review_protocol'] == {'9': 'visible-independent-review.1', '10': 'visible-independent-review.2', '11': 'visible-independent-review.3', '12': 'visible-independent-review.4', '13': 'visible-independent-review.5', '14': 'visible-independent-review.6'}[version]
         assert data['receipt']['contract'] == f'visible-source-review-receipt.{version}'
         assert verify_recorded_candidate(audit=audit, model_result_audits=evidence.projection.model_result_audits) == data['receipt']['receipt_hash']
         assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
@@ -145,7 +195,8 @@ async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_r
 
 
 @pytest.mark.asyncio
-async def test_compressed_public_review_authorizes_and_cold_replays_with_original_bindings(tmp_path, monkeypatch):
+@pytest.mark.parametrize("version", ["13", "14"])
+async def test_compressed_public_review_authorizes_and_cold_replays_with_original_bindings(tmp_path, monkeypatch, version):
     from companion_daemon.world_v2 import visible_review_evidence_storage as storage
     from companion_daemon.world_v2.proposal_audit_schemas import RecordedModelResultAudit
     from companion_daemon.world_v2.visible_source_runtime import canonical, digest
@@ -153,16 +204,16 @@ async def test_compressed_public_review_authorizes_and_cold_replays_with_origina
     monkeypatch.setattr(storage, 'MAX_STORED_BYTES', 60_000)
     path = tmp_path / 'world.sqlite'
     inbound = replace(_inbound(), text='我取消了周五的报告。')
-    async with application(path, ReviewHTTP(version='13')) as app:
+    async with application(path, ReviewHTTP(version=version)) as app:
         assert (await app.respond(inbound)).status == 'action_authorized'
         projection = app.export_replay_evidence().projection
         winner = next(a for a in _audits(app) if a.visible_source_review_json)
         assert json.loads(winner.visible_source_review_json)['contract'] == storage.STORAGE_CONTRACT
         data = storage.read_review_evidence(winner.visible_source_review_json)
-        assert data['receipt']['contract'] == 'visible-source-review-receipt.13'
+        assert data['receipt']['contract'] == f'visible-source-review-receipt.{version}'
         audit = next(a for a in projection.proposal_audits if a.proposal_kind == 'decision')
         assert verify_recorded_candidate(audit=audit, model_result_audits=projection.model_result_audits)
-    handler = ReviewHTTP(version='13')
+    handler = ReviewHTTP(version=version)
     async with application(path, handler) as cold:
         assert (await cold.respond(inbound)).status == 'action_authorized'
         assert not handler.requests
@@ -265,7 +316,7 @@ async def test_cold_runtime_requires_original_protocol_and_each_actual_review_ca
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('version', ['9', '10', '11', '12', '13'])
+@pytest.mark.parametrize('version', ['9', '10', '11', '12', '13', '14'])
 @pytest.mark.parametrize('schema_references', [False, True])
 async def test_public_proactive_contact_pins_and_replays_independent_protocol(tmp_path, monkeypatch, version, schema_references):
     from datetime import timedelta
