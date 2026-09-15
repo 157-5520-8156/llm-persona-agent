@@ -1,0 +1,43 @@
+{
+  "contract": "life-role-correction-validation.1",
+  "code_head": "74778d8ea04ed1f2e93186c1aee3cc600e2cfe57",
+  "previous_goal_turn_classification": "progress",
+  "implemented": {
+    "rejected_candidate": "Exact original provider result including summary and all proposals; not just response_text",
+    "request_binding": "Complete pinned role request excluding correction-only fields; snapshot, subject, purpose, capabilities and recall state included",
+    "invocation_binding": "Actual provider request hash, response hash, original call ID and model identity rechecked before correction call",
+    "source_authority": "Rejected data only; absent from source catalog, World facts and ordinary snapshot",
+    "correction_limit": "Existing one same-role correction; no additional call, reviewer or retry",
+    "transport_bound_bytes": 131072,
+    "overbound": "Nonretryable within this turn, typed role_rejected_candidate_unavailable; no truncated prompt or implicit null",
+    "diagnostic_order": "Offered Life response coverage checked before derived status mismatch, preserving precise missing field/source feedback",
+    "ordinary_requests": "No added correction field when absent; prior initial prompt/tool bytes and parent-call identity covered by tests"
+  },
+  "regression": {
+    "role_and_life_group": "176 passed, 2 strict xfailed in 8.46s",
+    "durable_correction_group": "68 passed in 37.81s; overlaps first group, additionally covers overbound failure and cold request round-trip",
+    "new_correction_cases": 17,
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "known_factual_acceptance_gaps": "Both strict xfails retained: unsupported personal episodes still accepted without semantic factual review"
+  },
+  "not_implemented_or_qualified": [
+    "Life candidate semantic fact extraction and source closure before acceptance",
+    "Real-provider correction improvement",
+    "Long-term natural life/memory quality",
+    "Monthly cost target"
+  ],
+  "billing": {
+    "new_paid_calls": 0,
+    "runtime_and_billing_checkpoint": "output/private-audits/release-chat-evidence-order-20260915-01/run",
+    "usage_rows": 1037,
+    "reservation_rows": 1034,
+    "existing_unknown_holds": "unchanged",
+    "monthly_product_cost_target_cny": 100
+  },
+  "goal_status": "active",
+  "qualification": "manual_only / qualification_incomplete",
+  "deployed": false,
+  "real_qq": false,
+  "production_database_modified": false
+}

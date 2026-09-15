@@ -74,6 +74,14 @@ The author embellished autobiographical detail; source review also rejected an
 exact supported father action. A conversational denial was read as an external
 historical fact. Ordering alone does not qualify natural expression or correction.
 
+Life correction now carries the exact rejected provider result (summary and all
+proposals), bound to the original pinned request, invocation hashes and author.
+Core retains one correction; overbound originals remain technical failures, not
+truncated data or null choices. The source catalog is unchanged. Coverage errors
+now precede derived status errors. This supplies the correction boundary only;
+Life semantic factual acceptance remains missing. See
+`docs/audits/life-role-correction-validation-2026-09-15.json` (no new paid calls).
+
 The actual earlier Life author received a walk-under-way result and an explicit
 activity-ended-not-intention-fulfilled boundary, but wrote a finished walk across
 its response, summary, appraisal meanings and thread reason. Response, Experience
