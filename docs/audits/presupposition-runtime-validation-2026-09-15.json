@@ -1,0 +1,148 @@
+{
+  "scope": "Isolated v14 review-protocol trial, frozen v11 readers, nonthinking. No deployment, real QQ or production database.",
+  "code_head": "eefa8ddfd5e67190fc01af33653994f38b134bf4",
+  "dialogue_context_diagnostic": {
+    "code_head": "eeadf51341f3b1cba01ee2caa024b5f2b5cb99ab",
+    "physical_calls": 10,
+    "known_repository_estimate_cny": "0.203107100000000011",
+    "billing_rows_after": 976,
+    "reservation_rows_after": 973,
+    "outcome": "Context did not fix v10; one contextual Flash response failed structure. Isolated v11 extracted phone history and real source check rejected it. Contextual v11 added scope errors; contextual input not adopted.",
+    "bookkeeping": "After calls closed, a shadowed path variable prevented automatic reconciliation. Separate read-only reconciliation verified all ten calls without repeating provider requests."
+  },
+  "real_conversation": {
+    "physical_calls": 30,
+    "billing_states": {
+      "known": 30
+    },
+    "known_native_token_joins_verified": 30,
+    "known_repository_estimate_cny": "0.8369003000000000107",
+    "new_unknown_hold_cny": "0",
+    "cold_receipt_versions": {
+      "visible-source-review-receipt.6": 6,
+      "visible-source-review-receipt.7": 1,
+      "visible-source-review-receipt.8": 6,
+      "visible-source-review-receipt.12": 3,
+      "visible-source-review-receipt.13": 2,
+      "visible-source-review-receipt.14": 2
+    },
+    "replay_hash_matches": true,
+    "runtime_code_head": "eefa8ddfd5e67190fc01af33653994f38b134bf4",
+    "turns": [
+      {
+        "id": "premise-user-correction",
+        "status": "deferred",
+        "step_wall_seconds_including_drain": 51.83338433399331,
+        "messages": []
+      },
+      {
+        "id": "premise-free-time",
+        "status": "action_authorized",
+        "step_wall_seconds_including_drain": 37.07255729101598,
+        "messages": [
+          "行，换话题",
+          "明天半天空闲的话……先睡到自然醒，然后出门随便走走，不设目的地那种",
+          "最好是有点太阳，找个地方坐着发呆，什么都不干",
+          "你呢，你自己最想先做什么"
+        ]
+      },
+      {
+        "id": "premise-preference-history",
+        "status": "deferred",
+        "step_wall_seconds_including_drain": 36.14266462496016,
+        "messages": []
+      },
+      {
+        "id": "premise-user-leaves",
+        "status": "action_authorized",
+        "step_wall_seconds_including_drain": 27.676413374952972,
+        "messages": [
+          "行，去吧",
+          "晚点想起来再聊"
+        ]
+      }
+    ],
+    "quiet_window": {
+      "from": "2026-09-14T14:25:00Z",
+      "to": "2026-09-14T14:45:00Z",
+      "new_deliveries": 0,
+      "model_failures": [],
+      "activity_started": [
+        {
+          "event_id": "event:activity-lifecycle-effect:64b78a6775ac8dad1058f742ce00310fc90105c3b116ac3bebfbf8a9acbf5573",
+          "logical_time": "2026-09-14T14:34:02Z",
+          "payload": {
+            "acceptance_id": "acceptance:activity-lifecycle:64b78a6775ac8dad1058f742ce00310fc90105c3b116ac3bebfbf8a9acbf5573",
+            "accepted_change_hash": "5270e024b3e3081fb72d58a1c95a9b35a9e94bf46a0a9b44186317e76b8c48d7",
+            "activity_lifecycle_proposal_id": "proposal:activity-lifecycle:16793e497e50d5feeb1712114fdd12c5087ec8e9c2d264b62e75f72ec57ad3c9",
+            "change_id": "change:activity-lifecycle:16793e497e50d5feeb1712114fdd12c5087ec8e9c2d264b62e75f72ec57ad3c9",
+            "evidence_refs": [
+              {
+                "claim_purpose": "life_transition",
+                "evidence_type": "active_plan",
+                "immutable_hash": "e1928603be7dd8ac43ec1e406df707285be4f009a08eaa9d61fa637c32c9fb6a",
+                "ref_id": "plan:day-open-life-intent:0e0beb6fd12d20fc2669c092ec633af78e576713c598074edb6ac7bc8e20c59c",
+                "source_world_revision": null
+              },
+              {
+                "claim_purpose": "life_transition",
+                "evidence_type": "committed_world_event",
+                "immutable_hash": "d611a66eec44bca900adc221e8939e826afa62a5fc3deb07914b331e0b41de3e",
+                "ref_id": "event:trigger:clock:tick:qq-c2c-v2:2026-09-14T14:34:02+00:00",
+                "source_world_revision": 1300
+              }
+            ],
+            "expected_entity_revision": 1,
+            "plan_id": "plan:day-open-life-intent:0e0beb6fd12d20fc2669c092ec633af78e576713c598074edb6ac7bc8e20c59c",
+            "policy_refs": [
+              "policy:activity-lifecycle.1"
+            ],
+            "reason_ref": "event:activity-lifecycle-proposal:39d5dfbd22f87fc766c2e95ee9704dff5b9758618d5f906a9f1e76b154ec0b09",
+            "transition_id": "transition:activity-lifecycle:16793e497e50d5feeb1712114fdd12c5087ec8e9c2d264b62e75f72ec57ad3c9",
+            "transitioned_at": "2026-09-14T14:34:02+00:00"
+          }
+        }
+      ]
+    },
+    "limitations": [
+      "No first-visible-beat latency established by step wall time.",
+      "No new World consequence or completed activity proved by ActivityStarted.",
+      "No broad memory or longitudinal human-likeness qualification."
+    ],
+    "known_findings": [
+      "Self-correction drafted an admission, but historical self-explanation and speech-act interpretation led to rejection; one Flash structural retry repaired malformed conditions.",
+      "Preference history generated childhood wandering and a mother quotation; source review rejected it; corrective vague lifelong preference also failed.",
+      "Mother-utterance facts had no eligible reading IDs in this source table; this does not establish whether the complete prehistory library contains a relevant record."
+    ]
+  },
+  "continuation": {
+    "runtime_and_billing": "output/private-audits/release-chat-presupposition-review-20260915-01/run",
+    "logical_at": "2026-09-14T14:45:00Z",
+    "elapsed_minutes": 825,
+    "usage_rows": 1006,
+    "reservation_rows": 1003,
+    "all_runs_closed": true,
+    "cumulative_unknown_reservations_preserved": true
+  },
+  "current_turn_total_known_estimate_cny": "1.0400074000000000217",
+  "current_turn_new_unknown_hold_cny": "0",
+  "tests": [
+    {
+      "scope": "Runtime protocols including explicit v14, evidence storage and background inventory",
+      "passed": 68
+    },
+    {
+      "scope": "Implicit fact rejection/correction, immutable receipts and dialogue context",
+      "passed": 27
+    },
+    {
+      "scope": "Compressed public review/cold bindings in protocols13/14",
+      "passed": 2
+    }
+  ],
+  "validation": "Ruff and diff checks passed; these test groups overlap.",
+  "qualification": "manual_only / qualification_incomplete",
+  "monthly_product_cost_target_cny": 100,
+  "monthly_cost_qualified": false,
+  "next_focus": "Speech-act versus event authority and retrospective self-assessment; then inspect prehistory quote/actor coverage and retrieval before broadening its permissions. Do not bypass review or add local role text."
+}
