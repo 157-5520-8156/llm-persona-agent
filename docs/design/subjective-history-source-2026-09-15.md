@@ -43,7 +43,7 @@ own runtime evidence.
 
 The first real version-12 journey exposed a second, concrete asymmetry: the
 source table contains one selected appraisal, while the author's living-state
-installer presents 21. The new permission is implemented, but that does not
+installer presents 22 (21 stable rows plus one volatile row). The new permission is implemented, but that does not
 establish source completeness. Its two delivered turns avoided the disputed
 past subjective claim. Do not mark the historical-reading feature qualified.
 

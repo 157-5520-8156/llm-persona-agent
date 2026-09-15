@@ -439,7 +439,7 @@
   "findings": [
     {
       "kind": "subjective_source_coverage_gap",
-      "author_appraisal_rows": 21,
+      "author_appraisal_rows": 22,
       "source_appraisal_materials": 1,
       "source_affect_materials": 2,
       "source_appraisal_ref": "appraisal:compiled:55777fd4f68a77c5aec2bd8fc8baa28b71243b2d8c229ff9769cc69107584aec",
@@ -448,7 +448,8 @@
         "living_state_inventory.install_living_state_context",
         "character_interior.production",
         "visible_source_composer.compile_visible_source_table"
-      ]
+      ],
+      "count_correction": "Includes the separately stored volatile_last_row; the earlier 21 count omitted it."
     },
     {
       "kind": "actual_life_progress",

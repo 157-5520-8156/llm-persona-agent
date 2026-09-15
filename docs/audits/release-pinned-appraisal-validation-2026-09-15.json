@@ -1,0 +1,219 @@
+{
+  "contract": "release-pinned-appraisal-validation.1",
+  "qualification": "manual_only / qualification_incomplete",
+  "code_head": "e6339f38dfe76f5ae98be7f4de5d309de2eb26d3",
+  "implementation": {
+    "shared_native_appraisal_inventory": true,
+    "enabled_only_for_explicit_subjective_history_review": true,
+    "capsule_identity_binds_owner_world_snapshot_cursor_time_and_records": true,
+    "working_model_content_unchanged": true,
+    "complete_affect_history": false,
+    "present_appraisal_limit": 128,
+    "source_model_semantic_qualification": false
+  },
+  "local_validation": {
+    "unique_passed": 302,
+    "runs": [
+      {
+        "passed": 187,
+        "files": [
+          "test_visible_subjective_source.py",
+          "test_visible_source_review_version_wiring.py"
+        ]
+      },
+      {
+        "passed": 115,
+        "files": [
+          "test_pinned_appraisal_context.py",
+          "test_context_capsule.py",
+          "test_living_state_inventory.py",
+          "test_ledger_context_resolver.py",
+          "test_visible_independent_review_runtime.py"
+        ]
+      }
+    ],
+    "initial_failures": [
+      "New envelope adapter omitted required immutable_hash; fixed to bind native acceptance payload hash.",
+      "New equality test compared Z with +00:00; corrected to compare the actual timezone-aware instant."
+    ],
+    "ruff": "passed",
+    "diff_check": "passed"
+  },
+  "runtime_input_coverage": [
+    {
+      "capture_id": "model-input:b9c833d3e0b3448189e1c457abdd93e1",
+      "cursor": {
+        "world_revision": 1004,
+        "deliberation_revision": 1146,
+        "ledger_sequence": 2150
+      },
+      "author_rows": 24,
+      "native_inventory_records": 24,
+      "native_refs_and_all_meanings_match": true,
+      "source_model_invoked": false,
+      "omitted_count": 0
+    },
+    {
+      "capture_id": "model-input:a148811109464302a543371ec285a115",
+      "cursor": {
+        "world_revision": 1006,
+        "deliberation_revision": 1156,
+        "ledger_sequence": 2162
+      },
+      "author_rows": 24,
+      "native_inventory_records": 24,
+      "native_refs_and_all_meanings_match": true,
+      "source_model_invoked": false,
+      "omitted_count": 0
+    }
+  ],
+  "offline_native_source_compilation": {
+    "checkpoint": "release-chat-continuity-20260915-01/cold.sqlite",
+    "native_records": 24,
+    "reviewable_appraisal_records": 24,
+    "source_table_bytes": 293161,
+    "scope": "Native current-checkpoint compilation; not a real source-provider review."
+  },
+  "real_run": {
+    "code_head": "e6339f38dfe76f5ae98be7f4de5d309de2eb26d3",
+    "stop_reason": "operator_stopped",
+    "completed": false,
+    "physical_calls": 4,
+    "billing_states": {
+      "unknown": 4
+    },
+    "known_native_token_joins_verified": 0,
+    "all_captured_terminal_body_hashes_verified": true,
+    "transport_only_unknown_calls": [],
+    "inherited_rows_unchanged": true,
+    "known_repository_estimate_cny": "0",
+    "new_unknown_hold_cny": "1.081087",
+    "usage_rows": 720,
+    "reservation_rows": 717,
+    "author_requests": [
+      {
+        "capture_id": "model-input:b9c833d3e0b3448189e1c457abdd93e1",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 10414,
+        "prompt_tokens": 0,
+        "billing_state": "unknown"
+      },
+      {
+        "capture_id": "model-input:a148811109464302a543371ec285a115",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 10395,
+        "prompt_tokens": 0,
+        "billing_state": "unknown"
+      }
+    ],
+    "new_deliveries": [],
+    "cold_receipt_versions": {
+      "visible-source-review-receipt.6": 6,
+      "visible-source-review-receipt.7": 1,
+      "visible-source-review-receipt.8": 6,
+      "visible-source-review-receipt.12": 2
+    },
+    "steps": [
+      {
+        "deliveries": [],
+        "errors": [],
+        "kind": "inbound",
+        "model_failures": [
+          {
+            "event_ref": "event:ModelResultRecorded:633548c071d3aa52de381579d73ef683f63540bc15300ebe850f748955a600d7",
+            "failure_code": "primary_timeout",
+            "status": "main_timeout"
+          }
+        ],
+        "status": "deferred",
+        "step_id": "step-00002",
+        "terminal_outcomes": [
+          {
+            "event_ref": "event:expression-episode:completed:1cd533851c50a187b83e98c16652cfd40ae42db57eb21f1cb6eb41b7f6667c44",
+            "outcome_ref": "expression-episode:superseded-by-newer-inbound",
+            "terminal_outcome": "unknown"
+          },
+          {
+            "event_ref": "event:interaction-appraisal:trigger:completed:5bd079d14f983e1d5243e3eb5f84360b7cb7a0a24780c85bdefce3637c098954",
+            "outcome_ref": "interaction-appraisal:folded-into-newer-inbound",
+            "terminal_outcome": "unknown"
+          }
+        ],
+        "turn_id": "recall-being-questioned",
+        "user_text": "想起刚才一连串地问你问题，还是有点不好意思。你当时是什么感受？",
+        "virtual_at": "2026-09-14T13:45:00+00:00"
+      },
+      {
+        "deliveries": [],
+        "errors": [],
+        "kind": "inbound",
+        "model_failures": [
+          {
+            "event_ref": "event:ModelResultRecorded:a2db89298892b9722792751cc0c48d7fa2948f46dde7ba70e0408298e61277f1",
+            "failure_code": "primary_timeout",
+            "status": "main_timeout"
+          }
+        ],
+        "status": "deferred",
+        "step_id": "step-00003",
+        "terminal_outcomes": [
+          {
+            "event_ref": "event:expression-episode:completed:15f6203d5c72ef3e3deaba46ed1354ccebe68b149bce2c3af2654aabbd93862f",
+            "outcome_ref": "expression-episode:superseded-by-newer-inbound",
+            "terminal_outcome": "unknown"
+          },
+          {
+            "event_ref": "event:interaction-appraisal:trigger:completed:3589a4c25062a7a65912ee4a6994f18b1ce556c90ca03bce20f1c8a0f22dd442",
+            "outcome_ref": "interaction-appraisal:folded-into-newer-inbound",
+            "terminal_outcome": "unknown"
+          }
+        ],
+        "turn_id": "retry-past-feeling-after-timeout",
+        "user_text": "刚才没收到回复。我想问的是，之前那种接连提问的方式，让你觉得怎样？不想谈也没关系。",
+        "virtual_at": "2026-09-14T13:45:00+00:00"
+      }
+    ],
+    "replay_hash_matches": true,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "real_qq": false,
+    "production_database": false,
+    "qualification": "manual_only / qualification_incomplete"
+  },
+  "provider_observation": {
+    "request_count": 4,
+    "http_200_headers": 4,
+    "response_body_bytes_received": 0,
+    "source_review_calls": 0,
+    "visible_deliveries": 0,
+    "new_review_receipts": 0,
+    "causal_diagnosis": "Undetermined: role and background calls received headers but no body before their existing deadlines. Do not label this as a global provider outage or a character choice.",
+    "status_page": "https://status.deepseek.com/",
+    "status_page_observation": "Everything is running smoothly; no current global incident shown at inspection."
+  },
+  "count_correction": {
+    "previous_reported_author_rows": 21,
+    "actual_first_turn_author_rows": 22,
+    "reason": "Previous diagnostic counted stable_rows and omitted the separately stored volatile_last_row.",
+    "previous_review_appraisal_materials": 1,
+    "current_author_and_native_inventory_rows": 24
+  },
+  "next_work": [
+    "Re-run historical feeling dialogue and source-only entailment after inspecting response availability; do not widen deadlines to qualify it.",
+    "Complete safe historical Affect revision reading independently of current projection values.",
+    "Repair activity ongoing/completed and unrecorded photo assertions, ordinary current-expression false rejection, and same-role correction reliability.",
+    "Continue memory compression acceptance, long-duration diversity, real QQ receipt and invite/demo qualification."
+  ],
+  "current_checkpoint": {
+    "run": "output/private-audits/release-chat-pinned-appraisals-20260915-01/run",
+    "usage_rows": 720,
+    "reservation_rows": 717,
+    "logical_at": "2026-09-14T13:45:00+00:00",
+    "closed_and_reconciled": true,
+    "new_billing_unknown_calls": 4,
+    "new_unknown_hold_cny": "1.081087",
+    "inherited_records_preserved": true
+  }
+}
