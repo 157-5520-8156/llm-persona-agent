@@ -130,14 +130,15 @@ async def test_implicit_history_reaches_source_rejection_and_same_character_corr
 
 
 @asynccontextmanager
-async def application(path, handler, *, budget_policy=None):
+async def application(path, handler, *, budget_policy=None, evidence_first_schema=False):
     usage = WorldV2UsageStore(path=str(path.with_name('usage.sqlite')))
     models = [DeepSeekChatModel('offline-fixture', 'https://fixture.invalid', name,
                thinking_enabled=False, transport=httpx.MockTransport(handler), usage_observer=usage.record)
               for name in ('deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-v4-flash')]
     reviewer = IndependentVisibleReviewer(meaning_models=(models[1], models[2]), source_model=models[2])
     author = _InboundCharacterAuthor(flash_model=models[0], whole_candidate_mode=True,
-        visible_source_review_model=reviewer, visible_source_review_version=handler.version, atomic_tool_envelope_version='3')
+        visible_source_review_model=reviewer, visible_source_review_version=handler.version, atomic_tool_envelope_version='3',
+        evidence_first_schema=evidence_first_schema)
     config = replace(_config(), visible_source_review_required=True)
     if budget_policy is not None:
         config = replace(config, interactive_turn_budget_policy=budget_policy)

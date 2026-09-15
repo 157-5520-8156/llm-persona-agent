@@ -115,7 +115,8 @@ def test_schema_option_requires_boolean(flag):
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_host_passes_explicit_option_through_composition(tmp_path, monkeypatch, enabled):
+@pytest.mark.parametrize("ordering", [False, True])
+def test_host_passes_explicit_option_through_composition(tmp_path, monkeypatch, enabled, ordering):
     import companion_daemon.world_v2.semantic_chat_composition as composition
     from companion_daemon.world_v2.character_interior.inbound_author import _InboundCharacterAuthor
 
@@ -124,8 +125,10 @@ def test_host_passes_explicit_option_through_composition(tmp_path, monkeypatch, 
 
     def capture(**kwargs):
         assert kwargs["use_schema_references"] is enabled
+        assert kwargs["evidence_first_schema"] is ordering
         author = _InboundCharacterAuthor(**kwargs)
         assert author._use_schema_references is enabled
+        assert author._evidence_first_schema is ordering
         raise Captured
 
     monkeypatch.setattr(composition, "compose_production_character_interior", capture)
@@ -134,12 +137,14 @@ def test_host_passes_explicit_option_through_composition(tmp_path, monkeypatch, 
             settings=_settings(tmp_path), recipient_id="fixture", model=FakeCompanionModel(),
             visible_source_review_required=True, visible_source_review_model=_MeteredFixture(),
             visible_author_tool_version="3", visible_author_schema_references=enabled,
+            visible_author_evidence_first_schema=ordering,
         )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("enabled", [False, True])
-async def test_cli_records_option_and_passes_to_host_without_network(tmp_path, monkeypatch, enabled):
+@pytest.mark.parametrize("ordering", [False, True])
+async def test_cli_records_option_and_passes_to_host_without_network(tmp_path, monkeypatch, enabled, ordering):
     import httpx
     import companion_daemon.world_v2.longitudinal_journey as runner
     import companion_daemon.world_v2.qq_c2c_host as host_module
@@ -156,10 +161,12 @@ async def test_cli_records_option_and_passes_to_host_without_network(tmp_path, m
 
     def host_capture(**kwargs):
         observed.append(kwargs["visible_author_schema_references"])
+        assert kwargs["visible_author_evidence_first_schema"] is ordering
         return object()
 
     async def capture_run(**kwargs):
         assert kwargs["provenance"].get("visible_author_schema_references", False) is enabled
+        assert kwargs["provenance"].get("visible_author_evidence_first_schema", False) is ordering
         kwargs["output"].mkdir()
         clock = runner.JourneyClock(kwargs["journey"].started_at)
         try:
@@ -176,6 +183,7 @@ async def test_cli_records_option_and_passes_to_host_without_network(tmp_path, m
         "--allow-real-provider", "--require-visible-source-review",
         "--visible-author-tool-version", "3",
         *(["--visible-author-schema-references"] if enabled else []),
+        *(["--visible-author-evidence-first-schema"] if ordering else []),
     ]))
     assert observed == [enabled]
 

@@ -1277,6 +1277,7 @@ class InboundToolContracts:
         schema_dialect: InboundToolSchemaDialect = "standard",
         atomic_envelope_version: InboundAtomicEnvelopeVersion = "1",
         use_schema_references: bool = False,
+        evidence_first_schema: bool = False,
     ) -> InboundToolContract:
         if phase not in {"initial", "after_recall", "final"}:
             raise ValueError("unsupported inbound tool phase")
@@ -1294,6 +1295,10 @@ class InboundToolContracts:
             raise TypeError("schema references flag must be a boolean")
         if use_schema_references and atomic_envelope_version != "3":
             raise ValueError("schema references require strict atomic v3")
+        if type(evidence_first_schema) is not bool:
+            raise TypeError("evidence first schema flag must be a boolean")
+        if evidence_first_schema and atomic_envelope_version != "3":
+            raise ValueError("evidence first schema requires strict atomic v3")
         contract_version = atomic_envelope_version
         recall_allowed = phase == "initial" and recall_allowed
         schema_includes_recall = phase == "initial" and (
@@ -1620,6 +1625,12 @@ class InboundToolContracts:
                 parameters = deepseek_strict_tool_schema(branch_local_parameters)
         if use_schema_references:
             parameters = factor_local_schema_references(parameters)
+        presentation = {}
+        if evidence_first_schema:
+            from .expression_schema_order import CONTRACT, evidence_first_expression_schema, ordered_schema_sha256
+            parameters = evidence_first_expression_schema(parameters)
+            presentation = {"schema_presentation_contract": CONTRACT,
+                            "ordered_schema_sha256": ordered_schema_sha256(parameters)}
         function = {
             "name": tool_name,
             "description": (
@@ -1673,6 +1684,12 @@ class InboundToolContracts:
                 "fields of another branch, even as null; inner draft fields retain "
                 "their complete schema."
             )
+        if presentation:
+            function["description"] += (
+                " Schema presentation " + presentation["schema_presentation_contract"]
+                + ": world_claims and the other expression fields precede beats, matching the role contract. "
+                "This changes no source authority or allowed role choice."
+            )
         provider_tools = ({"type": "function", "function": function},)
         digest = "sha256:" + sha256(_canonical_json(parameters).encode("utf-8")).hexdigest()
         capabilities_digest = (
@@ -1697,6 +1714,7 @@ class InboundToolContracts:
                         "schema_sha256": digest,
                         "capabilities_sha256": capabilities_digest,
                         "tool_name": tool_name,
+                        **presentation,
                     }
                 ).encode("utf-8")
             ).hexdigest()

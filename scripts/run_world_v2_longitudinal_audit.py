@@ -65,6 +65,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-wall-seconds", type=float, default=1800)
     parser.add_argument("--drain-passes", type=int, default=8)
     parser.add_argument("--background-units", type=int, default=4)
+    parser.add_argument("--visible-author-evidence-first-schema", action="store_true",
+                        help="Opt-in v3 schema property order: evidence before expression; no semantic qualification implied.")
     options = parser.parse_args(argv)
     if options.model_mode == "real-provider" and not options.allow_real_provider:
         parser.error("real-provider requires --allow-real-provider")
@@ -72,6 +74,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--allow-real-provider requires --model-mode real-provider")
     if options.require_visible_source_review and options.model_mode != "real-provider":
         parser.error("--require-visible-source-review requires the real-provider capture profile")
+    if options.visible_author_evidence_first_schema and options.visible_author_tool_version != "3":
+        parser.error("--visible-author-evidence-first-schema requires --visible-author-tool-version 3")
     if options.visible_author_schema_references and options.visible_author_tool_version != "3":
         parser.error("--visible-author-schema-references requires --visible-author-tool-version 3")
     if options.visible_author_tool_version != "1" and not options.require_visible_source_review:
@@ -362,6 +366,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                     visible_source_review_model=visible_reviewer,
                     visible_author_tool_version=options.visible_author_tool_version,
                     visible_author_schema_references=options.visible_author_schema_references,
+                    visible_author_evidence_first_schema=options.visible_author_evidence_first_schema,
                     visible_source_review_version=options.visible_source_review_version,
                 )
         return build_qq_c2c_host(
@@ -390,6 +395,8 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
         close_resources=close_models,
         next_command=next_command,
         provenance={
+            **({"visible_author_evidence_first_schema": True}
+               if options.visible_author_evidence_first_schema else {}),
             **({"visible_author_schema_references": True}
                if options.visible_author_schema_references else {}),
             **({"visible_source_review_version": options.visible_source_review_version}

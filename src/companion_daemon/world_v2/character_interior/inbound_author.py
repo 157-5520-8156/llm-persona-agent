@@ -2467,6 +2467,7 @@ class _InboundCharacterAuthor:
         visible_source_review_model: object | None = None,
         atomic_tool_envelope_version: str = "1",
         use_schema_references: bool = False,
+        evidence_first_schema: bool = False,
         visible_source_review_version: str = "1",
         **_unused: object,
     ) -> None:
@@ -2496,6 +2497,11 @@ class _InboundCharacterAuthor:
             raise TypeError("schema references flag must be a boolean")
         if use_schema_references and atomic_tool_envelope_version != "3":
             raise ValueError("schema references require strict atomic v3")
+        if type(evidence_first_schema) is not bool:
+            raise TypeError("evidence first schema flag must be a boolean")
+        if evidence_first_schema and atomic_tool_envelope_version != "3":
+            raise ValueError("evidence first schema requires strict atomic v3")
+        self._evidence_first_schema = evidence_first_schema
         self._use_schema_references = use_schema_references
         self._atomic_tool_envelope_version = atomic_tool_envelope_version
         self._visible_source_review_model = visible_source_review_model
@@ -3278,6 +3284,7 @@ class _InboundCharacterAuthor:
             transport="atomic",
             atomic_envelope_version=self._atomic_tool_envelope_version,
             use_schema_references=self._use_schema_references,
+            evidence_first_schema=self._evidence_first_schema,
             capabilities=self._capabilities,
             recall_allowed=False,
             require_turn_posture=(
@@ -4226,6 +4233,7 @@ class _InboundCharacterAuthor:
                 transport=("stream" if transport_provider is not None else "atomic"),
                 atomic_envelope_version=self._atomic_tool_envelope_version,
                 use_schema_references=self._use_schema_references,
+                evidence_first_schema=self._evidence_first_schema,
                 capabilities=self._capabilities,
                 recall_allowed=recall_available,
                 require_turn_posture=(

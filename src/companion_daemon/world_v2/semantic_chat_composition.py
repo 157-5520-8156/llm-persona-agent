@@ -787,6 +787,7 @@ def build_semantic_chat_composition(
     visible_source_review_required: bool = False,
     visible_author_tool_version: str = "1",
     visible_author_schema_references: bool = False,
+    visible_author_evidence_first_schema: bool = False,
     visible_source_review_version: str = "1",
     life_source_closure_model: ChatCompletionModel | None = None,
     expression_episode_observer_model: ChatCompletionModel | None = None,
@@ -817,6 +818,10 @@ def build_semantic_chat_composition(
     validate_independent_reviewer_configuration(source_closure_model, visible_source_review_version)
     if visible_source_review_version != "1" and visible_source_review_required is not True:
         raise ValueError("versioned source reviewer requires explicit visible source review")
+    if type(visible_author_evidence_first_schema) is not bool:
+        raise TypeError("evidence first schema flag must be a boolean")
+    if visible_author_evidence_first_schema and visible_author_tool_version != "3":
+        raise ValueError("evidence first schema requires strict atomic v3")
     if type(visible_author_schema_references) is not bool:
         raise TypeError("schema references flag must be a boolean")
     if visible_author_schema_references and visible_author_tool_version != "3":
@@ -1025,6 +1030,7 @@ def build_semantic_chat_composition(
         visible_source_review_model=source_closure_model if visible_source_review_required else None,
         atomic_tool_envelope_version=visible_author_tool_version,
         use_schema_references=visible_author_schema_references,
+        evidence_first_schema=visible_author_evidence_first_schema,
         visible_source_review_version=visible_source_review_version,
         source_closure_model=None,
         report_relative_source_closure_model=None,
