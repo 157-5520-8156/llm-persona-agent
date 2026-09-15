@@ -58,3 +58,29 @@ def test_semantic_coverage_still_requires_explicit_positive_bounded_response(fau
 def test_unknown_complete_wire_fails_before_provider(version):
     with pytest.raises(ValueError):
         preparation(version)
+
+
+def test_auto_selection_is_pinned_and_does_not_change_reader_content_or_schema():
+    forced = preparation('11')
+    auto = prepare_candidate_meaning(beats=('刚修好啦。',), compact=True, explicit_questions=True,
+        question_conditions=True, beat_conditions=True, require_complete_reading=True,
+        closing_tail_transport=True, complete_reading_version='11', tool_selection_mode='auto')
+    verify_candidate_meaning_preparation(auto)
+    request = auto.request()
+    assert request['tool_choice'] == 'auto'
+    request['tool_choice'] = forced.request()['tool_choice']
+    assert request == forced.request()
+    assert auto.sha256 != forced.sha256
+    # A pin claiming the old selection while carrying the new request cannot replay.
+    packet = json.loads(auto.payload_json)
+    del packet['tool_selection_mode']
+    with pytest.raises(ValueError, match='fixed compiler'):
+        verify_candidate_meaning_preparation(PreparedCandidateMeaning(json.dumps(packet)))
+
+
+@pytest.mark.parametrize('version,mode', [('10', 'auto'), ('11', 'required'), ('11', None)])
+def test_auto_selection_cannot_reinterpret_historical_readers(version, mode):
+    with pytest.raises(ValueError):
+        prepare_candidate_meaning(beats=('原句',), compact=True, explicit_questions=True,
+            question_conditions=True, beat_conditions=True, require_complete_reading=True,
+            complete_reading_version=version, tool_selection_mode=mode)

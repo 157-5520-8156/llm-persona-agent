@@ -334,6 +334,7 @@ def prepare_candidate_meaning(
     beat_conditions: bool = False,
     require_complete_reading: bool = False,
     complete_reading_version: str = "7",
+    tool_selection_mode: Literal["forced", "auto"] = "forced",
 ) -> PreparedCandidateMeaning:
     if not 1 <= len(beats) <= 16 or any(not isinstance(b, str) or not b or len(b) > 4096 for b in beats):
         raise ValueError("candidate meaning requires one to sixteen bounded nonempty Beats")
@@ -349,6 +350,10 @@ def prepare_candidate_meaning(
         raise ValueError("unsupported complete reading version")
     if complete_reading_version != "7" and not require_complete_reading:
         raise ValueError("versioned complete reading requires explicit completeness")
+    if tool_selection_mode not in ("forced", "auto"):
+        raise ValueError("unsupported meaning tool selection mode")
+    if tool_selection_mode == "auto" and complete_reading_version not in {"11", "12", "13"}:
+        raise ValueError("auto selection requires an experimental presupposition reader")
     system = (
         "你是候选发言的语义读取器，不扮演角色，也不判断它是否真实或允许发送。"
         "输入只有角色即将说的原句，没有事实证据。请先忠实解释原句，不要修正错误、找借口或把句子读成更容易被证明的意思。"
@@ -528,11 +533,12 @@ def prepare_candidate_meaning(
             "name": name, "description": "读取原句实际含义，不读取证据或授予事实权限。",
             "strict": True, "parameters": deepseek_strict_tool_schema(_provider_schema(response_type)),
         }}],
-        "tool_choice": {"type": "function", "function": {"name": name}},
+        "tool_choice": "auto" if tool_selection_mode == "auto" else {"type": "function", "function": {"name": name}},
     }
     return PreparedCandidateMeaning(_json({
         "contract": contract, "beats": beats, "request": request,
         **({"wire_transport": TAIL_TRANSPORT} if closing_tail_transport else {}),
+        **({"tool_selection_mode": "auto"} if tool_selection_mode == "auto" else {}),
     }))
 
 
@@ -546,6 +552,7 @@ def verify_candidate_meaning_preparation(meaning: PreparedCandidateMeaning) -> d
         beats=tuple(packet["beats"]), compact=contract != CONTRACT,
         explicit_questions=contract in {QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT},
         closing_tail_transport=packet.get("wire_transport") == TAIL_TRANSPORT,
+        tool_selection_mode=packet.get("tool_selection_mode", "forced"),
         question_conditions=contract in {CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT},
         beat_conditions=contract in {CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT},
         require_complete_reading=contract in {COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT},
