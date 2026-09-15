@@ -17,11 +17,11 @@ from test_visible_source_witness_experiment import _sources
 def preparation():
     return prepare_candidate_meaning(beats=('累就早点睡啊，别又熬到半夜刷手机。',), compact=True,
         explicit_questions=True, question_conditions=True, beat_conditions=True,
-        require_complete_reading=True, complete_reading_version='11')
+        require_complete_reading=True, complete_reading_version='12')
 
 
 def response():
-    return {'contract': 'visible-candidate-meaning.11', 'decisions': [{
+    return {'contract': 'visible-candidate-meaning.12', 'decisions': [{
         'beat_index': 0, 'reading_complete': True, 'unresolved_details': [],
         'hypothetical_conditions': [], 'questions': [],
         'meanings': [{'proposition': 'companion劝counterpart累了早点睡',

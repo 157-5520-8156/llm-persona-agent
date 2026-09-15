@@ -40,3 +40,20 @@ utterance question and a quoted reminder. Human criteria remain outside the
 model request. Structural tests verify mandatory inventory, scope, source
 routing and frozen compilation; fresh provider outputs need separate semantic
 inspection before runtime adoption. Historical faulty receipts stay intact.
+
+## First probe and predicate scope
+
+The first fixed probe made 24 metered calls (two models per case). Both readers
+extracted the actual reminder's prior phone-use premise; the ordinary advice,
+future/conditional, uncertainty and quoted-reminder controls did not invent
+history. One Pro reading classified an explicitly reported prior desire as a
+past subjective state instead of a prior utterance. That is a semantic mismatch,
+even though the response was structurally valid. The first probe is preserved
+as 23 matching readings and one mismatch, not a passing runtime gate.
+
+Reader v12 retains v11's schema and adds a predicate-scope instruction: a
+claim about expressing subjective content is a speech event; a direct claim
+about feeling something is a subjective state. Neither may be silently
+converted to the other or promote quoted content to truth. v11's exact request
+remains frozen for replay. Fresh probes must check the scope correction before
+the new reader is installed in an independent review protocol.

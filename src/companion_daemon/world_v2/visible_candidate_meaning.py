@@ -26,6 +26,7 @@ SEMANTIC_COMPLETE_CONTRACT = "visible-candidate-meaning.8"
 PRAGMATIC_COMPLETE_CONTRACT = "visible-candidate-meaning.9"
 SUBJECTIVE_HISTORY_CONTRACT = "visible-candidate-meaning.10"
 PRESUPPOSITION_CONTRACT = "visible-candidate-meaning.11"
+SCOPED_PRESUPPOSITION_CONTRACT = "visible-candidate-meaning.12"
 TAIL_TRANSPORT = "single-object-closing-tail.1"
 Role = Literal["companion", "counterpart", "other", "none"]
 
@@ -226,6 +227,10 @@ class PresuppositionResponse(CompleteMeaningResponse):
     decisions: tuple[PresuppositionBeat, ...] = Field(min_length=1, max_length=16)
 
 
+class ScopedPresuppositionResponse(PresuppositionResponse):
+    contract: Literal["visible-candidate-meaning.12"]
+
+
 @dataclass(frozen=True)
 class PreparedCandidateMeaning:
     payload_json: str
@@ -239,7 +244,7 @@ class PreparedCandidateMeaning:
 
     def inspect_response(self, raw: str) -> dict:
         packet = json.loads(self.payload_json)
-        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT}:
+        if packet.get("contract") not in {LEGACY_CONTRACT, CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT}:
             raise ValueError("unsupported candidate meaning contract")
         if len(raw.encode()) > 131072:
             raise ValueError("candidate meaning response exceeds bound")
@@ -255,6 +260,7 @@ class PreparedCandidateMeaning:
             PRAGMATIC_COMPLETE_CONTRACT: PragmaticCompleteMeaningResponse,
             SUBJECTIVE_HISTORY_CONTRACT: SubjectiveHistoryResponse,
             PRESUPPOSITION_CONTRACT: PresuppositionResponse,
+            SCOPED_PRESUPPOSITION_CONTRACT: ScopedPresuppositionResponse,
         }[packet["contract"]]
         response = response_type.model_validate_json(_json(value), strict=True)
         if [d.beat_index for d in response.decisions] != list(range(len(packet["beats"]))):
@@ -333,7 +339,7 @@ def prepare_candidate_meaning(
         raise ValueError("Beat conditions require the conditional meaning transport")
     if require_complete_reading and not beat_conditions:
         raise ValueError("complete reading requires the Beat condition transport")
-    if type(complete_reading_version) is not str or complete_reading_version not in {"7", "8", "9", "10", "11"}:
+    if type(complete_reading_version) is not str or complete_reading_version not in {"7", "8", "9", "10", "11", "12"}:
         raise ValueError("unsupported complete reading version")
     if complete_reading_version != "7" and not require_complete_reading:
         raise ValueError("versioned complete reading requires explicit completeness")
@@ -450,7 +456,7 @@ def prepare_candidate_meaning(
         name = "interpret_visible_candidate_complete_v9"
         response_type = PragmaticCompleteMeaningResponse
         system = _pragmatic_complete_system()
-    if complete_reading_version in {"10", "11"}:
+    if complete_reading_version in {"10", "11", "12"}:
         contract = SUBJECTIVE_HISTORY_CONTRACT
         name = "interpret_visible_candidate_complete_v10"
         response_type = SubjectiveHistoryResponse
@@ -465,7 +471,7 @@ def prepare_candidate_meaning(
             "过去的主观猜测并不能证明对方实际的动机或情绪。过去已有的具体行动计划仍用past_intention。"
             "问题的主观历史前提也用past_subjective_state，不能藏在requested_information中。"
         )
-    if complete_reading_version == "11":
+    if complete_reading_version in {"11", "12"}:
         contract = PRESUPPOSITION_CONTRACT
         name = "interpret_visible_candidate_complete_v11"
         response_type = PresuppositionResponse
@@ -485,6 +491,18 @@ def prepare_candidate_meaning(
             "必须结合整句和相邻原文判定，不能机械按某个词造出经历；被明确取消的背景、仅仅可能的情况和常识联想不列作事实。"
             "所有presuppositions只允许事实或过去主观范围的mode，不能使用current模式。"
             "只有完成上述两层阅读且没有遗漏，reading_complete才为true；不确定且无法保留范围时标明unresolved_details。"
+        )
+    if complete_reading_version == "12":
+        contract = SCOPED_PRESUPPOSITION_CONTRACT
+        name = "interpret_visible_candidate_complete_v12"
+        response_type = ScopedPresuppositionResponse
+        system += (
+            "\nmode按原话断言或预设的事件层级选择，不能只看宾语涉及什么内容。"
+            "回顾某人说过、表达过、告诉过主观内容，断言的是过去言语，用past_utterance；"
+            "不因那段话涉及愿望、感受或想法就改成past_subjective_state或past_intention。"
+            "保留是谁对谁说了什么；说过某内容不另行证明其内容为真或对方当时确有该内心状态。"
+            "直接回顾当时感到、认为或不愿意，才是过去主观状态；不能反过来替它添加说过或告诉过。"
+            "若原句分别断言言语和实际状态，两项分开，不跨越报告、信念、否定或假设的范围。"
         )
     request = {
         "messages": [
@@ -511,16 +529,16 @@ def verify_candidate_meaning_preparation(meaning: PreparedCandidateMeaning) -> d
     """Recompile the exact evidence-blind request; do not trust a supplied pin."""
     packet = json.loads(meaning.payload_json, object_pairs_hook=_unique)
     contract = packet.get("contract")
-    if contract not in {CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT}:
+    if contract not in {CONTRACT, COMPACT_CONTRACT, QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT}:
         raise ValueError("unsupported meaning compiler for fidelity review")
     expected = prepare_candidate_meaning(
         beats=tuple(packet["beats"]), compact=contract != CONTRACT,
-        explicit_questions=contract in {QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT},
+        explicit_questions=contract in {QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT},
         closing_tail_transport=packet.get("wire_transport") == TAIL_TRANSPORT,
-        question_conditions=contract in {CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT},
-        beat_conditions=contract in {CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT},
-        require_complete_reading=contract in {COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT},
-        complete_reading_version=("11" if contract == PRESUPPOSITION_CONTRACT else "10" if contract == SUBJECTIVE_HISTORY_CONTRACT else "9" if contract == PRAGMATIC_COMPLETE_CONTRACT else "8" if contract == SEMANTIC_COMPLETE_CONTRACT else "7"),
+        question_conditions=contract in {CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT},
+        beat_conditions=contract in {CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT},
+        require_complete_reading=contract in {COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT},
+        complete_reading_version=("12" if contract == SCOPED_PRESUPPOSITION_CONTRACT else "11" if contract == PRESUPPOSITION_CONTRACT else "10" if contract == SUBJECTIVE_HISTORY_CONTRACT else "9" if contract == PRAGMATIC_COMPLETE_CONTRACT else "8" if contract == SEMANTIC_COMPLETE_CONTRACT else "7"),
     )
     if expected.payload_json != meaning.payload_json:
         raise ValueError("meaning preparation differs from its fixed compiler")
