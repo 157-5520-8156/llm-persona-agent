@@ -74,11 +74,14 @@ The author embellished autobiographical detail; source review also rejected an
 exact supported father action. A conversational denial was read as an external
 historical fact. Ordering alone does not qualify natural expression or correction.
 
-Life scalar reading preparation now restricts known source families to explicit
+Life field reading preparation now restricts known source families to explicit
 fields and their actual presented semantic coordinates. It separates environment,
 actions, intention, lifecycle, speech, subjective history and retained prehistory;
-unknown types have no scalar fallback. Fact predicates/biography mappings remain
-unqualified, and the directory is not installed as semantic admission. No real
+unknown types have no scalar fallback. Version 2 additionally re-derives typed
+biographical coordinates from the exact displayed parent, field/ID and logical
+time; this grants coordinate use only, never an unlisted event or activity.
+Fact predicate-value readings remain unqualified, and the directory is not
+installed as semantic admission. No real
 provider calls or continuation changes. See
 `docs/design/life-source-field-readings-2026-09-16.md`.
 

@@ -1,4 +1,4 @@
-"""Exact, presented scalar readings for a bounded set of Life source families.
+"""Exact, presented field readings for a bounded set of Life source families.
 
 Code restricts source use and byte identity; it never classifies a candidate or
 judges entailment. Unknown families and unshown fields receive no default grant.
@@ -16,8 +16,9 @@ from ..visible_source_witness_experiment import _reading, _relative_pointer_choi
 from ..visible_subjective_source import subjective_direct_paths
 from .life_source_origin import canonical, digest
 from .life_source_view import LifeSourceView
+from .life_biographical_readings import biographical_reading
 
-CONTRACT = "life-source-readings.1"
+CONTRACT = "life-source-readings.2"
 
 
 def _fields(row):
@@ -65,8 +66,7 @@ def _fields(row):
         scope = {'appraisals': 'appraisals', 'affect_episodes': 'affect'}.get(material.get('lane'))
         if scope is not None:
             return 'subjective_history', (scope,), source_subject_permissions(row=row, pointers=paths)
-    # Fact excerpts need predicate-specific support; biography coordinates need
-    # their own rendered-coordinate mapping. Neither gets a catch-all grant.
+    # Fact excerpts need predicate-specific support, with no catch-all grant.
     return None
 
 
@@ -123,7 +123,7 @@ class PreparedLifeSourceReadings:
     def verify(self, *, view: LifeSourceView, snapshot):
         expected = prepare_life_source_readings(view=view, snapshot=snapshot)
         if self.payload_json != expected.payload_json:
-            raise ValueError('Life scalar readings differ from the pinned source/view compilation')
+            raise ValueError('Life field readings differ from the pinned source/view compilation')
         return expected
 
     def require_reading(self, *, reading_id: str, claim_scope: str, subject_role: str, view: LifeSourceView, snapshot):
@@ -144,6 +144,18 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
     for source in table['source_references']:
         material = table['source_materials'][source['material_index']]['material']
         row = {**source, 'review_material': material}
+        if material.get('kind') == 'biographical_coordinate':
+            descriptor, reason = biographical_reading(row, rendered=rendered)
+            if descriptor is None:
+                excluded.append({'source_ref_index': source['source_ref_index'], 'reason': reason})
+                continue
+            descriptor.update(material_index=source['material_index'],
+                              material_identity=source['material_identity'],
+                              source_owner_ref=source.get('support_subject_ref'))
+            identity = canonical(descriptor)
+            readings.append({'reading_id': 'life-reading:sha256:' + digest(identity), **descriptor,
+                             'source_ref_indexes': [source['source_ref_index']]})
+            continue
         specification = _fields(row)
         if specification is None:
             excluded.append({'source_ref_index': source['source_ref_index'], 'reason': 'no_qualified_field_reader'})

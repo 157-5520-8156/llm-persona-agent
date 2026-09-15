@@ -1,0 +1,121 @@
+{
+  "baseline": "98cc9ad1",
+  "contract": "life-source-readings.2",
+  "fixture": "Closed temporary SQLite ecology and Life chain; captured MockTransport request and restored durable checkpoint.",
+  "source_families": {
+    "settled_life": 1,
+    "biographical_coordinate": 6
+  },
+  "coordinates": [
+    {
+      "coordinate_field_path": "/academic_phase",
+      "value": "term",
+      "logical_at": "2026-09-08T02:02:00Z",
+      "permissions": [
+        [
+          "biographical_coordinate",
+          "companion"
+        ]
+      ]
+    },
+    {
+      "coordinate_field_path": "/academic_year",
+      "value": 3,
+      "logical_at": "2026-09-08T02:02:00Z",
+      "permissions": [
+        [
+          "biographical_coordinate",
+          "companion"
+        ]
+      ]
+    },
+    {
+      "coordinate_field_path": "/age",
+      "value": 21,
+      "logical_at": "2026-09-08T02:02:00Z",
+      "permissions": [
+        [
+          "biographical_coordinate",
+          "companion"
+        ]
+      ]
+    },
+    {
+      "coordinate_field_path": "/calendar_context_tags",
+      "value": [
+        "academic:enrolled",
+        "calendar:classes_open",
+        "calendar:term"
+      ],
+      "logical_at": "2026-09-08T02:02:00Z",
+      "permissions": [
+        [
+          "biographical_coordinate",
+          "companion"
+        ]
+      ]
+    },
+    {
+      "coordinate_field_path": "/current_residence_context_tags",
+      "value": [
+        "residence:campus_dorm"
+      ],
+      "logical_at": "2026-09-08T02:02:00Z",
+      "permissions": [
+        [
+          "biographical_coordinate",
+          "companion"
+        ]
+      ]
+    },
+    {
+      "coordinate_field_path": "/season",
+      "value": "autumn",
+      "logical_at": "2026-09-08T02:02:00Z",
+      "permissions": [
+        [
+          "biographical_coordinate",
+          "companion"
+        ]
+      ]
+    }
+  ],
+  "excluded_reasons": {
+    "no_qualified_field_reader": 6
+  },
+  "real_provider_calls": 0,
+  "prepared_sha256": "c553c7cf72f52ac77ee3aac35d541cf943de46576442aa16433e896ad58e1d98",
+  "readings_sha256": "18ed449de178a26c96dbb1e06821f30b8855396b070ed7a987a45572e846f769",
+  "write_authority": false,
+  "semantic_coverage": "not_assessed",
+  "complete_source_coverage": false,
+  "qualification": "manual_only / qualification_incomplete",
+  "validation_contract": "life-biographical-readings-validation.1",
+  "implementation_sha256": {
+    "src/companion_daemon/world_v2/character_interior/life_biographical_readings.py": "a78c27c619f6fb44f46599ab7176715cd38309d795aabee1508e068514535d70",
+    "src/companion_daemon/world_v2/character_interior/life_source_readings.py": "55eacaec88a1a29fc5005dca92aee4f1e4315fcfe0e35be189ba5ef7baea5d53"
+  },
+  "tests": {
+    "passed": 87,
+    "strict_xfailed": 2,
+    "duration_seconds": 29.01,
+    "ruff": "passed",
+    "diff_check": "passed",
+    "scope": "Life source/view, biography, shared source compiler, visible source compiler, prehistory, subjective history, World stimulus response and existing factual acceptance gap. Container ID/reorder/privacy cases are reader-level fixtures, not World settlement qualification."
+  },
+  "limitations": [
+    "Life factual acceptance and complete candidate semantics are still open; two known unsupported-episode counterexamples remain strict xfail.",
+    "FactRecallItem contains the whole bound Observation, not an extracted accepted predicate value. Fact source readings remain excluded.",
+    "No new real-provider, role conversation, delivery, long-term human-likeness or monthly-cost qualification.",
+    "No production database, QQ or deployment changes; temporary SQLite fixture writes only."
+  ],
+  "continuation": {
+    "runtime": "output/private-audits/release-chat-evidence-order-20260915-01/run",
+    "billing": "output/private-audits/release-life-candidate-reading-20260915-02/run/world.sqlite",
+    "counts": {
+      "world_v2_model_usage": 1040,
+      "world_v2_model_reservations": 1037,
+      "unknown_holds": 37
+    }
+  }
+}

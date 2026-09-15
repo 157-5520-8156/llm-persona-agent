@@ -13,7 +13,7 @@ from companion_daemon.world_v2.character_interior.structured_role import Structu
 from test_world_stimulus_life_response import _ResponseHTTP, _build, _model, _settled
 
 
-async def _prepared(tmp_path, monkeypatch, *, fault=None):
+async def _prepared(tmp_path, monkeypatch, *, fault=None, ecology=False):
     monkeypatch.setenv('COMPANION_DISABLE_DEBUG_USAGE_LEDGER', '1')
     captured = []
     original = StructuredCharacterRoleFaculty.experience
@@ -38,7 +38,7 @@ async def _prepared(tmp_path, monkeypatch, *, fault=None):
     monkeypatch.setattr(fixture, 'compose_production_character_interior', durable_composition)
     provider = _ResponseHTTP(text='有点想听听窗外的声音。', fault=fault)
     model = _model(provider)
-    app = _build(path, model)
+    app = _build(path, model, ecology=ecology)
     try:
         await _settled(app)
         await app.drain_background_once()
