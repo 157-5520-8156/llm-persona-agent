@@ -1195,6 +1195,8 @@ def _week_diary(
             reading = content.get("character_response")
             existing = grouped.setdefault(day, [])
             row = {"date": day, "world_consequence": content["world_consequence"], "source_ref": source_ref}
+            row.update({key: entry[key] for key in ("settled_at", "occurred_from", "occurred_to")
+                        if isinstance(entry.get(key), str)})
             if isinstance(reading, dict) and reading.get("response_text"):
                 row["character_response"] = reading
             if len(existing) < PRESENT_WEEK_DIARY_LINES_PER_DAY and row not in existing:

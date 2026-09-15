@@ -52,7 +52,11 @@ def regroup_scoped_week_diary(value: object) -> list[dict[str, object]]:
             continue
         group = days.setdefault(day, {"date": day, "lines": [], "line_sources": []})
         if readings:
-            item = {**_bounded_reading(readings), "source_ref": ref}
+            item = {
+                **_bounded_reading(readings), "source_ref": ref,
+                **{key: row[key] for key in ("settled_at", "occurred_from", "occurred_to")
+                   if isinstance(row.get(key), str)},
+            }
             entries = group.setdefault("readings", [])
             if item not in entries:
                 entries.append(item)

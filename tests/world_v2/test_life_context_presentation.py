@@ -64,6 +64,7 @@ def test_settlement_enters_diary_without_merging_world_result_and_feeling():
     day = material["week_diary"][0]
     reading = day["readings"][0]
     assert reading["source_ref"] == "occurrence:test"
+    assert reading["settled_at"] == "2026-08-16T14:00:00+08:00"
     assert reading["world_consequence"] == occurrence(settled=True)["value"]["content"]["world_consequence"]
     assert reading["character_response"]["response_text"] == "我有点意外。"
     assert day["lines"] == ["午饭后整理了书架。"]
@@ -94,3 +95,16 @@ def test_historical_snapshot_keeps_historical_diary_rendering():
         "snapshot_compiler": _InteriorBinding.available("inner-life-snapshot-compiler.24"),
     }), dict(snapshot.materials))
     assert "readings" not in old.model_view()["materials"]["week_diary"][0]
+
+
+def test_same_day_results_keep_their_individual_times_and_source_identities():
+    earlier = occurrence(settled=True, ref="occurrence:earlier")
+    earlier["value"]["settled_at"] = "2026-08-16T09:00:00+08:00"
+    earlier["value"]["content"]["world_consequence"]["environment"]["text"] = "灯还没有修好。"
+    later = occurrence(settled=True, ref="occurrence:later")
+    later["value"]["content"]["world_consequence"]["environment"]["text"] = "灯修好了。"
+    readings = compile_with(later, earlier, legacy=False).model_view()["materials"]["week_diary"][0]["readings"]
+    assert [(r["source_ref"], r["settled_at"]) for r in readings] == [
+        ("occurrence:later", "2026-08-16T14:00:00+08:00"),
+        ("occurrence:earlier", "2026-08-16T09:00:00+08:00"),
+    ]
