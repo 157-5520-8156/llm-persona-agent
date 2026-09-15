@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from companion_daemon.world_v2.visible_review_protocols import SUPPORTED_REVIEW_VERSIONS
 import hashlib
 import json
 
@@ -165,7 +166,7 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
     aliases = verify_visible_source_author_request(
         author_request_json, expected_request_hash=output.winning_request_hash
     )
-    if review_version not in {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}:
+    if review_version not in SUPPORTED_REVIEW_VERSIONS:
         raise ValueError("visible source review version is unsupported")
     requirement = request.visible_source_requirement_json
     table = requirement_table(requirement)

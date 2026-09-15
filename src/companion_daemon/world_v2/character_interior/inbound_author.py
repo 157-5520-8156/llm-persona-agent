@@ -9,6 +9,7 @@ there is no expression/appraisal composition surface or legacy fallback route.
 
 from __future__ import annotations
 
+from companion_daemon.world_v2.visible_review_protocols import SUPPORTED_REVIEW_VERSIONS
 import asyncio
 from collections import OrderedDict
 from collections.abc import Callable, Mapping
@@ -2473,7 +2474,7 @@ class _InboundCharacterAuthor:
         if type(whole_candidate_mode) is not bool:
             raise TypeError("whole_candidate_mode must be an explicit boolean")
         self._whole_candidate_mode = whole_candidate_mode
-        if type(visible_source_review_version) is not str or visible_source_review_version not in {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}:
+        if type(visible_source_review_version) is not str or visible_source_review_version not in SUPPORTED_REVIEW_VERSIONS:
             raise ValueError("unsupported visible source review version")
         from ..visible_independent_review_runtime import validate_independent_reviewer_configuration
         validate_independent_reviewer_configuration(visible_source_review_model, visible_source_review_version)

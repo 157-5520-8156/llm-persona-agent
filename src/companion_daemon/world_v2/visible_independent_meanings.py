@@ -17,6 +17,7 @@ from .visible_meaning_source_review import (
 from .visible_source_witness_experiment import _json, _unique
 
 CONTRACT = "visible-independent-meanings-source-probe.1"
+SHARED_STRING_CONTRACT = "visible-independent-meanings-source-probe.2"
 
 
 @dataclass(frozen=True)
@@ -49,7 +50,10 @@ class PreparedIndependentMeanings:
         pin = json.loads(self.payload_json, object_pairs_hook=_unique)
         meanings = tuple(IndependentMeaning(PreparedCandidateMeaning(m["preparation_json"]), m["raw_response"])
                          for m in pin["meanings"])
-        expected = prepare_independent_meanings_sources(meanings=meanings, sources=tuple(pin["sources"]))
+        if pin["contract"] not in {CONTRACT, SHARED_STRING_CONTRACT}:
+            raise ValueError("unsupported independent source presentation")
+        expected = prepare_independent_meanings_sources(meanings=meanings, sources=tuple(pin["sources"]),
+                                                        shared_strings=pin["contract"] == SHARED_STRING_CONTRACT)
         if expected is None or expected.payload_json != self.payload_json:
             raise ValueError("independent source preparation differs from its fixed compilation")
         value = _validation(raw, pin["request"]["tools"][0]["function"]["parameters"])
@@ -84,7 +88,7 @@ class PreparedIndependentMeanings:
             outcomes.append("facts_rejected" if any(d["outcome"] == "rejected" for d in facts)
                             else "facts_supported" if facts else "not_assessed")
         return {
-            "contract": CONTRACT, "preparation_sha256": self.sha256,
+            "contract": pin["contract"], "preparation_sha256": self.sha256,
             "response_sha256": hashlib.sha256(raw.encode()).hexdigest(),
             "fact_decisions": decisions, "fixed_fact_beat_outcomes": outcomes,
             "reviewer_response": value, "receipt_authority": False,
@@ -94,8 +98,11 @@ class PreparedIndependentMeanings:
 
 
 def prepare_independent_meanings_sources(
-    *, meanings: tuple[IndependentMeaning, IndependentMeaning], sources: tuple[dict, ...],
+    *, meanings: tuple[IndependentMeaning, IndependentMeaning], sources: tuple[dict, ...], shared_strings: bool = False,
 ) -> PreparedIndependentMeanings | None:
+    if type(shared_strings) is not bool:
+        raise TypeError("shared string presentation flag must be boolean")
+    contract = SHARED_STRING_CONTRACT if shared_strings else CONTRACT
     interpreted, beats = _readings(meanings)
     factual = [i for i, value in enumerate(interpreted) if value["facts"]]
     if not factual:
@@ -121,12 +128,12 @@ def prepare_independent_meanings_sources(
     request = deepcopy(base.request())
     body = json.loads(request["messages"][1]["content"])
     body["fixed_facts"] = [{**f, "eligible_reading_ids": list(_eligible_readings(f, catalog))} for f in facts]
-    body["output_contract"]["contract"] = CONTRACT
+    body["output_contract"]["contract"] = contract
     function = request["tools"][0]["function"]
     schema = function["parameters"]
-    schema["properties"]["contract"]["enum"] = [CONTRACT]
+    schema["properties"]["contract"]["enum"] = [contract]
     schema["properties"]["fact_decisions"]["items"]["properties"]["fact_id"]["enum"] = [f["fact_id"] for f in facts]
-    name = "review_independent_fixed_meanings_v1"
+    name = "review_independent_fixed_meanings_v2" if shared_strings else "review_independent_fixed_meanings_v1"
     function["name"] = name
     request["tool_choice"]["function"]["name"] = name
     request["messages"][0]["content"] += (
@@ -135,9 +142,25 @@ def prepare_independent_meanings_sources(
         "不可用另一命题作为证据、替换本命题或代替它作答。不猜哪份解释更可信，不消除分歧；"
         "每个fact_id都必须保留自己的判定。"
     )
+    if shared_strings:
+        from .shared_string_view import pack_shared_strings
+        decision = schema["properties"]["fact_decisions"]["items"]
+        del decision["properties"]["explanation"]
+        decision["required"].remove("explanation")
+        request["messages"][0]["content"] = request["messages"][0]["content"].replace(
+            "explanation简短说明对应或缺失，避免逐项重复整段材料。",
+            "每项只输出fact_id、source_support、reading_ids；不生成解释文字。",
+        )
+        body["source_materials"] = pack_shared_strings(body["source_materials"])
+        request["messages"][0]["content"] += (
+            "source_materials使用无损shared-string-view.1：value仍是完整原始材料数组，"
+            "其中每个等于strings字典键的字符串都代表该键对应的完整原文；键不是新的实体或事实。"
+            "相同键在所有材料中表示相同原文。先按此字典阅读材料，不能把键当成缺失内容；"
+            "事实判定仍按原来的完整材料和权限进行，reading_ids保持不变。"
+        )
     request["messages"][1]["content"] = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
     return PreparedIndependentMeanings(_json({
-        "contract": CONTRACT, "beats": beats,
+        "contract": contract, "beats": beats,
         "meanings": [{"preparation_json": m.preparation.payload_json, "raw_response": m.raw_response} for m in meanings],
         "sources": sources, "facts": facts, "catalog": catalog, "request": request,
     }))

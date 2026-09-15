@@ -69,12 +69,13 @@ class ReviewHTTP:
             if self.fault in {'repair_once', 'repair_twice'} and body['model'] == 'deepseek-v4-flash' and (not is_reselection or self.fault == 'repair_twice'):
                 del decisions[0]['reading_complete']
             return _http_result(body, {'contract': 'visible-candidate-meaning.7' if self.version == '9' else 'visible-candidate-meaning.9', 'decisions': decisions})
-        assert name == 'review_independent_fixed_meanings_v1'
+        assert name == ('review_independent_fixed_meanings_v2' if self.version == '11' else 'review_independent_fixed_meanings_v1')
         assert 'visible_beats' not in packet
         reject = self.fault == 'reselect' and self.authors == 1
         return _http_result(body, dict(contract=packet['output_contract']['contract'], fact_decisions=[dict(
             fact_id=f['fact_id'], source_support=not reject,
-            reading_ids=[] if reject else [f['eligible_reading_ids'][0]], explanation='offline fixture')
+            reading_ids=[] if reject else [f['eligible_reading_ids'][0]],
+            **({} if self.version == '11' else {'explanation': 'offline fixture'}))
             for f in packet['fixed_facts']]))
 
 
@@ -99,7 +100,7 @@ async def application(path, handler):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('fault,calls', [(None, 4), ('source_free', 3), ('reselect', 8)])
-@pytest.mark.parametrize('version', ['9', '10'])
+@pytest.mark.parametrize('version', ['9', '10', '11'])
 async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_replays(tmp_path, fault, calls, version):
     handler = ReviewHTTP(fault, version)
     path = tmp_path / 'world.sqlite'
@@ -112,7 +113,7 @@ async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_r
         audit = next(a for a in evidence.projection.proposal_audits if a.proposal_kind == 'decision')
         winner = next(a for a in _audits(app) if a.visible_source_review_json)
         data = json.loads(winner.visible_source_review_json)
-        assert json.loads(data['requirement_json'])['review_protocol'] == ('visible-independent-review.1' if version == '9' else 'visible-independent-review.2')
+        assert json.loads(data['requirement_json'])['review_protocol'] == {'9': 'visible-independent-review.1', '10': 'visible-independent-review.2', '11': 'visible-independent-review.3'}[version]
         assert data['receipt']['contract'] == f'visible-source-review-receipt.{version}'
         assert verify_recorded_candidate(audit=audit, model_result_audits=evidence.projection.model_result_audits) == data['receipt']['receipt_hash']
         assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
@@ -195,7 +196,7 @@ async def test_cold_runtime_requires_original_protocol_and_each_actual_review_ca
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('version', ['9', '10'])
+@pytest.mark.parametrize('version', ['9', '10', '11'])
 @pytest.mark.parametrize('schema_references', [False, True])
 async def test_public_proactive_contact_pins_and_replays_independent_protocol(tmp_path, monkeypatch, version, schema_references):
     from datetime import timedelta
