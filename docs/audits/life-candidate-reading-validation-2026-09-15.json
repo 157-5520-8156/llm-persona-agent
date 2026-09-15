@@ -1,0 +1,105 @@
+{
+  "contract": "life-candidate-reading-validation.1",
+  "code_heads": [
+    "df3379dbecb56971190543928f91b127802097a3",
+    "e0a50e8389bab07210af412b7e30db779a7ffbbb"
+  ],
+  "previous_goal_turn_classification": "progress",
+  "implementation": {
+    "inventory": "Complete role-result JSON with all string values and exact JSON pointers, including newly nested prose; numeric/null context retained",
+    "inspection": "Recompiles exact preparation; one reading per original field, duplicate/omitted/unknown paths and extra authority rejected; total readings bounded",
+    "versions": "v1 factual readings; v2 explicit current expression, future intention, hypothesis/question, protocol values alongside historical/external facts",
+    "authority": "None. Complete field representation is not semantic coverage, source support, or Life-write acceptance",
+    "old_v1_compilation_and_real_response_cold_inspection": "Exact v1 preparation and original 31 fields / 33 facts retained under current code"
+  },
+  "real_candidate": {
+    "original_author_capture_id": "model-input:215c67697a2e49fb8b6946dab8cb8678",
+    "candidate_sha256": "59a071cb599b29246df0916a48f2bf613f9664d3f5c487256f3b3cb2a7f634cc",
+    "text_fields": 31,
+    "original_native_bytes_verified": true
+  },
+  "semantic_assessment": {
+    "scope": "Manual inspection of the same actual Life candidate, without World source review. Not a Life-write qualification.",
+    "v1": {
+      "fields": 31,
+      "facts": 33,
+      "latency_ms": 10565,
+      "completed_walk_read_in_all_five_required_fields": true,
+      "errors": [
+        "Current stance emitted as past_subjective_state despite interpretation saying no occurrence evidence needed",
+        "Future behavior and display intentions emitted as past_intention",
+        "Morning seating embedded in an environment proposition rather than separate companion claim",
+        "Mental closure classified as actual_event_or_state"
+      ],
+      "pro_result": "Timeout at 22011 ms; unknown hold retained"
+    },
+    "v2": {
+      "fields": 31,
+      "facts": 19,
+      "latency_ms": 13094,
+      "improvements": [
+        "Current stance uses current_expression",
+        "Future behavior and display choices use future_intention",
+        "Morning seating extracted as its own companion actual_event_or_state"
+      ],
+      "remaining_errors": [
+        {
+          "path": "/proposals/0/meaning_candidates/1/meaning",
+          "original": "走这一圈把今天收了个尾，小事也可以有它自己的完整",
+          "model": "Both readings hypothesis_or_question; no factual premise extracted",
+          "assessment": "Completed walk premise is lost at this field even though other fields repeat it"
+        },
+        {
+          "path": "/summary",
+          "model": "那件修灯的小事在角色心里合上了。 classified actual_event_or_state",
+          "assessment": "Current mental closure remains misclassified as an external event/state requiring evidence"
+        }
+      ]
+    },
+    "decision": "Do not wire this unqualified reading into Life acceptance. Continue complete-candidate factual closure and independent coverage verification; no keyword repair or blanket exclusion of subjective prose."
+  },
+  "regression": {
+    "initial_v1": "19 passed in 0.98s",
+    "final_v2": "22 passed in 1.08s; includes prior mechanical coverage",
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "scope": "Preparation/consumer mechanics only. No production acceptance wiring or new accepted World receipts."
+  },
+  "billing": {
+    "new_physical_calls": 3,
+    "known_repository_estimate_cny": "0.0449115",
+    "new_unknown_hold_cny": "0.328752",
+    "all_trial_processes_closed": true,
+    "all_usage_reconciled": true,
+    "native_known_token_joins_verified": 2,
+    "inherited_rows_unchanged": true,
+    "usage_rows": 1040,
+    "reservation_rows": 1037,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "monthly_cost_qualified": false
+  },
+  "continuation": {
+    "runtime": "output/private-audits/release-chat-evidence-order-20260915-01/run",
+    "billing": "output/private-audits/release-life-candidate-reading-20260915-02/run/world.sqlite",
+    "operator_elapsed_minutes": 825,
+    "warning": "Next trial must combine this runtime with the latest complete billing ledger; never resume the older 1037/1034 runtime ledger by itself.",
+    "goal_status": "active"
+  },
+  "qualification": "manual_only / qualification_incomplete",
+  "deployed": false,
+  "real_qq": false,
+  "production_database_modified": false,
+  "private_evidence": {
+    "output/private-audits/release-life-candidate-reading-20260915-01/probe.json": "2c0c445d3835f5545e714750b5af28fcdf19d168e17cc2fae07b99bfa425982b",
+    "output/private-audits/release-life-candidate-reading-20260915-01/expectations.json": "5af4b81a481c8979fbc5b3c8af626d41ba8a933500b9bed84db7aa9d3c8ba7a2",
+    "output/private-audits/release-life-candidate-reading-20260915-01/finished.json": "4ceb77d4a496be69811efe31b340002a47f66ee8be362587c260b2e000e80021",
+    "output/private-audits/release-life-candidate-reading-20260915-01/assessment.json": "aea53a7d1434bc221002dbc436ff4973f9018fbf5cc7cc835e1c113e20e39ab9",
+    "output/private-audits/release-life-candidate-reading-20260915-01/run/deepseek-v4-flash-result.json": "f9ba238f5542f7df0ba8a46514a88ecae091fbeb21569fe6015f2d4b07849434",
+    "output/private-audits/release-life-candidate-reading-20260915-02/probe.json": "283084eb90e90e3c10fafee4e8cdaafb254193755f60a8cce76d3a1c8fb849cf",
+    "output/private-audits/release-life-candidate-reading-20260915-02/expectations.json": "5af4b81a481c8979fbc5b3c8af626d41ba8a933500b9bed84db7aa9d3c8ba7a2",
+    "output/private-audits/release-life-candidate-reading-20260915-02/finished.json": "0b45c5d3475a1662e14769c9e733a0ca34df6bba6ca3df5d7a7e665360a52239",
+    "output/private-audits/release-life-candidate-reading-20260915-02/assessment.json": "aea53a7d1434bc221002dbc436ff4973f9018fbf5cc7cc835e1c113e20e39ab9",
+    "output/private-audits/release-life-candidate-reading-20260915-02/run/deepseek-v4-flash-result.json": "1e6271b0433f094d08e4cade24a40b5933a853630eef6a8c87c8deac03e49174"
+  }
+}

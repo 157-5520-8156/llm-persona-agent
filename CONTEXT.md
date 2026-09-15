@@ -74,6 +74,17 @@ The author embellished autobiographical detail; source review also rejected an
 exact supported father action. A conversational denial was read as an external
 historical fact. Ordering alone does not qualify natural expression or correction.
 
+Whole-Life candidate reading now inventories all text fields, including summary,
+appraisal, thread reasons and newly nested prose. Its versioned inspector proves
+field coverage only, never semantic completeness or source/write authority.
+Real v2 fixes some current-feeling/future-intention classifications but still misses
+an appraisal's walk premise and misreads mental closure as an external event.
+It is not wired to acceptance. 22 mechanical checks pass; three calls are closed
+and reconciled (known CNY0.0449115 plus unknown hold0.328752). Runtime remains
+evidence-order trial; billing now comes from life-candidate-reading trial02,
+1040 usage/1037 reservations. See
+`docs/audits/life-candidate-reading-validation-2026-09-15.json`.
+
 Life correction now carries the exact rejected provider result (summary and all
 proposals), bound to the original pinned request, invocation hashes and author.
 Core retains one correction; overbound originals remain technical failures, not
@@ -89,9 +100,10 @@ and Appraisal were accepted; current acceptance checks provenance, not embedded
 factual semantics. A public SQLite regression reproduces the gap (14 passed,
 2 strict xfailed); the latter are unresolved blockers, not qualification passes.
 See `docs/design/life-response-factual-acceptance-gap-2026-09-15.md`.
-Latest unified runtime/billing checkpoint is
-release-chat-evidence-order-20260915-01/run, 1037 usage/1034 reservations, closed
-and reconciled; 20 new known calls cost approximately CNY0.466526. All20 old
+The historical unified runtime/billing checkpoint was
+release-chat-evidence-order-20260915-01/run, 1037 usage/1034 reservations; it is now
+only the runtime source, with the newer complete billing ledger listed above. Its
+20 known calls cost approximately CNY0.466526. All20 old
 receipts cold-verify, without erasing 7 known historical semantic false accepts.
 See `docs/audits/expression-evidence-order-validation-2026-09-15.json`.
 
