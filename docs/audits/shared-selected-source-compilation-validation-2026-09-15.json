@@ -1,0 +1,91 @@
+{
+  "baseline": "e16b7215",
+  "comparisons": [
+    {
+      "case": "public_fact_dialogue_with_current_report",
+      "subjective": false,
+      "visible_hash": "19617e49101d8fa77fc35e06cfca372441e69207477557219137efd9b630a6b1",
+      "rows": 14,
+      "generic_rows": 13
+    },
+    {
+      "case": "public_fact_dialogue_with_current_report",
+      "subjective": true,
+      "visible_hash": "e2024e277b005c0ba1f094b1f2d6abe1dac4af7423dc9cc25a2ee5c3983f37f6",
+      "rows": 14,
+      "generic_rows": 13
+    },
+    {
+      "case": "latest_runtime_cursor_recompile_not_original_life_author_view",
+      "subjective": false,
+      "visible_hash": "7827687285a4984db06dce350fd245b913a54928c789ffb56d359e5df8bd0ab6",
+      "rows": 115,
+      "generic_rows": 115
+    },
+    {
+      "case": "latest_runtime_cursor_recompile_not_original_life_author_view",
+      "subjective": true,
+      "visible_hash": "82b0ad457564b5834418f7fea84923a2798c579d0a11a2e559aad701c11b48af",
+      "rows": 127,
+      "generic_rows": 127
+    }
+  ],
+  "cold_receipts": {
+    "visible-source-review-receipt.6": 6,
+    "visible-source-review-receipt.7": 1,
+    "visible-source-review-receipt.8": 6,
+    "visible-source-review-receipt.12": 3,
+    "visible-source-review-receipt.13": 2,
+    "visible-source-review-receipt.14": 2
+  },
+  "new_provider_calls": 0,
+  "original_life_author_view_binding": "not_assessed",
+  "known_historical_semantic_false_acceptances": 7,
+  "qualification": "manual_only / qualification_incomplete",
+  "contract": "shared-selected-source-compilation-validation.1",
+  "scope": "Source preparation decoupled from ModelInput. No Life semantic acceptance or author-view binding installed.",
+  "tests": {
+    "passed": 167,
+    "strict_xfailed": 2,
+    "known_blocker": "Life accepts unsupported personal episodes",
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "files": [
+      "tests/world_v2/test_selected_source_composer.py",
+      "tests/world_v2/test_visible_selected_source_context.py",
+      "tests/world_v2/test_visible_source_composer.py",
+      "tests/world_v2/test_prehistory_recall_review.py",
+      "tests/world_v2/test_visible_source_review_receipt.py",
+      "tests/world_v2/test_visible_subjective_source.py",
+      "tests/world_v2/test_life_candidate_reading.py",
+      "tests/world_v2/test_life_response_factual_acceptance_gap.py",
+      "tests/world_v2/test_world_stimulus_life_response.py",
+      "tests/world_v2/test_visible_source_diagnostics_runtime.py",
+      "tests/world_v2/test_launch_visible_source_gate.py"
+    ]
+  },
+  "continuation": {
+    "runtime": "output/private-audits/release-chat-evidence-order-20260915-01/run",
+    "billing": "output/private-audits/release-life-candidate-reading-20260915-02/run/world.sqlite",
+    "usage_rows": 1040,
+    "reservation_rows": 1037,
+    "unknown_reservations": 37,
+    "new_calls": 0,
+    "monthly_target_cny": 100,
+    "monthly_cost_qualified": false
+  },
+  "source_differential_note": "Old modules saved from baseline before editing; full selected proof and serialized visible table compared. The real-cursor recompile is not the historical Life author view.",
+  "boundaries": {
+    "production_database": false,
+    "real_qq": false,
+    "deployment": false,
+    "life_write_authority": false,
+    "character_decision_rules_added": false
+  },
+  "remaining": [
+    "Bind original Capsule selection to Life snapshot and actual purpose-filtered provider input",
+    "Fix real whole-candidate semantic omissions and current-expression false positives",
+    "Install review/correction/durable admission before Life/private summary checkpoint",
+    "Requalify real Life-memory-chat chain, representative dialogue and cost"
+  ]
+}

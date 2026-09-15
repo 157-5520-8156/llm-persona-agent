@@ -74,6 +74,15 @@ The author embellished autobiographical detail; source review also rejected an
 exact supported father action. A conversational denial was read as an external
 historical fact. Ordering alone does not qualify natural expression or correction.
 
+Selected source compilation is now independent of chat ModelInput, reusing the
+same activity, settlement, prehistory and subjective permissions. Chat adapters
+retain exact input/current participant binding; four old/new outputs are byte
+equal and all20 cold receipts survive. Generic tables have no author-view or
+write authority. Life must still bind its actual snapshot/provider selection
+before semantic review and durable admission. No paid calls; runtime and billing
+continuation remain unchanged. See
+`docs/design/shared-selected-source-compilation-2026-09-15.md`.
+
 Whole-Life candidate reading now inventories all text fields, including summary,
 appraisal, thread reasons and newly nested prose. Its versioned inspector proves
 field coverage only, never semantic completeness or source/write authority.

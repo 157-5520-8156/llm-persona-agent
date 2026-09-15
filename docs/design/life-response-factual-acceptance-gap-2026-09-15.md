@@ -75,6 +75,16 @@ Flash在13.094秒内提取19项需核验事实，修正当前感受和未来打�
 接受证据后，才把此步骤接到上面的纠正及写入入口。没有把Life伪装成聊天Beat或引入关键词
 分类。详见[全候选读取实测](../audits/life-candidate-reading-validation-2026-09-15.json)。
 
+## 来源编译已从聊天输入中解耦
+
+`selected_source_context.py` 与 `selected_source_composer.py` 现提供原始可信 Capsule 的
+候选无关来源表，复用既有活动/结果/往事/主观历史权限。聊天适配器继续校验原始
+ModelInput 和当前参与者，四组新旧输出逐字一致；生活结算能不经伪造聊天请求读取材料。
+这仍不证明该来源集合与历史 Life 作者实际视图相同，更没有语义或写入权威。
+下一步须在原始投影位置绑定 Capsule、InnerLifeSnapshot 和用途裁剪后的实际作者输入，
+然后再接全候选事实核验、同角色纠正与持久化接受。
+见[共享来源编译](shared-selected-source-compilation-2026-09-15.md)。
+
 ## 下一步实现边界
 
 1. 在同一角色候选进入可消费的生活反应、Appraisal、Thread、Experience 前执行事实核验。

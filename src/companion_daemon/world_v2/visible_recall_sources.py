@@ -13,7 +13,8 @@ from .recall_audit import RecallAuditTrace
 from .recall_model_reading import interior_recall_item
 from .model_facing_context import compact_model_facing_context
 from .schema_core import canonicalize_json_value
-from .visible_source_composer import VisibleSourceTable, _indexed_materials
+from .selected_source_composer import _indexed_materials
+from .visible_source_composer import VisibleSourceTable
 
 RECALLED_SOURCE_TABLE_CONTRACT = "visible-source-row-table.5"
 

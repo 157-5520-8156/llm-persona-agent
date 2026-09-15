@@ -165,7 +165,7 @@ async def test_public_chat_activity_remains_readable_beside_same_ref_situation(
         # Perturb only source enumeration order after the real typed producer.
         # The public composer must retain both materials; their identity sets
         # stay equal while an ordered receipt hash intentionally changes.
-        import companion_daemon.world_v2.visible_source_composer as composer
+        import companion_daemon.world_v2.selected_source_composer as composer
 
         original_world_entries = composer._world_entries
 
