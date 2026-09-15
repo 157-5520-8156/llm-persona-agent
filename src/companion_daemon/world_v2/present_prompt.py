@@ -66,6 +66,7 @@ _MATERIAL_ORDER = (
     "current_activities",
     "planned_activities",
     "recently_ended_activities",
+    "pending_world_occurrences",
     "relationship",
     "protagonist_npc_relationships",
     "npc_observable_attitudes",

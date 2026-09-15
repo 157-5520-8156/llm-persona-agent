@@ -15,6 +15,7 @@ from types import MappingProxyType
 
 from .appraisal_model_view import compact_appraisals_for_model_view
 from .affect_model_view import compact_affect_for_model_view
+from .life_context_presentation import LIFE_CONTEXT_COMPILER_VERSION, regroup_scoped_week_diary
 from typing import Annotated, Any, Literal, Mapping
 from zoneinfo import ZoneInfo
 
@@ -1545,7 +1546,11 @@ class InnerLifeSnapshot(FrozenModel):
             materials = {**materials, "day_sheet": day_sheet}
         if self.routine_background is not None:
             materials = {**materials, "routine_background": self.routine_background.model_dump(mode="json")}
-        week_diary = _regroup_week_diary(materials.get("week_diary"))
+        week_diary = (
+            regroup_scoped_week_diary(materials.get("week_diary"))
+            if self.snapshot_compiler.value == LIFE_CONTEXT_COMPILER_VERSION
+            else _regroup_week_diary(materials.get("week_diary"))
+        )
         if week_diary:
             materials = {**materials, "week_diary": week_diary}
         elif "week_diary" in materials:

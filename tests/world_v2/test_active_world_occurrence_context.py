@@ -305,7 +305,7 @@ async def test_source_closed_active_occurrence_reaches_current_self_without_futu
     compact = json.loads(compact_chat_model_facing_context(capsule.model_content_json))
     assert "inner_life_snapshot" not in compact
     current_life = compile_inner_life_snapshot(compact).model_view()["materials"][
-        "recent_self_experiences"
+        "pending_world_occurrences"
     ]["items"][0]
     assert current_life["source_ref"] == value["occurrence_id"]
     assert current_life["status"] == "active"

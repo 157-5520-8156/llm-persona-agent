@@ -53,21 +53,24 @@ from .contracts import (
     _elapsed_phrase,
     _instant,
 )
-
+from .life_context_presentation import (
+    LIFE_CONTEXT_COMPILER_VERSION, PENDING_WORLD_SCOPE, is_pending_world_material,
+)
 
 SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.23"
-STRUCTURED_LIFE_SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.24"
 
 
-def _has_structured_life(value: object) -> bool:
+def _has_scoped_world_material(value: object) -> bool:
     if isinstance(value, list):
-        return any(_has_structured_life(item) for item in value)
+        return any(_has_scoped_world_material(item) for item in value)
     if not isinstance(value, dict):
         return False
     world = value.get("world_consequence")
     return (
         isinstance(world, dict) and world.get("contract") == "world-consequence.2"
-    ) or any(_has_structured_life(item) for item in value.values())
+    ) or value.get("context_kind") == "active_world_occurrence" or any(
+        _has_scoped_world_material(item) for item in value.values()
+    )
 
 _AUTHORITY_VALUE_KEYS = frozenset(
     {
@@ -571,6 +574,8 @@ def _experience_entry(item: dict[str, object], *, lane: str) -> dict[str, object
             )
         )
         semantic = {key: value[key] for key in fields if key in value}
+        if value.get("context_kind") == "active_world_occurrence":
+            semantic["epistemic_scope"] = PENDING_WORLD_SCOPE
     else:
         values = value.get("values")
         if not isinstance(values, dict):
@@ -1177,6 +1182,8 @@ def _week_diary(
     }
     grouped: dict[str, list[dict[str, object]]] = {}
     for entry in entries:
+        if is_pending_world_material(entry):
+            continue
         source_ref = entry.get("source_ref")
         if not isinstance(source_ref, str) or not source_ref:
             continue
@@ -1186,12 +1193,10 @@ def _week_diary(
         content = entry.get("content")
         if isinstance(content, dict) and isinstance(content.get("world_consequence"), dict):
             reading = content.get("character_response")
-            field = "character_response" if isinstance(reading, dict) else "world_consequence"
-            selected = content[field]
-            if field == "character_response" and not selected.get("response_text"):
-                continue
             existing = grouped.setdefault(day, [])
-            row = {"date": day, field: selected, "source_ref": source_ref}
+            row = {"date": day, "world_consequence": content["world_consequence"], "source_ref": source_ref}
+            if isinstance(reading, dict) and reading.get("response_text"):
+                row["character_response"] = reading
             if len(existing) < PRESENT_WEEK_DIARY_LINES_PER_DAY and row not in existing:
                 existing.append(row)
             continue
@@ -1539,11 +1544,16 @@ def compile_inner_life_snapshot(
     recent = [entries[0] for entries in experience_lanes if entries]
     if len(recent) < PRESENT_EXPERIENCE_ITEM_LIMIT:
         recent.extend(entry for entries in experience_lanes for entry in entries[1:])
+    selected = recent[:PRESENT_EXPERIENCE_ITEM_LIMIT]
+    lived = [entry for entry in selected if not is_pending_world_material(entry)]
+    pending = [entry for entry in selected if is_pending_world_material(entry)]
     materials["recent_self_experiences"] = (
-        {"availability": "available", "items": recent[:PRESENT_EXPERIENCE_ITEM_LIMIT]}
-        if recent
+        {"availability": "available", "items": lived}
+        if lived
         else {"availability": "unavailable"}
     )
+    if pending:
+        materials["pending_world_occurrences"] = {"availability": "available", "items": pending}
     photos_i_shared = [
         entry
         for item in _slice_items(slices, "media_deliveries")
@@ -1604,7 +1614,7 @@ def compile_inner_life_snapshot(
             "messages_waiting_to_send",
             "moments_i_can_share",
         ),
-        "aspirations_conflicts": ("situation", "unresolved"),
+        "aspirations_conflicts": ("situation", "unresolved", "pending_world_occurrences"),
         "autonomous_impulses": (
             "situation",
             "relationship",
@@ -1615,6 +1625,7 @@ def compile_inner_life_snapshot(
             "unresolved",
             "perception",
             "recent_self_experiences",
+            "pending_world_occurrences",
             "folded_dialogue",
             "recent_dialogue",
             "relevant_facts",
@@ -1765,8 +1776,8 @@ def compile_inner_life_snapshot(
         capability_scope=capability_scope,
         context_compiler=_binding(context, "context_compiler_version", "context_compiler_unavailable"),
         snapshot_compiler=_InteriorBinding.available(
-            STRUCTURED_LIFE_SNAPSHOT_COMPILER_VERSION
-            if _has_structured_life(context) else SNAPSHOT_COMPILER_VERSION
+            LIFE_CONTEXT_COMPILER_VERSION
+            if _has_scoped_world_material(context) else SNAPSHOT_COMPILER_VERSION
         ),
         truncation=_binding(context, "truncation", "truncation_metadata_unavailable"),
     )
