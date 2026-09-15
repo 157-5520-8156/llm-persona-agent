@@ -57,3 +57,15 @@ about feeling something is a subjective state. Neither may be silently
 converted to the other or promote quoted content to truth. v11's exact request
 remains frozen for replay. Fresh probes must check the scope correction before
 the new reader is installed in an independent review protocol.
+
+The second 24-call probe corrected the reported-desire case, but both readers
+again missed the actual reminder's background history; Flash also made current
+gratitude historical. It has 21 matching readings and three mismatches. Merely
+appending a scope rule was not a stable improvement and is not adopted.
+
+Reader v13 uses the same explicit inventories with one cohesive specification,
+instead of extending the historical instruction ladder. It separately defines
+speech function, background facts, predicate scope, emotional time versus the
+time of an emotion's object, quotation and conditional cancellation. It has no
+production lexical classifier and does not change the character's behavior.
+The previous preparations and failed probe outputs remain verifiable.

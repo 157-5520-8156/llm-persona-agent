@@ -16,7 +16,7 @@ def preparation(version='8'):
 
 def test_previous_compiler_bytes_stay_frozen_and_both_versions_recompile():
     assert preparation('7').sha256 == 'd2a4f78026839bfe797009d032e760b5598dfe13d14546ab676694c3fa966b97'
-    for version in ('7', '8', '9', '10', '11', '12'):
+    for version in ('7', '8', '9', '10', '11', '12', '13'):
         prepared = preparation(version)
         assert verify_candidate_meaning_preparation(PreparedCandidateMeaning(prepared.payload_json))['contract'] == f'visible-candidate-meaning.{version}'
         body = json.loads(prepared.request()['messages'][1]['content'])
@@ -54,7 +54,7 @@ def test_semantic_coverage_still_requires_explicit_positive_bounded_response(fau
         assert result['semantic_qualification'] == 'unproven'
 
 
-@pytest.mark.parametrize('version', ['13', 8, None, []])
+@pytest.mark.parametrize('version', ['14', 8, None, []])
 def test_unknown_complete_wire_fails_before_provider(version):
     with pytest.raises(ValueError):
         preparation(version)
