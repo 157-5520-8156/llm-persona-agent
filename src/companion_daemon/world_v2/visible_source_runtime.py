@@ -59,9 +59,9 @@ def compile_requirement(*, request, capsule, review_protocol=None):
     if review_protocol not in {None, *REVIEW_PROTOCOLS.values()}:
         raise ValueError("unsupported pinned visible review protocol")
 
-    from .visible_review_protocols import SUBJECTIVE_HISTORY_PROTOCOL
+    from .visible_review_protocols import SUBJECTIVE_HISTORY_PROTOCOLS
     table = compile_visible_source_table(
-        request=request, capsule=capsule, include_subjective_history=review_protocol == SUBJECTIVE_HISTORY_PROTOCOL,
+        request=request, capsule=capsule, include_subjective_history=review_protocol in SUBJECTIVE_HISTORY_PROTOCOLS,
     )
     return canonical(
         {

@@ -22,7 +22,7 @@ from .visible_source_witness_experiment import _json, _unique
 
 from .visible_review_protocols import (
     PROTOCOL, SHARED_STRING_PROTOCOL as SHARED_STRING_PROTOCOL, SHARED_STRING_PROTOCOLS,
-    SUBJECTIVE_HISTORY_PROTOCOL, RESELECTING_PROTOCOLS, RECEIPT_PROTOCOLS,
+    SUBJECTIVE_HISTORY_PROTOCOLS, CONTENT_FIELD_PROTOCOL, RESELECTING_PROTOCOLS, RECEIPT_PROTOCOLS,
     REVIEW_PROTOCOLS as REVIEW_PROTOCOLS,
     RESELECTING_PROTOCOL as RESELECTING_PROTOCOL,
 )
@@ -95,7 +95,7 @@ def meaning_preparation(prepared):
         beats=tuple(b["text"] for b in pin["beat_mapping"]), compact=True, explicit_questions=True,
         question_conditions=True, beat_conditions=True, require_complete_reading=True,
         closing_tail_transport=True,
-        complete_reading_version="10" if pin["protocol"] == SUBJECTIVE_HISTORY_PROTOCOL else "9" if pin["protocol"] in RESELECTING_PROTOCOLS else "7",
+        complete_reading_version="10" if pin["protocol"] in SUBJECTIVE_HISTORY_PROTOCOLS else "9" if pin["protocol"] in RESELECTING_PROTOCOLS else "7",
     )
 
 
@@ -157,6 +157,7 @@ def prepare_source_call(*, prepared, meaning_raw_responses):
     source = prepare_independent_meanings_sources(
         meanings=tuple(IndependentMeaning(meaning, raw) for raw in meaning_raw_responses), sources=sources,
         shared_strings=pin["protocol"] in SHARED_STRING_PROTOCOLS,
+        content_fields_only=pin["protocol"] == CONTENT_FIELD_PROTOCOL,
     )
     if source is None:
         return None
@@ -225,6 +226,7 @@ def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, sourc
             meanings=tuple(IndependentMeaning(meaning, raw) for raw in meaning_raw_responses),
             sources=VisibleSourceTable(payload_json=pin["source_table_json"]).source_references(),
             shared_strings=pin["protocol"] in SHARED_STRING_PROTOCOLS,
+            content_fields_only=pin["protocol"] == CONTENT_FIELD_PROTOCOL,
         )
         support = source.inspect_response(source_raw_response)
     outcomes = []
@@ -252,7 +254,7 @@ class IndependentVisibleReviewRejected(ValueError):
 
 
 class IndependentVisibleReviewReceipt(FrozenModel):
-    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10", "visible-source-review-receipt.11", "visible-source-review-receipt.12"] = RECEIPT_CONTRACT
+    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10", "visible-source-review-receipt.11", "visible-source-review-receipt.12", "visible-source-review-receipt.13"] = RECEIPT_CONTRACT
     prepared_json: str = Field(min_length=2, max_length=MAX_BYTES)
     author: VisibleReviewAuthorBinding
     meaning_reviews: tuple[VisibleReviewInvocationBinding, VisibleReviewInvocationBinding]

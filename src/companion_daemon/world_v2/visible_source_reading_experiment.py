@@ -24,9 +24,10 @@ from .visible_source_witness_experiment import (
 LEGACY_CONTRACT = "visible-source-reading-experiment.1"
 REPORT_UPTAKE_CONTRACT = "visible-source-reading-experiment.2"
 CONTRACT = "visible-source-reading-experiment.3"
+CONTENT_FIELD_CONTRACT = "visible-source-reading-experiment.4"
 
 
-def _direct_paths(row: dict, shown: dict) -> list[str]:
+def _direct_paths(row: dict, shown: dict, *, content_fields_only: bool = False) -> list[str]:
     """Choose typed evidence bodies, not hashes or bookkeeping identifiers.
 
     Surrounding actor/time/status/qualification data stays in the full card.
@@ -44,6 +45,11 @@ def _direct_paths(row: dict, shown: dict) -> list[str]:
     if material.get("kind") == "biographical_coordinate":
         return [p for p in paths if p == "/material/value"]
     if "settled_life_support" in row:
+        if content_fields_only:
+            return [p for p in paths if p in {
+                "/item/value/content/world_consequence/environment/text",
+                "/item/value/content/world_consequence/authorized_attempt_result/text",
+            }]
         return [p for p in paths if p.startswith("/item/value/content/world_consequence/")]
     if "activity_support" in row:
         return [p for p in paths if p in {
@@ -53,7 +59,7 @@ def _direct_paths(row: dict, shown: dict) -> list[str]:
     return paths
 
 
-def _catalog(packet: dict, *, report_uptake: bool = False) -> list[dict]:
+def _catalog(packet: dict, *, report_uptake: bool = False, content_fields_only: bool = False) -> list[dict]:
     """Merge only exact scalar/material/owner/permission equivalents.
 
     Original aliases and proofs remain in the host preparation. Baseline and
@@ -66,7 +72,7 @@ def _catalog(packet: dict, *, report_uptake: bool = False) -> list[dict]:
         if not _eligible_reference(row):
             continue
         shown = packet["shown_materials"][material_index]
-        paths = _direct_paths(row, shown)
+        paths = _direct_paths(row, shown, content_fields_only=content_fields_only)
         permissions_by_pointer = source_subject_permissions(row=row, pointers=paths)
         for pointer in paths:
             value, _ = _reading(shown, pointer)
@@ -122,7 +128,7 @@ class PreparedReadingExperiment:
         from jsonschema import Draft202012Validator
 
         packet = json.loads(self.payload_json)
-        if packet.get("contract") not in {LEGACY_CONTRACT, REPORT_UPTAKE_CONTRACT, CONTRACT}:
+        if packet.get("contract") not in {LEGACY_CONTRACT, REPORT_UPTAKE_CONTRACT, CONTRACT, CONTENT_FIELD_CONTRACT}:
             raise ValueError("unsupported reading transport contract")
         if len(raw.encode()) > 131072:
             raise ValueError("reading response exceeds bound")
@@ -135,7 +141,8 @@ class PreparedReadingExperiment:
         base = PreparedWitnessExperiment(packet["witness_preparation_json"])
         # Reject altered mappings even when the substituted text is also in the
         # pin. A reading ID denotes precisely the compiled evidence selection.
-        catalog = _catalog(json.loads(base.payload_json), report_uptake=packet["contract"] != LEGACY_CONTRACT)
+        catalog = _catalog(json.loads(base.payload_json), report_uptake=packet["contract"] != LEGACY_CONTRACT,
+                           content_fields_only=packet["contract"] == CONTENT_FIELD_CONTRACT)
         if catalog != packet["catalog"]:
             raise ValueError("reading catalog differs from pinned compilation")
         by_id = {r["reading_id"]: r for r in catalog}
@@ -180,12 +187,15 @@ class PreparedReadingExperiment:
         }
 
 
-def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, ...]) -> PreparedReadingExperiment:
+def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, ...], content_fields_only: bool = False) -> PreparedReadingExperiment:
+    if type(content_fields_only) is not bool:
+        raise TypeError("content field authority must be boolean")
+    contract = CONTENT_FIELD_CONTRACT if content_fields_only else CONTRACT
     base = prepare_witness_experiment(
         beats=beats, sources=sources, relative_pointer_choices=True, source_owner_semantics=True,
     )
     pin = json.loads(base.payload_json)
-    catalog = _catalog(pin, report_uptake=True)
+    catalog = _catalog(pin, report_uptake=True, content_fields_only=content_fields_only)
     if not catalog:
         raise ValueError("reading experiment requires eligible scalar evidence")
     request = base.request()
@@ -193,7 +203,7 @@ def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, .
     # Replace reference aliases with field-local choices. The material is still
     # presented once, byte-equivalent to the original semantic evidence card.
     del body["source_reference_tables"]
-    body["output_contract"]["contract"] = CONTRACT
+    body["output_contract"]["contract"] = contract
     body["source_support_contract"] = (
         "Select reading_ids only. Each is one exact field of a pinned material. "
         "allowed_claims lists source-use ceilings, not assertions that the candidate is true. "
@@ -210,7 +220,7 @@ def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, .
             ],
         }
     schema = request["tools"][0]["function"]["parameters"]
-    schema["properties"]["contract"] = {"type": "string", "enum": [CONTRACT]}
+    schema["properties"]["contract"] = {"type": "string", "enum": [contract]}
     parts_schema = schema["properties"]["decisions"]["items"]["properties"]["parts"]
     closed, non_authoritative = parts_schema["items"]["anyOf"]
     non_authoritative["properties"]["claim_scope"]["enum"].append("report_uptake")
@@ -242,7 +252,7 @@ def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, .
             branch["properties"]["reading_ids"]["items"]["enum"] = list(ids)
             branches.append(branch)
     parts_schema["items"] = {"anyOf": [*branches, non_authoritative]}
-    name = "review_visible_source_readings_v3"
+    name = "review_visible_source_readings_v4" if content_fields_only else "review_visible_source_readings_v3"
     request["tools"][0]["function"]["name"] = name
     request["tool_choice"]["function"]["name"] = name
     # Use the same semantic audit rules, but remove superseded coordinate and
@@ -271,6 +281,6 @@ def prepare_reading_experiment(*, beats: tuple[str, ...], sources: tuple[dict, .
     )
     request["messages"][1]["content"] = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
     return PreparedReadingExperiment(_json({
-        "contract": CONTRACT, "request": request, "catalog": catalog,
+        "contract": contract, "request": request, "catalog": catalog,
         "witness_preparation_json": base.payload_json,
     }))

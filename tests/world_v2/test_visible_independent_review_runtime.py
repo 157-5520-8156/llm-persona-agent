@@ -42,7 +42,7 @@ class ReviewHTTP:
                                   ('我想听你说。' if self.fault == 'source_free' else '你取消了周五的报告。', '我想先听你说。'), strict=True):
                 beat['text'] = text
             return _http_result(body, {'result': {k: authored[k] for k in ('result_kind', 'appraisal_draft', 'expression_draft')}})
-        if name == ('interpret_visible_candidate_complete_v7' if self.version == "9" else 'interpret_visible_candidate_complete_v10' if self.version == '12' else 'interpret_visible_candidate_complete_v9'):
+        if name == ('interpret_visible_candidate_complete_v7' if self.version == "9" else 'interpret_visible_candidate_complete_v10' if self.version in {'12', '13'} else 'interpret_visible_candidate_complete_v9'):
             is_reselection = 'invalid_prior_reading' in packet
             assert set(packet) == ({'contract', 'visible_beats', 'invalid_prior_reading', 'structural_failure'} if is_reselection else {'contract', 'visible_beats'})
             self.reader_count += 1
@@ -68,14 +68,14 @@ class ReviewHTTP:
                     decisions[0].update(reading_complete=False, unresolved_details=['uncertain reference'])
             if self.fault in {'repair_once', 'repair_twice'} and body['model'] == 'deepseek-v4-flash' and (not is_reselection or self.fault == 'repair_twice'):
                 del decisions[0]['reading_complete']
-            return _http_result(body, {'contract': 'visible-candidate-meaning.7' if self.version == '9' else 'visible-candidate-meaning.10' if self.version == '12' else 'visible-candidate-meaning.9', 'decisions': decisions})
-        assert name == ('review_independent_fixed_meanings_v2' if self.version in {'11', '12'} else 'review_independent_fixed_meanings_v1')
+            return _http_result(body, {'contract': 'visible-candidate-meaning.7' if self.version == '9' else 'visible-candidate-meaning.10' if self.version in {'12', '13'} else 'visible-candidate-meaning.9', 'decisions': decisions})
+        assert name == ('review_independent_fixed_meanings_v3' if self.version == '13' else 'review_independent_fixed_meanings_v2' if self.version in {'11', '12', '13'} else 'review_independent_fixed_meanings_v1')
         assert 'visible_beats' not in packet
         reject = self.fault == 'reselect' and self.authors == 1
         return _http_result(body, dict(contract=packet['output_contract']['contract'], fact_decisions=[dict(
             fact_id=f['fact_id'], source_support=not reject,
             reading_ids=[] if reject else [f['eligible_reading_ids'][0]],
-            **({} if self.version in {'11', '12'} else {'explanation': 'offline fixture'}))
+            **({} if self.version in {'11', '12', '13'} else {'explanation': 'offline fixture'}))
             for f in packet['fixed_facts']]))
 
 
@@ -103,7 +103,7 @@ async def application(path, handler, *, budget_policy=None):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('fault,calls', [(None, 4), ('source_free', 3), ('reselect', 8)])
-@pytest.mark.parametrize('version', ['9', '10', '11', '12'])
+@pytest.mark.parametrize('version', ['9', '10', '11', '12', '13'])
 async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_replays(tmp_path, fault, calls, version):
     handler = ReviewHTTP(fault, version)
     path = tmp_path / 'world.sqlite'
@@ -116,7 +116,7 @@ async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_r
         audit = next(a for a in evidence.projection.proposal_audits if a.proposal_kind == 'decision')
         winner = next(a for a in _audits(app) if a.visible_source_review_json)
         data = json.loads(winner.visible_source_review_json)
-        assert json.loads(data['requirement_json'])['review_protocol'] == {'9': 'visible-independent-review.1', '10': 'visible-independent-review.2', '11': 'visible-independent-review.3', '12': 'visible-independent-review.4'}[version]
+        assert json.loads(data['requirement_json'])['review_protocol'] == {'9': 'visible-independent-review.1', '10': 'visible-independent-review.2', '11': 'visible-independent-review.3', '12': 'visible-independent-review.4', '13': 'visible-independent-review.5'}[version]
         assert data['receipt']['contract'] == f'visible-source-review-receipt.{version}'
         assert verify_recorded_candidate(audit=audit, model_result_audits=evidence.projection.model_result_audits) == data['receipt']['receipt_hash']
         assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
@@ -142,6 +142,29 @@ async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_r
     async with application(path, cold) as app:
         assert (await app.respond(inbound)).status == 'action_authorized'
         assert cold.requests == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stage', ['receipt', 'evidence'])
+async def test_post_review_technical_failure_names_stage_without_character_reselection(tmp_path, monkeypatch, stage):
+    import companion_daemon.world_v2.visible_independent_review_runtime as runtime
+
+    if stage == 'receipt':
+        def fail(**_kwargs):
+            raise ValueError('private provider content must not enter diagnostics')
+        monkeypatch.setattr(runtime, 'record_independent_visible_review', fail)
+    else:
+        monkeypatch.setattr(runtime, 'MAX_EVIDENCE_BYTES', 1)
+    handler = ReviewHTTP(version='13')
+    async with application(tmp_path / 'world.sqlite', handler) as app:
+        outcome = await app.respond(replace(_inbound(), text='我取消了周五的报告。'))
+        assert outcome.status != 'action_authorized'
+        assert handler.authors == 1
+        assert not app.export_replay_evidence().projection.actions
+        failures = [a for a in _audits(app) if a.failure_code == 'source_review_exception']
+        assert failures
+        assert {a.failure_detail for a in failures} == {f'visible_independent_review.{stage}.ValueError'}
+        assert not any(a.visible_source_review_json for a in _audits(app))
 
 
 @pytest.mark.asyncio
@@ -209,7 +232,7 @@ async def test_cold_runtime_requires_original_protocol_and_each_actual_review_ca
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('version', ['9', '10', '11', '12'])
+@pytest.mark.parametrize('version', ['9', '10', '11', '12', '13'])
 @pytest.mark.parametrize('schema_references', [False, True])
 async def test_public_proactive_contact_pins_and_replays_independent_protocol(tmp_path, monkeypatch, version, schema_references):
     from datetime import timedelta

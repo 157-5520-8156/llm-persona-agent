@@ -137,23 +137,31 @@ async def review_independent_candidate(
                 return await invoke(correction, model, index + 2)
         return raw, binding
 
+    failure_stage = "meaning_prepare"
+
     async def complete_review():
+        nonlocal failure_stage
         calls = [prepare_meaning_call(prepared=prepared, meaning_index=i) for i in range(2)]
+        failure_stage = "meaning_read"
         returned = await asyncio.gather(*(read_meaning(call, model, i) for i, (call, model) in enumerate(zip(calls, reviewer.meaning_models, strict=True))), return_exceptions=True)
         for result in returned:
             if isinstance(result, BaseException):
                 raise result
         meaning_raws = tuple(result[0] for result in returned)
         meaning_bindings = tuple(result[1] for result in returned)
+        failure_stage = "source_prepare"
         source_call = prepare_source_call(prepared=prepared, meaning_raw_responses=meaning_raws)
         source_raw = source_binding = None
         if source_call is not None:
+            failure_stage = "source_read"
             source_raw, source_binding = await invoke(source_call, reviewer.source_model, 4)
+        failure_stage = "receipt"
         receipt = record_independent_visible_review(
             prepared=prepared, author=author, meaning_reviews=meaning_bindings, meaning_raw_responses=meaning_raws,
             source_review=source_binding, source_raw_response=source_raw,
             rejected_meanings=tuple(rejected_meanings) if rejected_meanings is not None else None,
         )
+        failure_stage = "evidence"
         evidence = canonical({
             "contract": INDEPENDENT_EVIDENCE_CONTRACT, "requirement_json": request.visible_source_requirement_json,
             "author_request_json": author_request_json, "receipt": receipt.model_dump(mode="json"),
@@ -172,7 +180,7 @@ async def review_independent_candidate(
             "source_review_timeout", model_call_id=author.model_call_id, request_hash=author.request_hash,
             attempted_model_id=output.model_id, attempted_model_version=output.model_version,
             usage=output.usage, provider_subcall_audits=subcalls(),
-            failure_detail="visible_independent_review.cancelled",
+            failure_detail=f"visible_independent_review.{failure_stage}.cancelled",
         )
         raise
     except Exception as exc:
@@ -187,7 +195,7 @@ async def review_independent_candidate(
                 detail = "visible_independent_review.feedback_bound_exceeded"
         else:
             code = "source_review_timeout" if isinstance(exc, TimeoutError) else "source_review_exception"
-            detail = "visible_independent_review." + (
+            detail = f"visible_independent_review.{failure_stage}." + (
                 "admission." + str(exc.reason) if isinstance(exc, ModelUsageAdmissionError) else
                 "reading_inconclusive" if isinstance(exc, IndependentReviewInconclusive) else type(exc).__name__
             )

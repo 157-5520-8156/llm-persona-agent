@@ -109,7 +109,8 @@ def test_counterpart_report_keeps_speaker_and_third_party_permissions_separate()
 
 
 @pytest.mark.asyncio
-async def test_native_environment_reading_cannot_grant_personal_presence(tmp_path, monkeypatch):
+@pytest.mark.parametrize("content_fields_only", [False, True])
+async def test_native_environment_reading_cannot_grant_personal_presence(tmp_path, monkeypatch, content_fields_only):
     from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
     from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
     from companion_daemon.world_v2.visible_source_composer import compile_visible_source_table
@@ -126,10 +127,28 @@ async def test_native_environment_reading_cannot_grant_personal_presence(tmp_pat
         store = SQLiteImmutableLifeContentStore(path=str(path), world_id=WORLD)
         capsule, _, _ = current_context(ledger, store, actor_ref=ACTOR)
         rows = compile_visible_source_table(request=_request(capsule), capsule=capsule).source_references()
-        prepared = prepare_reading_experiment(beats=("雨停了。",), sources=rows)
+        prepared = prepare_reading_experiment(beats=("雨停了。",), sources=rows, content_fields_only=content_fields_only)
         pin = json.loads(prepared.payload_json)
+        if content_fields_only:
+            old = prepare_reading_experiment(beats=("雨停了。",), sources=rows)
+            old_pin = json.loads(old.payload_json)
+            assert pin["witness_preparation_json"] == old_pin["witness_preparation_json"]
+            old_readings = [r for r in old_pin["catalog"] if "/world_consequence/" in r["pointer"]]
+            new_readings = [r for r in pin["catalog"] if "/world_consequence/" in r["pointer"]]
+            assert len(old_readings) > len(new_readings)
+            assert {r["pointer"] for r in new_readings} == {"/item/value/content/world_consequence/environment/text"}
+            assert prepare_reading_experiment(beats=("雨停了。",), sources=rows).payload_json == old.payload_json
+            # Restoring a previously selectable metadata scalar cannot create a
+            # passing new receipt, even when its reading ID remains schema-valid.
+            changed = deepcopy(pin)
+            metadata = next(r for r in old_readings if not r["pointer"].endswith("/text"))
+            changed["catalog"][0] = {**metadata, "reading_id": pin["catalog"][0]["reading_id"]}
+            answer = {**_reply("雨停了。", new_readings[0]["reading_id"], "environment", "none"), "contract": pin["contract"]}
+            with pytest.raises(ValueError, match="pinned compilation"):
+                PreparedReadingExperiment(_json(changed)).inspect_response(_json(answer))
         reading = next(r for r in pin["catalog"] if r["pointer"] == "/item/value/content/world_consequence/environment/text")
         raw = _reply("雨停了。", reading["reading_id"], "environment", "none")
+        raw["contract"] = pin["contract"]
         assert prepared.inspect_response(_json(raw))["model_verdicts"] == ["closed"]
         raw["decisions"][0]["parts"][0]["subject_role"] = "companion"
         with pytest.raises(ValueError, match="tool schema"):

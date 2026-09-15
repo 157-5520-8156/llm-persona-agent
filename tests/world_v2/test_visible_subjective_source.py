@@ -83,7 +83,8 @@ def test_changed_or_ineligible_subjective_material_never_keeps_reading_authority
     assert not permits_source_subject(row=row, pointer='/item/value/hypotheses/0/meaning', claim_scope='subjective_history', subject_role='companion')
 
 
-def test_subjective_reading_cannot_support_an_external_cause_action_or_user_mind():
+@pytest.mark.parametrize('content_fields_only', [False, True])
+def test_subjective_reading_cannot_support_an_external_cause_action_or_user_mind(content_fields_only):
     from companion_daemon.world_v2.visible_candidate_meaning import prepare_candidate_meaning
     from companion_daemon.world_v2.visible_independent_meanings import IndependentMeaning, prepare_independent_meanings_sources
     from companion_daemon.world_v2.visible_source_witness_experiment import _json
@@ -104,7 +105,7 @@ def test_subjective_reading_cannot_support_an_external_cause_action_or_user_mind
     assert len(meaning.inspect_response(raw)['facts']) == 3
     prepared = prepare_independent_meanings_sources(
         meanings=(IndependentMeaning(meaning, raw), IndependentMeaning(meaning, raw)),
-        sources=table.source_references(), shared_strings=True,
+        sources=table.source_references(), shared_strings=True, content_fields_only=content_fields_only,
     )
     pin = json.loads(prepared.payload_json)
     selected = next(r['reading_id'] for r in pin['catalog'] if r['value'] == 'disappointment')
