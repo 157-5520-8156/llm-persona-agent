@@ -80,7 +80,7 @@ class ReviewHTTP:
 
 
 @asynccontextmanager
-async def application(path, handler):
+async def application(path, handler, *, budget_policy=None):
     usage = WorldV2UsageStore(path=str(path.with_name('usage.sqlite')))
     models = [DeepSeekChatModel('offline-fixture', 'https://fixture.invalid', name,
                thinking_enabled=False, transport=httpx.MockTransport(handler), usage_observer=usage.record)
@@ -88,7 +88,10 @@ async def application(path, handler):
     reviewer = IndependentVisibleReviewer(meaning_models=(models[1], models[2]), source_model=models[2])
     author = _InboundCharacterAuthor(flash_model=models[0], whole_candidate_mode=True,
         visible_source_review_model=reviewer, visible_source_review_version=handler.version, atomic_tool_envelope_version='3')
-    app = build_sqlite_world_v2_test_application(path=path, config=replace(_config(), visible_source_review_required=True),
+    config = replace(_config(), visible_source_review_required=True)
+    if budget_policy is not None:
+        config = replace(config, interactive_turn_budget_policy=budget_policy)
+    app = build_sqlite_world_v2_test_application(path=path, config=config,
         identities=_Identities(), router=_Router(), character_interior=compose_fixture_character_interior(inbound_author=author),
         transport=_DeliveredTransport(), now=NOW)
     try:
@@ -284,3 +287,53 @@ async def test_structural_reselection_records_failed_and_replacement_calls_witho
         else:
             assert not app.export_replay_evidence().projection.actions
             assert not any(a.visible_source_review_json for a in audits)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", [None, "reselect", "timeout", "phase_expiry"])
+@pytest.mark.parametrize("connected", [True, False])
+async def test_real_application_review_owns_fixed_phase_after_author_deadline(tmp_path, monkeypatch, fault, connected):
+    from companion_daemon.world_v2.interactive_turn_budget import InteractiveTurnBudgetPolicy
+
+    class SlowReviewHTTP(ReviewHTTP):
+        def __init__(self, *args):
+            super().__init__(*args)
+            self.entered = []
+
+        async def __call__(self, request):
+            body = json.loads(request.content)
+            self.entered.append(body)
+            name = body['tool_choice']['function']['name']
+            if name.startswith('interpret_visible_candidate_'):
+                # Each valid author finishes before its ordinary deadline;
+                # this independent review crosses it on purpose.
+                await asyncio.sleep(1.1)
+            return await super().__call__(request)
+
+    if not connected:
+        from companion_daemon.world_v2 import deliberation
+
+        async def disconnected(operation, **_kwargs):
+            return await operation()
+
+        monkeypatch.setattr(deliberation, 'run_validation_review_once', disconnected)
+    handler = SlowReviewHTTP(None if fault == 'phase_expiry' else fault, '11')
+    policy = InteractiveTurnBudgetPolicy(
+        total_seconds=1.0, hedge_after_seconds=0.4,
+        acceptance_dispatch_reserve_seconds=0.1,
+        validation_recovery_seconds=0.05 if fault == 'phase_expiry' else 3.0, validation_reselection_seconds=5.0,
+    )
+    async with application(tmp_path / 'world.sqlite', handler, budget_policy=policy) as app:
+        outcome = await app.respond(replace(_inbound(), text='我取消了周五的报告。'))
+        if fault in {'timeout', 'phase_expiry'} or not connected:
+            assert outcome.status != 'action_authorized'
+            assert handler.authors == 1
+            assert len(handler.entered) == 3
+            assert not app.export_replay_evidence().projection.actions
+        else:
+            assert outcome.status == 'action_authorized', (outcome, _audits(app))
+            assert handler.authors == (2 if fault == 'reselect' else 1)
+            assert len(handler.requests) == (8 if fault == 'reselect' else 4)
+            evidence = app.export_replay_evidence()
+            audit = next(a for a in evidence.projection.proposal_audits if a.proposal_kind == 'decision')
+            assert verify_recorded_candidate(audit=audit, model_result_audits=evidence.projection.model_result_audits)

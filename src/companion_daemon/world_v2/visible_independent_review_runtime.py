@@ -71,7 +71,10 @@ async def review_independent_candidate(
     *, request, output, proposal, source_table, aliases, author_request_json, reviewer, recall_audits=(), review_version="9",
 ):
     from companion_daemon.llm import model_call_scope, model_provider_request_identity_scope, model_request_emission_scope
-    from .deliberation import ModelUsageProvenance, ProviderSubcallAudit, ValidationTechnicalFailure
+    from .deliberation import (
+        ModelUsageProvenance, ProviderSubcallAudit, ValidationTechnicalFailure,
+        run_validation_review_once,
+    )
     from .model_usage_budget import ModelUsageAdmissionError
     from .visible_source_review_receipt import VisibleReviewAuthorBinding, VisibleReviewInvocationBinding
 
@@ -91,7 +94,9 @@ async def review_independent_candidate(
                 model_request_emission_scope(provider_call_id=call_id, entry_marker=None, completion_marker=None),
                 model_provider_request_identity_scope(request_hash=call.request_hash, identity_extras=call.identity_extras),
             ):
-                raw, usage_value = await model.complete_json_with_usage(**call.request)
+                raw, usage_value = await asyncio.wait_for(
+                    model.complete_json_with_usage(**call.request), timeout=22.0,
+                )
             usage = ModelUsageProvenance.model_validate(usage_value)
             binding = VisibleReviewInvocationBinding(
                 parent_model_call_id=author.model_call_id, model_call_id=call_id,
@@ -130,7 +135,7 @@ async def review_independent_candidate(
                 return await invoke(correction, model, index + 2)
         return raw, binding
 
-    try:
+    async def complete_review():
         calls = [prepare_meaning_call(prepared=prepared, meaning_index=i) for i in range(2)]
         returned = await asyncio.gather(*(read_meaning(call, model, i) for i, (call, model) in enumerate(zip(calls, reviewer.meaning_models, strict=True))), return_exceptions=True)
         for result in returned:
@@ -154,6 +159,10 @@ async def review_independent_candidate(
         })
         if len(evidence.encode()) > MAX_EVIDENCE_BYTES:
             raise ValueError("independent visible evidence size exceeded")
+        return evidence
+
+    try:
+        evidence = await run_validation_review_once(complete_review, timeout_seconds=46.0)
     except asyncio.CancelledError as exc:
         # Honor cancellation. The outer owner may record these settled/failed
         # subcalls; cancellation never becomes a new author correction here.

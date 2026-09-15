@@ -619,6 +619,37 @@ def begin_validation_reselection_recovery() -> bool:
     )
 
 
+async def run_validation_review_once(
+    operation: Callable[[], Awaitable[_T]],
+    *,
+    timeout_seconds: float,
+) -> _T:
+    """Bound a composed review inside the existing candidate validation phase.
+
+    The composition owns its independent calls and structural reselections;
+    replaying the whole operation would duplicate successful calls and lose
+    their identity. This seam grants timing only and never retries, interprets
+    a verdict, or opens an author recovery. Reentry cannot renew the phase.
+    """
+    if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+        raise ValueError("validation review timeout must be finite and positive")
+    state = _VALIDATION_ATTEMPT.get()
+    if state is not None:
+        state.review_started_now()
+    try:
+        if state is not None and state.reselection_deadline is None and state.recovery_deadline is None:
+            state.begin_recovery()
+        fitted = timeout_seconds if state is None else state.fit(timeout_seconds)
+        if state is not None and fitted is not None:
+            fitted = min(fitted, max(0.0, state.hard_deadline - state.budget.clock()))
+        if fitted is None or fitted <= 0:
+            raise TimeoutError("source review validation window exhausted")
+        return await asyncio.wait_for(operation(), timeout=fitted)
+    finally:
+        if state is not None:
+            state.review_finished_now()
+
+
 async def run_validation_review(
     operation: Callable[[], Awaitable[_T]],
     *,

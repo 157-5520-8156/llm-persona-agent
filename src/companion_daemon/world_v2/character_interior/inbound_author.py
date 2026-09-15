@@ -2776,6 +2776,12 @@ class _InboundCharacterAuthor:
                     review_version=self._visible_source_review_version,
                 )
             except ValidationTechnicalFailure as exc:
+                if exc.failure_code == "paired_expression_reselection_invalid":
+                    # The completed whole-candidate reviewer rejected this
+                    # exact draft. Core owns the one same-author correction;
+                    # preserve its existing fixed correction/final-review phase.
+                    # A timeout or malformed reviewer must never open it.
+                    begin_validation_reselection_recovery()
                 rejected = self._rejected_call_audits.get(_rejected_call_pin(request))
                 if rejected is not None:
                     exc.authored_candidate_audits = _merge_rejected_call_audits((rejected,), exc.authored_candidate_audits)
