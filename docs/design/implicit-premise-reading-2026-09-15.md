@@ -69,3 +69,34 @@ speech function, background facts, predicate scope, emotional time versus the
 time of an emotion's object, quotation and conditional cancellation. It has no
 production lexical classifier and does not change the character's behavior.
 The previous preparations and failed probe outputs remain verifiable.
+
+## Third probe and provider reasoning experiment
+
+The unified v13 prompt also fails: both readers retained the phone-use premise,
+but promoted the conversational evaluation to factual background. Pro also
+asserted tiredness from the conditional clause; Flash classified a quoted
+expression's existence as a past utterance. Both duplicated the cat-related
+prior statement across two inventories. This is not a stable improvement and
+no v11–v13 reader has been adopted in a runtime review protocol.
+
+The [DeepSeek thinking documentation](https://api-docs.deepseek.com/guides/thinking_mode/)
+describes explicit thinking and effort controls. We tested the frozen v11
+reader, rather than adding another semantic instruction. The initial forced
+tool requests were rejected by the provider with no billing. Experimental
+readers now support an explicitly pinned `auto` carrier: the compiler records
+the choice before hashing, while the shared provider decoder still requires
+exactly one response using the declared function. Historical preparations keep
+their bytes. This does not execute a character action or authorize plain text.
+
+With that carrier, high-effort Pro and Flash both exceeded the existing 22s
+deadline on the first case. Low-effort Flash returned a matching first-case
+reading in 11.17s; Pro still timed out. Remaining low-effort cases were not run.
+These are latency failures and incomplete observations, not semantic passes.
+Three unknown-billing reservations remain alongside all inherited reservations.
+
+The next qualification must balance missing background facts, invented facts,
+scope preservation and end-to-end latency together. Further prompt-only
+iterations must not be adopted based on repairing just one counterexample.
+The source-review and character-correction stages remain separate responsibilities;
+no local expression heuristic or new production behavior rule was added.
+See [metered probe evidence](../audits/implicit-premise-validation-2026-09-15.json).

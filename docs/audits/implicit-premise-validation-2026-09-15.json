@@ -1,0 +1,145 @@
+{
+  "scope": "Experimental meaning extraction and provider carrier only; no runtime adoption, World progress, new role dialogue, receipts, deployment or QQ.",
+  "baseline_runtime_reader": 10,
+  "baseline_runtime_review": 13,
+  "cases": "implicit-premise-cases-2026-09-15.json",
+  "expected_readings_sent_to_models": false,
+  "probes": [
+    {
+      "artifact": "output/private-audits/release-implicit-premise-readings-20260915-01",
+      "finished_sha256": "59e67eac6000b17ea3386b866fdea3b540b143a8d8656c21a335c14d122060d1",
+      "code_head": "226f49c83485f97eb0ae696f776ddb0672905f7f",
+      "reader_version": 11,
+      "thinking": "disabled",
+      "tool_selection": "forced",
+      "physical_calls": 24,
+      "billing_states": {
+        "known": 24
+      },
+      "known_repository_estimate_cny": "0.0598623999999999990",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 836,
+      "reservation_rows": 833,
+      "usage_reconciliation": "verified",
+      "world_tables_unchanged": true,
+      "outcome": "23 matching readings and one past-utterance scope mismatch; not adopted"
+    },
+    {
+      "artifact": "output/private-audits/release-implicit-premise-readings-20260915-02",
+      "finished_sha256": "bb90d7fc7ea980dcac1cdec01017cc1faf71a9a9918662ac8253042a487868f7",
+      "code_head": "b191dcd69ee43a82e4e55615ba91e6f5b7654960",
+      "reader_version": 12,
+      "thinking": "disabled",
+      "tool_selection": "forced",
+      "physical_calls": 24,
+      "billing_states": {
+        "known": 24
+      },
+      "known_repository_estimate_cny": "0.0595465000000000012",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 860,
+      "reservation_rows": 857,
+      "usage_reconciliation": "verified",
+      "world_tables_unchanged": true,
+      "outcome": "21 matching readings and three mismatches; not adopted"
+    },
+    {
+      "artifact": "output/private-audits/release-implicit-premise-readings-20260915-03",
+      "finished_sha256": "fb195e428150cc98d91912bb129de4e77d66fadda2bda66f76e83e4099d3aad6",
+      "code_head": "8f248f0c5ebdc0898f57cb13ed393ee59e661e92",
+      "reader_version": 13,
+      "thinking": "disabled",
+      "tool_selection": "forced",
+      "physical_calls": 24,
+      "billing_states": {
+        "known": 24
+      },
+      "known_repository_estimate_cny": "0.0620311999999999990",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 884,
+      "reservation_rows": 881,
+      "usage_reconciliation": "verified",
+      "world_tables_unchanged": true,
+      "outcome": "Phone history retained; false factual readings, quotation error and duplicate propositions; not adopted"
+    },
+    {
+      "artifact": "output/private-audits/release-implicit-premise-readings-20260915-04",
+      "finished_sha256": "55969a453e8959495f85515b0ea668e1927f0fe5c866703347d9f1ba7754c2e6",
+      "code_head": "8f248f0c5ebdc0898f57cb13ed393ee59e661e92",
+      "reader_version": 11,
+      "thinking": "high",
+      "tool_selection": "forced",
+      "physical_calls": 2,
+      "billing_states": {
+        "not_billed": 2
+      },
+      "known_repository_estimate_cny": "0",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 886,
+      "reservation_rows": 883,
+      "usage_reconciliation": "verified",
+      "world_tables_unchanged": true,
+      "outcome": "First two requests rejected by provider: thinking does not support forced tool choice; no semantic result"
+    },
+    {
+      "artifact": "output/private-audits/release-implicit-premise-readings-20260915-05",
+      "finished_sha256": "fec9ef86b3d1f4e9a5b399e2111b97bc2c9224ea1be3b3117a4487c35fc898ef",
+      "code_head": "239f93770987741366dcc263a664f2d0c16e4810",
+      "reader_version": 11,
+      "thinking": "high",
+      "tool_selection": "auto",
+      "physical_calls": 2,
+      "billing_states": {
+        "unknown": 2
+      },
+      "known_repository_estimate_cny": "0",
+      "new_unknown_hold_cny": "0.260598",
+      "usage_rows": 888,
+      "reservation_rows": 885,
+      "usage_reconciliation": "verified",
+      "world_tables_unchanged": true,
+      "outcome": "Both first-case readers exceeded 22 seconds; no semantic result"
+    },
+    {
+      "artifact": "output/private-audits/release-implicit-premise-readings-20260915-06",
+      "finished_sha256": "40690dc38f6b40607d1820f920561c4ef1e2e8df54514cca4c1a2a3206830ba7",
+      "code_head": "239f93770987741366dcc263a664f2d0c16e4810",
+      "reader_version": 11,
+      "thinking": "low",
+      "tool_selection": "auto",
+      "physical_calls": 2,
+      "billing_states": {
+        "known": 1,
+        "unknown": 1
+      },
+      "known_repository_estimate_cny": "0.0123015",
+      "new_unknown_hold_cny": "0.195435",
+      "usage_rows": 890,
+      "reservation_rows": 887,
+      "usage_reconciliation": "verified",
+      "world_tables_unchanged": true,
+      "outcome": "Flash first case matches fixed reading in 11.17s; Pro timed out at 22s; remaining 11 cases not attempted"
+    }
+  ],
+  "physical_calls": 78,
+  "known_repository_estimate_cny": "0.1937415999999999992",
+  "new_unknown_hold_cny": "0.456033",
+  "billing_checkpoint": "output/private-audits/release-implicit-premise-readings-20260915-06/run/world.sqlite",
+  "runtime_checkpoint": "output/private-audits/release-chat-content-evidence-20260915-03/run",
+  "virtual_at": "2026-09-14T14:25:00Z",
+  "usage_rows": 890,
+  "reservation_rows": 887,
+  "tests": {
+    "reader_source_and_frozen_preparation": 82,
+    "single_tool_auto_identity_and_decoding": 40,
+    "ruff": "passed",
+    "diff_check": "passed"
+  },
+  "constraints": {
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "monthly_cost_qualified": false,
+    "qualification": "manual_only / qualification_incomplete"
+  },
+  "decision": "Keep experiments out of runtime; stop prompt-only iterations that exchange missed premises for invented facts. Thinking high fails latency here; low is only partially observed."
+}
