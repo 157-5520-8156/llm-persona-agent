@@ -154,3 +154,44 @@ def test_non_authoritative_branch_does_not_require_a_support_quote(verdict, scop
     assert result['receipt_authority'] is False
     # An incorrect source-free classification is still a semantic model error;
     # no character text or meaning is inferred by this structural normalizer.
+
+
+@pytest.mark.parametrize('sources,pointers', [
+    (_sources, ['/item/value/text', '/item/value/status']),
+    (_report_sources, ['/message/text', '/messages/0/text']),
+])
+def test_batch_permissions_preserve_scalar_checks_and_revalidate_changed_sources(sources, pointers):
+    from companion_daemon.world_v2.visible_source_subject_authority import (
+        permits_source_subject, source_subject_permissions,
+    )
+    row = deepcopy(sources()[0])
+    expected = {pointer: [
+        [scope, role]
+        for scope in ('utterance_record', 'accepted_intention', 'activity_lifecycle', 'environment', 'external_fact')
+        for role in ('companion', 'counterpart', 'general', 'other', 'none')
+        if permits_source_subject(row=row, pointer=pointer, claim_scope=scope, subject_role=role)
+    ] for pointer in pointers}
+    actual = source_subject_permissions(row=row, pointers=pointers)
+    assert actual == expected
+    # Returned lists are invocation-local; neither mutation nor a formerly
+    # eligible row grants a later compilation cached source authority.
+    actual[pointers[0]].clear()
+    assert source_subject_permissions(row=row, pointers=pointers) == expected
+    row['support_eligibility'] = 'baseline_only'
+    assert source_subject_permissions(row=row, pointers=pointers) == {}
+
+
+def test_batch_permissions_validate_source_once_before_all_field_permissions(monkeypatch):
+    import companion_daemon.world_v2.visible_source_subject_authority as authority
+    original = authority._eligible_reference
+    calls = []
+
+    def counted(row):
+        calls.append(row)
+        return original(row)
+
+    monkeypatch.setattr(authority, '_eligible_reference', counted)
+    row = _report_sources()[0]
+    actual = authority.source_subject_permissions(row=row, pointers=['/message/text', '/messages/0/text'])
+    assert actual['/message/text'] == actual['/messages/0/text']
+    assert len(calls) == 1

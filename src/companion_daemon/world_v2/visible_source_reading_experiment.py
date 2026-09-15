@@ -11,7 +11,7 @@ import hashlib
 import json
 
 from .visible_source_closure_protocol import _eligible_reference
-from .visible_source_subject_authority import permits_source_subject
+from .visible_source_subject_authority import source_subject_permissions
 from .visible_source_witness_experiment import (
     PreparedWitnessExperiment,
     _json,
@@ -63,7 +63,9 @@ def _catalog(packet: dict, *, report_uptake: bool = False) -> list[dict]:
         if not _eligible_reference(row):
             continue
         shown = packet["shown_materials"][material_index]
-        for pointer in _direct_paths(row, shown):
+        paths = _direct_paths(row, shown)
+        permissions_by_pointer = source_subject_permissions(row=row, pointers=paths)
+        for pointer in paths:
             value, _ = _reading(shown, pointer)
             original, _ = _reading(row["review_material"], pointer)
             if value != original:
@@ -72,17 +74,7 @@ def _catalog(packet: dict, *, report_uptake: bool = False) -> list[dict]:
             # than truncating evidence or silently skipping an eligible field.
             if len(value) > 1024:
                 raise ValueError("reading exceeds witness transport bound")
-            permissions = [
-                [scope, role]
-                for scope in (
-                    "utterance_record", "accepted_intention", "activity_lifecycle",
-                    "environment", "external_fact",
-                )
-                for role in ("companion", "counterpart", "general", "other", "none")
-                if permits_source_subject(
-                    row=row, pointer=pointer, claim_scope=scope, subject_role=role,
-                )
-            ]
+            permissions = permissions_by_pointer[pointer]
             material = row["review_material"]
             if report_uptake and (
                 material.get("kind") == "current_counterpart_report"

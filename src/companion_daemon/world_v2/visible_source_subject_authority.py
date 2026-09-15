@@ -16,6 +16,33 @@ def permits_source_subject(*, row: dict, pointer: str, claim_scope: str, subject
     """Check an already exact-quoted field against its existing typed authority."""
     if not _eligible_reference(row):
         return False
+    return _permits_eligible_source_subject(
+        row=row, pointer=pointer, claim_scope=claim_scope, subject_role=subject_role,
+    )
+
+
+def source_subject_permissions(*, row: dict, pointers: list[str]) -> dict[str, list[list[str]]]:
+    """Compile field permissions with one source validation for this batch.
+
+    The result is local to this invocation; no model verdict or authority is
+    cached. Callers still check exact scalar identity against the original pin.
+    """
+    if not _eligible_reference(row):
+        return {}
+    return {pointer: [
+        [scope, role]
+        for scope in (
+            "utterance_record", "accepted_intention", "activity_lifecycle",
+            "environment", "external_fact",
+        )
+        for role in ("companion", "counterpart", "general", "other", "none")
+        if _permits_eligible_source_subject(
+            row=row, pointer=pointer, claim_scope=scope, subject_role=role,
+        )
+    ] for pointer in pointers}
+
+
+def _permits_eligible_source_subject(*, row: dict, pointer: str, claim_scope: str, subject_role: str) -> bool:
     material = row["review_material"]
     owner = row.get("support_subject_role")
     if material.get("lane") == "recent_dialogue" and material.get("authority") == "companion_expression_record":
