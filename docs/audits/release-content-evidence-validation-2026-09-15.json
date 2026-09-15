@@ -1,0 +1,185 @@
+{
+  "contract": "release-content-evidence-validation.1",
+  "qualification": "manual_only / qualification_incomplete",
+  "changes": {
+    "content_field_commit": "35f8b9d2",
+    "storage_commit": "c480bd38"
+  },
+  "trials": [
+    {
+      "code_head": "35f8b9d2bf225edddc7337533e4d9b81087dd9fd",
+      "stop_reason": "technical_failure:KeyError",
+      "physical_calls": 0,
+      "billing_states": {},
+      "known_native_token_joins_verified": 0,
+      "all_captured_terminal_body_hashes_verified": true,
+      "inherited_rows_unchanged": true,
+      "known_repository_estimate_cny": "0",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 779,
+      "reservation_rows": 776,
+      "cold_receipt_versions": {
+        "visible-source-review-receipt.6": 6,
+        "visible-source-review-receipt.7": 1,
+        "visible-source-review-receipt.8": 6,
+        "visible-source-review-receipt.12": 3
+      },
+      "replay_hash_matches": true,
+      "path": "output/private-audits/release-chat-content-evidence-20260915-01",
+      "turns": []
+    },
+    {
+      "code_head": "35f8b9d2bf225edddc7337533e4d9b81087dd9fd",
+      "stop_reason": "operator_stopped",
+      "physical_calls": 10,
+      "billing_states": {
+        "known": 10
+      },
+      "known_native_token_joins_verified": 10,
+      "all_captured_terminal_body_hashes_verified": true,
+      "inherited_rows_unchanged": true,
+      "known_repository_estimate_cny": "0.2181640",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 789,
+      "reservation_rows": 786,
+      "cold_receipt_versions": {
+        "visible-source-review-receipt.6": 6,
+        "visible-source-review-receipt.7": 1,
+        "visible-source-review-receipt.8": 6,
+        "visible-source-review-receipt.12": 3
+      },
+      "replay_hash_matches": true,
+      "path": "output/private-audits/release-chat-content-evidence-20260915-02",
+      "turns": [
+        {
+          "id": "content-evidence-evening",
+          "status": "deferred",
+          "delivery_count": 0
+        },
+        {
+          "id": "content-evidence-idle-wish",
+          "status": "deferred",
+          "delivery_count": 0
+        }
+      ]
+    },
+    {
+      "code_head": "c480bd3813f21e26e898b6d494be7d150acbf9ec",
+      "stop_reason": "operator_stopped",
+      "physical_calls": 23,
+      "billing_states": {
+        "known": 23
+      },
+      "known_native_token_joins_verified": 23,
+      "all_captured_terminal_body_hashes_verified": true,
+      "inherited_rows_unchanged": true,
+      "known_repository_estimate_cny": "0.5745032999999999857",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 812,
+      "reservation_rows": 809,
+      "cold_receipt_versions": {
+        "visible-source-review-receipt.6": 6,
+        "visible-source-review-receipt.7": 1,
+        "visible-source-review-receipt.8": 6,
+        "visible-source-review-receipt.12": 3,
+        "visible-source-review-receipt.13": 2
+      },
+      "replay_hash_matches": true,
+      "path": "output/private-audits/release-chat-content-evidence-20260915-03",
+      "turns": [
+        {
+          "id": "evidence-storage-idle-wish",
+          "status": "action_authorized",
+          "delivery_count": 3
+        },
+        {
+          "id": "evidence-storage-quiet-company",
+          "status": "action_authorized",
+          "delivery_count": 2
+        },
+        {
+          "id": "evidence-storage-memory-challenge",
+          "status": "deferred",
+          "delivery_count": 0
+        }
+      ]
+    }
+  ],
+  "physical_calls": 33,
+  "known_repository_estimate_cny": "0.7926672999999999857",
+  "storage_proof": {
+    "code_head": "c480bd3813f21e26e898b6d494be7d150acbf9ec",
+    "compressed_receipts": [
+      {
+        "sequence": 2484,
+        "model_call_id": "model-call:98a143509db13c4c49ed6d7a980fd8cf09091e1157b8a98df07d329bd72321ef",
+        "storage_contract": "visible-source-runtime-evidence.deflate.1",
+        "stored_bytes": 225149,
+        "decoded_bytes": 1102500,
+        "decoded_sha256": "7f78f1c5555fca8782b2cf636ca20d98364c05a340882d42bb43d68990c1696e",
+        "receipt_contract": "visible-source-review-receipt.13",
+        "receipt_hash": "80e4ec0f8facdd5e2e300c9fceef288a03ad1ce35c6f943af14e9160573b965f",
+        "beat_outcomes": [
+          "source_free",
+          "source_free",
+          "closed"
+        ]
+      },
+      {
+        "sequence": 2549,
+        "model_call_id": "model-call:8e31c93c3ef5b6d2f242a940b08aa6395377af6ec2617077e8fde15e7f52ca2b",
+        "storage_contract": "visible-source-runtime-evidence.deflate.1",
+        "stored_bytes": 221825,
+        "decoded_bytes": 1092431,
+        "decoded_sha256": "08c41b048141627c4b1299be0d4f8094a2cd401fe18d24d21fc1caf72afec06c",
+        "receipt_contract": "visible-source-review-receipt.13",
+        "receipt_hash": "e2e53c1a48be4f86083fa639a9fa8be8e8cb11d59add18501edbfd4d6527421a",
+        "beat_outcomes": [
+          "source_free",
+          "source_free"
+        ]
+      }
+    ],
+    "ingress_complete_ms": [
+      [
+        "33581.4",
+        "action_authorized"
+      ],
+      [
+        "10936.9",
+        "action_authorized"
+      ],
+      [
+        "22892.9",
+        "deferred"
+      ]
+    ],
+    "scope": "Real metered provider with capture transport; no real QQ. Storage round trip is not semantic qualification.",
+    "semantic_counterexample": "Second delivered reply implies a previous late-night phone habit. Both independent readers treated the whole suggestion as current_private_expression and requested no factual review. Original eligible counterpart fact/report readings do not establish the habit.",
+    "source_inventory": "counterpart-fact-readings.json",
+    "challenge_result": "Initial invented prior user statement was rejected. Corrective attempt still failed; no third-turn delivery."
+  },
+  "tests": {
+    "source_review_group": 127,
+    "additional_native_authority_and_pinned_appraisal": 20,
+    "storage_and_independent_runtime": 56,
+    "legacy_review_and_required_reference": 47,
+    "groups_overlap": true,
+    "ruff": "passed",
+    "diff_check": "passed"
+  },
+  "continuation": {
+    "runtime": "output/private-audits/release-chat-content-evidence-20260915-03/run",
+    "usage_rows": 812,
+    "reservation_rows": 809,
+    "logical_at": "2026-09-14T14:25:00Z",
+    "all_runs_closed_and_reconciled": true,
+    "preserve_all_inherited_unknown_reservations": true
+  },
+  "limits": [
+    "One new v13 receipt passed transport but contains a semantic false accept: an unsupported prior phone habit embedded in advice.",
+    "Prior v8 semantic false accepts remain recorded.",
+    "No actual QQ delivery, production database changes, invitation release, sustained soak or monthly cost qualification.",
+    "Aggregate evidence compaction does not implement character memory compression."
+  ]
+}
