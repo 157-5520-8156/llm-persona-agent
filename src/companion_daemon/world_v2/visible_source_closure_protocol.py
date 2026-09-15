@@ -16,6 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from .context_capsule import ResolvedSourceBinding, source_bindings_hash
+from .visible_subjective_source import subjective_source_support
 from .visible_life_source import settled_life_source_support
 from .world_life_context import ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem
 
@@ -768,6 +769,10 @@ def _eligible_reference(row: dict[str, object]) -> bool:
     material = row.get("review_material")
     if not isinstance(material, dict):
         return False
+    if material.get("authority") == "accepted_subjective_history_not_external_fact":
+        support = subjective_source_support(material, row.get("source_ref"))
+        return bool(support is not None and support[0] == row.get("support_subject_ref")
+                    and support[1] == row.get("subjective_history_support"))
     if "settled_life_support" in row:
         support = settled_life_source_support(material, row.get("source_ref"))
         return bool(
@@ -889,7 +894,8 @@ def compact_source_reference_table(
             activity = _activity_support(material, normalized)
             settled_life = settled_life_source_support(material, normalized)
             row_subject, row_role, row_eligible = support_subject, support_role, eligible
-            specific_support = activity if activity is not None else settled_life
+            subjective = subjective_source_support(material, normalized)
+            specific_support = activity if activity is not None else settled_life if settled_life is not None else subjective
             if specific_support is not None:
                 row_subject = specific_support[0]
                 row_role = (
@@ -933,6 +939,7 @@ def compact_source_reference_table(
                     "support_eligibility": "eligible" if row_eligible else "baseline_only",
                     "support_subject_ref": row_subject,
                     "support_subject_role": row_role,
+                    **({"subjective_history_support": subjective[1]} if subjective is not None else {}),
                     **({"activity_support": activity[1]} if activity is not None else {}),
                     **({"settled_life_support": settled_life[1]} if settled_life is not None else {}),
                 }

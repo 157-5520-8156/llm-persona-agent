@@ -34,6 +34,9 @@ def _direct_paths(row: dict, shown: dict) -> list[str]:
     """
     paths = _relative_pointer_choices([shown])
     material = row["review_material"]
+    if "subjective_history_support" in row:
+        from .visible_subjective_source import subjective_direct_paths
+        return subjective_direct_paths(row, paths)
     if material.get("lane") == "recent_dialogue":
         return [p for p in paths if p == "/item/value/text"]
     if material.get("kind") == "current_counterpart_report":

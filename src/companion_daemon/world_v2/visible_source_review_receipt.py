@@ -98,7 +98,7 @@ def compile_visible_candidate_material(
     """Bind the entire typed candidate and original sources before any reviewer call."""
     from .visible_source_composer import (
         PLANNED_SOURCE_TABLE_CONTRACT, SETTLED_LIFE_SOURCE_TABLE_CONTRACT,
-        PREHISTORY_SOURCE_TABLE_CONTRACT,
+        PREHISTORY_SOURCE_TABLE_CONTRACT, SUBJECTIVE_SOURCE_TABLE_CONTRACT,
         VISIBLE_SOURCE_TABLE_CONTRACT, VisibleSourceTable,
     )
     from .visible_recall_sources import RECALLED_SOURCE_TABLE_CONTRACT
@@ -113,7 +113,7 @@ def compile_visible_candidate_material(
     table = _bounded_json(source_table.payload_json)
     if table.get("contract") not in {
         VISIBLE_SOURCE_TABLE_CONTRACT, PLANNED_SOURCE_TABLE_CONTRACT,
-        SETTLED_LIFE_SOURCE_TABLE_CONTRACT, PREHISTORY_SOURCE_TABLE_CONTRACT,
+        SETTLED_LIFE_SOURCE_TABLE_CONTRACT, PREHISTORY_SOURCE_TABLE_CONTRACT, SUBJECTIVE_SOURCE_TABLE_CONTRACT,
         RECALLED_SOURCE_TABLE_CONTRACT,
     }:
         raise ValueError("visible review source table contract is unsupported")

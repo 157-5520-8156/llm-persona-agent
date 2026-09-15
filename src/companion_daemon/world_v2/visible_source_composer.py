@@ -34,6 +34,7 @@ VISIBLE_SOURCE_TABLE_CONTRACT = "visible-source-row-table.1"
 PLANNED_SOURCE_TABLE_CONTRACT = "visible-source-row-table.2"
 SETTLED_LIFE_SOURCE_TABLE_CONTRACT = "visible-source-row-table.3"
 PREHISTORY_SOURCE_TABLE_CONTRACT = "visible-source-row-table.4"
+SUBJECTIVE_SOURCE_TABLE_CONTRACT = "visible-source-row-table.6"
 
 
 def _json(value: object) -> str:
@@ -312,7 +313,7 @@ def _indexed_materials(entries: list[dict], subjects: dict) -> tuple[list[dict],
 
 
 def compile_visible_source_table(
-    *, request: ModelInput, capsule: ContextCapsule
+    *, request: ModelInput, capsule: ContextCapsule, include_subjective_history: bool = False
 ) -> VisibleSourceTable:
     """Compose original selected sources without a draft, claim list or lookup.
 
@@ -321,6 +322,8 @@ def compile_visible_source_table(
     acquire qualification; unavailable slices remain explicit in selection
     metadata. This returns preparation evidence, never an accepted receipt.
     """
+    if type(include_subjective_history) is not bool:
+        raise TypeError("subjective history selection flag must be boolean")
     proof = compile_visible_selected_source_context(request=request, capsule=capsule)
     entries, selections, unsupported = _world_entries(capsule)
     entries.extend(proof["entries"])
@@ -333,6 +336,26 @@ def compile_visible_source_table(
             "slice_hash": selected.slice_hash,
             "item_refs": [entry["item"]["item_ref"] for entry in history_entries],
         }
+    if include_subjective_history:
+        from .visible_subjective_source import AUTHORITY, CONTRACT
+        for lane in ("appraisals", "affect_episodes"):
+            selected = getattr(capsule, lane)
+            selections[lane] = {
+                "availability": selected.availability, "slice_hash": selected.slice_hash,
+                "item_refs": [item.item_ref for item in selected.items],
+            }
+            if selected.availability != "available" or capsule.logical_time is None:
+                continue
+            for item in selected.items:
+                if item.privacy_class != "private":
+                    continue
+                entries.append({
+                    **_entry(lane, item), "authority": AUTHORITY, "actor_ref": capsule.actor_ref,
+                    "scope": {"contract": CONTRACT, "owner_actor_ref": capsule.actor_ref,
+                              "owner_basis": "pinned_companion_private_context",
+                              "logical_at": capsule.logical_time.isoformat(), "world_revision": capsule.world_revision},
+                    "does_not_authorize": "Only her recorded subjective history. Beliefs about others, inferred motives, physical events, actions and causes are not established by this record. Do not infer unrecorded earlier intensity from the current affect value.",
+                })
     report = _current_report(request, proof)
     if report is not None:
         entries.append(report)
@@ -348,6 +371,7 @@ def compile_visible_source_table(
     )
     payload = {
         "contract": (
+            SUBJECTIVE_SOURCE_TABLE_CONTRACT if include_subjective_history else
             PREHISTORY_SOURCE_TABLE_CONTRACT if history_entries
             else SETTLED_LIFE_SOURCE_TABLE_CONTRACT if includes_settled_life
             else PLANNED_SOURCE_TABLE_CONTRACT if includes_planned
@@ -356,6 +380,7 @@ def compile_visible_source_table(
         "pin": proof["visible_review_projection"],
         "additional_selection": selections,
         "coverage_scope": (
+            "selected_context_with_subjective_history" if include_subjective_history else
             "selected_context_with_retained_prehistory_excerpts"
             if history_entries else
             "selected_situation_activity_settled_life_biography_fact_dialogue_and_private_readings"

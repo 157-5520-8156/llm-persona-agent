@@ -349,7 +349,8 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
             )
             if required_review:
                 visible_reviewer = provider("visible_source_review")
-                if options.visible_source_review_version in {"9", "10", "11"}:
+                from companion_daemon.world_v2.visible_review_protocols import REVIEW_PROTOCOLS
+                if options.visible_source_review_version in REVIEW_PROTOCOLS:
                     from companion_daemon.world_v2.visible_independent_review_runtime import IndependentVisibleReviewer
                     visible_reviewer = IndependentVisibleReviewer(
                         meaning_models=(provider("visible_meaning_pro", model_override="deepseek-v4-pro"),

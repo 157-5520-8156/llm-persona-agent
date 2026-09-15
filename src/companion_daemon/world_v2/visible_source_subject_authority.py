@@ -33,7 +33,7 @@ def source_subject_permissions(*, row: dict, pointers: list[str]) -> dict[str, l
         [scope, role]
         for scope in (
             "utterance_record", "accepted_intention", "activity_lifecycle",
-            "environment", "external_fact",
+            "environment", "external_fact", "subjective_history",
         )
         for role in ("companion", "counterpart", "general", "other", "none")
         if _permits_eligible_source_subject(
@@ -45,6 +45,12 @@ def source_subject_permissions(*, row: dict, pointers: list[str]) -> dict[str, l
 def _permits_eligible_source_subject(*, row: dict, pointer: str, claim_scope: str, subject_role: str) -> bool:
     material = row["review_material"]
     owner = row.get("support_subject_role")
+    if "subjective_history_support" in row:
+        from .visible_subjective_source import subjective_direct_paths
+        return (claim_scope == "subjective_history" and subject_role == owner == "companion"
+                and pointer in subjective_direct_paths(row, [pointer]))
+    if claim_scope == "subjective_history":
+        return False
     if material.get("lane") == "recent_dialogue" and material.get("authority") == "companion_expression_record":
         return claim_scope == "utterance_record" and subject_role == owner
     if isinstance(row.get("settled_life_support"), dict):

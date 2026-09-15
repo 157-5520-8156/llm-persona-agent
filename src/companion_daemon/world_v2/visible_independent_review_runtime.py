@@ -34,7 +34,7 @@ class IndependentVisibleReviewer:
 
 def validate_independent_reviewer_configuration(reviewer, version):
     if (version in REVIEW_PROTOCOLS) != isinstance(reviewer, IndependentVisibleReviewer):
-        raise ValueError("versions 9/10/11 require an explicit independent reviewer; legacy versions cannot consume one")
+        raise ValueError("independent review versions require an explicit independent reviewer; legacy versions cannot consume one")
 
 
 def rejection_feedback(prepared, rejected, bindings):
@@ -122,7 +122,8 @@ async def review_independent_candidate(
     def subcalls():
         return (*output.provider_subcall_audits, *(audits[i] for i in sorted(audits)))
 
-    rejected_meanings = [None, None] if review_version in {"10", "11"} else None
+    from .visible_review_protocols import RESELECTING_PROTOCOLS
+    rejected_meanings = [None, None] if independent_review_protocol(review_version) in RESELECTING_PROTOCOLS else None
 
     async def read_meaning(call, model, index):
         raw, binding = await invoke(call, model, index)
