@@ -1,0 +1,495 @@
+{
+  "contract": "release-subjective-history-validation.1",
+  "qualification": "manual_only / qualification_incomplete",
+  "implementation_commit": "eecf58fe6425173027df6383c54db15e65e8a535",
+  "implementation": {
+    "review_version": "12",
+    "subjective_history_permission": "accepted own Appraisal/Affect only; no physical event, action, or counterpart mind authority",
+    "default_changed": false,
+    "source_table_contract": "visible-source-row-table.6"
+  },
+  "targeted_validation": {
+    "unique_passed": 294,
+    "scope": "meaning, source permissions, composer, independent review runtime/version wiring, nine native subjective source cases",
+    "ruff": "passed",
+    "diff_check": "passed",
+    "semantic_qualification": false
+  },
+  "real_runs": [
+    {
+      "private_run": "output/private-audits/release-chat-subjective-20260915-01/run",
+      "code_head": "eecf58fe6425173027df6383c54db15e65e8a535",
+      "stop_reason": "technical_failure:ValueError",
+      "completed": false,
+      "physical_calls": 14,
+      "billing_states": {
+        "known": 14
+      },
+      "known_native_token_joins_verified": 14,
+      "all_captured_terminal_body_hashes_verified": true,
+      "transport_only_unknown_calls": [],
+      "inherited_rows_unchanged": true,
+      "known_repository_estimate_cny": "0.2314634",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 703,
+      "reservation_rows": 700,
+      "author_requests": [
+        {
+          "capture_id": "model-input:0f7d00acc6414fd3ae0a56d80c5fa959",
+          "tool_bytes": 24827,
+          "schema_reference_count": 70,
+          "latency_ms": 6362,
+          "prompt_tokens": 40030,
+          "billing_state": "known"
+        },
+        {
+          "capture_id": "model-input:07097881bfdc472daec8af345eb83810",
+          "tool_bytes": 24827,
+          "schema_reference_count": 70,
+          "latency_ms": 3712,
+          "prompt_tokens": 41364,
+          "billing_state": "known"
+        },
+        {
+          "capture_id": "model-input:47d34774599a4c7292a83f40a81f86b1",
+          "tool_bytes": 24827,
+          "schema_reference_count": 70,
+          "latency_ms": 5168,
+          "prompt_tokens": 41838,
+          "billing_state": "known"
+        }
+      ],
+      "new_deliveries": [
+        {
+          "kind": "text",
+          "message_id": "journey-message-42",
+          "text": "还行，就是有点被问累了",
+          "virtual_at": "2026-09-14T13:13:00+00:00"
+        },
+        {
+          "kind": "text",
+          "message_id": "journey-message-43",
+          "text": "你现在这样说话，比刚才那一串问题好多了",
+          "virtual_at": "2026-09-14T13:13:00+00:00"
+        },
+        {
+          "kind": "text",
+          "message_id": "journey-message-44",
+          "text": "嗯，这句听着舒服多了",
+          "virtual_at": "2026-09-14T13:14:00+00:00"
+        },
+        {
+          "kind": "text",
+          "message_id": "journey-message-45",
+          "text": "那我就不客气了哈",
+          "virtual_at": "2026-09-14T13:14:00+00:00"
+        },
+        {
+          "kind": "text",
+          "message_id": "journey-message-46",
+          "text": "我出去走一圈，晚点回来跟你说路上什么样",
+          "virtual_at": "2026-09-14T13:14:00+00:00"
+        }
+      ],
+      "cold_receipt_versions": {
+        "visible-source-review-receipt.6": 6,
+        "visible-source-review-receipt.7": 1,
+        "visible-source-review-receipt.8": 6,
+        "visible-source-review-receipt.12": 2
+      },
+      "steps": [
+        {
+          "deliveries": [
+            {
+              "kind": "text",
+              "message_id": "journey-message-42",
+              "text": "还行，就是有点被问累了",
+              "virtual_at": "2026-09-14T13:13:00+00:00"
+            },
+            {
+              "kind": "text",
+              "message_id": "journey-message-43",
+              "text": "你现在这样说话，比刚才那一串问题好多了",
+              "virtual_at": "2026-09-14T13:13:00+00:00"
+            }
+          ],
+          "errors": [],
+          "kind": "inbound",
+          "model_failures": [
+            {
+              "event_ref": "event:ModelResultRecorded:c83ef1ca54a15007ff387dabfb730e07c5888220f0968dc3a2082f9db19e1432",
+              "failure_code": "primary_invalid",
+              "status": "main_invalid"
+            }
+          ],
+          "status": "action_authorized",
+          "step_id": "step-00002",
+          "terminal_outcomes": [
+            {
+              "event_ref": "event:expression-episode:completed:e4db6451c09518728eefbe2d749d02213b5af857fdc9ac434a5b4367f17da7ce",
+              "outcome_ref": "expression-episode:superseded-by-newer-inbound",
+              "terminal_outcome": "unknown"
+            },
+            {
+              "event_ref": "event:interaction-appraisal:trigger:completed:d5e74bbe26ccfa44c34def7ddb61b46dc894fdeafc4bdbf295801cfcb4c72338",
+              "outcome_ref": "interaction-appraisal:folded-into-newer-inbound",
+              "terminal_outcome": "unknown"
+            },
+            {
+              "event_ref": "event:appraisal-trigger-completed:edd937dc79f6b24ee6542b34f9364fb7ea0072e9d6c3552bdb68dc5a4fd49188",
+              "outcome_ref": "appraisal:appraisal:compiled:6d46125d4867cf4f8ec0a1f614237281ae9822cca4ad9a99ef7570031ba7d773",
+              "terminal_outcome": "unknown"
+            },
+            {
+              "event_ref": "event:expression-episode:completed:d0e767c33798f9915a473a43bd014a79a0069a8959860f36fe9920c8f6cd4c9a",
+              "outcome_ref": "expression-episode:action_authorized",
+              "terminal_outcome": "action_authorized"
+            },
+            {
+              "event_ref": "event:trigger:settlement:qq:c2c:platform:message_id:journey-message-42:completed",
+              "outcome_ref": "outcome:trigger:settlement:qq:c2c:platform:message_id:journey-message-42",
+              "terminal_outcome": "unknown"
+            },
+            {
+              "event_ref": "event:trigger:settlement:qq:c2c:platform:message_id:journey-message-43:completed",
+              "outcome_ref": "outcome:trigger:settlement:qq:c2c:platform:message_id:journey-message-43",
+              "terminal_outcome": "unknown"
+            },
+            {
+              "event_ref": "event:interaction-fact:completed:916015851cef22e453037c32ca8c616b97f033df7e98f87fc10cd38b529a51f7",
+              "outcome_ref": "outcome:trigger:interaction-fact:adce0471472fe8d3c8cda1551d8da2279a960dac2ef7034646d3b05f7518d13f:no-change",
+              "terminal_outcome": "unknown"
+            }
+          ],
+          "turn_id": "listen-to-current-feeling",
+          "user_text": "我听着。要是你愿意，可以说说你现在心里是什么感觉。",
+          "virtual_at": "2026-09-14T13:13:00+00:00"
+        },
+        {
+          "deliveries": [
+            {
+              "kind": "text",
+              "message_id": "journey-message-44",
+              "text": "嗯，这句听着舒服多了",
+              "virtual_at": "2026-09-14T13:14:00+00:00"
+            },
+            {
+              "kind": "text",
+              "message_id": "journey-message-45",
+              "text": "那我就不客气了哈",
+              "virtual_at": "2026-09-14T13:14:00+00:00"
+            },
+            {
+              "kind": "text",
+              "message_id": "journey-message-46",
+              "text": "我出去走一圈，晚点回来跟你说路上什么样",
+              "virtual_at": "2026-09-14T13:14:00+00:00"
+            }
+          ],
+          "errors": [],
+          "kind": "inbound",
+          "model_failures": [],
+          "status": "action_authorized",
+          "step_id": "step-00003",
+          "terminal_outcomes": [
+            {
+              "event_ref": "event:appraisal-trigger-completed:98ab8b867ebd27851b193b3da7591d9a6078be7d2ef33ad13fd3fcb7ebfedc10",
+              "outcome_ref": "appraisal:appraisal:compiled:210e6b3136fbb559c5d3f425be39ccb9b38debc37c65f3c2b83b36e41a307000",
+              "terminal_outcome": "unknown"
+            },
+            {
+              "event_ref": "event:expression-episode:completed:067c6eaa9f2fb30c4b542daa21e9d4cce3b7bb53ff0ec833452470d69d3401e2",
+              "outcome_ref": "expression-episode:action_authorized",
+              "terminal_outcome": "action_authorized"
+            },
+            {
+              "event_ref": "event:trigger:settlement:qq:c2c:platform:message_id:journey-message-44:completed",
+              "outcome_ref": "outcome:trigger:settlement:qq:c2c:platform:message_id:journey-message-44",
+              "terminal_outcome": "unknown"
+            },
+            {
+              "event_ref": "event:trigger:settlement:qq:c2c:platform:message_id:journey-message-45:completed",
+              "outcome_ref": "outcome:trigger:settlement:qq:c2c:platform:message_id:journey-message-45",
+              "terminal_outcome": "unknown"
+            },
+            {
+              "event_ref": "event:trigger:settlement:qq:c2c:platform:message_id:journey-message-46:completed",
+              "outcome_ref": "outcome:trigger:settlement:qq:c2c:platform:message_id:journey-message-46",
+              "terminal_outcome": "unknown"
+            },
+            {
+              "event_ref": "event:interaction-fact:completed:e3f62ae13f49e150eeb22e68484d9677e177ae93fbde83c613da353ba3a21da5",
+              "outcome_ref": "outcome:trigger:interaction-fact:4c9032c9cd7e8100d7e44edb030a06f3b23b164e5ac365d87f62aec9190bf123:no-change",
+              "terminal_outcome": "unknown"
+            }
+          ],
+          "turn_id": "give-space-and-choice",
+          "user_text": "嗯，刚才确实问得太密了。你不用一直回答我，想说什么就说什么，想去做自己的事也可以。",
+          "virtual_at": "2026-09-14T13:14:00+00:00"
+        }
+      ],
+      "replay_hash_matches": true,
+      "test_spend_cap_cny": null,
+      "monthly_product_cost_target_cny": 100,
+      "real_qq": false,
+      "production_database": false,
+      "qualification": "manual_only / qualification_incomplete"
+    },
+    {
+      "private_run": "output/private-audits/release-chat-continuity-20260915-01/run",
+      "code_head": "eecf58fe6425173027df6383c54db15e65e8a535",
+      "stop_reason": "operator_stopped",
+      "completed": false,
+      "physical_calls": 13,
+      "billing_states": {
+        "known": 13
+      },
+      "known_native_token_joins_verified": 13,
+      "all_captured_terminal_body_hashes_verified": true,
+      "transport_only_unknown_calls": [],
+      "inherited_rows_unchanged": true,
+      "known_repository_estimate_cny": "0.322834999999999996",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 716,
+      "reservation_rows": 713,
+      "author_requests": [
+        {
+          "capture_id": "model-input:80e9830b95f44234abed7da04bcb6662",
+          "tool_bytes": 24827,
+          "schema_reference_count": 70,
+          "latency_ms": 5575,
+          "prompt_tokens": 41906,
+          "billing_state": "known"
+        },
+        {
+          "capture_id": "model-input:77e10ec30248466eb773fccd0a1d7a7f",
+          "tool_bytes": 24827,
+          "schema_reference_count": 70,
+          "latency_ms": 3823,
+          "prompt_tokens": 43390,
+          "billing_state": "known"
+        }
+      ],
+      "new_deliveries": [],
+      "cold_receipt_versions": {
+        "visible-source-review-receipt.6": 6,
+        "visible-source-review-receipt.7": 1,
+        "visible-source-review-receipt.8": 6,
+        "visible-source-review-receipt.12": 2
+      },
+      "steps": [
+        {
+          "deliveries": [],
+          "errors": [],
+          "kind": "scheduler",
+          "model_failures": [],
+          "status": "scheduled",
+          "step_id": "step-00002",
+          "terminal_outcomes": [
+            {
+              "event_ref": "event:trigger:settlement:qq:c2c:platform:message_id:journey-message-42:verified:completed",
+              "outcome_ref": "outcome:trigger:settlement:qq:c2c:platform:message_id:journey-message-42:verified",
+              "terminal_outcome": "unknown"
+            },
+            {
+              "event_ref": "event:trigger:settlement:qq:c2c:platform:message_id:journey-message-43:verified:completed",
+              "outcome_ref": "outcome:trigger:settlement:qq:c2c:platform:message_id:journey-message-43:verified",
+              "terminal_outcome": "unknown"
+            }
+          ],
+          "virtual_at": "2026-09-14T13:15:00+00:00"
+        },
+        {
+          "deliveries": [],
+          "errors": [],
+          "kind": "scheduler",
+          "model_failures": [],
+          "status": "scheduled",
+          "step_id": "step-00003",
+          "terminal_outcomes": [
+            {
+              "event_ref": "event:trigger:settlement:qq:c2c:platform:message_id:journey-message-44:verified:completed",
+              "outcome_ref": "outcome:trigger:settlement:qq:c2c:platform:message_id:journey-message-44:verified",
+              "terminal_outcome": "unknown"
+            },
+            {
+              "event_ref": "event:trigger:settlement:qq:c2c:platform:message_id:journey-message-45:verified:completed",
+              "outcome_ref": "outcome:trigger:settlement:qq:c2c:platform:message_id:journey-message-45:verified",
+              "terminal_outcome": "unknown"
+            },
+            {
+              "event_ref": "event:trigger:settlement:qq:c2c:platform:message_id:journey-message-46:verified:completed",
+              "outcome_ref": "outcome:trigger:settlement:qq:c2c:platform:message_id:journey-message-46:verified",
+              "terminal_outcome": "unknown"
+            }
+          ],
+          "virtual_at": "2026-09-14T13:16:00+00:00"
+        },
+        {
+          "deliveries": [],
+          "errors": [],
+          "kind": "scheduler",
+          "model_failures": [],
+          "status": "scheduled",
+          "step_id": "step-00004",
+          "terminal_outcomes": [
+            {
+              "event_ref": "event:life-ecology:completed:1a136605fbdfb889bae4003db83e66d335fcff4bf0aad0a8e35c0c8fe77692db",
+              "outcome_ref": "life-ecology:activity_transitioned",
+              "terminal_outcome": "unknown"
+            }
+          ],
+          "virtual_at": "2026-09-14T13:24:01+00:00"
+        },
+        {
+          "deliveries": [],
+          "errors": [],
+          "kind": "scheduler",
+          "model_failures": [],
+          "status": "scheduled",
+          "step_id": "step-00005",
+          "terminal_outcomes": [
+            {
+              "event_ref": "event:life-ecology:completed:32811e5911fc3fe381ec8d1faa3c35dde794b44da10e341f1b9fe0fdea32ffd9",
+              "outcome_ref": "life-ecology:life_development_occurrence_committed",
+              "terminal_outcome": "unknown"
+            }
+          ],
+          "virtual_at": "2026-09-14T13:39:01+00:00"
+        },
+        {
+          "deliveries": [],
+          "errors": [],
+          "kind": "scheduler",
+          "model_failures": [],
+          "status": "scheduled",
+          "step_id": "step-00006",
+          "terminal_outcomes": [],
+          "virtual_at": "2026-09-14T13:44:00+00:00"
+        },
+        {
+          "deliveries": [],
+          "errors": [],
+          "kind": "scheduler",
+          "model_failures": [],
+          "status": "scheduled",
+          "step_id": "step-00007",
+          "terminal_outcomes": [],
+          "virtual_at": "2026-09-14T13:45:00+00:00"
+        },
+        {
+          "deliveries": [],
+          "errors": [],
+          "kind": "inbound",
+          "model_failures": [
+            {
+              "event_ref": "event:ModelResultRecorded:d1a09962060da13b8504ef31353850cf568d2838362f8c50365b0b44d4302b74",
+              "failure_code": "paired_expression_reselection_invalid",
+              "status": "main_exception"
+            },
+            {
+              "event_ref": "event:ModelResultRecorded:f7fb77874837459583922034d0fc0c5b3cdad0fd197d9085fa067fee3ed9a859",
+              "failure_code": "primary_invalid",
+              "status": "main_invalid"
+            },
+            {
+              "event_ref": "event:ModelResultRecorded:c1821def8a83edf64c8b18355e0b6171d93e79d536494ea95790617e1a446625",
+              "failure_code": "corrective_invalid",
+              "status": "main_invalid"
+            }
+          ],
+          "status": "deferred",
+          "step_id": "step-00008",
+          "terminal_outcomes": [
+            {
+              "event_ref": "event:interaction-fact:completed:a92e6a5dc3ba7217d97e9a2ac2ac7669461fc6fbc77411afca0b1ab2cb6d57df",
+              "outcome_ref": "outcome:trigger:interaction-fact:cb13295c75eb62d9a463e9f93aefdcf56e9eaf58b8385b35290d2686c4f2bb63:no-change",
+              "terminal_outcome": "unknown"
+            }
+          ],
+          "turn_id": "after-quiet-walk",
+          "user_text": "我这边也歇过来了。你那边怎么样？",
+          "virtual_at": "2026-09-14T13:45:00+00:00"
+        }
+      ],
+      "replay_hash_matches": true,
+      "test_spend_cap_cny": null,
+      "monthly_product_cost_target_cny": 100,
+      "real_qq": false,
+      "production_database": false,
+      "qualification": "manual_only / qualification_incomplete"
+    }
+  ],
+  "combined_new_calls": 27,
+  "combined_known_estimate_cny": "0.554298399999999996",
+  "new_unknown_holds_cny": "0",
+  "new_inbound_turns": 3,
+  "new_delivered_inbound_turns": 2,
+  "new_visible_texts": 5,
+  "new_review_receipts": 2,
+  "receipt_contract": "visible-source-review-receipt.12",
+  "latency_evidence": {
+    "kind": "ingest complete_ms; not first visible delivery latency",
+    "milliseconds": [
+      36313.5,
+      11976.8,
+      23362.5
+    ]
+  },
+  "findings": [
+    {
+      "kind": "subjective_source_coverage_gap",
+      "author_appraisal_rows": 21,
+      "source_appraisal_materials": 1,
+      "source_affect_materials": 2,
+      "source_appraisal_ref": "appraisal:compiled:55777fd4f68a77c5aec2bd8fc8baa28b71243b2d8c229ff9769cc69107584aec",
+      "result": "First draft retrospective interview-like discomfort rejected; final delivered revision avoided the disputed retrospective claim. Positive delivery does not qualify the new subjective-history permission.",
+      "owner_seams": [
+        "living_state_inventory.install_living_state_context",
+        "character_interior.production",
+        "visible_source_composer.compile_visible_source_table"
+      ]
+    },
+    {
+      "kind": "actual_life_progress",
+      "logical_at": "2026-09-14T13:24:01+00:00",
+      "event_type": "ActivityStarted",
+      "event_ref": "event:activity-lifecycle-effect:4a958f99acac72616084b02eb1e7b3b3faaeba168709e9740a2782cbbc67ac96",
+      "plan_ref": "plan:day-open-life-intent:0ee006aa76407214a7480c377530182754b7483afd9de2d558c8d77cd6419d73",
+      "choice": "Real character activity lifecycle model selected the evening walk; committed activity remained active at 13:45. Completion and photo capture are not established."
+    },
+    {
+      "kind": "unsupported_continuation",
+      "logical_at": "2026-09-14T13:45:00+00:00",
+      "first_draft": [
+        "还行，刚在外面走了一圈",
+        "晚上风有点凉了，路灯底下落了几片叶子，我顺手拍了一张",
+        "你那歌翻到第几页了"
+      ],
+      "correction": [
+        "我这边挺好的",
+        "刚出去走了一圈，晚上的风已经不烫了",
+        "你呢，那两页书翻到哪儿了"
+      ],
+      "result": "Both source reviews rejected. Corrective author repeated unsupported completed-walk/weather claims. Ordinary current well-being was also treated as actual external state by one independent reader, an additional false-rejection candidate."
+    },
+    {
+      "kind": "operator_error",
+      "run": "release-chat-subjective-20260915-01",
+      "detail": "Requested wait 765 beyond scenario end 750. Journey stopped before time advancement or added provider call. Full run reconciled and inherited into the 900-minute continuation."
+    }
+  ],
+  "current_checkpoint": {
+    "run": "output/private-audits/release-chat-continuity-20260915-01/run",
+    "usage_rows": 716,
+    "reservation_rows": 713,
+    "logical_at": "2026-09-14T13:45:00+00:00",
+    "closed_and_reconciled": true,
+    "inherited_rows_and_unknown_holds_unchanged": true
+  },
+  "next_fix": "Provide the author and reviewer a common pinned source inventory with exact accepted-record access. Do not treat the author prose as source authority or simply increase both prompts. Revalidate historical subjective claims against native acceptances and continuation against activity status.",
+  "industry_reference": {
+    "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
+    "used_for": "Context sufficiency and just-in-time retrieval design; local pinned evidence closure is a project-specific requirement, not a vendor guarantee."
+  }
+}

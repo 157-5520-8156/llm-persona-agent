@@ -38,3 +38,25 @@ emotion. A structurally valid model selection crossing these permissions is
 rejected. No new Appraisal, Affect, memory or World event is fabricated by this
 reader; accepted source coverage and real semantic performance require their
 own runtime evidence.
+
+## Real-provider qualification and remaining ownership seam
+
+The first real version-12 journey exposed a second, concrete asymmetry: the
+source table contains one selected appraisal, while the author's living-state
+installer presents 21. The new permission is implemented, but that does not
+establish source completeness. Its two delivered turns avoided the disputed
+past subjective claim. Do not mark the historical-reading feature qualified.
+
+The next change must give both consumers a shared, pinned inventory of accepted
+records, with exact record access and privacy/time/provenance checks owned by
+that boundary. The reviewer must not gain authority by copying author prose;
+compaction must not silently remove the only proof of a presented recollection.
+This should be an explicit context-source interface, not ledger access scattered
+through the semantic reviewers. Current-past Affect updates need their exact
+recorded revision rather than inferring history from an opening event.
+
+[Anthropic's context engineering discussion](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
+supports keeping sufficient focused context and retrieving additional material
+when needed. It does not prescribe this project's authority model; shared pinned
+source identities and replayable acceptance are requirements from our own code
+and the observed mismatch. Increasing both prompt budgets is not a substitute.
