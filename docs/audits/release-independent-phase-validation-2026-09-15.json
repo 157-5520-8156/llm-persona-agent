@@ -1,0 +1,360 @@
+{
+  "implementation_commit": "2e1c707ddb24e70bf12d54404797aacb747d1d1f",
+  "root_cause": "Independent whole-candidate review did not enter Deliberation validation state. The author timer cancelled completed author work while review calls were still in flight.",
+  "timing_contract": {
+    "ordinary_author_seconds": 12,
+    "composed_review_ceiling_seconds": 46,
+    "per_review_call_ceiling_seconds": 22,
+    "semantic_reselection_ceiling_seconds": 100,
+    "phase_reentry_renews_deadline": false,
+    "group_automatic_retry": false,
+    "full_interaction_may_exceed_12_seconds": true,
+    "latency_qualification": "not achieved"
+  },
+  "tests": {
+    "selected_passed": 159,
+    "files": [
+      "test_composed_validation_phase.py",
+      "test_visible_independent_review_runtime.py",
+      "test_deliberation.py",
+      "test_interactive_turn_budget.py"
+    ],
+    "scope": "connected/disconnected application controls, bounded expiry, one same-author correction, failed review, cancellation, no automatic group retry, fixed phase reentry, receipts and legacy timing",
+    "initial_failures": "Three disconnected-control assertions counted base-handler completions instead of transport arrivals; corrected test instrumentation, all six controls and two additional expiry cases passed. No production assertion weakened.",
+    "ruff": "passed",
+    "diff_check": "passed"
+  },
+  "real_chat": {
+    "code_head": "2e1c707ddb24e70bf12d54404797aacb747d1d1f",
+    "stop_reason": "operator_stopped",
+    "completed": false,
+    "physical_calls": 20,
+    "billing_states": {
+      "known": 20
+    },
+    "known_native_token_joins_verified": 20,
+    "all_captured_terminal_body_hashes_verified": true,
+    "transport_only_unknown_calls": [],
+    "inherited_rows_unchanged": true,
+    "known_repository_estimate_cny": "0.2898088999999999992",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 689,
+    "reservation_rows": 686,
+    "author_requests": [
+      {
+        "capture_id": "model-input:0529ba825e5c4ed8a971473fcb8e6c1a",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 6251,
+        "prompt_tokens": 40760,
+        "billing_state": "known"
+      },
+      {
+        "capture_id": "model-input:fbe62c1e339f44f6a24d75a024f78699",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 4423,
+        "prompt_tokens": 42250,
+        "billing_state": "known"
+      },
+      {
+        "capture_id": "model-input:c7622365ee2a49ca89c1bc3a436766b0",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 4778,
+        "prompt_tokens": 40156,
+        "billing_state": "known"
+      },
+      {
+        "capture_id": "model-input:79f151f767a5495badd57dd1a292936b",
+        "tool_bytes": 24827,
+        "schema_reference_count": 70,
+        "latency_ms": 4911,
+        "prompt_tokens": 41406,
+        "billing_state": "known"
+      }
+    ],
+    "new_deliveries": [],
+    "cold_receipt_versions": {
+      "visible-source-review-receipt.6": 6,
+      "visible-source-review-receipt.7": 1,
+      "visible-source-review-receipt.8": 6
+    },
+    "steps": [
+      {
+        "deliveries": [],
+        "errors": [],
+        "kind": "inbound",
+        "model_failures": [
+          {
+            "event_ref": "event:ModelResultRecorded:926d9b598451639a8a626b85a8ce74ad782d0e627a2dfdfb3e93a8cc4655af39",
+            "failure_code": "paired_expression_reselection_invalid",
+            "status": "main_exception"
+          },
+          {
+            "event_ref": "event:ModelResultRecorded:cd1661d3c81823d71464338e8be0ba2290badba9d3bd41fc32d80409206d499c",
+            "failure_code": "primary_invalid",
+            "status": "main_invalid"
+          },
+          {
+            "event_ref": "event:ModelResultRecorded:554a708b811fa5a7efefee23d7163f7483a8e49c258fd85e78d6446b740b192b",
+            "failure_code": "corrective_invalid",
+            "status": "main_invalid"
+          }
+        ],
+        "status": "deferred",
+        "step_id": "step-00002",
+        "terminal_outcomes": [
+          {
+            "event_ref": "event:expression-episode:completed:4e24d85fb1074a277f67a1a7aba9f05978cfd7898e4e827d4de69a70f92209b8",
+            "outcome_ref": "expression-episode:superseded-by-newer-inbound",
+            "terminal_outcome": "unknown"
+          },
+          {
+            "event_ref": "event:interaction-appraisal:trigger:completed:5dc8ce5e9c686aa2fa96d086d8f4bae5685feb0879e7f867fd55f1fb9a0e1d85",
+            "outcome_ref": "interaction-appraisal:folded-into-newer-inbound",
+            "terminal_outcome": "unknown"
+          },
+          {
+            "event_ref": "event:interaction-fact:completed:2153fa34cfc520dcae13ef51807a1ed5c2330c7dd362a8073521f53e9d156282",
+            "outcome_ref": "outcome:trigger:interaction-fact:b556a3d509ac4f8c3a6b8a9550c04dff79fb499c0e31960390a5c17ebbf0a3fe:no-change",
+            "terminal_outcome": "unknown"
+          }
+        ],
+        "turn_id": "resume-after-missing-replies",
+        "user_text": "我这边刚才一直没收到消息。你现在最想跟我说什么？",
+        "virtual_at": "2026-09-14T13:13:00+00:00"
+      },
+      {
+        "deliveries": [],
+        "errors": [],
+        "kind": "inbound",
+        "model_failures": [
+          {
+            "event_ref": "event:ModelResultRecorded:12d8971930641484fc73400c3a7b9767e77f27b11b0f3a1a651ac147ef85e010",
+            "failure_code": "paired_expression_reselection_invalid",
+            "status": "main_exception"
+          },
+          {
+            "event_ref": "event:ModelResultRecorded:b5abb6f71dfe1f6a99eaefd9ac93f428bf61ea456bc02083e129403717e2dc6d",
+            "failure_code": "primary_invalid",
+            "status": "main_invalid"
+          },
+          {
+            "event_ref": "event:ModelResultRecorded:c528c28c3254a595e2387a7bc79be5951fff8fc0233b6a5a07d47612f46fc841",
+            "failure_code": "corrective_invalid",
+            "status": "main_invalid"
+          }
+        ],
+        "status": "deferred",
+        "step_id": "step-00003",
+        "terminal_outcomes": [
+          {
+            "event_ref": "event:expression-episode:completed:8665d3a52457bf4ebda7c3310bc049f595e65ea0bec6b06b4a316ba85aee867d",
+            "outcome_ref": "expression-episode:superseded-by-newer-inbound",
+            "terminal_outcome": "unknown"
+          },
+          {
+            "event_ref": "event:interaction-appraisal:trigger:completed:e587eed71cd9189bcaf400a47b5d699104dd50a0d05c76bdf194e8a099df62f0",
+            "outcome_ref": "interaction-appraisal:folded-into-newer-inbound",
+            "terminal_outcome": "unknown"
+          },
+          {
+            "event_ref": "event:interaction-fact:completed:44f0ee264382c4bd0cb5f24528d59248618c06b3a4873e8653d41582881f1166",
+            "outcome_ref": "outcome:trigger:interaction-fact:9c0563a2b73240c2fdd7e1a2a2ce4ea239a8456642fea1fed840b55946e17d1f:no-change",
+            "terminal_outcome": "unknown"
+          }
+        ],
+        "turn_id": "present-feeling-only",
+        "user_text": "先把刚才放下吧。我现在有点累，想听听你此刻的心情。",
+        "virtual_at": "2026-09-14T13:13:00+00:00"
+      }
+    ],
+    "replay_hash_matches": true,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "real_qq": false,
+    "production_database": false,
+    "qualification": "manual_only / qualification_incomplete"
+  },
+  "stages": [
+    {
+      "captured_at": "2026-09-15T10:21:51.917567+00:00",
+      "function": "character_inbound_initial_v3",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 6251,
+      "prompt_tokens": 40760,
+      "completion_tokens": 1247
+    },
+    {
+      "captured_at": "2026-09-15T10:21:58.274173+00:00",
+      "function": "interpret_visible_candidate_complete_v9",
+      "model": "deepseek-v4-pro",
+      "latency_ms": 4487,
+      "prompt_tokens": 1537,
+      "completion_tokens": 484
+    },
+    {
+      "captured_at": "2026-09-15T10:21:58.275482+00:00",
+      "function": "interpret_visible_candidate_complete_v9",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 2081,
+      "prompt_tokens": 1526,
+      "completion_tokens": 422
+    },
+    {
+      "captured_at": "2026-09-15T10:22:02.876292+00:00",
+      "function": "review_independent_fixed_meanings_v2",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 1842,
+      "prompt_tokens": 23030,
+      "completion_tokens": 363
+    },
+    {
+      "captured_at": "2026-09-15T10:22:05.156133+00:00",
+      "function": "character_inbound_initial_v3",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 4423,
+      "prompt_tokens": 42250,
+      "completion_tokens": 793
+    },
+    {
+      "captured_at": "2026-09-15T10:22:09.706715+00:00",
+      "function": "interpret_visible_candidate_complete_v9",
+      "model": "deepseek-v4-pro",
+      "latency_ms": 4358,
+      "prompt_tokens": 1549,
+      "completion_tokens": 434
+    },
+    {
+      "captured_at": "2026-09-15T10:22:09.707981+00:00",
+      "function": "interpret_visible_candidate_complete_v9",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 2294,
+      "prompt_tokens": 1538,
+      "completion_tokens": 421
+    },
+    {
+      "captured_at": "2026-09-15T10:22:12.035768+00:00",
+      "function": "interpret_visible_candidate_complete_v9",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 1891,
+      "prompt_tokens": 2113,
+      "completion_tokens": 435
+    },
+    {
+      "captured_at": "2026-09-15T10:22:14.180076+00:00",
+      "function": "review_independent_fixed_meanings_v2",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 1688,
+      "prompt_tokens": 22269,
+      "completion_tokens": 352
+    },
+    {
+      "captured_at": "2026-09-15T10:22:16.513078+00:00",
+      "function": null,
+      "model": "deepseek-v4-flash",
+      "latency_ms": 1240,
+      "prompt_tokens": 2055,
+      "completion_tokens": 6
+    },
+    {
+      "captured_at": "2026-09-15T10:23:17.756248+00:00",
+      "function": "character_inbound_initial_v3",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 4778,
+      "prompt_tokens": 40156,
+      "completion_tokens": 793
+    },
+    {
+      "captured_at": "2026-09-15T10:23:22.634025+00:00",
+      "function": "interpret_visible_candidate_complete_v9",
+      "model": "deepseek-v4-pro",
+      "latency_ms": 5680,
+      "prompt_tokens": 1556,
+      "completion_tokens": 518
+    },
+    {
+      "captured_at": "2026-09-15T10:23:22.635340+00:00",
+      "function": "interpret_visible_candidate_complete_v9",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 2279,
+      "prompt_tokens": 1545,
+      "completion_tokens": 425
+    },
+    {
+      "captured_at": "2026-09-15T10:23:28.346757+00:00",
+      "function": "interpret_visible_candidate_complete_v9",
+      "model": "deepseek-v4-pro",
+      "latency_ms": 4708,
+      "prompt_tokens": 2213,
+      "completion_tokens": 504
+    },
+    {
+      "captured_at": "2026-09-15T10:23:33.146957+00:00",
+      "function": "review_independent_fixed_meanings_v2",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 1485,
+      "prompt_tokens": 19208,
+      "completion_tokens": 120
+    },
+    {
+      "captured_at": "2026-09-15T10:23:35.088996+00:00",
+      "function": "character_inbound_initial_v3",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 4911,
+      "prompt_tokens": 41406,
+      "completion_tokens": 989
+    },
+    {
+      "captured_at": "2026-09-15T10:23:40.117703+00:00",
+      "function": "interpret_visible_candidate_complete_v9",
+      "model": "deepseek-v4-pro",
+      "latency_ms": 6841,
+      "prompt_tokens": 1572,
+      "completion_tokens": 586
+    },
+    {
+      "captured_at": "2026-09-15T10:23:40.118986+00:00",
+      "function": "interpret_visible_candidate_complete_v9",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 2313,
+      "prompt_tokens": 1561,
+      "completion_tokens": 543
+    },
+    {
+      "captured_at": "2026-09-15T10:23:47.064724+00:00",
+      "function": "review_independent_fixed_meanings_v2",
+      "model": "deepseek-v4-flash",
+      "latency_ms": 1070,
+      "prompt_tokens": 19370,
+      "completion_tokens": 150
+    },
+    {
+      "captured_at": "2026-09-15T10:23:48.771796+00:00",
+      "function": null,
+      "model": "deepseek-v4-flash",
+      "latency_ms": 652,
+      "prompt_tokens": 2058,
+      "completion_tokens": 6
+    }
+  ],
+  "semantic_observations": [
+    "Both turns completed first review, one same-author correction, and final review. Neither ended with source_review_timeout; both final candidates were semantically rejected and not delivered.",
+    "One real structural reread occurred in each turn. All 20 physical calls returned known usage; no new unknown holds.",
+    "First corrected reply repeated missing-support statements about prior availability and unwillingness to talk. Exact rejection feedback was present in the corrective author request, so this is not simply absent correction feedback.",
+    "Second turn reviewed retrospective feelings. Author inner_life_snapshot contained accepted earlier appraisal rows, while the source request inventory contained dialogue, World life/situation, biography and current report but no appraisal/affect cards.",
+    "The inventory mismatch is a concrete coverage gap. It does not prove every retrospective claim was supported; event bindings, time and exact source authority must be checked before any new reader is admitted."
+  ],
+  "next_work": "Implement source-bound historical subjective-state reading for the actually pinned author material, with strict separation from external event authority. Verify exact temporal/provenance joins and real rejection examples. Keep failed-delivery awareness and author correction adherence in scope; do not solve these with motive templates.",
+  "continuation": {
+    "runtime_and_billing": "output/private-audits/release-chat-phase-20260915-01/run",
+    "usage_rows": 689,
+    "reservation_rows": 686,
+    "logical_at": "2026-09-14T13:13:00+00:00",
+    "test_spend_cap_cny": null,
+    "monthly_product_target_cny": 100,
+    "old_unknown_holds": "preserved"
+  },
+  "qualification": "manual_only / qualification_incomplete"
+}
