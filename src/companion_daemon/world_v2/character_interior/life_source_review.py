@@ -19,12 +19,25 @@ from .life_candidate_reading import _candidate, _object, _unique
 from .life_source_origin import canonical, digest
 
 LEGACY_CONTRACT = 'life-source-review.1'
-CONTRACT = 'life-source-review.2'
+TOKEN_CONTRACT = 'life-source-review.2'
+CONTRACT = 'life-source-review.3'
 BODY_FIELDS = ('status', 'summary', 'attended_source_refs', 'decision', 'recall_query', 'proposals')
 
 
 def candidate_body(result):
     return canonical(result.model_dump(mode='json', include=set(BODY_FIELDS)))
+
+
+def _permission_choices(readings):
+    choices = []
+    for row in readings['readings']:
+        fact = row['source_family'] == 'accepted_fact_value'
+        for scope, subject in row['value_selection_permissions'] if fact else row['permissions']:
+            choices.append({'permission_id': f'permission:{len(choices)}',
+                'reading_id': row['reading_id'], 'claim_scope': scope, 'subject_role': subject,
+                'subject_ref': row['source_owner_ref'] if fact else None,
+                'requires_exact_fact_quote': fact})
+    return choices
 
 
 def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CONTRACT):
@@ -38,7 +51,7 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CON
         'subject_role': {'type': 'string'}, 'subject_ref': {'type': ['string', 'null']},
         'quoted_value': {'type': ['string', 'null']},
     })
-    if contract == CONTRACT:
+    if contract == TOKEN_CONTRACT:
         # These are host-defined permission tokens, not semantic free text.
         # Restrict the wire vocabulary; inspect_review still checks each exact
         # reading/permission combination and the selected Fact quotation.
@@ -56,6 +69,17 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CON
         props['subject_ref']['enum'] = [None, *sorted({r['source_owner_ref'] for r in facts})]
         if not facts:
             props['quoted_value'] = {'type': 'null'}
+    elif contract == CONTRACT:
+        choices = _permission_choices(readings)
+        branches = []
+        for fact in (False, True):
+            ids = [p['permission_id'] for p in choices if p['requires_exact_fact_quote'] == fact]
+            if ids:
+                properties = {'permission_id': {'type': 'string', 'enum': ids}}
+                if fact:
+                    properties['quoted_value'] = {'type': 'string', 'minLength': 1, 'maxLength': 256}
+                branches.append(_object(properties))
+        support = branches[0] if len(branches) == 1 else {'anyOf': branches} if branches else _object({'permission_id': {'type': 'string'}})
     elif contract != LEGACY_CONTRACT:
         raise ValueError('unsupported Life source review contract')
     schema = _object({'fields': {'type': 'array', 'minItems': len(fields), 'maxItems': len(fields),
@@ -69,6 +93,23 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CON
         'candidate': candidate, 'original_author_output': provider_raw, 'text_fields': fields,
         'source_readings': readings,
         'actual_author_snapshot': json.loads(json.loads(view.messages_json)[1]['content'])['inner_life_snapshot']}
+    support_instructions = (
+        'For Fact values select quoted_value exactly from its observation, '
+        'with subject_role source_owner and its actual subject_ref; the host checks the accepted value hash. '
+        'Other supports use a listed permission and null subject_ref/quoted_value. '
+    )
+    if contract == CONTRACT:
+        payload['permission_choices'] = choices
+        if not choices:
+            schema['properties']['fields']['items']['properties']['supports']['maxItems'] = 0
+        support_instructions = (
+            'Each support selects only a permission_id from permission_choices, a local ID bound to this request. '
+            'Its reading_id, claim_scope and subject are already fixed by that choice; do not output those fields. '
+            'Only choices marked requires_exact_fact_quote additionally require quoted_value selected exactly '
+            'from the accepted Fact value; all other choices have no quoted_value field. '
+            'A supported field needs authority for all its commitments. An unsupported or uncertain field '
+            'may cite support for a subset, but explain what remains unsupported or unclear. '
+        )
     request = {'messages': [
         {'role': 'system', 'content': (
             'You review factual grounding of a fictional character Life result, not its personality or behavior. '
@@ -83,9 +124,7 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CON
             'unsupported means a concrete commitment has no supporting authority here; explain the precise gap. '
             'Use uncertain for ambiguous scope, missing source readers or insufficient context; never guess absence '
             'in the character entire history. Do not write replacement prose or decide how she should feel or act. '
-            'Return each listed path once. For Fact values select quoted_value exactly from its observation, '
-            'with subject_role source_owner and its actual subject_ref; the host checks the accepted value hash. '
-            'Other supports use a listed permission and null subject_ref/quoted_value. '
+            'Return each listed path once. ' + support_instructions +
             'The original author output is not a source of World facts. Source IDs and protocol values may be '
             'classified as no_external_factual_commitment; no field is automatically exempt.'
         )}, {'role': 'user', 'content': canonical(payload)}], 'temperature': 0,
@@ -103,6 +142,7 @@ def inspect_review(*, raw, prepared_json, readings):
         raise ValueError('Life review response exceeds its audit bound')
     response = json.loads(raw, object_pairs_hook=_unique)
     request = json.loads(prepared_json)['request']
+    contract = json.loads(request['messages'][1]['content'])['contract']
     schema = request['tools'][0]['function']['parameters']
     Draft202012Validator(schema).validate(response)
     expected = set(schema['properties']['fields']['items']['properties']['path']['enum'])
@@ -110,10 +150,20 @@ def inspect_review(*, raw, prepared_json, readings):
     if len(paths) != len(set(paths)) or set(paths) != expected:
         raise ValueError('Life source review omitted or duplicated a candidate field')
     sources = {r['reading_id']: r for r in readings['readings']}
+    choices = {p['permission_id']: p for p in _permission_choices(readings)} if contract == CONTRACT else {}
     for field in response['fields']:
-        if (field['disposition'] == 'supported') != bool(field['supports']):
+        inconsistent = ((field['disposition'] == 'supported') != bool(field['supports']))
+        if contract == CONTRACT:
+            inconsistent = ((field['disposition'] == 'supported' and not field['supports'])
+                or (field['disposition'] == 'no_external_factual_commitment' and bool(field['supports'])))
+        if inconsistent:
             raise ValueError('Life review support list contradicts its disposition')
         for support in field['supports']:
+            if contract == CONTRACT:
+                choice = choices.get(support['permission_id'])
+                if choice is None:
+                    raise ValueError('Life review cited an unavailable permission choice')
+                support = {**choice, 'quoted_value': support.get('quoted_value')}
             source = sources.get(support['reading_id'])
             if source is None:
                 raise ValueError('Life review cited an unavailable reading')
@@ -136,7 +186,7 @@ def inspect_review(*, raw, prepared_json, readings):
 
 
 class LifeSourceReviewReceipt(FrozenModel):
-    contract: Literal['life-source-review.1', 'life-source-review.2'] = CONTRACT
+    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3'] = CONTRACT
     prepared_json: str = Field(max_length=256_000)
     response_json: str = Field(max_length=64_000)
     request_hash: str = Field(pattern=r'^[0-9a-f]{64}$')

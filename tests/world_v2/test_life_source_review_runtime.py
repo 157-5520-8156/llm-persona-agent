@@ -38,15 +38,14 @@ class ReviewHTTP:
                   for item in packet['text_fields']]
         response_path = next(f for f in fields if f['path'].endswith('/response_text'))
         if outcome == 'supported':
-            rain = next(r for r in packet['source_readings']['readings'] if r['source_family'] == 'settled_life')
-            response_path.update(disposition='supported', supports=[{
-                'reading_id': rain['reading_id'], 'claim_scope': 'environment', 'subject_role': 'general',
-                'subject_ref': None, 'quoted_value': None,
-            }])
+            permission = next(p for p in packet['permission_choices'] if p['claim_scope'] == 'environment' and p['subject_role'] == 'general')
+            response_path.update(disposition='supported', supports=[{'permission_id': permission['permission_id']}])
         elif outcome != 'accepted':
             response_path.update(disposition=outcome, reason='Only rain is established; no walking or coffee outcome supports this episode.')
         if self.fault == 'omitted_field':
             fields.pop()
+        if self.fault == 'partial_support_on_rejection':
+            response_path['supports'] = [{'permission_id': packet['permission_choices'][0]['permission_id']}]
         if self.fault == 'borrow_environment':
             rain = next(r for r in packet['source_readings']['readings'] if r['source_family'] == 'settled_life')
             response_path.update(disposition='supported', supports=[{
@@ -132,13 +131,44 @@ async def test_environment_support_uses_closed_permission_tokens_and_survives_re
         author=_ResponseHTTP(text=text), verdicts=['supported'])
     assert responses == [text]
     support = reviews.requests[0]['tools'][0]['function']['parameters']['properties']['fields']['items']['properties']['supports']['items']['properties']
-    assert 'environment' in support['claim_scope']['enum']
-    assert 'source_owner' not in support['subject_role']['enum']
-    assert support['subject_ref']['enum'] == [None]
-    assert support['quoted_value'] == {'type': 'null'}
+    assert set(support) == {'permission_id'}
+    packet = json.loads(reviews.requests[0]['messages'][1]['content'])
+    assert set(support['permission_id']['enum']) == {p['permission_id'] for p in packet['permission_choices']}
+    assert all(p['subject_ref'] is None and not p['requires_exact_fact_quote'] for p in packet['permission_choices'])
     result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
-    assert result.life_source_review.contract == 'life-source-review.2'
+    assert result.life_source_review.contract == 'life-source-review.3'
     result.life_source_review.verify(result=result, snapshot=snapshot)
+
+
+@pytest.mark.asyncio
+async def test_supported_subset_does_not_turn_rejected_mixed_statement_into_acceptance(tmp_path, monkeypatch):
+    author = _ResponseHTTP(text=UNSUPPORTED)
+    responses, checkpoints, _, reviews = await run_gate(tmp_path, monkeypatch, author=author,
+        verdicts=['unsupported', 'unsupported'], fault='partial_support_on_rejection')
+    assert responses == checkpoints == []
+    assert len(author.stimulus_requests) == len(reviews.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_fact_permission_choice_still_requires_exact_accepted_value(tmp_path):
+    from test_life_fact_readings import _sources, _fact_view, VALUE
+    from test_character_interior_structured_role import _world_stimulus_no_change_result
+    from companion_daemon.world_v2.character_interior.life_source_review import prepare_review, inspect_review
+
+    async with _sources(tmp_path, retained_value=VALUE) as case:
+        view, snapshot = await _fact_view(case.capsule)
+        candidate = json.loads(_world_stimulus_no_change_result())
+        candidate['summary'] = '用户保留周四的约定。'
+        prepared, readings = prepare_review(candidate_json=canonical(candidate), provider_raw=canonical(candidate), view=view, snapshot=snapshot)
+        packet = json.loads(json.loads(prepared)['request']['messages'][1]['content'])
+        choice = next(p for p in packet['permission_choices'] if p['requires_exact_fact_quote'])
+        fields = [{'path': f['path'], 'disposition': 'no_external_factual_commitment', 'reason': 'Fixture protocol value.', 'supports': []} for f in packet['text_fields']]
+        summary = next(f for f in fields if f['path'] == '/summary')
+        summary.update(disposition='supported', supports=[{'permission_id': choice['permission_id'], 'quoted_value': VALUE}])
+        assert inspect_review(raw=canonical({'fields': fields}), prepared_json=prepared, readings=readings)[0] == 'accepted'
+        summary['supports'][0]['quoted_value'] = case.observation.text
+        with pytest.raises(ValueError, match='exact accepted Fact value'):
+            inspect_review(raw=canonical({'fields': fields}), prepared_json=prepared, readings=readings)
 
 
 @pytest.mark.asyncio
