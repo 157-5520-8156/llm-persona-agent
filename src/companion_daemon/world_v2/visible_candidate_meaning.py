@@ -346,7 +346,10 @@ def prepare_candidate_meaning(
     require_complete_reading: bool = False,
     complete_reading_version: str = "7",
     tool_selection_mode: Literal["forced", "auto"] = "forced",
+    explicit_condition_strings: bool = False,
 ) -> PreparedCandidateMeaning:
+    if type(explicit_condition_strings) is not bool or explicit_condition_strings and complete_reading_version != "11":
+        raise ValueError("explicit condition wire format requires complete reading version 11")
     if not 1 <= len(beats) <= 16 or any(not isinstance(b, str) or not b or len(b) > 4096 for b in beats):
         raise ValueError("candidate meaning requires one to sixteen bounded nonempty Beats")
     if explicit_questions and not compact:
@@ -554,10 +557,19 @@ def prepare_candidate_meaning(
         }}],
         "tool_choice": "auto" if tool_selection_mode == "auto" else {"type": "function", "function": {"name": name}},
     }
+    if explicit_condition_strings:
+        request['messages'][0]['content'] += (
+            '\n输出类型约束：hypothetical_conditions 是字符串数组。每个条件用一个完整字符串保留'
+            '主体、条件和范围；不要在该数组放含 proposition、mode 或 subject_role 的对象。'
+            'meanings 和 presuppositions 才使用这些对象。没有条件时用 []。'
+        )
+        condition_schema = request['tools'][0]['function']['parameters']['properties']['decisions']['items']['properties']['hypothetical_conditions']
+        condition_schema['description'] = 'Array of complete condition strings, never proposition objects. Empty when no condition is asserted.'
     return PreparedCandidateMeaning(_json({
         "contract": contract, "beats": beats, "request": request,
         **({"wire_transport": TAIL_TRANSPORT} if closing_tail_transport else {}),
         **({"tool_selection_mode": "auto"} if tool_selection_mode == "auto" else {}),
+        **({"explicit_condition_strings": True} if explicit_condition_strings else {}),
     }))
 
 
@@ -572,6 +584,7 @@ def verify_candidate_meaning_preparation(meaning: PreparedCandidateMeaning) -> d
         explicit_questions=contract in {QUESTION_CONTRACT, CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT, FACT_INVENTORY_CONTRACT, TYPED_INVENTORY_CONTRACT},
         closing_tail_transport=packet.get("wire_transport") == TAIL_TRANSPORT,
         tool_selection_mode=packet.get("tool_selection_mode", "forced"),
+        explicit_condition_strings=packet.get("explicit_condition_strings", False),
         question_conditions=contract in {CONDITIONAL_QUESTION_CONTRACT, CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT, FACT_INVENTORY_CONTRACT, TYPED_INVENTORY_CONTRACT},
         beat_conditions=contract in {CONDITIONAL_BEAT_CONTRACT, COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT, FACT_INVENTORY_CONTRACT, TYPED_INVENTORY_CONTRACT},
         require_complete_reading=contract in {COMPLETE_READING_CONTRACT, SEMANTIC_COMPLETE_CONTRACT, PRAGMATIC_COMPLETE_CONTRACT, SUBJECTIVE_HISTORY_CONTRACT, PRESUPPOSITION_CONTRACT, SCOPED_PRESUPPOSITION_CONTRACT, UNIFIED_PRESUPPOSITION_CONTRACT, FACT_INVENTORY_CONTRACT, TYPED_INVENTORY_CONTRACT},

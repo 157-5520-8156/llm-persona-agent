@@ -78,6 +78,27 @@ def test_auto_selection_is_pinned_and_does_not_change_reader_content_or_schema()
         verify_candidate_meaning_preparation(PreparedCandidateMeaning(json.dumps(packet)))
 
 
+def test_explicit_condition_format_is_pinned_without_relaxing_object_rejection():
+    prep = prepare_candidate_meaning(beats=('想聊的话就说。',), compact=True, explicit_questions=True,
+        question_conditions=True, beat_conditions=True, require_complete_reading=True,
+        closing_tail_transport=True, complete_reading_version='11', explicit_condition_strings=True)
+    packet = verify_candidate_meaning_preparation(prep)
+    assert packet['explicit_condition_strings'] is True
+    response = {'contract': 'visible-candidate-meaning.11', 'decisions': [{
+        'beat_index': 0, 'reading_complete': True, 'unresolved_details': [],
+        'meanings': [{'proposition': 'companion现在愿意在counterpart想聊时交流',
+                      'mode': 'current_private_expression', 'subject_role': 'companion'}],
+        'questions': [], 'presuppositions': [], 'hypothetical_conditions': ['counterpart想聊'],
+    }]}
+    assert prep.inspect_response(json.dumps(response))['facts'] == []
+    response['decisions'][0]['hypothetical_conditions'] = [{'proposition': 'counterpart想聊'}]
+    with pytest.raises(ValueError):
+        prep.inspect_response(json.dumps(response))
+    packet.pop('explicit_condition_strings')
+    with pytest.raises(ValueError, match='fixed compiler'):
+        verify_candidate_meaning_preparation(PreparedCandidateMeaning(json.dumps(packet)))
+
+
 @pytest.mark.parametrize('version,mode', [('10', 'auto'), ('11', 'required'), ('11', None)])
 def test_auto_selection_cannot_reinterpret_historical_readers(version, mode):
     with pytest.raises(ValueError):
