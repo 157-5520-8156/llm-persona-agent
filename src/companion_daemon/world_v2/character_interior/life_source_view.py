@@ -30,7 +30,7 @@ class LifeSourceView(FrozenModel):
     write_authority: Literal[False] = False
     semantic_coverage: Literal["not_assessed"] = "not_assessed"
     source_permission_coverage: Literal["not_assessed"] = "not_assessed"
-    review_contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3'] | None = Field(default=None, exclude_if=lambda value: value is None)
+    review_contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4'] | None = Field(default=None, exclude_if=lambda value: value is None)
     snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     capsule_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     request_binding_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")

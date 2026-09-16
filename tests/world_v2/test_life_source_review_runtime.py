@@ -42,6 +42,8 @@ class ReviewHTTP:
             response_path.update(disposition='supported', supports=[{'permission_id': permission['permission_id']}])
         elif outcome != 'accepted':
             response_path.update(disposition=outcome, reason='Only rain is established; no walking or coffee outcome supports this episode.')
+        if self.fault == 'long_reason':
+            response_path['reason'] = 'Detailed explanation. ' * 35
         if self.fault == 'omitted_field':
             fields.pop()
         if self.fault == 'partial_support_on_rejection':
@@ -128,7 +130,7 @@ async def test_second_unsupported_episode_is_technical_failure_not_memory_or_sil
 async def test_environment_support_uses_closed_permission_tokens_and_survives_restore(tmp_path, monkeypatch):
     text = '雨停了，有点想去窗边听听声音。'
     responses, checkpoints, _, reviews = await run_gate(tmp_path, monkeypatch,
-        author=_ResponseHTTP(text=text), verdicts=['supported'])
+        author=_ResponseHTTP(text=text), verdicts=['supported'], fault='long_reason')
     assert responses == [text]
     support = reviews.requests[0]['tools'][0]['function']['parameters']['properties']['fields']['items']['properties']['supports']['items']['properties']
     assert set(support) == {'permission_id'}
@@ -136,7 +138,7 @@ async def test_environment_support_uses_closed_permission_tokens_and_survives_re
     assert set(support['permission_id']['enum']) == {p['permission_id'] for p in packet['permission_choices']}
     assert all(p['subject_ref'] is None and not p['requires_exact_fact_quote'] for p in packet['permission_choices'])
     result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
-    assert result.life_source_review.contract == 'life-source-review.3'
+    assert result.life_source_review.contract == 'life-source-review.4'
     result.life_source_review.verify(result=result, snapshot=snapshot)
 
 
