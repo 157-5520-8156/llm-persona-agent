@@ -37,6 +37,7 @@ from ..character_outcome_contract import CharacterLifeDirectionDraft
 from ..chat_life_intent_contract import LifeIntentDraft
 from ..character_life_response_contract import validate_character_life_response_coverage
 from .rejected_role_result import RejectedRoleResult, original_role_request, role_request_binding
+from .life_source_origin import canonical
 from ..proposal_envelope import AspirationTransitionPayload
 from ..schema_core import canonicalize_json_value
 from ..structured_completion import complete_json_object
@@ -1393,6 +1394,7 @@ class StructuredCharacterRoleFaculty:
         model_version: str | None = None,
         temperature: float = 0.8,
         purpose_contracts: Sequence[PurposeDecisionContract] = (),
+        life_source_reviewer=None,
     ) -> None:
         if not callable(getattr(model, "complete", None)):
             raise TypeError("structured character role needs one completion model")
@@ -1408,6 +1410,8 @@ class StructuredCharacterRoleFaculty:
                 raise ValueError(f"duplicate purpose decision contract: {item.purpose}")
             contracts[item.purpose] = item
         self._model = model
+        self._life_source_reviewer = life_source_reviewer
+        self.requires_life_source_review = life_source_reviewer is not None
         self._model_id = model_id
         self._model_version = model_version or str(getattr(model, "model_version", model_id))
         self._semantic_author_identity = character_semantic_author_identity(
@@ -1450,6 +1454,7 @@ class StructuredCharacterRoleFaculty:
             from .life_source_view import prepare_life_source_view
             life_source_view = prepare_life_source_view(
                 request=request, messages=messages, provider_request_hash=request_hash,
+                review_contract='life-source-review.1' if self.requires_life_source_review else None,
                 provider_controls={
                     "temperature": self._temperature,
                     "tools": list(tool_contract.provider_tools) if tool_contract is not None else None,
@@ -1596,6 +1601,34 @@ class StructuredCharacterRoleFaculty:
             author_lineage=lineage,
             life_source_view=life_source_view,
         )
+        if request.purpose == 'world_stimulus_appraisal' and self.requires_life_source_review and normalized.status != 'recall_request':
+            from .core import _RoleFacultyTechnicalFailure
+            try:
+                if life_source_view is None:
+                    raise ValueError('Life review requires the original source preparation')
+                receipt, outcome, failures = await self._life_source_reviewer.review(
+                    result=normalized, snapshot=request.snapshot, provider_raw=provider_raw)
+            except Exception as exc:
+                raise _RoleFacultyTechnicalFailure('life_source_review_unavailable',
+                    model_call_id=model_call_id, request_hash=request_hash,
+                    original_failure_code=type(exc).__name__,
+                    failure_detail='Life factual review did not produce complete valid evidence.') from exc
+            if outcome == 'uncertain':
+                raise _RoleFacultyTechnicalFailure('life_source_review_uncertain',
+                    model_call_id=model_call_id, request_hash=request_hash,
+                    failure_detail=canonical(failures)[:2000])
+            if outcome == 'rejected':
+                error = StructuredRoleResultError('role_result_source_invalid', detail=canonical(failures),
+                    response_hash=response_hash, rejected_raw=provider_raw, request_hash=request_hash,
+                    model_call_id=model_call_id)
+                if request.correction_ordinal == 0:
+                    error.rejected_role_result = RejectedRoleResult(
+                        request_binding_sha256=role_request_binding(request), provider_request_hash=request_hash,
+                        response_hash=_hash_text(provider_raw), model_call_id=model_call_id,
+                        model_id=self._model_id, model_version=self._model_version, raw_result=provider_raw)
+                raise error
+            normalized = normalized.model_copy(update={'life_source_review': receipt})
+            receipt.verify(result=normalized, snapshot=request.snapshot)
         return normalized.model_dump(mode="python")
 
     def _tool_contract(
@@ -2298,6 +2331,10 @@ class StructuredCharacterRoleFaculty:
         contract: PurposeDecisionContract,
         response_hash: str,
     ) -> None:
+        if result.status == 'recall_request':
+            # The wire model already forbids proposals on this control transfer.
+            # A terminal purpose's required proposal must wait for recall.
+            return
         if contract.proposal_type is None:
             return
         if contract.proposal_type == "world_stimulus_appraisal_result":

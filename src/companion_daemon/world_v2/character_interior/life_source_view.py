@@ -30,6 +30,7 @@ class LifeSourceView(FrozenModel):
     write_authority: Literal[False] = False
     semantic_coverage: Literal["not_assessed"] = "not_assessed"
     source_permission_coverage: Literal["not_assessed"] = "not_assessed"
+    review_contract: Literal['life-source-review.1'] | None = Field(default=None, exclude_if=lambda value: value is None)
     snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     capsule_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     request_binding_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -109,7 +110,7 @@ def _unmatched(payload, table):
     return tuple(sorted(set(payload['inner_life_snapshot'].get('source_refs', ())) - represented))
 
 
-def prepare_life_source_view(*, request, messages, provider_controls: dict, provider_request_hash: str) -> LifeSourceView:
+def prepare_life_source_view(*, request, messages, provider_controls: dict, provider_request_hash: str, review_contract=None) -> LifeSourceView:
     from ..selected_source_composer import compile_selected_source_table
 
     if request.purpose != "world_stimulus_appraisal" or request.snapshot.life_source_origin is None:
@@ -117,6 +118,7 @@ def prepare_life_source_view(*, request, messages, provider_controls: dict, prov
     origin = request.snapshot.life_source_origin
     table = compile_selected_source_table(capsule=origin.capsule(), include_subjective_history=True)
     prepared = LifeSourceView(
+        review_contract=review_contract,
         snapshot_hash=request.snapshot.snapshot_hash,
         capsule_sha256=origin.capsule_sha256,
         request_binding_sha256=digest(canonical(request.model_dump(mode="json"))),

@@ -1076,6 +1076,7 @@ def compose_production_character_interior(
     use_schema_references: bool = False,
     evidence_first_schema: bool = False,
     visible_source_review_version: str = "1",
+    life_source_reviewer=None,
     turn_store: _CharacterInteriorTurnStore | None = None,
     turn_owner_id: str = "character-interior:production",
     **_unused: object,
@@ -1121,12 +1122,14 @@ def compose_production_character_interior(
 
         role = ReviewedProactiveStructuredRoleFaculty(
             model=flash_model, model_id=flash_model_id,
+            life_source_reviewer=life_source_reviewer,
             reviewer=visible_source_review_model,
             visible_source_review_version=visible_source_review_version,
             expression_capabilities=expression_capabilities,
         )
     else:
-        role = StructuredCharacterRoleFaculty(model=flash_model, model_id=flash_model_id)
+        role = StructuredCharacterRoleFaculty(model=flash_model, model_id=flash_model_id,
+                                             life_source_reviewer=life_source_reviewer)
     interior = CharacterInterior(
         projection=_DeferredProjection(),
         role=role,

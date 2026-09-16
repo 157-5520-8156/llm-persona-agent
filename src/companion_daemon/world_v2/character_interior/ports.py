@@ -19,6 +19,7 @@ from .contracts import (
 )
 from .rejected_role_result import RejectedRoleResult
 from .life_source_view import LifeSourceView
+from .life_source_review import LifeSourceReviewReceipt
 
 
 class _RoleResultContractError(ValueError):
@@ -206,6 +207,9 @@ class _InteriorRoleResult(FrozenModel):
     author_usage_json: str | None = Field(default=None, max_length=8_192)
 
     life_source_view: LifeSourceView | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+    life_source_review: LifeSourceReviewReceipt | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
 

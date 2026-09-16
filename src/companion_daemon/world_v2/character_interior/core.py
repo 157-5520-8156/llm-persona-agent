@@ -514,6 +514,8 @@ def _prepared_turn_json(
         raise _InteriorTechnicalError("life_source_preparation_missing", snapshot=snapshot)
     if result.life_source_view is not None:
         result.life_source_view.verify_snapshot(snapshot)
+    from .life_source_review import verify_life_review
+    verify_life_review(result, snapshot)
     payload = {
         "contract": "character-interior-prepared-turn.1",
         "result": result.model_dump(mode="json"),
@@ -602,6 +604,8 @@ def _restore_prepared_turn(
             raise ValueError("prepared Life result lost its source preparation")
         if result.life_source_view is not None:
             result.life_source_view.verify_snapshot(snapshot)
+        from .life_source_review import verify_life_review
+        verify_life_review(result, snapshot)
         lineage = _PrivateSelfLineage.model_validate_json(
             json.dumps(payload["private_self_lineage"], ensure_ascii=False)
         )
@@ -1572,6 +1576,9 @@ class CharacterInterior:
                             result, snapshot, private_self_lineage, traces = _restore_prepared_turn(
                                 checkpoint_raw, purpose=stimulus.purpose
                             )
+                            from .life_source_review import verify_life_review
+                            verify_life_review(result, snapshot, required=stimulus.purpose == 'world_stimulus_appraisal'
+                                               and bool(getattr(faculty, 'requires_life_source_review', False)))
                             entry.snapshot = snapshot
                             entry.presented_prefetch_traces = list(traces)
                             prepared = True
@@ -1760,6 +1767,9 @@ class CharacterInterior:
                             result, snapshot, private_self_lineage, traces = _restore_prepared_turn(
                                 checkpoint_raw, purpose=opportunity.purpose
                             )
+                            from .life_source_review import verify_life_review
+                            verify_life_review(result, snapshot, required=opportunity.purpose == 'world_stimulus_appraisal'
+                                               and bool(getattr(faculty, 'requires_life_source_review', False)))
                             entry.snapshot = snapshot
                             entry.presented_prefetch_traces = list(traces)
                             prepared = True
@@ -2485,6 +2495,9 @@ class CharacterInterior:
                         raise _InteriorTechnicalError("life_source_preparation_missing", snapshot=current_request.snapshot)
                     if validated.life_source_view is not None:
                         validated.life_source_view.verify_request(current_request)
+                    from .life_source_review import verify_life_review
+                    verify_life_review(validated, current_request.snapshot, required=current_request.purpose == 'world_stimulus_appraisal'
+                                       and bool(getattr(faculty, 'requires_life_source_review', False)))
                     await self._record_prefetch_presentation(
                         faculty=faculty,
                         request=current_request,
@@ -2574,6 +2587,13 @@ class CharacterInterior:
                     allowed_statuses=allowed_statuses,
                     require_author_lineage=bool(getattr(faculty, "requires_author_lineage", False)),
                 )
+                if current_request.snapshot.life_source_origin is not None and validated.life_source_view is None:
+                    raise _InteriorTechnicalError('life_source_preparation_missing', snapshot=current_request.snapshot)
+                if validated.life_source_view is not None:
+                    validated.life_source_view.verify_request(corrected_request)
+                from .life_source_review import verify_life_review
+                verify_life_review(validated, corrected_request.snapshot, required=corrected_request.purpose == 'world_stimulus_appraisal'
+                                   and bool(getattr(faculty, 'requires_life_source_review', False)))
                 await self._record_prefetch_presentation(
                     faculty=faculty,
                     request=corrected_request,

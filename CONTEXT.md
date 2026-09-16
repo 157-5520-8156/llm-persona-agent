@@ -66,6 +66,15 @@ _Avoid_: Static age label, behavior script
 
 ## Character Prehistory
 
+An explicit `life_source_reviewer` now reviews complete Life candidates before
+acceptance; rejection reuses one same-author correction with the original draft,
+while unavailable/incomplete review remains technical failure. Accepted receipts
+bind exact author output, source view, candidate and review, including durable
+recovery. Recall control transfers wait for retrieval before terminal proposal
+validation. Scripted HTTP tests cover this chain, not semantic qualification;
+the default remains unconfigured and the release remains incomplete. See
+`docs/design/life-source-review-gate-2026-09-16.md`.
+
 Explicit review15 restricts retained prehistory direct readings to narrative text
 and permits declared historical people/groups alongside the companion. The latest
 opt-in author schema ordering places evidence before Beats in actual provider
