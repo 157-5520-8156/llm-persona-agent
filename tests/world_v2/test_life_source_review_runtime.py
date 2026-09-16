@@ -20,6 +20,16 @@ UNSUPPORTED = '雨停后我出门绕湖走了三圈，回来时买了一杯热�
 FEELING = '有点想听听窗外的声音。'
 
 
+def _wire_fields(packet, fields):
+    """Scripted semantic decompositions, not a production text classifier."""
+    texts = {f['path']: f['text'] for f in packet['text_fields']}
+    return [{'path': f['path'], 'reason': f['reason'], 'authored_now': [],
+        'factual_claims': [] if f['disposition'] == 'no_external_factual_commitment' else [{
+            'source_span': texts[f['path']], 'proposition': texts[f['path']],
+            'reason': f['reason'], 'supports': f['supports'], 'verdict': f['disposition']}],
+        'coverage': 'complete'} for f in fields]
+
+
 class ReviewHTTP:
     def __init__(self, verdicts, fault=None):
         self.verdicts = list(verdicts)
@@ -54,6 +64,14 @@ class ReviewHTTP:
                 'reading_id': rain['reading_id'], 'claim_scope': 'external_fact', 'subject_role': 'companion',
                 'subject_ref': None, 'quoted_value': None,
             }])
+        fields = _wire_fields(packet, fields)
+        if self.fault == 'invalid_authorship_span':
+            fields[0]['authored_now'] = ['not present in this field']
+        if self.fault == 'incomplete_decomposition':
+            fields[0]['coverage'] = 'uncertain'
+        if self.fault == 'authorship_with_rejected_past':
+            target = next(f for f in fields if f['path'].endswith('/response_text'))
+            target['authored_now'] = [next(f['text'] for f in packet['text_fields'] if f['path'] == target['path'])]
         return _http_result(body, {'fields': fields})
 
 
@@ -132,15 +150,21 @@ async def test_environment_support_uses_closed_permission_tokens_and_survives_re
     responses, checkpoints, _, reviews = await run_gate(tmp_path, monkeypatch,
         author=_ResponseHTTP(text=text), verdicts=['supported'], fault='long_reason')
     assert responses == [text]
-    support = reviews.requests[0]['tools'][0]['function']['parameters']['properties']['fields']['items']['properties']['supports']['items']['properties']
-    assert reviews.requests[0]['tools'][0]['function']['parameters']['properties']['fields']['items']['required'] == ['path', 'reason', 'supports', 'disposition']
-    assert list(reviews.requests[0]['tools'][0]['function']['parameters']['properties']['fields']['items']['properties']) == ['path', 'reason', 'supports', 'disposition']
+    field_schema = reviews.requests[0]['tools'][0]['function']['parameters']['properties']['fields']['items']
+    claim_schema = field_schema['properties']['factual_claims']['items']
+    support = claim_schema['properties']['supports']['items']['properties']
+    assert field_schema['required'] == list(field_schema['properties']) == ['path', 'reason', 'authored_now', 'factual_claims', 'coverage']
+    assert claim_schema['required'] == list(claim_schema['properties']) == ['source_span', 'proposition', 'reason', 'supports', 'verdict']
     assert set(support) == {'permission_id'}
     packet = json.loads(reviews.requests[0]['messages'][1]['content'])
     assert set(support['permission_id']['enum']) == {p['permission_id'] for p in packet['permission_choices']}
     assert all(p['subject_ref'] is None and not p['requires_exact_fact_quote'] for p in packet['permission_choices'])
     result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
-    assert result.life_source_review.contract == 'life-source-review.6'
+    assert result.life_source_review.contract == 'life-source-review.7'
+    authority = packet['current_authorship_authority']
+    assert authority['actor_ref'] == snapshot.actor_ref
+    assert authority['logical_time'] == snapshot.logical_time.isoformat()
+    assert authority['world_fact_source'] is False
     result.life_source_review.verify(result=result, snapshot=snapshot)
 
 
@@ -149,6 +173,15 @@ async def test_supported_subset_does_not_turn_rejected_mixed_statement_into_acce
     author = _ResponseHTTP(text=UNSUPPORTED)
     responses, checkpoints, _, reviews = await run_gate(tmp_path, monkeypatch, author=author,
         verdicts=['unsupported', 'unsupported'], fault='partial_support_on_rejection')
+    assert responses == checkpoints == []
+    assert len(author.stimulus_requests) == len(reviews.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_current_authorship_annotation_cannot_hide_a_rejected_embedded_past(tmp_path, monkeypatch):
+    author = _ResponseHTTP(text=UNSUPPORTED)
+    responses, checkpoints, _, reviews = await run_gate(tmp_path, monkeypatch, author=author,
+        verdicts=['unsupported', 'unsupported'], fault='authorship_with_rejected_past')
     assert responses == checkpoints == []
     assert len(author.stimulus_requests) == len(reviews.requests) == 2
 
@@ -169,14 +202,14 @@ async def test_fact_permission_choice_still_requires_exact_accepted_value(tmp_pa
         fields = [{'path': f['path'], 'disposition': 'no_external_factual_commitment', 'reason': 'Fixture protocol value.', 'supports': []} for f in packet['text_fields']]
         summary = next(f for f in fields if f['path'] == '/summary')
         summary.update(disposition='supported', supports=[{'permission_id': choice['permission_id'], 'quoted_value': VALUE}])
-        assert inspect_review(raw=canonical({'fields': fields}), prepared_json=prepared, readings=readings)[0] == 'accepted'
+        assert inspect_review(raw=canonical({'fields': _wire_fields(packet, fields)}), prepared_json=prepared, readings=readings)[0] == 'accepted'
         summary['supports'][0]['quoted_value'] = case.observation.text
         with pytest.raises(ValueError, match='exact accepted Fact value'):
-            inspect_review(raw=canonical({'fields': fields}), prepared_json=prepared, readings=readings)
+            inspect_review(raw=canonical({'fields': _wire_fields(packet, fields)}), prepared_json=prepared, readings=readings)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('fault', ['timeout', 'omitted_field', 'borrow_environment', 'uncertain'])
+@pytest.mark.parametrize('fault', ['timeout', 'omitted_field', 'borrow_environment', 'uncertain', 'invalid_authorship_span', 'incomplete_decomposition'])
 async def test_incomplete_review_never_becomes_author_correction_or_a_life_write(tmp_path, monkeypatch, fault):
     author = _ResponseHTTP(text=FEELING)
     responses, checkpoints, _, reviews = await run_gate(tmp_path, monkeypatch, author=author,
