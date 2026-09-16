@@ -71,8 +71,10 @@ acceptance; rejection reuses one same-author correction with the original draft,
 while unavailable/incomplete review remains technical failure. Accepted receipts
 bind exact author output, source view, candidate and review, including durable
 recovery. Recall control transfers wait for retrieval before terminal proposal
-validation. Scripted HTTP tests cover this chain, not semantic qualification;
-the default remains unconfigured and the release remains incomplete. See
+validation. A real isolated Life author/reviewer chain corrected and accepted one response,
+then cold-restored its receipt. Review v6 preserves actual evidence-first schema
+order; it still falsely rejects a current impulse to take a photo. The default
+remains unconfigured and semantic/release qualification remains incomplete. See
 `docs/design/life-source-review-gate-2026-09-16.md`.
 
 Explicit review15 restricts retained prehistory direct readings to narrative text

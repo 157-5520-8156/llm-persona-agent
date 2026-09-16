@@ -1,0 +1,109 @@
+{
+  "code_head": "6b5d1db74fa921acf348987677e576fee0f6d2cc",
+  "qualification": "manual_only / qualification_incomplete",
+  "life_review_contract": "life-source-review.6",
+  "implemented": [
+    "explicit pre-acceptance Life source review",
+    "one same-author correction with original raw result",
+    "metered review and immutable audit sidecar",
+    "cold receipt verification",
+    "Recall control transfer preservation",
+    "actual evidence-first provider schema serialization"
+  ],
+  "local_regressions": {
+    "v4_full_related_suite": {
+      "passed": 251,
+      "strict_xfailed": 2
+    },
+    "v6_gate_suite": {
+      "passed": 11
+    },
+    "ruff": "passed",
+    "cold_receipts": {
+      "total": 11,
+      "scripted": 9,
+      "real_source_review": 2
+    }
+  },
+  "real_runtime": {
+    "controlled_environment": true,
+    "life_author_and_reviewer": "real provider",
+    "other_roles": "offline fixture",
+    "same_author_correction": true,
+    "life_responses": 1,
+    "chat_deliveries": 0,
+    "replay": {
+      "closed_database_reopened": true,
+      "projection_equals_event_replay": true,
+      "event_count": 33,
+      "experience_count": 1
+    }
+  },
+  "latest_fixed_draft_review": [
+    {
+      "model": "deepseek-v4-flash",
+      "status": "rejected",
+      "failures": [
+        {
+          "path": "/proposals/0/payload/meaning_candidates/1/meaning",
+          "reason": "Asserts that the after-rain air makes one want to pick up a camera. The rain having stopped is supported, but the air quality and the impulse to photograph are not established by any pinned source; the settled environment text only says the rain stopped."
+        }
+      ],
+      "expected_supported_paths": {
+        "/proposals/0/payload/brief_rationale": "supported",
+        "/proposals/0/payload/meaning_candidates/0/meaning": "supported",
+        "/proposals/0/payload/meaning_candidates/1/meaning": "unsupported",
+        "/summary": "supported"
+      },
+      "all_expected_supported": false,
+      "native_verdict_last": true,
+      "life_write_authority": false,
+      "elapsed_ms": 6393
+    }
+  ],
+  "unresolved": [
+    "current photography impulse falsely requires external evidence",
+    "chat implicit history and correction reliability",
+    "historical Fact RecallDocument adapter",
+    "longitudinal realism, latency, product cost and invitation release qualification"
+  ],
+  "billing": {
+    "physical_calls": 15,
+    "known_cost_estimate_cny": "0.1837439",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 1055,
+    "reservation_rows": 1052,
+    "inherited_unknown_holds": 37,
+    "billing_checkpoint": "/Users/geoff/Projects/Girl-Agent-release-repair/output/private-audits/release-life-review-verdict-order-20260916-02/run/world.sqlite"
+  },
+  "runtime_checkpoint": "/Users/geoff/Projects/Girl-Agent-release-repair/output/private-audits/release-chat-evidence-order-20260915-01/run",
+  "trial_receipts": [
+    {
+      "path": "output/private-audits/release-life-source-review-20260916-01/finished.json",
+      "sha256": "9afdd6424ad460cda6bc7a210a4ddf963c47fd990bdd6707e92e562ce7cd4fbb"
+    },
+    {
+      "path": "output/private-audits/release-life-source-review-20260916-02/finished.json",
+      "sha256": "47d9345671839a82789cd669e688a3e8b7c2f1ec7d6d2e273e0e8be28295de35"
+    },
+    {
+      "path": "output/private-audits/release-life-source-review-20260916-03/finished.json",
+      "sha256": "34cbe8af7c9655e18200c67ddbcbbcf2ddefe8c4f06fffbf69da66bcf771974d"
+    },
+    {
+      "path": "output/private-audits/release-life-reviewed-runtime-20260916-01/finished.json",
+      "sha256": "464843055872e4c13845f1d813871a5583c80743cb3fb24996315b0988d3dac1"
+    },
+    {
+      "path": "output/private-audits/release-life-review-verdict-order-20260916-01/finished.json",
+      "sha256": "b3bd130661a074172c767c2d28e67beb7988acbbbee8895a02f962b9f597b09c"
+    },
+    {
+      "path": "output/private-audits/release-life-review-verdict-order-20260916-02/finished.json",
+      "sha256": "57d94bb272919ee3ba6669615e59f34d328c59340ccab86b8d4ce91959f8e0da"
+    }
+  ],
+  "real_qq": false,
+  "production_database_modified": false,
+  "deployed": false
+}
