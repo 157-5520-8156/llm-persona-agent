@@ -49,6 +49,10 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         help="Explicit whole-source reviewer wire version; Nonlegacy versions require whole-source review; v9/v10/v11 are experimental independent review pipelines.",
     )
     parser.add_argument(
+        "--visible-source-review-thinking", action="store_true",
+        help="Explicit v18 source adjudicator reasoning with pinned automatic tool selection; qualification pending.",
+    )
+    parser.add_argument(
         "--interactive",
         action="store_true",
         help="Read adaptive user turns, {wait_until_minutes: N}, or null from stdin JSON lines.",
@@ -88,6 +92,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--visible-author-tool-version 2/3 requires --require-visible-source-review")
     if options.visible_source_review_version != "1" and not options.require_visible_source_review:
         parser.error("nonlegacy --visible-source-review-version requires --require-visible-source-review")
+    if options.visible_source_review_thinking and options.visible_source_review_version != "18":
+        parser.error("--visible-source-review-thinking requires explicit review version 18")
     if options.max_cost_cny is not None and (
         not math.isfinite(options.max_cost_cny) or not 0 < options.max_cost_cny <= 100
     ):
@@ -330,7 +336,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
 
             usage = usage_store_for_settings(settings)
 
-            def provider(role, *, thinking=False, model_override=None, max_tokens=4096):
+            def provider(role, *, thinking=False, model_override=None, max_tokens=4096, max_thinking_tokens=900):
                 client = DeepSeekChatModel(
                     api_key=settings.deepseek_debug_api_key,
                     base_url=settings.deepseek_base_url,
@@ -341,7 +347,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                     ),
                     thinking_enabled=thinking,
                     reasoning_effort=settings.deepseek_character_thinking_reasoning_effort,
-                    max_completion_tokens=900 if thinking else max_tokens,
+                    max_completion_tokens=max_thinking_tokens if thinking else max_tokens,
                     usage_observer=usage.record,
                     transport=ModelInputCaptureTransport(
                         inner=httpx.AsyncHTTPTransport(trust_env=False),
@@ -376,7 +382,8 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                     model=provider("life_candidate_review", max_tokens=8192), evidence_store=store,
                 )
             if required_review:
-                visible_reviewer = provider("visible_source_review")
+                visible_reviewer = provider("visible_source_review", thinking=options.visible_source_review_thinking,
+                                            model_override=settings.deepseek_model, max_thinking_tokens=8192)
                 from companion_daemon.world_v2.visible_review_protocols import REVIEW_PROTOCOLS
                 if options.visible_source_review_version in REVIEW_PROTOCOLS:
                     from companion_daemon.world_v2.visible_independent_review_runtime import IndependentVisibleReviewer
@@ -436,6 +443,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                 "policy": "visible-source-review-required.1",
                 "expression_episode_mode": "off",
                 "review_model": configured.deepseek_model,
+                **({"source_thinking_enabled": True} if options.visible_source_review_thinking else {}),
                 "qualification": "requires_evaluation_of_actual_records",
             }} if required_review else {}),
             "model_mode": options.model_mode,

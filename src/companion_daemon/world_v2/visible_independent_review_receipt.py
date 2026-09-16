@@ -61,7 +61,9 @@ class PreparedIndependentVisibleReview:
         return _packet(self.payload_json)
 
 
-def prepare_independent_visible_review(*, candidate, source_table, source_ref_aliases, review_protocol=PROTOCOL):
+def prepare_independent_visible_review(*, candidate, source_table, source_ref_aliases, review_protocol=PROTOCOL, source_tool_selection_mode="forced"):
+    if source_tool_selection_mode != "forced" and not (review_protocol == SCOPED_COVERAGE_PROTOCOL and source_tool_selection_mode == "auto"):
+        raise ValueError("automatic source selection requires scoped coverage protocol")
     if review_protocol not in REVIEW_PROTOCOLS.values():
         raise ValueError("unsupported independent review protocol")
     material = compile_visible_candidate_material(
@@ -70,7 +72,8 @@ def prepare_independent_visible_review(*, candidate, source_table, source_ref_al
     # The complete proposal already owns these claims. They are not an
     # independent inventory of the candidate's visible factual assertions.
     material.pop("world_claims")
-    raw = _json({"contract": CANDIDATE_CONTRACT, "protocol": review_protocol, **material})
+    raw = _json({"contract": CANDIDATE_CONTRACT, "protocol": review_protocol, **material,
+                 **({"source_tool_selection_mode": "auto"} if source_tool_selection_mode == "auto" else {})})
     _packet(raw)
     return PreparedIndependentVisibleReview(raw)
 
@@ -83,6 +86,7 @@ def _restore(prepared):
         candidate=DecisionProposal.model_validate_json(pin["candidate_json"], strict=True),
         source_table=VisibleSourceTable(payload_json=pin["source_table_json"]),
         source_ref_aliases=pin["source_ref_aliases"], review_protocol=pin["protocol"],
+        source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
     )
     if prepared.payload_json != expected.payload_json:
         raise ValueError("independent review candidate/source preparation changed")
@@ -162,6 +166,7 @@ def prepare_source_call(*, prepared, meaning_raw_responses):
         prehistory_authority=pin["protocol"] in PREHISTORY_PROTOCOLS,
         contextual_scope=pin["protocol"] in CONTEXTUAL_PROTOCOLS,
         scoped_coverage=pin["protocol"] == SCOPED_COVERAGE_PROTOCOL,
+        source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
     )
     if source is None:
         return None
@@ -234,6 +239,7 @@ def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, sourc
             prehistory_authority=pin["protocol"] in PREHISTORY_PROTOCOLS,
             contextual_scope=pin["protocol"] in CONTEXTUAL_PROTOCOLS,
             scoped_coverage=pin["protocol"] == SCOPED_COVERAGE_PROTOCOL,
+            source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
         )
         support = source.inspect_response(source_raw_response)
     if pin["protocol"] in CONTEXTUAL_PROTOCOLS:

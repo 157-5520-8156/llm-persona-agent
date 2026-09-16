@@ -79,7 +79,8 @@ class PreparedContextualSourceReview:
         pin = json.loads(self.payload_json, object_pairs_hook=_unique)
         expected = prepare_contextual_source_review(
             meanings=tuple(IndependentMeaning(PreparedCandidateMeaning(m['preparation_json']), m['raw_response'])
-                           for m in pin['meanings']), sources=tuple(pin['sources']), scoped_coverage=pin['contract'] == SCOPED_COVERAGE_CONTRACT)
+                           for m in pin['meanings']), sources=tuple(pin['sources']), scoped_coverage=pin['contract'] == SCOPED_COVERAGE_CONTRACT,
+            tool_selection_mode=pin.get('tool_selection_mode', 'forced'))
         if expected.payload_json != self.payload_json:
             raise ValueError('contextual review differs from its original compilation')
         value = _validation(raw, pin['request']['tools'][0]['function']['parameters'])
@@ -141,7 +142,9 @@ class PreparedContextualSourceReview:
                 'semantic_qualification': 'unproven'}
 
 
-def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False):
+def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced"):
+    if tool_selection_mode not in ("forced", "auto") or (tool_selection_mode == "auto" and not scoped_coverage):
+        raise ValueError("automatic selection requires scoped coverage")
     if type(scoped_coverage) is not bool:
         raise TypeError('scoped coverage must be boolean')
     contract = SCOPED_COVERAGE_CONTRACT if scoped_coverage else CONTRACT
@@ -219,8 +222,9 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
                             {'role': 'user', 'content': json.dumps(body, ensure_ascii=False, separators=(',', ':'))}],
                'temperature': 0.0, 'tools': [{'type': 'function', 'function': {
                    'name': name, 'description': '核对原句断言范围、完整性和来源。', 'strict': True, 'parameters': schema}}],
-               'tool_choice': {'type': 'function', 'function': {'name': name}}}
+               'tool_choice': 'auto' if tool_selection_mode == 'auto' else {'type': 'function', 'function': {'name': name}}}
     return PreparedContextualSourceReview(_json({
+        **({'tool_selection_mode': 'auto'} if tool_selection_mode == 'auto' else {}),
         'contract': contract, 'beats': beats, 'facts': facts, 'catalog': catalog, 'sources': sources,
         'meanings': [{'preparation_json': m.preparation.payload_json, 'raw_response': m.raw_response} for m in meanings],
         'request': request,

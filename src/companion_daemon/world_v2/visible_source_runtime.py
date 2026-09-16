@@ -475,7 +475,10 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
             expected.append(VisibleReviewInvocationBinding(**{k: getattr(matching[0], k) for k in VisibleReviewInvocationBinding.model_fields}))
         return verify_independent_visible_review_receipt(
             receipt=receipt,
-            expected_prepared=prepare_independent_visible_review(candidate=proposal, source_table=table, source_ref_aliases=aliases, review_protocol=pinned_protocol),
+            expected_prepared=prepare_independent_visible_review(candidate=proposal, source_table=table, source_ref_aliases=aliases, review_protocol=pinned_protocol,
+                # Transport choice is recompiled into every stage request hash,
+                # then joined to the immutable provider subcalls below.
+                source_tool_selection_mode=json.loads(receipt.prepared_json).get("source_tool_selection_mode", "forced")),
             expected_author=VisibleReviewAuthorBinding(model_call_id=author_call, request_hash=author_request_hash,
                                                        proposal_material_hash=digest(canonical(proposal.model_dump(mode="json")))),
             expected_invocations=tuple(expected),

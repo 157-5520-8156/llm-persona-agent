@@ -95,7 +95,8 @@ async def review_independent_candidate(
 
     if not isinstance(reviewer, IndependentVisibleReviewer):
         raise ValidationTechnicalFailure("source_review_exception", failure_detail="independent visible reviewer is not configured")
-    prepared = prepare_independent_visible_review(candidate=proposal, source_table=source_table, source_ref_aliases=aliases, review_protocol=independent_review_protocol(review_version))
+    prepared = prepare_independent_visible_review(candidate=proposal, source_table=source_table, source_ref_aliases=aliases, review_protocol=independent_review_protocol(review_version),
+        source_tool_selection_mode=getattr(reviewer.source_model, "single_tool_selection_mode", "forced"))
     author = VisibleReviewAuthorBinding(model_call_id=output.winning_model_call_id, request_hash=output.winning_request_hash,
                                        proposal_material_hash=digest(prepared.as_dict()["candidate_json"]))
     audits = {}

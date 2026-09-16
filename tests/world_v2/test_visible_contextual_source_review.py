@@ -223,3 +223,56 @@ def test_scoped_coverage_separates_non_record_expression_from_missing_records(fa
     assert result['inconclusive'] is (fault == 'ambiguity')
     assert result['beat_outcomes'] == (['unclosed'] if fault == 'omission' else ['source_free'])
     assert result['contract'] == 'visible-contextual-source-review.2'
+
+
+def test_automatic_source_tool_selection_is_frozen_in_preparation():
+    meaning = _meaning()
+    forced = prepare_contextual_source_review(meanings=(meaning, meaning), sources=_sources(), scoped_coverage=True)
+    auto = prepare_contextual_source_review(meanings=(meaning, meaning), sources=_sources(), scoped_coverage=True, tool_selection_mode='auto')
+    assert auto.request()['tool_choice'] == 'auto'
+    request = auto.request()
+    request['tool_choice'] = forced.request()['tool_choice']
+    assert request == forced.request()
+    pin = json.loads(auto.payload_json)
+    pin.pop('tool_selection_mode')
+    with pytest.raises(ValueError, match='original compilation'):
+        PreparedContextualSourceReview(json.dumps(pin)).inspect_response('{}')
+
+
+@pytest.mark.asyncio
+async def test_reasoning_source_invocation_pins_auto_tool_and_cold_replays(tmp_path):
+    from dataclasses import replace
+    from test_visible_independent_review_runtime import application, ReviewHTTP
+    from test_whole_candidate_author import _inbound
+    from test_world_stimulus_life_intent import _http_result
+    from companion_daemon.world_v2.visible_source_runtime import verify_recorded_candidate
+
+    class AutoHTTP(ReviewHTTP):
+        async def __call__(self, request):
+            body = json.loads(request.content)
+            if body['tool_choice'] != 'auto':
+                return await super().__call__(request)
+            self.requests.append(body)
+            assert body['thinking']['type'] == 'enabled'
+            packet = json.loads(body['messages'][1]['content'])
+            response = dict(contract=packet['output_contract']['contract'],
+                fact_decisions=[dict(fact_id=f['fact_id'], assertion_status='asserted',
+                    source_support=True, reading_ids=[f['eligible_reading_ids'][0]], explanation='exact report') for f in packet['fixed_facts']],
+                beat_decisions=[dict(beat_index=b['beat_index'], review_complete=True,
+                    unaccounted_record_bound_assertions=[], blocking_scope_ambiguities=[], non_record_expressions=[])
+                    for b in packet['visible_beats']])
+            return _http_result({**body, 'tool_choice': {'function': {'name': body['tools'][0]['function']['name']}}}, response)
+
+    path = tmp_path / 'world.sqlite'
+    inbound = replace(_inbound(), text='我取消了周五的报告。')
+    handler = AutoHTTP(version='18')
+    async with application(path, handler, source_thinking=True) as app:
+        assert (await app.respond(inbound)).status == 'action_authorized'
+        assert sum(r['tool_choice'] == 'auto' for r in handler.requests) == 1
+        evidence = app.export_replay_evidence()
+        audit = next(a for a in evidence.projection.proposal_audits if a.proposal_kind == 'decision')
+        assert verify_recorded_candidate(audit=audit, model_result_audits=evidence.projection.model_result_audits)
+    cold = AutoHTTP(version='18')
+    async with application(path, cold, source_thinking=True) as app:
+        assert (await app.respond(inbound)).status == 'action_authorized'
+        assert cold.requests == []
