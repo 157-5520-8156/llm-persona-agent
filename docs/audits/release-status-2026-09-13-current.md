@@ -7,13 +7,21 @@
 
 ## 最新增量：Life 写入前核验与同角色纠正接线
 
+三次真实 Flash 核验（作者为受控 HTTP fixture）均已结束并对账：正确拒绝显式外出编造，
+正确拒绝 Appraisal 中隐含的已完成散步；合法的雨停加当前意图被语义认可，却因返回自然语言
+claim_scope、错误主体及非 Fact 引文而在权限校验失败。协议 v2 将来源 ID、scope、主体词表
+限制为当前可用值，无 Fact 时禁止主体引用和引文；代码仍核对组合权限，不放宽事实边界。
+v1 三份脚本凭据冷恢复保持通过，v2 相关检查 21 项通过。实际 v2 语义及供应商复测待完成。
+本次 3 调用均已知用量，估算 0.0329074 元，新增未知预留为零；累计 1043 usage /
+1040 reservations / 37 unknown holds，账本继续点见下。
+
 显式配置 `life_source_reviewer` 后，完整 Life 候选先经过来源核验；明确拒绝携带原稿及
 字段原因交回同一角色纠正一次，纠正稿仍须核验。不可用、歧义、缺字段与越权来源记作技术
 失败，不写入生活经历，也不代替角色选择沉默。接受凭据随 prepared turn 保存并在恢复时
 重验。修正 Recall 控制转移被终稿 proposal 校验误拦的问题。
 207 项角色/来源/生活检查及另 41 项持久化/参与者检查通过，2 项未配置路径的已知漏洞仍
 strict xfail。审核结论在这些测试中来自脚本 HTTP，尚未证明真实语义可靠性；默认未启用，
-邀请发布资格及账本继续点不变。见[接线与验证边界](../design/life-source-review-gate-2026-09-16.md)。
+邀请发布资格不变。见[接线与验证边界](../design/life-source-review-gate-2026-09-16.md)。
 
 ## 较早增量：Fact 精确值绑定与选择
 
@@ -245,8 +253,8 @@ life_responses而放过同时进入记忆的summary、Appraisal或线程理由�
 ## 唯一继续点与费用
 
 **运行继续点仍为`output/private-audits/release-chat-evidence-order-20260915-01/run`；
-最新完整累计账本改为`output/private-audits/release-life-candidate-reading-20260915-02/run/world.sqlite`，
-1040条usage、1037条reservation。** 逻辑时刻仍2026-09-14T14:45:00Z，已推进825分钟。
+最新完整累计账本改为`output/private-audits/release-life-source-review-20260916-01/run/world.sqlite`，
+1043条usage、1040条reservation。** 逻辑时刻仍2026-09-14T14:45:00Z，已推进825分钟。
 下一轮必须合并上述运行状态与最新计费账本，不能只从运行目录的旧1037/1034账本继续。
 本次三次读取调用：2次已知、1次未知，已知估算**0.044912元**，未知预留**0.328752元**。
 全部调用已关闭、原始响应和原生token/预留关联已核对，旧行完整继承。未知预留不等于实际收费。

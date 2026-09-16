@@ -37,7 +37,13 @@ class ReviewHTTP:
                    'reason': 'Fixture current expression or protocol field.', 'supports': []}
                   for item in packet['text_fields']]
         response_path = next(f for f in fields if f['path'].endswith('/response_text'))
-        if outcome != 'accepted':
+        if outcome == 'supported':
+            rain = next(r for r in packet['source_readings']['readings'] if r['source_family'] == 'settled_life')
+            response_path.update(disposition='supported', supports=[{
+                'reading_id': rain['reading_id'], 'claim_scope': 'environment', 'subject_role': 'general',
+                'subject_ref': None, 'quoted_value': None,
+            }])
+        elif outcome != 'accepted':
             response_path.update(disposition=outcome, reason='Only rain is established; no walking or coffee outcome supports this episode.')
         if self.fault == 'omitted_field':
             fields.pop()
@@ -117,6 +123,22 @@ async def test_second_unsupported_episode_is_technical_failure_not_memory_or_sil
     assert responses == checkpoints == []
     assert len(author.stimulus_requests) == len(reviews.requests) == 2
     assert len(audit) >= 4
+
+
+@pytest.mark.asyncio
+async def test_environment_support_uses_closed_permission_tokens_and_survives_restore(tmp_path, monkeypatch):
+    text = '雨停了，有点想去窗边听听声音。'
+    responses, checkpoints, _, reviews = await run_gate(tmp_path, monkeypatch,
+        author=_ResponseHTTP(text=text), verdicts=['supported'])
+    assert responses == [text]
+    support = reviews.requests[0]['tools'][0]['function']['parameters']['properties']['fields']['items']['properties']['supports']['items']['properties']
+    assert 'environment' in support['claim_scope']['enum']
+    assert 'source_owner' not in support['subject_role']['enum']
+    assert support['subject_ref']['enum'] == [None]
+    assert support['quoted_value'] == {'type': 'null'}
+    result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
+    assert result.life_source_review.contract == 'life-source-review.2'
+    result.life_source_review.verify(result=result, snapshot=snapshot)
 
 
 @pytest.mark.asyncio

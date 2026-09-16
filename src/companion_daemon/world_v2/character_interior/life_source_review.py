@@ -18,7 +18,8 @@ from ..schema_core import FrozenModel
 from .life_candidate_reading import _candidate, _object, _unique
 from .life_source_origin import canonical, digest
 
-CONTRACT = 'life-source-review.1'
+LEGACY_CONTRACT = 'life-source-review.1'
+CONTRACT = 'life-source-review.2'
 BODY_FIELDS = ('status', 'summary', 'attended_source_refs', 'decision', 'recall_query', 'proposals')
 
 
@@ -26,7 +27,7 @@ def candidate_body(result):
     return canonical(result.model_dump(mode='json', include=set(BODY_FIELDS)))
 
 
-def prepare_review(*, candidate_json, provider_raw, view, snapshot):
+def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CONTRACT):
     from .life_source_readings import prepare_life_source_readings
     candidate, fields = _candidate(candidate_json)
     if not isinstance(provider_raw, str) or len(provider_raw.encode()) > 131_072:
@@ -37,6 +38,26 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot):
         'subject_role': {'type': 'string'}, 'subject_ref': {'type': ['string', 'null']},
         'quoted_value': {'type': ['string', 'null']},
     })
+    if contract == CONTRACT:
+        # These are host-defined permission tokens, not semantic free text.
+        # Restrict the wire vocabulary; inspect_review still checks each exact
+        # reading/permission combination and the selected Fact quotation.
+        rows = readings['readings']
+        permissions = [p for row in rows for p in row.get('value_selection_permissions', row['permissions'])]
+        props = support['properties']
+        for key, values in (
+            ('reading_id', [r['reading_id'] for r in rows]),
+            ('claim_scope', [p[0] for p in permissions]),
+            ('subject_role', [p[1] for p in permissions]),
+        ):
+            if values:
+                props[key]['enum'] = sorted(set(values))
+        facts = [r for r in rows if r['source_family'] == 'accepted_fact_value']
+        props['subject_ref']['enum'] = [None, *sorted({r['source_owner_ref'] for r in facts})]
+        if not facts:
+            props['quoted_value'] = {'type': 'null'}
+    elif contract != LEGACY_CONTRACT:
+        raise ValueError('unsupported Life source review contract')
     schema = _object({'fields': {'type': 'array', 'minItems': len(fields), 'maxItems': len(fields),
         'items': _object({
             'path': {'type': 'string', 'enum': [f['path'] for f in fields]},
@@ -44,7 +65,7 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot):
             'reason': {'type': 'string', 'minLength': 1, 'maxLength': 512},
             'supports': {'type': 'array', 'maxItems': 32, 'items': support},
         })}})
-    payload = {'contract': CONTRACT, 'source_view_sha256': digest(view.model_dump_json()),
+    payload = {'contract': contract, 'source_view_sha256': digest(view.model_dump_json()),
         'candidate': candidate, 'original_author_output': provider_raw, 'text_fields': fields,
         'source_readings': readings,
         'actual_author_snapshot': json.loads(json.loads(view.messages_json)[1]['content'])['inner_life_snapshot']}
@@ -115,7 +136,7 @@ def inspect_review(*, raw, prepared_json, readings):
 
 
 class LifeSourceReviewReceipt(FrozenModel):
-    contract: Literal['life-source-review.1'] = CONTRACT
+    contract: Literal['life-source-review.1', 'life-source-review.2'] = CONTRACT
     prepared_json: str = Field(max_length=256_000)
     response_json: str = Field(max_length=64_000)
     request_hash: str = Field(pattern=r'^[0-9a-f]{64}$')
@@ -131,7 +152,9 @@ class LifeSourceReviewReceipt(FrozenModel):
         ModelUsageProvenance.model_validate_json(checked.usage_json)
         pin = json.loads(checked.prepared_json)
         prepared, readings = prepare_review(candidate_json=candidate_body(result),
-            provider_raw=pin['provider_raw'], view=result.life_source_view, snapshot=snapshot)
+            provider_raw=pin['provider_raw'], view=result.life_source_view, snapshot=snapshot, contract=checked.contract)
+        if result.life_source_view.review_contract != checked.contract:
+            raise ValueError('Life review contract differs from its source preparation')
         if (prepared != checked.prepared_json or digest(pin['provider_raw']) != result.author_lineage.response_hash.removeprefix('sha256:')
             or result.author_lineage.request_hash != result.life_source_view.provider_request_hash
             or provider_invocation_request_hash(**pin['request']) != checked.request_hash
@@ -152,7 +175,7 @@ def verify_life_review(result, snapshot, *, required=False):
     if (required or view is not None and view.review_contract is not None) and receipt is None:
         raise ValueError('required Life source review is missing')
     if receipt is not None:
-        if view is None or view.review_contract != CONTRACT:
+        if view is None or view.review_contract != receipt.contract:
             raise ValueError('Life source review lost its configured source preparation')
         receipt.verify(result=result, snapshot=snapshot)
 

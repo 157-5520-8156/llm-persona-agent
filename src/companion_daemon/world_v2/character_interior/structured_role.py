@@ -1452,9 +1452,10 @@ class StructuredCharacterRoleFaculty:
         life_source_view = None
         if request.purpose == "world_stimulus_appraisal" and request.snapshot.life_source_origin is not None:
             from .life_source_view import prepare_life_source_view
+            from .life_source_review import CONTRACT as LIFE_REVIEW_CONTRACT
             life_source_view = prepare_life_source_view(
                 request=request, messages=messages, provider_request_hash=request_hash,
-                review_contract='life-source-review.1' if self.requires_life_source_review else None,
+                review_contract=LIFE_REVIEW_CONTRACT if self.requires_life_source_review else None,
                 provider_controls={
                     "temperature": self._temperature,
                     "tools": list(tool_contract.provider_tools) if tool_contract is not None else None,
