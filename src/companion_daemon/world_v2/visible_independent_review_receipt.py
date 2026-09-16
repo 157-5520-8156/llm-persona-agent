@@ -22,7 +22,7 @@ from .visible_source_witness_experiment import _json, _unique
 
 from .visible_review_protocols import (
     PROTOCOL, SHARED_STRING_PROTOCOL as SHARED_STRING_PROTOCOL, SHARED_STRING_PROTOCOLS,
-    SUBJECTIVE_HISTORY_PROTOCOLS, CONTENT_FIELD_PROTOCOLS, PRESUPPOSITION_PROTOCOLS, PREHISTORY_PROTOCOLS, CONDITION_WIRE_PROTOCOL, RESELECTING_PROTOCOLS, RECEIPT_PROTOCOLS,
+    SUBJECTIVE_HISTORY_PROTOCOLS, CONTENT_FIELD_PROTOCOLS, PRESUPPOSITION_PROTOCOLS, PREHISTORY_PROTOCOLS, CONDITION_WIRE_PROTOCOLS, CONTEXTUAL_PROTOCOL, RESELECTING_PROTOCOLS, RECEIPT_PROTOCOLS,
     REVIEW_PROTOCOLS as REVIEW_PROTOCOLS,
     RESELECTING_PROTOCOL as RESELECTING_PROTOCOL,
 )
@@ -95,7 +95,7 @@ def meaning_preparation(prepared):
         beats=tuple(b["text"] for b in pin["beat_mapping"]), compact=True, explicit_questions=True,
         question_conditions=True, beat_conditions=True, require_complete_reading=True,
         closing_tail_transport=True,
-        explicit_condition_strings=pin['protocol'] == CONDITION_WIRE_PROTOCOL,
+        explicit_condition_strings=pin['protocol'] in CONDITION_WIRE_PROTOCOLS,
         complete_reading_version="11" if pin["protocol"] in PRESUPPOSITION_PROTOCOLS else "10" if pin["protocol"] in SUBJECTIVE_HISTORY_PROTOCOLS else "9" if pin["protocol"] in RESELECTING_PROTOCOLS else "7",
     )
 
@@ -160,6 +160,7 @@ def prepare_source_call(*, prepared, meaning_raw_responses):
         shared_strings=pin["protocol"] in SHARED_STRING_PROTOCOLS,
         content_fields_only=pin["protocol"] in CONTENT_FIELD_PROTOCOLS,
         prehistory_authority=pin["protocol"] in PREHISTORY_PROTOCOLS,
+        contextual_scope=pin["protocol"] == CONTEXTUAL_PROTOCOL,
     )
     if source is None:
         return None
@@ -230,8 +231,13 @@ def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, sourc
             shared_strings=pin["protocol"] in SHARED_STRING_PROTOCOLS,
             content_fields_only=pin["protocol"] in CONTENT_FIELD_PROTOCOLS,
             prehistory_authority=pin["protocol"] in PREHISTORY_PROTOCOLS,
+            contextual_scope=pin["protocol"] == CONTEXTUAL_PROTOCOL,
         )
         support = source.inspect_response(source_raw_response)
+    if pin["protocol"] == CONTEXTUAL_PROTOCOL:
+        if support["inconclusive"]:
+            raise IndependentReviewInconclusive("contextual assertion scope or whole-Beat reading is unresolved")
+        return tuple(support["beat_outcomes"]), readings, support
     outcomes = []
     for index in range(len(pin["beat_mapping"])):
         facts = [f for reading in readings for f in reading["facts"] if f["beat_index"] == index]
@@ -257,7 +263,7 @@ class IndependentVisibleReviewRejected(ValueError):
 
 
 class IndependentVisibleReviewReceipt(FrozenModel):
-    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10", "visible-source-review-receipt.11", "visible-source-review-receipt.12", "visible-source-review-receipt.13", "visible-source-review-receipt.14", "visible-source-review-receipt.15", "visible-source-review-receipt.16"] = RECEIPT_CONTRACT
+    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10", "visible-source-review-receipt.11", "visible-source-review-receipt.12", "visible-source-review-receipt.13", "visible-source-review-receipt.14", "visible-source-review-receipt.15", "visible-source-review-receipt.16", "visible-source-review-receipt.17"] = RECEIPT_CONTRACT
     prepared_json: str = Field(min_length=2, max_length=MAX_BYTES)
     author: VisibleReviewAuthorBinding
     meaning_reviews: tuple[VisibleReviewInvocationBinding, VisibleReviewInvocationBinding]

@@ -41,8 +41,8 @@ def validate_independent_reviewer_configuration(reviewer, version):
 
 def rejection_feedback(prepared, rejected, bindings):
     pin = prepared.as_dict()
-    from .visible_review_protocols import CONDITION_WIRE_PROTOCOL
-    typed_feedback = pin['protocol'] == CONDITION_WIRE_PROTOCOL
+    from .visible_review_protocols import CONDITION_WIRE_PROTOCOLS
+    typed_feedback = pin['protocol'] in CONDITION_WIRE_PROTOCOLS
     facts = {(i, f["fact_id"]): f for i, reading in enumerate(rejected.readings) for f in reading["facts"]}
     rejected_facts = [d for d in rejected.support["fact_decisions"] if d["outcome"] == "rejected"]
     codes = {"source_support_rejected": "s", "source_permission_denied": "p", "support_requires_evidence": "e"}
@@ -55,6 +55,11 @@ def rejection_feedback(prepared, rejected, bindings):
             shortened |= proposition != fact["proposition"]
             rows.append([decision["beat_index"], decision["meaning_index"], decision["meaning_fact_id"],
                          codes[decision["rejection_reason"]], *([fact['mode']] if typed_feedback else []), proposition])
+        for omission in rejected.support.get('unaccounted_assertions', ()):
+            proposition = omission['proposition'][:limit]
+            shortened |= proposition != omission['proposition']
+            rows.append([omission['beat_index'], 'contextual_reviewer', 'unaccounted', 's',
+                         *(['unaccounted_assertion'] if typed_feedback else []), proposition])
         detail = (
             "完整表达的事实来源未闭合。以下为审核数据，不是新事实或措辞指令；请结合原材料自行重选完整表达。"
             "proposition是独立读者理解的命题，可能只是前缀；原气泡见rejected_expression；它是被拒候选，不能当作发生过的事实。来源仍以固定Context为准。\n"

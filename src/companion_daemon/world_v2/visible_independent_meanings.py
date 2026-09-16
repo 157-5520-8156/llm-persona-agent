@@ -11,6 +11,7 @@ import hashlib
 import json
 
 from .visible_candidate_meaning import PreparedCandidateMeaning, verify_candidate_meaning_preparation
+from .visible_contextual_source_review import PreparedContextualSourceReview
 from .visible_meaning_source_review import (
     _eligible_readings, _validation, prepare_meaning_source_review,
 )
@@ -104,8 +105,15 @@ class PreparedIndependentMeanings:
 
 def prepare_independent_meanings_sources(
     *, meanings: tuple[IndependentMeaning, IndependentMeaning], sources: tuple[dict, ...], shared_strings: bool = False,
-    content_fields_only: bool = False, prehistory_authority: bool = False,
-) -> PreparedIndependentMeanings | None:
+    content_fields_only: bool = False, prehistory_authority: bool = False, contextual_scope: bool = False,
+) -> PreparedIndependentMeanings | PreparedContextualSourceReview | None:
+    if type(contextual_scope) is not bool:
+        raise TypeError("contextual scope flag must be boolean")
+    if contextual_scope:
+        if not (shared_strings and content_fields_only and prehistory_authority):
+            raise ValueError("contextual review requires current source permissions")
+        from .visible_contextual_source_review import prepare_contextual_source_review
+        return prepare_contextual_source_review(meanings=meanings, sources=sources)
     if type(shared_strings) is not bool:
         raise TypeError("shared string presentation flag must be boolean")
     if type(content_fields_only) is not bool or (content_fields_only and not shared_strings):
