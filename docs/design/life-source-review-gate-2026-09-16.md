@@ -7,7 +7,7 @@
 角色先生成完整 Life 候选，独立模型判断其中事实是否有来源，不能代写角色的感受、
 行为或纠正稿。当前感受与未来意图无需外部事实许可，但它们包含的既往经历仍需核验。
 
-`life-source-review.5` 使用角色实际收到的快照与 `life-source-readings.3` 字段权限，
+`life-source-review.6` 使用角色实际收到的快照与 `life-source-readings.3` 字段权限，
 逐一覆盖 summary、生活反应、Appraisal、理由及其它嵌套字符串。每个字段须恰好出现一次；
 支持项须引用实际展示的来源及其许可。Fact 还须选择与已接受观察值哈希匹配的原文。
 这些确定性检查只证明结构和权限，语义覆盖与蕴含仍是可出错的模型判断。
@@ -62,3 +62,8 @@ v4 首次真实 Life 写入链完成生成、拒绝、同角色纠正、审核�
 这错误地压缩了角色合理表达。v5 将 required 输出次序改为 path、reason、supports、disposition，
 并明确最终结论应反映解释。代码不读自然语言理由来自动改判；实际有效性须复测，不能把
 次序调整或一次可写经历当作语义可靠性合格。
+
+v5 单次同原稿复核仍出现“无外部事实”标签与所列雨停支持的矛盾；实际输出依旧结论在前。
+请求档案的 canonical 序列化排序了 schema properties，即使 required 顺序改变，发送的
+properties 仍以 disposition 开头。v6 同步两个顺序并以保留次序的 JSON 存档，冷核验精确
+重建该请求。发送边界测试检查实际 HTTP 中的 properties 和 required，旧 v1-v5 保持原样。
