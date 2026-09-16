@@ -12,10 +12,13 @@ from jsonschema import Draft202012Validator
 from .life_candidate_reading import _object, _unique
 from .life_source_origin import canonical, digest
 
-CONTRACT = 'life-source-review.7'
+LEGACY_CONTRACT = 'life-source-review.7'
+CONTRACT = 'life-source-review.8'
 
 
-def prepare(*, baseline_json, actor_ref, logical_time):
+def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
+    if contract not in {LEGACY_CONTRACT, CONTRACT}:
+        raise ValueError('unsupported Life authorship review contract')
     envelope = json.loads(baseline_json)
     request = envelope['request']
     packet = json.loads(request['messages'][1]['content'])
@@ -37,7 +40,7 @@ def prepare(*, baseline_json, actor_ref, logical_time):
             'factual_claims': {'type': 'array', 'maxItems': 32, 'items': claim},
             'coverage': {'type': 'string', 'enum': ['complete', 'uncertain']},
         })}})
-    packet['contract'] = CONTRACT
+    packet['contract'] = contract
     packet['current_authorship_authority'] = {
         'contract': 'current-life-authorship.1',
         'actor_ref': actor_ref, 'logical_time': logical_time,
@@ -85,6 +88,41 @@ def prepare(*, baseline_json, actor_ref, logical_time):
         'strict': True, 'description': 'Separate new character authorship from every factual obligation.',
         'parameters': schema}}]
     request['tool_choice'] = {'type': 'function', 'function': {'name': 'review_life_candidate_v2'}}
+    if contract == CONTRACT:
+        field = schema['properties']['fields']['items']
+        old = field['properties']
+        field['properties'] = {
+            'path': old['path'], 'reason': old['reason'],
+            'created_current_states': {'type': 'array', 'maxItems': 32, 'items': _object({
+                'source_span': {'type': 'string', 'minLength': 1, 'maxLength': 2048},
+                'state_description': {'type': 'string', 'minLength': 1, 'maxLength': 2048},
+                'subject_ref': {'type': 'string', 'enum': [actor_ref]},
+                'time_relation': {'type': 'string', 'enum': ['past', 'current', 'future', 'unspecified'],
+                    'description': 'When the represented feeling/attitude/choice holds, not when its sentence is written.'},
+            })},
+            'record_bound_claims': old['factual_claims'], 'coverage': old['coverage'],
+        }
+        field['required'] = list(field['properties'])
+        instructions = request['messages'][0]['content']
+        instructions = instructions.replace('externally constrained', 'record-bound')
+        instructions = instructions.replace('factual_claims', 'record_bound_claims').replace('authored_now', 'created_current_states')
+        instructions = instructions.replace('quote current authored expressions in', 'describe newly created current states in')
+        instructions = instructions.replace('Both lists use exact substrings of that field;', 'Every entry uses an exact source_span from that field;')
+        instructions += (
+            ' Distinguish the time of writing from the time represented by the content. Every sentence is '
+            'written now; this grants no authority over the past. created_current_states describes a feeling, '
+            'attitude or choice whose represented time is current. Describe the state itself, not the act '
+            'of describing, recalling, reporting or characterizing a prior state. A present intention can '
+            'target a future action without claiming that action occurred. Reports of earlier subjective '
+            'states belong in record_bound_claims even though they are internal, not external, facts. '
+            'A present emotional response may be created, but all events and earlier states it presupposes '
+            'remain record-bound. Interpret time_relation semantically for each state; non-current states '
+            'cannot be authorized by the present creative authority. Do not relabel a historical assertion '
+            'as a current description to avoid checking its truth. coverage is per field, not a root key.'
+        )
+        request['messages'][0]['content'] = instructions
+        request['tools'][0]['function']['name'] = 'review_life_candidate_v3'
+        request['tool_choice']['function']['name'] = 'review_life_candidate_v3'
     prepared = json.dumps(envelope, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
     if len(prepared.encode()) > 256_000:
         raise ValueError('Life review request exceeds its audit bound')
@@ -106,12 +144,17 @@ def inspect(*, raw, prepared_json, validate_support):
     uncertain = False
     for field in response['fields']:
         text = texts[field['path']]
-        if any(span not in text for span in field['authored_now']):
+        current = packet['contract'] == CONTRACT
+        states = field['created_current_states'] if current else []
+        spans = [state['source_span'] for state in states] if current else field['authored_now']
+        if any(span not in text for span in spans):
             raise ValueError('Life authorship span is not in the reviewed candidate field')
+        if any(state['time_relation'] != 'current' for state in states):
+            raise ValueError('Life current authorship cannot establish a non-current state')
         if field['coverage'] == 'uncertain':
             uncertain = True
             failures.append({'path': field['path'], 'reason': field['reason']})
-        for claim in field['factual_claims']:
+        for claim in field['record_bound_claims'] if current else field['factual_claims']:
             if claim['source_span'] not in text:
                 raise ValueError('Life factual span is not in the reviewed candidate field')
             if claim['verdict'] == 'supported' and not claim['supports']:

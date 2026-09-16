@@ -24,7 +24,8 @@ PERMISSION_CONTRACT = 'life-source-review.3'
 BOUNDED_REASON_CONTRACT = 'life-source-review.4'
 VERDICT_ORDER_CONTRACT = 'life-source-review.5'
 LEGACY_CURRENT_CONTRACT = 'life-source-review.6'
-CONTRACT = 'life-source-review.7'
+AUTHORSHIP_CONTRACT = 'life-source-review.7'
+CONTRACT = 'life-source-review.8'
 _CHOICE_CONTRACTS = {PERMISSION_CONTRACT, BOUNDED_REASON_CONTRACT, VERDICT_ORDER_CONTRACT, LEGACY_CURRENT_CONTRACT}
 BODY_FIELDS = ('status', 'summary', 'attended_source_refs', 'decision', 'recall_query', 'proposals')
 
@@ -208,22 +209,22 @@ def _validate_source_support(support, sources):
 
 
 def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CONTRACT):
-    if contract != CONTRACT:
+    if contract not in {AUTHORSHIP_CONTRACT, CONTRACT}:
         return _prepare_legacy_review(candidate_json=candidate_json, provider_raw=provider_raw,
             view=view, snapshot=snapshot, contract=contract)
-    from .life_source_review_v7 import prepare
+    from .life_source_authorship_review import prepare
     baseline, readings = _prepare_legacy_review(candidate_json=candidate_json, provider_raw=provider_raw,
         view=view, snapshot=snapshot, contract=LEGACY_CURRENT_CONTRACT)
     prepared = prepare(baseline_json=baseline, actor_ref=snapshot.actor_ref,
-        logical_time=snapshot.logical_time.isoformat())
+        logical_time=snapshot.logical_time.isoformat(), contract=contract)
     return prepared, readings
 
 
 def inspect_review(*, raw, prepared_json, readings):
     request = json.loads(prepared_json)['request']
-    if json.loads(request['messages'][1]['content'])['contract'] != CONTRACT:
+    if json.loads(request['messages'][1]['content'])['contract'] not in {AUTHORSHIP_CONTRACT, CONTRACT}:
         return _inspect_legacy_review(raw=raw, prepared_json=prepared_json, readings=readings)
-    from .life_source_review_v7 import inspect
+    from .life_source_authorship_review import inspect
     choices = {p['permission_id']: p for p in _permission_choices(readings)}
     sources = {r['reading_id']: r for r in readings['readings']}
 
@@ -237,7 +238,7 @@ def inspect_review(*, raw, prepared_json, readings):
 
 
 class LifeSourceReviewReceipt(FrozenModel):
-    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7'] = CONTRACT
+    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8'] = CONTRACT
     prepared_json: str = Field(max_length=256_000)
     response_json: str = Field(max_length=64_000)
     request_hash: str = Field(pattern=r'^[0-9a-f]{64}$')

@@ -7,9 +7,14 @@
 
 ## 最新增量：Life 写入前核验已贯通，语义资格仍未通过
 
-v7 已将整段单标签改为当前创作片段与逐项事实义务，并给审核提供请求绑定的角色当下创作权。
-旧 11 份凭据冷核验通过；本地接口检查通过，真实语义对照尚待执行。没有按字段名豁免，
-当前创作标记中的既往事实仍需逐项核验。见[当下创作权接口](../design/life-current-authorship-review-2026-09-16.md)。
+v7 五次真实对照修复拍照意图误拒，但错误放行“昨天已经觉得轻松”，另一次隐含散步识别
+正确却因根字段越界而技术失败。该版未合格，误接受原文与凭据保留。v8 将创作对象改为
+指定主体和时间的当前状态；过去内心与外部事件统一列入有记录约束的命题，不把“现在写的
+话”当成“现在的状态”。时间与主体语义仍由模型判断，宿主不读关键词。v8 待实际复测。
+v7 全组 254 passed / 2 strict xfailed，不代表语义通过。五调用均已知用量，旧价表估算
+0.0651186 元；最新账本 1060 usage / 1057 reservations / 37 unknown holds。
+另查证供应商旧 Flash/Pro 名称已路由到同一 V4.1-Flash，不能作为独立模型；新价表待核对。
+见[当下创作权接口与供应商来源](../design/life-current-authorship-review-2026-09-16.md)。
 
 - 新的 `life_source_reviewer` 审核所有候选文本及嵌入事实，不替角色决定感受、行为或沉默。
   明确拒绝携带完整原稿和字段原因交回同一角色纠正一次；纠正仍需审核。技术失败不写入
@@ -271,8 +276,8 @@ life_responses而放过同时进入记忆的summary、Appraisal或线程理由�
 ## 唯一继续点与费用
 
 **运行继续点仍为`output/private-audits/release-chat-evidence-order-20260915-01/run`；
-最新完整累计账本改为`output/private-audits/release-life-review-verdict-order-20260916-02/run/world.sqlite`，
-1055条usage、1052条reservation。** 逻辑时刻仍2026-09-14T14:45:00Z，已推进825分钟。
+最新完整累计账本改为`output/private-audits/release-life-authorship-review-20260916-01/run/world.sqlite`，
+1060条usage、1057条reservation。** 逻辑时刻仍2026-09-14T14:45:00Z，已推进825分钟。
 下一轮必须合并上述运行状态与最新计费账本，不能只从运行目录的旧1037/1034账本继续。
 Life 写入前审核 v1/v2/v3 共九次调用全部已知，合计估算 **0.1001444 元**，无新增未知预留。
 隔离真实 Life 作者/审核另四次调用全部已知，估算 **0.050974 元**，一条 Life 接受凭据冷核验通过。
