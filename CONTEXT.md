@@ -71,10 +71,16 @@ acceptance; rejection reuses one same-author correction with the original draft,
 while unavailable/incomplete review remains technical failure. Accepted receipts
 bind exact author output, source view, candidate and review, including durable
 recovery. Recall control transfers wait for retrieval before terminal proposal
-validation. A real isolated Life author/reviewer chain corrected and accepted one response,
-then cold-restored its receipt. Review v6 preserves actual evidence-first schema
-order; it still falsely rejects a current impulse to take a photo. The default
-remains unconfigured and semantic/release qualification remains incomplete. See
+validation. Review v10 separates current authored states from record-bound claims,
+checks whole-candidate coverage and distinguishes unsupported claims from unreadable
+sources. Five controlled real reviews matched expectations; a real Life chain
+corrected and accepted one response, then cold-restored its receipt. A future
+photo-organizing intention was still falsely rejected. The capture journey can
+explicitly install the same gate with evidence in its durable database. Three
+new real chat turns delivered twice and failed once; this chat run did not invoke
+the Life gate. Pro meaning-reader JSON and habitual-inner-history correction remain
+unqualified. The default remains unconfigured; see current release status and
+`docs/audits/life-chat-integration-validation-2026-09-16.json`, as well as
 `docs/design/life-source-review-gate-2026-09-16.md`.
 
 Explicit review15 restricts retained prehistory direct readings to narrative text

@@ -1,0 +1,149 @@
+{
+  "code_head": "b65d8615906939d782fa8360e40e3f60233ef938",
+  "qualification": "manual_only / qualification_incomplete",
+  "local_tests": {
+    "life_source_pricing_and_durable_paths": 175,
+    "capture_cli_and_restart": 43,
+    "ruff": "passed"
+  },
+  "life_review_version": "life-source-review.10",
+  "life_controlled_positive_negative_cases": {
+    "correct": 5,
+    "total": 5,
+    "scope": "single bounded sample, not semantic qualification"
+  },
+  "life_actual_chain": {
+    "same_author_correction": true,
+    "accepted_life_response_count": 1,
+    "experience_count": 1,
+    "cold_verified_checkpoint_count": 1,
+    "remaining_false_rejection": "future photo-organizing intention rejected as lacking a future occurrence record"
+  },
+  "chat_trial": {
+    "new_user_turns": 3,
+    "turns_with_delivery": 2,
+    "turns_without_delivery": 1,
+    "new_turn_message_count": 4,
+    "inherited_pending_message_count": 2,
+    "semantic_qualification": false,
+    "source_history_limitation": "inherited walking history requires separate source audit",
+    "life_candidate_review_calls_in_this_chat_run": 0,
+    "life_gate_installed": {
+      "enabled": true,
+      "evidence_storage": "journey_database",
+      "qualification": "unverified"
+    },
+    "native_json_by_model_tool": [
+      {
+        "model": "deepseek-v4-flash",
+        "tool": "character_inbound_initial_v3",
+        "total": 8,
+        "invalid_json": 0
+      },
+      {
+        "model": "deepseek-v4-flash",
+        "tool": "interpret_visible_candidate_complete_v11",
+        "total": 8,
+        "invalid_json": 0
+      },
+      {
+        "model": "deepseek-v4-pro",
+        "tool": "interpret_visible_candidate_complete_v11",
+        "total": 12,
+        "invalid_json": 6
+      },
+      {
+        "model": "deepseek-v4-flash",
+        "tool": "review_independent_fixed_meanings_v4",
+        "total": 7,
+        "invalid_json": 0
+      }
+    ],
+    "invalid_json": [
+      {
+        "capture_id": "model-input:3e4c01030caf49d8a4225aa0ea4384c5",
+        "request_model": "deepseek-v4-pro",
+        "tool": "interpret_visible_candidate_complete_v11",
+        "error": "Extra data: line 1 column 986 (char 985)"
+      },
+      {
+        "capture_id": "model-input:6339476953354952a0f05665ab93cccd",
+        "request_model": "deepseek-v4-pro",
+        "tool": "interpret_visible_candidate_complete_v11",
+        "error": "Extra data: line 1 column 824 (char 823)"
+      },
+      {
+        "capture_id": "model-input:06106551c5a84f66a2beb9b9ce3348b0",
+        "request_model": "deepseek-v4-pro",
+        "tool": "interpret_visible_candidate_complete_v11",
+        "error": "Extra data: line 1 column 800 (char 799)"
+      },
+      {
+        "capture_id": "model-input:b02bd48458244078a542bd14d12b11ad",
+        "request_model": "deepseek-v4-pro",
+        "tool": "interpret_visible_candidate_complete_v11",
+        "error": "Extra data: line 1 column 1189 (char 1188)"
+      },
+      {
+        "capture_id": "model-input:81f23dddeb044075a6a2276f6c2b4237",
+        "request_model": "deepseek-v4-pro",
+        "tool": "interpret_visible_candidate_complete_v11",
+        "error": "Extra data: line 1 column 720 (char 719)"
+      },
+      {
+        "capture_id": "model-input:a21c8f16e067416b883ac75ceab1ef2e",
+        "request_model": "deepseek-v4-pro",
+        "tool": "interpret_visible_candidate_complete_v11",
+        "error": "Extra data: line 1 column 1084 (char 1083)"
+      }
+    ],
+    "failure": "paired_expression_reselection_invalid; correction repeats unsupported habitual inner history",
+    "max_author_prompt_tokens": 49977,
+    "cold_replay_matches": true
+  },
+  "billing": {
+    "physical_calls_this_goal_turn": 54,
+    "known_estimate_cny": "0.9074260600000000104",
+    "pricing": "effective-date rate table, provider usage tokens; not invoice",
+    "usage_rows": 1119,
+    "reservation_rows": 1116,
+    "inherited_unknown_holds": 37,
+    "new_unknown_hold_cny": "0",
+    "inherited_rows_unchanged": true
+  },
+  "runtime_and_billing_checkpoint": "/Users/geoff/Projects/Girl-Agent-release-repair/output/private-audits/release-integrated-life-chat-20260916-02/run",
+  "logical_at": "2026-09-14T14:48:00+00:00",
+  "ledger_cursor": 3180,
+  "real_qq": false,
+  "deployed": false,
+  "evidence": [
+    {
+      "path": "output/private-audits/release-life-authorship-review-20260916-03/finished.json",
+      "sha256": "46dd91d320b8d5b0f62a808b8dcc2232aae84a5c88217d99335d5486063c28c9",
+      "physical_calls": 5,
+      "known_estimate_cny": "0.062650360000000000"
+    },
+    {
+      "path": "output/private-audits/release-life-reviewed-runtime-20260916-02/finished.json",
+      "sha256": "db5a11d3756c62ef2aa94e5e0926d8c7f18ec37243e7af03c9b88ae022069891",
+      "physical_calls": 2,
+      "known_estimate_cny": "0.0138393200000000001"
+    },
+    {
+      "path": "output/private-audits/release-life-authorship-review-20260916-04/finished.json",
+      "sha256": "3368f2df7b119b583e3dff9f6f41cc166753beccc4011b155fbd2f73b7eaa986",
+      "physical_calls": 5,
+      "known_estimate_cny": "0.057266040000000002"
+    },
+    {
+      "path": "output/private-audits/release-life-reviewed-runtime-20260916-03/finished.json",
+      "sha256": "9980cf75d7cd735e35c2265ce1726971c93c455bfd9c14d99ea5686691e957b1",
+      "physical_calls": 4,
+      "known_estimate_cny": "0.040525120000000004"
+    },
+    {
+      "path": "output/private-audits/release-integrated-life-chat-20260916-02/reconciliation.json",
+      "sha256": "79ec34d9a0411508641d5e7bddb3b7e82a29b0f979aa4493a6a78e8e93d28a97"
+    }
+  ]
+}
