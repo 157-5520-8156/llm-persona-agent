@@ -7,6 +7,14 @@
 
 ## 最新增量：Life 写入前核验已贯通，语义资格仍未通过
 
+v9 五次真实复核保留当前意图，三类编造均未接受，但两项由于审核误读进入 uncertain；
+真实作者/审核链两次调用结束，作者选择无感、不提起，审核不确定导致零接受、零写入。
+v10 澄清无依据与无法审核、意图目标与观察事实、Fact 精确引用标志；未用宿主改判绕过。
+本地 Life 17 项及费用 32 项通过，预算 27 项通过；历史费用测试固定在其对应的 8 月。
+v7-v9 四份接受凭据冷验证保持原解释（包括已知 v7 误接受，不作为资格）。
+七次调用全部已知，新价表估算合计 0.07648968 元，无新增未知预留。
+最新累计账本 1072 usage / 1069 reservations / 37 unknown holds；v10 真实验证待运行。
+
 v8 五次复核保留拍照意图并拒绝散步，过去心情也判无依据，但根 coverage 字段越界使该项
 结构失败。v9 要求逐字段及整候选覆盖，任一级不确定都不接受。v8 本次五调用均已知，旧表
 估算 0.0831064 元，累计账本 1065 usage / 1062 reservations / 37 unknown holds。
@@ -281,8 +289,8 @@ life_responses而放过同时进入记忆的summary、Appraisal或线程理由�
 ## 唯一继续点与费用
 
 **运行继续点仍为`output/private-audits/release-chat-evidence-order-20260915-01/run`；
-最新完整累计账本改为`output/private-audits/release-life-authorship-review-20260916-02/run/world.sqlite`，
-1065条usage、1062条reservation。** 逻辑时刻仍2026-09-14T14:45:00Z，已推进825分钟。
+最新完整累计账本改为`output/private-audits/release-life-reviewed-runtime-20260916-02/run/world.sqlite`，
+1072条usage、1069条reservation。** 逻辑时刻仍2026-09-14T14:45:00Z，已推进825分钟。
 下一轮必须合并上述运行状态与最新计费账本，不能只从运行目录的旧1037/1034账本继续。
 Life 写入前审核 v1/v2/v3 共九次调用全部已知，合计估算 **0.1001444 元**，无新增未知预留。
 隔离真实 Life 作者/审核另四次调用全部已知，估算 **0.050974 元**，一条 Life 接受凭据冷核验通过。

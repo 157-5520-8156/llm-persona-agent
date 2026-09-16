@@ -14,11 +14,13 @@ from .life_source_origin import canonical, digest
 
 LEGACY_CONTRACT = 'life-source-review.7'
 TEMPORAL_CONTRACT = 'life-source-review.8'
-CONTRACT = 'life-source-review.9'
+COVERAGE_CONTRACT = 'life-source-review.9'
+CONTRACT = 'life-source-review.10'
+TEMPORAL_CONTRACTS = {TEMPORAL_CONTRACT, COVERAGE_CONTRACT, CONTRACT}
 
 
 def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
-    if contract not in {LEGACY_CONTRACT, TEMPORAL_CONTRACT, CONTRACT}:
+    if contract not in {LEGACY_CONTRACT, *TEMPORAL_CONTRACTS}:
         raise ValueError('unsupported Life authorship review contract')
     envelope = json.loads(baseline_json)
     request = envelope['request']
@@ -89,7 +91,7 @@ def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
         'strict': True, 'description': 'Separate new character authorship from every factual obligation.',
         'parameters': schema}}]
     request['tool_choice'] = {'type': 'function', 'function': {'name': 'review_life_candidate_v2'}}
-    if contract in {TEMPORAL_CONTRACT, CONTRACT}:
+    if contract in TEMPORAL_CONTRACTS:
         field = schema['properties']['fields']['items']
         old = field['properties']
         field['properties'] = {
@@ -124,7 +126,7 @@ def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
         request['messages'][0]['content'] = instructions
         request['tools'][0]['function']['name'] = 'review_life_candidate_v3'
         request['tool_choice']['function']['name'] = 'review_life_candidate_v3'
-    if contract == CONTRACT:
+    if contract in {COVERAGE_CONTRACT, CONTRACT}:
         schema['properties']['coverage'] = {'type': 'string', 'enum': ['complete', 'uncertain']}
         schema['required'] = list(schema['properties'])
         request['messages'][0]['content'] = request['messages'][0]['content'].replace(
@@ -134,6 +136,33 @@ def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
             'root uncertain prevents acceptance even when individual claims have support.')
         request['tools'][0]['function']['name'] = 'review_life_candidate_v4'
         request['tool_choice']['function']['name'] = 'review_life_candidate_v4'
+    if contract == CONTRACT:
+        instructions = request['messages'][0]['content']
+        instructions = instructions.replace(
+            'Each support selects an offered permission_id. Only Fact permissions also require an exact '
+            'quoted_value matching the accepted value; other permissions have no quotation field.',
+            'Each support selects an offered permission_id. The requires_exact_fact_quote boolean on that '
+            'permission controls its wire format: true requires quoted_value exactly from the accepted '
+            'Fact value; false requires only permission_id and forbids quoted_value. A false flag is '
+            'normal for settled event/environment readings, not missing evidence. Do not confuse an '
+            'ordinary factual proposition with the specific accepted_fact_value source family.')
+        instructions = instructions.replace(
+            'Use uncertain for missing source readers or ambiguous entailment; do not guess from missing '
+            'records.',
+            'Use unsupported when a definite commitment has no sufficient authority among the pinned '
+            'readings. This means it cannot be asserted from this context, NOT that it never happened '
+            'in the character\'s entire history. Unsupported gives the same author precise feedback '
+            'for one correction. Use uncertain when you cannot determine what is asserted, cannot '
+            'resolve entailment, or an identified relevant source is present but its reader is excluded '
+            'or unavailable. The mere absence of a supporting source is not a missing-reader failure. '
+            'Explain the concrete unavailable source or ambiguity for an uncertain verdict. '
+            'Separate speech content from its actual commitments: an intended or imagined action and '
+            'its target do not by themselves assert that the action occurred or the target is presently '
+            'observed. Keep genuine embedded historical assertions record-bound. Do not strengthen '
+            'ordinary intention or figurative wording into an extra observation or detailed history.')
+        request['messages'][0]['content'] = instructions
+        request['tools'][0]['function']['name'] = 'review_life_candidate_v5'
+        request['tool_choice']['function']['name'] = 'review_life_candidate_v5'
     prepared = json.dumps(envelope, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
     if len(prepared.encode()) > 256_000:
         raise ValueError('Life review request exceeds its audit bound')
@@ -152,12 +181,12 @@ def inspect(*, raw, prepared_json, validate_support):
     if len(paths) != len(set(paths)) or set(paths) != set(texts):
         raise ValueError('Life source review omitted or duplicated a candidate field')
     failures = []
-    uncertain = packet['contract'] == CONTRACT and response['coverage'] == 'uncertain'
+    uncertain = packet['contract'] in {COVERAGE_CONTRACT, CONTRACT} and response['coverage'] == 'uncertain'
     if uncertain:
         failures.append({'path': '/', 'reason': 'The reviewer could not establish complete candidate coverage.'})
     for field in response['fields']:
         text = texts[field['path']]
-        current = packet['contract'] in {TEMPORAL_CONTRACT, CONTRACT}
+        current = packet['contract'] in TEMPORAL_CONTRACTS
         states = field['created_current_states'] if current else []
         spans = [state['source_span'] for state in states] if current else field['authored_now']
         if any(span not in text for span in spans):

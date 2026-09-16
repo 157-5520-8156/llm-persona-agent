@@ -43,6 +43,16 @@ coverage 导致结构失败。v9 正式要求字段覆盖与整候选覆盖两�
 
 ## 供应商与费用核对
 
+v9 五次真实复核有两次 accepted、一次 rejected、两次 uncertain；未放行三类编造，
+但“窗口”的意图被加强成观察事实，以及 `requires_exact_fact_quote=false` 被误解为
+缺少必需引用，造成不确定。真实作者链另外两次调用中，作者选择无感、不提起；审核对
+“照旧过上午”和“十点的光”判 uncertain，没有接受或写入。不能将链条结束当作链条通过。
+
+v10 补齐审核结果的语义：确定命题在已提供来源中无依据是 unsupported，而非断言角色
+整个过去没有该事实；同角色据此纠正一次。uncertain 保留给无法判读或具体相关来源无法
+读取的情形。明确布尔权限控制 Fact 引用格式，意图目标不自动变成已观察事实。宿主仍不
+解析理由自动改判，任何 uncertain 仍不接受；旧协议及凭据解释保持不变。待真实复测。
+
 [9 月 10 日公告](https://api-docs.deepseek.com/news/news260910/)最初宣布 Pro 将退役；
 随后[最新中英文价表](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/?push_animated=1&show_loading=0&theme=light&webview_progress_bar=1)
 脚注明确改为继续提供 V4 Pro，费率不变。以更新后的说明为准，撤回“Pro 与 Flash 当前必然
