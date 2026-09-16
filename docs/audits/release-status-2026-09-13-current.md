@@ -7,6 +7,14 @@
 
 ## 最新增量：Life 写入前核验与同角色纠正接线
 
+真实 Life 作者与审核已在隔离 SQLite 雨停场景跑完首次生成、拒绝、同角色纠正、写入与冷恢复。
+四次实际调用约 0.050974 元，保留一条角色生活反应和一条 Experience；其它角色为离线 fixture，
+不能算真实长期聊天验收。首次审核有四处解释称“已支持”但 disposition 仍为 unsupported，
+造成合理表达被删；另对“雨停得很干脆”的方式描述判无依据。v5 将工具 required 顺序改为
+path、reason、supports、disposition，并要求最终字段与解释一致；宿主不解析理由来改判。
+v4 完整相关回归 251 passed / 2 strict xfailed；v5 仍须真实复核。最新账本为 1053 usage /
+1050 reservations / 37 unknown holds，原运行继续点不变。
+
 v3 真实核验接受了有据雨停与自由意图的组合，正确拒绝 Appraisal 的散步前提；显式编造
 也被模型判拒，但解释超出 512 字符而技术失败。v4 将解释上限设为 2048，完整响应仍限
 64000 字节，不截断或改写原文。当前仍需真实作者与审核相连的生活链验证。
@@ -266,10 +274,11 @@ life_responses而放过同时进入记忆的summary、Appraisal或线程理由�
 ## 唯一继续点与费用
 
 **运行继续点仍为`output/private-audits/release-chat-evidence-order-20260915-01/run`；
-最新完整累计账本改为`output/private-audits/release-life-source-review-20260916-03/run/world.sqlite`，
-1049条usage、1046条reservation。** 逻辑时刻仍2026-09-14T14:45:00Z，已推进825分钟。
+最新完整累计账本改为`output/private-audits/release-life-reviewed-runtime-20260916-01/run/world.sqlite`，
+1053条usage、1050条reservation。** 逻辑时刻仍2026-09-14T14:45:00Z，已推进825分钟。
 下一轮必须合并上述运行状态与最新计费账本，不能只从运行目录的旧1037/1034账本继续。
 Life 写入前审核 v1/v2/v3 共九次调用全部已知，合计估算 **0.1001444 元**，无新增未知预留。
+隔离真实 Life 作者/审核另四次调用全部已知，估算 **0.050974 元**，一条 Life 接受凭据冷核验通过。
 此前三次候选读取调用：2次已知、1次未知，已知估算**0.044912元**，未知预留**0.328752元**。
 全部调用已关闭、原始响应和原生token/预留关联已核对，旧行完整继承。未知预留不等于实际收费。
 

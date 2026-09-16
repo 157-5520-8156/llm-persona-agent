@@ -21,7 +21,9 @@ from .life_source_origin import canonical, digest
 LEGACY_CONTRACT = 'life-source-review.1'
 TOKEN_CONTRACT = 'life-source-review.2'
 PERMISSION_CONTRACT = 'life-source-review.3'
-CONTRACT = 'life-source-review.4'
+BOUNDED_REASON_CONTRACT = 'life-source-review.4'
+CONTRACT = 'life-source-review.5'
+_CHOICE_CONTRACTS = {PERMISSION_CONTRACT, BOUNDED_REASON_CONTRACT, CONTRACT}
 BODY_FIELDS = ('status', 'summary', 'attended_source_refs', 'decision', 'recall_query', 'proposals')
 
 
@@ -70,7 +72,7 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CON
         props['subject_ref']['enum'] = [None, *sorted({r['source_owner_ref'] for r in facts})]
         if not facts:
             props['quoted_value'] = {'type': 'null'}
-    elif contract in {PERMISSION_CONTRACT, CONTRACT}:
+    elif contract in _CHOICE_CONTRACTS:
         choices = _permission_choices(readings)
         branches = []
         for fact in (False, True):
@@ -87,7 +89,7 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CON
         'items': _object({
             'path': {'type': 'string', 'enum': [f['path'] for f in fields]},
             'disposition': {'type': 'string', 'enum': ['no_external_factual_commitment', 'supported', 'unsupported', 'uncertain']},
-            'reason': {'type': 'string', 'minLength': 1, 'maxLength': 2048 if contract == CONTRACT else 512},
+            'reason': {'type': 'string', 'minLength': 1, 'maxLength': 2048 if contract in {BOUNDED_REASON_CONTRACT, CONTRACT} else 512},
             'supports': {'type': 'array', 'maxItems': 32, 'items': support},
         })}})
     payload = {'contract': contract, 'source_view_sha256': digest(view.model_dump_json()),
@@ -99,7 +101,7 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CON
         'with subject_role source_owner and its actual subject_ref; the host checks the accepted value hash. '
         'Other supports use a listed permission and null subject_ref/quoted_value. '
     )
-    if contract in {PERMISSION_CONTRACT, CONTRACT}:
+    if contract in _CHOICE_CONTRACTS:
         payload['permission_choices'] = choices
         if not choices:
             schema['properties']['fields']['items']['properties']['supports']['maxItems'] = 0
@@ -132,6 +134,11 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CON
         'tools': [{'type': 'function', 'function': {'name': 'review_life_candidate_v1', 'strict': True,
             'description': 'Assess factual grounding without authoring character behavior.', 'parameters': schema}}],
         'tool_choice': {'type': 'function', 'function': {'name': 'review_life_candidate_v1'}}}
+    if contract == CONTRACT:
+        request['tools'][0]['function']['parameters']['properties']['fields']['items']['required'] = ['path', 'reason', 'supports', 'disposition']
+        request['messages'][0]['content'] += (' Emit the brief reason and source selections before the final disposition. '
+            'The disposition is the final verdict after evaluating support, not an initial guess. '
+            'Do not announce a revised verdict only in the reason while leaving a contradictory disposition.')
     prepared = canonical({'candidate_json': candidate_json, 'provider_raw': provider_raw, 'request': request})
     if len(prepared.encode()) > 256_000:
         raise ValueError('Life review request exceeds its audit bound')
@@ -151,16 +158,16 @@ def inspect_review(*, raw, prepared_json, readings):
     if len(paths) != len(set(paths)) or set(paths) != expected:
         raise ValueError('Life source review omitted or duplicated a candidate field')
     sources = {r['reading_id']: r for r in readings['readings']}
-    choices = {p['permission_id']: p for p in _permission_choices(readings)} if contract in {PERMISSION_CONTRACT, CONTRACT} else {}
+    choices = {p['permission_id']: p for p in _permission_choices(readings)} if contract in _CHOICE_CONTRACTS else {}
     for field in response['fields']:
         inconsistent = ((field['disposition'] == 'supported') != bool(field['supports']))
-        if contract in {PERMISSION_CONTRACT, CONTRACT}:
+        if contract in _CHOICE_CONTRACTS:
             inconsistent = ((field['disposition'] == 'supported' and not field['supports'])
                 or (field['disposition'] == 'no_external_factual_commitment' and bool(field['supports'])))
         if inconsistent:
             raise ValueError('Life review support list contradicts its disposition')
         for support in field['supports']:
-            if contract in {PERMISSION_CONTRACT, CONTRACT}:
+            if contract in _CHOICE_CONTRACTS:
                 choice = choices.get(support['permission_id'])
                 if choice is None:
                     raise ValueError('Life review cited an unavailable permission choice')
@@ -187,7 +194,7 @@ def inspect_review(*, raw, prepared_json, readings):
 
 
 class LifeSourceReviewReceipt(FrozenModel):
-    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4'] = CONTRACT
+    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5'] = CONTRACT
     prepared_json: str = Field(max_length=256_000)
     response_json: str = Field(max_length=64_000)
     request_hash: str = Field(pattern=r'^[0-9a-f]{64}$')

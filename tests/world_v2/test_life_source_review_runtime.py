@@ -133,12 +133,13 @@ async def test_environment_support_uses_closed_permission_tokens_and_survives_re
         author=_ResponseHTTP(text=text), verdicts=['supported'], fault='long_reason')
     assert responses == [text]
     support = reviews.requests[0]['tools'][0]['function']['parameters']['properties']['fields']['items']['properties']['supports']['items']['properties']
+    assert reviews.requests[0]['tools'][0]['function']['parameters']['properties']['fields']['items']['required'] == ['path', 'reason', 'supports', 'disposition']
     assert set(support) == {'permission_id'}
     packet = json.loads(reviews.requests[0]['messages'][1]['content'])
     assert set(support['permission_id']['enum']) == {p['permission_id'] for p in packet['permission_choices']}
     assert all(p['subject_ref'] is None and not p['requires_exact_fact_quote'] for p in packet['permission_choices'])
     result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
-    assert result.life_source_review.contract == 'life-source-review.4'
+    assert result.life_source_review.contract == 'life-source-review.5'
     result.life_source_review.verify(result=result, snapshot=snapshot)
 
 
