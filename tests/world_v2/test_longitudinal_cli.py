@@ -37,6 +37,61 @@ def test_real_provider_requires_explicit_opt_in(tmp_path):
         _cli().parse_options(["--output", str(tmp_path / "fresh"), "--model-mode", "real-provider"])
 
 
+def test_life_candidate_review_requires_real_capture_profile(tmp_path):
+    cli = _cli()
+    with pytest.raises(SystemExit):
+        cli.parse_options(["--output", str(tmp_path / "fresh"), "--require-life-candidate-review"])
+    assert not cli.parse_options(["--output", str(tmp_path / "fresh")]).require_life_candidate_review
+
+
+@pytest.mark.asyncio
+async def test_life_candidate_gate_reaches_real_host_and_evidence_survives_restart(tmp_path, monkeypatch):
+    import sqlite3
+    import companion_daemon.world_v2.longitudinal_journey as runner
+    from companion_daemon.world_v2.life_content_store import StoredLifeContent, life_content_payload_hash
+
+    monkeypatch.setenv("DEEPSEEK_DEBUG_API_KEY", "fixture-debug-key")
+    monkeypatch.setenv("DEEPSEEK_CHARACTER_THINKING_ENABLED", "false")
+
+    def no_network(request):
+        raise AssertionError("composition/restart must not call the provider")
+
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kwargs: httpx.MockTransport(no_network))
+    record = StoredLifeContent(content_ref="test:review-evidence", content_kind="raw_model_request",
+                               text="pinned request", content_payload_hash=life_content_payload_hash("pinned request"))
+
+    async def reopen(**kwargs):
+        kwargs["output"].mkdir()
+        clock = runner.JourneyClock(kwargs["journey"].started_at)
+        assert kwargs['provenance']['life_candidate_review']['enabled'] is True
+        for cycle in range(2):
+            host = kwargs['host_factory'](kwargs['output'] / 'world.sqlite', clock, runner.CaptureDelivery(clock))
+            role = host._semantic_chat.character_interior._registry.for_purpose('world_stimulus_appraisal')
+            reviewer = role._life_source_reviewer
+            assert role.requires_life_source_review
+            assert reviewer.model.max_completion_tokens == 8192
+            try:
+                if cycle == 0:
+                    reviewer.store.put_if_absent(record)
+                assert reviewer.store.read_exact(content_ref=record.content_ref) == record
+            finally:
+                await host.aclose()
+                await host.wait_for_shutdown_quiescence()
+                await kwargs['close_resources']()
+            assert reviewer.model.client.is_closed
+            with pytest.raises(sqlite3.ProgrammingError):
+                reviewer.store.read_exact(content_ref=record.content_ref)
+        return {'completed': True}
+
+    monkeypatch.setattr(runner, 'run_journey', reopen)
+    cli = _cli()
+    result = await cli.run(cli.parse_options([
+        '--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
+        '--allow-real-provider', '--require-life-candidate-review',
+    ]))
+    assert result['completed']
+
+
 def test_whole_source_review_cannot_be_claimed_by_the_legacy_fixture(tmp_path):
     output = tmp_path / "fresh"
     cli = _cli()

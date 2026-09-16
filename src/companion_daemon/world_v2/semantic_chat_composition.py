@@ -14,8 +14,11 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 import logging
 from types import SimpleNamespace
-from typing import Literal
+from typing import Literal, TYPE_CHECKING
 from urllib.parse import urlsplit
+
+if TYPE_CHECKING:
+    from .character_interior.life_source_review import LifeSourceReviewer
 
 from companion_daemon.character import load_character
 from companion_daemon.config import Settings
@@ -790,6 +793,7 @@ def build_semantic_chat_composition(
     visible_author_evidence_first_schema: bool = False,
     visible_source_review_version: str = "1",
     life_source_closure_model: ChatCompletionModel | None = None,
+    life_source_reviewer: LifeSourceReviewer | None = None,
     expression_episode_observer_model: ChatCompletionModel | None = None,
     model_id_prefix: str,
     expression_capabilities: ExpressionDraftCapabilities = (
@@ -1032,6 +1036,7 @@ def build_semantic_chat_composition(
         use_schema_references=visible_author_schema_references,
         evidence_first_schema=visible_author_evidence_first_schema,
         visible_source_review_version=visible_source_review_version,
+        life_source_reviewer=life_source_reviewer,
         source_closure_model=None,
         report_relative_source_closure_model=None,
         source_closure_reselection_lane=None,

@@ -33,6 +33,10 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         help="Require whole-candidate source review in the real-provider capture host (atomic expression).",
     )
     parser.add_argument(
+        "--require-life-candidate-review", action="store_true",
+        help="Install experimental complete Life candidate review with durable evidence; real-provider capture only.",
+    )
+    parser.add_argument(
         "--visible-author-schema-references", action="store_true",
         help="Opt-in local schema references for strict atomic v3; provider qualification pending.",
     )
@@ -74,6 +78,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--allow-real-provider requires --model-mode real-provider")
     if options.require_visible_source_review and options.model_mode != "real-provider":
         parser.error("--require-visible-source-review requires the real-provider capture profile")
+    if options.require_life_candidate_review and options.model_mode != "real-provider":
+        parser.error("--require-life-candidate-review requires the real-provider capture profile")
     if options.visible_author_evidence_first_schema and options.visible_author_tool_version != "3":
         parser.error("--visible-author-evidence-first-schema requires --visible-author-tool-version 3")
     if options.visible_author_schema_references and options.visible_author_tool_version != "3":
@@ -276,6 +282,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
         configured = configured.model_copy(update={"world_v2_expression_episode_mode": "off"})
     capture = None
     owned_models = []
+    owned_review_stores = []
     if not synthetic:
         from companion_daemon.world_v2.longitudinal_model_input_capture import (
             PrivateModelInputCapture,
@@ -290,6 +297,9 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
             *(model.aclose() for model in owned_models), return_exceptions=True
         )
         owned_models.clear()
+        for store in owned_review_stores:
+            store.close()
+        owned_review_stores.clear()
         for result in results:
             if isinstance(result, BaseException):
                 raise result
@@ -320,7 +330,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
 
             usage = usage_store_for_settings(settings)
 
-            def provider(role, *, thinking=False, model_override=None):
+            def provider(role, *, thinking=False, model_override=None, max_tokens=4096):
                 client = DeepSeekChatModel(
                     api_key=settings.deepseek_debug_api_key,
                     base_url=settings.deepseek_base_url,
@@ -331,7 +341,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                     ),
                     thinking_enabled=thinking,
                     reasoning_effort=settings.deepseek_character_thinking_reasoning_effort,
-                    max_completion_tokens=900 if thinking else 4096,
+                    max_completion_tokens=900 if thinking else max_tokens,
                     usage_observer=usage.record,
                     transport=ModelInputCaptureTransport(
                         inner=httpx.AsyncHTTPTransport(trust_env=False),
@@ -351,6 +361,20 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                 ),
                 world_support_model=provider("world_support"),
             )
+            if options.require_life_candidate_review:
+                from companion_daemon.world_v2.character_interior.life_source_review import LifeSourceReviewer
+                from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
+                from companion_daemon.world_v2.qq_c2c_host import qq_c2c_world_id
+
+                # Caller-owned audit store shares the journey DB so restart and
+                # closed-checkpoint backup retain exactly the same evidence.
+                store = SQLiteImmutableLifeContentStore(
+                    path=str(database), world_id=qq_c2c_world_id(settings.primary_user_id),
+                )
+                owned_review_stores.append(store)
+                injected['life_source_reviewer'] = LifeSourceReviewer(
+                    model=provider("life_candidate_review", max_tokens=8192), evidence_store=store,
+                )
             if required_review:
                 visible_reviewer = provider("visible_source_review")
                 from companion_daemon.world_v2.visible_review_protocols import REVIEW_PROTOCOLS
@@ -395,6 +419,11 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
         close_resources=close_models,
         next_command=next_command,
         provenance={
+            "life_candidate_review": {
+                "enabled": options.require_life_candidate_review,
+                "qualification": "unverified",
+                "evidence_storage": "journey_database" if options.require_life_candidate_review else None,
+            },
             **({"visible_author_evidence_first_schema": True}
                if options.visible_author_evidence_first_schema else {}),
             **({"visible_author_schema_references": True}

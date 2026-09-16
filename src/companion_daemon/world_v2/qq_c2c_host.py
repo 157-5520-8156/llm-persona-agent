@@ -19,7 +19,10 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Coroutine, Literal, Mapping, TypeVar
+from typing import Any, Awaitable, Callable, Coroutine, Literal, Mapping, TypeVar, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .character_interior.life_source_review import LifeSourceReviewer
 
 from companion_daemon.config import Settings
 from companion_daemon.qq_delivery import QQDelivery
@@ -3071,6 +3074,7 @@ def build_qq_c2c_host(
     visible_author_evidence_first_schema: bool = False,
     visible_source_review_version: str = "1",
     life_source_closure_model: ChatCompletionModel | None = None,
+    life_source_reviewer: LifeSourceReviewer | None = None,
     candidate_external_proposition_inventory_model: ChatCompletionModel | None = None,
     delivery: QQC2CDelivery | None = None,
     media_transport: MediaProviderTransport | None = None,
@@ -3196,6 +3200,7 @@ def build_qq_c2c_host(
             visible_author_evidence_first_schema=visible_author_evidence_first_schema,
             visible_source_review_version=visible_source_review_version,
             life_source_closure_model=life_source_closure_model,
+            life_source_reviewer=life_source_reviewer,
             model_id_prefix="qq-c2c-v2",
             expression_capabilities=expression_capabilities,
             usage_observer=usage_store.record,
