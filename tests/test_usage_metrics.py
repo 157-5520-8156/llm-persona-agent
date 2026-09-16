@@ -106,6 +106,31 @@ def test_historical_resolve_does_not_mutate_july_row() -> None:
     )
 
 
+@pytest.mark.parametrize('model', ['deepseek-flash', 'deepseek-v4-flash', 'deepseek-v4-flash-vision-exp'])
+def test_v41_flash_aliases_use_effective_cny_rates_and_weekend_schedule(model) -> None:
+    tokens = dict(model=model, prompt_tokens=2_000_000, completion_tokens=1_000_000,
+        cache_hit_tokens=1_000_000, cache_miss_tokens=1_000_000)
+    before = estimate_model_cost(**tokens, at='2026-09-10T03:59:59Z')
+    effective = estimate_model_cost(**tokens, at='2026-09-10T04:00:00Z')
+    weekday = estimate_model_cost(**tokens, at='2026-09-16T02:00:00Z')
+    weekend = estimate_model_cost(**tokens, at='2026-09-19T02:00:00Z')
+    assert before.pricing_version == 'deepseek-2026-08-17-peak'
+    assert effective.pricing_version == 'deepseek-2026-09-10-offpeak'
+    assert effective.cny == pytest.approx(5.02)
+    assert weekday.cny == pytest.approx(10.04)
+    assert weekend.cny == pytest.approx(5.02)
+    assert weekday.usd == pytest.approx(1.506)
+    assert is_deepseek_peak('2026-09-19T02:00:00Z') is False
+
+
+def test_pro_remains_separately_priced_after_revised_retirement_notice() -> None:
+    price = resolve_model_price('deepseek-v4-pro', at='2026-09-16T02:00:00Z')
+    assert price.model == 'deepseek-v4-pro'
+    assert price.cache_miss_cny_per_million == 9.0
+    assert price.output_cny_per_million == 27.0
+    assert resolve_model_price('deepseek-flash', at='2026-09-19T02:00:00Z', conservative_peak=True).window == 'peak'
+
+
 def test_reasoning_tokens_fill_in_when_completion_omits_them() -> None:
     folded = estimate_model_cost(
         model="deepseek-v4-flash",

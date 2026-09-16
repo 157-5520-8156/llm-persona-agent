@@ -13,11 +13,12 @@ from .life_candidate_reading import _object, _unique
 from .life_source_origin import canonical, digest
 
 LEGACY_CONTRACT = 'life-source-review.7'
-CONTRACT = 'life-source-review.8'
+TEMPORAL_CONTRACT = 'life-source-review.8'
+CONTRACT = 'life-source-review.9'
 
 
 def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
-    if contract not in {LEGACY_CONTRACT, CONTRACT}:
+    if contract not in {LEGACY_CONTRACT, TEMPORAL_CONTRACT, CONTRACT}:
         raise ValueError('unsupported Life authorship review contract')
     envelope = json.loads(baseline_json)
     request = envelope['request']
@@ -88,7 +89,7 @@ def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
         'strict': True, 'description': 'Separate new character authorship from every factual obligation.',
         'parameters': schema}}]
     request['tool_choice'] = {'type': 'function', 'function': {'name': 'review_life_candidate_v2'}}
-    if contract == CONTRACT:
+    if contract in {TEMPORAL_CONTRACT, CONTRACT}:
         field = schema['properties']['fields']['items']
         old = field['properties']
         field['properties'] = {
@@ -123,6 +124,16 @@ def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
         request['messages'][0]['content'] = instructions
         request['tools'][0]['function']['name'] = 'review_life_candidate_v3'
         request['tool_choice']['function']['name'] = 'review_life_candidate_v3'
+    if contract == CONTRACT:
+        schema['properties']['coverage'] = {'type': 'string', 'enum': ['complete', 'uncertain']}
+        schema['required'] = list(schema['properties'])
+        request['messages'][0]['content'] = request['messages'][0]['content'].replace(
+            'coverage is per field, not a root key.',
+            'Return coverage for each field AND the whole candidate at the root. '
+            'Root complete attests that the full candidate was reviewed with no omitted obligations; '
+            'root uncertain prevents acceptance even when individual claims have support.')
+        request['tools'][0]['function']['name'] = 'review_life_candidate_v4'
+        request['tool_choice']['function']['name'] = 'review_life_candidate_v4'
     prepared = json.dumps(envelope, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
     if len(prepared.encode()) > 256_000:
         raise ValueError('Life review request exceeds its audit bound')
@@ -141,10 +152,12 @@ def inspect(*, raw, prepared_json, validate_support):
     if len(paths) != len(set(paths)) or set(paths) != set(texts):
         raise ValueError('Life source review omitted or duplicated a candidate field')
     failures = []
-    uncertain = False
+    uncertain = packet['contract'] == CONTRACT and response['coverage'] == 'uncertain'
+    if uncertain:
+        failures.append({'path': '/', 'reason': 'The reviewer could not establish complete candidate coverage.'})
     for field in response['fields']:
         text = texts[field['path']]
-        current = packet['contract'] == CONTRACT
+        current = packet['contract'] in {TEMPORAL_CONTRACT, CONTRACT}
         states = field['created_current_states'] if current else []
         spans = [state['source_span'] for state in states] if current else field['authored_now']
         if any(span not in text for span in spans):

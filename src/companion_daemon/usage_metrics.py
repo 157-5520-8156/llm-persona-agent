@@ -22,6 +22,7 @@ BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 #   https://api-docs.deepseek.com/quick_start/pricing/
 #   https://api-docs.deepseek.com/zh-cn/updates  (effective 2026-08-17 00:00 Beijing)
 DEEPSEEK_PEAK_OFFPEAK_EFFECTIVE_FROM = datetime(2026, 8, 17, 0, 0, tzinfo=BEIJING_TZ)
+DEEPSEEK_V41_EFFECTIVE_FROM = datetime(2026, 9, 10, 4, 0, tzinfo=timezone.utc)
 DEEPSEEK_PEAK_WINDOWS_BEIJING: tuple[tuple[time, time], ...] = (
     (time(9, 0), time(12, 0)),
     (time(14, 0), time(18, 0)),
@@ -104,6 +105,24 @@ DEEPSEEK_V4_FLASH_PEAK_PRICE = ModelPrice(
     cache_miss_cny_per_million=3.0,
     output_cny_per_million=9.0,
     window="peak",
+)
+
+# Official Chinese/English pricing pages verified 2026-09-16; effective date:
+# https://api-docs.deepseek.com/news/news260910/
+# Legacy Flash names route to V4.1-Flash. The current pricing-page footnote
+# supersedes the initial retirement announcement: V4 Pro remains available at
+# its own unchanged rates. Preserve old rows and select by actual call time.
+DEEPSEEK_V41_FLASH_OFFPEAK_PRICE = ModelPrice(
+    model="deepseek-flash", version="deepseek-2026-09-10-offpeak",
+    cache_hit_usd_per_million=0.003, cache_miss_usd_per_million=0.15,
+    output_usd_per_million=0.6, cache_hit_cny_per_million=0.02,
+    cache_miss_cny_per_million=1.0, output_cny_per_million=4.0, window="off-peak",
+)
+DEEPSEEK_V41_FLASH_PEAK_PRICE = ModelPrice(
+    model="deepseek-flash", version="deepseek-2026-09-10-peak",
+    cache_hit_usd_per_million=0.006, cache_miss_usd_per_million=0.3,
+    output_usd_per_million=1.2, cache_hit_cny_per_million=0.04,
+    cache_miss_cny_per_million=2.0, output_cny_per_million=8.0, window="peak",
 )
 
 DEEPSEEK_V4_PRO_OFFPEAK_PRICE = ModelPrice(
@@ -308,7 +327,10 @@ def beijing_datetime(value: datetime | str | None) -> datetime:
 
 
 def is_deepseek_peak(value: datetime | str | None = None) -> bool:
-    clock = beijing_datetime(value).time()
+    local = beijing_datetime(value)
+    if local >= DEEPSEEK_V41_EFFECTIVE_FROM and local.weekday() >= 5:
+        return False
+    clock = local.time()
     return any(start <= clock < end for start, end in DEEPSEEK_PEAK_WINDOWS_BEIJING)
 
 
@@ -387,6 +409,8 @@ def resolve_model_price(
         peak = True if conservative_peak else is_deepseek_peak(instant)
         if family == "pro":
             return DEEPSEEK_V4_PRO_PEAK_PRICE if peak else DEEPSEEK_V4_PRO_OFFPEAK_PRICE
+        if instant >= DEEPSEEK_V41_EFFECTIVE_FROM:
+            return DEEPSEEK_V41_FLASH_PEAK_PRICE if peak else DEEPSEEK_V41_FLASH_OFFPEAK_PRICE
         return DEEPSEEK_V4_FLASH_PEAK_PRICE if peak else DEEPSEEK_V4_FLASH_OFFPEAK_PRICE
     keyed = MODEL_PRICES.get(model)
     if keyed is not None:

@@ -81,7 +81,7 @@ def test_usage_store_records_and_aggregates_cost(tmp_path) -> None:
     assert monthly == pytest.approx(expected.cny, abs=0.01)
     assert daily == pytest.approx(expected.cny, abs=0.01)
     assert cost_cny == pytest.approx(expected.cny, abs=0.01)
-    assert version.startswith("deepseek-2026-08-17-")
+    assert version == expected.pricing_version
     assert account == "debug"
 
 
@@ -526,15 +526,23 @@ def test_image_usage_events_count_against_background_cny_cap(
 
 
 def test_background_cap_reprices_legacy_half_price_rows(
-    tmp_path,
+    tmp_path, monkeypatch,
 ) -> None:
     """Stored cost_cny=1.008 (old USD×7.2) must not sneak under a ¥1.2 soft cap.
 
-    1M Flash cache-miss is ¥1.5 off-peak / ¥3.0 peak after 2026-08-17. The old
+    1M Flash cache-miss was ¥1.5 off-peak / ¥3.0 peak in August 2026. The old
     table priced that same row at ¥1.008, which would have admitted the next
     background call.
     """
 
+    import companion_daemon.world_v2.model_usage_budget as budget_module
+
+    class AugustClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 20, 12, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(budget_module, "datetime", AugustClock)
     path = tmp_path / "usage.sqlite"
     store = WorldV2UsageStore(
         path=str(path),
@@ -542,7 +550,7 @@ def test_background_cap_reprices_legacy_half_price_rows(
         daily_budget_cny=4.0,
         soft_daily_budget_cny=1.2,
     )
-    recorded_at = datetime.now(timezone.utc).isoformat()
+    recorded_at = AugustClock.now(timezone.utc).isoformat()
     connection = sqlite3.connect(path)
     try:
         connection.execute(

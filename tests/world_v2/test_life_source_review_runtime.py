@@ -80,7 +80,7 @@ class ReviewHTTP:
         if self.fault == 'authorship_with_rejected_past':
             target = next(f for f in fields if f['path'].endswith('/response_text'))
             target['created_current_states'] = [{'source_span': next(f['text'] for f in packet['text_fields'] if f['path'] == target['path']), 'state_description': 'Fixture current state with rejected embedded past.', 'subject_ref': packet['current_authorship_authority']['actor_ref'], 'time_relation': 'current'}]
-        return _http_result(body, {'fields': fields})
+        return _http_result(body, {'fields': fields, 'coverage': 'uncertain' if self.fault == 'incomplete_candidate' else 'complete'})
 
 
 class CorrectingAuthor(_ResponseHTTP):
@@ -168,7 +168,7 @@ async def test_environment_support_uses_closed_permission_tokens_and_survives_re
     assert set(support['permission_id']['enum']) == {p['permission_id'] for p in packet['permission_choices']}
     assert all(p['subject_ref'] is None and not p['requires_exact_fact_quote'] for p in packet['permission_choices'])
     result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
-    assert result.life_source_review.contract == 'life-source-review.8'
+    assert result.life_source_review.contract == 'life-source-review.9'
     authority = packet['current_authorship_authority']
     assert authority['actor_ref'] == snapshot.actor_ref
     assert authority['logical_time'] == snapshot.logical_time.isoformat()
@@ -210,14 +210,14 @@ async def test_fact_permission_choice_still_requires_exact_accepted_value(tmp_pa
         fields = [{'path': f['path'], 'disposition': 'no_external_factual_commitment', 'reason': 'Fixture protocol value.', 'supports': []} for f in packet['text_fields']]
         summary = next(f for f in fields if f['path'] == '/summary')
         summary.update(disposition='supported', supports=[{'permission_id': choice['permission_id'], 'quoted_value': VALUE}])
-        assert inspect_review(raw=canonical({'fields': _wire_fields(packet, fields)}), prepared_json=prepared, readings=readings)[0] == 'accepted'
+        assert inspect_review(raw=canonical({'fields': _wire_fields(packet, fields), 'coverage': 'complete'}), prepared_json=prepared, readings=readings)[0] == 'accepted'
         summary['supports'][0]['quoted_value'] = case.observation.text
         with pytest.raises(ValueError, match='exact accepted Fact value'):
-            inspect_review(raw=canonical({'fields': _wire_fields(packet, fields)}), prepared_json=prepared, readings=readings)
+            inspect_review(raw=canonical({'fields': _wire_fields(packet, fields), 'coverage': 'complete'}), prepared_json=prepared, readings=readings)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('fault', ['timeout', 'omitted_field', 'borrow_environment', 'uncertain', 'invalid_authorship_span', 'incomplete_decomposition', 'past_state_as_creation', 'another_actor_creation'])
+@pytest.mark.parametrize('fault', ['timeout', 'omitted_field', 'borrow_environment', 'uncertain', 'invalid_authorship_span', 'incomplete_decomposition', 'past_state_as_creation', 'another_actor_creation', 'incomplete_candidate'])
 async def test_incomplete_review_never_becomes_author_correction_or_a_life_write(tmp_path, monkeypatch, fault):
     author = _ResponseHTTP(text=FEELING)
     responses, checkpoints, _, reviews = await run_gate(tmp_path, monkeypatch, author=author,
