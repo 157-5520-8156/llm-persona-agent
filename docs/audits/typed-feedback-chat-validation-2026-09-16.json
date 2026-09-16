@@ -1,0 +1,102 @@
+{
+  "code_head": "617d0f98eb1550d6bc445dca1cd747e273b16ea7",
+  "qualification": "manual_only / qualification_incomplete",
+  "review_version": "16",
+  "previous_diagnosis_correction": "Native trailing closers were already handled by the frozen transport. Four previous real structure failures were object-valued string conditions, not all six raw JSON syntax failures.",
+  "local_tests": {
+    "existing_reader_review_paths": 155,
+    "new_v16_runtime_replay_paths": 6,
+    "ruff": "passed"
+  },
+  "actual_structure": [
+    {
+      "model": "deepseek-v4-flash",
+      "outcome": "structure_passed",
+      "count": 6
+    },
+    {
+      "model": "deepseek-v4-pro",
+      "outcome": "structure_failed",
+      "count": 1
+    },
+    {
+      "model": "deepseek-v4-pro",
+      "outcome": "structure_passed",
+      "count": 6
+    }
+  ],
+  "actual_structure_failures": [
+    {
+      "capture_id": "model-input:a6cedeabb74c492bae0843ce3496d50f",
+      "error": "1 validation error for PresuppositionResponse\ndecisions.4.hypothetical_conditions.0\n  Input should be a valid string [type=string_type, input_value={'condition': '如果coun...mpanion什么都不想'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+    }
+  ],
+  "dialogue": {
+    "new_user_turns": 2,
+    "new_deliveries": 0,
+    "delivered_after_correction": false,
+    "current_feelings_recognized": true,
+    "unresolved": [
+      "unsupported habitual thought descriptions survived correction",
+      "companion claimed a recent answer despite no delivered answer to this question",
+      "conditional scope is present at reader Beat level but not in fixed source-stage facts"
+    ],
+    "scope_loss_evidence": {
+      "original": "你要真让我什么都不想 我大概三秒就破功",
+      "source_stage_proposition": "companion大概三秒就会破功（无法做到什么都不想）",
+      "source_stage_has_original_beat": false,
+      "source_stage_has_hypothetical_conditions": false,
+      "admission_effect": "not isolated; do not claim this alone caused non-delivery"
+    }
+  },
+  "input_measurement": {
+    "baseline_request": "model-input:82fef76eecb5495f8544706cd4ee1843",
+    "system_utf8_bytes": 38968,
+    "user_utf8_bytes": 90088,
+    "largest_user_materials_json_bytes": {
+      "affect": 19507,
+      "appraisals": 13154,
+      "recent_dialogue": 9810
+    },
+    "lossless_shared_strings_offline_only": {
+      "full_user_utf8_before": 90088,
+      "full_user_utf8_after": 70616,
+      "exact_roundtrip": true,
+      "installed": false,
+      "provider_tokens_not_measured": true
+    },
+    "new_author_prompt_tokens": [
+      48415,
+      50537,
+      48331,
+      50500,
+      47716,
+      49333
+    ]
+  },
+  "billing": {
+    "physical_calls": 27,
+    "billing_states": {
+      "known": 27
+    },
+    "known_repository_estimate_cny": "0.5864941400000000031",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 1146,
+    "reservation_rows": 1143,
+    "inherited_rows_unchanged": true,
+    "known_native_token_joins_verified": 27
+  },
+  "inherited_unknown_holds": 37,
+  "runtime_and_billing_checkpoint": "/Users/geoff/Projects/Girl-Agent-release-repair/output/private-audits/release-typed-feedback-chat-20260916-01/run",
+  "logical_at": "2026-09-14T14:50:00+00:00",
+  "ledger_cursor": 3251,
+  "cold_replay_hash_matches": true,
+  "real_qq": false,
+  "deployed": false,
+  "evidence": {
+    "reconciliation_path": "output/private-audits/release-typed-feedback-chat-20260916-01/reconciliation.json",
+    "sha256": "9ef9910aad6c5e745f4351fe21707252d53712c00a425a91139e55f965499f63"
+  },
+  "official_provider_reference": "https://api-docs.deepseek.com/guides/tool_calls/",
+  "official_reference_scope": "Strict tool calls require beta endpoint and strict true; local runtime validation remains necessary."
+}

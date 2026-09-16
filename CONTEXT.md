@@ -83,6 +83,16 @@ unqualified. The default remains unconfigured; see current release status and
 `docs/audits/life-chat-integration-validation-2026-09-16.json`, as well as
 `docs/design/life-source-review-gate-2026-09-16.md`.
 
+Explicit visible review v16 pins string-condition guidance and includes reader
+claim modes in same-character rejection feedback, retaining v15 source permissions.
+Two further real turns still failed delivery; present feelings were recognized,
+but habitual/past claims and a false recent-answer claim survived correction.
+The previous raw-JSON diagnosis was too broad: frozen closing-tail handling already
+accepts redundant closers; actual structural retries concerned object-valued string
+conditions. Beat-level hypothetical scope is absent from the source-stage fixed
+facts, a concrete interface risk still requiring a scoped repair and real proof.
+See `docs/audits/typed-feedback-chat-validation-2026-09-16.json`.
+
 Explicit review15 restricts retained prehistory direct readings to narrative text
 and permits declared historical people/groups alongside the companion. The latest
 opt-in author schema ordering places evidence before Beats in actual provider
