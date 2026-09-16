@@ -22,7 +22,7 @@ from .visible_source_witness_experiment import _json, _unique
 
 from .visible_review_protocols import (
     PROTOCOL, SHARED_STRING_PROTOCOL as SHARED_STRING_PROTOCOL, SHARED_STRING_PROTOCOLS,
-    SUBJECTIVE_HISTORY_PROTOCOLS, CONTENT_FIELD_PROTOCOLS, PRESUPPOSITION_PROTOCOLS, PREHISTORY_PROTOCOLS, CONDITION_WIRE_PROTOCOLS, CONTEXTUAL_PROTOCOL, RESELECTING_PROTOCOLS, RECEIPT_PROTOCOLS,
+    SUBJECTIVE_HISTORY_PROTOCOLS, CONTENT_FIELD_PROTOCOLS, PRESUPPOSITION_PROTOCOLS, PREHISTORY_PROTOCOLS, CONDITION_WIRE_PROTOCOLS, CONTEXTUAL_PROTOCOLS, SCOPED_COVERAGE_PROTOCOL, RESELECTING_PROTOCOLS, RECEIPT_PROTOCOLS,
     REVIEW_PROTOCOLS as REVIEW_PROTOCOLS,
     RESELECTING_PROTOCOL as RESELECTING_PROTOCOL,
 )
@@ -160,7 +160,8 @@ def prepare_source_call(*, prepared, meaning_raw_responses):
         shared_strings=pin["protocol"] in SHARED_STRING_PROTOCOLS,
         content_fields_only=pin["protocol"] in CONTENT_FIELD_PROTOCOLS,
         prehistory_authority=pin["protocol"] in PREHISTORY_PROTOCOLS,
-        contextual_scope=pin["protocol"] == CONTEXTUAL_PROTOCOL,
+        contextual_scope=pin["protocol"] in CONTEXTUAL_PROTOCOLS,
+        scoped_coverage=pin["protocol"] == SCOPED_COVERAGE_PROTOCOL,
     )
     if source is None:
         return None
@@ -231,10 +232,11 @@ def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, sourc
             shared_strings=pin["protocol"] in SHARED_STRING_PROTOCOLS,
             content_fields_only=pin["protocol"] in CONTENT_FIELD_PROTOCOLS,
             prehistory_authority=pin["protocol"] in PREHISTORY_PROTOCOLS,
-            contextual_scope=pin["protocol"] == CONTEXTUAL_PROTOCOL,
+            contextual_scope=pin["protocol"] in CONTEXTUAL_PROTOCOLS,
+            scoped_coverage=pin["protocol"] == SCOPED_COVERAGE_PROTOCOL,
         )
         support = source.inspect_response(source_raw_response)
-    if pin["protocol"] == CONTEXTUAL_PROTOCOL:
+    if pin["protocol"] in CONTEXTUAL_PROTOCOLS:
         if support["inconclusive"]:
             raise IndependentReviewInconclusive("contextual assertion scope or whole-Beat reading is unresolved")
         return tuple(support["beat_outcomes"]), readings, support
@@ -263,7 +265,7 @@ class IndependentVisibleReviewRejected(ValueError):
 
 
 class IndependentVisibleReviewReceipt(FrozenModel):
-    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10", "visible-source-review-receipt.11", "visible-source-review-receipt.12", "visible-source-review-receipt.13", "visible-source-review-receipt.14", "visible-source-review-receipt.15", "visible-source-review-receipt.16", "visible-source-review-receipt.17"] = RECEIPT_CONTRACT
+    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10", "visible-source-review-receipt.11", "visible-source-review-receipt.12", "visible-source-review-receipt.13", "visible-source-review-receipt.14", "visible-source-review-receipt.15", "visible-source-review-receipt.16", "visible-source-review-receipt.17", "visible-source-review-receipt.18"] = RECEIPT_CONTRACT
     prepared_json: str = Field(min_length=2, max_length=MAX_BYTES)
     author: VisibleReviewAuthorBinding
     meaning_reviews: tuple[VisibleReviewInvocationBinding, VisibleReviewInvocationBinding]

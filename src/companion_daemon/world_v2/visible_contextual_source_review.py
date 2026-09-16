@@ -16,6 +16,7 @@ from .visible_source_reading_experiment import _catalog
 from .visible_source_witness_experiment import _json, _unique, prepare_witness_experiment
 
 CONTRACT = 'visible-contextual-source-review.1'
+SCOPED_COVERAGE_CONTRACT = 'visible-contextual-source-review.2'
 
 INSTRUCTION = (
     '你审核完整候选发言在原语境中实际断言的事实与来源。visible_beats 是完整原句；'
@@ -78,7 +79,7 @@ class PreparedContextualSourceReview:
         pin = json.loads(self.payload_json, object_pairs_hook=_unique)
         expected = prepare_contextual_source_review(
             meanings=tuple(IndependentMeaning(PreparedCandidateMeaning(m['preparation_json']), m['raw_response'])
-                           for m in pin['meanings']), sources=tuple(pin['sources']))
+                           for m in pin['meanings']), sources=tuple(pin['sources']), scoped_coverage=pin['contract'] == SCOPED_COVERAGE_CONTRACT)
         if expected.payload_json != self.payload_json:
             raise ValueError('contextual review differs from its original compilation')
         value = _validation(raw, pin['request']['tools'][0]['function']['parameters'])
@@ -87,13 +88,16 @@ class PreparedContextualSourceReview:
         if len(ids) != len(set(ids)) or set(ids) != set(facts):
             raise ValueError('contextual review must cover every extracted fact exactly once')
         beats = value['beat_decisions']
+        scoped = pin['contract'] == SCOPED_COVERAGE_CONTRACT
+        omission_key = 'unaccounted_record_bound_assertions' if scoped else 'unaccounted_assertions'
+        unresolved_key = 'blocking_scope_ambiguities' if scoped else 'unresolved_details'
         indexes = [b['beat_index'] for b in beats]
         if len(indexes) != len(set(indexes)) or set(indexes) != set(range(len(pin['beats']))):
             raise ValueError('contextual review must cover every original Beat exactly once')
         by_beat = {b['beat_index']: b for b in beats}
         catalog = {r['reading_id']: r for r in pin['catalog']}
         decisions = []
-        uncertain = any(not b['review_complete'] or b['unresolved_details'] for b in beats)
+        uncertain = any(not b['review_complete'] or b[unresolved_key] for b in beats)
         for decision in value['fact_decisions']:
             fact = facts[decision['fact_id']]
             selected = decision['reading_ids']
@@ -127,17 +131,20 @@ class PreparedContextualSourceReview:
         for index in range(len(pin['beats'])):
             beat = by_beat[index]
             local = [d for d in decisions if d['beat_index'] == index]
-            omissions.extend({'beat_index': index, 'proposition': p} for p in beat['unaccounted_assertions'])
-            outcomes.append('unclosed' if beat['unaccounted_assertions'] or any(d['outcome'] == 'rejected' for d in local)
+            omissions.extend({'beat_index': index, 'proposition': p} for p in beat[omission_key])
+            outcomes.append('unclosed' if beat[omission_key] or any(d['outcome'] == 'rejected' for d in local)
                             else 'closed' if any(d['outcome'] == 'supported' for d in local) else 'source_free')
-        return {'contract': CONTRACT, 'preparation_sha256': self.sha256,
+        return {'contract': pin['contract'], 'preparation_sha256': self.sha256,
                 'response_sha256': hashlib.sha256(raw.encode()).hexdigest(),
                 'fact_decisions': decisions, 'beat_outcomes': outcomes, 'unaccounted_assertions': omissions,
                 'inconclusive': uncertain, 'reviewer_response': value, 'receipt_authority': False,
                 'semantic_qualification': 'unproven'}
 
 
-def prepare_contextual_source_review(*, meanings, sources):
+def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False):
+    if type(scoped_coverage) is not bool:
+        raise TypeError('scoped coverage must be boolean')
+    contract = SCOPED_COVERAGE_CONTRACT if scoped_coverage else CONTRACT
     from .visible_independent_meanings import _readings
     interpreted, beats = _readings(meanings)
     facts = [{**fact, 'fact_id': f"m{index}:{fact['fact_id']}", 'meaning_index': index,
@@ -153,7 +160,7 @@ def prepare_contextual_source_review(*, meanings, sources):
     body = json.loads(witness.request()['messages'][1]['content'])
     del body['source_reference_tables']
     body.pop('world_claims', None)
-    body['output_contract']['contract'] = CONTRACT
+    body['output_contract']['contract'] = contract
     body['source_support_contract'] = 'Use only eligible field reading_ids; source permissions are ceilings, not entailment.'
     body['source_materials'] = pack_shared_strings([
         {'material': material, 'readings': [
@@ -169,21 +176,52 @@ def prepare_contextual_source_review(*, meanings, sources):
         'explanation': {'type': 'string'},
     })
     schema = _object({
-        'contract': {'type': 'string', 'enum': [CONTRACT]},
+        'contract': {'type': 'string', 'enum': [contract]},
         'fact_decisions': {'type': 'array', 'items': fact_item, **({'maxItems': 0} if not facts else {})},
         'beat_decisions': {'type': 'array', 'items': _object({
             'beat_index': {'type': 'integer', 'enum': list(range(len(beats)))},
             'review_complete': {'type': 'boolean'}, 'unaccounted_assertions': _strings(), 'unresolved_details': _strings(),
         })},
     })
-    name = 'review_contextual_candidate_sources_v1'
-    request = {'messages': [{'role': 'system', 'content': INSTRUCTION},
+    instruction = INSTRUCTION
+    if scoped_coverage:
+        beat_schema = schema['properties']['beat_decisions']['items']
+        props = beat_schema['properties']
+        props['unaccounted_record_bound_assertions'] = props.pop('unaccounted_assertions')
+        props['blocking_scope_ambiguities'] = props.pop('unresolved_details')
+        props['non_record_expressions'] = _strings()
+        props['non_record_expressions']['description'] = (
+            '原句中无需历史记录的内容：当下新产生的角色感受、态度、意愿，纯假设预测、可能性、一般建议与未知问题答案。'
+            '列出这些内容以证明读过；不把它们列入记录依赖断言。只豁免该表达本身，其中历史或外部事实另行检查。')
+        props['unaccounted_record_bound_assertions']['description'] = (
+            '仅列出两份 fixed_facts 未覆盖、且原句确实声称发生/成立的外部事实、过去经历/内心、习惯或旧言语。'
+            '不是所有未列入 fixed_facts 的语义。当前角色感受/意愿和未声称成立的条件不属于此处。'
+            '确定存在这种断言而材料不支持时列在这里，不列为不确定。')
+        props['blocking_scope_ambiguities']['description'] = (
+            '仅列出阻止判定事实承诺或来源支持的实质歧义/相关来源不可读。'
+            '普通代词、省略、比喻或非事实假设的细节不完整，只要不影响事实权限判断就不填。'
+            '来源目录没有对应记录属于缺乏支持，不属于歧义。')
+        beat_schema['required'] = list(props)
+        fact_item['properties']['source_support']['description'] = (
+            '所选材料正文是否实际支持完整命题；有可选 reading_id 仅代表权限合格，不代表内容匹配。'
+            '旧发言不证明实际经历，也不证明已回复另一个问题。没有匹配记录则 false。')
+        fact_item['properties']['assertion_status']['description'] = (
+            '按原句事实承诺判断；纯假设预测不是必然事实，当前自主感受不是过去历史。'
+            '不因记录不存在而变更类别；其中嵌入的既往前提仍需核验。')
+        instruction = instruction.replace('unaccounted_assertions', 'unaccounted_record_bound_assertions').replace('unresolved_details', 'blocking_scope_ambiguities')
+        instruction += (
+            '每条气泡先区分无需记录的 non_record_expressions 与依赖记录的实际断言。'
+            '当下作者可自由形成的感受/意愿无需来源；记录依赖是权限概念，不是语法上陈述句的同义词。'
+            '纯条件不预设条件已经成立，未知问题不预设答案。日常省略或比喻不等于阻断性歧义。'
+            '实际过去行为找不到支持时应明确不支持，不能仅因缺少更多细节而宣告无法判断。')
+    name = 'review_contextual_candidate_sources_v2' if scoped_coverage else 'review_contextual_candidate_sources_v1'
+    request = {'messages': [{'role': 'system', 'content': instruction},
                             {'role': 'user', 'content': json.dumps(body, ensure_ascii=False, separators=(',', ':'))}],
                'temperature': 0.0, 'tools': [{'type': 'function', 'function': {
                    'name': name, 'description': '核对原句断言范围、完整性和来源。', 'strict': True, 'parameters': schema}}],
                'tool_choice': {'type': 'function', 'function': {'name': name}}}
     return PreparedContextualSourceReview(_json({
-        'contract': CONTRACT, 'beats': beats, 'facts': facts, 'catalog': catalog, 'sources': sources,
+        'contract': contract, 'beats': beats, 'facts': facts, 'catalog': catalog, 'sources': sources,
         'meanings': [{'preparation_json': m.preparation.payload_json, 'raw_response': m.raw_response} for m in meanings],
         'request': request,
     }))

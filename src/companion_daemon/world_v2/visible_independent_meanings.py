@@ -105,15 +105,17 @@ class PreparedIndependentMeanings:
 
 def prepare_independent_meanings_sources(
     *, meanings: tuple[IndependentMeaning, IndependentMeaning], sources: tuple[dict, ...], shared_strings: bool = False,
-    content_fields_only: bool = False, prehistory_authority: bool = False, contextual_scope: bool = False,
+    content_fields_only: bool = False, prehistory_authority: bool = False, contextual_scope: bool = False, scoped_coverage: bool = False,
 ) -> PreparedIndependentMeanings | PreparedContextualSourceReview | None:
+    if type(scoped_coverage) is not bool or (scoped_coverage and not contextual_scope):
+        raise ValueError("scoped coverage requires contextual scope")
     if type(contextual_scope) is not bool:
         raise TypeError("contextual scope flag must be boolean")
     if contextual_scope:
         if not (shared_strings and content_fields_only and prehistory_authority):
             raise ValueError("contextual review requires current source permissions")
         from .visible_contextual_source_review import prepare_contextual_source_review
-        return prepare_contextual_source_review(meanings=meanings, sources=sources)
+        return prepare_contextual_source_review(meanings=meanings, sources=sources, scoped_coverage=scoped_coverage)
     if type(shared_strings) is not bool:
         raise TypeError("shared string presentation flag must be boolean")
     if type(content_fields_only) is not bool or (content_fields_only and not shared_strings):

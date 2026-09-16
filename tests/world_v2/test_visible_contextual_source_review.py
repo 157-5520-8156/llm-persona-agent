@@ -198,3 +198,28 @@ async def test_contextual_judgment_drives_admission_correction_and_technical_fai
                 assert '角色昨天散步' in detail and 'unaccounted_assertion' in detail
             evidence = app.export_replay_evidence()
             assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
+
+
+@pytest.mark.parametrize('fault', [None, 'omission', 'ambiguity', 'missing_field'])
+def test_scoped_coverage_separates_non_record_expression_from_missing_records(fault):
+    meaning = _meaning(mode='current_private_expression')
+    prep = prepare_contextual_source_review(meanings=(meaning, meaning), sources=(), scoped_coverage=True)
+    body = json.loads(prep.request()['messages'][1]['content'])
+    response = {'contract': body['output_contract']['contract'], 'fact_decisions': [],
+                'beat_decisions': [{'beat_index': 0, 'review_complete': True,
+                    'unaccounted_record_bound_assertions': [], 'blocking_scope_ambiguities': [],
+                    'non_record_expressions': ['角色此刻提出一个假设预测']}]}
+    beat = response['beat_decisions'][0]
+    if fault == 'omission':
+        beat['unaccounted_record_bound_assertions'] = ['角色昨天散步']
+    elif fault == 'ambiguity':
+        beat['blocking_scope_ambiguities'] = ['无法判断是实际发生还是假设']
+    elif fault == 'missing_field':
+        del beat['non_record_expressions']
+        with pytest.raises(ValueError):
+            prep.inspect_response(json.dumps(response))
+        return
+    result = prep.inspect_response(json.dumps(response))
+    assert result['inconclusive'] is (fault == 'ambiguity')
+    assert result['beat_outcomes'] == (['unclosed'] if fault == 'omission' else ['source_free'])
+    assert result['contract'] == 'visible-contextual-source-review.2'

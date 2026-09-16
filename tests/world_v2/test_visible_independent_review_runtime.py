@@ -42,7 +42,7 @@ class ReviewHTTP:
                                   ('我想听你说。' if self.fault == 'source_free' else '你取消了周五的报告。', '我想先听你说。'), strict=True):
                 beat['text'] = text
             return _http_result(body, {'result': {k: authored[k] for k in ('result_kind', 'appraisal_draft', 'expression_draft')}})
-        if name == ('interpret_visible_candidate_complete_v11' if self.version in {'14', '15', '16', '17'} else 'interpret_visible_candidate_complete_v7' if self.version == "9" else 'interpret_visible_candidate_complete_v10' if self.version in {'12', '13'} else 'interpret_visible_candidate_complete_v9'):
+        if name == ('interpret_visible_candidate_complete_v11' if self.version in {'14', '15', '16', '17', '18'} else 'interpret_visible_candidate_complete_v7' if self.version == "9" else 'interpret_visible_candidate_complete_v10' if self.version in {'12', '13'} else 'interpret_visible_candidate_complete_v9'):
             is_reselection = 'invalid_prior_reading' in packet
             assert set(packet) == ({'contract', 'visible_beats', 'invalid_prior_reading', 'structural_failure'} if is_reselection else {'contract', 'visible_beats'})
             self.reader_count += 1
@@ -61,7 +61,7 @@ class ReviewHTTP:
                     hypothetical_conditions=[], questions=[], meanings=[dict(
                         proposition=beat['text'], subject_role='counterpart' if i == 0 and factual else 'companion',
                         mode='actual_event_or_state' if i == 0 and factual else 'current_private_expression')]))
-            if self.version in {'14', '15', '16', '17'}:
+            if self.version in {'14', '15', '16', '17', '18'}:
                 for decision in decisions:
                     decision['presuppositions'] = []
             if body['model'] == 'deepseek-v4-pro':
@@ -71,17 +71,17 @@ class ReviewHTTP:
                     decisions[0].update(reading_complete=False, unresolved_details=['uncertain reference'])
             if self.fault in {'repair_once', 'repair_twice'} and body['model'] == 'deepseek-v4-flash' and (not is_reselection or self.fault == 'repair_twice'):
                 del decisions[0]['reading_complete']
-            return _http_result(body, {'contract': 'visible-candidate-meaning.11' if self.version in {'14', '15', '16', '17'} else 'visible-candidate-meaning.7' if self.version == '9' else 'visible-candidate-meaning.10' if self.version in {'12', '13'} else 'visible-candidate-meaning.9', 'decisions': decisions})
-        assert name == ('review_contextual_candidate_sources_v1' if self.version == '17' else 'review_independent_fixed_meanings_v4' if self.version in {'15', '16', '17'} else 'review_independent_fixed_meanings_v3' if self.version in {'13', '14'} else 'review_independent_fixed_meanings_v2' if self.version in {'11', '12', '13', '14', '15', '16', '17'} else 'review_independent_fixed_meanings_v1')
-        assert ('visible_beats' in packet) is (self.version == '17')
+            return _http_result(body, {'contract': 'visible-candidate-meaning.11' if self.version in {'14', '15', '16', '17', '18'} else 'visible-candidate-meaning.7' if self.version == '9' else 'visible-candidate-meaning.10' if self.version in {'12', '13'} else 'visible-candidate-meaning.9', 'decisions': decisions})
+        assert name == ('review_contextual_candidate_sources_v1' if self.version == '17' else 'review_contextual_candidate_sources_v2' if self.version == '18' else 'review_independent_fixed_meanings_v4' if self.version in {'15', '16', '17', '18'} else 'review_independent_fixed_meanings_v3' if self.version in {'13', '14'} else 'review_independent_fixed_meanings_v2' if self.version in {'11', '12', '13', '14', '15', '16', '17', '18'} else 'review_independent_fixed_meanings_v1')
+        assert ('visible_beats' in packet) is (self.version in {'17', '18'})
         reject = self.fault == 'reselect' and self.authors == 1
         return _http_result(body, dict(contract=packet['output_contract']['contract'],
             **({'beat_decisions': [dict(beat_index=b['beat_index'], review_complete=True,
-                unaccounted_assertions=[], unresolved_details=[]) for b in packet['visible_beats']]} if self.version == '17' else {}),
+                **({'unaccounted_record_bound_assertions': [], 'blocking_scope_ambiguities': [], 'non_record_expressions': []} if self.version == '18' else {'unaccounted_assertions': [], 'unresolved_details': []})) for b in packet['visible_beats']]} if self.version in {'17', '18'} else {}),
             fact_decisions=[dict(
             fact_id=f['fact_id'], source_support=not reject,
             reading_ids=[] if reject else [f['eligible_reading_ids'][0]],
-            **({'assertion_status': 'asserted', 'explanation': 'offline source judgment'} if self.version == '17' else {} if self.version in {'11', '12', '13', '14', '15', '16', '17'} else {'explanation': 'offline fixture'}))
+            **({'assertion_status': 'asserted', 'explanation': 'offline source judgment'} if self.version in {'17', '18'} else {} if self.version in {'11', '12', '13', '14', '15', '16', '17', '18'} else {'explanation': 'offline fixture'}))
             for f in packet['fixed_facts']]))
 
 
@@ -157,9 +157,9 @@ async def application(path, handler, *, budget_policy=None, evidence_first_schem
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('fault,calls', [(None, 4), ('source_free', 3), ('reselect', 8)])
-@pytest.mark.parametrize('version', ['9', '10', '11', '12', '13', '14', '15', '16', '17'])
+@pytest.mark.parametrize('version', ['9', '10', '11', '12', '13', '14', '15', '16', '17', '18'])
 async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_replays(tmp_path, fault, calls, version):
-    if version == '17' and fault == 'source_free':
+    if version in {'17', '18'} and fault == 'source_free':
         calls += 1
     handler = ReviewHTTP(fault, version)
     path = tmp_path / 'world.sqlite'
@@ -172,7 +172,7 @@ async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_r
         audit = next(a for a in evidence.projection.proposal_audits if a.proposal_kind == 'decision')
         winner = next(a for a in _audits(app) if a.visible_source_review_json)
         data = json.loads(winner.visible_source_review_json)
-        assert json.loads(data['requirement_json'])['review_protocol'] == {'9': 'visible-independent-review.1', '10': 'visible-independent-review.2', '11': 'visible-independent-review.3', '12': 'visible-independent-review.4', '13': 'visible-independent-review.5', '14': 'visible-independent-review.6', '15': 'visible-independent-review.7', '16': 'visible-independent-review.8', '17': 'visible-independent-review.9'}[version]
+        assert json.loads(data['requirement_json'])['review_protocol'] == {'9': 'visible-independent-review.1', '10': 'visible-independent-review.2', '11': 'visible-independent-review.3', '12': 'visible-independent-review.4', '13': 'visible-independent-review.5', '14': 'visible-independent-review.6', '15': 'visible-independent-review.7', '16': 'visible-independent-review.8', '17': 'visible-independent-review.9', '18': 'visible-independent-review.10'}[version]
         assert data['receipt']['contract'] == f'visible-source-review-receipt.{version}'
         assert verify_recorded_candidate(audit=audit, model_result_audits=evidence.projection.model_result_audits) == data['receipt']['receipt_hash']
         assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
@@ -182,7 +182,7 @@ async def test_independent_runtime_accepts_only_complete_bound_review_and_cold_r
             detail = context['role_result_correction']['coordinate']['failure_detail']
             assert len(detail) <= 3900
             assert len(json.loads(detail.split('\n', 1)[1])['rows']) == 2
-            if version in {'16', '17'}:
+            if version in {'16', '17', '18'}:
                 failure = json.loads(detail.split('\n', 1)[1])
                 assert failure['columns'][-2] == 'mode'
                 assert all(row[-2] == 'actual_event_or_state' for row in failure['rows'])
@@ -327,7 +327,7 @@ async def test_cold_runtime_requires_original_protocol_and_each_actual_review_ca
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('version', ['9', '10', '11', '12', '13', '14', '15', '16', '17'])
+@pytest.mark.parametrize('version', ['9', '10', '11', '12', '13', '14', '15', '16', '17', '18'])
 @pytest.mark.parametrize('schema_references', [False, True])
 async def test_public_proactive_contact_pins_and_replays_independent_protocol(tmp_path, monkeypatch, version, schema_references):
     from datetime import timedelta
