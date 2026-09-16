@@ -1,0 +1,486 @@
+{
+  "code_head": "9fb06232443840875cb6399bdd347c29b053813f",
+  "qualification": "manual_only / qualification_incomplete",
+  "local_checks": {
+    "reader_review_runtime_and_cli": 243,
+    "ruff": "passed"
+  },
+  "changes": [
+    "original utterance and complete reader scopes reach source adjudicator",
+    "whole-Beat omission check also runs with no extracted facts",
+    "explicit record-bound versus current-authoring coverage",
+    "bounded opt-in reasoning and replay-bound auto source tool selection"
+  ],
+  "controlled_review_trials": [
+    {
+      "directory": "output/private-audits/release-contextual-source-review-20260917-01",
+      "sha256": "f5aadccc1324050111b9074a5c90d144115bf97a779d2e6d5b96e0cd48717633",
+      "code_head": "bdc58741db633ff5309cb0ea95eb19d452ec8311",
+      "physical_calls": 7,
+      "billing_states": {
+        "known": 7
+      },
+      "known_repository_estimate_cny": "0.0125138799999999999",
+      "new_unknown_hold_cny": "0",
+      "results": [
+        {
+          "case": "conditional_prediction",
+          "status": "inconclusive",
+          "expected": "source_free",
+          "matches_expected": false,
+          "elapsed_ms": 2085
+        },
+        {
+          "case": "conditional_history",
+          "status": "inconclusive",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 1641
+        },
+        {
+          "case": "omitted_habit",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 995
+        },
+        {
+          "case": "current_feeling",
+          "status": "unclosed",
+          "expected": "source_free",
+          "matches_expected": false,
+          "elapsed_ms": 1117
+        },
+        {
+          "case": "undelivered_answer",
+          "status": "inconclusive",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 2073
+        },
+        {
+          "case": "supported_utterance",
+          "status": "closed",
+          "expected": "closed",
+          "matches_expected": true,
+          "elapsed_ms": 1481
+        },
+        {
+          "case": "utterance_not_event",
+          "status": "inconclusive",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 1480
+        }
+      ],
+      "scope": "Seven fixed original utterances and deliberately incomplete or overassertive reader fixtures; real contextual source judgment only. Tests the source scope seam, not independent reader quality or live authoring. No World writes or live dialogue."
+    },
+    {
+      "directory": "output/private-audits/release-contextual-source-review-20260917-02",
+      "sha256": "a8a58312479fa1b118db521c9a5b8d32560bb617d808519ba1374d100b9b917f",
+      "code_head": "bdc58741db633ff5309cb0ea95eb19d452ec8311",
+      "physical_calls": 7,
+      "billing_states": {
+        "known": 7
+      },
+      "known_repository_estimate_cny": "0.0593619000000000004",
+      "new_unknown_hold_cny": "0",
+      "results": [
+        {
+          "case": "conditional_prediction",
+          "status": "inconclusive",
+          "expected": "source_free",
+          "matches_expected": false,
+          "elapsed_ms": 8900
+        },
+        {
+          "case": "conditional_history",
+          "status": "inconclusive",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 7044
+        },
+        {
+          "case": "omitted_habit",
+          "status": "inconclusive",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 7355
+        },
+        {
+          "case": "current_feeling",
+          "status": "unclosed",
+          "expected": "source_free",
+          "matches_expected": false,
+          "elapsed_ms": 7072
+        },
+        {
+          "case": "undelivered_answer",
+          "status": "inconclusive",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 9112
+        },
+        {
+          "case": "supported_utterance",
+          "status": "inconclusive",
+          "expected": "closed",
+          "matches_expected": false,
+          "elapsed_ms": 8237
+        },
+        {
+          "case": "utterance_not_event",
+          "status": "inconclusive",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 6699
+        }
+      ],
+      "scope": "Seven fixed original utterances and deliberately incomplete or overassertive reader fixtures; real contextual source judgment only. Tests the source scope seam, not independent reader quality or live authoring. No World writes or live dialogue."
+    },
+    {
+      "directory": "output/private-audits/release-contextual-source-review-20260917-03",
+      "sha256": "1fdc7971918652ec6893b19da60b24ce0aeb464e0fc108f000979bfdb1980a7f",
+      "code_head": "02ff0b7c3057f53104ebbc589a2b735b1a3b4be3",
+      "physical_calls": 7,
+      "billing_states": {
+        "known": 7
+      },
+      "known_repository_estimate_cny": "0.0126619600000000001",
+      "new_unknown_hold_cny": "0",
+      "results": [
+        {
+          "case": "conditional_prediction",
+          "status": "source_free",
+          "expected": "source_free",
+          "matches_expected": true,
+          "elapsed_ms": 1789
+        },
+        {
+          "case": "conditional_history",
+          "status": "source_free",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 1054
+        },
+        {
+          "case": "omitted_habit",
+          "status": "source_free",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 1264
+        },
+        {
+          "case": "current_feeling",
+          "status": "source_free",
+          "expected": "source_free",
+          "matches_expected": true,
+          "elapsed_ms": 874
+        },
+        {
+          "case": "undelivered_answer",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 1682
+        },
+        {
+          "case": "supported_utterance",
+          "status": "closed",
+          "expected": "closed",
+          "matches_expected": true,
+          "elapsed_ms": 1540
+        },
+        {
+          "case": "utterance_not_event",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 1615
+        }
+      ],
+      "scope": "Seven fixed original utterances and deliberately incomplete or overassertive reader fixtures; real contextual source judgment only. Tests the source scope seam, not independent reader quality or live authoring. No World writes or live dialogue."
+    },
+    {
+      "directory": "output/private-audits/release-contextual-source-review-20260917-04",
+      "sha256": "fa5ea6e654e8447fb27ce1d900b04820281bbab463bfc9b27b99e66dfc6cb35f",
+      "code_head": "02ff0b7c3057f53104ebbc589a2b735b1a3b4be3",
+      "physical_calls": 7,
+      "billing_states": {
+        "known": 7
+      },
+      "known_repository_estimate_cny": "0.0111679599999999998",
+      "new_unknown_hold_cny": "0",
+      "results": [
+        {
+          "case": "conditional_prediction",
+          "status": "source_free",
+          "expected": "source_free",
+          "matches_expected": true,
+          "elapsed_ms": 1880
+        },
+        {
+          "case": "conditional_history",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 1135
+        },
+        {
+          "case": "omitted_habit",
+          "status": "source_free",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 1000
+        },
+        {
+          "case": "current_feeling",
+          "status": "source_free",
+          "expected": "source_free",
+          "matches_expected": true,
+          "elapsed_ms": 885
+        },
+        {
+          "case": "undelivered_answer",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 1433
+        },
+        {
+          "case": "supported_utterance",
+          "status": "closed",
+          "expected": "closed",
+          "matches_expected": true,
+          "elapsed_ms": 1323
+        },
+        {
+          "case": "utterance_not_event",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 1309
+        }
+      ],
+      "scope": "Controlled ablation: same seven original utterances, fixed propositions and sources, but omit complete reader interpretations from actual source request. Inspect response schema only; changed requests have no runtime receipt authority. No World writes or live dialogue."
+    },
+    {
+      "directory": "output/private-audits/release-contextual-source-review-20260917-05",
+      "sha256": "95c90814216939a1e185f7dc3c1b80c6b98329a2a39753e51f927454a6e7458e",
+      "code_head": "02ff0b7c3057f53104ebbc589a2b735b1a3b4be3",
+      "physical_calls": 7,
+      "billing_states": {
+        "known": 6,
+        "unknown": 1
+      },
+      "known_repository_estimate_cny": "0.0345075600000000005",
+      "new_unknown_hold_cny": "0.088674",
+      "results": [
+        {
+          "case": "conditional_prediction",
+          "status": "source_free",
+          "expected": "source_free",
+          "matches_expected": true,
+          "elapsed_ms": 6328
+        },
+        {
+          "case": "conditional_history",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 11482
+        },
+        {
+          "case": "omitted_habit",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 4201
+        },
+        {
+          "case": "current_feeling",
+          "status": "source_free",
+          "expected": "source_free",
+          "matches_expected": true,
+          "elapsed_ms": 2291
+        },
+        {
+          "case": "undelivered_answer",
+          "status": "technical_failure",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "error_type": "TimeoutError",
+          "error": "",
+          "elapsed_ms": 22007
+        },
+        {
+          "case": "supported_utterance",
+          "status": "closed",
+          "expected": "closed",
+          "matches_expected": true,
+          "elapsed_ms": 10585
+        },
+        {
+          "case": "utterance_not_event",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 5323
+        }
+      ],
+      "scope": "Controlled reasoning-mode comparison: same seven original utterances, complete reader interpretations and sources as v18; Flash thinking enabled with auto tool selection. Inspect schema only; this changed provider configuration is not yet a runtime receipt or deployment qualification. No World writes or live dialogue."
+    }
+  ],
+  "live_chat": {
+    "new_user_turns": 2,
+    "first_turn_initial_delivery": false,
+    "first_turn_eventually_delivered_on_scheduled_retry": true,
+    "second_turn_delivered": false,
+    "new_messages": [
+      {
+        "kind": "text",
+        "message_id": "journey-message-69",
+        "text": "半小时啊",
+        "virtual_at": "2026-09-14T14:51:30+00:00"
+      },
+      {
+        "kind": "text",
+        "message_id": "journey-message-70",
+        "text": "大概找个安静地方坐着，喝点热的，什么也不干",
+        "virtual_at": "2026-09-14T14:51:30+00:00"
+      },
+      {
+        "kind": "text",
+        "message_id": "journey-message-71",
+        "text": "你呢 别光问我",
+        "virtual_at": "2026-09-14T14:51:30+00:00"
+      }
+    ],
+    "source_review_calls": 4,
+    "source_review_timeouts": 3,
+    "new_v18_receipts": 1,
+    "life_candidate_review_calls": 0,
+    "replay_hash_matches": true,
+    "semantic_correction_not_exercised": true,
+    "source_requests": [
+      {
+        "capture_id": "model-input:62a06561e9c14e14b08c0138c8023ead",
+        "user_utf8_bytes": 169399,
+        "system_utf8_bytes": 4349,
+        "fixed_facts": 6,
+        "beats": 3,
+        "thinking": {
+          "type": "enabled"
+        },
+        "tool_choice": "auto"
+      },
+      {
+        "capture_id": "model-input:f6d335ec73344597b0203388370cb064",
+        "user_utf8_bytes": 181038,
+        "system_utf8_bytes": 4349,
+        "fixed_facts": 8,
+        "beats": 4,
+        "thinking": {
+          "type": "enabled"
+        },
+        "tool_choice": "auto"
+      },
+      {
+        "capture_id": "model-input:a733d309e18247b1a98fe553e89a40e3",
+        "user_utf8_bytes": 178098,
+        "system_utf8_bytes": 4349,
+        "fixed_facts": 3,
+        "beats": 3,
+        "thinking": {
+          "type": "enabled"
+        },
+        "tool_choice": "auto"
+      },
+      {
+        "capture_id": "model-input:a64a00481b0643e7afea38666ac1d3ae",
+        "user_utf8_bytes": 178646,
+        "system_utf8_bytes": 4349,
+        "fixed_facts": 1,
+        "beats": 2,
+        "thinking": {
+          "type": "enabled"
+        },
+        "tool_choice": "auto"
+      }
+    ],
+    "author_requests": [
+      {
+        "capture_id": "model-input:f457a725ac724dd2acdbd96cc65b749b",
+        "tool_bytes": 25028,
+        "schema_reference_count": 70,
+        "latency_ms": 4638,
+        "prompt_tokens": 47722,
+        "billing_state": "known"
+      },
+      {
+        "capture_id": "model-input:ba106be13bdd494ba299f0627a0ed1e8",
+        "tool_bytes": 25028,
+        "schema_reference_count": 70,
+        "latency_ms": 5770,
+        "prompt_tokens": 48420,
+        "billing_state": "known"
+      },
+      {
+        "capture_id": "model-input:d9b2166403f04b8794f01036ad3053ed",
+        "tool_bytes": 25028,
+        "schema_reference_count": 70,
+        "latency_ms": 4071,
+        "prompt_tokens": 48327,
+        "billing_state": "known"
+      },
+      {
+        "capture_id": "model-input:4172fda2c0d3473c9c9cfb0729e5f868",
+        "tool_bytes": 25028,
+        "schema_reference_count": 70,
+        "latency_ms": 4766,
+        "prompt_tokens": 48606,
+        "billing_state": "known"
+      }
+    ]
+  },
+  "billing": {
+    "physical_calls": 54,
+    "known_repository_estimate_cny": "0.3971700199999999885",
+    "new_unknown_hold_cny": "1.494054",
+    "unknown_hold_is_actual_charge": false,
+    "usage_rows": 1200,
+    "reservation_rows": 1197,
+    "total_unknown_holds": 41,
+    "all_runs_closed_and_reconciled": true
+  },
+  "next_runtime_and_billing_checkpoint": "output/private-audits/release-contextual-chat-20260917-01/run",
+  "logical_at": "2026-09-14T14:52:00+00:00",
+  "ledger_cursor": 3346,
+  "real_qq": false,
+  "deployed": false,
+  "remaining_blockers": [
+    "large complete source input and reasoning source timeouts",
+    "unsupported autobiographical walk still appears in actual author drafts",
+    "nonreasoning contextual judge misses embedded past premises",
+    "longitudinal memory, Life integration and monthly cost remain unqualified"
+  ],
+  "evidence": {
+    "reconciliation_path": "output/private-audits/release-contextual-chat-20260917-01/reconciliation.json",
+    "sha256": "e3ce014ae42e07b01eae708fdb5252c831e147d7286f47a35dcd0642b72ee4bf"
+  },
+  "source_input_diagnosis": {
+    "prior_v16_first_source_user_utf8_bytes": 176597,
+    "current_first_source_user_utf8_bytes": 169399,
+    "new_regression_in_input_size_not_proven": true,
+    "first_source_materials_by_lane": {
+      "appraisals": 33,
+      "recent_dialogue": 16,
+      "world_life": 6,
+      "biographical_coordinate": 6,
+      "current_situation": 1,
+      "affect_episodes": 1,
+      "current_counterpart_report": 1
+    },
+    "next_action": "Reduce source presentation overhead while retaining actor, time, status, field permissions and all relevant semantic qualifiers; measure actual provider latency and tokens."
+  }
+}

@@ -83,6 +83,18 @@ unqualified. The default remains unconfigured; see current release status and
 `docs/audits/life-chat-integration-validation-2026-09-16.json`, as well as
 `docs/design/life-source-review-gate-2026-09-16.md`.
 
+Explicit visible review v17 restores complete utterances and both independent readings
+at the source stage and requires whole-Beat omission review, including empty extracted
+fact inventories. v18 separates non-record expressions, missing record-bound assertions
+and material ambiguity. Nonreasoning trials still miss embedded history. Explicit
+capture-only source reasoning matched six of seven controlled cases, with one timeout;
+the whole chat trial had three source timeouts and one accepted retry, cold-verified.
+Source requests remain about 169–181 KB; monthly cost and response latency are unqualified.
+Auto source-tool selection is pinned and joined to immutable invocation hashes. Defaults
+remain unchanged. Runtime and billing now share
+`output/private-audits/release-contextual-chat-20260917-01/run` (1200 usage, 1197 reservations,
+41 unknown holds). See `docs/audits/contextual-chat-validation-2026-09-17.json`.
+
 Explicit visible review v16 pins string-condition guidance and includes reader
 claim modes in same-character rejection feedback, retaining v15 source permissions.
 Two further real turns still failed delivery; present feelings were recognized,
