@@ -884,3 +884,13 @@ def test_source_reasoning_requires_explicit_scoped_review_profile(tmp_path):
         cli.parse_options(base + ['--visible-source-review-thinking'])
     options = cli.parse_options(base + ['--visible-source-review-version', '18', '--visible-source-review-thinking'])
     assert options.visible_source_review_thinking
+
+
+def test_subjective_source_scope_requires_explicit_complete_coverage(tmp_path):
+    cli = _cli()
+    base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
+            '--allow-real-provider', '--require-visible-source-review']
+    assert not cli.parse_options(base).visible_source_review_scope_history
+    with pytest.raises(SystemExit):
+        cli.parse_options(base + ['--visible-source-review-scope-history'])
+    assert cli.parse_options(base + ['--visible-source-review-version', '18', '--visible-source-review-scope-history']).visible_source_review_scope_history

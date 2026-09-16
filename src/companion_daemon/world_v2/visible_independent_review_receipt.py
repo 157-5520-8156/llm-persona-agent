@@ -61,7 +61,9 @@ class PreparedIndependentVisibleReview:
         return _packet(self.payload_json)
 
 
-def prepare_independent_visible_review(*, candidate, source_table, source_ref_aliases, review_protocol=PROTOCOL, source_tool_selection_mode="forced"):
+def prepare_independent_visible_review(*, candidate, source_table, source_ref_aliases, review_protocol=PROTOCOL, source_tool_selection_mode="forced", scope_subjective_history=False):
+    if type(scope_subjective_history) is not bool or (scope_subjective_history and review_protocol != SCOPED_COVERAGE_PROTOCOL):
+        raise ValueError("subjective scope selection requires scoped coverage protocol")
     if source_tool_selection_mode != "forced" and not (review_protocol == SCOPED_COVERAGE_PROTOCOL and source_tool_selection_mode == "auto"):
         raise ValueError("automatic source selection requires scoped coverage protocol")
     if review_protocol not in REVIEW_PROTOCOLS.values():
@@ -73,7 +75,8 @@ def prepare_independent_visible_review(*, candidate, source_table, source_ref_al
     # independent inventory of the candidate's visible factual assertions.
     material.pop("world_claims")
     raw = _json({"contract": CANDIDATE_CONTRACT, "protocol": review_protocol, **material,
-                 **({"source_tool_selection_mode": "auto"} if source_tool_selection_mode == "auto" else {})})
+                 **({"source_tool_selection_mode": "auto"} if source_tool_selection_mode == "auto" else {}),
+                 **({"scope_subjective_history": True} if scope_subjective_history else {})})
     _packet(raw)
     return PreparedIndependentVisibleReview(raw)
 
@@ -87,6 +90,7 @@ def _restore(prepared):
         source_table=VisibleSourceTable(payload_json=pin["source_table_json"]),
         source_ref_aliases=pin["source_ref_aliases"], review_protocol=pin["protocol"],
         source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
+        scope_subjective_history=pin.get("scope_subjective_history", False),
     )
     if prepared.payload_json != expected.payload_json:
         raise ValueError("independent review candidate/source preparation changed")
@@ -167,6 +171,7 @@ def prepare_source_call(*, prepared, meaning_raw_responses):
         contextual_scope=pin["protocol"] in CONTEXTUAL_PROTOCOLS,
         scoped_coverage=pin["protocol"] == SCOPED_COVERAGE_PROTOCOL,
         source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
+        scope_subjective_history=pin.get("scope_subjective_history", False),
     )
     if source is None:
         return None
@@ -240,6 +245,7 @@ def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, sourc
             contextual_scope=pin["protocol"] in CONTEXTUAL_PROTOCOLS,
             scoped_coverage=pin["protocol"] == SCOPED_COVERAGE_PROTOCOL,
             source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
+            scope_subjective_history=pin.get("scope_subjective_history", False),
         )
         support = source.inspect_response(source_raw_response)
     if pin["protocol"] in CONTEXTUAL_PROTOCOLS:

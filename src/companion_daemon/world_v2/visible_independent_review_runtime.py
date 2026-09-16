@@ -17,8 +17,11 @@ from .visible_review_evidence_storage import store_review_evidence
 class IndependentVisibleReviewer:
     meaning_models: tuple[object, object]
     source_model: object
+    scope_subjective_history: bool = False
 
     def __post_init__(self):
+        if type(self.scope_subjective_history) is not bool:
+            raise TypeError("subjective source scope flag must be boolean")
         if len(self.meaning_models) != 2:
             raise ValueError("independent review requires exactly two meaning models")
         clients = (*self.meaning_models, self.source_model)
@@ -96,7 +99,8 @@ async def review_independent_candidate(
     if not isinstance(reviewer, IndependentVisibleReviewer):
         raise ValidationTechnicalFailure("source_review_exception", failure_detail="independent visible reviewer is not configured")
     prepared = prepare_independent_visible_review(candidate=proposal, source_table=source_table, source_ref_aliases=aliases, review_protocol=independent_review_protocol(review_version),
-        source_tool_selection_mode=getattr(reviewer.source_model, "single_tool_selection_mode", "forced"))
+        source_tool_selection_mode=getattr(reviewer.source_model, "single_tool_selection_mode", "forced"),
+        scope_subjective_history=reviewer.scope_subjective_history)
     author = VisibleReviewAuthorBinding(model_call_id=output.winning_model_call_id, request_hash=output.winning_request_hash,
                                        proposal_material_hash=digest(prepared.as_dict()["candidate_json"]))
     audits = {}

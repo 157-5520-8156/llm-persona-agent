@@ -80,7 +80,8 @@ class PreparedContextualSourceReview:
         expected = prepare_contextual_source_review(
             meanings=tuple(IndependentMeaning(PreparedCandidateMeaning(m['preparation_json']), m['raw_response'])
                            for m in pin['meanings']), sources=tuple(pin['sources']), scoped_coverage=pin['contract'] == SCOPED_COVERAGE_CONTRACT,
-            tool_selection_mode=pin.get('tool_selection_mode', 'forced'))
+            tool_selection_mode=pin.get('tool_selection_mode', 'forced'),
+            scope_subjective_history=pin.get('scope_subjective_history', False))
         if expected.payload_json != self.payload_json:
             raise ValueError('contextual review differs from its original compilation')
         value = _validation(raw, pin['request']['tools'][0]['function']['parameters'])
@@ -142,7 +143,9 @@ class PreparedContextualSourceReview:
                 'semantic_qualification': 'unproven'}
 
 
-def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced"):
+def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False):
+    if type(scope_subjective_history) is not bool or (scope_subjective_history and not scoped_coverage):
+        raise ValueError("subjective scope selection requires complete scoped coverage")
     if tool_selection_mode not in ("forced", "auto") or (tool_selection_mode == "auto" and not scoped_coverage):
         raise ValueError("automatic selection requires scoped coverage")
     if type(scoped_coverage) is not bool:
@@ -165,11 +168,20 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
     body.pop('world_claims', None)
     body['output_contract']['contract'] = contract
     body['source_support_contract'] = 'Use only eligible field reading_ids; source permissions are ceilings, not entailment.'
+    selection = None
+    retained = list(range(len(body['source_materials'])))
+    if scope_subjective_history:
+        from .visible_source_scope_selection import select_subjective_history
+        retained, catalog, selection = select_subjective_history(witness_pin=pin, catalog=catalog, facts=facts)
+        body['source_selection_contract'] = {
+            'contract': selection['contract'], 'omitted_subjective_materials': len(selection['omitted_material_indexes']),
+            'fixed_fact_permissions_unchanged': True, 'new_record_bound_assertions_require_reselection': True,
+        }
     body['source_materials'] = pack_shared_strings([
         {'material': material, 'readings': [
             {'reading_id': r['reading_id'], 'field': r['pointer'], 'source_owner_ref': r['source_owner_ref'],
              'allowed_claims': r['permissions']} for r in catalog if r['material_index'] == index]}
-        for index, material in enumerate(body['source_materials'])])
+        for index, material in enumerate(body['source_materials']) if index in retained])
     body['independent_readings'] = [r['interpretation'] for r in interpreted]
     body['fixed_facts'] = [{**f, 'eligible_reading_ids': list(_eligible_readings(f, catalog))} for f in facts]
     fact_item = _object({
@@ -217,6 +229,9 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
             '当下作者可自由形成的感受/意愿无需来源；记录依赖是权限概念，不是语法上陈述句的同义词。'
             '纯条件不预设条件已经成立，未知问题不预设答案。日常省略或比喻不等于阻断性歧义。'
             '实际过去行为找不到支持时应明确不支持，不能仅因缺少更多细节而宣告无法判断。')
+    if scope_subjective_history:
+        from .visible_source_scope_selection import INSTRUCTION as selection_instruction
+        instruction += selection_instruction
     name = 'review_contextual_candidate_sources_v2' if scoped_coverage else 'review_contextual_candidate_sources_v1'
     request = {'messages': [{'role': 'system', 'content': instruction},
                             {'role': 'user', 'content': json.dumps(body, ensure_ascii=False, separators=(',', ':'))}],
@@ -224,6 +239,7 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
                    'name': name, 'description': '核对原句断言范围、完整性和来源。', 'strict': True, 'parameters': schema}}],
                'tool_choice': 'auto' if tool_selection_mode == 'auto' else {'type': 'function', 'function': {'name': name}}}
     return PreparedContextualSourceReview(_json({
+        **({'scope_subjective_history': True, 'source_selection': selection} if scope_subjective_history else {}),
         **({'tool_selection_mode': 'auto'} if tool_selection_mode == 'auto' else {}),
         'contract': contract, 'beats': beats, 'facts': facts, 'catalog': catalog, 'sources': sources,
         'meanings': [{'preparation_json': m.preparation.payload_json, 'raw_response': m.raw_response} for m in meanings],

@@ -52,6 +52,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         "--visible-source-review-thinking", action="store_true",
         help="Explicit v18 source adjudicator reasoning with pinned automatic tool selection; qualification pending.",
     )
+    parser.add_argument("--visible-source-review-scope-history", action="store_true",
+                        help="Opt-in v18 omission of verified subjective history without permission for the fixed facts.")
     parser.add_argument(
         "--interactive",
         action="store_true",
@@ -94,6 +96,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("nonlegacy --visible-source-review-version requires --require-visible-source-review")
     if options.visible_source_review_thinking and options.visible_source_review_version != "18":
         parser.error("--visible-source-review-thinking requires explicit review version 18")
+    if options.visible_source_review_scope_history and options.visible_source_review_version != "18":
+        parser.error("--visible-source-review-scope-history requires explicit review version 18")
     if options.max_cost_cny is not None and (
         not math.isfinite(options.max_cost_cny) or not 0 < options.max_cost_cny <= 100
     ):
@@ -391,6 +395,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                         meaning_models=(provider("visible_meaning_pro", model_override="deepseek-v4-pro"),
                                         provider("visible_meaning_flash")),
                         source_model=visible_reviewer,
+                        scope_subjective_history=options.visible_source_review_scope_history,
                     )
                 injected.update(
                     visible_source_review_required=True,
@@ -444,6 +449,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                 "expression_episode_mode": "off",
                 "review_model": configured.deepseek_model,
                 **({"source_thinking_enabled": True} if options.visible_source_review_thinking else {}),
+                **({"scope_subjective_history": True} if options.visible_source_review_scope_history else {}),
                 "qualification": "requires_evaluation_of_actual_records",
             }} if required_review else {}),
             "model_mode": options.model_mode,
