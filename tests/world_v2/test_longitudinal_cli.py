@@ -894,3 +894,17 @@ def test_subjective_source_scope_requires_explicit_complete_coverage(tmp_path):
     with pytest.raises(SystemExit):
         cli.parse_options(base + ['--visible-source-review-scope-history'])
     assert cli.parse_options(base + ['--visible-source-review-version', '18', '--visible-source-review-scope-history']).visible_source_review_scope_history
+
+
+def test_json_source_carrier_and_effort_are_explicit_and_scoped(tmp_path):
+    cli = _cli()
+    base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
+            '--allow-real-provider', '--require-visible-source-review']
+    assert not cli.parse_options(base).visible_source_review_json
+    with pytest.raises(SystemExit):
+        cli.parse_options(base + ['--visible-source-review-json'])
+    scoped = base + ['--visible-source-review-version', '18', '--visible-source-review-json']
+    with pytest.raises(SystemExit):
+        cli.parse_options(scoped + ['--visible-source-review-effort', 'low'])
+    options = cli.parse_options(scoped + ['--visible-source-review-thinking', '--visible-source-review-effort', 'low'])
+    assert options.visible_source_review_json and options.visible_source_review_effort == 'low'

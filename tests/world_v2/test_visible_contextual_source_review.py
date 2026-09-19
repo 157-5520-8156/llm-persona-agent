@@ -241,7 +241,8 @@ def test_automatic_source_tool_selection_is_frozen_in_preparation():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('scope_subjective_history', [False, True])
-async def test_reasoning_source_invocation_pins_auto_tool_and_cold_replays(tmp_path, scope_subjective_history):
+@pytest.mark.parametrize('source_response_mode', ['tool', 'json_object'])
+async def test_reasoning_source_invocation_pins_auto_tool_and_cold_replays(tmp_path, scope_subjective_history, source_response_mode):
     from dataclasses import replace
     from test_visible_independent_review_runtime import application, ReviewHTTP
     from test_whole_candidate_author import _inbound
@@ -251,7 +252,7 @@ async def test_reasoning_source_invocation_pins_auto_tool_and_cold_replays(tmp_p
     class AutoHTTP(ReviewHTTP):
         async def __call__(self, request):
             body = json.loads(request.content)
-            if body['tool_choice'] != 'auto':
+            if body.get('tool_choice') != 'auto' and not body.get('response_format'):
                 return await super().__call__(request)
             self.requests.append(body)
             assert body['thinking']['type'] == 'enabled'
@@ -262,18 +263,48 @@ async def test_reasoning_source_invocation_pins_auto_tool_and_cold_replays(tmp_p
                 beat_decisions=[dict(beat_index=b['beat_index'], review_complete=True,
                     unaccounted_record_bound_assertions=[], blocking_scope_ambiguities=[], non_record_expressions=[])
                     for b in packet['visible_beats']])
+            if source_response_mode == 'json_object':
+                import httpx
+                assert not body.get('tools') and body['response_format'] == {'type': 'json_object'}
+                assert packet['output_schema']['additionalProperties'] is False
+                return httpx.Response(200, json={'choices': [{'message': {'role': 'assistant', 'content': json.dumps(response)}, 'finish_reason': 'stop'}],
+                    'usage': {'prompt_tokens': 100, 'completion_tokens': 100, 'total_tokens': 200}})
             return _http_result({**body, 'tool_choice': {'function': {'name': body['tools'][0]['function']['name']}}}, response)
 
     path = tmp_path / 'world.sqlite'
     inbound = replace(_inbound(), text='我取消了周五的报告。')
     handler = AutoHTTP(version='18')
-    async with application(path, handler, source_thinking=True, scope_subjective_history=scope_subjective_history) as app:
+    async with application(path, handler, source_thinking=True, scope_subjective_history=scope_subjective_history, source_response_mode=source_response_mode) as app:
         assert (await app.respond(inbound)).status == 'action_authorized'
-        assert sum(r['tool_choice'] == 'auto' for r in handler.requests) == 1
+        assert sum(r.get('tool_choice') == 'auto' for r in handler.requests) == (source_response_mode == 'tool')
+        assert sum(r.get('response_format') == {'type': 'json_object'} for r in handler.requests) == (source_response_mode == 'json_object')
         evidence = app.export_replay_evidence()
         audit = next(a for a in evidence.projection.proposal_audits if a.proposal_kind == 'decision')
         assert verify_recorded_candidate(audit=audit, model_result_audits=evidence.projection.model_result_audits)
     cold = AutoHTTP(version='18')
-    async with application(path, cold, source_thinking=True, scope_subjective_history=scope_subjective_history) as app:
+    async with application(path, cold, source_thinking=True, scope_subjective_history=scope_subjective_history, source_response_mode=source_response_mode) as app:
         assert (await app.respond(inbound)).status == 'action_authorized'
         assert cold.requests == []
+
+
+@pytest.mark.parametrize('fault', ['schema', 'request', 'mode'])
+def test_json_source_carrier_cannot_change_full_validation_or_request_identity(fault):
+    meaning = _meaning()
+    prep = prepare_contextual_source_review(meanings=(meaning, meaning), sources=_sources(),
+        scoped_coverage=True, response_mode='json_object')
+    request = prep.request()
+    assert 'tools' not in request and 'tool_choice' not in request
+    packet = json.loads(request['messages'][1]['content'])
+    pin = json.loads(prep.payload_json)
+    assert pin['response_schema'] == packet['output_schema']
+    if fault == 'schema':
+        pin['response_schema']['required'] = []
+    elif fault == 'request':
+        packet['output_schema']['required'] = []
+        pin['request']['messages'][1]['content'] = json.dumps(packet)
+    else:
+        pin.pop('response_mode')
+    with pytest.raises(ValueError, match='original compilation'):
+        PreparedContextualSourceReview(json.dumps(pin)).inspect_response('{}')
+    with pytest.raises(ValueError, match='schema'):
+        prep.inspect_response('{}')

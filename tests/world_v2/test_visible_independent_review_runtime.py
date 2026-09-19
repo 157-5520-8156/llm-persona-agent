@@ -133,7 +133,7 @@ async def test_implicit_history_reaches_source_rejection_and_same_character_corr
 
 
 @asynccontextmanager
-async def application(path, handler, *, budget_policy=None, evidence_first_schema=False, source_thinking=False, scope_subjective_history=False):
+async def application(path, handler, *, budget_policy=None, evidence_first_schema=False, source_thinking=False, scope_subjective_history=False, source_response_mode="tool"):
     usage = WorldV2UsageStore(path=str(path.with_name('usage.sqlite')))
     models = [DeepSeekChatModel('offline-fixture', 'https://fixture.invalid', name,
                thinking_enabled=False, transport=httpx.MockTransport(handler), usage_observer=usage.record)
@@ -141,7 +141,7 @@ async def application(path, handler, *, budget_policy=None, evidence_first_schem
     if source_thinking:
         models.append(DeepSeekChatModel('offline-fixture', 'https://fixture.invalid', 'deepseek-v4-flash',
             thinking_enabled=True, transport=httpx.MockTransport(handler), usage_observer=usage.record))
-    reviewer = IndependentVisibleReviewer(meaning_models=(models[1], models[2]), source_model=models[-1], scope_subjective_history=scope_subjective_history)
+    reviewer = IndependentVisibleReviewer(meaning_models=(models[1], models[2]), source_model=models[-1], scope_subjective_history=scope_subjective_history, source_response_mode=source_response_mode)
     author = _InboundCharacterAuthor(flash_model=models[0], whole_candidate_mode=True,
         visible_source_review_model=reviewer, visible_source_review_version=handler.version, atomic_tool_envelope_version='3',
         evidence_first_schema=evidence_first_schema)

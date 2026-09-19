@@ -18,8 +18,11 @@ class IndependentVisibleReviewer:
     meaning_models: tuple[object, object]
     source_model: object
     scope_subjective_history: bool = False
+    source_response_mode: str = "tool"
 
     def __post_init__(self):
+        if self.source_response_mode not in ("tool", "json_object"):
+            raise ValueError("unsupported source response mode")
         if type(self.scope_subjective_history) is not bool:
             raise TypeError("subjective source scope flag must be boolean")
         if len(self.meaning_models) != 2:
@@ -100,7 +103,7 @@ async def review_independent_candidate(
         raise ValidationTechnicalFailure("source_review_exception", failure_detail="independent visible reviewer is not configured")
     prepared = prepare_independent_visible_review(candidate=proposal, source_table=source_table, source_ref_aliases=aliases, review_protocol=independent_review_protocol(review_version),
         source_tool_selection_mode=getattr(reviewer.source_model, "single_tool_selection_mode", "forced"),
-        scope_subjective_history=reviewer.scope_subjective_history)
+        scope_subjective_history=reviewer.scope_subjective_history, source_response_mode=reviewer.source_response_mode)
     author = VisibleReviewAuthorBinding(model_call_id=output.winning_model_call_id, request_hash=output.winning_request_hash,
                                        proposal_material_hash=digest(prepared.as_dict()["candidate_json"]))
     audits = {}

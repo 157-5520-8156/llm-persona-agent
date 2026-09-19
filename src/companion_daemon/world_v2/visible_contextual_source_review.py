@@ -81,10 +81,12 @@ class PreparedContextualSourceReview:
             meanings=tuple(IndependentMeaning(PreparedCandidateMeaning(m['preparation_json']), m['raw_response'])
                            for m in pin['meanings']), sources=tuple(pin['sources']), scoped_coverage=pin['contract'] == SCOPED_COVERAGE_CONTRACT,
             tool_selection_mode=pin.get('tool_selection_mode', 'forced'),
-            scope_subjective_history=pin.get('scope_subjective_history', False))
+            scope_subjective_history=pin.get('scope_subjective_history', False),
+            response_mode=pin.get('response_mode', 'tool'))
         if expected.payload_json != self.payload_json:
             raise ValueError('contextual review differs from its original compilation')
-        value = _validation(raw, pin['request']['tools'][0]['function']['parameters'])
+        schema = pin['response_schema'] if pin.get('response_mode') == 'json_object' else pin['request']['tools'][0]['function']['parameters']
+        value = _validation(raw, schema)
         facts = {f['fact_id']: f for f in pin['facts']}
         ids = [d['fact_id'] for d in value['fact_decisions']]
         if len(ids) != len(set(ids)) or set(ids) != set(facts):
@@ -143,7 +145,9 @@ class PreparedContextualSourceReview:
                 'semantic_qualification': 'unproven'}
 
 
-def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False):
+def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool"):
+    if response_mode not in ("tool", "json_object") or (response_mode == "json_object" and not scoped_coverage):
+        raise ValueError("JSON response mode requires scoped coverage")
     if type(scope_subjective_history) is not bool or (scope_subjective_history and not scoped_coverage):
         raise ValueError("subjective scope selection requires complete scoped coverage")
     if tool_selection_mode not in ("forced", "auto") or (tool_selection_mode == "auto" and not scoped_coverage):
@@ -238,7 +242,14 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
                'temperature': 0.0, 'tools': [{'type': 'function', 'function': {
                    'name': name, 'description': '核对原句断言范围、完整性和来源。', 'strict': True, 'parameters': schema}}],
                'tool_choice': 'auto' if tool_selection_mode == 'auto' else {'type': 'function', 'function': {'name': name}}}
+    if response_mode == 'json_object':
+        request.pop('tools')
+        request.pop('tool_choice')
+        body['output_schema'] = schema
+        request['messages'][1]['content'] = json.dumps(body, ensure_ascii=False, separators=(',', ':'))
+        request['messages'][0]['content'] += '直接返回一个 JSON 对象，严格遵循 output_schema。此调用只返回只读审核数据，不调用任何工具。'
     return PreparedContextualSourceReview(_json({
+        **({'response_mode': 'json_object', 'response_schema': schema} if response_mode == 'json_object' else {}),
         **({'scope_subjective_history': True, 'source_selection': selection} if scope_subjective_history else {}),
         **({'tool_selection_mode': 'auto'} if tool_selection_mode == 'auto' else {}),
         'contract': contract, 'beats': beats, 'facts': facts, 'catalog': catalog, 'sources': sources,
