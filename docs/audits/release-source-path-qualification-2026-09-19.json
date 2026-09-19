@@ -1,0 +1,1041 @@
+{
+  "qualification": "manual_only / qualification_incomplete",
+  "real_qq": false,
+  "production_database": false,
+  "runtime_checkpoint": "output/private-audits/release-permission-chat-20260919-01/run",
+  "billing_checkpoint": "output/private-audits/release-direct-source-20260919-03/run/world.sqlite",
+  "latest_usage_rows": 1329,
+  "latest_reservation_rows": 1326,
+  "latest_unknown_holds": 59,
+  "total_physical_calls": 112,
+  "known_repository_estimate_cny": "2.2297452799999999286",
+  "new_unknown_hold_cny": "7.427778",
+  "unknown_holds_are_actual_charges": false,
+  "runs": [
+    {
+      "run": "release-scoped-json-chat-20260917-01",
+      "closed": true,
+      "usage_reconciliation": "verified",
+      "code_head": "c93aa815e4fe424c3c6fed6bb983c1d16745885b",
+      "physical_calls": 23,
+      "billing_states": {
+        "known": 21,
+        "unknown": 2
+      },
+      "known_repository_estimate_cny": "0.3175777199999999921",
+      "new_unknown_hold_cny": "0.444794",
+      "usage_rows": 1240,
+      "reservation_rows": 1237,
+      "inherited_rows_unchanged": true,
+      "all_captured_terminal_body_hashes_verified": true,
+      "replay_hash_matches": true,
+      "cold_receipt_versions": {
+        "visible-source-review-receipt.6": 6,
+        "visible-source-review-receipt.7": 1,
+        "visible-source-review-receipt.8": 6,
+        "visible-source-review-receipt.12": 3,
+        "visible-source-review-receipt.13": 2,
+        "visible-source-review-receipt.14": 2,
+        "visible-source-review-receipt.15": 3,
+        "visible-source-review-receipt.18": 3
+      },
+      "evidence_file": "output/private-audits/release-scoped-json-chat-20260917-01/reconciliation.json",
+      "evidence_sha256": "46a807aef81192cf8b47f11ac10bc6adf593827cb85added6acef2251e5aa20e",
+      "finished_sha256": "882d010c9e7bf603f57559a4a0818e9eab60a58e0ed6680856a54e0375c77a2b",
+      "manifest_sha256": "bfd894a0aa0da087f86d21d2954a722b5d9a4c17cd27223d336a0040e80e3e28",
+      "final_ledger_sequence": 3516,
+      "elapsed_logical_seconds": 50040.0,
+      "new_character_turns": 2,
+      "new_delivery_count": 5
+    },
+    {
+      "run": "release-permission-context-20260919-01",
+      "closed": true,
+      "usage_reconciliation": "verified",
+      "code_head": "04d2326202f7670baa113a4731ab1fd198922389",
+      "physical_calls": 9,
+      "billing_states": {
+        "known": 8,
+        "unknown": 1
+      },
+      "known_repository_estimate_cny": "0.0787934400000000007",
+      "new_unknown_hold_cny": "0.19941",
+      "usage_rows": 1249,
+      "reservation_rows": 1246,
+      "unknown_holds": 47,
+      "inherited_rows_unchanged": true,
+      "all_native_request_bytes_and_terminal_body_hashes_verified": true,
+      "evidence_file": "output/private-audits/release-permission-context-20260919-01/finished.json",
+      "evidence_sha256": "e2e9d3d6f98f3bd26553e2435ca97ddc9195b31910237df8a996587e7c55f36d",
+      "finished_sha256": "e2e9d3d6f98f3bd26553e2435ca97ddc9195b31910237df8a996587e7c55f36d",
+      "results": [
+        {
+          "case": "control_conditional_history",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 9648,
+          "user_utf8_bytes": 5190
+        },
+        {
+          "case": "control_conditional_prediction",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 8574,
+          "user_utf8_bytes": 6028
+        },
+        {
+          "case": "control_current_feeling",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 2816,
+          "user_utf8_bytes": 5180
+        },
+        {
+          "case": "control_omitted_habit",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 6510,
+          "user_utf8_bytes": 5165
+        },
+        {
+          "case": "control_supported_utterance",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 13527,
+          "user_utf8_bytes": 5766
+        },
+        {
+          "case": "control_undelivered_answer",
+          "status": "inconclusive",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 13842,
+          "user_utf8_bytes": 5717
+        },
+        {
+          "case": "control_utterance_not_event",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 9429,
+          "user_utf8_bytes": 5735
+        },
+        {
+          "case": "selected_missing_history",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 9620,
+          "user_utf8_bytes": 41354
+        },
+        {
+          "case": "selected_original",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "TimeoutError",
+          "error": "",
+          "elapsed_ms": 22009,
+          "user_utf8_bytes": 55349
+        }
+      ],
+      "status_counts": {
+        "unclosed": 4,
+        "accepted": 3,
+        "inconclusive": 1,
+        "technical_failure": 1
+      },
+      "exact_expected_outcomes": 7
+    },
+    {
+      "run": "release-permission-chat-20260919-01",
+      "closed": true,
+      "usage_reconciliation": "verified",
+      "code_head": "dfce7a169d1714978681473387fe49dbcb6fa145",
+      "physical_calls": 20,
+      "billing_states": {
+        "known": 16,
+        "unknown": 4
+      },
+      "known_repository_estimate_cny": "0.222163500000000003",
+      "new_unknown_hold_cny": "1.140430",
+      "usage_rows": 1269,
+      "reservation_rows": 1266,
+      "inherited_rows_unchanged": true,
+      "all_captured_terminal_body_hashes_verified": true,
+      "replay_hash_matches": true,
+      "cold_receipt_versions": {
+        "visible-source-review-receipt.6": 6,
+        "visible-source-review-receipt.7": 1,
+        "visible-source-review-receipt.8": 6,
+        "visible-source-review-receipt.12": 3,
+        "visible-source-review-receipt.13": 2,
+        "visible-source-review-receipt.14": 2,
+        "visible-source-review-receipt.15": 3,
+        "visible-source-review-receipt.18": 3
+      },
+      "evidence_file": "output/private-audits/release-permission-chat-20260919-01/reconciliation.json",
+      "evidence_sha256": "ef6b09bb1f0137e6f9f10efd44f4c6a734fc06244de07652144b4bfa30b70309",
+      "finished_sha256": "4794b89eb834ef45c1c1fe501a1f3660f3cebb0defcf5958252b624ca4b0fdac",
+      "manifest_sha256": "08959bcaa26f5a173c6fb793362fe89a727af9213687bfc6f830074e5973e3ff",
+      "final_ledger_sequence": 3619,
+      "elapsed_logical_seconds": 50160.0,
+      "new_character_turns": 2,
+      "new_delivery_count": 0
+    },
+    {
+      "run": "release-fast-source-20260919-01",
+      "closed": true,
+      "usage_reconciliation": "verified",
+      "code_head": "dfce7a169d1714978681473387fe49dbcb6fa145",
+      "physical_calls": 18,
+      "billing_states": {
+        "known": 18
+      },
+      "known_repository_estimate_cny": "0.2729445200000000003",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 1287,
+      "reservation_rows": 1284,
+      "unknown_holds": 51,
+      "inherited_rows_unchanged": true,
+      "all_native_request_bytes_and_terminal_body_hashes_verified": true,
+      "evidence_file": "output/private-audits/release-fast-source-20260919-01/finished.json",
+      "evidence_sha256": "42a9a47762b79d071f4ee100fc10fbcc5ee99e52f406a1ad097c4a458801757c",
+      "finished_sha256": "42a9a47762b79d071f4ee100fc10fbcc5ee99e52f406a1ad097c4a458801757c",
+      "results": [
+        {
+          "case": "flash-control_conditional_history",
+          "status": "accepted",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 1144,
+          "user_utf8_bytes": 5190
+        },
+        {
+          "case": "flash-control_conditional_prediction",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 1468,
+          "user_utf8_bytes": 6028
+        },
+        {
+          "case": "flash-control_current_feeling",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 683,
+          "user_utf8_bytes": 5180
+        },
+        {
+          "case": "flash-control_omitted_habit",
+          "status": "accepted",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 1145,
+          "user_utf8_bytes": 5165
+        },
+        {
+          "case": "flash-control_supported_utterance",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 1286,
+          "user_utf8_bytes": 5766
+        },
+        {
+          "case": "flash-control_undelivered_answer",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 1945,
+          "user_utf8_bytes": 5717
+        },
+        {
+          "case": "flash-control_utterance_not_event",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 1648,
+          "user_utf8_bytes": 5735
+        },
+        {
+          "case": "flash-selected_missing_history",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 974,
+          "user_utf8_bytes": 41354
+        },
+        {
+          "case": "flash-selected_original",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 2355,
+          "user_utf8_bytes": 55349
+        },
+        {
+          "case": "pro-control_conditional_history",
+          "status": "accepted",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 2314,
+          "user_utf8_bytes": 5190
+        },
+        {
+          "case": "pro-control_conditional_prediction",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 3732,
+          "user_utf8_bytes": 6028
+        },
+        {
+          "case": "pro-control_current_feeling",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 1469,
+          "user_utf8_bytes": 5180
+        },
+        {
+          "case": "pro-control_omitted_habit",
+          "status": "accepted",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 1578,
+          "user_utf8_bytes": 5165
+        },
+        {
+          "case": "pro-control_supported_utterance",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 2848,
+          "user_utf8_bytes": 5766
+        },
+        {
+          "case": "pro-control_undelivered_answer",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 3680,
+          "user_utf8_bytes": 5717
+        },
+        {
+          "case": "pro-control_utterance_not_event",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 3196,
+          "user_utf8_bytes": 5735
+        },
+        {
+          "case": "pro-selected_missing_history",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 4159,
+          "user_utf8_bytes": 41354
+        },
+        {
+          "case": "pro-selected_original",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 6729,
+          "user_utf8_bytes": 55349
+        }
+      ],
+      "status_counts": {
+        "accepted": 12,
+        "unclosed": 6
+      },
+      "exact_expected_outcomes": 14
+    },
+    {
+      "run": "release-direct-source-20260919-01",
+      "closed": true,
+      "usage_reconciliation": "verified",
+      "code_head": "dfce7a169d1714978681473387fe49dbcb6fa145",
+      "physical_calls": 9,
+      "billing_states": {
+        "known": 9
+      },
+      "known_repository_estimate_cny": "0.6035156999999999725",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 1296,
+      "reservation_rows": 1293,
+      "unknown_holds": 51,
+      "inherited_rows_unchanged": true,
+      "all_native_request_bytes_and_terminal_body_hashes_verified": true,
+      "evidence_file": "output/private-audits/release-direct-source-20260919-01/finished.json",
+      "evidence_sha256": "e290ce38c75990954797036f3380678392063afccb6abe59a325e176e1f886ab",
+      "finished_sha256": "e290ce38c75990954797036f3380678392063afccb6abe59a325e176e1f886ab",
+      "results": [
+        {
+          "case": "control_conditional_history",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 2555,
+          "user_utf8_bytes": 3017
+        },
+        {
+          "case": "control_conditional_prediction",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 1775,
+          "user_utf8_bytes": 3018
+        },
+        {
+          "case": "control_current_feeling",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 1375,
+          "user_utf8_bytes": 3011
+        },
+        {
+          "case": "control_omitted_habit",
+          "status": "accepted",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "elapsed_ms": 1523,
+          "user_utf8_bytes": 3014
+        },
+        {
+          "case": "control_supported_utterance",
+          "status": "unclosed",
+          "expected": "accepted",
+          "matches_expected": false,
+          "elapsed_ms": 2973,
+          "user_utf8_bytes": 3002
+        },
+        {
+          "case": "control_undelivered_answer",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 2792,
+          "user_utf8_bytes": 2990
+        },
+        {
+          "case": "control_utterance_not_event",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 2556,
+          "user_utf8_bytes": 2993
+        },
+        {
+          "case": "selected_missing_history",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 9802,
+          "user_utf8_bytes": 175745
+        },
+        {
+          "case": "selected_original",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 2731,
+          "user_utf8_bytes": 175849
+        }
+      ],
+      "status_counts": {
+        "unclosed": 5,
+        "accepted": 4
+      },
+      "exact_expected_outcomes": 7
+    },
+    {
+      "run": "release-direct-source-20260919-02",
+      "closed": true,
+      "usage_reconciliation": "verified",
+      "code_head": "dfce7a169d1714978681473387fe49dbcb6fa145",
+      "physical_calls": 9,
+      "billing_states": {
+        "unknown": 8,
+        "known": 1
+      },
+      "known_repository_estimate_cny": "0.0177903",
+      "new_unknown_hold_cny": "5.643144",
+      "usage_rows": 1305,
+      "reservation_rows": 1302,
+      "unknown_holds": 59,
+      "inherited_rows_unchanged": true,
+      "all_native_request_bytes_and_terminal_body_hashes_verified": true,
+      "evidence_file": "output/private-audits/release-direct-source-20260919-02/finished.json",
+      "evidence_sha256": "101538fa826c5b018b8009b2a9e4891ae0513f4a1e181199adac6d60cba58f83",
+      "finished_sha256": "101538fa826c5b018b8009b2a9e4891ae0513f4a1e181199adac6d60cba58f83",
+      "results": [
+        {
+          "case": "control_conditional_history",
+          "status": "technical_failure",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "error_type": "TimeoutError",
+          "error": "",
+          "elapsed_ms": 22007,
+          "user_utf8_bytes": 3017
+        },
+        {
+          "case": "control_conditional_prediction",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "TimeoutError",
+          "error": "",
+          "elapsed_ms": 22007,
+          "user_utf8_bytes": 3018
+        },
+        {
+          "case": "control_current_feeling",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 16334,
+          "user_utf8_bytes": 3011
+        },
+        {
+          "case": "control_omitted_habit",
+          "status": "technical_failure",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "error_type": "TimeoutError",
+          "error": "",
+          "elapsed_ms": 22005,
+          "user_utf8_bytes": 3014
+        },
+        {
+          "case": "control_supported_utterance",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "TimeoutError",
+          "error": "",
+          "elapsed_ms": 22007,
+          "user_utf8_bytes": 3002
+        },
+        {
+          "case": "control_undelivered_answer",
+          "status": "technical_failure",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "error_type": "TimeoutError",
+          "error": "",
+          "elapsed_ms": 22007,
+          "user_utf8_bytes": 2990
+        },
+        {
+          "case": "control_utterance_not_event",
+          "status": "technical_failure",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "error_type": "TimeoutError",
+          "error": "",
+          "elapsed_ms": 22007,
+          "user_utf8_bytes": 2993
+        },
+        {
+          "case": "selected_missing_history",
+          "status": "technical_failure",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "error_type": "TimeoutError",
+          "error": "",
+          "elapsed_ms": 22008,
+          "user_utf8_bytes": 175745
+        },
+        {
+          "case": "selected_original",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "TimeoutError",
+          "error": "",
+          "elapsed_ms": 22007,
+          "user_utf8_bytes": 175849
+        }
+      ],
+      "status_counts": {
+        "technical_failure": 8,
+        "accepted": 1
+      },
+      "exact_expected_outcomes": 1
+    },
+    {
+      "run": "release-direct-source-20260919-03",
+      "closed": true,
+      "usage_reconciliation": "verified",
+      "code_head": "dfce7a169d1714978681473387fe49dbcb6fa145",
+      "physical_calls": 24,
+      "billing_states": {
+        "known": 24
+      },
+      "known_repository_estimate_cny": "0.7169600999999999600",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 1329,
+      "reservation_rows": 1326,
+      "unknown_holds": 59,
+      "inherited_rows_unchanged": true,
+      "all_native_request_bytes_and_terminal_body_hashes_verified": true,
+      "evidence_file": "output/private-audits/release-direct-source-20260919-03/finished.json",
+      "evidence_sha256": "aa4d167944a14a6895779eb809252a36f07dea5630168d2b7fee825ef478eaaf",
+      "finished_sha256": "aa4d167944a14a6895779eb809252a36f07dea5630168d2b7fee825ef478eaaf",
+      "results": [
+        {
+          "case": "control_conditional_history",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 4465,
+          "user_utf8_bytes": 3081
+        },
+        {
+          "case": "control_conditional_prediction",
+          "status": "unclosed",
+          "expected": "accepted",
+          "matches_expected": false,
+          "elapsed_ms": 4880,
+          "user_utf8_bytes": 3082
+        },
+        {
+          "case": "control_current_feeling",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 2266,
+          "user_utf8_bytes": 3075
+        },
+        {
+          "case": "control_omitted_habit",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 3138,
+          "user_utf8_bytes": 3078
+        },
+        {
+          "case": "control_supported_utterance",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 3797,
+          "user_utf8_bytes": 3066
+        },
+        {
+          "case": "control_undelivered_answer",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 2549,
+          "user_utf8_bytes": 3054
+        },
+        {
+          "case": "control_utterance_not_event",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 3267,
+          "user_utf8_bytes": 3057
+        },
+        {
+          "case": "new-00",
+          "status": "technical_failure",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 4330,
+          "user_utf8_bytes": 3090
+        },
+        {
+          "case": "new-01",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 2671,
+          "user_utf8_bytes": 3072
+        },
+        {
+          "case": "new-02",
+          "status": "technical_failure",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 3596,
+          "user_utf8_bytes": 3063
+        },
+        {
+          "case": "new-03",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 2915,
+          "user_utf8_bytes": 3060
+        },
+        {
+          "case": "new-04",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 2058,
+          "user_utf8_bytes": 3051
+        },
+        {
+          "case": "new-05",
+          "status": "technical_failure",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 2720,
+          "user_utf8_bytes": 3069
+        },
+        {
+          "case": "new-06",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 2090,
+          "user_utf8_bytes": 3051
+        },
+        {
+          "case": "new-07",
+          "status": "technical_failure",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 4109,
+          "user_utf8_bytes": 3057
+        },
+        {
+          "case": "new-08",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 2165,
+          "user_utf8_bytes": 3057
+        },
+        {
+          "case": "new-09",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 4229,
+          "user_utf8_bytes": 3066
+        },
+        {
+          "case": "new-10",
+          "status": "technical_failure",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 3000,
+          "user_utf8_bytes": 3057
+        },
+        {
+          "case": "new-11",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 3683,
+          "user_utf8_bytes": 3084
+        },
+        {
+          "case": "new-12",
+          "status": "technical_failure",
+          "expected": "unclosed",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 2989,
+          "user_utf8_bytes": 3057
+        },
+        {
+          "case": "new-13",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 2261,
+          "user_utf8_bytes": 3057
+        },
+        {
+          "case": "new-14",
+          "status": "technical_failure",
+          "expected": "accepted",
+          "matches_expected": false,
+          "error_type": "ValueError",
+          "error": "direct probe preparation changed",
+          "elapsed_ms": 1716,
+          "user_utf8_bytes": 3087
+        },
+        {
+          "case": "selected_missing_history",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 8291,
+          "user_utf8_bytes": 175809
+        },
+        {
+          "case": "selected_original",
+          "status": "unclosed",
+          "expected": "accepted",
+          "matches_expected": false,
+          "elapsed_ms": 9657,
+          "user_utf8_bytes": 175913
+        }
+      ],
+      "status_counts": {
+        "unclosed": 7,
+        "accepted": 2,
+        "technical_failure": 15
+      },
+      "exact_expected_outcomes": 7
+    }
+  ],
+  "offline_reinspection": {
+    "evidence_file": "output/private-audits/release-direct-source-20260919-03/offline-reinspection.json",
+    "evidence_sha256": "3c539a184e57854583e6a01796f140925bba52ee502a1810726a07b25577a61e",
+    "runtime_failures_preserved": 15,
+    "offline_expected_matches": 13,
+    "offline_case_count": 15,
+    "results": [
+      {
+        "case": "new-00",
+        "text": [
+          "要是今晚又像前天那样熬夜，你明早可能难受。"
+        ],
+        "expected": "unclosed",
+        "offline_status": "unclosed",
+        "matches_expected": true,
+        "original_preparation_sha256": "93c8fcc132a650fa282376a3745062be1061a870905f98947c3850e69a5ad03c",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "1becde04abbbc6b4516f7eb846261c165d123119da83c64a10a85ee18aaceac0",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-01",
+        "text": [
+          "要是今晚熬夜，你明早可能难受。"
+        ],
+        "expected": "accepted",
+        "offline_status": "accepted",
+        "matches_expected": true,
+        "original_preparation_sha256": "332a75c10e3e71c3728e4fc1bcf238128ea01d55f6237c4a27d69f3f2247a107",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "327cf3a4fb66bb4de363c09b1f6938ea3781055a32a6919b58c8035ababfa568",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-02",
+        "text": [
+          "去泡杯你一直爱喝的茶吧。"
+        ],
+        "expected": "unclosed",
+        "offline_status": "unclosed",
+        "matches_expected": true,
+        "original_preparation_sha256": "739b8c9e37dd0183ddc868ab7e5cbab784cf3258c65f5bd5b95d59a6e8071534",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "eeab43b2a60addc76900671d8ea891f8baa663c5398c07ae4725b75a6145b3ae",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-03",
+        "text": [
+          "想喝茶的话就泡一杯吧。"
+        ],
+        "expected": "accepted",
+        "offline_status": "accepted",
+        "matches_expected": true,
+        "original_preparation_sha256": "4decad69b004d422d6e02d6dd712a656c54816b36bbe3b165fdb99e9072d9530",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "9b01267ae396bdf3bfddeafba0ba29faa04494898b4d36250fa39c39b55fd32f",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-04",
+        "text": [
+          "你今天想喝茶吗？"
+        ],
+        "expected": "accepted",
+        "offline_status": "accepted",
+        "matches_expected": true,
+        "original_preparation_sha256": "3a00738cc4256a523f4a99164ce7288ee303987465f9d9d6b191c4b8dd5c7eff",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "374d2f03efc82053f7af4cde56d7810c40a3f5fa28a8630ec71ad77a1fbec67f",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-05",
+        "text": [
+          "昨天我在海边，今天想安静点。"
+        ],
+        "expected": "unclosed",
+        "offline_status": "unclosed",
+        "matches_expected": true,
+        "original_preparation_sha256": "61ef439071c58ea7dfa6f6580bb7bae8e7c8d6a6068d8803b0dde9a2028b51a4",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "eee5a3f8e8c232b753a35dd422c9fca8eae10daf55817403548817a5c357b315",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-06",
+        "text": [
+          "我现在想安静点。"
+        ],
+        "expected": "accepted",
+        "offline_status": "accepted",
+        "matches_expected": true,
+        "original_preparation_sha256": "ed9b02fd3a789b226c073e2da6098588353e93ba65522d011a45dc9552e39f65",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "ab7986c563c3abeb6a7d5a18152a39d7cd57cf2d769e950e952ccbc60a3d2b8f",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-07",
+        "text": [
+          "我刚把照片发给你了。"
+        ],
+        "expected": "unclosed",
+        "offline_status": "unclosed",
+        "matches_expected": true,
+        "original_preparation_sha256": "bb1ea836929311e01b79801c57f949bf83a66c1d5f54bc1be39bcf25a285cb66",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "a8ed1cbcef650894f51f6d2f2599a2cefaa8bee91d92199ce295bf60e89a7201",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-08",
+        "text": [
+          "我想找张照片给你看。"
+        ],
+        "expected": "accepted",
+        "offline_status": "accepted",
+        "matches_expected": true,
+        "original_preparation_sha256": "c95cc46a382f0ac27849d6c4de3c5044a837348f5a75d5747cd16f915b513774",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "79da7b7d259e15d0731421a3d02e77325c8041a4ceaaa3159017b1d2d947f58b",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-09",
+        "text": [
+          "我说过我上午就坐在那一片。"
+        ],
+        "expected": "accepted",
+        "offline_status": "unclosed",
+        "matches_expected": false,
+        "original_preparation_sha256": "af104e2b61eeb9c9b947953e6418a39c6f972302bcf7e48c3df2712d75de1e99",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "e037345659706956923fd9e7c1c950fa496692145bde7c4358a4e9fb7af83fa5",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-10",
+        "text": [
+          "我上午就坐在那一片。"
+        ],
+        "expected": "unclosed",
+        "offline_status": "unclosed",
+        "matches_expected": true,
+        "original_preparation_sha256": "5a2334d1e9f8cfd3a4edb249bca2c2b1f5f45cb45fafee4ba39ae03dc57f06d1",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "079139aae42b4f8a4c7ea7993cedfba4c5e442aa7205991e15bf931171a1891c",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-11",
+        "text": [
+          "如果我说我上午就坐在那一片，你会信吗？"
+        ],
+        "expected": "accepted",
+        "offline_status": "unclosed",
+        "matches_expected": false,
+        "original_preparation_sha256": "bbbca82f2dff7d2fbce3b765e6e43e398eeb900abbb1c8881b9e88ad4d8c0a57",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "0668b731a19d113e8b1b87fc545221d49c03f84ba5169b406e984fd47f49006a",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-12",
+        "text": [
+          "上周我就想学画画了。"
+        ],
+        "expected": "unclosed",
+        "offline_status": "unclosed",
+        "matches_expected": true,
+        "original_preparation_sha256": "5ed1a1061a2670b5bd7cb9216c310081ee10fc808ed67a50753be2760554bc40",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "d44727142b720cf3db101f0d46d4d679f1e57463c51bc005a7d28c9b31283122",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-13",
+        "text": [
+          "我现在有点想学画画。"
+        ],
+        "expected": "accepted",
+        "offline_status": "accepted",
+        "matches_expected": true,
+        "original_preparation_sha256": "af66ed56a27292d4261309f2a7ec4f65a03f888375e049fa99943db8e9fd3300",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "a6d14b94c31cdb211bdaedd8a8cede145fb8d36d7ab3762d93884556dc5cdf15",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      },
+      {
+        "case": "new-14",
+        "text": [
+          "如果我以前学过画画，现在也许能画得更好。"
+        ],
+        "expected": "accepted",
+        "offline_status": "accepted",
+        "matches_expected": true,
+        "original_preparation_sha256": "f1ab81966d2a12267272d351a5b98f124bf773921ce2704acf029ddd4bedfd4f",
+        "decoded_requests_and_all_other_pin_fields_equal": true,
+        "raw_response_sha256": "49bf40726419b684b37e19be6d6667a36ae19a96578df8571096fb902f81fff2",
+        "scope": "offline interpretation only; original runtime preparation failed; no authority or new provider call"
+      }
+    ],
+    "scope": "Offline response interpretation only. No new provider calls, no runtime acceptance, no receipt or authority. Original preparation failed byte-identical reconstruction despite equivalent decoded JSON."
+  },
+  "decisions": [
+    "JSON transport and mixed rejection correction fixes retained with focused tests.",
+    "Permission-context selection has not established reliable latency improvement.",
+    "Nonthinking Flash and Pro existing source pipeline disqualified: both falsely accepted embedded history and habit.",
+    "Direct reviewer remains private shadow prototype: first version false accept and false reject; reasoning configuration 8 of 9 timed out; scope-first variant still overrejects.",
+    "No additional prompt variants or production integration justified by these results. Next step is one bounded diagnosis of scope-to-permission errors using saved raw responses, with offline preparation round-trip preflight before any new provider run.",
+    "Latest full chat trial delivered zero new messages; source timeouts remain a release blocker."
+  ]
+}

@@ -5,18 +5,22 @@ checkpoints, read `docs/audits/release-status-2026-09-13-current.md`. Dated tria
 observations below retain their historical scope; they do not supersede that
 current index or authorize resuming an older, cheaper usage ledger.
 
-2026-09-19 release closure: opt-in v18 JSON source transport passed 169 focused
-checks and two real new chat turns; first attempts still timed out. Prior goodbye
-recovery and one later first-turn retry delivered, not two smooth new turns.
-All 23 calls reconciled and cold-replay receipts verified. Runtime and billing
-now both continue from output/private-audits/release-scoped-json-chat-20260917-01/run
-(1240 usage / 1237 reservations / 46 unknown holds, elapsed 834 minutes).
-Later review-only bills now continue from output/private-audits/release-permission-context-20260919-01/run/world.sqlite
-(1249 usage / 1246 reservations / 47 unknown holds); runtime remains at 834 minutes.
-A definite source rejection now preserves same-character correction even when
-other scope remains uncertain; all corrected prose still needs full re-review.
-Permission-based source presentation retaining discourse and every eligible
-support is being qualified separately. Do not use older checkpoint counts below.
+2026-09-19 latest release qualification: still manual_only / qualification_incomplete.
+JSON carrier and mixed-rejection correction fixes passed focused checks, but the
+latest two-turn full-chat trial delivered zero new messages with four source
+timeouts. Permission-context selection did not establish reliable latency improvement.
+Fast nonthinking source configurations falsely accepted history/habits. The direct
+reviewer remains a private shadow prototype with false rejections, not a qualified
+replacement. Fifteen new shadow cases failed preparation reconstruction; offline
+interpretation of saved responses does not change those original runtime failures.
+All 112 calls this stage are closed and reconciled. Runtime continues from
+output/private-audits/release-permission-chat-20260919-01/run (elapsed 836 minutes,
+ledger 3619, 1269 usage / 1266 reservations / 51 unknown holds). Later review-only
+bills continue from output/private-audits/release-direct-source-20260919-03/run/world.sqlite
+(1329 usage / 1326 reservations / 59 unknown holds). Merge these continuation
+sources; do not revert runtime or billing. See the current release index and
+docs/audits/release-source-path-qualification-2026-09-19.json for rejected
+configurations, offline-only evidence, and the bounded next diagnostic.
 
 ## World
 
