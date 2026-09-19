@@ -5,15 +5,14 @@ checkpoints, read `docs/audits/release-status-2026-09-13-current.md`. Dated tria
 observations below retain their historical scope; they do not supersede that
 current index or authorize resuming an older, cheaper usage ledger.
 
-2026-09-19 release closure: the opt-in v18 read-only JSON carrier retains full
-schema, coverage, source permissions and immutable invocation/cold-replay checks.
-Source effort is explicitly configurable without changing character authors.
-169 focused CLI, source, scope and runtime tests pass. Real end-to-end qualification
-is still pending. Runtime checkpoint remains contextual-chat-20260917-01/run;
-the latest billing checkpoint is scope-source-review-20260917-03/run/world.sqlite
-(both under output/private-audits/release-, 1217 usage / 1214 reservations /
-44 unknown holds). The prepared scoped-json-chat-20260917-01/checkpoint merges
-both. Never use the older unified billing totals cited below for new calls.
+2026-09-19 release closure: opt-in v18 JSON source transport passed 169 focused
+checks and two real new chat turns; first attempts still timed out. Prior goodbye
+recovery and one later first-turn retry delivered, not two smooth new turns.
+All 23 calls reconciled and cold-replay receipts verified. Runtime and billing
+now both continue from output/private-audits/release-scoped-json-chat-20260917-01/run
+(1240 usage / 1237 reservations / 46 unknown holds, elapsed 834 minutes).
+Permission-based source presentation retaining discourse and every eligible
+support is being qualified separately. Do not use older checkpoint counts below.
 
 ## World
 

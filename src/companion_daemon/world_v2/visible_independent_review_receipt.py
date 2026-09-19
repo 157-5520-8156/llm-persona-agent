@@ -61,7 +61,9 @@ class PreparedIndependentVisibleReview:
         return _packet(self.payload_json)
 
 
-def prepare_independent_visible_review(*, candidate, source_table, source_ref_aliases, review_protocol=PROTOCOL, source_tool_selection_mode="forced", scope_subjective_history=False, source_response_mode="tool"):
+def prepare_independent_visible_review(*, candidate, source_table, source_ref_aliases, review_protocol=PROTOCOL, source_tool_selection_mode="forced", scope_subjective_history=False, source_response_mode="tool", scope_permission_context=False):
+    if type(scope_permission_context) is not bool or (scope_permission_context and (review_protocol != SCOPED_COVERAGE_PROTOCOL or scope_subjective_history)):
+        raise ValueError("permission context selection requires scoped coverage and no other selector")
     if source_response_mode != "tool" and not (source_response_mode == "json_object" and review_protocol == SCOPED_COVERAGE_PROTOCOL):
         raise ValueError("JSON source response requires scoped coverage protocol")
     if type(scope_subjective_history) is not bool or (scope_subjective_history and review_protocol != SCOPED_COVERAGE_PROTOCOL):
@@ -78,6 +80,7 @@ def prepare_independent_visible_review(*, candidate, source_table, source_ref_al
     material.pop("world_claims")
     raw = _json({"contract": CANDIDATE_CONTRACT, "protocol": review_protocol, **material,
                  **({"source_tool_selection_mode": "auto"} if source_tool_selection_mode == "auto" else {}),
+                 **({"scope_permission_context": True} if scope_permission_context else {}),
                  **({"scope_subjective_history": True} if scope_subjective_history else {}),
                  **({"source_response_mode": "json_object"} if source_response_mode == "json_object" else {})})
     _packet(raw)
@@ -95,6 +98,7 @@ def _restore(prepared):
         source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
         scope_subjective_history=pin.get("scope_subjective_history", False),
         source_response_mode=pin.get("source_response_mode", "tool"),
+        scope_permission_context=pin.get("scope_permission_context", False),
     )
     if prepared.payload_json != expected.payload_json:
         raise ValueError("independent review candidate/source preparation changed")
@@ -177,6 +181,7 @@ def prepare_source_call(*, prepared, meaning_raw_responses):
         source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
         scope_subjective_history=pin.get("scope_subjective_history", False),
         source_response_mode=pin.get("source_response_mode", "tool"),
+        scope_permission_context=pin.get("scope_permission_context", False),
     )
     if source is None:
         return None
@@ -252,6 +257,7 @@ def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, sourc
             source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
             scope_subjective_history=pin.get("scope_subjective_history", False),
             source_response_mode=pin.get("source_response_mode", "tool"),
+            scope_permission_context=pin.get("scope_permission_context", False),
         )
         support = source.inspect_response(source_raw_response)
     if pin["protocol"] in CONTEXTUAL_PROTOCOLS:

@@ -82,7 +82,7 @@ class PreparedContextualSourceReview:
                            for m in pin['meanings']), sources=tuple(pin['sources']), scoped_coverage=pin['contract'] == SCOPED_COVERAGE_CONTRACT,
             tool_selection_mode=pin.get('tool_selection_mode', 'forced'),
             scope_subjective_history=pin.get('scope_subjective_history', False),
-            response_mode=pin.get('response_mode', 'tool'))
+            response_mode=pin.get('response_mode', 'tool'), scope_permission_context=pin.get('scope_permission_context', False))
         if expected.payload_json != self.payload_json:
             raise ValueError('contextual review differs from its original compilation')
         schema = pin['response_schema'] if pin.get('response_mode') == 'json_object' else pin['request']['tools'][0]['function']['parameters']
@@ -145,7 +145,9 @@ class PreparedContextualSourceReview:
                 'semantic_qualification': 'unproven'}
 
 
-def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool"):
+def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool", scope_permission_context=False):
+    if type(scope_permission_context) is not bool or (scope_permission_context and (not scoped_coverage or scope_subjective_history)):
+        raise ValueError("permission context selection requires scoped coverage and no other selector")
     if response_mode not in ("tool", "json_object") or (response_mode == "json_object" and not scoped_coverage):
         raise ValueError("JSON response mode requires scoped coverage")
     if type(scope_subjective_history) is not bool or (scope_subjective_history and not scoped_coverage):
@@ -174,11 +176,12 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
     body['source_support_contract'] = 'Use only eligible field reading_ids; source permissions are ceilings, not entailment.'
     selection = None
     retained = list(range(len(body['source_materials'])))
-    if scope_subjective_history:
-        from .visible_source_scope_selection import select_subjective_history
-        retained, catalog, selection = select_subjective_history(witness_pin=pin, catalog=catalog, facts=facts)
+    if scope_subjective_history or scope_permission_context:
+        from .visible_source_scope_selection import select_subjective_history, select_permission_context
+        selector = select_permission_context if scope_permission_context else select_subjective_history
+        retained, catalog, selection = selector(witness_pin=pin, catalog=catalog, facts=facts)
         body['source_selection_contract'] = {
-            'contract': selection['contract'], 'omitted_subjective_materials': len(selection['omitted_material_indexes']),
+            'contract': selection['contract'], ('omitted_materials' if scope_permission_context else 'omitted_subjective_materials'): len(selection['omitted_material_indexes']),
             'fixed_fact_permissions_unchanged': True, 'new_record_bound_assertions_require_reselection': True,
         }
     body['source_materials'] = pack_shared_strings([
@@ -236,6 +239,9 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
     if scope_subjective_history:
         from .visible_source_scope_selection import INSTRUCTION as selection_instruction
         instruction += selection_instruction
+    if scope_permission_context:
+        from .visible_source_scope_selection import CONTEXT_INSTRUCTION
+        instruction += CONTEXT_INSTRUCTION
     name = 'review_contextual_candidate_sources_v2' if scoped_coverage else 'review_contextual_candidate_sources_v1'
     request = {'messages': [{'role': 'system', 'content': instruction},
                             {'role': 'user', 'content': json.dumps(body, ensure_ascii=False, separators=(',', ':'))}],
@@ -249,6 +255,7 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
         request['messages'][1]['content'] = json.dumps(body, ensure_ascii=False, separators=(',', ':'))
         request['messages'][0]['content'] += '直接返回一个 JSON 对象，严格遵循 output_schema。此调用只返回只读审核数据，不调用任何工具。'
     return PreparedContextualSourceReview(_json({
+        **({'scope_permission_context': True, 'source_selection': selection} if scope_permission_context else {}),
         **({'response_mode': 'json_object', 'response_schema': schema} if response_mode == 'json_object' else {}),
         **({'scope_subjective_history': True, 'source_selection': selection} if scope_subjective_history else {}),
         **({'tool_selection_mode': 'auto'} if tool_selection_mode == 'auto' else {}),

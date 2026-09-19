@@ -54,6 +54,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--visible-source-review-scope-history", action="store_true",
                         help="Opt-in v18 omission of verified subjective history without permission for the fixed facts.")
+    parser.add_argument("--visible-source-review-scope-context", action="store_true",
+                        help="Opt-in v18 permission selection retaining dialogue, situation and every eligible support.")
     parser.add_argument("--visible-source-review-json", action="store_true",
                         help="Explicit read-only v18 JSON-object carrier with unchanged full local schema validation.")
     parser.add_argument("--visible-source-review-effort", choices=("low", "high", "max"), default=None,
@@ -102,6 +104,8 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--visible-source-review-thinking requires explicit review version 18")
     if options.visible_source_review_scope_history and options.visible_source_review_version != "18":
         parser.error("--visible-source-review-scope-history requires explicit review version 18")
+    if options.visible_source_review_scope_context and (options.visible_source_review_version != "18" or options.visible_source_review_scope_history):
+        parser.error("--visible-source-review-scope-context requires v18 and no scope-history selector")
     if options.visible_source_review_json and options.visible_source_review_version != "18":
         parser.error("--visible-source-review-json requires explicit review version 18")
     if options.visible_source_review_effort is not None and not options.visible_source_review_thinking:
@@ -405,6 +409,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                                         provider("visible_meaning_flash")),
                         source_model=visible_reviewer,
                         scope_subjective_history=options.visible_source_review_scope_history,
+                        scope_permission_context=options.visible_source_review_scope_context,
                         source_response_mode="json_object" if options.visible_source_review_json else "tool",
                     )
                 injected.update(
@@ -459,6 +464,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                 "expression_episode_mode": "off",
                 "review_model": configured.deepseek_model,
                 **({"source_thinking_enabled": True} if options.visible_source_review_thinking else {}),
+                **({"scope_permission_context": True} if options.visible_source_review_scope_context else {}),
                 **({"scope_subjective_history": True} if options.visible_source_review_scope_history else {}),
                 **({"source_response_mode": "json_object"} if options.visible_source_review_json else {}),
                 **({"source_reasoning_effort": options.visible_source_review_effort} if options.visible_source_review_effort else {}),

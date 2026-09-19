@@ -110,3 +110,62 @@ def test_one_readers_past_inner_claim_keeps_sources_despite_other_readers_curren
     pin = json.loads(prep.payload_json)
     assert not pin['source_selection']['omitted_material_indexes']
     assert {f['meaning_index'] for f in pin['facts']} == {1}
+
+
+@pytest.mark.parametrize('mode', ['actual_event_or_state', 'past_utterance', 'past_intention', 'current_private_expression', 'past_subjective_state'])
+def test_permission_context_keeps_discourse_and_all_original_support(mode):
+    full, _ = _pair(mode)
+    old = json.loads(full.payload_json)
+    meaning = _meaning(mode=mode)
+    selected = prepare_contextual_source_review(meanings=(meaning, meaning), sources=tuple(old['sources']),
+        scoped_coverage=True, scope_permission_context=True)
+    new = json.loads(selected.payload_json)
+    assert new['sources'] == old['sources']
+    before, after = [unpack_shared_strings(json.loads(p.request()['messages'][1]['content'])['source_materials'])
+                     for p in (full, selected)]
+    retained = new['source_selection']['retained_material_indexes']
+    assert after == [before[i] for i in retained]
+    assert all(i in retained for i, row in enumerate(before)
+               if row['material'].get('lane') in {'recent_dialogue', 'current_situation'})
+    for fact in old['facts']:
+        assert _eligible_readings(fact, old['catalog']) == _eligible_readings(fact, new['catalog'])
+
+
+def test_permission_context_does_not_approve_empty_facts_or_unshown_history():
+    _, _, table = accepted_sources()
+    meaning = _meaning(mode='current_private_expression')
+    prep = prepare_contextual_source_review(meanings=(meaning, meaning), sources=table.source_references(),
+        scoped_coverage=True, scope_permission_context=True)
+    pin = json.loads(prep.payload_json)
+    assert pin['source_selection']['omitted_material_indexes']
+    raw = {'contract': 'visible-contextual-source-review.2', 'fact_decisions': [], 'beat_decisions': [{
+        'beat_index': 0, 'review_complete': True, 'non_record_expressions': [],
+        'unaccounted_record_bound_assertions': ['昨天去散步'], 'blocking_scope_ambiguities': [],
+    }]}
+    assert prep.inspect_response(json.dumps(raw))['beat_outcomes'] == ['unclosed']
+    pin['scope_permission_context'] = False
+    with pytest.raises(ValueError, match='original compilation'):
+        PreparedContextualSourceReview(json.dumps(pin)).inspect_response(json.dumps(raw))
+
+
+@pytest.mark.parametrize('fault', ['proof', 'eligibility', 'no_readings'])
+def test_permission_context_retains_unverified_or_unknown_cards(fault):
+    from companion_daemon.world_v2.visible_source_scope_selection import select_permission_context
+    _, _, table = accepted_sources()
+    witness = prepare_witness_experiment(beats=('现在想静一静。',), sources=table.source_references(),
+        source_owner_semantics=True, prehistory_authority=True)
+    pin = json.loads(witness.payload_json)
+    catalog = _catalog(pin, report_uptake=True, content_fields_only=True, prehistory_authority=True)
+    target = next(r for r in catalog if r['permissions'] == [['subjective_history', 'companion']])
+    index = target['material_index']
+    if fault == 'no_readings':
+        catalog = [r for r in catalog if r['material_index'] != index]
+    else:
+        for row, position in zip(pin['sources'], pin['material_indexes'], strict=True):
+            if position == index and row.get('support_eligibility') == 'eligible':
+                if fault == 'proof':
+                    row['review_material']['item']['source_hash'] = '0' * 64
+                else:
+                    row['support_eligibility'] = 'baseline_only'
+    retained, _, _ = select_permission_context(witness_pin=pin, catalog=catalog, facts=[])
+    assert index in retained

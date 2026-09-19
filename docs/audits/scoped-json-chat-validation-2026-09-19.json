@@ -1,0 +1,124 @@
+{
+  "code_head": "c93aa815e4fe424c3c6fed6bb983c1d16745885b",
+  "stop_reason": "operator_stopped",
+  "completed": false,
+  "physical_calls": 23,
+  "billing_states": {
+    "known": 21,
+    "unknown": 2
+  },
+  "known_native_token_joins_verified": 21,
+  "all_captured_terminal_body_hashes_verified": true,
+  "transport_only_unknown_calls": [],
+  "inherited_rows_unchanged": true,
+  "known_repository_estimate_cny": "0.3175777199999999921",
+  "new_unknown_hold_cny": "0.444794",
+  "usage_rows": 1240,
+  "reservation_rows": 1237,
+  "new_deliveries": [
+    {
+      "kind": "text",
+      "message_id": "journey-message-72",
+      "text": "嗯 去吧",
+      "virtual_at": "2026-09-14T14:52:30+00:00"
+    },
+    {
+      "kind": "text",
+      "message_id": "journey-message-73",
+      "text": "我这边也歇会儿",
+      "virtual_at": "2026-09-14T14:52:30+00:00"
+    },
+    {
+      "kind": "text",
+      "message_id": "journey-message-74",
+      "text": "嗯 就坐着 喝点热的",
+      "virtual_at": "2026-09-14T14:53:30+00:00"
+    },
+    {
+      "kind": "text",
+      "message_id": "journey-message-75",
+      "text": "你记性倒是不差",
+      "virtual_at": "2026-09-14T14:53:30+00:00"
+    },
+    {
+      "kind": "text",
+      "message_id": "journey-message-76",
+      "text": "去洗吧 我这边也歇着",
+      "virtual_at": "2026-09-14T14:53:30+00:00"
+    }
+  ],
+  "cold_receipt_versions": {
+    "visible-source-review-receipt.6": 6,
+    "visible-source-review-receipt.7": 1,
+    "visible-source-review-receipt.8": 6,
+    "visible-source-review-receipt.12": 3,
+    "visible-source-review-receipt.13": 2,
+    "visible-source-review-receipt.14": 2,
+    "visible-source-review-receipt.15": 3,
+    "visible-source-review-receipt.18": 3
+  },
+  "replay_hash_matches": true,
+  "test_spend_cap_cny": null,
+  "monthly_product_cost_target_cny": 100,
+  "real_qq": false,
+  "production_database": false,
+  "qualification": "manual_only / qualification_incomplete",
+  "reconciliation_sha256": "46a807aef81192cf8b47f11ac10bc6adf593827cb85added6acef2251e5aa20e",
+  "scope": "Two new inbound turns, plus recovery of prior goodbye; old recovery is not a new successful turn.",
+  "failures": [
+    {
+      "kind": "inbound",
+      "turn_id": "release-natural-833",
+      "failures": [
+        {
+          "event_ref": "event:ModelResultRecorded:b86ff1b39f7878acc925c22018d720975cc091de221527f396e0a5ae481e8c70",
+          "failure_code": "source_review_timeout",
+          "status": "main_timeout"
+        },
+        {
+          "event_ref": "event:ModelResultRecorded:4441d3248ad139b78352ea980363a56033d31ba5b7936580df8598653da1295d",
+          "failure_code": "primary_invalid",
+          "status": "main_invalid"
+        },
+        {
+          "event_ref": "event:ModelResultRecorded:5999bde333c10ecf7cb8147af011f75ac01dc20ccb6d9a2a09025624f114872e",
+          "failure_code": "provider_timeout",
+          "status": "main_timeout"
+        }
+      ]
+    },
+    {
+      "kind": "scheduler",
+      "turn_id": null,
+      "failures": [
+        {
+          "event_ref": "event:ModelResultRecorded:5565b0df66938c468e7f1c0d7acbd8fb940b1fd04bec3625c00e2e04ed4f8d71",
+          "failure_code": "primary_invalid",
+          "status": "main_invalid"
+        }
+      ]
+    },
+    {
+      "kind": "inbound",
+      "turn_id": "release-natural-834",
+      "failures": [
+        {
+          "event_ref": "event:ModelResultRecorded:a978ec7f25b0e3c8d808ea43ccf0e18d7244dcf20ca23752283e8dda5141a4c8",
+          "failure_code": "source_review_timeout",
+          "status": "main_timeout"
+        },
+        {
+          "event_ref": "event:ModelResultRecorded:5794d64e09f9e2ecdc0e31529e5e77f96cbe14360910f00f495aab0d93b1c9bd",
+          "failure_code": "primary_invalid",
+          "status": "main_invalid"
+        },
+        {
+          "event_ref": "event:ModelResultRecorded:1bf1e672e0bb245c0864afc7ff8f0c88915edd10a016cf5bffaeb94a136a29cc",
+          "failure_code": "provider_timeout",
+          "status": "main_timeout"
+        }
+      ]
+    }
+  ],
+  "phase_timing_note": "pinned_turn model_ms and record_ms share their starting point; record_ms is cumulative, not an additional recording duration."
+}

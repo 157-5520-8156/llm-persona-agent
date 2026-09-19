@@ -105,8 +105,10 @@ class PreparedIndependentMeanings:
 
 def prepare_independent_meanings_sources(
     *, meanings: tuple[IndependentMeaning, IndependentMeaning], sources: tuple[dict, ...], shared_strings: bool = False,
-    content_fields_only: bool = False, prehistory_authority: bool = False, contextual_scope: bool = False, scoped_coverage: bool = False, source_tool_selection_mode: str = "forced", scope_subjective_history: bool = False, source_response_mode: str = "tool",
+    content_fields_only: bool = False, prehistory_authority: bool = False, contextual_scope: bool = False, scoped_coverage: bool = False, source_tool_selection_mode: str = "forced", scope_subjective_history: bool = False, source_response_mode: str = "tool", scope_permission_context: bool = False,
 ) -> PreparedIndependentMeanings | PreparedContextualSourceReview | None:
+    if type(scope_permission_context) is not bool or (scope_permission_context and (not scoped_coverage or scope_subjective_history)):
+        raise ValueError("permission context selection requires scoped coverage and no other selector")
     if source_response_mode != "tool" and not (source_response_mode == "json_object" and scoped_coverage):
         raise ValueError("JSON source response requires scoped coverage")
     if type(scope_subjective_history) is not bool or (scope_subjective_history and not scoped_coverage):
@@ -121,7 +123,7 @@ def prepare_independent_meanings_sources(
         if not (shared_strings and content_fields_only and prehistory_authority):
             raise ValueError("contextual review requires current source permissions")
         from .visible_contextual_source_review import prepare_contextual_source_review
-        return prepare_contextual_source_review(meanings=meanings, sources=sources, scoped_coverage=scoped_coverage, tool_selection_mode=source_tool_selection_mode, scope_subjective_history=scope_subjective_history, response_mode=source_response_mode)
+        return prepare_contextual_source_review(meanings=meanings, sources=sources, scoped_coverage=scoped_coverage, tool_selection_mode=source_tool_selection_mode, scope_subjective_history=scope_subjective_history, response_mode=source_response_mode, scope_permission_context=scope_permission_context)
     if type(shared_strings) is not bool:
         raise TypeError("shared string presentation flag must be boolean")
     if type(content_fields_only) is not bool or (content_fields_only and not shared_strings):
