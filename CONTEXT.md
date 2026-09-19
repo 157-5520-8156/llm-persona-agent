@@ -6,21 +6,24 @@ observations below retain their historical scope; they do not supersede that
 current index or authorize resuming an older, cheaper usage ledger.
 
 2026-09-19 latest release qualification: still manual_only / qualification_incomplete.
-JSON carrier and mixed-rejection correction fixes passed focused checks, but the
-latest two-turn full-chat trial delivered zero new messages with four source
-timeouts. Permission-context selection did not establish reliable latency improvement.
-Fast nonthinking source configurations falsely accepted history/habits. The direct
-reviewer remains a private shadow prototype with false rejections, not a qualified
-replacement. Fifteen new shadow cases failed preparation reconstruction; offline
-interpretation of saved responses does not change those original runtime failures.
-All 112 calls this stage are closed and reconciled. Runtime continues from
-output/private-audits/release-permission-chat-20260919-01/run (elapsed 836 minutes,
-ledger 3619, 1269 usage / 1266 reservations / 51 unknown holds). Later review-only
-bills continue from output/private-audits/release-direct-source-20260919-03/run/world.sqlite
-(1329 usage / 1326 reservations / 59 unknown holds). Merge these continuation
-sources; do not revert runtime or billing. See the current release index and
-docs/audits/release-source-path-qualification-2026-09-19.json for rejected
-configurations, offline-only evidence, and the bounded next diagnostic.
+Opt-in v19 now excludes ordinary Fact metadata/excerpt readings and requires the
+exact accepted value, original subject and current/historical scope. A bounded
+content-address lookup resolves the original UTF-8 substring by its accepted
+hash before model presentation; it does not infer meaning. All four real
+source-only controls now match, but their fixed interpretations are scripted.
+Full chat delivery remains unqualified. A separate private scoped-unit prototype
+matched 22/24 controls with two false rejections and was not installed.
+This continuation closed 32 calls (known estimate 0.845238 CNY, no new unknown holds).
+Runtime still continues from output/private-audits/release-permission-chat-20260919-01/run
+(elapsed 836 minutes, ledger 3619). Latest billing continues from
+output/private-audits/release-fact-value-chat-20260919-02/run/world.sqlite
+(1361 usage / 1358 reservations / 59 unknown holds). Merge these sources; do not
+revert runtime or billing. See docs/audits/fact-value-chat-validation-2026-09-19.json.
+The v19 compiler refinement preceded any actual v19 accepted receipt; initial
+rejected private preparations retain their original code-head evidence. Older
+receipt protocols 1-18 preserve their compilation. Author prompt provenance size
+and immediate-private-continuity contract drift are separately audited; they
+have not been fixed or shown to explain every timeout.
 
 ## World
 

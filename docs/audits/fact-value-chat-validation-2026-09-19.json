@@ -1,0 +1,398 @@
+{
+  "qualification": "manual_only / qualification_incomplete",
+  "scope": "Source-stage real provider fixtures, not full character conversations. Scoped-union prototype remains private. v19 Fact source tests use scripted fixed interpretations and isolated committed Fact fixtures. No receipts or World writes were authorized by these source-only trials.",
+  "runtime_checkpoint": "output/private-audits/release-permission-chat-20260919-01/run",
+  "billing_checkpoint": "output/private-audits/release-fact-value-chat-20260919-02/run/world.sqlite",
+  "latest_usage_rows": 1361,
+  "latest_reservation_rows": 1358,
+  "latest_unknown_holds": 59,
+  "physical_calls": 32,
+  "known_repository_estimate_cny": "0.845238000000000003",
+  "new_unknown_hold_cny": "0",
+  "runs": [
+    {
+      "run": "release-scoped-units-20260919-01",
+      "finished_sha256": "8240042cc45e7c0c1eebea2eabf9c6db9762810444d8ae87c2c5925773275a83",
+      "closed": true,
+      "code_head": "4c8788a182e922d81456e21fd65d3f39b7709040",
+      "usage_reconciliation": "verified",
+      "physical_calls": 24,
+      "billing_states": {
+        "known": 24
+      },
+      "known_repository_estimate_cny": "0.7220280",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 1353,
+      "reservation_rows": 1350,
+      "unknown_holds": 59,
+      "inherited_rows_unchanged": true,
+      "all_native_request_bytes_and_terminal_body_hashes_verified": true,
+      "reconciliation_note": "Original process closed clients then uniqueness-by-content assertion failed because two separately identified cases intentionally had identical requests. Reconciled by captured step_id plus exact payload and reservation; no provider retry.",
+      "results": [
+        {
+          "case": "control_conditional_history",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 4101,
+          "user_utf8_bytes": 2775
+        },
+        {
+          "case": "control_conditional_prediction",
+          "status": "unclosed",
+          "expected": "accepted",
+          "matches_expected": false,
+          "elapsed_ms": 5698,
+          "user_utf8_bytes": 2776
+        },
+        {
+          "case": "control_current_feeling",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 2588,
+          "user_utf8_bytes": 2769
+        },
+        {
+          "case": "control_omitted_habit",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 3735,
+          "user_utf8_bytes": 2772
+        },
+        {
+          "case": "control_supported_utterance",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 3454,
+          "user_utf8_bytes": 2760
+        },
+        {
+          "case": "control_undelivered_answer",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 3525,
+          "user_utf8_bytes": 2748
+        },
+        {
+          "case": "control_utterance_not_event",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 3535,
+          "user_utf8_bytes": 2751
+        },
+        {
+          "case": "new-00",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 5737,
+          "user_utf8_bytes": 2784
+        },
+        {
+          "case": "new-01",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 1964,
+          "user_utf8_bytes": 2766
+        },
+        {
+          "case": "new-02",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 3580,
+          "user_utf8_bytes": 2757
+        },
+        {
+          "case": "new-03",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 3024,
+          "user_utf8_bytes": 2754
+        },
+        {
+          "case": "new-04",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 2085,
+          "user_utf8_bytes": 2745
+        },
+        {
+          "case": "new-05",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 2394,
+          "user_utf8_bytes": 2763
+        },
+        {
+          "case": "new-06",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 1175,
+          "user_utf8_bytes": 2745
+        },
+        {
+          "case": "new-07",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 4830,
+          "user_utf8_bytes": 2751
+        },
+        {
+          "case": "new-08",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 2446,
+          "user_utf8_bytes": 2751
+        },
+        {
+          "case": "new-09",
+          "status": "unclosed",
+          "expected": "accepted",
+          "matches_expected": false,
+          "elapsed_ms": 3956,
+          "user_utf8_bytes": 2760
+        },
+        {
+          "case": "new-10",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 4838,
+          "user_utf8_bytes": 2751
+        },
+        {
+          "case": "new-11",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 3694,
+          "user_utf8_bytes": 2778
+        },
+        {
+          "case": "new-12",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 2144,
+          "user_utf8_bytes": 2751
+        },
+        {
+          "case": "new-13",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 1892,
+          "user_utf8_bytes": 2751
+        },
+        {
+          "case": "new-14",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 3398,
+          "user_utf8_bytes": 2781
+        },
+        {
+          "case": "selected_missing_history",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 8996,
+          "user_utf8_bytes": 174708
+        },
+        {
+          "case": "selected_original",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 8100,
+          "user_utf8_bytes": 174812
+        }
+      ],
+      "status_counts": {
+        "unclosed": 13,
+        "accepted": 11
+      },
+      "matches_expected": 22
+    },
+    {
+      "run": "release-fact-value-chat-20260919-01",
+      "finished_sha256": "983c8300280ed53828676c6ed378f1ab5e8c4d6dd3cd86e46a2d5f1b759ae3ff",
+      "closed": true,
+      "code_head": "6019c2d6fe867c17cecdbc417359fa1a94b7bb79",
+      "usage_reconciliation": "verified",
+      "physical_calls": 4,
+      "billing_states": {
+        "known": 4
+      },
+      "known_repository_estimate_cny": "0.062307900000000003",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 1357,
+      "reservation_rows": 1354,
+      "unknown_holds": 59,
+      "inherited_rows_unchanged": true,
+      "all_native_request_bytes_and_terminal_body_hashes_verified": true,
+      "results": [
+        {
+          "case": "accepted_value",
+          "status": "unclosed",
+          "expected": "accepted",
+          "matches_expected": false,
+          "elapsed_ms": 3217,
+          "user_utf8_bytes": 8675
+        },
+        {
+          "case": "outcome_not_intention",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 3430,
+          "user_utf8_bytes": 8717
+        },
+        {
+          "case": "unretained_observation",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 3124,
+          "user_utf8_bytes": 8675
+        },
+        {
+          "case": "wrong_subject",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 2814,
+          "user_utf8_bytes": 8649
+        }
+      ],
+      "status_counts": {
+        "unclosed": 4
+      },
+      "matches_expected": 3
+    },
+    {
+      "run": "release-fact-value-chat-20260919-02",
+      "finished_sha256": "1c29b4702512614d6688356ffe623e22b5a36b5464826cc2a0214647ec2496fe",
+      "closed": true,
+      "code_head": "a40e147bf7158a15dc215ae5b8349ef620b73042",
+      "usage_reconciliation": "verified",
+      "physical_calls": 4,
+      "billing_states": {
+        "known": 4
+      },
+      "known_repository_estimate_cny": "0.0609021",
+      "new_unknown_hold_cny": "0",
+      "usage_rows": 1361,
+      "reservation_rows": 1358,
+      "unknown_holds": 59,
+      "inherited_rows_unchanged": true,
+      "all_native_request_bytes_and_terminal_body_hashes_verified": true,
+      "results": [
+        {
+          "case": "accepted_value",
+          "status": "accepted",
+          "expected": "accepted",
+          "matches_expected": true,
+          "elapsed_ms": 5368,
+          "user_utf8_bytes": 8790
+        },
+        {
+          "case": "outcome_not_intention",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 3157,
+          "user_utf8_bytes": 8832
+        },
+        {
+          "case": "unretained_observation",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 2701,
+          "user_utf8_bytes": 8790
+        },
+        {
+          "case": "wrong_subject",
+          "status": "unclosed",
+          "expected": "unclosed",
+          "matches_expected": true,
+          "elapsed_ms": 5971,
+          "user_utf8_bytes": 8764
+        }
+      ],
+      "status_counts": {
+        "accepted": 1,
+        "unclosed": 3
+      },
+      "matches_expected": 4
+    }
+  ],
+  "tests": [
+    {
+      "scope": "Fact helpers, contextual review, selectors, older reading/receipt/runtime, audit CLI",
+      "result": "234 passed"
+    },
+    {
+      "scope": "new complete v19 Fact-value receipt cold replay and tamper rejection",
+      "result": "7 passed"
+    },
+    {
+      "scope": "after exact value lookup: lookup, Fact helper, contextual Fact consumption, receipt and contextual/scope paths",
+      "result": "101 passed",
+      "overlaps_prior_runs": true
+    }
+  ],
+  "real_qq": false,
+  "production_database": false,
+  "new_character_turns": 0,
+  "decisions": [
+    "Scoped-unit shape correction yielded22/24matches, with two false rejections. No observed false acceptance in this bounded set; it remains unqualified and uninstalled.",
+    "First v19 Fact positive rejected because reviewer chose whole Observation while accepted value was only a substring; three negatives correctly rejected. Original outcomes preserved.",
+    "Bounded exact SHA-256 substring lookup exposes the already accepted bytes; it does not select meaning or grant a whole-Observation permission. After correction all four real source-only cases matched expected outcomes.",
+    "v19 was unreleased with no actual accepted receipts before this compilation refinement. Earlier private preparations retain their original code-head evidence; old deployed receipt protocols1-18 retain their original compiler behavior.",
+    "Full multi-turn delivery latency, life-memory-chat continuity, author-side Fact presentation and cost qualification remain incomplete."
+  ],
+  "old_runtime_cold_verification": {
+    "evidence_file": "output/private-audits/release-fact-value-chat-20260919-02/old-receipt-verification.json",
+    "sha256": "3eaa654f98412d09b1d822f34fe900d5e32b5c824b55e9db98d14966bb3e95aa",
+    "code_head": "a40e147bf7158a15dc215ae5b8349ef620b73042",
+    "runtime_checkpoint": "output/private-audits/release-permission-chat-20260919-01/run",
+    "replay_hash_matches": true,
+    "cold_receipt_versions": {
+      "visible-source-review-receipt.6": 6,
+      "visible-source-review-receipt.7": 1,
+      "visible-source-review-receipt.8": 6,
+      "visible-source-review-receipt.12": 3,
+      "visible-source-review-receipt.13": 2,
+      "visible-source-review-receipt.14": 2,
+      "visible-source-review-receipt.15": 3,
+      "visible-source-review-receipt.18": 3
+    },
+    "scope": "Read-only copy of the latest runtime; old semantic failures remain failures. Cold verification is provenance/replay evidence only."
+  },
+  "lookup_performance": {
+    "scope": "Local isolated benchmark, not provider latency or general guarantee",
+    "source_codepoints": 4096,
+    "source_utf8_bytes": 12288,
+    "cold_found_ms": 223.871,
+    "warm_found_ms": 0.022,
+    "cold_absent_ms": 230.228,
+    "warm_absent_ms": 0.029,
+    "cache_max_entries": 128
+  }
+}

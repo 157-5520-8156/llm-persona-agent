@@ -95,8 +95,8 @@ Fact value can be only a substring of it; its exact bytes are bound by
 
 Changing the catalog to permit just `/item/value/source_excerpt` with the old
 broad Fact permissions would still elevate the entire observed report into an
-accepted Fact. Inferring or searching for the intended value in code would
-introduce another unsupported semantic decision. Silently removing the whole
+accepted Fact. Inferring the intended value by meaning in code would introduce
+another unsupported semantic decision. Silently removing the whole
 Fact family would also remove an expected memory capability rather than close
 its contract.
 
@@ -132,3 +132,26 @@ into this document. The inspected artifacts have these SHA-256 digests:
 | `model-inputs.jsonl` | `5418c3bf343fb6f2295eafd53894aa11d12349e01f689c5761a466fb12a3c994` |
 | `provider-usage.json` | `bf1426d19215ade9c2bbdf8394519381e1a26b303ebb26f8d0c4729b637e1f0d` |
 | `manifest.json` | `08959bcaa26f5a173c6fb793362fe89a727af9213687bfc6f830074e5973e3ff` |
+
+## Subsequent bounded repair and qualification
+
+The opt-in v19 path now uses `visible_fact_value_readings.py`: ordinary Fact
+metadata/excerpt readings have no direct scalar permissions; exact values use
+separate selections checked against original source, subject, predicate context
+and current/historical status. Source cards and immutable bindings stay pinned.
+
+The first real positive failed because the provider quoted the whole Observation.
+The installed Fact producer stores only a substring hash after normalization,
+so prompting the reviewer to guess the exact accepted substring was insufficient.
+`fact_observation_value_lookup.py` resolves this content address by enumerating
+only the producer's bounded substring space and comparing exact UTF-8 SHA-256.
+This is identity resolution, not semantic selection or inferred reconstruction.
+The resolved value is presented explicitly and rechecked on use. Unknown hashes
+remain unavailable. The cache stores content identity only, never model verdicts.
+
+After the change, one accepted-value positive and three negative controls all
+matched with real Pro nonthinking source calls in 2.7–6.0 seconds. Interpretations
+were scripted and the sources were isolated committed Fact fixtures; this is
+not full chat qualification. Related checks passed (234, 7, and 101 checks with
+scope overlap). See `fact-value-chat-validation-2026-09-19.json` for exact scope,
+failed first attempt, fees and continuation points. No default route was changed.
