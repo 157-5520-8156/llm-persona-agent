@@ -115,7 +115,7 @@ async def test_fresh_invocation_binding_cannot_bypass_exact_value_receipt_gate(t
     raw = _json(response)
     args['source_raw_response'] = raw
     args['source_review'] = args['source_review'].model_copy(update={'response_hash': _hash(raw)})
-    with pytest.raises(ValueError if fault == 'ordinary_reading' else IndependentVisibleReviewRejected):
+    with pytest.raises(ValueError if fault in {'ordinary_reading', 'whole_observation'} else IndependentVisibleReviewRejected):
         record_independent_visible_review(**args)
 
 

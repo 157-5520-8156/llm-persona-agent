@@ -11,6 +11,7 @@ import json
 
 from .context_capsule import FactRecallItem, HistoricalFactRecallItem
 from .fact_observation_value import FactObservationValueBinding
+from .fact_observation_value_lookup import resolve_observation_fact_value
 from .visible_source_closure_protocol import _eligible_reference
 
 CONTRACT = "visible-fact-value-reading.1"
@@ -69,11 +70,14 @@ def compile_fact_value_reading(row: dict) -> dict | None:
     if fact.status == "historical":
         fields += ("valid_from", "valid_to")
     source_row = deepcopy(row)
+    accepted_value = resolve_observation_fact_value(binding=fact.accepted_value_binding,
+                                                   source_excerpt=fact.source_excerpt)
     return {
         "contract": CONTRACT, "source_family": "accepted_fact_value",
         "source_ref_index": index, "source_ref": row["source_ref"],
         "item_ref": fact.fact_id, "pointer": "/item/value/source_excerpt",
         "value": fact.source_excerpt, "fact_context": {key: value[key] for key in fields},
+        "accepted_value": accepted_value,
         "value_binding": fact.accepted_value_binding.model_dump(mode="json"),
         "source_owner_ref": fact.subject_ref, "source_owner_role": owner_role,
         "permissions": [], "value_selection_permissions": [[

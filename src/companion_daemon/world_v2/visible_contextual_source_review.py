@@ -206,7 +206,7 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
             {'reading_id': r['reading_id'], 'field': r['pointer'], 'source_owner_ref': r['source_owner_ref'],
              'allowed_claims': r['permissions'], **({
                  'value_selection_permissions': r['value_selection_permissions'], 'fact_context': r['fact_context'],
-                 'value_binding': r['value_binding'],
+                 'value_binding': r['value_binding'], 'accepted_value': r['accepted_value'],
              } if r.get('source_family') == 'accepted_fact_value' else {})} for r in catalog if r['material_index'] == index]}
         for index, material in enumerate(body['source_materials']) if index in retained])
     body['independent_readings'] = [r['interpretation'] for r in interpreted]
@@ -224,7 +224,9 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
         props['fact_value_selections'] = {'type': 'array', 'items': _object({
             'reading_id': {'type': 'string', 'enum': fact_value_ids or ['unavailable']},
             'claim_scope': {'type': 'string', 'enum': ['accepted_fact', 'historical_accepted_fact']},
-            'subject_ref': {'type': 'string'}, 'quoted_value': {'type': 'string', 'minLength': 1},
+            'subject_ref': {'type': 'string'}, 'quoted_value': {'type': 'string', 'minLength': 1,
+                **({'enum': sorted({r['accepted_value'] for r in catalog if r.get('source_family') == 'accepted_fact_value'})}
+                   if fact_value_ids else {})},
         }), **({'maxItems': 0} if not fact_value_ids else {})}
         fact_item['required'] = list(props)
         for fact in body['fixed_facts']:
@@ -244,8 +246,9 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
             'source_support=true 必须选择 eligible_reading_ids 或 eligible_fact_value_ids 中至少一个合格来源')
         instruction += (
             '已接受 Fact 使用独立的 fact_value_selections，不得填入普通 reading_ids。'
-            'fact_context 给出主体、谓词、状态及时间；整段 source_excerpt 是观察背景，不等于接受值。'
-            'quoted_value 必须逐字选出已接受的值，不能选择 ID、hash、添加字词或把整段观察当作值。'
+            'fact_context 给出主体、谓词、状态及时间；accepted_value 是通过绑定哈希核验的精确接受值。'
+            '整段 source_excerpt 是观察背景，不等于接受值。quoted_value 必须使用所选来源的 accepted_value 原文，'
+            '不能选择 ID、hash、添加字词或把整段观察当作值。'
             '仅按该主体、谓词和有效时间核对命题；当前 accepted_fact 与历史 historical_accepted_fact 不可混用。'
             '元数据仅限验证，不能证明观察中其余事情发生；值匹配仍不等于完整命题被蕴含。'
             '没有合格引用则 source_support=false；not_asserted/uncertain 的 fact_value_selections 必须为空。')

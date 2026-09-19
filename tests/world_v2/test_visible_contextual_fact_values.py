@@ -72,7 +72,8 @@ async def test_exact_fact_value_survives_source_selection_and_cold_compilation(t
         for bad_value in (case.observation.text, reading['source_ref'], VALUE + '。'):
             bad = deepcopy(response)
             bad['fact_decisions'][0]['fact_value_selections'][0]['quoted_value'] = bad_value
-            assert cold.inspect_response(json.dumps(bad))['beat_outcomes'] == ['unclosed']
+            with pytest.raises(ValueError, match='schema'):
+                cold.inspect_response(json.dumps(bad))
         for key, value in [('subject_ref', 'agent:other'), ('claim_scope', 'historical_accepted_fact')]:
             bad = deepcopy(response)
             bad['fact_decisions'][0]['fact_value_selections'][0][key] = value
