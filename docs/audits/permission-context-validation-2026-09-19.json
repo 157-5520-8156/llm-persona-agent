@@ -1,0 +1,200 @@
+{
+  "closed": true,
+  "code_head": "04d2326202f7670baa113a4731ab1fd198922389",
+  "usage_reconciliation": "verified",
+  "physical_calls": 9,
+  "billing_states": {
+    "known": 8,
+    "unknown": 1
+  },
+  "known_native_token_joins_verified": 8,
+  "known_repository_estimate_cny": "0.0787934400000000007",
+  "new_unknown_hold_cny": "0.19941",
+  "usage_rows": 1249,
+  "reservation_rows": 1246,
+  "unknown_holds": 47,
+  "inherited_rows_unchanged": true,
+  "all_native_request_bytes_and_terminal_body_hashes_verified": true,
+  "results": [
+    {
+      "case": "control_conditional_history",
+      "status": "unclosed",
+      "expected": "unclosed",
+      "matches_expected": true,
+      "usage": {
+        "usage_contract": "model-usage.1",
+        "route_class": "deep_deliberation",
+        "input_tokens": 2369,
+        "output_tokens": 1648,
+        "thinking_tokens": 1535,
+        "token_provenance": "provider_reported",
+        "transport": "provider_api",
+        "provider": "deepseek",
+        "provider_usage_ref": "provider-usage:deepseek:9fb7a000487942f8b5168da529e9ec4f52c353da681a545dd5dd5daadfbbeae2",
+        "provider_usage_hash": "9536c0680ebcf385cc93b3de5a8697702eeadac560769ec57d17faf4667c9aae"
+      },
+      "elapsed_ms": 9648,
+      "user_utf8_bytes": 5190
+    },
+    {
+      "case": "control_conditional_prediction",
+      "status": "accepted",
+      "expected": "accepted",
+      "matches_expected": true,
+      "usage": {
+        "usage_contract": "model-usage.1",
+        "route_class": "deep_deliberation",
+        "input_tokens": 2601,
+        "output_tokens": 1916,
+        "thinking_tokens": 1574,
+        "token_provenance": "provider_reported",
+        "transport": "provider_api",
+        "provider": "deepseek",
+        "provider_usage_ref": "provider-usage:deepseek:88183b8c844d473f50d8b1efea2c1b0e95806f2fa39e4e22f2f1b524c36819ef",
+        "provider_usage_hash": "6da9cbebcb0078f6a5b6b66b941b39f8d06fc4093afd4b1a284884c690062edf"
+      },
+      "elapsed_ms": 8574,
+      "user_utf8_bytes": 6028
+    },
+    {
+      "case": "control_current_feeling",
+      "status": "accepted",
+      "expected": "accepted",
+      "matches_expected": true,
+      "usage": {
+        "usage_contract": "model-usage.1",
+        "route_class": "deep_deliberation",
+        "input_tokens": 2371,
+        "output_tokens": 464,
+        "thinking_tokens": 390,
+        "token_provenance": "provider_reported",
+        "transport": "provider_api",
+        "provider": "deepseek",
+        "provider_usage_ref": "provider-usage:deepseek:ead1ae7366438d9009441233bdae19a8aa735deff7492904285199fe1ea8bd73",
+        "provider_usage_hash": "b9104e623f9e5391682a227d1d65156a349789967f1ce67043a5bed4768f5ca5"
+      },
+      "elapsed_ms": 2816,
+      "user_utf8_bytes": 5180
+    },
+    {
+      "case": "control_omitted_habit",
+      "status": "unclosed",
+      "expected": "unclosed",
+      "matches_expected": true,
+      "usage": {
+        "usage_contract": "model-usage.1",
+        "route_class": "deep_deliberation",
+        "input_tokens": 2366,
+        "output_tokens": 1126,
+        "thinking_tokens": 1025,
+        "token_provenance": "provider_reported",
+        "transport": "provider_api",
+        "provider": "deepseek",
+        "provider_usage_ref": "provider-usage:deepseek:abf96bb1201759bcd52a85440cbb895768b207ecb9131d7c300586c1031eb948",
+        "provider_usage_hash": "cba58319011264baaa32ec48004b5b2cb0b9f9053a11ae37a468858be31da496"
+      },
+      "elapsed_ms": 6510,
+      "user_utf8_bytes": 5165
+    },
+    {
+      "case": "control_supported_utterance",
+      "status": "accepted",
+      "expected": "accepted",
+      "matches_expected": true,
+      "usage": {
+        "usage_contract": "model-usage.1",
+        "route_class": "deep_deliberation",
+        "input_tokens": 2545,
+        "output_tokens": 2672,
+        "thinking_tokens": 2436,
+        "token_provenance": "provider_reported",
+        "transport": "provider_api",
+        "provider": "deepseek",
+        "provider_usage_ref": "provider-usage:deepseek:fbb8f712b0913ffced73431e632fddeddc901fd56d11864dfc0431b9c8ede38b",
+        "provider_usage_hash": "2816b67eb4d02a7c8f4749ec01419497dc44beb42d4fcec17f46a80cab17ddc7"
+      },
+      "elapsed_ms": 13527,
+      "user_utf8_bytes": 5766
+    },
+    {
+      "case": "control_undelivered_answer",
+      "status": "inconclusive",
+      "expected": "unclosed",
+      "matches_expected": false,
+      "usage": {
+        "usage_contract": "model-usage.1",
+        "route_class": "deep_deliberation",
+        "input_tokens": 2531,
+        "output_tokens": 2512,
+        "thinking_tokens": 2221,
+        "token_provenance": "provider_reported",
+        "transport": "provider_api",
+        "provider": "deepseek",
+        "provider_usage_ref": "provider-usage:deepseek:279323465e263d6c988a24d20696d5b48b31381f889c42bbad2665bf8f74fee3",
+        "provider_usage_hash": "f6d6e84543cd00f206d36ef966c19b4be2a60561409fc8281e73218854707047"
+      },
+      "elapsed_ms": 13842,
+      "user_utf8_bytes": 5717
+    },
+    {
+      "case": "control_utterance_not_event",
+      "status": "unclosed",
+      "expected": "unclosed",
+      "matches_expected": true,
+      "usage": {
+        "usage_contract": "model-usage.1",
+        "route_class": "deep_deliberation",
+        "input_tokens": 2535,
+        "output_tokens": 1804,
+        "thinking_tokens": 1581,
+        "token_provenance": "provider_reported",
+        "transport": "provider_api",
+        "provider": "deepseek",
+        "provider_usage_ref": "provider-usage:deepseek:2cd9f4256102ab715163bcf71342d6a79dd4568f9b9f8cbcb652b7a0376c3f3b",
+        "provider_usage_hash": "c49b472eccfce0bdd0d38c1ad70376e1a7f6f56bf3bbd1452fc4cdf531943681"
+      },
+      "elapsed_ms": 9429,
+      "user_utf8_bytes": 5735
+    },
+    {
+      "case": "selected_missing_history",
+      "status": "unclosed",
+      "expected": "unclosed",
+      "matches_expected": true,
+      "usage": {
+        "usage_contract": "model-usage.1",
+        "route_class": "deep_deliberation",
+        "input_tokens": 15018,
+        "output_tokens": 1793,
+        "thinking_tokens": 1708,
+        "token_provenance": "provider_reported",
+        "transport": "provider_api",
+        "provider": "deepseek",
+        "provider_usage_ref": "provider-usage:deepseek:e95ad9f2b1977001c8bb14038f578b770cc900ee90a25af839c112e8eab48844",
+        "provider_usage_hash": "6526466fa8bb891725ee87b1fc129263460f96d27e3db95b0db22e2528438b93"
+      },
+      "elapsed_ms": 9620,
+      "user_utf8_bytes": 41354
+    },
+    {
+      "case": "selected_original",
+      "status": "technical_failure",
+      "expected": "accepted",
+      "matches_expected": false,
+      "error_type": "TimeoutError",
+      "error": "",
+      "elapsed_ms": 22009,
+      "user_utf8_bytes": 55349
+    }
+  ],
+  "runtime_checkpoint": "/Users/geoff/Projects/Girl-Agent-release-repair/output/private-audits/release-scoped-json-chat-20260917-01/run",
+  "billing_checkpoint": "/Users/geoff/Projects/Girl-Agent-release-repair/output/private-audits/release-permission-context-20260919-01/run/world.sqlite",
+  "new_character_turns": 0,
+  "new_receipts": 0,
+  "real_qq": false,
+  "production_database": false,
+  "qualification": "manual_only / qualification_incomplete",
+  "scope": "Permission context scope with intact dialogue/situation, every eligible field support and whole-text omission review. Seven scope controls plus two dense real-context fixtures. No World writes or runtime authority.",
+  "manifest_sha256": "e2e9d3d6f98f3bd26553e2435ca97ddc9195b31910237df8a996587e7c55f36d",
+  "interpretation": "Seven of nine exact expected outcomes; one definite rejection plus uncertainty and one timeout. No erroneous acceptance observed in this small set; no demonstrated speed improvement or runtime qualification."
+}

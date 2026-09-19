@@ -11,6 +11,10 @@ recovery and one later first-turn retry delivered, not two smooth new turns.
 All 23 calls reconciled and cold-replay receipts verified. Runtime and billing
 now both continue from output/private-audits/release-scoped-json-chat-20260917-01/run
 (1240 usage / 1237 reservations / 46 unknown holds, elapsed 834 minutes).
+Later review-only bills now continue from output/private-audits/release-permission-context-20260919-01/run/world.sqlite
+(1249 usage / 1246 reservations / 47 unknown holds); runtime remains at 834 minutes.
+A definite source rejection now preserves same-character correction even when
+other scope remains uncertain; all corrected prose still needs full re-review.
 Permission-based source presentation retaining discourse and every eligible
 support is being qualified separately. Do not use older checkpoint counts below.
 

@@ -261,7 +261,11 @@ def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, sourc
         )
         support = source.inspect_response(source_raw_response)
     if pin["protocol"] in CONTEXTUAL_PROTOCOLS:
-        if support["inconclusive"]:
+        # A definite rejection already forbids accepting this whole candidate.
+        # Preserve it for same-character correction even when another span is
+        # uncertain. Every corrected candidate still receives a fresh full
+        # review; uncertainty alone never acquires passing authority.
+        if support["inconclusive"] and "unclosed" not in support["beat_outcomes"]:
             raise IndependentReviewInconclusive("contextual assertion scope or whole-Beat reading is unresolved")
         return tuple(support["beat_outcomes"]), readings, support
     outcomes = []

@@ -78,6 +78,10 @@ def rejection_feedback(prepared, rejected, bindings):
                 "columns": ["beat", "reader", "meaning_fact_id", "reason", *(['mode'] if typed_feedback else []), "proposition"],
                 "reason": {"s": "reviewer found no support", "p": "source permission denied", "e": "support had no evidence"},
                 "proposition_prefixes": shortened, "rows": rows,
+                **({'additional_review_uncertainty': (
+                    '审核同时报告其他未解决的语义不确定；上述明确拒绝已足以阻止原稿通过。'
+                    '本次重选须重新核验整份表达，不能将未列出的部分理解为已经通过。'
+                )} if rejected.support.get('inconclusive') else {}),
                 **({'classification_guidance': (
                     'mode 是读者对命题的分类，不是措辞指令。无来源的通常/过去内心陈述与本次新产生的当下感受不同。'
                     '你有权自行形成当下感受、态度和意图，但不能借此证明长期习惯、过去想法或已发生行为。'

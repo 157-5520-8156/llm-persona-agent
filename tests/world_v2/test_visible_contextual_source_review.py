@@ -167,11 +167,15 @@ class _ContextHTTP:
                 for b in packet['visible_beats']]
             return _http_result(body, {'contract': packet['contract'], 'decisions': decisions})
         assert name == 'review_contextual_candidate_sources_v1'
+        mixed = self.fault in {'rejected_uncertain', 'rejected_then_uncertain'}
+        status = ('asserted' if mixed and self.authors == 1 else
+                  'uncertain' if self.fault in {'uncertain', 'rejected_then_uncertain'} else 'not_asserted')
         return _http_result(body, {'contract': CONTRACT, 'fact_decisions': [
-            dict(fact_id=f['fact_id'], assertion_status='uncertain' if self.fault == 'uncertain' else 'not_asserted',
-                 source_support=False, reading_ids=[], explanation='原句是条件预测，不是已发生事件。')
+            dict(fact_id=f['fact_id'], assertion_status=status,
+                 source_support=False, reading_ids=[], explanation='独立审核明确拒绝该断言。' if status == 'asserted' else '原句是条件预测，不是已发生事件。')
             for f in packet['fixed_facts']], 'beat_decisions': [
-                dict(beat_index=b['beat_index'], review_complete=True, unresolved_details=[],
+                dict(beat_index=b['beat_index'], review_complete=True,
+                     unresolved_details=['另一个指代仍不明确'] if mixed and self.authors == 1 else [],
                      unaccounted_assertions=['角色昨天散步'] if self.fault == 'omitted' and self.authors == 1 else [])
                 for b in packet['visible_beats']]})
 
@@ -198,6 +202,25 @@ async def test_contextual_judgment_drives_admission_correction_and_technical_fai
                 assert '角色昨天散步' in detail and 'unaccounted_assertion' in detail
             evidence = app.export_replay_evidence()
             assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('fault', ['rejected_uncertain', 'rejected_then_uncertain'])
+async def test_definite_rejection_gets_one_correction_without_approving_remaining_uncertainty(tmp_path, fault):
+    from test_visible_independent_review_runtime import application
+    from test_whole_candidate_author import _inbound
+    handler = _ContextHTTP(fault)
+    async with application(tmp_path / 'world.sqlite', handler) as app:
+        outcome = await app.respond(_inbound())
+        assert handler.authors == 2
+        assert (outcome.status == 'action_authorized') == (fault == 'rejected_uncertain')
+        authors = [r for r in handler.requests if r['tool_choice']['function']['name'].startswith('character_inbound_')]
+        correction = json.loads(authors[1]['messages'][1]['content'])['role_result_correction']
+        assert 'additional_review_uncertainty' in correction['coordinate']['failure_detail']
+        sources = [r for r in handler.requests if r['tool_choice']['function']['name'].startswith('review_contextual_')]
+        assert len(sources) == 2
+        evidence = app.export_replay_evidence()
+        assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
 
 
 @pytest.mark.parametrize('fault', [None, 'omission', 'ambiguity', 'missing_field'])
