@@ -22,7 +22,7 @@ from .visible_source_witness_experiment import _json, _unique
 
 from .visible_review_protocols import (
     PROTOCOL, SHARED_STRING_PROTOCOL as SHARED_STRING_PROTOCOL, SHARED_STRING_PROTOCOLS,
-    SUBJECTIVE_HISTORY_PROTOCOLS, CONTENT_FIELD_PROTOCOLS, PRESUPPOSITION_PROTOCOLS, PREHISTORY_PROTOCOLS, CONDITION_WIRE_PROTOCOLS, CONTEXTUAL_PROTOCOLS, SCOPED_COVERAGE_PROTOCOL, RESELECTING_PROTOCOLS, RECEIPT_PROTOCOLS,
+    SUBJECTIVE_HISTORY_PROTOCOLS, CONTENT_FIELD_PROTOCOLS, PRESUPPOSITION_PROTOCOLS, PREHISTORY_PROTOCOLS, CONDITION_WIRE_PROTOCOLS, CONTEXTUAL_PROTOCOLS, SCOPED_COVERAGE_PROTOCOLS, FACT_VALUE_PROTOCOL, RESELECTING_PROTOCOLS, RECEIPT_PROTOCOLS,
     REVIEW_PROTOCOLS as REVIEW_PROTOCOLS,
     RESELECTING_PROTOCOL as RESELECTING_PROTOCOL,
 )
@@ -62,13 +62,13 @@ class PreparedIndependentVisibleReview:
 
 
 def prepare_independent_visible_review(*, candidate, source_table, source_ref_aliases, review_protocol=PROTOCOL, source_tool_selection_mode="forced", scope_subjective_history=False, source_response_mode="tool", scope_permission_context=False):
-    if type(scope_permission_context) is not bool or (scope_permission_context and (review_protocol != SCOPED_COVERAGE_PROTOCOL or scope_subjective_history)):
+    if type(scope_permission_context) is not bool or (scope_permission_context and (review_protocol not in SCOPED_COVERAGE_PROTOCOLS or scope_subjective_history)):
         raise ValueError("permission context selection requires scoped coverage and no other selector")
-    if source_response_mode != "tool" and not (source_response_mode == "json_object" and review_protocol == SCOPED_COVERAGE_PROTOCOL):
+    if source_response_mode != "tool" and not (source_response_mode == "json_object" and review_protocol in SCOPED_COVERAGE_PROTOCOLS):
         raise ValueError("JSON source response requires scoped coverage protocol")
-    if type(scope_subjective_history) is not bool or (scope_subjective_history and review_protocol != SCOPED_COVERAGE_PROTOCOL):
+    if type(scope_subjective_history) is not bool or (scope_subjective_history and review_protocol not in SCOPED_COVERAGE_PROTOCOLS):
         raise ValueError("subjective scope selection requires scoped coverage protocol")
-    if source_tool_selection_mode != "forced" and not (review_protocol == SCOPED_COVERAGE_PROTOCOL and source_tool_selection_mode == "auto"):
+    if source_tool_selection_mode != "forced" and not (review_protocol in SCOPED_COVERAGE_PROTOCOLS and source_tool_selection_mode == "auto"):
         raise ValueError("automatic source selection requires scoped coverage protocol")
     if review_protocol not in REVIEW_PROTOCOLS.values():
         raise ValueError("unsupported independent review protocol")
@@ -177,7 +177,8 @@ def prepare_source_call(*, prepared, meaning_raw_responses):
         content_fields_only=pin["protocol"] in CONTENT_FIELD_PROTOCOLS,
         prehistory_authority=pin["protocol"] in PREHISTORY_PROTOCOLS,
         contextual_scope=pin["protocol"] in CONTEXTUAL_PROTOCOLS,
-        scoped_coverage=pin["protocol"] == SCOPED_COVERAGE_PROTOCOL,
+        scoped_coverage=pin["protocol"] in SCOPED_COVERAGE_PROTOCOLS,
+        fact_value_authority=pin["protocol"] == FACT_VALUE_PROTOCOL,
         source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
         scope_subjective_history=pin.get("scope_subjective_history", False),
         source_response_mode=pin.get("source_response_mode", "tool"),
@@ -253,7 +254,8 @@ def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, sourc
             content_fields_only=pin["protocol"] in CONTENT_FIELD_PROTOCOLS,
             prehistory_authority=pin["protocol"] in PREHISTORY_PROTOCOLS,
             contextual_scope=pin["protocol"] in CONTEXTUAL_PROTOCOLS,
-            scoped_coverage=pin["protocol"] == SCOPED_COVERAGE_PROTOCOL,
+            scoped_coverage=pin["protocol"] in SCOPED_COVERAGE_PROTOCOLS,
+            fact_value_authority=pin["protocol"] == FACT_VALUE_PROTOCOL,
             source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
             scope_subjective_history=pin.get("scope_subjective_history", False),
             source_response_mode=pin.get("source_response_mode", "tool"),
@@ -293,7 +295,7 @@ class IndependentVisibleReviewRejected(ValueError):
 
 
 class IndependentVisibleReviewReceipt(FrozenModel):
-    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10", "visible-source-review-receipt.11", "visible-source-review-receipt.12", "visible-source-review-receipt.13", "visible-source-review-receipt.14", "visible-source-review-receipt.15", "visible-source-review-receipt.16", "visible-source-review-receipt.17", "visible-source-review-receipt.18"] = RECEIPT_CONTRACT
+    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10", "visible-source-review-receipt.11", "visible-source-review-receipt.12", "visible-source-review-receipt.13", "visible-source-review-receipt.14", "visible-source-review-receipt.15", "visible-source-review-receipt.16", "visible-source-review-receipt.17", "visible-source-review-receipt.18", "visible-source-review-receipt.19"] = RECEIPT_CONTRACT
     prepared_json: str = Field(min_length=2, max_length=MAX_BYTES)
     author: VisibleReviewAuthorBinding
     meaning_reviews: tuple[VisibleReviewInvocationBinding, VisibleReviewInvocationBinding]

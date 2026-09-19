@@ -17,6 +17,8 @@ from .visible_source_witness_experiment import _json, _unique, prepare_witness_e
 
 CONTRACT = 'visible-contextual-source-review.1'
 SCOPED_COVERAGE_CONTRACT = 'visible-contextual-source-review.2'
+FACT_VALUE_CONTRACT = 'visible-contextual-source-review.3'
+SCOPED_CONTRACTS = {SCOPED_COVERAGE_CONTRACT, FACT_VALUE_CONTRACT}
 
 INSTRUCTION = (
     '你审核完整候选发言在原语境中实际断言的事实与来源。visible_beats 是完整原句；'
@@ -79,7 +81,8 @@ class PreparedContextualSourceReview:
         pin = json.loads(self.payload_json, object_pairs_hook=_unique)
         expected = prepare_contextual_source_review(
             meanings=tuple(IndependentMeaning(PreparedCandidateMeaning(m['preparation_json']), m['raw_response'])
-                           for m in pin['meanings']), sources=tuple(pin['sources']), scoped_coverage=pin['contract'] == SCOPED_COVERAGE_CONTRACT,
+                           for m in pin['meanings']), sources=tuple(pin['sources']), scoped_coverage=pin['contract'] in SCOPED_CONTRACTS,
+            fact_value_authority=pin['contract'] == FACT_VALUE_CONTRACT,
             tool_selection_mode=pin.get('tool_selection_mode', 'forced'),
             scope_subjective_history=pin.get('scope_subjective_history', False),
             response_mode=pin.get('response_mode', 'tool'), scope_permission_context=pin.get('scope_permission_context', False))
@@ -92,7 +95,7 @@ class PreparedContextualSourceReview:
         if len(ids) != len(set(ids)) or set(ids) != set(facts):
             raise ValueError('contextual review must cover every extracted fact exactly once')
         beats = value['beat_decisions']
-        scoped = pin['contract'] == SCOPED_COVERAGE_CONTRACT
+        scoped = pin['contract'] in SCOPED_CONTRACTS
         omission_key = 'unaccounted_record_bound_assertions' if scoped else 'unaccounted_assertions'
         unresolved_key = 'blocking_scope_ambiguities' if scoped else 'unresolved_details'
         indexes = [b['beat_index'] for b in beats]
@@ -104,7 +107,8 @@ class PreparedContextualSourceReview:
         uncertain = any(not b['review_complete'] or b[unresolved_key] for b in beats)
         for decision in value['fact_decisions']:
             fact = facts[decision['fact_id']]
-            selected = decision['reading_ids']
+            fact_selections = decision.get('fact_value_selections', [])
+            selected = decision['reading_ids'] + [s['reading_id'] for s in fact_selections]
             if len(selected) != len(set(selected)) or any(r not in catalog for r in selected):
                 raise ValueError('unknown or duplicate contextual source reading')
             if not decision['explanation'].strip():
@@ -121,6 +125,16 @@ class PreparedContextualSourceReview:
                 reason = ('source_support_rejected' if not decision['source_support'] else
                           'support_requires_evidence' if not selected else
                           'source_permission_denied' if any(r not in allowed for r in selected) else None)
+                if reason is None:
+                    from .visible_fact_value_readings import require_fact_value_selection
+                    for selection in fact_selections:
+                        try:
+                            require_fact_value_selection(reading=catalog[selection['reading_id']],
+                                quoted_value=selection['quoted_value'], claim_scope=selection['claim_scope'],
+                                subject_ref=selection['subject_ref'], subject_role=fact['subject_role'])
+                        except ValueError:
+                            reason = 'source_permission_denied'
+                            break
                 outcome = 'rejected' if reason else 'supported'
             decisions.append({
                 'fact_id': fact['fact_id'], 'meaning_index': fact['meaning_index'],
@@ -129,6 +143,7 @@ class PreparedContextualSourceReview:
                 'assertion_status': status, 'explanation': decision['explanation'],
                 'selected_readings': [{**catalog[r], 'use': 'direct' if outcome == 'supported' else 'diagnostic_only',
                                        'permitted_scope': allowed.get(r)} for r in selected],
+                **({'fact_value_selections': fact_selections} if pin['contract'] == FACT_VALUE_CONTRACT else {}),
             })
         outcomes = []
         omissions = []
@@ -145,7 +160,9 @@ class PreparedContextualSourceReview:
                 'semantic_qualification': 'unproven'}
 
 
-def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool", scope_permission_context=False):
+def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool", scope_permission_context=False, fact_value_authority=False):
+    if type(fact_value_authority) is not bool or (fact_value_authority and not scoped_coverage):
+        raise ValueError('Fact value authority requires scoped coverage')
     if type(scope_permission_context) is not bool or (scope_permission_context and (not scoped_coverage or scope_subjective_history)):
         raise ValueError("permission context selection requires scoped coverage and no other selector")
     if response_mode not in ("tool", "json_object") or (response_mode == "json_object" and not scoped_coverage):
@@ -156,7 +173,7 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
         raise ValueError("automatic selection requires scoped coverage")
     if type(scoped_coverage) is not bool:
         raise TypeError('scoped coverage must be boolean')
-    contract = SCOPED_COVERAGE_CONTRACT if scoped_coverage else CONTRACT
+    contract = FACT_VALUE_CONTRACT if fact_value_authority else SCOPED_COVERAGE_CONTRACT if scoped_coverage else CONTRACT
     from .visible_independent_meanings import _readings
     interpreted, beats = _readings(meanings)
     facts = [{**fact, 'fact_id': f"m{index}:{fact['fact_id']}", 'meaning_index': index,
@@ -168,7 +185,7 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
     witness = prepare_witness_experiment(beats=tuple(beats), sources=sources,
                                          source_owner_semantics=True, prehistory_authority=True)
     pin = json.loads(witness.payload_json)
-    catalog = _catalog(pin, report_uptake=True, content_fields_only=True, prehistory_authority=True)
+    catalog = _catalog(pin, report_uptake=True, content_fields_only=True, prehistory_authority=True, fact_value_authority=fact_value_authority)
     body = json.loads(witness.request()['messages'][1]['content'])
     del body['source_reference_tables']
     body.pop('world_claims', None)
@@ -187,16 +204,32 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
     body['source_materials'] = pack_shared_strings([
         {'material': material, 'readings': [
             {'reading_id': r['reading_id'], 'field': r['pointer'], 'source_owner_ref': r['source_owner_ref'],
-             'allowed_claims': r['permissions']} for r in catalog if r['material_index'] == index]}
+             'allowed_claims': r['permissions'], **({
+                 'value_selection_permissions': r['value_selection_permissions'], 'fact_context': r['fact_context'],
+                 'value_binding': r['value_binding'],
+             } if r.get('source_family') == 'accepted_fact_value' else {})} for r in catalog if r['material_index'] == index]}
         for index, material in enumerate(body['source_materials']) if index in retained])
     body['independent_readings'] = [r['interpretation'] for r in interpreted]
     body['fixed_facts'] = [{**f, 'eligible_reading_ids': list(_eligible_readings(f, catalog))} for f in facts]
+    ordinary_ids = [r['reading_id'] for r in catalog if r.get('source_family') != 'accepted_fact_value']
+    fact_value_ids = [r['reading_id'] for r in catalog if r.get('source_family') == 'accepted_fact_value']
     fact_item = _object({
         'fact_id': {'type': 'string', **({'enum': [f['fact_id'] for f in facts]} if facts else {})},
         'assertion_status': {'type': 'string', 'enum': ['asserted', 'not_asserted', 'uncertain']},
-        'source_support': {'type': 'boolean'}, 'reading_ids': _selection([r['reading_id'] for r in catalog]),
+        'source_support': {'type': 'boolean'}, 'reading_ids': _selection(ordinary_ids),
         'explanation': {'type': 'string'},
     })
+    if fact_value_authority:
+        props = fact_item['properties']
+        props['fact_value_selections'] = {'type': 'array', 'items': _object({
+            'reading_id': {'type': 'string', 'enum': fact_value_ids or ['unavailable']},
+            'claim_scope': {'type': 'string', 'enum': ['accepted_fact', 'historical_accepted_fact']},
+            'subject_ref': {'type': 'string'}, 'quoted_value': {'type': 'string', 'minLength': 1},
+        }), **({'maxItems': 0} if not fact_value_ids else {})}
+        fact_item['required'] = list(props)
+        for fact in body['fixed_facts']:
+            fact['eligible_fact_value_ids'] = [r for r in fact['eligible_reading_ids'] if r in fact_value_ids]
+            fact['eligible_reading_ids'] = [r for r in fact['eligible_reading_ids'] if r in ordinary_ids]
     schema = _object({
         'contract': {'type': 'string', 'enum': [contract]},
         'fact_decisions': {'type': 'array', 'items': fact_item, **({'maxItems': 0} if not facts else {})},
@@ -206,6 +239,16 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
         })},
     })
     instruction = INSTRUCTION
+    if fact_value_authority:
+        instruction = instruction.replace('source_support=true 必须选择非空 eligible_reading_ids',
+            'source_support=true 必须选择 eligible_reading_ids 或 eligible_fact_value_ids 中至少一个合格来源')
+        instruction += (
+            '已接受 Fact 使用独立的 fact_value_selections，不得填入普通 reading_ids。'
+            'fact_context 给出主体、谓词、状态及时间；整段 source_excerpt 是观察背景，不等于接受值。'
+            'quoted_value 必须逐字选出已接受的值，不能选择 ID、hash、添加字词或把整段观察当作值。'
+            '仅按该主体、谓词和有效时间核对命题；当前 accepted_fact 与历史 historical_accepted_fact 不可混用。'
+            '元数据仅限验证，不能证明观察中其余事情发生；值匹配仍不等于完整命题被蕴含。'
+            '没有合格引用则 source_support=false；not_asserted/uncertain 的 fact_value_selections 必须为空。')
     if scoped_coverage:
         beat_schema = schema['properties']['beat_decisions']['items']
         props = beat_schema['properties']
@@ -242,7 +285,7 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
     if scope_permission_context:
         from .visible_source_scope_selection import CONTEXT_INSTRUCTION
         instruction += CONTEXT_INSTRUCTION
-    name = 'review_contextual_candidate_sources_v2' if scoped_coverage else 'review_contextual_candidate_sources_v1'
+    name = 'review_contextual_candidate_sources_v3' if fact_value_authority else 'review_contextual_candidate_sources_v2' if scoped_coverage else 'review_contextual_candidate_sources_v1'
     request = {'messages': [{'role': 'system', 'content': instruction},
                             {'role': 'user', 'content': json.dumps(body, ensure_ascii=False, separators=(',', ':'))}],
                'temperature': 0.0, 'tools': [{'type': 'function', 'function': {

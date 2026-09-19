@@ -28,6 +28,15 @@ _SCOPES = {
 def _eligible_readings(fact: dict, catalog: list[dict]) -> dict[str, str]:
     choices = {}
     for reading in catalog:
+        if reading.get('source_family') == 'accepted_fact_value':
+            # This is a permission to select an exact bound value, never to use
+            # the enclosing report as an ordinary scalar. Consumers must call
+            # require_fact_value_selection before granting support.
+            if fact['mode'] == 'actual_event_or_state':
+                for scope, role in reading['value_selection_permissions']:
+                    if role == fact['subject_role']:
+                        choices[reading['reading_id']] = scope
+            continue
         for scope in _SCOPES[fact["mode"]]:
             if [scope, fact["subject_role"]] in reading["permissions"]:
                 choices[reading["reading_id"]] = scope

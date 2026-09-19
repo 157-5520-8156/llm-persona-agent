@@ -66,7 +66,7 @@ def _direct_paths(row: dict, shown: dict, *, content_fields_only: bool = False, 
     return paths
 
 
-def _catalog(packet: dict, *, report_uptake: bool = False, content_fields_only: bool = False, prehistory_authority: bool = False) -> list[dict]:
+def _catalog(packet: dict, *, report_uptake: bool = False, content_fields_only: bool = False, prehistory_authority: bool = False, fact_value_authority: bool = False) -> list[dict]:
     """Merge only exact scalar/material/owner/permission equivalents.
 
     Original aliases and proofs remain in the host preparation. Baseline and
@@ -77,6 +77,18 @@ def _catalog(packet: dict, *, report_uptake: bool = False, content_fields_only: 
     identities: dict[str, dict] = {}
     for row, material_index in zip(packet["sources"], packet["material_indexes"], strict=True):
         if not _eligible_reference(row):
+            continue
+        if fact_value_authority and row['review_material'].get('authority') == 'accepted_fact_with_observation_source':
+            from .visible_fact_value_readings import compile_fact_value_reading
+            try:
+                descriptor = compile_fact_value_reading(row)
+            except ValueError:
+                # Preserve the complete source card, but an unqualified Fact
+                # must not fall back to permissions on its bookkeeping scalars.
+                continue
+            if descriptor is not None:
+                catalog.append({'reading_id': f'r{len(catalog)}', **descriptor,
+                                'material_index': material_index, 'source_ref_indexes': [row['source_ref_index']]})
             continue
         shown = packet["shown_materials"][material_index]
         paths = _direct_paths(row, shown, content_fields_only=content_fields_only, prehistory_authority=prehistory_authority)

@@ -50,14 +50,14 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--visible-source-review-thinking", action="store_true",
-        help="Explicit v18 source adjudicator reasoning with pinned automatic tool selection; qualification pending.",
+        help="Explicit v18/v19 source adjudicator reasoning with pinned automatic tool selection; qualification pending.",
     )
     parser.add_argument("--visible-source-review-scope-history", action="store_true",
-                        help="Opt-in v18 omission of verified subjective history without permission for the fixed facts.")
+                        help="Opt-in v18/v19 omission of verified subjective history without permission for the fixed facts.")
     parser.add_argument("--visible-source-review-scope-context", action="store_true",
-                        help="Opt-in v18 permission selection retaining dialogue, situation and every eligible support.")
+                        help="Opt-in v18/v19 permission selection retaining dialogue, situation and every eligible support.")
     parser.add_argument("--visible-source-review-json", action="store_true",
-                        help="Explicit read-only v18 JSON-object carrier with unchanged full local schema validation.")
+                        help="Explicit read-only v18/v19 JSON-object carrier with unchanged full local schema validation.")
     parser.add_argument("--visible-source-review-effort", choices=("low", "high", "max"), default=None,
                         help="Explicit source-only reasoning effort; requires --visible-source-review-thinking.")
     parser.add_argument(
@@ -100,14 +100,14 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--visible-author-tool-version 2/3 requires --require-visible-source-review")
     if options.visible_source_review_version != "1" and not options.require_visible_source_review:
         parser.error("nonlegacy --visible-source-review-version requires --require-visible-source-review")
-    if options.visible_source_review_thinking and options.visible_source_review_version != "18":
-        parser.error("--visible-source-review-thinking requires explicit review version 18")
-    if options.visible_source_review_scope_history and options.visible_source_review_version != "18":
-        parser.error("--visible-source-review-scope-history requires explicit review version 18")
-    if options.visible_source_review_scope_context and (options.visible_source_review_version != "18" or options.visible_source_review_scope_history):
-        parser.error("--visible-source-review-scope-context requires v18 and no scope-history selector")
-    if options.visible_source_review_json and options.visible_source_review_version != "18":
-        parser.error("--visible-source-review-json requires explicit review version 18")
+    if options.visible_source_review_thinking and options.visible_source_review_version not in {"18", "19"}:
+        parser.error("--visible-source-review-thinking requires explicit review version 18 or 19")
+    if options.visible_source_review_scope_history and options.visible_source_review_version not in {"18", "19"}:
+        parser.error("--visible-source-review-scope-history requires explicit review version 18 or 19")
+    if options.visible_source_review_scope_context and (options.visible_source_review_version not in {"18", "19"} or options.visible_source_review_scope_history):
+        parser.error("--visible-source-review-scope-context requires v18 or v19 and no scope-history selector")
+    if options.visible_source_review_json and options.visible_source_review_version not in {"18", "19"}:
+        parser.error("--visible-source-review-json requires explicit review version 18 or 19")
     if options.visible_source_review_effort is not None and not options.visible_source_review_thinking:
         parser.error("--visible-source-review-effort requires --visible-source-review-thinking")
     if options.max_cost_cny is not None and (

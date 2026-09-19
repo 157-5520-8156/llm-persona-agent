@@ -265,7 +265,8 @@ def test_automatic_source_tool_selection_is_frozen_in_preparation():
 @pytest.mark.asyncio
 @pytest.mark.parametrize('scope_subjective_history,scope_permission_context', [(False, False), (True, False), (False, True)])
 @pytest.mark.parametrize('source_response_mode', ['tool', 'json_object'])
-async def test_reasoning_source_invocation_pins_auto_tool_and_cold_replays(tmp_path, scope_subjective_history, scope_permission_context, source_response_mode):
+@pytest.mark.parametrize('review_version', ['18', '19'])
+async def test_reasoning_source_invocation_pins_auto_tool_and_cold_replays(tmp_path, scope_subjective_history, scope_permission_context, source_response_mode, review_version):
     from dataclasses import replace
     from test_visible_independent_review_runtime import application, ReviewHTTP
     from test_whole_candidate_author import _inbound
@@ -282,7 +283,8 @@ async def test_reasoning_source_invocation_pins_auto_tool_and_cold_replays(tmp_p
             packet = json.loads(body['messages'][1]['content'])
             response = dict(contract=packet['output_contract']['contract'],
                 fact_decisions=[dict(fact_id=f['fact_id'], assertion_status='asserted',
-                    source_support=True, reading_ids=[f['eligible_reading_ids'][0]], explanation='exact report') for f in packet['fixed_facts']],
+                    source_support=True, reading_ids=[f['eligible_reading_ids'][0]], explanation='exact report',
+                    **({'fact_value_selections': []} if review_version == '19' else {})) for f in packet['fixed_facts']],
                 beat_decisions=[dict(beat_index=b['beat_index'], review_complete=True,
                     unaccounted_record_bound_assertions=[], blocking_scope_ambiguities=[], non_record_expressions=[])
                     for b in packet['visible_beats']])
@@ -296,7 +298,7 @@ async def test_reasoning_source_invocation_pins_auto_tool_and_cold_replays(tmp_p
 
     path = tmp_path / 'world.sqlite'
     inbound = replace(_inbound(), text='我取消了周五的报告。')
-    handler = AutoHTTP(version='18')
+    handler = AutoHTTP(version=review_version)
     async with application(path, handler, source_thinking=True, scope_subjective_history=scope_subjective_history, scope_permission_context=scope_permission_context, source_response_mode=source_response_mode) as app:
         assert (await app.respond(inbound)).status == 'action_authorized'
         assert sum(r.get('tool_choice') == 'auto' for r in handler.requests) == (source_response_mode == 'tool')
@@ -304,7 +306,7 @@ async def test_reasoning_source_invocation_pins_auto_tool_and_cold_replays(tmp_p
         evidence = app.export_replay_evidence()
         audit = next(a for a in evidence.projection.proposal_audits if a.proposal_kind == 'decision')
         assert verify_recorded_candidate(audit=audit, model_result_audits=evidence.projection.model_result_audits)
-    cold = AutoHTTP(version='18')
+    cold = AutoHTTP(version=review_version)
     async with application(path, cold, source_thinking=True, scope_subjective_history=scope_subjective_history, scope_permission_context=scope_permission_context, source_response_mode=source_response_mode) as app:
         assert (await app.respond(inbound)).status == 'action_authorized'
         assert cold.requests == []
