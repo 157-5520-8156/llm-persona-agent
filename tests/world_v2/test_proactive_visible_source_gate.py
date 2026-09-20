@@ -772,7 +772,10 @@ async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_acti
     authored_manifest = json.loads(authors[0]["messages"][-1]["content"])["capability_manifest"]
     assert ("world_claim_source_lanes" in authored_manifest["payload"]) is not legacy_claim_lanes
 
+    cold_provider_calls = []
+
     async def forbidden(request):
+        cold_provider_calls.append(request)
         raise AssertionError("cold replay made a new provider call")
 
     model = DeepSeekChatModel(
@@ -821,32 +824,41 @@ async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_acti
             assert tuple(a.action_id for a in after.projection.actions) == tuple(
                 a.action_id for a in before.projection.actions
             )
-        if pause_before_acceptance:
-            # This QQ fixture returns provider acceptance only. The following
-            # due pump must truthfully close the missing terminal receipt as
-            # unknown before a stable projection can be asserted.
-            assert all(
-                a.state == "provider_accepted"
-                for a in after.projection.actions
-                if a.kind == "proactive_message"
-            )
-            await interior._drain_proactive_once()
-            await host.drain(max_action_units=8, max_background_units=0)
-            settled = host.export_replay_evidence()
-            delta = settled.events[len(after.events) :]
-            assert sum(item.event.event_type == "ActionUnknown" for item in delta) == 2
-            assert not any(
-                item.event.event_type in {"ActionAuthorized", "ModelResultRecorded"}
-                for item in delta
-            )
-            assert all(
-                a.state == "unknown"
-                for a in settled.projection.actions
-                if a.kind == "proactive_message"
-            )
-            assert tuple(delivery.sent) == (*sent, *(("10001", text) for text in expected_texts))
-            assert settled.projection.semantic_hash == settled.replay.semantic_hash
-            after = settled
+        # Both histories still have provider acceptance without terminal
+        # receipts: the committed history already sent before restart, while
+        # the audited history sent during recovery above. Complete those same
+        # pending Actions before expecting a quiescent repeated drain.
+        pending_proactive_ids = {
+            a.action_id for a in after.projection.actions if a.kind == "proactive_message"
+        }
+        assert len(pending_proactive_ids) == 2
+        assert all(
+            a.state == "provider_accepted"
+            for a in after.projection.actions if a.action_id in pending_proactive_ids
+        )
+        settled_sent = tuple(delivery.sent)
+        await interior._drain_proactive_once()
+        await host.drain(max_action_units=8, max_background_units=0)
+        settled = host.export_replay_evidence()
+        delta = settled.events[len(after.events) :]
+        unknowns = [item for item in delta if item.event.event_type == "ActionUnknown"]
+        assert len(unknowns) == 2
+        assert {item.event.payload()["action_id"] for item in unknowns} == pending_proactive_ids
+        assert not any(
+            item.event.event_type in {"ActionAuthorized", "ModelResultRecorded"}
+            for item in delta
+        )
+        assert tuple(a.action_id for a in settled.projection.actions) == tuple(
+            a.action_id for a in after.projection.actions
+        )
+        assert settled.projection.model_result_audits == after.projection.model_result_audits
+        assert all(
+            a.state == "unknown"
+            for a in settled.projection.actions if a.action_id in pending_proactive_ids
+        )
+        assert tuple(delivery.sent) == settled_sent
+        assert settled.projection.semantic_hash == settled.replay.semantic_hash
+        after = settled
         await interior._drain_proactive_once()
         await host.drain(max_action_units=8, max_background_units=0)
         repeated = host.export_replay_evidence()
@@ -855,6 +867,9 @@ async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_acti
             for item in repeated.events[len(after.events) :]
         ]
         assert after.projection.semantic_hash == after.replay.semantic_hash
+        assert repeated.events == after.events
+        assert tuple(delivery.sent) == settled_sent
+        assert cold_provider_calls == []
         assert len(authors) == 1 and len(reviews) == 2
     finally:
         await host.aclose()
