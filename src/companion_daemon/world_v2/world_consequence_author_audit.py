@@ -50,6 +50,7 @@ def read_world_consequence_author_evidence(
         expected_request_hash=audit.request_hash,
     )
     declarations = []
+    original_completion_descriptors = []
     for message in messages:
         if message["role"] != "user":
             continue
@@ -62,6 +63,9 @@ def read_world_consequence_author_evidence(
                 "authority": value["execution_authority"],
                 "execution_materials": value.get("execution_materials"),
             })
+            original_completion_descriptors.append(
+                value.get("capability_manifest", {}).get("completed_activity_consequence")
+            )
     if len(declarations) != 1:
         raise ValueError("world consequence original request has no unique execution context")
     context = WorldConsequenceAuthoringContext.model_validate_json(canonical_json(declarations[0]))
@@ -81,4 +85,20 @@ def read_world_consequence_author_evidence(
             consequence=outcome.world_consequence, authority=context.authority,
             pinned_state=pinned, source_events=events, author_messages=messages, author_audit=audit,
         )
-    return context.model_dump(mode="json")
+    evidence = context.model_dump(mode="json")
+    completion = manifest.completed_activity_consequence
+    if completion is not None and completion.lifecycle_reading is not None:
+        from .completed_activity_consequence import (
+            CompletedActivityConsequence, validate_completed_activity_consequence,
+        )
+
+        original_completion = CompletedActivityConsequence.model_validate_json(
+            canonical_json(original_completion_descriptors[0])
+        )
+        if original_completion != completion:
+            raise ValueError("completed lifecycle reading differs from the original author request")
+        validate_completed_activity_consequence(
+            ledger=ledger, pinned_state=pinned, actor_ref=actor_ref, descriptor=original_completion,
+        )
+        evidence["completed_activity_lifecycle"] = completion.lifecycle_reading.model_dump(mode="json")
+    return evidence

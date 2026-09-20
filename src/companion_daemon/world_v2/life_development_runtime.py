@@ -2818,6 +2818,7 @@ class LifeDevelopmentRuntime:
                 completion = read_completed_activity_consequence(
                     ledger=self._ledger, pinned_state=projection, actor_ref=self._owner,
                     completion_event_ref=completed_activity_event_ref,
+                    include_lifecycle_reading=True,
                 )
                 if completion is None:
                     raise ValueError("completed activity source is unavailable")

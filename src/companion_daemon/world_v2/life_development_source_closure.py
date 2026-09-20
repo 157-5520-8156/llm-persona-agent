@@ -913,6 +913,35 @@ def _required_execution_authority(value: dict[str, object] | None) -> dict[str, 
     return value
 
 
+def _completed_lifecycle_guidance(*, manifest, execution_authority) -> str:
+    """Explain only the new, audit-verified reading; old requests stay exact."""
+    completion = manifest.completed_activity_consequence
+    expected = completion.lifecycle_reading if completion is not None else None
+    supplied = (
+        execution_authority.get("completed_activity_lifecycle")
+        if isinstance(execution_authority, dict) else None
+    )
+    if expected is None:
+        if supplied is not None:
+            raise ValueError("lifecycle reading is absent from the original manifest")
+        return ""
+    if supplied != expected.model_dump(mode="json"):
+        raise ValueError("lifecycle reading differs from the original verified author evidence")
+    return (
+        "\nexecution_authority.completed_activity_lifecycle is an original-pin-verified "
+        "reading of two transitions of the same owned Plan. plan_id identifies the "
+        "activity; event_ref and transition_ref identify separate changes, so different "
+        "transition identifiers do not imply different activities. Each expected_plan_revision "
+        "is the state before its own transition, and resulting_plan_revision is the state "
+        "after it; successive revisions are expected. This reading supports only the "
+        "recorded execution start/resumption, later lifecycle end, owner, identity, order "
+        "and times. It can support a lifecycle-only claim citing those bound events. "
+        "It proves no concrete intended action happened or succeeded, no location presence, "
+        "embedded history, emotion or completed Experience. Continue to review every such "
+        "additional claim against its own authority, including new candidate consequence prose."
+    )
+
+
 def _world_consequence_actor_boundary() -> str:
     return (
         "Inspect every world_consequence.environment_text and optional "
@@ -1907,6 +1936,9 @@ def life_development_source_closure_messages(
         pinned_source_evidence["execution_authority"] = _required_execution_authority(
             execution_authority
         )
+        system += _completed_lifecycle_guidance(
+            manifest=manifest, execution_authority=execution_authority,
+        )
     request = {
         "review_contract": _REVIEW_CONTRACT,
         "reviewed_surface": reviewed_surface,
@@ -2187,6 +2219,9 @@ def life_development_novel_origin_messages(
     }
     if current:
         pinned_authority["execution_authority"] = _required_execution_authority(execution_authority)
+        system += _completed_lifecycle_guidance(
+            manifest=manifest, execution_authority=execution_authority,
+        )
     if packet_contract == SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT:
         pinned_authority["review_projection"] = review_projection
     request = {
