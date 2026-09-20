@@ -33,6 +33,10 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         "--scenario", type=Path, default=ROOT / "fixtures/world_v2/longitudinal_week.json"
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--primary-user-id", default="longitudinal-audit",
+        help="Explicit isolated World identity; use a new ID and output directory for a clean-character journey.",
+    )
     parser.add_argument("--model-mode", choices=("fixture", "real-provider"), default="fixture")
     parser.add_argument("--allow-real-provider", action="store_true")
     parser.add_argument(
@@ -95,6 +99,11 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--visible-author-evidence-first-schema", action="store_true",
                         help="Opt-in v3 schema property order: evidence before expression; no semantic qualification implied.")
     options = parser.parse_args(argv)
+    if (not options.primary_user_id.strip()
+            or options.primary_user_id != options.primary_user_id.strip()
+            or len(options.primary_user_id) > 128
+            or any(ord(char) < 32 or ord(char) == 127 for char in options.primary_user_id)):
+        parser.error("--primary-user-id must be 1-128 characters without controls or surrounding whitespace")
     if options.model_mode == "real-provider" and not options.allow_real_provider:
         parser.error("real-provider requires --allow-real-provider")
     if options.allow_real_provider and options.model_mode != "real-provider":
@@ -305,6 +314,9 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
         synthetic=synthetic,
         max_cost_cny=options.max_cost_cny,
     )
+    configured = configured.model_copy(update={
+        "primary_user_id": getattr(options, "primary_user_id", "longitudinal-audit"),
+    })
     # Match production composition. Keep the historical experiment-only total
     # override explicit, without silently discarding the configured hedge.
     legacy_total = os.environ.get("DSH_INTERACTIVE_TURN_BUDGET_SECONDS")
