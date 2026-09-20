@@ -565,7 +565,7 @@ async def test_real_cli_captures_actual_provider_body_and_closes_injected_client
             assert clients[0].max_completion_tokens == 4096
             assert clients[1].thinking_enabled is True
             assert clients[1].max_completion_tokens == 900
-            assert clients[2].max_completion_tokens == 4096
+            assert clients[2].max_completion_tokens == 8192
             if required_review:
                 assert clients[3].model == (source_model or "deepseek-v4-flash")
                 assert clients[3].max_completion_tokens == 4096

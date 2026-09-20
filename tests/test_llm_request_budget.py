@@ -22,6 +22,7 @@ from companion_daemon.world_v2.model_usage_budget import (
 @pytest.mark.asyncio
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("caller_estimate", [None, 0.0])
+@pytest.mark.parametrize("output_ceiling", [4096, 8192])
 @pytest.mark.parametrize(
     "model_type, model_id",
     [
@@ -35,6 +36,7 @@ async def test_request_output_ceiling_is_reserved_before_http(
     caller_estimate,
     model_type,
     model_id,
+    output_ceiling,
 ):
     requests = []
 
@@ -53,7 +55,7 @@ async def test_request_output_ceiling_is_reserved_before_http(
         "fixture-key",
         "https://fixture.invalid",
         model_id,
-        max_completion_tokens=4096,
+        max_completion_tokens=output_ceiling,
         transport=httpx.MockTransport(respond),
         usage_observer=store.record,
         circuit_breaker=ProviderCircuitBreaker(),

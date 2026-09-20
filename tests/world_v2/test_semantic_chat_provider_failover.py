@@ -168,10 +168,32 @@ async def test_production_composition_has_no_backup_character_author() -> None:
 
     assert composition.source_closure_reselection_lane is None
     assert composition.expression_episode_observer_model is None
+    assert composition.world_support_model.max_completion_tokens == 8192
+    character_provider = composition._owned_models[0]
+    assert character_provider is not composition.world_support_model
+    assert character_provider.max_completion_tokens == 4096
     assert (
         composition.character_interior.runtime_health()["parallel_character_author_conflicts"] == 0
     )
     await composition.aclose()
+
+
+@pytest.mark.asyncio
+async def test_injected_world_support_output_ceiling_is_caller_owned() -> None:
+    world = _InjectedModel("caller-world-support")
+    world.max_completion_tokens = 1536
+    composition = build_semantic_chat_composition(
+        settings=Settings(
+            _env_file=None, DEEPSEEK_API_KEY=None, OPENAI_API_KEY=None,
+        ),
+        flash_model=FakeCompanionModel(),
+        world_support_model=world,
+        model_id_prefix="test",
+    )
+    assert composition.world_support_model is world
+    assert world.max_completion_tokens == 1536
+    await composition.aclose()
+    assert world.closed is False
 
 
 @pytest.mark.asyncio

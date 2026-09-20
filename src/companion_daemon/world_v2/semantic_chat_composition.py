@@ -1110,7 +1110,9 @@ def build_semantic_chat_composition(
             base_url=settings.deepseek_base_url,
             model=settings.deepseek_model,
             thinking_enabled=False,
-            max_completion_tokens=4_096,
+            # A World proposal can carry four claim-bound visual outcomes.
+            # Its output ceiling is separate from the interactive author.
+            max_completion_tokens=8_192,
             usage_observer=usage_observer,
         )
         _apply_test_only_provider_capture_authority(

@@ -447,7 +447,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                     if settings.deepseek_character_thinking_enabled
                     else None
                 ),
-                world_support_model=provider("world_support"),
+                world_support_model=provider("world_support", max_tokens=8192),
             )
             if options.require_life_candidate_review:
                 from companion_daemon.world_v2.character_interior.life_source_review import LifeSourceReviewer

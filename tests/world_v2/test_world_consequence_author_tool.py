@@ -11,7 +11,12 @@ import pytest
 
 from companion_daemon.llm import DeepSeekChatModel
 from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
-from companion_daemon.world_v2.life_development_draft import LifeDevelopmentPossibilityDraft
+from companion_daemon.world_v2.life_development_draft import (
+    ORDINARY_LIFE_PHOTO_PRIVACY, LifeDevelopmentPossibilityDraft,
+)
+from companion_daemon.world_v2.character_interior.local_schema_references import (
+    expand_local_schema_references,
+)
 from companion_daemon.world_v2.life_development_model_adapter import RoleBoundLifeDevelopmentModelAdapter
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
 from companion_daemon.world_v2.world_consequence_author_tool import (
@@ -41,7 +46,7 @@ def _tool_response(wire, raw):
         "choices": [{"finish_reason": "tool_calls", "message": {
             "role": "assistant", "content": None,
             "tool_calls": [{"id": "world-tool", "type": "function", "function": {
-                "name": TOOL_NAME, "arguments": raw,
+                "name": wire["tools"][0]["function"]["name"], "arguments": raw,
             }}],
         }}],
         "usage": {"prompt_tokens": 100, "completion_tokens": 200, "total_tokens": 300},
@@ -74,9 +79,13 @@ def test_strict_schema_retains_execution_union_and_binds_exact_transport():
             for value in node:
                 check(value)
 
-    check(schema)
-    propose = schema["properties"]["replacement"]["anyOf"][1]
-    consequence = propose["properties"]["outcomes"]["items"]["properties"]["world_consequence"]
+    expanded = expand_local_schema_references(schema)
+    check(expanded)
+    assert len(_json(schema)) < len(_json(expanded))
+    assert len(_json(contract).encode()) < 17_000
+    propose = expanded["properties"]["replacement"]["anyOf"][2]
+    outcome = propose["properties"]["outcomes"]["items"]["anyOf"][0]
+    consequence = outcome["properties"]["world_consequence"]
     result = consequence["properties"]["authorized_attempt_result"]["anyOf"][0]
     bindings = result["properties"]["execution_binding"]["anyOf"]
     assert [branch["properties"]["source_kind"]["enum"] for branch in bindings] == [
@@ -102,6 +111,101 @@ def test_strict_schema_retains_execution_union_and_binds_exact_transport():
     assert bind_world_consequence_author_tool(messages=original, tool_contract=auto) != bound
 
 
+@pytest.mark.parametrize("mode,expected_hash", [
+    ("forced", "1a2630b9f816324c8a9b5ce03313c2bf52eadf9d78f9c4d084dbbc2b58b9b65b"),
+    ("auto", "59f1135c574afc6d9802a0d0eef18a6b32be9eb65e3acbc2ce19b2575c29c932"),
+])
+def test_tool1_frozen_wire_recovers_without_upgrading(mode, expected_hash):
+    provider = SimpleNamespace(supports_strict_tool_choice=True, single_tool_selection_mode=mode)
+    contract = world_consequence_author_tool_contract(
+        provider=provider, contract_id="world-consequence-author-tool.1",
+    )
+    assert hashlib.sha256(_json(contract).encode()).hexdigest() == expected_hash
+    original = [{"role": "system", "content": "unchanged"}, {"role": "user", "content": "{}"}]
+    pinned = bind_world_consequence_author_tool(messages=original, tool_contract=contract)
+    assert json.loads(pinned[1]["content"])["world_author_wire"]["contract"] == "world-consequence-author-tool.1"
+    assert recover_world_consequence_author_tool(messages=pinned, provider=provider) == contract
+    assert contract != world_consequence_author_tool_contract(provider=provider)
+
+
+@pytest.mark.parametrize("located", [False, True])
+@pytest.mark.parametrize("privacy", [*ORDINARY_LIFE_PHOTO_PRIVACY, "withhold"])
+@pytest.mark.parametrize("has_visual", [False, True])
+def test_location_privacy_visual_matrix_matches_existing_parser(
+    tmp_path, located, privacy, has_visual,
+):
+    ledger = SQLiteWorldLedger(path=tmp_path / "schema.sqlite", world_id=WORLD_ID)
+    try:
+        value = _full_propose(_seed_clock(ledger))
+    finally:
+        ledger.close()
+    value["privacy_class"] = privacy
+    if not located:
+        value["location_ref"] = value["location_capability_ref"] = None
+    for outcome in value["outcomes"]:
+        outcome["privacy_class"] = privacy
+        if not has_visual:
+            outcome["visual_evidence"] = None
+        elif not located:
+            outcome["visual_evidence"]["location"] = None
+    expected = not (located and privacy != "withhold" and not has_visual) and not (
+        privacy == "withhold" and has_visual
+    )
+    schema = world_consequence_author_tool_contract(provider=object())["tools"][0]["function"]["parameters"]
+    assert Draft202012Validator(schema).is_valid({"replacement": value}) is expected
+    if expected:
+        LifeDevelopmentPossibilityDraft.model_validate_json(_json(value))
+    else:
+        with pytest.raises(ValueError):
+            LifeDevelopmentPossibilityDraft.model_validate_json(_json(value))
+
+
+def test_probe_missing_visual_shape_is_rejected_before_business_parser(tmp_path):
+    ledger = SQLiteWorldLedger(path=tmp_path / "probe-shape.sqlite", world_id=WORLD_ID)
+    try:
+        value = _full_propose(_seed_clock(ledger))
+    finally:
+        ledger.close()
+    # Same actual probe relationship: a located private proposal whose ordinary
+    # outcomes all explicitly supplied visual_evidence=null. No private prose or
+    # generated evidence is needed to reproduce the interface mismatch.
+    value["privacy_class"] = "private"
+    for outcome in value["outcomes"]:
+        outcome["privacy_class"] = "private"
+        outcome["visual_evidence"] = None
+    envelope = {"replacement": value}
+    old = world_consequence_author_tool_contract(provider=object(), contract_id="world-consequence-author-tool.1")
+    current = world_consequence_author_tool_contract(provider=object())
+    assert Draft202012Validator(old["tools"][0]["function"]["parameters"]).is_valid(envelope)
+    assert not Draft202012Validator(current["tools"][0]["function"]["parameters"]).is_valid(envelope)
+    with pytest.raises(ValueError, match="location-bound ordinary-privacy"):
+        LifeDevelopmentPossibilityDraft.model_validate_json(_json(value))
+
+
+@pytest.mark.parametrize("missing_field", ["location_ref", "location_capability_ref"])
+def test_location_pair_cannot_be_half_null(tmp_path, missing_field):
+    ledger = SQLiteWorldLedger(path=tmp_path / "pair.sqlite", world_id=WORLD_ID)
+    try:
+        value = _full_propose(_seed_clock(ledger))
+    finally:
+        ledger.close()
+    value[missing_field] = None
+    schema = world_consequence_author_tool_contract(provider=object())["tools"][0]["function"]["parameters"]
+    assert not Draft202012Validator(schema).is_valid({"replacement": value})
+
+
+def test_unlocated_visual_cannot_introduce_a_location(tmp_path):
+    ledger = SQLiteWorldLedger(path=tmp_path / "location.sqlite", world_id=WORLD_ID)
+    try:
+        value = _full_propose(_seed_clock(ledger))
+    finally:
+        ledger.close()
+    value["location_ref"] = value["location_capability_ref"] = None
+    assert value["outcomes"][0]["visual_evidence"]["location"] is not None
+    schema = world_consequence_author_tool_contract(provider=object())["tools"][0]["function"]["parameters"]
+    assert not Draft202012Validator(schema).is_valid({"replacement": value})
+
+
 def test_source_correction_recovers_exact_wire_or_retains_unmarked_json():
     provider = SimpleNamespace(supports_strict_tool_choice=True, single_tool_selection_mode="forced")
     original = [{"role": "system", "content": "unchanged"}, {"role": "user", "content": "{}"}]
@@ -125,12 +229,30 @@ def test_source_correction_recovers_exact_wire_or_retains_unmarked_json():
         recover_world_consequence_author_tool(messages=before, provider=provider)
 
 
+@pytest.mark.parametrize("contract_id", [None, [], {}, "world-consequence-author-tool.unknown"])
+def test_invalid_pinned_contract_id_is_an_explicit_identity_failure(contract_id):
+    provider = SimpleNamespace(supports_strict_tool_choice=True)
+    messages = [
+        {"role": "system", "content": "unchanged"},
+        {"role": "user", "content": _json({"world_author_wire": {"contract": contract_id}})},
+    ]
+    with pytest.raises(ValueError, match="identity changed"):
+        recover_world_consequence_author_tool(messages=messages, provider=provider)
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("strict_original", [False, True])
+@pytest.mark.parametrize("strict_original", [False, True, "legacy"])
 @pytest.mark.parametrize("rewrite_decision", ["no_op", "propose"])
 async def test_source_rewrite_keeps_original_wire_and_review_permissions(
-    tmp_path, strict_original, rewrite_decision,
+    tmp_path, monkeypatch, strict_original, rewrite_decision,
 ):
+    if strict_original == "legacy":
+        monkeypatch.setattr(
+            "companion_daemon.world_v2.life_development_runtime.world_consequence_author_tool_contract",
+            lambda *, provider: world_consequence_author_tool_contract(
+                provider=provider, contract_id="world-consequence-author-tool.1",
+            ),
+        )
     path = tmp_path / "rewrite.sqlite"
     ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
     store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
@@ -164,7 +286,7 @@ async def test_source_rewrite_keeps_original_wire_and_review_permissions(
             "usage": {"prompt_tokens": 100, "completion_tokens": 200, "total_tokens": 300}})
 
     provider = _model(respond)
-    provider.supports_strict_tool_choice = strict_original
+    provider.supports_strict_tool_choice = bool(strict_original)
     general = _SequenceModel(model="fixture:general", outputs=tuple(
         _source_closure_review(decision="supported") for _ in range(2)))
     focused = _SequenceModel(model="fixture:focused", outputs=(
@@ -180,7 +302,11 @@ async def test_source_rewrite_keeps_original_wire_and_review_permissions(
         assert general.calls == focused.calls == (1 if rewrite_decision == "no_op" else 2)
         assert requests[1]["messages"][:-2] == requests[0]["messages"]
         original_user = json.loads(requests[0]["messages"][1]["content"])
-        assert ("world_author_wire" in original_user) is strict_original
+        assert ("world_author_wire" in original_user) is bool(strict_original)
+        if strict_original:
+            assert original_user["world_author_wire"]["contract"] == (
+                "world-consequence-author-tool.1" if strict_original == "legacy" else CONTRACT
+            )
         for wire in requests:
             raw_messages = _json(wire["messages"])
             digest = hashlib.sha256(raw_messages.encode()).hexdigest()
