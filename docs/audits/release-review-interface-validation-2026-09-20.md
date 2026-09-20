@@ -4,6 +4,21 @@
 最新发布判断与唯一有效继续点见 [当前发布状态](release-status-2026-09-13-current.md)。
 资格仍为 `manual_only / qualification_incomplete`；不以离线测试、API200或材料送达替代交付。
 
+## 原输入模型对照：本地门禁拒绝，未评价模型
+
+冻结7502151f下，原07初稿native请求仅替换model，11秒上限／1次调用／无重试。
+实际转发为0：测试门禁只放行普通chat路径，原adapter的strict tools使用beta路径。
+原准备自测绕过该门禁，不能证明完整传输入口。新增离线测试原样抽取旧门禁类，让
+实际adapter穿过它，复现拒绝及零下游调用；只修正URL的离线对照才进入fake下游。
+原capture没有保存URL，此处是冻结代码确定性重现，不称为已捕获的请求URL。
+
+原脚本、授权和终态未修改。独立`reconcile-v2.py`修正usage与reservation不同列结构的
+检查，仍核验原脚本hash、全部继承账行和非账目表不变。`reconciliation-v2`为verified：
+1652 usage/1649 reservations/72 unknown holds，新known费用为0，新增未知预留1.190718元
+原样保留，非确认扣费。没有World写入、来源审核、接受、交付或新回执，也无模型质量结论。
+最新累计账本位于`output/private-audits/release-author-model-comparison-20260920-01/run/world.sqlite`；
+运行仍由07恢复，必须先合并此账本。probe目录不具备journey恢复资格。
+
 ## 07后的来源类型呈现修复（离线验证）
 
 新snapshot `.26` 在原材料栏和结构日记中保留 `settled_world_occurrence` 与

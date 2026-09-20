@@ -10,10 +10,13 @@
 尝试结果入口仍未执行。条件意愿范围误读和 `supported` 配空 `supports` 的结构失败
 继续保留，不能用一次接受覆盖。详见[来源审核与07证据](release-review-interface-validation-2026-09-20.md)。
 
-运行与账目已统一到 `output/private-audits/release-clean-continuation-20260920-07/run`：
+07闭合时运行与账目为 `output/private-audits/release-clean-continuation-20260920-07/run`：
 ledger580/revision234，1651 usage /1648 reservations /71 unknown holds。
 26次调用全部已核对原生用量，本轮估算0.70211972元、新unknown为0；进程和客户端
 已关闭，独立对账与冷重放通过，2张旧v22回执精确保留，无新可见回执。
+后续原输入模型对照被本地工具门禁拒绝，0次转发，无模型质量结论；独立对账通过。
+运行继续点仍是07，累计账目已为1652/1649/72，最新probe账本路径见当前状态页。
+恢复旅程必须先合并最新账目，不能沿用07较旧费用；新增未知预留不是确认扣费。
 
 ## 推进顺序
 

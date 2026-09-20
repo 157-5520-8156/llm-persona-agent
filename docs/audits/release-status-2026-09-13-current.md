@@ -61,13 +61,17 @@ support-basis实验仍不合格，不推广。
 
 ## 唯一有效的运行与累计费用继续点
 
-`output/private-audits/release-clean-continuation-20260920-07/run`，
-ledger **580** / revision **234**，**1651 usage /1648 reservations /71 unknown holds**。
+运行仍从 `output/private-audits/release-clean-continuation-20260920-07/run` 继续，
+ledger **580** / revision **234**。最新累计账本改为
+`output/private-audits/release-author-model-comparison-20260920-01/run/world.sqlite`，
+**1652 usage /1649 reservations /72 unknown holds**。恢复07后须先合并此完整账目。
+probe目录不是可恢复旅程：模型对照被本地地址门禁拒绝，实际转发0次，没有模型判断或
+World写入；独立`reconciliation-v2`已verified。新增 **1.190718元未知预留**保留，非确认扣费。
 07在 `drain_limit_reached` 终止，进程／客户端均关闭；独立对账为 `verified`。
 原terminal中的 `reconciliation=pending` 保留原样，以单独的verified状态文件为准。
 
-本轮 **26次实际转发／26笔已核对原生用量**，估算 **0.70211972元**；新增未知预留为0，
-继承的71笔unknown仍保留。40次是上限，本轮无本地上限拒绝。新增角色可见交付及可见
+07本轮 **26次实际转发／26笔已核对原生用量**，估算 **0.70211972元**；该轮新增未知预留为0，
+闭合时账目为1651/1648/71。40次是上限，07无本地上限拒绝。新增角色可见交付及可见
 回执均为0；2张旧v22回执原字节继承并冷验，World冷重放一致、机制检查无finding。
 费用是本轮仓库价格估算，不是整月成本或供应商实际扣费证明；旧历史恢复前须继承完整累计账目。
 

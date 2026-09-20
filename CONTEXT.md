@@ -5,9 +5,17 @@ checkpoint, read `docs/audits/release-status-2026-09-13-current.md`. Trial histo
 is retained in the linked audit documents, not as competing current checkpoints.
 
 2026-09-20 latest closed trial: still manual_only / qualification_incomplete.
-The only current runtime AND cumulative billing continuation is
+The current runtime continuation remains
 output/private-audits/release-clean-continuation-20260920-07/run,
-ledger 580/revision 234, 1651 usage /1648 reservations /71 unknown holds.
+ledger 580/revision 234. Latest cumulative billing is now
+output/private-audits/release-author-model-comparison-20260920-01/run/world.sqlite:
+1652 usage /1649 reservations /72 unknown holds. This probe forwarded zero calls:
+its local URL guard rejected the adapter's strict-tool beta endpoint. Independent
+reconciliation-v2 is verified; its 1.190718 CNY conservative unknown hold remains,
+not a confirmed charge. No World rows or receipts changed and no model comparison
+occurred. The probe directory is NOT a resumable journey. Restore runtime from07,
+then merge the complete latest billing prefix before reading a new usage watermark.
+The 07 closed trial itself had 1651 usage /1648 reservations /71 unknown holds.
 At frozen 89232c38, all 26 forwarded calls have verified native usage, estimated
 0.70211972 CNY, with zero new unknown holds. The process and clients closed at
 drain_limit_reached; independent reconciliation is verified. Cold replay matches,
