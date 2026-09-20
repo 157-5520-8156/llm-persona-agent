@@ -6,6 +6,24 @@ observations below retain their historical scope; they do not supersede that
 current index or authorize resuming an older, cheaper usage ledger.
 
 2026-09-20 latest release qualification: still manual_only / qualification_incomplete.
+The clean identity at aa8c8cce passed real 24-record prehistory review, retained
+four records by character choice, and delivered both natural user inputs / five
+text Beats. The same-owner authenticated dashboard HTTP read passed; post-login
+visual QA remains pending. At minute 45, one future Plan (opens at minute 61)
+and one activated WorldOccurrence exist, but no occurrence settlement/Experience.
+Life review exposed an Observation-vs-exact-Fact display mismatch; one later
+appraisal review passed but does not prove a lived Experience. Return chat was
+not reached before the 40-physical-call ceiling (two additional local denials).
+Latest clean runtime AND cumulative billing: output/private-audits/release-clean-demo-20260920-01/run,
+ledger 322/revision 165; 1518 usage /1515 reservations /64 unknown holds. Independent
+demo-reconciliation-status.json verifies 38 known bills (0.67650258 CNY), four new
+unknown holds (1.265022 CNY, including unforwarded conservative holds), two v22
+receipt cold recompilations and exact replay. Prehistory review was one additional
+known call (0.011272 CNY). See docs/audits/clean-demo-validation-2026-09-20.md.
+The prior identity's ledger 4367 remains a useful counterexample, but its billing
+is now stale; never resume it without merging the latest cumulative account.
+
+Earlier same-day observations below retain only their historical scope.
 Explicit v22 permits lifecycle-only assertions to use the same plan's recorded
 status/start/end fields, without granting execution-success or intention authority.
 Bound UTC display preserves original source bytes, clock domains and old receipts.
