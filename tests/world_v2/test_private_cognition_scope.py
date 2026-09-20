@@ -23,7 +23,7 @@ from companion_daemon.world_v2.visible_independent_review_receipt import (
     prepare_source_call, record_independent_visible_review,
     verify_independent_visible_review_receipt,
 )
-from companion_daemon.world_v2.visible_review_protocols import PRIVATE_COGNITION_PROTOCOL
+from companion_daemon.world_v2.visible_review_protocols import PRIVATE_COGNITION_PROTOCOL, RECORD_DEPENDENCY_PROTOCOL
 from companion_daemon.world_v2.visible_source_review_receipt import VisibleReviewAuthorBinding
 from companion_daemon.world_v2.visible_source_witness_experiment import _json
 from test_visible_selected_source_context import _sources
@@ -32,13 +32,14 @@ from test_visible_independent_review_receipt import _binding, _expected
 
 
 @pytest.mark.asyncio
-async def test_author_scope_is_opt_in_and_removes_ambiguous_legacy_permission(tmp_path):
+@pytest.mark.parametrize('protocol', [PRIVATE_COGNITION_PROTOCOL, RECORD_DEPENDENCY_PROTOCOL])
+async def test_author_scope_is_opt_in_and_removes_ambiguous_legacy_permission(tmp_path, protocol):
     from companion_daemon.world_v2.visible_source_runtime import compile_requirement
     wire = _ExpressionDraftWire(model=object())
     async with _sources(tmp_path) as case:
         request = case.request
         requirement = compile_requirement(request=request, capsule=case.capsule,
-                                          review_protocol=PRIVATE_COGNITION_PROTOCOL)
+                                          review_protocol=protocol)
     legacy = wire._messages(request=request, quick_recovery=False, failure_code=None)[0]['content']
     assert INSTRUCTION not in legacy
     assert 'immediate retrospective continuity' in legacy

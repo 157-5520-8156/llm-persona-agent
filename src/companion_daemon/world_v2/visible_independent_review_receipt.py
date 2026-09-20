@@ -22,7 +22,7 @@ from .visible_source_witness_experiment import _json, _unique
 
 from .visible_review_protocols import (
     PROTOCOL, SHARED_STRING_PROTOCOL as SHARED_STRING_PROTOCOL, SHARED_STRING_PROTOCOLS,
-    SUBJECTIVE_HISTORY_PROTOCOLS, CONTENT_FIELD_PROTOCOLS, PRESUPPOSITION_PROTOCOLS, PREHISTORY_PROTOCOLS, CONDITION_WIRE_PROTOCOLS, CONTEXTUAL_PROTOCOLS, SCOPED_COVERAGE_PROTOCOLS, FACT_VALUE_PROTOCOLS, PRIVATE_COGNITION_PROTOCOL, RESELECTING_PROTOCOLS, RECEIPT_PROTOCOLS,
+    SUBJECTIVE_HISTORY_PROTOCOLS, CONTENT_FIELD_PROTOCOLS, PRESUPPOSITION_PROTOCOLS, PREHISTORY_PROTOCOLS, CONDITION_WIRE_PROTOCOLS, CONTEXTUAL_PROTOCOLS, SCOPED_COVERAGE_PROTOCOLS, FACT_VALUE_PROTOCOLS, PRIVATE_COGNITION_PROTOCOLS, RECORD_DEPENDENCY_PROTOCOL, RESELECTING_PROTOCOLS, RECEIPT_PROTOCOLS,
     REVIEW_PROTOCOLS as REVIEW_PROTOCOLS,
     RESELECTING_PROTOCOL as RESELECTING_PROTOCOL,
 )
@@ -112,7 +112,7 @@ def meaning_preparation(prepared):
         question_conditions=True, beat_conditions=True, require_complete_reading=True,
         closing_tail_transport=True,
         explicit_condition_strings=pin['protocol'] in CONDITION_WIRE_PROTOCOLS,
-        complete_reading_version="16" if pin["protocol"] == PRIVATE_COGNITION_PROTOCOL else "11" if pin["protocol"] in PRESUPPOSITION_PROTOCOLS else "10" if pin["protocol"] in SUBJECTIVE_HISTORY_PROTOCOLS else "9" if pin["protocol"] in RESELECTING_PROTOCOLS else "7",
+        complete_reading_version="16" if pin["protocol"] in PRIVATE_COGNITION_PROTOCOLS else "11" if pin["protocol"] in PRESUPPOSITION_PROTOCOLS else "10" if pin["protocol"] in SUBJECTIVE_HISTORY_PROTOCOLS else "9" if pin["protocol"] in RESELECTING_PROTOCOLS else "7",
     )
 
 
@@ -179,7 +179,8 @@ def prepare_source_call(*, prepared, meaning_raw_responses):
         contextual_scope=pin["protocol"] in CONTEXTUAL_PROTOCOLS,
         scoped_coverage=pin["protocol"] in SCOPED_COVERAGE_PROTOCOLS,
         fact_value_authority=pin["protocol"] in FACT_VALUE_PROTOCOLS,
-        private_cognition_scope=pin["protocol"] == PRIVATE_COGNITION_PROTOCOL,
+        private_cognition_scope=pin["protocol"] in PRIVATE_COGNITION_PROTOCOLS,
+        record_dependency_scope=pin["protocol"] == RECORD_DEPENDENCY_PROTOCOL,
         source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
         scope_subjective_history=pin.get("scope_subjective_history", False),
         source_response_mode=pin.get("source_response_mode", "tool"),
@@ -257,7 +258,8 @@ def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, sourc
             contextual_scope=pin["protocol"] in CONTEXTUAL_PROTOCOLS,
             scoped_coverage=pin["protocol"] in SCOPED_COVERAGE_PROTOCOLS,
             fact_value_authority=pin["protocol"] in FACT_VALUE_PROTOCOLS,
-            private_cognition_scope=pin["protocol"] == PRIVATE_COGNITION_PROTOCOL,
+            private_cognition_scope=pin["protocol"] in PRIVATE_COGNITION_PROTOCOLS,
+            record_dependency_scope=pin["protocol"] == RECORD_DEPENDENCY_PROTOCOL,
             source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
             scope_subjective_history=pin.get("scope_subjective_history", False),
             source_response_mode=pin.get("source_response_mode", "tool"),
@@ -297,7 +299,7 @@ class IndependentVisibleReviewRejected(ValueError):
 
 
 class IndependentVisibleReviewReceipt(FrozenModel):
-    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10", "visible-source-review-receipt.11", "visible-source-review-receipt.12", "visible-source-review-receipt.13", "visible-source-review-receipt.14", "visible-source-review-receipt.15", "visible-source-review-receipt.16", "visible-source-review-receipt.17", "visible-source-review-receipt.18", "visible-source-review-receipt.19", "visible-source-review-receipt.20"] = RECEIPT_CONTRACT
+    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10", "visible-source-review-receipt.11", "visible-source-review-receipt.12", "visible-source-review-receipt.13", "visible-source-review-receipt.14", "visible-source-review-receipt.15", "visible-source-review-receipt.16", "visible-source-review-receipt.17", "visible-source-review-receipt.18", "visible-source-review-receipt.19", "visible-source-review-receipt.20", "visible-source-review-receipt.21"] = RECEIPT_CONTRACT
     prepared_json: str = Field(min_length=2, max_length=MAX_BYTES)
     author: VisibleReviewAuthorBinding
     meaning_reviews: tuple[VisibleReviewInvocationBinding, VisibleReviewInvocationBinding]

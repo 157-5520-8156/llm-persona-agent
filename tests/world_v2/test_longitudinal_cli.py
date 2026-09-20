@@ -904,7 +904,7 @@ def test_explicit_uncapped_trial_keeps_default_cap_and_overrides_ambient_caps(tm
         assert connection.execute("SELECT COUNT(*) FROM world_v2_model_reservations").fetchone()[0] == 2
 
 
-@pytest.mark.parametrize("version", ["18", "19", "20"])
+@pytest.mark.parametrize("version", ["18", "19", "20", "21"])
 def test_source_reasoning_requires_explicit_scoped_review_profile(tmp_path, version):
     cli = _cli()
     base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
@@ -916,7 +916,7 @@ def test_source_reasoning_requires_explicit_scoped_review_profile(tmp_path, vers
     assert options.visible_source_review_thinking
 
 
-@pytest.mark.parametrize("version", ["18", "19", "20"])
+@pytest.mark.parametrize("version", ["18", "19", "20", "21"])
 def test_subjective_source_scope_requires_explicit_complete_coverage(tmp_path, version):
     cli = _cli()
     base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
@@ -927,7 +927,7 @@ def test_subjective_source_scope_requires_explicit_complete_coverage(tmp_path, v
     assert cli.parse_options(base + ['--visible-source-review-version', version, '--visible-source-review-scope-history']).visible_source_review_scope_history
 
 
-@pytest.mark.parametrize("version", ["18", "19", "20"])
+@pytest.mark.parametrize("version", ["18", "19", "20", "21"])
 def test_json_source_carrier_and_effort_are_explicit_and_scoped(tmp_path, version):
     cli = _cli()
     base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
@@ -942,7 +942,7 @@ def test_json_source_carrier_and_effort_are_explicit_and_scoped(tmp_path, versio
     assert options.visible_source_review_json and options.visible_source_review_effort == 'low'
 
 
-@pytest.mark.parametrize("version", ["18", "19", "20"])
+@pytest.mark.parametrize("version", ["18", "19", "20", "21"])
 def test_permission_context_scope_is_explicit_and_excludes_legacy_selector(tmp_path, version):
     cli = _cli()
     base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',

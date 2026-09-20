@@ -10476,8 +10476,8 @@ class _ExpressionDraftWire:
         # opt-in contract shares one boundary with both independent readers
         # and the complete source reviewer.
         if request.visible_source_requirement_json is not None:
-            from ..visible_review_protocols import PRIVATE_COGNITION_PROTOCOL
-            if json.loads(request.visible_source_requirement_json).get("review_protocol") == PRIVATE_COGNITION_PROTOCOL:
+            from ..visible_review_protocols import PRIVATE_COGNITION_PROTOCOLS
+            if json.loads(request.visible_source_requirement_json).get("review_protocol") in PRIVATE_COGNITION_PROTOCOLS:
                 from ..private_cognition_scope import INSTRUCTION
                 old_start = system.index("Your present first-person feelings,")
                 old_end = system.index("Other than exact current-report uptake", old_start)

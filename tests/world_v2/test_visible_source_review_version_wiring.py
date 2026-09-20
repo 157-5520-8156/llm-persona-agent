@@ -27,7 +27,7 @@ def _settings(tmp_path, **updates):
     )
 
 
-@pytest.mark.parametrize("version", ["0", "13", "", 1, 2, 3, 4, 5, True, None, [], {}])
+@pytest.mark.parametrize("version", ["0", "999", "", 1, 2, 3, 4, 5, True, None, [], {}])
 @pytest.mark.parametrize("entry", ["host", "composition", "author", "proactive"])
 def test_unknown_review_versions_fail_at_each_entry(tmp_path, version, entry):
     with pytest.raises(ValueError, match="unsupported visible source review version"):
@@ -211,7 +211,7 @@ def test_cli_requires_explicit_review_and_retains_default_v1(tmp_path):
         ["--model-mode", "real-provider", "--allow-real-provider", "--visible-source-review-version", "5"],
         ["--visible-source-review-version", "6"],
         ["--visible-source-review-version", "7"],
-        ["--model-mode", "real-provider", "--allow-real-provider", "--require-visible-source-review", "--visible-source-review-version", "13"],
+        ["--model-mode", "real-provider", "--allow-real-provider", "--require-visible-source-review", "--visible-source-review-version", "999"],
     ):
         with pytest.raises(SystemExit) as exc:
             cli.parse_options(["--output", str(output), *options])
