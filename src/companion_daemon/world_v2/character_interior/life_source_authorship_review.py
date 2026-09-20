@@ -1,7 +1,8 @@
 """Separate current character authorship from a field's factual obligations.
 
-The reviewer owns semantic decomposition and completeness. The host checks
-exact spans and permissions; no field name or local text rule grants a bypass.
+Historical .7-.12 requests retain their original construction for replay.
+Current requests are built directly in life_source_review_request. Inspection
+is shared: no field name or local text rule grants a factual bypass.
 """
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ import json
 from jsonschema import Draft202012Validator
 
 from .current_life_authorship import current_life_authorship_authority
-from .life_claim_authority import CONTRACT as CLAIM_AUTHORITY_CONTRACT, configure_claim_authority
+from .life_claim_authority import CONTRACT as CLAIM_AUTHORITY_CONTRACT
 from .life_candidate_reading import _object, _unique
 from .life_source_origin import canonical, digest
 
@@ -26,8 +27,9 @@ TEMPORAL_CONTRACTS = {TEMPORAL_CONTRACT, COVERAGE_CONTRACT, PERMISSION_CONTRACT,
 COVERAGE_CONTRACTS = {COVERAGE_CONTRACT, PERMISSION_CONTRACT, *EXACT_VALUE_CONTRACTS}
 
 
-def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
-    if contract not in {LEGACY_CONTRACT, *TEMPORAL_CONTRACTS}:
+def prepare_legacy_authorship_review(*, baseline_json, actor_ref, logical_time, contract):
+    if contract not in {LEGACY_CONTRACT, TEMPORAL_CONTRACT, COVERAGE_CONTRACT,
+                        PERMISSION_CONTRACT, EXACT_VALUE_CONTRACT, BOUND_PERMISSION_CONTRACT}:
         raise ValueError('unsupported Life authorship review contract')
     envelope = json.loads(baseline_json)
     request = envelope['request']
@@ -185,10 +187,8 @@ def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
         )
         request['tools'][0]['function']['name'] = 'review_life_candidate_v6'
         request['tool_choice']['function']['name'] = 'review_life_candidate_v6'
-    if contract in {BOUND_PERMISSION_CONTRACT, CONTRACT, CLAIM_AUTHORITY_CONTRACT}:
+    if contract == BOUND_PERMISSION_CONTRACT:
         _configure_bound_permission_review(request=request, packet=packet, schema=schema)
-    if contract == CLAIM_AUTHORITY_CONTRACT:
-        configure_claim_authority(request=request, packet=packet, schema=schema)
     prepared = json.dumps(envelope, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
     if len(prepared.encode()) > 256_000:
         raise ValueError('Life review request exceeds its audit bound')

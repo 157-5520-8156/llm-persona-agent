@@ -45,6 +45,13 @@ semantic labeling can still fail. Real paired review and chat improvement are un
 See `docs/audits/release-local-semantic-recall-2026-09-21.md`. Goal currently paused;
 no new paid probe or journey was started and the unified10 billing above is unchanged.
 
+The .13/.14 request compiler now builds its final wire directly; .1-.12 retain
+their historical builders. 42 frozen public-fixture envelopes/provider hashes and
+cold recompile are unchanged; 51 compatibility/boundary plus141 related checks pass.
+The removed .6 intermediate envelope limit can no longer reject a smaller valid
+final request; original input bounds and the final256000-byte limit remain.
+This is a maintenance refactor, not evidence that retrieval or chat improved.
+
 Full suite at older frozenb560a3d2:9485 passed/19 skipped/2 xfailed/0 failures;
 that run does not cover later code. Later focused tests do not establish complete chat,
 QQ receipts,24-hour operation,recordable journey or100 CNY/month qualification.

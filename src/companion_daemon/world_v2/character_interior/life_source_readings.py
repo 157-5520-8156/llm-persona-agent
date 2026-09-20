@@ -25,6 +25,20 @@ CONTRACT = "life-source-readings.3"
 EXACT_VALUE_CONTRACT = "life-source-readings.4"
 
 
+def life_permission_choices(readings):
+    """Enumerate immutable reading permissions in their original wire order."""
+    choices = []
+    for row in readings['readings']:
+        fact = row['source_family'] == 'accepted_fact_value'
+        for scope, subject in row['value_selection_permissions'] if fact else row['permissions']:
+            choices.append({'permission_id': f'permission:{len(choices)}',
+                'reading_id': row['reading_id'], 'claim_scope': scope, 'subject_role': subject,
+                'subject_ref': row['source_owner_ref'] if fact else None,
+                'requires_exact_fact_quote': fact,
+                **({'accepted_value': row['accepted_value']} if fact and 'accepted_value' in row else {})})
+    return choices
+
+
 def _fields(row):
     """Explicit source-family contracts, with no general scalar fallback."""
     material = row['review_material']

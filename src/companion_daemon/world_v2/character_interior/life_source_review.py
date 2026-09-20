@@ -43,21 +43,8 @@ def candidate_body(result):
     return canonical(result.model_dump(mode='json', include=set(BODY_FIELDS)))
 
 
-def _permission_choices(readings):
-    choices = []
-    for row in readings['readings']:
-        fact = row['source_family'] == 'accepted_fact_value'
-        for scope, subject in row['value_selection_permissions'] if fact else row['permissions']:
-            choices.append({'permission_id': f'permission:{len(choices)}',
-                'reading_id': row['reading_id'], 'claim_scope': scope, 'subject_role': subject,
-                'subject_ref': row['source_owner_ref'] if fact else None,
-                'requires_exact_fact_quote': fact,
-                **({'accepted_value': row['accepted_value']} if fact and 'accepted_value' in row else {})})
-    return choices
-
-
 def _prepare_legacy_review(*, candidate_json, provider_raw, view, snapshot, contract=LEGACY_CURRENT_CONTRACT):
-    from .life_source_readings import prepare_life_source_readings
+    from .life_source_readings import life_permission_choices, prepare_life_source_readings
     candidate, fields = _candidate(candidate_json)
     if not isinstance(provider_raw, str) or len(provider_raw.encode()) > 131_072:
         raise ValueError('Life review lacks the bounded original author output')
@@ -86,7 +73,7 @@ def _prepare_legacy_review(*, candidate_json, provider_raw, view, snapshot, cont
         if not facts:
             props['quoted_value'] = {'type': 'null'}
     elif contract in _CHOICE_CONTRACTS:
-        choices = _permission_choices(readings)
+        choices = life_permission_choices(readings)
         branches = []
         for fact in (False, True):
             ids = [p['permission_id'] for p in choices if p['requires_exact_fact_quote'] == fact]
@@ -173,6 +160,8 @@ def _prepare_legacy_review(*, candidate_json, provider_raw, view, snapshot, cont
 
 
 def _inspect_legacy_review(*, raw, prepared_json, readings):
+    from .life_source_readings import life_permission_choices
+
     if not isinstance(raw, str) or len(raw.encode()) > 64_000:
         raise ValueError('Life review response exceeds its audit bound')
     response = json.loads(raw, object_pairs_hook=_unique)
@@ -185,7 +174,7 @@ def _inspect_legacy_review(*, raw, prepared_json, readings):
     if len(paths) != len(set(paths)) or set(paths) != expected:
         raise ValueError('Life source review omitted or duplicated a candidate field')
     sources = {r['reading_id']: r for r in readings['readings']}
-    choices = {p['permission_id']: p for p in _permission_choices(readings)} if contract in _CHOICE_CONTRACTS else {}
+    choices = {p['permission_id']: p for p in life_permission_choices(readings)} if contract in _CHOICE_CONTRACTS else {}
     for field in response['fields']:
         inconsistent = ((field['disposition'] == 'supported') != bool(field['supports']))
         if contract in _CHOICE_CONTRACTS:
@@ -231,24 +220,31 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=Non
     if (view.review_contract not in {None, contract}
         or contract in {EXACT_VALUE_AUTHORITY_CONTRACT, *_BOUND_PERMISSION_CONTRACTS} and view.review_contract != contract):
         raise ValueError('Life review contract differs from its source preparation')
+    if contract in {'life-source-review.13', CLAIM_AUTHORITY_CONTRACT}:
+        from .life_source_review_request import prepare_current_review
+
+        return prepare_current_review(candidate_json=candidate_json, provider_raw=provider_raw,
+            view=view, snapshot=snapshot, contract=contract)
     if contract not in _AUTHORSHIP_CONTRACTS:
         return _prepare_legacy_review(candidate_json=candidate_json, provider_raw=provider_raw,
             view=view, snapshot=snapshot, contract=contract)
-    from .life_source_authorship_review import prepare
+    from .life_source_authorship_review import prepare_legacy_authorship_review
     baseline, readings = _prepare_legacy_review(candidate_json=candidate_json, provider_raw=provider_raw,
         view=view, snapshot=snapshot, contract=LEGACY_CURRENT_CONTRACT)
-    prepared = prepare(baseline_json=baseline, actor_ref=snapshot.actor_ref,
+    prepared = prepare_legacy_authorship_review(baseline_json=baseline, actor_ref=snapshot.actor_ref,
         logical_time=snapshot.logical_time.isoformat(), contract=contract)
     return prepared, readings
 
 
 def inspect_review(*, raw, prepared_json, readings):
+    from .life_source_readings import life_permission_choices
+
     request = json.loads(prepared_json)['request']
     packet = json.loads(request['messages'][1]['content'])
     if packet['contract'] not in _AUTHORSHIP_CONTRACTS:
         return _inspect_legacy_review(raw=raw, prepared_json=prepared_json, readings=readings)
     from .life_source_authorship_review import inspect
-    choices = {p['permission_id']: p for p in _permission_choices(readings)}
+    choices = {p['permission_id']: p for p in life_permission_choices(readings)}
     sources = {r['reading_id']: r for r in readings['readings']}
     if packet['contract'] in _BOUND_PERMISSION_CONTRACTS and (
         readings['contract'] != 'life-source-readings.4'
