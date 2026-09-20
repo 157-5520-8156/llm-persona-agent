@@ -735,7 +735,9 @@ def _world_life_occurrence_source_tokens(
             continue
         value = item.get("value")
         kind = value.get("context_kind") if isinstance(value, dict) else None
-        if kind == "biographical_context":
+        if kind in {"biographical_context", "activity_lifecycle_state"}:
+            # Life's opt-in state reader has its own qualified authority.
+            # A paused/abandoned Plan is not generic visible occurrence proof.
             continue
         if kind == "planned_activity":
             # The plan's existence is current intention authority, never an
