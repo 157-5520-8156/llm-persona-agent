@@ -1,5 +1,8 @@
 # 来源审核接口与真实续跑
 
+本页按阶段保存证据；最新发布判断和唯一有效继续点见
+[当前发布状态](release-status-2026-09-13-current.md)。
+
 代码 `64f41e06`，发布资格仍为 `manual_only / qualification_incomplete`。
 本记录保留失败结果，不以离线测试、API 200 或来源展示改善代替角色交付。
 
@@ -117,3 +120,17 @@ Life `.12` 续跑 `release-clean-continuation-20260920-04` 已终止并独立对
 - 120 个冻结机制场景、断言、replay 均通过。与旧 `.103` 的全部 17 个非 replay-hash
   字段相同，确认是已有版本身份变化后建立 `.104`，正常完整门禁通过。
   旧证据保留，详见 `scenario-baseline-104-2026-09-20.json`。
+
+## Life 作者权限说明对齐
+
+`bfb7040c` 提取审核者原有的 `current-life-authorship.1` 定义，只向显式安装 Life
+reviewer 的新作者请求展示。初稿、同角色纠正与审核者收到同一 actor/time 及权限含义；
+新增输入标识为 `life-author-current-authorship.1`，不新增 World 来源或可选支持权限。
+186 项定向检查通过，实际 mock HTTP 初稿—纠正—审核—冷恢复链经过此接口；权限
+说明伪作来源、篡改请求绑定均拒绝。审核 `.1–.12` 的完整 preparation/readings 与
+冻结 `2dafb527` 编译器逐字一致，未装 reviewer 的初稿/纠正消息和工具不变，真实旧
+`.10` 回执冷验通过。补说明后 120 项机制的 `.104` 完整基线检查也通过。
+
+该补丁没有额外 provider 调用，没有证明两个主观评价误拒已经解决，也没有新增
+Life response 或 Experience。离线证据在
+`output/private-audits/release-life-author-authority-20260920-01/offline-verification.json`。

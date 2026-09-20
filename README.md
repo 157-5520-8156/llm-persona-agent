@@ -7,6 +7,8 @@
 > Provider 样本和一次真实发送都不能单独证明可上线；当前发布口径仍是
 > `manual_only / qualification_incomplete`。
 
+本次首版的已验证范围、剩余阻塞和下一步见[当前发布状态](docs/audits/release-status-2026-09-13-current.md)。
+
 Girl Agent 不是用状态机或固定话术“扮演”角色。World V2 为角色提供有来源的世界事实、
 记忆、关系、情绪、生活状态和可用能力；`CharacterInterior` 内的角色模型是主角唯一的
 语义作者，决定她如何理解、是否回应、说什么、是否主动联系以及是否使用媒体等能力。
