@@ -5,25 +5,26 @@ checkpoints, read `docs/audits/release-status-2026-09-13-current.md`. Dated tria
 observations below retain their historical scope; they do not supersede that
 current index or authorize resuming an older, cheaper usage ledger.
 
-2026-09-19 latest release qualification: still manual_only / qualification_incomplete.
-Opt-in v19 now excludes ordinary Fact metadata/excerpt readings and requires the
-exact accepted value, original subject and current/historical scope. A bounded
-content-address lookup resolves the original UTF-8 substring by its accepted
-hash before model presentation; it does not infer meaning. All four real
-source-only controls now match, but their fixed interpretations are scripted.
-Full chat delivery remains unqualified. A separate private scoped-unit prototype
-matched 22/24 controls with two false rejections and was not installed.
-This continuation closed 32 calls (known estimate 0.845238 CNY, no new unknown holds).
-Runtime still continues from output/private-audits/release-permission-chat-20260919-01/run
-(elapsed 836 minutes, ledger 3619). Latest billing continues from
-output/private-audits/release-fact-value-chat-20260919-02/run/world.sqlite
-(1361 usage / 1358 reservations / 59 unknown holds). Merge these sources; do not
-revert runtime or billing. See docs/audits/fact-value-chat-validation-2026-09-19.json.
-The v19 compiler refinement preceded any actual v19 accepted receipt; initial
-rejected private preparations retain their original code-head evidence. Older
-receipt protocols 1-18 preserve their compilation. Author prompt provenance size
-and immediate-private-continuity contract drift are separately audited; they
-have not been fixed or shown to explain every timeout.
+2026-09-20 latest release qualification: still manual_only / qualification_incomplete.
+Opt-in v20 shares current-private-cognition scope across author, independent
+readers, full source review and same-character correction; prior independent
+states, habits and embedded external claims still need sources. Fact exact-value
+authority and old receipt compilation remain intact. Two new full-chat turns
+both delivered (six text Beats); source Pro nonthinking returned four reviews
+without timeouts. The restored old pending turn still failed after unsupported
+history survived correction. New turns took about 25 seconds to authorization;
+two successes do not qualify latency, semantic reliability or long-term life.
+This trial closed and reconciled 18 known calls (estimate 0.574849 CNY), no new
+unknown holds, with 28 old/new source receipts cold-verified and replay matched.
+Runtime and billing now both continue from
+output/private-audits/release-private-cognition-chat-20260919-01/run
+(elapsed 838 minutes, ledger 3762; 1379 usage / 1376 reservations / 59 unknown holds).
+finished.json preserves process-terminal pending status; the separate immutable
+reconciliation-status.json proves verification. Do not rerun paid work for that
+historical pending field. Normal QQ composition still exposes only v6/v7/v8 and
+needs the final qualified chat/Life configuration wired before invitation use.
+See docs/audits/private-cognition-chat-validation-2026-09-20.json and
+release-candidate-gates-2026-09-20.md. No paid process remains live.
 
 ## World
 

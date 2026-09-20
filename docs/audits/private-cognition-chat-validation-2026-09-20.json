@@ -1,0 +1,95 @@
+{
+  "date": "2026-09-20",
+  "code_head": "fa58159224ebcb473ba40ded11408e7b593029b5",
+  "qualification": "manual_only / qualification_incomplete",
+  "scope": "Explicit v20 complete author, independent readers and whole-candidate source review, in restored capture-only QQ host. No actual QQ or deployment.",
+  "source_review": {
+    "model": "deepseek-v4-pro",
+    "thinking": false,
+    "response": "json_object",
+    "permission_context_selection": true
+  },
+  "author": {
+    "model": "deepseek-v4-flash",
+    "thinking": false,
+    "prompt_tokens_new_turns": [
+      50069,
+      50104
+    ]
+  },
+  "result": {
+    "new_user_turns": 2,
+    "new_turns_delivered": 2,
+    "delivered_text_beats": 6,
+    "new_turn_processing_ms": [
+      25447.0,
+      25005.8
+    ],
+    "processing_metric": "ingest complete action_authorized; not first-visible-Beat latency",
+    "restored_pending_turns_failed": 1,
+    "restored_failure": "Unsupported history remained in initial and corrected candidate; correctly withheld. No local replacement and no character-silence claim.",
+    "source_calls": 4,
+    "source_timeouts": 0,
+    "source_latency_ms": [
+      9984,
+      8636,
+      9262,
+      9063
+    ],
+    "new_source_receipts": 2,
+    "all_old_and_new_source_receipts_cold_verified": 28,
+    "replay_hash_matches": true,
+    "life_candidate_review_calls": 0
+  },
+  "validation": {
+    "targeted_checks": 239,
+    "scope_checks_after_correction_feedback_fix": 9,
+    "groups_overlap": true,
+    "ruff": "passed",
+    "diff_check": "passed",
+    "affect_offline_capture_count": 9,
+    "affect_request_bytes_saved_range": [
+      3329,
+      4025
+    ],
+    "affect_roundtrip_lossless": true,
+    "provider_token_or_latency_causality": "not_isolated"
+  },
+  "billing": {
+    "physical_calls": 18,
+    "billing_states": {
+      "known": 18
+    },
+    "known_native_token_joins_verified": 18,
+    "known_repository_estimate_cny": "0.5748489599999999907",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 1379,
+    "reservation_rows": 1376,
+    "unknown_holds": 59,
+    "inherited_rows_unchanged": true
+  },
+  "continuation": {
+    "runtime": "output/private-audits/release-private-cognition-chat-20260919-01/run",
+    "billing": "output/private-audits/release-private-cognition-chat-20260919-01/run/world.sqlite",
+    "elapsed_minutes": 838,
+    "ledger_sequence": 3762,
+    "logical_at": "2026-09-14T14:58:00Z",
+    "process_terminal": true,
+    "stop_reason": "operator_stopped",
+    "completed": false,
+    "verification_status": "output/private-audits/release-private-cognition-chat-20260919-01/reconciliation-status.json"
+  },
+  "limits": [
+    "Two successful new turns do not qualify stable chat, longitudinal human-likeness, monthly cost or release.",
+    "Old pending candidate correction still failed. Wider v20 positive and negative scope controls remain unqualified.",
+    "Source reasoning, model, scope contract and presentation changed together; no isolated latency-causality claim.",
+    "Normal QQ entry does not yet compose v20 or the full Life candidate reviewer.",
+    "Life-memory-chat continuous identity, actual QQ receipt, invite isolation and final 24h soak remain open."
+  ],
+  "evidence_sha256": {
+    "admitted.json": "13898ad101ae1f35d88c05d2effbd406a1157292528b748fa71679e45618d837",
+    "finished.json": "7931106f26fb31694ced1842a9911066e08332285cc8bdfaaa5ece199375fb76",
+    "reconciliation.json": "6365442eff80c1910f7ff2571b78f934718b9290d922695278498bf972126cc8",
+    "reconciliation-status.json": "47a30290fcc65fdc380d255d339cd4a18dc7e4a8816e16311b10eba81f82dc37"
+  }
+}
