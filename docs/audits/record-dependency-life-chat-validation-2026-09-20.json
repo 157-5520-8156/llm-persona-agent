@@ -1,0 +1,323 @@
+{
+  "date": "2026-09-20",
+  "code_head": "4a21797b43c9601854493b710d7c0d5f9bb0c66c",
+  "qualification": "manual_only / qualification_incomplete",
+  "scope": "Explicit v21 source review, formal entry wiring, immutable compiler reuse, and four-turn same-world capture-only continuation; no real QQ or production writes.",
+  "changes": [
+    "Bound original rejection explanations delivered once to the same character; no new evidence authority.",
+    "Bounded pure compilation cache; no verdict or acceptance cache.",
+    "v21 source contract distinguishes record dependency from grammatical assertion; prior versions unchanged.",
+    "Normal QQ composition has explicit experimental_independent_v21 and optional independent Life candidate review, with owned metered providers and durable evidence store. Defaults unchanged."
+  ],
+  "controls": [
+    {
+      "review_version": "20",
+      "new_calls": 18,
+      "new_reader_calls": 12,
+      "cases": [
+        {
+          "case": "current_cognition",
+          "expected": "accepted",
+          "status": "accepted",
+          "matches_expected": true
+        },
+        {
+          "case": "month_of_attachment",
+          "expected": "unclosed",
+          "status": "unclosed",
+          "matches_expected": true
+        },
+        {
+          "case": "hypothetical_bus",
+          "expected": "accepted",
+          "status": "accepted",
+          "matches_expected": true
+        },
+        {
+          "case": "past_shared_bus",
+          "expected": "unclosed",
+          "status": "unclosed",
+          "matches_expected": true
+        },
+        {
+          "case": "example_quotation",
+          "expected": "accepted",
+          "status": "unclosed",
+          "matches_expected": false
+        },
+        {
+          "case": "conditional_old_violin",
+          "expected": "unclosed",
+          "status": "unclosed",
+          "matches_expected": true
+        }
+      ],
+      "known_repository_estimate_cny": "0.6498319199999999699"
+    },
+    {
+      "review_version": "21",
+      "new_calls": 6,
+      "new_reader_calls": 0,
+      "cases": [
+        {
+          "case": "current_cognition",
+          "expected": "accepted",
+          "status": "unclosed",
+          "matches_expected": false
+        },
+        {
+          "case": "month_of_attachment",
+          "expected": "unclosed",
+          "status": "unclosed",
+          "matches_expected": true
+        },
+        {
+          "case": "hypothetical_bus",
+          "expected": "accepted",
+          "status": "accepted",
+          "matches_expected": true
+        },
+        {
+          "case": "past_shared_bus",
+          "expected": "unclosed",
+          "status": "unclosed",
+          "matches_expected": true
+        },
+        {
+          "case": "example_quotation",
+          "expected": "accepted",
+          "status": "accepted",
+          "matches_expected": true
+        },
+        {
+          "case": "conditional_old_violin",
+          "expected": "unclosed",
+          "status": "unclosed",
+          "matches_expected": true
+        }
+      ],
+      "known_repository_estimate_cny": "0.6624087"
+    }
+  ],
+  "known_control_failure": {
+    "case": "current_cognition",
+    "detail": "v21 reviewer treated 22:58:00+08:00 and 14:58:00Z as eight hours apart; both identify the same instant. No local override or reinterpretation of the saved result.",
+    "shared_instant_delta_seconds": 0,
+    "quote_case": "v20 false rejection fixed in v21 source-only comparison; native reader outputs and 267 original sources unchanged."
+  },
+  "chat": {
+    "new_user_turns": 4,
+    "delivered_turns": 3,
+    "delivered_text_beats": 8,
+    "turns": [
+      {
+        "turn_id": "release-leave-839",
+        "virtual_at": "2026-09-14T14:59:00+00:00",
+        "status": "action_authorized",
+        "wall_seconds": 44.562984792049974,
+        "model_failures": [],
+        "deliveries": [
+          {
+            "kind": "text",
+            "message_id": "journey-message-83",
+            "text": "行 去吧",
+            "virtual_at": "2026-09-14T14:59:00+00:00"
+          },
+          {
+            "kind": "text",
+            "message_id": "journey-message-84",
+            "text": "我刚说想看你就走 挺会掐点",
+            "virtual_at": "2026-09-14T14:59:00+00:00"
+          }
+        ],
+        "processing_ms": 18676.5
+      },
+      {
+        "turn_id": "release-return-861",
+        "virtual_at": "2026-09-14T15:21:00+00:00",
+        "status": "deferred",
+        "wall_seconds": 61.12026270781644,
+        "model_failures": [
+          {
+            "event_ref": "event:ModelResultRecorded:c80ca13f080560d23d92bc495f65be834756183b2ed8fe46925ee7c086ebec5d",
+            "failure_code": "paired_expression_reselection_invalid",
+            "status": "main_exception"
+          },
+          {
+            "event_ref": "event:ModelResultRecorded:e6e0b7939c71c35a62569b1b16a08af8b6dc321e861f26577955fc00f9708ff2",
+            "failure_code": "primary_invalid",
+            "status": "main_invalid"
+          },
+          {
+            "event_ref": "event:ModelResultRecorded:cb60b6069217b45d2b14089f7cd4e91e2902b59405d93270333d98311721c0d5",
+            "failure_code": "corrective_invalid",
+            "status": "main_invalid"
+          }
+        ],
+        "deliveries": [],
+        "processing_ms": 48002.2
+      },
+      {
+        "turn_id": "release-intention-memory-862",
+        "virtual_at": "2026-09-14T15:22:00+00:00",
+        "status": "action_authorized",
+        "wall_seconds": 36.75758466590196,
+        "model_failures": [],
+        "deliveries": [
+          {
+            "kind": "text",
+            "message_id": "journey-message-85",
+            "text": "记得啊 不为发朋友圈 就想把路上喜欢的小东西画下来",
+            "virtual_at": "2026-09-14T15:22:00+00:00"
+          },
+          {
+            "kind": "text",
+            "message_id": "journey-message-86",
+            "text": "你这都问第二遍了 是怕我没往心里放吗",
+            "virtual_at": "2026-09-14T15:22:00+00:00"
+          }
+        ],
+        "processing_ms": 24322.0
+      },
+      {
+        "turn_id": "release-old-topic-863",
+        "virtual_at": "2026-09-14T15:23:00+00:00",
+        "status": "action_authorized",
+        "wall_seconds": 73.4145199591294,
+        "model_failures": [
+          {
+            "event_ref": "event:ModelResultRecorded:f01c712f938f9db9a50d66ff5f555a47a32ebc89e0ee9793ac7cf0068da65423",
+            "failure_code": "primary_invalid",
+            "status": "main_invalid"
+          }
+        ],
+        "deliveries": [
+          {
+            "kind": "text",
+            "message_id": "journey-message-87",
+            "text": "接着聊啊 你自己先提的",
+            "virtual_at": "2026-09-14T15:23:00+00:00"
+          },
+          {
+            "kind": "text",
+            "message_id": "journey-message-88",
+            "text": "不过你这一趟回来 先考我记性 又问我想聊什么",
+            "virtual_at": "2026-09-14T15:23:00+00:00"
+          },
+          {
+            "kind": "text",
+            "message_id": "journey-message-89",
+            "text": "怎么 怕我其实没往心里放",
+            "virtual_at": "2026-09-14T15:23:00+00:00"
+          },
+          {
+            "kind": "text",
+            "message_id": "journey-message-90",
+            "text": "我是真想听 路上那些小东西画下来 会是什么样",
+            "virtual_at": "2026-09-14T15:23:00+00:00"
+          }
+        ],
+        "processing_ms": 46032.3
+      }
+    ],
+    "latency_scope": "ingest complete processing, not first-visible-Beat latency. wall_seconds additionally includes harness drain/settlement.",
+    "one_same_character_correction_delivered": true,
+    "failed_return_turn": "Initial and corrected return/nearby-life drafts remained unclosed; later scheduler retry also failed. Technical failures, not character silence.",
+    "source_entailment_consistency": "Reviews disagreed about what the existing ongoing-walk/environment records establish. No adjudicator reliability claim.",
+    "life_candidate_review_calls": 0,
+    "life_events": {
+      "ActivityCompleted": 1,
+      "ActivityPlanned": 1,
+      "completed_sequence": 3889,
+      "planned_sequence": 3897,
+      "plan_window_utc": [
+        "2026-09-14T23:44:03Z",
+        "2026-09-15T00:24:03Z"
+      ],
+      "plan_window_local": [
+        "2026-09-15T07:44:03+08:00",
+        "2026-09-15T08:24:03+08:00"
+      ],
+      "selection_time_utc": "2026-09-14T15:14:03Z",
+      "authored_start_after_seconds": 30600,
+      "planned_intention": "明早挑一段安静时间，拿本子把昨天走过的夜路和窗子随手画几笔，不为给谁看，只是自己看一眼",
+      "scope": "Accepted future intention and lifecycle only; embedded past wording is not proof of that history or future fulfillment. This did not invoke the World-stimulus Life candidate gate.",
+      "identity_audit": {
+        "walking_plan_prefix": "plan:day-open-life-intent:0ee006aa",
+        "walking_started_sequence": 2101,
+        "walking_completed_sequence": 2352,
+        "later_completed_plan_prefix": "plan:day-open-life-intent:0e0beb6f",
+        "later_activity_scope": "A different intention: return to the dormitory, shower, and select photos.",
+        "new_world_occurrence_settlement_experience_memory_events": 0,
+        "new_event_sequence_scope": [
+          3763,
+          4067
+        ],
+        "source_gap": "The return-turn source request retained the old walking result, bound to that walking ActivityStarted, and no completed_activity card. It did not connect the later completion to the walk.",
+        "production_gap": "Existing ActivityCompleted can wake settlement of existing candidates. It neither proves successful fulfillment nor generically authors a new result for arbitrary completed self-directed activities.",
+        "next_check": "Trace the same walking plan through start, existing result and completion to both author and source input; preserve plan identity and distinguish lifecycle completion from successful results."
+      }
+    },
+    "cold_receipts": 31,
+    "new_v21_receipts": 3,
+    "replay_hash_matches": true
+  },
+  "validation": {
+    "record_dependency_and_cache_checks": 56,
+    "initial_broad_suite_passed": 384,
+    "initial_broad_suite_failed": 5,
+    "initial_failure_reason": "Old test fixture still labelled already-supported review 13 unknown; replaced only invalid fixture inputs with 999.",
+    "corrected_version_checks_passed": 49,
+    "scoped_cli_checks_passed": 16,
+    "composition_checks": "63 passed; one new fixture setup corrected, its targeted rerun passed. 64 unique cases covered.",
+    "groups_overlap": true,
+    "ruff": "passed",
+    "diff_check": "passed",
+    "old_native_v20_preparations_restored": 6
+  },
+  "offline_cpu_comparison": {
+    "cache_starts_cold": true,
+    "same_saved_receipt": true,
+    "disabled_median_ms": 2207.956,
+    "enabled_median_ms": 799.371,
+    "unchanged_validation": "Four original schema/permission checks still executed; 13 preparation requests, one actual compilation.",
+    "scope": "Offline local CPU only; not isolated provider latency or token/cost improvement."
+  },
+  "billing": {
+    "physical_calls": 62,
+    "known_calls": 62,
+    "known_repository_estimate_cny": "2.6982166199999999197",
+    "new_unknown_hold_cny": "0",
+    "usage_rows": 1441,
+    "reservation_rows": 1438,
+    "unknown_holds": 59,
+    "inherited_rows_unchanged": true,
+    "scope": "Includes semantic controls, planning, real chat, all review/reselection/retry and extraction calls; not a normal-chat unit price or monthly estimate."
+  },
+  "continuation": {
+    "runtime": "output/private-audits/release-life-chat-continuation-20260920-01/run",
+    "billing": "output/private-audits/release-life-chat-continuation-20260920-01/run/world.sqlite",
+    "elapsed_minutes": 863,
+    "logical_at": "2026-09-14T15:23:00+00:00",
+    "ledger_sequence": 4067,
+    "process_terminal": true,
+    "stop_reason": "operator_stopped",
+    "completed": false,
+    "verification_status": "output/private-audits/release-life-chat-continuation-20260920-01/reconciliation-status.json"
+  },
+  "limits": [
+    "Ordinary return/nearby-life chat still failed; full conversation reliability remains a release blocker.",
+    "The shared-time-coordinate failure is verified and remains uncorrected.",
+    "The new production profile has offline composition evidence, not staging/deployment/QQ qualification.",
+    "A lifecycle completion and next plan do not qualify World stimulus, Life response, new memory and future grounded chat.",
+    "No clean demonstration identity, wall-clock soak, current final full-suite, actual QQ receipts or monthly cost pass."
+  ],
+  "evidence_sha256": {
+    "output/private-audits/release-private-cognition-controls-20260920-01/reconciliation.json": "cd53e2cc7124a0320667990b6e37254185b95a0bc8582ff75518362c67aefbf5",
+    "output/private-audits/release-private-cognition-controls-20260920-01/reconciliation-status.json": "d7c54a29563003520b3bd2931e4e0c40ef13a8c3ecf8a5c6f6f53a57cda3821a",
+    "output/private-audits/release-record-dependency-source-20260920-01/reconciliation.json": "abfaa4c588a454f6ed3cdf6589782c729f0b619dcc5f435fe65232ca53936ffd",
+    "output/private-audits/release-record-dependency-source-20260920-01/reconciliation-status.json": "9c401f969c9b7cccbf792d901ce91d53c15d305e325433875fe903f5115472fd",
+    "output/private-audits/release-life-chat-continuation-20260920-01/reconciliation.json": "d68ec3e6934cdf63981b80384ffdeadf3ba2a72efeb7cb5ca79f0e48aec5d35a",
+    "output/private-audits/release-life-chat-continuation-20260920-01/reconciliation-status.json": "faedaf543a461c365c15d7fdec2dbe9c57ec784d86d0934b9cf6d6d46489ba73"
+  }
+}

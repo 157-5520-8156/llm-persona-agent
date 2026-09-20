@@ -6,25 +6,32 @@ observations below retain their historical scope; they do not supersede that
 current index or authorize resuming an older, cheaper usage ledger.
 
 2026-09-20 latest release qualification: still manual_only / qualification_incomplete.
-Opt-in v20 shares current-private-cognition scope across author, independent
-readers, full source review and same-character correction; prior independent
-states, habits and embedded external claims still need sources. Fact exact-value
-authority and old receipt compilation remain intact. Two new full-chat turns
-both delivered (six text Beats); source Pro nonthinking returned four reviews
-without timeouts. The restored old pending turn still failed after unsupported
-history survived correction. New turns took about 25 seconds to authorization;
-two successes do not qualify latency, semantic reliability or long-term life.
-This trial closed and reconciled 18 known calls (estimate 0.574849 CNY), no new
-unknown holds, with 28 old/new source receipts cold-verified and replay matched.
+Explicit v21 separates per-fact record dependency from grammatical assertion;
+current private cognition, exact Fact authority, complete Beat coverage and old
+receipt bytes remain intact. Rejection feedback now preserves original reviewer
+explanations. Pure immutable source compilation reuse saves about 1.409s median
+in an offline same-receipt CPU comparison, not measured provider latency.
+Normal QQ composition now supports experimental_independent_v21 and an explicit
+Life candidate reviewer with durable owned evidence; defaults remain unchanged.
+This is tested wiring, not deployment or staging qualification.
+Real v20 controls matched 5/6; v21 source-only matched 5/6, fixing metalinguistic
+quotation but misreading equal +08/Z instants as eight hours apart. No verdict
+was locally overridden. Four new full-host inputs then delivered three turns /
+eight Beats, including grounded memory and one successful whole correction.
+The return/nearby-life turn still failed after correction and a later retry.
+Ingest processing was 18.7s, deferred 48.0s, 24.3s and corrected 46.0s; these are
+not first-Beat latency measurements. One Activity completed and another future
+Plan was accepted; no World-stimulus Life candidate review ran in this journey.
+All 62 new calls closed and reconciled (known estimate 2.698217 CNY), no new
+unknown holds; all 31 old/new receipts cold-verified and replay hash matched.
 Runtime and billing now both continue from
-output/private-audits/release-private-cognition-chat-20260919-01/run
-(elapsed 838 minutes, ledger 3762; 1379 usage / 1376 reservations / 59 unknown holds).
+output/private-audits/release-life-chat-continuation-20260920-01/run
+(elapsed 863 minutes, ledger 4067; 1441 usage / 1438 reservations / 59 unknown holds).
 finished.json preserves process-terminal pending status; the separate immutable
-reconciliation-status.json proves verification. Do not rerun paid work for that
-historical pending field. Normal QQ composition still exposes only v6/v7/v8 and
-needs the final qualified chat/Life configuration wired before invitation use.
-See docs/audits/private-cognition-chat-validation-2026-09-20.json and
-release-candidate-gates-2026-09-20.md. No paid process remains live.
+reconciliation-status.json proves verification. No paid process remains live.
+See docs/audits/record-dependency-life-chat-validation-2026-09-20.json and
+release-candidate-gates-2026-09-20.md. Do not call this release-ready or restart
+from any older, cheaper billing ledger.
 
 ## World
 

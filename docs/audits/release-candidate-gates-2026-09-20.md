@@ -9,9 +9,12 @@
 1. **完整聊天交付**：当前主阻断。用已有真实观察测试当前认知与有来源的回忆，核对
    正文、审核结果、实际交付、延迟、费用和冷恢复。相同配置连续失败则停止追加
    试探，保留反例定位具体责任。两轮成功也不能单独证明长期质量。
-2. **正式入口接线**：正常 QQ profile 当前只暴露 v6/v7/v8；OneBot app 尚未注入
-   Life 候选审核。待候选链语义与交付合格后，把其接到正常 composition，验证
-   客户端关闭、计费、失败零 Action 和重启。不能将测试 CLI 通过说成生产已接通。
+2. **正式入口接线已实现，待运行验收**：正常 QQ composition 已能显式选择
+   `WORLD_V2_VISIBLE_EXPRESSION_PROFILE=experimental_independent_v21`；专用 Life 审核由
+   `WORLD_V2_LIFE_CANDIDATE_REVIEW_ENABLED=true` 安装。来源模型分别配置为
+   `WORLD_V2_VISIBLE_SOURCE_REVIEW_MODEL` 与 `WORLD_V2_LIFE_CANDIDATE_REVIEW_MODEL`，
+   不改变角色主模型。原子表达、客户端/同 DB 审核证据库的生命周期与冲突已离线验证。
+   默认保持关闭，选择实验 profile 不赋予发布资格；尚未部署或完成实际 QQ 验收。
 3. **同一干净身份的完整旅程**：自主计划、实际后果、角色反应、记忆保留、跨会话
    回忆及聊天；同时覆盖用户离开/回来和旧话题。既有档案须重新绑定演示 World，
    不能复制受污染测试库。入口是 longitudinal audit 与 prepare_character_prehistory。
