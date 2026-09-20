@@ -44,6 +44,7 @@ from ..structured_completion import complete_json_object
 from ..schemas import MemoryCueKind, MemoryRetentionRationale
 from .single_tool_transport import SingleToolTransport, resolve_single_tool_transport
 from .author_identity import character_semantic_author_identity
+from .current_life_authorship import AUTHOR_PRESENTATION_CONTRACT, current_life_authorship_authority
 from .contracts import (
     InteriorAffectOpenTransition,
     InteriorAffectSupersedeTransition,
@@ -98,6 +99,7 @@ _FACET_NAMES = (
 _INTERIOR_USER_PAYLOAD_ORDER = (
     "wire_contract",
     "purpose_contract",
+    "current_authorship_authority",
     "capability_manifest",
     "background_context_profile",
     "eight_facets",
@@ -1901,6 +1903,14 @@ class StructuredCharacterRoleFaculty:
                 ),
             },
         }
+        if request.purpose == "world_stimulus_appraisal" and self.requires_life_source_review:
+            user_payload["current_authorship_authority"] = {
+                "presentation_contract": AUTHOR_PRESENTATION_CONTRACT,
+                **current_life_authorship_authority(
+                    actor_ref=request.snapshot.actor_ref,
+                    logical_time=request.snapshot.logical_time.isoformat(),
+                ),
+            }
         if request.purpose != "private_impression_reflection":
             user_payload["citeable_sources"] = _citeable_prompt_for_request(request)
         if request.purpose == "proactive_contact":

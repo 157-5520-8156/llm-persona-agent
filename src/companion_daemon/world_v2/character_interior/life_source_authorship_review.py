@@ -9,6 +9,7 @@ import json
 
 from jsonschema import Draft202012Validator
 
+from .current_life_authorship import current_life_authorship_authority
 from .life_candidate_reading import _object, _unique
 from .life_source_origin import canonical, digest
 
@@ -49,13 +50,9 @@ def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
         })}})
     packet['contract'] = contract
     packet['current_authorship_authority'] = {
-        'contract': 'current-life-authorship.1',
-        'actor_ref': actor_ref, 'logical_time': logical_time,
+        **current_life_authorship_authority(actor_ref=actor_ref, logical_time=logical_time),
         'source_view_sha256': packet['source_view_sha256'],
         'original_output_sha256': digest(envelope['provider_raw']),
-        'authority': 'Create this actor\'s present appraisal, attitude, feeling, interpretation and choice in this invocation.',
-        'exclusions': 'Not evidence of past feelings, past decisions, performed actions, external conditions, other people or embedded historical premises.',
-        'world_fact_source': False,
     }
     request['messages'] = [
         {'role': 'system', 'content': (
