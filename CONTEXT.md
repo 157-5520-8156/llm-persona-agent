@@ -6,6 +6,18 @@ observations below retain their historical scope; they do not supersede that
 current index or authorize resuming an older, cheaper usage ledger.
 
 2026-09-20 latest release qualification: still manual_only / qualification_incomplete.
+Latest closed runtime AND cumulative billing is now output/private-audits/release-clean-continuation-20260920-06/run,
+ledger518/revision217, 1625 usage /1622 reservations /71 unknown holds. At frozen41d3ec57,
+33 forwarded calls produced32 verified native bills estimated0.88308870 CNY and one unknown
+hold0.787329 CNY. Process/clients closed; independent reconciliation and cold replay verified.
+No new character delivery/Life response/Experience. Her actual lifecycle choice abandoned
+the old active Plan before the new producer scan, so the new producer is not_exercised;
+the old environment occurrence settlement is not an active-attempt result. The restored chat
+was accurately rejected for unsupported walking; correction still authored a similar act,
+then source review timed out22.004s. See current status for the exact qualification scope.
+The historical05 evidence below is preserved, but its continuation/account is now stale.
+
+Historical05 qualification checkpoint:
 Latest closed runtime AND cumulative billing: output/private-audits/release-clean-continuation-20260920-05/run,
 ledger467/revision203, 1592 usage /1589 reservations /70 unknown holds.
 It inherited the full 1569/1566/69 account before capturing its new usage watermark.

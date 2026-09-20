@@ -197,3 +197,24 @@ Life response/Experience、冷恢复与后续完成 Context 读取通过；这�
 与冷重放不变。此前Life失败来自独立world-stimulus worker，不是前置aftermath异常。
 证据在 `output/private-audits/release-active-attempt-20260920-01/`；06已准备继承05完整
 运行及1592/1589/70累计账本，尚未启动。本次修复未增加审核协议或旁路消费者。
+
+## 同一身份06续跑（41d3ec57，96至130分钟）
+
+正常宿主先恢复旧inbound。初稿来源请求71,192bytes，原生19,881输入tokens，19.384秒
+返回完整合法verdict：环境桌子、画稿、路人等通过，当前“我还行”被正确视作当前表达；
+“上午在图书馆外那条路上走了一段”只有active生命周期依据而被拒绝。精确反馈传给同一
+作者后，纠正仍写“上午从图书馆出来，在校园那条路上走了一段”；随后来源请求74,169bytes、
+21项fixed facts，真实forwarded且HTTP200后22.004秒无正文超时。没有新增schema错误。
+`corrective_invalid`不能被解释为第二次语义审判；实际终态为source read TimeoutError。
+
+seq483为真实角色选项对应的lifecycle提案，seq485为ActivityAbandoned。作者选择的token
+在原offered列表中对应放弃该活动；ecology先执行角色生命周期决定，再读current active
+head。原计划已结束，新active入口合法不运行：作者、两级审核、接受、发布均0，资格为
+not_exercised。seq490是既有环境事件结算，不得计为新尝试结果。没有强改选择或补造结果。
+
+130分钟停止，33次真实转发，无本地上限拒绝；32笔已知原生用量估算0.88308870元，
+1笔未知预留0.787329元。运行和累计账本统一到06/run：1625 usage/1622 reservations/
+71 unknown holds，ledger518/revision217。process_terminal和clients_closed为true，
+独立对账verified；冷重放哈希ca8df2fe4b2c871fc1decfec8c6ea881e031e03c6d0997070860128ff34dc712，
+机制检查无finding，2张旧v22回执原样冷验。新增角色交付、Life response和Experience均0。
+最终终态、独立对账及只读诊断位于 `output/private-audits/release-clean-continuation-20260920-06/`。
