@@ -176,3 +176,23 @@ def test_display_projects_only_typed_fact_memory_and_audit_excerpt_columns():
     assert shown['appraisals']['stable_rows'][0] == ['appraisal:one', [['a retained meaning']], []]
     assert shown['appraisals']['volatile_last_row'] == ['appraisal:two', [['another meaning']], []]
     assert source == original
+
+
+def test_display_accepts_real_compact_appraisal_row_with_omitted_trailing_excerpts():
+    from companion_daemon.world_v2.character_interior.life_fact_readings import fact_snapshot_display
+
+    columns = ['ref', 'conf', 'since', 'until', 'readings', 'excerpts']
+    stable = ['appraisal:earlier', 9000, '2026-09-20T01:00:00Z', None,
+              [['a retained meaning']], [OBSERVATION]]
+    volatile = ['appraisal:latest', 8000, '2026-09-20T01:03:00Z', None,
+                [['another retained meaning']]]
+    snapshot = {'materials': {'appraisals': {'columns': columns,
+        'stable_rows': [stable], 'volatile_last_row': volatile}}}
+    original = deepcopy(snapshot)
+    displayed = fact_snapshot_display(snapshot, {'readings': []})['snapshot']
+    appraisals = displayed['materials']['appraisals']
+    assert appraisals['columns'] == columns
+    assert appraisals['stable_rows'] == [[*stable[:5], []]]
+    assert appraisals['volatile_last_row'] == volatile
+    assert len(appraisals['volatile_last_row']) == 5
+    assert snapshot == original

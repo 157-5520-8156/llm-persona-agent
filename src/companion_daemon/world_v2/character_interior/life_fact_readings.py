@@ -103,8 +103,9 @@ def fact_snapshot_display(snapshot, readings):
     if isinstance(appraisals, dict) and 'excerpts' in appraisals.get('columns', ()):
         index = appraisals['columns'].index('excerpts')
         for row in appraisal_material_rows(appraisals):
-            if len(row) != len(appraisals['columns']):
-                raise ValueError('Life appraisal display differs from its typed columns')
-            row[index] = []
+            # Compact rows may omit the optional trailing excerpts cell.
+            # An already absent audit field needs no replacement or padding.
+            if index < len(row):
+                row[index] = []
     return {'contract': DISPLAY_CONTRACT, 'snapshot': shown,
             'original_author_snapshot_is_preserved_in_source_view': True}
