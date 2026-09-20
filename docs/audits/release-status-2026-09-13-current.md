@@ -1,5 +1,16 @@
 # 当前发布判断（2026-09-20）
 
+**最新：生活审核已真正到达模型，但返回格式仍阻止提交；正常报告承接仍遭误拒，尚不可邀请发布。**
+代码 `64f41e06` 的 v23 来源对照为 3/4 符合预期，正例仍失败；两次推理配置对照超时。
+Life `.11` 两次完整返回后分别因当前状态时间类别、缺少 Fact 引文被拒绝，旧紧凑行错误未复现。
+最新运行及累计费用统一到 `output/private-audits/release-clean-continuation-20260920-03/run`：
+**1553 usage /1550 reservations /66 unknown holds，ledger 405/revision 193**。冷重放及旧 2 张
+v22 回执通过，没有新角色交付、Life response 或 Experience。所有付费进程已关闭。
+详细结果及分项费用见[来源接口对照与生活续跑](release-review-interface-validation-2026-09-20.md)。
+下面历史段落的继续点均已过期；恢复旧运行历史前须继承上述完整累计账目。
+
+## 历史：61 分钟续跑
+
 **最新：同一干净角色续跑到 61 分钟，世界事件已结算、活动已开始，但生活经历与回来聊天仍未通过，尚不可邀请发布。**
 代码 `a2f36c7f` 的续跑没有新增 accepted visible 角色交付，只显示了明确的系统失败提示，
 不能算角色沉默。WorldOccurrence 已 settled，另有 ActivityStarted；没有新的
@@ -11,7 +22,7 @@ Life `.11` 实际向 provider 发出的请求为 **0**：本地准备拒绝了�
 也已走通 `.11` 展示及完整请求组装入口，但没有发送模型请求，也不是重建该轮未保存的
 完整新 pin。`.11` 仍待真实审核与落地验证；主动联系纠正本轮未行使。
 
-唯一最新运行和累计费用继续点：
+该阶段运行和累计费用检查点：
 `output/private-audits/release-clean-continuation-20260920-01/run`，
 ledger **400**、revision **192**、61 分钟，**1543 usage /1540 reservations /64 unknown holds**。
 本次 **25 次 physical /25 笔 known**，已知用量估算 **0.60819330 元**；重启和冷重放通过。

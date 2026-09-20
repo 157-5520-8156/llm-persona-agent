@@ -24,16 +24,13 @@ provider 完成审核档案导入、一次角色保留、认证面板读取、�
 
 随后真实干净身份旅程在 `aa8c8cce` 完成 24 条前史审核、角色自主保留 4 条及两轮
 聊天交付 5 条文字；同 owner 认证面板 HTTP 通过，登录后的视觉验收仍待做。
-最新 `a2f36c7f` 续跑从 45 到 61 分钟：WorldOccurrence 已 settled、ActivityStarted
-已发生，但没有新的 CharacterLifeResponse/Experience 或 accepted visible 角色交付，
-只有系统失败提示。Life `.11` 因本地紧凑行准备错误，实际 provider 请求为 **0**；
-`e127eaaf` 修复后 27 项离线检查及真实 snapshot 请求组装通过，尚不等于真实模型审核
-通过。主动联系纠正本轮未行使，发布资格仍为 `manual_only / qualification_incomplete`。
+随后续跑确认 WorldOccurrence settled、ActivityStarted；63 分钟时 Life `.11` 两次真实
+审核均完整返回，紧凑行旧错不再复现，但时间类别和 Fact 引文格式仍阻止接受。没有新
+CharacterLifeResponse、Experience 或角色交付。v23 可见来源对照亦未合格。
 
-唯一最新运行与累计费用继续点为
-`output/private-audits/release-clean-continuation-20260920-01/run`：
-ledger **400** / revision **192**，**1543 usage /1540 reservations /64 unknown holds**。
-本轮 **25 physical /25 known**，估算 **0.60819330 元**；重启/冷重放通过。旧目录仅保留
-历史证据，不能恢复旧低费用账本。新身份仍须分离运行历史并完整保留累计费用来源。
-详见 [干净旅程与续跑验证](clean-demo-validation-2026-09-20.md)；QQ 终态回执、持续运行
-和约百元月费尚未取得资格。
+唯一最新运行与累计费用继续点：
+`output/private-audits/release-clean-continuation-20260920-03/run`，
+ledger **405** / revision **193**，**1553 usage /1550 reservations /66 unknown holds**。
+冷重放与旧回执通过，所有付费进程已关闭；历史目录不能直接作为低费用继续点。
+详见[来源接口与生活续跑](release-review-interface-validation-2026-09-20.md)。
+面板登录后视觉验收、QQ 终态回执、持续运行及约百元月费尚未通过。

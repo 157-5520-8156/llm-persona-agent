@@ -4,14 +4,12 @@
 小屋和额外能力不进入本次发布；长期人格、遗忘、事件多样性仍属于项目完整目标。
 当前资格仍为 manual_only / qualification_incomplete。
 
-最新同一干净身份已续跑至 61 分钟：WorldOccurrence settled、ActivityStarted 已发生，
-但无新的 CharacterLifeResponse/Experience 或 accepted visible 角色交付，仅系统失败提示。
-Life `.11` 在本地准备失败，实际 provider 请求为 0；`e127eaaf` 的紧凑行适配及真实
-snapshot 请求组装有 27 项离线检查，不能算实跑通过。主动联系纠正本轮未行使。
-唯一最新运行/费用继续点是 `output/private-audits/release-clean-continuation-20260920-01/run`：
-ledger 400/revision 192，1543 usage /1540 reservations /64 unknown holds。
-本轮 25 physical /25 known、估算 0.60819330 元，重启/冷重放通过；不恢复旧低费用账本。
-详见 [干净旅程与续跑证据](clean-demo-validation-2026-09-20.md)。
+最新同一身份续跑到 63 分钟：World 结算与活动开始已记录，但没有新 Life response、
+Experience 或角色交付。Life `.11` 已真实调用并完整返回，仍因时间类别／缺少 Fact 引文
+被拒绝；v23 报告承接正例仍误拒，推理配置对照超时，均不取得资格。
+最新运行与费用统一继续点：`output/private-audits/release-clean-continuation-20260920-03/run`，
+1553 usage /1550 reservations /66 unknown holds，ledger405/revision193。冷重放、旧回执通过。
+详见[来源审核接口与真实续跑](release-review-interface-validation-2026-09-20.md)。
 
 ## 推进顺序
 
@@ -29,7 +27,7 @@ ledger 400/revision 192，1543 usage /1540 reservations /64 unknown holds。
    不能复制受污染测试库。入口是 longitudinal audit 的 `--primary-user-id` 与 prepare_character_prehistory；
    正常宿主已完成真实 24 条前史审核、角色保留 4 条及首次两轮聊天交付；续跑已结算
    世界事件并开始活动，仍缺 Life 反应、Experience/生活记忆与回来聊天的完整交付。
-   先复测 `.11` 本地准备修复后的真实审核和落地，不把 Fact 记忆或活动开始算作完成。
+   先解决审核返回格式并实测完整提交，不把 API 200、Fact 记忆或活动开始算作完成。
 4. **可录制面板**：主体已经具备，用同一旅程数据验证来源和状态展示，无须界面
    重写。同 owner 认证 HTTP 已通过，登录后的视觉验收待做。Experience 未读取正文
    不能呈现成已证明完整因果。使用认证 owner DTO。

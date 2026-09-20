@@ -6,6 +6,23 @@ observations below retain their historical scope; they do not supersede that
 current index or authorize resuming an older, cheaper usage ledger.
 
 2026-09-20 latest release qualification: still manual_only / qualification_incomplete.
+v23's four real source controls still falsely rejected natural report uptake;
+three unsupported-experience controls were rejected correctly. Two same-source
+thinking trials timed out at 22 seconds. Do not promote either route as qualified.
+Life .11 now reached the provider twice with complete replies and exact Fact
+presentation, but malformed current-state time / omitted exact Fact quote prevented
+acceptance. No new Life response, Experience or character delivery was accepted.
+Latest runtime AND cumulative billing: output/private-audits/release-clean-continuation-20260920-03/run,
+ledger 405/revision 193; 1553 usage /1550 reservations /66 unknown holds.
+Its four known calls cost an estimated 0.15491072 CNY; the preceding four source
+controls cost 0.30638940 CNY. Two thinking timeouts retain 1.418922 CNY of unknown
+holds, not confirmed charges. Cold replay and both inherited v22 receipts pass.
+Post-trial fa1a2ccc implements Life .12 bound permission selection/current-only state wire.
+83 offline checks pass; old .1–.11 compilation and real old receipt stay unchanged.
+No real .12 author/review or Experience acceptance has been qualified yet.
+No paid process is live. See docs/audits/release-review-interface-validation-2026-09-20.md.
+
+Historical continuation (a2f36c7f, minute 45–61; superseded continuation point):
 The clean identity continuation at a2f36c7f ran from minute 45 to 61: one
 WorldOccurrence settled and an Activity started, but no new CharacterLifeResponse
 or Experience was accepted. One new Fact memory does not close the life-memory-chat
@@ -14,7 +31,7 @@ failure notices were shown. Life .11 made zero provider requests: local request
 preparation rejected a valid five-item compact appraisal row with six declared
 columns and an omitted optional trailing excerpts cell. This was not a provider
 schema rejection or timeout. Proactive correction was not exercised.
-Latest runtime AND cumulative billing: output/private-audits/release-clean-continuation-20260920-01/run,
+At that trial's close: output/private-audits/release-clean-continuation-20260920-01/run,
 ledger 400/revision 192; 1543 usage /1540 reservations /64 unknown holds.
 All 25 physical calls have known usage, estimated at 0.60819330 CNY. Restart and
 cold replay checks passed. Post-trial e127eaaf fixes the optional trailing cell

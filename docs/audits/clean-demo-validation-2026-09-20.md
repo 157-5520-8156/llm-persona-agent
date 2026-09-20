@@ -1,6 +1,13 @@
 # 干净身份演示旅程与续跑验证
 
-## 最新：同一身份续跑（a2f36c7f，45–61 分钟）
+最新已推进至 63 分钟：Life `.11` 两次审核真正到达 provider，旧紧凑行错误未复现，
+但两份完整返回因时间类别及缺少 Fact 引文而被拒绝。没有新增角色交付或 Life/Experience。
+最新运行及完整费用继续点为 `release-clean-continuation-20260920-03/run`，
+1553 usage /1550 reservations /66 unknown holds，ledger405/revision193；冷重放通过。
+详细试验、费用和剩余问题见[来源审核接口与真实续跑](release-review-interface-validation-2026-09-20.md)。
+以下各阶段的继续点均已过期，不能恢复旧低费用账本。
+
+## 历史：同一身份续跑（a2f36c7f，45–61 分钟）
 
 仍为 `manual_only / qualification_incomplete`。本次没有新增 accepted visible 角色交付，
 只有明确的系统失败提示，不能算角色沉默。WorldOccurrence 在第 48 分钟 settled
@@ -13,8 +20,8 @@ Life `.11` 的真实 provider 请求数为 **0**。第一次失败记在 seq354�
 source_span 的新审核结论；请求尚未到达审核模型。主动联系纠正本轮未行使。
 
 本轮 **25 次 physical /25 笔 known**，已知用量估算 **0.60819330 元**。
-最新累计 **1543 usage /1540 reservations /64 unknown holds**；ledger **400**、
-World revision **192**，重启和冷重放通过。唯一最新运行与累计费用继续点为：
+该阶段累计 **1543 usage /1540 reservations /64 unknown holds**；ledger **400**、
+World revision **192**，重启和冷重放通过。该阶段运行与累计费用检查点为：
 `output/private-audits/release-clean-continuation-20260920-01/run`。
 旧目录保留为历史证据；恢复旧身份必须继承这份最新累计账目，不能回退到旧低费用库。
 
