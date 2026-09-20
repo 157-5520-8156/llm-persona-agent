@@ -51,6 +51,7 @@ def read_world_consequence_author_evidence(
     )
     declarations = []
     original_completion_descriptors = []
+    original_active_descriptors = []
     for message in messages:
         if message["role"] != "user":
             continue
@@ -65,6 +66,9 @@ def read_world_consequence_author_evidence(
             })
             original_completion_descriptors.append(
                 value.get("capability_manifest", {}).get("completed_activity_consequence")
+            )
+            original_active_descriptors.append(
+                value.get("capability_manifest", {}).get("active_attempt_consequence")
             )
     if len(declarations) != 1:
         raise ValueError("world consequence original request has no unique execution context")
@@ -101,4 +105,18 @@ def read_world_consequence_author_evidence(
             ledger=ledger, pinned_state=pinned, actor_ref=actor_ref, descriptor=original_completion,
         )
         evidence["completed_activity_lifecycle"] = completion.lifecycle_reading.model_dump(mode="json")
+    active = manifest.active_attempt_consequence
+    if active is not None:
+        from .active_attempt_consequence import ActiveAttemptConsequence, validate_active_attempt_consequence
+
+        original_active = ActiveAttemptConsequence.model_validate_json(
+            canonical_json(original_active_descriptors[0])
+        )
+        if original_active != active:
+            raise ValueError("active attempt reading differs from the original author request")
+        validate_active_attempt_consequence(
+            ledger=ledger, content_store=content_store,
+            pinned_state=pinned, actor_ref=actor_ref, descriptor=original_active,
+        )
+        evidence["active_attempt_consequence"] = active.model_dump(mode="json")
     return evidence

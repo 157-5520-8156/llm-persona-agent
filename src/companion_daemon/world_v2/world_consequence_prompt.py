@@ -218,6 +218,29 @@ def compile_world_consequence_messages(
             "in your alternatives until the existing settlement, and her response remains "
             "a separate character decision.\n"
         )
+    elif manifest.get("active_attempt_consequence") is not None:
+        boundary["active_attempt_consequence"] = {
+            "contract": "active-attempt-consequence.1",
+            "lifecycle_evidence": "active_attempt_and_elapsed_time_only_not_success_or_presence",
+            "allowed_decision": "no_op_or_now_world_contingency_for_the_exact_offered_attempt",
+            "each_outcome": "requires_the_same_offered_execution_binding",
+            "character_response": "separate_character_authorship_after_settlement",
+        }
+        example_guidance = (
+            "This request concerns only the current active attempt bound in "
+            "capability_manifest.active_attempt_consequence. Its exact Started/Resumed "
+            "event and current Clock delimit the available elapsed world time. They prove "
+            "neither intention fulfillment nor location presence, perception, embedded "
+            "history or success. Choose no_op or objective candidate consequences limited "
+            "to that original authorized attempt and this elapsed interval, as "
+            "world_contingency with timing.mode now. Each outcome must include "
+            "authorized_attempt_result with the exact offered binding. An attempt can "
+            "have a partial or unsuccessful result; do not assume the full intention "
+            "completed. Do not extend or finish her lifecycle, invent an additional "
+            "action or response, or rewrite an already settled result. New result "
+            "uncertainty remains in the alternatives until the existing settlement; "
+            "her inner response remains a separate character decision.\n"
+        )
     elif example is None:
         example_guidance = (
             "capability_manifest.anchor_refs is empty, so no propose decision is "

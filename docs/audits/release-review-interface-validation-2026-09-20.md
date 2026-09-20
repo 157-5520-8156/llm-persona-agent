@@ -175,3 +175,25 @@ bytes 占 user 内容71.2%，其中9项 recent_dialogue占15,213 bytes。不能�
 代码复查确认 Started/Resumed 已有授权尝试材料及 World consequence 消费者；缺的是
 定向、去重的进行中结果生产调度。下一项补此生产入口，保留当前审核、效果去重、退避
 和旧回执解释，不从计划、Clock、同地点或参与者直接推导角色动作。
+
+## 进行中活动结果入口：离线资格
+
+现已接通精确 ActivityStarted/Resumed 源事件的一次结果机会。原角色意图必须可从
+原 pin、模型审计和正文哈希读出；最新 owned active head 与当前 Clock 只限定尝试和
+经过的时间，不证明成功、到场或感知。作者可以 no_op，或提出同一授权尝试的客观
+结果候选；仍经过原两级来源审核、结算和发布，再由原 Life/Experience 消费者处理。
+每次 ecology wake 至多选择一个 development 分支，完成优先；不可读/已消费活动
+不会阻挡另一个当前活动。重启仅恢复已接受效果，失败沿用原退避。
+
+109 项定向检查通过，包含完整120-case冻结基线，未刷新golden；另2项离线输入捕获
+通过。独立复核发现新活动的作者失败会被 activity_transitioned 覆盖退避，现已修复并
+覆盖 started/resumed/completed。同一 mock 宿主的 start/resume、两级审核、结算发布、
+Life response/Experience、冷恢复与后续完成 Context 读取通过；这不证明真实模型质量。
+普通及 completed 两类的 manifest、作者、来源审核和新事实权限审核请求，共8项与
+冻结0132ded4源码进程原字节一致。Ruff/diff检查通过。
+
+05 原库的只读 backup 确认 ledger467/revision203，角色当前活动于10:01+08开始，
+10:36+08仍 active；61字原角色意图可读，结果入口非空且已到调度时间。原文件哈希
+与冷重放不变。此前Life失败来自独立world-stimulus worker，不是前置aftermath异常。
+证据在 `output/private-audits/release-active-attempt-20260920-01/`；06已准备继承05完整
+运行及1592/1589/70累计账本，尚未启动。本次修复未增加审核协议或旁路消费者。

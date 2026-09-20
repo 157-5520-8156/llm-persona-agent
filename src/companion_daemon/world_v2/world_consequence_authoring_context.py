@@ -74,6 +74,15 @@ def build_world_consequence_authoring_context(
         # Other current activities can remain readable context, but they have
         # no execution authority in this request for one completed attempt.
         anchors = {completion.execution_binding.source_event_ref}
+    active = manifest.active_attempt_consequence
+    if active is not None:
+        from .active_attempt_consequence import validate_active_attempt_consequence
+
+        validate_active_attempt_consequence(
+            ledger=ledger, content_store=content_store,
+            pinned_state=pinned, actor_ref=actor_ref, descriptor=active,
+        )
+        anchors = {active.execution_binding.source_event_ref}
     candidates = sorted(
         (source for source in pinned.committed_world_event_refs
          if source.event_id in anchors and source.event_type in {
@@ -128,6 +137,8 @@ def build_world_consequence_authoring_context(
     )
     if completion is not None and authority.execution_bindings != (completion.execution_binding,):
         raise ValueError("completed activity consequence lacks its exact readable attempt")
+    if active is not None and authority.execution_bindings != (active.execution_binding,):
+        raise ValueError("active attempt consequence lacks its exact readable intention")
     return WorldConsequenceAuthoringContext(
         authority=authority, execution_materials=tuple(available),
     )

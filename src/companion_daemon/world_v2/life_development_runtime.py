@@ -1879,6 +1879,53 @@ class LifeDevelopmentRuntime:
             "world_id": self._ledger.world_id, "completed_activity_event_ref": event_ref,
         })
 
+    def pending_active_attempt_ref(self, *, after_world_revision: int | None = None) -> str | None:
+        """One latest readable unprocessed active head, within the existing retry schedule."""
+        from .active_attempt_consequence import read_active_attempt_consequence
+
+        state = self._ledger.project()
+        clock = max(
+            (ref for ref in state.committed_world_event_refs if ref.event_type == "ClockAdvanced"),
+            key=lambda ref: ref.world_revision, default=None,
+        )
+        if clock is None:
+            return None
+        for plan in sorted(
+            (item for item in state.plans if item.owner_actor_ref == self._owner
+             and item.status == "active" and item.authority_origin is not None),
+            key=lambda item: (item.authority_origin.accepted_world_revision, item.plan_id),
+            reverse=True,
+        ):
+            origin = plan.authority_origin
+            if after_world_revision is not None and origin.accepted_world_revision <= after_world_revision:
+                continue
+            source = read_active_attempt_consequence(
+                ledger=self._ledger, content_store=self._store,
+                pinned_state=state, actor_ref=self._owner,
+                execution_event_ref=origin.accepted_event_ref, clock_event_ref=clock.event_id,
+            )
+            if source is None:
+                continue
+            proposal_id = self._active_attempt_proposal_id(origin.accepted_event_ref)
+            if self._ledger.lookup_event_commit("event:life-development:proposal:" + _digest(proposal_id)):
+                continue
+            return origin.accepted_event_ref
+        return None
+
+    def _active_attempt_proposal_id(self, event_ref: str) -> str:
+        return "proposal:life-development:" + _digest({
+            "world_id": self._ledger.world_id, "active_attempt_event_ref": event_ref,
+        })
+
+    async def advance_active_attempt_once(
+        self, *, execution_event_ref: str, wake_event_ref: str,
+        trace_id: str, correlation_id: str,
+    ) -> LifeDevelopmentResult:
+        return await self.advance_once(
+            wake_event_ref=wake_event_ref, trace_id=trace_id, correlation_id=correlation_id,
+            active_attempt_event_ref=execution_event_ref,
+        )
+
     async def advance_completed_activity_once(
         self, *, completion_event_ref: str, wake_event_ref: str,
         trace_id: str, correlation_id: str,
@@ -1895,16 +1942,60 @@ class LifeDevelopmentRuntime:
         trace_id: str,
         correlation_id: str,
         completed_activity_event_ref: str | None = None,
+        active_attempt_event_ref: str | None = None,
     ) -> LifeDevelopmentResult:
+        if completed_activity_event_ref is not None and active_attempt_event_ref is not None:
+            raise ValueError("a life consequence request can focus on only one lifecycle phase")
         proposal_id = (
             self._completed_activity_proposal_id(completed_activity_event_ref)
-            if completed_activity_event_ref else "proposal:life-development:" + _digest(
+            if completed_activity_event_ref else
+            self._active_attempt_proposal_id(active_attempt_event_ref)
+            if active_attempt_event_ref else "proposal:life-development:" + _digest(
                 {"world_id": self._ledger.world_id, "wake_event_ref": wake_event_ref}
             )
         )
         proposal_event_id = "event:life-development:proposal:" + _digest(proposal_id)
         existing = self._ledger.lookup_event_commit(proposal_event_id)
         if existing is not None:
+            if active_attempt_event_ref is not None:
+                from .active_attempt_consequence import validate_active_attempt_consequence
+                from .reducers import _validate_one_life_development_deliberation
+
+                # Recovery returns only an already accepted effect from its
+                # original pin. Today's lifecycle/Clock cannot authorize a new
+                # effect, nor invalidate the old effect's durable identity.
+                try:
+                    state = self._ledger.project()
+                    payload = existing[0].payload()
+                    binding = _validate_one_life_development_deliberation(
+                        state, proposal=payload, field="world_author_deliberation",
+                        expected_role="world_author",
+                    )
+                    original = LifeDevelopmentCapabilityManifest.model_validate_json(
+                        json.dumps(binding["capability_manifest"])
+                    )
+                    marker = original.active_attempt_consequence
+                    if (original.owner_actor_ref != self._owner or marker is None
+                            or marker.execution_binding.source_event_ref != active_attempt_event_ref):
+                        raise ValueError("active attempt recovery source differs")
+                    stored = self._store.read_exact(content_ref=binding["capability_manifest_content_ref"])
+                    if (stored is None or stored.content_payload_hash != binding["capability_manifest_content_hash"]
+                            or json.loads(stored.text) != binding["capability_manifest"]):
+                        raise ValueError("active attempt recovery manifest unavailable")
+                    current_plan = next((item for item in state.plans
+                                         if item.plan_id == marker.execution_binding.plan_id), None)
+                    if (current_plan is None or current_plan.owner_actor_ref != self._owner
+                            or current_plan.privacy_class == "withhold"):
+                        raise ValueError("active attempt recovery owner or privacy differs")
+                    validate_active_attempt_consequence(
+                        ledger=self._ledger, content_store=self._store,
+                        pinned_state=self._ledger.project_at(original.pinned_cursor),
+                        actor_ref=self._owner, descriptor=marker,
+                    )
+                except (KeyError, TypeError, ValueError, ConcurrencyConflict):
+                    return LifeDevelopmentResult(
+                        status="rejected", reason_code="life_development.active_attempt_source_unavailable",
+                    )
             if completed_activity_event_ref is not None:
                 from .completed_activity_consequence import read_completed_activity_consequence
 
@@ -1938,9 +2029,31 @@ class LifeDevelopmentRuntime:
                 status="stale_prefix",
                 reason_code="life_development.completion_requires_current_clock",
             )
+        if active_attempt_event_ref is not None:
+            from .active_attempt_consequence import read_active_attempt_consequence
+
+            projection = self._ledger.project()
+            wake = self._exact_wake(projection=projection, wake_event_ref=wake_event_ref)
+            if wake is None or wake.logical_time != projection.logical_time:
+                return LifeDevelopmentResult(
+                    status="stale_prefix", reason_code="life_development.active_attempt_requires_current_clock",
+                )
+            try:
+                active = read_active_attempt_consequence(
+                    ledger=self._ledger, content_store=self._store,
+                    pinned_state=projection, actor_ref=self._owner,
+                    execution_event_ref=active_attempt_event_ref, clock_event_ref=wake_event_ref,
+                )
+            except (TypeError, ValueError, ConcurrencyConflict):
+                active = None
+            if active is None:
+                return LifeDevelopmentResult(
+                    status="rejected", reason_code="life_development.active_attempt_source_unavailable",
+                )
         pinned = self._compile_pinned(
             projection=projection, wake=wake,
             completed_activity_event_ref=completed_activity_event_ref,
+            active_attempt_event_ref=active_attempt_event_ref,
         )
         if isinstance(pinned, LifeDevelopmentResult):
             return pinned
@@ -1972,7 +2085,8 @@ class LifeDevelopmentRuntime:
                 reason_code="life_development.world_author_unavailable",
             )
         if recovered_world is None:
-            if world_manifest.completed_activity_consequence is None:
+            if (world_manifest.completed_activity_consequence is None
+                    and world_manifest.active_attempt_consequence is None):
                 occasion_draw = self._resolve_occasion_draw(
                     wake=wake, manifest=world_manifest,
                 )
@@ -2621,7 +2735,8 @@ class LifeDevelopmentRuntime:
         records, bindings, candidates = self._materialize_content(
             proposal_id=proposal_id,
             draft=draft,
-            distinguish_draft=manifest.completed_activity_consequence is not None,
+            distinguish_draft=(manifest.completed_activity_consequence is not None
+                               or manifest.active_attempt_consequence is not None),
         )
         for record in records:
             self._store.put_if_absent(record)
@@ -2778,6 +2893,7 @@ class LifeDevelopmentRuntime:
         projection,
         wake: WorldEvent,
         completed_activity_event_ref: str | None = None,
+        active_attempt_event_ref: str | None = None,
     ) -> (
         tuple[
             object,
@@ -2827,6 +2943,24 @@ class LifeDevelopmentRuntime:
                 manifest = LifeDevelopmentCapabilityManifest.model_validate_json(
                     manifest.model_copy(update={
                         "completed_activity_consequence": completion,
+                        "anchor_refs": tuple(sorted(anchors)),
+                        "grounding_refs": tuple(sorted(set(manifest.grounding_refs) | anchors)),
+                    }).model_dump_json(exclude_computed_fields=True)
+                )
+            if active_attempt_event_ref is not None:
+                from .active_attempt_consequence import read_active_attempt_consequence
+
+                active = read_active_attempt_consequence(
+                    ledger=self._ledger, content_store=self._store,
+                    pinned_state=projection, actor_ref=self._owner,
+                    execution_event_ref=active_attempt_event_ref, clock_event_ref=wake.event_id,
+                )
+                if active is None:
+                    raise ValueError("active attempt source is unavailable")
+                anchors = {wake.event_id, active.execution_binding.source_event_ref}
+                manifest = LifeDevelopmentCapabilityManifest.model_validate_json(
+                    manifest.model_copy(update={
+                        "active_attempt_consequence": active,
                         "anchor_refs": tuple(sorted(anchors)),
                         "grounding_refs": tuple(sorted(set(manifest.grounding_refs) | anchors)),
                     }).model_dump_json(exclude_computed_fields=True)

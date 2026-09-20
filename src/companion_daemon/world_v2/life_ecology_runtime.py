@@ -502,9 +502,26 @@ class LifeEcologyRuntime:
                     activity_followup_status=activity_status,
                     aftermath_followup_status=aftermath_status,
                 )
+        active_attempt_ref = None
+        pending_active_attempt = getattr(
+            self._life_development_followup, "pending_active_attempt_ref", None,
+        )
+        if completion_ref is None and callable(pending_active_attempt) and is_clock_wake:
+            try:
+                active_attempt_ref = pending_active_attempt(
+                    after_world_revision=None if development_due else projection.world_revision,
+                )
+            except (ValueError, TypeError, ConcurrencyConflict):
+                await self._complete_failed_safe(key=key, trigger_id=claim.trigger_id)
+                return LifeEcologyRunResult(
+                    status="failed_safe", trigger_id=claim.trigger_id,
+                    reason_code="life_ecology.active_attempt_source_unavailable",
+                    activity_followup_status=activity_status,
+                    aftermath_followup_status=aftermath_status,
+                )
         if (
             self._life_development_followup is not None
-            and (completion_ref is not None or (
+            and (completion_ref is not None or active_attempt_ref is not None or (
                 development_due and activity_status != "transitioned"
                 and aftermath_status
                 not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}
@@ -514,6 +531,11 @@ class LifeEcologyRuntime:
                 if completion_ref is not None:
                     development_result = await self._life_development_followup.advance_completed_activity_once(
                         completion_event_ref=completion_ref, wake_event_ref=wake_event_ref,
+                        trace_id=trace_id, correlation_id=correlation_id,
+                    )
+                elif active_attempt_ref is not None:
+                    development_result = await self._life_development_followup.advance_active_attempt_once(
+                        execution_event_ref=active_attempt_ref, wake_event_ref=wake_event_ref,
                         trace_id=trace_id, correlation_id=correlation_id,
                     )
                 else:
@@ -803,7 +825,8 @@ class LifeEcologyRuntime:
                 "trigger_id": claim.trigger_id,
                 "outcome": (
                     f"technical_failure.{life_development_failure_code}"
-                    if completion_ref is not None and life_development_failure_code is not None
+                    if (completion_ref is not None or active_attempt_ref is not None)
+                    and life_development_failure_code is not None
                     else f"aftermath_{aftermath_status}"
                     if aftermath_status
                     in {

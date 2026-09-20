@@ -24,8 +24,11 @@ privacy and user-channel gates.88 focused checks pass; actual same-owner authent
 Chrome desktop/mobile/recording display shows the excerpt, with no JS errors or overflow.
 The closed World has no actor perception/attempt record for having passed or seen that
 random campus event; participant/location/Clock do not supply one. Existing authoring
-already supports Started/Resumed bound attempts, but their dedicated effect-once outcome
-producer is missing. This is the next bounded implementation, not a new reviewer protocol.
+already supports Started/Resumed bound attempts. Their dedicated effect-once producer is now
+wired with exact current active-head/intention/Clock evidence, shared backoff and completion
+priority.109 focused checks include the unchanged120-case baseline; ordinary/completed author,
+manifest and both review messages are byte-identical to0132ded4. The actual05 active intention
+is readable, but the new producer has not yet passed a real-provider continuation.
 The independent support-basis experiment remains unqualified: it accepted a switched
 actor/recipient negative. It must not be promoted. See the current release status and
 release-review-interface-validation-2026-09-20.md for evidence and remaining gates.

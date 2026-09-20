@@ -907,9 +907,13 @@ def _outcome_prose_surface(outcome: LifeDevelopmentOutcomeDraft) -> dict[str, ob
     return {"world_consequence": outcome.world_consequence.model_dump(mode="json")}
 
 
-def _required_execution_authority(value: dict[str, object] | None) -> dict[str, object]:
+def _required_execution_authority(value: dict[str, object] | None, *, manifest) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError("world-consequence review requires the original execution_authority")
+    active = manifest.active_attempt_consequence
+    expected = active.model_dump(mode="json") if active is not None else None
+    if value.get("active_attempt_consequence") != expected:
+        raise ValueError("active attempt reading differs from the original verified author evidence")
     return value
 
 
@@ -1934,7 +1938,7 @@ def life_development_source_closure_messages(
         pinned_source_evidence["cited_pinned_materials"] = list(cited_pinned_materials)
     if current:
         pinned_source_evidence["execution_authority"] = _required_execution_authority(
-            execution_authority
+            execution_authority, manifest=manifest,
         )
         system += _completed_lifecycle_guidance(
             manifest=manifest, execution_authority=execution_authority,
@@ -2218,7 +2222,9 @@ def life_development_novel_origin_messages(
         ),
     }
     if current:
-        pinned_authority["execution_authority"] = _required_execution_authority(execution_authority)
+        pinned_authority["execution_authority"] = _required_execution_authority(
+            execution_authority, manifest=manifest,
+        )
         system += _completed_lifecycle_guidance(
             manifest=manifest, execution_authority=execution_authority,
         )
