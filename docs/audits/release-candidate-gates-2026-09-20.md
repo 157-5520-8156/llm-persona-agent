@@ -1,14 +1,15 @@
 # 首版收敛与剩余验收
 
+最新状态与运行/累计费用继续点统一见 [当前发布状态](release-status-2026-09-13-current.md)。
+
 首版范围是单角色、限量邀请：自然聊天、已有生活和记忆、能看清来源与状态的面板。
 小屋和额外能力不进入本次发布；长期人格、遗忘、事件多样性仍属于项目完整目标。
 当前资格仍为 manual_only / qualification_incomplete。
 
-最新同一身份续跑到 63 分钟：World 结算与活动开始已记录，但没有新 Life response、
-Experience 或角色交付。Life `.11` 已真实调用并完整返回，仍因时间类别／缺少 Fact 引文
-被拒绝；v23 报告承接正例仍误拒，推理配置对照超时，均不取得资格。
-最新运行与费用统一继续点：`output/private-audits/release-clean-continuation-20260920-03/run`，
-1553 usage /1550 reservations /66 unknown holds，ledger405/revision193。冷重放、旧回执通过。
+当前 World 结算与活动开始已记录，但没有新 Life response、Experience 或角色交付。
+Life `.12` 已返回结构有效的审核，仍因无来源既往动作等语义问题拒绝；纠正审核遇试验上限。
+报告承接实验也误放了人物关系偷换，保持不合格。运行在 04/run，最新累计费用另在
+support-basis 实验的已对账库，具体路径只以当前状态页为准。冷重放、旧回执通过。
 详见[来源审核接口与真实续跑](release-review-interface-validation-2026-09-20.md)。
 
 ## 推进顺序
@@ -27,9 +28,9 @@ Experience 或角色交付。Life `.11` 已真实调用并完整返回，仍因�
    不能复制受污染测试库。入口是 longitudinal audit 的 `--primary-user-id` 与 prepare_character_prehistory；
    正常宿主已完成真实 24 条前史审核、角色保留 4 条及首次两轮聊天交付；续跑已结算
    世界事件并开始活动，仍缺 Life 反应、Experience/生活记忆与回来聊天的完整交付。
-   先解决审核返回格式并实测完整提交，不把 API 200、Fact 记忆或活动开始算作完成。
+   先消除作者与审核者权限说明不一致，再实测完整提交；不把 API 200、Fact 记忆或活动开始算作完成。
 4. **可录制面板**：主体已经具备，用同一旅程数据验证来源和状态展示，无须界面
-   重写。同 owner 认证 HTTP 已通过，登录后的视觉验收待做。Experience 未读取正文
+   重写。同 owner 认证 HTTP 和登录后桌面/手机/录制模式已通过；环境结果正文读取待接入。Experience 未读取正文
    不能呈现成已证明完整因果。使用认证 owner DTO。
 5. **运行验收**：最终配置的独立进程恢复、备份回滚、重复事件不重复发送；实际 QQ
    staging 终态回执与 24 小时持续运行分别取证。本次重启/冷重放已通过，不能代替这些

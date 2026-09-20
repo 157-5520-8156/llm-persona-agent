@@ -1,8 +1,13 @@
 # 干净身份演示旅程与续跑验证
 
-最新已推进至 63 分钟：Life `.11` 两次审核真正到达 provider，旧紧凑行错误未复现，
+最新状态与运行/累计费用继续点统一见 [当前发布状态](release-status-2026-09-13-current.md)。
+以下保留本文各阶段证据，文中的旧“最新/唯一继续点”不能覆盖当前状态页。
+
+## 历史：63 分钟继续点
+
+当时已推进至 63 分钟：Life `.11` 两次审核真正到达 provider，旧紧凑行错误未复现，
 但两份完整返回因时间类别及缺少 Fact 引文而被拒绝。没有新增角色交付或 Life/Experience。
-最新运行及完整费用继续点为 `release-clean-continuation-20260920-03/run`，
+该阶段运行及完整费用继续点为 `release-clean-continuation-20260920-03/run`，
 1553 usage /1550 reservations /66 unknown holds，ledger405/revision193；冷重放通过。
 详细试验、费用和剩余问题见[来源审核接口与真实续跑](release-review-interface-validation-2026-09-20.md)。
 以下各阶段的继续点均已过期，不能恢复旧低费用账本。

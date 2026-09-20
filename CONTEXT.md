@@ -6,21 +6,25 @@ observations below retain their historical scope; they do not supersede that
 current index or authorize resuming an older, cheaper usage ledger.
 
 2026-09-20 latest release qualification: still manual_only / qualification_incomplete.
-v23's four real source controls still falsely rejected natural report uptake;
-three unsupported-experience controls were rejected correctly. Two same-source
-thinking trials timed out at 22 seconds. Do not promote either route as qualified.
-Life .11 now reached the provider twice with complete replies and exact Fact
-presentation, but malformed current-state time / omitted exact Fact quote prevented
-acceptance. No new Life response, Experience or character delivery was accepted.
-Latest runtime AND cumulative billing: output/private-audits/release-clean-continuation-20260920-03/run,
-ledger 405/revision 193; 1553 usage /1550 reservations /66 unknown holds.
-Its four known calls cost an estimated 0.15491072 CNY; the preceding four source
-controls cost 0.30638940 CNY. Two thinking timeouts retain 1.418922 CNY of unknown
-holds, not confirmed charges. Cold replay and both inherited v22 receipts pass.
-Post-trial fa1a2ccc implements Life .12 bound permission selection/current-only state wire.
-83 offline checks pass; old .1–.11 compilation and real old receipt stay unchanged.
-No real .12 author/review or Experience acceptance has been qualified yet.
-No paid process is live. See docs/audits/release-review-interface-validation-2026-09-20.md.
+Life .12 has reached the real provider with one complete 31-field response and valid
+bound Fact/current-state wire. Its candidate was rejected for unsupported performed
+actions and two disputed external-premise readings. The corrected author returned,
+but final review was denied by the physical cap. No new Life response/Experience or
+visible delivery was accepted. An independent support-basis experiment then passed
+natural report uptake but wrongly accepted a switched actor/recipient negative;
+it stopped after two calls and MUST NOT be promoted to the installed reviewer.
+Runtime continuation: output/private-audits/release-clean-continuation-20260920-04/run,
+ledger422/revision195. Latest cumulative billing is separately at
+output/private-audits/release-report-uptake-basis-20260920-01/run/world.sqlite:
+1569 usage /1566 reservations /69 unknown holds; its World is exactly unchanged
+from the runtime checkpoint. Never resume the runtime's older 1567-row account.
+Both trials are terminal and independently reconciled; no paid process is live.
+Same-owner post-login desktop/mobile/recording display passed with no JS errors or
+horizontal overflow; grounded environment summaries remain a dashboard gap.
+All detected offline regressions were repaired in focused checks; 120 frozen
+mechanism cases/replays and the audited .104 manifest gate pass. This is not a
+single frozen full-suite green run or real-provider/long-term/cost qualification.
+See docs/audits/release-review-interface-validation-2026-09-20.md.
 
 Historical continuation (a2f36c7f, minute 45–61; superseded continuation point):
 The clean identity continuation at a2f36c7f ran from minute 45 to 61: one
