@@ -1,74 +1,44 @@
 # Girl-Agent Domain Glossary
 
-For current release qualification and the runtime/billing continuation
-checkpoints, read `docs/audits/release-status-2026-09-13-current.md`. Trial history
-is retained in the linked audit documents, not as competing current checkpoints.
+For current release qualification read `docs/audits/release-status-2026-09-13-current.md`.
+Current status: manual_only / qualification_incomplete (2026-09-21).
 
-2026-09-21 release closeout: manual_only / qualification_incomplete.
-Frozen b560a3d2 passed the complete suite: 9485 passed /19 skipped /2 xfailed,
-zero failures, in 1514.63 seconds. The prior 6431bcaf run had 12 failures; its
-logs remain intact. Subsequent RAG-diagnosis repairs have focused validation,
-not a new full-suite result; do not mistake either gate for chat qualification.
+Latest resumable runtime AND full cumulative billing are now unified at
+output/private-audits/release-clean-continuation-20260921-10/run:
+ledger882/revision354 at04:28Z, 1732 usage /1729 reservations /73 unknown holds.
+Restore this closed journey with all billing intact; earlier09 and isolated probes are historical.
+Cold hash0527998d2b5713a231729f2c72d6932afd3019d6f28ad807623143d943dc6960.
 
-Latest resumable runtime: output/private-audits/release-clean-continuation-20260920-09/run,
-ledger801/revision327. Latest complete billing is SEPARATE at
-output/private-audits/release-rag-diagnosis-20260921-01/world-token-check/world.sqlite:
-1702 usage /1699 reservations /73 unknown holds. Restore 09, then merge every
-latest billing row before the first usage watermark or provider call. A standalone
-probe is not a resumable journey. Prior unknown holds remain; the newest is 1.30329 CNY.
+10 ran frozen2978be51, initialization0, physical ceiling40, actual30 known calls;
+new estimated cost1.0408613 CNY, zero new unknown holds. Normal stop, clients,
+independent reconciliation and cold replay passed. Three inherited visible v22 receipts
+verified; no new character receipt or Experience. The sole new visible text is an explicit
+system technical-failure notice, not character speech or chosen silence.
 
-09 restored the same identity and all three accepted visible v22 receipts.
-Its first eight calls recovered the old 08 input; calls9-16 handled the new input
-about another drawn leaf and the character's current state. Both initial drafts
-and same-character corrections invented continuing physical state without a
-record (remaining seated/not moving); source review rejected them. No new chat
-was delivered. Snapshot .28 reached all four real author requests, with correct
-settled-World and recall authority labels; missing labels no longer explain this
-failure. Two background calls followed. All18 native usages were verified, estimated
-0.56717816 CNY; no new unknown holds. Stop/clients/reconciliation/cold replay closed
-normally; no new visible receipt, Experience or settled activity outcome was added.
+The character chose ActivityCompleted(seq865). This opened a new World request with
+actual tool2/8192 wire. Its draft and correction still failed; no new activity aftermath
+was accepted. An older environment occurrence separately settled. Do not confuse these.
+World draft parsed; source review hit a33-vs32 path limit, then rejected support;
+author rewrite had one extra native trailing brace, not output truncation.
+Life .13 also accepted a personal-seeing claim using environment-only support;
+this unresolved semantic risk is recorded in final-independent-inspection.json.
+One appraisal/affect and one existing-Experience memory retention advanced. The consumed
+old Started/no_op was preserved. Inspect exact new failures before any repeat paid trial.
 
-A one-call, model-only Pro comparison reused the exact new159-minute initial
-request. It timed out at11.004s within the unchanged11s author allowance, with no
-response body and an unknown billing hold. No source review, acceptance, World
-write or delivery followed. This is not evidence to switch the release model.
-The earlier World strict-tool probe accepted schema-valid arguments but failed the
-original visual_evidence cross-field invariant; it did not settle an activity.
+Four offline historical recall cursors were reconstructed with exact original hit equality.
+Tea(T13)/name(T29) were eligible corpus items but never admitted as candidates: no lexical
+match and below-threshold feature-hash vectors, not byte-budget rejection. Broad shared
+conversation links independently admitted irrelevant appraisals. Removing that noise does
+not solve missing semantic recall. 75976daa repairs the partial-cache SQL placeholder mismatch (74 focused tests).
+ec58520d excludes verified broad conversation membership from new automatic relevance
+(97 focused tests including recovery); exact saved-query replay remains unchanged.
+These repairs do not solve the demonstrated tea/name semantic candidate omissions. Details and subsequent repair validation are in
+`docs/audits/release-continuation-rag-2026-09-21.md`.
 
-Delivered repairs: Life-only lifecycle states cannot become generic visible
-occurrence references; semantic World rewrites retain the exact originally pinned
-tools; inbound_source_review is eligible for the visible spend lane while daily/
-monthly hard caps remain. Old request identities, receipts and correction authority
-are preserved. Cold proactive replay tests now drive real lease boundaries rather
-than racing an ambient50ms timer; before-expiry/no-duplicate assertions remain.
-
-Next work is narrow: reliable same-identity state/life/memory/chat continuity and
-measured cost/latency. The original Started opportunity was durably consumed by
-no_op; advancing time must not retry that same opportunity. New role-chosen
-Started/Resumed/Completed events can open new identities. Never force a successful
-activity or accept invented negative state to produce a demo.
-A read-only byte audit found source dictionary renumbering across correction:
-27 original materials/readings unchanged plus2 new, but41/44 shared-string aliases
-changed and the user-packet common prefix was1291 bytes. Source cache hits were
-2048/22105 and2176/24652 tokens; author correction caching was already effective.
-Stable reversible representation is a candidate to measure, not an implemented
-fix or permission to delete evidence/change old pins.
-
-2026-09-21 RAG diagnosis executed: full and selected original context both produced
-unsupported physical state in two real author calls; reducing material did not fix it.
-The offline memory eval now reaches Fact-to-Memory acceptance and reports text matches
-with semantics unassessed; lexical/structured noise is visible in actual prefetch traces.
-World tool.2 exposes existing located/privacy/visual invariants; tool.1 pins retain exact
-wire identities. A real tool.2 call hit the4096 output ceiling. A one-call8192 comparison
-returned a schema/parser-valid proposal, without source review/acceptance/settlement.
-The World provider now has8192 output room; interactive and injected providers stay unchanged.
-Four calls add approximately0.1031 CNY, no new unknown holds and no World mutations.
-See docs/audits/release-rag-diagnosis-2026-09-21.md and the linked research design.
-
-QQ terminal receipts,24-hour operation, a complete recordable journey and the
-approximately100 CNY/month product target still require qualification. Deployment,
-real QQ sends and production writes were not performed. See the current release
-status and release-review-interface audit for exact evidence paths and boundaries.
+Full suite at older frozenb560a3d2:9485 passed/19 skipped/2 xfailed/0 failures;
+that run does not cover later code. Later focused tests do not establish complete chat,
+QQ receipts,24-hour operation,recordable journey or100 CNY/month qualification.
+No deployment, real QQ sends or production database writes have been performed.
 
 ## World
 

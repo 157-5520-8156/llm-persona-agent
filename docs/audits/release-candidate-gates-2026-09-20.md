@@ -14,11 +14,11 @@ src/tests Ruff与diff检查通过。工程门槛通过不替代真实聊天与�
 后续[本轮RAG／World修复](release-rag-diagnosis-2026-09-21.md)已有定向与单次供应商／parser
 证据，尚无新完整回归或来源审核通过的生活结算，不能沿用旧工程结果宣称新候选全部合格。
 
-最新运行在`output/private-audits/release-clean-continuation-20260920-09/run`，ledger801/rev327。
-最新完整费用在`output/private-audits/release-rag-diagnosis-20260921-01/world-token-check/world.sqlite`，
-1702 usage／1699 reservations／73 unknown holds。先恢复09，再合并完整最新费用前缀，
-之后才能读取水位或调用模型；独立probe不能用作旅程。09原18次用量核验、0.56717816元，
-Pro探针1次超时新增1.30329元未知预留，均已关闭并独立对账；原3张v22回执冷验，无新回执。
+最新运行与累计费用已统一在`output/private-audits/release-clean-continuation-20260921-10/run`，
+ledger882/rev354，1732 usage／1729 reservations／73 unknown holds。实际角色Completed
+已接受，但新World候选与纠正仍失败；无新角色回执或Experience。30次known用量新增
+1.0408613元，无新增unknown，进程／独立对账／冷重放闭合；原3张v22回执冷验。
+后续恢复必须完整保留10账本。详见[续跑与检索定位](release-continuation-rag-2026-09-21.md)。
 
 ## 推进顺序
 

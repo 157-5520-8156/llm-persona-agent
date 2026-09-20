@@ -37,11 +37,13 @@
 
 ## 下一步的范围与发布门槛
 
-2026-09-21已完成[分层诊断与World格式修复](release-rag-diagnosis-2026-09-21.md)：
-两次真实作者对照仍无依据补写身体状态；现有记忆评估恢复有效运行并显式区分文本命中与
-语义正确。新World工具把既有视觉／地点／隐私约束前移，保持旧工具恢复；4096输出被
-截断后，8192单次对照返回通过schema／原parser的完整候选。后台World上限已调整，
-未来源审核或结算该候选。下一步是在新生活机会完整跑通后续链，不能把探针候选补入旧历史。
+2026-09-21已完成[分层诊断与World格式修复](release-rag-diagnosis-2026-09-21.md)，
+随后[同一身份续跑10](release-continuation-rag-2026-09-21.md)实际走到角色自主完成活动，
+新World请求使用tool2／8192；候选与纠正仍失败，没有新活动后果或角色聊天回执。
+旧环境的结算和既有Experience记忆保留另有进展。现已修partial-cache SQL占位符错误，
+74项定向通过；这是后续代码，不能算进2978be51真实运行。四个历史检索cursor证明茶／
+姓名在合格corpus中却未进候选，无预算拒绝。ec58520d已去掉新自动检索的公共会话加分，
+97项检索／appraisal／恢复覆盖通过；具体来源与旧query保持，语义漏召回仍需另行修复。
 
 1. **先完成可靠的状态—生活—记忆—聊天链。** 角色自主选择应有明确的事实落账与引用路径。
    旧Started机会已由no_op消费，不能为演示重试它；新Started／Resumed／Completed才能
@@ -59,18 +61,14 @@
 
 ## 唯一有效的运行与累计费用继续点
 
-- 运行：`output/private-audits/release-clean-continuation-20260920-09/run`，
-  **ledger801／revision327**。
-- 最新完整费用：`output/private-audits/release-rag-diagnosis-20260921-01/world-token-check/world.sqlite`，
-  **1702 usage／1699 reservations／73 unknown holds**。该probe不能作为旅程恢复。
+运行与费用已统一在`output/private-audits/release-clean-continuation-20260921-10/run`：
+**ledger882／revision354，1732 usage／1729 reservations／73 unknown holds，04:28Z**。
+30次请求全部原生用量核验，新增估算 **1.0408613元**，无新增unknown；正常停止、客户端
+关闭、独立对账和冷重放verified。继承3张v22回执全部冷验，新增0张；唯一新可见文字是
+明确系统故障提示，不算角色成功回复。旧09及独立probe均为历史前缀，不能单独继续。
 
-新旅程须恢复09运行，先按稳定键合并完整probe账本，再读取费用水位或调用模型。
-09的18次调用全有原生用量，仓库估算 **0.56717816元**，新增unknown为0；operator_stopped、
-clients_closed、独立对账及冷重放verified。之后Pro探针实际转发1次、超时且无原生用量，
-新增未知预留 **1.30329元**。旧未知预留完整保留，不能恢复较便宜的历史费用状态。
-随后本轮4次诊断新增账行估算约 **0.1031元**，全部原生用量闭合，无新增unknown、无World写入。
-
-以上不是供应商账单或月费结论；自然聊天未稳定交付，约100元／月尚未合格。
+下次从10恢复，保留全部用量和73个unknown。详情与hash见[续跑报告](release-continuation-rag-2026-09-21.md)。
+这些费用不是供应商账单或月费结论；自然聊天未稳定交付，约100元／月尚未合格。
 
 [阶段证据](release-review-interface-validation-2026-09-20.md) ·
 [首版验收清单](release-candidate-gates-2026-09-20.md)

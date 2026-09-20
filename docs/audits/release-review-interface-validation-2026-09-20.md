@@ -1,6 +1,6 @@
 # 来源审核接口与真实续跑
 
-本页保存各阶段证据；**当前闭合旅程为09**，之后的独立探针追加了累计费用。
+本页保存各阶段证据；**当前闭合旅程为10**，运行与累计费用已在该旅程统一。
 最新发布判断与唯一有效继续点见 [当前发布状态](release-status-2026-09-13-current.md)。
 资格仍为 `manual_only / qualification_incomplete`；不以离线测试、API200或材料送达替代交付。
 
@@ -8,8 +8,10 @@
 
 详见[本轮报告](release-rag-diagnosis-2026-09-21.md)。两种作者上下文都出现无依据身体状态；
 新World工具与8192上限单次产生通过schema／原parser的候选，但未来源审核、接受或结算。
-最新完整费用为 `release-rag-diagnosis-20260921-01/world-token-check/world.sqlite`，
-1702／1699／73。下文1698等数字为各历史阶段水位，恢复时使用当前发布状态里的最新账本。
+后续[续跑10](release-continuation-rag-2026-09-21.md)取得ActivityCompleted，实际tool2／8192
+新World请求仍未通过候选与纠正；没有新角色回执。最新运行／费用在
+`release-clean-continuation-20260921-10/run`，1732／1729／73；30次known，新增1.0408613元，
+正常关闭、独立对账及冷重放verified。以下09及probe数字均为历史水位。
 
 ## 09与作者对照02：工程通过，聊天仍未合格（b560a3d2）
 
