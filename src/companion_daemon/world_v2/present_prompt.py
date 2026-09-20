@@ -189,6 +189,7 @@ _AUTOMATIC_PREFETCH_CONSTANTS: tuple[tuple[str, object], ...] = (
     ("source_slice", "recalled_emotional_associations"),
     ("occurred_to", None),
 )
+_PREFETCH_AUTHORITY_FIELDS = frozenset({"authority", "epistemic_scope", "memory_kind"})
 # Canonical member order of one ``automatic_prefetch`` item, so expansion puts
 # the withheld constants back where the compiler wrote them.
 _AUTOMATIC_PREFETCH_ITEM_ORDER = (
@@ -1491,8 +1492,21 @@ def _expand_availability_wrappers(snapshot: dict[str, object]) -> dict[str, obje
     return snapshot
 
 
-def _present_automatic_prefetch(value: object) -> object:
-    """Drop the constant wrapper of her remembered private interpretations."""
+def _prefetch_constants(snapshot: Mapping[str, object]) -> tuple[tuple[str, object], ...]:
+    # A saved snapshot selects its original reversible presentation. New .27
+    # keeps the actual authority labels visible instead of leaving the model
+    # to infer them from omitted constants. Missing labels remain missing.
+    from .character_interior.life_context_presentation import EXPLICIT_PREFETCH_AUTHORITY_COMPILER_VERSIONS
+
+    compiler = snapshot.get("snapshot_compiler")
+    version = compiler.get("value") if isinstance(compiler, Mapping) else None
+    if isinstance(version, str) and version in EXPLICIT_PREFETCH_AUTHORITY_COMPILER_VERSIONS:
+        return tuple(pair for pair in _AUTOMATIC_PREFETCH_CONSTANTS if pair[0] not in _PREFETCH_AUTHORITY_FIELDS)
+    return _AUTOMATIC_PREFETCH_CONSTANTS
+
+
+def _present_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_CONSTANTS) -> object:
+    """Elide only the constants allowed by the original snapshot version."""
 
     if not isinstance(value, Mapping):
         return value
@@ -1510,20 +1524,20 @@ def _present_automatic_prefetch(value: object) -> object:
                 for name, entry in item.items()
                 if not any(
                     name == constant and entry == expected
-                    for constant, expected in _AUTOMATIC_PREFETCH_CONSTANTS
+                    for constant, expected in constants
                 )
             }
         )
     return {**{k: v for k, v in value.items() if k != "items"}, "items": presented}
 
 
-def _expand_automatic_prefetch(value: object) -> object:
+def _expand_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_CONSTANTS) -> object:
     if not isinstance(value, Mapping):
         return value
     items = value.get("items")
     if not isinstance(items, list):
         return value
-    constants = dict(_AUTOMATIC_PREFETCH_CONSTANTS)
+    constants = dict(constants)
     expanded: list[object] = []
     for item in items:
         if not isinstance(item, dict):
@@ -1590,7 +1604,7 @@ def present_inner_life(
             ordered_materials["affect"] = cache_stable_affect(ordered_materials["affect"])
         if "automatic_prefetch" in ordered_materials:
             ordered_materials["automatic_prefetch"] = _present_automatic_prefetch(
-                ordered_materials["automatic_prefetch"]
+                ordered_materials["automatic_prefetch"], constants=_prefetch_constants(snapshot),
             )
         # ``production._bind_capability_evidence`` is the only writer and no
         # module in src/ reads it back (its refs are already carried by
@@ -1662,7 +1676,7 @@ def expand_present_world_context(view: Mapping[str, object]) -> dict[str, object
             )
         if "automatic_prefetch" in materials:
             materials["automatic_prefetch"] = _expand_automatic_prefetch(
-                materials["automatic_prefetch"]
+                materials["automatic_prefetch"], constants=_prefetch_constants(snapshot),
             )
     expanded["inner_life_snapshot"] = _expand_availability_wrappers(snapshot)
     return expanded

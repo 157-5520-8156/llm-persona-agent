@@ -121,7 +121,7 @@ def test_environment_only_settlement_keeps_its_world_type_in_both_presented_lane
     snapshot = compile_with(source)
     material = snapshot.model_view()["materials"]
     world, experience = material["recent_self_experiences"]["items"]
-    assert snapshot.snapshot_compiler.value == "inner-life-snapshot-compiler.26"
+    assert snapshot.snapshot_compiler.value == LIFE_CONTEXT_COMPILER_VERSION
     assert world["context_kind"] == "settled_world_occurrence"
     assert world["epistemic_scope"] == SETTLED_WORLD_SCOPE
     assert world["content"] == content

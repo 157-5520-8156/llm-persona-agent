@@ -4,6 +4,24 @@
 最新发布判断与唯一有效继续点见 [当前发布状态](release-status-2026-09-13-current.md)。
 资格仍为 `manual_only / qualification_incomplete`；不以离线测试、API200或材料送达替代交付。
 
+## 新快照27：保留召回材料原权威（离线验证）
+
+07的Experience已通过private_impressions送达角色，问题是present_prompt把
+`defeasible_interpretation / private_interpretation / reflective`当成恒定包装省略。
+`.27`原样保留这三项已有标签，缺失、null或不同标签不被展开器补造。正文、source_ref、
+时间及隐私不变；旧`.25/.26`保持原压缩，`.26`日记来源类型不会因版本升级丢失。
+仅含scoped World材料的新编译使用`.27`；普通`.23`快照本轮不启用，不能称为全局修复。
+
+63项定向检查包含实际mock角色HTTP、双向呈现、缺失标签、旧版本和脱敏；120-case
+冻结基线、Ruff/diff检查通过。完整a28f277c旧源码独立进程与新代码比较12种Life编译
+及真实`.10/.13`回执一致；旧present_prompt对照07全部11份实际快照展示也逐字相同。
+证据在私有`release-prefetch-authority-20260920-01/`。没有新增审核协议或模型调用。
+
+08准备已验证从07恢复World，先合并1652/1649/72完整费用再读取水位1652，原hold
+与全部非账目表保持不变。39项离线准备检查通过，实际transport wrapper覆盖普通与
+strict beta请求；默认0调用，显式40调用／600秒。drain恢复正常默认8，避免07四次
+非空结果恰好用完检查次数；不提升物理／时长上限、不改变角色选择。尚未启动或验收。
+
 ## 原输入模型对照：本地门禁拒绝，未评价模型
 
 冻结7502151f下，原07初稿native请求仅替换model，11秒上限／1次调用／无重试。
