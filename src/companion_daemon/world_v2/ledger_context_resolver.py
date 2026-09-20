@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .affect_events import AffectEpisodeOpenedPayload
 from .appraisal_events import AppraisalAcceptedPayload
+from .appraisal_source_identity import conversation_source_cluster_ref
 from .fact_observation_value import FactObservationValueBinding
 from .biographical_lifecycle import BiographicalLifecycleCatalog
 from .biographical_timeline_authority import (
@@ -265,6 +266,28 @@ def _bounded_recall_texts(values: object) -> tuple[str, ...]:
     return tuple(
         value for value in values if isinstance(value, str) and value
     )
+
+
+def _automatic_recall_link_refs(
+    *,
+    projection: LedgerProjection,
+    subject_refs: frozenset[str],
+    link_refs: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Keep specific cues; known conversation membership is not relevance.
+
+    Derive exact scope identities from pinned message coordinates, never from
+    an opaque reference's spelling. Source documents, authority bindings and
+    subject eligibility stay unchanged. This only builds new automatic queries;
+    persisted queries and explicit character recall retain their original refs.
+    """
+
+    conversation_scopes = {
+        conversation_source_cluster_ref(actor_ref=item.actor, channel=item.channel)
+        for item in projection.message_observations
+        if item.actor is not None and item.actor in subject_refs and item.channel is not None
+    }
+    return tuple(sorted(set(link_refs) - conversation_scopes))
 
 
 def context_capsule_compiler_from_ledger(
@@ -2443,19 +2466,23 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                             item.values.model_dump(mode="json")
                             for item in open_threads_for_continuity
                         ),
-                        link_refs=(
-                            *(
-                                str(getattr(item, "source_cluster_ref"))
-                                for item in scoped_appraisals
-                                if getattr(item, "source_cluster_ref", None)
+                        link_refs=_automatic_recall_link_refs(
+                            projection=projection,
+                            subject_refs=subject_refs,
+                            link_refs=(
+                                *(
+                                    str(getattr(item, "source_cluster_ref"))
+                                    for item in scoped_appraisals
+                                    if getattr(item, "source_cluster_ref", None)
+                                ),
+                                *(
+                                    str(getattr(component, "source_cluster_ref"))
+                                    for item in scoped_affect or ()
+                                    for component in getattr(item, "components", ())
+                                    if getattr(component, "source_cluster_ref", None)
+                                ),
+                                *(item.thread_id for item in open_threads_for_continuity),
                             ),
-                            *(
-                                str(getattr(component, "source_cluster_ref"))
-                                for item in scoped_affect or ()
-                                for component in getattr(item, "components", ())
-                                if getattr(component, "source_cluster_ref", None)
-                            ),
-                            *(item.thread_id for item in open_threads_for_continuity),
                         ),
                         limit=4,
                     )

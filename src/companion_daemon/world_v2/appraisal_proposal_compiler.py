@@ -14,6 +14,7 @@ from typing import Literal
 
 from .appraisal_acceptance_runtime import appraisal_mutation_event_id
 from .appraisal_events import AppraisalAcceptedPayload, appraisal_mutation_hash
+from .appraisal_source_identity import conversation_source_cluster_ref
 from .batch_invariants import interaction_appraisal_trigger_identity
 from .decision_proposal_authority import DecisionProposalAuthorityReader
 from .event_identity import domain_idempotency_key
@@ -604,8 +605,8 @@ class AppraisalProposalCompiler:
 
     @staticmethod
     def _source_cluster(observation: Observation) -> str:
-        return "conversation:" + _digest(
-            {"actor": observation.actor, "channel": observation.channel}
+        return conversation_source_cluster_ref(
+            actor_ref=observation.actor, channel=observation.channel,
         )
 
     def _companion_subject(self, projection) -> str:

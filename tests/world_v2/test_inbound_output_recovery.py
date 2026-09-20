@@ -106,6 +106,22 @@ class _AtomicHTTP:
         return public._http_result(body, authored)
 
 
+class _RecoveryLocalEmbedding:
+    """Deterministic local supply for the two-presentation recovery cases.
+
+    These cases test durable transport/recovery, not retrieval semantics. Their
+    former initial hit depended only on a shared conversation-scope boost; use
+    an explicit local fixture match so removing that noise cannot erase the
+    initial presentation whose replay/tampering they are meant to exercise.
+    """
+
+    version = "inbound-recovery-local.1"
+    dimensions = 2
+
+    def embed(self, texts):
+        return tuple((1.0, 0.0) for _ in texts)
+
+
 class _DelayedSemanticEmbedding:
     version = "inbound-recovery-semantic.1"
     dimensions = 2
@@ -245,6 +261,7 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
         else _AtomicHTTP(recall=window.startswith("recall_"))
     )
     if upgrade_case:
+        monkeypatch.setattr(application_module, "FeatureHashRecallEmbedding", _RecoveryLocalEmbedding)
         build = public.build_sqlite_world_v2_turn_application
         monkeypatch.setattr(
             public,
