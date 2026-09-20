@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-import json
-from types import SimpleNamespace
+from test_context_resolver import empty_trusted_capsule
 
 import pytest
 
@@ -130,24 +129,10 @@ class _Capsules:
         self.ledger_sequence = ledger_sequence
 
     def compile(self, _query):  # type: ignore[no-untyped-def]
-        return SimpleNamespace(
-            model_content_json=json.dumps(
-                {
-                    "world_id": WORLD_ID,
-                    "actor_ref": ACTOR_REF,
-                    "world_revision": self.world_revision,
-                    "deliberation_revision": 0,
-                    "ledger_sequence": self.ledger_sequence,
-                    "logical_time": self.logical_time.isoformat(),
-                    "consumer_scope": "deliberation_internal",
-                    "viewer_privacy_ceiling": "private",
-                    "context_compiler_version": "context-capsule-compiler:test",
-                    "truncation": {},
-                    "slices": {},
-                },
-                sort_keys=True,
-            )
-        )
+        assert _query.logical_time == self.logical_time
+        assert _query.world_revision == self.world_revision
+        assert _query.ledger_sequence == self.ledger_sequence
+        return empty_trusted_capsule(_query)
 
 
 @pytest.mark.asyncio

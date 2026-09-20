@@ -23,6 +23,8 @@ from world_v2_application import (
 )
 
 from companion_daemon.config import Settings
+from companion_daemon.world_v2.character_interior.structured_role import StructuredCharacterRoleFaculty
+from companion_daemon.world_v2.character_interior.life_source_view import LifeSourceView
 from companion_daemon.world_v2.deliberation import ModelInput, ModelOutput, ModelRoute, RouteRequest
 from companion_daemon.world_v2.perception_authority_provisioning import (
     PerceptionAuthorityProvisioner,
@@ -130,19 +132,43 @@ class _PerceptionFaculty:
         }
 
 
-class _PerceptionResultExperienceFaculty:
+class _PerceptionResultExperienceFaculty(StructuredCharacterRoleFaculty):
+    """Fake provider response through the real source preparation and parser."""
+
+    supports_required_tool_choice = True
     name = "fixture-perception-result-experience"
     purposes = ("world_stimulus_appraisal",)
 
     def __init__(self) -> None:
         self.calls = 0
+        self.requests = []
+        self.results = []
+        self.provider_messages = []
+        super().__init__(model=self, model_id="fixture-perception-result-character")
+        self.purposes = ("world_stimulus_appraisal",)
 
     async def experience(self, request):
         self.calls += 1
-        manifest = request.capability_manifest
-        assert manifest is not None
+        self.requests.append(request)
+        result = await super().experience(request)
+        self.results.append(result)
+        return result
+
+    async def complete_json(self, messages, *, temperature=0.8, tools=None, tool_choice=None):
+        assert tools is not None
+        assert tool_choice == {
+            "type": "function",
+            "function": {"name": "character_role_world_stimulus_appraisal_v1"},
+        }
+        return await self.complete(messages, temperature=temperature)
+
+    async def complete(self, messages, *, temperature=0.8):
+        del temperature
+        self.provider_messages.append(messages)
+        request = json.loads(messages[-1]["content"])
+        manifest = request["capability_manifest"]
         result = {
-            "contract": "character-interior-world-stimulus-appraisal-result.1",
+            "proposal_type": "world_stimulus_appraisal_result",
             "decision": "no_change",
             "brief_rationale": "她看见了结果，但没有形成新的稳定变化。",
             "behavior_tendency": "照常继续",
@@ -157,27 +183,17 @@ class _PerceptionResultExperienceFaculty:
             "relationship_signal": None,
             "aspiration_transition": None,
         }
-        return {
+        return json.dumps({
             "status": "no_change",
             "summary": "fixture character privately considered the provider result",
-            "attended_source_refs": manifest.source_refs,
-            "proposals": (
-                {
-                    "contract": "character-interior-typed-proposal.1",
-                    "proposal_type": "world_stimulus_appraisal_result",
-                    "purpose": "world_stimulus_appraisal",
-                    "source_refs": list(manifest.source_refs),
-                    "capability_ref": manifest.capability_ref,
-                    "capability_payload_hash": manifest.payload_hash,
-                    "payload": result,
-                },
-            ),
-            "author_lineage": _PerceptionFaculty._author_lineage(request),
-        }
+            "attended_source_refs": manifest["source_refs"],
+            "decision": None,
+            "recall_query": None,
+            "proposals": [result],
+        }, ensure_ascii=False)
 
-    async def consider(self, request):  # pragma: no cover - experience-only faculty
+    async def consider(self, request):  # pragma: no cover - experience-only
         raise AssertionError(f"unexpected consider request: {request.purpose}")
-
 
 def _settings(tmp_path: Path, **overrides: object) -> Settings:
     values: dict[str, object] = {
@@ -459,6 +475,9 @@ async def test_real_pieces_compose_into_next_turn_context_exactly_once(
             if result_processes and result_processes[0].state == "terminal":
                 break
         assert result_processes[0].state == "terminal"
+        source_view = LifeSourceView.model_validate(result_experience.results[0]["life_source_view"])
+        assert source_view.verify_request(result_experience.requests[0]) == source_view
+        assert json.loads(source_view.messages_json) == result_experience.provider_messages[0]
         assert result_experience.calls == 1
 
         await app.inbound(

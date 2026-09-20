@@ -218,6 +218,7 @@ class _CapsuleFixture:
         assert query.world_id == "world:test"
         assert query.world_revision == _CURSOR.world_revision
         return SimpleNamespace(
+            pinned_appraisals=None,
             model_content_json=json.dumps(_inner_life_context(), ensure_ascii=False)
         )
 

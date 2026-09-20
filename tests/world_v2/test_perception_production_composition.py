@@ -12,6 +12,8 @@ from world_v2_application import (
     compose_fixture_character_interior,
 )
 
+from companion_daemon.world_v2.character_interior.structured_role import StructuredCharacterRoleFaculty
+from companion_daemon.world_v2.character_interior.life_source_view import LifeSourceView
 from companion_daemon.world_v2.deliberation import ModelInput, ModelOutput, ModelRoute, RouteRequest
 from companion_daemon.world_v2.perception_input_source import PerceptionInputDescriptor
 from companion_daemon.world_v2.perception_result_context import PerceptionResultContent
@@ -212,36 +214,42 @@ class _DurablePerceptionProvider:
         return False
 
 
-class _PerceptionResultExperienceFaculty:
-    """The protagonist privately experiences one accepted provider result."""
+class _PerceptionResultExperienceFaculty(StructuredCharacterRoleFaculty):
+    """Fake provider response through the real source preparation and parser."""
 
+    supports_required_tool_choice = True
     name = "fixture-perception-result-experience"
     purposes = ("world_stimulus_appraisal",)
 
     def __init__(self, *, activate: bool = True) -> None:
         self.activate = activate
         self.requests = []
+        self.results = []
+        self.provider_messages = []
+        super().__init__(model=self, model_id="fixture-perception-result-character")
+        self.purposes = ("world_stimulus_appraisal",)
 
-    @staticmethod
-    def _author_lineage(request) -> dict[str, object]:  # type: ignore[no-untyped-def]
-        request_hash = hashlib.sha256(request.model_dump_json().encode()).hexdigest()
-        return {
-            "model_id": "fixture-perception-result-character",
-            "model_version": "fixture-perception-result-character.1",
-            "model_call_id": f"model-call:fixture-perception-result:{request_hash}",
-            "request_hash": f"sha256:{request_hash}",
-            "response_hash": "sha256:"
-            + hashlib.sha256(f"fixture-result:{request_hash}".encode()).hexdigest(),
-            "attempt_ordinal": request.correction_ordinal,
-            "parent_model_call_id": None,
-        }
-
-    async def experience(self, request):  # type: ignore[no-untyped-def]
+    async def experience(self, request):
         self.requests.append(request)
-        manifest = request.capability_manifest
-        assert manifest is not None
+        result = await super().experience(request)
+        self.results.append(result)
+        return result
+
+    async def complete_json(self, messages, *, temperature=0.8, tools=None, tool_choice=None):
+        assert tools is not None
+        assert tool_choice == {
+            "type": "function",
+            "function": {"name": "character_role_world_stimulus_appraisal_v1"},
+        }
+        return await self.complete(messages, temperature=temperature)
+
+    async def complete(self, messages, *, temperature=0.8):
+        del temperature
+        self.provider_messages.append(messages)
+        request = json.loads(messages[-1]["content"])
+        manifest = request["capability_manifest"]
         result = {
-            "contract": "character-interior-world-stimulus-appraisal-result.1",
+            "proposal_type": "world_stimulus_appraisal_result",
             "decision": "activate" if self.activate else "no_change",
             "brief_rationale": "她按自己看到的内容形成了这一刻的感受。",
             "behavior_tendency": "先按自己的理解消化",
@@ -269,27 +277,17 @@ class _PerceptionResultExperienceFaculty:
             "relationship_signal": None,
             "aspiration_transition": None,
         }
-        return {
+        return json.dumps({
             "status": "transition" if self.activate else "no_change",
             "summary": "她确实看见并在心里处理了这份结果。",
-            "attended_source_refs": manifest.source_refs,
-            "proposals": (
-                {
-                    "contract": "character-interior-typed-proposal.1",
-                    "proposal_type": "world_stimulus_appraisal_result",
-                    "purpose": "world_stimulus_appraisal",
-                    "source_refs": list(manifest.source_refs),
-                    "capability_ref": manifest.capability_ref,
-                    "capability_payload_hash": manifest.payload_hash,
-                    "payload": result,
-                },
-            ),
-            "author_lineage": self._author_lineage(request),
-        }
+            "attended_source_refs": manifest["source_refs"],
+            "decision": None,
+            "recall_query": None,
+            "proposals": [result],
+        }, ensure_ascii=False)
 
     async def consider(self, request):  # pragma: no cover - experience-only
         raise AssertionError(f"unexpected consider request: {request.purpose}")
-
 
 def _config() -> WorldV2TurnApplicationConfig:
     return WorldV2TurnApplicationConfig(
@@ -628,6 +626,9 @@ async def test_sqlite_attachment_reaches_provider_and_next_turn_context_exactly_
         assert len(result_experience.requests) == 1
         request = result_experience.requests[0]
         assert request.purpose == "world_stimulus_appraisal"
+        source_view = LifeSourceView.model_validate(result_experience.results[0]["life_source_view"])
+        assert source_view.verify_request(request) == source_view
+        assert json.loads(source_view.messages_json) == result_experience.provider_messages[0]
         manifest = request.capability_manifest
         assert manifest is not None
         assert manifest.payload["process_kind"] == "perception_result_deliberation"

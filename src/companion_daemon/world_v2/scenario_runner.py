@@ -1334,18 +1334,29 @@ class ScenarioRunner:
             return False
         occurrence_id = f"occurrence:phase8:{case.entry.scenario_turn_id}"
         result_id = f"result:phase8:{case.entry.scenario_turn_id}:settled"
+        occurrence = next(
+            (item for item in projection.world_occurrences
+             if item.occurrence_id == occurrence_id and item.result_id == result_id
+             and item.status == "settled"),
+            None,
+        )
+        if occurrence is None:
+            return False
         settlement_refs = {
             item.event_id
             for item in projection.committed_world_event_refs
             if item.event_type == "WorldOccurrenceSettled"
+            and item.event_id == occurrence.settlement_event_ref
         }
-        appraisal_change_ids = {
-            item.origin.change_id
+        appraisal_meaning_refs = {
+            (item.appraisal_id, item.entity_revision, hypothesis.hypothesis_id,
+             item.source_cluster_ref)
             for item in projection.appraisals
             if item.origin.change_id.startswith(
                 "change:character-interior-world-stimulus:appraisal:"
             )
             and any(ref.ref_id in settlement_refs for ref in item.evidence_refs)
+            for hypothesis in item.hypotheses
         }
         has_settled_outcome = any(
             item.get("occurrence_id") == occurrence_id
@@ -1353,12 +1364,17 @@ class ScenarioRunner:
             for item in world_life
             if isinstance(item, dict)
         )
-        # The compiler assigns the accepted episode a deterministic compiled
-        # id.  Its stable causal identity is the Appraisal change authored by
-        # the same CharacterInterior world-stimulus result, not an old
-        # independently-authored NPC/Affect fixture id.
+        # The model view retains four-field AppraisalMeaningRef identities.
+        # Join them to the exact settled occurrence's accepted Appraisals;
+        # audit-only change/transition ids need not enter the provider view.
         has_causal_affect = any(
-            appraisal_ref.get("accepted_change_id") in appraisal_change_ids
+            type(appraisal_ref.get("accepted_entity_revision")) is int
+            and (
+                appraisal_ref.get("appraisal_id"),
+                appraisal_ref.get("accepted_entity_revision"),
+                appraisal_ref.get("hypothesis_id"),
+                appraisal_ref.get("source_cluster_ref"),
+            ) in appraisal_meaning_refs
             for item in affect
             if isinstance(item, dict)
             for component in item.get("components", ())

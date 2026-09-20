@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from types import SimpleNamespace
 
 import pytest
 
@@ -25,6 +24,7 @@ from companion_daemon.world_v2.relationship_events import (
     relationship_mutation_hash,
 )
 from companion_daemon.world_v2.ledger import WorldLedger
+from test_context_resolver import empty_trusted_capsule
 from companion_daemon.world_v2.relationship_adjustment_acceptance_runtime import (
     RelationshipAdjustmentAcceptanceRuntime,
 )
@@ -486,6 +486,7 @@ class _Ledger:
     def project_at(self, _cursor: ProjectionCursor) -> LedgerProjection:
         return self.projection
 
+
     def lookup_event_commit(self, event_ref: str):  # type: ignore[no-untyped-def]
         if event_ref != self.event.event_id:
             return None
@@ -498,33 +499,16 @@ class _Ledger:
 
 
 class _Capsules:
-    def compile(self, _query):  # type: ignore[no-untyped-def]
-        return SimpleNamespace(
-            pinned_appraisals=None,
-            model_content_json=json.dumps(
-                {
-                    "world_id": WORLD_ID,
-                    "actor_ref": ACTOR_REF,
-                    "world_revision": 2,
-                    "deliberation_revision": 0,
-                    "ledger_sequence": 1,
-                    "logical_time": NOW.isoformat(),
-                    "consumer_scope": "deliberation_internal",
-                    "viewer_privacy_ceiling": "private",
-                    "context_compiler_version": "context-capsule-compiler:test",
-                    "truncation": {},
-                    "slices": {},
-                },
-                sort_keys=True,
-            )
-        )
+    def compile(self, query):  # type: ignore[no-untyped-def]
+        return empty_trusted_capsule(query)
 
 
 @pytest.mark.asyncio
 async def test_directional_relationship_join_is_source_closed_and_identical_for_all_purposes() -> None:
     event, projection = _relationship_event_and_projection()
+    ledger = _Ledger(event, projection)
     compiler = _LedgerCapsuleInteriorProjection(
-        ledger=_Ledger(event, projection),  # type: ignore[arg-type]
+        ledger=ledger,  # type: ignore[arg-type]
         capsules=_Capsules(),  # type: ignore[arg-type]
         companion_actor_ref=ACTOR_REF,
     )
@@ -554,7 +538,17 @@ async def test_directional_relationship_join_is_source_closed_and_identical_for_
             )
         )
 
-    assert len({item.snapshot_hash for item in snapshots}) == 1
+    views = [
+        {key: value for key, value in item.model_view().items()
+         if key not in {"snapshot_hash", "snapshot_id"}}
+        for item in snapshots
+    ]
+    assert views[0] == views[1] == views[2]
+    # Life additionally retains the complete trusted origin privately. That
+    # changes its durable identity, not the source-bound relationship view.
+    assert snapshots[0].life_source_origin is None
+    assert snapshots[1].life_source_origin is not None
+    assert snapshots[2].life_source_origin is None
     relationship = snapshots[0].materials["protagonist_npc_relationships"][0]
     assert relationship["direction"] == "protagonist_to_npc"
     assert relationship["subject_ref"] == "npc:lin"
@@ -574,8 +568,9 @@ async def test_directional_relationship_join_rejects_a_tampered_projection_head(
         update={"variables": RelationshipVariablesProjection(trust_bp=9999)}
     )
     projection = projection.model_copy(update={"relationship_states": (forged,)})
+    ledger = _Ledger(event, projection)
     compiler = _LedgerCapsuleInteriorProjection(
-        ledger=_Ledger(event, projection),  # type: ignore[arg-type]
+        ledger=ledger,  # type: ignore[arg-type]
         capsules=_Capsules(),  # type: ignore[arg-type]
         companion_actor_ref=ACTOR_REF,
     )

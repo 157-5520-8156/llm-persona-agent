@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -107,6 +108,54 @@ async def test_seeded_multiturn_mechanism_cases_use_the_public_app_and_assert_pr
     assert "expression_reconsideration" in interruption.trigger_kinds
     assert "MediaPreviewGenerated" not in media.event_types
     assert "MediaPreviewGenerated" not in projection.event_types
+
+
+@pytest.mark.parametrize("mutation", [None, "wrong_revision", "other_appraisal"])
+def test_outcome_affect_predicate_requires_exact_settlement_meaning_reference(mutation) -> None:
+    case = next(item for item in SCENARIO_CASES
+                if item.entry.scenario_turn_id == "npc_world_impact.01")
+    occurrence_id = f"occurrence:phase8:{case.entry.scenario_turn_id}"
+    result_id = f"result:phase8:{case.entry.scenario_turn_id}:settled"
+
+    def appraisal(name):
+        return SimpleNamespace(
+            appraisal_id="appraisal:" + name, entity_revision=1,
+            source_cluster_ref="cluster:" + name,
+            hypotheses=(SimpleNamespace(hypothesis_id="meaning:" + name),),
+            origin=SimpleNamespace(change_id="change:character-interior-world-stimulus:appraisal:" + name),
+            evidence_refs=(SimpleNamespace(ref_id="event:settlement:" + name),),
+        )
+
+    original, other = appraisal("original"), appraisal("other")
+    selected = other if mutation == "other_appraisal" else original
+    ref = {
+        "appraisal_id": selected.appraisal_id,
+        "accepted_entity_revision": 2 if mutation == "wrong_revision" else 1,
+        "hypothesis_id": selected.hypotheses[0].hypothesis_id,
+        "source_cluster_ref": selected.source_cluster_ref,
+    }
+    materials = {
+        "recent_self_experiences": {"items": [{
+            "occurrence_id": occurrence_id, "result_id": result_id,
+        }]},
+        "affect": [{"components": [{"appraisal_refs": [ref]}]}],
+    }
+    model = SimpleNamespace(calls=[[{}, {"content": json.dumps({
+        "inner_life_snapshot": {"materials": materials},
+    })}]])
+    projection = SimpleNamespace(
+        world_occurrences=(SimpleNamespace(
+            occurrence_id=occurrence_id, result_id=result_id, status="settled",
+            settlement_event_ref="event:settlement:original",
+        ),),
+        committed_world_event_refs=tuple(SimpleNamespace(
+            event_type="WorldOccurrenceSettled", event_id="event:settlement:" + name,
+        ) for name in ("original", "other")),
+        appraisals=(original, other),
+    )
+    assert ScenarioRunner._next_context_has_outcome_affect(
+        model=model, case=case, projection=projection,
+    ) is (mutation is None)
 
 
 @pytest.mark.asyncio

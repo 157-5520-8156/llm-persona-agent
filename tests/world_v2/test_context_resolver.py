@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
+import json
 
 import companion_daemon.world_v2.context_capsule as context_capsule_module
 from companion_daemon.world_v2.context_capsule import ContextCapsuleCompiler
@@ -10,7 +12,7 @@ from companion_daemon.world_v2.context_resolver import (
     TrustedInternalContextResolver,
     context_query_hash,
 )
-from test_context_capsule import _bound, _request
+from test_context_capsule import _bound, _request, _situation
 
 import pytest
 
@@ -28,6 +30,40 @@ class TrustedFixtureResolver(TrustedInternalContextResolver):
             capability=self.result_capability,
             resolved_context=self.resolved_context,
         )
+
+
+def empty_trusted_capsule(query: ContextCompileQuery):
+    """Compile typed, empty-context test material for an exact projection prefix.
+
+    Only Situation's projection provenance is present. Tests bind their own
+    event-sourced domain material after this production-shaped Capsule seam.
+    """
+    from companion_daemon.world_v2.context_capsule import canonical_value_hash, resolved_result_set_hash, source_bindings_hash, authority_refs_digest
+
+    situation = _situation(revision=query.world_revision).model_copy(update={
+        "world_id": query.world_id, "actor_ref": query.actor_ref,
+        "logical_time": query.logical_time, "time_segment": None,
+        "authority_snapshot_hash": query.snapshot_hash,
+    })
+    material = situation.model_dump(mode="json", exclude={"internal_semantic_hash"})
+    situation = situation.model_copy(update={"internal_semantic_hash": hashlib.sha256(
+        json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()})
+    bound = _bound(situation, revision=query.world_revision)
+    binding = bound.item_metadata[0].source_bindings[0].model_copy(update={"ref": query.snapshot_id})
+    metadata = bound.item_metadata[0].model_copy(update={
+        "item_ref": query.actor_ref, "source_bindings": (binding,),
+        "source_hash": source_bindings_hash((binding,)), "value_hash": canonical_value_hash(situation),
+    })
+    prefix = {"world_id": query.world_id, "snapshot_id": query.snapshot_id, "snapshot_hash": query.snapshot_hash}
+    proof = bound.resolver_proof.model_copy(update={
+        **prefix, "explicit_authority_refs": (query.snapshot_id,),
+        "authority_refs_digest": authority_refs_digest((query.snapshot_id,)),
+        "result_set_hash": resolved_result_set_hash("current_situation", (metadata,)),
+    })
+    bound = bound.model_copy(update={**prefix, "resolver_proof": proof, "item_metadata": (metadata,)})
+    request = _request(**query.model_dump(mode="python"), situation=bound)
+    return ContextCapsuleCompiler(resolver=TrustedFixtureResolver(request)).compile(query)
 
 
 def _query(**updates) -> ContextCompileQuery:
