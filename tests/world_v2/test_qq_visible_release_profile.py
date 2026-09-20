@@ -11,7 +11,7 @@ import companion_daemon.world_v2.semantic_chat_composition as semantic_module
 from companion_daemon.world_v2.visible_independent_review_runtime import IndependentVisibleReviewer
 
 
-EXPERIMENTAL_PROFILES = ("experimental_independent_v21", "experimental_independent_v22")
+EXPERIMENTAL_PROFILES = ("experimental_independent_v21", "experimental_independent_v22", "experimental_independent_v23")
 
 
 def settings(tmp_path, **overrides):

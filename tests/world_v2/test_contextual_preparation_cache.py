@@ -108,7 +108,7 @@ def test_every_original_input_and_compiler_contract_partitions_cache(monkeypatch
 
 
 @pytest.mark.parametrize('option', [
-    'scoped_coverage', 'fact_value_authority', 'private_cognition_scope', 'record_dependency_scope', 'lifecycle_scope',
+    'scoped_coverage', 'fact_value_authority', 'private_cognition_scope', 'record_dependency_scope', 'lifecycle_scope', 'source_use_display',
     'scope_permission_context', 'scope_subjective_history',
 ])
 def test_bool_and_integer_options_do_not_share_valid_cache_entry(option):

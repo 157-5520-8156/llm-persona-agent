@@ -65,6 +65,7 @@ _LIFE_SOURCE_REVIEW_CONTRACTS = (
 _INDEPENDENT_REVIEW_PROFILES = {
     "experimental_independent_v21": "21",
     "experimental_independent_v22": "22",
+    "experimental_independent_v23": "23",
 }
 
 

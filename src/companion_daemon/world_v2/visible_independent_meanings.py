@@ -105,8 +105,10 @@ class PreparedIndependentMeanings:
 
 def prepare_independent_meanings_sources(
     *, meanings: tuple[IndependentMeaning, IndependentMeaning], sources: tuple[dict, ...], shared_strings: bool = False,
-    content_fields_only: bool = False, prehistory_authority: bool = False, contextual_scope: bool = False, scoped_coverage: bool = False, source_tool_selection_mode: str = "forced", scope_subjective_history: bool = False, source_response_mode: str = "tool", scope_permission_context: bool = False, fact_value_authority: bool = False, private_cognition_scope: bool = False, record_dependency_scope: bool = False, lifecycle_scope: bool = False,
+    content_fields_only: bool = False, prehistory_authority: bool = False, contextual_scope: bool = False, scoped_coverage: bool = False, source_tool_selection_mode: str = "forced", scope_subjective_history: bool = False, source_response_mode: str = "tool", scope_permission_context: bool = False, fact_value_authority: bool = False, private_cognition_scope: bool = False, record_dependency_scope: bool = False, lifecycle_scope: bool = False, source_use_display: bool = False,
 ) -> PreparedIndependentMeanings | PreparedContextualSourceReview | None:
+    if type(source_use_display) is not bool or (source_use_display and not lifecycle_scope):
+        raise ValueError("source use display requires lifecycle scope")
     if type(lifecycle_scope) is not bool or (lifecycle_scope and not record_dependency_scope):
         raise ValueError("lifecycle scope requires record dependency scope")
     if type(record_dependency_scope) is not bool or (record_dependency_scope and not private_cognition_scope):
@@ -131,7 +133,7 @@ def prepare_independent_meanings_sources(
         if not (shared_strings and content_fields_only and prehistory_authority):
             raise ValueError("contextual review requires current source permissions")
         from .visible_contextual_source_review import prepare_contextual_source_review
-        return prepare_contextual_source_review(meanings=meanings, sources=sources, scoped_coverage=scoped_coverage, tool_selection_mode=source_tool_selection_mode, scope_subjective_history=scope_subjective_history, response_mode=source_response_mode, scope_permission_context=scope_permission_context, fact_value_authority=fact_value_authority, private_cognition_scope=private_cognition_scope, record_dependency_scope=record_dependency_scope, lifecycle_scope=lifecycle_scope)
+        return prepare_contextual_source_review(meanings=meanings, sources=sources, scoped_coverage=scoped_coverage, tool_selection_mode=source_tool_selection_mode, scope_subjective_history=scope_subjective_history, response_mode=source_response_mode, scope_permission_context=scope_permission_context, fact_value_authority=fact_value_authority, private_cognition_scope=private_cognition_scope, record_dependency_scope=record_dependency_scope, lifecycle_scope=lifecycle_scope, source_use_display=source_use_display)
     if type(shared_strings) is not bool:
         raise TypeError("shared string presentation flag must be boolean")
     if type(content_fields_only) is not bool or (content_fields_only and not shared_strings):

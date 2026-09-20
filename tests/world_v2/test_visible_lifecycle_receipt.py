@@ -18,7 +18,7 @@ from companion_daemon.world_v2.visible_independent_review_receipt import (
     verify_independent_visible_review_receipt,
 )
 from companion_daemon.world_v2.visible_lifecycle_readings import INSTRUCTION, LIFECYCLE_FIELDS
-from companion_daemon.world_v2.visible_review_protocols import LIFECYCLE_FIELD_PROTOCOL, RECORD_DEPENDENCY_PROTOCOL
+from companion_daemon.world_v2.visible_review_protocols import LIFECYCLE_FIELD_PROTOCOL, RECORD_DEPENDENCY_PROTOCOL, SOURCE_USE_DISPLAY_PROTOCOL
 from companion_daemon.world_v2.visible_source_composer import compile_visible_source_table
 from companion_daemon.world_v2.visible_source_review_receipt import VisibleReviewAuthorBinding
 from companion_daemon.world_v2.visible_source_witness_experiment import _json
@@ -104,11 +104,12 @@ def _lifecycle(body):
 
 
 @pytest.mark.asyncio
-async def test_lifecycle_fields_gain_explicit_permission_and_cold_receipt(ended_sources):
+@pytest.mark.parametrize("protocol", [LIFECYCLE_FIELD_PROTOCOL, SOURCE_USE_DISPLAY_PROTOCOL])
+async def test_lifecycle_fields_gain_explicit_permission_and_cold_receipt(ended_sources, protocol):
     case, table = ended_sources
     before = table.payload_json
     old, raws, old_call, old_body = _prepare(case, table, RECORD_DEPENDENCY_PROTOCOL)
-    prepared, _, call, body = _prepare(case, table, LIFECYCLE_FIELD_PROTOCOL)
+    prepared, _, call, body = _prepare(case, table, protocol)
     assert meaning_preparation(old) == meaning_preparation(prepared)
     assert INSTRUCTION in call.request['messages'][0]['content']
     assert INSTRUCTION not in old_call.request['messages'][0]['content']
@@ -122,7 +123,8 @@ async def test_lifecycle_fields_gain_explicit_permission_and_cold_receipt(ended_
     status_id = next(r for r in allowed if by_id[r]['field'] == '/item/value/status')
     args = _arguments(prepared, raws, call, _response(body, status_id))
     receipt = record_independent_visible_review(**args)
-    assert receipt.contract == 'visible-source-review-receipt.22'
+    assert receipt.contract == ('visible-source-review-receipt.23' if protocol == SOURCE_USE_DISPLAY_PROTOCOL
+                                else 'visible-source-review-receipt.22')
     restored = IndependentVisibleReviewReceipt.model_validate_json(receipt.model_dump_json(), strict=True)
     assert verify_independent_visible_review_receipt(receipt=restored, **_expected(args)) == receipt
     assert table.payload_json == before
@@ -133,14 +135,15 @@ async def test_lifecycle_fields_gain_explicit_permission_and_cold_receipt(ended_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('protocol', [LIFECYCLE_FIELD_PROTOCOL, SOURCE_USE_DISPLAY_PROTOCOL])
 @pytest.mark.parametrize('fault', ['intention_text', 'wrong_subject', 'omission', 'unsupported_result', 'downgrade'])
-async def test_lifecycle_permission_cannot_authorize_intention_or_omit_world_results(ended_sources, fault):
+async def test_lifecycle_permission_cannot_authorize_intention_or_omit_world_results(ended_sources, fault, protocol):
     case, table = ended_sources
-    prepared, raws, call, body = _prepare(case, table, LIFECYCLE_FIELD_PROTOCOL,
+    prepared, raws, call, body = _prepare(case, table, protocol,
         subject='counterpart' if fault == 'wrong_subject' else 'companion')
     # Wrong-subject cards may be omitted, so retain the genuine original card's
     # reading ID for the attempted substitution rather than inventing evidence.
-    _, _, _, proper_body = _prepare(case, table, LIFECYCLE_FIELD_PROTOCOL)
+    _, _, _, proper_body = _prepare(case, table, protocol)
     card = _lifecycle(proper_body)
     status_id = next(r['reading_id'] for r in card['readings'] if r['field'] == '/item/value/status')
     response = _response(body, status_id)
@@ -173,7 +176,8 @@ async def test_nonrecord_scope_cannot_claim_lifecycle_support(ended_sources):
 
 
 @pytest.mark.asyncio
-async def test_v22_preserves_exact_accepted_fact_value_receipt(tmp_path):
+@pytest.mark.parametrize("protocol", [LIFECYCLE_FIELD_PROTOCOL, SOURCE_USE_DISPLAY_PROTOCOL])
+async def test_v22_and_v23_preserve_exact_accepted_fact_value_receipt(tmp_path, protocol):
     from companion_daemon.world_v2.proposal_envelope import DecisionProposal
     from companion_daemon.world_v2.visible_source_composer import VisibleSourceTable
     from test_visible_record_dependency import _v21_args
@@ -182,13 +186,13 @@ async def test_v22_preserves_exact_accepted_fact_value_receipt(tmp_path):
     prepared = prepare_independent_visible_review(
         candidate=DecisionProposal.model_validate_json(pin['candidate_json'], strict=True),
         source_table=VisibleSourceTable(pin['source_table_json']),
-        source_ref_aliases=pin['source_ref_aliases'], review_protocol=LIFECYCLE_FIELD_PROTOCOL,
+        source_ref_aliases=pin['source_ref_aliases'], review_protocol=protocol,
         source_response_mode='json_object', scope_permission_context=True,
     )
     raws = args['meaning_raw_responses']
     call = prepare_source_call(prepared=prepared, meaning_raw_responses=raws)
     response = json.loads(args['source_raw_response'])
-    response['contract'] = 'visible-contextual-source-review.6'
+    response['contract'] = json.loads(call.request['messages'][1]['content'])['output_contract']['contract']
     current = _arguments(prepared, raws, call, response)
     receipt = record_independent_visible_review(**current)
     assert verify_independent_visible_review_receipt(receipt=receipt, **_expected(current)) == receipt
