@@ -68,6 +68,7 @@ from .qq_ingress_policy import (
 from .semantic_chat_composition import (
     SemanticChatComposition,
     build_semantic_chat_composition,
+    configured_visible_review_version,
     unavailable_life_source_authority_health,
 )
 from .character_interior.turn_store import open_sqlite_character_interior_turn_store
@@ -3117,13 +3118,9 @@ def build_qq_c2c_host(
 
     if not recipient_id:
         raise ValueError("QQ C2C v2 requires one configured private recipient")
-    configured_whole_review = (
-        settings.world_v2_visible_expression_profile in {"whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8"}
-    )
+    configured_review_version = configured_visible_review_version(settings)
+    configured_whole_review = configured_review_version is not None
     if configured_whole_review:
-        configured_review_version = (
-            settings.world_v2_visible_expression_profile.rsplit("_v", 1)[1]
-        )
         if visible_author_tool_version not in {"1", "3"} or visible_source_review_version not in {"1", configured_review_version}:
             raise ValueError("explicit wire versions conflict with configured visible expression profile")
         visible_source_review_required = True
@@ -3144,7 +3141,8 @@ def build_qq_c2c_host(
     if type(visible_source_review_version) is not str or visible_source_review_version not in SUPPORTED_REVIEW_VERSIONS:
         raise ValueError("unsupported visible source review version")
     from .visible_independent_review_runtime import validate_independent_reviewer_configuration
-    validate_independent_reviewer_configuration(visible_source_review_model, visible_source_review_version)
+    if not auto_whole_reviewer:
+        validate_independent_reviewer_configuration(visible_source_review_model, visible_source_review_version)
     if visible_source_review_version != "1" and not visible_source_review_required:
         raise ValueError("versioned source reviewer requires explicit visible source review")
     if type(visible_author_evidence_first_schema) is not bool:
@@ -3168,6 +3166,8 @@ def build_qq_c2c_host(
             raise ValueError("required visible review cannot install a second source reviewer")
     elif visible_source_review_model is not None:
         raise ValueError("visible review provider supplied without required deployment")
+    if settings.world_v2_life_candidate_review_enabled and life_source_reviewer is None and model is not None:
+        raise ValueError("caller-supplied character requires an explicit Life candidate reviewer")
     expression_capabilities = qq_expression_capabilities(
         settings.qq_adapter,
         recorded_cadence_mode=getattr(settings, "world_v2_recorded_cadence_mode", "off"),
@@ -3201,6 +3201,7 @@ def build_qq_c2c_host(
             visible_source_review_version=visible_source_review_version,
             life_source_closure_model=life_source_closure_model,
             life_source_reviewer=life_source_reviewer,
+            life_review_world_id=world_id,
             model_id_prefix="qq-c2c-v2",
             expression_capabilities=expression_capabilities,
             usage_observer=usage_store.record,

@@ -53,6 +53,7 @@ from .text_turn_endpoint import (
 
 
 _LOG = logging.getLogger(__name__)
+_FAILED_BUILD_CLEANUPS: set[asyncio.Task[None]] = set()
 _CANDIDATE_INVENTORY_CONTRACT = "candidate-external-proposition-inventory.5"
 _CANDIDATE_COVERAGE_CONTRACT = "candidate-external-proposition-coverage.5"
 _FULL_SOURCE_REVIEW_CONTRACT = "source-closure-review.7"
@@ -61,6 +62,42 @@ _LIFE_SOURCE_REVIEW_CONTRACTS = (
     "life-development-source-closure-review.1",
     "life-development-novel-origin-review.5",
 )
+
+
+def configured_visible_review_version(settings: Settings) -> str | None:
+    """One fixed deployment selection, not a release qualification decision."""
+    return {
+        "whole_v3_review_v6": "6",
+        "whole_v3_review_v7": "7",
+        "whole_v3_review_v8": "8",
+        "experimental_independent_v21": "21",
+    }.get(settings.world_v2_visible_expression_profile)
+
+
+def _close_failed_construction_resources(models: list[object], finalizers: list[object]) -> None:
+    """No work was admitted yet; close stores now and retain async cleanup ownership."""
+    for resource in finalizers:
+        try:
+            resource.close()
+        except Exception:
+            _LOG.error("failed composition could not close an evidence store")
+
+    async def close_models() -> None:
+        for model in models:
+            if callable(close := getattr(model, "aclose", None)):
+                try:
+                    await close()
+                except Exception:
+                    _LOG.error("failed composition could not close an owned provider")
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(close_models())
+    else:
+        task = loop.create_task(close_models(), name="world-v2-failed-composition-close")
+        _FAILED_BUILD_CLEANUPS.add(task)
+        task.add_done_callback(_FAILED_BUILD_CLEANUPS.discard)
 
 
 def unavailable_life_source_authority_health() -> dict[str, object]:
@@ -593,6 +630,8 @@ class SemanticChatComposition:
     _close_task: asyncio.Task[None] | None = None
     _deferred_model_close_task: asyncio.Task[None] | None = None
     _models_closed: bool = False
+    # Synchronous evidence stores must outlive all tasks that can record results.
+    _owned_finalizers: tuple[object, ...] = ()
 
     def proactive_source_authority_health(self) -> dict[str, object]:
         """Return read-only deployment evidence without invoking a model."""
@@ -745,11 +784,24 @@ class SemanticChatComposition:
     async def _close_owned_models(self) -> None:
         if self._models_closed:
             return
-        for model in self._owned_models:
-            close = getattr(model, "aclose", None)
-            if callable(close):
-                await close()
-        self._models_closed = True
+        failures: list[BaseException] = []
+        try:
+            for model in self._owned_models:
+                close = getattr(model, "aclose", None)
+                if callable(close):
+                    try:
+                        await close()
+                    except BaseException as exc:
+                        failures.append(exc)
+        finally:
+            for resource in self._owned_finalizers:
+                try:
+                    resource.close()
+                except BaseException as exc:
+                    failures.append(exc)
+            self._models_closed = True
+        if failures:
+            raise failures[0]
 
     @staticmethod
     def _observe_deferred_model_close(task: asyncio.Task[None]) -> None:
@@ -794,6 +846,7 @@ def build_semantic_chat_composition(
     visible_source_review_version: str = "1",
     life_source_closure_model: ChatCompletionModel | None = None,
     life_source_reviewer: LifeSourceReviewer | None = None,
+    life_review_world_id: str | None = None,
     expression_episode_observer_model: ChatCompletionModel | None = None,
     model_id_prefix: str,
     expression_capabilities: ExpressionDraftCapabilities = (
@@ -818,8 +871,27 @@ def build_semantic_chat_composition(
         raise ValueError("semantic chat composition requires a model id prefix")
     if type(visible_source_review_version) is not str or visible_source_review_version not in SUPPORTED_REVIEW_VERSIONS:
         raise ValueError("unsupported visible source review version")
-    from .visible_independent_review_runtime import validate_independent_reviewer_configuration
-    validate_independent_reviewer_configuration(source_closure_model, visible_source_review_version)
+    from .visible_independent_review_runtime import (
+        IndependentVisibleReviewer, validate_independent_reviewer_configuration,
+    )
+    configured_version = configured_visible_review_version(settings)
+    independent_profile = settings.world_v2_visible_expression_profile == "experimental_independent_v21"
+    auto_independent_review = independent_profile and flash_model is None and source_closure_model is None
+    if independent_profile and (
+        not visible_source_review_required or visible_source_review_version != configured_version
+        or visible_author_tool_version != "3"
+    ):
+        raise ValueError("experimental independent profile requires its fixed whole author/review versions")
+    if not auto_independent_review:
+        validate_independent_reviewer_configuration(source_closure_model, visible_source_review_version)
+    if settings.world_v2_life_candidate_review_enabled and life_source_reviewer is None and flash_model is not None:
+        raise ValueError("caller-supplied character requires an explicit Life candidate reviewer")
+    if settings.world_v2_life_candidate_review_enabled and life_source_reviewer is None and not life_review_world_id:
+        raise ValueError("Life candidate reviewer requires the host's explicit world identity")
+    if independent_profile and not settings.world_v2_visible_source_review_model.strip():
+        raise ValueError("experimental visible source reviewer model must be nonempty")
+    if settings.world_v2_life_candidate_review_enabled and not settings.world_v2_life_candidate_review_model.strip():
+        raise ValueError("Life candidate reviewer model must be nonempty")
     if visible_source_review_version != "1" and visible_source_review_required is not True:
         raise ValueError("versioned source reviewer requires explicit visible source review")
     if type(visible_author_evidence_first_schema) is not bool:
@@ -880,6 +952,7 @@ def build_semantic_chat_composition(
     # switch must not silently turn that boundary off. An explicitly injected
     # reviewer still must be independent of every author.
     owned: list[object] = []
+    owned_finalizers: list[object] = []
     owned_closeables: list[object] = []
     owned_task_owners: list[object] = []
     if character_interior_turn_store is not None:
@@ -978,25 +1051,48 @@ def build_semantic_chat_composition(
         first_message=character.first_message,
     )
     del _unused
-    if (
-        visible_source_review_required
-        and settings.world_v2_visible_expression_profile in {"whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8"}
-        and auto_flash
-        and source_closure_model is None
-    ):
-        # The same production usage ledger reserves and settles this separate
-        # reviewer client. The composition's shutdown lease owns its lifetime.
-        source_closure_model = DeepSeekChatModel(
-            api_key=effective_deepseek_key,
-            base_url=settings.deepseek_base_url,
-            model=settings.deepseek_model,
-            thinking_enabled=False,
-            max_completion_tokens=4096,
-            usage_observer=usage_observer,
-        )
-        owned.append(source_closure_model)
-    if visible_source_review_required and not callable(getattr(source_closure_model, "complete_json_with_usage", None)):
-        raise ValueError("required whole-candidate source reviewer is not configured")
+    try:
+        if auto_independent_review:
+            def review_provider(model: str) -> DeepSeekChatModel:
+                provider = DeepSeekChatModel(
+                    api_key=effective_deepseek_key,
+                    base_url=settings.deepseek_base_url,
+                    model=model,
+                    thinking_enabled=False,
+                    max_completion_tokens=4096,
+                    usage_observer=usage_observer,
+                )
+                owned.append(provider)
+                return provider
+
+            source_closure_model = IndependentVisibleReviewer(
+                meaning_models=(review_provider("deepseek-v4-pro"), review_provider("deepseek-v4-flash")),
+                source_model=review_provider(settings.world_v2_visible_source_review_model),
+                source_response_mode="json_object", scope_permission_context=True,
+            )
+        validate_independent_reviewer_configuration(source_closure_model, visible_source_review_version)
+        if (
+            visible_source_review_required
+            and settings.world_v2_visible_expression_profile in {"whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8"}
+            and auto_flash
+            and source_closure_model is None
+        ):
+            # The same production usage ledger reserves and settles this separate
+            # reviewer client. The composition's shutdown lease owns its lifetime.
+            source_closure_model = DeepSeekChatModel(
+                api_key=effective_deepseek_key,
+                base_url=settings.deepseek_base_url,
+                model=settings.deepseek_model,
+                thinking_enabled=False,
+                max_completion_tokens=4096,
+                usage_observer=usage_observer,
+            )
+            owned.append(source_closure_model)
+        if visible_source_review_required and not callable(getattr(source_closure_model, "complete_json_with_usage", None)):
+            raise ValueError("required whole-candidate source reviewer is not configured")
+    except BaseException:
+        _close_failed_construction_resources(owned, owned_finalizers)
+        raise
     background_model = world_support_model
     if (
         background_model is None
@@ -1027,32 +1123,53 @@ def build_semantic_chat_composition(
         candidate_inventory_model=None,
         warning_reasons=("one_shot.model_review_lanes_removed",),
     )
-    character_interior = compose_production_character_interior(
-        flash_model=flash_model,
-        thinking_model=thinking_model,
-        whole_candidate_mode=visible_source_review_required,
-        visible_source_review_model=source_closure_model if visible_source_review_required else None,
-        atomic_tool_envelope_version=visible_author_tool_version,
-        use_schema_references=visible_author_schema_references,
-        evidence_first_schema=visible_author_evidence_first_schema,
-        visible_source_review_version=visible_source_review_version,
-        life_source_reviewer=life_source_reviewer,
-        source_closure_model=None,
-        report_relative_source_closure_model=None,
-        source_closure_reselection_lane=None,
-        expression_episode_observer_model=expression_episode_observer_model,
-        flash_model_id=str(getattr(flash_model, "model", f"{model_id_prefix}-flash")),
-        thinking_model_id=(
-            str(getattr(thinking_model, "model", f"{model_id_prefix}-thinking"))
-            if thinking_model is not None
-            else None
-        ),
-        expression_capabilities=expression_capabilities,
-        identity_frame=identity_frame,
-        review_claim_free_candidates=False,
-        turn_store=character_interior_turn_store,
-        turn_owner_id=character_interior_turn_owner_id,
-    )
+    try:
+        if settings.world_v2_life_candidate_review_enabled and life_source_reviewer is None:
+            from .character_interior.life_source_review import LifeSourceReviewer
+            from .life_content_store import SQLiteImmutableLifeContentStore
+
+            life_review_model = DeepSeekChatModel(
+                api_key=effective_deepseek_key,
+                base_url=settings.deepseek_base_url,
+                model=settings.world_v2_life_candidate_review_model,
+                thinking_enabled=False, max_completion_tokens=8192,
+                usage_observer=usage_observer,
+            )
+            owned.append(life_review_model)
+            evidence_store = SQLiteImmutableLifeContentStore(
+                path=str(settings.database_path), world_id=life_review_world_id,
+            )
+            owned_finalizers.append(evidence_store)
+            life_source_reviewer = LifeSourceReviewer(model=life_review_model, evidence_store=evidence_store)
+        character_interior = compose_production_character_interior(
+            flash_model=flash_model,
+            thinking_model=thinking_model,
+            whole_candidate_mode=visible_source_review_required,
+            visible_source_review_model=source_closure_model if visible_source_review_required else None,
+            atomic_tool_envelope_version=visible_author_tool_version,
+            use_schema_references=visible_author_schema_references,
+            evidence_first_schema=visible_author_evidence_first_schema,
+            visible_source_review_version=visible_source_review_version,
+            life_source_reviewer=life_source_reviewer,
+            source_closure_model=None,
+            report_relative_source_closure_model=None,
+            source_closure_reselection_lane=None,
+            expression_episode_observer_model=expression_episode_observer_model,
+            flash_model_id=str(getattr(flash_model, "model", f"{model_id_prefix}-flash")),
+            thinking_model_id=(
+                str(getattr(thinking_model, "model", f"{model_id_prefix}-thinking"))
+                if thinking_model is not None
+                else None
+            ),
+            expression_capabilities=expression_capabilities,
+            identity_frame=identity_frame,
+            review_claim_free_candidates=False,
+            turn_store=character_interior_turn_store,
+            turn_owner_id=character_interior_turn_owner_id,
+        )
+    except BaseException:
+        _close_failed_construction_resources(owned, owned_finalizers)
+        raise
     # Life Development fails closed without a source reviewer, so leaving this
     # lane unbuilt keeps the whole event machine dark.  An independent reviewer
     # stays the default; letting the world author audit its own draft is a
@@ -1099,6 +1216,7 @@ def build_semantic_chat_composition(
             else None
         ),
         _owned_models=tuple(owned),
+        _owned_finalizers=tuple(owned_finalizers),
         _owned_closeables=tuple(owned_closeables),
         _owned_task_owners=tuple(owned_task_owners),
     )
