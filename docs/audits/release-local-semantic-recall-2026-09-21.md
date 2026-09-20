@@ -44,6 +44,11 @@
 语义模型校准。**没有据这4题直接降低门槛**，也没有把排名改善记成召回成功。
 这些输入来自合成30轮fixture，不能推出真实角色长期语义准确率。
 
+后续代码核查纠正：这里的5500由实验自定义adapter固定；生产
+`OpenAICompatibleRecallEmbedding`早已用4200。本段关于门槛的诊断仅适用于该固定
+对照，不能推出生产缺少4200接线或仍须降低门槛。随后[有界两轮评估](recall-phase-2026-09-21.md)
+直接使用已有4200；两方案均未通过全部冻结标准，未进入生产。
+
 代码核对同时修正一条旧结论：`production_turn_application.py`的基础index始终使用
 FeatureHash，但`recall_runtime.py`的同步与后台prefetch都会调用已配置的semantic
 embedding；生产宿主可接入本地服务或远程端点。09／10审计宿主显式关闭该配置，所以

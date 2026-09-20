@@ -42,8 +42,15 @@ Automatic prefetch CAN use configured semantic embeddings; older contrary prose 
 incorrect. The09/10 audit host explicitly disabled them. Life .14 in4423ca04 adds
 opt-in claim-scope/subject-to-permission checks (71 focused tests), default still .13;
 semantic labeling can still fail. Real paired review and chat improvement are untested.
-See `docs/audits/release-local-semantic-recall-2026-09-21.md`. Goal currently paused;
-no new paid probe or journey was started and the unified10 billing above is unchanged.
+See `docs/audits/release-local-semantic-recall-2026-09-21.md`. That fixed5500 experiment
+did NOT use the production semantic adapter's existing4200 threshold.
+The subsequent bounded recall phase tried two proposals at4200: current-message
+queries retrieved2/3 old targets; fixed RRF plus query-cue coverage retrieved3/3 but
+increased forbidden old-negative material3->5. Neither passed the frozen criteria;
+neither entered production. Independent query positives stayed8/8 per split, already
+achieved by the semantic baseline; this is not a new gain or a pronoun-resolution proof.
+Both trials are closed; no third proposal, paid probe or journey was started.
+The unified10 billing above is unchanged. See `docs/audits/recall-phase-2026-09-21.md`.
 
 The .13/.14 request compiler now builds its final wire directly; .1-.12 retain
 their historical builders. 42 frozen public-fixture envelopes/provider hashes and
