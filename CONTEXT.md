@@ -35,6 +35,16 @@ ec58520d excludes verified broad conversation membership from new automatic rele
 These repairs do not solve the demonstrated tea/name semantic candidate omissions. Details and subsequent repair validation are in
 `docs/audits/release-continuation-rag-2026-09-21.md`.
 
+Subsequent offline M3 comparison (24 variants, zero cloud calls) found current-message
+queries rank tea/name first/second, but fixed5500 admission still excludes them.
+Long attention also adds false candidates; no default query or threshold was changed.
+Automatic prefetch CAN use configured semantic embeddings; older contrary prose was
+incorrect. The09/10 audit host explicitly disabled them. Life .14 in4423ca04 adds
+opt-in claim-scope/subject-to-permission checks (71 focused tests), default still .13;
+semantic labeling can still fail. Real paired review and chat improvement are untested.
+See `docs/audits/release-local-semantic-recall-2026-09-21.md`. Goal currently paused;
+no new paid probe or journey was started and the unified10 billing above is unchanged.
+
 Full suite at older frozenb560a3d2:9485 passed/19 skipped/2 xfailed/0 failures;
 that run does not cover later code. Later focused tests do not establish complete chat,
 QQ receipts,24-hour operation,recordable journey or100 CNY/month qualification.

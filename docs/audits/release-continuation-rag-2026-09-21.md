@@ -51,8 +51,10 @@ call26审核格式纠正后32路径、原parser接受其不支持判定；call27
 **不能救回茶和姓名**，因此噪声与语义候选漏召回必须分开修。现用feature-hash-ngram，
 这不是成熟语义embedding的效果上限；暂不靠降低全局门槛或添加话题关键词掩盖漏召回。
 另外，当前production composition固定用FeatureHash构造基础index，可选semantic embedding
-作为RecallCoordinator的独立通道；自动attention保持本地。不能把“打开semantic配置”
-直接宣称已修自动预取，需要分别验证角色主动检索与自动预取两条路径。
+作为RecallCoordinator的独立通道。**后续核对修正**：自动prefetch也会使用已配置的semantic
+通道；此前“自动attention保持本地”的判断来自过期注释，与运行代码不符。09／10审计
+宿主显式关闭semantic，仍只验证了FeatureHash。自动预取是否在首稿等待窗口内完成并
+实际呈现，以及角色主动检索的效果，需要分别取证，不能仅凭配置开关宣称解决。
 
 证据在`output/private-audits/release-recall-eval-20260921-01/`：
 `candidate-replay.json`、`candidate-replay-summary.json`、`reconstruct_candidates.py`。
@@ -82,6 +84,9 @@ fixture依赖被移除的公共会话加分，现仅该组显式提供固定本�
 采用词法与语义检索合并、去重、可选重排，并要求用实际评估选择成本与质量的取舍。
 本项目的工程推论：先修确证的共同会话噪声和缓存故障，再对现有语义embedding接口做
 同一corpus的对照；目标未进候选时，单换重排算法不能补足证据。无需迁移整套框架。
+
+上述对照现已完成：[本地真实语义向量与Life权限连接](release-local-semantic-recall-2026-09-21.md)。
+短原句改善目标排序，但旧固定门槛仍拒绝目标；尚未修改生产检索策略或证明真实对话改善。
 
 ## 账本、停止与恢复
 

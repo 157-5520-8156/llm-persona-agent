@@ -444,9 +444,10 @@ class Settings(BaseSettings):
     openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
     openai_proxy_url: str | None = Field(default=None, alias="OPENAI_PROXY_URL")
     # Semantic lane for the rebuildable World-v2 Recall Index.  It is opt-in
-    # because character-chosen deep recall sends source text to a remote
-    # provider; possessing a general chat credential is not consent to that
-    # additional disclosure. Automatic attention remains local.
+    # because both automatic attention and character-chosen recall may send
+    # source text to the configured embedding endpoint. A general chat
+    # credential does not opt into that disclosure. The base/fallback index
+    # remains local; the semantic endpoint may itself be a local service.
     world_v2_recall_semantic_enabled: bool = Field(
         default=False,
         alias="WORLD_V2_RECALL_SEMANTIC_ENABLED",
