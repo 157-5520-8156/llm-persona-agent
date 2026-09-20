@@ -27,7 +27,10 @@ LEGACY_CURRENT_CONTRACT = 'life-source-review.6'
 AUTHORSHIP_CONTRACT = 'life-source-review.7'
 TEMPORAL_AUTHORSHIP_CONTRACT = 'life-source-review.8'
 COVERAGE_AUTHORSHIP_CONTRACT = 'life-source-review.9'
-CONTRACT = 'life-source-review.10'
+PERMISSION_AUTHORITY_CONTRACT = 'life-source-review.10'
+CONTRACT = 'life-source-review.11'
+_AUTHORSHIP_CONTRACTS = {AUTHORSHIP_CONTRACT, TEMPORAL_AUTHORSHIP_CONTRACT,
+    COVERAGE_AUTHORSHIP_CONTRACT, PERMISSION_AUTHORITY_CONTRACT, CONTRACT}
 _CHOICE_CONTRACTS = {PERMISSION_CONTRACT, BOUNDED_REASON_CONTRACT, VERDICT_ORDER_CONTRACT, LEGACY_CURRENT_CONTRACT}
 BODY_FIELDS = ('status', 'summary', 'attended_source_refs', 'decision', 'recall_query', 'proposals')
 
@@ -44,7 +47,8 @@ def _permission_choices(readings):
             choices.append({'permission_id': f'permission:{len(choices)}',
                 'reading_id': row['reading_id'], 'claim_scope': scope, 'subject_role': subject,
                 'subject_ref': row['source_owner_ref'] if fact else None,
-                'requires_exact_fact_quote': fact})
+                'requires_exact_fact_quote': fact,
+                **({'accepted_value': row['accepted_value']} if fact and 'accepted_value' in row else {})})
     return choices
 
 
@@ -83,6 +87,12 @@ def _prepare_legacy_review(*, candidate_json, provider_raw, view, snapshot, cont
         for fact in (False, True):
             ids = [p['permission_id'] for p in choices if p['requires_exact_fact_quote'] == fact]
             if ids:
+                if fact and readings['contract'] == 'life-source-readings.4':
+                    branches.extend(_object({
+                        'permission_id': {'type': 'string', 'enum': [p['permission_id']]},
+                        'quoted_value': {'type': 'string', 'enum': [p['accepted_value']]},
+                    }) for p in choices if p['requires_exact_fact_quote'])
+                    continue
                 properties = {'permission_id': {'type': 'string', 'enum': ids}}
                 if fact:
                     properties['quoted_value'] = {'type': 'string', 'minLength': 1, 'maxLength': 256}
@@ -210,8 +220,14 @@ def _validate_source_support(support, sources):
         raise ValueError('Life review exceeds source field permission')
 
 
-def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CONTRACT):
-    if contract not in {AUTHORSHIP_CONTRACT, TEMPORAL_AUTHORSHIP_CONTRACT, COVERAGE_AUTHORSHIP_CONTRACT, CONTRACT}:
+def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=None):
+    # Unconfigured historical preparations retain their previous default. New
+    # installed reviews carry .11 explicitly in the original author source view.
+    contract = contract or view.review_contract or PERMISSION_AUTHORITY_CONTRACT
+    if (view.review_contract not in {None, contract}
+        or contract == 'life-source-review.11' and view.review_contract != contract):
+        raise ValueError('Life review contract differs from its source preparation')
+    if contract not in _AUTHORSHIP_CONTRACTS:
         return _prepare_legacy_review(candidate_json=candidate_json, provider_raw=provider_raw,
             view=view, snapshot=snapshot, contract=contract)
     from .life_source_authorship_review import prepare
@@ -224,7 +240,7 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=CON
 
 def inspect_review(*, raw, prepared_json, readings):
     request = json.loads(prepared_json)['request']
-    if json.loads(request['messages'][1]['content'])['contract'] not in {AUTHORSHIP_CONTRACT, TEMPORAL_AUTHORSHIP_CONTRACT, COVERAGE_AUTHORSHIP_CONTRACT, CONTRACT}:
+    if json.loads(request['messages'][1]['content'])['contract'] not in _AUTHORSHIP_CONTRACTS:
         return _inspect_legacy_review(raw=raw, prepared_json=prepared_json, readings=readings)
     from .life_source_authorship_review import inspect
     choices = {p['permission_id']: p for p in _permission_choices(readings)}
@@ -240,7 +256,7 @@ def inspect_review(*, raw, prepared_json, readings):
 
 
 class LifeSourceReviewReceipt(FrozenModel):
-    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10'] = CONTRACT
+    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11'] = CONTRACT
     prepared_json: str = Field(max_length=256_000)
     response_json: str = Field(max_length=64_000)
     request_hash: str = Field(pattern=r'^[0-9a-f]{64}$')
@@ -317,7 +333,8 @@ class LifeSourceReviewer:
                 'failure_type': type(exc).__name__, 'response_received': False}), 'raw_model_result')
             raise
         self._record(raw, 'raw_model_result')
-        receipt = LifeSourceReviewReceipt(prepared_json=prepared, response_json=raw, request_hash=request_hash,
+        review_contract = json.loads(request['messages'][1]['content'])['contract']
+        receipt = LifeSourceReviewReceipt(contract=review_contract, prepared_json=prepared, response_json=raw, request_hash=request_hash,
             response_hash=digest(raw), model_id=str(getattr(self.model, 'model', type(self.model).__name__)),
             model_call_id=call_id, usage_json=ModelUsageProvenance.model_validate(usage).model_dump_json())
         self._record(canonical(receipt.model_dump(mode='json', exclude={'prepared_json', 'response_json'})), 'raw_model_result')

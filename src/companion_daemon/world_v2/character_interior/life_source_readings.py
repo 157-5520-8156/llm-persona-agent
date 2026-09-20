@@ -17,9 +17,10 @@ from ..visible_subjective_source import subjective_direct_paths
 from .life_source_origin import canonical, digest
 from .life_source_view import LifeSourceView
 from .life_biographical_readings import biographical_reading
-from .life_fact_readings import fact_value_reading
+from .life_fact_readings import EXACT_VALUE_REVIEW_CONTRACT, fact_value_reading
 
 CONTRACT = "life-source-readings.3"
+EXACT_VALUE_CONTRACT = "life-source-readings.4"
 
 
 def _fields(row):
@@ -151,7 +152,8 @@ class PreparedLifeSourceReadings:
         # The candidate's semantic relation to this predicate still needs review.
         return {'reading_id': reading_id, 'quoted_value': value, 'claim_scope': claim_scope,
                 'subject_ref': subject_ref, 'fact_context': reading['fact_context'],
-                'observation_context': reading['value'],
+                **({'accepted_value': value, 'observation_event_ref': reading['observation_event_ref']}
+                   if 'accepted_value' in reading else {'observation_context': reading['value']}),
                 'write_authority': False, 'semantic_coverage': 'not_assessed'}
 
 
@@ -161,6 +163,7 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
     rendered = json.loads(json.loads(view.messages_json)[1]['content'])['inner_life_snapshot']
     visible = {(item['source_ref'], item['scope']) for item in rendered.get('source_inventory', ())}
     readings, excluded, identities = [], [], {}
+    exact_value_display = view.review_contract == EXACT_VALUE_REVIEW_CONTRACT
     for source in table['source_references']:
         material = table['source_materials'][source['material_index']]['material']
         row = {**source, 'review_material': material}
@@ -169,7 +172,8 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
             fact_value_reading if material.get('lane') == 'relevant_facts' else None
         )
         if structured_reader is not None:
-            descriptor, reason = structured_reader(row, rendered=rendered)
+            descriptor, reason = structured_reader(row, rendered=rendered,
+                **({'exact_value_display': exact_value_display} if structured_reader is fact_value_reading else {}))
             if descriptor is None:
                 excluded.append({'source_ref_index': source['source_ref_index'], 'reason': reason})
                 continue
@@ -223,7 +227,8 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
             identities[identity] = reading
             readings.append(reading)
     return PreparedLifeSourceReadings(canonical({
-        'contract': CONTRACT, 'source_view_sha256': digest(view.model_dump_json()),
+        'contract': EXACT_VALUE_CONTRACT if exact_value_display else CONTRACT,
+        'source_view_sha256': digest(view.model_dump_json()),
         'snapshot_hash': snapshot.snapshot_hash, 'readings': readings, 'excluded': excluded,
         'write_authority': False, 'semantic_coverage': 'not_assessed',
         'complete_source_coverage': False,

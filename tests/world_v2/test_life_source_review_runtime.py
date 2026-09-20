@@ -168,7 +168,7 @@ async def test_environment_support_uses_closed_permission_tokens_and_survives_re
     assert set(support['permission_id']['enum']) == {p['permission_id'] for p in packet['permission_choices']}
     assert all(p['subject_ref'] is None and not p['requires_exact_fact_quote'] for p in packet['permission_choices'])
     result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
-    assert result.life_source_review.contract == 'life-source-review.10'
+    assert result.life_source_review.contract == 'life-source-review.11'
     authority = packet['current_authorship_authority']
     assert authority['actor_ref'] == snapshot.actor_ref
     assert authority['logical_time'] == snapshot.logical_time.isoformat()
