@@ -5,6 +5,7 @@ change a factual claim's actor, time, mode or permissions. Whole-Beat coverage
 also runs when both evidence-blind readers reported no record-bound claims.
 """
 from dataclasses import dataclass
+from functools import lru_cache
 import hashlib
 import json
 
@@ -163,7 +164,10 @@ class PreparedContextualSourceReview:
                 'semantic_qualification': 'unproven'}
 
 
-def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool", scope_permission_context=False, fact_value_authority=False, private_cognition_scope=False):
+def _validate_compiler_options(*, scoped_coverage, tool_selection_mode,
+                               scope_subjective_history, response_mode,
+                               scope_permission_context, fact_value_authority,
+                               private_cognition_scope):
     if type(private_cognition_scope) is not bool or (private_cognition_scope and not fact_value_authority):
         raise ValueError("private cognition scope requires Fact value authority")
     if type(fact_value_authority) is not bool or (fact_value_authority and not scoped_coverage):
@@ -178,6 +182,68 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
         raise ValueError("automatic selection requires scoped coverage")
     if type(scoped_coverage) is not bool:
         raise TypeError('scoped coverage must be boolean')
+
+
+# Process-local pure compilation only. Bump this identity when changing compiler
+# semantics without changing a wire contract. A restarted/reloaded compiler has
+# an empty cache; neither preparations nor verdicts are persisted by this cache.
+_COMPILER_CACHE_VERSION = 'contextual-source-preparation-compiler.1'
+
+
+def _compiler_contract_digest():
+    from .private_cognition_scope import (
+        CONTRACT as cognition_contract, INSTRUCTION as cognition_instruction,
+        READER_INSTRUCTION, REVIEWER_INSTRUCTION,
+    )
+    from .visible_source_scope_selection import (
+        INSTRUCTION as selection_instruction, CONTEXT_INSTRUCTION,
+    )
+    return hashlib.sha256(_json({
+        'compiler': _COMPILER_CACHE_VERSION,
+        'contracts': [CONTRACT, SCOPED_COVERAGE_CONTRACT, FACT_VALUE_CONTRACT,
+                      PRIVATE_COGNITION_CONTRACT, cognition_contract],
+        'instruction': INSTRUCTION,
+        'cognition': [cognition_instruction, READER_INSTRUCTION, REVIEWER_INSTRUCTION],
+        'selection': [selection_instruction, CONTEXT_INSTRUCTION],
+    }).encode()).hexdigest()
+
+
+def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool", scope_permission_context=False, fact_value_authority=False, private_cognition_scope=False):
+    options = dict(scoped_coverage=scoped_coverage, tool_selection_mode=tool_selection_mode,
+                   scope_subjective_history=scope_subjective_history, response_mode=response_mode,
+                   scope_permission_context=scope_permission_context, fact_value_authority=fact_value_authority,
+                   private_cognition_scope=private_cognition_scope)
+    # Validate before lookup: Python's True/1 equality must not turn an invalid
+    # option into a hit for an earlier valid compilation.
+    _validate_compiler_options(**options)
+    if not isinstance(meanings, (tuple, list)) or len(meanings) != 2:
+        raise ValueError('independent meaning probe requires exactly two readings')
+    from .visible_independent_meanings import IndependentMeaning
+    if any(type(m) is not IndependentMeaning or type(m.preparation) is not PreparedCandidateMeaning
+           or type(m.preparation.payload_json) is not str or type(m.raw_response) is not str
+           for m in meanings):
+        raise TypeError('contextual compilation requires immutable meaning bytes')
+    meaning_bytes = _json([(m.preparation.payload_json, m.raw_response) for m in meanings])
+    # Complete canonical bytes, including source bodies, permissions and order,
+    # are the key. No mutable dict or shortened identity enters the cache.
+    payload = _cached_contextual_preparation(
+        _compiler_contract_digest(), meaning_bytes, _json(sources), _json(options))
+    return PreparedContextualSourceReview(payload)
+
+
+@lru_cache(maxsize=8)
+def _cached_contextual_preparation(compiler_digest, meaning_bytes, source_bytes, option_bytes):
+    from .visible_independent_meanings import IndependentMeaning
+    meanings = tuple(IndependentMeaning(PreparedCandidateMeaning(preparation), raw)
+                     for preparation, raw in json.loads(meaning_bytes))
+    # The original compiler still validates meanings and source permissions on
+    # every miss. Exceptions are not cached. Return only immutable wire bytes;
+    # inspect_response and receipt verification continue their original checks.
+    return _compile_contextual_source_review(
+        meanings=meanings, sources=json.loads(source_bytes), **json.loads(option_bytes)).payload_json
+
+
+def _compile_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool", scope_permission_context=False, fact_value_authority=False, private_cognition_scope=False):
     contract = PRIVATE_COGNITION_CONTRACT if private_cognition_scope else FACT_VALUE_CONTRACT if fact_value_authority else SCOPED_COVERAGE_CONTRACT if scoped_coverage else CONTRACT
     from .visible_independent_meanings import _readings
     interpreted, beats = _readings(meanings)

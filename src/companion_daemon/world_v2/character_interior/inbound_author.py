@@ -777,13 +777,17 @@ def materialize_expression_draft(
     )
 
 
-def _role_result_correction_instruction(correction: Mapping[str, object]) -> str:
+def _role_result_correction_instruction(
+    correction: Mapping[str, object], *, detail_in_coordinate: bool = False,
+) -> str:
     failure_code = correction.get("failure_code")
     if not isinstance(failure_code, str) or not failure_code:
         raise ValueError("character interior role correction is malformed")
     detail = correction.get("failure_detail")
     if not isinstance(detail, str) or not detail.strip():
         detail = "上一轮结果没通过校验，但宿主没把具体原因写清楚。请按当前契约重写一份完整结果。"
+    if detail_in_coordinate:
+        detail = "见同一对象 coordinate.failure_detail 的完整失败原因；该诊断不是新的世界证据。"
     return (
         "\n\n上一轮结果未通过校验，请按同一份钉住的 Context 和能力重写一份完整结果。"
         f"失败码 {failure_code}。具体原因：{detail} "
@@ -796,8 +800,9 @@ def _append_atomic_v3_correction(
 ) -> None:
     """Move only Core's feedback to the outgoing JSON tail, keeping its pin.
 
-    The owned ModelInput is unchanged. The original instruction and complete
-    coordinate remain in the actual hashed request; no role choice is reused.
+    The owned ModelInput is unchanged. The complete coordinate appears once
+    in the actual hashed request, with an instruction pointing to it. No role
+    choice or source evidence is inferred from the reviewer explanation.
     """
 
     user = json.loads(messages[1]["content"])
@@ -810,7 +815,7 @@ def _append_atomic_v3_correction(
         raise ValueError("atomic v3 correction lacks its original wire coordinate")
     coordinate = snapshot.pop("role_result_correction")
     user["role_result_correction"] = {
-        "instruction": _role_result_correction_instruction(correction),
+        "instruction": _role_result_correction_instruction(correction, detail_in_coordinate=True),
         "coordinate": coordinate,
     }
     messages[1] = {
