@@ -44,7 +44,6 @@ from companion_daemon.world_v2.private_impression_producer import (
     compile_private_impression_reflection_capsule,
     evaluate_private_impression_drain_gate,
     private_impression_drain_policy_from_settings,
-    private_impression_opportunity,
     record_private_impression_gate,
     recorded_private_impression_gates,
 )

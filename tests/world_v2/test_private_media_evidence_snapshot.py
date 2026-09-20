@@ -326,7 +326,7 @@ def test_private_compiler_indexes_character_authored_declared_display() -> None:
     assert display_dump["media_intent"] == "sexual_suggestive"
     assert display_dump["recipient_ref"] == "user:1"
     assert "/relationship_media_context/declared_display/media_intent" in snapshot.evidence_index
-    from companion_daemon.media_eligibility import MediaEligibilityRouter, MediaLaneRecommendation, PrivateExpressionBasis
+    from companion_daemon.media_eligibility import MediaEligibilityRouter, MediaLaneRecommendation
     from companion_daemon.media_suggestive_lane import SUGGESTIVE_PRIVATE_LANE
     from companion_daemon.world_v2.event_media_planner_adapter import EventMediaPlannerAdapter
 

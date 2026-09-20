@@ -2676,7 +2676,7 @@ class CompanionStore:
         billing_state: str = "",
     ) -> None:
         from companion_daemon.spend_account import classify_spend_account
-        from companion_daemon.usage_metrics import CNY_PER_USD, estimate_model_cost
+        from companion_daemon.usage_metrics import estimate_model_cost
 
         created_at = utc_now().isoformat()
         priced = estimate_model_cost(

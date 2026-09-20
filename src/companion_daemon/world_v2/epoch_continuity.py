@@ -17,7 +17,6 @@ from .character_core_reducers import (
     CHARACTER_CORE_POLICY_VERSION,
 )
 from .schema_core import FrozenModel
-from .epoch_migration_source import is_epoch_genesis_fact
 from .schemas import (
     AffectEpisodeProjection,
     AppraisalProjection,

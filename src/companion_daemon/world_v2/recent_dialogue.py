@@ -259,7 +259,6 @@ class RecentDialogueCompiler:
         actions = {item.action_id: item for item in projection.actions}
         stored = {item.payload_ref: item for item in projection.stored_message_payloads}
         descriptors = {item.payload_ref: item for item in projection.expression_payload_descriptors}
-        receipts = {item.action_id: item for item in projection.execution_receipts}
         historically_visible_action_ids = frozenset(
             item.action_id
             for item in projection.execution_receipts

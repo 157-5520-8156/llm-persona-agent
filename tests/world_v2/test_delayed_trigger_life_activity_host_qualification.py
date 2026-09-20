@@ -346,7 +346,7 @@ async def test_public_host_activity_lifecycle_is_role_owned_and_effect_once(
             reason="life_activity_public_plan",
             run_life_ecology=True,
         )
-        first = host.export_replay_evidence()
+        host.export_replay_evidence()
         # The plan, if any, is the author's; the effect-once claim below is what
         # this test protects, not the absence of a consultation.
         assert world_author.calls <= 1

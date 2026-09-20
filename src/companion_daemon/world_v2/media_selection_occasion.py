@@ -22,7 +22,7 @@ from typing import Literal
 from .event_ecology_media import occurrence_world_fact_slice
 from .image_evidence_contract import ImageEvidenceDeclaredPayload
 from .private_image_evidence_contract import RecipientScopedImageEvidenceDeclaredPayload
-from .schema_core import FrozenModel, PrivacyClass
+from .schema_core import FrozenModel
 
 
 CONVERSATION_OCCASION_WINDOW = timedelta(hours=2)
