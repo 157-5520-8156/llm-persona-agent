@@ -1,8 +1,38 @@
 # 来源审核接口与真实续跑
 
-本页保存各阶段证据；**当前闭合旅程为08**，其后的World工具探针追加了累计费用。
+本页保存各阶段证据；**当前闭合旅程为09**，之后的作者对照02追加了累计费用。
 最新发布判断与唯一有效继续点见 [当前发布状态](release-status-2026-09-13-current.md)。
 资格仍为 `manual_only / qualification_incomplete`；不以离线测试、API200或材料送达替代交付。
+
+## 09与作者对照02：工程通过，聊天仍未合格（b560a3d2）
+
+09目录 `output/private-audits/release-clean-continuation-20260920-09/`：
+`first-chat-trial-inspection.json`区分旧输入恢复的call1–8与新159分钟输入的call9–16。
+两者均无交付；新稿与纠正持续断言无来源的自身位置／未移动状态。用户叶子自述的承接
+已支持。所有4次作者`.28`真实呈现两条环境及4条预取材料的类型／权威，不能再归因于漏标。
+后台另2次调用，总计18known，估算0.56717816元，0新增unknown，ledger801/rev327。
+进程、客户端、独立对账及冷重放闭合，原3张v22回执继承并冷验，没有新回执或Experience。
+
+`request-byte-inspection.json`只读分解实际call9作者及call12来源审核：作者系统与工具
+64473B、snapshot48451B；source材料50136B，其中16条对话来源26831B。这些是UTF-8
+字节，不是tokens或可直接删除的净开销。初稿／纠正原27份材料和reading不变、仅新增2份，
+全局重复字串排序编号却使41／44个alias变化，21／27个已编码旧row变化。前置字典打断
+公共前缀；source命中2048／22105、2176／24652 tokens。作者纠正命中36352／37760，
+该处缓存已有效。稳定可逆表示只是待验证方案，未改生产合同、权限或旧hash。
+
+`release-author-model-comparison-20260920-02/`固定新159分钟首稿，只替换原生model字段
+为Pro，nonthinking、messages、tools、choice、温度及上限原样。1次实际请求在11.004秒
+超时，响应体为空，新增unknown预留1.30329元。无纠正、审核、World写入或交付；独立
+对账verified，完整账目1698／1695／73。运行仍恢复09，费用须先合并本probe完整前缀。
+同源单例不能证明更强模型可用，也未扩大原角色时限。所有付费进程均已关闭。
+
+本轮修复后的完整回归 `release-final-full-b560a3d2-n9d_jt06/` 为9485 passed／0 failed／
+19 skipped／2 xfailed，1514.63秒，前后HEAD一致且clean；全src/tests Ruff通过。
+原6431bcaf的12失败报告保留。冷恢复3例为测试依赖50ms后台timer，现用原lease精确
+时间控制并保留到期前不变、到期后exact2 Unknown、无重发／新作者／原ID等断言。
+
+09运行期面板地址随宿主正常关闭；`dashboard-readonly-inspection.json`核验继承的
+seq541／738类型与来源边界，未取得实时HTTP snapshot，不能充当完整录制验收。
 
 ## 08：首轮交付、次轮拒绝与真实类型接点（6d71b5f4）
 

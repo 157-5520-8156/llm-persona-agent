@@ -1,56 +1,63 @@
 # Girl-Agent Domain Glossary
 
-For current release qualification and the shared runtime/billing continuation
-checkpoint, read `docs/audits/release-status-2026-09-13-current.md`. Trial history
+For current release qualification and the runtime/billing continuation
+checkpoints, read `docs/audits/release-status-2026-09-13-current.md`. Trial history
 is retained in the linked audit documents, not as competing current checkpoints.
 
-2026-09-20 latest closed journey: 08, still manual_only / qualification_incomplete.
-Runtime remains at
-output/private-audits/release-clean-continuation-20260920-08/run,
-ledger 758/revision 317. Latest cumulative billing is now separate at
-output/private-audits/release-world-author-tool-20260920-01/run/world.sqlite:
-1679 usage /1676 reservations /72 unknown holds. Merge that complete billing
-prefix into any new restored journey before its usage watermark or provider call.
-At frozen 6d71b5f4, 26 forwarded calls have verified native usage, estimated
-0.70176968 CNY, with no new unknown holds. The prior probe hold is retained.
-Process/clients closed normally at operator_stopped; independent reconciliation,
-cold replay, both inherited visible v22 receipts and one new receipt are verified.
-The first new chat delivered 3 texts through capture; the second delivered none.
-These are not real QQ terminal receipts or stable multi-turn qualification.
+2026-09-21 release closeout: manual_only / qualification_incomplete.
+Frozen b560a3d2 passed the complete suite: 9485 passed /19 skipped /2 xfailed,
+zero failures, in 1514.63 seconds. The prior 6431bcaf run had 12 failures; its
+logs remain intact. All src/tests Ruff checks passed. Later closeout changes
+are documentation only; do not mistake this engineering gate for chat qualification.
 
-The character started a Plan at seq660. The active-attempt producer was exercised:
-its author returned malformed JSON, then chose no_op on correction. No new World
-result or settlement followed. A later Life response/Experience (seq735/738) uses
-an older environment settlement, not an active-attempt outcome.
-Snapshot .27 retained recall authority in the actual author input. Its inherited
-World outer-type change did not execute: real settled WorldLifeContextItem has no
-context_kind, while synthetic tests supplied it. Preserve this production-gap
-counterexample and old pinned snapshots; do not treat inner scope as lost authority.
-The second chat's unsupported past/negative action-state claims are a separate
-failure, not evidence that this presentation patch alone will solve dialogue.
-New snapshot .28 now recognizes the full typed settlement through its retained
-Capsule binding and exact semantic value. Both real 08 settlements reached both
-display lanes in a query-only temporary backup with zero provider calls; this is
-a new compilation, not an upgrade of an old pin or a new accepted conversation.
-New World.2 author calls now use the existing strict tool capability when the
-provider explicitly supports it. The complete tool/choice digest enters the new
-request identity; the original parser, authority reviews and old recovery remain.
-The one-call real provider probe accepted strict tool grammar and returned schema-valid
-propose arguments, but the original cross-field parser rejected absent visual_evidence
-for a location-bound ordinary-privacy outcome. No World state or receipt was added;
-native usage was verified at an estimated 0.06081736 CNY with no new unknown hold.
-This proves tool transport compatibility, not a settled attempt or usable draft.
+Latest resumable runtime: output/private-audits/release-clean-continuation-20260920-09/run,
+ledger801/revision327. Latest complete billing is SEPARATE at
+output/private-audits/release-author-model-comparison-20260920-02/run/world.sqlite:
+1698 usage /1695 reservations /73 unknown holds. Restore 09, then merge every
+latest billing row before the first usage watermark or provider call. A standalone
+probe is not a resumable journey. Prior unknown holds remain; the newest is 1.30329 CNY.
 
-The complete frozen 6431bcaf regression closed with 9456 passed /12 failed /19 skipped /
-2 xfailed in 1425.75 seconds. Repairs include Life-only lifecycle reference separation,
-pinned tools on semantic source rewrites and corrected native-tool test fixtures.
-Required inbound review now uses inbound_source_review so exhausted background/soft-day
-allowances cannot independently block it; daily/monthly hard caps remain intact.
-Final fixed-candidate regression and natural dialogue qualification remain pending.
+09 restored the same identity and all three accepted visible v22 receipts.
+Its first eight calls recovered the old 08 input; calls9-16 handled the new input
+about another drawn leaf and the character's current state. Both initial drafts
+and same-character corrections invented continuing physical state without a
+record (remaining seated/not moving); source review rejected them. No new chat
+was delivered. Snapshot .28 reached all four real author requests, with correct
+settled-World and recall authority labels; missing labels no longer explain this
+failure. Two background calls followed. All18 native usages were verified, estimated
+0.56717816 CNY; no new unknown holds. Stop/clients/reconciliation/cold replay closed
+normally; no new visible receipt, Experience or settled activity outcome was added.
 
-Final frozen full-suite, representative life-memory-chat continuity, QQ terminal
-receipts, 24-hour operation and approximately 100 CNY/month remain open gates.
-Restore only the latest runtime with its complete cumulative account.
+A one-call, model-only Pro comparison reused the exact new159-minute initial
+request. It timed out at11.004s within the unchanged11s author allowance, with no
+response body and an unknown billing hold. No source review, acceptance, World
+write or delivery followed. This is not evidence to switch the release model.
+The earlier World strict-tool probe accepted schema-valid arguments but failed the
+original visual_evidence cross-field invariant; it did not settle an activity.
+
+Delivered repairs: Life-only lifecycle states cannot become generic visible
+occurrence references; semantic World rewrites retain the exact originally pinned
+tools; inbound_source_review is eligible for the visible spend lane while daily/
+monthly hard caps remain. Old request identities, receipts and correction authority
+are preserved. Cold proactive replay tests now drive real lease boundaries rather
+than racing an ambient50ms timer; before-expiry/no-duplicate assertions remain.
+
+Next work is narrow: reliable same-identity state/life/memory/chat continuity and
+measured cost/latency. The original Started opportunity was durably consumed by
+no_op; advancing time must not retry that same opportunity. New role-chosen
+Started/Resumed/Completed events can open new identities. Never force a successful
+activity or accept invented negative state to produce a demo.
+A read-only byte audit found source dictionary renumbering across correction:
+27 original materials/readings unchanged plus2 new, but41/44 shared-string aliases
+changed and the user-packet common prefix was1291 bytes. Source cache hits were
+2048/22105 and2176/24652 tokens; author correction caching was already effective.
+Stable reversible representation is a candidate to measure, not an implemented
+fix or permission to delete evidence/change old pins.
+
+QQ terminal receipts,24-hour operation, a complete recordable journey and the
+approximately100 CNY/month product target still require qualification. Deployment,
+real QQ sends and production writes were not performed. See the current release
+status and release-review-interface audit for exact evidence paths and boundaries.
 
 ## World
 
