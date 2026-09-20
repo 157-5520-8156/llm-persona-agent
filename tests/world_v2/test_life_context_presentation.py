@@ -3,6 +3,7 @@ import json
 from companion_daemon.world_v2.character_interior.contracts import _InteriorBinding
 from companion_daemon.world_v2.character_interior.life_context_presentation import (
     DIARY_TEXT_CHARACTERS, LIFE_CONTEXT_COMPILER_VERSION, PENDING_WORLD_SCOPE,
+    SETTLED_WORLD_SCOPE,
 )
 from companion_daemon.world_v2.character_interior.snapshot_compiler import compile_inner_life_snapshot
 from test_derived_material_redaction import _context, _experience, _recreate
@@ -108,3 +109,85 @@ def test_same_day_results_keep_their_individual_times_and_source_identities():
         ("occurrence:later", "2026-08-16T14:00:00+08:00"),
         ("occurrence:earlier", "2026-08-16T09:00:00+08:00"),
     ]
+
+
+def test_environment_only_settlement_keeps_its_world_type_in_both_presented_lanes():
+    # Shape of trial07: a settled .2 environment with the companion among its
+    # participants, but no execution-bound action or separate private response.
+    source = occurrence(settled=True)
+    content = source["value"]["content"]
+    content["world_consequence"].pop("authorized_attempt_result")
+    content.pop("character_response")
+    snapshot = compile_with(source)
+    material = snapshot.model_view()["materials"]
+    world, experience = material["recent_self_experiences"]["items"]
+    assert snapshot.snapshot_compiler.value == "inner-life-snapshot-compiler.26"
+    assert world["context_kind"] == "settled_world_occurrence"
+    assert world["epistemic_scope"] == SETTLED_WORLD_SCOPE
+    assert world["content"] == content
+    assert world["participant_refs"] == ["agent:companion"]
+    assert world["location_ref"] == "location:campus"
+    assert world["settled_at"] == source["value"]["settled_at"]
+    assert experience["context_kind"] == "committed_experience"
+    reading = material["week_diary"][0]["readings"][0]
+    assert reading["context_kind"] == world["context_kind"]
+    assert reading["epistemic_scope"] == world["epistemic_scope"]
+    assert reading["source_ref"] == world["source_ref"]
+    assert reading["world_consequence"] == content["world_consequence"]
+    assert "下雨" not in material["lived_moment"]
+    hidden = snapshot.model_view(visible_source_refs=frozenset({"experience:legacy"}))
+    assert "settled_world_occurrence" not in json.dumps(hidden, ensure_ascii=False)
+    assert "下雨" not in json.dumps(hidden, ensure_ascii=False)
+
+
+def test_provenance_preserves_independently_bound_result_and_private_response():
+    source = occurrence(settled=True)
+    snapshot = compile_with(source, legacy=False)
+    material = snapshot.model_view()["materials"]
+    entry = material["recent_self_experiences"]["items"][0]
+    assert entry["epistemic_scope"] == SETTLED_WORLD_SCOPE
+    assert entry["content"] == source["value"]["content"]
+    reading = material["week_diary"][0]["readings"][0]
+    assert reading["world_consequence"] == entry["content"]["world_consequence"]
+    assert reading["character_response"] == entry["content"]["character_response"]
+
+
+def test_recorded_25_diary_still_uses_its_scoped_renderer():
+    snapshot = compile_with(occurrence(settled=True), legacy=False)
+    materials = dict(snapshot.materials)
+    # A saved .25 carries no newly compiled provenance. It must retain the
+    # structured diary instead of falling back to the pre-.25 line renderer.
+    for row in materials["recent_self_experiences"]["items"] + materials["week_diary"]:
+        row.pop("context_kind", None)
+        row.pop("epistemic_scope", None)
+    old = _recreate(snapshot.model_copy(update={
+        "snapshot_compiler": _InteriorBinding.available("inner-life-snapshot-compiler.25"),
+    }), materials)
+    view = old.model_view()["materials"]
+    assert view["week_diary"] == [{
+        "date": "2026-08-16", "lines": [], "line_sources": [],
+        "readings": [{
+            **occurrence(settled=True)["value"]["content"],
+            "source_ref": "occurrence:test", "settled_at": "2026-08-16T14:00:00+08:00",
+        }],
+    }]
+    assert "lived_moment" not in view
+
+
+def test_recalled_episode_keeps_recall_authority_and_plain_legacy_stays_unchanged():
+    recalled = {
+        "source_ref": "recalled:episode", "value": {
+            "memory_kind": "episodic", "actor_ref": "agent:companion",
+            "authority": "retained_experience", "epistemic_scope": "recalled_episode",
+            "text": "记得书架旁的小灯。",
+        },
+    }
+    snapshot = compile_inner_life_snapshot(_context(
+        world_life={"availability": "available", "items": [occurrence(settled=True)]},
+        recent_experiences={"availability": "available", "items": [recalled]},
+    ))
+    entry = snapshot.model_view()["materials"]["recent_self_experiences"]["items"][1]
+    assert entry == {**recalled["value"], "source_ref": "recalled:episode"}
+    legacy = compile_with(legacy=True)
+    assert legacy.snapshot_compiler.value == "inner-life-snapshot-compiler.23"
+    assert "context_kind" not in legacy.materials["recent_self_experiences"]["items"][0]

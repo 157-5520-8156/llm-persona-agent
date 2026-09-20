@@ -4,6 +4,19 @@
 最新发布判断与唯一有效继续点见 [当前发布状态](release-status-2026-09-13-current.md)。
 资格仍为 `manual_only / qualification_incomplete`；不以离线测试、API200或材料送达替代交付。
 
+## 07后的来源类型呈现修复（离线验证）
+
+新snapshot `.26` 在原材料栏和结构日记中保留 `settled_world_occurrence` 与
+`committed_experience` 类型。World条目声明按字段授权：环境、授权尝试结果和角色
+私有回应的原文及权限保持分离；参与者和地点不产生亲历依据。旧`.25`继续使用其原
+结构日记renderer，旧`.23`普通材料与recalled episode不被重新标记。来源过滤仍先于展示。
+自动召回已有的类型被另一处全局压缩省略，本补丁未改该路径，也未新增审核版本或模型调用。
+
+28项呈现／隐私定向检查、34项Life／可见来源邻近检查通过；120-case冻结机制基线
+保持原值，Ruff及diff检查通过。完整89232c38源码的独立进程与新代码对照，12种旧Life
+preparation/readings和07两张真实`.10/.13`回执精确一致。证据在私有
+`output/private-audits/release-context-provenance-20260920-01/`。尚无此补丁的真实聊天资格。
+
 ## 07：真实Life13接受与剩余失败（89232c38）
 
 私有证据目录为 `output/private-audits/release-clean-continuation-20260920-07/`。

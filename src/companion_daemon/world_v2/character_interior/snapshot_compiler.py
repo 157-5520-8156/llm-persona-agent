@@ -55,7 +55,8 @@ from .contracts import (
     _instant,
 )
 from .life_context_presentation import (
-    LIFE_CONTEXT_COMPILER_VERSION, PENDING_WORLD_SCOPE, is_pending_world_material,
+    LIFE_CONTEXT_COMPILER_VERSION, PENDING_WORLD_SCOPE, SETTLED_WORLD_SCOPE,
+    is_pending_world_material,
 )
 
 SNAPSHOT_COMPILER_VERSION = "inner-life-snapshot-compiler.23"
@@ -539,7 +540,9 @@ def _recalled_entry(
     }
 
 
-def _experience_entry(item: dict[str, object], *, lane: str) -> dict[str, object] | None:
+def _experience_entry(
+    item: dict[str, object], *, lane: str, include_source_kind: bool = False,
+) -> dict[str, object] | None:
     recalled = _recalled_entry(item, kinds=frozenset({"episodic"}))
     if recalled is not None:
         return recalled
@@ -578,6 +581,15 @@ def _experience_entry(item: dict[str, object], *, lane: str) -> dict[str, object
         semantic = {key: value[key] for key in fields if key in value}
         if value.get("context_kind") == "active_world_occurrence":
             semantic["epistemic_scope"] = PENDING_WORLD_SCOPE
+        if include_source_kind and value.get("context_kind") in {
+            "active_world_occurrence", "settled_world_occurrence",
+        }:
+            semantic["context_kind"] = value["context_kind"]
+            if value["context_kind"] == "settled_world_occurrence":
+                # The record is a World circumstance. Its nested environment
+                # and execution-bound result retain their separate authority;
+                # participants/location alone do not establish a lived action.
+                semantic["epistemic_scope"] = SETTLED_WORLD_SCOPE
     else:
         values = value.get("values")
         if not isinstance(values, dict):
@@ -600,6 +612,8 @@ def _experience_entry(item: dict[str, object], *, lane: str) -> dict[str, object
                 if key in values
             },
         }
+        if include_source_kind:
+            semantic["context_kind"] = "committed_experience"
         content = value.get("content")
         if isinstance(content, dict) and isinstance(content.get("world_consequence"), dict):
             semantic["content"] = {
@@ -1199,6 +1213,9 @@ def _week_diary(
             row = {"date": day, "world_consequence": content["world_consequence"], "source_ref": source_ref}
             row.update({key: entry[key] for key in ("settled_at", "occurred_from", "occurred_to")
                         if isinstance(entry.get(key), str)})
+            if "context_kind" in entry:
+                row.update({key: entry[key] for key in ("context_kind", "epistemic_scope")
+                            if isinstance(entry.get(key), str)})
             if isinstance(reading, dict) and reading.get("response_text"):
                 row["character_response"] = reading
             if len(existing) < PRESENT_WEEK_DIARY_LINES_PER_DAY and row not in existing:
@@ -1288,6 +1305,7 @@ def compile_inner_life_snapshot(
 
     raw_slices = context.get("slices")
     slices: Mapping[str, object] = raw_slices if isinstance(raw_slices, dict) else {}
+    scoped_world_material = _has_scoped_world_material(context)
     materials: dict[str, object] = {}
     logical_time = _datetime(context.get("logical_time"))
     if logical_time is not None:
@@ -1555,7 +1573,8 @@ def compile_inner_life_snapshot(
         materials["relevant_facts"] = relevant_facts
 
     experience_lanes = [
-        [entry for item in _slice_items(slices, lane) if (entry := _experience_entry(item, lane=lane))]
+        [entry for item in _slice_items(slices, lane)
+         if (entry := _experience_entry(item, lane=lane, include_source_kind=scoped_world_material))]
         for lane in ("world_life", "recent_experiences")
     ]
     recent = [entries[0] for entries in experience_lanes if entries]
@@ -1590,7 +1609,7 @@ def compile_inner_life_snapshot(
         recent=[
             entry
             for item in _slice_items(slices, "world_life")
-            if (entry := _experience_entry(item, lane="world_life"))
+            if (entry := _experience_entry(item, lane="world_life", include_source_kind=scoped_world_material))
         ],
         already_sent_count=len(photos_i_shared),
     )
@@ -1795,7 +1814,7 @@ def compile_inner_life_snapshot(
         context_compiler=_binding(context, "context_compiler_version", "context_compiler_unavailable"),
         snapshot_compiler=_InteriorBinding.available(
             LIFE_CONTEXT_COMPILER_VERSION
-            if _has_scoped_world_material(context) else SNAPSHOT_COMPILER_VERSION
+            if scoped_world_material else SNAPSHOT_COMPILER_VERSION
         ),
         truncation=_binding(context, "truncation", "truncation_metadata_unavailable"),
     )

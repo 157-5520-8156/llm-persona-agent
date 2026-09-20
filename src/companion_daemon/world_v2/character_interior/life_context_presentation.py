@@ -5,8 +5,12 @@ the character's action or feeling. Call diary rendering only after redaction.
 """
 from __future__ import annotations
 
-LIFE_CONTEXT_COMPILER_VERSION = "inner-life-snapshot-compiler.25"
+LIFE_CONTEXT_COMPILER_VERSION = "inner-life-snapshot-compiler.26"
+SCOPED_DIARY_COMPILER_VERSIONS = frozenset({
+    "inner-life-snapshot-compiler.25", LIFE_CONTEXT_COMPILER_VERSION,
+})
 PENDING_WORLD_SCOPE = "active_world_occurrence_outcome_unsettled_not_personal_experience"
+SETTLED_WORLD_SCOPE = "settled_world_occurrence_with_field_scoped_authority"
 DIARY_TEXT_CHARACTERS = 160
 
 
@@ -28,7 +32,9 @@ def _bounded_reading(value: object) -> object:
     return result
 
 
-def regroup_scoped_week_diary(value: object) -> list[dict[str, object]]:
+def regroup_scoped_week_diary(
+    value: object, *, include_source_kind: bool = False,
+) -> list[dict[str, object]]:
     """Preserve structured world/subjective readings and their exact sources.
 
     Legacy lines retain their familiar presentation. Structured readings are
@@ -57,6 +63,9 @@ def regroup_scoped_week_diary(value: object) -> list[dict[str, object]]:
                 **{key: row[key] for key in ("settled_at", "occurred_from", "occurred_to")
                    if isinstance(row.get(key), str)},
             }
+            if include_source_kind:
+                item.update({key: row[key] for key in ("context_kind", "epistemic_scope")
+                             if isinstance(row.get(key), str)})
             entries = group.setdefault("readings", [])
             if item not in entries:
                 entries.append(item)
