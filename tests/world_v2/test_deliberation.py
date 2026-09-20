@@ -3578,6 +3578,47 @@ async def test_deadline_bounded_drain_preserves_nested_validation_failure_audit(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("external_cancel", [False, True])
+async def test_second_cancellation_during_audit_drain_keeps_its_owner(external_cancel) -> None:
+    from companion_daemon.world_v2.deliberation import _BUDGET_DEADLINE_CANCEL
+
+    cleanup_started = asyncio.Event()
+    release_cleanup = asyncio.Event()
+    technical = ValidationTechnicalFailure("source_review_timeout")
+
+    async def reviewed_candidate():
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError as cancelled:
+            cleanup_started.set()
+            await release_cleanup.wait()
+            cancelled.world_v2_validation_technical_failure = technical
+            raise
+
+    unit = Deliberation(router=_Router(), main_model=_Main(), quick_recovery=_Quick())
+    running = asyncio.create_task(unit._with_deadline(
+        reviewed_candidate(), timeout=0.001, label="overlapping-hard-deadlines", lane="main",
+    ))
+    try:
+        # The local deadline already cancelled the provider. The outer budget
+        # may reach that same deadline while immutable audits are unwinding.
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1)
+        running.cancel("external-stop" if external_cancel else _BUDGET_DEADLINE_CANCEL)
+        release_cleanup.set()
+        if external_cancel:
+            with pytest.raises(asyncio.CancelledError, match="external-stop"):
+                await running
+        else:
+            with pytest.raises(ValidationTechnicalFailure) as caught:
+                await running
+            assert caught.value is technical
+    finally:
+        release_cleanup.set()
+        await unit.aclose()
+    assert unit.provider_health.main_inflight == 0
+
+
+@pytest.mark.asyncio
 async def test_expression_episode_off_is_original_single_provider_path() -> None:
     main = _EpisodeMain()
     result = await Deliberation(

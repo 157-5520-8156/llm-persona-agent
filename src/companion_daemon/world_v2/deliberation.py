@@ -4147,10 +4147,21 @@ class Deliberation:
         # need more than one scheduler turn, so give them a tiny bounded
         # drain. Cancellation-suppressing providers remain detached after the
         # grace and still count against the in-flight ceiling.
-        await asyncio.wait(
-            (task,),
-            timeout=_PROVIDER_CANCELLATION_AUDIT_GRACE_SECONDS,
-        )
+        loop = asyncio.get_running_loop()
+        drain_deadline = loop.time() + _PROVIDER_CANCELLATION_AUDIT_GRACE_SECONDS
+        while not task.done():
+            remaining = drain_deadline - loop.time()
+            if remaining <= 0:
+                break
+            try:
+                await asyncio.wait((task,), timeout=remaining)
+            except asyncio.CancelledError as exc:
+                if not exc.args or exc.args[0] is not _BUDGET_DEADLINE_CANCEL:
+                    raise
+                # Local and outer hard deadlines can expire together. The
+                # second internal cancellation must not discard evidence the
+                # already-cancelled provider is returning. Keep the original
+                # drain deadline; external cancellation still propagates.
         if task.done() and task.cancelled():
             try:
                 task.result()

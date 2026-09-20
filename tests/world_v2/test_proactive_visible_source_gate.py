@@ -85,6 +85,24 @@ async def _run_scenario(
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     monkeypatch.setattr(config_module, "_macos_launchctl_env", lambda _name: None)
 
+    if scenario in {"author_deadline", "review_deadline", "review_deadline_second"}:
+        # Exercise the real cancellation path without waiting for production's
+        # long background/reselection ceilings in every protocol fixture.
+        from companion_daemon.world_v2 import production_turn_application as composition
+        from companion_daemon.world_v2.interactive_turn_budget import InteractiveTurnBudgetPolicy
+
+        original_bind = composition._bind_production_character_interior
+
+        def bind_with_test_deadlines(**kwargs):
+            kwargs["background_turn_budget_policy"] = InteractiveTurnBudgetPolicy(
+                total_seconds=2, hedge_after_seconds=0.5,
+                acceptance_dispatch_reserve_seconds=0.1,
+                validation_recovery_seconds=1, validation_reselection_seconds=2,
+            )
+            return original_bind(**kwargs)
+
+        monkeypatch.setattr(composition, "_bind_production_character_interior", bind_with_test_deadlines)
+
     def no_network(*_args, **_kwargs):
         raise AssertionError("network access prohibited in offline source-gate test")
 
