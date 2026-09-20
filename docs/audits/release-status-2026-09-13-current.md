@@ -1,6 +1,27 @@
 # 当前发布判断（2026-09-20）
 
-**最新：干净角色的前两轮聊天均交付，但生活链仍有来源呈现阻断，尚不可邀请发布。**
+**最新：同一干净角色续跑到 61 分钟，世界事件已结算、活动已开始，但生活经历与回来聊天仍未通过，尚不可邀请发布。**
+代码 `a2f36c7f` 的续跑没有新增 accepted visible 角色交付，只显示了明确的系统失败提示，
+不能算角色沉默。WorldOccurrence 已 settled，另有 ActivityStarted；没有新的
+CharacterLifeResponse 或 Experience。新增 1 条 Fact 记忆不能代替生活—记忆—聊天闭环。
+
+Life `.11` 实际向 provider 发出的请求为 **0**：本地准备拒绝了合法的紧凑 Appraisal 行，
+6 列声明允许末尾 excerpts 省略而实际行有 5 项；不是供应商拒绝 schema 或超时。
+`e127eaaf` 已修复该可选尾项适配，**27 项离线检查通过**，实际失败 author snapshot
+也已走通 `.11` 展示及完整请求组装入口，但没有发送模型请求，也不是重建该轮未保存的
+完整新 pin。`.11` 仍待真实审核与落地验证；主动联系纠正本轮未行使。
+
+唯一最新运行和累计费用继续点：
+`output/private-audits/release-clean-continuation-20260920-01/run`，
+ledger **400**、revision **192**、61 分钟，**1543 usage /1540 reservations /64 unknown holds**。
+本次 **25 次 physical /25 笔 known**，已知用量估算 **0.60819330 元**；重启和冷重放通过。
+发布资格保持 `manual_only / qualification_incomplete`。面板登录后视觉验收、真实 QQ、
+持续运行与约百元月费仍无通过证据。详见 [干净旅程与续跑记录](clean-demo-validation-2026-09-20.md)。
+恢复任何旧身份都必须继承上述最新累计费用，不能直接恢复旧低费用账本。
+
+## 历史：首次干净旅程（aa8c8cce，0–45 分钟）
+
+**该阶段前两轮聊天均交付，但生活链仍有来源呈现阻断，尚不可邀请发布。**
 正常宿主已接通新身份、前史导入/自主保留及同 owner 面板。24 条前史独立审核通过，
 角色实际保留 4 条；两次输入交付 5 条文字。45 分钟旅程产生一项未来计划及一个已激活
 WorldOccurrence，未产生其 settlement/Experience；回来聊天未执行。
@@ -10,11 +31,11 @@ Life 审核把整段 Observation 当作只能引用精确接受值的 Fact：输
 （90 项回归），二者待真实复测。后续一次 Life 审核确已通过，但只是回复再考虑/Appraisal，
 不能代替生活经历闭环。费用/回执/冷重放已闭合；尚无月费、QQ 或持续运行资格。
 
-最新新身份运行和累计账目：`output/private-audits/release-clean-demo-20260920-01/run`，
+该阶段运行和累计账目：`output/private-audits/release-clean-demo-20260920-01/run`，
 ledger **322**、45 分钟、**1518 usage /1515 reservations /64 unknown holds**。
 本次 40 次真实请求，已知估算 **0.67650258 元**；另有未知预留，详见
 [干净旅程完整记录](clean-demo-validation-2026-09-20.md)。前史审核另 1 次、0.011272 元。
-旧身份 ledger 4367 仍作为反例保留，但恢复它时必须另行继承上述最新费用。
+这不是当前继续点；旧身份 ledger 4367 仍作为反例保留，恢复时必须继承本文顶部的最新费用。
 
 以下保留此前试验记录，其“最新/唯一继续点”不覆盖以上新记录。
 
@@ -22,7 +43,7 @@ ledger **322**、45 分钟、**1518 usage /1515 reservations /64 unknown holds**
 首版仍限定单角色、聊天、已有生活和记忆、可录制面板。当前试验来自重复提问较多的旧
 测试历史，不是新用户或干净身份验收。正式入口可显式选择 v22，默认配置不变。
 
-## 最新实际结果
+## 历史实际结果（f62cf4d3）
 
 代码 `f62cf4d3` 的三轮输入最终有两轮交付，共八条文字：首轮经同角色纠正交付，
 第二轮起初作者超时，随后后台重试交付；第三轮仍未交付。没有把失败算作角色沉默。
@@ -43,12 +64,12 @@ schema 可重现异常 `/fact_decisions/1/reading_ids/0`。审查解释还把同
 最终恢复因必需的能力清单未保存而失败；本轮**没有新增 WorldOccurrence、结算或
 Experience，也没有调用专用 Life 候选审核**。不能据作者成功返回就称生活链通过。
 
-## 实跑后的修复
+## 历史：该次实跑后的修复
 
 `fb40a205` 将能力清单改存独立、有明确字节上限的内部审计类型；写入及严格回读成功
 后才能提交可恢复审计，删除了吞掉保存错误的分支。三个实际清单均为 13,341 字符，
 超过旧 12,000 字符限制，已在隔离 SQLite 中复现旧错并完成新类型的关闭/重开读取。
-176 项相关回归及最新 ledger 4367 冷重放通过；六个旧缺失绑定仍拒绝，未补写旧证据。
+176 项相关回归及当时 ledger 4367 冷重放通过；六个旧缺失绑定仍拒绝，未补写旧证据。
 这项修复尚未新增付费复测。
 
 `e089056b` 新增 `--primary-user-id`，独立身份不再需要修改测试脚本；零模型调用的
@@ -60,7 +81,7 @@ fixture bootstrap/重放及 69 项 CLI 检查通过。新 World 的已审人生�
 
 34 次模型调用已关闭并对账：33 次已知用量估算 **1.03358884 元**；新增未知预留
 **0.38194 元**，并非确认消费。33 份新旧可见审核回执冷验、完整重放通过。
-唯一运行/费用继续点现在是 `output/private-audits/release-lifecycle-chat-20260920-01/run`，
+该阶段的运行/费用检查点为 `output/private-audits/release-lifecycle-chat-20260920-01/run`，
 917 分钟、ledger **4367**、**1475 usage /1472 reservations /60 unknown holds**。
 `finished.json` 的 pending 是不可变终态记录；独立 `reconciliation-status.json` 已 verified。
 没有存活的付费进程；不得回退旧低费用库。
@@ -108,7 +129,7 @@ fixture bootstrap/重放及 69 项 CLI 检查通过。新 World 的已审人生�
 本段未改生产代码，也未新增付费。
 
 62 次新增真实调用全部关闭并独立对账，已知价表估算合计 **2.698217 元**，无新增未知
-预留；31 份旧、新来源回执冷核验与重放通过。当前唯一运行/计费继续点为
+预留；31 份旧、新来源回执冷核验与重放通过。该阶段运行/计费检查点为
 `output/private-audits/release-life-chat-continuation-20260920-01/run`：863 分钟、ledger 4067，
 **1441 usage / 1438 reservations / 59 unknown holds**。
 
@@ -131,7 +152,7 @@ fixture bootstrap/重放及 69 项 CLI 检查通过。新 World 的已审人生�
 作者仍为 Flash。239 项相关检查通过；纠正反馈补齐后 9 项专项通过（组间重叠）。
 
 18 次真实调用已关闭并完成独立对账，全部已知用量，价表估算约 **0.574849 元**，
-无新增未知预留；28 份旧、新来源回执冷核验与重放通过。当前统一继续点为
+无新增未知预留；28 份旧、新来源回执冷核验与重放通过。该阶段统一检查点为
 `output/private-audits/release-private-cognition-chat-20260919-01/run`：838 分钟、ledger 3762，
 1379 usage / 1376 reservations / 59 unknown holds。本轮未触发 Life 候选审核。
 
@@ -553,7 +574,9 @@ life_responses而放过同时进入记忆的summary、Appraisal或线程理由�
 见[本轮完整证据](release-content-evidence-validation-2026-09-15.json)和
 [字段权限与存储设计](../design/world-consequence-content-fields-2026-09-15.md)。
 
-## 下一步必须处理
+## 历史阶段的待办
+
+以下保留当时的缺口，当前剩余项以本文顶部及[首版验收清单](release-candidate-gates-2026-09-20.md)为准。
 
 1. **普通近况问答和纠正。** 最新四轮三轮交付，回来问近况仍未交付。分清既有生活
    来源缺口、模型错误引用及审核误读，不给“等待/休息/走完一圈”等具体经历自动放行。
@@ -567,7 +590,7 @@ life_responses而放过同时进入记忆的summary、Appraisal或线程理由�
 5. 邀请前仍需最终固定候选全套检查、实际 QQ 终态回执、账号隔离、备份恢复与 24 小时
    持续运行；面板用同一合格旅程录制。当前 goal 不授权部署/真实 QQ，小屋不恢复。
 
-## 已完成部分的边界
+## 历史已完成部分的边界
 
 生活上下文已区分未定事件和已发生经历，保留结构化结果及逐条时间。上轮真实生活链推进到活动结束、
 世界结果、角色反应、记忆保留和下一项Plan；计划不证明执行。启动前人生档案具备审核、隔离导入、
@@ -580,7 +603,14 @@ life_responses而放过同时进入记忆的summary、Appraisal或线程理由�
 
 ## 唯一继续点与费用
 
-**运行和计费统一继续点为 `output/private-audits/release-life-chat-continuation-20260920-01/run`，
+**最新运行和累计计费统一继续点为 `output/private-audits/release-clean-continuation-20260920-01/run`，
+1543 usage /1540 reservations /64 unknown holds，61 分钟、ledger 400/revision 192。**
+本次 25 physical /25 known，已知用量估算 0.60819330 元；重启与冷重放通过。
+旧身份或旧目录仅保留历史证据，恢复时必须继承上述最新账目，不能回退到旧低费用库。
+
+以下为历史阶段对账，不是当前继续点：
+
+**当时运行和计费检查点为 `output/private-audits/release-life-chat-continuation-20260920-01/run`，
 1441 条 usage、1438 条 reservation、59 条计费未知预留。** 已推进 863 分钟，
 逻辑时刻 2026-09-14T15:23:00Z、ledger 4067。不能重置历史、账目或旧未知预留。
 运行正常有界 operator_stopped，completed=false；`finished.json` 只记录进程终态，

@@ -1,11 +1,31 @@
 # Girl-Agent Domain Glossary
 
-For current release qualification and the separate runtime/billing continuation
-checkpoints, read `docs/audits/release-status-2026-09-13-current.md`. Dated trial
+For current release qualification and the shared runtime/billing continuation
+checkpoint, read `docs/audits/release-status-2026-09-13-current.md`. Dated trial
 observations below retain their historical scope; they do not supersede that
 current index or authorize resuming an older, cheaper usage ledger.
 
 2026-09-20 latest release qualification: still manual_only / qualification_incomplete.
+The clean identity continuation at a2f36c7f ran from minute 45 to 61: one
+WorldOccurrence settled and an Activity started, but no new CharacterLifeResponse
+or Experience was accepted. One new Fact memory does not close the life-memory-chat
+chain. No new accepted visible character text was delivered; only explicit system
+failure notices were shown. Life .11 made zero provider requests: local request
+preparation rejected a valid five-item compact appraisal row with six declared
+columns and an omitted optional trailing excerpts cell. This was not a provider
+schema rejection or timeout. Proactive correction was not exercised.
+Latest runtime AND cumulative billing: output/private-audits/release-clean-continuation-20260920-01/run,
+ledger 400/revision 192; 1543 usage /1540 reservations /64 unknown holds.
+All 25 physical calls have known usage, estimated at 0.60819330 CNY. Restart and
+cold replay checks passed. Post-trial e127eaaf fixes the optional trailing cell
+handling; 27 focused offline checks pass. The actual failed author snapshot now
+passes the .11 display/request-assembly seam offline; this is not a sent request,
+a complete reconstruction of its unsaved new pin, or real-provider qualification.
+Life .11 and proactive recovery still require exercised real-path evidence.
+See docs/audits/clean-demo-validation-2026-09-20.md. Never resume an older cheaper
+usage ledger; older runtime identities must inherit this latest cumulative account.
+
+Historical clean baseline (aa8c8cce, minute 0–45; superseded continuation point):
 The clean identity at aa8c8cce passed real 24-record prehistory review, retained
 four records by character choice, and delivered both natural user inputs / five
 text Beats. The same-owner authenticated dashboard HTTP read passed; post-login
@@ -14,7 +34,7 @@ and one activated WorldOccurrence exist, but no occurrence settlement/Experience
 Life review exposed an Observation-vs-exact-Fact display mismatch; one later
 appraisal review passed but does not prove a lived Experience. Return chat was
 not reached before the 40-physical-call ceiling (two additional local denials).
-Latest clean runtime AND cumulative billing: output/private-audits/release-clean-demo-20260920-01/run,
+At that trial's close: output/private-audits/release-clean-demo-20260920-01/run,
 ledger 322/revision 165; 1518 usage /1515 reservations /64 unknown holds. Independent
 demo-reconciliation-status.json verifies 38 known bills (0.67650258 CNY), four new
 unknown holds (1.265022 CNY, including unforwarded conservative holds), two v22
@@ -23,7 +43,7 @@ known call (0.011272 CNY). See docs/audits/clean-demo-validation-2026-09-20.md.
 Post-trial 212bb352 transfers proactive semantic correction into its existing
 candidate-bound recovery phase (90 checks). 48efd198 introduces Life .11 exact
 Fact displays while preserving old .10 request bytes (60 checks, real old receipt
-cold verified). Neither fix is real-provider qualified yet. The prior identity's
+cold verified). Neither fix was real-provider qualified at that checkpoint. The prior identity's
 ledger 4367 remains a useful counterexample, but its billing
 is now stale; never resume it without merging the latest cumulative account.
 
@@ -45,7 +65,7 @@ explicit Life candidate reviewer was never invoked.
 Post-trial fb40a205 adds bounded internal capability-manifest audit storage and
 requires exact storage before recording recoverable success. Three actual 13341-char
 manifests cold-read correctly with unchanged semantic hashes; 176 related tests pass.
-The latest DB cold-replays; six historical missing bindings remain rejected and
+That trial's DB cold-replays; six historical missing bindings remain rejected and
 were not repaired. This is offline repair, not a new real-life qualification.
 e089056b adds --primary-user-id for a clean named journey; zero-call fixture
 bootstrap/replay and 69 CLI tests pass. Prehistory/on-owner dashboard composition
@@ -56,8 +76,8 @@ displays bind same-plan lifecycle readings and exact accepted Fact values;
 qualification yet. See docs/audits/release-demo-composition-2026-09-20.md.
 All 34 physical calls are closed and reconciled: 33 known calls estimated at
 1.03358884 CNY, one unknown hold of 0.38194 CNY (not a known charge). All 33 old/new
-visible receipts cold-verify and replay matches. Runtime and billing both continue
-from output/private-audits/release-lifecycle-chat-20260920-01/run
+visible receipts cold-verify and replay matches. Its historical runtime/billing checkpoint was
+output/private-audits/release-lifecycle-chat-20260920-01/run
 (elapsed 917 minutes, ledger 4367; 1475 usage /1472 reservations /60 unknown holds).
 No paid process remains live. finished.json retains terminal pending; the separate
 immutable reconciliation-status.json is verified. Never resume an older cheaper

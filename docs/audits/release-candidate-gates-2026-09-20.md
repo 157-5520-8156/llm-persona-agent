@@ -4,6 +4,15 @@
 小屋和额外能力不进入本次发布；长期人格、遗忘、事件多样性仍属于项目完整目标。
 当前资格仍为 manual_only / qualification_incomplete。
 
+最新同一干净身份已续跑至 61 分钟：WorldOccurrence settled、ActivityStarted 已发生，
+但无新的 CharacterLifeResponse/Experience 或 accepted visible 角色交付，仅系统失败提示。
+Life `.11` 在本地准备失败，实际 provider 请求为 0；`e127eaaf` 的紧凑行适配及真实
+snapshot 请求组装有 27 项离线检查，不能算实跑通过。主动联系纠正本轮未行使。
+唯一最新运行/费用继续点是 `output/private-audits/release-clean-continuation-20260920-01/run`：
+ledger 400/revision 192，1543 usage /1540 reservations /64 unknown holds。
+本轮 25 physical /25 known、估算 0.60819330 元，重启/冷重放通过；不恢复旧低费用账本。
+详见 [干净旅程与续跑证据](clean-demo-validation-2026-09-20.md)。
+
 ## 推进顺序
 
 1. **完整聊天交付**：当前主阻断。用已有真实观察测试当前认知与有来源的回忆，核对
@@ -18,12 +27,15 @@
 3. **同一干净身份的完整旅程**：自主计划、实际后果、角色反应、记忆保留、跨会话
    回忆及聊天；同时覆盖用户离开/回来和旧话题。既有档案须重新绑定演示 World，
    不能复制受污染测试库。入口是 longitudinal audit 的 `--primary-user-id` 与 prepare_character_prehistory；
-   显式身份已完成零调用 bootstrap 验证；档案导入、角色保留和面板同 owner 组合已接通，
-   正常宿主/离线 provider 的集成检查通过，仍待干净身份的真实模型体验验收。
+   正常宿主已完成真实 24 条前史审核、角色保留 4 条及首次两轮聊天交付；续跑已结算
+   世界事件并开始活动，仍缺 Life 反应、Experience/生活记忆与回来聊天的完整交付。
+   先复测 `.11` 本地准备修复后的真实审核和落地，不把 Fact 记忆或活动开始算作完成。
 4. **可录制面板**：主体已经具备，用同一旅程数据验证来源和状态展示，无须界面
-   重写。Experience 未读取正文不能呈现成已证明完整因果。使用认证 owner DTO。
+   重写。同 owner 认证 HTTP 已通过，登录后的视觉验收待做。Experience 未读取正文
+   不能呈现成已证明完整因果。使用认证 owner DTO。
 5. **运行验收**：最终配置的独立进程恢复、备份回滚、重复事件不重复发送；实际 QQ
-   staging 终态回执与 24 小时持续运行分别取证。外部部署/真实 QQ 不在当前自动
+   staging 终态回执与 24 小时持续运行分别取证。本次重启/冷重放已通过，不能代替这些
+   未执行项目。外部部署/真实 QQ 不在当前自动
    goal 的执行授权内，先完成本地候选和可审查操作方案。
 
 ## 邀请与费用边界
