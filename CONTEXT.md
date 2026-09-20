@@ -1,134 +1,32 @@
 # Girl-Agent Domain Glossary
 
 For current release qualification and the shared runtime/billing continuation
-checkpoint, read `docs/audits/release-status-2026-09-13-current.md`. Dated trial
-observations below retain their historical scope; they do not supersede that
-current index or authorize resuming an older, cheaper usage ledger.
+checkpoint, read `docs/audits/release-status-2026-09-13-current.md`. Trial history
+is retained in the linked audit documents, not as competing current checkpoints.
 
-2026-09-20 latest release qualification: still manual_only / qualification_incomplete.
-Latest closed runtime AND cumulative billing is now output/private-audits/release-clean-continuation-20260920-06/run,
-ledger518/revision217, 1625 usage /1622 reservations /71 unknown holds. At frozen41d3ec57,
-33 forwarded calls produced32 verified native bills estimated0.88308870 CNY and one unknown
-hold0.787329 CNY. Process/clients closed; independent reconciliation and cold replay verified.
-No new character delivery/Life response/Experience. Her actual lifecycle choice abandoned
-the old active Plan before the new producer scan, so the new producer is not_exercised;
-the old environment occurrence settlement is not an active-attempt result. The restored chat
-was accurately rejected for unsupported walking; correction still authored a similar act,
-then source review timed out22.004s. See current status for the exact qualification scope.
-Post06 Life13 adds qualified owned paused/abandoned Plan state and accepted Affect history.
-Only its versioned Life profile/model view exposes the new lifecycle scope; ordinary visible22
-and Life1-12 retain their permissions.76 and116 targeted checks include the unchanged120-case
-baseline. Independent f1da6600 full-source processes preserve12 legacy compiler preparations/
-readings and a real old Life10 receipt. New request/provider qualification remains pending;
-same-prefix source reconstruction is not recovery or repair of the old missing author pin.
-The historical05 evidence below is preserved, but its continuation/account is now stale.
+2026-09-20 latest closed trial: still manual_only / qualification_incomplete.
+The only current runtime AND cumulative billing continuation is
+output/private-audits/release-clean-continuation-20260920-07/run,
+ledger 580/revision 234, 1651 usage /1648 reservations /71 unknown holds.
+At frozen 89232c38, all 26 forwarded calls have verified native usage, estimated
+0.70211972 CNY, with zero new unknown holds. The process and clients closed at
+drain_limit_reached; independent reconciliation is verified. Cold replay matches,
+and both inherited v22 visible receipts remain exact and cold-verified; no new
+visible delivery or visible receipt was produced.
 
-Historical05 qualification checkpoint:
-Latest closed runtime AND cumulative billing: output/private-audits/release-clean-continuation-20260920-05/run,
-ledger467/revision203, 1592 usage /1589 reservations /70 unknown holds.
-It inherited the full 1569/1566/69 account before capturing its new usage watermark.
-23 requests were forwarded; 22 known native bills estimate 0.44452118 CNY, one unknown
-hold is 0.716148 CNY (not a confirmed charge). Process/clients are closed and independent
-reconciliation verified. Never resume the now-stale 04 or support-basis account directly.
-The new shared Life authorship note reached both actual initial/corrected author requests;
-186 focused checks and old .1-.12 compiler bytes/real receipt passed. Five real Life reviews
-were complete and structurally valid but rejected; zero new Life response/Experience.
-The returned-user chat also delivered zero new visible text: source review was forwarded,
-received HTTP200 headers, then timed out after22.004s without body or native usage.
-An additional WorldOccurrence was committed/activated but not settled. Cold replay and
-both old v22 visible receipts verify; this is not real dialogue/long-term/cost qualification.
-Dashboard e7822c02 now reads only exact published, selected environment bodies with actor,
-privacy and user-channel gates.88 focused checks pass; actual same-owner authenticated
-Chrome desktop/mobile/recording display shows the excerpt, with no JS errors or overflow.
-The closed World has no actor perception/attempt record for having passed or seen that
-random campus event; participant/location/Clock do not supply one. Existing authoring
-already supports Started/Resumed bound attempts. Their dedicated effect-once producer is now
-wired with exact current active-head/intention/Clock evidence, shared backoff and completion
-priority.109 focused checks include the unchanged120-case baseline; ordinary/completed author,
-manifest and both review messages are byte-identical to0132ded4. The actual05 active intention
-is readable, but the new producer has not yet passed a real-provider continuation.
-The independent support-basis experiment remains unqualified: it accepted a switched
-actor/recipient negative. It must not be promoted. See the current release status and
-release-review-interface-validation-2026-09-20.md for evidence and remaining gates.
+Life .13 made 5 real reviews: one accepted correction produced CharacterLifeResponse
+seq538, ExperienceCommitted seq541 and a new future Plan seq543. Lifecycle/Affect
+materials reached the actual author and reviewer, but the accepted review did not
+cite either new permission family. Their semantic-use qualification remains open.
+The active-attempt producer is still not_exercised; a future Plan is not an action
+or result. Conditional-intention misreadings and a supported claim with empty
+supports remain recorded failures. See the current index for the chat diagnosis.
 
-Historical continuation (a2f36c7f, minute 45–61; superseded continuation point):
-The clean identity continuation at a2f36c7f ran from minute 45 to 61: one
-WorldOccurrence settled and an Activity started, but no new CharacterLifeResponse
-or Experience was accepted. One new Fact memory does not close the life-memory-chat
-chain. No new accepted visible character text was delivered; only explicit system
-failure notices were shown. Life .11 made zero provider requests: local request
-preparation rejected a valid five-item compact appraisal row with six declared
-columns and an omitted optional trailing excerpts cell. This was not a provider
-schema rejection or timeout. Proactive correction was not exercised.
-At that trial's close: output/private-audits/release-clean-continuation-20260920-01/run,
-ledger 400/revision 192; 1543 usage /1540 reservations /64 unknown holds.
-All 25 physical calls have known usage, estimated at 0.60819330 CNY. Restart and
-cold replay checks passed. Post-trial e127eaaf fixes the optional trailing cell
-handling; 27 focused offline checks pass. The actual failed author snapshot now
-passes the .11 display/request-assembly seam offline; this is not a sent request,
-a complete reconstruction of its unsaved new pin, or real-provider qualification.
-Life .11 and proactive recovery still require exercised real-path evidence.
-See docs/audits/clean-demo-validation-2026-09-20.md. Never resume an older cheaper
-usage ledger; older runtime identities must inherit this latest cumulative account.
-
-Historical clean baseline (aa8c8cce, minute 0–45; superseded continuation point):
-The clean identity at aa8c8cce passed real 24-record prehistory review, retained
-four records by character choice, and delivered both natural user inputs / five
-text Beats. The same-owner authenticated dashboard HTTP read passed; post-login
-visual QA remains pending. At minute 45, one future Plan (opens at minute 61)
-and one activated WorldOccurrence exist, but no occurrence settlement/Experience.
-Life review exposed an Observation-vs-exact-Fact display mismatch; one later
-appraisal review passed but does not prove a lived Experience. Return chat was
-not reached before the 40-physical-call ceiling (two additional local denials).
-At that trial's close: output/private-audits/release-clean-demo-20260920-01/run,
-ledger 322/revision 165; 1518 usage /1515 reservations /64 unknown holds. Independent
-demo-reconciliation-status.json verifies 38 known bills (0.67650258 CNY), four new
-unknown holds (1.265022 CNY, including unforwarded conservative holds), two v22
-receipt cold recompilations and exact replay. Prehistory review was one additional
-known call (0.011272 CNY). See docs/audits/clean-demo-validation-2026-09-20.md.
-Post-trial 212bb352 transfers proactive semantic correction into its existing
-candidate-bound recovery phase (90 checks). 48efd198 introduces Life .11 exact
-Fact displays while preserving old .10 request bytes (60 checks, real old receipt
-cold verified). Neither fix was real-provider qualified at that checkpoint. The prior identity's
-ledger 4367 remains a useful counterexample, but its billing
-is now stale; never resume it without merging the latest cumulative account.
-
-Earlier same-day observations below retain only their historical scope.
-Explicit v22 permits lifecycle-only assertions to use the same plan's recorded
-status/start/end fields, without granting execution-success or intention authority.
-Bound UTC display preserves original source bytes, clock domains and old receipts.
-Completed self-directed attempts now enter the reviewed World consequence lane,
-with current-Clock/backoff, exact owner/source checks and effect-once identity.
-The actual v22 full-host trial at f62cf4d3 delivered two of three inputs / eight
-text Beats: one after same-character correction, the other after a later scheduler
-retry. The third still failed; its source JSON put a Fact-value-only reading into
-the ordinary reading list. The same reviewer also misused an observation excerpt
-and current-time report. These semantic counterexamples remain unresolved.
-Completion processing at 899.03 and 909.03 minutes reached author source reselection
-to no_op, but required manifest storage had silently failed at the old 12000-char
-limit. No new WorldOccurrence, settlement or Experience was created, and the
-explicit Life candidate reviewer was never invoked.
-Post-trial fb40a205 adds bounded internal capability-manifest audit storage and
-requires exact storage before recording recoverable success. Three actual 13341-char
-manifests cold-read correctly with unchanged semantic hashes; 176 related tests pass.
-That trial's DB cold-replays; six historical missing bindings remain rejected and
-were not repaired. This is offline repair, not a new real-life qualification.
-e089056b adds --primary-user-id for a clean named journey; zero-call fixture
-bootstrap/replay and 69 CLI tests pass. Prehistory/on-owner dashboard composition
-is now implemented through the normal host with an offline HTTP provider (99
-related checks); fresh real identity qualification remains pending. New source
-displays bind same-plan lifecycle readings and exact accepted Fact values;
-42/188 related checks and all 33 old receipt cold checks pass. No paid post-repair
-qualification yet. See docs/audits/release-demo-composition-2026-09-20.md.
-All 34 physical calls are closed and reconciled: 33 known calls estimated at
-1.03358884 CNY, one unknown hold of 0.38194 CNY (not a known charge). All 33 old/new
-visible receipts cold-verify and replay matches. Its historical runtime/billing checkpoint was
-output/private-audits/release-lifecycle-chat-20260920-01/run
-(elapsed 917 minutes, ledger 4367; 1475 usage /1472 reservations /60 unknown holds).
-No paid process remains live. finished.json retains terminal pending; the separate
-immutable reconciliation-status.json is verified. Never resume an older cheaper
-ledger. See docs/audits/lifecycle-chat-validation-2026-09-20.json and the current
-release status/gates. No QQ, deployment or 100 CNY/month qualification is implied.
+Old Life .1-.12 compiler preparations/readings and an old real Life .10 receipt remain
+byte-compatible. These checks and the 120-case mechanism baseline do not replace
+stable dialogue, remembered life experience, final frozen full-suite, real QQ
+terminal receipts, 24-hour operation or the approximately 100 CNY/month cost gate.
+Never resume an older runtime identity without inheriting the full latest account.
 
 ## World
 

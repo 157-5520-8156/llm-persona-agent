@@ -1,12 +1,89 @@
 # 来源审核接口与真实续跑
 
-本页按阶段保存证据；最新发布判断和唯一有效继续点见
-[当前发布状态](release-status-2026-09-13-current.md)。
+本页保存各阶段证据；**当前闭合试验为07**，其前的运行／费用检查点均已过期。
+最新发布判断与唯一有效继续点见 [当前发布状态](release-status-2026-09-13-current.md)。
+资格仍为 `manual_only / qualification_incomplete`；不以离线测试、API200或材料送达替代交付。
 
-代码 `64f41e06`，发布资格仍为 `manual_only / qualification_incomplete`。
-本记录保留失败结果，不以离线测试、API 200 或来源展示改善代替角色交付。
+## 07：真实Life13接受与剩余失败（89232c38）
 
-## 可见聊天
+私有证据目录为 `output/private-audits/release-clean-continuation-20260920-07/`。
+正常宿主继承06完整运行与累计账目，在130至146分钟继续同一干净身份，保留v22聊天，
+使用冻结代码默认安装的Life `.13`。本次没有升级或重编译旧回执，也没有恢复旧的低费用账本。
+
+### Life材料、审核和实际提交
+
+`life13-trial-inspection.json` 对照实际客户端请求、完整工具返回与已保存preparation：
+9份Life作者请求都收到 `stimulus_appraisal.lifecycle.1` profile，展示同owner的abandoned
+状态和既有Affect；5份审核请求均包含对应新readings／permissions，且精确匹配保存的
+原preparation。工具为 `review_life_candidate_v7`，协议为 `life-source-review.13`。
+
+| 原审核capture前缀 | 结果 | 证据范围 |
+|---|---|---|
+| `20e95d1e` | rejected | 无来源的当前“手上拿着相机”不能由环境或计划证明 |
+| `f6392922` | accepted | 同角色纠正删除该无源事实，34个字段通过；实际形成下述提交 |
+| `65fdb11f` | uncertain | 候选写自己早上路过该路；环境和参与者不能证明其行走 |
+| `abcf154e` | rejected | 6项失败，包括条件意愿被强化为用户将回来／开口，以及用户态度的范围问题 |
+| `6466bee8` | evidence_validation_failure | 对条件可能性返回 `supported` 但 `supports=[]`，本地严格拒绝 |
+
+接受的纠正稿提交了 `CharacterLifeResponseRecorded`（seq538）和 `ExperienceCommitted`
+（seq541）；同一角色意图形成 `ActivityPlanned`（seq543）。这证明一次环境来源—生活
+反应—Experience提交经过真实生产链，但不证明后续记忆召回、对话使用或长期多样性。
+接受的审核没有引用新增生命周期／Affect权限；真实展示已验证，正确语义使用仍未验收。
+
+新Plan的窗口从11:28开始，本次停在11:26。旧活动早已在06由角色放弃；本轮未产生
+Started/Resumed，因此新active结果生产入口仍为 `not_exercised`，相关author／review／
+acceptance／publication均未执行。seq529/530的新环境事件只是committed／activated，
+本轮无新增settlement；它与已接受Experience所引用的既有结算来源不可混为一件事。
+
+条件意愿反例继续保留：“他回来时自然接住他的话”被强化成他必将回来；末次纠正明确
+写“若他再开口，就自然接住，不追问”，审核也将其解释为条件可能性，却放入必须有来源
+支持的fact claim并返回空supports，触发 `Life factual support is missing`。这是已完整
+返回后的结构失败，不是超时，也不能本地补写支持或改判成功。初稿无源行动／持物的
+正确拒绝与此范围错误须分别修复，不能为提高通过率放宽事实权限。
+
+### 回来聊天
+
+146分钟输入“我歇一会儿。你这会儿在忙什么？”后没有新增角色交付。8次聊天链调用
+全部完整返回，没有timeout；初稿来源审核13.448秒，纠正11.043秒。初稿编写“刚在
+图书馆坐了一会儿”“我看了会儿”，均无角色行动来源；纠正把看画改成未来打算，
+却改写为无依据的“刚在校园路上晃”，再次被拒。初稿将“不忙”视作需记录的状态，
+纠正则视作当前表达，保留这一解释不一致；不影响两稿无源过去行动的拒绝依据。
+
+seq563为 `paired_expression_reselection_invalid`，seq564/565是两份候选invalid；
+seq566–571只是6次审核子调用已返回，不是候选accepted，也没有进入可见接受／发送／回执。
+当前location正确标为 `no_authority`，新计划正确标为未来，不能证明图书馆停坐、行走或看画。
+
+`chat-trial-inspection.json` 确认一个具体呈现缺口：纯已结算环境卡被归入
+`recent_self_experiences`，内层environment scope尚在，外层却缺来源种类／认知权限标记。
+新Experience541已在 `automatic_prefetch/private_impressions` 实际送达作者，并非完全
+丢失；但原内容facet／类型scope未保留。后续应修正来源类型呈现，保留正文、时间、哈希、
+原审核权限和旧快照编译；该诊断不证明展示修正必然解决模型编造行为。
+
+### 终态、冷恢复和累计账目
+
+`demo-terminal.json` 保留原始 `reconciliation=pending`；独立的
+`continuation-reconciliation-status.json` 和 `continuation-reconciliation.json` 均为
+`verified`。进程与全部客户端关闭、无关闭错误，真实终止原因为 `drain_limit_reached`；
+不是到达40次物理上限。本轮26次转发，0次本地上限拒绝，26份完整响应逐一关联原生用量。
+已知费用按仓库价格估算 **0.70211972元**，新增unknown预留为0；这不是整月费用或实扣证明。
+
+唯一运行／累计费用继续点：`output/private-audits/release-clean-continuation-20260920-07/run`，
+ledger **580** / World revision **234**，**1651 usage /1648 reservations /71 unknown holds**。
+前1625条usage／1622条reservation逐行精确保留，71笔旧unknown没有消失。当前usage账为
+1570 known／3 legacy／7 not_billed／71 unknown；reservation为1577 settled／71 billing_unknown。
+冷重放hash为 `75a1a4d8fe9f95b5b0e41999b7938d89c94646802ac7a0ed126b75a73ae98d80`，
+机制检查无finding；2张旧v22可见回执原字节继承并冷验，新增可见回执和交付均为0。
+
+证据以terminal、独立reconciliation、`life13-trial-inspection.json`、`chat-trial-inspection.json`、`run/evidence.jsonl`
+和实际 `run/model-inputs.jsonl` 为准；旧准备README不代表试验尚未启动。
+本次仍未完成真实QQ、24小时持续运行、最终冻结全套与约100元月费资格。
+
+## 历史记录（03至06阶段，以下检查点均非当前继续点）
+
+历史起点代码为 `64f41e06`。以下记录保持各阶段的失败与离线修复边界；其中当时的
+“尚待实跑”不覆盖上述07结果，过去的成功也不覆盖目前尚未通过的发布门槛。
+
+### 可见聊天
 
 v23 在每条来源旁展示已有用途，在每个固定命题旁保留原有 `reading_id → scope`
 映射。来源、权限、两个独立读取者、完整原文及遗漏检查不变；239 项针对性检查通过，
@@ -28,7 +105,7 @@ v23 在每条来源旁展示已有用途，在每个固定命题旁保留原有 
 `temperature`、加入 `reasoning_effort=high`；这不是完整请求只改变一个字段的对照。
 两次均超过原 22 秒期限，没有语义结论。没有扩大期限或据此部署新模型配置。
 
-## 生活链
+### 生活链
 
 同一角色从 61 分钟推进到 63 分钟，保留 v22 聊天配置，验证 Life `.11` 紧凑行修复。
 4 次真实调用中，两个审核请求均 HTTP 200、完整返回 `review_life_candidate_v6`；
@@ -44,7 +121,7 @@ v23 在每条来源旁展示已有用途，在每个固定命题旁保留原有 
 离线检查通过，`.1–.11` 请求和 readings 与旧编译器逐字一致，旧真实 `.10` 回执冷验
 通过。两份 `.11` 原始失败仍拒绝，未改作者绑定，未重标旧请求；新协议尚待真实调用。
 
-## 费用与继续点
+### 费用与继续点
 
 | 试验 | 实际调用 | 已知估算 | 新未知预留 |
 | --- | ---: | ---: | ---: |
@@ -56,13 +133,13 @@ v23 在每条来源旁展示已有用途，在每个固定命题旁保留原有 
 World，Life 续跑完整继承最新累计账目。第一次续跑启动的私有目录约束错误发生在
 宿主构建前，0 次调用；另建目录后继续，原始失败记录保留。
 
-最新运行及费用统一继续点：
+该阶段运行及费用检查点（已过期）：
 `output/private-audits/release-clean-continuation-20260920-03/run`。
 累计 **1553 usage /1550 reservations /66 unknown holds**，ledger **405**、revision **193**。
 冷重放一致、机制检查无 finding，旧 2 张 v22 回执原字节继承并冷验证，新增回执 0。
 没有存活的付费进程，没有真实 QQ 或部署。旧检查点只能作历史证据，不能直接恢复旧账。
 
-## 回归收敛
+### 回归收敛
 
 全量缺陷扫描在主动审核超时用例处停止，已有 6285 passed、18 failed、2 xfailed；
 剩余 3003 项另行运行。这是查找回归的扫描，不能记作全量通过。
@@ -73,10 +150,10 @@ World，Life 续跑完整继承最新累计账目。第一次续跑启动的私�
   修正价格时间和 persona 的旧测试断言，生产计费和角色配置未改。209 项通过。
 - `2ee667fc` 修正架构检查的模块边界，避免把 world_v2 误认作 legacy world；25 项通过。
 
-尚在处理的失败包括旧生活/感知测试未准备合法来源，以及主动审核超时后的审计收尾。
+当时尚在处理的失败包括旧生活/感知测试未准备合法来源，以及主动审核超时后的审计收尾。
 这些离线修复不代表正常聊天误拒、生活记忆链或演示上线已验收。
 
-## 后续 ce28d96d 真实续跑和独立反证
+### 后续 ce28d96d 真实续跑和独立反证
 
 Life `.12` 续跑 `release-clean-continuation-20260920-04` 已终止并独立对账。
 普通短等待未触发下一次 heartbeat；推进到正常 heartbeat 后实际调用 12 次，另 2 次
@@ -93,7 +170,7 @@ Life `.12` 续跑 `release-clean-continuation-20260920-04` 已终止并独立对
 
 同次运行完成了真实同 owner 登录后浏览器检查：1440px 桌面、390px 手机和生活聚焦
 录制视图均已同步，无 JavaScript 错误或横向溢出。截图及 JSON 在该私有运行目录。
-这是显示检查；事件正文尚未读取的卡片仍不能讲清发生了什么，正在接入有权限的环境摘要。
+这是显示检查；当时事件正文尚未读取，卡片不能讲清发生了什么；后续05已接入有权限的环境摘要。
 
 随后在 `2dafb527` 做独立 `report-uptake-support-basis-experiment.1`，仅改变诊断返回
 接口，不写 World、不生成可见回执、不修改生产审核协议。正常报告承接通过，但
@@ -102,13 +179,13 @@ Life `.12` 续跑 `release-clean-continuation-20260920-04` 已终止并独立对
 不足以保证人物关系匹配；旧 Boolean 接口曾成功，不能宣称 Boolean 本身是根因。
 两次均有原生用量，估算 0.1830816 元，新增未知预留 0；全非计费表及旧账逐行不变。
 
-当前运行继续点：`output/private-audits/release-clean-continuation-20260920-04/run`。
-当前费用继续点：`output/private-audits/release-report-uptake-basis-20260920-01/run/world.sqlite`，
+该阶段运行检查点（已过期）：`output/private-audits/release-clean-continuation-20260920-04/run`。
+该阶段费用检查点（已过期）：`output/private-audits/release-report-uptake-basis-20260920-01/run/world.sqlite`，
 **1569 usage /1566 reservations /69 unknown holds**。其 World 与前者相同。
-下一次运行须复制上述运行历史并继承这一最新累计账目，不能直接使用旧 1567 条账本。
+该阶段要求后继试验继承1569条完整累计账目；当前继续点已更新至本页顶部07，不得恢复旧账。
 两次试验均已闭合对账；没有存活的付费进程、真实 QQ 或部署。
 
-## 本批离线回归完成范围
+### 本批离线回归完成范围
 
 - 全量扫描两段分别为 6285 passed/18 failed/2 xfailed（中断）及
   2972 passed/12 failed/19 skipped。发现的失败均已针对性修复并复测；没有冒称这两段
@@ -121,7 +198,7 @@ Life `.12` 续跑 `release-clean-continuation-20260920-04` 已终止并独立对
   字段相同，确认是已有版本身份变化后建立 `.104`，正常完整门禁通过。
   旧证据保留，详见 `scenario-baseline-104-2026-09-20.json`。
 
-## Life 作者权限说明对齐
+### Life 作者权限说明对齐
 
 `bfb7040c` 提取审核者原有的 `current-life-authorship.1` 定义，只向显式安装 Life
 reviewer 的新作者请求展示。初稿、同角色纠正与审核者收到同一 actor/time 及权限含义；
@@ -135,7 +212,7 @@ reviewer 的新作者请求展示。初稿、同角色纠正与审核者收到�
 Life response 或 Experience。离线证据在
 `output/private-audits/release-life-author-authority-20260920-01/offline-verification.json`。
 
-## 同一身份 05 续跑与面板实测（b60fa314）
+### 同一身份 05 续跑与面板实测（b60fa314）
 
 `e7822c02` 接通面板的窄环境正文读取器，复核同一 ledger prefix、实际 settlement、
 唯一发布 descriptor、选中结果和正文哈希，再执行 actor、三层 privacy 及用户通道
@@ -173,10 +250,10 @@ bytes 占 user 内容71.2%，其中9项 recent_dialogue占15,213 bytes。不能�
 机制检查无 finding，2张旧v22回执原样继承并冷验；新增可见回执为0。
 
 代码复查确认 Started/Resumed 已有授权尝试材料及 World consequence 消费者；缺的是
-定向、去重的进行中结果生产调度。下一项补此生产入口，保留当前审核、效果去重、退避
+定向、去重的进行中结果生产调度。当时下一项是补此生产入口，保留审核、效果去重、退避
 和旧回执解释，不从计划、Clock、同地点或参与者直接推导角色动作。
 
-## 进行中活动结果入口：离线资格
+### 进行中活动结果入口：离线资格
 
 现已接通精确 ActivityStarted/Resumed 源事件的一次结果机会。原角色意图必须可从
 原 pin、模型审计和正文哈希读出；最新 owned active head 与当前 Clock 只限定尝试和
@@ -196,9 +273,9 @@ Life response/Experience、冷恢复与后续完成 Context 读取通过；这�
 10:36+08仍 active；61字原角色意图可读，结果入口非空且已到调度时间。原文件哈希
 与冷重放不变。此前Life失败来自独立world-stimulus worker，不是前置aftermath异常。
 证据在 `output/private-audits/release-active-attempt-20260920-01/`；06已准备继承05完整
-运行及1592/1589/70累计账本，尚未启动。本次修复未增加审核协议或旁路消费者。
+运行及1592/1589/70累计账本，此时尚未启动；其后实际结果见下一节。本次修复未增加审核协议或旁路消费者。
 
-## 同一身份06续跑（41d3ec57，96至130分钟）
+### 同一身份06续跑（41d3ec57，96至130分钟）
 
 正常宿主先恢复旧inbound。初稿来源请求71,192bytes，原生19,881输入tokens，19.384秒
 返回完整合法verdict：环境桌子、画稿、路人等通过，当前“我还行”被正确视作当前表达；
@@ -219,7 +296,7 @@ not_exercised。seq490是既有环境事件结算，不得计为新尝试结果�
 机制检查无finding，2张旧v22回执原样冷验。新增角色交付、Life response和Experience均0。
 最终终态、独立对账及只读诊断位于 `output/private-audits/release-clean-continuation-20260920-06/`。
 
-## Life13：生命周期状态和既有情绪材料
+### Life13：生命周期状态和既有情绪材料
 
 06六份Life12请求均精确匹配已保存preparation，重演为5 rejected、1 uncertain，未发现
 schema或Fact值绑定错误。“计划被中止”却没有合格lifecycle reading：真正上游缺口是
@@ -241,4 +318,4 @@ visible编译仍为unsupported，已有同event的current_situation仅baseline_o
 root用完整f1da6600临时源码独立进程与新代码比较12种旧preparation/readings，并冷验
 1张真实旧Life10回执，全部一致。证据在 `release-life-state-readers-20260920-01/` 私有目录。
 06原prefix重建的Affect material identity与原实际review相同、作者展示精确匹配；生成的是
-新snapshot/request，不能声称恢复或升级旧pin。真实Life13生产请求和接受仍待续跑验证。
+新snapshot/request，不能声称恢复或升级旧pin。此离线阶段尚待真实续跑；结果现见本页顶部07。
