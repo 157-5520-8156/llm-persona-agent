@@ -17,10 +17,18 @@ from test_character_interior_inbound_author import (
     _ToolIdentityCombinedProvider,
     _request,
 )
+from test_visible_selected_source_context import _sources
 
 
 def _json(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _required_request(case, *, call):
+    original = case.request.model_copy(update={"call_id": call, "attempt_id": f"attempt:{call}"})
+    requirement = visible_source_runtime.compile_requirement(request=original, capsule=case.capsule)
+    visible_source_runtime.requirement_table(requirement)
+    return original.model_copy(update={"visible_source_requirement_json": requirement})
 
 
 def _parameters(*, tools=True):
@@ -171,7 +179,7 @@ def test_prepare_rejects_unbounded_or_unhashable_parameters(change):
 @pytest.mark.parametrize("required", [False, True])
 @pytest.mark.parametrize("tool_mode", ["none", "forced", "auto"])
 async def test_actual_whole_author_caches_only_required_request_before_review(
-    monkeypatch, required, tool_mode
+    tmp_path, monkeypatch, required, tool_mode
 ):
     provider = _CombinedProvider() if tool_mode == "none" else _ToolIdentityCombinedProvider()
     if tool_mode == "auto":
@@ -193,9 +201,11 @@ async def test_actual_whole_author_caches_only_required_request_before_review(
         return output
 
     monkeypatch.setattr(visible_source_runtime, "review_candidate", read_prepared)
-    request = _request(revision=3, call="carrier").model_copy(
-        update={"visible_source_requirement_json": "{}" if required else None}
-    )
+    if required:
+        async with _sources(tmp_path) as case:
+            request = _required_request(case, call="carrier")
+    else:
+        request = _request(revision=3, call="carrier")
     output = await author.propose(request)
     assert len(provider.calls) == 1
     if required:
@@ -242,7 +252,7 @@ async def test_actual_whole_author_caches_only_required_request_before_review(
 
 
 @pytest.mark.asyncio
-async def test_author_request_cache_evicts_old_calls_without_reissuing_them(monkeypatch):
+async def test_author_request_cache_evicts_old_calls_without_reissuing_them(tmp_path, monkeypatch):
     from companion_daemon.world_v2.character_interior import inbound_author
 
     monkeypatch.setattr(inbound_author, "_MAX_PENDING_DRAFTS", 2)
@@ -259,11 +269,10 @@ async def test_author_request_cache_evicts_old_calls_without_reissuing_them(monk
 
     monkeypatch.setattr(visible_source_runtime, "review_candidate", skip_review)
     outputs = []
-    for ordinal in range(3):
-        request = _request(revision=3 + ordinal, call=f"carrier:{ordinal}").model_copy(
-            update={"visible_source_requirement_json": "{}"},
-        )
-        outputs.append(await author.propose(request))
+    async with _sources(tmp_path) as case:
+        for ordinal in range(3):
+            request = _required_request(case, call=f"carrier:{ordinal}")
+            outputs.append(await author.propose(request))
     with pytest.raises(ValueError, match="unavailable"):
         author.visible_source_author_request(
             outputs[0].winning_model_call_id,

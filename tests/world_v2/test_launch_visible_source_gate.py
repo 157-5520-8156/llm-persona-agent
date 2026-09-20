@@ -228,7 +228,11 @@ async def test_unclosed_allows_one_same_role_reselection_and_reviews_whole_repla
         assert "上一轮结果未通过校验" in correction_instruction
         assert "这只说明上一轮的投递形状不合法" not in correction_instruction
         assert correction["failure_code"] in correction_instruction
-        assert correction["failure_detail"] in correction_instruction
+        if tool_version == "3":
+            assert correction["failure_detail"] not in correction_instruction
+            assert "coordinate.failure_detail" in correction_instruction
+        else:
+            assert correction["failure_detail"] in correction_instruction
         assert correction["failure_detail"].startswith("完整表达的来源审核未闭合")
         original_context = json.loads(first_author["messages"][1]["content"])
         assert "role_result_correction" not in original_context["inner_life_snapshot"]

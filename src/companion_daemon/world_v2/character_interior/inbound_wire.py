@@ -10218,6 +10218,7 @@ class _ExpressionDraftWire:
         source_ref_aliases: SourceRefAliasTable | None = None,
         source_closure_failure: _SourceClosureRecoveryFailure | None = None,
         activity_status_authority: bool = False,
+        preserve_legacy_authoring: bool = False,
     ) -> list[dict[str, str]]:
         return self._model_led_messages(
             request=request,
@@ -10228,6 +10229,7 @@ class _ExpressionDraftWire:
             source_ref_aliases=source_ref_aliases,
             source_closure_failure=source_closure_failure,
             activity_status_authority=activity_status_authority,
+            preserve_legacy_authoring=preserve_legacy_authoring,
         )
 
     def _model_led_messages(
@@ -10241,6 +10243,7 @@ class _ExpressionDraftWire:
         source_ref_aliases: SourceRefAliasTable | None = None,
         source_closure_failure: _SourceClosureRecoveryFailure | None = None,
         activity_status_authority: bool = False,
+        preserve_legacy_authoring: bool = False,
     ) -> list[dict[str, str]]:
         """Expose capability and truth boundaries without directing behavior."""
 
@@ -10283,7 +10286,7 @@ class _ExpressionDraftWire:
             "This is report and attention "
             "authority, not an instruction to answer every item; choose what matters yourself, but "
             "do not mistake an earlier packet item for already handled history. "
-            + self._identity_instruction()
+            + self._identity_instruction(preserve_legacy_authoring=preserve_legacy_authoring)
             + "Return one raw JSON ExpressionDraft with timing_choice, turn_posture, beats, stance, "
             "brief_rationale, confidence, and world_claims. "
             + expression_draft_shape_contract()
@@ -10310,15 +10313,25 @@ class _ExpressionDraftWire:
             "day_sheet and biographical habit lines are not current-world proof; an empty "
             "current_situation / active occurrence means you do not have pinned authority for "
             "a present-tense place, activity, weather, workshop, library session, or already-"
-            "sent photo. Present feelings, attitudes, imagination and wishes may appear without "
-            "a world_claim. Memory may be incomplete, but uncertainty does not supply missing "
-            "events or details: an embedded autobiographical occurrence still needs its exact "
-            "retained or recalled source, including history before this World began. Keeping "
-            "prose out of durable Fact does not exempt it from source review. Declare checkable "
-            "past or present life and delivery claims with matching world_claims; imagination "
-            "and hypotheses must remain distinct from what you experienced. Saying you will "
-            "send a picture inside text alone does not open "
-            "the media lane—use media_request / photo when you want a real attempt. "
+            "sent photo. "
+            + (
+                "Subjective color, fuzzy memory, and private wish may appear in "
+                "visible text without a world_claim; they do not establish World facts and are "
+                "not upgraded into Fact, Relationship, or Media by the host. Declare checkable "
+                "present-tense life or delivery claims only with matching world_claims from "
+                "pinned Context, or keep them as private wish/feeling without asserting they "
+                "are happening. Saying you will send a picture inside text alone does not open "
+                if preserve_legacy_authoring else
+                "Present feelings, attitudes, imagination and wishes may appear without "
+                "a world_claim. Memory may be incomplete, but uncertainty does not supply missing "
+                "events or details: an embedded autobiographical occurrence still needs its exact "
+                "retained or recalled source, including history before this World began. Keeping "
+                "prose out of durable Fact does not exempt it from source review. Declare checkable "
+                "past or present life and delivery claims with matching world_claims; imagination "
+                "and hypotheses must remain distinct from what you experienced. Saying you will "
+                "send a picture inside text alone does not open "
+            )
+            + "the media lane—use media_request / photo when you want a real attempt. "
             "Your present first-person feelings, thoughts, attention, desires, resistance, "
             "uncertainty, imagination, memory accessibility, self-evaluation, associations, "
             "conversational intention, and immediate retrospective continuity of those private "
@@ -10650,7 +10663,7 @@ class _ExpressionDraftWire:
         )
         return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
-    def _identity_instruction(self) -> str:
+    def _identity_instruction(self, *, preserve_legacy_authoring: bool = False) -> str:
         if self._identity_frame is None:
             return ""
         prose = identity_prose(self._identity_frame)
@@ -10727,15 +10740,22 @@ class _ExpressionDraftWire:
                 else ""
             )
             + "Habits and tastes in this identity are texture, not tonight's report. "
-            "You may color this chat with present mood, attitude, associations and imagination; "
-            "these private states do not need external proof. Memory may be incomplete, but "
-            "uncertainty does not supply missing events or details. A recalled excerpt supports "
-            "only its own content, not an invented episode around it. This also applies to "
-            "history before this World began. "
-            "Asserting where you are now, what you are doing, what already happened, or "
-            "that a picture already went out needs matching pinned sources. Expressing a wish, "
-            "feeling or hypothetical does not authorize presenting it as your past experience. "
-            "Chat prose does not silently become Fact, Relationship, or Media. "
+            + (
+                "You may color this chat with mood, attitude, and fuzzy private memory. "
+                "Asserting where you are now, what you are doing, what already happened, or "
+                "that a picture already went out needs pinned World context; without it, keep "
+                "that as wish, feeling, or guess—not a settled World fact. "
+                if preserve_legacy_authoring else
+                "You may color this chat with present mood, attitude, associations and imagination; "
+                "these private states do not need external proof. Memory may be incomplete, but "
+                "uncertainty does not supply missing events or details. A recalled excerpt supports "
+                "only its own content, not an invented episode around it. This also applies to "
+                "history before this World began. "
+                "Asserting where you are now, what you are doing, what already happened, or "
+                "that a picture already went out needs matching pinned sources. Expressing a wish, "
+                "feeling or hypothetical does not authorize presenting it as your past experience. "
+            )
+            + "Chat prose does not silently become Fact, Relationship, or Media. "
             + "Keep companion and counterpart identities distinct; unknown counterpart facts remain unknown. "
         )
 

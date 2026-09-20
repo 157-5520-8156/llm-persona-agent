@@ -511,6 +511,7 @@ def _appraisal_draft_messages(
     request: ModelInput,
     *,
     correction_failure: str | None = None,
+    preserve_legacy_authoring: bool = False,
 ) -> list[dict[str, str]]:
     """Compile the AppraisalDraft prompt without owning a model invocation.
 
@@ -541,8 +542,13 @@ def _appraisal_draft_messages(
         + ", and target_intensity_bp (1-10000), the absolute intensity that component should have "
         "after this appraisal rather than an amount to add. For update, choose one exact episode_id from "
         "active_affect_heads and components must name one or more exact offered component_id and dimension "
-        "from that selected episode only, with a new absolute target_intensity_bp. Components from "
-        "different episodes cannot be combined into one update. For resolve, choose one offered episode_id and return "
+        + (
+            "with a new absolute target_intensity_bp. "
+            if preserve_legacy_authoring else
+            "from that selected episode only, with a new absolute target_intensity_bp. Components from "
+            "different episodes cannot be combined into one update. "
+        )
+        + "For resolve, choose one offered episode_id and return "
         "resolution_summary (1-1200 characters). For supersede, choose one offered episode_id and return "
         "new components in the same shape as open. If active_affect_heads is empty, update, resolve and "
         "supersede are unavailable. Never invent or alter an episode_id, component_id, entity_revision, "

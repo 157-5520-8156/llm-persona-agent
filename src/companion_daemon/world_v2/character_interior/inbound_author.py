@@ -4063,7 +4063,12 @@ class _InboundCharacterAuthor:
             stable_identity_source_refs=self._stable_identity_source_refs,
             model_visible_context_json=provider_request.model_content_json,
         )
-        appraisal_messages = _appraisal_draft_messages(provider_request)
+        # V1/V2 retain their captured authoring bytes. Current guidance belongs
+        # to V3; materialization and source authority stay strict in every lane.
+        preserve_legacy_authoring = self._atomic_tool_envelope_version in {"1", "2"}
+        appraisal_messages = _appraisal_draft_messages(
+            provider_request, preserve_legacy_authoring=preserve_legacy_authoring,
+        )
         expression_messages = expression_adapter._messages(  # noqa: SLF001 - paired internal seam
             request=provider_request,
             quick_recovery=False,
@@ -4076,14 +4081,19 @@ class _InboundCharacterAuthor:
                 and self._atomic_tool_envelope_version == "3"
                 and transport_provider is None
             ),
+            preserve_legacy_authoring=preserve_legacy_authoring,
         )
         expression_user_material = json.loads(expression_messages[1]["content"])
         if not isinstance(expression_user_material, dict):
             raise ValueError("paired expression provider material must be an object")
         expression_user_material["appraisal_affect_hard_boundaries"] = {
             "active_affect_heads": _active_affect_heads(request),
-            "update_scope": "Choose one offered episode_id; every updated component_id and dimension must belong to that same episode. Do not combine components across episodes.",
         }
+        if not preserve_legacy_authoring:
+            expression_user_material["appraisal_affect_hard_boundaries"]["update_scope"] = (
+                "Choose one offered episode_id; every updated component_id and dimension must belong "
+                "to that same episode. Do not combine components across episodes."
+            )
         recall_context_available = model_content_allows_recall(request.model_content_json)
         recall_available = self._recall_available(request) or (
             recall_context_available and self._character_interior_recall_delegate

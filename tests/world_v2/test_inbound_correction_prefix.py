@@ -67,8 +67,11 @@ async def test_public_v3_core_correction_keeps_prefix_and_full_feedback(
         assert coordinate["contract"] == "character-interior-role-result-correction.1"
         assert coordinate["task"] == "return_one_fresh_complete_role_result"
         assert coordinate["failure_code"] == "role_result_schema_invalid"
-        assert trailer["instruction"] == _role_result_correction_instruction(coordinate)
-        assert coordinate["failure_detail"] in trailer["instruction"]
+        assert trailer["instruction"] == _role_result_correction_instruction(
+            coordinate, detail_in_coordinate=True,
+        )
+        assert coordinate["failure_detail"] not in trailer["instruction"]
+        assert "coordinate.failure_detail" in trailer["instruction"]
         assert corrected_user == original_user
         assert _json(corrected_user) == first["messages"][1]["content"]
         assert corrected["messages"][1]["content"].startswith(
@@ -266,8 +269,9 @@ def test_legacy_compiler_bytes_stay_frozen_and_v3_reminder_has_new_identity():
     )
     current = json.loads(result.stdout)
     assert {key: current[key] for key in expected} == expected
-    # Whole-v3 now has its own canonical-draft guidance instead of the slim
-    # tutorial. Activity authority/status and the final branch table remain;
-    # old author requests are stored/verifiable, not rebuilt by this compiler.
-    assert current["3:False:True:False"] == "cce3a74ab15a6ee7fa867d34bf0c875bb8e4cb2cb71e1bc055b5d4f4f752232a"
-    assert current["3:False:True:True"] == "5333ee2d943eb3bd286b4d1cdc5acc721b1aeae4d2a7e8d0df537edee5a63545"
+    # Captured before the legacy-only repair. V3 retains the newer memory
+    # authority (6622349f), single-episode guidance (51be7434), and one-copy
+    # correction coordinate (057bb2b9). Old author requests retain their own
+    # stored bytes; this compiler does not rebuild them during verification.
+    assert current["3:False:True:False"] == "2e3ff34c61ee9dfc253bb03f896a31faf8e674a0ac7c5e9aed3061d5df9ab37a"
+    assert current["3:False:True:True"] == "aa6e3035de2d08f23b2e4950f82c32c212f52f4e3c99330ff9c451a77666ac2e"
