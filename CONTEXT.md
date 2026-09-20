@@ -54,6 +54,12 @@ changed and the user-packet common prefix was1291 bytes. Source cache hits were
 Stable reversible representation is a candidate to measure, not an implemented
 fix or permission to delete evidence/change old pins.
 
+2026-09-21 research follow-up: before another repair/probe, separate absent data,
+retrieval failure, source scope, generation failure and reviewer false positives.
+See docs/design/grounded-companion-rag-2026-09-21.md for primary sources, the09
+diagnosis and a small normal-retrieval versus sufficient-evidence comparison.
+This is a proposed diagnostic sequence, not a completed experiment or runtime fix.
+
 QQ terminal receipts,24-hour operation, a complete recordable journey and the
 approximately100 CNY/month product target still require qualification. Deployment,
 real QQ sends and production writes were not performed. See the current release
