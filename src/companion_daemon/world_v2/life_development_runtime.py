@@ -1843,19 +1843,82 @@ class LifeDevelopmentRuntime:
             wake_event_ref=wake.event_id,
         )
 
+    def pending_completed_activity_ref(self, *, after_world_revision: int | None = None) -> str | None:
+        """Latest completed attempt, without reviving a historical backlog."""
+        from .completed_activity_consequence import read_completed_activity_consequence
+
+        state = self._ledger.project()
+        for plan in sorted(
+            (item for item in state.plans if item.owner_actor_ref == self._owner
+             and item.status == "completed" and item.authority_origin is not None),
+            key=lambda item: (item.authority_origin.accepted_world_revision, item.plan_id),
+            reverse=True,
+        ):
+            origin = plan.authority_origin
+            if after_world_revision is not None and origin.accepted_world_revision <= after_world_revision:
+                continue
+            source = read_completed_activity_consequence(
+                ledger=self._ledger, pinned_state=state, actor_ref=self._owner,
+                completion_event_ref=origin.accepted_event_ref,
+            )
+            # Missing/withheld authority for the latest completion must not
+            # silently substitute an older activity as today's opportunity.
+            if source is None:
+                return None
+            proposal_id = self._completed_activity_proposal_id(origin.accepted_event_ref)
+            if self._ledger.lookup_event_commit("event:life-development:proposal:" + _digest(proposal_id)):
+                return None
+            return origin.accepted_event_ref
+        return None
+
+    def _completed_activity_proposal_id(self, event_ref: str) -> str:
+        return "proposal:life-development:" + _digest({
+            "world_id": self._ledger.world_id, "completed_activity_event_ref": event_ref,
+        })
+
+    async def advance_completed_activity_once(
+        self, *, completion_event_ref: str, wake_event_ref: str,
+        trace_id: str, correlation_id: str,
+    ) -> LifeDevelopmentResult:
+        return await self.advance_once(
+            wake_event_ref=wake_event_ref, trace_id=trace_id, correlation_id=correlation_id,
+            completed_activity_event_ref=completion_event_ref,
+        )
+
     async def advance_once(
         self,
         *,
         wake_event_ref: str,
         trace_id: str,
         correlation_id: str,
+        completed_activity_event_ref: str | None = None,
     ) -> LifeDevelopmentResult:
-        proposal_id = "proposal:life-development:" + _digest(
-            {"world_id": self._ledger.world_id, "wake_event_ref": wake_event_ref}
+        proposal_id = (
+            self._completed_activity_proposal_id(completed_activity_event_ref)
+            if completed_activity_event_ref else "proposal:life-development:" + _digest(
+                {"world_id": self._ledger.world_id, "wake_event_ref": wake_event_ref}
+            )
         )
         proposal_event_id = "event:life-development:proposal:" + _digest(proposal_id)
         existing = self._ledger.lookup_event_commit(proposal_event_id)
         if existing is not None:
+            if completed_activity_event_ref is not None:
+                from .completed_activity_consequence import read_completed_activity_consequence
+
+                # Replaying an effect does not grant another actor access to
+                # the completed activity. Apply the same exact owner/privacy
+                # boundary before returning the durable result.
+                try:
+                    completion = read_completed_activity_consequence(
+                        ledger=self._ledger, pinned_state=self._ledger.project(),
+                        actor_ref=self._owner, completion_event_ref=completed_activity_event_ref,
+                    )
+                except (TypeError, ValueError, ConcurrencyConflict):
+                    completion = None
+                if completion is None:
+                    return LifeDevelopmentResult(
+                        status="rejected", reason_code="life_development.completed_activity_source_unavailable",
+                    )
             return self._recovered_result(existing[0])
 
         projection = self._ledger.project()
@@ -1865,7 +1928,17 @@ class LifeDevelopmentRuntime:
                 status="rejected",
                 reason_code="life_development.wake_not_exact",
             )
-        pinned = self._compile_pinned(projection=projection, wake=wake)
+        if completed_activity_event_ref is not None and wake.logical_time != projection.logical_time:
+            # A recovered old Clock cannot date a newly discovered completion
+            # or its consequences in the past. Wait for a genuine current wake.
+            return LifeDevelopmentResult(
+                status="stale_prefix",
+                reason_code="life_development.completion_requires_current_clock",
+            )
+        pinned = self._compile_pinned(
+            projection=projection, wake=wake,
+            completed_activity_event_ref=completed_activity_event_ref,
+        )
         if isinstance(pinned, LifeDevelopmentResult):
             return pinned
         world_capsule, world_cursor, world_context, world_manifest = pinned
@@ -1896,11 +1969,11 @@ class LifeDevelopmentRuntime:
                 reason_code="life_development.world_author_unavailable",
             )
         if recovered_world is None:
-            occasion_draw = self._resolve_occasion_draw(
-                wake=wake,
-                manifest=world_manifest,
-            )
-            occasion_mode = occasion_mode_for_draw(occasion_draw)
+            if world_manifest.completed_activity_consequence is None:
+                occasion_draw = self._resolve_occasion_draw(
+                    wake=wake, manifest=world_manifest,
+                )
+                occasion_mode = occasion_mode_for_draw(occasion_draw)
             world_run = await self._world_author_draft(
                 context=world_context,
                 logical_time=wake.logical_time,
@@ -2545,6 +2618,7 @@ class LifeDevelopmentRuntime:
         records, bindings, candidates = self._materialize_content(
             proposal_id=proposal_id,
             draft=draft,
+            distinguish_draft=manifest.completed_activity_consequence is not None,
         )
         for record in records:
             self._store.put_if_absent(record)
@@ -2700,6 +2774,7 @@ class LifeDevelopmentRuntime:
         *,
         projection,
         wake: WorldEvent,
+        completed_activity_event_ref: str | None = None,
     ) -> (
         tuple[
             object,
@@ -2734,6 +2809,24 @@ class LifeDevelopmentRuntime:
                 wake=wake,
                 capsule=capsule,
             )
+            if completed_activity_event_ref is not None:
+                from .completed_activity_consequence import read_completed_activity_consequence
+
+                completion = read_completed_activity_consequence(
+                    ledger=self._ledger, pinned_state=projection, actor_ref=self._owner,
+                    completion_event_ref=completed_activity_event_ref,
+                )
+                if completion is None:
+                    raise ValueError("completed activity source is unavailable")
+                anchors = {wake.event_id, completion.completion.event_ref,
+                           completion.execution_binding.source_event_ref}
+                manifest = LifeDevelopmentCapabilityManifest.model_validate_json(
+                    manifest.model_copy(update={
+                        "completed_activity_consequence": completion,
+                        "anchor_refs": tuple(sorted(anchors)),
+                        "grounding_refs": tuple(sorted(set(manifest.grounding_refs) | anchors)),
+                    }).model_dump_json(exclude_computed_fields=True)
+                )
             if manifest.pinned_cursor != context_cursor:
                 raise ConcurrencyConflict(
                     "Life Development capability manifest belongs to another prefix"
@@ -4069,12 +4162,20 @@ class LifeDevelopmentRuntime:
         *,
         proposal_id: str,
         draft: LifeDevelopmentPossibilityDraft,
+        distinguish_draft: bool = False,
     ) -> tuple[
         tuple[StoredLifeContent, ...],
         tuple[dict[str, str], ...],
         tuple[OutcomeCandidateDescriptor, ...],
     ]:
-        suffix = _digest(proposal_id)
+        # A completion family survives new Clock wakes. An uncommitted
+        # candidate may leave immutable sidecars after a CAS conflict, so a
+        # newly authored draft needs distinct content refs. Effect IDs remain
+        # tied to the completion, and historical ordinary refs stay unchanged.
+        suffix = _digest(
+            {"proposal_id": proposal_id, "completed_activity_draft": draft.model_dump(mode="json")}
+            if distinguish_draft else proposal_id
+        )
         records: list[StoredLifeContent] = []
         bindings: list[dict[str, str]] = []
 

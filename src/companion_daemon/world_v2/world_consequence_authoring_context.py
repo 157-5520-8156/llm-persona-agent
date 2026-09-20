@@ -64,6 +64,16 @@ def build_world_consequence_authoring_context(
     )):
         raise ValueError("world consequence authoring projection differs from manifest pin")
     anchors = set(manifest.anchor_refs)
+    completion = manifest.completed_activity_consequence
+    if completion is not None:
+        from .completed_activity_consequence import validate_completed_activity_consequence
+
+        validate_completed_activity_consequence(
+            ledger=ledger, pinned_state=pinned, actor_ref=actor_ref, descriptor=completion,
+        )
+        # Other current activities can remain readable context, but they have
+        # no execution authority in this request for one completed attempt.
+        anchors = {completion.execution_binding.source_event_ref}
     candidates = sorted(
         (source for source in pinned.committed_world_event_refs
          if source.event_id in anchors and source.event_type in {
@@ -116,6 +126,8 @@ def build_world_consequence_authoring_context(
     authority = derive_world_consequence_authority(
         pinned_state=pinned, actor_ref=actor_ref, source_events=tuple(selected_events),
     )
+    if completion is not None and authority.execution_bindings != (completion.execution_binding,):
+        raise ValueError("completed activity consequence lacks its exact readable attempt")
     return WorldConsequenceAuthoringContext(
         authority=authority, execution_materials=tuple(available),
     )

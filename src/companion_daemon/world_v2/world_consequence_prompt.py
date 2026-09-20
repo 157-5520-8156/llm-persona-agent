@@ -196,7 +196,29 @@ def compile_world_consequence_messages(
     else:
         disturbance_guidance = ""
     example = _compliant_propose_example(manifest=manifest)
-    if example is None:
+    completion = manifest.get("completed_activity_consequence")
+    if completion is not None:
+        boundary["completed_activity_consequence"] = {
+            "contract": "completed-activity-consequence.1",
+            "terminal_evidence": "lifecycle_ended_only_not_success_location_or_embedded_history",
+            "allowed_decision": "no_op_or_now_world_contingency_for_the_exact_offered_attempt",
+            "each_outcome": "requires_the_same_offered_execution_binding",
+            "character_response": "separate_character_authorship_after_settlement",
+        }
+        example_guidance = (
+            "This request concerns only the aftermath of the completed activity bound in "
+            "capability_manifest.completed_activity_consequence. Its terminal event proves "
+            "the lifecycle ended; it does not prove intention fulfillment, location presence, "
+            "embedded history, or successful action. Its original Started/Resumed source "
+            "authorizes the same bounded attempt. Choose no_op or propose objective candidate "
+            "consequences of that attempt as world_contingency with timing.mode now. Each "
+            "outcome must include authorized_attempt_result with the exact offered binding. "
+            "Do not restart or extend her activity, generate another Plan, rewrite an earlier "
+            "settled result, or invent how she feels or reacts. New outcome uncertainty stays "
+            "in your alternatives until the existing settlement, and her response remains "
+            "a separate character decision.\n"
+        )
+    elif example is None:
         example_guidance = (
             "capability_manifest.anchor_refs is empty, so no propose decision is "
             "authorized; return the no_op object. "

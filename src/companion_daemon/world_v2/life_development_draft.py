@@ -18,6 +18,7 @@ from pydantic import Field, ValidationError, computed_field, field_validator, mo
 
 from .schema_core import FrozenModel, PrivacyClass
 from .world_consequence_contract import WorldConsequenceV2
+from .completed_activity_consequence import CompletedActivityConsequence
 from .schemas import (
     BiographicalCoordinateReplacement,
     DueWindow,
@@ -342,11 +343,25 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
     semantic_source_review_version: Literal["1"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # A separate request for the aftermath of one accepted attempt. Absence
+    # retains historical manifest/request bytes and ordinary opportunity scope.
+    completed_activity_consequence: CompletedActivityConsequence | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     max_future_days: int = Field(ge=1, le=366)
     max_window_minutes: int = Field(ge=5, le=7 * 24 * 60)
 
     @model_validator(mode="after")
     def refs_are_canonical(self) -> "LifeDevelopmentCapabilityManifest":
+        completion = self.completed_activity_consequence
+        if completion is not None and (
+            self.outcome_contract != "world-consequence.2"
+            or self.execution_intention_sources_version != "2"
+            or completion.execution_binding.actor_ref != self.owner_actor_ref
+            or not {completion.completion.event_ref, completion.execution_binding.source_event_ref}
+            <= set(self.anchor_refs)
+        ):
+            raise ValueError("completed activity consequence requires its exact attempt anchors")
         if (
             self.execution_intention_sources_version is not None
             and self.outcome_contract != "world-consequence.2"
@@ -1278,6 +1293,30 @@ def parse_world_author_draft(
         ) from exc
     if isinstance(draft, LifeDevelopmentNoOpDraft):
         return draft
+    completion = manifest.completed_activity_consequence
+    if completion is not None:
+        if draft.causal_authority != "world_contingency" or draft.timing.mode != "now":
+            raise LifeDevelopmentDraftError(
+                "completed_attempt_consequence_scope",
+                "This request concerns the aftermath of the bound completed attempt, not a new Plan.",
+                violations=({"path": "causal_authority", "type": "completed_attempt_scope",
+                             "message": "use world_contingency with timing now, or no_op"},),
+            )
+        for index, outcome in enumerate(draft.outcomes):
+            attempt = (
+                outcome.world_consequence.authorized_attempt_result
+                if outcome.world_consequence is not None else None
+            )
+            if attempt is None or attempt.execution_binding != completion.execution_binding:
+                raise LifeDevelopmentDraftError(
+                    "completed_attempt_result_binding",
+                    "Every candidate must concern only the exact offered completed attempt.",
+                    violations=({
+                        "path": f"outcomes.{index}.world_consequence.authorized_attempt_result",
+                        "type": "completed_attempt_binding",
+                        "message": "provide an objective candidate result with the exact binding, or no_op",
+                    },),
+                )
     for index, outcome in enumerate(draft.outcomes):
         is_current = outcome.world_consequence is not None
         if is_current != (manifest.outcome_contract == "world-consequence.2"):
