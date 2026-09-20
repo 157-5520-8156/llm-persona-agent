@@ -1,0 +1,112 @@
+{
+  "contract": "offline-scenario-rebaseline-evidence.1",
+  "old_version": "world-v2-offline-mechanism-baseline.103",
+  "new_version": "world-v2-offline-mechanism-baseline.104",
+  "old_manifest_hash": "ea10ea20e6113383cc5ad1cde62c8b993166338deb776d3e7c32fd0d61aed71d",
+  "new_run_hash_with_old_version": "4c085f744dbe610b9f1903f4585df76563fee43957e9474a63d7316400859452",
+  "new_manifest_hash": "f4f16976bb226692d253e918547c16fac0a63e743ba2dd059791cb42d09f10d7",
+  "code_under_test": "ce28d96d4106d1c08ced43550d067d2954a38bab",
+  "rebaseline_parent_head": "ce28d96d4106d1c08ced43550d067d2954a38bab",
+  "previous_audit": "docs/audits/scenario-baseline-103-2026-09-13.json",
+  "cases": 120,
+  "all_case_predicates_passed": true,
+  "all_case_replays_passed": true,
+  "changed_case_count": 120,
+  "changed_case_fields": [
+    "replay_hash"
+  ],
+  "unchanged_case_fields": [
+    "background_model_calls",
+    "background_work_statuses",
+    "emotional_gold",
+    "event_types",
+    "fault",
+    "model_calls",
+    "observation_count",
+    "output_hash",
+    "replay_passed",
+    "restarted_after_seed",
+    "room_view_hash",
+    "scenario_family",
+    "scenario_turn_id",
+    "terminal_action_states",
+    "trigger_kinds",
+    "verification_errors",
+    "world_id"
+  ],
+  "canonical_hash_contract": {
+    "fields": [
+      "corpus_version",
+      "economy_profile_version",
+      "mechanism_baseline_version",
+      "runs"
+    ],
+    "encoding": "UTF-8",
+    "json": {
+      "ensure_ascii": false,
+      "sort_keys": true,
+      "separators": [
+        ",",
+        ":"
+      ]
+    },
+    "digest": "SHA256"
+  },
+  "event_samples": {
+    "ordinary_share.01": {
+      "event_count_each": 30,
+      "first_changed_sequence": 9,
+      "event_type": "ModelResultRecorded",
+      "response_hashes_unchanged": true,
+      "delta": "Request/snapshot and derived audit identities."
+    },
+    "npc_world_impact.01": {
+      "event_count_each": 81,
+      "first_changed_sequence": 11,
+      "event_type": "ModelResultRecorded",
+      "delta": "Derived identifiers/references/hashes and two recall trace scores/accessibility offsets; recall index hybrid.3 -> hybrid.7. Both background response hashes unchanged; visible output hash unchanged."
+    }
+  },
+  "relevant_versioned_changes": {
+    "8da54834e": "Snapshot compiler .23 separates routine background from dated context.",
+    "b89d58ae4": "Recall policy hybrid.7 retrieves complementary cues within budget.",
+    "23693bf8": "Life binds original Capsule and actual author input.",
+    "5aae282a2": "Pending World material is separated from lived diary readings."
+  },
+  "normal_gate": {
+    "status": "passed",
+    "command": "PYTHONPATH=src /Users/geoff/Projects/Girl-Agent/.venv/bin/python -m pytest -q tests/world_v2/test_scenario_runner.py::test_complete_frozen_suite_matches_the_explicit_mechanism_baseline",
+    "scope": "Unmodified normal full frozen gate; all 120 cases, predicates, replays, and new .104 manifest equality.",
+    "passed": 1,
+    "seconds": 35.31,
+    "log_path": "output/private-audits/release-scenario103-diagnosis-20260920-01/baseline-104-gate.log",
+    "log_sha256": "1f761f48e533c2579ced3916113ce532a821585024e2e039cf3dcacad28e0ca5"
+  },
+  "artifacts": [
+    {
+      "path": "output/private-audits/release-scenario103-diagnosis-20260920-01/candidate-manifest.json",
+      "sha256": "b979e1070dd8aab0ae4c5417b2b105a2472ac283127bf41fab98504b802ccaa2"
+    },
+    {
+      "path": "output/private-audits/release-scenario103-diagnosis-20260920-01/comparison.json",
+      "sha256": "5bbed4411842c9a2d0d66178b292c771cda5284bb40514cba92f724493037aee"
+    },
+    {
+      "path": "output/private-audits/release-scenario103-diagnosis-20260920-01/diagnosis.json",
+      "sha256": "7ef8d9c9dd15b89cc7877b446a4b952a444591db2ac17aa8f8ed077edccb2e1f"
+    },
+    {
+      "path": "output/private-audits/release-scenario103-diagnosis-20260920-01/event-ordinary-summary.json",
+      "sha256": "dbabc94159af0e127b665ca521835b0cdc68997ab860793b94d6a6a5b6766e24"
+    },
+    {
+      "path": "output/private-audits/release-scenario103-diagnosis-20260920-01/event-npc-summary.json",
+      "sha256": "b15394010bdd92b777a4a552f5ea634bc9290082f3636a28d954eebee3aef05f"
+    }
+  ],
+  "limitations": [
+    "Fixed fake models/providers only; no real-provider, latency, cost, or human-likeness qualification.",
+    "No per-commit bisection of all 120 replay hashes; detailed event comparison covers NPC and the first ordinary model event.",
+    "No predicate, scenario, source authority, output expectation, or cost limit is weakened. The original .103 audit and export remain intact."
+  ]
+}

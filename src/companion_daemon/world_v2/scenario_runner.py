@@ -356,7 +356,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.103"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.104"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -657,8 +657,15 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.103
 # other case field, visible output, model-call count and predicate is unchanged.
 # The old 81-event database still replays with its original bytes and hash.
 # See docs/audits/scenario-baseline-103-2026-09-13.json; no guard is relaxed.
+# 2026-09-20: .104 records versioned context, recall, and Life source preparation.
+# Against the hash-verified .103 export, all 120 replay hashes differ while
+# all 17 other case fields remain identical. Every predicate and replay passes;
+# sampled ledger deltas concern request/audit identity and recall trace scores.
+# The exact 120-case export determines this hash, including the new version.
+# See docs/audits/scenario-baseline-104-2026-09-20.json. This is offline mechanism
+# evidence only, not real-provider or human-likeness qualification.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "ea10ea20e6113383cc5ad1cde62c8b993166338deb776d3e7c32fd0d61aed71d"
+    "f4f16976bb226692d253e918547c16fac0a63e743ba2dd059791cb42d09f10d7"
 )
 
 
