@@ -11,10 +11,12 @@
 
 冻结b560a3d2完整回归9485 passed／0 failed／19 skipped／2 xfailed，25分14秒，
 src/tests Ruff与diff检查通过。工程门槛通过不替代真实聊天与发布门槛。
+后续[本轮RAG／World修复](release-rag-diagnosis-2026-09-21.md)已有定向与单次供应商／parser
+证据，尚无新完整回归或来源审核通过的生活结算，不能沿用旧工程结果宣称新候选全部合格。
 
 最新运行在`output/private-audits/release-clean-continuation-20260920-09/run`，ledger801/rev327。
-最新完整费用在`output/private-audits/release-author-model-comparison-20260920-02/run/world.sqlite`，
-1698 usage／1695 reservations／73 unknown holds。先恢复09，再合并完整最新费用前缀，
+最新完整费用在`output/private-audits/release-rag-diagnosis-20260921-01/world-token-check/world.sqlite`，
+1702 usage／1699 reservations／73 unknown holds。先恢复09，再合并完整最新费用前缀，
 之后才能读取水位或调用模型；独立probe不能用作旅程。09原18次用量核验、0.56717816元，
 Pro探针1次超时新增1.30329元未知预留，均已关闭并独立对账；原3张v22回执冷验，无新回执。
 
@@ -52,4 +54,4 @@ Life审核由 `WORLD_V2_LIFE_CANDIDATE_REVIEW_ENABLED=true` 安装。来源模�
 
 月费须按同一合格旅程／持续运行账本，分别统计初始化、聊天、后台、审核和重试，
 以明确使用量估算约100元目标。本轮费用不是月费证明；测试额度解除不取消产品成本要求。
-任何旧运行历史恢复前，都须继承最新作者对照02完整累计账本，不能恢复更便宜的旧费用状态。
+任何旧运行历史恢复前，都须继承上述最新完整累计账本，不能恢复更便宜的旧费用状态。

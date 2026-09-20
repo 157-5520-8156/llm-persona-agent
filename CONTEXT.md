@@ -7,13 +7,13 @@ is retained in the linked audit documents, not as competing current checkpoints.
 2026-09-21 release closeout: manual_only / qualification_incomplete.
 Frozen b560a3d2 passed the complete suite: 9485 passed /19 skipped /2 xfailed,
 zero failures, in 1514.63 seconds. The prior 6431bcaf run had 12 failures; its
-logs remain intact. All src/tests Ruff checks passed. Later closeout changes
-are documentation only; do not mistake this engineering gate for chat qualification.
+logs remain intact. Subsequent RAG-diagnosis repairs have focused validation,
+not a new full-suite result; do not mistake either gate for chat qualification.
 
 Latest resumable runtime: output/private-audits/release-clean-continuation-20260920-09/run,
 ledger801/revision327. Latest complete billing is SEPARATE at
-output/private-audits/release-author-model-comparison-20260920-02/run/world.sqlite:
-1698 usage /1695 reservations /73 unknown holds. Restore 09, then merge every
+output/private-audits/release-rag-diagnosis-20260921-01/world-token-check/world.sqlite:
+1702 usage /1699 reservations /73 unknown holds. Restore 09, then merge every
 latest billing row before the first usage watermark or provider call. A standalone
 probe is not a resumable journey. Prior unknown holds remain; the newest is 1.30329 CNY.
 
@@ -54,11 +54,16 @@ changed and the user-packet common prefix was1291 bytes. Source cache hits were
 Stable reversible representation is a candidate to measure, not an implemented
 fix or permission to delete evidence/change old pins.
 
-2026-09-21 research follow-up: before another repair/probe, separate absent data,
-retrieval failure, source scope, generation failure and reviewer false positives.
-See docs/design/grounded-companion-rag-2026-09-21.md for primary sources, the09
-diagnosis and a small normal-retrieval versus sufficient-evidence comparison.
-This is a proposed diagnostic sequence, not a completed experiment or runtime fix.
+2026-09-21 RAG diagnosis executed: full and selected original context both produced
+unsupported physical state in two real author calls; reducing material did not fix it.
+The offline memory eval now reaches Fact-to-Memory acceptance and reports text matches
+with semantics unassessed; lexical/structured noise is visible in actual prefetch traces.
+World tool.2 exposes existing located/privacy/visual invariants; tool.1 pins retain exact
+wire identities. A real tool.2 call hit the4096 output ceiling. A one-call8192 comparison
+returned a schema/parser-valid proposal, without source review/acceptance/settlement.
+The World provider now has8192 output room; interactive and injected providers stay unchanged.
+Four calls add approximately0.1031 CNY, no new unknown holds and no World mutations.
+See docs/audits/release-rag-diagnosis-2026-09-21.md and the linked research design.
 
 QQ terminal receipts,24-hour operation, a complete recordable journey and the
 approximately100 CNY/month product target still require qualification. Deployment,

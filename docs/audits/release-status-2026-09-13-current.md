@@ -1,6 +1,6 @@
 # 当前发布状态（2026-09-21）
 
-**工程候选已通过完整回归，尚不可开放邀请：`manual_only / qualification_incomplete`。**
+**上个冻结候选已通过完整回归，本轮修复通过定向验证，尚不可开放邀请：`manual_only / qualification_incomplete`。**
 首版仍限定单角色、自然聊天、已有生活和记忆、可录制面板。小屋和新增能力不进入本次收敛。
 测试支出不设金额上限，但产品约100元／月目标、逐次调用上限和完整账目继续保留。
 
@@ -8,7 +8,8 @@
 
 冻结代码 `b560a3d2` 的完整 `scripts/test_fast.py --tier full`：
 **9485 passed／0 failed／19 skipped／2 xfailed**，耗时 **25分14秒**。
-前后HEAD一致且工作树干净，`src`、`tests` 的 Ruff 与 diff 检查通过。之后仅更新本文等记录。
+该次前后HEAD一致且工作树干净，`src`、`tests` 的 Ruff 与 diff 检查通过。
+随后RAG诊断修改了评估、World工具与后台输出上限，以下旧完整回归不覆盖这些新改动。
 完整日志、命令与环境在 `output/private-audits/release-final-full-b560a3d2-n9d_jt06/`。
 之前6431bcaf的12项失败和原始日志仍保留，没有用定向测试替代本次全套。
 
@@ -36,6 +37,12 @@
 
 ## 下一步的范围与发布门槛
 
+2026-09-21已完成[分层诊断与World格式修复](release-rag-diagnosis-2026-09-21.md)：
+两次真实作者对照仍无依据补写身体状态；现有记忆评估恢复有效运行并显式区分文本命中与
+语义正确。新World工具把既有视觉／地点／隐私约束前移，保持旧工具恢复；4096输出被
+截断后，8192单次对照返回通过schema／原parser的完整候选。后台World上限已调整，
+未来源审核或结算该候选。下一步是在新生活机会完整跑通后续链，不能把探针候选补入旧历史。
+
 1. **先完成可靠的状态—生活—记忆—聊天链。** 角色自主选择应有明确的事实落账与引用路径。
    旧Started机会已由no_op消费，不能为演示重试它；新Started／Resumed／Completed才能
    形成新的定向机会。仍须允许角色暂停、放弃或不生成结果，不能替她决定成功。
@@ -54,13 +61,14 @@
 
 - 运行：`output/private-audits/release-clean-continuation-20260920-09/run`，
   **ledger801／revision327**。
-- 最新完整费用：`output/private-audits/release-author-model-comparison-20260920-02/run/world.sqlite`，
-  **1698 usage／1695 reservations／73 unknown holds**。该probe不能作为旅程恢复。
+- 最新完整费用：`output/private-audits/release-rag-diagnosis-20260921-01/world-token-check/world.sqlite`，
+  **1702 usage／1699 reservations／73 unknown holds**。该probe不能作为旅程恢复。
 
 新旅程须恢复09运行，先按稳定键合并完整probe账本，再读取费用水位或调用模型。
 09的18次调用全有原生用量，仓库估算 **0.56717816元**，新增unknown为0；operator_stopped、
 clients_closed、独立对账及冷重放verified。之后Pro探针实际转发1次、超时且无原生用量，
 新增未知预留 **1.30329元**。旧未知预留完整保留，不能恢复较便宜的历史费用状态。
+随后本轮4次诊断新增账行估算约 **0.1031元**，全部原生用量闭合，无新增unknown、无World写入。
 
 以上不是供应商账单或月费结论；自然聊天未稳定交付，约100元／月尚未合格。
 
