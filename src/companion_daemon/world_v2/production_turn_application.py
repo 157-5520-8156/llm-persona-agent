@@ -1038,6 +1038,9 @@ class WorldV2TurnApplication:
             ledger=ledger,
             deployment_id=f"deployment:{deployment_digest}",
             boot_id=f"boot:{secrets.token_hex(16)}",
+            life_content_store=life_content_store,
+            life_actor_ref=companion_actor_ref,
+            life_privacy_ceiling="shareable",
         )
 
     async def respond(self, inbound: InboundTurn) -> RuntimeOutcome:

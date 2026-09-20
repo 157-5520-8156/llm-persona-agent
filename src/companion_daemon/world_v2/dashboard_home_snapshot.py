@@ -30,7 +30,9 @@ from .audited_proposal_settlement import (
 )
 from .dashboard_projection_adapter import DashboardRoomRouteCatalog, DashboardSceneRoute
 from .dashboard_life_intention import DashboardLifeIntention, read_dashboard_life_intention
+from .dashboard_world_occurrence import DashboardWorldOccurrenceReading, read_dashboard_world_occurrence
 from .ledger import LedgerPort
+from .life_content_store import ImmutableLifeContentStore
 from .proposal_audit_schemas import ProposalAuditProjection
 from .proposal_envelope import DecisionProposal, TypedChange, validate_proposal_envelope
 from .room_projection import RoomProjectionMaterializer
@@ -1062,10 +1064,16 @@ class DashboardHomeSnapshotModule:
         deployment_id: str,
         boot_id: str,
         clock: Callable[[], datetime] | None = None,
+        life_content_store: ImmutableLifeContentStore | None = None,
+        life_actor_ref: str | None = None,
+        life_privacy_ceiling: Literal["public", "shareable", "personal", "private"] = "shareable",
     ) -> None:
         if not deployment_id or not boot_id:
             raise ValueError("dashboard owner identity must be complete")
         self._ledger = ledger
+        self._life_content_store = life_content_store
+        self._life_actor_ref = life_actor_ref
+        self._life_privacy_ceiling = life_privacy_ceiling
         self._owner = DashboardOwnerIdentity(
             deployment_id=deployment_id,
             boot_id=boot_id,
@@ -1249,8 +1257,19 @@ class DashboardHomeSnapshotModule:
                 ledger=self._ledger, projection=projection, plan=plan,
             )) is not None
         }
+        occurrences = sorted(projection.world_occurrences, key=lambda item: (
+            item.settled_at or item.activated_at or datetime.min.replace(tzinfo=UTC), item.occurrence_id,
+        ))[-_KIND_KEEP_DEFAULT:]
+        world_readings = {
+            item.occurrence_id: read_dashboard_world_occurrence(
+                ledger=self._ledger, store=self._life_content_store, projection=projection,
+                cursor=cursor, occurrence=item, actor_ref=self._life_actor_ref,
+                viewer_privacy_ceiling=self._life_privacy_ceiling,
+            ) for item in occurrences
+        } if self._life_content_store is not None and self._life_actor_ref else {}
         all_highlights = _overview_life_summaries(
             projection, intentions=intentions, plan_display_candidates=plans,
+            world_readings=world_readings,
         )
         highlights = _bounded_summaries(all_highlights)
         return DashboardOverviewLifeSection(
@@ -1736,6 +1755,7 @@ def _ledger_qualification_metrics(
 def _overview_life_summaries(
     projection: LedgerProjection,
     *, intentions: Mapping[str, DashboardLifeIntention] | None = None,
+    world_readings: Mapping[str, DashboardWorldOccurrenceReading] | None = None,
     plan_display_candidates: Sequence[object] | None = None,
 ) -> tuple[DashboardEntitySummary, ...]:
     summaries: list[DashboardEntitySummary] = []
@@ -1884,6 +1904,8 @@ def _overview_life_summaries(
             )
         )
     for item in projection.world_occurrences:
+        reading = (world_readings or {}).get(item.occurrence_id)
+        content_status = reading.status if reading else "not_read" if item.status == "settled" else "not_settled"
         summaries.append(
             _summary(
                 kind="world_occurrence",
@@ -1891,14 +1913,18 @@ def _overview_life_summaries(
                 entity_id=item.occurrence_id,
                 title="世界事件",
                 status=item.status,
+                detail=reading.text if reading else None,
                 occurred_at=item.settled_at or item.activated_at,
                 privacy_class=getattr(item, "visibility", "withhold"),
                 values=(
                     _value("candidate_outcome_count", "候选结果", len(item.candidate_outcomes)),
                     _value("observation_count", "观察", len(item.observation_refs)),
                     _value("world_environment_status", "环境结果正文",
-                           "not_read" if item.status == "settled" else "not_settled",
-                           "未读取" if item.status == "settled" else "尚未结算"),
+                           content_status, {"read": "已读取", "not_read": "未读取",
+                                            "not_settled": "尚未结算", "unavailable": "来源或正文不可用",
+                                            "withheld": "受可见范围限制"}[content_status]),
+                    *((_value("world_environment_truncated", "正文范围", True, "已节选"),)
+                      if reading and reading.truncated else ()),
                 ),
             )
         )
