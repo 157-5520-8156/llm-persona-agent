@@ -5497,7 +5497,11 @@ def test_qq_c2c_v2_host_has_no_legacy_chat_or_coalescer_imports() -> None:
         "companion_daemon.companion_turn",
         "companion_daemon.qq_websocket",
     )
-    assert not any(module.startswith(prefix) for module in imports for prefix in forbidden)
+    # Match Python module boundaries: world_v2 is not legacy world authority.
+    assert not any(
+        module == prefix or module.startswith(prefix + ".")
+        for module in imports for prefix in forbidden
+    )
 
 
 def test_qq_fake_composition_keeps_open_life_fact_effects_fail_closed(
