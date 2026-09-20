@@ -62,6 +62,10 @@ _LIFE_SOURCE_REVIEW_CONTRACTS = (
     "life-development-source-closure-review.1",
     "life-development-novel-origin-review.5",
 )
+_INDEPENDENT_REVIEW_PROFILES = {
+    "experimental_independent_v21": "21",
+    "experimental_independent_v22": "22",
+}
 
 
 def configured_visible_review_version(settings: Settings) -> str | None:
@@ -70,7 +74,7 @@ def configured_visible_review_version(settings: Settings) -> str | None:
         "whole_v3_review_v6": "6",
         "whole_v3_review_v7": "7",
         "whole_v3_review_v8": "8",
-        "experimental_independent_v21": "21",
+        **_INDEPENDENT_REVIEW_PROFILES,
     }.get(settings.world_v2_visible_expression_profile)
 
 
@@ -875,7 +879,7 @@ def build_semantic_chat_composition(
         IndependentVisibleReviewer, validate_independent_reviewer_configuration,
     )
     configured_version = configured_visible_review_version(settings)
-    independent_profile = settings.world_v2_visible_expression_profile == "experimental_independent_v21"
+    independent_profile = settings.world_v2_visible_expression_profile in _INDEPENDENT_REVIEW_PROFILES
     auto_independent_review = independent_profile and flash_model is None and source_closure_model is None
     if independent_profile and (
         not visible_source_review_required or visible_source_review_version != configured_version

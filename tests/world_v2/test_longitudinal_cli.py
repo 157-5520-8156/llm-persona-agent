@@ -904,7 +904,7 @@ def test_explicit_uncapped_trial_keeps_default_cap_and_overrides_ambient_caps(tm
         assert connection.execute("SELECT COUNT(*) FROM world_v2_model_reservations").fetchone()[0] == 2
 
 
-@pytest.mark.parametrize("version", ["18", "19", "20", "21"])
+@pytest.mark.parametrize("version", ["18", "19", "20", "21", "22"])
 def test_source_reasoning_requires_explicit_scoped_review_profile(tmp_path, version):
     cli = _cli()
     base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
@@ -916,7 +916,7 @@ def test_source_reasoning_requires_explicit_scoped_review_profile(tmp_path, vers
     assert options.visible_source_review_thinking
 
 
-@pytest.mark.parametrize("version", ["18", "19", "20", "21"])
+@pytest.mark.parametrize("version", ["18", "19", "20", "21", "22"])
 def test_subjective_source_scope_requires_explicit_complete_coverage(tmp_path, version):
     cli = _cli()
     base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
@@ -927,7 +927,7 @@ def test_subjective_source_scope_requires_explicit_complete_coverage(tmp_path, v
     assert cli.parse_options(base + ['--visible-source-review-version', version, '--visible-source-review-scope-history']).visible_source_review_scope_history
 
 
-@pytest.mark.parametrize("version", ["18", "19", "20", "21"])
+@pytest.mark.parametrize("version", ["18", "19", "20", "21", "22"])
 def test_json_source_carrier_and_effort_are_explicit_and_scoped(tmp_path, version):
     cli = _cli()
     base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
@@ -942,7 +942,7 @@ def test_json_source_carrier_and_effort_are_explicit_and_scoped(tmp_path, versio
     assert options.visible_source_review_json and options.visible_source_review_effort == 'low'
 
 
-@pytest.mark.parametrize("version", ["18", "19", "20", "21"])
+@pytest.mark.parametrize("version", ["18", "19", "20", "21", "22"])
 def test_permission_context_scope_is_explicit_and_excludes_legacy_selector(tmp_path, version):
     cli = _cli()
     base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
@@ -954,3 +954,66 @@ def test_permission_context_scope_is_explicit_and_excludes_legacy_selector(tmp_p
     assert cli.parse_options(scoped).visible_source_review_scope_context
     with pytest.raises(SystemExit):
         cli.parse_options(scoped + ['--visible-source-review-scope-history'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", ["21", "22"])
+async def test_scoped_json_cli_installs_exact_review_version_and_owned_evidence(tmp_path, monkeypatch, version):
+    import sqlite3
+    import companion_daemon.world_v2.longitudinal_journey as runner
+    import companion_daemon.world_v2.semantic_chat_composition as composition
+    from companion_daemon.world_v2.visible_independent_review_runtime import IndependentVisibleReviewer
+
+    monkeypatch.setenv("DEEPSEEK_DEBUG_API_KEY", "fixture-debug-key")
+    monkeypatch.setenv("DEEPSEEK_CHARACTER_THINKING_ENABLED", "false")
+
+    def forbidden(request):
+        pytest.fail("profile wiring check must not send HTTP")
+
+    monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda **kwargs: httpx.MockTransport(forbidden))
+    original = composition.compose_production_character_interior
+    interior = {}
+
+    def capture(**kwargs):
+        interior.update(kwargs)
+        return original(**kwargs)
+
+    monkeypatch.setattr(composition, "compose_production_character_interior", capture)
+
+    async def build_only(**kwargs):
+        kwargs["output"].mkdir()
+        clock = runner.JourneyClock(kwargs["journey"].started_at)
+        database = kwargs["output"] / "world.sqlite"
+        host = kwargs["host_factory"](database, clock, runner.CaptureDelivery(clock))
+        reviewer = host._semantic_chat.source_closure_model
+        life = interior["life_source_reviewer"]
+        try:
+            assert interior["visible_source_review_version"] == version
+            assert interior["atomic_tool_envelope_version"] == "3"
+            assert isinstance(reviewer, IndependentVisibleReviewer)
+            assert reviewer.source_response_mode == "json_object"
+            assert reviewer.scope_permission_context and not reviewer.scope_subjective_history
+            assert reviewer.source_model.model == "source-only-fixture"
+            assert life.store._connection.execute("PRAGMA database_list").fetchone()[2] == str(database)
+            assert kwargs["provenance"]["visible_source_review_version"] == version
+            assert kwargs["provenance"]["visible_source_review"]["scope_permission_context"] is True
+            assert kwargs["provenance"]["visible_source_review"]["qualification"] == "requires_evaluation_of_actual_records"
+        finally:
+            await host.aclose()
+            await host.wait_for_shutdown_quiescence()
+            await kwargs["close_resources"]()
+        assert all(model.client.is_closed for model in (*reviewer.meaning_models, reviewer.source_model, life.model))
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            life.store._connection.execute("SELECT 1")
+        return {"completed": True}
+
+    monkeypatch.setattr(runner, "run_journey", build_only)
+    cli = _cli()
+    options = cli.parse_options([
+        "--output", str(tmp_path / "run"), "--model-mode", "real-provider", "--allow-real-provider",
+        "--require-visible-source-review", "--visible-source-review-version", version,
+        "--visible-author-tool-version", "3", "--visible-source-review-json",
+        "--visible-source-review-scope-context", "--visible-source-review-model", "source-only-fixture",
+        "--require-life-candidate-review",
+    ])
+    assert (await cli.run(options))["completed"]

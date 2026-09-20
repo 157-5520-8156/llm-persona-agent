@@ -19,7 +19,14 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
-    from companion_daemon.world_v2.visible_review_protocols import SUPPORTED_REVIEW_VERSIONS
+    from companion_daemon.world_v2.visible_review_protocols import (
+        REVIEW_PROTOCOLS, SCOPED_COVERAGE_PROTOCOLS, SUPPORTED_REVIEW_VERSIONS,
+    )
+
+    scoped_review_versions = {
+        version for version, protocol in REVIEW_PROTOCOLS.items()
+        if protocol in SCOPED_COVERAGE_PROTOCOLS
+    }
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -54,14 +61,14 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--visible-source-review-thinking", action="store_true",
-        help="Explicit v18/v19/v20/v21 source adjudicator reasoning with pinned automatic tool selection; qualification pending.",
+        help="Explicit scoped-coverage source adjudicator reasoning with pinned automatic tool selection; qualification pending.",
     )
     parser.add_argument("--visible-source-review-scope-history", action="store_true",
-                        help="Opt-in v18/v19/v20/v21 omission of verified subjective history without permission for the fixed facts.")
+                        help="Opt-in scoped-coverage omission of verified subjective history without permission for the fixed facts.")
     parser.add_argument("--visible-source-review-scope-context", action="store_true",
-                        help="Opt-in v18/v19/v20/v21 permission selection retaining dialogue, situation and every eligible support.")
+                        help="Opt-in scoped-coverage permission selection retaining dialogue, situation and every eligible support.")
     parser.add_argument("--visible-source-review-json", action="store_true",
-                        help="Explicit read-only v18/v19/v20/v21 JSON-object carrier with unchanged full local schema validation.")
+                        help="Explicit read-only scoped-coverage JSON-object carrier with unchanged full local schema validation.")
     parser.add_argument("--visible-source-review-effort", choices=("low", "high", "max"), default=None,
                         help="Explicit source-only reasoning effort; requires --visible-source-review-thinking.")
     parser.add_argument(
@@ -109,14 +116,14 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
             parser.error("--visible-source-review-model requires --require-visible-source-review")
         if not options.visible_source_review_model.strip() or options.visible_source_review_model != options.visible_source_review_model.strip():
             parser.error("--visible-source-review-model must be nonempty without surrounding whitespace")
-    if options.visible_source_review_thinking and options.visible_source_review_version not in {"18", "19", "20", "21"}:
-        parser.error("--visible-source-review-thinking requires explicit review version 18, 19, 20 or 21")
-    if options.visible_source_review_scope_history and options.visible_source_review_version not in {"18", "19", "20", "21"}:
-        parser.error("--visible-source-review-scope-history requires explicit review version 18, 19, 20 or 21")
-    if options.visible_source_review_scope_context and (options.visible_source_review_version not in {"18", "19", "20", "21"} or options.visible_source_review_scope_history):
-        parser.error("--visible-source-review-scope-context requires v18, v19, v20 or v21 and no scope-history selector")
-    if options.visible_source_review_json and options.visible_source_review_version not in {"18", "19", "20", "21"}:
-        parser.error("--visible-source-review-json requires explicit review version 18, 19, 20 or 21")
+    if options.visible_source_review_thinking and options.visible_source_review_version not in scoped_review_versions:
+        parser.error("--visible-source-review-thinking requires an explicit scoped-coverage review version")
+    if options.visible_source_review_scope_history and options.visible_source_review_version not in scoped_review_versions:
+        parser.error("--visible-source-review-scope-history requires an explicit scoped-coverage review version")
+    if options.visible_source_review_scope_context and (options.visible_source_review_version not in scoped_review_versions or options.visible_source_review_scope_history):
+        parser.error("--visible-source-review-scope-context requires an explicit scoped-coverage review version and no scope-history selector")
+    if options.visible_source_review_json and options.visible_source_review_version not in scoped_review_versions:
+        parser.error("--visible-source-review-json requires an explicit scoped-coverage review version")
     if options.visible_source_review_effort is not None and not options.visible_source_review_thinking:
         parser.error("--visible-source-review-effort requires --visible-source-review-thinking")
     if options.max_cost_cny is not None and (

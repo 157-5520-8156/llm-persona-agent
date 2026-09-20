@@ -22,7 +22,7 @@ from .visible_source_witness_experiment import _json, _unique
 
 from .visible_review_protocols import (
     PROTOCOL, SHARED_STRING_PROTOCOL as SHARED_STRING_PROTOCOL, SHARED_STRING_PROTOCOLS,
-    SUBJECTIVE_HISTORY_PROTOCOLS, CONTENT_FIELD_PROTOCOLS, PRESUPPOSITION_PROTOCOLS, PREHISTORY_PROTOCOLS, CONDITION_WIRE_PROTOCOLS, CONTEXTUAL_PROTOCOLS, SCOPED_COVERAGE_PROTOCOLS, FACT_VALUE_PROTOCOLS, PRIVATE_COGNITION_PROTOCOLS, RECORD_DEPENDENCY_PROTOCOL, RESELECTING_PROTOCOLS, RECEIPT_PROTOCOLS,
+    SUBJECTIVE_HISTORY_PROTOCOLS, CONTENT_FIELD_PROTOCOLS, PRESUPPOSITION_PROTOCOLS, PREHISTORY_PROTOCOLS, CONDITION_WIRE_PROTOCOLS, CONTEXTUAL_PROTOCOLS, SCOPED_COVERAGE_PROTOCOLS, FACT_VALUE_PROTOCOLS, PRIVATE_COGNITION_PROTOCOLS, RECORD_DEPENDENCY_PROTOCOLS, LIFECYCLE_FIELD_PROTOCOL, RESELECTING_PROTOCOLS, RECEIPT_PROTOCOLS,
     REVIEW_PROTOCOLS as REVIEW_PROTOCOLS,
     RESELECTING_PROTOCOL as RESELECTING_PROTOCOL,
 )
@@ -180,7 +180,8 @@ def prepare_source_call(*, prepared, meaning_raw_responses):
         scoped_coverage=pin["protocol"] in SCOPED_COVERAGE_PROTOCOLS,
         fact_value_authority=pin["protocol"] in FACT_VALUE_PROTOCOLS,
         private_cognition_scope=pin["protocol"] in PRIVATE_COGNITION_PROTOCOLS,
-        record_dependency_scope=pin["protocol"] == RECORD_DEPENDENCY_PROTOCOL,
+        record_dependency_scope=pin["protocol"] in RECORD_DEPENDENCY_PROTOCOLS,
+        lifecycle_scope=pin["protocol"] == LIFECYCLE_FIELD_PROTOCOL,
         source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
         scope_subjective_history=pin.get("scope_subjective_history", False),
         source_response_mode=pin.get("source_response_mode", "tool"),
@@ -259,7 +260,8 @@ def _outcomes(*, prepared, author, meaning_reviews, meaning_raw_responses, sourc
             scoped_coverage=pin["protocol"] in SCOPED_COVERAGE_PROTOCOLS,
             fact_value_authority=pin["protocol"] in FACT_VALUE_PROTOCOLS,
             private_cognition_scope=pin["protocol"] in PRIVATE_COGNITION_PROTOCOLS,
-            record_dependency_scope=pin["protocol"] == RECORD_DEPENDENCY_PROTOCOL,
+            record_dependency_scope=pin["protocol"] in RECORD_DEPENDENCY_PROTOCOLS,
+            lifecycle_scope=pin["protocol"] == LIFECYCLE_FIELD_PROTOCOL,
             source_tool_selection_mode=pin.get("source_tool_selection_mode", "forced"),
             scope_subjective_history=pin.get("scope_subjective_history", False),
             source_response_mode=pin.get("source_response_mode", "tool"),
@@ -299,7 +301,7 @@ class IndependentVisibleReviewRejected(ValueError):
 
 
 class IndependentVisibleReviewReceipt(FrozenModel):
-    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10", "visible-source-review-receipt.11", "visible-source-review-receipt.12", "visible-source-review-receipt.13", "visible-source-review-receipt.14", "visible-source-review-receipt.15", "visible-source-review-receipt.16", "visible-source-review-receipt.17", "visible-source-review-receipt.18", "visible-source-review-receipt.19", "visible-source-review-receipt.20", "visible-source-review-receipt.21"] = RECEIPT_CONTRACT
+    contract: Literal["visible-source-review-receipt.9", "visible-source-review-receipt.10", "visible-source-review-receipt.11", "visible-source-review-receipt.12", "visible-source-review-receipt.13", "visible-source-review-receipt.14", "visible-source-review-receipt.15", "visible-source-review-receipt.16", "visible-source-review-receipt.17", "visible-source-review-receipt.18", "visible-source-review-receipt.19", "visible-source-review-receipt.20", "visible-source-review-receipt.21", "visible-source-review-receipt.22"] = RECEIPT_CONTRACT
     prepared_json: str = Field(min_length=2, max_length=MAX_BYTES)
     author: VisibleReviewAuthorBinding
     meaning_reviews: tuple[VisibleReviewInvocationBinding, VisibleReviewInvocationBinding]

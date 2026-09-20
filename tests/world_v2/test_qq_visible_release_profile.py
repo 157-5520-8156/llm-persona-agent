@@ -11,7 +11,7 @@ import companion_daemon.world_v2.semantic_chat_composition as semantic_module
 from companion_daemon.world_v2.visible_independent_review_runtime import IndependentVisibleReviewer
 
 
-EXPERIMENTAL_PROFILE = "experimental_independent_v21"
+EXPERIMENTAL_PROFILES = ("experimental_independent_v21", "experimental_independent_v22")
 
 
 def settings(tmp_path, **overrides):
@@ -25,7 +25,7 @@ def settings(tmp_path, **overrides):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("profile", [None, "whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", EXPERIMENTAL_PROFILE])
+@pytest.mark.parametrize("profile", [None, "whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", *EXPERIMENTAL_PROFILES])
 async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_path, monkeypatch, profile):
     async def forbidden(*args, **kwargs):
         pytest.fail("composition check must not send HTTP")
@@ -46,7 +46,7 @@ async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_p
         assert captured["visible_source_review_version"] == (profile.rsplit("_v", 1)[1] if profile else "1")
         assert captured["usage_observer"] is not None
         reviewer = semantic.source_closure_model
-        if profile == EXPERIMENTAL_PROFILE:
+        if profile in EXPERIMENTAL_PROFILES:
             assert isinstance(reviewer, IndependentVisibleReviewer)
             clients = (*reviewer.meaning_models, reviewer.source_model)
             assert len({id(client) for client in clients}) == 3
@@ -69,7 +69,7 @@ async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_p
     assert semantic._models_closed
 
 
-@pytest.mark.parametrize("profile", ["whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", EXPERIMENTAL_PROFILE])
+@pytest.mark.parametrize("profile", ["whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", *EXPERIMENTAL_PROFILES])
 @pytest.mark.parametrize("mode", ["shadow", "stream"])
 def test_release_profile_refuses_nonatomic_expression_before_database_creation(tmp_path, mode, profile):
     with pytest.raises(ValueError, match="atomic expression"):
@@ -123,9 +123,10 @@ def tracked_review_resources(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_experimental_routes_keep_author_and_life_independent_and_close_once(tmp_path, tracked_review_resources):
+@pytest.mark.parametrize("profile", EXPERIMENTAL_PROFILES)
+async def test_experimental_routes_keep_author_and_life_independent_and_close_once(profile, tmp_path, tracked_review_resources):
     clients, stores, interior = tracked_review_resources
-    configured = settings(tmp_path, WORLD_V2_VISIBLE_EXPRESSION_PROFILE=EXPERIMENTAL_PROFILE,
+    configured = settings(tmp_path, WORLD_V2_VISIBLE_EXPRESSION_PROFILE=profile,
         WORLD_V2_VISIBLE_SOURCE_REVIEW_MODEL="source-only-fixture",
         WORLD_V2_LIFE_CANDIDATE_REVIEW_ENABLED=True,
         WORLD_V2_LIFE_CANDIDATE_REVIEW_MODEL="life-only-fixture")
@@ -135,6 +136,7 @@ async def test_experimental_routes_keep_author_and_life_independent_and_close_on
     life = interior["life_source_reviewer"]
     try:
         review = semantic.source_closure_model
+        assert interior["visible_source_review_version"] == profile.rsplit("_v", 1)[1]
         assert interior["flash_model"].model == configured.deepseek_model
         assert semantic.world_support_model.model == configured.deepseek_model
         assert review.source_model.model == "source-only-fixture"
@@ -191,12 +193,13 @@ async def test_life_evidence_store_outlives_deferred_semantic_tasks(tmp_path, tr
 
 
 @pytest.mark.asyncio
-async def test_explicit_review_injections_remain_caller_owned(tmp_path, tracked_review_resources):
+@pytest.mark.parametrize("profile", EXPERIMENTAL_PROFILES)
+async def test_explicit_review_injections_remain_caller_owned(profile, tmp_path, tracked_review_resources):
     from companion_daemon.world_v2.character_interior.life_source_review import LifeSourceReviewer
     from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
 
     clients, _stores, _interior = tracked_review_resources
-    configured = settings(tmp_path, WORLD_V2_VISIBLE_EXPRESSION_PROFILE=EXPERIMENTAL_PROFILE,
+    configured = settings(tmp_path, WORLD_V2_VISIBLE_EXPRESSION_PROFILE=profile,
         WORLD_V2_LIFE_CANDIDATE_REVIEW_ENABLED=True)
     def model(name):
         return semantic_module.DeepSeekChatModel(api_key="offline", base_url="https://api.deepseek.com", model=name)
@@ -217,16 +220,23 @@ async def test_explicit_review_injections_remain_caller_owned(tmp_path, tracked_
         store.close()
 
 
-def test_experimental_profile_rejects_explicit_version_conflict_before_open(tmp_path):
+@pytest.mark.parametrize("profile, conflicting_version", [
+    ("experimental_independent_v21", "19"),
+    ("experimental_independent_v22", "19"),
+    ("experimental_independent_v21", "22"),
+    ("experimental_independent_v22", "21"),
+])
+def test_experimental_profile_rejects_explicit_version_conflict_before_open(tmp_path, profile, conflicting_version):
     with pytest.raises(ValueError, match="conflict"):
         host_module.build_qq_c2c_host(settings=settings(tmp_path,
-            WORLD_V2_VISIBLE_EXPRESSION_PROFILE=EXPERIMENTAL_PROFILE), recipient_id="10001",
-            visible_source_review_version="19")
+            WORLD_V2_VISIBLE_EXPRESSION_PROFILE=profile), recipient_id="10001",
+            visible_source_review_version=conflicting_version)
     assert not (tmp_path / "world.sqlite").exists()
 
 
 @pytest.mark.asyncio
-async def test_life_store_and_owned_clients_close_when_character_composition_fails(tmp_path, monkeypatch, tracked_review_resources):
+@pytest.mark.parametrize("profile", EXPERIMENTAL_PROFILES)
+async def test_life_store_and_owned_clients_close_when_character_composition_fails(profile, tmp_path, monkeypatch, tracked_review_resources):
     clients, stores, _interior = tracked_review_resources
 
     def fail(**kwargs):
@@ -235,7 +245,7 @@ async def test_life_store_and_owned_clients_close_when_character_composition_fai
     monkeypatch.setattr(semantic_module, "compose_production_character_interior", fail)
     with pytest.raises(ValueError, match="offline composition failure"):
         create_qq_c2c_onebot_app(adapter="napcat", settings=settings(tmp_path,
-            WORLD_V2_VISIBLE_EXPRESSION_PROFILE=EXPERIMENTAL_PROFILE,
+            WORLD_V2_VISIBLE_EXPRESSION_PROFILE=profile,
             WORLD_V2_LIFE_CANDIDATE_REVIEW_ENABLED=True))
     assert stores and all(store.close_count == 1 for store in stores)
     await asyncio.gather(*semantic_module._FAILED_BUILD_CLEANUPS)
@@ -262,7 +272,8 @@ async def test_provider_close_failure_still_releases_life_evidence(tmp_path, tra
 
 
 @pytest.mark.asyncio
-async def test_partial_independent_provider_construction_closes_earlier_clients(tmp_path, monkeypatch, tracked_review_resources):
+@pytest.mark.parametrize("profile", EXPERIMENTAL_PROFILES)
+async def test_partial_independent_provider_construction_closes_earlier_clients(profile, tmp_path, monkeypatch, tracked_review_resources):
     clients, _stores, _interior = tracked_review_resources
     real_model = semantic_module.DeepSeekChatModel
 
@@ -275,7 +286,7 @@ async def test_partial_independent_provider_construction_closes_earlier_clients(
     monkeypatch.setattr(semantic_module, "DeepSeekChatModel", FailSecondReader)
     with pytest.raises(ValueError, match="offline second reader"):
         create_qq_c2c_onebot_app(adapter="napcat", settings=settings(tmp_path,
-            WORLD_V2_VISIBLE_EXPRESSION_PROFILE=EXPERIMENTAL_PROFILE))
+            WORLD_V2_VISIBLE_EXPRESSION_PROFILE=profile))
     assert len(clients) == 2  # Author and first reader were constructed before the failure.
     await asyncio.gather(*semantic_module._FAILED_BUILD_CLEANUPS)
     assert all(client.close_count == 1 and client.client.is_closed for client in clients)

@@ -11,7 +11,8 @@ import json
 
 from .shared_string_view import pack_shared_strings
 from .visible_candidate_meaning import PreparedCandidateMeaning
-from .visible_meaning_source_review import _eligible_readings, _validation
+from .visible_meaning_source_review import _validation
+from .visible_lifecycle_readings import eligible_readings as _eligible_readings
 from .visible_prehistory_readings import INSTRUCTION as PREHISTORY_INSTRUCTION
 from .visible_source_reading_experiment import _catalog
 from .visible_source_witness_experiment import _json, _unique, prepare_witness_experiment
@@ -21,7 +22,9 @@ SCOPED_COVERAGE_CONTRACT = 'visible-contextual-source-review.2'
 FACT_VALUE_CONTRACT = 'visible-contextual-source-review.3'
 PRIVATE_COGNITION_CONTRACT = 'visible-contextual-source-review.4'
 RECORD_DEPENDENCY_CONTRACT = 'visible-contextual-source-review.5'
-PRIVATE_COGNITION_CONTRACTS = {PRIVATE_COGNITION_CONTRACT, RECORD_DEPENDENCY_CONTRACT}
+LIFECYCLE_FIELD_CONTRACT = 'visible-contextual-source-review.6'
+RECORD_DEPENDENCY_CONTRACTS = {RECORD_DEPENDENCY_CONTRACT, LIFECYCLE_FIELD_CONTRACT}
+PRIVATE_COGNITION_CONTRACTS = {PRIVATE_COGNITION_CONTRACT, *RECORD_DEPENDENCY_CONTRACTS}
 FACT_VALUE_CONTRACTS = {FACT_VALUE_CONTRACT, *PRIVATE_COGNITION_CONTRACTS}
 SCOPED_CONTRACTS = {SCOPED_COVERAGE_CONTRACT, *FACT_VALUE_CONTRACTS}
 
@@ -89,7 +92,8 @@ class PreparedContextualSourceReview:
                            for m in pin['meanings']), sources=tuple(pin['sources']), scoped_coverage=pin['contract'] in SCOPED_CONTRACTS,
             fact_value_authority=pin['contract'] in FACT_VALUE_CONTRACTS,
             private_cognition_scope=pin['contract'] in PRIVATE_COGNITION_CONTRACTS,
-            record_dependency_scope=pin['contract'] == RECORD_DEPENDENCY_CONTRACT,
+            record_dependency_scope=pin['contract'] in RECORD_DEPENDENCY_CONTRACTS,
+            lifecycle_scope=pin['contract'] == LIFECYCLE_FIELD_CONTRACT,
             tool_selection_mode=pin.get('tool_selection_mode', 'forced'),
             scope_subjective_history=pin.get('scope_subjective_history', False),
             response_mode=pin.get('response_mode', 'tool'), scope_permission_context=pin.get('scope_permission_context', False))
@@ -120,8 +124,9 @@ class PreparedContextualSourceReview:
                 raise ValueError('unknown or duplicate contextual source reading')
             if not decision['explanation'].strip():
                 raise ValueError('contextual scope judgment requires an explanation')
-            allowed = _eligible_readings(fact, list(catalog.values()))
-            dependency_scope = pin['contract'] == RECORD_DEPENDENCY_CONTRACT
+            allowed = _eligible_readings(fact, list(catalog.values()),
+                lifecycle_scope=pin['contract'] == LIFECYCLE_FIELD_CONTRACT)
+            dependency_scope = pin['contract'] in RECORD_DEPENDENCY_CONTRACTS
             status_key = 'record_dependency' if dependency_scope else 'assertion_status'
             status = decision[status_key]
             supported_status = 'record_bound' if dependency_scope else 'asserted'
@@ -173,7 +178,9 @@ class PreparedContextualSourceReview:
 def _validate_compiler_options(*, scoped_coverage, tool_selection_mode,
                                scope_subjective_history, response_mode,
                                scope_permission_context, fact_value_authority,
-                               private_cognition_scope, record_dependency_scope):
+                               private_cognition_scope, record_dependency_scope, lifecycle_scope):
+    if type(lifecycle_scope) is not bool or (lifecycle_scope and not record_dependency_scope):
+        raise ValueError("lifecycle scope requires record dependency scope")
     if type(record_dependency_scope) is not bool or (record_dependency_scope and not private_cognition_scope):
         raise ValueError("record dependency scope requires current private cognition scope")
     if type(private_cognition_scope) is not bool or (private_cognition_scope and not fact_value_authority):
@@ -195,7 +202,7 @@ def _validate_compiler_options(*, scoped_coverage, tool_selection_mode,
 # Process-local pure compilation only. Bump this identity when changing compiler
 # semantics without changing a wire contract. A restarted/reloaded compiler has
 # an empty cache; neither preparations nor verdicts are persisted by this cache.
-_COMPILER_CACHE_VERSION = 'contextual-source-preparation-compiler.2'
+_COMPILER_CACHE_VERSION = 'contextual-source-preparation-compiler.3'
 
 
 def _compiler_contract_digest():
@@ -207,22 +214,25 @@ def _compiler_contract_digest():
         INSTRUCTION as selection_instruction, CONTEXT_INSTRUCTION,
     )
     from .visible_record_dependency_scope import INSTRUCTION as dependency_instruction
+    from .visible_lifecycle_readings import CONTRACT as lifecycle_contract, INSTRUCTION as lifecycle_instruction, LIFECYCLE_FIELDS
     return hashlib.sha256(_json({
         'compiler': _COMPILER_CACHE_VERSION,
         'contracts': [CONTRACT, SCOPED_COVERAGE_CONTRACT, FACT_VALUE_CONTRACT,
-                      PRIVATE_COGNITION_CONTRACT, RECORD_DEPENDENCY_CONTRACT, cognition_contract],
+                      PRIVATE_COGNITION_CONTRACT, RECORD_DEPENDENCY_CONTRACT, LIFECYCLE_FIELD_CONTRACT, cognition_contract],
         'instruction': INSTRUCTION,
         'cognition': [cognition_instruction, READER_INSTRUCTION, REVIEWER_INSTRUCTION],
         'selection': [selection_instruction, CONTEXT_INSTRUCTION],
         'record_dependency': dependency_instruction,
+        'lifecycle': [lifecycle_contract, lifecycle_instruction, sorted(LIFECYCLE_FIELDS)],
     }).encode()).hexdigest()
 
 
-def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool", scope_permission_context=False, fact_value_authority=False, private_cognition_scope=False, record_dependency_scope=False):
+def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool", scope_permission_context=False, fact_value_authority=False, private_cognition_scope=False, record_dependency_scope=False, lifecycle_scope=False):
     options = dict(scoped_coverage=scoped_coverage, tool_selection_mode=tool_selection_mode,
                    scope_subjective_history=scope_subjective_history, response_mode=response_mode,
                    scope_permission_context=scope_permission_context, fact_value_authority=fact_value_authority,
-                   private_cognition_scope=private_cognition_scope, record_dependency_scope=record_dependency_scope)
+                   private_cognition_scope=private_cognition_scope, record_dependency_scope=record_dependency_scope,
+                   lifecycle_scope=lifecycle_scope)
     # Validate before lookup: Python's True/1 equality must not turn an invalid
     # option into a hit for an earlier valid compilation.
     _validate_compiler_options(**options)
@@ -253,8 +263,8 @@ def _cached_contextual_preparation(compiler_digest, meaning_bytes, source_bytes,
         meanings=meanings, sources=json.loads(source_bytes), **json.loads(option_bytes)).payload_json
 
 
-def _compile_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool", scope_permission_context=False, fact_value_authority=False, private_cognition_scope=False, record_dependency_scope=False):
-    contract = RECORD_DEPENDENCY_CONTRACT if record_dependency_scope else PRIVATE_COGNITION_CONTRACT if private_cognition_scope else FACT_VALUE_CONTRACT if fact_value_authority else SCOPED_COVERAGE_CONTRACT if scoped_coverage else CONTRACT
+def _compile_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool", scope_permission_context=False, fact_value_authority=False, private_cognition_scope=False, record_dependency_scope=False, lifecycle_scope=False):
+    contract = LIFECYCLE_FIELD_CONTRACT if lifecycle_scope else RECORD_DEPENDENCY_CONTRACT if record_dependency_scope else PRIVATE_COGNITION_CONTRACT if private_cognition_scope else FACT_VALUE_CONTRACT if fact_value_authority else SCOPED_COVERAGE_CONTRACT if scoped_coverage else CONTRACT
     from .visible_independent_meanings import _readings
     interpreted, beats = _readings(meanings)
     facts = [{**fact, 'fact_id': f"m{index}:{fact['fact_id']}", 'meaning_index': index,
@@ -277,7 +287,8 @@ def _compile_contextual_source_review(*, meanings, sources, scoped_coverage=Fals
     if scope_subjective_history or scope_permission_context:
         from .visible_source_scope_selection import select_subjective_history, select_permission_context
         selector = select_permission_context if scope_permission_context else select_subjective_history
-        retained, catalog, selection = selector(witness_pin=pin, catalog=catalog, facts=facts)
+        retained, catalog, selection = selector(witness_pin=pin, catalog=catalog, facts=facts,
+            **({"lifecycle_scope": lifecycle_scope} if scope_permission_context else {}))
         body['source_selection_contract'] = {
             'contract': selection['contract'], ('omitted_materials' if scope_permission_context else 'omitted_subjective_materials'): len(selection['omitted_material_indexes']),
             'fixed_fact_permissions_unchanged': True, 'new_record_bound_assertions_require_reselection': True,
@@ -291,7 +302,7 @@ def _compile_contextual_source_review(*, meanings, sources, scoped_coverage=Fals
              } if r.get('source_family') == 'accepted_fact_value' else {})} for r in catalog if r['material_index'] == index]}
         for index, material in enumerate(body['source_materials']) if index in retained])
     body['independent_readings'] = [r['interpretation'] for r in interpreted]
-    body['fixed_facts'] = [{**f, 'eligible_reading_ids': list(_eligible_readings(f, catalog))} for f in facts]
+    body['fixed_facts'] = [{**f, 'eligible_reading_ids': list(_eligible_readings(f, catalog, lifecycle_scope=lifecycle_scope))} for f in facts]
     ordinary_ids = [r['reading_id'] for r in catalog if r.get('source_family') != 'accepted_fact_value']
     fact_value_ids = [r['reading_id'] for r in catalog if r.get('source_family') == 'accepted_fact_value']
     fact_item = _object({
@@ -381,7 +392,11 @@ def _compile_contextual_source_review(*, meanings, sources, scoped_coverage=Fals
     if record_dependency_scope:
         from .visible_record_dependency_scope import configure_record_dependency
         instruction = configure_record_dependency(instruction=instruction, fact_item=fact_item)
-    name = 'review_contextual_candidate_sources_v5' if record_dependency_scope else 'review_contextual_candidate_sources_v4' if private_cognition_scope else 'review_contextual_candidate_sources_v3' if fact_value_authority else 'review_contextual_candidate_sources_v2' if scoped_coverage else 'review_contextual_candidate_sources_v1'
+    if lifecycle_scope:
+        from .visible_lifecycle_readings import CONTRACT as lifecycle_contract, INSTRUCTION as lifecycle_instruction
+        instruction += lifecycle_instruction
+        body['lifecycle_field_contract'] = lifecycle_contract
+    name = 'review_contextual_candidate_sources_v6' if lifecycle_scope else 'review_contextual_candidate_sources_v5' if record_dependency_scope else 'review_contextual_candidate_sources_v4' if private_cognition_scope else 'review_contextual_candidate_sources_v3' if fact_value_authority else 'review_contextual_candidate_sources_v2' if scoped_coverage else 'review_contextual_candidate_sources_v1'
     request = {'messages': [{'role': 'system', 'content': instruction},
                             {'role': 'user', 'content': json.dumps(body, ensure_ascii=False, separators=(',', ':'))}],
                'temperature': 0.0, 'tools': [{'type': 'function', 'function': {

@@ -536,20 +536,20 @@ class Settings(BaseSettings):
             "on visible chat; Life owns its independent review topology separately."
         ),
     )
-    world_v2_visible_expression_profile: Literal["compact", "whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", "experimental_independent_v21"] = Field(
+    world_v2_visible_expression_profile: Literal["compact", "whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", "experimental_independent_v21", "experimental_independent_v22"] = Field(
         default="compact",
         alias="WORLD_V2_VISIBLE_EXPRESSION_PROFILE",
         description=(
             "Explicit QQ expression composition. whole_v3_review_v6/v7/v8 installs the "
             "whole author v3 and full source reviewer v6 with metered, owned providers; "
-            "requires expression episode mode off. experimental_independent_v21 installs "
-            "the independently metered v21 readers/source route. Selection is not release qualification."
+            "requires expression episode mode off. experimental_independent_v21/v22 installs "
+            "the corresponding independently metered readers/source route. Selection is not release qualification."
         ),
     )
     world_v2_visible_source_review_model: str = Field(
         default="deepseek-v4-pro", min_length=1,
         alias="WORLD_V2_VISIBLE_SOURCE_REVIEW_MODEL",
-        description="Source adjudicator only for experimental_independent_v21; never changes the character route.",
+        description="Source adjudicator only for experimental_independent_v21/v22; never changes the character route.",
     )
     world_v2_life_candidate_review_enabled: bool = Field(
         default=False, alias="WORLD_V2_LIFE_CANDIDATE_REVIEW_ENABLED",

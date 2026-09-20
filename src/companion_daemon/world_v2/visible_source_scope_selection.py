@@ -6,6 +6,7 @@ dialogue and situation. Every usable reading remains whole. The original source
 table stays pinned; this is neither a memory policy nor a semantic verdict.
 """
 from .visible_meaning_source_review import _eligible_readings
+from .visible_lifecycle_readings import eligible_readings
 from .visible_source_closure_protocol import _eligible_reference
 from .visible_subjective_source import AUTHORITY
 
@@ -29,18 +30,22 @@ CONTEXT_INSTRUCTION = (
 )
 
 
-def select_permission_context(*, witness_pin, catalog, facts):
+def select_permission_context(*, witness_pin, catalog, facts, lifecycle_scope=False):
     """Keep discourse context and every permitted support, without ranking prose.
 
     Original source proofs remain pinned by the caller. Cards with unknown or
     invalid eligibility are retained. No candidate is approved by this selector:
     full-text model coverage and source authorization still run afterwards.
     """
+    if type(lifecycle_scope) is not bool:
+        raise TypeError('lifecycle scope must be boolean')
+    def permitted(fact, readings):
+        return eligible_readings(fact, readings, lifecycle_scope=lifecycle_scope)
     sources, indexes = witness_pin['sources'], witness_pin['material_indexes']
     shown = witness_pin['shown_materials']
     if len(sources) != len(indexes):
         raise ValueError('source selection requires complete original material mapping')
-    needed = {reading for fact in facts for reading in _eligible_readings(fact, catalog)}
+    needed = {reading for fact in facts for reading in permitted(fact, catalog)}
     omitted = []
     for index, material in enumerate(shown):
         if material.get('lane') in {'recent_dialogue', 'current_situation'}:
@@ -53,10 +58,10 @@ def select_permission_context(*, witness_pin, catalog, facts):
             omitted.append(index)
     retained = [i for i in range(len(shown)) if i not in omitted]
     selected = [r for r in catalog if r['material_index'] in retained]
-    if any(_eligible_readings(f, selected) != _eligible_readings(f, catalog) for f in facts):
+    if any(permitted(f, selected) != permitted(f, catalog) for f in facts):
         raise ValueError('source selection changed a fixed fact permission set')
     return retained, selected, {
-        'contract': CONTEXT_CONTRACT, 'omitted_material_indexes': omitted,
+        'contract': 'visible-permission-context-selection.2' if lifecycle_scope else CONTEXT_CONTRACT, 'omitted_material_indexes': omitted,
         'retained_material_indexes': retained,
         'omission_basis': 'verified_no_fixed_fact_permission_outside_discourse_context',
         'fixed_fact_permissions_unchanged': True,
