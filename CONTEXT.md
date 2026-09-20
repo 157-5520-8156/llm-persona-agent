@@ -4,37 +4,35 @@ For current release qualification and the shared runtime/billing continuation
 checkpoint, read `docs/audits/release-status-2026-09-13-current.md`. Trial history
 is retained in the linked audit documents, not as competing current checkpoints.
 
-2026-09-20 latest closed trial: still manual_only / qualification_incomplete.
-The current runtime continuation remains
-output/private-audits/release-clean-continuation-20260920-07/run,
-ledger 580/revision 234. Latest cumulative billing is now
-output/private-audits/release-author-model-comparison-20260920-01/run/world.sqlite:
-1652 usage /1649 reservations /72 unknown holds. This probe forwarded zero calls:
-its local URL guard rejected the adapter's strict-tool beta endpoint. Independent
-reconciliation-v2 is verified; its 1.190718 CNY conservative unknown hold remains,
-not a confirmed charge. No World rows or receipts changed and no model comparison
-occurred. The probe directory is NOT a resumable journey. Restore runtime from07,
-then merge the complete latest billing prefix before reading a new usage watermark.
-The 07 closed trial itself had 1651 usage /1648 reservations /71 unknown holds.
-At frozen 89232c38, all 26 forwarded calls have verified native usage, estimated
-0.70211972 CNY, with zero new unknown holds. The process and clients closed at
-drain_limit_reached; independent reconciliation is verified. Cold replay matches,
-and both inherited v22 visible receipts remain exact and cold-verified; no new
-visible delivery or visible receipt was produced.
+2026-09-20 latest closed trial: 08, still manual_only / qualification_incomplete.
+Runtime and cumulative billing are unified at
+output/private-audits/release-clean-continuation-20260920-08/run,
+ledger 758/revision 317; 1678 usage /1675 reservations /72 unknown holds.
+At frozen 6d71b5f4, 26 forwarded calls have verified native usage, estimated
+0.70176968 CNY, with no new unknown holds. The prior probe hold is retained.
+Process/clients closed normally at operator_stopped; independent reconciliation,
+cold replay, both inherited visible v22 receipts and one new receipt are verified.
+The first new chat delivered 3 texts through capture; the second delivered none.
+These are not real QQ terminal receipts or stable multi-turn qualification.
 
-Life .13 made 5 real reviews: one accepted correction produced CharacterLifeResponse
-seq538, ExperienceCommitted seq541 and a new future Plan seq543. Lifecycle/Affect
-materials reached the actual author and reviewer, but the accepted review did not
-cite either new permission family. Their semantic-use qualification remains open.
-The active-attempt producer is still not_exercised; a future Plan is not an action
-or result. Conditional-intention misreadings and a supported claim with empty
-supports remain recorded failures. See the current index for the chat diagnosis.
+The character started a Plan at seq660. The active-attempt producer was exercised:
+its author returned malformed JSON, then chose no_op on correction. No new World
+result or settlement followed. A later Life response/Experience (seq735/738) uses
+an older environment settlement, not an active-attempt outcome.
+Snapshot .27 retained recall authority in the actual author input. Its inherited
+World outer-type change did not execute: real settled WorldLifeContextItem has no
+context_kind, while synthetic tests supplied it. Preserve this production-gap
+counterexample and old pinned snapshots; do not treat inner scope as lost authority.
+The second chat's unsupported past/negative action-state claims are a separate
+failure, not evidence that this presentation patch alone will solve dialogue.
+New snapshot .28 now recognizes the full typed settlement through its retained
+Capsule binding and exact semantic value. Both real 08 settlements reached both
+display lanes in a query-only temporary backup with zero provider calls; this is
+a new compilation, not an upgrade of an old pin or a new accepted conversation.
 
-Old Life .1-.12 compiler preparations/readings and an old real Life .10 receipt remain
-byte-compatible. These checks and the 120-case mechanism baseline do not replace
-stable dialogue, remembered life experience, final frozen full-suite, real QQ
-terminal receipts, 24-hour operation or the approximately 100 CNY/month cost gate.
-Never resume an older runtime identity without inheriting the full latest account.
+Final frozen full-suite, representative life-memory-chat continuity, QQ terminal
+receipts, 24-hour operation and approximately 100 CNY/month remain open gates.
+Restore only the latest runtime with its complete cumulative account.
 
 ## World
 

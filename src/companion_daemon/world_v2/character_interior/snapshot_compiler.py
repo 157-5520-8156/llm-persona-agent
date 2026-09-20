@@ -540,8 +540,43 @@ def _recalled_entry(
     }
 
 
+def _is_typed_settled_world_item(
+    item: dict[str, object], *, source_envelopes: Mapping[str, Mapping[str, object]] | None,
+) -> bool:
+    """Recognize an already selected typed record, never infer a settlement.
+
+    Chat compaction removes proof hashes, so use the retained Capsule value
+    when available and require the visible semantic value to match it. No
+    fields are restored to the model's content and no source permission is
+    granted here. Partial/unknown mappings are not a substitute for the type.
+    """
+    from pydantic import ValidationError
+
+    from ..world_life_context import WorldLifeContextItem
+
+    source_ref, visible = item.get("source_ref"), item.get("value")
+    if not isinstance(source_ref, str) or not isinstance(visible, dict):
+        return False
+    trusted = source_envelopes.get(source_ref) if source_envelopes is not None else None
+    raw = trusted.get("value") if isinstance(trusted, Mapping) else visible
+    if not isinstance(raw, dict):
+        return False
+    if isinstance(trusted, Mapping) and (
+        trusted.get("item_ref") != source_ref or trusted.get("value_hash") != _digest(raw)
+    ):
+        return False
+    try:
+        typed = WorldLifeContextItem.model_validate_json(
+            json.dumps(raw, ensure_ascii=False, allow_nan=False), strict=True,
+        )
+    except (ValidationError, ValueError, TypeError):
+        return False
+    return typed.occurrence_id == source_ref and _semantic_value(raw) == _semantic_value(visible)
+
+
 def _experience_entry(
     item: dict[str, object], *, lane: str, include_source_kind: bool = False,
+    typed_settled_world: bool = False,
 ) -> dict[str, object] | None:
     recalled = _recalled_entry(item, kinds=frozenset({"episodic"}))
     if recalled is not None:
@@ -581,14 +616,14 @@ def _experience_entry(
         semantic = {key: value[key] for key in fields if key in value}
         if value.get("context_kind") == "active_world_occurrence":
             semantic["epistemic_scope"] = PENDING_WORLD_SCOPE
-        if include_source_kind and value.get("context_kind") in {
-            "active_world_occurrence", "settled_world_occurrence",
-        }:
-            semantic["context_kind"] = value["context_kind"]
-            if value["context_kind"] == "settled_world_occurrence":
+        if include_source_kind:
+            if value.get("context_kind") == "active_world_occurrence":
+                semantic["context_kind"] = "active_world_occurrence"
+            elif typed_settled_world:
                 # The record is a World circumstance. Its nested environment
                 # and execution-bound result retain their separate authority;
                 # participants/location alone do not establish a lived action.
+                semantic["context_kind"] = "settled_world_occurrence"
                 semantic["epistemic_scope"] = SETTLED_WORLD_SCOPE
     else:
         values = value.get("values")
@@ -1574,7 +1609,9 @@ def compile_inner_life_snapshot(
 
     experience_lanes = [
         [entry for item in _slice_items(slices, lane)
-         if (entry := _experience_entry(item, lane=lane, include_source_kind=scoped_world_material))]
+         if (entry := _experience_entry(item, lane=lane, include_source_kind=scoped_world_material,
+             typed_settled_world=lane == "world_life" and scoped_world_material
+             and _is_typed_settled_world_item(item, source_envelopes=source_envelopes)))]
         for lane in ("world_life", "recent_experiences")
     ]
     recent = [entries[0] for entries in experience_lanes if entries]
@@ -1606,11 +1643,7 @@ def compile_inner_life_snapshot(
         materials["messages_waiting_to_send"] = waiting
     shareable = _moments_i_can_share(
         slices,
-        recent=[
-            entry
-            for item in _slice_items(slices, "world_life")
-            if (entry := _experience_entry(item, lane="world_life", include_source_kind=scoped_world_material))
-        ],
+        recent=experience_lanes[0],
         already_sent_count=len(photos_i_shared),
     )
     if shareable is not None:

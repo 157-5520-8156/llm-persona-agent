@@ -70,14 +70,14 @@ def snapshot_with_prefetch(version=None, *, scoped=True):
     return snapshot
 
 
-@pytest.mark.parametrize('version', ['23', '25', '26', '27'])
+@pytest.mark.parametrize('version', ['23', '25', '26', '27', '28'])
 def test_exact_version_selects_visible_authority_and_round_trip(version):
     snapshot = snapshot_with_prefetch(version)
     canonical = {'inner_life_snapshot': snapshot.model_view()}
     frozen = snapshot.model_dump_json()
     presented = order_user_present_payload(canonical)
     shown, = presented['inner_life_snapshot']['materials']['automatic_prefetch']['items']
-    expected = item() if version == '27' else {k: v for k, v in item().items() if k not in AUTHORITY}
+    expected = item() if version in {'27', '28'} else {k: v for k, v in item().items() if k not in AUTHORITY}
     assert shown == expected
     assert expand_present_world_context(presented)['inner_life_snapshot']['materials']['automatic_prefetch'] == {'items': [item()]}
     assert order_user_present_payload(expand_present_world_context(presented)) == presented
@@ -117,7 +117,7 @@ def test_existing_non_authority_compaction_remains_reversible_and_source_exact()
 
 def test_27_preserves_26_world_diary_and_hides_withheld_prefetch_before_presentation():
     current = snapshot_with_prefetch()
-    assert current.snapshot_compiler.value == 'inner-life-snapshot-compiler.27'
+    assert current.snapshot_compiler.value == LIFE_CONTEXT_COMPILER_VERSION
     old26 = snapshot_with_prefetch('26')
     for lane in ('recent_self_experiences', 'week_diary', 'automatic_prefetch'):
         assert current.model_view()['materials'][lane] == old26.model_view()['materials'][lane]
@@ -135,7 +135,7 @@ def test_27_preserves_26_world_diary_and_hides_withheld_prefetch_before_presenta
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('version', ['25', '26', '27'])
+@pytest.mark.parametrize('version', ['25', '26', '27', '28'])
 async def test_actual_role_http_payload_uses_the_saved_snapshot_version(monkeypatch, version):
     monkeypatch.setenv('COMPANION_DISABLE_DEBUG_USAGE_LEDGER', '1')
     captured = []
@@ -157,5 +157,5 @@ async def test_actual_role_http_payload_uses_the_saved_snapshot_version(monkeypa
     assert result['status'] == 'silent' and len(captured) == 1
     payload = json.loads(captured[0]['messages'][1]['content'])
     shown, = payload['inner_life_snapshot']['materials']['automatic_prefetch']['items']
-    assert shown == (item() if version == '27' else {k: v for k, v in item().items() if k not in AUTHORITY})
+    assert shown == (item() if version in {'27', '28'} else {k: v for k, v in item().items() if k not in AUTHORITY})
     assert expand_present_world_context(payload)['inner_life_snapshot']['materials']['automatic_prefetch']['items'] == [item()]

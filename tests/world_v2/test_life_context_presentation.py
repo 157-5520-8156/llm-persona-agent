@@ -6,6 +6,8 @@ from companion_daemon.world_v2.character_interior.life_context_presentation impo
     SETTLED_WORLD_SCOPE,
 )
 from companion_daemon.world_v2.character_interior.snapshot_compiler import compile_inner_life_snapshot
+from companion_daemon.world_v2.model_facing_context import _semantic_value
+from companion_daemon.world_v2.world_life_context import WorldLifeContextItem
 from test_derived_material_redaction import _context, _experience, _recreate
 
 
@@ -17,18 +19,37 @@ def occurrence(*, settled=False, ref="occurrence:test"):
         "privacy_class": "private",
     }
     if settled:
+        value.pop("context_kind")
         value.update(settled_at="2026-08-16T14:00:00+08:00", content={
+            "content_id": "content:" + ref, "content_kind": "outcome_candidate",
+            "content_ref": "content:" + ref, "content_payload_hash": "a" * 64,
+            "truncated": False, "privacy_class": "private", "source_entity_id": ref,
+            "source_entity_revision": 4, "authority_event_ref": "event:settled:" + ref,
+            "authority_world_revision": 4, "authority_payload_hash": "b" * 64,
+            "descriptor_event_ref": "event:content:" + ref,
+            "descriptor_world_revision": 4, "descriptor_payload_hash": "c" * 64,
             "world_consequence": {
                 "contract": "world-consequence.2",
                 "environment": {"epistemic_scope": "settled_world_environment", "text": "路边开始下雨。"},
                 "authorized_attempt_result": {
-                    "epistemic_scope": "settled_authorized_attempt_result",
-                    "execution_binding": {"source_event_ref": "event:started", "actor_ref": "agent:companion"},
+                    "epistemic_scope": "settled_result_of_bound_attempt",
+                    "execution_binding": {
+                        "source_kind": "activity_execution", "source_event_type": "ActivityStarted",
+                        "source_event_ref": "event:started", "actor_ref": "agent:companion",
+                        "source_world_revision": 2, "source_payload_hash": "d" * 64,
+                        "privacy_class": "private", "plan_id": "plan:test",
+                        "activity_id": "activity:test", "plan_entity_revision": 2,
+                    },
                     "text": "这次散步已走到校园门口。",
                 },
             },
-            "character_response": {"response_text": "我有点意外。", "epistemic_scope": "accepted_character_response"},
+            "character_response": {"response_text": "我有点意外。", "source_event_ref": "event:response",
+                "actor_ref": "agent:companion", "epistemic_scope": "private_interpretation_not_world_fact"},
         })
+        value.update(result_id="result:" + ref, result_payload_ref="payload:" + ref,
+            result_payload_hash="a" * 64, source={"authority_event_ref": "event:settled:" + ref,
+                "authority_world_revision": 4, "authority_payload_hash": "b" * 64})
+        value = WorldLifeContextItem.model_validate_json(json.dumps(value)).model_dump(mode="json")
     else:
         value.update(status="active", activated_at="2026-08-16T13:00:00+08:00",
                      premise={"text": "PENDING_PREMISE 校园路径可能出现天气变化。"},
@@ -66,7 +87,7 @@ def test_settlement_enters_diary_without_merging_world_result_and_feeling():
     reading = day["readings"][0]
     assert reading["source_ref"] == "occurrence:test"
     assert reading["settled_at"] == "2026-08-16T14:00:00+08:00"
-    assert reading["world_consequence"] == occurrence(settled=True)["value"]["content"]["world_consequence"]
+    assert reading["world_consequence"] == _semantic_value(occurrence(settled=True)["value"]["content"]["world_consequence"])
     assert reading["character_response"]["response_text"] == "我有点意外。"
     assert day["lines"] == ["午饭后整理了书架。"]
     assert "下雨" not in material["lived_moment"]
@@ -124,7 +145,7 @@ def test_environment_only_settlement_keeps_its_world_type_in_both_presented_lane
     assert snapshot.snapshot_compiler.value == LIFE_CONTEXT_COMPILER_VERSION
     assert world["context_kind"] == "settled_world_occurrence"
     assert world["epistemic_scope"] == SETTLED_WORLD_SCOPE
-    assert world["content"] == content
+    assert world["content"] == _semantic_value(content)
     assert world["participant_refs"] == ["agent:companion"]
     assert world["location_ref"] == "location:campus"
     assert world["settled_at"] == source["value"]["settled_at"]
@@ -133,7 +154,7 @@ def test_environment_only_settlement_keeps_its_world_type_in_both_presented_lane
     assert reading["context_kind"] == world["context_kind"]
     assert reading["epistemic_scope"] == world["epistemic_scope"]
     assert reading["source_ref"] == world["source_ref"]
-    assert reading["world_consequence"] == content["world_consequence"]
+    assert reading["world_consequence"] == _semantic_value(content["world_consequence"])
     assert "下雨" not in material["lived_moment"]
     hidden = snapshot.model_view(visible_source_refs=frozenset({"experience:legacy"}))
     assert "settled_world_occurrence" not in json.dumps(hidden, ensure_ascii=False)
@@ -146,7 +167,7 @@ def test_provenance_preserves_independently_bound_result_and_private_response():
     material = snapshot.model_view()["materials"]
     entry = material["recent_self_experiences"]["items"][0]
     assert entry["epistemic_scope"] == SETTLED_WORLD_SCOPE
-    assert entry["content"] == source["value"]["content"]
+    assert entry["content"] == _semantic_value(source["value"]["content"])
     reading = material["week_diary"][0]["readings"][0]
     assert reading["world_consequence"] == entry["content"]["world_consequence"]
     assert reading["character_response"] == entry["content"]["character_response"]
@@ -167,7 +188,8 @@ def test_recorded_25_diary_still_uses_its_scoped_renderer():
     assert view["week_diary"] == [{
         "date": "2026-08-16", "lines": [], "line_sources": [],
         "readings": [{
-            **occurrence(settled=True)["value"]["content"],
+            **_semantic_value({key: occurrence(settled=True)["value"]["content"][key]
+                               for key in ("world_consequence", "character_response")}),
             "source_ref": "occurrence:test", "settled_at": "2026-08-16T14:00:00+08:00",
         }],
     }]

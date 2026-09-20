@@ -1,8 +1,54 @@
 # 来源审核接口与真实续跑
 
-本页保存各阶段证据；**当前闭合试验为07**，其前的运行／费用检查点均已过期。
+本页保存各阶段证据；**当前闭合试验为08**，其前的运行／费用检查点均已过期。
 最新发布判断与唯一有效继续点见 [当前发布状态](release-status-2026-09-13-current.md)。
 资格仍为 `manual_only / qualification_incomplete`；不以离线测试、API200或材料送达替代交付。
+
+## 08：首轮交付、次轮拒绝与真实类型接点（6d71b5f4）
+
+证据在 `output/private-audits/release-clean-continuation-20260920-08/`，包括独立
+continuation-reconciliation、chat-trial-inspection与active-attempt-trial-inspection。
+第一轮输入146分钟，3条文字交付，无纠正：角色表示闲、描述有来源的画本环境、表达未来
+出去看的打算。4次聊天调用完整返回；作者4.545秒，来源审核10.709秒，不能将其当作端到端延迟。
+seq594提案、595接受、599表达计划、后续3次ActionDelivered，新增1张v22来源审核回执。
+实际作者`.27`，4项automatic_prefetch保留原memory_kind／authority／epistemic_scope。
+
+真实settled WorldLifeContextItem不含context_kind，导致`.26/.27`外层World标签未呈现；
+原测试fixture自行加字段，未覆盖生产类型。这是对下面离线呈现结论的限制与纠正，
+不能将首轮成功归因于并未实传的标签。内层环境权限仍保留，来源审核正确限制行动推论。
+
+11:28角色自主ActivityStarted（seq660），真实active-attempt-consequence.1绑定原活动
+及当前Clock。World作者首稿完整返回，但JSON在字符9381处结构不合法；纠正选择no_op。
+main_invalid_recovered只表示格式恢复，未进入来源审核、接受或结算，不等于尝试结果成功。
+
+158分钟自然追问“你出门了吗？我刚歇完，准备再画一会儿。”，初稿“正要出门，刚在磨蹭”
+含无来源的过去行为；纠正“还没呢／我这就去看看那些摊着的画／你接着画吧”仅否定行动
+状态无依据。8次调用完整返回，非超时；环境和未来意图通过，无新聊天Action／交付。
+这与World外层标签漏接不是同一个已证明原因。ActivityStarted不证明已出门，也不证明未出门。
+后台seq735/738另有真实Life response与Experience，仍引用已有环境结算，不是本轮尝试结果。
+
+26次实际转发全部known并核验原生用量，估算0.70176968元，无新增unknown。
+operator_stopped且clients_closed，独立对账verified；完整账目1678/1675/72，ledger758/rev317。
+08/run成为统一运行／账目继续点。冷重放通过，2张旧与1张新v22来源回执全部冷验。
+这些是capture渠道证据，实际QQ、连续聊天、最终全量与月费仍未合格。
+
+## 新快照28：正式结算类型接入（离线验证）
+
+正式WorldLifeContextItem保持原schema不动。新编译器从保留的Capsule完整值校验typed
+对象、source_ref、value_hash及可见语义值一致性，再向派生recent_self_experiences和
+week_diary标明settled World类型；不推断行动、感知或结果。来源过滤、正文、隐私与
+原绑定不变，未知／缺字段／替换来源／篡改内容不获得新标签。
+
+54项定向检查通过，包含真实mock宿主结算→WorldLifeContextCompiler→正式Capsule→
+compact上下文→snapshot，测试明确断言原producer没有context_kind。旧`.23/.25/.26/.27`
+已保存显示不被重新标记，版本集合冻结字面量。独立完整a28f277c源码对照12种旧Life
+编译与2张真实`.10/.13`回执相同；证据在`release-settled-type-20260920-01/`。
+此修复不等于第二轮否定行动状态已可交付，也未增加新模型调用。
+
+08实库的query_only临时备份也通过：正式resolver选出的2条settled在两处显示标签，
+原content语义／authority hash/ref保持一致，逐源隐私和异actor隔离通过；原DB/WAL
+指纹不变，编译阶段0写、provider0。`actual08-context-check.json`记录结果。
+这是新编译的`.28`，不声称升级08旧pin或已取得新对话交付。
 
 ## 新快照27：保留召回材料原权威（离线验证）
 
@@ -20,7 +66,7 @@
 08准备已验证从07恢复World，先合并1652/1649/72完整费用再读取水位1652，原hold
 与全部非账目表保持不变。39项离线准备检查通过，实际transport wrapper覆盖普通与
 strict beta请求；默认0调用，显式40调用／600秒。drain恢复正常默认8，避免07四次
-非空结果恰好用完检查次数；不提升物理／时长上限、不改变角色选择。尚未启动或验收。
+非空结果恰好用完检查次数；不提升物理／时长上限、不改变角色选择。此为启动前准备证据；实际运行结果见上方08。
 
 ## 原输入模型对照：本地门禁拒绝，未评价模型
 
@@ -34,8 +80,8 @@ strict beta请求；默认0调用，显式40调用／600秒。drain恢复正常�
 检查，仍核验原脚本hash、全部继承账行和非账目表不变。`reconciliation-v2`为verified：
 1652 usage/1649 reservations/72 unknown holds，新known费用为0，新增未知预留1.190718元
 原样保留，非确认扣费。没有World写入、来源审核、接受、交付或新回执，也无模型质量结论。
-最新累计账本位于`output/private-audits/release-author-model-comparison-20260920-01/run/world.sqlite`；
-运行仍由07恢复，必须先合并此账本。probe目录不具备journey恢复资格。
+该阶段累计账本位于`output/private-audits/release-author-model-comparison-20260920-01/run/world.sqlite`；
+08已将其完整合并，旧继续点已过期。probe目录不具备journey恢复资格。
 
 ## 07后的来源类型呈现修复（离线验证）
 
