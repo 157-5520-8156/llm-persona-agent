@@ -8,10 +8,12 @@ import hashlib
 import json
 
 import httpx
+from jsonschema import Draft202012Validator
 import pytest
 
 from companion_daemon.llm import DeepSeekChatModel
 from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
+from companion_daemon.world_v2.life_development_draft import LifeDevelopmentPossibilityDraft
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
 from test_life_development_runtime import (
     WORLD_ID,
@@ -54,10 +56,32 @@ class _AuthorHTTP:
             )
         )
         assert self.outputs, "cold recovery must not send another HTTP request"
+        output = self.outputs.pop(0)
+        message = {"content": output}
+        if body.get("tools"):
+            assert request.url.path == "/beta/chat/completions"
+            assert "response_format" not in body
+            assert body["tools"] == self.requests[0]["tools"]
+            assert body["tool_choice"] == self.requests[0]["tool_choice"]
+            try:
+                arguments = json.loads(output)
+            except json.JSONDecodeError:
+                # Deliberate malformed-arguments fixture exercises the existing
+                # same-author structural correction; do not repair its bytes.
+                assert output == "{"
+            else:
+                Draft202012Validator(body["tools"][0]["function"]["parameters"]).validate(arguments)
+            message = {"content": None, "tool_calls": [{"type": "function", "function": {
+                "name": body["tool_choice"]["function"]["name"], "arguments": output,
+            }}]}
+        else:
+            assert request.url.path == "/chat/completions"
+            assert body["response_format"] == {"type": "json_object"}
         return httpx.Response(
             200,
             json={
-                "choices": [{"message": {"content": self.outputs.pop(0)}, "finish_reason": "stop"}],
+                "choices": [{"message": message,
+                             "finish_reason": "tool_calls" if body.get("tools") else "stop"}],
                 "usage": {"prompt_tokens": 100, "completion_tokens": 20},
             },
         )
@@ -71,6 +95,13 @@ def _model(transport):
         thinking_enabled=False,
         transport=httpx.MockTransport(transport),
     )
+
+
+def _strict_proposal(draft):
+    value = LifeDevelopmentPossibilityDraft.model_validate_json(_json(draft)).model_dump(mode="json")
+    for outcome in value["outcomes"]:
+        outcome["world_consequence"].setdefault("authorized_attempt_result", None)
+    return _json({"replacement": value})
 
 
 def _assert_authority_locator(messages, correction):
@@ -100,7 +131,8 @@ async def test_structure_correction_preserves_authority_and_cold_request_bytes(
     path = tmp_path / "correction.sqlite"
     ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
     store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
-    wire = _AuthorHTTP(store, ("{", '{"decision":"no_op"}'))
+    replacement = '{"replacement":{"decision":"no_op"}}' if current else '{"decision":"no_op"}'
+    wire = _AuthorHTTP(store, ("{", replacement))
     model = _model(wire)
     try:
         wake = _seed_clock(ledger)
@@ -178,8 +210,9 @@ async def test_source_correction_preserves_initial_authority_and_reviews_the_com
         "violation_kinds": ["character_interior_authorship"],
         "exact_fragments": [fragment],
     }
-    replacement = '{"decision":"no_op"}' if no_op else _json(corrected)
-    wire = _AuthorHTTP(store, ("{", _json(rejected), replacement))
+    rejected_arguments = _strict_proposal(rejected)
+    replacement = '{"replacement":{"decision":"no_op"}}' if no_op else _strict_proposal(corrected)
+    wire = _AuthorHTTP(store, ("{", rejected_arguments, replacement))
     model = _model(wire)
     general = _SequenceModel(model="fixture:general", outputs=tuple(
         _source_closure_review(decision="supported") for _ in range(2)
@@ -207,7 +240,7 @@ async def test_source_correction_preserves_initial_authority_and_reviews_the_com
         initial, shape, source = [request["messages"] for request in wire.requests]
         assert shape[:-1] == initial
         assert source[:-2] == shape
-        assert source[-2] == {"role": "assistant", "content": _json(rejected)}
+        assert source[-2] == {"role": "assistant", "content": rejected_arguments}
         correction = json.loads(source[-1]["content"])
         _assert_authority_locator(source, correction)
         assert correction["no_op_output_contract"] == {
