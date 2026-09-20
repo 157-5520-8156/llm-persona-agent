@@ -17,7 +17,7 @@ from ..visible_subjective_source import subjective_direct_paths
 from .life_source_origin import canonical, digest
 from .life_source_view import LifeSourceView
 from .life_biographical_readings import biographical_reading
-from .life_fact_readings import EXACT_VALUE_REVIEW_CONTRACT, fact_value_reading
+from .life_fact_readings import EXACT_VALUE_REVIEW_CONTRACTS, fact_value_reading
 
 CONTRACT = "life-source-readings.3"
 EXACT_VALUE_CONTRACT = "life-source-readings.4"
@@ -163,7 +163,7 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
     rendered = json.loads(json.loads(view.messages_json)[1]['content'])['inner_life_snapshot']
     visible = {(item['source_ref'], item['scope']) for item in rendered.get('source_inventory', ())}
     readings, excluded, identities = [], [], {}
-    exact_value_display = view.review_contract == EXACT_VALUE_REVIEW_CONTRACT
+    exact_value_display = view.review_contract in EXACT_VALUE_REVIEW_CONTRACTS
     for source in table['source_references']:
         material = table['source_materials'][source['material_index']]['material']
         row = {**source, 'review_material': material}

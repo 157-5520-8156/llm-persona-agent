@@ -16,9 +16,11 @@ LEGACY_CONTRACT = 'life-source-review.7'
 TEMPORAL_CONTRACT = 'life-source-review.8'
 COVERAGE_CONTRACT = 'life-source-review.9'
 PERMISSION_CONTRACT = 'life-source-review.10'
-CONTRACT = 'life-source-review.11'
-TEMPORAL_CONTRACTS = {TEMPORAL_CONTRACT, COVERAGE_CONTRACT, PERMISSION_CONTRACT, CONTRACT}
-COVERAGE_CONTRACTS = {COVERAGE_CONTRACT, PERMISSION_CONTRACT, CONTRACT}
+EXACT_VALUE_CONTRACT = 'life-source-review.11'
+CONTRACT = 'life-source-review.12'
+EXACT_VALUE_CONTRACTS = {EXACT_VALUE_CONTRACT, CONTRACT}
+TEMPORAL_CONTRACTS = {TEMPORAL_CONTRACT, COVERAGE_CONTRACT, PERMISSION_CONTRACT, *EXACT_VALUE_CONTRACTS}
+COVERAGE_CONTRACTS = {COVERAGE_CONTRACT, PERMISSION_CONTRACT, *EXACT_VALUE_CONTRACTS}
 
 
 def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
@@ -138,7 +140,7 @@ def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
             'root uncertain prevents acceptance even when individual claims have support.')
         request['tools'][0]['function']['name'] = 'review_life_candidate_v4'
         request['tool_choice']['function']['name'] = 'review_life_candidate_v4'
-    if contract in {PERMISSION_CONTRACT, CONTRACT}:
+    if contract in {PERMISSION_CONTRACT, *EXACT_VALUE_CONTRACTS}:
         instructions = request['messages'][0]['content']
         instructions = instructions.replace(
             'Each support selects an offered permission_id. Only Fact permissions also require an exact '
@@ -165,7 +167,7 @@ def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
         request['messages'][0]['content'] = instructions
         request['tools'][0]['function']['name'] = 'review_life_candidate_v5'
         request['tool_choice']['function']['name'] = 'review_life_candidate_v5'
-    if contract == CONTRACT:
+    if contract in EXACT_VALUE_CONTRACTS:
         from .life_fact_readings import fact_snapshot_display
 
         packet['author_snapshot_display'] = fact_snapshot_display(
@@ -184,10 +186,70 @@ def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
         )
         request['tools'][0]['function']['name'] = 'review_life_candidate_v6'
         request['tool_choice']['function']['name'] = 'review_life_candidate_v6'
+    if contract == CONTRACT:
+        _configure_bound_permission_review(request=request, packet=packet, schema=schema)
     prepared = json.dumps(envelope, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
     if len(prepared.encode()) > 256_000:
         raise ValueError('Life review request exceeds its audit bound')
     return prepared
+
+
+def _configure_bound_permission_review(*, request, packet, schema):
+    """New wire only: omit a redundant value echo, never the bound Fact value."""
+    if packet['source_readings']['contract'] != 'life-source-readings.4':
+        raise ValueError('permission-only review requires exact accepted Fact readings')
+    properties = schema['properties']['fields']['items']['properties']
+    properties['created_current_states']['items']['properties']['time_relation'] = {
+        'type': 'string', 'enum': ['current'],
+        'description': 'The represented feeling, attitude or choice exists now. A newly formed '
+            'intention may target a future action; this does not establish that action as an event.',
+    }
+    choices = packet['permission_choices']
+    ids = [choice['permission_id'] for choice in choices]
+    if len(ids) != len(set(ids)):
+        raise ValueError('permission-only review requires unique permission choices')
+    supports = properties['record_bound_claims']['items']['properties']['supports']
+    supports['items'] = _object({'permission_id': {'type': 'string', **({'enum': ids} if ids else {})}})
+    if not ids:
+        supports['maxItems'] = 0
+    packet['permission_choices'] = [
+        {**{key: value for key, value in choice.items() if key != 'requires_exact_fact_quote'},
+         'selection': 'bound_accepted_value' if choice['requires_exact_fact_quote'] else 'direct_field'}
+        for choice in choices
+    ]
+    packet['support_selection_contract'] = 'life-bound-permission-selection.1'
+    replacements = {
+        'Each support selects an offered permission_id. The requires_exact_fact_quote boolean on that '
+        'permission controls its wire format: true requires quoted_value exactly from the accepted '
+        'Fact value; false requires only permission_id and forbids quoted_value. A false flag is '
+        'normal for settled event/environment readings, not missing evidence. Do not confuse an '
+        'ordinary factual proposition with the specific accepted_fact_value source family.':
+        'Every support contains only one offered permission_id. Its reading, claim scope and subject '
+        'are fixed. A bound_accepted_value choice also fixes exactly one displayed accepted_value: '
+        'the host resolves that same value and verifies its accepted hash, subject, predicate and '
+        'status/time binding. Do not return quoted_value or choose another part of the Observation. '
+        'A direct_field choice retains its existing field permission. This transport does not prove '
+        'entailment; you must still judge the ENTIRE proposition within the selected permission.',
+        'permission fixes its exact quoted_value; use the shown accepted_value verbatim. The '
+        'predicate still limits what that value establishes; neither its words nor their quotation ':
+        'permission selects only its displayed accepted_value, without copying that value in the '
+        'response. The predicate still limits what that value establishes; neither its words nor its ID ',
+        'A present intention can target a future action without claiming that action occurred.':
+        'Only states whose represented time is current belong in created_current_states. A choice '
+        'formed now to act later is a current intention, not a future state or evidence that the '
+        'action happened. A claimed earlier state, performed action or independently asserted future '
+        'event belongs in record_bound_claims; do not relabel it current. Embedded historical and '
+        'external premises still need separate review.',
+    }
+    instruction = request['messages'][0]['content']
+    for old, new in replacements.items():
+        if instruction.count(old) != 1:
+            raise ValueError('permission-only review requires its exact predecessor instruction')
+        instruction = instruction.replace(old, new)
+    request['messages'][0]['content'] = instruction
+    request['messages'][1]['content'] = canonical(packet)
+    request['tools'][0]['function']['name'] = 'review_life_candidate_v7'
+    request['tool_choice']['function']['name'] = 'review_life_candidate_v7'
 
 
 def inspect(*, raw, prepared_json, validate_support):
