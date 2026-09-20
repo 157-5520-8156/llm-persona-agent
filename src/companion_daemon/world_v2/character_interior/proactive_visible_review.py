@@ -20,6 +20,7 @@ from ..deliberation import (
     ModelOutput,
     ModelUsageProvenance,
     ValidationTechnicalFailure,
+    begin_validation_reselection_recovery,
 )
 from ..visible_source_author_request import prepare_proactive_visible_source_author_request
 from ..visible_source_proactive import (
@@ -122,15 +123,21 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
         candidates = (*prior_candidates, candidate)
         self._remember_rejected(request, candidate, failure.provider_subcall_audits)
         if semantic_rejection and request.correction_ordinal == 0:
-            raise _RoleResultContractError(
-                "role_result_source_invalid" if failure.rejected_expression is not None else "role_result_schema_invalid",
-                detail=failure.failure_detail[:4096],
-                rejected_expression=failure.rejected_expression,
-                response_hash=author.response_hash,
-                request_hash=author.request_hash,
-                model_call_id=author.model_call_id,
-            ) from failure
-        if semantic_rejection:
+            # Review has ended, so its inflight flag no longer protects the
+            # same-role correction from the original author deadline. Transfer
+            # to this candidate's existing one-shot correction/final-review
+            # phase before Core invokes that role again, as inbound does.
+            if begin_validation_reselection_recovery():
+                raise _RoleResultContractError(
+                    "role_result_source_invalid" if failure.rejected_expression is not None else "role_result_schema_invalid",
+                    detail=failure.failure_detail[:4096],
+                    rejected_expression=failure.rejected_expression,
+                    response_hash=author.response_hash,
+                    request_hash=author.request_hash,
+                    model_call_id=author.model_call_id,
+                ) from failure
+            failure.failure_code = "authored_subcall_timeout"
+        elif semantic_rejection:
             failure.failure_code = "authored_expression_reselection_invalid"
         failure.authored_candidate_audits = candidates
         failure.usage = None

@@ -615,6 +615,8 @@ def begin_validation_reselection_recovery() -> bool:
     state = _VALIDATION_ATTEMPT.get()
     if state is None:
         return True
+    if state.hard_deadline <= state.budget.clock():
+        return False
     state.truth_boundary_active = True
     if state.reselection_deadline is None:
         state.begin_reselection()
