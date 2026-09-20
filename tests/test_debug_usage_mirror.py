@@ -124,11 +124,22 @@ def read_rows(path, table):
         return [dict(row) for row in connection.execute(f"SELECT * FROM {table}")]
 
 
+@pytest.mark.parametrize(
+    ("call_month", "expected_cost", "pricing_version"),
+    [
+        (8, 0.00137, "deepseek-2026-08-17-offpeak"),
+        (9, 0.001008, "deepseek-2026-09-10-offpeak"),
+    ],
+)
 def test_delayed_import_keeps_original_call_month_and_offpeak_price(
-    tmp_path, debug_book, monkeypatch
+    tmp_path, debug_book, monkeypatch, call_month, expected_cost, pricing_version,
 ):
+    called_at = datetime(2026, call_month, 31 if call_month == 8 else 30, 0, 59, 59,
+                         tzinfo=timezone.utc)
+    imported_at = datetime(2026, call_month + 1, 1, 1, 0, 1, tzinfo=timezone.utc)
+
     class Clock(datetime):
-        current = datetime(2026, 9, 30, 0, 59, 59, tzinfo=timezone.utc)
+        current = called_at
 
         @classmethod
         def now(cls, tz=None):
@@ -139,25 +150,25 @@ def test_delayed_import_keeps_original_call_month_and_offpeak_price(
     source = WorldV2UsageStore(path=str(source_path))
     reservation_id = admit(source)
     # The provider bill and mirror callback arrive in a later month, at peak.
-    Clock.current = datetime(2026, 10, 1, 1, 0, 1, tzinfo=timezone.utc)
+    Clock.current = imported_at
     source.record(provider_bill(reservation_id))
     assert debug_book.import_settled_provider_usage(source=source, reservation_id=reservation_id)
     assert debug_book.import_settled_provider_usage(source=source, reservation_id=reservation_id)
     assert debug_book.monthly_cost_cny() == 0
-    assert debug_book.cost_since(since=datetime(2026, 9, 1, tzinfo=timezone.utc)) == pytest.approx(
-        0.00137
+    assert debug_book.cost_since(since=datetime(2026, call_month, 1, tzinfo=timezone.utc)) == pytest.approx(
+        expected_cost
     )
     mirrored = read_rows(tmp_path / "debug.sqlite", "world_v2_model_usage")
     assert len(mirrored) == 1
-    assert mirrored[0]["recorded_at"] == "2026-09-30T00:59:59+00:00"
-    assert mirrored[0]["pricing_version"] == "deepseek-2026-08-17-offpeak"
+    assert mirrored[0]["recorded_at"] == called_at.isoformat()
+    assert mirrored[0]["pricing_version"] == pricing_version
     assert not read_rows(tmp_path / "debug.sqlite", "world_v2_model_reservations")
     receipt = read_rows(tmp_path / "debug.sqlite", "world_v2_model_usage_imports")[0]
     assert receipt["source_ledger_path"] == str(source_path.resolve())
     assert receipt["source_reservation_id"] == reservation_id
     assert receipt["source_usage_id"] == 1
     assert receipt["target_usage_id"] == mirrored[0]["id"]
-    assert receipt["imported_at"] == "2026-10-01T01:00:01+00:00"
+    assert receipt["imported_at"] == imported_at.isoformat()
 
 
 @pytest.mark.asyncio

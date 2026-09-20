@@ -3157,7 +3157,7 @@ def build_qq_c2c_host(
         raise TypeError("visible source review deployment flag must be a bool")
     if type(visible_source_review_version) is not str or visible_source_review_version not in SUPPORTED_REVIEW_VERSIONS:
         raise ValueError("unsupported visible source review version")
-    from .visible_independent_review_runtime import validate_independent_reviewer_configuration
+    from .visible_independent_review_configuration import validate_independent_reviewer_configuration
     if not auto_whole_reviewer:
         validate_independent_reviewer_configuration(visible_source_review_model, visible_source_review_version)
     if visible_source_review_version != "1" and not visible_source_review_required:

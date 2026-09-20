@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import companion_daemon.db as db_module
 from companion_daemon.budget import (
     BudgetGate,
     UsageEstimate,
@@ -88,7 +89,17 @@ def test_model_usage_summary_groups_real_tokens_by_purpose(tmp_path: Path) -> No
     assert summary["_total"]["cache_hit_tokens"] == 110
 
 
-def test_model_budget_remaining_uses_persisted_real_token_cost(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("hour", "remaining_automatic", "remaining_manual"),
+    [(0, 0.01, 1.0), (2, 0.0, 0.0)],
+)
+def test_model_budget_remaining_uses_persisted_real_token_cost(
+    tmp_path: Path, monkeypatch, hour, remaining_automatic, remaining_manual,
+) -> None:
+    # Pin call and query time: a later price table or wall-clock window must
+    # not change what this persisted usage fixture is meant to exercise.
+    called_at = datetime(2026, 9, 16, hour, 30, tzinfo=UTC)
+    monkeypatch.setattr(db_module, "utc_now", lambda: called_at)
     store = CompanionStore(tmp_path / "model-budget.sqlite")
     store.record_model_usage(
         purpose="reply",
@@ -111,9 +122,14 @@ def test_model_budget_remaining_uses_persisted_real_token_cost(tmp_path: Path) -
         monthly_audio_limit=60,
     )
 
-    # One million cache-miss input tokens now cost ¥1.5 off-peak / ¥3 peak,
-    # so they exhaust the ¥1.01 automatic envelope either way.
-    assert 0 <= gate.remaining_model_budget_cny(automatic=True) < 0.01
+    # The September Flash table charges ¥1 off-peak / ¥2 peak. Automatic
+    # calls also observe the soft envelope; manual calls retain the hard one.
+    assert gate.remaining_model_budget_cny(automatic=True, now=called_at) == pytest.approx(
+        remaining_automatic
+    )
+    assert gate.remaining_model_budget_cny(automatic=False, now=called_at) == pytest.approx(
+        remaining_manual
+    )
 
 
 def test_model_call_reservation_is_atomic_across_concurrent_budget_gates(

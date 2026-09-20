@@ -234,6 +234,32 @@ def test_experimental_profile_rejects_explicit_version_conflict_before_open(tmp_
     assert not (tmp_path / "world.sqlite").exists()
 
 
+@pytest.mark.parametrize("version", ["8", "23"])
+def test_mismatched_reviewer_is_rejected_before_database_creation(tmp_path, version):
+    class OfflineModel:
+        def __init__(self, name):
+            self.model = name
+
+        async def complete_json_with_usage(self, **kwargs):
+            pytest.fail("invalid reviewer configuration must not call a model")
+
+    author, first, second = (OfflineModel(name) for name in ("author", "reader-a", "reader-b"))
+    # The legacy import still denotes the same configuration type as the
+    # host's pure validation seam, without importing the execution runtime.
+    reviewer = (
+        IndependentVisibleReviewer(meaning_models=(first, second), source_model=first)
+        if version == "8" else first
+    )
+    with pytest.raises(ValueError, match="independent review versions"):
+        host_module.build_qq_c2c_host(
+            settings=settings(tmp_path, WORLD_V2_VISIBLE_EXPRESSION_PROFILE="compact"),
+            recipient_id="10001", model=author,
+            visible_source_review_required=True, visible_author_tool_version="3",
+            visible_source_review_version=version, visible_source_review_model=reviewer,
+        )
+    assert not (tmp_path / "world.sqlite").exists()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("profile", EXPERIMENTAL_PROFILES)
 async def test_life_store_and_owned_clients_close_when_character_composition_fails(profile, tmp_path, monkeypatch, tracked_review_resources):

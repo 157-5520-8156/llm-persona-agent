@@ -64,7 +64,8 @@ def test_character_persona_has_her_own_attention_instead_of_a_question_seeking_r
     assert all("想知道的时候才问" not in rule for rule in character.style_rules)
     assert all("虚拟" not in boundary for boundary in character.boundaries)
     assert any("World context" in boundary for boundary in character.boundaries)
-    assert any("不会自动变成 World 硬事实" in boundary for boundary in character.boundaries)
+    assert any("当前感受、态度和联想由你决定" in boundary for boundary in character.boundaries)
+    assert any("模糊或记不清不提供新经历的依据" in boundary for boundary in character.boundaries)
     assert any("可核对命题" in boundary for boundary in character.boundaries)
 
 
