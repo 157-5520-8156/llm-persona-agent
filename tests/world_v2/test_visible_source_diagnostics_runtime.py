@@ -83,7 +83,9 @@ async def test_diagnostics_reach_same_role_and_complete_replacement_cold_verifie
         corrected_context = json.loads(corrected["messages"][1]["content"])
         correction = corrected_context["role_result_correction"]["coordinate"]
         detail = correction["failure_detail"]
-        assert detail in corrected_context["role_result_correction"]["instruction"]
+        instruction = corrected_context["role_result_correction"]["instruction"]
+        assert "coordinate.failure_detail" in instruction
+        assert detail not in instruction
         assert corrected["messages"][0] == first["messages"][0]
         assert len(detail) <= 3900
         data = json.loads(detail.split("\n", 1)[1])
