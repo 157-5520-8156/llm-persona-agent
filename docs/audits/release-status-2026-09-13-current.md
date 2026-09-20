@@ -6,7 +6,8 @@
 WorldOccurrence，未产生其 settlement/Experience；回来聊天未执行。
 
 Life 审核把整段 Observation 当作只能引用精确接受值的 Fact：输入展示仍存在歧义，
-目前已定位，正在修复。后续一次 Life 审核确已通过，但只是回复再考虑/Appraisal，
+已通过 `.11` 精确值展示修复（60 项回归）；主动纠正沿用过期 author 时间窗也已修复
+（90 项回归），二者待真实复测。后续一次 Life 审核确已通过，但只是回复再考虑/Appraisal，
 不能代替生活经历闭环。费用/回执/冷重放已闭合；尚无月费、QQ 或持续运行资格。
 
 最新新身份运行和累计账目：`output/private-audits/release-clean-demo-20260920-01/run`，

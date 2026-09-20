@@ -20,7 +20,11 @@ demo-reconciliation-status.json verifies 38 known bills (0.67650258 CNY), four n
 unknown holds (1.265022 CNY, including unforwarded conservative holds), two v22
 receipt cold recompilations and exact replay. Prehistory review was one additional
 known call (0.011272 CNY). See docs/audits/clean-demo-validation-2026-09-20.md.
-The prior identity's ledger 4367 remains a useful counterexample, but its billing
+Post-trial 212bb352 transfers proactive semantic correction into its existing
+candidate-bound recovery phase (90 checks). 48efd198 introduces Life .11 exact
+Fact displays while preserving old .10 request bytes (60 checks, real old receipt
+cold verified). Neither fix is real-provider qualified yet. The prior identity's
+ledger 4367 remains a useful counterexample, but its billing
 is now stale; never resume it without merging the latest cumulative account.
 
 Earlier same-day observations below retain only their historical scope.
