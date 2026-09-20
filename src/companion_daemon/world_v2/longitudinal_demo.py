@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 import socket
 
@@ -92,6 +93,7 @@ class LongitudinalDemoSetup:
         if dashboard_port is not None and (type(dashboard_port) is not int or not 0 <= dashboard_port <= 65535):
             raise ValueError("dashboard port is outside its valid range")
         self.remaining_steps = initialize_steps
+        self._billing_day = datetime.now(UTC).date()
         self.source = SameOwnerDashboardSource()
         self.settings = settings
         self.port = dashboard_port
@@ -118,6 +120,9 @@ class LongitudinalDemoSetup:
             outcomes.append(outcome)
         else:
             while self.remaining_steps:
+                if datetime.now(UTC).date() != self._billing_day:
+                    outcomes.append({"status": "billing_period_changed"})
+                    break
                 self.remaining_steps -= 1
                 outcome = await owner.initialize_prehistory_once(allow_model_call=True)
                 outcomes.append(outcome)

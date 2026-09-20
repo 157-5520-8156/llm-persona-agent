@@ -132,6 +132,43 @@ def test_dashboard_token_must_be_compatible_with_existing_authentication(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_setup_stops_at_billing_day_change_and_restart_cannot_reopen_calls(monkeypatch):
+    from datetime import UTC, datetime, timedelta
+    import companion_daemon.world_v2.longitudinal_demo as module
+
+    now = datetime(2026, 9, 30, 23, 59, tzinfo=UTC)
+
+    class Clock:
+        @staticmethod
+        def now(tz):
+            return now
+
+    class Owner:
+        def __init__(self):
+            self.allow_model_calls = []
+
+        async def initialize_prehistory_once(self, *, allow_model_call):
+            nonlocal now
+            self.allow_model_calls.append(allow_model_call)
+            now += timedelta(minutes=2)
+            return {"status": "retained" if allow_model_call else "model_call_disabled"}
+
+    monkeypatch.setattr(module, "datetime", Clock)
+    setup = module.LongitudinalDemoSetup(settings=None, initialize_steps=4)
+    owner = Owner()
+    outcome = await setup.prepare_host(owner, is_restart=False)
+    assert owner.allow_model_calls == [True]
+    assert outcome["prehistory_initialization"][-1]["status"] == "billing_period_changed"
+    assert setup.remaining_steps == 3
+    await setup.detach_host(owner)
+    await setup.prepare_host(owner, is_restart=True)
+    assert owner.allow_model_calls == [True, False]
+    assert setup.remaining_steps == 3
+    await setup.detach_host(owner)
+    await setup.aclose()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("cancel_request", [False, True])
 async def test_detach_joins_snapshot_before_owner_shutdown(cancel_request):
     import asyncio
