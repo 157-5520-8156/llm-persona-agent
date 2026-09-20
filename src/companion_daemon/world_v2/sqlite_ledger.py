@@ -5302,7 +5302,6 @@ class SQLiteWorldLedger:
         *,
         cursor: ProjectionCursor,
     ) -> tuple[HistoricalLedgerEvent, ...]:
-        placeholders = ",".join("?" for _ in validated)
         with self._thread_lock:
             verified_commits: dict[str, tuple[tuple[WorldEvent, ...], CommitResult]] = {}
             zero = ProjectionCursor(world_revision=0, deliberation_revision=0, ledger_sequence=0)
@@ -5360,6 +5359,7 @@ class SQLiteWorldLedger:
             # source should cost one proof lookup, not re-open every older
             # message retained in the same Context slice.
             validated = tuple(uncached)
+            placeholders = ",".join("?" for _ in validated)
             rows = tuple(
                 self._connection.execute(
                     f"""SELECT * FROM world_v2_events

@@ -752,3 +752,35 @@ def test_sqlite_database_errors_are_normalized_after_snapshot_rollback(tmp_path:
 
     with pytest.raises(LedgerIntegrityError, match="snapshot read failed"):
         ledger.observation_events_at((_locator(event),), cursor=cursor)
+
+
+@pytest.mark.parametrize("warm_count", [0, 1, 6, 7])
+def test_sqlite_observation_lookup_merges_partial_verified_cache(tmp_path, warm_count):
+    """Real warm reads leave six cached sources and one newly encountered one."""
+    ledger = SQLiteWorldLedger(path=tmp_path / "partial-cache.sqlite3", world_id=WORLD)
+    try:
+        events = tuple(
+            _event(f"event:partial:{i}", "ObservationRecorded", {"observation_id": f"partial:{i}"})
+            for i in range(7)
+        )
+        cursor = _commit(ledger, events)
+        locators = tuple(sorted((_locator(event) for event in events), key=_locator_key))
+        if warm_count:
+            warmed = ledger.observation_events_at(locators[:warm_count], cursor=cursor)
+            assert tuple(item.event for item in warmed) == events[:warm_count]
+        before = ledger.project()
+        statements = []
+        ledger._connection.set_trace_callback(statements.append)  # noqa: SLF001
+        found = ledger.observation_events_at(locators, cursor=cursor)
+        assert tuple(item.event for item in found) == events
+        assert len({item.event.idempotency_key for item in found}) == 7
+        assert ledger.project() == before
+        candidate_queries = [s for s in statements if "IDEMPOTENCY_KEY IN" in s.upper()]
+        assert len(candidate_queries) == int(warm_count < 7)
+        if candidate_queries:
+            for locator in locators[:warm_count]:
+                assert locator.idempotency_key not in candidate_queries[0]
+            for locator in locators[warm_count:]:
+                assert locator.idempotency_key in candidate_queries[0]
+    finally:
+        ledger.close()
