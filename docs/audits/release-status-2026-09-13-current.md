@@ -1,4 +1,4 @@
-# 当前发布状态（2026-09-20，08 续跑已闭合）
+# 当前发布状态（2026-09-20，08 续跑及 World 工具探针已闭合）
 
 **尚不可开放邀请，状态为 `manual_only / qualification_incomplete`。**
 首版固定为单角色、自然聊天、已有生活与记忆、可录制面板；小屋和新能力不进入本次发布。
@@ -44,7 +44,15 @@ World作者，首稿为完整返回但非法JSON；同作者纠正选择no_op。
 World`.2`的新作者请求已接入适配器现有strict tool能力，约束完整propose/no_op结构，
 精确工具合同hash进入新请求身份；原解析、来源审核和接受边界不变。54项定向及邻近
 检查通过，包含真实适配器配MockTransport、错误原文、一次角色纠正和旧请求恢复。
-真实供应商对新工具的接受及活动结果实际结算尚未验收，不能用离线通过替代。
+随后冻结6431bcaf的一次真实工具探针完整返回propose，严格JSON Schema通过；原业务
+解析器仍因location-bound／ordinary-privacy结果缺visual_evidence而拒绝。只有工具
+传输兼容得到实证，未产生World结果、结算或回执；不能称为可用生活结果。
+
+完整6431bcaf回归为9456 passed／12 failed／19 skipped／2 xfailed，耗时23分45秒。
+已修复Life专用生命周期引用误入可见经历、来源纠正遗漏原pinned tool，并对齐旧测试
+HTTP回包和枚举函数接口。主动消息冷恢复的3项失败停在lease到期前，尚待调度验证。
+另用实际预算适配器复现并修复：入站聊天必需审核不应被后台限额单独拦截，改记为
+inbound_source_review，日／月硬上限保留。定向验证通过不代替修复后完整回归。
 
 ## 完成顺序与停止条件
 
@@ -57,16 +65,23 @@ World`.2`的新作者请求已接入适配器现有strict tool能力，约束完
 
 ## 唯一有效的运行与累计费用继续点
 
-运行和完整累计账目已统一到
-`output/private-audits/release-clean-continuation-20260920-08/run`：
-ledger **758** / revision **317**，**1678 usage /1675 reservations /72 unknown holds**。
-08先从07恢复运行，再合并probe完整账本，保留此前1.190718元未知预留；旧继续点均已过期。
+运行继续点仍为 `output/private-audits/release-clean-continuation-20260920-08/run`：
+ledger **758** / revision **317**。最新累计账目在
+`output/private-audits/release-world-author-tool-20260920-01/run/world.sqlite`：
+**1679 usage /1676 reservations /72 unknown holds**。该probe是费用继续点，不能用作
+旅程恢复；新旅程须先恢复08运行，再合并probe完整账目，之后才能读取费用水位或调用模型。
+此前1.190718元未知预留继续保留，不恢复更便宜的旧账本。
 
 本轮 **26次实际转发，26笔原生用量核验，估算0.70176968元，新增未知预留0**。
 operator_stopped，进程及客户端正常关闭，独立对账verified；冷重放hash
 `1439b4094f9e0af40b8022ec059a9ed6da3d74bd67c63c8cf0bed3de671564ce`，机制检查无finding。
 2张旧v22可见来源回执原字节继承并冷验，新增1张也冷验；3条文字在capture渠道交付。
 这些回执不是实际QQ终态验收。费用为仓库价格估算，不是供应商账单或月费结论。
+
+之后的工具探针1次实际转发，原生用量核验，估算0.06081736元；无新增unknown，所有
+非费用表未变，进程与客户端已关闭并独立对账verified。08两轮聊天单独估算分别为
+0.1123786元和0.20897828元；按成功样本每天20轮、30天仅聊天约67.43元，尚未包括
+全天后台生活和失败重试，不能据此声称约100元／月已达标。
 
 [试验来源与反例](release-review-interface-validation-2026-09-20.md) ·
 [首版验收清单](release-candidate-gates-2026-09-20.md) ·

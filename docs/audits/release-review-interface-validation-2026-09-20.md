@@ -1,6 +1,6 @@
 # 来源审核接口与真实续跑
 
-本页保存各阶段证据；**当前闭合试验为08**，其前的运行／费用检查点均已过期。
+本页保存各阶段证据；**当前闭合旅程为08**，其后的World工具探针追加了累计费用。
 最新发布判断与唯一有效继续点见 [当前发布状态](release-status-2026-09-13-current.md)。
 资格仍为 `manual_only / qualification_incomplete`；不以离线测试、API200或材料送达替代交付。
 
@@ -29,7 +29,8 @@ main_invalid_recovered只表示格式恢复，未进入来源审核、接受或�
 
 26次实际转发全部known并核验原生用量，估算0.70176968元，无新增unknown。
 operator_stopped且clients_closed，独立对账verified；完整账目1678/1675/72，ledger758/rev317。
-08/run成为统一运行／账目继续点。冷重放通过，2张旧与1张新v22来源回执全部冷验。
+08结束时run是统一运行／账目继续点，后续探针已推进累计费用，不能再只恢复08账目。
+冷重放通过，2张旧与1张新v22来源回执全部冷验。
 这些是capture渠道证据，实际QQ、连续聊天、最终全量与月费仍未合格。
 
 ## World.2作者：使用已有strict tool出口（离线验证）
@@ -46,6 +47,18 @@ strict工具能力。新`world-consequence-author-tool.1`仅在World`.2`且provi
 54项定向及邻近检查通过：真实DeepSeek adapter配MockTransport验证beta路径、thinking
 工具选择、propose/no_op、一次角色纠正、两次坏输出仍技术失败、原错误字节和旧pin恢复。
 独立只读review未发现边界阻断；未调用真实provider，不宣称新wire已取得供应商或生活结算资格。
+
+### 后续真实探针与纠正接线
+
+`release-world-author-tool-20260920-01`在6431bcaf冻结代码上，只对08失败作者的原pinned
+输入加入同工具合同，1次实际请求、12.408秒返回，JSON Schema通过。原业务解析器拒绝
+location-bound ordinary-privacy候选缺少visual_evidence；不补造证据、不修改原规则。
+未进行来源审核、纠正或World写入。原生用量核验估算0.06081736元，独立对账verified，
+完整账目1679 usage／1676 reservations／72 unknown holds，原非费用表均未变。
+
+完整离线回归又发现来源语义重写继承world_author_wire却未传tools；已从原pinned
+消息恢复并验证精确工具／choice身份。旧消息无工具标记时保持旧JSON出口，身份不符
+作为技术失败；不升级旧请求，不更改该真实探针已验证的工具hash。33项定向检查通过。
 
 ## 新快照28：正式结算类型接入（离线验证）
 

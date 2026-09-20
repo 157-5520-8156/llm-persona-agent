@@ -4,10 +4,13 @@ For current release qualification and the shared runtime/billing continuation
 checkpoint, read `docs/audits/release-status-2026-09-13-current.md`. Trial history
 is retained in the linked audit documents, not as competing current checkpoints.
 
-2026-09-20 latest closed trial: 08, still manual_only / qualification_incomplete.
-Runtime and cumulative billing are unified at
+2026-09-20 latest closed journey: 08, still manual_only / qualification_incomplete.
+Runtime remains at
 output/private-audits/release-clean-continuation-20260920-08/run,
-ledger 758/revision 317; 1678 usage /1675 reservations /72 unknown holds.
+ledger 758/revision 317. Latest cumulative billing is now separate at
+output/private-audits/release-world-author-tool-20260920-01/run/world.sqlite:
+1679 usage /1676 reservations /72 unknown holds. Merge that complete billing
+prefix into any new restored journey before its usage watermark or provider call.
 At frozen 6d71b5f4, 26 forwarded calls have verified native usage, estimated
 0.70176968 CNY, with no new unknown holds. The prior probe hold is retained.
 Process/clients closed normally at operator_stopped; independent reconciliation,
@@ -32,8 +35,18 @@ a new compilation, not an upgrade of an old pin or a new accepted conversation.
 New World.2 author calls now use the existing strict tool capability when the
 provider explicitly supports it. The complete tool/choice digest enters the new
 request identity; the original parser, authority reviews and old recovery remain.
-Local adapter/contract tests passed; real provider compatibility and a settled
-attempt outcome still need evidence.
+The one-call real provider probe accepted strict tool grammar and returned schema-valid
+propose arguments, but the original cross-field parser rejected absent visual_evidence
+for a location-bound ordinary-privacy outcome. No World state or receipt was added;
+native usage was verified at an estimated 0.06081736 CNY with no new unknown hold.
+This proves tool transport compatibility, not a settled attempt or usable draft.
+
+The complete frozen 6431bcaf regression closed with 9456 passed /12 failed /19 skipped /
+2 xfailed in 1425.75 seconds. Repairs include Life-only lifecycle reference separation,
+pinned tools on semantic source rewrites and corrected native-tool test fixtures.
+Required inbound review now uses inbound_source_review so exhausted background/soft-day
+allowances cannot independently block it; daily/monthly hard caps remain intact.
+Final fixed-candidate regression and natural dialogue qualification remain pending.
 
 Final frozen full-suite, representative life-memory-chat continuity, QQ terminal
 receipts, 24-hour operation and approximately 100 CNY/month remain open gates.
