@@ -6,38 +6,37 @@ observations below retain their historical scope; they do not supersede that
 current index or authorize resuming an older, cheaper usage ledger.
 
 2026-09-20 latest release qualification: still manual_only / qualification_incomplete.
-Explicit v21 separates per-fact record dependency from grammatical assertion;
-current private cognition, exact Fact authority, complete Beat coverage and old
-receipt bytes remain intact. Rejection feedback now preserves original reviewer
-explanations. Pure immutable source compilation reuse saves about 1.409s median
-in an offline same-receipt CPU comparison, not measured provider latency.
-Normal QQ composition now supports experimental_independent_v21 and an explicit
-Life candidate reviewer with durable owned evidence; defaults remain unchanged.
-This is tested wiring, not deployment or staging qualification.
-Real v20 controls matched 5/6; v21 source-only matched 5/6, fixing metalinguistic
-quotation but misreading equal +08/Z instants as eight hours apart. No verdict
-was locally overridden. Four new full-host inputs then delivered three turns /
-eight Beats, including grounded memory and one successful whole correction.
-The return/nearby-life turn still failed after correction and a later retry.
-Ingest processing was 18.7s, deferred 48.0s, 24.3s and corrected 46.0s; these are
-not first-Beat latency measurements. One Activity completed and another future
-Plan was accepted; no World-stimulus Life candidate review ran in this journey.
-The return author already saw the two separate completion records. Source selection
-preserved all eligible readings; generic new outcomes after self-directed activity
-completion are missing, not an existing result lost by the Capsule.
-Separately, actual_event_or_state lacks lifecycle reading permission even for
-a lifecycle-only assertion; repair this explicitly without granting outcome
-authority or changing old compilation. One public offline boundary test passes.
-All 62 new calls closed and reconciled (known estimate 2.698217 CNY), no new
-unknown holds; all 31 old/new receipts cold-verified and replay hash matched.
-Runtime and billing now both continue from
-output/private-audits/release-life-chat-continuation-20260920-01/run
-(elapsed 863 minutes, ledger 4067; 1441 usage / 1438 reservations / 59 unknown holds).
-finished.json preserves process-terminal pending status; the separate immutable
-reconciliation-status.json proves verification. No paid process remains live.
-See docs/audits/record-dependency-life-chat-validation-2026-09-20.json and
-release-candidate-gates-2026-09-20.md. Do not call this release-ready or restart
-from any older, cheaper billing ledger.
+Explicit v22 permits lifecycle-only assertions to use the same plan's recorded
+status/start/end fields, without granting execution-success or intention authority.
+Bound UTC display preserves original source bytes, clock domains and old receipts.
+Completed self-directed attempts now enter the reviewed World consequence lane,
+with current-Clock/backoff, exact owner/source checks and effect-once identity.
+The actual v22 full-host trial at f62cf4d3 delivered two of three inputs / eight
+text Beats: one after same-character correction, the other after a later scheduler
+retry. The third still failed; its source JSON put a Fact-value-only reading into
+the ordinary reading list. The same reviewer also misused an observation excerpt
+and current-time report. These semantic counterexamples remain unresolved.
+Completion processing at 899.03 and 909.03 minutes reached author source reselection
+to no_op, but required manifest storage had silently failed at the old 12000-char
+limit. No new WorldOccurrence, settlement or Experience was created, and the
+explicit Life candidate reviewer was never invoked.
+Post-trial fb40a205 adds bounded internal capability-manifest audit storage and
+requires exact storage before recording recoverable success. Three actual 13341-char
+manifests cold-read correctly with unchanged semantic hashes; 176 related tests pass.
+The latest DB cold-replays; six historical missing bindings remain rejected and
+were not repaired. This is offline repair, not a new real-life qualification.
+e089056b adds --primary-user-id for a clean named journey; zero-call fixture
+bootstrap/replay and 69 CLI tests pass. Prehistory/on-owner dashboard composition
+and fresh real identity remain pending.
+All 34 physical calls are closed and reconciled: 33 known calls estimated at
+1.03358884 CNY, one unknown hold of 0.38194 CNY (not a known charge). All 33 old/new
+visible receipts cold-verify and replay matches. Runtime and billing both continue
+from output/private-audits/release-lifecycle-chat-20260920-01/run
+(elapsed 917 minutes, ledger 4367; 1475 usage /1472 reservations /60 unknown holds).
+No paid process remains live. finished.json retains terminal pending; the separate
+immutable reconciliation-status.json is verified. Never resume an older cheaper
+ledger. See docs/audits/lifecycle-chat-validation-2026-09-20.json and the current
+release status/gates. No QQ, deployment or 100 CNY/month qualification is implied.
 
 ## World
 

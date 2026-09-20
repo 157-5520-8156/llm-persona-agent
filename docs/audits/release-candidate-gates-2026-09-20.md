@@ -10,14 +10,15 @@
    正文、审核结果、实际交付、延迟、费用和冷恢复。相同配置连续失败则停止追加
    试探，保留反例定位具体责任。两轮成功也不能单独证明长期质量。
 2. **正式入口接线已实现，待运行验收**：正常 QQ composition 已能显式选择
-   `WORLD_V2_VISIBLE_EXPRESSION_PROFILE=experimental_independent_v21`；专用 Life 审核由
+   `WORLD_V2_VISIBLE_EXPRESSION_PROFILE=experimental_independent_v22`；专用 Life 审核由
    `WORLD_V2_LIFE_CANDIDATE_REVIEW_ENABLED=true` 安装。来源模型分别配置为
    `WORLD_V2_VISIBLE_SOURCE_REVIEW_MODEL` 与 `WORLD_V2_LIFE_CANDIDATE_REVIEW_MODEL`，
    不改变角色主模型。原子表达、客户端/同 DB 审核证据库的生命周期与冲突已离线验证。
    默认保持关闭，选择实验 profile 不赋予发布资格；尚未部署或完成实际 QQ 验收。
 3. **同一干净身份的完整旅程**：自主计划、实际后果、角色反应、记忆保留、跨会话
    回忆及聊天；同时覆盖用户离开/回来和旧话题。既有档案须重新绑定演示 World，
-   不能复制受污染测试库。入口是 longitudinal audit 与 prepare_character_prehistory。
+   不能复制受污染测试库。入口是 longitudinal audit 的 `--primary-user-id` 与 prepare_character_prehistory；
+   显式身份已完成零调用 bootstrap 验证，档案导入/角色保留/面板同 owner 组合仍待接通。
 4. **可录制面板**：主体已经具备，用同一旅程数据验证来源和状态展示，无须界面
    重写。Experience 未读取正文不能呈现成已证明完整因果。使用认证 owner DTO。
 5. **运行验收**：最终配置的独立进程恢复、备份回滚、重复事件不重复发送；实际 QQ

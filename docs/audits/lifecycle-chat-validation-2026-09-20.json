@@ -1,0 +1,242 @@
+{
+  "date": "2026-09-20",
+  "qualification": "manual_only / qualification_incomplete",
+  "trial": {
+    "code_head": "f62cf4d34d8d48074c1f28329a2326da082a15e5",
+    "closed": true,
+    "usage_reconciliation": "verified",
+    "completed": false,
+    "stop_reason": "operator_stopped",
+    "physical_calls": 34,
+    "captured_model_attempts": 34,
+    "local_cap_denials": 0,
+    "billing_states": {
+      "known": 33,
+      "unknown": 1
+    },
+    "known_native_token_joins_verified": 33,
+    "all_captured_request_bytes_and_terminal_body_hashes_verified": true,
+    "transport_only_unknown_calls": [],
+    "inherited_rows_unchanged": true,
+    "known_repository_estimate_cny": "1.0335888400000000095",
+    "new_unknown_hold_cny": "0.38194",
+    "usage_rows": 1475,
+    "reservation_rows": 1472,
+    "unknown_holds": 60,
+    "request_models_by_role": {
+      "flash": [
+        "deepseek-v4-flash"
+      ],
+      "visible_meaning_pro": [
+        "deepseek-v4-pro"
+      ],
+      "visible_meaning_flash": [
+        "deepseek-v4-flash"
+      ],
+      "visible_source_review": [
+        "deepseek-v4-pro"
+      ],
+      "world_support": [
+        "deepseek-v4-flash"
+      ]
+    },
+    "cold_receipt_versions": {
+      "visible-source-review-receipt.6": 6,
+      "visible-source-review-receipt.7": 1,
+      "visible-source-review-receipt.8": 6,
+      "visible-source-review-receipt.12": 3,
+      "visible-source-review-receipt.13": 2,
+      "visible-source-review-receipt.14": 2,
+      "visible-source-review-receipt.15": 3,
+      "visible-source-review-receipt.18": 3,
+      "visible-source-review-receipt.20": 2,
+      "visible-source-review-receipt.21": 3,
+      "visible-source-review-receipt.22": 2
+    },
+    "replay_hash_matches": true,
+    "final_ledger_sequence": 4367,
+    "final_logical_time": "2026-09-14T16:17:00+00:00",
+    "elapsed_logical_seconds": 55020.0,
+    "turns_consumed": 3,
+    "turns_requested": 3,
+    "new_delivery_count": 8,
+    "actual_life_candidate_review_calls": 0,
+    "new_event_type_counts": {
+      "ClockAdvanced": 11,
+      "ExternalObservationRecorded": 17,
+      "TriggerProcessClaimed": 30,
+      "ActionDelivered": 9,
+      "ExecutionReceiptRecorded": 17,
+      "ExpressionBeatSettled": 9,
+      "BudgetSettled": 9,
+      "ExternalObservationProcessed": 17,
+      "TriggerProcessCompleted": 28,
+      "ExpressionPlanCompleted": 3,
+      "ObservationRecorded": 3,
+      "TriggerProcessOpened": 13,
+      "RandomDrawRecorded": 3,
+      "ModelResultRecorded": 29,
+      "ProposalRecorded": 14,
+      "AcceptanceRecorded": 7,
+      "MessagePayloadStored": 8,
+      "ExpressionPlanAccepted": 2,
+      "ExpressionBeatAuthorized": 8,
+      "BudgetReserved": 8,
+      "ActionAuthorized": 8,
+      "AppraisalAccepted": 2,
+      "AffectEpisodeUpdated": 2,
+      "ActionScheduled": 8,
+      "ActionClaimed": 8,
+      "ActionDispatchStarted": 8,
+      "ActionProviderAccepted": 8,
+      "InteractionFactDecisionRecorded": 3,
+      "NpcStateChanged": 1,
+      "LifeContentRecorded": 3,
+      "TriggerProcessReclaimed": 2,
+      "PrivateImpressionAccepted": 1,
+      "ActivityPlanned": 1
+    },
+    "step_status_counts": {
+      "action_authorized": 1,
+      "scheduled": 10,
+      "deferred": 2,
+      "operator_stopped": 1
+    },
+    "operator_command_count": 5,
+    "fresh_identity_qualified": false,
+    "test_spend_cap_cny": null,
+    "monthly_product_cost_target_cny": 100,
+    "real_qq": false,
+    "production_database": false,
+    "qualification": "manual_only / qualification_incomplete"
+  },
+  "trial_scope": "Same inherited diagnostic World; no fresh identity, real QQ, deployment or monthly-cost qualification.",
+  "delivery_interpretation": {
+    "new_user_inputs": 3,
+    "new_expression_plans": 2,
+    "new_visible_text_beats": 8,
+    "first_input": "delivered after whole-character correction",
+    "second_input": "initially deferred by author timeout; later scheduler retry delivered",
+    "third_input": "not delivered; source receipt schema exception and invalid attempt",
+    "style": "Repeated test questions elicited a checking-up interpretation; this inherited history is unsuitable as a clean new-user demo."
+  },
+  "life_chain": {
+    "continuation_origin": "ActivityCompleted at prior seq3889, not old walk completion at seq2352",
+    "attempt_minutes": [
+      899.0333333333333,
+      909.0333333333333
+    ],
+    "retry_same_completion_and_proposal_family": true,
+    "first_author_failures": [
+      "location-bound candidate lacks visual_evidence",
+      "selected location closed before requested window"
+    ],
+    "second_author_initial_failure": "extra top-level type field",
+    "second_author_correction": "structurally valid propose",
+    "source_review_first_failure": "reason exceeds 2000 characters",
+    "source_review_correction": "unsupported: two existing-world claims and undeclared visual/prose fields",
+    "author_source_reselection": "no_op",
+    "final_failure": "required capability manifest sidecar unavailable",
+    "world_occurrences_created": 0,
+    "new_settlements": 0,
+    "new_experiences": 0,
+    "dedicated_life_candidate_review_calls": 0,
+    "source_semantics_unresolved": [
+      "Reviewer treated distinct transition_id and expected_entity_revision values as failing to prove the same plan start/completion despite original same-plan events being presented.",
+      "Available location descriptor was ref_level_only; author claimed campus/residence and visual facts beyond the presented evidence."
+    ]
+  },
+  "source_failure_replay": {
+    "capture_id": "model-input:c3c46aaaf9f54088b04f59b564637b89",
+    "response_schema_errors": [
+      {
+        "path": "/fact_decisions/1/reading_ids/0",
+        "validator": "enum"
+      },
+      {
+        "path": "/fact_decisions/3/reading_ids/0",
+        "validator": "enum"
+      }
+    ],
+    "exact_validation_error": "response violates meaning review schema at /fact_decisions/1/reading_ids/0",
+    "no_provider_calls": true,
+    "historical_result_unchanged": true,
+    "semantic_findings": [
+      "Reviewer treats the current 16:17 report as evidence for one minute earlier, despite matching displayed UTC coordinates.",
+      "Reviewer uses the larger observation excerpt to support a quotation beyond accepted Fact value 想学画画."
+    ],
+    "remediation_status": "unresolved; no local semantic verdict override"
+  },
+  "post_trial_repairs": {
+    "capability_manifest_storage": {
+      "commit": "fb40a205",
+      "dedicated_internal_kind": "capability_manifest_audit",
+      "utf8_byte_limit": 256000,
+      "tests_passed": 176,
+      "real_source_offline_verification": {
+        "provider_calls": 0,
+        "original_database_mutated": false,
+        "missing_historical_sidecars_repaired": false,
+        "qualification_changed": false,
+        "cases": [
+          {
+            "request_ref": "content:world-author-request:39b83315726521aaf5a10556fc67dd1db29ec3f123e507f8eb5926b467545af4",
+            "request_sha256": "39b83315726521aaf5a10556fc67dd1db29ec3f123e507f8eb5926b467545af4",
+            "manifest_characters": 13341,
+            "manifest_utf8_bytes": 13391,
+            "manifest_payload_hash": "9e929dcd823bb58feb0afa145e22269629d146874131711ccf69cedf95dddbbb",
+            "old_kind_error_reproduced": true,
+            "new_kind_exact_cold_read": true,
+            "original_manifest_semantic_hash_preserved": true
+          },
+          {
+            "request_ref": "content:world-author-request:78aafab55d7c94ec52069056a1ba6292bef64ea47aff192ac59dd1536d504e18",
+            "request_sha256": "78aafab55d7c94ec52069056a1ba6292bef64ea47aff192ac59dd1536d504e18",
+            "manifest_characters": 13341,
+            "manifest_utf8_bytes": 13391,
+            "manifest_payload_hash": "9e929dcd823bb58feb0afa145e22269629d146874131711ccf69cedf95dddbbb",
+            "old_kind_error_reproduced": true,
+            "new_kind_exact_cold_read": true,
+            "original_manifest_semantic_hash_preserved": true
+          },
+          {
+            "request_ref": "content:world-author-request:22825929b213e3356c376fd36d6a20aef47b45360c200211323ae1f781a837eb",
+            "request_sha256": "22825929b213e3356c376fd36d6a20aef47b45360c200211323ae1f781a837eb",
+            "manifest_characters": 13341,
+            "manifest_utf8_bytes": 13391,
+            "manifest_payload_hash": "9e929dcd823bb58feb0afa145e22269629d146874131711ccf69cedf95dddbbb",
+            "old_kind_error_reproduced": true,
+            "new_kind_exact_cold_read": true,
+            "original_manifest_semantic_hash_preserved": true
+          }
+        ],
+        "usage_rows": 1475,
+        "cold_ledger_sequence": 4367,
+        "cold_world_revision": 1954,
+        "cold_semantic_hash": "4688e5bf3f6b4fe75c1261177d8b4bd1008f14bf775e3e2853bb02d4e8fccfa4",
+        "historical_missing_bindings_still_rejected": 6
+      },
+      "new_paid_validation": false
+    },
+    "explicit_clean_identity_cli": {
+      "commit": "e089056b",
+      "flag": "--primary-user-id",
+      "cli_tests_passed": 69,
+      "zero_model_call_fixture_bootstrap_and_replay_verified": true,
+      "fresh_real_identity_qualified": false
+    }
+  },
+  "pre_trial_repairs": {
+    "v22_lifecycle_permission": "Same-plan status/start/end only; no completed-intention success authority.",
+    "bound_time_display": "UTC coordinates preserve original sources and distinguish clock domains; real semantic time handling remains unqualified.",
+    "completion_consequence_route": "Reviewed World author and original source checks; independent character Life response still required for experience."
+  },
+  "runtime_and_billing_continuation": "output/private-audits/release-lifecycle-chat-20260920-01/run",
+  "no_live_paid_process": true,
+  "next_scope": [
+    "Recover large-manifest completion path without rewriting old missing evidence.",
+    "Present verified lifecycle identity and authorized Fact values clearly; preserve real semantic counterexamples and review closure.",
+    "Use clean named identity, newly bound reviewed prehistory and same-owner dashboard for complete demo journey.",
+    "Final candidate regression, isolated QQ staging receipt and soak remain separate gates."
+  ]
+}
