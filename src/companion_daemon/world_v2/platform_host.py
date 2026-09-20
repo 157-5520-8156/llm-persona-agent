@@ -259,6 +259,12 @@ class WorldV2PlatformHost:
 
         return await self._application.delivered_text_character_count(action_id)
 
+    async def initialize_prehistory_once(self, *, allow_model_call: bool = False):
+        """Explicit setup of one imported memory through the existing character."""
+        return await self._application.initialize_prehistory_once(
+            allow_model_call=allow_model_call,
+        )
+
     def dashboard_character_interior_health(self) -> dict[str, object]:
         """Read process-local CharacterInterior composition state."""
 

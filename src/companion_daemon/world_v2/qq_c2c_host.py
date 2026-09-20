@@ -23,6 +23,7 @@ from typing import Any, Awaitable, Callable, Coroutine, Literal, Mapping, TypeVa
 
 if TYPE_CHECKING:
     from .character_interior.life_source_review import LifeSourceReviewer
+    from .character_prehistory import ReviewedPrehistoryArchive
 
 from companion_daemon.config import Settings
 from companion_daemon.qq_delivery import QQDelivery
@@ -2100,6 +2101,21 @@ class QQC2CHost:
         )
         return await asyncio.shield(task)
 
+    async def initialize_prehistory_once(self, *, allow_model_call: bool = False):
+        """Explicit owned setup, never an automatic background model call."""
+        self._require_open()
+        task = self._start_owned_scheduler_lane_task(
+            self._initialize_prehistory_admitted(allow_model_call=allow_model_call),
+            name="qq-c2c-owned-scheduler-lane:prehistory-initialization",
+        )
+        return await asyncio.shield(task)
+
+    async def _initialize_prehistory_admitted(self, *, allow_model_call: bool):
+        async with self._scheduled_work_lock:
+            return await self._host.initialize_prehistory_once(
+                allow_model_call=allow_model_call,
+            )
+
     async def _drain_admitted(
         self,
         *,
@@ -3076,6 +3092,7 @@ def build_qq_c2c_host(
     visible_source_review_version: str = "1",
     life_source_closure_model: ChatCompletionModel | None = None,
     life_source_reviewer: LifeSourceReviewer | None = None,
+    reviewed_prehistory: ReviewedPrehistoryArchive | None = None,
     candidate_external_proposition_inventory_model: ChatCompletionModel | None = None,
     delivery: QQC2CDelivery | None = None,
     media_transport: MediaProviderTransport | None = None,
@@ -3256,6 +3273,7 @@ def build_qq_c2c_host(
             reply_target=qq_c2c_target(recipient_id),
             action_pump_owner="pump:qq-c2c-v2",
             counterpart_actor_ref=f"user:{settings.primary_user_id}",
+            reviewed_prehistory=reviewed_prehistory,
             local_timezone=settings.local_timezone,
             trace_environment="real_transport",
             expression_action_kinds=expression_capabilities.action_kinds,

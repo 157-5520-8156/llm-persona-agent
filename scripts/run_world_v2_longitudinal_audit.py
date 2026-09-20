@@ -37,6 +37,14 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         "--primary-user-id", default="longitudinal-audit",
         help="Explicit isolated World identity; use a new ID and output directory for a clean-character journey.",
     )
+    parser.add_argument("--reviewed-prehistory", type=Path,
+                        help="Reviewed archive already bound to this World and character; import does not choose retention.")
+    parser.add_argument("--initialize-prehistory-steps", type=int, default=0,
+                        help="Explicitly allow up to 64 single-record character initialization steps before the journey.")
+    parser.add_argument("--dashboard-port", type=int,
+                        help="Read-only authenticated preview on 127.0.0.1; 0 selects an available port.")
+    parser.add_argument("--dashboard-token-file", type=Path,
+                        help="File containing a dedicated local dashboard token; never a provider credential.")
     parser.add_argument("--model-mode", choices=("fixture", "real-provider"), default="fixture")
     parser.add_argument("--allow-real-provider", action="store_true")
     parser.add_argument(
@@ -104,6 +112,12 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
             or len(options.primary_user_id) > 128
             or any(ord(char) < 32 or ord(char) == 127 for char in options.primary_user_id)):
         parser.error("--primary-user-id must be 1-128 characters without controls or surrounding whitespace")
+    if not 0 <= options.initialize_prehistory_steps <= 64:
+        parser.error("--initialize-prehistory-steps must be between zero and 64")
+    if (options.dashboard_port is None) != (options.dashboard_token_file is None):
+        parser.error("--dashboard-port and --dashboard-token-file must be supplied together")
+    if options.dashboard_port is not None and not 0 <= options.dashboard_port <= 65535:
+        parser.error("--dashboard-port must be between zero and 65535")
     if options.model_mode == "real-provider" and not options.allow_real_provider:
         parser.error("real-provider requires --allow-real-provider")
     if options.allow_real_provider and options.model_mode != "real-provider":
@@ -317,6 +331,30 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
     configured = configured.model_copy(update={
         "primary_user_id": getattr(options, "primary_user_id", "longitudinal-audit"),
     })
+    reviewed_prehistory = None
+    prehistory_hash = None
+    prehistory_path = getattr(options, "reviewed_prehistory", None)
+    if prehistory_path is not None:
+        from companion_daemon.world_v2.character_prehistory import ReviewedPrehistoryArchive
+        from companion_daemon.world_v2.qq_c2c_host import qq_c2c_world_id
+
+        archive_bytes = prehistory_path.read_bytes()
+        reviewed_prehistory = ReviewedPrehistoryArchive.model_validate_json(archive_bytes, strict=True)
+        if (reviewed_prehistory.document.world_id != qq_c2c_world_id(configured.primary_user_id)
+                or reviewed_prehistory.document.actor_ref != "agent:companion"):
+            raise ValueError("reviewed prehistory belongs to another World or character")
+        prehistory_hash = hashlib.sha256(archive_bytes).hexdigest()
+    demo_setup = None
+    if (getattr(options, "initialize_prehistory_steps", 0)
+            or getattr(options, "dashboard_port", None) is not None):
+        from companion_daemon.world_v2.longitudinal_demo import LongitudinalDemoSetup
+
+        demo_setup = LongitudinalDemoSetup(
+            settings=configured,
+            initialize_steps=options.initialize_prehistory_steps,
+            dashboard_port=options.dashboard_port,
+            token_file=options.dashboard_token_file,
+        )
     # Match production composition. Keep the historical experiment-only total
     # override explicit, without silently discarding the configured hedge.
     legacy_total = os.environ.get("DSH_INTERACTIVE_TURN_BUDGET_SECONDS")
@@ -450,6 +488,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                 )
         return build_qq_c2c_host(
             settings=settings,
+            reviewed_prehistory=reviewed_prehistory,
             recipient_id=RECIPIENT,
             bootstrap_at=journey.started_at,
             delivery=delivery,
@@ -464,7 +503,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
             **injected,
         )
 
-    return await run_journey(
+    capture_journey = run_journey(
         journey=journey,
         output=options.output,
         host_factory=host_factory,
@@ -472,8 +511,17 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
         limits=limits,
         model_input_capture=capture,
         close_resources=close_models,
+        prepare_host=demo_setup.prepare_host if demo_setup else None,
+        detach_host=demo_setup.detach_host if demo_setup else None,
         next_command=next_command,
         provenance={
+            **({"prehistory_setup": {
+                "archive_sha256": prehistory_hash,
+                "initialization_steps_requested": getattr(options, "initialize_prehistory_steps", 0),
+                "retention_authority": "character_model",
+            }} if reviewed_prehistory is not None or getattr(options, "initialize_prehistory_steps", 0) else {}),
+            **({"dashboard_preview": {"same_owner": True, "read_only": True, "loopback": True}}
+               if getattr(options, "dashboard_port", None) is not None else {}),
             "life_candidate_review": {
                 "enabled": options.require_life_candidate_review,
                 "qualification": "unverified",
@@ -534,6 +582,11 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
             ),
         },
     )
+    try:
+        return await capture_journey
+    finally:
+        if demo_setup is not None:
+            await demo_setup.aclose()
 
 
 def main(argv: list[str] | None = None) -> int:

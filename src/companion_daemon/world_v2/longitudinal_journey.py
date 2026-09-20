@@ -355,6 +355,8 @@ async def run_journey(
     provenance: dict | None = None,
     model_input_capture=None,
     close_resources: Callable | None = None,
+    prepare_host: Callable | None = None,
+    detach_host: Callable | None = None,
     next_command: Callable[[dict], Awaitable[dict | None]] | None = None,
     resume_from: Path | None = None,
 ) -> dict:
@@ -367,6 +369,8 @@ async def run_journey(
     experiment, not the character; continuation does not grant fresh credit.
     next_command observes settled steps and supplies a user turn, a future
     wait_until_minutes checkpoint, or None to stop. It cannot author World state.
+    Optional prepare_host runs bounded explicit setup through the same owner;
+    detach_host removes read-only observers before that owner begins shutdown.
     """
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     database = output / "world.sqlite"
@@ -423,6 +427,8 @@ async def run_journey(
             failure = None
             operations = []
             if host is not None:
+                if detach_host is not None:
+                    operations.append(lambda: detach_host(host))
                 operations.extend((host.aclose, host.wait_for_shutdown_quiescence))
             if close_resources is not None:
                 operations.append(close_resources)
@@ -518,6 +524,7 @@ async def run_journey(
                         "terminal_outcomes",
                         "model_failures",
                         "errors",
+                        "setup",
                     }
                 }
                 for step in timeline[observation_offset:]
@@ -546,7 +553,9 @@ async def run_journey(
 
     try:
         host = host_factory(database, clock, delivery)
-        capture({"kind": "bootstrap", "status": "ready", "errors": []})
+        setup = await bounded(prepare_host(host, is_restart=False)) if prepare_host else None
+        capture({"kind": "bootstrap", "status": "ready", "errors": [],
+                 **({"setup": setup} if setup is not None else {})})
         while clock.now() < end or turn_index < len(turns):
             if len(timeline) >= limits.max_steps:
                 stop_reason = "step_limit"
@@ -669,6 +678,8 @@ async def run_journey(
                 row["status"] = "reopened"
                 if not restart["same_state"] or restart["construction_delivery_delta"]:
                     row["errors"].append("restart_continuity_mismatch")
+                if prepare_host is not None:
+                    row["setup"] = await bounded(prepare_host(host, is_restart=True))
             elif next_turn is not None and next_turn <= clock.now():
                 turn = turns[turn_index]
                 row.update(kind="inbound", user_text=turn["text"], turn_id=turn["id"])

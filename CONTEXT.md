@@ -27,7 +27,11 @@ The latest DB cold-replays; six historical missing bindings remain rejected and
 were not repaired. This is offline repair, not a new real-life qualification.
 e089056b adds --primary-user-id for a clean named journey; zero-call fixture
 bootstrap/replay and 69 CLI tests pass. Prehistory/on-owner dashboard composition
-and fresh real identity remain pending.
+is now implemented through the normal host with an offline HTTP provider (99
+related checks); fresh real identity qualification remains pending. New source
+displays bind same-plan lifecycle readings and exact accepted Fact values;
+42/188 related checks and all 33 old receipt cold checks pass. No paid post-repair
+qualification yet. See docs/audits/release-demo-composition-2026-09-20.md.
 All 34 physical calls are closed and reconciled: 33 known calls estimated at
 1.03358884 CNY, one unknown hold of 0.38194 CNY (not a known charge). All 33 old/new
 visible receipts cold-verify and replay matches. Runtime and billing both continue
