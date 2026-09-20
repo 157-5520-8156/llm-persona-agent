@@ -16,6 +16,7 @@ from companion_daemon.world_v2.life_development_model_adapter import RoleBoundLi
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
 from companion_daemon.world_v2.world_consequence_author_tool import (
     CONTRACT, TOOL_NAME, bind_world_consequence_author_tool, world_consequence_author_tool_contract,
+    recover_world_consequence_author_tool,
 )
 from test_life_development_runtime import (
     WORLD_ID, _SequenceModel, _novel_origin_review, _source_closure_review, _seed_clock,
@@ -99,6 +100,99 @@ def test_strict_schema_retains_execution_union_and_binds_exact_transport():
     )
     assert auto["tool_choice"] == "auto"
     assert bind_world_consequence_author_tool(messages=original, tool_contract=auto) != bound
+
+
+def test_source_correction_recovers_exact_wire_or_retains_unmarked_json():
+    provider = SimpleNamespace(supports_strict_tool_choice=True, single_tool_selection_mode="forced")
+    original = [{"role": "system", "content": "unchanged"}, {"role": "user", "content": "{}"}]
+    assert recover_world_consequence_author_tool(messages=original, provider=provider) == {}
+    contract = world_consequence_author_tool_contract(provider=provider)
+    bound = bind_world_consequence_author_tool(messages=original, tool_contract=contract)
+    before = copy.deepcopy(bound)
+    assert recover_world_consequence_author_tool(messages=bound, provider=provider) == contract
+    assert bound == before
+    provider.single_tool_selection_mode = "auto"
+    with pytest.raises(ValueError, match="identity changed"):
+        recover_world_consequence_author_tool(messages=bound, provider=provider)
+    provider.single_tool_selection_mode = "forced"
+    changed = json.loads(bound[1]["content"])
+    changed["world_author_wire"]["tool_contract_sha256"] = "0" * 64
+    bound[1]["content"] = _json(changed)
+    with pytest.raises(ValueError, match="identity changed"):
+        recover_world_consequence_author_tool(messages=bound, provider=provider)
+    provider.supports_strict_tool_choice = False
+    with pytest.raises(ValueError, match="unavailable"):
+        recover_world_consequence_author_tool(messages=before, provider=provider)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("strict_original", [False, True])
+@pytest.mark.parametrize("rewrite_decision", ["no_op", "propose"])
+async def test_source_rewrite_keeps_original_wire_and_review_permissions(
+    tmp_path, strict_original, rewrite_decision,
+):
+    path = tmp_path / "rewrite.sqlite"
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    corrected = _full_propose(wake)
+    rejected = copy.deepcopy(corrected)
+    fragment = "她及时收回了手账。"
+    rejected["outcomes"][0]["world_consequence"]["environment_text"] += fragment
+    requests = []
+
+    def respond(request):
+        wire = json.loads(request.content)
+        requests.append(wire)
+        authored = (rejected if len(requests) == 1 else
+                    corrected if rewrite_decision == "propose" else {"decision": "no_op"})
+        # The provider may gain capability since an old pin was recorded. Its
+        # old JSON carrier must still be used on the correction request.
+        provider.supports_strict_tool_choice = True
+        if strict_original:
+            assert request.url.path == "/beta/chat/completions"
+            assert "response_format" not in wire
+            assert wire["tools"] == requests[0]["tools"]
+            assert wire["tool_choice"] == requests[0]["tool_choice"]
+            raw = _json({"replacement": authored})
+            Draft202012Validator(wire["tools"][0]["function"]["parameters"]).validate(json.loads(raw))
+            return _tool_response(wire, raw)
+        assert request.url.path == "/chat/completions"
+        assert wire["response_format"] == {"type": "json_object"}
+        assert "tools" not in wire and "tool_choice" not in wire
+        return httpx.Response(200, json={"choices": [{"message": {"content": _json(authored)}}],
+            "usage": {"prompt_tokens": 100, "completion_tokens": 200, "total_tokens": 300}})
+
+    provider = _model(respond)
+    provider.supports_strict_tool_choice = strict_original
+    general = _SequenceModel(model="fixture:general", outputs=tuple(
+        _source_closure_review(decision="supported") for _ in range(2)))
+    focused = _SequenceModel(model="fixture:focused", outputs=(
+        _novel_origin_review(decision="unsupported", unsupported_outcome_prerequisites=({
+            "prose_path": "outcomes.0.world_consequence.environment_text",
+            "violation_kinds": ["character_interior_authorship"], "exact_fragments": [fragment],
+        },)), _novel_origin_review(decision="supported")))
+    try:
+        runtime = _producer_runtime(ledger, store, wake, provider, general, focused)
+        result = await _advance(runtime, wake)
+        assert result.status == ("no_op" if rewrite_decision == "no_op" else "occurrence_committed")
+        assert len(requests) == 2
+        assert general.calls == focused.calls == (1 if rewrite_decision == "no_op" else 2)
+        assert requests[1]["messages"][:-2] == requests[0]["messages"]
+        original_user = json.loads(requests[0]["messages"][1]["content"])
+        assert ("world_author_wire" in original_user) is strict_original
+        for wire in requests:
+            raw_messages = _json(wire["messages"])
+            digest = hashlib.sha256(raw_messages.encode()).hexdigest()
+            assert store.read_exact(content_ref="content:world-author-request:" + digest).text == raw_messages
+        before = ledger.export_replay_evidence()
+        repeated = await _advance(runtime, wake)
+        assert repeated.proposal_event_ref == result.proposal_event_ref
+        assert ledger.export_replay_evidence() == before and len(requests) == 2
+    finally:
+        await provider.aclose()
+        store.close()
+        ledger.close()
 
 
 @pytest.mark.asyncio

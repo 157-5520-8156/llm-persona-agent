@@ -47,6 +47,7 @@ from .world_consequence_author_audit import read_world_consequence_author_eviden
 from .world_consequence_authoring_context import build_world_consequence_authoring_context
 from .world_consequence_author_tool import (
     bind_world_consequence_author_tool,
+    recover_world_consequence_author_tool,
     world_consequence_author_tool_contract,
 )
 from .world_consequence_prompt import (
@@ -5549,7 +5550,12 @@ class LifeDevelopmentRuntime:
         request_binding = record_world_author_request(content_store=self._store, messages=messages)
         try:
             with model_call_scope("life_development_source_rewrite"):
-                raw = await complete_json_object(self._world_author, messages, temperature=0.6)
+                tool_contract = recover_world_consequence_author_tool(
+                    messages=messages, provider=self._world_author,
+                )
+                raw = await complete_json_object(
+                    self._world_author, messages, temperature=0.6, **tool_contract,
+                )
         except Exception as exc:
             if not _is_expected_model_transport_failure(exc):
                 raise

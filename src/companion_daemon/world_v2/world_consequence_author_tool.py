@@ -67,19 +67,44 @@ def bind_world_consequence_author_tool(
 ) -> list[dict[str, str]]:
     """Make a new request identity without rewriting any historical compiler."""
 
-    encoded = json.dumps(tool_contract, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     user = json.loads(messages[1]["content"])
     if "world_author_wire" in user:
         raise ValueError("World author wire is already bound")
-    user["world_author_wire"] = {
+    user["world_author_wire"] = _wire_identity(tool_contract)
+    return [
+        messages[0],
+        {"role": messages[1]["role"], "content": json.dumps(user, ensure_ascii=False)},
+        *messages[2:],
+    ]
+
+
+def recover_world_consequence_author_tool(
+    *, messages: list[dict[str, str]], provider: object,
+) -> dict[str, object]:
+    """Carry the original transport into same-author source correction.
+
+    Old requests without the marker retain JSON transport even when the current
+    provider supports tools. A marked request must match this exact tool wire;
+    never silently upgrade its schema or selection mode while reusing its pin.
+    """
+
+    user = json.loads(messages[1]["content"])
+    if "world_author_wire" not in user:
+        return {}
+    if getattr(provider, "supports_strict_tool_choice", False) is not True:
+        raise ValueError("original World author tool transport is unavailable")
+    contract = world_consequence_author_tool_contract(provider=provider)
+    if user["world_author_wire"] != _wire_identity(contract):
+        raise ValueError("original World author tool transport identity changed")
+    return contract
+
+
+def _wire_identity(tool_contract: dict[str, object]) -> dict[str, object]:
+    encoded = json.dumps(tool_contract, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return {
         "contract": CONTRACT,
         "tool_name": TOOL_NAME,
         "tool_choice": tool_contract["tool_choice"],
         "tool_contract_sha256": hashlib.sha256(encoded.encode("utf-8")).hexdigest(),
         "arguments_contract": "exact_replacement_envelope_of_output_contract",
     }
-    return [
-        messages[0],
-        {"role": messages[1]["role"], "content": json.dumps(user, ensure_ascii=False)},
-        *messages[2:],
-    ]

@@ -5,9 +5,11 @@ import sqlite3
 
 import httpx
 import pytest
+from jsonschema import Draft202012Validator
 
 from companion_daemon.llm import DeepSeekChatModel
 from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
+from companion_daemon.world_v2.life_development_draft import LifeDevelopmentPossibilityDraft
 from companion_daemon.world_v2.model_usage_budget import WorldV2UsageStore
 from companion_daemon.world_v2.proposal_audit_schemas import RecordedModelResultAudit
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
@@ -33,10 +35,18 @@ async def test_rewrite_failure_records_paired_attempt_metadata_and_cold_recovers
     draft = _draft(wake)
     fragment = "她及时收回了手账。"
     draft["outcomes"][0]["world_consequence"]["environment_text"] += fragment
+    draft = LifeDevelopmentPossibilityDraft.model_validate_json(_json(draft)).model_dump(mode="json")
+    for outcome in draft["outcomes"]:
+        outcome["world_consequence"].setdefault("authorized_attempt_result", None)
     http_requests = []
 
     def provider(request):
-        http_requests.append(json.loads(request.content))
+        wire = json.loads(request.content)
+        http_requests.append(wire)
+        assert request.url.path == "/beta/chat/completions"
+        assert "response_format" not in wire
+        assert wire["tools"] == http_requests[0]["tools"]
+        assert wire["tool_choice"] == http_requests[0]["tool_choice"]
         if len(http_requests) > 1:
             if failure == "timeout":
                 raise httpx.ReadTimeout("fixture: rewrite timed out", request=request)
@@ -46,10 +56,15 @@ async def test_rewrite_failure_records_paired_attempt_metadata_and_cold_recovers
         # The simulated original response consumes the configured budget; the
         # real usage admission port must refuse the later rewrite before HTTP.
         tokens = 10_000_000 if failure == "budget_denied" else 100
+        arguments = {"replacement": draft}
+        Draft202012Validator(wire["tools"][0]["function"]["parameters"]).validate(arguments)
         return httpx.Response(200, json={
             "id": "offline-original-author", "model": "deepseek-v4-flash",
-            "choices": [{"message": {"role": "assistant", "content": _json(draft)},
-                         "finish_reason": "stop"}],
+            "choices": [{"message": {"role": "assistant", "content": None,
+                "tool_calls": [{"type": "function", "function": {
+                    "name": wire["tool_choice"]["function"]["name"],
+                    "arguments": _json(arguments),
+                }}]}, "finish_reason": "tool_calls"}],
             "usage": {"prompt_tokens": tokens, "completion_tokens": 200,
                       "total_tokens": tokens + 200},
         })
