@@ -785,6 +785,15 @@ async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_acti
         thinking_enabled=False,
         transport=httpx.MockTransport(forbidden),
     )
+    scheduler_now = before.projection.logical_time
+    assert scheduler_now is not None
+    held_due_timer = asyncio.Event()
+
+    async def hold_due_timer(_seconds):
+        # This test drives the real due callback at exact lease boundaries.
+        # An ambient 50ms timer must not race the cold-recovery assertions.
+        await held_due_timer.wait()
+
     host = build_qq_c2c_host(
         settings=Settings(
             _env_file=None,
@@ -802,6 +811,8 @@ async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_acti
         visible_source_review_version=review_version,
         delivery=delivery,
         use_configured_recall_embedding=False,
+        action_due_now=lambda: scheduler_now,
+        action_due_sleep=hold_due_timer,
     )
     try:
         assert (
@@ -826,8 +837,8 @@ async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_acti
             )
         # Both histories still have provider acceptance without terminal
         # receipts: the committed history already sent before restart, while
-        # the audited history sent during recovery above. Complete those same
-        # pending Actions before expecting a quiescent repeated drain.
+        # the audited history sent during recovery above. Their existing
+        # recovery leases must expire before either can become terminal.
         pending_proactive_ids = {
             a.action_id for a in after.projection.actions if a.kind == "proactive_message"
         }
@@ -836,8 +847,29 @@ async def test_reviewed_proactive_cold_replay_has_no_new_calls_or_duplicate_acti
             a.state == "provider_accepted"
             for a in after.projection.actions if a.action_id in pending_proactive_ids
         )
+        pending_actions = [
+            a for a in after.projection.actions if a.action_id in pending_proactive_ids
+        ]
+        assert all(a.claim_lease is not None for a in pending_actions)
+        lease_deadlines = {a.claim_lease.expires_at for a in pending_actions}
+        assert len(lease_deadlines) == 1
+        lease_expires_at = lease_deadlines.pop()
+        assert scheduler_now < lease_expires_at
         settled_sent = tuple(delivery.sent)
+        scheduler_now = lease_expires_at - timedelta(microseconds=1)
         await interior._drain_proactive_once()
+        await host._wake_due_actions()
+        await host.drain(max_action_units=8, max_background_units=0)
+        before_expiry = host.export_replay_evidence()
+        assert before_expiry.events == after.events
+        assert all(
+            a.state == "provider_accepted"
+            for a in before_expiry.projection.actions if a.action_id in pending_proactive_ids
+        )
+        assert tuple(delivery.sent) == settled_sent
+
+        scheduler_now = lease_expires_at
+        await host._wake_due_actions()
         await host.drain(max_action_units=8, max_background_units=0)
         settled = host.export_replay_evidence()
         delta = settled.events[len(after.events) :]
