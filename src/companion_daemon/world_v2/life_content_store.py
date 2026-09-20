@@ -8,6 +8,8 @@ that validates a descriptor against a pinned ledger cursor.  The
 ``raw_model_result`` and ``raw_model_request`` kinds are internal audit material and have no
 ``LifeContentRecorded`` visibility descriptor. The ``memory_representation_draft``
 kind likewise stores unaccepted bytes only; it has no visibility descriptor.
+``capability_manifest_audit`` retains bounded recovery authority only, never
+lived-world content or a visibility descriptor.
 """
 
 from __future__ import annotations
@@ -32,11 +34,13 @@ LifeContentKind = Literal[
     "npc_goal",
     "raw_model_result",
     "raw_model_request",
+    "capability_manifest_audit",
     "memory_representation_draft",
 ]
 MAX_LIFE_CONTENT_CHARACTERS = 12_000
 MAX_RAW_MODEL_RESULT_UTF8_BYTES = 64_000
 MAX_RAW_MODEL_REQUEST_UTF8_BYTES = 256_000
+MAX_CAPABILITY_MANIFEST_AUDIT_UTF8_BYTES = 256_000
 
 
 def life_content_payload_hash(text: str) -> str:
@@ -74,6 +78,7 @@ class StoredLifeContent:
             "npc_goal",
             "raw_model_result",
             "raw_model_request",
+            "capability_manifest_audit",
             "memory_representation_draft",
         }:
             raise ValueError("unsupported life content kind")
@@ -88,7 +93,12 @@ class StoredLifeContent:
         ):
             raise ValueError("raw model request exceeds the audit byte limit")
         if (
-            self.content_kind not in {"raw_model_result", "raw_model_request"}
+            self.content_kind == "capability_manifest_audit"
+            and len(self.text.encode("utf-8")) > MAX_CAPABILITY_MANIFEST_AUDIT_UTF8_BYTES
+        ):
+            raise ValueError("capability manifest exceeds the audit byte limit")
+        if (
+            self.content_kind not in {"raw_model_result", "raw_model_request", "capability_manifest_audit"}
             and len(self.text) > MAX_LIFE_CONTENT_CHARACTERS
         ):
             raise ValueError("life content exceeds the maximum size")
@@ -231,6 +241,7 @@ __all__ = [
     "InMemoryImmutableLifeContentStore",
     "LifeContentKind",
     "MAX_LIFE_CONTENT_CHARACTERS",
+    "MAX_CAPABILITY_MANIFEST_AUDIT_UTF8_BYTES",
     "MAX_RAW_MODEL_RESULT_UTF8_BYTES",
     "SQLiteImmutableLifeContentStore",
     "StoredLifeContent",

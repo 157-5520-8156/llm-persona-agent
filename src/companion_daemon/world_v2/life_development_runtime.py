@@ -40,6 +40,9 @@ from .life_content_store import (
     StoredLifeContent,
     life_content_payload_hash,
 )
+from .life_capability_manifest_audit import (
+    read_capability_manifest_audit, record_capability_manifest_audit,
+)
 from .world_consequence_author_audit import read_world_consequence_author_evidence
 from .world_consequence_authoring_context import build_world_consequence_authoring_context
 from .world_consequence_prompt import (
@@ -3050,33 +3053,21 @@ class LifeDevelopmentRuntime:
             life_content_payload_hash(manifest_text) if manifest_text is not None else None
         )
         manifest_content_ref = (
-            f"content:life-development:capability-manifest:{suffix}:{epoch}:{manifest_content_hash}"
+            f"content:life-development:capability-manifest-audit:{suffix}:{epoch}:{manifest_content_hash}"
             if manifest_content_hash is not None
             else None
         )
+        manifest_audit_binding = None
         if (
             manifest_text is not None
             and manifest_content_hash is not None
             and manifest_content_ref is not None
         ):
-            try:
-                self._store.put_if_absent(
-                    StoredLifeContent(
-                        content_ref=manifest_content_ref,
-                        content_kind="outcome_candidate",
-                        content_payload_hash=manifest_content_hash,
-                        text=manifest_text,
-                    )
-                )
-            except ValueError as exc:
-                # The full manifest value is already durable inside the model
-                # audit payload; the sidecar is a redundant replay-friendly
-                # copy.  A world with accumulated state can exceed the sidecar
-                # size bound, and that must not abort the ecology pass.
-                _LOG.warning(
-                    "life development capability manifest sidecar skipped: %s",
-                    str(exc)[:200],
-                )
+            # Recovery needs these exact bytes. Storage failure must precede
+            # any successful audit; it cannot be downgraded to a warning.
+            manifest_audit_binding = record_capability_manifest_audit(
+                content_store=self._store, content_ref=manifest_content_ref, manifest=manifest,
+            )
         audit_proposal: MinimalProposal | None = None
         proposal_hash: str | None = None
         if run.succeeded:
@@ -3108,12 +3099,8 @@ class LifeDevelopmentRuntime:
                     "snapshot_hash": capsule.snapshot_hash,
                 },
                 "capability_manifest_binding": (
-                    {
-                        "content_ref": manifest_content_ref,
-                        "content_payload_hash": manifest_content_hash,
-                    }
-                    if manifest_content_ref is not None and manifest_content_hash is not None
-                    else None
+                    manifest_audit_binding.model_dump(mode="json")
+                    if manifest_audit_binding is not None else None
                 ),
             }
             audit_proposal = MinimalProposal(
@@ -4066,26 +4053,12 @@ class LifeDevelopmentRuntime:
         manifest_value: dict[str, object] | None = None
         manifest: LifeDevelopmentCapabilityManifest | None = None
         if manifest_binding is not None:
-            if not isinstance(manifest_binding, dict):
-                raise ValueError("recoverable capability manifest binding is invalid")
-            manifest_ref_value = manifest_binding.get("content_ref")
-            manifest_hash_value = manifest_binding.get("content_payload_hash")
-            if not isinstance(manifest_ref_value, str) or not isinstance(
-                manifest_hash_value,
-                str,
-            ):
-                raise ValueError("recoverable capability manifest binding is incomplete")
-            stored_manifest = self._store.read_exact(content_ref=manifest_ref_value)
-            if (
-                stored_manifest is None
-                or stored_manifest.content_payload_hash != manifest_hash_value
-                or life_content_payload_hash(stored_manifest.text) != manifest_hash_value
-            ):
-                raise ValueError("recoverable capability manifest sidecar is unavailable")
-            manifest = LifeDevelopmentCapabilityManifest.model_validate_json(stored_manifest.text)
+            stored_manifest, manifest = read_capability_manifest_audit(
+                content_store=self._store, binding=manifest_binding,
+            )
             manifest_value = json.loads(stored_manifest.text)
-            manifest_ref = manifest_ref_value
-            manifest_hash = manifest_hash_value
+            manifest_ref = stored_manifest.content_ref
+            manifest_hash = stored_manifest.content_payload_hash
         request_bindings = None
         if (
             role == "world_author"

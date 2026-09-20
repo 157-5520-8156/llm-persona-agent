@@ -3757,11 +3757,10 @@ def _validate_one_life_development_deliberation(
     if not isinstance(context_identity, dict):
         raise ValueError(f"life-development {expected_role} audit Context is absent")
     manifest_binding = metadata.get("capability_manifest_binding")
-    if manifest_binding is not None and not isinstance(
-        manifest_binding,
-        dict,
-    ):
-        raise ValueError(f"life-development {expected_role} manifest binding is invalid")
+    if manifest_binding is not None:
+        from .life_capability_manifest_audit import validate_capability_manifest_binding
+
+        validate_capability_manifest_binding(manifest_binding)
     metadata_binding = {
         **(
             {"world_consequence_content_hashes": metadata.get("world_consequence_content_hashes")}
@@ -3803,6 +3802,11 @@ def _validate_one_life_development_deliberation(
         or sha256(canonical_json(manifest_value)) != manifest_hash
     ):
         raise ValueError(f"life-development {expected_role} manifest bytes changed")
+    if isinstance(manifest_binding, dict) and "contract" in manifest_binding and (
+        manifest_value is None
+        or len(canonical_json(manifest_value).encode("utf-8")) != manifest_binding["utf8_bytes"]
+    ):
+        raise ValueError(f"life-development {expected_role} manifest byte count changed")
     event_refs = binding.get("model_result_event_refs")
     event_hashes = binding.get("model_result_event_hashes")
     request_hashes = binding.get("request_hashes")
