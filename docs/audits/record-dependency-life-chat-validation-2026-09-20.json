@@ -253,9 +253,11 @@
           3763,
           4067
         ],
-        "source_gap": "The return-turn source request retained the old walking result, bound to that walking ActivityStarted, and no completed_activity card. It did not connect the later completion to the walk.",
+        "source_gap": "Permission-context selection .1 omitted two completed and one planned card because the extracted actual_event_or_state propositions cannot use accepted_intention/activity_lifecycle permissions. The full pinned table still contains those cards. No allowed fixed-fact reading was lost.",
         "production_gap": "Existing ActivityCompleted can wake settlement of existing candidates. It neither proves successful fulfillment nor generically authors a new result for arbitrary completed self-directed activities.",
-        "next_check": "Trace the same walking plan through start, existing result and completion to both author and source input; preserve plan identity and distinguish lifecycle completion from successful results."
+        "next_check": "Preserve same-plan start/result/completion provenance. Trace a new consequence from the original authorized attempt rather than treating ActivityCompleted or its intention as an actual outcome. Adding completion cards alone cannot authorize waiting, rest, arrival or a completed lap.",
+        "author_visibility": "The actual original return-turn author request, correction and retry each contained both the walking completion at sequence 2352 and the later activity completion at sequence 3889.",
+        "distinct_lifecycle_permission_gap": "A pure lifecycle assertion is also read as actual_event_or_state, which has no eligible activity_lifecycle reading. This is a separate protocol gap from missing concrete World results. Future repair must version the narrow permission without promoting plan prose to an outcome or changing old receipt compilation."
       }
     },
     "cold_receipts": 31,
@@ -273,7 +275,12 @@
     "groups_overlap": true,
     "ruff": "passed",
     "diff_check": "passed",
-    "old_native_v20_preparations_restored": 6
+    "old_native_v20_preparations_restored": 6,
+    "completed_activity_selection_boundary": {
+      "passed": 1,
+      "production_code_changed": false,
+      "scope": "Public offline day-open lifecycle fixture verifies same-plan start/end identities, original author and full-table visibility, frozen selector permission preservation, and rejection of changed plan/event aliases. It does not reproduce the real under-way World result chain or qualify model semantics."
+    }
   },
   "offline_cpu_comparison": {
     "cache_starts_cold": true,

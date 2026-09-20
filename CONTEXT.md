@@ -22,6 +22,12 @@ The return/nearby-life turn still failed after correction and a later retry.
 Ingest processing was 18.7s, deferred 48.0s, 24.3s and corrected 46.0s; these are
 not first-Beat latency measurements. One Activity completed and another future
 Plan was accepted; no World-stimulus Life candidate review ran in this journey.
+The return author already saw the two separate completion records. Source selection
+preserved all eligible readings; generic new outcomes after self-directed activity
+completion are missing, not an existing result lost by the Capsule.
+Separately, actual_event_or_state lacks lifecycle reading permission even for
+a lifecycle-only assertion; repair this explicitly without granting outcome
+authority or changing old compilation. One public offline boundary test passes.
 All 62 new calls closed and reconciled (known estimate 2.698217 CNY), no new
 unknown holds; all 31 old/new receipts cold-verified and replay hash matched.
 Runtime and billing now both continue from
