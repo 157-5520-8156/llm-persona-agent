@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure whether the companion actually remembers, through the public QQ seam.
+"""Measure memory text availability through the public QQ seam.
 
 This is an experience-side eval, not a mechanism test.  The suite already
 proves that capsules compile, facts commit and ledgers replay.  None of that
@@ -9,11 +9,15 @@ week ago, does it come back?
 The eval separates three failure modes that all look identical from the
 outside:
 
-  retrieval_miss        the fact never reached the model at all
-  supplied_but_unused   the fact was in the model-facing context, model ignored it
-  recalled              the fact reached the model and surfaced in the reply
+  memory_not_supplied             the expected text was absent from memory inputs
+  memory_supplied_no_text_match   supplied text did not match the reply
+  text_matched_from_memory        expected text appeared in both inputs and reply
 
-It therefore captures two different context sizes on every turn:
+These are text-match observations, not semantic correctness judgments. Subject,
+negation, temporal applicability and whether a callback was appropriate remain
+unassessed; a matching substring cannot establish any of them.
+
+It captures two different context sizes on every turn:
 
   capsule-side    pre-compaction slice counts, read from the
                   ``pinned turn mechanism consumption`` log line
@@ -65,6 +69,7 @@ _SLICES_OF_INTEREST = (
     "advisories",
     "private_impressions",
     "recent_experiences",
+    "recent_self_experiences",
 )
 
 
@@ -183,10 +188,30 @@ class RecordingModel:
         self.captures: list[str] = []
         self.outputs: list[str] = []
 
+    def __getattr__(self, name: str):
+        # Do not advertise a metered/streaming interface the provider lacks.
+        # All installed variants must pass through the same observation seam.
+        value = getattr(self._inner, name)
+        if name in {
+            "complete_with_usage", "complete_json_with_usage", "complete_json_stream_with_usage",
+        } and callable(value):
+            async def observed(messages, **kwargs):
+                self._capture(messages)
+                output = await value(messages, **kwargs)
+                self.outputs.append(output[0])
+                return output
+            return observed
+        return value
+
     def _capture(self, messages) -> None:  # type: ignore[no-untyped-def]
         try:
             envelope = json.loads(messages[1]["content"])
-            raw = str(envelope.get("request", {}).get("model_content_json", ""))
+            snapshot = envelope.get("inner_life_snapshot")
+            raw = (
+                json.dumps(snapshot, ensure_ascii=False)
+                if isinstance(snapshot, dict)
+                else str(envelope.get("request", {}).get("model_content_json", ""))
+            )
         except Exception:
             raw = ""
         if raw:
@@ -208,7 +233,6 @@ class RecordingModel:
         self.outputs.append(output)
         return output
 
-
 def _slice_stats(raw: str) -> dict[str, object]:
     """Item count and character cost per slice of one model-facing context."""
 
@@ -216,22 +240,48 @@ def _slice_stats(raw: str) -> dict[str, object]:
         context = json.loads(raw)
     except (TypeError, json.JSONDecodeError):
         return {"status": "invalid", "slices": {}, "total_characters": len(raw)}
-    slices = context.get("slices") if isinstance(context, dict) else None
+    slices = _context_slices(context)
     if not isinstance(slices, dict):
         return {"status": "missing_slices", "slices": {}, "total_characters": len(raw)}
     out: dict[str, object] = {}
     for name in _SLICES_OF_INTEREST:
         lane = slices.get(name)
         if not isinstance(lane, dict) or lane.get("availability") != "available":
-            out[name] = {"items": 0, "characters": 0}
+            out[name] = {"availability": "unavailable", "items": None, "characters": None}
             continue
         items = lane.get("items")
         items = items if isinstance(items, list) else []
         out[name] = {
+            "availability": "available",
             "items": len(items),
             "characters": len(json.dumps(items, ensure_ascii=False)),
         }
     return {"status": "ok", "slices": out, "total_characters": len(raw)}
+
+
+def _context_slices(context: object) -> dict | None:
+    from companion_daemon.world_v2.present_prompt import recent_dialogue_material_entries
+
+    if not isinstance(context, dict):
+        return None
+    if isinstance(context.get("slices"), dict):
+        return context["slices"]
+    materials = context.get("materials")
+    if not isinstance(materials, dict):
+        return None
+    aliases = {"remembered_material": "active_memory_candidates"}
+    return {
+        aliases.get(name, name): (
+            {"availability": "available", "items": recent_dialogue_material_entries(lane)}
+            if name == "recent_dialogue"
+            else {"availability": "available", "items": lane}
+            if isinstance(lane, list)
+            else {"availability": "available", **lane}
+            if isinstance(lane, dict)
+            else {"availability": "unavailable", "items": []}
+        )
+        for name, lane in materials.items()
+    }
 
 
 def _memory_slice_text(raw: str) -> str:
@@ -246,11 +296,11 @@ def _memory_slice_text(raw: str) -> str:
 
     try:
         context = json.loads(raw)
-        slices = context["slices"]
+        slices = _context_slices(context)
     except (TypeError, KeyError, json.JSONDecodeError):
         return ""
     items: list[object] = []
-    for name in ("relevant_facts", "active_memory_candidates"):
+    for name in ("relevant_facts", "active_memory_candidates", "automatic_prefetch"):
         lane = slices.get(name) if isinstance(slices, dict) else None
         lane_items = lane.get("items") if isinstance(lane, dict) else None
         if isinstance(lane_items, list):
@@ -298,16 +348,18 @@ def _score_probe(
         value for value in context_any if value not in memory_text and value in context_text
     ]
     if hit and in_memory:
-        verdict = "recalled"
+        verdict = "text_matched_from_memory"
     elif hit:
-        # The reply named the value without it being in the memory slice, so
-        # it came from the still-visible dialogue tail rather than from memory.
-        verdict = "recalled_from_dialogue_tail"
+        # No memory attribution is established. It may be dialogue carryover
+        # or unsupported generation; a substring cannot distinguish the two.
+        verdict = "text_matched_outside_memory"
     elif in_memory:
-        verdict = "supplied_but_unused"
+        verdict = "memory_supplied_no_text_match"
     else:
-        verdict = "retrieval_miss"
+        verdict = "memory_not_supplied"
     return {
+        "score_contract": "memory-recall-text-match.2",
+        "semantic_correctness": "unassessed",
         "key": probe.get("key"),
         "style": probe.get("style"),
         "distance_days": probe.get("distance_days"),
@@ -328,18 +380,20 @@ def _score_negative_probe(
     reply_text: str,
     memory_text: str,
 ) -> dict[str, object]:
-    """Detect irrelevant old-memory injection and its visible expression."""
+    """Measure fixture-forbidden text without deciding semantic relevance."""
 
     forbidden = [str(value) for value in probe.get("forbid_any", []) if str(value)]
     injected = [value for value in forbidden if value in memory_text]
     surfaced = [value for value in forbidden if value in reply_text]
     return {
+        "score_contract": "memory-recall-text-match.2",
+        "semantic_correctness": "unassessed",
         "key": probe.get("key"),
-        "wrong_memory_injected": bool(injected),
-        "unsupported_reply": bool(surfaced),
+        "forbidden_text_in_memory": bool(injected),
+        "forbidden_text_in_reply": bool(surfaced),
         "injected_terms": injected,
         "surfaced_terms": surfaced,
-        "pass": not injected and not surfaced,
+        "text_control_pass": not injected and not surfaced,
     }
 
 
@@ -710,6 +764,8 @@ async def run(
                 row["probe_result"] = _score_probe(
                     turn["probe"], reply_text, model_facing, retrieval_text
                 )
+                if not model_facing:
+                    row["probe_result"]["verdict"] = "author_context_unavailable"
             if isinstance(turn.get("negative_probe"), dict):
                 row["negative_probe_result"] = _score_negative_probe(
                     turn["negative_probe"],
@@ -791,6 +847,7 @@ def summarize(rows: list[dict[str, object]], *, stub: bool, fast: bool) -> dict[
         if isinstance(row.get("model_facing"), dict)
         and isinstance(row["model_facing"].get("slices"), dict)  # type: ignore[union-attr]
         and row["model_facing"]["slices"]  # type: ignore[index]
+        and isinstance(row["model_facing"]["slices"]["relevant_facts"]["items"], int)  # type: ignore[index]
     ]
     capsule_fact_items = [
         int(row["capsule_side_slices"]["relevant_facts"]["item_count"])  # type: ignore[index]
@@ -804,7 +861,7 @@ def summarize(rows: list[dict[str, object]], *, stub: bool, fast: bool) -> dict[
         style = str(result.get("style", "unknown"))  # type: ignore[union-attr]
         bucket = by_style.setdefault(style, {"probes": 0, "hits": 0, "in_facts": 0})
         bucket["probes"] += 1
-        bucket["hits"] += int(result.get("verdict") == "recalled")  # type: ignore[union-attr]
+        bucket["hits"] += int(result.get("verdict") == "text_matched_from_memory")  # type: ignore[union-attr]
         bucket["in_facts"] += int(bool(result.get("in_facts")))  # type: ignore[union-attr]
 
     def _rate(numerator: int, denominator: int) -> float | None:
@@ -813,7 +870,7 @@ def summarize(rows: list[dict[str, object]], *, stub: bool, fast: bool) -> dict[
     hits = sum(
         1
         for row in probes
-        if row["probe_result"]["verdict"] == "recalled"  # type: ignore[index]
+        if row["probe_result"]["verdict"] == "text_matched_from_memory"  # type: ignore[index]
     )
     reply_hits = sum(1 for row in probes if row["probe_result"]["hit"])  # type: ignore[index]
     supplied = sum(1 for row in probes if row["probe_result"]["in_facts"])  # type: ignore[index]
@@ -823,23 +880,25 @@ def summarize(rows: list[dict[str, object]], *, stub: bool, fast: bool) -> dict[
         "cadence_hold_skipped": fast,
         "turns": len(turn_rows),
         "probes": len(probes),
-        "recall_rate": _rate(hits, len(probes)),
+        "score_contract": "memory-recall-text-match.2",
+        "semantic_correctness": "unassessed",
+        "supplied_text_match_rate": _rate(hits, len(probes)),
         "reply_hit_rate": _rate(reply_hits, len(probes)),
         "retrieval_rate": _rate(supplied, len(probes)),
         "negative_controls": len(negative_probes),
-        "wrong_memory_injection_rate": _rate(
+        "forbidden_memory_text_rate": _rate(
             sum(
                 1
                 for row in negative_probes
-                if row["negative_probe_result"]["wrong_memory_injected"]  # type: ignore[index]
+                if row["negative_probe_result"]["forbidden_text_in_memory"]  # type: ignore[index]
             ),
             len(negative_probes),
         ),
-        "unsupported_reply_rate": _rate(
+        "forbidden_reply_text_rate": _rate(
             sum(
                 1
                 for row in negative_probes
-                if row["negative_probe_result"]["unsupported_reply"]  # type: ignore[index]
+                if row["negative_probe_result"]["forbidden_text_in_reply"]  # type: ignore[index]
             ),
             len(negative_probes),
         ),

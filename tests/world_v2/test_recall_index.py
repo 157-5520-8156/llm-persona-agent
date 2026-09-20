@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import json
 import time
 
@@ -420,6 +420,106 @@ def test_superseded_fact_requires_explicit_historical_recall() -> None:
     old = next(hit for hit in historical.hits if hit.document.source_item_ref == "fact:old-tea")
     assert old.document.status == "superseded"
     assert old.document.valid_to == NOW.replace(day=1)
+
+
+def _location_documents() -> tuple[RecallDocument, ...]:
+    template = _documents()[0]
+    return tuple(
+        template.model_copy(
+            update={
+                "document_id": f"recall:location:{city}",
+                "source_item_ref": f"fact:location:{city}",
+                "source_refs": (f"event:location:{city}",),
+                "source_bindings": _bindings(f"event:location:{city}", revision=7),
+                "text": f"用户住在{city}。",
+                "link_refs": (),
+                "occurred_from": valid_from,
+                "valid_from": valid_from,
+                "valid_to": valid_to,
+            }
+        )
+        for city, valid_from, valid_to in (
+            ("杭州", NOW - timedelta(days=1), NOW),
+            ("苏州", NOW, None),
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("offset_seconds", "expected_city"), [(-1, "杭州"), (0, "苏州"), (1, "苏州")]
+)
+def test_location_validity_switches_at_exact_boundary(offset_seconds, expected_city) -> None:
+    documents = _location_documents()
+    index = InMemoryRecallIndex(embedding=_UniformEmbedding())
+    index.rebuild(cursor=CURSOR, documents=documents)
+
+    result = index.search(
+        _query(query_text="用户现在住在哪里", at=NOW + timedelta(seconds=offset_seconds))
+    )
+
+    # Both records remain active: only their validity intervals choose the
+    # current fact, independently of lexical or semantic ranking quality.
+    assert all(document.status == "active" for document in documents)
+    expected = next(document for document in documents if expected_city in document.text)
+    assert tuple(hit.document for hit in result.hits) == (expected,)
+
+
+@pytest.mark.parametrize("include_historical", [False, True])
+def test_expired_location_is_recallable_only_with_explicit_history(include_historical) -> None:
+    documents = _location_documents()
+    index = InMemoryRecallIndex(embedding=_UniformEmbedding())
+    index.rebuild(cursor=CURSOR, documents=documents)
+
+    result = index.search(
+        _query(
+            query_text="用户以前住在哪里",
+            at=NOW + timedelta(days=1),
+            occurred_from=NOW - timedelta(days=2),
+            occurred_to=NOW - timedelta(seconds=1),
+            include_historical=include_historical,
+        )
+    )
+
+    assert tuple(hit.document for hit in result.hits) == (
+        (documents[0],) if include_historical else ()
+    )
+    if include_historical:
+        assert result.hits[0].document.valid_to == NOW
+        assert result.hits[0].document.source_bindings == documents[0].source_bindings
+
+
+@pytest.mark.parametrize("subject_ref", ["user:primary", "user:other"])
+@pytest.mark.parametrize("include_historical", [False, True])
+def test_identical_location_text_does_not_cross_subject_scope(subject_ref, include_historical) -> None:
+    template = _documents()[0]
+    documents = tuple(
+        template.model_copy(
+            update={
+                "document_id": f"recall:location:{subject}",
+                "source_item_ref": f"fact:location:{subject}",
+                "source_refs": (f"event:location:{subject}",),
+                "source_bindings": _bindings(f"event:location:{subject}", revision=7),
+                "text": "我住在杭州。",
+                "subject_refs": (subject,),
+                "link_refs": (),
+            }
+        )
+        for subject in ("user:primary", "user:other")
+    )
+    index = InMemoryRecallIndex(embedding=_UniformEmbedding())
+    index.rebuild(cursor=CURSOR, documents=documents)
+
+    result = index.search(
+        _query(
+            query_text="我住在杭州。",
+            subject_refs=("agent:companion", subject_ref),
+            include_historical=include_historical,
+        )
+    )
+
+    expected = next(document for document in documents if document.subject_refs == (subject_ref,))
+    assert tuple(hit.document for hit in result.hits) == (expected,)
+    assert {"lexical", "dense"} <= set(result.hits[0].match_channels)
 
 
 def test_semantic_adapter_can_calibrate_dense_candidate_threshold() -> None:

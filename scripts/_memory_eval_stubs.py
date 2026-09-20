@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import json
 
+from companion_daemon.world_v2.longitudinal_fixture_model import LongitudinalFixtureModel
+
 
 def _semantic_context_text(raw: str) -> str:
     """Flatten model-visible meaning without matching opaque ids or refs."""
@@ -91,18 +93,21 @@ def _expected_terms(probe: dict[str, object]) -> list[list[str]]:
     return [[str(value) for value in probe.get("expect_any", [])]]
 
 
-class StubReplyModel:
+class StubReplyModel(LongitudinalFixtureModel):
     """Echo expected values that survived into the provider-free model context."""
 
     model = "fixture:memory-recall-reply"
 
     def __init__(self, fixture: dict[str, object]) -> None:
+        super().__init__()
         self._probes = _probes(fixture)
 
     async def complete(self, messages, **kwargs):  # type: ignore[no-untyped-def]
         del kwargs
         system = messages[0]["content"]
         envelope = json.loads(messages[1]["content"])
+        if "inner_turn" in envelope:
+            return json.dumps(self._role_result(envelope), ensure_ascii=False)
         request = envelope.get("request", {})
         # The presenter keeps one copy of the trigger and points at it from
         # ``request.trigger_message`` (present_prompt).
@@ -110,7 +115,12 @@ class StubReplyModel:
             "trigger_message"
         ) or {}
         text = str(trigger.get("text", "")) if isinstance(trigger, dict) else ""
-        context = _semantic_context_text(str(request.get("model_content_json", "")))
+        snapshot = envelope.get("inner_life_snapshot")
+        context = _semantic_context_text(
+            json.dumps(snapshot, ensure_ascii=False)
+            if isinstance(snapshot, dict)
+            else str(request.get("model_content_json", ""))
+        )
 
         probe = self._probes.get(text)
         if probe is None:
@@ -125,6 +135,13 @@ class StubReplyModel:
                 if present:
                     surfaced.append(present[0])
             reply = "，".join(surfaced) if surfaced else "这个……我一时想不起来了。"
+
+        if "meaning_of_this" in system and "my_state" in system:
+            return json.dumps({
+                "messages": [reply],
+                "meaning_of_this": "Synthetic retrieval test; echo only supplied fixture values.",
+                "my_state": "Offline fixture; no semantic or character-quality verdict.",
+            }, ensure_ascii=False)
 
         draft = {
             "timing_choice": "now",
@@ -150,19 +167,47 @@ class StubReplyModel:
             )
         return json.dumps(draft, ensure_ascii=False)
 
+    @staticmethod
+    def _role_result(payload: dict) -> dict:
+        result = LongitudinalFixtureModel._role_result(payload)
+        if payload["inner_turn"]["purpose"] == "fact_memory_retention":
+            # Fixed test choice at the current CharacterInterior capability;
+            # production still decides whether to retain every real Fact.
+            result["decision"]["source_refs"] = list(payload["capability_manifest"]["source_refs"])
+            result["decision"]["payload"] = {
+                "retain": True,
+                "cue_kind": "future_utility",
+                "retention_rationales": ["future_utility", "identity_relevance"],
+                "salience": {
+                    "autobiographical_relevance_bp": 7000,
+                    "relationship_relevance_bp": 5000,
+                    "emotional_residue_bp": 1000,
+                    "unfinished_business_bp": 1000,
+                    "recurrence_bp": 3000,
+                    "novelty_bp": 3000,
+                    "future_utility_bp": 8000,
+                    "world_continuity_bp": 4000,
+                },
+            }
+        return result
 
-class StubBackgroundModel:
+
+class StubBackgroundModel(LongitudinalFixtureModel):
     """One deterministic boundary for every background adapter in the lane."""
 
     model = "fixture:memory-recall-background"
 
     def __init__(self, fixture: dict[str, object]) -> None:
+        super().__init__()
         self._plants = _plants(fixture)
 
     async def complete(self, messages, **kwargs):  # type: ignore[no-untyped-def]
         del kwargs
         system = messages[0]["content"]
         user = messages[1]["content"]
+        envelope = json.loads(user)
+        if "inner_turn" in envelope:
+            return json.dumps(StubReplyModel._role_result(envelope), ensure_ascii=False)
 
         if "Classify fallible semantic interpretations" in system:
             return '{"classifications":[]}'
