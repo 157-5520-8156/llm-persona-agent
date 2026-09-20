@@ -6,25 +6,29 @@ observations below retain their historical scope; they do not supersede that
 current index or authorize resuming an older, cheaper usage ledger.
 
 2026-09-20 latest release qualification: still manual_only / qualification_incomplete.
-Life .12 has reached the real provider with one complete 31-field response and valid
-bound Fact/current-state wire. Its candidate was rejected for unsupported performed
-actions and two disputed external-premise readings. The corrected author returned,
-but final review was denied by the physical cap. No new Life response/Experience or
-visible delivery was accepted. An independent support-basis experiment then passed
-natural report uptake but wrongly accepted a switched actor/recipient negative;
-it stopped after two calls and MUST NOT be promoted to the installed reviewer.
-Runtime continuation: output/private-audits/release-clean-continuation-20260920-04/run,
-ledger422/revision195. Latest cumulative billing is separately at
-output/private-audits/release-report-uptake-basis-20260920-01/run/world.sqlite:
-1569 usage /1566 reservations /69 unknown holds; its World is exactly unchanged
-from the runtime checkpoint. Never resume the runtime's older 1567-row account.
-Both trials are terminal and independently reconciled; no paid process is live.
-Same-owner post-login desktop/mobile/recording display passed with no JS errors or
-horizontal overflow; grounded environment summaries remain a dashboard gap.
-All detected offline regressions were repaired in focused checks; 120 frozen
-mechanism cases/replays and the audited .104 manifest gate pass. This is not a
-single frozen full-suite green run or real-provider/long-term/cost qualification.
-See docs/audits/release-review-interface-validation-2026-09-20.md.
+Latest closed runtime AND cumulative billing: output/private-audits/release-clean-continuation-20260920-05/run,
+ledger467/revision203, 1592 usage /1589 reservations /70 unknown holds.
+It inherited the full 1569/1566/69 account before capturing its new usage watermark.
+23 requests were forwarded; 22 known native bills estimate 0.44452118 CNY, one unknown
+hold is 0.716148 CNY (not a confirmed charge). Process/clients are closed and independent
+reconciliation verified. Never resume the now-stale 04 or support-basis account directly.
+The new shared Life authorship note reached both actual initial/corrected author requests;
+186 focused checks and old .1-.12 compiler bytes/real receipt passed. Five real Life reviews
+were complete and structurally valid but rejected; zero new Life response/Experience.
+The returned-user chat also delivered zero new visible text: source review was forwarded,
+received HTTP200 headers, then timed out after22.004s without body or native usage.
+An additional WorldOccurrence was committed/activated but not settled. Cold replay and
+both old v22 visible receipts verify; this is not real dialogue/long-term/cost qualification.
+Dashboard e7822c02 now reads only exact published, selected environment bodies with actor,
+privacy and user-channel gates.88 focused checks pass; actual same-owner authenticated
+Chrome desktop/mobile/recording display shows the excerpt, with no JS errors or overflow.
+The closed World has no actor perception/attempt record for having passed or seen that
+random campus event; participant/location/Clock do not supply one. Existing authoring
+already supports Started/Resumed bound attempts, but their dedicated effect-once outcome
+producer is missing. This is the next bounded implementation, not a new reviewer protocol.
+The independent support-basis experiment remains unqualified: it accepted a switched
+actor/recipient negative. It must not be promoted. See the current release status and
+release-review-interface-validation-2026-09-20.md for evidence and remaining gates.
 
 Historical continuation (a2f36c7f, minute 45–61; superseded continuation point):
 The clean identity continuation at a2f36c7f ran from minute 45 to 61: one

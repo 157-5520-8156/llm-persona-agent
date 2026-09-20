@@ -134,3 +134,44 @@ reviewer 的新作者请求展示。初稿、同角色纠正与审核者收到�
 该补丁没有额外 provider 调用，没有证明两个主观评价误拒已经解决，也没有新增
 Life response 或 Experience。离线证据在
 `output/private-audits/release-life-author-authority-20260920-01/offline-verification.json`。
+
+## 同一身份 05 续跑与面板实测（b60fa314）
+
+`e7822c02` 接通面板的窄环境正文读取器，复核同一 ledger prefix、实际 settlement、
+唯一发布 descriptor、选中结果和正文哈希，再执行 actor、三层 privacy 及用户通道
+限制。只把 `environment_text` 放进现有 detail；超过 240 字标注节选，没有角色回应或
+模型审计回退。88 项定向检查通过；实际同 owner 认证 HTTP 支持正文、ETag304，完整
+账本不变。真实 05 浏览器登录后，1440px 桌面、390px 手机与录制模式均已同步，
+环境摘要可见，无 JS 错误或横向溢出。截图在 05 私有目录，所读 cursor 为 ledger422。
+环境正文保留原英语；显示通过不等于中文录制内容全部就绪，也不代表 Life 已接受。
+
+05 先继承 04 的运行历史与 support-basis 的完整费用，再取新用量起点 1569；正常
+调度推进至 95 分钟，再发一轮 96 分钟的自然回来聊天。调用总上限 24，实际转发 23，
+没有本地上限拒绝。作者初稿、纠正实际带上 `life-author-current-authorship.1`，
+与同次审核的 actor/time 和权限含义一致，排除了接线遗漏。
+
+5 次 Life `.12` 审核均完整返回 31 字段且结构有效，但均拒绝；无新增角色 Life response
+或 Experience。停步、路过、远远看见等动作确实没有角色来源。该 World 的
+OutcomeObservation（seq367）绑定 Clock；seq371 的环境仅描述一般路人，既无
+authorized_attempt_result，也无角色 Perception 事件。参与者和地点用于筛选、触发，
+不能据此创造她到场或看见的事实。未来“晚点他再说话时”被强化为必发生事实，以及
+用户报告“回来”被要求另有客观证明，是不同的范围误判问题，不能合并为真实动作支持。
+
+回来聊天没有交付，来源审核为 `source_review_timeout`。该请求 66,260 wire bytes，
+确实转发、收到 HTTP200 头，22.004 秒后取消，正文 0 bytes，无原生 token 回执。
+作者原生输入 28,864 tokens、4.898 秒；双 reader 输入 1,876 /1,865 tokens、并行
+5.652 /2.101 秒。仅模型关键路径约 32.6 秒。当前材料20项/19readings，材料块37,308
+bytes 占 user 内容71.2%，其中9项 recent_dialogue占15,213 bytes。不能沿用旧170KB
+来源/50k作者结论，也不能将一个超时归结为唯一的输入大小问题。
+
+本轮新增一个 WorldOccurrence committed/activated，没有新的 settlement。
+共22笔已知原生用量，估算 **0.44452118 元**；1笔未知预留 **0.716148 元**，不是确认扣费。
+已 operator_stopped，所有客户端关闭，独立 reconciliation verified。运行及费用统一为：
+`output/private-audits/release-clean-continuation-20260920-05/run`，
+**1592 usage /1589 reservations /70 unknown holds，ledger467/revision203**。
+冷重放哈希为 `21dad848c277f3c33896f2df5f2760f16318789659847e2c3fcbd89f79d1165d`，
+机制检查无 finding，2张旧v22回执原样继承并冷验；新增可见回执为0。
+
+代码复查确认 Started/Resumed 已有授权尝试材料及 World consequence 消费者；缺的是
+定向、去重的进行中结果生产调度。下一项补此生产入口，保留当前审核、效果去重、退避
+和旧回执解释，不从计划、Clock、同地点或参与者直接推导角色动作。
