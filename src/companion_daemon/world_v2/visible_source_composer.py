@@ -19,6 +19,7 @@ from .selected_source_composer import (
 )
 from .visible_review_context import compile_visible_selected_source_context
 from .source_time_comparison import verify_time_comparison, with_time_comparison
+from .visible_fact_value_display import verify_fact_value_display, with_fact_value_display
 
 
 class VisibleSourceTable(SelectedSourceTable):
@@ -28,6 +29,7 @@ class VisibleSourceTable(SelectedSourceTable):
 
     def source_references(self) -> tuple[dict[str, object], ...]:
         verify_time_comparison(self.as_dict())
+        verify_fact_value_display(self.as_dict())
         return super().source_references()
 
 
@@ -70,12 +72,15 @@ def _current_report(request: ModelInput, proof: dict) -> dict | None:
 def compile_visible_source_table(
     *, request: ModelInput, capsule: ContextCapsule, include_subjective_history: bool = False,
     include_time_comparison: bool = True,
+    include_fact_value_display: bool = True,
 ) -> VisibleSourceTable:
     """Preserve exact request binding; new tables include derived UTC display."""
     if type(include_subjective_history) is not bool:
         raise TypeError("subjective history selection flag must be boolean")
     if type(include_time_comparison) is not bool:
         raise TypeError("time comparison selection flag must be boolean")
+    if type(include_fact_value_display) is not bool:
+        raise TypeError("Fact value display selection flag must be boolean")
     proof = compile_visible_selected_source_context(request=request, capsule=capsule)
     report = _current_report(request, proof)
     payload = _compose_source_materials(
@@ -85,6 +90,8 @@ def compile_visible_source_table(
     payload["pin"] = proof["visible_review_projection"]
     if include_time_comparison:
         payload = with_time_comparison(payload)
+    if include_fact_value_display:
+        payload = with_fact_value_display(payload)
     return VisibleSourceTable(payload_json=_json(payload))
 
 

@@ -425,6 +425,7 @@ _ENTRY_FIELDS = (
     "permits_natural_visible_uptake_without_world_claim",
     "natural_uptake_does_not_need_attribution_phrase",
     "time_comparison",
+    "accepted_fact_display_contract",
 )
 _ITEM_FIELDS = (
     "item_ref",
@@ -796,6 +797,7 @@ def _packet_materials(
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     """Material occurs once in the packet, even when an entry has many refs."""
     materials: list[dict[str, object]] = []
+    material_rows: list[list[dict]] = []
     references: list[dict[str, object]] = []
     indexes: dict[str, int] = {}
     for row in rows:
@@ -811,8 +813,14 @@ def _packet_materials(
             if identity not in indexes:
                 indexes[identity] = len(materials)
                 materials.append(material)
+                material_rows.append([])
             reference["material_index"] = indexes[identity]
+            material_rows[indexes[identity]].append(row)
         references.append(reference)
+    from .visible_fact_value_display import display_fact_material
+
+    materials = [display_fact_material(material=material, rows=tuple(rows))
+                 for material, rows in zip(materials, material_rows, strict=True)]
     return references, materials
 
 

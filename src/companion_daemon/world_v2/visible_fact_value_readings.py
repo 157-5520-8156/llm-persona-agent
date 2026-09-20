@@ -1,6 +1,6 @@
 """Exact accepted-Fact value selection for a pinned visible source row.
 
-The enclosing Observation remains context. A model must select the original
+The enclosing Observation remains audit context. A model must select the original
 accepted value bytes, and the host verifies their binding and typed scope. This
 does not decide whether a visible claim follows from the Fact's predicate, or
 replace the caller's verification of the original source table and full prose.
@@ -13,6 +13,7 @@ from .context_capsule import FactRecallItem, HistoricalFactRecallItem
 from .fact_observation_value import FactObservationValueBinding
 from .fact_observation_value_lookup import resolve_observation_fact_value
 from .visible_source_closure_protocol import _eligible_reference
+from .visible_fact_value_display import fact_display_pointer
 
 CONTRACT = "visible-fact-value-reading.1"
 AUTHORITY = "accepted_fact_with_observation_source"
@@ -75,7 +76,7 @@ def compile_fact_value_reading(row: dict) -> dict | None:
     return {
         "contract": CONTRACT, "source_family": "accepted_fact_value",
         "source_ref_index": index, "source_ref": row["source_ref"],
-        "item_ref": fact.fact_id, "pointer": "/item/value/source_excerpt",
+        "item_ref": fact.fact_id, "pointer": fact_display_pointer(material) or "/item/value/source_excerpt",
         "value": fact.source_excerpt, "fact_context": {key: value[key] for key in fields},
         "accepted_value": accepted_value,
         "value_binding": fact.accepted_value_binding.model_dump(mode="json"),
