@@ -19,6 +19,7 @@ from .selected_source_context import compile_selected_fact_dialogue_context
 from .visible_source_closure_protocol import compact_source_reference_table
 from .world_life_context import (
     ActiveActivityContextItem,
+    ActivityLifecycleStateContextItem,
     BiographicalWorldContextItem,
     CompletedActivityContextItem,
     PlannedActivityContextItem,
@@ -97,7 +98,7 @@ def _entry(lane: str, item: CapsuleItem) -> dict[str, object]:
     }
 
 
-def _world_entries(capsule: ContextCapsule) -> tuple[list[dict], dict, set[str]]:
+def _world_entries(capsule: ContextCapsule, *, include_lifecycle_states: bool = False) -> tuple[list[dict], dict, set[str]]:
     entries, selections, unsupported = [], {}, set()
     biography_items = []
     world_types = {
@@ -106,6 +107,8 @@ def _world_entries(capsule: ContextCapsule) -> tuple[list[dict], dict, set[str]]
         "planned_activity": PlannedActivityContextItem,
         "biographical_context": BiographicalWorldContextItem,
     }
+    if include_lifecycle_states:
+        world_types["activity_lifecycle_state"] = ActivityLifecycleStateContextItem
     for lane in ("current_situation", "world_life"):
         selected = getattr(capsule, lane)
         selections[lane] = {
@@ -275,9 +278,10 @@ def _indexed_materials(entries: list[dict], subjects: dict) -> tuple[list[dict],
 def _compose_source_materials(
     *, capsule: ContextCapsule, proof: dict, include_subjective_history: bool,
     supplemental_entries: tuple[dict, ...] = (),
+    include_lifecycle_states: bool = False,
 ) -> dict:
     """Compose already validated selection; preserve historical row ordering."""
-    entries, selections, unsupported = _world_entries(capsule)
+    entries, selections, unsupported = _world_entries(capsule, include_lifecycle_states=include_lifecycle_states)
     entries.extend(proof["entries"])
     history_entries = _prehistory_entries(capsule)
     entries.extend(history_entries)
@@ -373,6 +377,7 @@ def _compose_source_materials(
 
 def compile_selected_source_table(
     *, capsule: ContextCapsule, include_subjective_history: bool = False,
+    include_lifecycle_states: bool = False,
 ) -> SelectedSourceTable:
     """Prepare candidate-independent evidence from one trusted original Capsule.
 
@@ -383,9 +388,12 @@ def compile_selected_source_table(
     """
     if type(include_subjective_history) is not bool:
         raise TypeError("subjective history selection flag must be boolean")
+    if type(include_lifecycle_states) is not bool:
+        raise TypeError("lifecycle state selection flag must be boolean")
     original, proof = compile_selected_fact_dialogue_context(capsule)
     payload = _compose_source_materials(
         capsule=original, proof=proof, include_subjective_history=include_subjective_history,
+        include_lifecycle_states=include_lifecycle_states,
     )
     payload.update({
         "contract": "selected-source-row-table.1",

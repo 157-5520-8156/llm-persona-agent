@@ -57,11 +57,19 @@ async def test_only_an_explicitly_reviewed_life_author_gets_the_new_input(purpos
         }
     else:
         assert authority is None
-    # Installing a reviewer changes no other author material or instruction.
+    # Life .13 adds an explicit presentation profile; the authority wording
+    # still changes no role instruction or other material for this empty fixture.
     original = FixtureRole(model=_RequiredToolQueueModel(), model_id='offline')
     old_messages = original._messages(request, contract=original._resolve_contract(request))
     assert messages[0] == old_messages[0]
-    assert json.dumps(packet, ensure_ascii=False, separators=(',', ':')) == old_messages[1]['content']
+    old_packet = json.loads(old_messages[1]['content'])
+    if purpose == 'world_stimulus_appraisal' and installed:
+        from companion_daemon.world_v2.background_context_profile import profile_audit_record
+        from companion_daemon.world_v2.character_interior.life_source_state_readings import CONTRACT, life_source_profile
+        assert packet['background_context_profile'] == profile_audit_record(life_source_profile(CONTRACT))
+        packet['background_context_profile'] = old_packet['background_context_profile']
+        packet['inner_life_snapshot']['background_context_profile'] = old_packet['inner_life_snapshot']['background_context_profile']
+    assert packet == old_packet
     assert role._tool_contract(request) == original._tool_contract(request)
 
 

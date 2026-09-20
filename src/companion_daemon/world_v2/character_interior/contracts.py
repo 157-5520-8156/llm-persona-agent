@@ -1540,6 +1540,7 @@ class InnerLifeSnapshot(FrozenModel):
         self,
         *,
         visible_source_refs: frozenset[str] | None = None,
+        include_lifecycle_states: bool = False,
     ) -> dict[str, object]:
         """Return a deterministic provider view without minting another identity."""
 
@@ -1548,7 +1549,16 @@ class InnerLifeSnapshot(FrozenModel):
             if visible_source_refs is None
             else set(self.source_refs) & set(visible_source_refs)
         )
+        if not include_lifecycle_states:
+            lifecycle_only_refs = {
+                item.source_ref for item in self.source_inventory
+                if item.scope == "activity_lifecycle_states"
+            } - {item.source_ref for item in self.source_inventory
+                 if item.scope != "activity_lifecycle_states"}
+            visible -= lifecycle_only_refs
         materials = _redact_materials(dict(self.materials), visible)
+        if not include_lifecycle_states:
+            materials.pop("activity_lifecycle_states", None)
         materials = _refresh_stimulus_excerpts(materials)
         day_sheet = _rendered_day_sheet(
             materials, self.logical_time,
@@ -1630,6 +1640,7 @@ class InnerLifeSnapshot(FrozenModel):
             "source_refs": [ref for ref in self.source_refs if ref in visible],
             "source_inventory": [
                 item.model_view() for item in self.source_inventory if item.source_ref in visible
+                and (include_lifecycle_states or item.scope != "activity_lifecycle_states")
             ],
             "viewer_scope": self.viewer_scope.model_view(),
             "privacy_scope": self.privacy_scope.model_view(),

@@ -548,7 +548,7 @@ def _experience_entry(item: dict[str, object], *, lane: str) -> dict[str, object
     if not isinstance(source_ref, str) or not isinstance(value, dict):
         return None
     if lane == "world_life":
-        if value.get("context_kind") in {"biographical_context", "active_activity", "completed_activity", "planned_activity"}:
+        if value.get("context_kind") in {"biographical_context", "active_activity", "completed_activity", "planned_activity", "activity_lifecycle_state"}:
             return None
         fields = (
             (
@@ -1312,6 +1312,18 @@ def compile_inner_life_snapshot(
     ]
     if biography:
         materials["biographical_context"] = biography
+
+    lifecycle_states = [
+        entry for item in _slice_items(slices, "world_life")
+        if isinstance(item.get("value"), dict)
+        and item["value"].get("context_kind") == "activity_lifecycle_state"
+        and (entry := _state_entry(item, fields=(
+            "plan_id", "plan_entity_revision", "owner_actor_ref", "status", "transitioned_at",
+            "lifecycle_scope",
+        )))
+    ]
+    if lifecycle_states:
+        materials["activity_lifecycle_states"] = lifecycle_states
 
     current_activities = [
         entry

@@ -29,9 +29,11 @@ TEMPORAL_AUTHORSHIP_CONTRACT = 'life-source-review.8'
 COVERAGE_AUTHORSHIP_CONTRACT = 'life-source-review.9'
 PERMISSION_AUTHORITY_CONTRACT = 'life-source-review.10'
 EXACT_VALUE_AUTHORITY_CONTRACT = 'life-source-review.11'
-CONTRACT = 'life-source-review.12'
+BOUND_PERMISSION_CONTRACT = 'life-source-review.12'
+CONTRACT = 'life-source-review.13'
+_BOUND_PERMISSION_CONTRACTS = {BOUND_PERMISSION_CONTRACT, CONTRACT}
 _AUTHORSHIP_CONTRACTS = {AUTHORSHIP_CONTRACT, TEMPORAL_AUTHORSHIP_CONTRACT,
-    COVERAGE_AUTHORSHIP_CONTRACT, PERMISSION_AUTHORITY_CONTRACT, EXACT_VALUE_AUTHORITY_CONTRACT, CONTRACT}
+    COVERAGE_AUTHORSHIP_CONTRACT, PERMISSION_AUTHORITY_CONTRACT, EXACT_VALUE_AUTHORITY_CONTRACT, *_BOUND_PERMISSION_CONTRACTS}
 _CHOICE_CONTRACTS = {PERMISSION_CONTRACT, BOUNDED_REASON_CONTRACT, VERDICT_ORDER_CONTRACT, LEGACY_CURRENT_CONTRACT}
 BODY_FIELDS = ('status', 'summary', 'attended_source_refs', 'decision', 'recall_query', 'proposals')
 
@@ -226,7 +228,7 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=Non
     # Installed reviews carry their version explicitly in the original author source view.
     contract = contract or view.review_contract or PERMISSION_AUTHORITY_CONTRACT
     if (view.review_contract not in {None, contract}
-        or contract in {EXACT_VALUE_AUTHORITY_CONTRACT, CONTRACT} and view.review_contract != contract):
+        or contract in {EXACT_VALUE_AUTHORITY_CONTRACT, *_BOUND_PERMISSION_CONTRACTS} and view.review_contract != contract):
         raise ValueError('Life review contract differs from its source preparation')
     if contract not in _AUTHORSHIP_CONTRACTS:
         return _prepare_legacy_review(candidate_json=candidate_json, provider_raw=provider_raw,
@@ -247,7 +249,7 @@ def inspect_review(*, raw, prepared_json, readings):
     from .life_source_authorship_review import inspect
     choices = {p['permission_id']: p for p in _permission_choices(readings)}
     sources = {r['reading_id']: r for r in readings['readings']}
-    if packet['contract'] == CONTRACT and (
+    if packet['contract'] in _BOUND_PERMISSION_CONTRACTS and (
         readings['contract'] != 'life-source-readings.4'
         or packet['source_readings'] != readings
         or len(sources) != len(readings['readings'])
@@ -259,7 +261,7 @@ def inspect_review(*, raw, prepared_json, readings):
         if choice is None:
             raise ValueError('Life review cited an unavailable permission choice')
         quoted_value = support.get('quoted_value')
-        if packet['contract'] == CONTRACT and choice['requires_exact_fact_quote']:
+        if packet['contract'] in _BOUND_PERMISSION_CONTRACTS and choice['requires_exact_fact_quote']:
             source = sources[choice['reading_id']]
             # The .12 model selects this entire immutable permission. The
             # compiler resolves its single already-accepted value, never a
@@ -277,7 +279,7 @@ def inspect_review(*, raw, prepared_json, readings):
 
 
 class LifeSourceReviewReceipt(FrozenModel):
-    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12'] = CONTRACT
+    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13'] = CONTRACT
     prepared_json: str = Field(max_length=256_000)
     response_json: str = Field(max_length=64_000)
     request_hash: str = Field(pattern=r'^[0-9a-f]{64}$')

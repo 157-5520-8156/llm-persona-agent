@@ -144,6 +144,7 @@ from .schemas import (
 from .situation_compiler import SituationCompiler, request_from_ledger_projection
 from .world_life_context import (
     ActiveActivityContextItem,
+    ActivityLifecycleStateContextItem,
     CompletedActivityContextItem,
     PlannedActivityContextItem,
     ActiveWorldOccurrenceContextItem,
@@ -311,7 +312,7 @@ def _item_ref(slice_name: SliceName, item: BaseModel) -> str:
             item,
             (
                 "activity_event_ref"
-                if slice_name == "world_life" and isinstance(item, (ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem))
+                if slice_name == "world_life" and isinstance(item, (ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem, ActivityLifecycleStateContextItem))
                 else "biography_id"
                 if slice_name == "world_life" and isinstance(item, BiographicalWorldContextItem)
                 else "influence_id"
@@ -375,7 +376,7 @@ def _typed_refs(item: BaseModel, *, observation_aliases: dict[str, str]) -> tupl
                 )
             )
         )
-    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem)):
+    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem, ActivityLifecycleStateContextItem)):
         return tuple(sorted(binding.authority_event_ref for binding in item.source_bindings))
     if isinstance(item, WorldLifeContextItem):
         refs = {item.source.authority_event_ref}
@@ -572,7 +573,7 @@ def _typed_authority_claims(
                 )
             )
         )
-    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem)):
+    if isinstance(item, (ActiveWorldOccurrenceContextItem, ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem, ActivityLifecycleStateContextItem)):
         return tuple(
             sorted(
                 (

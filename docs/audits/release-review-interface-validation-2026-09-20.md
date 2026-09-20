@@ -218,3 +218,27 @@ not_exercised。seq490是既有环境事件结算，不得计为新尝试结果�
 独立对账verified；冷重放哈希ca8df2fe4b2c871fc1decfec8c6ea881e031e03c6d0997070860128ff34dc712，
 机制检查无finding，2张旧v22回执原样冷验。新增角色交付、Life response和Experience均0。
 最终终态、独立对账及只读诊断位于 `output/private-audits/release-clean-continuation-20260920-06/`。
+
+## Life13：生命周期状态和既有情绪材料
+
+06六份Life12请求均精确匹配已保存preparation，重演为5 rejected、1 uncertain，未发现
+schema或Fact值绑定错误。“计划被中止”却没有合格lifecycle reading：真正上游缺口是
+WorldLifeContextCompiler只提供planned/active/completed，abandoned状态未进原Capsule。
+另“那份温和已经在心里了”被拒为无过去情绪，而作者实际见过warmth1484及01:00开始、
+01:03更新时间；旧合格reading仅保留dimension字符串。当前条件意愿被强化为用户保证
+将来说话，仍是另一类语义误读；无源路过/看见及把角色自己的话归给用户仍应被拒。
+
+Life13复用原Plan authority与Capsule bindings提供暂停/放弃的当前状态，不附带意图、
+位置、执行结果或感知；只选最近3项。新profile和model_view显式启用新scope，旧profile
+和普通聊天不显示它，普通selected source compiler也不新增权限。Affect专用reader核验
+同owner/cursor/原accepted来源与作者实际呈现，仅提供维度、pinned强度、记录时间及来源
+标识；不引入强度阈值，不把decay控制参数当历史事实或未来保证，不证明情绪原因。
+两类读取共用Life13现有一次审核，不新增模型层；Life1–12保持原编译与恢复路径。
+
+76项定向检查覆盖实际mock作者—Life审核—冷回执及两个状态，另116项context/profile/
+旧reader检查含完整120-case冻结基线，未刷新golden。独立复核实际Paused Plan的普通
+visible编译仍为unsupported，已有同event的current_situation仅baseline_only。
+root用完整f1da6600临时源码独立进程与新代码比较12种旧preparation/readings，并冷验
+1张真实旧Life10回执，全部一致。证据在 `release-life-state-readers-20260920-01/` 私有目录。
+06原prefix重建的Affect material identity与原实际review相同、作者展示精确匹配；生成的是
+新snapshot/request，不能声称恢复或升级旧pin。真实Life13生产请求和接受仍待续跑验证。

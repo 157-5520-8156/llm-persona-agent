@@ -1810,9 +1810,17 @@ class StructuredCharacterRoleFaculty:
             ):
                 raise ValueError("rejected Life result differs from its original author invocation")
         allowed_statuses = sorted(self._allowed_statuses(request, contract=contract))
-        full_snapshot = request.snapshot.model_view()
+        full_snapshot = (
+            request.snapshot.model_view(include_lifecycle_states=True)
+            if request.purpose == "world_stimulus_appraisal" and self.requires_life_source_review
+            else request.snapshot.model_view()
+        )
         if request.purpose in REGISTERED_BACKGROUND_PURPOSES:
             background_profile = background_context_profile_for_purpose(request.purpose)
+            if request.purpose == "world_stimulus_appraisal" and self.requires_life_source_review:
+                from .life_source_review import CONTRACT as LIFE_REVIEW_CONTRACT
+                from .life_source_state_readings import life_source_profile
+                background_profile = life_source_profile(LIFE_REVIEW_CONTRACT)
             snapshot = slice_background_inner_life_snapshot(full_snapshot, background_profile)
         else:
             background_profile = None

@@ -203,6 +203,46 @@ class CompletedActivityContextItem(FrozenModel):
     source_bindings: tuple[WorldLifeSourceBinding, WorldLifeSourceBinding]
 
 
+class ActivityLifecycleStateContextItem(FrozenModel):
+    """A recorded interruption/ending of an owned Plan, never its execution result."""
+
+    context_kind: Literal["activity_lifecycle_state"] = "activity_lifecycle_state"
+    activity_event_ref: str = Field(min_length=1)
+    plan_id: str = Field(min_length=1)
+    plan_entity_revision: int = Field(ge=2)
+    owner_actor_ref: str = Field(min_length=1)
+    status: Literal["paused", "abandoned"]
+    transitioned_at: datetime
+    event_type: Literal["ActivityPaused", "ActivityAbandoned"]
+    transition_id: str = Field(min_length=1)
+    plan_projection_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    plan_binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    privacy_class: PrivacyClass
+    lifecycle_scope: Literal["recorded_plan_state_not_action_perception_or_intention_success"] = (
+        "recorded_plan_state_not_action_perception_or_intention_success"
+    )
+    source_bindings: tuple[WorldLifeSourceBinding]
+
+    @model_validator(mode="after")
+    def exact_lifecycle_binding(self):
+        from .schemas import plan_authority_binding_hash
+
+        source = self.source_bindings[0]
+        if self.transitioned_at.tzinfo is None or self.transitioned_at.utcoffset() is None:
+            raise ValueError("lifecycle state time must be timezone-aware")
+        if (self.event_type != {"paused": "ActivityPaused", "abandoned": "ActivityAbandoned"}[self.status]
+            or source.authority_event_ref != self.activity_event_ref
+            or self.plan_binding_hash != plan_authority_binding_hash(
+                plan_id=self.plan_id, owner_actor_ref=self.owner_actor_ref,
+                entity_revision=self.plan_entity_revision, transition_id=self.transition_id,
+                event_type=self.event_type, accepted_event_ref=self.activity_event_ref,
+                accepted_world_revision=source.authority_world_revision,
+                accepted_payload_hash=source.authority_payload_hash,
+                accepted_at=self.transitioned_at, projection_hash=self.plan_projection_hash)):
+            raise ValueError("lifecycle state differs from its exact accepted Plan binding")
+        return self
+
+
 class CompletedActivityReader(Protocol):
     def read_completed_plan(
         self,
@@ -299,6 +339,7 @@ WorldLifeModelContextItem = (
     | ActiveActivityContextItem
     | PlannedActivityContextItem
     | CompletedActivityContextItem
+    | ActivityLifecycleStateContextItem
     | BiographicalWorldContextItem
 )
 
@@ -547,10 +588,16 @@ class WorldLifeContextCompiler:
         planned_activities.sort(key=lambda item: (
             item.scheduled_window.opens_at, item.activity_event_ref,
         ))
+        from .activity_lifecycle_state import lifecycle_states_from_projection
+
+        lifecycle_states = lifecycle_states_from_projection(
+            projection=projection, actor_ref=actor_ref, cursor=cursor,
+            viewer_privacy_ceiling=viewer_privacy_ceiling,
+        )
         return (
             ((biography,) if biography is not None else ())
             + tuple(activities) + tuple(completed_activities) + tuple(planned_activities)
-            + active + settled
+            + lifecycle_states + active + settled
         )
 
     def _biographical_item(

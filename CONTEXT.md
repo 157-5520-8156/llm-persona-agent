@@ -15,6 +15,12 @@ the old active Plan before the new producer scan, so the new producer is not_exe
 the old environment occurrence settlement is not an active-attempt result. The restored chat
 was accurately rejected for unsupported walking; correction still authored a similar act,
 then source review timed out22.004s. See current status for the exact qualification scope.
+Post06 Life13 adds qualified owned paused/abandoned Plan state and accepted Affect history.
+Only its versioned Life profile/model view exposes the new lifecycle scope; ordinary visible22
+and Life1-12 retain their permissions.76 and116 targeted checks include the unchanged120-case
+baseline. Independent f1da6600 full-source processes preserve12 legacy compiler preparations/
+readings and a real old Life10 receipt. New request/provider qualification remains pending;
+same-prefix source reconstruction is not recovery or repair of the old missing author pin.
 The historical05 evidence below is preserved, but its continuation/account is now stale.
 
 Historical05 qualification checkpoint:

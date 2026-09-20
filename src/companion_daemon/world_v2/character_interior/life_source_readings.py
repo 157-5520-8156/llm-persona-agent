@@ -15,6 +15,8 @@ from ..visible_source_subject_authority import source_subject_permissions
 from ..visible_source_witness_experiment import _reading, _relative_pointer_choices
 from ..visible_subjective_source import subjective_direct_paths
 from .life_source_origin import canonical, digest
+from .life_source_state_readings import CONTRACT as STATE_CONTRACT, lifecycle_state_reading
+from .life_affect_history_readings import affect_history_reading
 from .life_source_view import LifeSourceView
 from .life_biographical_readings import biographical_reading
 from .life_fact_readings import EXACT_VALUE_REVIEW_CONTRACTS, fact_value_reading
@@ -168,18 +170,21 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
         material = table['source_materials'][source['material_index']]['material']
         row = {**source, 'review_material': material}
         structured_reader = (
+            affect_history_reading if view.review_contract == STATE_CONTRACT and material.get("lane") == "affect_episodes" else
+            lifecycle_state_reading if view.review_contract == STATE_CONTRACT and material.get("item", {}).get("value", {}).get("context_kind") == "activity_lifecycle_state" else
             biographical_reading if material.get('kind') == 'biographical_coordinate' else
             fact_value_reading if material.get('lane') == 'relevant_facts' else None
         )
         if structured_reader is not None:
             descriptor, reason = structured_reader(row, rendered=rendered,
-                **({'exact_value_display': exact_value_display} if structured_reader is fact_value_reading else {}))
+                **({'exact_value_display': exact_value_display} if structured_reader is fact_value_reading else
+                   {'snapshot': snapshot} if structured_reader in {lifecycle_state_reading, affect_history_reading} else {}))
             if descriptor is None:
                 excluded.append({'source_ref_index': source['source_ref_index'], 'reason': reason})
                 continue
             descriptor.update(material_index=source['material_index'],
                               material_identity=source['material_identity'],
-                              source_owner_ref=source.get('support_subject_ref'))
+                              source_owner_ref=descriptor.get('source_owner_ref', source.get('support_subject_ref')))
             identity = canonical(descriptor)
             if identity in identities:
                 identities[identity]['source_ref_indexes'].append(source['source_ref_index'])

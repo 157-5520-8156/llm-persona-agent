@@ -18,8 +18,9 @@ TEMPORAL_CONTRACT = 'life-source-review.8'
 COVERAGE_CONTRACT = 'life-source-review.9'
 PERMISSION_CONTRACT = 'life-source-review.10'
 EXACT_VALUE_CONTRACT = 'life-source-review.11'
-CONTRACT = 'life-source-review.12'
-EXACT_VALUE_CONTRACTS = {EXACT_VALUE_CONTRACT, CONTRACT}
+BOUND_PERMISSION_CONTRACT = 'life-source-review.12'
+CONTRACT = 'life-source-review.13'
+EXACT_VALUE_CONTRACTS = {EXACT_VALUE_CONTRACT, BOUND_PERMISSION_CONTRACT, CONTRACT}
 TEMPORAL_CONTRACTS = {TEMPORAL_CONTRACT, COVERAGE_CONTRACT, PERMISSION_CONTRACT, *EXACT_VALUE_CONTRACTS}
 COVERAGE_CONTRACTS = {COVERAGE_CONTRACT, PERMISSION_CONTRACT, *EXACT_VALUE_CONTRACTS}
 
@@ -183,7 +184,7 @@ def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
         )
         request['tools'][0]['function']['name'] = 'review_life_candidate_v6'
         request['tool_choice']['function']['name'] = 'review_life_candidate_v6'
-    if contract == CONTRACT:
+    if contract in {BOUND_PERMISSION_CONTRACT, CONTRACT}:
         _configure_bound_permission_review(request=request, packet=packet, schema=schema)
     prepared = json.dumps(envelope, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
     if len(prepared.encode()) > 256_000:
