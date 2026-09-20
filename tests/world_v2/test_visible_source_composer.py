@@ -169,8 +169,10 @@ async def test_public_chat_activity_remains_readable_beside_same_ref_situation(
 
         original_world_entries = composer._world_entries
 
-        def reverse_entries(original_capsule):
-            entries, selection, unsupported = original_world_entries(original_capsule)
+        def reverse_entries(original_capsule, *, include_lifecycle_states=False):
+            entries, selection, unsupported = original_world_entries(
+                original_capsule, include_lifecycle_states=include_lifecycle_states
+            )
             return list(reversed(entries)), selection, unsupported
 
         monkeypatch.setattr(composer, "_world_entries", reverse_entries)
