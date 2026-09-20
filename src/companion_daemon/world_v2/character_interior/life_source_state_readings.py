@@ -9,13 +9,14 @@ from ..world_life_context import ActivityLifecycleStateContextItem
 from .life_source_origin import canonical, digest
 
 CONTRACT = 'life-source-review.13'
+STATE_REVIEW_CONTRACTS = frozenset({'life-source-review.13', 'life-source-review.14'})
 SCOPE = 'activity_lifecycle_states'
 FIELDS = ('plan_id', 'plan_entity_revision', 'owner_actor_ref', 'status', 'transitioned_at', 'lifecycle_scope')
 
 
 def life_source_profile(review_contract):
     profile = background_context_profile_for_purpose('world_stimulus_appraisal')
-    if review_contract == CONTRACT:
+    if review_contract in STATE_REVIEW_CONTRACTS:
         return replace(profile, profile_id='stimulus_appraisal.lifecycle.1',
                        snapshot_material_keys=(*profile.snapshot_material_keys, SCOPE))
     return profile

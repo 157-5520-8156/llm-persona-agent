@@ -10,6 +10,7 @@ import json
 from jsonschema import Draft202012Validator
 
 from .current_life_authorship import current_life_authorship_authority
+from .life_claim_authority import CONTRACT as CLAIM_AUTHORITY_CONTRACT, configure_claim_authority
 from .life_candidate_reading import _object, _unique
 from .life_source_origin import canonical, digest
 
@@ -20,7 +21,7 @@ PERMISSION_CONTRACT = 'life-source-review.10'
 EXACT_VALUE_CONTRACT = 'life-source-review.11'
 BOUND_PERMISSION_CONTRACT = 'life-source-review.12'
 CONTRACT = 'life-source-review.13'
-EXACT_VALUE_CONTRACTS = {EXACT_VALUE_CONTRACT, BOUND_PERMISSION_CONTRACT, CONTRACT}
+EXACT_VALUE_CONTRACTS = {EXACT_VALUE_CONTRACT, BOUND_PERMISSION_CONTRACT, CONTRACT, CLAIM_AUTHORITY_CONTRACT}
 TEMPORAL_CONTRACTS = {TEMPORAL_CONTRACT, COVERAGE_CONTRACT, PERMISSION_CONTRACT, *EXACT_VALUE_CONTRACTS}
 COVERAGE_CONTRACTS = {COVERAGE_CONTRACT, PERMISSION_CONTRACT, *EXACT_VALUE_CONTRACTS}
 
@@ -184,8 +185,10 @@ def prepare(*, baseline_json, actor_ref, logical_time, contract=CONTRACT):
         )
         request['tools'][0]['function']['name'] = 'review_life_candidate_v6'
         request['tool_choice']['function']['name'] = 'review_life_candidate_v6'
-    if contract in {BOUND_PERMISSION_CONTRACT, CONTRACT}:
+    if contract in {BOUND_PERMISSION_CONTRACT, CONTRACT, CLAIM_AUTHORITY_CONTRACT}:
         _configure_bound_permission_review(request=request, packet=packet, schema=schema)
+    if contract == CLAIM_AUTHORITY_CONTRACT:
+        configure_claim_authority(request=request, packet=packet, schema=schema)
     prepared = json.dumps(envelope, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
     if len(prepared.encode()) > 256_000:
         raise ValueError('Life review request exceeds its audit bound')
@@ -250,7 +253,7 @@ def _configure_bound_permission_review(*, request, packet, schema):
     request['tool_choice']['function']['name'] = 'review_life_candidate_v7'
 
 
-def inspect(*, raw, prepared_json, validate_support):
+def inspect(*, raw, prepared_json, validate_support, validate_claim=None):
     if not isinstance(raw, str) or len(raw.encode()) > 64_000:
         raise ValueError('Life review response exceeds its audit bound')
     response = json.loads(raw, object_pairs_hook=_unique)
@@ -284,6 +287,12 @@ def inspect(*, raw, prepared_json, validate_support):
                 raise ValueError('Life factual support is missing')
             for support in claim['supports']:
                 validate_support(support)
+            if packet['contract'] == CLAIM_AUTHORITY_CONTRACT and claim['verdict'] == 'supported':
+                if validate_claim is None:
+                    raise ValueError('Life claim authority validation is unavailable')
+                reason = validate_claim(claim)
+                if reason is not None:
+                    failures.append({'path': field['path'], 'proposition': claim['proposition'], 'reason': reason})
             if claim['verdict'] != 'supported':
                 uncertain |= claim['verdict'] == 'uncertain'
                 failures.append({'path': field['path'], 'proposition': claim['proposition'], 'reason': claim['reason']})

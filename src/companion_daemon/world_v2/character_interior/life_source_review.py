@@ -16,6 +16,7 @@ from ..fact_observation_value import FactObservationValueBinding
 from ..life_content_store import StoredLifeContent
 from ..schema_core import FrozenModel
 from .life_candidate_reading import _candidate, _object, _unique
+from .life_claim_authority import CONTRACT as CLAIM_AUTHORITY_CONTRACT, claim_authority_failure, permission_subject_ref
 from .life_source_origin import canonical, digest
 
 LEGACY_CONTRACT = 'life-source-review.1'
@@ -31,7 +32,7 @@ PERMISSION_AUTHORITY_CONTRACT = 'life-source-review.10'
 EXACT_VALUE_AUTHORITY_CONTRACT = 'life-source-review.11'
 BOUND_PERMISSION_CONTRACT = 'life-source-review.12'
 CONTRACT = 'life-source-review.13'
-_BOUND_PERMISSION_CONTRACTS = {BOUND_PERMISSION_CONTRACT, CONTRACT}
+_BOUND_PERMISSION_CONTRACTS = {BOUND_PERMISSION_CONTRACT, CONTRACT, CLAIM_AUTHORITY_CONTRACT}
 _AUTHORSHIP_CONTRACTS = {AUTHORSHIP_CONTRACT, TEMPORAL_AUTHORSHIP_CONTRACT,
     COVERAGE_AUTHORSHIP_CONTRACT, PERMISSION_AUTHORITY_CONTRACT, EXACT_VALUE_AUTHORITY_CONTRACT, *_BOUND_PERMISSION_CONTRACTS}
 _CHOICE_CONTRACTS = {PERMISSION_CONTRACT, BOUNDED_REASON_CONTRACT, VERDICT_ORDER_CONTRACT, LEGACY_CURRENT_CONTRACT}
@@ -275,11 +276,24 @@ def inspect_review(*, raw, prepared_json, readings):
                 raise ValueError('permission-only Fact lacks its exact accepted value binding')
         _validate_source_support({**choice, 'quoted_value': quoted_value}, sources)
 
-    return inspect(raw=raw, prepared_json=prepared_json, validate_support=validate)
+    def validate_claim(claim):
+        return claim_authority_failure(claim, choices=choices, sources=sources,
+            actor_ref=packet['current_authorship_authority']['actor_ref'])
+
+    if packet['contract'] == CLAIM_AUTHORITY_CONTRACT:
+        from .life_claim_authority import AUTHORITY_CONTRACT
+        bindings = [{'permission_id': choice['permission_id'],
+                     'subject_ref': permission_subject_ref(choice, sources[choice['reading_id']])}
+                    for choice in choices.values()]
+        if (packet.get('claim_source_authority_contract') != AUTHORITY_CONTRACT
+            or packet.get('claim_subject_bindings') != bindings):
+            raise ValueError('Life claim subject bindings differ from their exact source permissions')
+    return inspect(raw=raw, prepared_json=prepared_json, validate_support=validate,
+                   validate_claim=validate_claim)
 
 
 class LifeSourceReviewReceipt(FrozenModel):
-    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13'] = CONTRACT
+    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14'] = CONTRACT
     prepared_json: str = Field(max_length=256_000)
     response_json: str = Field(max_length=64_000)
     request_hash: str = Field(pattern=r'^[0-9a-f]{64}$')

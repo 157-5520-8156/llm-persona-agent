@@ -15,7 +15,7 @@ from ..visible_source_subject_authority import source_subject_permissions
 from ..visible_source_witness_experiment import _reading, _relative_pointer_choices
 from ..visible_subjective_source import subjective_direct_paths
 from .life_source_origin import canonical, digest
-from .life_source_state_readings import CONTRACT as STATE_CONTRACT, lifecycle_state_reading
+from .life_source_state_readings import STATE_REVIEW_CONTRACTS, lifecycle_state_reading
 from .life_affect_history_readings import affect_history_reading
 from .life_source_view import LifeSourceView
 from .life_biographical_readings import biographical_reading
@@ -170,8 +170,8 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
         material = table['source_materials'][source['material_index']]['material']
         row = {**source, 'review_material': material}
         structured_reader = (
-            affect_history_reading if view.review_contract == STATE_CONTRACT and material.get("lane") == "affect_episodes" else
-            lifecycle_state_reading if view.review_contract == STATE_CONTRACT and material.get("item", {}).get("value", {}).get("context_kind") == "activity_lifecycle_state" else
+            affect_history_reading if view.review_contract in STATE_REVIEW_CONTRACTS and material.get("lane") == "affect_episodes" else
+            lifecycle_state_reading if view.review_contract in STATE_REVIEW_CONTRACTS and material.get("item", {}).get("value", {}).get("context_kind") == "activity_lifecycle_state" else
             biographical_reading if material.get('kind') == 'biographical_coordinate' else
             fact_value_reading if material.get('lane') == 'relevant_facts' else None
         )

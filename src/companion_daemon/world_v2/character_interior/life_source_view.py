@@ -21,10 +21,10 @@ def _expected_view(snapshot, review_contract=None):
     from ..background_context_profile import slice_background_inner_life_snapshot
     from ..present_prompt import present_inner_life
 
-    from .life_source_state_readings import CONTRACT as STATE_CONTRACT, life_source_profile
+    from .life_source_state_readings import STATE_REVIEW_CONTRACTS, life_source_profile
 
     profile = life_source_profile(review_contract)
-    return present_inner_life(slice_background_inner_life_snapshot(snapshot.model_view(include_lifecycle_states=review_contract == STATE_CONTRACT), profile))
+    return present_inner_life(slice_background_inner_life_snapshot(snapshot.model_view(include_lifecycle_states=review_contract in STATE_REVIEW_CONTRACTS), profile))
 
 
 class LifeSourceView(FrozenModel):
@@ -32,7 +32,7 @@ class LifeSourceView(FrozenModel):
     write_authority: Literal[False] = False
     semantic_coverage: Literal["not_assessed"] = "not_assessed"
     source_permission_coverage: Literal["not_assessed"] = "not_assessed"
-    review_contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13'] | None = Field(default=None, exclude_if=lambda value: value is None)
+    review_contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14'] | None = Field(default=None, exclude_if=lambda value: value is None)
     snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     capsule_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     request_binding_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -69,7 +69,7 @@ class LifeSourceView(FrozenModel):
         if checked.provider_request_hash != "sha256:" + provider_invocation_request_hash(messages=messages, **controls):
             raise ValueError("Life source view differs from the actual provider request hash")
         payload = _payload(messages)
-        from .life_source_state_readings import CONTRACT as STATE_CONTRACT, life_source_profile
+        from .life_source_state_readings import STATE_REVIEW_CONTRACTS, life_source_profile
 
         profile = life_source_profile(checked.review_contract)
         if (
@@ -78,7 +78,7 @@ class LifeSourceView(FrozenModel):
         ):
             raise ValueError("Life source view differs from the actual purpose-filtered snapshot")
         table = compile_selected_source_table(capsule=origin.capsule(), include_subjective_history=True,
-            include_lifecycle_states=checked.review_contract == STATE_CONTRACT)
+            include_lifecycle_states=checked.review_contract in STATE_REVIEW_CONTRACTS)
         if checked.source_table_json != table.payload_json:
             raise ValueError("Life source catalogue differs from its original Capsule selection")
         if checked.unmatched_visible_source_refs != _unmatched(payload, table.as_dict()):
@@ -121,10 +121,10 @@ def prepare_life_source_view(*, request, messages, provider_controls: dict, prov
     if request.purpose != "world_stimulus_appraisal" or request.snapshot.life_source_origin is None:
         raise ValueError("Life source preparation needs the original retained Capsule")
     origin = request.snapshot.life_source_origin
-    from .life_source_state_readings import CONTRACT as STATE_CONTRACT
+    from .life_source_state_readings import STATE_REVIEW_CONTRACTS
 
     table = compile_selected_source_table(capsule=origin.capsule(), include_subjective_history=True,
-        include_lifecycle_states=review_contract == STATE_CONTRACT)
+        include_lifecycle_states=review_contract in STATE_REVIEW_CONTRACTS)
     prepared = LifeSourceView(
         review_contract=review_contract,
         snapshot_hash=request.snapshot.snapshot_hash,
