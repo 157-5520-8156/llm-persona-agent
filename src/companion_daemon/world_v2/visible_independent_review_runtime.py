@@ -50,7 +50,8 @@ def validate_independent_reviewer_configuration(reviewer, version):
 
 def rejection_feedback(prepared, rejected, bindings):
     pin = prepared.as_dict()
-    from .visible_review_protocols import CONDITION_WIRE_PROTOCOLS
+    from .visible_review_protocols import CONDITION_WIRE_PROTOCOLS, PRIVATE_COGNITION_PROTOCOL
+    from .private_cognition_scope import INSTRUCTION as cognition_instruction
     typed_feedback = pin['protocol'] in CONDITION_WIRE_PROTOCOLS
     facts = {(i, f["fact_id"]): f for i, reading in enumerate(rejected.readings) for f in reading["facts"]}
     rejected_facts = [d for d in rejected.support["fact_decisions"] if d["outcome"] == "rejected"]
@@ -83,6 +84,9 @@ def rejection_feedback(prepared, rejected, bindings):
                     '本次重选须重新核验整份表达，不能将未列出的部分理解为已经通过。'
                 )} if rejected.support.get('inconclusive') else {}),
                 **({'classification_guidance': (
+                    cognition_instruction + 'mode 是读者对命题的分类，不是措辞指令。'
+                    '请按原材料自行重选完整表达；不要向用户转述技术反馈。'
+                    if pin['protocol'] == PRIVATE_COGNITION_PROTOCOL else
                     'mode 是读者对命题的分类，不是措辞指令。无来源的通常/过去内心陈述与本次新产生的当下感受不同。'
                     '你有权自行形成当下感受、态度和意图，但不能借此证明长期习惯、过去想法或已发生行为。'
                     '按你真正想表达的意思自行重选；也可以质疑读法并保留原意。删掉别的句子不会解决这项来源缺口。'

@@ -8,6 +8,7 @@ import json
 import re
 
 from .companion_identity import CompanionIdentityFrame
+from .affect_reference_view import present_affect_entry
 from .private_turn_state import validate_authored_impression_retention
 
 PRESENT_RECENT_DIALOGUE_ITEM_LIMIT = 240
@@ -591,7 +592,7 @@ def affect_material_entries(value: object) -> list[dict[str, object]]:
     """Expand cache-split or legacy affect material without changing semantics."""
 
     if isinstance(value, list):
-        return [item for item in value if isinstance(item, dict)]
+        return [present_affect_entry(item, expand=True) for item in value if isinstance(item, dict)]
     if isinstance(value, dict):
         stable = value.get("stable_entries")
         volatile = value.get("volatile_last_entry")
@@ -601,21 +602,37 @@ def affect_material_entries(value: object) -> list[dict[str, object]]:
         if isinstance(volatile, dict):
             entries.append(volatile)
         if entries:
-            return entries
+            return [present_affect_entry(item, expand=True) for item in entries]
         legacy_items = value.get("items")
         if isinstance(legacy_items, list):
-            return [item for item in legacy_items if isinstance(item, dict)]
+            return [
+                present_affect_entry(item, expand=True)
+                for item in legacy_items if isinstance(item, dict)
+            ]
     return []
 
 
 def cache_stable_affect(value: object) -> object:
-    """Split affect tail so prior episodes stay byte-stable for provider KV cache."""
+    """Split the tail and reversibly table typed references; keep every episode."""
 
-    if not isinstance(value, list) or len(value) < 2:
+    if isinstance(value, dict):
+        # Older captured requests already carry the cache split. Re-presenting
+        # those requests is idempotent and does not erase wrapper metadata.
+        payload = dict(value)
+        for key in ("stable_entries", "items"):
+            if isinstance(payload.get(key), list):
+                payload[key] = [present_affect_entry(item) for item in payload[key]]
+        if isinstance(payload.get("volatile_last_entry"), dict):
+            payload["volatile_last_entry"] = present_affect_entry(payload["volatile_last_entry"])
+        return payload
+    if not isinstance(value, list):
         return value
+    entries = [present_affect_entry(item) for item in value]
+    if len(entries) < 2:
+        return entries
     return {
-        "stable_entries": value[:-1],
-        "volatile_last_entry": value[-1],
+        "stable_entries": entries[:-1],
+        "volatile_last_entry": entries[-1],
     }
 
 
@@ -1599,7 +1616,7 @@ def expand_present_world_context(view: Mapping[str, object]) -> dict[str, object
     The inverse of ``order_user_present_payload`` for everything that presenter
     elides: the withheld duplicate ``source_ref``, the aliases of the volatile
     dialogue turn, the availability wrappers of the scope/compiler bindings, the
-    ``automatic_prefetch`` wrapper, and the trigger pointer.  It reads the alias
+    ``automatic_prefetch`` wrapper, typed Affect reference tables, and the trigger pointer. It reads the alias
     table from the same view, so it needs nothing but the view itself.
 
     ``recent_dialogue`` is returned in its canonical shape -- the flat
@@ -1627,6 +1644,17 @@ def expand_present_world_context(view: Mapping[str, object]) -> dict[str, object
     aliases = boundaries.get("source_ref_aliases") if isinstance(boundaries, Mapping) else None
     materials = snapshot.get("materials")
     if isinstance(materials, dict):
+        affect = materials.get("affect")
+        if isinstance(affect, list):
+            materials["affect"] = [present_affect_entry(item, expand=True) for item in affect]
+        elif isinstance(affect, dict):
+            # Preserve the existing affect envelope; only the reference table
+            # is new presentation. Its full records are required by readers.
+            for key in ("stable_entries", "items"):
+                if isinstance(affect.get(key), list):
+                    affect[key] = [present_affect_entry(item, expand=True) for item in affect[key]]
+            if isinstance(affect.get("volatile_last_entry"), dict):
+                affect["volatile_last_entry"] = present_affect_entry(affect["volatile_last_entry"], expand=True)
         dialogue = materials.get("recent_dialogue")
         if isinstance(dialogue, dict):
             materials["recent_dialogue"] = recent_dialogue_material_entries(

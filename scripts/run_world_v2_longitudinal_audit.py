@@ -49,15 +49,19 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         help="Explicit whole-source reviewer wire version; Nonlegacy versions require whole-source review; v9/v10/v11 are experimental independent review pipelines.",
     )
     parser.add_argument(
+        "--visible-source-review-model", default=None,
+        help="Override only the whole-source adjudicator model; the character and meaning readers retain their configured models.",
+    )
+    parser.add_argument(
         "--visible-source-review-thinking", action="store_true",
-        help="Explicit v18/v19 source adjudicator reasoning with pinned automatic tool selection; qualification pending.",
+        help="Explicit v18/v19/v20 source adjudicator reasoning with pinned automatic tool selection; qualification pending.",
     )
     parser.add_argument("--visible-source-review-scope-history", action="store_true",
-                        help="Opt-in v18/v19 omission of verified subjective history without permission for the fixed facts.")
+                        help="Opt-in v18/v19/v20 omission of verified subjective history without permission for the fixed facts.")
     parser.add_argument("--visible-source-review-scope-context", action="store_true",
-                        help="Opt-in v18/v19 permission selection retaining dialogue, situation and every eligible support.")
+                        help="Opt-in v18/v19/v20 permission selection retaining dialogue, situation and every eligible support.")
     parser.add_argument("--visible-source-review-json", action="store_true",
-                        help="Explicit read-only v18/v19 JSON-object carrier with unchanged full local schema validation.")
+                        help="Explicit read-only v18/v19/v20 JSON-object carrier with unchanged full local schema validation.")
     parser.add_argument("--visible-source-review-effort", choices=("low", "high", "max"), default=None,
                         help="Explicit source-only reasoning effort; requires --visible-source-review-thinking.")
     parser.add_argument(
@@ -100,14 +104,19 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--visible-author-tool-version 2/3 requires --require-visible-source-review")
     if options.visible_source_review_version != "1" and not options.require_visible_source_review:
         parser.error("nonlegacy --visible-source-review-version requires --require-visible-source-review")
-    if options.visible_source_review_thinking and options.visible_source_review_version not in {"18", "19"}:
-        parser.error("--visible-source-review-thinking requires explicit review version 18 or 19")
-    if options.visible_source_review_scope_history and options.visible_source_review_version not in {"18", "19"}:
-        parser.error("--visible-source-review-scope-history requires explicit review version 18 or 19")
-    if options.visible_source_review_scope_context and (options.visible_source_review_version not in {"18", "19"} or options.visible_source_review_scope_history):
-        parser.error("--visible-source-review-scope-context requires v18 or v19 and no scope-history selector")
-    if options.visible_source_review_json and options.visible_source_review_version not in {"18", "19"}:
-        parser.error("--visible-source-review-json requires explicit review version 18 or 19")
+    if options.visible_source_review_model is not None:
+        if not options.require_visible_source_review:
+            parser.error("--visible-source-review-model requires --require-visible-source-review")
+        if not options.visible_source_review_model.strip() or options.visible_source_review_model != options.visible_source_review_model.strip():
+            parser.error("--visible-source-review-model must be nonempty without surrounding whitespace")
+    if options.visible_source_review_thinking and options.visible_source_review_version not in {"18", "19", "20"}:
+        parser.error("--visible-source-review-thinking requires explicit review version 18, 19 or 20")
+    if options.visible_source_review_scope_history and options.visible_source_review_version not in {"18", "19", "20"}:
+        parser.error("--visible-source-review-scope-history requires explicit review version 18, 19 or 20")
+    if options.visible_source_review_scope_context and (options.visible_source_review_version not in {"18", "19", "20"} or options.visible_source_review_scope_history):
+        parser.error("--visible-source-review-scope-context requires v18, v19 or v20 and no scope-history selector")
+    if options.visible_source_review_json and options.visible_source_review_version not in {"18", "19", "20"}:
+        parser.error("--visible-source-review-json requires explicit review version 18, 19 or 20")
     if options.visible_source_review_effort is not None and not options.visible_source_review_thinking:
         parser.error("--visible-source-review-effort requires --visible-source-review-thinking")
     if options.max_cost_cny is not None and (
@@ -399,7 +408,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                 )
             if required_review:
                 visible_reviewer = provider("visible_source_review", thinking=options.visible_source_review_thinking,
-                                            model_override=settings.deepseek_model, max_thinking_tokens=8192,
+                                            model_override=options.visible_source_review_model or settings.deepseek_model, max_thinking_tokens=8192,
                                             reasoning_effort_override=options.visible_source_review_effort)
                 from companion_daemon.world_v2.visible_review_protocols import REVIEW_PROTOCOLS
                 if options.visible_source_review_version in REVIEW_PROTOCOLS:
@@ -462,7 +471,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
             **({"visible_source_review": {
                 "policy": "visible-source-review-required.1",
                 "expression_episode_mode": "off",
-                "review_model": configured.deepseek_model,
+                "review_model": options.visible_source_review_model or configured.deepseek_model,
                 **({"source_thinking_enabled": True} if options.visible_source_review_thinking else {}),
                 **({"scope_permission_context": True} if options.visible_source_review_scope_context else {}),
                 **({"scope_subjective_history": True} if options.visible_source_review_scope_history else {}),

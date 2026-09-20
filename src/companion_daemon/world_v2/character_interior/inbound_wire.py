@@ -10472,6 +10472,16 @@ class _ExpressionDraftWire:
             "feeling, question, or silence."
         )
         system += " " + schema
+        # Old protocol requests retain their exact authoring instruction. The
+        # opt-in contract shares one boundary with both independent readers
+        # and the complete source reviewer.
+        if request.visible_source_requirement_json is not None:
+            from ..visible_review_protocols import PRIVATE_COGNITION_PROTOCOL
+            if json.loads(request.visible_source_requirement_json).get("review_protocol") == PRIVATE_COGNITION_PROTOCOL:
+                from ..private_cognition_scope import INSTRUCTION
+                old_start = system.index("Your present first-person feelings,")
+                old_end = system.index("Other than exact current-report uptake", old_start)
+                system = system[:old_start] + INSTRUCTION + " " + system[old_end:]
         request_material = request.model_dump(mode="json", exclude={"visible_source_requirement_json"})
         provider_context_json = (
             compact_recovery_model_facing_context(request.model_content_json)

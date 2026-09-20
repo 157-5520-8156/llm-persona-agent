@@ -111,6 +111,18 @@ def test_whole_source_review_cannot_be_claimed_by_the_legacy_fixture(tmp_path):
         ])
 
 
+def test_source_model_override_requires_explicit_review_and_valid_name(tmp_path):
+    cli = _cli()
+    base = ["--output", str(tmp_path / "fresh"), "--model-mode", "real-provider", "--allow-real-provider"]
+    assert cli.parse_options(base).visible_source_review_model is None
+    with pytest.raises(SystemExit):
+        cli.parse_options(base + ["--visible-source-review-model", "deepseek-v4-pro"])
+    for value in ("", " ", " deepseek-v4-pro", "deepseek-v4-pro "):
+        with pytest.raises(SystemExit):
+            cli.parse_options(base + ["--require-visible-source-review", "--visible-source-review-model", value])
+    assert not (tmp_path / "fresh").exists()
+
+
 def test_existing_output_is_preserved(tmp_path):
     output = tmp_path / "existing"
     output.mkdir()
@@ -504,14 +516,22 @@ async def test_fixture_public_journey_does_not_expire_virtual_ingress_deadline(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("required_review", [False, True])
+@pytest.mark.parametrize("required_review,review_version,source_model", [
+    (False, "1", None),
+    (True, "1", None),
+    (True, "1", "deepseek-v4-pro"),
+    (True, "19", None),
+    (True, "19", "deepseek-v4-pro"),
+])
 async def test_real_cli_captures_actual_provider_body_and_closes_injected_clients(
-    tmp_path, monkeypatch, required_review
+    tmp_path, monkeypatch, required_review, review_version, source_model
 ):
     import companion_daemon.llm as llm
     import companion_daemon.world_v2.longitudinal_journey as runner
 
     monkeypatch.setenv("DEEPSEEK_DEBUG_API_KEY", "fixture-debug-key")
+    monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("DEEPSEEK_CHARACTER_THINKING_MODEL", "deepseek-v4-flash")
     monkeypatch.setenv("DEEPSEEK_CHARACTER_THINKING_ENABLED", "true")
     clients = []
     actual_model = llm.DeepSeekChatModel
@@ -540,19 +560,24 @@ async def test_real_cli_captures_actual_provider_body_and_closes_injected_client
             kwargs["output"] / "world.sqlite", clock, runner.CaptureDelivery(clock)
         )
         try:
-            assert len(clients) == (4 if required_review else 3)
+            assert len(clients) == (6 if review_version == "19" else 4 if required_review else 3)
+            assert [client.model for client in clients[:3]] == ["deepseek-v4-flash"] * 3
             assert clients[0].max_completion_tokens == 4096
             assert clients[1].thinking_enabled is True
             assert clients[1].max_completion_tokens == 900
             assert clients[2].max_completion_tokens == 4096
             if required_review:
+                assert clients[3].model == (source_model or "deepseek-v4-flash")
                 assert clients[3].max_completion_tokens == 4096
+                if review_version == "19":
+                    assert [client.model for client in clients[4:]] == ["deepseek-v4-pro", "deepseek-v4-flash"]
                 assert kwargs["provenance"]["visible_source_review"] == {
                     "policy": "visible-source-review-required.1",
                     "expression_episode_mode": "off",
                     "review_model": clients[3].model,
                     "qualification": "requires_evaluation_of_actual_records",
                 }
+                assert kwargs["provenance"]["models"]["character"] == "deepseek-v4-flash"
             else:
                 assert "visible_source_review" not in kwargs["provenance"]
             with llm.model_call_scope("inbound_turn"):
@@ -572,8 +597,10 @@ async def test_real_cli_captures_actual_provider_body_and_closes_injected_client
             assert json.loads(requests[0]["model_content_json"])["messages"] == [
                 {"role": "user", "content": "计划改到周二"}
             ]
+            assert json.loads(requests[0]["model_content_json"])["model"] == "deepseek-v4-flash"
             if required_review:
                 assert requests[1]["model_role"] == "visible_source_review"
+                assert json.loads(requests[1]["model_content_json"])["model"] == (source_model or "deepseek-v4-flash")
                 assert json.loads(requests[1]["model_content_json"])["messages"] == [
                     {"role": "user", "content": "独立审核完整候选消息"}
                 ]
@@ -596,6 +623,8 @@ async def test_real_cli_captures_actual_provider_body_and_closes_injected_client
                 "real-provider",
                 "--allow-real-provider",
                 *(["--require-visible-source-review"] if required_review else []),
+                "--visible-source-review-version", review_version,
+                *(["--visible-source-review-model", source_model] if source_model else []),
             ]
         )
     )
@@ -875,49 +904,53 @@ def test_explicit_uncapped_trial_keeps_default_cap_and_overrides_ambient_caps(tm
         assert connection.execute("SELECT COUNT(*) FROM world_v2_model_reservations").fetchone()[0] == 2
 
 
-def test_source_reasoning_requires_explicit_scoped_review_profile(tmp_path):
+@pytest.mark.parametrize("version", ["18", "19", "20"])
+def test_source_reasoning_requires_explicit_scoped_review_profile(tmp_path, version):
     cli = _cli()
     base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
             '--allow-real-provider', '--require-visible-source-review']
     assert not cli.parse_options(base).visible_source_review_thinking
     with pytest.raises(SystemExit):
         cli.parse_options(base + ['--visible-source-review-thinking'])
-    options = cli.parse_options(base + ['--visible-source-review-version', '18', '--visible-source-review-thinking'])
+    options = cli.parse_options(base + ['--visible-source-review-version', version, '--visible-source-review-thinking'])
     assert options.visible_source_review_thinking
 
 
-def test_subjective_source_scope_requires_explicit_complete_coverage(tmp_path):
+@pytest.mark.parametrize("version", ["18", "19", "20"])
+def test_subjective_source_scope_requires_explicit_complete_coverage(tmp_path, version):
     cli = _cli()
     base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
             '--allow-real-provider', '--require-visible-source-review']
     assert not cli.parse_options(base).visible_source_review_scope_history
     with pytest.raises(SystemExit):
         cli.parse_options(base + ['--visible-source-review-scope-history'])
-    assert cli.parse_options(base + ['--visible-source-review-version', '18', '--visible-source-review-scope-history']).visible_source_review_scope_history
+    assert cli.parse_options(base + ['--visible-source-review-version', version, '--visible-source-review-scope-history']).visible_source_review_scope_history
 
 
-def test_json_source_carrier_and_effort_are_explicit_and_scoped(tmp_path):
+@pytest.mark.parametrize("version", ["18", "19", "20"])
+def test_json_source_carrier_and_effort_are_explicit_and_scoped(tmp_path, version):
     cli = _cli()
     base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
             '--allow-real-provider', '--require-visible-source-review']
     assert not cli.parse_options(base).visible_source_review_json
     with pytest.raises(SystemExit):
         cli.parse_options(base + ['--visible-source-review-json'])
-    scoped = base + ['--visible-source-review-version', '18', '--visible-source-review-json']
+    scoped = base + ['--visible-source-review-version', version, '--visible-source-review-json']
     with pytest.raises(SystemExit):
         cli.parse_options(scoped + ['--visible-source-review-effort', 'low'])
     options = cli.parse_options(scoped + ['--visible-source-review-thinking', '--visible-source-review-effort', 'low'])
     assert options.visible_source_review_json and options.visible_source_review_effort == 'low'
 
 
-def test_permission_context_scope_is_explicit_and_excludes_legacy_selector(tmp_path):
+@pytest.mark.parametrize("version", ["18", "19", "20"])
+def test_permission_context_scope_is_explicit_and_excludes_legacy_selector(tmp_path, version):
     cli = _cli()
     base = ['--output', str(tmp_path / 'run'), '--model-mode', 'real-provider',
             '--allow-real-provider', '--require-visible-source-review']
     assert not cli.parse_options(base).visible_source_review_scope_context
     with pytest.raises(SystemExit):
         cli.parse_options(base + ['--visible-source-review-scope-context'])
-    scoped = base + ['--visible-source-review-version', '18', '--visible-source-review-scope-context']
+    scoped = base + ['--visible-source-review-version', version, '--visible-source-review-scope-context']
     assert cli.parse_options(scoped).visible_source_review_scope_context
     with pytest.raises(SystemExit):
         cli.parse_options(scoped + ['--visible-source-review-scope-history'])

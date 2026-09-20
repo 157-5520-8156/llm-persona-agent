@@ -18,7 +18,9 @@ from .visible_source_witness_experiment import _json, _unique, prepare_witness_e
 CONTRACT = 'visible-contextual-source-review.1'
 SCOPED_COVERAGE_CONTRACT = 'visible-contextual-source-review.2'
 FACT_VALUE_CONTRACT = 'visible-contextual-source-review.3'
-SCOPED_CONTRACTS = {SCOPED_COVERAGE_CONTRACT, FACT_VALUE_CONTRACT}
+PRIVATE_COGNITION_CONTRACT = 'visible-contextual-source-review.4'
+FACT_VALUE_CONTRACTS = {FACT_VALUE_CONTRACT, PRIVATE_COGNITION_CONTRACT}
+SCOPED_CONTRACTS = {SCOPED_COVERAGE_CONTRACT, *FACT_VALUE_CONTRACTS}
 
 INSTRUCTION = (
     '你审核完整候选发言在原语境中实际断言的事实与来源。visible_beats 是完整原句；'
@@ -82,7 +84,8 @@ class PreparedContextualSourceReview:
         expected = prepare_contextual_source_review(
             meanings=tuple(IndependentMeaning(PreparedCandidateMeaning(m['preparation_json']), m['raw_response'])
                            for m in pin['meanings']), sources=tuple(pin['sources']), scoped_coverage=pin['contract'] in SCOPED_CONTRACTS,
-            fact_value_authority=pin['contract'] == FACT_VALUE_CONTRACT,
+            fact_value_authority=pin['contract'] in FACT_VALUE_CONTRACTS,
+            private_cognition_scope=pin['contract'] == PRIVATE_COGNITION_CONTRACT,
             tool_selection_mode=pin.get('tool_selection_mode', 'forced'),
             scope_subjective_history=pin.get('scope_subjective_history', False),
             response_mode=pin.get('response_mode', 'tool'), scope_permission_context=pin.get('scope_permission_context', False))
@@ -143,7 +146,7 @@ class PreparedContextualSourceReview:
                 'assertion_status': status, 'explanation': decision['explanation'],
                 'selected_readings': [{**catalog[r], 'use': 'direct' if outcome == 'supported' else 'diagnostic_only',
                                        'permitted_scope': allowed.get(r)} for r in selected],
-                **({'fact_value_selections': fact_selections} if pin['contract'] == FACT_VALUE_CONTRACT else {}),
+                **({'fact_value_selections': fact_selections} if pin['contract'] in FACT_VALUE_CONTRACTS else {}),
             })
         outcomes = []
         omissions = []
@@ -160,7 +163,9 @@ class PreparedContextualSourceReview:
                 'semantic_qualification': 'unproven'}
 
 
-def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool", scope_permission_context=False, fact_value_authority=False):
+def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False, tool_selection_mode="forced", scope_subjective_history=False, response_mode="tool", scope_permission_context=False, fact_value_authority=False, private_cognition_scope=False):
+    if type(private_cognition_scope) is not bool or (private_cognition_scope and not fact_value_authority):
+        raise ValueError("private cognition scope requires Fact value authority")
     if type(fact_value_authority) is not bool or (fact_value_authority and not scoped_coverage):
         raise ValueError('Fact value authority requires scoped coverage')
     if type(scope_permission_context) is not bool or (scope_permission_context and (not scoped_coverage or scope_subjective_history)):
@@ -173,7 +178,7 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
         raise ValueError("automatic selection requires scoped coverage")
     if type(scoped_coverage) is not bool:
         raise TypeError('scoped coverage must be boolean')
-    contract = FACT_VALUE_CONTRACT if fact_value_authority else SCOPED_COVERAGE_CONTRACT if scoped_coverage else CONTRACT
+    contract = PRIVATE_COGNITION_CONTRACT if private_cognition_scope else FACT_VALUE_CONTRACT if fact_value_authority else SCOPED_COVERAGE_CONTRACT if scoped_coverage else CONTRACT
     from .visible_independent_meanings import _readings
     interpreted, beats = _readings(meanings)
     facts = [{**fact, 'fact_id': f"m{index}:{fact['fact_id']}", 'meaning_index': index,
@@ -282,13 +287,22 @@ def prepare_contextual_source_review(*, meanings, sources, scoped_coverage=False
             '当下作者可自由形成的感受/意愿无需来源；记录依赖是权限概念，不是语法上陈述句的同义词。'
             '纯条件不预设条件已经成立，未知问题不预设答案。日常省略或比喻不等于阻断性歧义。'
             '实际过去行为找不到支持时应明确不支持，不能仅因缺少更多细节而宣告无法判断。')
+    if private_cognition_scope:
+        from .private_cognition_scope import INSTRUCTION as cognition_instruction, REVIEWER_INSTRUCTION
+        instruction = instruction.replace(
+            'past_subjective_state 只能用所属角色当时的 subjective_history，不能从当前情绪倒推出过去。',
+            '独立先前阶段的 past_subjective_state 只能用所属角色当时的 subjective_history，不能从当前情绪倒推出过去。')
+        instruction += cognition_instruction + REVIEWER_INSTRUCTION
+        props = schema['properties']['beat_decisions']['items']['properties']
+        props['non_record_expressions']['description'] += '本次认知内部即时转变按 private-cognition-scope.1 判断。'
+        props['unaccounted_record_bound_assertions']['description'] += '过去内心指本轮之外的独立先前阶段或持续、反复的历史。'
     if scope_subjective_history:
         from .visible_source_scope_selection import INSTRUCTION as selection_instruction
         instruction += selection_instruction
     if scope_permission_context:
         from .visible_source_scope_selection import CONTEXT_INSTRUCTION
         instruction += CONTEXT_INSTRUCTION
-    name = 'review_contextual_candidate_sources_v3' if fact_value_authority else 'review_contextual_candidate_sources_v2' if scoped_coverage else 'review_contextual_candidate_sources_v1'
+    name = 'review_contextual_candidate_sources_v4' if private_cognition_scope else 'review_contextual_candidate_sources_v3' if fact_value_authority else 'review_contextual_candidate_sources_v2' if scoped_coverage else 'review_contextual_candidate_sources_v1'
     request = {'messages': [{'role': 'system', 'content': instruction},
                             {'role': 'user', 'content': json.dumps(body, ensure_ascii=False, separators=(',', ':'))}],
                'temperature': 0.0, 'tools': [{'type': 'function', 'function': {
