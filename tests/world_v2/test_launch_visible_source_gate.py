@@ -298,7 +298,7 @@ async def test_unclosed_allows_one_same_role_reselection_and_reviews_whole_repla
                 "SELECT reservation_id,status FROM world_v2_model_reservations"
             ).fetchall()
         assert len(rows) == 4
-        assert sum(row[0] == "source_review" for row in rows) == 2
+        assert sum(row[0] == "inbound_source_review" for row in rows) == 2
         assert all(row[1:4] == (100, 100, "known") for row in rows)
         assert len({row[4] for row in rows}) == 4
         assert len(reservations) == 4 and all(row[1] == "settled" for row in reservations)

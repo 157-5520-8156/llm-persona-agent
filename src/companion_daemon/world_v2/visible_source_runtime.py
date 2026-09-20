@@ -5,6 +5,7 @@ from __future__ import annotations
 from companion_daemon.world_v2.visible_review_protocols import SUPPORTED_REVIEW_VERSIONS
 import hashlib
 import json
+from typing import Literal
 from .visible_review_evidence_storage import read_review_evidence, store_review_evidence
 
 REQUIRED_POLICY = "visible-source-review-required.1"
@@ -149,7 +150,15 @@ def _verify_original_capability(requirement, lineage, author_request_json=None):
     return original
 
 
-async def review_candidate(*, request, output, author_request_json, reviewer, review_version="1"):
+async def review_candidate(
+    *, request, output, author_request_json, reviewer, review_version="1",
+    usage_purpose: Literal["source_review", "inbound_source_review"] = "source_review",
+):
+    # Only the owning inbound application opts into its spend lane. Logical
+    # receipt purposes remain source_review and provider requests stay unchanged;
+    # proactive callers keep the background default. This is not authored JSON.
+    if usage_purpose not in {"source_review", "inbound_source_review"}:
+        raise ValueError("unsupported visible review usage purpose")
     from companion_daemon.llm import (
         model_call_scope,
         model_provider_request_identity_scope,
@@ -214,6 +223,7 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
         return await review_independent_candidate(
             request=request, output=output, proposal=proposal, source_table=table, aliases=aliases,
             author_request_json=author_request_json, reviewer=reviewer, recall_audits=recall_audits, review_version=review_version,
+            usage_purpose=usage_purpose,
         )
     prepared = prepare_visible_source_review(
         candidate=proposal, source_table=table, source_ref_aliases=aliases,
@@ -240,7 +250,7 @@ async def review_candidate(*, request, output, author_request_json, reviewer, re
         if not callable(operation):
             raise ValueError("visible review requires the explicit metered tool provider")
         with (
-            model_call_scope("source_review"),
+            model_call_scope(usage_purpose),
             model_request_emission_scope(
                 provider_call_id=call_id, entry_marker=None, completion_marker=None
             ),

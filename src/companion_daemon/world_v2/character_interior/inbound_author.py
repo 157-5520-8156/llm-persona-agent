@@ -2785,6 +2785,7 @@ class _InboundCharacterAuthor:
                     ),
                     reviewer=self._visible_source_review_model,
                     review_version=self._visible_source_review_version,
+                    usage_purpose="inbound_source_review",
                 )
             except ValidationTechnicalFailure as exc:
                 if exc.failure_code == "paired_expression_reselection_invalid":

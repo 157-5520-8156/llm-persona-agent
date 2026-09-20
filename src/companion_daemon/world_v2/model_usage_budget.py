@@ -48,6 +48,7 @@ GENERIC_MODEL_PURPOSES = frozenset(
 VISIBLE_INBOUND_PURPOSES = frozenset(
     {
         "inbound_turn",
+        "inbound_source_review",
         "paired_cognition_initial",
         "paired_cognition_stream",
         "expression_stream_tail",

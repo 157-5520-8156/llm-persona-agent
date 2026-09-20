@@ -1,5 +1,6 @@
 """Metered independent review calls; character authoring stays in its owner."""
 import asyncio
+from typing import Literal
 
 from .visible_independent_review_configuration import (
     IndependentVisibleReviewer as IndependentVisibleReviewer,
@@ -78,6 +79,7 @@ def rejection_feedback(prepared, rejected, bindings):
 
 async def review_independent_candidate(
     *, request, output, proposal, source_table, aliases, author_request_json, reviewer, recall_audits=(), review_version="9",
+    usage_purpose: Literal["source_review", "inbound_source_review"] = "source_review",
 ):
     from companion_daemon.llm import model_call_scope, model_provider_request_identity_scope, model_request_emission_scope
     from .deliberation import (
@@ -101,7 +103,7 @@ async def review_independent_candidate(
         raw = None
         try:
             with (
-                model_call_scope("source_review"),
+                model_call_scope(usage_purpose),
                 model_request_emission_scope(provider_call_id=call_id, entry_marker=None, completion_marker=None),
                 model_provider_request_identity_scope(request_hash=call.request_hash, identity_extras=call.identity_extras),
             ):
