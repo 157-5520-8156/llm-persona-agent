@@ -424,6 +424,7 @@ _ENTRY_FIELDS = (
     "does_not_authorize",
     "permits_natural_visible_uptake_without_world_claim",
     "natural_uptake_does_not_need_attribution_phrase",
+    "time_comparison",
 )
 _ITEM_FIELDS = (
     "item_ref",

@@ -297,6 +297,13 @@ async def test_recomputed_self_consistent_record_cannot_replace_original_prepara
                 # changing the eligible current report used by the verdict.
                 material = table["source_materials"][0]
                 material["material"]["authority"] = "changed_scope"
+                if "time_comparison" in material["material"]:
+                    # Keep the forged table internally consistent so this test
+                    # still exercises the original receipt pin, not display
+                    # provenance rejection (covered separately).
+                    body = {key: value for key, value in material["material"].items()
+                            if key != "time_comparison"}
+                    material["material"]["time_comparison"]["original_material_identity"] = _hash(_json(body))
                 material["material_identity"] = _hash(_json(material["material"]))
                 for row in table["source_references"]:
                     if row["material_index"] == 0:

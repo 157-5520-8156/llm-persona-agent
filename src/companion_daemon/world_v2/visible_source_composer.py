@@ -18,12 +18,17 @@ from .selected_source_composer import (
     _json,
 )
 from .visible_review_context import compile_visible_selected_source_context
+from .source_time_comparison import verify_time_comparison, with_time_comparison
 
 
 class VisibleSourceTable(SelectedSourceTable):
     """Historical visible table type; shared tables are not visible receipts."""
 
     __slots__ = ()
+
+    def source_references(self) -> tuple[dict[str, object], ...]:
+        verify_time_comparison(self.as_dict())
+        return super().source_references()
 
 
 def _current_report(request: ModelInput, proof: dict) -> dict | None:
@@ -64,10 +69,13 @@ def _current_report(request: ModelInput, proof: dict) -> dict | None:
 
 def compile_visible_source_table(
     *, request: ModelInput, capsule: ContextCapsule, include_subjective_history: bool = False,
+    include_time_comparison: bool = True,
 ) -> VisibleSourceTable:
-    """Preserve exact visible request/participant binding and historical bytes."""
+    """Preserve exact request binding; new tables include derived UTC display."""
     if type(include_subjective_history) is not bool:
         raise TypeError("subjective history selection flag must be boolean")
+    if type(include_time_comparison) is not bool:
+        raise TypeError("time comparison selection flag must be boolean")
     proof = compile_visible_selected_source_context(request=request, capsule=capsule)
     report = _current_report(request, proof)
     payload = _compose_source_materials(
@@ -75,6 +83,8 @@ def compile_visible_source_table(
         supplemental_entries=(report,) if report is not None else (),
     )
     payload["pin"] = proof["visible_review_projection"]
+    if include_time_comparison:
+        payload = with_time_comparison(payload)
     return VisibleSourceTable(payload_json=_json(payload))
 
 
