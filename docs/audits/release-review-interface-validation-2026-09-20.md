@@ -32,6 +32,21 @@ operator_stopped且clients_closed，独立对账verified；完整账目1678/1675
 08/run成为统一运行／账目继续点。冷重放通过，2张旧与1张新v22来源回执全部冷验。
 这些是capture渠道证据，实际QQ、连续聊天、最终全量与月费仍未合格。
 
+## World.2作者：使用已有strict tool出口（离线验证）
+
+08首稿2612输出tokens完整返回却含坏JSON；旧入口只用json_object，未调用适配器已有的
+strict工具能力。新`world-consequence-author-tool.1`仅在World`.2`且provider明确支持时
+启用，用已有no_op/propose合同组成精确replacement外壳，原parser已支持这个外壳。
+执行绑定两分支的source_kind互斥，oneOf投影到anyOf保持两种合法来源，未扩语义权限。
+
+工具合同及实际tool_choice的canonical hash在持久化前写入新messages身份；同角色纠正
+使用同一工具，坏输出原字节保留，不能本地补括号或替角色no_op。旧消息编译器、sidecar
+恢复及原来源／新事实权限审核、接受流程不改。无strict能力的原调用路径保持不变。
+
+54项定向及邻近检查通过：真实DeepSeek adapter配MockTransport验证beta路径、thinking
+工具选择、propose/no_op、一次角色纠正、两次坏输出仍技术失败、原错误字节和旧pin恢复。
+独立只读review未发现边界阻断；未调用真实provider，不宣称新wire已取得供应商或生活结算资格。
+
 ## 新快照28：正式结算类型接入（离线验证）
 
 正式WorldLifeContextItem保持原schema不动。新编译器从保留的Capsule完整值校验typed

@@ -27,6 +27,7 @@ from companion_daemon.world_v2.life_development_capability import (
 from companion_daemon.world_v2.life_development_draft import (
     LifeDevelopmentCapabilityManifest,
     LifeDevelopmentLocationCapability,
+    LifeDevelopmentPossibilityDraft,
     parse_world_author_draft,
 )
 from companion_daemon.world_v2.life_development_runtime import LifeDevelopmentRuntime
@@ -123,10 +124,23 @@ class _HTTP:
         if wire.get("tools"):
             from jsonschema import Draft202012Validator
 
-            review = json.loads(raw)
-            review["unsupported_dynamic_life_directions"] = []
-            arguments = {"review": review}
-            Draft202012Validator(wire["tools"][0]["function"]["parameters"]).validate(arguments)
+            if "review_contract" in user:
+                review = json.loads(raw)
+                review["unsupported_dynamic_life_directions"] = []
+                arguments = {"review": review}
+            else:
+                authored = LifeDevelopmentPossibilityDraft.model_validate_json(raw).model_dump(
+                    mode="json",
+                )
+                if not self.legacy:
+                    for outcome in authored["outcomes"]:
+                        outcome["world_consequence"].setdefault("authorized_attempt_result", None)
+                arguments = {"replacement": authored}
+            # The legacy author is deliberate invalid-output fault injection:
+            # the fresh World.2 parser must reject an attempted text downgrade.
+            # Reviewer responses remain schema checked in either fixture mode.
+            if "review_contract" in user or not self.legacy:
+                Draft202012Validator(wire["tools"][0]["function"]["parameters"]).validate(arguments)
             message = {"role": "assistant", "content": None, "tool_calls": [{
                 "id": "offline-review", "type": "function", "function": {
                     "name": wire["tool_choice"]["function"]["name"],

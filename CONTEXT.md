@@ -29,6 +29,11 @@ New snapshot .28 now recognizes the full typed settlement through its retained
 Capsule binding and exact semantic value. Both real 08 settlements reached both
 display lanes in a query-only temporary backup with zero provider calls; this is
 a new compilation, not an upgrade of an old pin or a new accepted conversation.
+New World.2 author calls now use the existing strict tool capability when the
+provider explicitly supports it. The complete tool/choice digest enters the new
+request identity; the original parser, authority reviews and old recovery remain.
+Local adapter/contract tests passed; real provider compatibility and a settled
+attempt outcome still need evidence.
 
 Final frozen full-suite, representative life-memory-chat continuity, QQ terminal
 receipts, 24-hour operation and approximately 100 CNY/month remain open gates.

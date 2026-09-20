@@ -45,6 +45,10 @@ from .life_capability_manifest_audit import (
 )
 from .world_consequence_author_audit import read_world_consequence_author_evidence
 from .world_consequence_authoring_context import build_world_consequence_authoring_context
+from .world_consequence_author_tool import (
+    bind_world_consequence_author_tool,
+    world_consequence_author_tool_contract,
+)
 from .world_consequence_prompt import (
     compile_world_consequence_messages, validate_world_consequence_offered_bindings,
 )
@@ -5924,8 +5928,14 @@ class LifeDevelopmentRuntime:
             model_purpose="life_development_draft",
             occasion_mode=occasion_mode,
         )
+        tool_contract = {}
         if manifest.outcome_contract == "world-consequence.2":
             hard_boundary_contract = json.loads(messages[1]["content"])["cross_field_authority"]
+            if getattr(self._world_author, "supports_strict_tool_choice", False) is True:
+                tool_contract = world_consequence_author_tool_contract(provider=self._world_author)
+                messages = bind_world_consequence_author_tool(
+                    messages=messages, tool_contract=tool_contract,
+                )
         attempts: list[_LifeDevelopmentAttempt] = []
         for ordinal in range(2):
             request_hash = _messages_hash(messages)
@@ -5947,6 +5957,7 @@ class LifeDevelopmentRuntime:
                         # instead of resampling the same unstable
                         # high-temperature output.
                         temperature=(0.3 if ordinal else 0.6),
+                        **tool_contract,
                     )
             except (
                 TimeoutError,
