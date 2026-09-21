@@ -813,3 +813,42 @@ async def test_situation_change_still_does_not_mint_inside_ambient_window() -> N
 
 **结论：这不是我该自行决定的工程细节，是她的社交节奏这一产品参数。** 已还原工作树，
 `test_social_initiative.py` 42 项全过。
+
+## 已实施并按你的决定验证：她的生活事件现在能让她考虑开口（`ff872593`）
+
+你选了 A：三条主动来源都允许她考虑开口。改动只有一处——**去掉那道 12 小时静默闸门**，
+顺序完全不动（idle / 长静默仍然先跑，仍会把她的生活材料搭车带走；只是「专属考虑」变得可达）。
+频率仍由每天 2 次共享外展额度与刺激簇窗口约束，且不抽取延迟。
+
+**真实链路验证（run 10，推过 10:18）：**
+
+```
+seq=3260 RandomDrawRecorded
+seq=3264 TriggerProcessOpened   consideration:social-initiative:situation-independent:d89593d4…   ← 史上第一条
+seq=3265 TriggerProcessClaimed
+seq=3266 ModelResultRecorded                                                                    ← 真的调了模型
+seq=3267 TriggerProcessCompleted
+```
+
+他上一条消息在 **05:31**，这条考虑在 **10:18** 生成——不到 5 小时，正是旧闸门（12 小时）
+会把它挡掉的位置。**这是这份账本里第一次由她自己生活事件开出的考虑，而且它一路走到了
+付费模型调用。**
+
+测试：`test_social_initiative.py` 42 项全过；宽回归 572 项通过，2 项失败
+（`test_delayed_trigger_affect_silence_host_qualification`、`test_life_projection`）
+已确认**在改动前的 HEAD 上同样失败**，不是本次引入。
+4 条编码旧决定的测试改成了新决定，并各自保留原本守护的不变量（不抽延迟、每簇一次、
+搭车仍然生效）。
+
+运行与计费继续点：`life-event-mint-20260921-10/world.sqlite`，`2033 usage / 2030 reservations
+/ 77 unknown`，ledger 3269，16 次调用全部有原生用量行，新增估算 5.707436 元，
+0 新增 unknown；核验 `grounded-chat-20260921-10/reconciliation.json`。
+
+### 一条给以后自己的警告：这个工作树里不要用 `git stash`
+
+`git stash list` 里有两条**别的分支遗留**的 stash（`worktree-fix-cost-optimization`）。
+当 `src/tests` 没有未提交改动时，`git stash push -- src tests` 什么也不存，
+紧接着的 `git stash pop` 就会去弹那两条外来 stash，把 `present_prompt.py` 和
+`scenario_runner.py` 弄成冲突。我已经踩了两次，两次都用
+`git restore --source=HEAD --staged --worktree` 恢复、两条外来 stash 原样保留。
+以后要么带上明确的 stash 名，要么改用 `git worktree`/直接跑指定 commit，不要再用裸 `stash`。
