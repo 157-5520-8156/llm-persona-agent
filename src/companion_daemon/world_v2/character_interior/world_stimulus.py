@@ -123,6 +123,7 @@ from .experience_transitions import (
 from .ports import _AuthorityRequest
 from .relationship_context import relationship_transition_subject_refs
 from .structured_role import _WorldStimulusAppraisalResult
+from .world_stimulus_retry import WorldStimulusRetrySchedule
 
 
 _LOG = logging.getLogger(__name__)
@@ -1366,9 +1367,22 @@ class CharacterInteriorWorldStimulusRuntime:
         # Technical scheduling state only.  A malformed/provider-failed
         # trigger must not monopolize the host's bounded background budget;
         # the immutable trigger remains open/claimed and is retried after this
-        # short wall-clock defer.  No semantic choice or world fact is stored
-        # here, and a restart simply reuses the durable trigger lease.
+        # short wall-clock defer. This also covers exceptions before an audit
+        # can be written. Recorded model failures additionally use the durable
+        # journal-derived schedule below, which survives a restart.
         self._technical_failure_deferred_until: dict[str, float] = {}
+        self._audited_opportunity_identities: dict[
+            tuple[str, str, str], CausalOpportunityIdentity | None
+        ] = {}
+        self._technical_retry_schedule = WorldStimulusRetrySchedule(
+            ledger=ledger,
+            identities_for_projection=lambda projection: self._health_opportunity_identities(
+                projection=projection,
+                processes=tuple(item for item in projection.trigger_processes
+                                if item.process_kind in _PROCESS_PRIORITY
+                                and item.source_evidence_ref is not None),
+            ),
+        )
 
     def _route_groups(
         self,
@@ -1439,10 +1453,12 @@ class CharacterInteriorWorldStimulusRuntime:
         )
         last = processes[-1] if processes else None
         last_identity = identity_by_trigger.get(last.trigger_id) if last is not None else None
+        durable_deferred = self._durable_deferred_triggers(projection, identity_by_trigger)
         deferred = sum(
             1
             for item in processes
             if item.trigger_id in self._technical_failure_deferred_until
+            or item.trigger_id in durable_deferred
         )
         outcomes = tuple(item.runtime_outcome_ref or "" for item in processes)
         return CausalOpportunityHealth(
@@ -1557,47 +1573,44 @@ class CharacterInteriorWorldStimulusRuntime:
             return None
         identities: dict[str, CausalOpportunityIdentity] = {}
         for model_audit in reversed(projection.model_result_audits):
-            try:
-                recorded = RecordedModelResultAudit.model_validate_json(model_audit.audit_json)
-            except ValueError:
-                continue
-            lineage = recorded.character_interior_lineage
-            if (
-                lineage is None
-                or source_ref not in lineage.causal_source_refs
-                or lineage.causal_actor_ref != self._companion_actor_ref
-                or lineage.purpose != PURPOSE
-            ):
-                continue
-            try:
-                policy = (
-                    CausalOpportunityPolicy.from_ref(lineage.causal_policy_ref)
-                    if lineage.causal_policy_ref is not None
-                    else DEFAULT_CAUSAL_OPPORTUNITY_POLICY
-                )
-                identity = CausalOpportunityRuntime(
-                    world_id=lineage.causal_world_id,
-                    actor_ref=lineage.causal_actor_ref,
-                    purpose=lineage.purpose,
-                    contract_version=lineage.causal_contract_version,
-                ).identity_for_refs(
-                    lineage.causal_source_refs,
-                    epoch=lineage.causal_epoch,
-                    policy=policy,
-                )
-            except (TypeError, ValueError):
-                continue
-            if (
-                lineage.causal_policy_version is not None
-                and identity.policy_version != lineage.causal_policy_version
-            ):
-                continue
-            if identity.opportunity_ref != lineage.opportunity_ref:
+            identity = self._audited_opportunity_identity(model_audit)
+            if identity is None or source_ref not in identity.source_refs:
                 continue
             identities[identity.opportunity_ref] = identity
         if len(identities) != 1:
             return None
         return next(iter(identities.values()))
+
+    def _audited_opportunity_identity(self, model_audit) -> CausalOpportunityIdentity | None:
+        # Cache only immutable audit interpretation, never a semantic verdict.
+        # Current projection membership is still checked by each caller; a
+        # rewind cannot see an identity merely because a later audit was cached.
+        key = (getattr(model_audit, "event_ref", ""), getattr(model_audit, "audit_hash", ""),
+               hashlib.sha256(model_audit.audit_json.encode("utf-8")).hexdigest())
+        if key in self._audited_opportunity_identities:
+            return self._audited_opportunity_identities[key]
+        identity = None
+        try:
+            recorded = RecordedModelResultAudit.model_validate_json(model_audit.audit_json)
+            lineage = recorded.character_interior_lineage
+            if (lineage is not None and lineage.purpose == PURPOSE
+                    and lineage.causal_actor_ref == self._companion_actor_ref):
+                policy = (CausalOpportunityPolicy.from_ref(lineage.causal_policy_ref)
+                          if lineage.causal_policy_ref is not None
+                          else DEFAULT_CAUSAL_OPPORTUNITY_POLICY)
+                candidate = CausalOpportunityRuntime(
+                    world_id=lineage.causal_world_id, actor_ref=lineage.causal_actor_ref,
+                    purpose=lineage.purpose, contract_version=lineage.causal_contract_version,
+                ).identity_for_refs(lineage.causal_source_refs, epoch=lineage.causal_epoch,
+                                    policy=policy)
+                if (candidate.opportunity_ref == lineage.opportunity_ref
+                        and (lineage.causal_policy_version is None
+                             or candidate.policy_version == lineage.causal_policy_version)):
+                    identity = candidate
+        except (TypeError, ValueError):
+            pass  # Preserve the existing invalid/legacy audit exclusion.
+        self._audited_opportunity_identities[key] = identity
+        return identity
 
     def _health_source_event(self, source_ref: str | None) -> WorldEvent | None:
         if source_ref is None:
@@ -2196,11 +2209,13 @@ class CharacterInteriorWorldStimulusRuntime:
             for trigger_id, deferred_until in self._technical_failure_deferred_until.items()
             if deferred_until > now
         }
+        durable_deferred = self._durable_deferred_triggers(projection)
 
         def eligible(process: TriggerProcess) -> bool:
             return (
                 process.state != "terminal"
                 and process.trigger_id not in self._technical_failure_deferred_until
+                and process.trigger_id not in durable_deferred
                 and (
                     wake_event_ref is None
                     or process.source_evidence_ref == wake_event_ref
@@ -2274,6 +2289,34 @@ class CharacterInteriorWorldStimulusRuntime:
                 ):
                     return process
         return None
+
+    def _durable_deferred_triggers(self, projection, identities=None) -> frozenset[str]:
+        processes = tuple(item for item in projection.trigger_processes
+                          if item.process_kind in _PROCESS_PRIORITY
+                          and item.source_evidence_ref is not None
+                          and item.state != "terminal")
+        deferred = self._technical_retry_schedule.deferred_opportunities(
+            projection,
+            attempt_ids=frozenset(attempt for process in processes for attempt in process.attempt_ids),
+        )
+        unresolved = self._technical_retry_schedule.unresolved_attempt_ids
+        if not deferred and not unresolved:
+            return frozenset()
+        if identities is None:
+            identities = self._health_opportunity_identities(
+                projection=projection, processes=processes,
+            )
+        return frozenset(
+            process.trigger_id for process in processes
+            if (identities[process.trigger_id].opportunity_ref in deferred
+                or unresolved.intersection(process.attempt_ids))
+            # Settlement recovery reuses accepted author output, with no paid
+            # call. It must not wait behind model retry backoff.
+            and self._existing_audit_for_opportunity(
+                projection, identity=identities[process.trigger_id],
+                source_ref=process.source_evidence_ref,
+            ) is None
+        )
 
     @staticmethod
     def _world_life_response_is_pending(projection, *, audit) -> bool:
@@ -2964,42 +3007,8 @@ class CharacterInteriorWorldStimulusRuntime:
         exact_matches = []
         contained_matches = []
         for model_audit in reversed(projection.model_result_audits):
-            try:
-                recorded = RecordedModelResultAudit.model_validate_json(model_audit.audit_json)
-            except ValueError:
-                continue
-            lineage = recorded.character_interior_lineage
-            if (
-                lineage is None
-                or lineage.purpose != PURPOSE
-                or lineage.causal_actor_ref != self._companion_actor_ref
-                or source_ref not in lineage.causal_source_refs
-            ):
-                continue
-            try:
-                policy = (
-                    CausalOpportunityPolicy.from_ref(lineage.causal_policy_ref)
-                    if lineage.causal_policy_ref is not None
-                    else DEFAULT_CAUSAL_OPPORTUNITY_POLICY
-                )
-                durable_identity = CausalOpportunityRuntime(
-                    world_id=lineage.causal_world_id,
-                    actor_ref=lineage.causal_actor_ref,
-                    purpose=lineage.purpose,
-                    contract_version=lineage.causal_contract_version,
-                ).identity_for_refs(
-                    lineage.causal_source_refs,
-                    epoch=lineage.causal_epoch,
-                    policy=policy,
-                )
-            except (TypeError, ValueError):
-                continue
-            if (
-                lineage.causal_policy_version is not None
-                and durable_identity.policy_version != lineage.causal_policy_version
-            ):
-                continue
-            if durable_identity.opportunity_ref != lineage.opportunity_ref:
+            durable_identity = self._audited_opportunity_identity(model_audit)
+            if durable_identity is None or source_ref not in durable_identity.source_refs:
                 continue
             proposal = next(
                 (
