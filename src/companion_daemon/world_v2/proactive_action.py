@@ -2464,6 +2464,15 @@ class ProactiveActionRuntime:
                     reason_code=exc.code,
                 )
             if exc.code == "expression_plan_acceptance.stale_revision":
+                # Close this consideration before returning. Leaving the claim
+                # open strands the slot: the next due can never mint another
+                # proactive opportunity, and the lane goes silent forever. The
+                # sibling budget-exhausted branch above already closes its own
+                # process; a superseded consideration is over for the same
+                # reason.
+                await self._complete(
+                    process=active, opportunity=opportunity, outcome="stale-superseded"
+                )
                 return ProactiveActionRunResult(
                     status="stale",
                     source_ref=opportunity.source_event_ref,
@@ -2493,6 +2502,9 @@ class ProactiveActionRuntime:
                 None,
             )
             if existing is None:
+                await self._complete(
+                    process=active, opportunity=opportunity, outcome="stale-superseded"
+                )
                 return ProactiveActionRunResult(
                     status="stale",
                     source_ref=opportunity.source_event_ref,
