@@ -87,7 +87,7 @@ async def _run(value, *, manifest=None):
 
 @pytest.mark.asyncio
 async def test_current_stimulus_token_crosses_real_http_adapter_unchanged_semantically():
-    raw = json.dumps(_result(["s0"]))
+    raw = json.dumps({"result": _result(["s0"])})
     captured = []
 
     def handle(request):
@@ -102,7 +102,7 @@ async def test_current_stimulus_token_crosses_real_http_adapter_unchanged_semant
                                 {
                                     "type": "function",
                                     "function": {
-                                        "name": "character_role_world_stimulus_appraisal_v1",
+                                        "name": "character_role_world_stimulus_appraisal_v2",
                                         "arguments": raw,
                                     },
                                 }

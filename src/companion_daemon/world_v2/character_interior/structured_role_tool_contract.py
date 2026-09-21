@@ -26,6 +26,7 @@ _MEDIA_SELECTION_TOOL_NAME = "character_role_media_selection_v1"
 _QQ_ATTACHMENT_PERCEPTION_TOOL_NAME = "character_role_qq_attachment_perception_v1"
 _PROACTIVE_TOOL_NAME = "character_role_proactive_contact_v1"
 _WORLD_STIMULUS_TOOL_NAME = "character_role_world_stimulus_appraisal_v1"
+_WORLD_STIMULUS_STRICT_TOOL_NAME = "character_role_world_stimulus_appraisal_v2"
 _PRIVATE_IMPRESSION_TOOL_NAME = "character_role_private_impression_reflection_v1"
 _OUTCOME_SELECTION_TOOL_NAME = "character_role_outcome_selection_v1"
 _ACTIVITY_LIFECYCLE_TOOL_NAME = "character_role_activity_lifecycle_choice_v1"
@@ -535,6 +536,16 @@ class StructuredRoleToolContract:
             return raw
         if not isinstance(raw, str):
             raise ValueError("structured role tool result must be JSON text")
+        if self.identity.tool_name == _WORLD_STIMULUS_STRICT_TOOL_NAME:
+            # This new strict carrier never repairs or salvages provider JSON.
+            decoded = json.loads(raw)
+            if (
+                not isinstance(decoded, dict)
+                or set(decoded) != {self.result_wrapper_key}
+                or not isinstance(decoded[self.result_wrapper_key], dict)
+            ):
+                raise ValueError("structured role tool result wrapper is invalid")
+            return _canonical_json(decoded[self.result_wrapper_key])
         decoded = _loads_one_json_object(raw)
         wrapped = decoded.get(self.result_wrapper_key)
         if isinstance(wrapped, str) and wrapped.strip():
@@ -828,6 +839,7 @@ class StructuredRoleToolContracts:
         capability_payload: Mapping[str, object],
         recall_allowed: bool,
         source_tokens: tuple[tuple[str, str], ...] | None = None,
+        schema_dialect: StructuredRoleToolSchemaDialect = "standard",
     ) -> StructuredRoleToolContract:
         """Compile the typed appraisal proposal envelope for one pinned wake.
 
@@ -842,6 +854,7 @@ class StructuredRoleToolContracts:
             _canonical_json(capability_payload),
             recall_allowed,
             source_tokens,
+            schema_dialect,
         )
 
     def private_impression_reflection(
@@ -1319,6 +1332,7 @@ class StructuredRoleToolContracts:
         capability_payload_json: str,
         recall_allowed: bool,
         source_tokens: tuple[tuple[str, str], ...] | None = None,
+        schema_dialect: StructuredRoleToolSchemaDialect = "standard",
     ) -> StructuredRoleToolContract:
         # These imports are intentionally local: structured_role imports this
         # compiler during module initialization, while the canonical payload
@@ -1464,17 +1478,42 @@ class StructuredRoleToolContracts:
             )
 
         parameters = {"type": "object", "anyOf": branches}
+        tool_name = _WORLD_STIMULUS_TOOL_NAME
+        version = _CONTRACT_VERSION
+        result_wrapper_key = None
+        if schema_dialect == "deepseek-strict":
+            # The recall branch permits no proposals. DeepSeek has no maxItems;
+            # the canonical validator continues to enforce the empty array.
+            if recall_allowed:
+                branches[-1]["properties"]["proposals"]["items"] = {"type": "string"}
+            result_wrapper_key = "result"
+            parameters = deepseek_strict_tool_schema({
+                "type": "object",
+                "properties": {result_wrapper_key: parameters},
+                "required": [result_wrapper_key],
+                "additionalProperties": False,
+            })
+            tool_name = _WORLD_STIMULUS_STRICT_TOOL_NAME
+            version = "2"
+        elif schema_dialect != "standard":
+            raise ValueError("unsupported world stimulus tool schema dialect")
         function = {
-            "name": _WORLD_STIMULUS_TOOL_NAME,
+            "name": tool_name,
             "description": (
                 "Return the complete source-bound world_stimulus_appraisal role result. "
                 "The character may choose no_change or a transition, including any legal "
                 "Affect, relationship, aspiration, or experience proposal. The function "
                 "constrains transport and typed shape only; it does not choose the appraisal "
                 "or supply semantic values."
+                + (
+                    " Return the complete role result under the transport-only result key."
+                    if result_wrapper_key is not None else ""
+                )
             ),
             "parameters": parameters,
         }
+        if schema_dialect == "deepseek-strict":
+            function["strict"] = True
         provider_tools = ({"type": "function", "function": function},)
         schema_digest = "sha256:" + sha256(_canonical_json(parameters).encode("utf-8")).hexdigest()
         capabilities_digest = (
@@ -1486,8 +1525,8 @@ class StructuredRoleToolContracts:
                 _canonical_json(
                     {
                         "purpose": "world_stimulus_appraisal",
-                        "tool_name": _WORLD_STIMULUS_TOOL_NAME,
-                        "version": _CONTRACT_VERSION,
+                        "tool_name": tool_name,
+                        "version": version,
                         "schema_sha256": schema_digest,
                         "capabilities_sha256": capabilities_digest,
                         "recall_allowed": recall_allowed,
@@ -1498,8 +1537,8 @@ class StructuredRoleToolContracts:
         identity = StructuredRoleToolContractIdentity(
             contract_id="character-role-forced-tool",
             purpose="world_stimulus_appraisal",
-            tool_name=_WORLD_STIMULUS_TOOL_NAME,
-            version=_CONTRACT_VERSION,
+            tool_name=tool_name,
+            version=version,
             schema_sha256=schema_digest,
             capabilities_sha256=capabilities_digest,
             contract_sha256=contract_digest,
@@ -1510,9 +1549,10 @@ class StructuredRoleToolContracts:
             provider_tools=provider_tools,
             provider_tool_choice={
                 "type": "function",
-                "function": {"name": _WORLD_STIMULUS_TOOL_NAME},
+                "function": {"name": tool_name},
             },
             identity=identity,
+            result_wrapper_key=result_wrapper_key,
         )
 
     @staticmethod

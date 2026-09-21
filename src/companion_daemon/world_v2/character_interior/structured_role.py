@@ -1692,6 +1692,11 @@ class StructuredCharacterRoleFaculty:
                 return compiler.world_stimulus_appraisal(
                     capability_payload=manifest.payload,
                     recall_allowed=not request.recall_completed,
+                    schema_dialect=(
+                        "deepseek-strict"
+                        if bool(getattr(self._model, "supports_strict_tool_choice", False))
+                        else "standard"
+                    ),
                     source_tokens=tuple(
                         (item.token, item.source_ref)
                         for item in _citeable_catalog_for_request(request).items

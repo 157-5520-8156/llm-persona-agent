@@ -6,6 +6,11 @@ Current status: manual_only / qualification_incomplete (2026-09-21).
 User priority update (2026-09-21): prioritize life continuity plus speed/cost;
 current-life prose remains deferred. Retain source authority and character agency.
 See docs/audits/life-speed-cost-2026-09-21.md for the bounded repair and measured limits.
+Subsequent output-contract repair: docs/audits/life-output-contract-2026-09-21.md.
+New World tool3 disallows all-null visual environments without forcing environment facts;
+old tools1/2 remain byte-exact (82 related checks). New DeepSeek Appraisal tool2 now
+selects strict schema and beta transport; standard v1 and saved replay stay unchanged
+(240 related checks). Both fixes still require the bounded real continuation below.
 New World source material reader3 preserves both cited event payloads and exact author-visible
 accepted content. OldNone/2 byte compilation stays unchanged;29+87 related checks pass.
 This repairs a proven evidence omission; the subsequent real continuation still failed as below.

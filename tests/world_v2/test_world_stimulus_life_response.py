@@ -245,11 +245,13 @@ async def test_new_consequence_records_explicit_response_in_same_public_role_cal
             "source_event_refs": [source.event_id],
         }
         proposal_schema = provider.stimulus_requests[0]["tools"][0]["function"]["parameters"][
-            "anyOf"
-        ][0]["properties"]["proposals"]["items"]
+            "properties"
+        ]["result"]["anyOf"][0]["properties"]["proposals"]["items"]
         assert "life_responses" in proposal_schema["required"]
         response_schema = proposal_schema["properties"]["life_responses"]
-        assert response_schema["minItems"] == response_schema["maxItems"] == 1
+        # DeepSeek strict omits array bounds; missing/duplicate response tests below
+        # still require the canonical materializer to enforce exactly one per source.
+        assert "minItems" not in response_schema and "maxItems" not in response_schema
         assert "response_text" in response_schema["items"]["required"]
         assert response_schema["items"]["properties"]["source_event_ref"]["enum"] == [
             source.event_id
