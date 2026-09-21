@@ -3,12 +3,20 @@
 For current release qualification read `docs/audits/release-status-2026-09-13-current.md`.
 Current status: manual_only / qualification_incomplete (2026-09-21).
 
-Latest resumable runtime remains output/private-audits/release-clean-continuation-20260921-10/run:
-ledger882/revision354 at04:28Z; cold hash0527998d2b5713a231729f2c72d6932afd3019d6f28ad807623143d943dc6960.
-Latest FULL cumulative billing is now output/private-audits/recall-chat-comparison-20260921-01/run-v2/world.sqlite:
-1764 usage /1761 reservations /73 inherited unknown holds. Restore runtime10 and merge ALL
-32 new probe usage/reservation rows before any provider call or billing watermark.
-The probes are not resumable runtime journeys; do not restart from runtime10's cheaper1732-row billing alone.
+Latest resumable runtime AND full cumulative billing are now
+output/private-audits/recall-fact-chat-20260921-01/run: ledger973/revision396 at04:30Z;
+cold hash4194269b7f1c3b3719b7a756da6a85abd60e2a693c52f838e337b8d7346752a8.
+1775 usage /1772 reservations /74 unknown holds. This restored runtime10 and merged all32
+subsequent probe bills before calling. Do not resume older cheaper accounting snapshots.
+The b8243599 trial made11 physical calls:10 known (0.4497742 CNY repository estimate),
+1 source-review timeout with unknown bill retained as a1.22976 CNY capacity hold, not a known charge.
+First chat delivered3 beats and a newv22 receipt; second produced no delivery after source-review timeout.
+All4 visible receipts cold-verified; inherited3 unchanged. First answer used original dialogue;
+the .9 recalled Fact was also shown/reviewed but was already in the original Capsule and was not selected
+by the reviewer, so this is no evidence of retrieval quality gain. The second draft again claimed
+continuous nonmovement without a supporting interval. Do not retry this as an already qualified chat.
+The later historical attention-inventory reference alignment is offline-tested only.
+Details: docs/audits/recall-fact-authority-2026-09-21.md.
 
 10 ran frozen2978be51, initialization0, physical ceiling40, actual30 known calls;
 new estimated cost1.0408613 CNY, zero new unknown holds. Normal stop, clients,

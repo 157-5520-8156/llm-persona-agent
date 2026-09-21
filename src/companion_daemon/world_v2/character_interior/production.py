@@ -562,18 +562,16 @@ class _CoordinatorRecallPort:
         trace_field: str,
     ) -> dict[str, object]:
         audit = verify_trusted_recall_trace(trace)
-        documents = tuple(hit.document for hit in audit.hits)
+        items = [
+            interior_recall_item(hit.document, index_version=audit.index_version)
+            for hit in audit.hits
+        ]
         return {
             "world_id": request.world_id,
             "actor_ref": request.actor_ref,
             "cursor": request.cursor,
-            "content": {
-                "items": [
-                    interior_recall_item(document, index_version=audit.index_version)
-                    for document in documents
-                ]
-            },
-            "source_refs": tuple(dict.fromkeys(document.source_item_ref for document in documents)),
+            "content": {"items": items},
+            "source_refs": tuple(dict.fromkeys(item["source_ref"] for item in items)),
             trace_field: json.dumps(
                 trace.model_dump(mode="json"),
                 ensure_ascii=False,

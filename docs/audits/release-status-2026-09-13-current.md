@@ -4,6 +4,11 @@
 首版仍限定单角色、自然聊天、已有生活和记忆、可录制面板。小屋和新增能力不进入本次收敛。
 测试支出不设金额上限，但产品约100元／月目标、逐次调用上限和完整账目继续保留。
 
+最新 `b8243599` 两轮真实试聊：第一轮正确承接原对话并新增1份v22回执；第二轮近况草稿
+再次声称“还赖着／一直没动”，来源审核22秒超时，未交付。因此连续聊天仍未合格。
+召回Fact到引用、审核、冷重放的接口已修复，151项离线检查通过；第一轮实际使用原对话，
+不能归因为召回质量提升。详见[本次修复与试聊](recall-fact-authority-2026-09-21.md)。
+
 ## 本轮已经完成
 
 冻结代码 `b560a3d2` 的完整 `scripts/test_fast.py --tier full`：
@@ -93,18 +98,23 @@ Life `.13/.14` 现在从已验证来源直接构造最终请求，当前路径�
 
 ## 运行与累计费用的继续点
 
-运行继续点仍为`output/private-audits/release-clean-continuation-20260921-10/run`，该历史运行结束时：
+旧运行`output/private-audits/release-clean-continuation-20260921-10/run`结束时：
 **ledger882／revision354，1732 usage／1729 reservations／73 unknown holds，04:28Z**。
 30次请求全部原生用量核验，新增估算 **1.0408613元**，无新增unknown；正常停止、客户端
 关闭、独立对账和冷重放verified。继承3张v22回执全部冷验，新增0张；唯一新可见文字是
 明确系统故障提示，不算角色成功回复。旧09及独立probe均为历史前缀，不能单独继续。
 
-最新完整累计账本已推进到`output/private-audits/recall-chat-comparison-20260921-01/run-v2/world.sqlite`：
+后续作者probe账本`output/private-audits/recall-chat-comparison-20260921-01/run-v2/world.sqlite`曾推进到：
 **1764 usage／1761 reservations／73既有unknown**，新增32次估算0.56389952元，全部known。
 两批probe的历史账目和非计费表对账通过；probe自身不是可恢复宿主。
-下次从10恢复，先合并全部新增usage/reservation，再做调用或水位计算；不能只用旧1732行账本。
+本次真实试聊已经先合并全部新增usage/reservation，再做调用或水位计算。
 运行详情与hash见[续跑报告](release-continuation-rag-2026-09-21.md)，新增费用见上述作者对照报告。
 这些费用不是供应商账单或月费结论；自然聊天未稳定交付，约100元／月尚未合格。
+
+**当前运行及完整累计账本统一在 `output/private-audits/recall-fact-chat-20260921-01/run`：**
+ledger973／revision396，1775 usage／1772 reservations／74 unknown，04:30Z。
+本次11次调用中10次已知估算0.4497742元，1次未知保留1.22976元预留；逐笔对账通过。
+4份v22回执冷验通过，继承3份原样保留、新增1份。以后不可从上述旧账本直接续跑。
 
 [阶段证据](release-review-interface-validation-2026-09-20.md) ·
 [首版验收清单](release-candidate-gates-2026-09-20.md)

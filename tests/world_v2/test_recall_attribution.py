@@ -9,10 +9,11 @@ import pytest
 from companion_daemon.llm import DeepSeekChatModel
 from companion_daemon.world_v2.character_interior import CharacterInterior
 from companion_daemon.world_v2.character_interior.inbound_author import _InboundCharacterAuthor
-from companion_daemon.world_v2.character_interior.ports import _PrefetchResult
+from companion_daemon.world_v2.character_interior.ports import _PrefetchResult, _RecallResult
 from companion_daemon.world_v2.character_interior.production import _CoordinatorRecallPort
 from companion_daemon.world_v2.character_interior.snapshot_compiler import compile_inner_life_snapshot
 from companion_daemon.world_v2.recall_corpus import RecallCorpusCompiler
+from companion_daemon.world_v2.recall_audit import CharacterRecallRequest
 from companion_daemon.world_v2.recall_index import InMemoryRecallIndex
 from companion_daemon.world_v2.recall_model_reading import interior_recall_item
 from companion_daemon.world_v2.recall_runtime import RecallCoordinator
@@ -20,6 +21,7 @@ from companion_daemon.world_v2.schemas import ProjectionCursor
 from test_character_interior_inbound_author import _request
 from test_recall_corpus import CURSOR, NOW, _sources
 from test_recall_short_cues import LexicalOnly
+from test_recalled_fact_payload import EXCERPT, VALUE, _document, _fact
 
 
 def _documents():
@@ -45,6 +47,48 @@ def test_saved_legacy_reading_has_exact_original_shape(version):
             "occurred_to": None,
             "privacy_class": document.privacy_class,
         }
+
+
+@pytest.mark.parametrize("policy", [
+    "world-v2-recall-index.hybrid.7", "world-v2-recall-index.hybrid.8",
+])
+def test_legacy_historical_reading_and_inventory_keep_original_compound_ref(monkeypatch, policy):
+    from companion_daemon.world_v2 import recall_index
+
+    monkeypatch.setattr(recall_index, "RECALL_INDEX_POLICY_VERSION", policy)
+    document = _document(_fact(historical=True, bound=False))
+    assert "accepted_fact" not in document.model_dump()
+    index = InMemoryRecallIndex(embedding=LexicalOnly())
+    index.rebuild(cursor=CURSOR, documents=(document,))
+    coordinator = RecallCoordinator.from_built_index(
+        index=index, cursor=CURSOR, actor_ref="agent:companion",
+        subject_refs=("agent:companion", "user:primary"), logical_time=NOW,
+        trigger_ref="event:observation:1",
+    )
+    try:
+        trace = coordinator.recall(
+            request=CharacterRecallRequest(query_text=VALUE, include_historical=True),
+            expected_cursor=CURSOR, trigger_ref="event:observation:1", accessibility_seed="old-reading",
+        )
+        snapshot = compile_inner_life_snapshot({
+            "world_id": "world:test", "actor_ref": "agent:companion",
+            "trigger_ref": "event:observation:1", "logical_time": NOW.isoformat(),
+            **CURSOR.model_dump(), "slices": {},
+        })
+        recalled = _RecallResult.model_validate(_CoordinatorRecallPort._trace_result(
+            trace, request=SimpleNamespace(world_id=snapshot.world_id,
+                actor_ref=snapshot.actor_ref, cursor=snapshot.cursor), trace_field="recall_trace_json",
+        ))
+        assert recalled.source_refs == (document.source_item_ref,)
+        reading = recalled.content["items"][0]
+        assert reading["source_ref"] == document.source_item_ref
+        assert reading["text"] == EXCERPT and "accepted_fact" not in reading
+        assert ("subject_refs" in reading) == policy.endswith(".8")
+        merged = CharacterInterior._merge_recall(snapshot, recalled)
+        assert document.source_item_ref in merged.source_refs
+        assert _fact().accepted_fact_event_ref not in merged.source_refs
+    finally:
+        coordinator.close()
 
 
 @pytest.mark.asyncio

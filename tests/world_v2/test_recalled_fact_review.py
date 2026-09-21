@@ -130,7 +130,13 @@ def _assert_historical_alias(requirement, source_document):
         recalled = _RecallResult.model_validate(_CoordinatorRecallPort._trace_result(trace,
             request=SimpleNamespace(world_id=snapshot.world_id, actor_ref=snapshot.actor_ref, cursor=snapshot.cursor),
             trace_field="recall_trace_json"))
-        content["inner_life_snapshot"] = CharacterInterior._merge_recall(snapshot, recalled).model_view()
+        compound_ref = documents[0].source_item_ref
+        assert compound_ref != fact.accepted_fact_event_ref
+        assert recalled.source_refs == (fact.accepted_fact_event_ref,)
+        merged = CharacterInterior._merge_recall(snapshot, recalled)
+        assert fact.accepted_fact_event_ref in merged.source_refs
+        assert compound_ref not in merged.source_refs
+        content["inner_life_snapshot"] = merged.model_view()
         owned = bind_presented_recalled_facts(request.model_copy(update={
             "model_content_json": json.dumps(content), "visible_source_requirement_json": requirement,
             "visible_source_recall_traces": (trace,),
@@ -140,6 +146,7 @@ def _assert_historical_alias(requirement, source_document):
         user = json.loads(messages[1]["content"])
         item = user["inner_life_snapshot"]["materials"]["selected_recall"]["content"]["items"][0]
         assert item["source_ref"] == fact.accepted_fact_event_ref
+        assert item["source_ref"] in user["inner_life_snapshot"]["source_refs"]
         boundaries = user["expression_hard_boundaries"]
         aliases = boundaries["source_ref_aliases"]
         assert fact.accepted_fact_event_ref in {
