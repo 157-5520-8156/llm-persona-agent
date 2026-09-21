@@ -46,9 +46,21 @@ CNY/turn) because a turn's cost is dominated by how many times it retries - the 
 8 calls. Continuation:output/private-audits/source-model-cost-20260921-01/
 packed-chat-20260921-05/world.sqlite,1957/1954/77, ledger2944,11 calls all with native usage
 rows, new estimate2.374112 CNY,0 new unknown; grounded-chat-20260921-05/reconciliation.json.
-Next single item: cut the number of retries inside one turn (the thing that actually sets both
-cost and the user's wait), then keep shrinking the15,265-char system and the unused user
-material. No more protocol-representation work, no life-chain work, no new review layer yet.
+Retry structure located atcc583f3a (run 06): one ordinary turn is author, review rejects,
+character correction, review passes. The extra calls are bought by invented life detail in the
+first draft, not by protocol or schema failures. One real input took5 calls and1.076252 CNY;
+the review's three reasons were an invented environment scene, an invented activity duration and
+an unsourced negative proposition - the section7 root cause, no real execution results in the
+ledger. The same turn also shows the reverse: the correction稿 regressed scope from past_world
+back to current_world and the review let it through, so the reviewer is not self-consistent on
+scope. The slim scope clarification did work (first draft moved from current_world in runs04/05
+to past_world here), so the prompt layer is exhausted. Continuation:
+output/private-audits/source-model-cost-20260921-01/diagnosed-chat-20260921-06/world.sqlite,
+1962/1959/77, ledger3023,5 calls all with native usage rows, new estimate1.076252 CNY,
+0 new unknown; grounded-chat-20260921-06/reconciliation.json.
+Next single item: the life result chain - make what she actually did leave a result in the
+ledger so she has something to cite instead of inventing it. No more protocol or prompt tuning
+first, and no new review layer.
 See docs/audits/chat-first-draft-2026-09-21.md.
 This paragraph supersedes the v24 trial paragraph below for delivery status.
 
