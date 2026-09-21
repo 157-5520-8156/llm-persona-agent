@@ -3,6 +3,30 @@
 For current release qualification read `docs/audits/release-status-2026-09-13-current.md`.
 Current status: manual_only / qualification_incomplete (2026-09-21).
 
+Chat is now actually usable; invitation release is not qualified. At8cce5843 a real
+reviewer answer that repeated a JSON member inside one fact object was proved to be the
+cause of the previous turn that produced no delivery and no correction at all; an answer
+that is not the contract is now separated from a verdict, re-asks the same reviewer once
+inside the already-open validation phase, never re-asks the character, and never retries a
+definite verdict or a provider timeout.288 related checks and Ruff pass.
+Same two inputs as the previous trial: first-draft delivery0/2 to1/2, actual delivery1/2
+to2/2; input1 step48.85s to17.67s; input2 went from no delivery to4 bubbles at29.08s.
+Real adaptive chat:14 inputs,10 delivered, delivered steps13.1-29.1s, with in-the-moment
+follow-ups and her own callbacks to earlier turns. Still failing: she invents her own lived
+experience (turns3/7/9 correctly rejected, turns1/2 wave-through), corrections are often
+invalid, and one turn lost to an author timeout. Cost is not controlled: single turn about
+0.98 CNY at DeepSeek peak pricing, well above the100 CNY/month target.
+Continuation and billing point:output/private-audits/source-model-cost-20260921-01/
+chat-first-draft-20260921-03/world.sqlite;1930 usage/1927 reservations/77 unknown,
+66 physical calls all with native usage rows, known estimate13.772318 CNY,2 new unknown
+holds (capacity, not a charge); ledger2587. Verified by grounded-chat-20260921-03/
+reconciliation.json. No real QQ send, no production database write, no deployment.
+Single next item: give ordinary chat the slim author exit by reusing the existing compact
+carrier plus compile_slim_consider_payload (provider schema26,974 to about2,200 chars),
+without adding a protocol model or removing any character decision.
+See docs/audits/chat-first-draft-2026-09-21.md.
+This paragraph supersedes the v24 trial paragraph below for delivery status.
+
 Latest full-host chat at 072a25e7 uses opt-in v24 single contextual review.
 Two ordinary inputs: first-draft deliveries0/2; one corrected reply delivered
 four Beats after27.43s from ingress, but falsely supported actual walking with

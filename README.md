@@ -77,6 +77,25 @@ artifact。文字角色主路需要 `DEEPSEEK_API_KEY`。使用 OpenAI-compatibl
 export OPENAI_PROXY_URL=http://127.0.0.1:7897
 ```
 
+### 和她真实聊天（隔离 full host）
+
+不接 QQ、不写生产库：真实 provider、CaptureDelivery、隔离状态。默认是零 provider 预检。
+
+```bash
+cd /Users/geoff/Projects/Girl-Agent-release-repair
+COMPANION_DISABLE_DEBUG_USAGE_LEDGER=1 PYTHONPATH=src \
+  /Users/geoff/Projects/Girl-Agent/.venv/bin/python \
+  output/private-audits/grounded-chat-20260921-03/chat.py --code-head <frozen-head>        # 预检
+COMPANION_DISABLE_DEBUG_USAGE_LEDGER=1 PYTHONPATH=src \
+  /Users/geoff/Projects/Girl-Agent/.venv/bin/python \
+  output/private-audits/grounded-chat-20260921-03/chat.py --code-head <frozen-head> --execute
+```
+
+运行中每个回合写入 `conversation.jsonl`（她**实际发出**的气泡在里面），把下一句用户输入
+作为一行 JSON 追加到同目录 `turns.jsonl`；`{"stop": true}` 正常收尾。运行期冻结 HEAD，
+物理调用数与墙钟都有上限，密钥只从本机既有的加载入口读取。最近一次实测见
+`docs/audits/chat-first-draft-2026-09-21.md`。
+
 ### 本地模拟
 
 日常开发不需要每次都跑完整回归。完整套件包含大量 SQLite 冷重放、公开宿主和延迟触发场景，当前约 5,000 条测试，适合作为提交前门禁；开发时使用分层入口：
