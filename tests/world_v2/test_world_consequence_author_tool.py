@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import json
+from itertools import product
 from types import SimpleNamespace
 
 import httpx
@@ -13,6 +14,7 @@ from companion_daemon.llm import DeepSeekChatModel
 from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
 from companion_daemon.world_v2.life_development_draft import (
     ORDINARY_LIFE_PHOTO_PRIVACY, LifeDevelopmentPossibilityDraft,
+    LifeDevelopmentVisualEnvironmentDraft,
 )
 from companion_daemon.world_v2.character_interior.local_schema_references import (
     expand_local_schema_references,
@@ -82,7 +84,8 @@ def test_strict_schema_retains_execution_union_and_binds_exact_transport():
     expanded = expand_local_schema_references(schema)
     check(expanded)
     assert len(_json(schema)) < len(_json(expanded))
-    assert len(_json(contract).encode()) < 17_000
+    # Complete nonempty-environment alternatives add under 2 KB to tool.2.
+    assert len(_json(contract).encode()) < 18_500
     propose = expanded["properties"]["replacement"]["anyOf"][2]
     outcome = propose["properties"]["outcomes"]["items"]["anyOf"][0]
     consequence = outcome["properties"]["world_consequence"]
@@ -126,6 +129,60 @@ def test_tool1_frozen_wire_recovers_without_upgrading(mode, expected_hash):
     assert json.loads(pinned[1]["content"])["world_author_wire"]["contract"] == "world-consequence-author-tool.1"
     assert recover_world_consequence_author_tool(messages=pinned, provider=provider) == contract
     assert contract != world_consequence_author_tool_contract(provider=provider)
+
+
+@pytest.mark.parametrize("mode,expected_hash", [
+    ("forced", "d227508f9891be5e4fac1ce5b89086f6166e5f16e584daba971ef0cc072863c3"),
+    ("auto", "c181c3a41e7f50b44cba35013d16129e97072b1ff57026a443fe68afcc8bf6b2"),
+])
+def test_tool2_frozen_wire_recovers_without_upgrading(mode, expected_hash):
+    provider = SimpleNamespace(supports_strict_tool_choice=True, single_tool_selection_mode=mode)
+    contract = world_consequence_author_tool_contract(
+        provider=provider, contract_id="world-consequence-author-tool.2",
+    )
+    assert hashlib.sha256(_json(contract).encode()).hexdigest() == expected_hash
+    messages = [{"role": "system", "content": "unchanged"}, {"role": "user", "content": "{}"}]
+    pinned = bind_world_consequence_author_tool(messages=messages, tool_contract=contract)
+    assert recover_world_consequence_author_tool(messages=pinned, provider=provider) == contract
+    assert contract != world_consequence_author_tool_contract(provider=provider)
+
+
+def test_environment_presence_matches_canonical_without_choosing_a_fact(tmp_path):
+    ledger = SQLiteWorldLedger(path=tmp_path / "environment.sqlite", world_id=WORLD_ID)
+    try:
+        value = _full_propose(_seed_clock(ledger))
+    finally:
+        ledger.close()
+    current = world_consequence_author_tool_contract(provider=object())
+    old = world_consequence_author_tool_contract(
+        provider=object(), contract_id="world-consequence-author-tool.2",
+    )
+    validator = Draft202012Validator(current["tools"][0]["function"]["parameters"])
+    prior = Draft202012Validator(old["tools"][0]["function"]["parameters"])
+    visual = value["outcomes"][0]["visual_evidence"]
+    names = tuple(LifeDevelopmentVisualEnvironmentDraft.model_fields)
+    for present in product((None, "source-bound text"), repeat=len(names)):
+        visual["environment"] = dict(zip(names, present, strict=True))
+        canonical = True
+        try:
+            LifeDevelopmentPossibilityDraft.model_validate_json(_json(value))
+        except ValueError:
+            canonical = False
+        assert validator.is_valid({"replacement": value}) is canonical is any(present)
+        if not canonical:
+            # Reproduces the native-accepted/canonical-rejected real failure.
+            assert prior.is_valid({"replacement": value})
+    for name in names:
+        visual["environment"] = dict.fromkeys(names)
+        visual["environment"][name] = ""
+        assert not validator.is_valid({"replacement": value})
+        visual["environment"][name] = "\n"
+        assert validator.is_valid({"replacement": value})
+        LifeDevelopmentPossibilityDraft.model_validate_json(_json(value))
+    # No environment information is valid absence, not a request to invent weather.
+    visual["environment"] = None
+    assert validator.is_valid({"replacement": value})
+    LifeDevelopmentPossibilityDraft.model_validate_json(_json(value))
 
 
 @pytest.mark.parametrize("located", [False, True])

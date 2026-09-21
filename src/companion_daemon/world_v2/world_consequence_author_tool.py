@@ -21,10 +21,11 @@ from .life_development_draft import ORDINARY_LIFE_PHOTO_PRIVACY, LifeDevelopment
 from .life_development_output_schema import life_possibility_output_schema
 
 
-CONTRACT = "world-consequence-author-tool.2"
-TOOL_NAME = "author_world_consequence_v2"
+CONTRACT = "world-consequence-author-tool.3"
+TOOL_NAME = "author_world_consequence_v3"
 _CONTRACTS = {
     "world-consequence-author-tool.1": "author_world_consequence_v1",
+    "world-consequence-author-tool.2": "author_world_consequence_v2",
     CONTRACT: TOOL_NAME,
 }
 
@@ -36,6 +37,8 @@ def world_consequence_author_tool_contract(
         raise ValueError("unknown World author tool contract")
     tool_name = _CONTRACTS[contract_id]
     propose = life_possibility_output_schema(outcome_contract="world-consequence.2")
+    if contract_id == CONTRACT:
+        _bind_nonempty_visual_environment(propose)
     # The two branches have disjoint source_kind literals. Keep that exact
     # union using the provider's supported anyOf, before its subset projection
     # removes oneOf. This changes only this new tool's schema carrier.
@@ -43,7 +46,10 @@ def world_consequence_author_tool_contract(
     binding["anyOf"] = binding.pop("oneOf")
     binding.pop("discriminator")
     propose = _inline_refs(propose, propose["$defs"])
-    proposals = _located_visual_branches(propose) if contract_id == CONTRACT else [propose]
+    proposals = (
+        [propose] if contract_id == "world-consequence-author-tool.1"
+        else _located_visual_branches(propose)
+    )
     schema = {
         "type": "object",
         "properties": {
@@ -58,7 +64,7 @@ def world_consequence_author_tool_contract(
         "additionalProperties": False,
     }
     parameters = deepseek_strict_tool_schema(schema)
-    if contract_id == CONTRACT:
+    if contract_id != "world-consequence-author-tool.1":
         # Keep complete union branches for the native strict parser; reuse only
         # exact repeated children, using the existing lossless $def factoring.
         parameters = factor_local_schema_references(parameters)
@@ -78,6 +84,26 @@ def world_consequence_author_tool_contract(
         identity={"contract_id": contract_id, "tool_name": tool_name},
     )
     return {"tools": tools, "tool_choice": transport.tool_choice}
+
+
+def _bind_nonempty_visual_environment(propose: dict[str, object]) -> None:
+    """Expose the canonical environment invariant in the supported tool dialect.
+
+    An absent environment is already nullable. When an object is supplied,
+    at least one of its canonical fields must carry text. Complete anyOf
+    branches survive the strict adapter without forcing a particular fact.
+    The older tool contracts deliberately retain their exact schema bytes.
+    """
+    environment = propose["$defs"]["LifeDevelopmentVisualEnvironmentDraft"]
+    fields = environment["properties"]
+    branches = []
+    for name, field in fields.items():
+        text = next(item for item in field["anyOf"] if item.get("type") == "string")
+        # DeepSeek supports pattern but not minLength; this admits all
+        # nonempty text, including newlines, without selecting its meaning.
+        text["pattern"] = r"[\s\S]"
+        branches.append({"properties": {name: deepcopy(text)}, "required": [name]})
+    environment["anyOf"] = branches
 
 
 def _located_visual_branches(propose: dict[str, object]) -> list[dict[str, object]]:
