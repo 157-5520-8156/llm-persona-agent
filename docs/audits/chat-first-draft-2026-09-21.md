@@ -480,3 +480,58 @@ payload 走现成的 `compile_slim_consider_payload` 物化成同一份 canonica
 下游审核、接受、Action、回执一律不变。目标是把 provider schema 从 26,974 字符降到约 2,200，
 把她的协议输出从 3,847 字符降到几百，并据此再测首稿质量、首交付时间与单轮成本。
 这不是新增一个「协议模型」，也不删她的任何决定项。
+
+## 全链路体检：哪些在跑、哪些只是开了口（run 07 账本，3079 事件 / 66 类）
+
+问「其他链路是否正常」，最可靠的答案不是读代码，是数账本。以下是同一个真实库里的实测。
+
+### 健康：每一轮都在产出
+
+| 链路 | 账本产出 |
+| --- | --- |
+| 对话主链 | `ActionAuthorized→Scheduled→Claimed→DispatchStarted→ProviderAccepted→Delivered` **各 63 次，一条不差**；`ExpressionBeatSettled`/`BudgetSettled` 各 63 |
+| 事实 | `InteractionFactDecisionRecorded` 38、`FactCommittedV2` 10 |
+| 评价 / 情绪 / 关系 | `AppraisalAccepted` 28、`AffectEpisodeUpdated` 21 + `Opened` 2、`RelationshipSignalAccepted` 12 + `SlowVariableAdjusted` 12 |
+| 记忆 | `MemoryCandidateOpened/Accepted` 各 16、`FactMemoryDecisionRecorded` 10、`ExperienceMemoryDecisionRecorded` 2 |
+| 私人印象 | `PrivateImpressionAccepted` 4 |
+| 身世 | `CharacterPrehistoryRecordImported` 24 |
+
+**对话主链 63/63 全部送达、零丢单**，这是全场最健康的一条。
+
+### 慢，但确实会跑
+
+活动/生活：`ActivityPlanned 3 / Started 3 / Completed 1 / Abandoned 2`、
+`WorldOccurrenceSettled 3`、`LifeContentRecorded 5`，`life_ecology` 进程开了 16 次。
+就是我刚查的那条——**能跑，节奏约 30 分钟一次到期**。
+
+### 不正常：开了口、花了钱，账本里没有产出
+
+| 链路 | 进程开了 | 花了 | 账本产出 |
+| --- | --- | --- | --- |
+| 主动联系 Proactive | `proactive_action_deliberation` 4 次 | `proactive_contact` 7 次调用 / 2.04 元 | **0 条事件** |
+| 召回 Recall | — | — | **0 条事件** |
+| 媒体 | `PhotoCandidateOpened` 2 | — | 只有 2 个候选 + `ImageEvidenceDeclared` 2，**没有任何生成或投递** |
+| NPC 生态 | `npc_world_appraisal` 3 次 | `npc_actor_decision` 1 次 / 0.05 元 | 只有 `NpcRegistered` 2，**没有 NPC 计划或发生** |
+| 外部世界感知 | — | — | **0 条事件**（完全没跑） |
+
+这五条里有两条（Recall 命中 0、Proactive `situation_change` mint 0）在 CLAUDE.md 里早已记为
+「进行中待验证」，账本确认**至今仍然是 0**；媒体和 NPC 是「有入口没产出」；
+外部感知是「完全没跑」。
+
+### 成本结构（这条最重要，总计 472.15 元）
+
+| 用途 | 次数 | 金额 | 占比 |
+| --- | --- | --- | --- |
+| `source_review` | 1033 | 226.65 | 48.0% |
+| `inbound_turn`（角色作者） | 279 | 109.21 | 23.1% |
+| `contextual_source_review` | 153 | 40.69 | 8.6% |
+| `inbound_source_review` | 105 | 25.55 | 5.4% |
+| `interaction_fact_draft` | 113 | 7.48 | 1.6% |
+| 其余 16 个用途 | — | ~62.6 | 13.3% |
+
+**审核类（`source_review` + `contextual_source_review` + `inbound_source_review`）合计约
+292.89 元，占总成本 62%。** 角色生成只占 23%。
+
+这解释了为什么我前面在作者协议上做的两轮优化（schema 26,974→1,007 字符、输出 1,562→275 token）
+没有让单轮成本下降：**我优化的是那 23%，而账单的大头在审核那 62%。**
+下一轮成本工作的正确目标是审核调用次数与审核请求大小，不是作者。
