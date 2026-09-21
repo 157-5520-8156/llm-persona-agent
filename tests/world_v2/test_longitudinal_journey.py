@@ -70,6 +70,26 @@ async def test_capture_typing_is_not_visible_character_prose():
     assert (await delivery.get_message("fixture", message_id="never-sent"))["status"] == "failed"
 
 
+@pytest.mark.asyncio
+async def test_capture_wall_latency_does_not_follow_simulated_life_time(monkeypatch):
+    wall = iter((100.0, 100.5, 103.0, 104.0))
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            "companion_daemon.world_v2.longitudinal_journey.time.monotonic", lambda: next(wall)
+        )
+        clock = JourneyClock(NOW)
+        delivery = CaptureDelivery(clock)
+        assert delivery.wall_elapsed_seconds() == 0.5
+        clock.advance(NOW + timedelta(days=7))
+        typing = await delivery.send_typing("fixture", state="start")
+        text = await delivery.send_text("fixture", "你画好了吗？")
+        assert [row["wall_elapsed_seconds"] for row in delivery.records] == [3.0, 4.0]
+        assert all(row["virtual_at"] == clock.now().isoformat() for row in delivery.records)
+        # Non-deterministic instrumentation must not alter transport receipts.
+        assert typing == {"status": "ok", "data": {"message_id": "journey-message-1"}}
+        assert text == {"status": "ok", "data": {"message_id": "journey-message-2"}}
+
+
 def test_frozen_week_has_inputs_correction_silence_and_restart_without_character_script():
     path = Path(__file__).parents[2] / "fixtures/world_v2/longitudinal_week.json"
     data = json.loads(path.read_text())

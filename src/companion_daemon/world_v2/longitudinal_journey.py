@@ -142,11 +142,19 @@ class JourneyClock:
 
 
 class CaptureDelivery:
-    """Local delivery receipts, with typing distinct from visible expression."""
+    """Local receipts with separate virtual and process-relative wall clocks.
+
+    Wall measurements are audit metadata only; they never enter World Context
+    or the delivery receipt. They measure this capture adapter, not real QQ.
+    """
 
     def __init__(self, clock: JourneyClock):
         self.clock = clock
         self.records: list[dict] = []
+        self._wall_started = time.monotonic()
+
+    def wall_elapsed_seconds(self) -> float:
+        return time.monotonic() - self._wall_started
 
     def _capture(self, kind: str, text: str) -> dict:
         identifier = f"journey-message-{len(self.records) + 1}"
@@ -156,6 +164,7 @@ class CaptureDelivery:
                 "text": text,
                 "message_id": identifier,
                 "virtual_at": self.clock.now().isoformat(),
+                "wall_elapsed_seconds": self.wall_elapsed_seconds(),
             }
         )
         return {"status": "ok", "data": {"message_id": identifier}}
@@ -683,6 +692,9 @@ async def run_journey(
             elif next_turn is not None and next_turn <= clock.now():
                 turn = turns[turn_index]
                 row.update(kind="inbound", user_text=turn["text"], turn_id=turn["id"])
+                row["inbound_timing"] = {
+                    "received_wall_seconds": delivery.wall_elapsed_seconds(),
+                }
                 result = await bounded(
                     host.inbound_text(
                         message_id=f"journey-{turn['id']}",
@@ -691,11 +703,14 @@ async def run_journey(
                         observed_at=clock.now(),
                     )
                 )
+                row["inbound_timing"]["returned_wall_seconds"] = delivery.wall_elapsed_seconds()
                 row["status"] = result.status
                 turn_index += 1
             else:
                 row["status"] = "scheduled"
             statuses, exhausted = await drain()
+            if "inbound_timing" in row:
+                row["inbound_timing"]["drained_wall_seconds"] = delivery.wall_elapsed_seconds()
             row["drain_statuses"] = statuses
             row["queue_quiescent"] = exhausted
             row["drained_to_idle"] = exhausted and not any(
