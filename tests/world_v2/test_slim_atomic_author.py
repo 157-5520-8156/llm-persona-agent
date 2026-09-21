@@ -293,3 +293,26 @@ def test_correction_and_echoed_ids_stay_plain_next_to_the_packed_materials():
     assert {k: v for k, v in packed.items() if k != "materials"} == {
         k: v for k, v in snapshot.items() if k != "materials"
     }
+
+
+def test_slim_instruction_still_names_every_field_and_the_scope_boundary():
+    """A prompt edit must not silently drop a decision surface.
+
+    The skinny instruction is where she learns the slim object. Keep every key
+    the compiler accepts, the required separation of reading and feeling, the
+    silence/later rule, and the scope boundary that one real first draft missed.
+    """
+
+    from companion_daemon.world_v2.present_prompt import SLIM_CONSIDER_KEYS, slim_consider_instruction
+
+    text = slim_consider_instruction()
+    optional = SLIM_CONSIDER_KEYS - {"messages", "meaning_of_this", "my_state"}
+    missing = sorted(key for key in optional if key not in text)
+    assert not missing, missing
+    for required in (
+        "meaning_of_this", "my_state", "world_claims", "silent", "later",
+        "shared_history", "past_world", "current_world", "life_intent",
+    ):
+        assert required in text, required
+    assert "不要写成 current_world" in text
+    assert len(text) < 9_000, len(text)
