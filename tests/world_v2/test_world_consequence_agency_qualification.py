@@ -23,6 +23,7 @@ from test_world_consequence_producer import _advance, _assert_original_requests,
 from test_world_stimulus_life_intent import ACTOR, NOW, WORLD, _build, _http_result, _model
 from test_world_stimulus_life_response import _ResponseHTTP, _settled
 
+from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
 from companion_daemon.world_v2.ledger_context_resolver import (
     ContextRelevanceScope,
     context_capsule_compiler_from_ledger,
@@ -257,7 +258,9 @@ async def test_unplanned_environment_gets_its_own_role_reading_in_chat_and_recal
             for request in provider.chat_requests[earlier_chat_calls:]
         ] == ["character_inbound_initial_v1", "character_inbound_compact_gate_v2"]
         actual = json.loads(provider.chat_requests[-1]["messages"][-1]["content"])
-        entries = actual["inner_life_snapshot"]["materials"]["recent_self_experiences"]["items"]
+        entries = unpack_shared_strings(
+            actual["inner_life_snapshot"]["materials"]
+        )["recent_self_experiences"]["items"]
         paired = next(
             item for item in entries if item.get("experience_id") == experience.experience_id
         )

@@ -30,6 +30,7 @@ from ..companion_identity import (
     companion_identity_source_refs,
 )
 from ..model_completion import ChatCompletionModel
+from ..shared_string_view import pack_shared_strings
 from ..present_prompt import (
     SLIM_COME_BACK_IN_NOT_A_DURATION,
     SLIM_COME_BACK_PAIR_INCOMPLETE,
@@ -172,6 +173,38 @@ _CONTEXTUAL_FAILSAFE_TIMEOUT_SECONDS = 3.0
 _CONTEXTUAL_FAILSAFE_VERSION = "contextual-failure-recovery.1"
 _ATOMIC_PADDING_MARKER = "\nRequired explicit null padding paths by result_kind:\n"
 _ATOMIC_BRANCH_MARKER = "\nExact result fields by available result_kind:\n"
+
+
+def _shared_string_snapshot(snapshot: object) -> object:
+    """Present the pinned materials through the existing lossless string view.
+
+    ``materials`` is the one block whose size grows with the conversation, and
+    most of that growth is opaque internal handles repeated across affect
+    components and appraisal tables.  ``pack_shared_strings`` interns only
+    strings that occur at least twice and are at least 72 bytes long, keeps the
+    original tree as the authority, and proves on every call that unpacking
+    restores it exactly.
+
+    Only ``materials`` is wrapped, and only when the view actually has something
+    to intern.  The ids she must echo stay plain in
+    ``appraisal_affect_hard_boundaries``; ``role_result_correction``,
+    ``source_refs`` and every other pinned sibling stay readable in place; and
+    historical request bytes are never rewritten.
+    """
+
+    if not isinstance(snapshot, dict):
+        return snapshot
+    materials = snapshot.get("materials")
+    if not isinstance(materials, dict) or not materials:
+        return snapshot
+    try:
+        packed = pack_shared_strings(materials)
+    except ValueError:
+        # The view refuses to change its own value; keep the pinned tree.
+        return snapshot
+    if not packed.get("strings"):
+        return snapshot
+    return {**snapshot, "materials": packed}
 
 
 def _atomic_branch_instruction(contract: InboundToolContract) -> str:
@@ -4111,6 +4144,13 @@ class _InboundCharacterAuthor:
         # Core-owned Recall has no coordinator on the private expression wire.
         # Present the same author capability used by this call's tool contract.
         expression_user_material["recall_available"] = recall_available
+        if "inner_life_snapshot" in expression_user_material:
+            # Never invent this key: a message that carried no pinned snapshot
+            # must not start claiming one with a null body. Host readers also
+            # test for key presence to tell a pinned turn from a follow-up.
+            expression_user_material["inner_life_snapshot"] = _shared_string_snapshot(
+                expression_user_material["inner_life_snapshot"],
+            )
         expression_messages[1] = {
             "role": "user",
             "content": json.dumps(

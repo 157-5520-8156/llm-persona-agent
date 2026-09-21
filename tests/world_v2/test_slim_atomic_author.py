@@ -240,3 +240,56 @@ def test_slim_carrier_is_far_smaller_than_the_strict_dual_draft_schema():
         )
         sizes[version] = len(json.dumps(contract.provider_tools, ensure_ascii=False))
     assert sizes["slim"] * 20 < sizes["3"], sizes
+
+
+def test_author_snapshot_uses_the_lossless_string_view_without_touching_echoed_ids():
+    """The provider copy interns repeated handles; the pinned tree is unchanged.
+
+    The ids she must choose and echo live in appraisal_affect_hard_boundaries,
+    which must stay plain, and unpacking must restore the exact original.
+    """
+
+    from companion_daemon.world_v2.character_interior.inbound_author import _shared_string_snapshot
+    from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+
+    handle = "appraisal:compiled:" + "a" * 64
+    snapshot = {
+        "contract": "inner-life-snapshot.2",
+        "logical_time": "2026-09-20T05:11:00Z",
+        "materials": {
+            "affect": {"stable_entries": [
+                {"appraisal_refs": {"rows": [[1, handle, handle]], "columns": ["r", "appraisal_id", "x"]}},
+                {"appraisal_refs": {"rows": [[1, handle, handle]], "columns": ["r", "appraisal_id", "x"]}},
+            ]},
+        },
+    }
+    packed = _shared_string_snapshot(snapshot)
+    assert packed != snapshot, "a repeated long handle must be interned"
+    assert unpack_shared_strings(packed["materials"]) == snapshot["materials"]
+    assert packed["materials"]["strings"], packed
+    assert all(len(text) >= 72 for text in packed["materials"]["strings"].values())
+
+    # A snapshot with nothing worth interning keeps its original shape.
+    small = {"contract": "inner-life-snapshot.2", "materials": {"affect": []}}
+    assert _shared_string_snapshot(small) is small
+    assert _shared_string_snapshot(None) is None
+
+
+def test_correction_and_echoed_ids_stay_plain_next_to_the_packed_materials():
+    from companion_daemon.world_v2.character_interior.inbound_author import _shared_string_snapshot
+    from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+
+    handle = "interaction-act:compiled:" + "b" * 64
+    snapshot = {
+        "contract": "inner-life-snapshot.2",
+        "role_result_correction": {"failure_code": "role_result_source_invalid"},
+        "source_refs": {"S1": "event:accepted-effect-v3:" + "c" * 64},
+        "materials": {"affect": {"x": [handle, handle], "y": [handle, handle]}},
+    }
+    packed = _shared_string_snapshot(snapshot)
+    assert packed["role_result_correction"] == snapshot["role_result_correction"]
+    assert packed["source_refs"] == snapshot["source_refs"]
+    assert unpack_shared_strings(packed["materials"]) == snapshot["materials"]
+    assert {k: v for k, v in packed.items() if k != "materials"} == {
+        k: v for k, v in snapshot.items() if k != "materials"
+    }

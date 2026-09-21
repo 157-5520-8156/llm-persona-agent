@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
 from companion_daemon.world_v2.longitudinal_fixture_model import LongitudinalFixtureModel
 
 
@@ -170,7 +171,9 @@ async def test_real_host_http_input_and_authored_current_life_sources(
             )
     else:
         assert len(inputs) == 1
-    materials = inputs[0]["inner_life_snapshot"]["materials"]
+    # The provider copy of the pinned materials is presented through the
+    # lossless shared-string view; read it back exactly as the model must.
+    materials = unpack_shared_strings(inputs[0]["inner_life_snapshot"]["materials"])
     assert "图书馆看书" in str(materials["routine_background"])  # Habit remains available to the character.
     assert "（现在）" not in materials["day_sheet"]
     assert "此刻窗口是" not in materials["day_sheet"]
