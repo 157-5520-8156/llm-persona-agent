@@ -3139,10 +3139,15 @@ def build_qq_c2c_host(
     configured_review_version = configured_visible_review_version(settings)
     configured_whole_review = configured_review_version is not None
     if configured_whole_review:
-        if visible_author_tool_version not in {"1", "3"} or visible_source_review_version not in {"1", configured_review_version}:
+        # A configured profile fixes one whole-candidate reviewer; the slim
+        # carrier keeps that same reviewer and changes only the author envelope,
+        # so it must not be silently rewritten back to the strict dual draft.
+        if visible_author_tool_version not in {"1", "3", "slim"} or visible_source_review_version not in {"1", configured_review_version}:
             raise ValueError("explicit wire versions conflict with configured visible expression profile")
         visible_source_review_required = True
-        visible_author_tool_version = "3"
+        visible_author_tool_version = (
+            "slim" if visible_author_tool_version == "slim" else "3"
+        )
         visible_source_review_version = configured_review_version
     auto_whole_reviewer = (
         configured_whole_review and model is None
@@ -3171,7 +3176,7 @@ def build_qq_c2c_host(
         raise TypeError("schema references flag must be a boolean")
     if visible_author_schema_references and visible_author_tool_version != "3":
         raise ValueError("schema references require strict atomic v3")
-    if visible_author_tool_version not in {"1", "2", "3"}:
+    if visible_author_tool_version not in {"1", "2", "3", "slim"}:
         raise ValueError("unsupported visible author tool version")
     if visible_author_tool_version != "1" and not visible_source_review_required:
         raise ValueError("versioned whole author requires explicit visible source review")
