@@ -569,7 +569,7 @@ class _CoordinatorRecallPort:
             "cursor": request.cursor,
             "content": {
                 "items": [
-                    interior_recall_item(document)
+                    interior_recall_item(document, index_version=audit.index_version)
                     for document in documents
                 ]
             },

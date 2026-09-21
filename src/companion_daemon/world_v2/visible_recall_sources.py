@@ -63,7 +63,7 @@ def supplement_recalled_prehistory(
             if (document.actor_ref != actor or document.privacy_class == "withhold"
                 or document.status != "active"):
                 raise ValueError("recalled history actor, accessibility or privacy is invalid")
-            reading = interior_recall_item(document)
+            reading = interior_recall_item(document, index_version=audit.index_version)
             # Apply the same UTC canonicalization and proof-only compaction
             # used between Core materials and the actual provider message.
             view = json.loads(compact_model_facing_context(_json(canonicalize_json_value({

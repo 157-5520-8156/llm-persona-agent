@@ -22,6 +22,8 @@ from companion_daemon.world_v2.visible_recall_sources import supplement_recalled
 from companion_daemon.world_v2.visible_source_composer import VisibleSourceTable
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
 from companion_daemon.world_v2.proposal_audit_schemas import RecordedModelResultAudit
+from companion_daemon.world_v2.recall_audit import RecallAuditTrace
+from companion_daemon.world_v2 import recall_index
 
 from test_character_prehistory import reviewed_archive, reapprove
 from test_memory_candidate_authority import salience
@@ -31,11 +33,18 @@ from test_world_stimulus_life_intent import _http_result
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tool_version,review_version", [("1", "1"), ("3", "8")])
+@pytest.mark.parametrize("tool_version,review_version,index_policy", [
+    ("1", "1", "world-v2-recall-index.hybrid.7"),
+    ("3", "8", "world-v2-recall-index.hybrid.8"),
+])
 @pytest.mark.parametrize("recall_mode", ["pull", "prefetch"])
 @pytest.mark.parametrize("correct_wrong_scope", [False, True, "always"])
-async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_receipt(tmp_path, monkeypatch, tool_version, review_version, recall_mode, correct_wrong_scope):
+async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_receipt(tmp_path, monkeypatch, tool_version, review_version, index_policy, recall_mode, correct_wrong_scope):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    # Produce authentic old-format traces/readings, then replay those saved
+    # bytes under the current code. No trace hashes or shown fields are edited.
+    monkeypatch.setattr(recall_index, "RECALL_INDEX_POLICY_VERSION", index_policy)
+    attributed = index_policy == "world-v2-recall-index.hybrid.8"
     config = _config()
     data = reviewed_archive().document.model_dump(mode="json")
     data.update(world_id=config.world_id, actor_ref=config.companion_actor_ref)
@@ -51,6 +60,9 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
     requests = []
     authored_contexts = []
     def historical_decision(user, history):
+        assert ("subject_refs" in history) == attributed
+        if attributed:
+            assert history["subject_refs"] == [config.companion_actor_ref]
         authored_contexts.append(user)
         value = _decision()
         value["expression_draft"]["beats"] = [{"modality": "text", "text": statement}]
@@ -259,6 +271,14 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
         restored, used = supplement_recalled_prehistory(table=base, audits=result_recall_audits(parent),
                                                        author_request_json=evidence["author_request_json"])
         assert used and restored.as_dict()["contract"] == "visible-source-row-table.5"
+        for trace in used:
+            assert trace.index_version.startswith(index_policy + "+embedding:")
+            saved = trace.model_dump_json()
+            assert RecallAuditTrace.model_validate_json(saved).model_dump_json() == saved
+        # Restore the new live index policy before checking the recorded
+        # author's exact shown reading and before the cold ledger replay.
+        monkeypatch.setattr(recall_index, "RECALL_INDEX_POLICY_VERSION",
+                            "world-v2-recall-index.hybrid.8")
         with pytest.raises(ValueError, match="at most one"):
             supplement_recalled_prehistory(table=base, audits=(*used, *used, *used),
                                           author_request_json=evidence["author_request_json"])
@@ -268,7 +288,11 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
         from test_visible_prehistory_readings import check_historical_reading
         check_historical_reading(restored.source_references(), lane="recalled_prehistory",
                                  text=statement, pointer="/item/value/text")
-        for mutation in ("removed", "changed_text", "changed_historical_identity", "changed_all_text"):
+        mutations = ("removed", "changed_text", "changed_historical_identity", "changed_all_text",
+                     "changed_subject")
+        if attributed:
+            mutations += ("removed_subject",)
+        for mutation in mutations:
             changed = json.loads(evidence["author_request_json"])
             body = json.loads(changed["messages"][1]["content"])
             materials = body["inner_life_snapshot"]["materials"]
@@ -285,6 +309,10 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
                     item["text"] = "今天去了校刊编辑室。"
             elif mutation == "changed_text":
                 target["text"] = "今天去了校刊编辑室。"
+            elif mutation == "changed_subject":
+                target["subject_refs"] = ["user:someone-else"]
+            elif mutation == "removed_subject":
+                target.pop("subject_refs")
             else:
                 target["prehistory"]["entities"][0]["label"] = "现在的用户"
             changed["messages"][1]["content"] = json.dumps(body, ensure_ascii=False)

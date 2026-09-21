@@ -20,12 +20,11 @@ import unicodedata
 from pydantic import Field, model_validator
 
 from .prehistory_memory_source import PrehistoryMemoryReading
-from .recall_model_reading import interior_recall_item
+from .recall_model_reading import RECALL_INDEX_POLICY_VERSION, interior_recall_item
 from .schema_core import FrozenModel, PrivacyClass
 from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_write_lock
 
 
-RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.7"
 # Model context and local evidence have different costs. Full immutable proof
 # envelopes never enter the role's reading; charging them to its context budget
 # silently discards small memories. The complete trace retains its independent
@@ -523,7 +522,8 @@ class _RecallIndexCore:
                 return False
             candidate = (*selected, hit)
             if len(_canonical_json({"items": [
-                interior_recall_item(item.document) for item in candidate
+                interior_recall_item(item.document, index_version=self._index_version)
+                for item in candidate
             ]}).encode("utf-8")) > RECALL_MODEL_READING_MAX_BYTES:
                 return False
             if (

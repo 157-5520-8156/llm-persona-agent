@@ -110,3 +110,23 @@ def test_audit_cap_does_not_strip_proof_to_make_a_tiny_reading_fit():
     index.rebuild(cursor=CURSOR, documents=(huge, small))
     result = index.search(_query(query_text="旧记忆", limit=4))
     assert [h.document for h in result.hits] == [small]
+
+
+def test_attribution_bytes_participate_in_the_reading_bound():
+    subjects = tuple(f"user:{i}:" + "界" * 170 for i in range(8))
+    docs = tuple(document(f"attributed:{i}", proofs=1).model_copy(update={
+        "subject_refs": subjects,
+    }) for i in range(2))
+    assert byte_size({"items": [interior_recall_item(
+        doc, index_version="world-v2-recall-index.hybrid.7",
+    ) for doc in docs]}) < RECALL_MODEL_READING_MAX_BYTES
+    assert byte_size({"items": [interior_recall_item(doc) for doc in docs]}) > (
+        RECALL_MODEL_READING_MAX_BYTES
+    )
+    index = InMemoryRecallIndex(embedding=LexicalOnly())
+    index.rebuild(cursor=CURSOR, documents=docs)
+    result = index.search(_query(query_text="旧记忆", limit=4, subject_refs=subjects))
+    assert len(result.hits) == 1
+    assert byte_size({"items": [interior_recall_item(
+        hit.document, index_version=result.index_version,
+    ) for hit in result.hits]}) <= RECALL_MODEL_READING_MAX_BYTES
