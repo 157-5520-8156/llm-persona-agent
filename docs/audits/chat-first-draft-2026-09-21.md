@@ -257,6 +257,62 @@ run 06 用一条真实输入「你今天都干嘛了」验证，并把前几轮�
 所以下一步就是**生活结果链**——让「做过的事」在库里真的留下结果，她才有东西可引用，
 而不是靠故事补。在此之前不继续调协议、不继续调提示词。
 
+## 生活结果链：已定位到的机制与还差的那一步
+
+按上一节的判断转去查生活结果链。**目前只有机制和证据，没有可交付的修复**，
+所以这里不写「已修」，也不往链里塞任何补丁。
+
+### 确实存在的部分（不是「消费者不存在」）
+
+链路在代码里是完整接好的：
+
+1. `life_development_runtime.pending_completed_activity_ref`（约 1861 行）在投影里找
+   `status == "completed"` 且 `authority_origin is not None` 的计划，取
+   `origin.accepted_event_ref`，要求 `read_completed_activity_consequence(...)` 返回非 None，
+   再用 `_completed_activity_proposal_id` 去查这次完成是否已经提过案。
+2. `life_ecology_runtime.py:484` 调它，`:532` 调 `advance_completed_activity_once`。
+3. `life_development_runtime.py:2945` 在拿到完成事件时构造
+   `completed_activity_consequence`、把它和 anchor 一起写进 capability manifest。
+4. `world_consequence_authoring_context.py:67` 校验它，`derive_world_consequence_authority`
+   把配对的 `ActivityStarted`/`ActivityResumed` 变成 `ActivityExecutionBinding`。
+5. 世界作者据此可以写 `WorldConsequenceV2.authorized_attempt_result`。
+
+### 账本里的实测（run 06 数据库，继承全部历史）
+
+- `ActivityPlanned 3 / ActivityStarted 3 / ActivityResumed 0 / ActivityCompleted 1 /
+  ActivityAbandoned 1 / WorldOccurrenceSettled 3 / ExperienceCommitted 2`。
+- 唯一那条完成是配对的：`ActivityStarted seq=660` 与 `ActivityCompleted seq=865` 是**同一个**
+  `plan:world-life-intent:f95168eac30d2607fda7be3`。所以第 4 步的「配对」条件本身是满足的。
+- 3 条 `WorldOccurrenceSettled` 全部是 `occurrence:life-development:<hash>`（生活发展车道），
+  不是完成活动产生的后果。
+- 全库检索 `authorized_attempt_result`：29 处命中，**全部出现在提示词/契约文本里**
+  （`world_v2_life_content.text` 的世界作者指令、事件里的 proposal 契约描述），
+  **没有任何一处是真正被写出来的结果值**。所以第 5 步从来没有产出。
+
+### 还差的那一步（未证明，不要当成结论）
+
+链路里第一个可能返回 None 的地方是
+`pending_completed_activity_ref`：它用 **`origin.accepted_event_ref`** 当作
+`completion_event_ref` 去调 `read_completed_activity_consequence`，而该读取函数要求这个 ref
+确实是那次 **`ActivityCompleted`**。如果 `authority_origin.accepted_event_ref` 指向的是
+计划被接受时的事件（而不是完成事件），读取函数会返回 None，于是
+`pending_completed_activity_ref` 直接返回 None，完成活动永远不会变成机会，
+也就永远不会有 execution binding，更不会有 `authorized_attempt_result`。
+
+这与观察到的现象一致（配对的 Started/Completed 在库里，却没有任何完成后果），
+但**我没有把这一步证完**：run 06 的账本里这条计划的 `authority_origin.accepted_event_ref`
+需要从投影里读出来和 seq=865 的 `event_id` 对一次，我没有在预算内完成这次比对。
+
+### 为什么停在这里
+
+用户明确要求不把 Completed 自动当成执行成功，也不补写假经历。在没有确认「哪一步返回 None」
+之前改这条链，等于把猜测写进事实权威层。所以这一段的产出是**可复查的定位**，不是补丁：
+
+- 已确认：配对存在、消费者接线存在、`authorized_attempt_result` 从未被写出。
+- 未确认：断点在 `pending_completed_activity_ref` 的 ref 语义，还是在
+  `read_completed_plan`（三个 life-intent 读取器）那一层。
+- 下一步第一件事就是这次比对（一条只读查询），然后才动代码。
+
 ## 还没解决、不要掩盖
 
 1. **角色仍然编造自己的生活经过。** 第 3、7、9 轮的拒绝理由是审核正确指出的：她把用户
