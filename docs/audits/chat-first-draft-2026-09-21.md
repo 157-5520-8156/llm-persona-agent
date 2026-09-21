@@ -358,6 +358,51 @@ test_completed_attempt_scheduler_settlement_and_character_response_survive_resta
 `ClockAdvanced` 的关系，以及车道在那几次 wake 上是否被别的分支（aftermath / NPC /
 activity）占住而没走到 `:531`。这是纯账本读取，不需要改代码。
 
+### 真正的根因：链路是通的，是**世界作者从来不写**那个结果
+
+继续往下查，把前面所有猜测都推翻了，包括我自己「提案从没发生」的说法。
+
+**第一，完成活动每一次都被送到了世界作者面前。** 全库检索
+`completed_activity_source_refs`：**20 次命中**，全部在 `ModelResultRecorded` 里，
+rev 从 360 一直到 1295——也就是说 349 那次完成之后，**此后每一次生活发展运行都把这次
+完成的执行绑定重新交给了世界作者**，revision 一路涨、ref 别名一路换（S37→S38→…→S62）。
+所以我上一节说的「全库 0 条事件提到那个提案 id」是被我自己算错的 id 误导了：提案是按
+`proposal:life-development:model-output:world_author:…` 记的，我查的是
+`pending_completed_activity_ref` 用来判重的那一个 id。
+
+**第二，这 20 次作者调用全部成功。** 逐条看审计：`outcome=winner`、
+`failure_code=None`、`status=proposal_validated`，输出 153–1581 token。没有一次被拒。
+
+**第三，`authorized_attempt_result` 从来没有被写出来过。** 全库只有 1 条事件提到它，
+而且那一条是**评论文字**在描述它的缺席——「All three outcomes are environment_text only,
+with no authorized_attempt_result」。不是被写出来的值。
+
+而 `world_consequence_prompt.py:210` 对这份请求的指示是明确的：
+「Each outcome must include authorized_attempt_result with the exact offered binding.」
+
+**所以真正发生的是：世界作者被反复告知「每个 outcome 必须带上这个绑定」，20 次都给出了
+通过的提案，却一次都没有写它，而校验放行了这些提案。** 这不是断线，也不是读取器坏了，
+是**契约要求与实际校验强度不一致**，加上世界作者稳定地选择只写环境。
+
+这正好解释了聊天的现象：账本里只有生命周期的开始与结束，没有「尝试的结果」，
+所以她要说「我走了一段」时手上没有任何可引用的东西，只能补故事。
+
+### 该修的地方（下一次开工的第一件事，仍未改代码）
+
+三个候选，从最小到最大：
+
+1. **把校验对齐到已经印出来的契约**：当请求是
+   `capability_manifest.completed_activity_consequence` 这一种时，任何**非 `no_op`** 的
+   outcome 都必须带 `authorized_attempt_result` 且绑定必须等于请求里给出的那一个；
+   缺了就按现有的有界重选让作者重答，仍不行就是技术失败。`no_op` 继续允许。
+   这不伪造任何东西：它只是拒绝不完整的回答，而且拒绝之后走的是既有路径。
+   **这条是我认为该做的**，但它需要改校验、补测试，并且要一次真实运行才能证明
+   世界作者会因此真的写出来——我的预算不允许我在没验证的情况下把它落进事实权威层。
+2. 如果 1 之后作者仍然稳定给 `no_op`，那问题就从「校验太松」变成「这份请求对她没有约束力」，
+   要动的是提示词强度或请求条件，不是校验。
+3. 只有在 1 和 2 都试过之后，才轮到考虑让宿主从生命周期自身派生一个「尝试结果」——
+   而那恰恰是交接文档禁止的（不能把 Completed 当执行成功、不能补写假经历）。
+
 ### 为什么停在这里
 
 用户明确要求不把 Completed 自动当成执行成功，也不补写假经历。在没有确认「哪一步返回 None」
