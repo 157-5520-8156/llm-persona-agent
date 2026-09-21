@@ -29,7 +29,10 @@ from .visible_review_protocols import (
 
 
 def independent_review_protocol(version):
-    return REVIEW_PROTOCOLS.get(version)
+    # Compatibility for existing author/host ports; execution dispatch remains
+    # separate from the frozen independent compiler below.
+    from .visible_review_protocols import visible_review_protocol
+    return visible_review_protocol(version)
 
 CANDIDATE_CONTRACT = "visible-independent-candidate.1"
 RECEIPT_CONTRACT = "visible-source-review-receipt.9"

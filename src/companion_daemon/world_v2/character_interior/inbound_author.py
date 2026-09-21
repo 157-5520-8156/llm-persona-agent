@@ -4294,7 +4294,7 @@ class _InboundCharacterAuthor:
         cognition_tool_choice = cognition_transport.tool_choice
         cognition_contract_identity = dict(cognition_transport.identity)
         if compact_atomic_prompt:
-            from ..visible_review_protocols import PRIVATE_COGNITION_PROTOCOLS
+            from ..visible_review_protocols import GROUNDED_REVIEW_PROTOCOL, PRIVATE_COGNITION_PROTOCOLS
 
             requirement = json.loads(request.visible_source_requirement_json or "{}")
             messages[0]["content"] = compact_atomic_system_prompt(
@@ -4302,6 +4302,7 @@ class _InboundCharacterAuthor:
                 branch_instruction=_atomic_branch_instruction(cognition_contract),
                 private_cognition_scope=(
                     requirement.get("review_protocol") in PRIVATE_COGNITION_PROTOCOLS
+                    or requirement.get("review_protocol") == GROUNDED_REVIEW_PROTOCOL
                 ),
             )
         if isinstance(correction, dict):

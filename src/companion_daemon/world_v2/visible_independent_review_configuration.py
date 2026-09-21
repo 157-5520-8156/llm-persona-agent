@@ -6,7 +6,21 @@ Provider calls and immutable evidence recording remain in the review runtime.
 
 from dataclasses import dataclass
 
-from .visible_review_protocols import REVIEW_PROTOCOLS
+from .visible_review_protocols import GROUNDED_REVIEW_VERSION, REVIEW_PROTOCOLS
+
+
+@dataclass(frozen=True)
+class GroundedVisibleReviewer:
+    """One independently invoked reviewer sees both language context and facts."""
+
+    source_model: object
+
+    def __post_init__(self):
+        if not callable(getattr(self.source_model, "complete_json_with_usage", None)):
+            raise ValueError("grounded review requires an explicit metered provider")
+
+    async def complete_json_with_usage(self, **_kwargs):
+        raise ValueError("grounded reviewer requires its whole-candidate runtime")
 
 
 @dataclass(frozen=True)
@@ -40,5 +54,11 @@ class IndependentVisibleReviewer:
 
 
 def validate_independent_reviewer_configuration(reviewer, version):
+    if version == GROUNDED_REVIEW_VERSION:
+        if not isinstance(reviewer, GroundedVisibleReviewer):
+            raise ValueError("grounded review requires its explicit single reviewer")
+        return
+    if isinstance(reviewer, GroundedVisibleReviewer):
+        raise ValueError("legacy review cannot consume a grounded reviewer")
     if (version in REVIEW_PROTOCOLS) != isinstance(reviewer, IndependentVisibleReviewer):
         raise ValueError("independent review versions require an explicit independent reviewer; legacy versions cannot consume one")
