@@ -32,14 +32,15 @@ standard v1原字节保持。240项相关回归通过，含真实适配器的bet
 LifeSourceView仍按原provider_controls_json恢复，不重新编译为新工具。
 
 同一真实manifest及48个source tokens的工具定义：v1为12,719字节，v2为8,460字节。
-这只是schema字节差，不能宣称等比例token、延迟或费用下降。现成引用压缩仅能再省
+后续真实400证明v2投影不合格且漏了affect分支，该字节差不能当作有效压缩或token、
+延迟、费用改善。现成引用压缩仅能再省
 157字节，未为此增加额外表示。
 
 ## 真实复验结果
 
 冻结`fff6a8d3`，从`after-source-fix/`的1027/413及1793/1790/74完整账目继续。
 真实12次调用均known，新增估算0.29235522元；零新增unknown、零初始化、无真实QQ或部署。
-唯一运行及计费继续点为`output/private-audits/source-model-cost-20260921-01/after-contract-fix/world.sqlite`：
+该阶段运行及计费点为`output/private-audits/source-model-cost-20260921-01/after-contract-fix/world.sqlite`：
 1141/revision468，ledger05:08:01Z（operator05:11Z），1805 usage/1802 reservations/74既有unknown。
 冷重放hash为`ab002de218364933dadd85691a9636bbfcc9ebb57300ca0ddb0dae09acde57c4`。
 原4份v22回执字节不变，新1份也通过冷重建；独立对账与原生用量匹配。
@@ -91,3 +92,36 @@ CLI相关74项通过。真实JSON对照仍待执行。
 依据[官方JSON Output说明](https://api-docs.deepseek.com/guides/json_mode/)选用已有
 response_format=json_object；仍保留JSON提示与示例、输出上限和完整本地校验。
 官方提示可能空content或截断，因此不把该出口视为永不失败的保证。
+
+
+## JSON入口续跑：聊天误拒与Appraisal供应商拒绝
+
+冻结`c89efca9`从上述完整1805前缀继续，05:11模拟输入
+“好，我想先画一片偏靛蓝的。你会选什么颜色？”。16次物理/240秒上限、0初始化，
+每个虚拟分钟检查新失败；实际10次调用后停止，无新交付。
+
+9次known、1次供应商400明确not_billed，新增估算0.19990700元，零新增unknown。
+最新运行及计费点为`output/private-audits/source-model-cost-20260921-01/after-json-transport/world.sqlite`：
+1815 usage/1812 reservations/74既有unknown，ledger1163/revision471，logical05:11Z。
+冷重放hash为`8e0ac08c1d3acf5029d41ff60b9dd1fa4f0ec4effe164c044a3fdfe876f76490`；
+原5份v22回执字节不变且冷重编通过，新增0份。
+
+此轮没有到达World JSON生成请求，不能把它算作通道对照通过或失败。
+新的首交付计时记录已生效，但没有角色交付，因此没有可报告的首条响应延迟。
+
+两个独立阻塞：
+
+1. 可见纠正稿“我会挑橙红／靛蓝配橙红，摆一块儿应该挺热闹／画完记得给我看”，
+   v22把最后一句未来邀请误当成需要既有记录证明正在或将要画画的断言而拒绝。
+   这是已确认的语义误拒；并非角色不想回复，也不是超时。本轮不再扩近况语义调试。
+2. Appraisal v2新请求`c00ecfa0…`实际到达beta，供应商400明确拒绝
+   `An object with no properties is not allowed.`。原参数的`properties.result`是
+   `type:object`加`anyOf`、无`properties`，与拒绝直接对应。同一转换还把
+   affect_transition的oneOf删除、留下discriminator，experience来源数组保留了
+   不在文档支持子集里的contains。此前离线mock只验证路由，未能证明真实schema被接受。
+
+第二项已用新Appraisal v3严格载体修复：保留完整操作判别分支、去掉冗余object类型和
+不支持的关键词，本地仍守来源及角色权限；旧v1/v2原schema及hash不变，已保存请求
+仍读原provider controls。8项重点检查含原400、四种情绪操作和错误结构拒绝，相关
+5个文件202项通过；下一步仅单次真实格式探针，不再用完整聊天间接测供应商schema。
+本段证据为`after-json-transport-reconciliation.json`与`after-json-transport-inspection.json`；完整原请求及供应商body均保留。

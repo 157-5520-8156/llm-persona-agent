@@ -1693,7 +1693,7 @@ class StructuredCharacterRoleFaculty:
                     capability_payload=manifest.payload,
                     recall_allowed=not request.recall_completed,
                     schema_dialect=(
-                        "deepseek-strict"
+                        "deepseek-strict-v3"
                         if bool(getattr(self._model, "supports_strict_tool_choice", False))
                         else "standard"
                     ),

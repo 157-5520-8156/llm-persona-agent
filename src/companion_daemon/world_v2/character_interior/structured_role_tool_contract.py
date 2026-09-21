@@ -27,6 +27,7 @@ _QQ_ATTACHMENT_PERCEPTION_TOOL_NAME = "character_role_qq_attachment_perception_v
 _PROACTIVE_TOOL_NAME = "character_role_proactive_contact_v1"
 _WORLD_STIMULUS_TOOL_NAME = "character_role_world_stimulus_appraisal_v1"
 _WORLD_STIMULUS_STRICT_TOOL_NAME = "character_role_world_stimulus_appraisal_v2"
+_WORLD_STIMULUS_STRICT_V3_TOOL_NAME = "character_role_world_stimulus_appraisal_v3"
 _PRIVATE_IMPRESSION_TOOL_NAME = "character_role_private_impression_reflection_v1"
 _OUTCOME_SELECTION_TOOL_NAME = "character_role_outcome_selection_v1"
 _ACTIVITY_LIFECYCLE_TOOL_NAME = "character_role_activity_lifecycle_choice_v1"
@@ -35,7 +36,7 @@ _EXPRESSION_RECONSIDERATION_TOOL_NAME = "character_role_expression_reconsiderati
 _FACT_MEMORY_RETENTION_TOOL_NAME = "character_role_fact_memory_retention_v1"
 _EXPERIENCE_MEMORY_RETENTION_TOOL_NAME = "character_role_experience_memory_retention_v1"
 _MEMORY_WITHDRAWAL_REVIEW_TOOL_NAME = "character_role_memory_withdrawal_review_v1"
-StructuredRoleToolSchemaDialect = Literal["standard", "deepseek-strict"]
+StructuredRoleToolSchemaDialect = Literal["standard", "deepseek-strict", "deepseek-strict-v3"]
 
 
 _ROLE_RESULT_FEATURE_KEYS = ("status", "summary")
@@ -111,6 +112,28 @@ def _provider_schema(model_type: object) -> dict[str, object]:
     # Callers specialize a private copy.  The expensive Pydantic generation
     # and recursive ref closure happen once per canonical wire type.
     return deepcopy(_compiled_provider_schema(model_type))
+
+
+def _world_stimulus_strict_v3_schema(value: object) -> object:
+    """Preserve typed unions before the legacy strict projection drops oneOf.
+
+    Appraisal's canonical discriminated unions have disjoint literal choices.
+    Their complete alternatives survive as anyOf; a union container is not an
+    empty object. Source membership still belongs to the canonical materializer.
+    The old v2 projection remains frozen for saved request identities.
+    """
+    if isinstance(value, list):
+        return [_world_stimulus_strict_v3_schema(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    projected = {
+        ("anyOf" if key == "oneOf" else key): _world_stimulus_strict_v3_schema(item)
+        for key, item in value.items()
+        if key not in {"discriminator", "contains"}
+    }
+    if projected.get("type") == "object" and "properties" not in projected and "anyOf" in projected:
+        projected.pop("type")
+    return projected
 
 
 def _required_object_properties(schema: dict[str, object]) -> dict[str, object]:
@@ -536,7 +559,9 @@ class StructuredRoleToolContract:
             return raw
         if not isinstance(raw, str):
             raise ValueError("structured role tool result must be JSON text")
-        if self.identity.tool_name == _WORLD_STIMULUS_STRICT_TOOL_NAME:
+        if self.identity.tool_name in {
+            _WORLD_STIMULUS_STRICT_TOOL_NAME, _WORLD_STIMULUS_STRICT_V3_TOOL_NAME,
+        }:
             # This new strict carrier never repairs or salvages provider JSON.
             decoded = json.loads(raw)
             if (
@@ -1481,12 +1506,14 @@ class StructuredRoleToolContracts:
         tool_name = _WORLD_STIMULUS_TOOL_NAME
         version = _CONTRACT_VERSION
         result_wrapper_key = None
-        if schema_dialect == "deepseek-strict":
+        if schema_dialect in {"deepseek-strict", "deepseek-strict-v3"}:
             # The recall branch permits no proposals. DeepSeek has no maxItems;
             # the canonical validator continues to enforce the empty array.
             if recall_allowed:
                 branches[-1]["properties"]["proposals"]["items"] = {"type": "string"}
             result_wrapper_key = "result"
+            if schema_dialect == "deepseek-strict-v3":
+                parameters = _world_stimulus_strict_v3_schema(parameters)
             parameters = deepseek_strict_tool_schema({
                 "type": "object",
                 "properties": {result_wrapper_key: parameters},
@@ -1495,6 +1522,9 @@ class StructuredRoleToolContracts:
             })
             tool_name = _WORLD_STIMULUS_STRICT_TOOL_NAME
             version = "2"
+            if schema_dialect == "deepseek-strict-v3":
+                tool_name = _WORLD_STIMULUS_STRICT_V3_TOOL_NAME
+                version = "3"
         elif schema_dialect != "standard":
             raise ValueError("unsupported world stimulus tool schema dialect")
         function = {
@@ -1512,7 +1542,7 @@ class StructuredRoleToolContracts:
             ),
             "parameters": parameters,
         }
-        if schema_dialect == "deepseek-strict":
+        if schema_dialect in {"deepseek-strict", "deepseek-strict-v3"}:
             function["strict"] = True
         provider_tools = ({"type": "function", "function": function},)
         schema_digest = "sha256:" + sha256(_canonical_json(parameters).encode("utf-8")).hexdigest()

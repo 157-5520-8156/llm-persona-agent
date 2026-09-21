@@ -2241,7 +2241,7 @@ async def test_world_stimulus_required_tool_reaches_deepseek_http_boundary() -> 
                                 {
                                     "type": "function",
                                     "function": {
-                                        "name": "character_role_world_stimulus_appraisal_v2",
+                                        "name": "character_role_world_stimulus_appraisal_v3",
                                         "arguments": raw_result,
                                     },
                                 }
@@ -2277,12 +2277,12 @@ async def test_world_stimulus_required_tool_reaches_deepseek_http_boundary() -> 
     assert "response_format" not in captured
     assert captured["tool_choice"] == {
         "type": "function",
-        "function": {"name": "character_role_world_stimulus_appraisal_v2"},
+        "function": {"name": "character_role_world_stimulus_appraisal_v3"},
     }
     tools = captured["tools"]
     assert isinstance(tools, list) and len(tools) == 1
     assert tools[0]["type"] == "function"
-    assert tools[0]["function"]["name"] == "character_role_world_stimulus_appraisal_v2"
+    assert tools[0]["function"]["name"] == "character_role_world_stimulus_appraisal_v3"
 
 
 def test_world_stimulus_tool_schema_keeps_no_change_and_transition_open() -> None:

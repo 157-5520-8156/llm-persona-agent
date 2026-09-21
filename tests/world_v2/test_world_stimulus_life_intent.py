@@ -199,7 +199,9 @@ class _RoleHTTP:
 
 
 def _http_result(body, authored):
-    if body.get("tools", [{}])[0].get("function", {}).get("name") == "character_role_world_stimulus_appraisal_v2":
+    if body.get("tools", [{}])[0].get("function", {}).get("name") in {
+        "character_role_world_stimulus_appraisal_v2", "character_role_world_stimulus_appraisal_v3",
+    }:
         authored = {"result": authored}
     name = body["tool_choice"]["function"]["name"]
     tool = {

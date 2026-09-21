@@ -3,7 +3,7 @@
 import json
 
 import httpx
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 import pytest
 
 from companion_daemon.llm import DeepSeekChatModel
@@ -28,7 +28,7 @@ def _contract(dialect="standard"):
     )
 
 
-def test_standard_v1_identity_is_frozen_and_strict_v2_is_separate():
+def test_old_v1_v2_identities_are_frozen_and_strict_v3_is_separate():
     old = _contract()
     assert old.identity.schema_sha256 == "sha256:4f91274feb0d8f5b9402733e30917d09666b16c5e4a9fbefbb3177ab04801ff2"
     assert old.identity.contract_sha256 == "sha256:1a9df0274f004656ecb170276e96b114f67f19ecd57abe36d86b9746333a3372"
@@ -36,19 +36,28 @@ def test_standard_v1_identity_is_frozen_and_strict_v2_is_separate():
     assert "strict" not in old.provider_tools[0]["function"]
     strict = _contract("deepseek-strict")
     assert strict.identity.version == "2"
+    assert strict.identity.schema_sha256 == "sha256:d6cc070e3d1a568173c79c700856eaed7f0e57944974be82ce01d4f7f5d02ef3"
+    assert strict.identity.contract_sha256 == "sha256:fa0c1bf58a2034404dd475de5f3ebf750ff422efe8d4983a26c8a0f8481d5e73"
     assert strict.identity.contract_sha256 != old.identity.contract_sha256
     assert strict.provider_tools[0]["function"]["strict"] is True
     assert strict.identity.tool_name == "character_role_world_stimulus_appraisal_v2"
+    current = _contract("deepseek-strict-v3")
+    assert current.identity.version == "3"
+    assert current.identity.tool_name == "character_role_world_stimulus_appraisal_v3"
+    assert current.identity.contract_sha256 != strict.identity.contract_sha256
 
 
 def test_strict_schema_is_closed_and_wrapper_never_repairs_json():
-    contract = _contract("deepseek-strict")
+    contract = _contract("deepseek-strict-v3")
     schema = contract.provider_tools[0]["function"]["parameters"]
 
     def check(node):
         if isinstance(node, dict):
-            assert not {"minItems", "maxItems", "minLength", "maxLength", "oneOf"} & node.keys()
-            if node.get("type") == "object" and "properties" in node:
+            assert not {
+                "minItems", "maxItems", "minLength", "maxLength", "oneOf", "discriminator", "contains",
+            } & node.keys()
+            if node.get("type") == "object":
+                assert node.get("properties"), "DeepSeek rejects an object with no properties"
                 assert set(node["required"]) == set(node["properties"])
                 assert node["additionalProperties"] is False
             for value in node.values():
@@ -69,6 +78,59 @@ def test_strict_schema_is_closed_and_wrapper_never_repairs_json():
     for bad in (raw.replace('\\"留下来\\"', '"留下来"'), raw + "}", "```json\n" + raw + "\n```", json.dumps(role)):
         with pytest.raises(ValueError):
             contract.unwrap(bad)
+
+
+def test_strict_v3_preserves_all_four_affect_operations_without_open_json():
+    schema = _contract("deepseek-strict-v3").provider_tools[0]["function"]["parameters"]
+    affect = schema["properties"]["result"]["anyOf"][0]["properties"]["proposals"]["items"]["properties"]["affect_transition"]
+    validator = Draft202012Validator(affect)
+    component = {"dimension": "warmth", "target_intensity_bp": 2500}
+    values = [
+        {"operation": "open", "component_targets": [component]},
+        {"operation": "update", "episode_id": "affect:existing", "component_targets": [
+            {**component, "component_id": "component:existing"},
+        ]},
+        {"operation": "resolve", "episode_id": "affect:existing", "resolution_summary": "暂告一段落。"},
+        {"operation": "supersede", "episode_id": "affect:existing", "component_targets": [component]},
+    ]
+    for value in [None, *values]:
+        validator.validate(value)
+    for bad in ({}, {"operation": "invented"}, {**values[0], "new_authority": True}):
+        with pytest.raises(ValidationError):
+            validator.validate(bad)
+
+
+@pytest.mark.asyncio
+async def test_recorded_v2_empty_object_400_is_preserved_by_real_http_adapter(monkeypatch):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    # Exact body from c00ecfa0f283432ab7784effda92a685; no model output exists.
+    error = b'{"error":{"message":"An object with no properties is not allowed.","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}'
+    old = _contract("deepseek-strict")
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        wire = json.loads(request.content)
+        assert request.url.path == "/beta/chat/completions"
+        assert wire["tools"] == list(old.provider_tools)
+        result = wire["tools"][0]["function"]["parameters"]["properties"]["result"]
+        assert set(result) == {"type", "anyOf"} and result["type"] == "object"
+        return httpx.Response(400, content=error, headers={"content-type": "application/json"})
+
+    model = DeepSeekChatModel(
+        "offline-fixture", "https://api.deepseek.com", "deepseek-v4-flash",
+        thinking_enabled=False, transport=httpx.MockTransport(respond),
+    )
+    try:
+        with pytest.raises(httpx.HTTPStatusError) as raised:
+            await model.complete_json(
+                [{"role": "user", "content": "Return one JSON role result."}],
+                tools=list(old.provider_tools), tool_choice=old.provider_tool_choice,
+            )
+        assert raised.value.response.content == error
+        assert len(calls) == 1
+    finally:
+        await model.aclose()
 
 
 @pytest.mark.asyncio
@@ -116,7 +178,7 @@ async def test_strict_correction_keeps_raw_candidate_and_durable_actual_request(
         async def __call__(self, request):
             response = await super().__call__(request)
             body = json.loads(request.content)
-            if body["tools"][0]["function"]["name"] == "character_role_world_stimulus_appraisal_v2":
+            if body["tools"][0]["function"]["name"] == "character_role_world_stimulus_appraisal_v3":
                 urls.append(str(request.url))
                 originals.append(response.json()["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"])
             return response
@@ -140,13 +202,19 @@ async def test_strict_correction_keeps_raw_candidate_and_durable_actual_request(
 
 
 @pytest.mark.asyncio
-async def test_saved_standard_v1_preparation_restores_without_recompiling_tool(tmp_path, monkeypatch):
+@pytest.mark.parametrize("dialect", ["standard", "deepseek-strict"])
+async def test_saved_v1_v2_preparation_restores_without_recompiling_tool(tmp_path, monkeypatch, dialect):
+    compile_tool = StructuredRoleToolContracts.world_stimulus_appraisal
     with monkeypatch.context() as legacy:
-        legacy.setattr(DeepSeekChatModel, "supports_strict_tool_choice", False)
+        legacy.setattr(
+            StructuredRoleToolContracts, "world_stimulus_appraisal",
+            lambda self, **kwargs: compile_tool(self, **{**kwargs, "schema_dialect": dialect}),
+        )
         payload, request, provider = await life_fixture._prepared(tmp_path, legacy)
     old_wire = provider.stimulus_requests[0]
-    assert old_wire["tools"][0]["function"]["name"].endswith("_v1")
-    assert "strict" not in old_wire["tools"][0]["function"]
+    version = "1" if dialect == "standard" else "2"
+    assert old_wire["tools"][0]["function"]["name"].endswith("_v" + version)
+    assert (old_wire["tools"][0]["function"].get("strict") is True) == (version == "2")
 
     def no_compile(*args, **kwargs):
         raise AssertionError("saved role preparation must use its saved provider controls")

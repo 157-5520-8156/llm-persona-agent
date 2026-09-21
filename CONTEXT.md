@@ -20,23 +20,27 @@ Two new real-adapter offline cases and 171 related regressions pass. No new paid
 provider latency improvement, deployment, or release qualification is claimed.
 
 Latest resumable runtime and full billing are both
-output/private-audits/source-model-cost-20260921-01/after-contract-fix/world.sqlite:
-ledger1141/revision468 at ledger05:08:01Z (operator virtual05:11Z);
-1805 usage/1802 reservations/74 inherited unknown.
-Cold hash ab002de218364933dadd85691a9636bbfcc9ebb57300ca0ddb0dae09acde57c4;
-4 inherited visible v22 receipts remain exact, plus1 new cold-verified receipt.
+output/private-audits/source-model-cost-20260921-01/after-json-transport/world.sqlite:
+ledger1163/revision471 at logical/operator05:11Z;
+1815 usage/1812 reservations/74 inherited unknown.
+Cold hash8e0ac08c1d3acf5029d41ff60b9dd1fa4f0ec4effe164c044a3fdfe876f76490;
+5 inherited v22 receipts remain byte-exact and cold-verified,0 new receipts.
+Frozenc89efca9 made10 calls:9 known +1 provider400 not_billed,
+adding0.19990700 CNY estimate,0 new unknown. No new delivery or life consequence.
+World JSON opt-in was not reached. A future invitation in the new color chat was
+semantically misread/rejected; no first-delivery latency exists for this failed round.
+Appraisal2 DID reach beta but failed400: result declares type object with no properties;
+its union has the real object branches. Projection also lost affect operation variants.
+New Appraisal3 preserves the complete affect unions and removes the invalid union
+object envelope; old1/2 remain exact.202 related checks pass; a single format-only
+probe is pending. Previous mock routing checks did not prove provider compatibility.
+
+Earlier after-contract-fix1141/468 and1805/1802/74 is now historical.
 Frozenfff6a8d3 made12 known calls, adding0.29235522 CNY estimate,0 new unknown.
-A new blue-leaf chat delivered3 authored beats with capture terminal receipts.
-Chat plus post-delivery fact cost0.05953650 CNY; complete step17.7522s is only
-an upper bound for first delivery, not an exact measurement. No monthly cost pass.
-New ActivityStarted1125, but no new WorldOccurrence/Experience/Memory.
-Native tool3 all-null environment mismatch did not recur. Remaining failures:
-source reviewer reason2540>2000 recovered once; World semantic rewrite extra brace;
-next native-valid draft invalid narrative tags; correction repaired tags but changed
-visual location away from proposal location. No real Appraisal2 call occurred.
-New capture wall timestamps are offline-tested (41 checks), not applied retroactively.
-Native World output still failed despite strict/beta. Do not repeat unchanged or
-claim life continuity, latency, monthly cost, or invitation release is qualified.
+Blue-leaf chat delivered3 authored beats and1 new receipt; chat plus fact0.05953650 CNY,
+complete step17.7522s was only a first-delivery upper bound. ActivityStarted1125,
+no new WorldOccurrence/Experience/Memory. World native3 still failed after correction.
+Do not claim life continuity, latency, monthly cost, or invitation release qualified.
 
 Prior after-source-fix1027/413 and1793/1790/74 is historical, not a resume point.
 It made6 known calls adding0.18973288 CNY, no unknown; no new character/life receipt.
