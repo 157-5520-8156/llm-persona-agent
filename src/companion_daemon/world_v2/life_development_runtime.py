@@ -5577,6 +5577,7 @@ class LifeDevelopmentRuntime:
                 attempts=(_LifeDevelopmentAttempt(
                     request_hash=request_hash, request_binding=request_binding, raw_output=raw,
                     status="main_invalid", failure_code="main_invalid_output",
+                    slot="primary", outcome="invalid",
                 ),),
             )
         return _LifeDevelopmentModelRun(
