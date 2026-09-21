@@ -126,14 +126,21 @@ Life `.13/.14` 现在从已验证来源直接构造最终请求，当前路径�
 运行详情与hash见[续跑报告](release-continuation-rag-2026-09-21.md)，新增费用见上述作者对照报告。
 这些费用不是供应商账单或月费结论；自然聊天未稳定交付，约100元／月尚未合格。
 
-**当前运行及完整累计账本统一在 `output/private-audits/recall-fact-chat-20260921-01/run`：**
+此前运行及完整累计账本曾统一在 `output/private-audits/recall-fact-chat-20260921-01/run`：
 ledger973／revision396，1775 usage／1772 reservations／74 unknown，04:30Z。
 本次11次调用中10次已知估算0.4497742元，1次未知保留1.22976元预留；逐笔对账通过。
 4份v22回执冷验通过，继承3份原样保留、新增1份。以后不可从上述旧账本直接续跑。
 
 随后4笔来源模型对照已独立对账：新增known估算0.0645963元、0新增unknown；完整账本
-继续点更新为`output/private-audits/source-model-cost-20260921-01/run/world.sqlite`，
+账本曾更新为`output/private-audits/source-model-cost-20260921-01/run/world.sqlite`，
 1779 usage／1776 reservations／74 unknown。World未改，恢复原973/396运行前须合并这4笔。
+
+最新真实续跑8次调用已全部对账，新增known估算0.16875778元、无新增unknown。
+**当前统一运行/账本继续点为`output/private-audits/source-model-cost-20260921-01/continuation/world.sqlite`：
+ledger1016/revision412，1787 usage/1784 reservations/74 unknown，04:31Z。**
+4份原v22回执保持并冷验；无新WorldOccurrence、Experience或聊天交付。World作者已见
+的接受正文在来源审核中遗漏，后续纠正又返回多余括号；不得把这轮当作生活连续性通过。
+完整原因与当前修复见[生活与成本报告](life-speed-cost-2026-09-21.md)。
 
 [阶段证据](release-review-interface-validation-2026-09-20.md) ·
 [首版验收清单](release-candidate-gates-2026-09-20.md)

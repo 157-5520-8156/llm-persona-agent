@@ -336,7 +336,8 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
     )
     # New requests use structural, source-bound material lookup. Absence is
     # retained only for the exact historical request compiler on recovery.
-    pinned_source_materials_version: Literal["2"] | None = Field(
+    # Version 3 also supplies readable pinned material for committed event refs.
+    pinned_source_materials_version: Literal["2", "3"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     # Absence retains historical identity; new proposals require model semantics,

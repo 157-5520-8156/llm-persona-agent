@@ -6,6 +6,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+import pytest_asyncio
 
 from companion_daemon.world_v2.context_capsule import (
     ResolvedSourceBinding,
@@ -204,11 +205,11 @@ def test_absent_legacy_marker_and_frozen_request_are_preserved():
     assert legacy["materials"] == [{"slice": "active_memory_candidates", "item": item}]
     assert resolve_cited_pinned_material(context=context, manifest=manifest, ref=REF) is None
     with pytest.raises(ValueError, match="unknown pinned source"):
-        resolve_cited_pinned_material(context=context, manifest=manifest, ref=REF, version="3")
+        resolve_cited_pinned_material(context=context, manifest=manifest, ref=REF, version="4")
     with pytest.raises(ValueError, match="pinned_source_materials_version"):
         type(manifest).model_validate_json(json.dumps(
             manifest.model_dump(mode="json", exclude_computed_fields=True)
-            | {"pinned_source_materials_version": "3"}
+            | {"pinned_source_materials_version": "4"}
         ))
 
 
@@ -270,7 +271,7 @@ def test_production_capability_offers_only_resolvable_context_sources(tmp_path):
         wake=wake,
         capsule=capsule,
     )
-    assert manifest.pinned_source_materials_version == "2"
+    assert manifest.pinned_source_materials_version == "3"
     assert injected not in manifest.grounding_refs
     assert "event:npc:registered" in manifest.grounding_refs
     assert "npc:friend" in manifest.entity_refs
@@ -323,7 +324,7 @@ def test_activity_material_keeps_its_intention_and_unfinished_scope():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("reader", [None, "2"])
+@pytest.mark.parametrize("reader", [None, "2", "3"])
 async def test_public_runtime_rejects_candidate_material_even_with_historical_manifest(reader):
     from companion_daemon.world_v2.ledger import WorldLedger
     from companion_daemon.world_v2.life_content_store import InMemoryImmutableLifeContentStore
@@ -378,5 +379,147 @@ async def test_public_runtime_rejects_candidate_material_even_with_historical_ma
     assert result.status == "technical_failure"
     assert result.reason_code == "life_development.source_closure_evidence_unavailable"
     assert author.calls == 1
+
     assert character.calls == 0
     assert character.consider_calls == 0
+
+
+@pytest_asyncio.fixture
+async def settled_review_inputs(tmp_path, monkeypatch):
+    """Use real producer, settlement, immutable content and production Capsule."""
+    from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
+    from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
+    from test_life_development_audit_context_recovery import _catalog, _composition
+    from test_life_development_runtime import WORLD_ID, _SequenceModel
+    from test_world_consequence_aftermath import _settled_author_cohort
+
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    path = tmp_path / "world.sqlite"
+    ref, raw_result = await _settled_author_cohort(path)
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
+    try:
+        runtime = _composition(
+            ledger, store, _catalog(tmp_path), _SequenceModel(model="unused", outputs=()),
+        )
+        wake = ledger.lookup_event_commit("event:clock:consequence:21m")[0]
+        _, _, context, manifest = runtime._compile_pinned(projection=ledger.project(), wake=wake)
+        assert ref in manifest.grounding_refs
+        _, draft = _legacy_material()
+        claim = draft.claim_declarations[0].model_copy(update={
+            "scope": "existing_world", "source_refs": (ref,),
+        })
+        location = manifest.location_capabilities[0]
+        draft = draft.model_copy(update={
+            "claim_declarations": (claim,), "location_ref": location.location_ref,
+            "location_capability_ref": location.capability_ref,
+        })
+        yield SimpleNamespace(
+            runtime=runtime, context=context, manifest=manifest, draft=draft,
+            ref=ref, wake=wake, raw_result=raw_result,
+        )
+    finally:
+        store.close()
+        ledger.close()
+
+
+def test_settled_world_body_reaches_review_with_its_original_event(settled_review_inputs):
+    case = settled_review_inputs
+    for reader in (None, "2", "3"):
+        manifest = case.manifest.model_copy(update={"pinned_source_materials_version": reader})
+        events, materials = case.runtime._source_closure_cited_sources(
+            draft=case.draft, context=case.context, manifest=manifest,
+        )
+        assert tuple(event.event_id for event in events) == (case.ref,)
+        messages = life_development_source_closure_messages(
+            context=case.context, manifest=manifest, draft=case.draft,
+            cited_events=events, cited_pinned_materials=materials,
+        )
+        evidence = json.loads(messages[1]["content"])["pinned_source_evidence"]
+        assert evidence["cited_committed_events"][0]["payload"] == events[0].payload()
+        if reader != "3":
+            assert materials == ()
+            continue
+        assert len(materials) == 1
+        item = materials[0]["materials"][0]["item"]
+        text = item["value"]["content"]["world_consequence"]["environment"]["text"]
+        assert text == json.loads(case.raw_result)["environment_text"]
+        author = case.runtime._world_author_messages(
+            context=case.context, logical_time=case.wake.logical_time, manifest=manifest,
+        )
+        shown = json.loads(author[1]["content"])["pinned_world_context"]
+        assert item in shown["slices"]["world_life"]["items"]
+        assert evidence["cited_pinned_materials"] == list(materials)
+        # The content compiler accepts prefixed hashes for structured results.
+        for prefix in ("sha256:", "unsupported:"):
+            prefixed = deepcopy(item)
+            prefixed["value"]["result_payload_hash"] = prefix + item["value"]["result_payload_hash"]
+            prefixed["value_hash"] = hashlib.sha256(json.dumps(
+                prefixed["value"], ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode()).hexdigest()
+            resolved = resolve_cited_pinned_material(
+                context=_context(prefixed), manifest=manifest, ref=case.ref, version="3",
+            )
+            assert (resolved is not None) == (prefix == "sha256:")
+        # A matching ref alone cannot bind a different immutable event body.
+        event = events[0]
+        changed_event = type(event).from_payload(
+            **event.model_dump(exclude={"payload_json", "payload_hash"}),
+            payload=event.payload() | {"result_payload_hash": "b" * 64},
+        )
+        with pytest.raises(ValueError, match="committed event authority"):
+            life_development_source_closure_messages(
+                context=case.context, manifest=manifest, draft=case.draft,
+                cited_events=(changed_event,), cited_pinned_materials=materials,
+            )
+    assert case.manifest.pinned_source_materials_version == "3"
+
+
+def test_v3_does_not_promote_missing_or_mismatched_settlement_content(settled_review_inputs):
+    case = settled_review_inputs
+    material = resolve_cited_pinned_material(
+        context=case.context, manifest=case.manifest, ref=case.ref, version="2",
+    )
+    assert material is not None
+    original = material["materials"][0]["item"]
+    for damage in ("unshown", "value_hash", "descriptor_binding", "descriptor_hash", "authority_hash"):
+        item = deepcopy(original)
+        if damage == "value_hash":
+            item["value"]["content"]["world_consequence"]["environment"]["text"] = "Unaccepted draft"
+        elif damage == "descriptor_binding":
+            descriptor = item["value"]["content"]["descriptor_event_ref"]
+            item["source_bindings"] = [b for b in item["source_bindings"] if b["ref"] != descriptor]
+            item["source_hash"] = source_bindings_hash(tuple(
+                ResolvedSourceBinding.model_validate(b) for b in item["source_bindings"]
+            ))
+        elif damage.endswith("hash"):
+            item["value"]["content"][damage.replace("_hash", "_payload_hash")] = "b" * 64
+            item["value_hash"] = hashlib.sha256(json.dumps(
+                item["value"], ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode()).hexdigest()
+        context = _context(item, availability="unavailable" if damage == "unshown" else "available")
+        if damage in {"descriptor_binding", "descriptor_hash", "authority_hash"}:
+            # Frozen v2 did not cross-check these nested content bindings.
+            assert resolve_cited_pinned_material(
+                context=context, manifest=case.manifest, ref=case.ref, version="2",
+            ) is not None
+        assert resolve_cited_pinned_material(
+            context=context, manifest=case.manifest, ref=case.ref, version="3",
+        ) is None, damage
+        with pytest.raises(ValueError, match="source-bound authority"):
+            life_development_source_closure_messages(
+                context=context, manifest=case.manifest, draft=case.draft,
+                cited_events=(), cited_pinned_materials=(material,),
+            )
+
+
+def test_v2_review_request_retains_frozen_bytes():
+    from test_world_consequence_source_closure import _wire_hash
+
+    manifest, draft = _legacy_material()
+    manifest = manifest.model_copy(update={"pinned_source_materials_version": "2"})
+    messages = life_development_source_closure_messages(
+        context={}, manifest=manifest, draft=draft, cited_events=(), execution_authority={},
+    )
+    # Captured before source changes, at 4272da7d.
+    assert _wire_hash(messages) == "8ce574f97cb1ffd0cb152d4a8ecb16a7dcca7fd89821ea93a3d70287f21587c9"

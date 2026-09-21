@@ -4924,7 +4924,8 @@ class LifeDevelopmentRuntime:
         # source boundary. Already committed proposals replay above unchanged.
         if any(
             resolve_cited_pinned_material(
-                context=context, manifest=manifest, ref=material["source_ref"]
+                context=context, manifest=manifest, ref=material["source_ref"],
+                version=manifest.pinned_source_materials_version or "2",
             ) != material
             for material in cited_pinned_materials
         ):
@@ -5242,6 +5243,15 @@ class LifeDevelopmentRuntime:
             commit = self._ledger.lookup_event_commit(ref)
             if commit is not None and commit[0].event_id == ref:
                 events.append(commit[0])
+                if manifest.pinned_source_materials_version == "3":
+                    # Settlement payloads carry result identities, not their
+                    # readable content. Preserve the event and the exact
+                    # source-bound material already shown to this author.
+                    material = resolve_cited_pinned_material(
+                        context=context, manifest=manifest, ref=ref, version="3",
+                    )
+                    if material is not None and material["authority_kind"] == "pinned_context_item":
+                        materials.append(material)
                 continue
             if ref.startswith("event:"):
                 raise ValueError(f"cited source event is unavailable: {ref}")

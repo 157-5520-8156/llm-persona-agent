@@ -6,22 +6,34 @@ Current status: manual_only / qualification_incomplete (2026-09-21).
 User priority update (2026-09-21): prioritize life continuity plus speed/cost;
 current-life prose remains deferred. Retain source authority and character agency.
 See docs/audits/life-speed-cost-2026-09-21.md for the bounded repair and measured limits.
+New World source material reader3 preserves both cited event payloads and exact author-visible
+accepted content. OldNone/2 byte compilation stays unchanged;29+87 related checks pass.
+This repairs a proven evidence omission; real continuation qualification remains pending.
 Independent visible review now uses the existing reason-preserving model timeout helper:
 its own 22s deadline counts as provider_timeout; external cancellation stays caller_cancelled.
 Two new real-adapter offline cases and 171 related regressions pass. No new paid calls,
 provider latency improvement, deployment, or release qualification is claimed.
 
-Latest resumable runtime is
-output/private-audits/recall-fact-chat-20260921-01/run: ledger973/revision396 at04:30Z;
-cold hash4194269b7f1c3b3719b7a756da6a85abd60e2a693c52f838e337b8d7346752a8.
-Full billing has subsequently advanced to source-model-cost-20260921-01/run/world.sqlite:
-1779 usage /1776 reservations /74 unknown; all nonbilling tables equal the runtime above.
-The four source-only calls added0.0645963 CNY known estimate, no new unknown holds;
-independent reconciliation verified. Merge this full prefix before any further run.
-Flash was faster but both models falsely rejected a previously accepted response;
-the paired trial did not qualify a default model change or cheaper service.
-1775 usage /1772 reservations /74 unknown holds. This restored runtime10 and merged all32
-subsequent probe bills before calling. Do not resume older cheaper accounting snapshots.
+Latest resumable runtime and full billing are both
+output/private-audits/source-model-cost-20260921-01/continuation/world.sqlite:
+ledger1016/revision412 at04:31Z;1787 usage/1784 reservations/74 inherited unknown.
+Cold hasha2476fc8e99d485ebffe8ce13e4d717f41768978b6461921ba66677494b6594a;
+4 inherited visible v22 receipts remain exact and cold-verified;0 new receipts.
+The8-call bounded continuation added0.16875778 CNY known estimate and0 unknown;
+no new WorldOccurrence, Experience or chat delivery. Three terminal transport
+receipts settle already captured04:29 messages, not new deliveries.
+World source review omitted accepted content already visible to its author;
+its subsequent native-tool correction had an extra trailing brace. The repaired
+failure audit now retains that exact bad output durably. This is not life qualification.
+The old inbound retried once under its existing persistent policy; after two
+failures the next eligible retry is05:00:30, not every clock tick.
+
+The preceding4 source-only calls added0.0645963 CNY known estimate. Flash was
+faster but both models falsely rejected a previously accepted response; this
+trial did not qualify a default model change or cheaper service. All its bills
+are included in the1787 prefix above. Do not resume older cheaper snapshots.
+Earlier recall-fact-chat run ended973/396 with1775 usage/1772 reservations/74 unknown.
+It restored runtime10 and merged all32 subsequent probe bills before calling.
 The b8243599 trial made11 physical calls:10 known (0.4497742 CNY repository estimate),
 1 source-review timeout with unknown bill retained as a1.22976 CNY capacity hold, not a known charge.
 First chat delivered3 beats and a newv22 receipt; second produced no delivery after source-review timeout.

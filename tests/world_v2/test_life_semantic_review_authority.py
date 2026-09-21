@@ -368,7 +368,7 @@ async def test_production_nonledger_policy_material_reaches_real_general_reviewe
             "materials": [item for item in author.manifest["location_capabilities"]
                           if author.ref in item["authority_refs"]],
         }]
-        assert author.manifest["pinned_source_materials_version"] == "2"
+        assert author.manifest["pinned_source_materials_version"] == "3"
         assert author.manifest["semantic_source_review_version"] == "1"
     finally:
         await host.aclose()

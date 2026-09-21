@@ -298,7 +298,7 @@ class ProjectionLifeCapabilityManifestCompiler:
             version=SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION,
             outcome_contract="world-consequence.2",
             execution_intention_sources_version="2",
-            pinned_source_materials_version="2",
+            pinned_source_materials_version="3",
             semantic_source_review_version="1",
             owner_actor_ref=self._owner,
             pinned_cursor=ProjectionCursor(
