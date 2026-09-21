@@ -707,3 +707,23 @@ rev 164 那批事件把主动车道的下场写得很清楚：
 - **未证明**：这次修复**没有**让主动车道恢复产出。铸造侧为什么在 03:43 之后停止
   仍未定位；下一步要查的是「谁负责在 due 时刻 mint 新的 proactive consideration」，
   以及已 open 的进程由谁回收（`TriggerProcessReclaimed` 全库 44 条，主动车道 0 条）。
+
+### 进一步收窄：不是每日额度，是同一个考虑被反复开、从不关闭
+
+我先把「每日共享外展额度」这个嫌疑排除了。`_shared_outreach_budget_allows` 依赖
+`is_shared_outreach_consideration_id`，而它只认两种前缀（`_LONG_SILENCE_...` /
+`_SITUATION_INDEPENDENT_...`）。而这 4 个进程的 consideration_id 是：
+
+```
+consideration:social-initiative:due-thread:b127e6205d0ed5d4ed17c7a07f9fc0492961d4b67ed737350c2498ab6a2a6f4e
+```
+
+**四次开启用的是同一个 id、同一个 `source_evidence_ref`**（`event:character-interior:experience:mutation:672ca1e8…`）。
+它既不是 long-silence 也不是 situation-independent，所以**不计入额度**，每日上限不是原因。
+
+真正的形状是：**同一个 `due-thread` 考虑被反复铸出四次，每次都以 `state=open` 留下、
+从不关闭**；最后一次停在 03:43，之后铸造侧也不再发。
+
+所以还剩最后一件事要查（不需要猜）：**谁铸造 `consideration:social-initiative:due-thread:*`**，
+以及铸造守卫是否在「同一 consideration 已有 open 进程」时静默跳过。若是，那么除了我已修的
+stale 路径之外，还需要回收/关闭已搁浅的进程——这是这条链剩下的另一半。
