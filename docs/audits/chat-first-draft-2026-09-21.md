@@ -852,3 +852,26 @@ seq=3267 TriggerProcessCompleted
 `scenario_runner.py` 弄成冲突。我已经踩了两次，两次都用
 `git restore --source=HEAD --staged --worktree` 恢复、两条外来 stash 原样保留。
 以后要么带上明确的 stash 名，要么改用 `git worktree`/直接跑指定 commit，不要再用裸 `stash`。
+
+## 更正：世界作者是**主动选择 no_op**，不是漏写、也不是校验太松
+
+我上一轮说「把校验对齐到契约（非 no_op 必须带绑定）就能让她有真实结果」——**这是错的**。
+去看那次边界交付（run 07，seq=3070）到底答了什么：
+
+```
+decision:              "no_op"
+world_author_decision: "no_op"
+repair_ordinal:        1
+capability_manifest_version: "life-development-capability.production.4"
+```
+
+`no_op` 是印给它的契约里**明示允许**的选择（"Choose no_op or propose objective candidate
+consequences…"）。`no_op` 不带 outcome，所以没有任何必填项可查——**收 tight 校验不会改变
+任何事**。
+
+所以现状是：链路通、边界交付过、作者收下了它、然后判断「这次的完成没有值得提议的后果」。
+
+**但这是 1 个样本。** 一个样本分不清「偶然」和「系统性」，而我这轮已经因为拿稀薄数据
+下结论错了四次。要分清，需要更多「作者拿到完成活动边界」的时刻，而那需要更多**真正完成
+的活动**——只能靠更长的虚拟生活时间来积累。所以下一步是跑一次长时间的受控运行，
+数清楚：拿到边界的次数、以及每次的决定。
