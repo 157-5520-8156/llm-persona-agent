@@ -6,6 +6,13 @@ contracts or teaching an obsolete output dialect. Recorded requests keep their
 original bytes; this compiler is used only before a new invocation is hashed.
 """
 
+import json
+
+from ..present_prompt import (
+    compact_gate_recall_instruction,
+    slim_consider_instruction,
+    slim_peer_specimen,
+)
 from ..private_cognition_scope import INSTRUCTION as PRIVATE_COGNITION_INSTRUCTION
 
 
@@ -70,3 +77,57 @@ def compact_atomic_system_prompt(
         + _DRAFT_MEANING
         + branch_instruction
     )
+
+
+_SLIM_LEAD = """一次决定，一个 slim 对象：
+你写的不是一张要填满的表，而是这一轮你真正决定做什么——怎么理解他，自己此刻什么感觉，说不说、说什么、什么时候说。宿主负责把机械的协议外壳补齐，不替你决定其中任何一项。
+"""
+
+_SLIM_TRANSPORT = """
+输出：只调用本次提供的函数一次，参数只有 result_kind 和 payload_json；payload_json 是上面这个对象序列化成的 JSON 字符串。不要另包 appraisal_draft、expression_draft 或 events。
+收到 role_result_correction 时，依据其中原稿、证据和精确失败原因重新选择一份完整结果；技术失败不替你选择沉默，也不授权编造。
+"""
+
+
+def compact_atomic_slim_system_prompt(
+    *,
+    identity_instruction: str,
+    recall_available: bool,
+    private_cognition_scope: bool = False,
+) -> str:
+    """One identity-carrying prompt for the slim atomic decision object.
+
+    The field-by-field slim text, the recall clause and the specimen are the
+    exact strings the compact path already uses, so the two carriers cannot
+    drift into two different descriptions of the same decision.
+    """
+
+    private_scope = (
+        PRIVATE_COGNITION_INSTRUCTION
+        if private_cognition_scope
+        else (
+            "当前第一人称感受、想法、注意、愿望、自我评价和这些私密状态的即时回顾连续性，"
+            "由你在本轮形成和表达，无需外部事实证明；其中承担的外部事件与经历仍需独立来源。"
+        )
+    )
+    return (
+        f"{PROMPT_VERSION}-slim\n"
+        + _ROLE_AND_REALITY
+        + "\n角色身份材料（保留原有性格、经历范围与表达风格）：\n"
+        + identity_instruction
+        + "\n\n"
+        + private_scope
+        + "\n\n"
+        + _SLIM_LEAD
+        + slim_consider_instruction()
+        + (
+            compact_gate_recall_instruction()
+            if recall_available
+            else "这一轮没有可用的 recall：result_kind 只选 decision。"
+        )
+        + "\nSLIM PAYLOAD_JSON 形状（只说明结构与字段名，不是台词，也不是要照抄的值）：\n"
+        + json.dumps(slim_peer_specimen(), ensure_ascii=False, separators=(",", ":"))
+        + "\n"
+        + _SLIM_TRANSPORT
+    )
+

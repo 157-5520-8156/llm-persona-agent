@@ -67,6 +67,10 @@ _INDEPENDENT_REVIEW_PROFILES = {
     "experimental_independent_v22": "22",
     "experimental_independent_v23": "23",
 }
+# Whole-candidate author carriers that keep the one curated call and its single
+# contextual reviewer. The slim carrier changes only the transport envelope, so it
+# cannot quietly become a second author topology or a differently-reviewed candidate.
+_INDEPENDENT_WHOLE_AUTHOR_VERSIONS = frozenset({"3", "slim"})
 
 
 def configured_visible_review_version(settings: Settings) -> str | None:
@@ -884,7 +888,7 @@ def build_semantic_chat_composition(
     auto_independent_review = independent_profile and flash_model is None and source_closure_model is None
     if independent_profile and (
         not visible_source_review_required or visible_source_review_version != configured_version
-        or visible_author_tool_version != "3"
+        or visible_author_tool_version not in _INDEPENDENT_WHOLE_AUTHOR_VERSIONS
     ):
         raise ValueError("experimental independent profile requires its fixed whole author/review versions")
     if not auto_independent_review:
@@ -907,7 +911,7 @@ def build_semantic_chat_composition(
         raise TypeError("schema references flag must be a boolean")
     if visible_author_schema_references and visible_author_tool_version != "3":
         raise ValueError("schema references require strict atomic v3")
-    if visible_author_tool_version not in {"1", "2", "3"}:
+    if visible_author_tool_version not in {"1", "2", "3", "slim"}:
         raise ValueError("unsupported visible author tool version")
     if visible_author_tool_version != "1" and not visible_source_review_required:
         raise ValueError("versioned whole author requires explicit visible source review")

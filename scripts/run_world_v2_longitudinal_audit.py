@@ -64,7 +64,7 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
         help="Opt-in local schema references for strict atomic v3; provider qualification pending.",
     )
     parser.add_argument(
-        "--visible-author-tool-version", choices=("1", "2", "3"), default="1",
+        "--visible-author-tool-version", choices=("1", "2", "3", "slim"), default="1",
         help="Explicit whole-author wire version; v2/v3 require whole-source review and is unqualified with real providers.",
     )
     parser.add_argument(

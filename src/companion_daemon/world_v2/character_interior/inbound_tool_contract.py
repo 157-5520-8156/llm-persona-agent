@@ -31,6 +31,7 @@ from .local_schema_references import expand_local_schema_references, factor_loca
 from ..present_prompt import (
     SLIM_CONSIDER_KEYS,
     compact_gate_recall_instruction,
+    compile_slim_consider_payload,
     compile_slim_interior_envelope,
     reply_only_bubble_clause,
     reply_only_completion_clause,
@@ -40,7 +41,7 @@ from ..present_prompt import (
 InboundToolPhase = Literal["gate", "initial", "after_recall", "final"]
 InboundToolTransport = Literal["atomic", "stream"]
 InboundToolSchemaDialect = Literal["standard", "deepseek-strict"]
-InboundAtomicEnvelopeVersion = Literal["1", "2", "3"]
+InboundAtomicEnvelopeVersion = Literal["1", "2", "3", "slim"]
 _CONTRACT_VERSION = "1"
 _COMPACT_GATE_CONTRACT_VERSION = "2"
 _REPLY_ONLY_APPRAISAL_FIELDS = (
@@ -528,6 +529,70 @@ def _expand_compact_gate_payload(value: dict[str, object]) -> dict[str, object]:
             payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         return {"result_kind": kind, "full_turn_json": payload_json}
     return {**payload, "result_kind": kind}
+
+
+_ATOMIC_SLIM_TRANSPORT_KEYS = frozenset({"result_kind", "payload_json"})
+
+
+def expand_atomic_slim_payload(
+    value: dict[str, object],
+    *,
+    recall_allowed: bool,
+) -> dict[str, object]:
+    """Compile the slim atomic carrier into the existing typed drafts.
+
+    A v4 answer is one branch name plus one JSON string.  The string is either
+    the slim decision object she already writes on the compact path or one
+    directly written canonical two-draft object; both reach the same canonical
+    ``appraisal_draft``/``expression_draft`` the rest of the pipeline already
+    consumes.  Nothing downstream changes, and no sibling field is defaulted
+    here: the slim compiler owns every fallback it already owned.
+    """
+
+    if set(value) != _ATOMIC_SLIM_TRANSPORT_KEYS:
+        raise ValueError("atomic slim transport envelope is ambiguous")
+    kind = value.get("result_kind")
+    kinds = {"decision", "recall"} if recall_allowed else {"decision"}
+    if kind not in kinds:
+        raise ValueError("atomic slim result_kind is missing or unavailable")
+    payload_json = value.get("payload_json")
+    if not isinstance(payload_json, str) or not payload_json:
+        raise ValueError("atomic slim payload_json must be one JSON object string")
+    if len(payload_json.encode("utf-8")) > 131_072:
+        raise ValueError("atomic slim payload_json exceeds its byte limit")
+    payload = _loads_compact_gate_payload_object(payload_json)
+    if _ATOMIC_SLIM_TRANSPORT_KEYS & set(payload):
+        raise ValueError("atomic slim inner payload cannot own transport authority")
+    if kind == "recall":
+        if set(payload) != {"private_turn_state", "recall_request"}:
+            raise ValueError("atomic slim recall carrier requires the exact Recall envelope")
+        return {"result_kind": "recall", **payload}
+    compiled = compile_slim_consider_payload(payload)
+    if compiled is None:
+        if set(payload) == {"appraisal_draft", "expression_draft"}:
+            return {"result_kind": "decision", **payload}
+        raise ValueError("atomic slim decision carrier must be one slim consider object")
+    return {"result_kind": "decision", **compiled}
+
+
+def _atomic_slim_tool_description(*, recall_allowed: bool) -> str:
+    return (
+        "One character decision for this pinned turn. Call the required function once. "
+        "Choose result_kind and put the complete chosen object in payload_json as one "
+        "JSON string. "
+        "result_kind=decision carries your slim decision object: the messages you choose "
+        "to send now (or an empty array for silence), meaning_of_this, my_state, and the "
+        "optional fields the system prompt lists. "
+        + (
+            "result_kind=recall is available on this turn and carries exactly "
+            "private_turn_state plus recall_request; choose it only when you want one "
+            "read-only lookup before deciding. "
+            if recall_allowed
+            else "result_kind=recall is not available on this turn. "
+        )
+        + "The host does not classify by topic, length, complexity, or keywords, and does "
+        "not choose the branch or any field inside it."
+    )
 
 
 def _canonical_json(value: object) -> str:
@@ -1019,6 +1084,16 @@ class InboundToolContract:
     def unwrap(self, raw_arguments: str) -> str:
         """Validate and remove only the exact forced-tool transport wrapper."""
 
+        if self.identity.version == "slim":
+            try:
+                value = json.loads(raw_arguments, object_pairs_hook=_unique_compact_gate_object)
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise ValueError("forced transport must be one JSON object") from exc
+            if not isinstance(value, dict):
+                raise ValueError("forced transport must be one JSON object")
+            inner = expand_atomic_slim_payload(value, recall_allowed=self.recall_allowed)
+            inner.pop("result_kind")
+            return json.dumps(inner, ensure_ascii=False, separators=(",", ":"))
         try:
             value = (
                 json.loads(raw_arguments, object_pairs_hook=lambda pairs: _unique_atomic_v2_object(
@@ -1151,6 +1226,89 @@ class InboundGateToolContract:
 
 class InboundToolContracts:
     """Deep module: all inbound forced-tool schema/version knowledge in one seam."""
+
+    def _atomic_slim_contract(
+        self,
+        *,
+        phase: InboundToolPhase,
+        capabilities: ExpressionDraftCapabilities,
+        recall_allowed: bool,
+        tool_name: str,
+        schema_dialect: InboundToolSchemaDialect,
+    ) -> InboundToolContract:
+        """One branch name plus one payload string, instead of the full envelope.
+
+        The strict projection of the dual-draft envelope made every semantically
+        optional field a required nullable sibling, so one ordinary reply cost
+        about 27k characters of provider schema and about 3.8k characters of
+        role output for roughly 60 characters of speech.  This carrier keeps the
+        same decision and moves the mechanical envelope back into the host: the
+        payload goes through the slim compiler already proven on the compact
+        path, then becomes the same canonical drafts every consumer already
+        reads.
+        """
+
+        kinds = ["decision", "recall"] if recall_allowed else ["decision"]
+        parameters: dict[str, object] = {
+            "type": "object",
+            "properties": {
+                "result_kind": {"type": "string", "enum": kinds},
+                "payload_json": {"type": "string"},
+            },
+            "required": ["result_kind", "payload_json"],
+            "additionalProperties": False,
+        }
+        function: dict[str, object] = {
+            "name": tool_name,
+            "description": _atomic_slim_tool_description(recall_allowed=recall_allowed),
+            "parameters": parameters,
+        }
+        if schema_dialect == "deepseek-strict":
+            function["strict"] = True
+        provider_tools = ({"type": "function", "function": function},)
+        schema_digest = "sha256:" + sha256(_canonical_json(parameters).encode("utf-8")).hexdigest()
+        capabilities_digest = (
+            "sha256:"
+            + sha256(_canonical_json(capabilities.model_dump(mode="json")).encode("utf-8")).hexdigest()
+        )
+        contract_digest = (
+            "sha256:"
+            + sha256(
+                _canonical_json(
+                    {
+                        "phase": phase,
+                        "transport": "atomic",
+                        "schema_dialect": schema_dialect,
+                        "recall_allowed": recall_allowed,
+                        "schema_sha256": schema_digest,
+                        "capabilities_sha256": capabilities_digest,
+                        "tool_name": tool_name,
+                    }
+                ).encode("utf-8")
+            ).hexdigest()
+        )
+        identity = InboundToolContractIdentity(
+            contract_id="character-inbound-slim-atomic",
+            phase=phase,
+            transport="atomic",
+            schema_dialect=schema_dialect,
+            tool_name=tool_name,
+            version="slim",
+            schema_sha256=schema_digest,
+            capabilities_sha256=capabilities_digest,
+            contract_sha256=contract_digest,
+        )
+        return InboundToolContract(
+            phase=phase,
+            transport="atomic",
+            capabilities=capabilities,
+            recall_allowed=recall_allowed,
+            require_turn_posture=False,
+            provider_tools=provider_tools,
+            provider_tool_choice={"type": "function", "function": {"name": tool_name}},
+            identity=identity,
+            wrapped_result_fields=None,
+        )
 
     def compact_gate_for(
         self,
@@ -1285,12 +1443,19 @@ class InboundToolContracts:
             raise ValueError("unsupported inbound tool transport")
         if schema_dialect not in {"standard", "deepseek-strict"}:
             raise ValueError("unsupported inbound tool schema dialect")
-        if atomic_envelope_version not in {"1", "2", "3"}:
+        if atomic_envelope_version not in {"1", "2", "3", "slim"}:
             raise ValueError("unsupported atomic inbound envelope version")
-        if atomic_envelope_version != "1" and (
+        if atomic_envelope_version in {"2", "3"} and (
             transport != "atomic" or schema_dialect != "deepseek-strict"
         ):
             raise ValueError("versioned atomic transport requires the DeepSeek strict atomic dialect")
+        if atomic_envelope_version == "slim" and transport != "atomic":
+            raise ValueError("atomic slim transport requires the atomic carrier")
+        if atomic_envelope_version == "slim" and (use_schema_references or evidence_first_schema):
+            # V4 carries the whole decision inside one opaque payload string, so
+            # the schema-reference and evidence-first projections have nothing
+            # left to shrink and must not silently change its carrier.
+            raise ValueError("atomic slim does not take schema-reference options")
         if type(use_schema_references) is not bool:
             raise TypeError("schema references flag must be a boolean")
         if use_schema_references and atomic_envelope_version != "3":
@@ -1305,10 +1470,19 @@ class InboundToolContracts:
             atomic_envelope_version != "3" or recall_allowed
         )
         tool_name = (
-            f"character_inbound_{phase}_v{contract_version}"
+            f"character_inbound_{phase}_slim"
+            if atomic_envelope_version == "slim" and phase in {"initial", "after_recall"}
+            else f"character_inbound_{phase}_{transport}_slim"
+            if atomic_envelope_version == "slim"
+            else f"character_inbound_{phase}_v{contract_version}"
             if transport == "atomic" and phase in {"initial", "after_recall"}
             else f"character_inbound_{phase}_{transport}_v{contract_version}"
         )
+        if atomic_envelope_version == "slim":
+            return self._atomic_slim_contract(
+                phase=phase, capabilities=capabilities, recall_allowed=recall_allowed,
+                tool_name=tool_name, schema_dialect=schema_dialect,
+            )
         appraisal_schema = _provider_schema(AppraisalDraftWire)
         appraisal_required = appraisal_schema.get("required")
         if not isinstance(appraisal_required, list):

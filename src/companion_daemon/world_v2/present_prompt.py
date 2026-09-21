@@ -637,6 +637,24 @@ def cache_stable_affect(value: object) -> object:
     }
 
 
+def slim_peer_specimen() -> dict[str, object]:
+    """The one shape sample for the slim decision object.
+
+    Both carriers show this same sample: ``messages``/``later``/``waiting_for``
+    sit at the same rank, an empty ``messages`` array is silence, and ``wait``
+    stays off it because she writes the short sentence instead.
+    """
+
+    return {
+        "messages": ["<role:visible_text>"],
+        "meaning_of_this": "<role:reading_text>",
+        "my_state": "<role:self_state_text>",
+        "world_claims": [],
+        "later": None,
+        "waiting_for": None,
+    }
+
+
 def reply_only_completion_clause() -> str:
     return (
         "reply_only is complete when the external effect fits its slim surface—"
