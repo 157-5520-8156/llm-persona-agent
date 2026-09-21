@@ -320,6 +320,44 @@ run 06 用一条真实输入「你今天都干嘛了」验证，并把前几轮�
 
 下一次开工就从这两条里选一条读代码确认，然后才动代码。
 
+### 第四个假设也被证伪——是项目自己的测试拦下的
+
+我把上一节剩下的两条都读了代码。`life_ecology_runtime.py:480-535` 的门是：
+
+```python
+is_clock_wake = 当前 wake 是 ClockAdvanced
+if callable(pending_completion) and is_clock_wake:
+    completion_ref = pending_completion(
+        after_world_revision=None if development_due else projection.world_revision,
+    )
+```
+
+`pending_completed_activity_ref` 的守门是
+`after_world_revision is not None and origin.accepted_world_revision <= after_world_revision → continue`。
+实测这条完成计划的 `authority_origin.accepted_world_revision = 349`（就是那次 ActivityCompleted），
+当前投影 `world_revision = 1390`；而 `ClockAdvanced` 的实测位置是 **seq 862 rev=347（完成之前）
+和 seq 883 rev=355（完成之后）**。所以：不在 due 的 wake 上，`after = 355`，349 ≤ 355 → 被跳过。
+
+我据此写了「把水位从当前 revision 改成上一次 wake 的 revision」的修复，并加了测试。**它被
+项目自己的测试否决了**：`test_completed_activity_consequence_runtime.
+test_completed_attempt_scheduler_settlement_and_character_response_survive_restart`
+明确断言——在**不到期**的 wake 上，完成活动车道必须**不**启动
+（`early_result.life_development_followup_status is None and untouched.calls == 0`），
+只有 `_due_wake` 才允许。我的改动让不到期的 wake 也启动了，测试直接失败。
+
+也就是说：**「不到期就跳过」是既定契约，不是 bug。** 我按规矩撤回了改动
+（`git checkout` 还原 `life_ecology_runtime.py`，删掉新测试），确认
+`test_completed_activity_consequence_runtime.py` 3 项通过、工作树干净。
+
+这条完成理应在 **349 之后的第一个到期 wake** 上被捡起来（那时 `development_due` 为真、
+`after=None`、`read_completed_activity_consequence` 已被证明可用、提案 id 也确认不存在）。
+所以现在真正剩下的问题只剩一个，而且范围明确：
+
+**349 之后到底有没有出现过一次到期的 wake，那次 wake 上这条车道有没有真的被跑到。**
+要查的是 `life_ecology_schedule.next_consideration_at` 的节奏与 349 之后那 80 多次
+`ClockAdvanced` 的关系，以及车道在那几次 wake 上是否被别的分支（aftermath / NPC /
+activity）占住而没走到 `:531`。这是纯账本读取，不需要改代码。
+
 ### 为什么停在这里
 
 用户明确要求不把 Completed 自动当成执行成功，也不补写假经历。在没有确认「哪一步返回 None」
