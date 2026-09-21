@@ -125,3 +125,20 @@ response_format=json_object；仍保留JSON提示与示例、输出上限和完�
 仍读原provider controls。8项重点检查含原400、四种情绪操作和错误结构拒绝，相关
 5个文件202项通过；下一步仅单次真实格式探针，不再用完整聊天间接测供应商schema。
 本段证据为`after-json-transport-reconciliation.json`与`after-json-transport-inspection.json`；完整原请求及供应商body均保留。
+
+
+## Appraisal格式探针与联合类型展平
+
+冻结`8741d56a`只发送一次新的v3格式请求，保留原失败c00…的角色材料、Flash、
+温度0.8及4096输出上限，仅更换新编译工具与其身份。供应商433毫秒返回400：
+`field anyOf: field anyOf: missing field type`。这是嵌套纯联合类型
+`anyOf:[{anyOf:[完整操作对象…]},null]`的供应商限制；未产生模型结果或World变化。
+原生请求、400响应及账目均保留于`appraisal-v3-probe/`，不把该格式算作已验收。
+
+随后仅对v3中的纯联合分支做等价展平；有其他约束的分支不动，完整操作对象和null
+都保留。9项重点检查通过，包含真实失败结构、全部Affect操作、每个anyOf分支直接
+携带类型、旧v2哈希与旧保存请求恢复。v3此前只有未获接受的独立格式探针；原请求
+字节不改，新编译摘要区分修复前后，不增加另一套角色协议。
+
+独立检查也确认本轮Appraisal 400没有作者checkpoint。到期后的新技术attempt重新
+编译当前工具，不会永久陷在旧v2，不需要改写历史LifeSourceView或迁移角色状态。

@@ -133,6 +133,19 @@ def _world_stimulus_strict_v3_schema(value: object) -> object:
     }
     if projected.get("type") == "object" and "properties" not in projected and "anyOf" in projected:
         projected.pop("type")
+    branches = projected.get("anyOf")
+    if isinstance(branches, list):
+        # DeepSeek requires each alternative to carry its type directly. Only
+        # a pure union is equivalent to its alternatives in the parent union.
+        projected["anyOf"] = [
+            alternative
+            for branch in branches
+            for alternative in (
+                branch["anyOf"]
+                if isinstance(branch, dict) and set(branch) == {"anyOf"}
+                else [branch]
+            )
+        ]
     return projected
 
 

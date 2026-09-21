@@ -15,6 +15,7 @@ from companion_daemon.world_v2.character_interior.structured_role import (
 )
 from companion_daemon.world_v2.character_interior.structured_role_tool_contract import (
     StructuredRoleToolContracts,
+    _world_stimulus_strict_v3_schema,
 )
 from test_character_interior_structured_role import _request
 from test_world_stimulus_experience_codec import SOURCE, _manifest
@@ -60,6 +61,8 @@ def test_strict_schema_is_closed_and_wrapper_never_repairs_json():
                 assert node.get("properties"), "DeepSeek rejects an object with no properties"
                 assert set(node["required"]) == set(node["properties"])
                 assert node["additionalProperties"] is False
+            if "anyOf" in node:
+                assert all("type" in branch for branch in node["anyOf"])
             for value in node.values():
                 check(value)
         elif isinstance(node, list):
@@ -98,6 +101,22 @@ def test_strict_v3_preserves_all_four_affect_operations_without_open_json():
     for bad in ({}, {"operation": "invented"}, {**values[0], "new_authority": True}):
         with pytest.raises(ValidationError):
             validator.validate(bad)
+
+
+def test_v3_flattens_only_pure_nested_unions_from_the_rejected_affect_shape():
+    # Actual first v3 probe: affect_transition.anyOf[0] had no direct type.
+    branches = [
+        {"type": "object", "properties": {"operation": {"const": operation}},
+         "required": ["operation"], "additionalProperties": False}
+        for operation in ("open", "update", "resolve", "supersede")
+    ]
+    nullable = {"anyOf": [{"anyOf": branches}, {"type": "null"}]}
+    assert _world_stimulus_strict_v3_schema(nullable) == {
+        "anyOf": [*branches, {"type": "null"}],
+    }
+    # A branch carrying another constraint is not a pure union container.
+    constrained = {"anyOf": [{"anyOf": branches, "required": ["operation"]}, {"type": "null"}]}
+    assert _world_stimulus_strict_v3_schema(constrained) == constrained
 
 
 @pytest.mark.asyncio
