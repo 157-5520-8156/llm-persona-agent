@@ -41,6 +41,7 @@ def test_compact_prompt_keeps_authority_and_refreshes_only_after_recall_suffix(p
         "环境发生了某事，也不自动证明你亲眼看见",
         "对方的消息证明对方这样说过", "appraise=false 时 affect=no_change",
         "appraise=true 时 meanings、attribution、severity 均不得为 null",
+        "counterparty_roles 表示互动的另一方，不得包含 subject_role 自身",
         "timing_choice=now/later/silent 均由你选", "技术失败不替你选择沉默",
     ):
         assert meaning in prompt

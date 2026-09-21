@@ -3,6 +3,19 @@
 For current release qualification read `docs/audits/release-status-2026-09-13-current.md`.
 Current status: manual_only / qualification_incomplete (2026-09-21).
 
+Current atomic-v3 chat author now uses one compact semantic prompt; v1/v2,
+stream/nonforced and stored carriers retain their old bytes. Original identity
+is intact: final system29,919->8,334 characters. Two author-only pairs reduced
+input tokens about12%, but did not improve measured latency or establish factual
+quality. Six known calls total estimated0.28462660 CNY, no new unknown bill.
+Final cross-field guidance has31 related passing checks; earlier compact commit
+has245 passing checks and1 independently reproduced pre-existing prefetch failure.
+No World writes, source qualification, new delivery or deployment. Details:
+docs/audits/author-prompt-compaction-2026-09-21.md.
+Latest full billing is output/private-audits/author-prompt-20260921-01/run-v2/world.sqlite:
+1823 usage/1820 reservations/74 inherited unknown;5 old receipts cold-verified.
+Runtime remains after-json-transport1163/471 below; inherit the new billing prefix.
+
 User priority update (2026-09-21): prioritize life continuity plus speed/cost;
 current-life prose remains deferred. Retain source authority and character agency.
 See docs/audits/life-speed-cost-2026-09-21.md for the bounded repair and measured limits.
@@ -24,7 +37,7 @@ provider latency improvement, deployment, or release qualification is claimed.
 Latest resumable runtime:
 output/private-audits/source-model-cost-20260921-01/after-json-transport/world.sqlite;
 ledger1163/revision471 at logical/operator05:11Z, runtime billing prefix1815/1812/74.
-Latest full billing:
+Previous full billing (superseded by the author-prompt run-v2 above):
 output/private-audits/source-model-cost-20260921-01/appraisal-v3-probe2/world.sqlite;
 1817 usage/1814 reservations/74 inherited unknown. Merge this complete billing prefix
 before any continuation; the runtime source alone omits the two format probes.

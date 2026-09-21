@@ -272,5 +272,5 @@ def test_legacy_compiler_bytes_stay_frozen_and_compact_v3_has_new_identity():
     # New atomic v3 uses character-inbound-prompt.1. The eight historical
     # variants above retain their bytes; saved v3 carriers also retain their
     # exact original prompt rather than using this compiler during replay.
-    assert current["3:False:True:False"] == "923a86aef74810111caf2b2b01f3cbe27535f854e0e181fb7e4d174e4f01e8ed"
-    assert current["3:False:True:True"] == "f854d61c6aff5c1ae5e8af84346e4fb8a36bbd28a6ff6836d3ed8f876217d815"
+    assert current["3:False:True:False"] == "c9ecbe9f25ced0548872adffcda24a71d2b870d4c03fb26c20ab04742a68881e"
+    assert current["3:False:True:True"] == "96740fa41242ad884f2768d251a2725ec3e1af171bec7eee664bcedfad1244c6"
