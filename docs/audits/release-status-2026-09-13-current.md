@@ -24,6 +24,19 @@
 换成现成 compact carrier + `compile_slim_consider_payload` 精简结构。详见
 [首稿交付复测](chat-first-draft-2026-09-21.md)。没有真实 QQ 外发、没有生产库写入、没有部署。
 
+**上下文也已量过并缩小了一层（`20ee1c11`）：单次请求明显变小，单轮成本仍由重试主导。**
+测得 user 材料的 86% 是 `inner_life_snapshot`，其中 `materials` 占整体的 75%（一次真实
+请求里 67,190 字符，`affect` 单独 19,501）。改用仓库现有的无损 `pack_shared_strings`
+只包面向 provider 的那份 `materials` 副本，`role_result_correction`、`source_refs` 与她
+必须照抄的 id 保持明文。同一条继续点上两轮真实对照：materials 67,190 → 53,326 字符，
+user 材料 −15.9%，该次 prompt token 45,050 → 38,403（−14.8%），单次作者调用
+0.304930 → 0.275744 元（−9.6%），两轮均交付。**但单轮总成本未降**（11 次调用 / 2.374112 元
+换 2 条输入，约 1.19 元/轮），因为每轮成本由重试次数主导——第 1 条输入用了 8 次调用。
+继续点 `packed-chat-20260921-05/world.sqlite`：1957/1954/77，ledger 2944，新增估算
+2.374112 元，0 新增 unknown；核验 `grounded-chat-20260921-05/reconciliation.json`。
+下一步不再是协议表示，而是减少一轮内的重试次数，以及继续缩 system（15,265 字符）与
+user 材料里她从不使用的部分。
+
 **精简作者出口已实现并实测（`64d277a5` + `afed85a9`）：输出负担解决，成本未解决。**
 atomic 作者工具换成现有 compact carrier，payload 走现成 `compile_slim_consider_payload`
 编译成同一份 canonical 双草稿，下游全不变；版本号用 `"slim"` 以免与审核协议 v4 冲突。

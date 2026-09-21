@@ -35,8 +35,20 @@ Continuation:output/private-audits/source-model-cost-20260921-01/slim-chat-20260
 1946/1943/77, ledger2827,16 calls all with native usage rows, new estimate3.489328 CNY,
 0 new unknown; grounded-chat-20260921-04/reconciliation.json.3 inputs,1 delivered; the other2
 are the known review-rejection-plus-invalid-correction and author primary_invalid.
-Next single item: shrink the context itself - first the8536-char slim instruction, then the
-user material she never uses - before touching the life chain or adding any review layer.
+Context measured and shrunk one layer at20ee1c11: user material is86% inner_life_snapshot and
+its materials block is75% of the whole (67,190 chars in one real request; affect alone19,501).
+The provider-facing copy of materials now goes through the existing lossless
+pack_shared_strings; role_result_correction, source_refs and the ids she must echo stay plain.
+Same continuation point, two real turns: materials67,190 to53,326 chars, user material -15.9%,
+prompt tokens45,050 to38,403 (-14.8%), one author call0.304930 to0.275744 CNY (-9.6%), both
+turns delivered. Per-turn cost still did NOT fall (11 calls/2.374112 CNY for2 inputs, about1.19
+CNY/turn) because a turn's cost is dominated by how many times it retries - the first input took
+8 calls. Continuation:output/private-audits/source-model-cost-20260921-01/
+packed-chat-20260921-05/world.sqlite,1957/1954/77, ledger2944,11 calls all with native usage
+rows, new estimate2.374112 CNY,0 new unknown; grounded-chat-20260921-05/reconciliation.json.
+Next single item: cut the number of retries inside one turn (the thing that actually sets both
+cost and the user's wait), then keep shrinking the15,265-char system and the unused user
+material. No more protocol-representation work, no life-chain work, no new review layer yet.
 See docs/audits/chat-first-draft-2026-09-21.md.
 This paragraph supersedes the v24 trial paragraph below for delivery status.
 
