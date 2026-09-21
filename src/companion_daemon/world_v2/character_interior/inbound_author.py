@@ -30,7 +30,7 @@ from ..companion_identity import (
     companion_identity_source_refs,
 )
 from ..model_completion import ChatCompletionModel
-from ..shared_string_view import pack_shared_strings
+from ..shared_string_view import pack_shared_strings, unpack_shared_strings
 from ..present_prompt import (
     SLIM_COME_BACK_IN_NOT_A_DURATION,
     SLIM_COME_BACK_PAIR_INCOMPLETE,
@@ -175,6 +175,11 @@ _ATOMIC_PADDING_MARKER = "\nRequired explicit null padding paths by result_kind:
 _ATOMIC_BRANCH_MARKER = "\nExact result fields by available result_kind:\n"
 
 
+# Material blocks that offer the role a choice of reference. Anything she may
+# copy back into her answer must stay a literal, never a shared-string token.
+_CHOICE_BEARING_MATERIALS = frozenset({"moments_i_can_share", "shareable_photos"})
+
+
 def _shared_string_snapshot(snapshot: object) -> object:
     """Present the pinned materials through the existing lossless string view.
 
@@ -197,12 +202,30 @@ def _shared_string_snapshot(snapshot: object) -> object:
     materials = snapshot.get("materials")
     if not isinstance(materials, dict) or not materials:
         return snapshot
+    # Never intern a value she is expected to choose and hand back. A real turn
+    # wrote photo="@s:28" because a media candidate ref had been interned: the
+    # host could not resolve the token she copied. Blocks that offer a choice
+    # stay in plain form; only descriptive state is presented through the view.
+    packable = {
+        key: value for key, value in materials.items()
+        if key not in _CHOICE_BEARING_MATERIALS
+    }
+    if not packable:
+        return snapshot
     try:
-        packed = pack_shared_strings(materials)
+        packed = pack_shared_strings(packable)
     except ValueError:
         # The view refuses to change its own value; keep the pinned tree.
         return snapshot
     if not packed.get("strings"):
+        return snapshot
+    restored = packed["value"]
+    for key in _CHOICE_BEARING_MATERIALS:
+        if key in materials:
+            restored[key] = materials[key]
+    if unpack_shared_strings(packed) != materials:
+        # The restored plain block would collide with the view, or the tree did
+        # not survive the round trip. Keep the pinned snapshot untouched.
         return snapshot
     return {**snapshot, "materials": packed}
 

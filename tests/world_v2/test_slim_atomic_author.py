@@ -316,3 +316,40 @@ def test_slim_instruction_still_names_every_field_and_the_scope_boundary():
         assert required in text, required
     assert "不要写成 current_world" in text
     assert len(text) < 9_000, len(text)
+
+
+def test_choice_bearing_materials_stay_literal_for_the_role_to_copy_back():
+    """A real turn wrote photo="@s:28" because a candidate ref was interned.
+
+    Anything she may choose and hand back must survive the provider copy as a
+    literal. Descriptive blocks keep their view; the round trip still holds.
+    """
+
+    from companion_daemon.world_v2.character_interior.inbound_author import (
+        _shared_string_snapshot,
+    )
+    from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+
+    handle = "appraisal:compiled:" + "d" * 64
+    other = "affect:compiled:" + "f" * 64
+    candidate = "event:character-media-candidate:" + "e" * 64
+    # The descriptive block must be large enough that the view actually engages;
+    # otherwise it correctly declines and the case proves nothing.
+    rows = [[handle, other] for _ in range(12)]
+    snapshot = {
+        "contract": "inner-life-snapshot.2",
+        "materials": {
+            "affect": {"stable_entries": [{"appraisal_refs": {"rows": rows}}]},
+            "moments_i_can_share": {"items": [{"source_event_ref": candidate}]},
+        },
+    }
+    packed = _shared_string_snapshot(snapshot)
+    materials = packed["materials"]
+    assert materials["contract"] == "shared-string-view.1"
+    assert materials["strings"], "descriptive state should still be interned"
+    # The candidate ref is literal in what the model reads.
+    import json
+    assert candidate in json.dumps(materials["value"]["moments_i_can_share"], ensure_ascii=False)
+    assert not any(token in json.dumps(materials["value"]["moments_i_can_share"])
+                   for token in materials["strings"])
+    assert unpack_shared_strings(materials) == snapshot["materials"]
