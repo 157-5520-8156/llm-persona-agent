@@ -2254,11 +2254,15 @@ class SocialInitiativeCompiler:
             return None
         observed = await self._latest_user_observation_source(projection)
         if observed is None:
+            # There must be a conversation for her to consider speaking into.
             return None
-        _latest, source = observed
-        elapsed = (logical_time - source[0].logical_time).total_seconds()
-        if not self._ambient_window_closed(elapsed_seconds=elapsed):
-            return None
+        # Deliberately not gated on how long he has been quiet. That gate
+        # belongs to the ambient lane ("he has gone quiet, maybe I will ping
+        # him"); applying it here meant her own settled life event could not
+        # become a consideration until he had been silent for
+        # spontaneous_expiry_seconds (12h), which is the host deciding when she
+        # may think about her own day. Frequency stays bounded by the
+        # shared-outreach daily budget and the stimulus cluster window below.
         refs = await self._recent_observable_situation_refs(projection, logical_time)
         if not refs:
             return None

@@ -550,7 +550,10 @@ async def test_situation_change_does_not_mint_a_delay_table_consideration() -> N
 
     opportunity = await compiler.next_opportunity(projection)
 
-    assert opportunity is None
+    # Her own settled life event opens one consideration without waiting for him
+    # to fall silent; what this test protects is the no-delay-table invariant.
+    assert opportunity is not None
+    assert opportunity.source_kind == "situation_change"
     assert draws == []
 
 
@@ -1184,7 +1187,7 @@ async def test_successful_retry_terminally_settles_the_failed_consideration() ->
 
 
 @pytest.mark.asyncio
-async def test_situation_windows_do_not_mint_dedicated_model_considers() -> None:
+async def test_situation_windows_mint_one_consider_per_cluster_without_a_draw() -> None:
     compiler, projection, _committed = _compiler_fixture(receptive=True)
     first_at = NOW + timedelta(minutes=10)
     second_at = first_at + timedelta(minutes=11)
@@ -1236,9 +1239,13 @@ async def test_situation_windows_do_not_mint_dedicated_model_considers() -> None
     )
     due = await compiler.next_opportunity(projection)
     assert due is not None
-    assert due.source_kind in {"spontaneous_contact", "ambient_presence"}
+    # One consideration for the latest cluster, opened by her own life event and
+    # still without a delay draw. Ambient hitching stays covered by the test
+    # below, which excludes this consideration the way the runtime does.
+    assert due.source_kind == "situation_change"
+    assert due.source_id.startswith("situation-independent:")
     assert due.stimulus_event_refs == (events[1].event_id,)
-    assert "stimulus:situation_change" in due.cadence_reason_codes
+    assert "occasion:situation_independent" in due.cadence_reason_codes
 
 
 @pytest.mark.asyncio
@@ -1285,7 +1292,9 @@ async def test_paid_idle_consider_hitches_the_latest_situation_cluster() -> None
         original_lookup(event_id),
     )
     projection.logical_time = anchor_at + timedelta(minutes=3)
-    assert await compiler.next_opportunity(projection) is None
+    fresh = await compiler.next_opportunity(projection)
+    assert fresh is not None
+    assert fresh.source_kind == "situation_change"
 
     projection.logical_time = NOW + timedelta(minutes=90)
     compiler._random = SimpleNamespace(  # noqa: SLF001
@@ -1294,7 +1303,12 @@ async def test_paid_idle_consider_hitches_the_latest_situation_cluster() -> None
             draw_id="draw:idle-hitch-cluster",
         )
     )
-    due = await compiler.next_opportunity(projection)
+    # The runtime excludes a consideration whose process is already open. With
+    # her situation consideration excluded, the idle lane still owns the cadence
+    # and must carry the same cluster rather than minting a sibling.
+    due = await compiler.next_opportunity(
+        projection, excluded_consideration_ids=frozenset({fresh.consideration_id}),
+    )
     assert due is not None
     assert due.source_kind in {"spontaneous_contact", "ambient_presence"}
     assert due.stimulus_event_refs == tuple(item.event_id for item in events)
@@ -2335,8 +2349,17 @@ async def test_affect_episode_high_point_mints_situation_independent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_situation_change_still_does_not_mint_inside_ambient_window() -> None:
-    """Regression: within 12h, situation materials hitch only — no dedicated mint."""
+async def test_her_own_life_event_mints_inside_the_ambient_window() -> None:
+    """Her settled life event opens a consideration without waiting for silence.
+
+    Policy decision (user, 2026-09-21): all three proactive sources - thread due,
+    her own life event, and long silence - are allowed to reach her as occasions
+    she may act on. Previously a situation inside the ambient window hitched only
+    onto an already-paid consider, which required him to stay quiet for
+    spontaneous_expiry_seconds (12h) before her own day could become a
+    consideration at all. Frequency is still bounded by the shared-outreach
+    daily budget; what this test also protects is that no delay is drawn.
+    """
 
     compiler, projection, _committed = _compiler_fixture(receptive=True)
     occurred_at = NOW + timedelta(minutes=5)
@@ -2382,7 +2405,8 @@ async def test_situation_change_still_does_not_mint_inside_ambient_window() -> N
 
     opportunity = await compiler.next_opportunity(projection)
 
-    assert opportunity is None
+    assert opportunity is not None
+    assert opportunity.source_kind == "situation_change"
     assert draws == []
 
 
