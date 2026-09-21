@@ -61,7 +61,7 @@ v22负向fixture。共4次调用，无重试，逐笔原生用量与独立账本
 
 冻结`4272da7d`，从973/396恢复并合并完整1779计费前缀；0初始化，未新输入聊天，
 实际8次模型调用后在04:31Z主动停止，宿主与客户端正常关闭。新增估算0.16875778元，
-8次均由原生用量核验，无新增unknown。最新运行与账本统一在
+8次均由原生用量核验，无新增unknown。该阶段运行与账本统一在
 `output/private-audits/source-model-cost-20260921-01/continuation/world.sqlite`：
 **ledger1016 / revision412 /1787 usage /1784 reservations /74既有unknown**。
 冷重放hash为`a2476fc8e99d485ebffe8ce13e4d717f41768978b6461921ba66677494b6594a`，
@@ -112,3 +112,31 @@ v22负向fixture。共4次调用，无重试，逐笔原生用量与独立账本
 真实settlement→生产Capsule→作者/审核的回归先复现`materials=()`，修复后通过；同文件
 29项与另11文件87项相关回归全部通过，Ruff/diff通过。缺失descriptor绑定、错hash、
 未展示、篡改、错误同ref事件不能提升为证据。真实模型是否能继续生活需下次续跑确认。
+
+
+## 来源修复后的真实复验与最终继续点
+
+冻结`977f9540`，继承上述1787完整账目与1016/412运行。遵守账本记载的04:40:01生活
+重试时间，虚拟04:41停止；6次物理调用全部known，新增估算0.18973288元、0新增unknown，
+宿主及客户端正常关闭，独立对账通过。整轮三阶段共18次付费请求，新增估算0.42308696元；
+这只是诊断支出，不能外推为产品月费。
+
+本次World来源审核确实收到两份已接受生活正文，拒绝理由已转为历史场景能否支持当前
+持续状态、是否增加公开可通行等语义。作者这次引用的是occurrence IDs，而非原失败样本
+中的settlement event IDs，因此不能把这一云端包当作新event+material分支的独立因果验收；
+该分支由原始样本复现与真实producer离线回归验证。
+
+World纠正输出是完整合法JSON，且通过实际发送的native JSON Schema，但其中一个
+visual_evidence.environment四字段全null，触发既有canonical parser的非空约束。
+原始有两个outcomes，后续too_short只是首个outcome校验失败的连带错误。此处存在
+模型所见格式与本地校验不一致，仍待整理；不以填充虚构天气或删除校验冒充修复。
+另一条WorldStimulus appraisal在Life审核后纠正，输出含未转义中文引号，是独立JSON
+失败。两者都不是新来源材料遗漏，也不证明角色生活已连续推进。
+
+唯一新可见交付是明确系统技术通知；无新WorldOccurrence、Experience、Memory或角色
+聊天交付。4份既有v22回执原样保留且冷重编译通过。**最终唯一运行/计费继续点**：
+`output/private-audits/source-model-cost-20260921-01/after-source-fix/world.sqlite`，
+**ledger1027 / revision413 /1793 usage /1790 reservations /74既有unknown**。
+账本逻辑时间04:40:01Z，操作界面虚拟时间04:41Z，二者不要混用。
+冷hash为`1d500283be60eb331772fd984bf1e96dd3695b999ecf4d96560469cf4108341a`。
+后续不得从上面的1779/1787等旧账本继续；本轮未部署，状态仍manual_only / qualification_incomplete。

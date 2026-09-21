@@ -136,11 +136,19 @@ ledger973／revision396，1775 usage／1772 reservations／74 unknown，04:30Z�
 1779 usage／1776 reservations／74 unknown。World未改，恢复原973/396运行前须合并这4笔。
 
 最新真实续跑8次调用已全部对账，新增known估算0.16875778元、无新增unknown。
-**当前统一运行/账本继续点为`output/private-audits/source-model-cost-20260921-01/continuation/world.sqlite`：
+**来源修复前运行/账本继续点为`output/private-audits/source-model-cost-20260921-01/continuation/world.sqlite`：
 ledger1016/revision412，1787 usage/1784 reservations/74 unknown，04:31Z。**
 4份原v22回执保持并冷验；无新WorldOccurrence、Experience或聊天交付。World作者已见
 的接受正文在来源审核中遗漏，后续纠正又返回多余括号；不得把这轮当作生活连续性通过。
 完整原因与当前修复见[生活与成本报告](life-speed-cost-2026-09-21.md)。
+
+新来源材料修复`977f9540`通过29+87项回归及旧v2字节兼容。其后6次真实调用全部known，
+新增估算0.18973288元，无新增unknown；来源正文已到审核，但World纠正因native schema
+容许的全null视觉环境被canonical parser拒绝，角色appraisal纠正另有未转义引号。
+**当前唯一运行/账本继续点为`output/private-audits/source-model-cost-20260921-01/after-source-fix/world.sqlite`：
+ledger1027/revision413，1793 usage/1790 reservations/74 unknown；账本04:40:01Z，界面虚拟04:41Z。**
+冷重放及4份原v22回执通过，无新WorldOccurrence/Experience/Memory/角色交付，唯一新增
+可见输出是系统技术通知。生活连续性、速度及100元月费均不能标为合格；近况语义仍暂缓。
 
 [阶段证据](release-review-interface-validation-2026-09-20.md) ·
 [首版验收清单](release-candidate-gates-2026-09-20.md)

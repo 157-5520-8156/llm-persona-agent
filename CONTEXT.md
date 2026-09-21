@@ -8,30 +8,38 @@ current-life prose remains deferred. Retain source authority and character agenc
 See docs/audits/life-speed-cost-2026-09-21.md for the bounded repair and measured limits.
 New World source material reader3 preserves both cited event payloads and exact author-visible
 accepted content. OldNone/2 byte compilation stays unchanged;29+87 related checks pass.
-This repairs a proven evidence omission; real continuation qualification remains pending.
+This repairs a proven evidence omission; the subsequent real continuation still failed as below.
 Independent visible review now uses the existing reason-preserving model timeout helper:
 its own 22s deadline counts as provider_timeout; external cancellation stays caller_cancelled.
 Two new real-adapter offline cases and 171 related regressions pass. No new paid calls,
 provider latency improvement, deployment, or release qualification is claimed.
 
 Latest resumable runtime and full billing are both
-output/private-audits/source-model-cost-20260921-01/continuation/world.sqlite:
-ledger1016/revision412 at04:31Z;1787 usage/1784 reservations/74 inherited unknown.
-Cold hasha2476fc8e99d485ebffe8ce13e4d717f41768978b6461921ba66677494b6594a;
+output/private-audits/source-model-cost-20260921-01/after-source-fix/world.sqlite:
+ledger1027/revision413 at ledger04:40:01Z (operator virtual04:41Z);
+1793 usage/1790 reservations/74 inherited unknown.
+Cold hash1d500283be60eb331772fd984bf1e96dd3695b999ecf4d96560469cf4108341a;
 4 inherited visible v22 receipts remain exact and cold-verified;0 new receipts.
-The8-call bounded continuation added0.16875778 CNY known estimate and0 unknown;
-no new WorldOccurrence, Experience or chat delivery. Three terminal transport
-receipts settle already captured04:29 messages, not new deliveries.
-World source review omitted accepted content already visible to its author;
-its subsequent native-tool correction had an extra trailing brace. The repaired
-failure audit now retains that exact bad output durably. This is not life qualification.
-The old inbound retried once under its existing persistent policy; after two
-failures the next eligible retry is05:00:30, not every clock tick.
+Frozen977f9540 made6 known calls, adding0.18973288 CNY estimate,0 new unknown.
+The only visible delivery was an explicit system technical notice. No new
+WorldOccurrence, Experience, Memory or character delivery was accepted.
+The World critic saw accepted life content, now rejecting temporal persistence
+and extra semantics. This candidate cited occurrence IDs, so the new same-event
+material overlap branch is proven by the original reproduction/offline producer
+fixture, not isolated by this cloud run. The World correction was valid JSON and
+valid native schema, but its all-null visual environment failed the canonical
+parser. Appraisal correction separately had unescaped quotes after life review.
+Do not repeat this unchanged or mark either life continuity or speed/cost qualified.
+
+The preceding8-call continuation at1016/revision412 added0.16875778 CNY known,
+no unknown, and demonstrated that invalid World rewrites are now durably audited.
+Three transport receipts only settled older04:29 captures. Old inbound recovery
+uses persistent30s/30min/2h backoff; it is not a repeated-per-clock scheduling bug.
 
 The preceding4 source-only calls added0.0645963 CNY known estimate. Flash was
 faster but both models falsely rejected a previously accepted response; this
 trial did not qualify a default model change or cheaper service. All its bills
-are included in the1787 prefix above. Do not resume older cheaper snapshots.
+are included in the1793 prefix above. Do not resume older cheaper snapshots.
 Earlier recall-fact-chat run ended973/396 with1775 usage/1772 reservations/74 unknown.
 It restored runtime10 and merged all32 subsequent probe bills before calling.
 The b8243599 trial made11 physical calls:10 known (0.4497742 CNY repository estimate),
