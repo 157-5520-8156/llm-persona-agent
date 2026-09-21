@@ -768,3 +768,48 @@ thread:character-interior:a91cc6b5…
 
 这三条都是「给她处境」而不是「替她决定说话」——符合你定的标准。
 选哪条（或哪几条）决定下一步动哪里。
+
+## 三条主动来源的真实门槛（找到了，是一条 12 小时的静默要求）
+
+用户要求三条来源都应允许她考虑主动发话。查下来三条的现状是：
+
+| 来源 | 铸造点 | 现状 |
+| --- | --- | --- |
+| 线程到期 `due-thread` | `scheduled_domain_consideration_kind` | **工作**。在唯一那条线程的窗口内触发过 4 次（01:03–03:43），每次留下未关闭的进程（已修 `c05c7659`） |
+| 生活事件 `situation_change` | `_situation_independent_contact` | 机制通、可观性也过（她是全部 7 个 occurrence 的 `participant_refs`），**mint 0** |
+| 长静默 `long-silence` | `_long_silence_contact` | 机制在，**从未触发** |
+
+**两条为零的原因是同一条闸门，而且它藏在 `_situation_independent_contact` 的第三行：**
+
+```python
+elapsed = (logical_time - source[0].logical_time).total_seconds()   # 距他上次说话
+if not self._ambient_window_closed(elapsed_seconds=elapsed):
+    return None
+```
+
+`_ambient_window_closed` 要求 `elapsed >= spontaneous_expiry_seconds + 60`，而
+`SocialInitiativePolicy.spontaneous_expiry_seconds` **默认 43,200 秒 = 12 小时**，
+部署处是 `SocialInitiativePolicy()`——**没有任何覆盖**。
+
+所以：**他必须安静满 12 小时，她自己生活里发生的事才被允许变成一次「要不要说话」的考虑。**
+这既解释了 `situation_change` mint 0（每次实验最多只跑到末条消息后 3.8 小时），
+也解释了 `long-silence` 为何从未触发。
+
+### 这是一条有意的设计，不是 bug
+
+`tests/world_v2/test_social_initiative.py:2338` 是一条**回归守门**：
+
+```python
+async def test_situation_change_still_does_not_mint_inside_ambient_window() -> None:
+    """Regression: within 12h, situation materials hitch only — no dedicated mint."""
+```
+
+也就是说原设计是：12 小时内，生活材料只**搭车**在已付费的 idle 考虑上；
+12 小时之外，才允许为它单独开一次考虑。
+
+我试过两种改法并都撤回：删掉闸门会破坏 4 条守门测试；把顺序改成
+「idle 先跑、都没有再 mint」会破坏另外 2 条（那两条要求的正是 12 小时后的**专属**铸造）。
+两组测试编码的是两种互斥的顺序——原设计靠那条 12 小时闸门让它们同时成立。
+
+**结论：这不是我该自行决定的工程细节，是她的社交节奏这一产品参数。** 已还原工作树，
+`test_social_initiative.py` 42 项全过。
