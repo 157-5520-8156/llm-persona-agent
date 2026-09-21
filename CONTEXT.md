@@ -3,7 +3,25 @@
 For current release qualification read `docs/audits/release-status-2026-09-13-current.md`.
 Current status: manual_only / qualification_incomplete (2026-09-21).
 
-Latest full-host hands-on chat at d5b5a58f: three adaptive ordinary inputs,
+Latest full-host chat at 072a25e7 uses opt-in v24 single contextual review.
+Two ordinary inputs: first-draft deliveries0/2; one corrected reply delivered
+four Beats after27.43s from ingress, but falsely supported actual walking with
+activity lifecycle evidence. Other turn failed at receipt.ValueError with no
+delivery. Do not equate a valid receipt or corrected delivery with sound prose.
+User priority: first-draft quality and delivery, corrections counted separately
+as recovery. Next inspect author inputs and missing actual execution evidence;
+do not add another semantic review stage. See
+docs/audits/contextual-review-chat-2026-09-21.md and ADR0020.
+New modules29+10 and historical compatibility104 checks passed; no new full suite.
+The two trials made3+9 physical calls, known estimate0.42613688 CNY and one new
+unknown hold0.20785 CNY (not a known charge). Processes and clients closed.
+Latest unified runtime/billing continuation:
+output/private-audits/source-model-cost-20260921-01/grounded-chat-after-timing/world.sqlite;
+ledger1369/revision544 at logical05:11Z;1864 usage/1861 reservations/75 unknown.
+Cold replay verified5 unchanged v22 receipts and1 new v24 receipt; its semantic
+false support remains a defect. This supersedes all continuation paths below.
+
+Earlier full-host hands-on chat at d5b5a58f: three adaptive ordinary inputs,
 zero character deliveries, about40-56 seconds per complete step. Review misread
 metaphor, omitted subjects and current reported state; author also introduced
 unsupported life claims, including during correction. Do not call current chat
@@ -13,7 +31,7 @@ estimated0.67498448 CNY; new unknown0. Runtime and full billing now share:
 output/private-audits/source-model-cost-20260921-01/hands-on-chat/world.sqlite;
 ledger1237/revision483 at logical05:11Z;1852 usage/1849 reservations/74 inherited
 unknown. Cold replay and5 inherited receipts verified; new receipts0.
-This supersedes all prior continuation/billing paths below.
+That continuation/billing path is now historical; use the latest point above.
 
 Current atomic-v3 chat author now uses one compact semantic prompt; v1/v2,
 stream/nonforced and stored carriers retain their old bytes. Original identity

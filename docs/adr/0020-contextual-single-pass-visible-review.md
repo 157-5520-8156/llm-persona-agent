@@ -1,6 +1,6 @@
 # ADR 0020: One contextual review for visible chat
 
-- Status: Implemented opt-in; qualification pending real conversation
+- Status: Implemented opt-in; real conversation qualification failed
 - Date: 2026-09-21
 
 The latest full-host trial delivered none of three ordinary inputs. Two readers
@@ -54,3 +54,11 @@ semantic certainty. Schema and receipt validity do not prove correct entailment.
 Tests must cover missing sources and false support as well as false rejection;
 real acceptance, delivery latency, cost and continued dialogue must be reported
 separately. Fewer provider calls alone do not qualify the release.
+
+The first real continuation had zero first-draft deliveries in two turns. One
+corrected reply was delivered but its walking claim was falsely supported by
+activity lifecycle fields. The other turn failed technically. See the
+[live audit](../audits/contextual-review-chat-2026-09-21.md). Keep first-draft
+delivery separate from recovery, and semantic correctness separate from receipt
+validity. The next work is generation input and real execution evidence, not an
+additional reviewer stage.
