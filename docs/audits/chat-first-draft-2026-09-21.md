@@ -289,19 +289,36 @@ run 06 用一条真实输入「你今天都干嘛了」验证，并把前几轮�
   （`world_v2_life_content.text` 的世界作者指令、事件里的 proposal 契约描述），
   **没有任何一处是真正被写出来的结果值**。所以第 5 步从来没有产出。
 
-### 还差的那一步（未证明，不要当成结论）
+### 还差的那一步（三个假设已被直接执行证伪，问题被夹窄）
 
-链路里第一个可能返回 None 的地方是
-`pending_completed_activity_ref`：它用 **`origin.accepted_event_ref`** 当作
-`completion_event_ref` 去调 `read_completed_activity_consequence`，而该读取函数要求这个 ref
-确实是那次 **`ActivityCompleted`**。如果 `authority_origin.accepted_event_ref` 指向的是
-计划被接受时的事件（而不是完成事件），读取函数会返回 None，于是
-`pending_completed_activity_ref` 直接返回 None，完成活动永远不会变成机会，
-也就永远不会有 execution binding，更不会有 `authorized_attempt_result`。
+我没有停在猜测上，把三个候选断点都拿真实账本跑了一遍：
 
-这与观察到的现象一致（配对的 Started/Completed 在库里，却没有任何完成后果），
-但**我没有把这一步证完**：run 06 的账本里这条计划的 `authority_origin.accepted_event_ref`
-需要从投影里读出来和 seq=865 的 `event_id` 对一次，我没有在预算内完成这次比对。
+1. **「`authority_origin.accepted_event_ref` 指错了事件」——证伪。**
+   从 `world_v2_heads` 重建投影后，唯一那条 completed 计划
+   （`plan:world-life-intent:f95168eac30d2607fda7be3…`）的
+   `authority_origin.accepted_event_ref` **正好等于** `ActivityCompleted` 的
+   `event:activity-lifecycle-effect:db09418f…`。ref 语义是对的。
+2. **「`read_completed_activity_consequence` 返回 None」——证伪。**
+   用 `SQLiteWorldLedger` 打开同一个库直接调用它，它**成功返回了后果**，
+   `execution_binding.source_event_ref = event:activity-lifecycle-effect:e3569d70…`。
+   读取器和配对逻辑都是好的。
+3. **「这条完成其实进过提案」——证伪。**
+   `pending_completed_activity_ref` 会为这次完成生成
+   `proposal:life-development:b2f461a70f2d66e02e05642b146da86189…`；
+   全库检索这个 id：**0 条事件**。也就是说这条完成**从来没有变成过一次
+   生活发展提案**。
+
+于是断点被夹到很窄的一段：**`pending_completed_activity_ref` 返回 ref 之后、到一次提案被提交之前**
+没有发生任何事。剩下两个可能，二选一，而且都不需要再猜：
+
+- 该函数自己返回了 None——它的守门条件是
+  `after_world_revision is not None and origin.accepted_world_revision <= after_world_revision`
+  时 `continue`，以及「这个完成已经提过案」时 `return None`。（已确认提案不存在，
+  所以不是后者。）
+- 或者 `life_ecology_runtime.py:484` 拿到了 ref，但 `:532` 那条
+  `advance_completed_activity_once` 在这次调度里没跑到。
+
+下一次开工就从这两条里选一条读代码确认，然后才动代码。
 
 ### 为什么停在这里
 
