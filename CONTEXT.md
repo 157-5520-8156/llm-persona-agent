@@ -65,9 +65,14 @@ Repair26e775d3 passed94 focused checks plus a3-test native/legacy rerun; Ruff/di
 A separate native coordinator -> Core -> InboundTurnFaculty offline fixture also confirms:
 prefetch-only Fact text and trusted trace reach the author, but its absent original semantic lane
 leaves counterpart_history permission missing. Existing augmentation removes the mechanical rejection.
-This is a real local Faculty seam defect, not merely the overlay limitation; it remains unpatched.
-Next repair must carry verified actually presented recall through permissions, review and replay,
-not just add author permission. No cloud calls or acceptance were performed by this proof.
+This confirmed a real local Faculty seam defect, not merely the overlay limitation.
+The subsequent hybrid.9 repair carries source-bound accepted Fact values through author permissions,
+existing Fact source review and cold receipt replay, for both automatic prefetch and chosen pull.
+It uses the exact accepted value rather than elevating the enclosing Observation, verifies the native
+presentation inverse, and cites historical images by their unique accepted event. Old readings and
+prehistory receipt reconstruction stay unchanged. 148 related checks plus3 full offline integration
+cases pass, including wrong-subject rejection and historical scope. These use fixture model judgments;
+real-provider quality and QQ delivery are not implied. See docs/audits/recall-fact-authority-2026-09-21.md.
 Total added estimated cost0.56389952 CNY; all32 known, no new unknowns, all nonbilling tables unchanged.
 See `docs/audits/recall-author-comparison-2026-09-21.md` for evidence and limitations.
 

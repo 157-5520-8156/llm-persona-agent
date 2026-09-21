@@ -211,9 +211,9 @@ async def review_candidate(
             }
         )
     from .recall_runtime import verify_trusted_recall_trace
-    from .visible_recall_sources import supplement_recalled_prehistory
+    from .visible_recall_sources import supplement_recalled_sources
 
-    table, recall_audits = supplement_recalled_prehistory(
+    table, recall_audits = supplement_recalled_sources(
         table=table,
         audits=tuple(verify_trusted_recall_trace(trace) for trace in request.visible_source_recall_traces),
         author_request_json=author_request_json,
@@ -457,7 +457,7 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
     )
     if value["contract"] == RECALL_EVIDENCE_CONTRACT or (independent and "recall_audits" in value):
         from .recall_audit import RecallAuditTrace
-        from .visible_recall_sources import supplement_recalled_prehistory
+        from .visible_recall_sources import supplement_recalled_sources
 
         recorded = value.get("recall_audits")
         if not isinstance(recorded, list) or not 1 <= len(recorded) <= 2:
@@ -465,7 +465,7 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
         selected = tuple(RecallAuditTrace.model_validate_json(canonical(item)) for item in recorded)
         if any(audit not in recall_audits for audit in selected):
             raise ValueError("visible review recall differs from the independently recorded author result")
-        table, used = supplement_recalled_prehistory(
+        table, used = supplement_recalled_sources(
             table=table, audits=selected, author_request_json=value["author_request_json"],
         )
         if used != selected:

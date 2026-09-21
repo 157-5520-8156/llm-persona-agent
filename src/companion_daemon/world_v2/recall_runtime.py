@@ -1802,6 +1802,8 @@ def recall_followup_evidence_json(
 def augment_model_content_with_recall(
     model_content_json: str,
     trace: RecallAuditTrace,
+    *,
+    include_fact_readings: bool = True,
 ) -> str:
     """Add verified pull results to their semantic lanes for claim validation."""
 
@@ -1811,6 +1813,10 @@ def augment_model_content_with_recall(
     slices = value["slices"]
     for hit in trace.hits:
         document = hit.document
+        if not include_fact_readings and document.source_slice == "relevant_facts":
+            # New Core Fact permissions use the exact accepted-value reader.
+            # The generic excerpt path remains only for historical callers.
+            continue
         lane = slices.get(document.source_slice)
         if not isinstance(lane, dict):
             lane = {"availability": "available", "source_refs": [], "items": []}

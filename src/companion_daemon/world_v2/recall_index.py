@@ -19,6 +19,8 @@ import unicodedata
 
 from pydantic import Field, model_validator
 
+from .fact_recall_item import FactRecallItem, HistoricalFactRecallItem
+from .fact_observation_value_lookup import resolve_observation_fact_value
 from .prehistory_memory_source import PrehistoryMemoryReading
 from .recall_model_reading import RECALL_INDEX_POLICY_VERSION, interior_recall_item
 from .schema_core import FrozenModel, PrivacyClass
@@ -141,6 +143,9 @@ class RecallDocument(FrozenModel):
     prehistory: PrehistoryMemoryReading | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
+    accepted_fact: FactRecallItem | HistoricalFactRecallItem | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     speaker_ref: str | None = Field(
         default=None,
         min_length=1,
@@ -247,7 +252,68 @@ class RecallDocument(FrozenModel):
                 ) for item in bindings)
             ):
                 raise ValueError("historical recall changed source ownership, interval or authority")
+        if self.accepted_fact is not None:
+            self._require_accepted_fact_closure()
         return self
+
+    def _require_accepted_fact_closure(self) -> None:
+        """Bind the optional exact Fact reading without promoting its Observation."""
+        fact = self.accepted_fact
+        assert fact is not None
+        historical = isinstance(fact, HistoricalFactRecallItem)
+        expected_ref = (
+            f"{fact.fact_id}:historical:{fact.accepted_fact_world_revision}"
+            if historical else fact.fact_id
+        )
+        if (
+            self.memory_kind != "semantic"
+            or self.source_slice != "relevant_facts"
+            or self.authority != "world_fact"
+            or self.effective_epistemic_scope != "world_fact"
+            or self.prehistory is not None
+            or self.source_item_ref != expected_ref
+            or self.subject_refs != (fact.subject_ref,)
+            or self.text != fact.source_excerpt[:1_024]
+            or self.privacy_class != fact.privacy_class
+            or self.occurred_from != fact.occurred_at
+            or self.occurred_to is not None
+            or self.valid_from != (fact.valid_from if historical else fact.updated_at)
+            or self.valid_to != (fact.valid_to if historical else None)
+            or self.status != ("superseded" if historical else "active")
+            or fact.accepted_value_binding is None
+        ):
+            raise ValueError("accepted Fact recall changed source, subject, status or time scope")
+        if any(value.tzinfo is None or value.utcoffset() is None for value in (
+            fact.occurred_at, fact.committed_at, fact.updated_at,
+        )) or fact.committed_at > fact.updated_at:
+            raise ValueError("accepted Fact recall times are invalid")
+        expected = {
+            fact.accepted_fact_event_ref: (
+                fact.accepted_fact_world_revision, fact.accepted_fact_payload_hash,
+            ),
+            fact.observation_event_ref: (
+                fact.observation_world_revision, fact.observation_event_payload_hash,
+            ),
+        }
+        actual = {
+            item.ref: (item.source_world_revision, item.immutable_hash)
+            for item in self.source_bindings if item.source_kind == "committed_event"
+        }
+        by_ref = {item.ref: item for item in self.source_bindings}
+        if (
+            len(self.source_bindings) != 2 or actual != expected
+            or by_ref[fact.observation_event_ref].authority_type != "ObservationRecorded"
+            or by_ref[fact.accepted_fact_event_ref].authority_type not in {
+                "FactCommitted", "FactCommittedV2", "FactCorrected", "FactAuthorityEvent",
+                "WorldStarted",
+            }
+            or (by_ref[fact.accepted_fact_event_ref].authority_type == "WorldStarted"
+                and fact.accepted_fact_world_revision != 1)
+        ):
+            raise ValueError("accepted Fact recall differs from its bound authority events")
+        resolve_observation_fact_value(
+            binding=fact.accepted_value_binding, source_excerpt=fact.source_excerpt,
+        )
 
     @property
     def effective_epistemic_scope(

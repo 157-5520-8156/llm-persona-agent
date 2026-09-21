@@ -174,7 +174,7 @@ def _subjects(*values: str) -> tuple[str, ...]:
 class RecallCorpusCompiler:
     """Deep compiler for a source-closed hybrid recall corpus."""
 
-    VERSION = "world-v2-recall-corpus.5"
+    VERSION = "world-v2-recall-corpus.6"
 
     def compile(
         self,
@@ -316,6 +316,7 @@ class RecallCorpusCompiler:
                     occurred_from=item.occurred_at,
                     valid_from=item.updated_at,
                     privacy_class=item.privacy_class,
+                    accepted_fact=item if item.accepted_value_binding is not None else None,
                 )
             )
 
@@ -369,6 +370,7 @@ class RecallCorpusCompiler:
                     valid_to=item.valid_to,
                     status="superseded",
                     privacy_class=item.privacy_class,
+                    accepted_fact=item if item.accepted_value_binding is not None else None,
                 )
             )
 
@@ -886,6 +888,7 @@ class RecallCorpusCompiler:
         epistemic_scope: str | None = None,
         speaker_ref: str | None = None,
         prehistory: PrehistoryMemoryReading | None = None,
+        accepted_fact: FactRecallItem | HistoricalFactRecallItem | None = None,
     ) -> RecallDocument:
         canonical = _canonical_bindings(bindings)
         return RecallDocument(
@@ -925,6 +928,7 @@ class RecallCorpusCompiler:
             ),
             speaker_ref=speaker_ref,
             prehistory=prehistory,
+            accepted_fact=accepted_fact,
         )
 
 

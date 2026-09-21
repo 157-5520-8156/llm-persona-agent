@@ -662,9 +662,12 @@ class InboundTurnFaculty:
                 recall_trace = TrustedRecallTrace.model_validate_json(
                     request.snapshot.recall_trace_json
                 )
+                from ..recall_model_reading import supports_fact_reading
+                recall_audit = verify_trusted_recall_trace(recall_trace)
                 model_content_json = augment_model_content_with_recall(
                     model_content_json,
-                    verify_trusted_recall_trace(recall_trace),
+                    recall_audit,
+                    include_fact_readings=not supports_fact_reading(recall_audit.index_version),
                 )
             model_content_json = mark_recall_budget_consumed(model_content_json)
         owned_input = model_input.model_copy(update={
@@ -673,6 +676,8 @@ class InboundTurnFaculty:
                 trace for trace in (prefetch_trace, recall_trace) if trace is not None
             ),
         })
+        from ..visible_recall_sources import bind_presented_recalled_facts
+        owned_input = bind_presented_recalled_facts(owned_input)
         if transport_operation == "stream_head":
             key = _stream_key(owned_input)
             self._stream_inputs[key] = owned_input
