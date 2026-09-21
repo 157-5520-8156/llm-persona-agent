@@ -7,7 +7,7 @@ from companion_daemon.llm import (
     model_request_emission_scope,
 )
 
-from .deliberation import ModelUsageProvenance, ProviderSubcallAudit, ValidationTechnicalFailure
+from .deliberation import ModelUsageProvenance, ProviderSubcallAudit, ValidationTechnicalFailure, run_validation_review_once
 from .model_usage_budget import ModelUsageAdmissionError
 from .visible_grounded_review import (
     GroundedVisibleReviewRejected, prepare_grounded_review, record_grounded_review_receipt,
@@ -47,13 +47,18 @@ async def review_grounded_candidate(
             failure_detail=detail, rejected_expression=rejected,
         )
 
-    try:
+    async def invoke():
         with (
             model_call_scope(usage_purpose),
             model_request_emission_scope(provider_call_id=call_id, entry_marker=None, completion_marker=None),
             model_provider_request_identity_scope(request_hash=prepared.request_hash, identity_extras=prepared.identity_extras),
         ):
-            raw, usage_value = await complete_with_timeout(model.complete_json_with_usage(**prepared.request()), timeout_seconds=22.0)
+            return await complete_with_timeout(model.complete_json_with_usage(**prepared.request()), timeout_seconds=22.0)
+
+    try:
+        # Enter the existing candidate validation phase rather than consuming
+        # the author's remaining deadline. This grants time, never another call.
+        raw, usage_value = await run_validation_review_once(invoke, timeout_seconds=24.0)
         binding = VisibleReviewInvocationBinding(
             parent_model_call_id=author.model_call_id, model_call_id=call_id,
             model_id=str(getattr(model, "model", type(model).__name__)),

@@ -124,7 +124,7 @@ class GroundedHTTP:
 
 
 @asynccontextmanager
-async def application(path, handler):
+async def application(path, handler, *, budget_policy=None):
     usage = WorldV2UsageStore(path=str(path.with_name("usage.sqlite")))
     models = [DeepSeekChatModel(
         "offline-fixture", "https://fixture.invalid", "deepseek-v4-flash",
@@ -136,8 +136,11 @@ async def application(path, handler):
         visible_source_review_version="24",
     )
     transport = _DeliveredTransport()
+    config = replace(_config(), visible_source_review_required=True)
+    if budget_policy is not None:
+        config = replace(config, interactive_turn_budget_policy=budget_policy)
     app = build_sqlite_world_v2_test_application(
-        path=path, config=replace(_config(), visible_source_review_required=True),
+        path=path, config=config,
         identities=_Identities(), router=_Router(),
         character_interior=compose_fixture_character_interior(inbound_author=author),
         transport=transport, now=NOW,
@@ -281,3 +284,41 @@ async def test_grounded_deadline_preserves_failed_subcall_and_unknown_usage(tmp_
         assert db.execute(
             "SELECT billing_state,error FROM world_v2_model_usage WHERE purpose='inbound_source_review'",
         ).fetchall() == [("unknown", "provider_timeout")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["connected", "disconnected", "expired"])
+async def test_grounded_review_uses_its_fixed_phase_after_author_deadline(tmp_path, monkeypatch, phase):
+    from companion_daemon.world_v2 import visible_grounded_review_runtime as runtime
+    from companion_daemon.world_v2.interactive_turn_budget import InteractiveTurnBudgetPolicy
+
+    class SlowReviewHTTP(GroundedHTTP):
+        async def __call__(self, request):
+            if "tools" not in json.loads(request.content):
+                await asyncio.sleep(1.1)
+            return await super().__call__(request)
+
+    if phase == "disconnected":
+        async def disconnected(operation, **_kwargs):
+            return await operation()
+        monkeypatch.setattr(runtime, "run_validation_review_once", disconnected)
+    policy = InteractiveTurnBudgetPolicy(
+        total_seconds=1.0, hedge_after_seconds=0.4,
+        acceptance_dispatch_reserve_seconds=0.1,
+        validation_recovery_seconds=0.05 if phase == "expired" else 3.0,
+        validation_reselection_seconds=5.0,
+    )
+    handler = SlowReviewHTTP()
+    async with application(tmp_path / "world.sqlite", handler, budget_policy=policy) as (app, transport):
+        outcome = await app.respond(replace(_inbound(), text=USER_TEXT))
+        assert handler.authors == 1
+        if phase == "connected":
+            assert outcome.status == "action_authorized", (outcome, _audits(app))
+            assert len(handler.requests) == 2
+            assert (await app.drain_actions_once()).status == "settled"
+            assert transport.bodies == [REPORT_REPLY]
+            bound_receipt(app)
+        else:
+            assert outcome.status != "action_authorized"
+            assert not app.export_replay_evidence().projection.actions
+            assert transport.bodies == []
