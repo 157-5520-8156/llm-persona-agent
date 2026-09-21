@@ -119,12 +119,21 @@ class PreparedGroundedReview:
     def inspect_response(self, raw):
         pin = _restore(self)
         if not isinstance(raw, str) or len(raw.encode()) > _MAX_RESPONSE_BYTES:
-            raise ValueError("grounded review response exceeds its byte bound")
-        json.loads(raw, object_pairs_hook=_unique)
-        response = _Response.model_validate_json(raw, strict=True)
+            raise GroundedReviewWireFailure("grounded review response exceeds its byte bound")
+        try:
+            json.loads(raw, object_pairs_hook=_unique)
+            response = _Response.model_validate_json(raw, strict=True)
+        except ValueError as exc:
+            # Transport shape only.  The reviewer produced no usable answer, so
+            # the existing bounded transport re-ask owns this class instead of
+            # the turn dying without any delivery or correction.
+            raise GroundedReviewWireFailure(
+                "grounded review response is not the declared contract: "
+                + type(exc).__name__ + ":" + " ".join(str(exc).split())[:240]
+            ) from exc
         indexes = [b.beat_index for b in response.beat_decisions]
         if len(indexes) != len(set(indexes)) or set(indexes) != set(range(len(pin["beat_mapping"]))):
-            raise ValueError("grounded review must cover every original Beat exactly once")
+            raise GroundedReviewWireFailure("grounded review must cover every original Beat exactly once")
         catalog = {reading["reading_id"]: reading for reading in pin["catalog"]}
         decisions = {b.beat_index: b for b in response.beat_decisions}
         outcomes, diagnostics = [], []
@@ -132,21 +141,21 @@ class PreparedGroundedReview:
         for beat in pin["beat_mapping"]:
             decision = decisions[beat["beat_index"]]
             if not decision.facts and not decision.non_record_expressions:
-                raise ValueError("grounded review cannot leave a Beat unrepresented")
+                raise GroundedReviewWireFailure("grounded review cannot leave a Beat unrepresented")
             parts = (*decision.facts, *decision.non_record_expressions)
             if any(not part.text.strip() or part.text not in beat["text"] or not part.rationale.strip() for part in parts):
-                raise ValueError("grounded review part must bind nonempty original Beat text and rationale")
+                raise GroundedReviewWireFailure("grounded review part must bind nonempty original Beat text and rationale")
             if any(not detail.strip() for detail in decision.unresolved_details):
-                raise ValueError("grounded review unresolved details must be nonempty")
+                raise GroundedReviewWireFailure("grounded review unresolved details must be nonempty")
             uncertain = not decision.review_complete or bool(decision.unresolved_details)
             inconclusive |= uncertain
             rejected = False
             for index, fact in enumerate(decision.facts):
                 if not fact.proposition.strip():
-                    raise ValueError("grounded review proposition must be nonempty")
+                    raise GroundedReviewWireFailure("grounded review proposition must be nonempty")
                 selected = [*fact.reading_ids, *(s.reading_id for s in fact.fact_value_selections)]
                 if len(selected) != len(set(selected)) or any(ref not in catalog for ref in selected):
-                    raise ValueError("unknown or duplicate grounded source reading")
+                    raise GroundedReviewWireFailure("unknown or duplicate grounded source reading")
                 reason = None
                 for ref in fact.reading_ids:
                     reading = catalog[ref]
@@ -234,6 +243,18 @@ def _restore(prepared):
     if expected.payload_json != prepared.payload_json:
         raise ValueError("grounded review differs from original candidate/source preparation")
     return pin
+
+
+class GroundedReviewWireFailure(ValueError):
+    """The reviewer's answer is not a usable verdict at all.
+
+    This is deliberately separate from a verdict.  A response that is not one
+    instance of the declared contract, repeats a member, quotes text that is
+    not in the candidate Beat, or cites a reading that does not exist carries
+    no review of the candidate: it neither passes nor rejects anything.  The
+    runtime may therefore re-ask the same reviewer inside its existing bounded
+    validation phase.  A definite verdict is never routed here.
+    """
 
 
 class GroundedReviewInconclusive(ValueError):

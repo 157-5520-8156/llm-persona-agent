@@ -10,7 +10,8 @@ from companion_daemon.llm import (
 from .deliberation import ModelUsageProvenance, ProviderSubcallAudit, ValidationTechnicalFailure, run_validation_review_once
 from .model_usage_budget import ModelUsageAdmissionError
 from .visible_grounded_review import (
-    GroundedVisibleReviewRejected, prepare_grounded_review, record_grounded_review_receipt,
+    GroundedReviewWireFailure, GroundedVisibleReviewRejected, prepare_grounded_review,
+    record_grounded_review_receipt,
 )
 from .visible_independent_review_configuration import GroundedVisibleReviewer
 from .visible_rejection_context import rejected_expression_from_review
@@ -34,6 +35,13 @@ async def review_grounded_candidate(
     call_id = "model-call:" + digest(canonical({
         "parent": author.model_call_id, "stage": "grounded_review", "request_hash": prepared.request_hash,
     }))
+    # A distinct emission identity for the bounded re-ask. The request bytes are
+    # identical, so the provider request hash is unchanged; only the emission
+    # identity and the sub-call audit must not collide with the first attempt.
+    retry_call_id = "model-call:" + digest(canonical({
+        "parent": author.model_call_id, "stage": "grounded_review_answer_retry",
+        "request_hash": prepared.request_hash,
+    }))
     raw = None
     audit = None
     stage = "provider"
@@ -47,26 +55,24 @@ async def review_grounded_candidate(
             failure_detail=detail, rejected_expression=rejected,
         )
 
-    async def invoke():
+    async def review_once(emission_id):
+        nonlocal raw, audit, stage
         with (
             model_call_scope(usage_purpose),
-            model_request_emission_scope(provider_call_id=call_id, entry_marker=None, completion_marker=None),
+            model_request_emission_scope(provider_call_id=emission_id, entry_marker=None, completion_marker=None),
             model_provider_request_identity_scope(request_hash=prepared.request_hash, identity_extras=prepared.identity_extras),
         ):
-            return await complete_with_timeout(model.complete_json_with_usage(**prepared.request()), timeout_seconds=22.0)
-
-    try:
-        # Enter the existing candidate validation phase rather than consuming
-        # the author's remaining deadline. This grants time, never another call.
-        raw, usage_value = await run_validation_review_once(invoke, timeout_seconds=24.0)
+            raw, usage_value = await complete_with_timeout(
+                model.complete_json_with_usage(**prepared.request()), timeout_seconds=22.0,
+            )
         binding = VisibleReviewInvocationBinding(
-            parent_model_call_id=author.model_call_id, model_call_id=call_id,
+            parent_model_call_id=author.model_call_id, model_call_id=emission_id,
             model_id=str(getattr(model, "model", type(model).__name__)),
             model_version=str(getattr(model, "VERSION", type(model).__name__)),
             request_hash=prepared.request_hash, response_hash=digest(raw),
         )
         audit = ProviderSubcallAudit(**binding.model_dump(mode="python"), lane="direct", outcome="winner",
-                                    usage=ModelUsageProvenance.model_validate(usage_value))
+                                     usage=ModelUsageProvenance.model_validate(usage_value))
         stage = "receipt"
         receipt = record_grounded_review_receipt(prepared=prepared, author=author, review=binding, raw_response=raw)
         stage = "evidence"
@@ -79,6 +85,25 @@ async def review_grounded_candidate(
         }))
         if len(evidence.encode()) > MAX_EVIDENCE_BYTES:
             raise ValueError("grounded review evidence exceeds carrier bound")
+        return evidence
+
+    try:
+        # Enter the existing candidate validation phase rather than consuming
+        # the author's remaining deadline. This grants time and, only when the
+        # reviewer returned no usable answer at all, one more reviewer call
+        # inside the same already-open phase. A definite verdict and a provider
+        # timeout are never re-asked, and reentry cannot renew the phase.
+        try:
+            evidence = await run_validation_review_once(lambda: review_once(call_id), timeout_seconds=24.0)
+        except GroundedReviewWireFailure:
+            if audit is not None:
+                audit = audit.model_copy(
+                    update={"outcome": "exception", "failure_code": "source_review_exception"},
+                )
+            stage = "answer_retry"
+            evidence = await run_validation_review_once(
+                lambda: review_once(retry_call_id), timeout_seconds=24.0,
+            )
     except BaseException as exc:
         if audit is None and not isinstance(exc, ModelUsageAdmissionError):
             timeout = isinstance(exc, (TimeoutError, asyncio.CancelledError))
@@ -101,7 +126,15 @@ async def review_grounded_candidate(
                 raise failure("paired_expression_reselection_invalid", detail, rejected_expression_from_review(prepared)) from exc
             raise failure("source_review_exception", "visible_grounded_review.feedback_bound_exceeded") from exc
         code = "source_review_timeout" if isinstance(exc, TimeoutError) else "source_review_exception"
-        reason = "admission." + str(exc.reason) if isinstance(exc, ModelUsageAdmissionError) else type(exc).__name__
+        if isinstance(exc, ModelUsageAdmissionError):
+            reason = "admission." + str(exc.reason)
+        else:
+            # Keep the reviewer's own reason readable. A bare class name made
+            # the first real occurrence of this failure unlocalizable.
+            reason = type(exc).__name__
+            message = " ".join(str(exc).split())
+            if message:
+                reason += ":" + message[:240]
         raise failure(code, f"visible_grounded_review.{stage}.{reason}") from exc
     return output.model_copy(update={
         "visible_source_review_json": evidence,

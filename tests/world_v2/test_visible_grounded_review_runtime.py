@@ -115,10 +115,20 @@ class GroundedHTTP:
                 "beat_index": beat["beat_index"], "review_complete": True,
                 "facts": facts, "non_record_expressions": non_record, "unresolved_details": [],
             })
+        content = json.dumps({
+            "contract": "visible-grounded-review.1", "beat_decisions": decisions,
+        }, ensure_ascii=False)
+        if self.fault == "unusable_answer" and len(self.reviews) == 1:
+            # The first answer repeats one member. The response is then not one
+            # instance of the declared contract, so it carries no verdict about
+            # the candidate at all.
+            content = content.replace(
+                '"review_complete": true',
+                '"review_complete": true, "review_complete": true',
+                1,
+            )
         return httpx.Response(200, json={
-            "choices": [{"message": {"role": "assistant", "content": json.dumps({
-                "contract": "visible-grounded-review.1", "beat_decisions": decisions,
-            }, ensure_ascii=False)}, "finish_reason": "stop"}],
+            "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 100, "completion_tokens": 100, "total_tokens": 200},
         })
 
@@ -232,6 +242,31 @@ async def test_grounded_rejection_returns_original_expression_to_same_author_onc
         assert correction["rejected_expression"]["beats"] == [{"beat_index": 0, "text": UNSUPPORTED_REPLY}]
         assert "缺少角色昨天经历的来源" in correction["failure_detail"]
         assert handler.reviews[1]["visible_beats"] == [{"beat_index": 0, "text": REPORT_REPLY}]
+        # A definite verdict is never re-asked: one review per author attempt.
+        assert len(handler.reviews) == 2
+        assert (await app.drain_actions_once()).status == "settled"
+        assert transport.bodies == [REPORT_REPLY]
+        bound_receipt(app)
+
+
+@pytest.mark.asyncio
+async def test_unusable_reviewer_answer_is_reasked_once_without_losing_the_turn(tmp_path):
+    """A reviewer answer that is not the declared contract carries no verdict.
+
+    Real Flash emitted a repeated JSON member inside one fact object. That used
+    to end the whole visible turn as an unexplained technical failure with no
+    delivery and no correction. It must instead re-ask the same reviewer once
+    inside the already-open validation phase, while the character is never
+    re-asked and no unsupported content can pass.
+    """
+
+    handler = GroundedHTTP(fault="unusable_answer")
+    async with application(tmp_path / "world.sqlite", handler) as (app, transport):
+        outcome = await app.respond(replace(_inbound(), text=USER_TEXT))
+        assert handler.callback_errors == []
+        assert outcome.status == "action_authorized", (outcome, _audits(app))
+        assert handler.authors == 1
+        assert len(handler.reviews) == 2
         assert (await app.drain_actions_once()).status == "settled"
         assert transport.bodies == [REPORT_REPLY]
         bound_receipt(app)
