@@ -535,3 +535,57 @@ payload 走现成的 `compile_slim_consider_payload` 物化成同一份 canonica
 这解释了为什么我前面在作者协议上做的两轮优化（schema 26,974→1,007 字符、输出 1,562→275 token）
 没有让单轮成本下降：**我优化的是那 23%，而账单的大头在审核那 62%。**
 下一轮成本工作的正确目标是审核调用次数与审核请求大小，不是作者。
+
+## 主动联系与媒体为什么零产出（run 07 账本）
+
+**主动联系：走的是旧的独立审核，而不是聊天在用的 v24。**
+
+账本里一共只出现过两种审核协议：
+
+```
+visible-grounded-review.1      18   ← v24 单次语境审核（聊天在用，我刚修过的那条）
+visible-independent-review.14   5   ← 旧的独立审核
+```
+
+rev 164 那批事件把主动车道的下场写得很清楚：
+
+| seq | status | failure | route / detail |
+| --- | --- | --- | --- |
+| 314 | `main_exception` | `source_review_exception` | `visible_independent_review.source_read.RuntimeError` |
+| 315 | `candidate_returned` | — | `author_candidate.proactive_visible_candidate.validation_unresolved` |
+| 316/317 | `proposal_validated` | — | `validation.source_review` |
+| 318 | `main_exception` | `source_review_exception` | `validation.source_review` |
+
+也就是说：**主动提候选 → 旧审核在 `source_read` 阶段抛未捕获的 `RuntimeError` → 整个回合变成
+技术失败**，另外还有两次「审核拒绝 + 纠正」，最后什么都没落账。这和我这轮在聊天里修的
+`visible_grounded_review.receipt.ValueError` 是**同一类病**：审核运行时里一个未捕获异常
+吃掉整条链路，只不过聊天那条已经修好、主动这条还在旧协议上。
+
+`proactive_action_deliberation` 开过 4 次进程、`proactive_contact` 花了 7 次调用
+（2.04 元），全部消耗在这上面。
+
+### 下一步（按顺序）
+
+1. 把主动车道的可见审核从 `visible-independent-review.14` 切到聊天已经在用的
+   `visible-grounded-review.1`，或者给旧路径的 `source_read` 加上与聊天同款的
+   「没给出可用答案就重问一次、角色不被重问」保护。**先确认 `source_read` 那句
+   `RuntimeError` 到底从哪里抛出来**（`visible_independent_review_runtime.py:168` 只是
+   设置 stage 的地方，真正的抛出点在它调用的 provider 或 preparation 里）。
+2. 媒体：`PhotoCandidateOpened` 2、`ImageEvidenceDeclared` 2，没有任何生成或投递事件。
+   还没开始查，闸门在 `media_selection_occasion.py` 的「是否问」判定和授权链上。
+
+### 召回 vs RAG：不是替代关系，是两条并存的机制
+
+- **RAG（宿主自动检索）在工作**：`world_v2_recall_documents` 有 **53 行**、索引头 1 行；
+  真实作者请求材料里 `automatic_prefetch` 约 2,516 字符、`remembered_material` 约 1,859 字符
+  ——**每一轮都在把检索结果喂给她**，所以「记忆进上下文」这件事是通的。
+- **角色的自主 recall（她自己选择去查一次）在生产里 0 命中**：账本里 38 轮对话、
+  279 次 `inbound_turn`，没有一次产生 recall 事件。
+- 所以两者不是替代：RAG 负责「**宿主把可能相关的记忆放进她眼前**」，recall 负责
+  「**她自己决定要不要再查一次**」。现在第一条在工作，第二条从未触发——
+  这就是 CLAUDE.md 里「生产自主 recall 命中仍 0」的现状，账本确认至今没变。
+
+保留 recall 是有意义的（它是「她主动想起来」这条产品目标的唯一入口），但**在 RAG 已经在
+供料的前提下，它的价值需要重新评估**：如果她从来不需要额外检索就够用，那这条车道的成本
+和复杂度就该降级；只有在她面对「我记得有这么件事但想不起来」的场景时它才不可替代。
+这属于产品取舍，需要你定，我不擅自删。
