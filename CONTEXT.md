@@ -10,7 +10,7 @@ Subsequent output-contract repair: docs/audits/life-output-contract-2026-09-21.m
 New World tool3 disallows all-null visual environments without forcing environment facts;
 old tools1/2 remain byte-exact (82 related checks). New DeepSeek Appraisal tool2 now
 selects strict schema and beta transport; standard v1 and saved replay stay unchanged
-(240 related checks). Both fixes still require the bounded real continuation below.
+(240 related checks). Tool3 was exercised below; Appraisal2 was not reached.
 New World source material reader3 preserves both cited event payloads and exact author-visible
 accepted content. OldNone/2 byte compilation stays unchanged;29+87 related checks pass.
 This repairs a proven evidence omission; the subsequent real continuation still failed as below.
@@ -20,21 +20,28 @@ Two new real-adapter offline cases and 171 related regressions pass. No new paid
 provider latency improvement, deployment, or release qualification is claimed.
 
 Latest resumable runtime and full billing are both
-output/private-audits/source-model-cost-20260921-01/after-source-fix/world.sqlite:
-ledger1027/revision413 at ledger04:40:01Z (operator virtual04:41Z);
-1793 usage/1790 reservations/74 inherited unknown.
-Cold hash1d500283be60eb331772fd984bf1e96dd3695b999ecf4d96560469cf4108341a;
-4 inherited visible v22 receipts remain exact and cold-verified;0 new receipts.
-Frozen977f9540 made6 known calls, adding0.18973288 CNY estimate,0 new unknown.
-The only visible delivery was an explicit system technical notice. No new
-WorldOccurrence, Experience, Memory or character delivery was accepted.
-The World critic saw accepted life content, now rejecting temporal persistence
-and extra semantics. This candidate cited occurrence IDs, so the new same-event
-material overlap branch is proven by the original reproduction/offline producer
-fixture, not isolated by this cloud run. The World correction was valid JSON and
-valid native schema, but its all-null visual environment failed the canonical
-parser. Appraisal correction separately had unescaped quotes after life review.
-Do not repeat this unchanged or mark either life continuity or speed/cost qualified.
+output/private-audits/source-model-cost-20260921-01/after-contract-fix/world.sqlite:
+ledger1141/revision468 at ledger05:08:01Z (operator virtual05:11Z);
+1805 usage/1802 reservations/74 inherited unknown.
+Cold hash ab002de218364933dadd85691a9636bbfcc9ebb57300ca0ddb0dae09acde57c4;
+4 inherited visible v22 receipts remain exact, plus1 new cold-verified receipt.
+Frozenfff6a8d3 made12 known calls, adding0.29235522 CNY estimate,0 new unknown.
+A new blue-leaf chat delivered3 authored beats with capture terminal receipts.
+Chat plus post-delivery fact cost0.05953650 CNY; complete step17.7522s is only
+an upper bound for first delivery, not an exact measurement. No monthly cost pass.
+New ActivityStarted1125, but no new WorldOccurrence/Experience/Memory.
+Native tool3 all-null environment mismatch did not recur. Remaining failures:
+source reviewer reason2540>2000 recovered once; World semantic rewrite extra brace;
+next native-valid draft invalid narrative tags; correction repaired tags but changed
+visual location away from proposal location. No real Appraisal2 call occurred.
+New capture wall timestamps are offline-tested (41 checks), not applied retroactively.
+Native World output still failed despite strict/beta. Do not repeat unchanged or
+claim life continuity, latency, monthly cost, or invitation release is qualified.
+
+Prior after-source-fix1027/413 and1793/1790/74 is historical, not a resume point.
+It made6 known calls adding0.18973288 CNY, no unknown; no new character/life receipt.
+It repaired missing author-visible accepted source material, but the new same-event
+material overlap branch was proved by offline reproduction, not isolated by that run.
 
 The preceding8-call continuation at1016/revision412 added0.16875778 CNY known,
 no unknown, and demonstrated that invalid World rewrites are now durably audited.
@@ -44,7 +51,7 @@ uses persistent30s/30min/2h backoff; it is not a repeated-per-clock scheduling b
 The preceding4 source-only calls added0.0645963 CNY known estimate. Flash was
 faster but both models falsely rejected a previously accepted response; this
 trial did not qualify a default model change or cheaper service. All its bills
-are included in the1793 prefix above. Do not resume older cheaper snapshots.
+are included in the1805 prefix above. Do not resume older cheaper snapshots.
 Earlier recall-fact-chat run ended973/396 with1775 usage/1772 reservations/74 unknown.
 It restored runtime10 and merged all32 subsequent probe bills before calling.
 The b8243599 trial made11 physical calls:10 known (0.4497742 CNY repository estimate),
