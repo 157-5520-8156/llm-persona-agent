@@ -674,7 +674,10 @@ async def test_required_review_cli_host_holds_complete_candidate_until_review(
             schema = body["tools"][0]["function"]["parameters"]
             if tool_version != "1":
                 instruction = body["messages"][0]["content"]
-                assert instruction.index(f"ATOMIC TOOL ENVELOPE V{tool_version}:") > instruction.index("FORCED TOOL TRANSPORT")
+                if tool_version == "3":
+                    assert instruction.startswith("character-inbound-prompt.1\n")
+                else:
+                    assert instruction.index(f"ATOMIC TOOL ENVELOPE V{tool_version}:") > instruction.index("FORCED TOOL TRANSPORT")
                 assert "Its arguments must include result_kind." not in instruction
                 assert set(schema["properties"]) == {"result"}
                 variants = schema["properties"]["result"].get("anyOf", [schema["properties"]["result"]])

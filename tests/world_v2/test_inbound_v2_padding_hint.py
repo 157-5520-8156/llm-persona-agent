@@ -73,13 +73,13 @@ async def test_captured_author_padding_hint_matches_initial_and_after_recall_sch
             # either the first author call or the resumed call after Recall.
             assert "一个 slim 对象就够了" not in system
             assert "photo 写 true" not in system
-            assert "CANONICAL ATOMIC ROLE GUIDANCE .1" in system
+            assert "character-inbound-prompt.1" in system
             assert "appraisal_draft.life_intent" in system
             assert "expression_draft.media_request" in system
             assert "expression_draft.private_turn_state" in system
             assert _PADDING_MARKER not in system
             assert "ATOMIC TOOL ENVELOPE V2:" not in system
-            assert "ATOMIC TOOL ENVELOPE V3:" in system
+            assert system.startswith("character-inbound-prompt.1\n")
             hint = json.loads(system.rsplit("Exact result fields by available result_kind:\n", 1)[1])
             branches = body["tools"][0]["function"]["parameters"]["properties"]["result"]["anyOf"]
             assert hint == {

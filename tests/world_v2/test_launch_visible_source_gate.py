@@ -133,7 +133,7 @@ class _ReviewHTTP:
                 authored["expression_draft"]["beats"][0]["text"] = "我想重新把自己的想法说完整。"
             if self.tool_version == "3":
                 system = body["messages"][0]["content"]
-                assert "ATOMIC TOOL ENVELOPE V3:" in system
+                assert system.startswith("character-inbound-prompt.1\n")
                 assert "Required explicit null padding paths" not in system
                 return _http_result(body, {"result": {
                     key: authored[key] for key in ("result_kind", "appraisal_draft", "expression_draft")

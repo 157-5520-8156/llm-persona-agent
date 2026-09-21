@@ -247,7 +247,7 @@ async def _compiler_bytes():
     return rows
 
 
-def test_legacy_compiler_bytes_stay_frozen_and_v3_reminder_has_new_identity():
+def test_legacy_compiler_bytes_stay_frozen_and_compact_v3_has_new_identity():
     # Captured from c48d23d7 with the same synthetic compiler input. Legacy
     # tools have set-derived list order, so compare under the original seed.
     expected = {
@@ -269,9 +269,8 @@ def test_legacy_compiler_bytes_stay_frozen_and_v3_reminder_has_new_identity():
     )
     current = json.loads(result.stdout)
     assert {key: current[key] for key in expected} == expected
-    # Captured before the legacy-only repair. V3 retains the newer memory
-    # authority (6622349f), single-episode guidance (51be7434), and one-copy
-    # correction coordinate (057bb2b9). Old author requests retain their own
-    # stored bytes; this compiler does not rebuild them during verification.
-    assert current["3:False:True:False"] == "2e3ff34c61ee9dfc253bb03f896a31faf8e674a0ac7c5e9aed3061d5df9ab37a"
-    assert current["3:False:True:True"] == "aa6e3035de2d08f23b2e4950f82c32c212f52f4e3c99330ff9c451a77666ac2e"
+    # New atomic v3 uses character-inbound-prompt.1. The eight historical
+    # variants above retain their bytes; saved v3 carriers also retain their
+    # exact original prompt rather than using this compiler during replay.
+    assert current["3:False:True:False"] == "1271c8aa224114684965299fe6d74ff0f9cf060ce4c19da15649e1aeca03d069"
+    assert current["3:False:True:True"] == "eb9b75a7b7e78dc2da518c3e2261e20f9ad7479b25592aca2831b2be61ad8c59"
