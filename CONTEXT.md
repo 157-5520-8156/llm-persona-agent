@@ -3,11 +3,12 @@
 For current release qualification read `docs/audits/release-status-2026-09-13-current.md`.
 Current status: manual_only / qualification_incomplete (2026-09-21).
 
-Latest resumable runtime AND full cumulative billing are now unified at
-output/private-audits/release-clean-continuation-20260921-10/run:
-ledger882/revision354 at04:28Z, 1732 usage /1729 reservations /73 unknown holds.
-Restore this closed journey with all billing intact; earlier09 and isolated probes are historical.
-Cold hash0527998d2b5713a231729f2c72d6932afd3019d6f28ad807623143d943dc6960.
+Latest resumable runtime remains output/private-audits/release-clean-continuation-20260921-10/run:
+ledger882/revision354 at04:28Z; cold hash0527998d2b5713a231729f2c72d6932afd3019d6f28ad807623143d943dc6960.
+Latest FULL cumulative billing is now output/private-audits/recall-chat-comparison-20260921-01/run-v2/world.sqlite:
+1764 usage /1761 reservations /73 inherited unknown holds. Restore runtime10 and merge ALL
+32 new probe usage/reservation rows before any provider call or billing watermark.
+The probes are not resumable runtime journeys; do not restart from runtime10's cheaper1732-row billing alone.
 
 10 ran frozen2978be51, initialization0, physical ceiling40, actual30 known calls;
 new estimated cost1.0408613 CNY, zero new unknown holds. Normal stop, clients,
@@ -49,8 +50,26 @@ queries retrieved2/3 old targets; fixed RRF plus query-cue coverage retrieved3/3
 increased forbidden old-negative material3->5. Neither passed the frozen criteria;
 neither entered production. Independent query positives stayed8/8 per split, already
 achieved by the semantic baseline; this is not a new gain or a pronoun-resolution proof.
-Both trials are closed; no third proposal, paid probe or journey was started.
-The unified10 billing above is unchanged. See `docs/audits/recall-phase-2026-09-21.md`.
+Both retrieval trials closed without a third proposal or paid call in that phase.
+See `docs/audits/recall-phase-2026-09-21.md`; subsequent author diagnostic billing is above.
+
+The subsequent eight-pair author diagnostic made32 physical calls: the first16 used
+incorrect old policy wiring and are excluded; the second16 match journey10 author policy/tools,
+but added recall still lacks runtime authority traces. Twelve decision drafts and four unexecuted
+Recall choices are not complete chat, review or delivery evidence. Source text was present yet
+sometimes ignored; missing biography also became unsupported negative family facts.
+The Core recall reading drops existing subject/speaker metadata; the narrow repair restores
+these for new hybrid.8 readings and retains historical index-bound shapes. Do not claim model
+behavior improved from this interface fix or use permission-incomplete overlays as acceptance.
+Repair26e775d3 passed94 focused checks plus a3-test native/legacy rerun; Ruff/diff passed.
+A separate native coordinator -> Core -> InboundTurnFaculty offline fixture also confirms:
+prefetch-only Fact text and trusted trace reach the author, but its absent original semantic lane
+leaves counterpart_history permission missing. Existing augmentation removes the mechanical rejection.
+This is a real local Faculty seam defect, not merely the overlay limitation; it remains unpatched.
+Next repair must carry verified actually presented recall through permissions, review and replay,
+not just add author permission. No cloud calls or acceptance were performed by this proof.
+Total added estimated cost0.56389952 CNY; all32 known, no new unknowns, all nonbilling tables unchanged.
+See `docs/audits/recall-author-comparison-2026-09-21.md` for evidence and limitations.
 
 The .13/.14 request compiler now builds its final wire directly; .1-.12 retain
 their historical builders. 42 frozen public-fixture envelopes/provider hashes and
