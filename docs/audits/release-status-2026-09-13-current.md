@@ -23,9 +23,12 @@ Appraisal v2未被本次云运行触发。尚不能认定生活连续性、速�
 
 随后`c89efca9`的JSON入口续跑未走到World：新颜色聊天被语义误拒，Appraisal v2
 真实beta请求因schema容器不兼容被400拒绝。10次调用（9known+1not_billed），新增
-估算0.19990700元，0新unknown，无新角色交付或经历。最新运行/计费点已变为
-`after-json-transport/world.sqlite`：1163/471、1815/1812/74，5份旧回执冷验通过。
-供应商schema错误正在修复，不能沿用此前mock通过的结果宣称严格Appraisal已可用。
+估算0.19990700元，0新unknown，无新角色交付或经历。运行点已变为
+`after-json-transport/world.sqlite`：1163/471、当时1815/1812/74，5份旧回执冷验通过。
+Appraisal最终展平修复`3349f716`的单次真实格式探针HTTP200/4.812秒，JSON/schema/
+typed shape通过；未物化角色结果、审核来源或形成经历。最新计费已追加至
+`appraisal-v3-probe2/world.sqlite`：1817/1814/74；probe1未计费，probe2估算0.09089224元，
+World数据全不变。续跑必须合并完整新账目。生活与聊天完整验收仍未通过。
 
 ## 本轮已经完成
 

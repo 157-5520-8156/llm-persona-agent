@@ -101,7 +101,7 @@ response_format=json_object；仍保留JSON提示与示例、输出上限和完�
 每个虚拟分钟检查新失败；实际10次调用后停止，无新交付。
 
 9次known、1次供应商400明确not_billed，新增估算0.19990700元，零新增unknown。
-最新运行及计费点为`output/private-audits/source-model-cost-20260921-01/after-json-transport/world.sqlite`：
+该阶段运行及计费点为`output/private-audits/source-model-cost-20260921-01/after-json-transport/world.sqlite`：
 1815 usage/1812 reservations/74既有unknown，ledger1163/revision471，logical05:11Z。
 冷重放hash为`8e0ac08c1d3acf5029d41ff60b9dd1fa4f0ec4effe164c044a3fdfe876f76490`；
 原5份v22回执字节不变且冷重编通过，新增0份。
@@ -142,3 +142,31 @@ response_format=json_object；仍保留JSON提示与示例、输出上限和完�
 
 独立检查也确认本轮Appraisal 400没有作者checkpoint。到期后的新技术attempt重新
 编译当前工具，不会永久陷在旧v2，不需要改写历史LifeSourceView或迁移角色状态。
+
+
+## 展平后的单次真实验证
+
+冻结`3349f716`，继承上一probe全部1816/1813/74账目，使用新prepared2及新请求摘要；
+原角色材料、模型、温度与输出上限不变，工具差异只含上述等价展平。
+实际1次HTTP200、4.812秒，返回1份transition提案；原生schema、严格JSON解码及
+canonical typed shape均通过，没有本地JSON修补。
+
+这次只验供应商格式接纳与类型，不做来源审核、能力授权、Appraisal物化、Experience
+生成或QQ交付，World所有非计费表保持原样。不能拿它替代完整生活链验收，也不能
+把4.812秒当作聊天首条响应时间。没有再次运行World JSON或新的整轮聊天。
+完整调用证据位于`output/private-audits/source-model-cost-20260921-01/appraisal-v3-probe2/`。
+
+本轮工程修复和有限实测到此收口，状态仍为manual_only / qualification_incomplete。
+剩余实证阻塞是普通未来邀请的语义误拒、World候选与纠正尚未形成新经历，完整聊天
+速度和每月100元负载尚未通过；下一次工作不得从旧的低计费前缀重新开始。
+
+
+最终独立对账通过（`appraisal-v3-probe2-reconciliation.json`）：probe2新增1笔known，
+仓库精确估算0.09089224元（账本显示四舍五入0.0909），43097输入/650输出，缓存
+命中256、未命中42841；无新增unknown。probe1为not_billed。两者所有非计费表逐值
+不变，5份旧回执保留。
+
+**后续唯一接续组合**：运行从`after-json-transport/world.sqlite`恢复1163/471、05:11Z；
+先合并`appraisal-v3-probe2/world.sqlite`的完整**1817 usage/1814 reservations/74既有unknown**。
+不能只用运行源里的1815前缀。两轮旅程加两次格式探针共24次物理调用，22known、
+2not_billed，新增仓库估算合计0.58315446元；不把测试累计量外推月费。

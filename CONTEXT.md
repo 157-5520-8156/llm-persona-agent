@@ -8,9 +8,11 @@ current-life prose remains deferred. Retain source authority and character agenc
 See docs/audits/life-speed-cost-2026-09-21.md for the bounded repair and measured limits.
 Subsequent output-contract repair: docs/audits/life-output-contract-2026-09-21.md.
 New World tool3 disallows all-null visual environments without forcing environment facts;
-old tools1/2 remain byte-exact (82 related checks). New DeepSeek Appraisal tool2 now
-selects strict schema and beta transport; standard v1 and saved replay stay unchanged
-(240 related checks). Tool3 was exercised below; Appraisal2 was not reached.
+old tools1/2 remain byte-exact. Appraisal strict3 now preserves and flattens complete
+unions; old standard1/strict2 remain exact. Its single real provider-format probe returned
+HTTP200 in4.812s and passed strict JSON/schema/typed shape only: no source authority,
+Appraisal materialization, Experience or delivery was tested by that probe.
+Related202 checks and9 focused schema checks passed separately. No deployment.
 New World source material reader3 preserves both cited event payloads and exact author-visible
 accepted content. OldNone/2 byte compilation stays unchanged;29+87 related checks pass.
 This repairs a proven evidence omission; the subsequent real continuation still failed as below.
@@ -19,10 +21,16 @@ its own 22s deadline counts as provider_timeout; external cancellation stays cal
 Two new real-adapter offline cases and 171 related regressions pass. No new paid calls,
 provider latency improvement, deployment, or release qualification is claimed.
 
-Latest resumable runtime and full billing are both
-output/private-audits/source-model-cost-20260921-01/after-json-transport/world.sqlite:
-ledger1163/revision471 at logical/operator05:11Z;
-1815 usage/1812 reservations/74 inherited unknown.
+Latest resumable runtime:
+output/private-audits/source-model-cost-20260921-01/after-json-transport/world.sqlite;
+ledger1163/revision471 at logical/operator05:11Z, runtime billing prefix1815/1812/74.
+Latest full billing:
+output/private-audits/source-model-cost-20260921-01/appraisal-v3-probe2/world.sqlite;
+1817 usage/1814 reservations/74 inherited unknown. Merge this complete billing prefix
+before any continuation; the runtime source alone omits the two format probes.
+Probe1 was400/not_billed. Probe2 was200/known,0.09089224 CNY repository estimate,
+43,097 input/650 output tokens,4.812s; native/schema/typed shape only passed.
+Both preserved every nonbilling row; no World result or delivery was added.
 Cold hash8e0ac08c1d3acf5029d41ff60b9dd1fa4f0ec4effe164c044a3fdfe876f76490;
 5 inherited v22 receipts remain byte-exact and cold-verified,0 new receipts.
 Frozenc89efca9 made10 calls:9 known +1 provider400 not_billed,
@@ -32,8 +40,9 @@ semantically misread/rejected; no first-delivery latency exists for this failed 
 Appraisal2 DID reach beta but failed400: result declares type object with no properties;
 its union has the real object branches. Projection also lost affect operation variants.
 New Appraisal3 preserves the complete affect unions and removes the invalid union
-object envelope; old1/2 remain exact.202 related checks pass; a single format-only
-probe is pending. Previous mock routing checks did not prove provider compatibility.
+object envelope; old1/2 remain exact.202 related checks pass. The first isolated v3 probe still hit400 on nested unions;
+3349f716 flattened only pure unions. The second single format probe passed as above.
+Original rejected requests remain immutable; source/authority/life acceptance was not tested.
 
 Earlier after-contract-fix1141/468 and1805/1802/74 is now historical.
 Frozenfff6a8d3 made12 known calls, adding0.29235522 CNY estimate,0 new unknown.
@@ -55,7 +64,7 @@ uses persistent30s/30min/2h backoff; it is not a repeated-per-clock scheduling b
 The preceding4 source-only calls added0.0645963 CNY known estimate. Flash was
 faster but both models falsely rejected a previously accepted response; this
 trial did not qualify a default model change or cheaper service. All its bills
-are included in the1805 prefix above. Do not resume older cheaper snapshots.
+are included in the1817 prefix above. Do not resume older cheaper snapshots.
 Earlier recall-fact-chat run ended973/396 with1775 usage/1772 reservations/74 unknown.
 It restored runtime10 and merged all32 subsequent probe bills before calling.
 The b8243599 trial made11 physical calls:10 known (0.4497742 CNY repository estimate),
