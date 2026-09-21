@@ -106,6 +106,61 @@ COMPANION_DISABLE_DEBUG_USAGE_LEDGER=1 PYTHONPATH=src \
 单轮约 0.98 元（14 轮 13.77 元），与约 100 元/月的产品目标差距约 3 倍以上；这是**未达标的
 实测数字**，不是可以外推的月费结论。真实回复延迟也不是 README 里 2–3 秒的目标。
 
+## 追加：精简作者出口已实现并实测（`64d277a5` + `afed85a9`）
+
+按上一节列的「下一步只做一件事」实现完毕。做法是复用而不是新增协议模型：
+atomic 作者工具换成 stream 路径上已经在跑的 compact carrier（`result_kind` + 一个
+`payload_json` 字符串），payload 走现成的 `compile_slim_consider_payload` 编译成同一份
+canonical `appraisal_draft` / `expression_draft`，下游审核、接受、Action、回执全部不变。
+她的决定面一项没少：理解、感受、affect、时机、气泡、沉默、媒体、world_claims、recall
+都还是她选；宿主只补 envelope 常量、beat modality、有界 rationale 副本和必为空的兄弟字段。
+
+版本号用 `"slim"` 而不是 `"4"`：审核协议命名空间已经占用了 4，仓库里还有一条
+「审核版本不得顺带开启作者 envelope」的守门测试，改号会让那条测试名字变成假的。
+
+同一段钉住输入（run 03 的第一条，两轮真实调用都从同一身份状态出发）：
+
+| 组成 | 严格双草稿 v3 | slim carrier |
+| --- | --- | --- |
+| provider tool schema | 26,974 字符 | **1,007 字符**（−96%） |
+| system 提示词 | 8,334 字符 | 15,265 字符（+83%） |
+| 她的输出 | 1,562 token | **275 token**（−82%） |
+| 该次 prompt token | 34,578 | 45,050 |
+| 单次作者调用估算 | 0.265854 元 | 0.304930 元 |
+
+**结论必须分开读：输出侧的协议负担确实被解决了，成本没有。**
+
+- 输出从 1,562 降到 275 token：不再写 26,974 字符 schema 要求的几十个必填 null 兄弟、
+  内部 hex component/episode id、重复的 stance/rationale。这是这一阶段的目标，达成。
+- schema + system 合计从 35,308 降到 16,272 字符（−54%）。
+- **但单轮成本没有下降。** 该次 prompt 反而从 34,578 涨到 45,050 token：一部分是比较期间
+  真实对话又长了 14 轮（user 材料 64,605 → 89,571 字符，属对照污染，不是 carrier 造成），
+  另一部分是**我自己把 system 从 8,334 写到了 15,265 字符**——`slim_consider_instruction()`
+  有 8,536 字符。也就是说：接口层省下的输入，被更长的说明和更大的语境吃掉了。
+
+单轮成本仍约 1.16 元（3 轮 3.489328 元，16 次调用），与 v3 的约 0.98 元同一量级。
+**100 元/月目标依旧不达标，而且瓶颈已经不在协议外壳，而在 system 说明与 user 材料。**
+
+真实链路同时验证了两件事：
+
+- carrier 在完整 host 里跑通：第 1 条输入交付 4 条气泡，5 次物理调用；3 轮里 1 轮交付，
+  另 2 轮是已知的「审核拒绝 + 纠正不合法」和作者自己的 `primary_invalid`。
+- **上一节的修复在生产链路里生效了。** 第 3 轮出现 `source_review_exception`，现在细节是
+  `visible_grounded_review.receipt.GroundedReviewWireFailure:unknown or duplicate grounded source reading`
+  ——不再是无法定位的裸 `ValueError`；账本里能看到同一请求字节在 4 秒后被重问了一次
+  （26,616 prompt，第二次 cache_hit 26,368），即那条有界重问确实按设计触发，且只触发一次。
+
+运行与计费继续点：`output/private-audits/source-model-cost-20260921-01/slim-chat-20260921-04/world.sqlite`，
+`1946 usage / 1943 reservations / 77 unknown`，ledger 2827，16 次调用全部有原生用量行，
+新增估算 3.489328 元，0 新增 unknown。核验：`grounded-chat-20260921-04/reconciliation.json`。
+进程正常停止、客户端关闭、无真实 QQ 外发、无生产库写入。
+
+### 因此下一阶段仍然是同一件事的下一半
+
+不是再改协议，而是**把上下文本身变小**：先砍 system（`slim_consider_instruction` 8,536 字符
+能否只保留她真正会选错的字段），再看 user 材料里哪些是每轮都送、她从不使用的部分。
+在此之前不新增审核层、不改生活链。
+
 ## 还没解决、不要掩盖
 
 1. **角色仍然编造自己的生活经过。** 第 3、7、9 轮的拒绝理由是审核正确指出的：她把用户

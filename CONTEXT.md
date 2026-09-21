@@ -21,9 +21,22 @@ chat-first-draft-20260921-03/world.sqlite;1930 usage/1927 reservations/77 unknow
 66 physical calls all with native usage rows, known estimate13.772318 CNY,2 new unknown
 holds (capacity, not a charge); ledger2587. Verified by grounded-chat-20260921-03/
 reconciliation.json. No real QQ send, no production database write, no deployment.
-Single next item: give ordinary chat the slim author exit by reusing the existing compact
-carrier plus compile_slim_consider_payload (provider schema26,974 to about2,200 chars),
-without adding a protocol model or removing any character decision.
+Slim author exit shipped at64d277a5 (+afed85a9 host guard): the atomic author tool is the
+existing compact carrier and its payload goes through compile_slim_consider_payload into the
+same canonical drafts; carrier version is "slim", not4, because the review namespace owns4.
+Same pinned input: provider schema26,974 to1,007 chars, her output1,562 to275 tokens (-82%),
+schema+system -54%. Cost did NOT improve: about1.16 CNY/turn (3 turns3.489328 CNY), and that
+prompt rose34,578 to45,050 tokens because the control context grew14 rounds and because the
+system itself grew8,334 to15,265 chars. The bottleneck is now the system text and the user
+material, not the envelope. The same real run shows8cce5843 working in production: the review
+exception now reads GroundedReviewWireFailure:unknown or duplicate grounded source reading and
+the ledger shows the identical request bytes re-asked once4s later (second call cache_hit26,368).
+Continuation:output/private-audits/source-model-cost-20260921-01/slim-chat-20260921-04/world.sqlite,
+1946/1943/77, ledger2827,16 calls all with native usage rows, new estimate3.489328 CNY,
+0 new unknown; grounded-chat-20260921-04/reconciliation.json.3 inputs,1 delivered; the other2
+are the known review-rejection-plus-invalid-correction and author primary_invalid.
+Next single item: shrink the context itself - first the8536-char slim instruction, then the
+user material she never uses - before touching the life chain or adding any review layer.
 See docs/audits/chat-first-draft-2026-09-21.md.
 This paragraph supersedes the v24 trial paragraph below for delivery status.
 

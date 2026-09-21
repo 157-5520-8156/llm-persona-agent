@@ -24,6 +24,21 @@
 换成现成 compact carrier + `compile_slim_consider_payload` 精简结构。详见
 [首稿交付复测](chat-first-draft-2026-09-21.md)。没有真实 QQ 外发、没有生产库写入、没有部署。
 
+**精简作者出口已实现并实测（`64d277a5` + `afed85a9`）：输出负担解决，成本未解决。**
+atomic 作者工具换成现有 compact carrier，payload 走现成 `compile_slim_consider_payload`
+编译成同一份 canonical 双草稿，下游全不变；版本号用 `"slim"` 以免与审核协议 v4 冲突。
+同一段钉住输入：provider schema 26,974 → 1,007 字符，她的输出 1,562 → 275 token（−82%），
+schema+system 合计 −54%。**但单轮成本没有下降**（约 1.16 元/轮，3 轮 3.489328 元）：
+该次 prompt 反而 34,578 → 45,050 token，一是对照期间上下文长了 14 轮，
+二是 system 自己从 8,334 写到 15,265 字符。瓶颈已不在协议外壳，而在 system 与 user 材料。
+真实链路同时验证 `8cce5843` 生效：`source_review_exception` 现在带
+`GroundedReviewWireFailure:unknown or duplicate grounded source reading`，账本可见同请求字节
+4 秒后被重问一次（第二次 cache_hit 26,368），有界重问按设计且只按设计触发一次。
+继续点 `slim-chat-20260921-04/world.sqlite`：1946/1943/77，ledger 2827，16 次调用全有原生用量行，
+新增估算 3.489328 元，0 新增 unknown，核验见 `grounded-chat-20260921-04/reconciliation.json`。
+3 轮里 1 轮交付，另 2 轮仍是已知的审核拒绝+纠正不合法与作者 `primary_invalid`。
+没有真实 QQ 外发、没有生产库写入、没有部署。
+
 **上个冻结候选已通过完整回归，本轮修复通过定向验证，尚不可开放邀请。**
 首版仍限定单角色、自然聊天、已有生活和记忆、可录制面板。小屋和新增能力不进入本次收敛。
 测试支出不设金额上限，但产品约100元／月目标、逐次调用上限和完整账目继续保留。
