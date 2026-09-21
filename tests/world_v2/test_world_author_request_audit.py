@@ -58,7 +58,7 @@ class _ReceivedAuthor:
         return result
 
 
-def _runtime(ledger, store, wake, author, *, current=True):
+def _runtime(ledger, store, wake, author, *, current=True, world_author_transport="auto"):
     return LifeDevelopmentRuntime(
         ledger=ledger,
         content_store=store,
@@ -71,6 +71,7 @@ def _runtime(ledger, store, wake, author, *, current=True):
             _CurrentManifest(wake=wake) if current else _StaticManifestCompiler(wake=wake)
         ),
         owner_actor_ref=OWNER,
+        world_author_transport=world_author_transport,
     )
 
 

@@ -751,6 +751,8 @@ class WorldV2TurnApplicationConfig:
     # events from that contract remain replayable, but no live application may
     # create new work through it.
     visible_source_review_required: bool = False
+    # New World requests only; persisted author requests retain their carrier.
+    world_author_transport: Literal["auto", "json_object"] = "auto"
     # Read-only capacity probe for background lanes: true when the day's
     # background envelope is already spent.  It bounds work, never speech, and
     # the visible reply path keeps its own explicit caps.
@@ -868,6 +870,8 @@ class WorldV2TurnApplicationConfig:
             raise ValueError("chat budget limits are invalid")
         if not self.reply_recovery_policy:
             raise ValueError("reply recovery policy must not be empty")
+        if self.world_author_transport not in {"auto", "json_object"}:
+            raise ValueError("world author transport must be auto or json_object")
         if self.expression_episode_mode not in {"off", "shadow", "stream"}:
             raise ValueError("expression episode mode must be off, shadow, or stream")
         if self.recorded_cadence_mode not in {"off", "shadow", "on"}:
@@ -4448,6 +4452,7 @@ def build_sqlite_world_v2_turn_application(
                 content_store=life_content_store,
                 world_author=life_world_author_model,
                 world_author_source_rewriter=life_world_author_source_rewriter,
+                world_author_transport=config.world_author_transport,
                 character_interior=character_interior,
                 source_closure_reviewer=life_source_closure_reviewer,
                 capsule_compiler=capsules,

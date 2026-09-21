@@ -82,4 +82,12 @@ drain完成以及每条捕获消息均可关联。记录只在评估输出，不
 四次World请求都携带约16KB canonical输出契约和约18KB native schema，实际输入
 约5万token。现有JSON-object通道可保留完整canonical契约，省去native schema；后续
 仅对新请求显式选择该已有通道，旧工具恢复不变。一次有限对照后再判断，不默认切换。
-完整原稿纠正及新JSON出口接线正在处理，尚不算已通过真实复验。
+完整原稿纠正和显式JSON入口已实现；默认auto不变，没有增加重试或配置层。
+原稿、hash、错误和原pin存储后再请求；旧tool1/2与未标记JSON仍按原载体，切换当前
+配置也不改变已保存请求。明确JSON请求若adapter或原供应商不支持complete_json则
+报错，不能退回普通文本。纠正及request audit等72项通过，双向切换的6项冷恢复再过，
+CLI相关74项通过。真实JSON对照仍待执行。
+
+依据[官方JSON Output说明](https://api-docs.deepseek.com/guides/json_mode/)选用已有
+response_format=json_object；仍保留JSON提示与示例、输出上限和完整本地校验。
+官方提示可能空content或截断，因此不把该出口视为永不失败的保证。

@@ -48,6 +48,10 @@ def parse_options(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model-mode", choices=("fixture", "real-provider"), default="fixture")
     parser.add_argument("--allow-real-provider", action="store_true")
     parser.add_argument(
+        "--world-author-transport", choices=("auto", "json_object"), default="auto",
+        help="Explicit transport for new World author requests; saved requests retain their original transport.",
+    )
+    parser.add_argument(
         "--require-visible-source-review", action="store_true",
         help="Require whole-candidate source review in the real-provider capture host (atomic expression).",
     )
@@ -500,6 +504,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                 timing_policy, wall_clock=clock.presentation_now,
             ),
             use_configured_recall_embedding=False,
+            world_author_transport=options.world_author_transport,
             **injected,
         )
 
@@ -550,6 +555,7 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
             "scenario_sha256": hashlib.sha256(scenario_bytes).hexdigest(),
             "code": code_identity(),
             "models": model_identity(configured, synthetic=synthetic),
+            "world_author_transport": options.world_author_transport,
             "interactive_timing_policy": {
                 "total_seconds": timing_policy.total_seconds,
                 "hedge_after_seconds": timing_policy.hedge_after_seconds,

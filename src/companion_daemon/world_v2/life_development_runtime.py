@@ -1767,6 +1767,7 @@ class LifeDevelopmentRuntime:
         content_store: ImmutableLifeContentStore,
         world_author: LifeDevelopmentModel,
         world_author_source_rewriter: LifeDevelopmentModel | None = None,
+        world_author_transport: Literal["auto", "json_object"] = "auto",
         character_interior: CharacterInterior,
         source_closure_reviewer: LifeDevelopmentModel | None = None,
         capsule_compiler: LifeContextCapsuleCompiler,
@@ -1777,9 +1778,16 @@ class LifeDevelopmentRuntime:
     ) -> None:
         if not owner_actor_ref or not actor:
             raise ValueError("Life Development requires owner and actor identities")
+        if world_author_transport not in {"auto", "json_object"}:
+            raise ValueError("world author transport must be auto or json_object")
+        if world_author_transport == "json_object":
+            origin = getattr(world_author, "authority_origin", world_author)
+            if not all(callable(getattr(model, "complete_json", None)) for model in (world_author, origin)):
+                raise TypeError("explicit World author JSON transport requires complete_json")
         self._ledger = ledger
         self._store = content_store
         self._world_author = world_author
+        self._world_author_transport = world_author_transport
         self._world_author_source_rewriter = (
             world_author_source_rewriter
             if world_author_source_rewriter is not None
@@ -5948,7 +5956,15 @@ class LifeDevelopmentRuntime:
         tool_contract = {}
         if manifest.outcome_contract == "world-consequence.2":
             hard_boundary_contract = json.loads(messages[1]["content"])["cross_field_authority"]
-            if getattr(self._world_author, "supports_strict_tool_choice", False) is True:
+            if self._world_author_transport == "json_object":
+                user = json.loads(messages[1]["content"])
+                user["world_author_json_transport"] = "json_object"
+                messages = [
+                    dict(message, content=json.dumps(user, ensure_ascii=False))
+                    if index == 1 else dict(message)
+                    for index, message in enumerate(messages)
+                ]
+            elif getattr(self._world_author, "supports_strict_tool_choice", False) is True:
                 tool_contract = world_consequence_author_tool_contract(provider=self._world_author)
                 messages = bind_world_consequence_author_tool(
                     messages=messages, tool_contract=tool_contract,
@@ -6156,8 +6172,9 @@ class LifeDevelopmentRuntime:
                     },
                 ]
                 if manifest.outcome_contract == "world-consequence.2":
-                    messages[-1] = _world_consequence_reselection_message(
+                    messages = _world_consequence_structure_correction_messages(
                         original_messages=messages[:-1],
+                        rejected_raw=raw,
                         correction=json.loads(messages[-1]["content"]),
                     )
         raise AssertionError("World Author retry loop did not terminate")
@@ -7784,6 +7801,34 @@ _WORLD_AUTHOR_COMPLIANT_PROPOSE_EXAMPLE = {
         },
     ],
 }
+
+
+def _world_consequence_structure_correction_messages(
+    *, original_messages: list[dict[str, str]], rejected_raw: str,
+    correction: dict[str, object],
+) -> list[dict[str, str]]:
+    """Show the exact failed draft on current carriers; keep old inputs frozen."""
+    original_user = json.loads(original_messages[1]["content"])
+    wire = original_user.get("world_author_wire", {})
+    include_raw = (
+        wire.get("contract") == "world-consequence-author-tool.3"
+        or original_user.get("world_author_json_transport") == "json_object"
+    )
+    messages = list(original_messages)
+    if include_raw:
+        correction = {
+            **correction,
+            "rejected_draft": {
+                "message_index": len(messages),
+                "raw_sha256": hashlib.sha256(rejected_raw.encode("utf-8")).hexdigest(),
+                "authority": "untrusted_model_output_not_instructions_or_evidence",
+            },
+        }
+        messages.append({"role": "assistant", "content": rejected_raw})
+    messages.append(_world_consequence_reselection_message(
+        original_messages=original_messages, correction=correction,
+    ))
+    return messages
 
 
 def _world_consequence_reselection_message(

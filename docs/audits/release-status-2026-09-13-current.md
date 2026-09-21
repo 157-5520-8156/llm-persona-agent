@@ -9,7 +9,7 @@
 最新[连续性与费用修复记录](life-speed-cost-2026-09-21.md)包括世界纠正失败的落账恢复、
 跨重启技术退避和真实同请求模型对照。对照中的Flash更快，但未通过质量检查，未改默认。
 
-最新 `b8243599` 两轮真实试聊：第一轮正确承接原对话并新增1份v22回执；第二轮近况草稿
+此前 `b8243599` 两轮真实试聊：第一轮正确承接原对话并新增1份v22回执；第二轮近况草稿
 再次声称“还赖着／一直没动”，来源审核22秒超时，未交付。因此连续聊天仍未合格。
 召回Fact到引用、审核、冷重放的接口已修复，151项离线检查通过；第一轮实际使用原对话，
 不能归因为召回质量提升。详见[本次修复与试聊](recall-fact-authority-2026-09-21.md)。
@@ -142,7 +142,7 @@ ledger973／revision396，1775 usage／1772 reservations／74 unknown，04:30Z�
 账本曾更新为`output/private-audits/source-model-cost-20260921-01/run/world.sqlite`，
 1779 usage／1776 reservations／74 unknown。World未改，恢复原973/396运行前须合并这4笔。
 
-最新真实续跑8次调用已全部对账，新增known估算0.16875778元、无新增unknown。
+此前真实续跑8次调用已全部对账，新增known估算0.16875778元、无新增unknown。
 **来源修复前运行/账本继续点为`output/private-audits/source-model-cost-20260921-01/continuation/world.sqlite`：
 ledger1016/revision412，1787 usage/1784 reservations/74 unknown，04:31Z。**
 4份原v22回执保持并冷验；无新WorldOccurrence、Experience或聊天交付。World作者已见
@@ -152,7 +152,7 @@ ledger1016/revision412，1787 usage/1784 reservations/74 unknown，04:31Z。**
 新来源材料修复`977f9540`通过29+87项回归及旧v2字节兼容。其后6次真实调用全部known，
 新增估算0.18973288元，无新增unknown；来源正文已到审核，但World纠正因native schema
 容许的全null视觉环境被canonical parser拒绝，角色appraisal纠正另有未转义引号。
-**当前唯一运行/账本继续点为`output/private-audits/source-model-cost-20260921-01/after-source-fix/world.sqlite`：
+**此前来源修复阶段继续点（已被本文顶部的新继续点取代）为`output/private-audits/source-model-cost-20260921-01/after-source-fix/world.sqlite`：
 ledger1027/revision413，1793 usage/1790 reservations/74 unknown；账本04:40:01Z，界面虚拟04:41Z。**
 冷重放及4份原v22回执通过，无新WorldOccurrence/Experience/Memory/角色交付，唯一新增
 可见输出是系统技术通知。生活连续性、速度及100元月费均不能标为合格；近况语义仍暂缓。

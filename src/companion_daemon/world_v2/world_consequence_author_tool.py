@@ -187,6 +187,10 @@ def recover_world_consequence_author_tool(
 
     user = json.loads(messages[1]["content"])
     if "world_author_wire" not in user:
+        if user.get("world_author_json_transport") == "json_object":
+            origin = getattr(provider, "authority_origin", provider)
+            if not all(callable(getattr(model, "complete_json", None)) for model in (provider, origin)):
+                raise TypeError("original World author JSON transport is unavailable")
         return {}
     if getattr(provider, "supports_strict_tool_choice", False) is not True:
         raise ValueError("original World author tool transport is unavailable")
