@@ -3,6 +3,18 @@
 For current release qualification read `docs/audits/release-status-2026-09-13-current.md`.
 Current status: manual_only / qualification_incomplete (2026-09-21).
 
+Latest full-host hands-on chat at d5b5a58f: three adaptive ordinary inputs,
+zero character deliveries, about40-56 seconds per complete step. Review misread
+metaphor, omitted subjects and current reported state; author also introduced
+unsupported life claims, including during correction. Do not call current chat
+qualified based on author drafts. No production logic changes in this audit.
+See docs/audits/hands-on-chat-2026-09-21.md.29 physical calls, all known,
+estimated0.67498448 CNY; new unknown0. Runtime and full billing now share:
+output/private-audits/source-model-cost-20260921-01/hands-on-chat/world.sqlite;
+ledger1237/revision483 at logical05:11Z;1852 usage/1849 reservations/74 inherited
+unknown. Cold replay and5 inherited receipts verified; new receipts0.
+This supersedes all prior continuation/billing paths below.
+
 Current atomic-v3 chat author now uses one compact semantic prompt; v1/v2,
 stream/nonforced and stored carriers retain their old bytes. Original identity
 is intact: final system29,919->8,334 characters. Two author-only pairs reduced
@@ -12,9 +24,9 @@ Final cross-field guidance has31 related passing checks; earlier compact commit
 has245 passing checks and1 independently reproduced pre-existing prefetch failure.
 No World writes, source qualification, new delivery or deployment. Details:
 docs/audits/author-prompt-compaction-2026-09-21.md.
-Latest full billing is output/private-audits/author-prompt-20260921-01/run-v2/world.sqlite:
+Previous full billing was output/private-audits/author-prompt-20260921-01/run-v2/world.sqlite:
 1823 usage/1820 reservations/74 inherited unknown;5 old receipts cold-verified.
-Runtime remains after-json-transport1163/471 below; inherit the new billing prefix.
+At that stage runtime remained after-json-transport1163/471, before hands-on above.
 
 User priority update (2026-09-21): prioritize life continuity plus speed/cost;
 current-life prose remains deferred. Retain source authority and character agency.
@@ -34,7 +46,7 @@ its own 22s deadline counts as provider_timeout; external cancellation stays cal
 Two new real-adapter offline cases and 171 related regressions pass. No new paid calls,
 provider latency improvement, deployment, or release qualification is claimed.
 
-Latest resumable runtime:
+Previous resumable runtime (superseded by hands-on above):
 output/private-audits/source-model-cost-20260921-01/after-json-transport/world.sqlite;
 ledger1163/revision471 at logical/operator05:11Z, runtime billing prefix1815/1812/74.
 Previous full billing (superseded by the author-prompt run-v2 above):
