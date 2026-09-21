@@ -81,7 +81,7 @@ async def review_independent_candidate(
     *, request, output, proposal, source_table, aliases, author_request_json, reviewer, recall_audits=(), review_version="9",
     usage_purpose: Literal["source_review", "inbound_source_review"] = "source_review",
 ):
-    from companion_daemon.llm import model_call_scope, model_provider_request_identity_scope, model_request_emission_scope
+    from companion_daemon.llm import complete_with_timeout, model_call_scope, model_provider_request_identity_scope, model_request_emission_scope
     from .deliberation import (
         ModelUsageProvenance, ProviderSubcallAudit, ValidationTechnicalFailure,
         run_validation_review_once,
@@ -107,8 +107,8 @@ async def review_independent_candidate(
                 model_request_emission_scope(provider_call_id=call_id, entry_marker=None, completion_marker=None),
                 model_provider_request_identity_scope(request_hash=call.request_hash, identity_extras=call.identity_extras),
             ):
-                raw, usage_value = await asyncio.wait_for(
-                    model.complete_json_with_usage(**call.request), timeout=22.0,
+                raw, usage_value = await complete_with_timeout(
+                    model.complete_json_with_usage(**call.request), timeout_seconds=22.0,
                 )
             usage = ModelUsageProvenance.model_validate(usage_value)
             binding = VisibleReviewInvocationBinding(

@@ -3,6 +3,15 @@
 For current release qualification read `docs/audits/release-status-2026-09-13-current.md`.
 Current status: manual_only / qualification_incomplete (2026-09-21).
 
+User priority update (2026-09-21): defer current-life prose/unsupported near-term status
+improvements for now and fix other issues first. Prioritize technical reliability and
+delivery; retain existing source authority and character agency. Do not keep expanding
+this iteration around the deferred current-life expression issue.
+Independent visible review now uses the existing reason-preserving model timeout helper:
+its own 22s deadline counts as provider_timeout; external cancellation stays caller_cancelled.
+Two new real-adapter offline cases and 171 related regressions pass. No new paid calls,
+provider latency improvement, deployment, or release qualification is claimed.
+
 Latest resumable runtime AND full cumulative billing are now
 output/private-audits/recall-fact-chat-20260921-01/run: ledger973/revision396 at04:30Z;
 cold hash4194269b7f1c3b3719b7a756da6a85abd60e2a693c52f838e337b8d7346752a8.
