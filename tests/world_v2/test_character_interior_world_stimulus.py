@@ -2774,3 +2774,37 @@ async def test_life_reflection_reuses_accepted_appraisal_as_source_bound_stimulu
     before_repeat = ledger.project()
     assert (await reflection_runtime.drain_one()).status == "idle"
     assert ledger.project() == before_repeat
+
+
+def test_repeated_settlement_pending_questions_are_answered_once():
+    """A crash-recovery scan asks the same audit questions on every pass.
+
+    Answering one re-projects the ledger at the proposal's own cursor, which is
+    a full replay. The memo must answer an identical question from its own
+    inputs and must not answer a different question from them.
+    """
+
+    from companion_daemon.world_v2.character_interior.world_stimulus import (
+        CharacterInteriorWorldStimulusRuntime,
+    )
+
+    runtime = SimpleNamespace(_settlement_pending_memo={})
+    asked = []
+
+    def question():
+        asked.append(1)
+        return True
+
+    assert CharacterInteriorWorldStimulusRuntime._memo_settlement_pending(
+        runtime, ("relationship", "world", 1, 2, 3, 4, 5, 6, "proposal", "event"), question
+    ) is True
+    assert CharacterInteriorWorldStimulusRuntime._memo_settlement_pending(
+        runtime, ("relationship", "world", 1, 2, 3, 4, 5, 6, "proposal", "event"), question
+    ) is True
+    assert len(asked) == 1
+
+    # A moved cursor is a different question and must be asked again.
+    assert CharacterInteriorWorldStimulusRuntime._memo_settlement_pending(
+        runtime, ("relationship", "world", 1, 2, 3, 4, 5, 7, "proposal", "event"), question
+    ) is True
+    assert len(asked) == 2

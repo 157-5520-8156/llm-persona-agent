@@ -1343,6 +1343,11 @@ class CharacterInteriorWorldStimulusRuntime:
         )
         self._perception_result_reader = perception_result_reader
         self._relationship_settlement = relationship_settlement
+        # Answering "is this audit still pending" re-projects the ledger at the
+        # proposal's own cursor, which is a full replay. The crash-recovery scan
+        # asks the same questions about the same audits on every scheduler pass
+        # while nothing commits in between, so the answers cannot change.
+        self._settlement_pending_memo: dict[tuple, bool] = {}
         self._experience_settlement = experience_settlement or ExperienceTransitionSettlement(
             ledger=ledger,
             owner_id=owner_id,
@@ -2448,6 +2453,21 @@ class CharacterInteriorWorldStimulusRuntime:
                 return False
         return True
 
+    def _memo_settlement_pending(self, key: tuple, question) -> bool:
+        """Memoize one settlement question against its own exact inputs.
+
+        Every input is part of ``key``, including both cursors, so a commit that
+        changes the world moves ``current_cursor`` and this misses instead of
+        answering from a projection that no longer describes the ledger.
+        """
+        cached = self._settlement_pending_memo.get(key)
+        if cached is None:
+            cached = question()
+            if len(self._settlement_pending_memo) >= 8192:
+                self._settlement_pending_memo.clear()
+            self._settlement_pending_memo[key] = cached
+        return cached
+
     def _relationship_is_pending(
         self,
         projection: object,
@@ -2462,16 +2482,33 @@ class CharacterInteriorWorldStimulusRuntime:
         if located_audit is None or located_source is None:
             raise RuntimeError("world stimulus relationship recovery authority is unavailable")
         audit_commit = located_audit[1]
-        return self._relationship_settlement.is_pending(
-            world_id=self._ledger.world_id,
-            audit_cursor=ProjectionCursor(
-                world_revision=audit_commit.world_revision,
-                deliberation_revision=audit_commit.deliberation_revision,
-                ledger_sequence=audit_commit.ledger_sequence,
+        audit_cursor = ProjectionCursor(
+            world_revision=audit_commit.world_revision,
+            deliberation_revision=audit_commit.deliberation_revision,
+            ledger_sequence=audit_commit.ledger_sequence,
+        )
+        current_cursor = _cursor(projection)
+        source_event = located_source[0]
+        return self._memo_settlement_pending(
+            (
+                "relationship",
+                self._ledger.world_id,
+                audit_cursor.world_revision,
+                audit_cursor.deliberation_revision,
+                audit_cursor.ledger_sequence,
+                current_cursor.world_revision,
+                current_cursor.deliberation_revision,
+                current_cursor.ledger_sequence,
+                audit.proposal_id,
+                source_event.event_id,
             ),
-            current_cursor=_cursor(projection),
-            proposal_id=audit.proposal_id,
-            source_event=located_source[0],
+            lambda: self._relationship_settlement.is_pending(
+                world_id=self._ledger.world_id,
+                audit_cursor=audit_cursor,
+                current_cursor=current_cursor,
+                proposal_id=audit.proposal_id,
+                source_event=source_event,
+            ),
         )
 
     def _experience_is_pending(
@@ -2488,15 +2525,31 @@ class CharacterInteriorWorldStimulusRuntime:
         if located_audit is None or located_source is None:
             raise RuntimeError("world stimulus experience recovery authority is unavailable")
         commit = located_audit[1]
-        return self._experience_settlement.is_pending(
-            audit_cursor=ProjectionCursor(
-                world_revision=commit.world_revision,
-                deliberation_revision=commit.deliberation_revision,
-                ledger_sequence=commit.ledger_sequence,
+        audit_cursor = ProjectionCursor(
+            world_revision=commit.world_revision,
+            deliberation_revision=commit.deliberation_revision,
+            ledger_sequence=commit.ledger_sequence,
+        )
+        current_cursor = _cursor(projection)
+        source_event = located_source[0]
+        return self._memo_settlement_pending(
+            (
+                "experience",
+                audit_cursor.world_revision,
+                audit_cursor.deliberation_revision,
+                audit_cursor.ledger_sequence,
+                current_cursor.world_revision,
+                current_cursor.deliberation_revision,
+                current_cursor.ledger_sequence,
+                audit.proposal_id,
+                source_event.event_id,
             ),
-            current_cursor=_cursor(projection),
-            proposal_id=audit.proposal_id,
-            source_event=located_source[0],
+            lambda: self._experience_settlement.is_pending(
+                audit_cursor=audit_cursor,
+                current_cursor=current_cursor,
+                proposal_id=audit.proposal_id,
+                source_event=source_event,
+            ),
         )
 
     async def _process_aspiration(
