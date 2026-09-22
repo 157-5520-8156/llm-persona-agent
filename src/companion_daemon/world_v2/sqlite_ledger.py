@@ -632,6 +632,17 @@ class SQLiteWorldLedger:
         # because "the head from a few commits ago" is exactly the audit
         # cursor same-turn appraisal/affect workers re-read.
         self._historical_projection_cache: dict[tuple[int, int, int], LedgerProjection] = {}
+        # The bound must cover the largest working set that re-reads in one
+        # order, or the cache thrashes instead of helping.  The largest is the
+        # crash-recovery scan in world_stimulus._next_process: it asks about
+        # every terminal _PROCESS_PRIORITY process and queried 60 distinct audit
+        # cursors on the production ledger.  Against the previous bound of 32
+        # the second scan began at a cursor that had already been evicted, so
+        # every pass replayed the whole working set cold - about 1.7 seconds per
+        # candidate, 102 seconds per pass, on passes that committed nothing.
+        # 96 covers the measured working set with headroom and stays a small
+        # multiple of the memory the previous bound already retained.
+        self._historical_projection_cache_bound = 96
         # Historical projection objects do not expose their reducer state, so
         # they cannot by themselves accelerate a nearby cache miss.  Retain a
         # much smaller set of immutable reducer prefixes: after the first
@@ -4820,7 +4831,7 @@ class SQLiteWorldLedger:
         # bound leaves room for an audit cursor to survive the handful of
         # same-turn commits (compile, acceptance, downstream triggers) plus
         # interleaved background lanes that land before the rebase re-read.
-        while len(self._historical_projection_cache) > 32:
+        while len(self._historical_projection_cache) > self._historical_projection_cache_bound:
             self._historical_projection_cache.pop(next(iter(self._historical_projection_cache)))
 
     def project_at(self, cursor: ProjectionCursor) -> LedgerProjection:
