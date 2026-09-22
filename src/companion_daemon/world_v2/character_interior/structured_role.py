@@ -1454,7 +1454,7 @@ class StructuredCharacterRoleFaculty:
         life_source_view = None
         if request.purpose == "world_stimulus_appraisal" and request.snapshot.life_source_origin is not None:
             from .life_source_view import prepare_life_source_view
-            from .life_source_review import CONTRACT as LIFE_REVIEW_CONTRACT
+            from .life_source_review import MINTED_CONTRACT as LIFE_REVIEW_CONTRACT
             life_source_view = prepare_life_source_view(
                 request=request, messages=messages, provider_request_hash=request_hash,
                 review_contract=LIFE_REVIEW_CONTRACT if self.requires_life_source_review else None,
@@ -1823,7 +1823,7 @@ class StructuredCharacterRoleFaculty:
         if request.purpose in REGISTERED_BACKGROUND_PURPOSES:
             background_profile = background_context_profile_for_purpose(request.purpose)
             if request.purpose == "world_stimulus_appraisal" and self.requires_life_source_review:
-                from .life_source_review import CONTRACT as LIFE_REVIEW_CONTRACT
+                from .life_source_review import MINTED_CONTRACT as LIFE_REVIEW_CONTRACT
                 from .life_source_state_readings import life_source_profile
                 background_profile = life_source_profile(LIFE_REVIEW_CONTRACT)
             snapshot = slice_background_inner_life_snapshot(full_snapshot, background_profile)

@@ -34,6 +34,10 @@ BOUND_PERMISSION_CONTRACT = 'life-source-review.12'
 CONTRACT = 'life-source-review.13'
 # Lean presentation of the live .13 protocol: identical authority, smaller wire.
 LEAN_CONTRACT = 'life-source-review.15'
+# The contract every new Installed review is minted at. .15 is the lean
+# presentation of the .13 protocol; earlier pins keep replaying at their own
+# version, and .14 stays available for pins already written against it.
+MINTED_CONTRACT = LEAN_CONTRACT
 _BOUND_PERMISSION_CONTRACTS = {BOUND_PERMISSION_CONTRACT, CONTRACT, CLAIM_AUTHORITY_CONTRACT,
     LEAN_CONTRACT}
 _AUTHORSHIP_CONTRACTS = {AUTHORSHIP_CONTRACT, TEMPORAL_AUTHORSHIP_CONTRACT,
