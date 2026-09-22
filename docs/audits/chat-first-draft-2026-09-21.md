@@ -1077,3 +1077,52 @@ result["source_inventory"] = [i for i in source_inventory if i.get("source_ref")
 再往下只能从这三样里选一样：调用频率、后台模型档位、或每次携带的语境量。
 这三样都直接对应你要的「实时性 / 内心丰富度 / 成本」，**是产品取舍，我不替你定**——
 但至少现在每条能省多少是可量的，不再是猜。
+
+## 精简实测结果：安全，但被 wire 版本仪式挡住（已回滚）
+
+按「只留 source_ref / scope / privacy_class」做了精简，并在真实快照上量到：
+
+```
+切片后快照: 97,504 → 74,350 字符  (−23.7%)
+首条: {"source_ref": "affect:compiled:75d2…", "scope": "affect", "privacy_class": "private"}
+```
+
+**读者层面是安全的**——我把五个读取器逐个看过，它们只用两个字段：
+
+| 读取器 | 用到的字段 |
+| --- | --- |
+| `life_affect_history_readings` | `source_ref`, `scope` |
+| `life_biographical_readings` | `source_ref`, `scope` |
+| `life_fact_readings` | `source_ref`, `scope` |
+| `life_source_readings` | `(item['source_ref'], item['scope'])` |
+| `life_source_state_readings` | `source_ref`, `scope` |
+
+`content_hash` / `direct_source_refs` / `authority_refs` **没有任何读取者**。
+
+但落地时：**基线 1 failed / 246 passed，加改动后 73 failed / 10 errors**——后台车道的
+请求字节在大量测试里被钉死。审核车道的那批失败是 `test_life_review_request_compatibility`
+（wire 字节冻结），其余来自后台车道自身的呈现快照被逐字节比对。
+
+**结论：这个精简在内容上是安全的、量到 −23.7%，但落地必须走新增 wire 版本，
+而不是直接改切片。这就是这些车道几个月来一直臃肿的真正原因——不是没人发现，是改它的手续很重。**
+已回滚，工作树干净。
+
+## 还有哪些办法（把已排除的也列出来）
+
+**已经排除的：**
+- **更便宜的模型档位——不存在。** 价格表里 `deepseek-v4-pro` 是 4.5/0.15/13.5（贵 4.5 倍），
+  `deepseek-v4-flash`/`deepseek-flash`(v4.1) 的 offpeak 1.0/0.02/4.0 **已经是最便宜的一档**，
+  而且我们的运行本来就落在 offpeak。**这条杠杆已经用尽。**
+- **缓存**：实测载荷从第 458 字符就每次不同，缓存只能保住 system 的 3,700 token。已排除。
+- **换 v4.1 Flash**：已经在按它的价格算（反算 0.0532 与账本完全一致）。已排除。
+
+**还没做的，按收益排序：**
+
+1. **走 wire 版本把两项精简落地**：来源表 −23.7% + 无损 interning −25.7%，叠加约 **−43%**
+   → 376 → **约 215 元/虚拟月**。代价是每个车道一次版本升级 + 新基线，工程量大但确定。
+2. **减少每个生活事件的后台阶段数**：13 小时里 171 次后台调用服务约 41 个生活事件
+   = **每个事件 4.2 次模型调用**（appraisal 74、draft 15、closure review 13、
+   novel-origin review 7、rewrite 5、memory 10、impression 4…）。
+   其中 closure / novel-origin 是安全门不能砍，但**「一个事件要 4 次调用」这个乘数本身**是最大的一块。
+   这条还没有量过每个阶段各值多少钱，是下一步该测的。
+3. 调整调用频率（你说希望别太低，所以我把它排在最后）。
