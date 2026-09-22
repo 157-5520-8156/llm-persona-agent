@@ -1186,3 +1186,141 @@ result["source_inventory"] = [i for i in source_inventory if i.get("source_ref")
 （现在 127K 字符换来 1.3K 字符输出；把语境压到有用核心约 15–25K 字符），
 或者每个事件的 4.2 次调用变少。这两条都不牺牲实时性，也不删内心状态——
 删的是「不可能出错的字段的论证」和「宿主自己的账目表」。
+## 已落地：精简走完了 wire 版本手续（`3d336927` / `2697d802`）
+
+上一次精简因为「改切片等于改所有后台车道的冻结字节」而回滚。这次不再改切片，
+而是**新增一个 wire 版本承载精简**，旧版本一个字节都不动。这是关键区别：
+`test_life_review_request_compatibility` 证明 `.13` / `.14` 的 request 与 provider
+哈希逐位不变，同时新增 `.15` 三组基线（45 组用例全绿）。
+
+`life-source-review.15` = **`.13` 协议的瘦身呈现**：权限、时间归属、精确取值义务完全相同，
+只是线上字节更少。三项精简：
+
+1. **纯标识符字段退出逐条审查。** 正则只是**预测器**，判定依据是模型自己的历史判决：
+   在一次真实运行的 408 个将被排除的字段上，模型对 **408 / 408** 都没有绑定任何主张或状态，
+   并逐条写明「Identifier string only; no factual proposition asserted.」——**零例外**。
+   字段数 1266 → 849（−32.9%），审查输出从约 3671 token/次 降到约 2020。
+2. **渲染来源表只留 `source_ref` / `scope` / `privacy_class` / `expires_at`。**
+   五个宿主读取器只用前两个；`content_hash` / `direct_source_refs` / `authority_refs`
+   没有任何读取者。评价快照 97,504 → 74,350 字符。
+3. **`author_snapshot_display` 无损 interning**：审查 user 载荷 154,037 → 114,421（−25.7%）。
+
+审查者额外收到一段**仅 `.15` 有效**的说明：字段清单已被宿主缩短，以及 interning 表怎么读。
+不加这段的话，`REVIEW_INSTRUCTIONS` 里「No field is automatically exempt from factual review」
+会和实际 wire 自相矛盾。
+
+**一个真实的陷阱**：`TEMPORAL_CONTRACTS` / `COVERAGE_CONTRACTS` / `EXACT_VALUE_CONTRACTS`
+不是字面量列表，而是由常量拼出来的，所以「把所有列 `.13` 的地方都加上 `.15`」这种 grep
+查不出它们。漏掉会让 `.15` 静默变成「非时间归属」协议，测试立刻以
+`KeyError: 'authored_now'` 报出来。**新 wire 版本必须加入 `.13` 所在的每一个行为集合，
+而不只是字面量列表。**
+
+铸造点原本是 `structured_role` 里的一行内联 import，「新审查用哪个协议」不是一个能被人
+找到的名字。现在叫 `MINTED_CONTRACT`，指向 `.15`。旧 pin 仍按自己的版本重放，
+`.14`（claim authority，更强的守卫）保持可达但**仍未上线**——我没有把一个未上线的守卫
+捆进这次成本改动。
+
+## 结构事实：审核车道**不可能靠缓存变便宜**（这次量清楚了）
+
+之前记的「第 458 字符就分叉」是对的，但当时没有分清「分叉」和「有没有可提升的共性」。
+这次逐块量了 41 次真实审查请求：
+
+| 检查 | 结果 |
+| --- | --- |
+| 连续两次审查的 user 载荷公共前缀 | 中位数 **458 字符**（最大 106,039 = 同一次重试） |
+| system 提示词 | 6,098 字符（唯一稳定可缓存的部分，与 6% 命中率吻合） |
+| `author_snapshot_display` | 33 个不同值 / 41 次 |
+| `source_readings` | **41 个不同值 / 41 次** |
+| `snapshot.materials` | 27 个不同值 / 41 次 |
+
+**每次审查都对应一个不同的世界语境**，所以除了 system 之外没有任何共享前缀。
+重排顺序**不会**提高命中率——这一点之前记成「已排除」，现在有了逐块的证据。
+审核车道的成本就是「每次调用读多少语境」，只能靠**更少的调用**或**更小的单次语境**降。
+
+## 审核车道的真实形状（run 11，41 次调用）
+
+```
+life_source_review  41 次  2.9825 元  占 44.0%  缓存命中 6.0%
+  每次 prompt 61,686 token
+  每次载荷 154,363 字符，其中 author_snapshot_display 100,627（65.2%）
+  每次审查覆盖的提案数：1（41 次审查 = 41 个提案，没有任何归组）
+```
+
+`snapshot.materials` 里最大的单块是 `affect` **20,075 字符**（占 materials 30%）。
+评价车道用 `BackgroundContextProfile` 按用途切材料，**审核车道不走 profile**，
+`fact_snapshot_display` 直接深拷贝整份快照——这就是它 65% 载荷的来源。
+
+**这是下一个真正可动的杠杆**：给审核车道一份按用途切的材料，而不是整份快照。
+但它同时是**守卫强度**的改变（语境变小 → `uncertain` 可能变多 → 拒绝与重试变多），
+所以必须先量，不能直接上。
+
+## 线上她其实已经死了 22 天——以及为什么（2026-09-22 现场）
+
+这一段不是实验，是现网取证。`com.girl-agent.napcat` 自 2026-09-06 17:40 起一直在崩，
+错误日志里同一个异常 **19,626 次**；`/health`、`/docs`、`/world-v2/room` 全部超时；
+`napcat.out.log` 最后一次处理 `/onebot/event` 是 **8 月 22 日**。
+
+### 缺陷 1（已修、已部署）：已提交的抽签被拿去对「重算」的候选带
+
+生产库里三条已提交的 post-silent 抽签：
+
+| seq | 时间 | 记录在案的候选带 | 选中 |
+| --- | --- | --- | --- |
+| 283 | 8-15 | 21600 / 25200 / 28800 | 28800 |
+| 5421 | 8-19 | 21600 / 25200 / 28800 | 25200 |
+| 14434 | 8-22 | **10800 / 16200 / 21600** | **10800** |
+
+关系档位移动后，重算出的带子变成 `{21600,25200,28800}`。旧代码每轮调度都拿这条
+**已提交**的抽签去比对**重算**的带子，于是永久自锁。修复 `8a39aa1c` 改为对**抽签自己
+记录的候选**校验（那条抽签的选中值确实在它自己的候选里）。改动 17 行。
+
+**已部署**：生产库与 `.env` 已备份（`output/deploy-backup-20260922T160715/`，
+回滚点 `da8aae88`），live 分支从 `da8aae88` 快进到 `2697d802`。
+结果：**崩溃循环消失**——bootstrap 现在 6.4 秒完成（此前每轮必崩）。
+
+### 缺陷 2（已定位，只做了部分修复）：每次调度都掉进无界的事故恢复扫描
+
+修好缺陷 1 之后进程不再崩，但**世界仍不推进**：`max_seq` 停在 18204，
+`/health` 依旧超时，进程 100% CPU。用 `faulthandler` 在生产库的**副本**上抓到真实栈：
+
+```
+_scheduler_once_serialized → drain_background_once → … → world_stimulus._next_process
+  → _relationship_is_pending → accepted_world_stimulus_descendant
+    → decision_proposal_authority.pin → projection.proposal_audit_by_id
+      → sqlite_ledger.project_at → _replay_locked      ← 整库重放
+        → reducers._model_result_recorded → pydantic model_validate_json
+```
+
+实测：**历史游标冷重放 10.6 秒 / 9,100 事件**（全库 18,204 事件 ≈ 15–20 秒），
+命中缓存 0.0001 秒。`project_at` 有 head 短路，所以只有**历史**游标会付这个代价。
+
+为什么每轮都走这条路：`_next_process` 的第一个循环只在
+`_PROCESS_PRIORITY = (perception_result_deliberation, npc_world_appraisal,
+silence_appraisal, plan_disruption_appraisal, life_reflection)` 里找**非终止**进程。
+现网实测 1,213 个 trigger process、1,212 个终止，唯一的非终止进程是
+`proactive_action_deliberation`（state=`claimed`）——而它**不在** `_PROCESS_PRIORITY` 里，
+这是**设计如此**（`appraisal_acceptance_manifest.py`：「shared-owner triggers such as
+`proactive_action_deliberation` stay claimed」）。
+
+于是第一个循环**永远**返回空，每轮调度都掉进第二个循环——「事故恢复」扫描，遍历
+`_PROCESS_PRIORITY` 五种的全部终止进程（`npc_world_appraisal` 53、`life_reflection` 45、
+`plan_disruption_appraisal` 22 …约 120 个），每个可能付一次 15 秒冷重放。
+**单次遍历约 30 分钟，而且反复进行。** 历史越长越慢，直到超过 tick 预算——
+这就是它再也回不来的原因，与 22 天的停摆无关，是随历史增长而恶化的规模缺陷。
+
+**已做（`ecabffd8`，语义不变）**：把两个结算 `is_pending` 的答案按**全部输入**
+（两个游标、world、proposal、source event）记忆化。任何提交都会移动 `current_cursor`
+从而自然失效，所以这是纯记忆化，不改变任何判定。
+
+**这句话必须说清楚：它只消除了同一游标内的重复，没有消除扫描本身。**
+一个游标仍然要付约 120 次冷重放。真正的修复是把扫描本身限界，或者把
+「查某个提案的审计」从「物化该游标的整份投影」改成点查询。**这一条还没做。**
+
+### 教训
+
+- 这个缺陷**没有**任何日志。崩溃有 traceback，纯性能退化没有。抓到它靠的是
+  在生产库副本上用 `faulthandler.dump_traceback_later` 打印 Python 栈
+  （`py-spy` 在 macOS 需要 root，不可用）。**只靠日志和累计账本推断会漏掉这一类。**
+- `tick_target = selected_due.due_at`，且 `wall_catchup` 会把 Life 到期**跳到 now**，
+  所以这里**没有**「追赶 22 天、生成 22 天生活」的花费风险。已用账本证据排除：
+  重启后模型用量表**一行未增**（最新仍是 2026-08-31T12:13）。
