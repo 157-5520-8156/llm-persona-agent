@@ -23,14 +23,14 @@ def _expected_view(snapshot, review_contract=None):
 
     from .life_source_state_readings import STATE_REVIEW_CONTRACTS, life_source_profile
 
-    from .life_source_review_request import LEAN_REVIEW_CONTRACT
+    from .life_source_review_request import LEAN_REVIEW_CONTRACTS
 
     profile = life_source_profile(review_contract)
     return present_inner_life(slice_background_inner_life_snapshot(
         snapshot.model_view(include_lifecycle_states=review_contract in STATE_REVIEW_CONTRACTS),
         profile,
         # The lean wire carries only the inventory columns anything reads.
-        lean_source_inventory=review_contract == LEAN_REVIEW_CONTRACT,
+        lean_source_inventory=review_contract in LEAN_REVIEW_CONTRACTS,
     ))
 
 
@@ -39,7 +39,7 @@ class LifeSourceView(FrozenModel):
     write_authority: Literal[False] = False
     semantic_coverage: Literal["not_assessed"] = "not_assessed"
     source_permission_coverage: Literal["not_assessed"] = "not_assessed"
-    review_contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15'] | None = Field(default=None, exclude_if=lambda value: value is None)
+    review_contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15', 'life-source-review.16'] | None = Field(default=None, exclude_if=lambda value: value is None)
     snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     capsule_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     request_binding_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")

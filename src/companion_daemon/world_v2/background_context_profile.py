@@ -55,6 +55,12 @@ class BackgroundContextProfile:
     capsule_slices: tuple[str, ...] = ()
     capsule_slice_limits: Mapping[str, int] = ()
     capsule_item_exclusions: Mapping[str, frozenset[str]] = ()
+    # Compacting the rendered inventory is presentation only.  Proven by a
+    # structural diff against the full rendering: it removes exactly
+    # content_hash, direct_source_refs and authority_refs, adds nothing and
+    # changes no other path.  None of the three is referenced in
+    # structured_role, so the model's own output contract cannot use them.
+    compact_source_inventory: bool = False
 
 
 def _limit_material_items(value: object, limit: int, *, key: str) -> object:
@@ -251,6 +257,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
     BackgroundContextProfile(
         profile_id="stimulus_appraisal",
         purposes=frozenset({"world_stimulus_appraisal"}),
+        compact_source_inventory=True,
         snapshot_material_keys=_CHARACTER_CONTINUITY_MATERIALS,
         snapshot_material_limits=_CHARACTER_CONTINUITY_LIMITS,
     ),
@@ -406,7 +413,6 @@ def slice_background_inner_life_snapshot(
     profile: BackgroundContextProfile,
     *,
     lean_source_inventory: bool = False,
-    compact_source_inventory: bool = False,
 ) -> dict[str, object]:
     """Filter one InnerLifeSnapshot provider view to a lane profile."""
 
@@ -462,7 +468,7 @@ def slice_background_inner_life_snapshot(
             for item in source_inventory
             if isinstance(item, dict) and item.get("source_ref") in visible_refs
         ]
-        if compact_source_inventory:
+        if profile.compact_source_inventory:
             result["source_inventory"] = collapse_presented_source_inventory(kept)
         elif lean_source_inventory:
             result["source_inventory"] = [

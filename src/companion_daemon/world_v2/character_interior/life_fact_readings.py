@@ -11,7 +11,7 @@ from .life_source_origin import canonical
 
 
 EXACT_VALUE_REVIEW_CONTRACT = 'life-source-review.11'
-EXACT_VALUE_REVIEW_CONTRACTS = {EXACT_VALUE_REVIEW_CONTRACT, 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15'}
+EXACT_VALUE_REVIEW_CONTRACTS = {EXACT_VALUE_REVIEW_CONTRACT, 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15', 'life-source-review.16'}
 DISPLAY_CONTRACT = 'life-fact-value-display.1'
 
 

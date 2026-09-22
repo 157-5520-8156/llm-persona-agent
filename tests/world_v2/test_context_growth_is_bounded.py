@@ -95,25 +95,29 @@ def test_declared_uncapped_materials_are_still_uncapped(purpose: str) -> None:
     )
 
 
-def test_the_inventory_compaction_stays_off_until_a_presentation_carries_it() -> None:
-    """The compaction is built and measured, but no lane renders it yet.
+def test_the_rendered_inventory_is_compacted_only_where_it_cannot_break_a_pin() -> None:
+    """The inventory escaped SliceBudget by being derived after slicing.
 
-    Wiring it into the appraisal lane changes bytes that 36 legacy goldens pin,
-    because those cases copy the current production view instead of rendering
-    their own frozen presentation. Whether to re-baseline them is a decision
-    about what the guard is for, not a code detail, so the flag stays off and
-    this test keeps the fact visible instead of letting it be forgotten.
+    It measured 12089 -> 24714 characters along one continuation chain while the
+    budgeted slices stayed flat.  Compacting it removes exactly content_hash,
+    direct_source_refs and authority_refs - a structural diff against the full
+    rendering adds nothing and changes no other path - and none of the three is
+    referenced in structured_role, so the model's output contract cannot use
+    them.
     """
 
-    import inspect
-
-    from companion_daemon.world_v2.background_context_profile import (
-        collapse_presented_source_inventory,
-        slice_background_inner_life_snapshot,
+    from companion_daemon.world_v2.character_interior.life_source_state_readings import (
+        life_source_profile,
     )
 
-    default = inspect.signature(
-        slice_background_inner_life_snapshot
-    ).parameters['compact_source_inventory'].default
-    assert default is False
-    assert callable(collapse_presented_source_inventory)
+    assert background_context_profile_for_purpose(
+        'world_stimulus_appraisal'
+    ).compact_source_inventory is True
+    # The unreviewed production lane is never pinned, so it follows the profile.
+    assert life_source_profile(None).compact_source_inventory is True
+    # Every contract already written into a pin keeps the bytes it was written
+    # with. All of them, not only the most recent three.
+    for version in range(1, 16):
+        frozen = f'life-source-review.{version}'
+        assert life_source_profile(frozen).compact_source_inventory is False, frozen
+    assert life_source_profile('life-source-review.16').compact_source_inventory is True

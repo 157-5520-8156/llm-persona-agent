@@ -10,16 +10,31 @@ from .life_source_origin import canonical, digest
 
 CONTRACT = 'life-source-review.13'
 STATE_REVIEW_CONTRACTS = frozenset({'life-source-review.13', 'life-source-review.14',
-    'life-source-review.15'})
+    'life-source-review.15', 'life-source-review.16'})
 SCOPE = 'activity_lifecycle_states'
 FIELDS = ('plan_id', 'plan_entity_revision', 'owner_actor_ref', 'status', 'transitioned_at', 'lifecycle_scope')
+
+
+COMPACT_INVENTORY_CONTRACTS = frozenset({'life-source-review.16'})
 
 
 def life_source_profile(review_contract):
     profile = background_context_profile_for_purpose('world_stimulus_appraisal')
     if review_contract in STATE_REVIEW_CONTRACTS:
-        return replace(profile, profile_id='stimulus_appraisal.lifecycle.1',
-                       snapshot_material_keys=(*profile.snapshot_material_keys, SCOPE))
+        profile = replace(
+            profile,
+            profile_id=(
+                'stimulus_appraisal.lifecycle.2'
+                if review_contract in COMPACT_INVENTORY_CONTRACTS
+                else 'stimulus_appraisal.lifecycle.1'
+            ),
+            snapshot_material_keys=(*profile.snapshot_material_keys, SCOPE),
+        )
+    if review_contract is not None and review_contract not in COMPACT_INVENTORY_CONTRACTS:
+        # Every contract that predates .16 keeps the inventory it was written
+        # with.  ``None`` is the unreviewed production lane, which is never
+        # pinned, so it follows the registered profile.
+        profile = replace(profile, compact_source_inventory=False)
     return profile
 
 

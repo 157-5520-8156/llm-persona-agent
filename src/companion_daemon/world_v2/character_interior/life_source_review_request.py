@@ -17,8 +17,10 @@ from .life_source_origin import canonical, digest
 from .life_source_readings import life_permission_choices, prepare_life_source_readings
 
 LEAN_REVIEW_CONTRACT = 'life-source-review.15'
+COMPACT_REVIEW_CONTRACT = 'life-source-review.16'
+LEAN_REVIEW_CONTRACTS = frozenset({LEAN_REVIEW_CONTRACT, COMPACT_REVIEW_CONTRACT})
 DIRECT_CONTRACTS = frozenset(
-    ('life-source-review.13', CLAIM_AUTHORITY_CONTRACT, LEAN_REVIEW_CONTRACT)
+    ('life-source-review.13', CLAIM_AUTHORITY_CONTRACT, *sorted(LEAN_REVIEW_CONTRACTS))
 )
 
 # Complete .13 instruction, materialized from its previously verified wire.
@@ -139,7 +141,7 @@ LEAN_REVIEW_NOTE = (
 def prepare_current_review(*, candidate_json, provider_raw, view, snapshot, contract):
     if contract not in DIRECT_CONTRACTS:
         raise ValueError('unsupported current Life source review contract')
-    lean = contract == LEAN_REVIEW_CONTRACT
+    lean = contract in LEAN_REVIEW_CONTRACTS
     candidate, fields = _candidate(candidate_json, drop_identifier_fields=lean)
     if not isinstance(provider_raw, str) or len(provider_raw.encode()) > 131_072:
         raise ValueError('Life review lacks the bounded original author output')

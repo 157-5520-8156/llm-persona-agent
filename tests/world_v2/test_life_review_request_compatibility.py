@@ -21,7 +21,8 @@ from test_visible_selected_source_context import _sources
 GOLDEN = json.loads(
     (Path(__file__).parent / 'fixtures/life_review_request_hashes.json').read_text()
 )['cases']
-CURRENT_CONTRACTS = ['life-source-review.13', 'life-source-review.14', 'life-source-review.15']
+CURRENT_CONTRACTS = ['life-source-review.13', 'life-source-review.14', 'life-source-review.15',
+    'life-source-review.16']
 
 
 @asynccontextmanager
@@ -38,17 +39,20 @@ async def source_case(tmp_path, monkeypatch, mode):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('mode', ['fact', 'report_only', 'empty'])
-@pytest.mark.parametrize('version', range(1, 16))
+@pytest.mark.parametrize('version', range(1, 17))
 async def test_all_versioned_request_bytes_and_provider_hashes_survive_cold_compilation(
     tmp_path, monkeypatch, mode, version,
 ):
     contract = f'life-source-review.{version}'
     async with source_case(tmp_path, monkeypatch, mode) as (original, snapshot):
-        # Public synthetic authors only. New presentation is compiled for .13+;
-        # this never upgrades the contract of a persisted real author request.
-        view = new_fixture_view(original, snapshot, contract) if version >= 13 else (
-            original.model_copy(update={'review_contract': contract})
-        )
+        # Public synthetic authors only; this never upgrades the contract of a
+        # persisted real author request.  Every version renders its own frozen
+        # presentation.  A legacy case used to copy the *current* production
+        # bytes and relabel them, which made those goldens track production
+        # presentation rather than the version they claim to freeze - and when
+        # production presentation changed, the case failed its own consistency
+        # check before it could even compare a hash.
+        view = new_fixture_view(original, snapshot, contract)
         prepared, readings = prepare_review(
             candidate_json=candidate(), provider_raw=candidate(),
             view=view, snapshot=snapshot, contract=contract,
