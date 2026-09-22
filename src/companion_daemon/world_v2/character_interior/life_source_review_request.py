@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 
+from ..shared_string_view import pack_shared_strings
 from .current_life_authorship import current_life_authorship_authority
 from .life_candidate_reading import _candidate, _object
 from .life_claim_authority import CONTRACT as CLAIM_AUTHORITY_CONTRACT, configure_claim_authority
@@ -15,7 +16,10 @@ from .life_fact_readings import fact_snapshot_display
 from .life_source_origin import canonical, digest
 from .life_source_readings import life_permission_choices, prepare_life_source_readings
 
-DIRECT_CONTRACTS = frozenset(('life-source-review.13', CLAIM_AUTHORITY_CONTRACT))
+LEAN_REVIEW_CONTRACT = 'life-source-review.15'
+DIRECT_CONTRACTS = frozenset(
+    ('life-source-review.13', CLAIM_AUTHORITY_CONTRACT, LEAN_REVIEW_CONTRACT)
+)
 
 # Complete .13 instruction, materialized from its previously verified wire.
 # Changing it is a protocol change, not an edit to a legacy template fragment.
@@ -122,10 +126,21 @@ def _response_schema(*, fields, actor_ref, permission_ids):
     })
 
 
+LEAN_REVIEW_NOTE = (
+    ' Two presentation notes apply to this request only, and neither relaxes the obligations above. '
+    'text_fields is the complete field inventory: the host removed strings that are its own '
+    'identifiers rather than statements, so the candidate may contain strings with no path here. '
+    'Review exactly the listed paths and return no other. author_snapshot_display is wrapped in a '
+    'shared-string presentation: inside "value", a token that appears as a key of "strings" is an '
+    'exact stand-in for the long repeated string it names. Reading such a token as the string it '
+    'names changes nothing, and no token asserts anything by itself.'
+)
+
 def prepare_current_review(*, candidate_json, provider_raw, view, snapshot, contract):
     if contract not in DIRECT_CONTRACTS:
         raise ValueError('unsupported current Life source review contract')
-    candidate, fields = _candidate(candidate_json)
+    lean = contract == LEAN_REVIEW_CONTRACT
+    candidate, fields = _candidate(candidate_json, drop_identifier_fields=lean)
     if not isinstance(provider_raw, str) or len(provider_raw.encode()) > 131_072:
         raise ValueError('Life review lacks the bounded original author output')
     readings = prepare_life_source_readings(view=view, snapshot=snapshot).as_dict()
@@ -158,9 +173,17 @@ def prepare_current_review(*, candidate_json, provider_raw, view, snapshot, cont
         ],
         'support_selection_contract': 'life-bound-permission-selection.1',
     }
+    if lean:
+        # Lossless: intern repeated long refs into a table the reviewer reads.
+        # Nothing host-side reads this display back, and the ids the reviewer
+        # must copy live in permission_choices, which stays literal.
+        packed_display = pack_shared_strings(packet['author_snapshot_display'])
+        if packed_display.get('strings'):
+            packet['author_snapshot_display'] = packed_display
     schema = _response_schema(fields=fields, actor_ref=snapshot.actor_ref, permission_ids=ids)
     request = {
-        'messages': [{'role': 'system', 'content': REVIEW_INSTRUCTIONS},
+        'messages': [{'role': 'system',
+                      'content': REVIEW_INSTRUCTIONS + LEAN_REVIEW_NOTE if lean else REVIEW_INSTRUCTIONS},
                      {'role': 'user', 'content': canonical(packet)}],
         'temperature': 0,
         'tools': [{'type': 'function', 'function': {

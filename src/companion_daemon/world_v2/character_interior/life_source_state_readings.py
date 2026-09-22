@@ -9,7 +9,8 @@ from ..world_life_context import ActivityLifecycleStateContextItem
 from .life_source_origin import canonical, digest
 
 CONTRACT = 'life-source-review.13'
-STATE_REVIEW_CONTRACTS = frozenset({'life-source-review.13', 'life-source-review.14'})
+STATE_REVIEW_CONTRACTS = frozenset({'life-source-review.13', 'life-source-review.14',
+    'life-source-review.15'})
 SCOPE = 'activity_lifecycle_states'
 FIELDS = ('plan_id', 'plan_entity_revision', 'owner_actor_ref', 'status', 'transitioned_at', 'lifecycle_scope')
 

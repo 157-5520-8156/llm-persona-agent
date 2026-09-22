@@ -32,7 +32,10 @@ PERMISSION_AUTHORITY_CONTRACT = 'life-source-review.10'
 EXACT_VALUE_AUTHORITY_CONTRACT = 'life-source-review.11'
 BOUND_PERMISSION_CONTRACT = 'life-source-review.12'
 CONTRACT = 'life-source-review.13'
-_BOUND_PERMISSION_CONTRACTS = {BOUND_PERMISSION_CONTRACT, CONTRACT, CLAIM_AUTHORITY_CONTRACT}
+# Lean presentation of the live .13 protocol: identical authority, smaller wire.
+LEAN_CONTRACT = 'life-source-review.15'
+_BOUND_PERMISSION_CONTRACTS = {BOUND_PERMISSION_CONTRACT, CONTRACT, CLAIM_AUTHORITY_CONTRACT,
+    LEAN_CONTRACT}
 _AUTHORSHIP_CONTRACTS = {AUTHORSHIP_CONTRACT, TEMPORAL_AUTHORSHIP_CONTRACT,
     COVERAGE_AUTHORSHIP_CONTRACT, PERMISSION_AUTHORITY_CONTRACT, EXACT_VALUE_AUTHORITY_CONTRACT, *_BOUND_PERMISSION_CONTRACTS}
 _CHOICE_CONTRACTS = {PERMISSION_CONTRACT, BOUNDED_REASON_CONTRACT, VERDICT_ORDER_CONTRACT, LEGACY_CURRENT_CONTRACT}
@@ -220,7 +223,7 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=Non
     if (view.review_contract not in {None, contract}
         or contract in {EXACT_VALUE_AUTHORITY_CONTRACT, *_BOUND_PERMISSION_CONTRACTS} and view.review_contract != contract):
         raise ValueError('Life review contract differs from its source preparation')
-    if contract in {'life-source-review.13', CLAIM_AUTHORITY_CONTRACT}:
+    if contract in {CONTRACT, CLAIM_AUTHORITY_CONTRACT, LEAN_CONTRACT}:
         from .life_source_review_request import prepare_current_review
 
         return prepare_current_review(candidate_json=candidate_json, provider_raw=provider_raw,
@@ -289,7 +292,7 @@ def inspect_review(*, raw, prepared_json, readings):
 
 
 class LifeSourceReviewReceipt(FrozenModel):
-    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14'] = CONTRACT
+    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15'] = CONTRACT
     prepared_json: str = Field(max_length=256_000)
     response_json: str = Field(max_length=64_000)
     request_hash: str = Field(pattern=r'^[0-9a-f]{64}$')

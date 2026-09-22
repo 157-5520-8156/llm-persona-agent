@@ -364,9 +364,15 @@ def background_context_profile_for_purpose(purpose: BackgroundPurpose) -> Backgr
         raise KeyError(f"no BackgroundContextProfile registered for purpose {purpose!r}") from exc
 
 
+# The rendered inventory is read only for identity and permission bounds.
+_PRESENTED_INVENTORY_COLUMNS = ("source_ref", "scope", "privacy_class", "expires_at")
+
+
 def slice_background_inner_life_snapshot(
     snapshot: Mapping[str, object],
     profile: BackgroundContextProfile,
+    *,
+    lean_source_inventory: bool = False,
 ) -> dict[str, object]:
     """Filter one InnerLifeSnapshot provider view to a lane profile."""
 
@@ -408,11 +414,28 @@ def slice_background_inner_life_snapshot(
 
     source_inventory = snapshot.get("source_inventory")
     if isinstance(source_inventory, list):
-        result["source_inventory"] = [
+        # Keep only the columns the rendered inventory is actually read for.
+        # Every reader of it - affect, biographical, fact, source-family and
+        # lifecycle - asks whether a given (source_ref, scope) was presented,
+        # plus the privacy bound. content_hash, direct_source_refs and
+        # authority_refs have no reader at all: they are the host's own
+        # bookkeeping, and they were over half of this block.
+        #
+        # Only the lean wire sets this, so every existing presentation keeps its
+        # exact bytes.
+        kept = [
             item
             for item in source_inventory
             if isinstance(item, dict) and item.get("source_ref") in visible_refs
         ]
+        result["source_inventory"] = (
+            [
+                {key: item[key] for key in _PRESENTED_INVENTORY_COLUMNS if key in item}
+                for item in kept
+            ]
+            if lean_source_inventory
+            else kept
+        )
 
     return present_inner_life(result)
 

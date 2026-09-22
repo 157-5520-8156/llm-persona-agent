@@ -21,7 +21,7 @@ from test_visible_selected_source_context import _sources
 GOLDEN = json.loads(
     (Path(__file__).parent / 'fixtures/life_review_request_hashes.json').read_text()
 )['cases']
-CURRENT_CONTRACTS = ['life-source-review.13', 'life-source-review.14']
+CURRENT_CONTRACTS = ['life-source-review.13', 'life-source-review.14', 'life-source-review.15']
 
 
 @asynccontextmanager
@@ -38,13 +38,13 @@ async def source_case(tmp_path, monkeypatch, mode):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('mode', ['fact', 'report_only', 'empty'])
-@pytest.mark.parametrize('version', range(1, 15))
+@pytest.mark.parametrize('version', range(1, 16))
 async def test_all_versioned_request_bytes_and_provider_hashes_survive_cold_compilation(
     tmp_path, monkeypatch, mode, version,
 ):
     contract = f'life-source-review.{version}'
     async with source_case(tmp_path, monkeypatch, mode) as (original, snapshot):
-        # Public synthetic authors only. New presentation is compiled for .13/.14;
+        # Public synthetic authors only. New presentation is compiled for .13+;
         # this never upgrades the contract of a persisted real author request.
         view = new_fixture_view(original, snapshot, contract) if version >= 13 else (
             original.model_copy(update={'review_contract': contract})
@@ -137,7 +137,9 @@ async def test_current_wire_preserves_exact_permissions_and_empty_source_bound(
         packet, scope=choice['claim_scope'], role='source_owner',
         ref=source['source_owner_ref'], permission=choice['permission_id'],
     )
-    if contract.endswith('.13'):
+    # .14 is the claim-authority protocol and carries the subject binding on the
+    # claim itself; every other current wire leaves it on the permission.
+    if not contract.endswith('.14'):
         for field in verdict['fields']:
             for claim in field['record_bound_claims']:
                 for key in ('required_scope', 'subject_role', 'subject_ref'):

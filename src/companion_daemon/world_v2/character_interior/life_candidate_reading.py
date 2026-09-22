@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import re
 
 from jsonschema import Draft202012Validator
 
@@ -46,21 +47,43 @@ def _object(properties):
     return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
 
 
-def _text_fields(value, path="", *, depth=0):
+# The host's own identifier grammar, not prose. A per-field review of "s0" or
+# of an opaque ref cannot find an unsupported claim, and 45 percent of one real
+# run's verdicts were exactly that. Prose never matches these shapes.
+_ALIAS_TEXT = re.compile(r"^s\d+$")
+_HEX_TEXT = re.compile(r"^[0-9a-f]{32,}$")
+_OPAQUE_REF_TEXT = re.compile(r"^[A-Za-z][A-Za-z0-9+._-]*(?::[A-Za-z0-9+._-]+)+$")
+
+
+def _is_identifier_only(text):
+    """True when one candidate string is an identifier rather than a statement."""
+
+    return bool(
+        _ALIAS_TEXT.match(text)
+        or _HEX_TEXT.match(text)
+        or _OPAQUE_REF_TEXT.match(text)
+    )
+
+
+def _text_fields(value, path="", *, depth=0, drop_identifiers=False):
     if depth > 32:
         raise ValueError("Life candidate nesting exceeds its bound")
     if isinstance(value, str):
+        if drop_identifiers and _is_identifier_only(value):
+            return
         yield {"path": path, "text": value}
     elif isinstance(value, dict):
         for key, child in value.items():
             escaped = key.replace("~", "~0").replace("/", "~1")
-            yield from _text_fields(child, path + "/" + escaped, depth=depth + 1)
+            yield from _text_fields(child, path + "/" + escaped, depth=depth + 1,
+                                    drop_identifiers=drop_identifiers)
     elif isinstance(value, list):
         for index, child in enumerate(value):
-            yield from _text_fields(child, path + "/" + str(index), depth=depth + 1)
+            yield from _text_fields(child, path + "/" + str(index), depth=depth + 1,
+                                    drop_identifiers=drop_identifiers)
 
 
-def _candidate(raw):
+def _candidate(raw, *, drop_identifier_fields=False):
     if not isinstance(raw, str) or len(raw.encode()) > MAX_CANDIDATE_BYTES:
         raise ValueError("Life candidate exceeds its byte bound")
     value = json.loads(raw, object_pairs_hook=_unique)
@@ -77,7 +100,7 @@ def _candidate(raw):
         raise ValueError("Life reading requires exactly one complete Life proposal")
     # Do not curate known prose fields: new nested prose must enter the same
     # inventory. Null/numeric data remains in the full candidate for context.
-    fields = list(_text_fields(value))
+    fields = list(_text_fields(value, drop_identifiers=drop_identifier_fields))
     if not fields or len(fields) > MAX_FIELDS:
         raise ValueError("Life candidate text inventory exceeds its bound")
     return value, fields

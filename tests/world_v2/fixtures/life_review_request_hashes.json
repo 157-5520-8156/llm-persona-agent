@@ -168,6 +168,18 @@
     "empty-14": {
       "prepared_sha256": "9e0117ac6a0af6892f28655ae24ed39cf701739711ab0d3f144c30db08f582a0",
       "request_sha256": "db9eea8338c3099bfc1ea497b51db99d903e259c73c5599f0e3c403230513c85"
+    },
+    "fact-15": {
+      "prepared_sha256": "d864708efa1e3844a84c282592051b7945cf8bf1faa437cfa6fe5b6d9269d91a",
+      "request_sha256": "0d318f591950a07dda8fe8208df717affd1d71ecbb6faedfa32d7fbe6f7d1397"
+    },
+    "report_only-15": {
+      "prepared_sha256": "ab5e878517856f9127e0047b2db143887f0f18a8f4e3e159ac306f2cae6583c4",
+      "request_sha256": "fd0368875a5c5c4a46b26a07d0ee471cf8e39eb1bf9f87363648370deedefd12"
+    },
+    "empty-15": {
+      "prepared_sha256": "d74833224a5ebcc06c476fcde8eb9878f365fff87fb37e7ad872959b3e2a776b",
+      "request_sha256": "1ec64c31cd81ffdcc928d4c4437e4e20c34656f0b92a7c3ffb7c36b2d4503ceb"
     }
   }
 }
