@@ -281,3 +281,50 @@ def test_profile_audit_record_is_stable_json() -> None:
 def test_missing_purpose_fails_closed() -> None:
     with pytest.raises(KeyError, match="no BackgroundContextProfile"):
         background_context_profile_for_purpose("inbound_turn")
+
+
+def test_presented_inventory_keeps_identity_bounds_and_brakes_growth():
+    """The rendered inventory must keep what readers use and stop restating refs.
+
+    Measured on 89 real appraisal requests: the block is 33825 characters, of
+    which the three columns nothing reads (content_hash, direct_source_refs,
+    entity_revision) are 71 percent. Deduplication and the cap contribute only
+    1.5 percent today, because a snapshot holds about 51 entries with 3 repeats;
+    they are a brake on growth, not the saving.
+    """
+
+    from companion_daemon.world_v2.background_context_profile import (
+        _PRESENTED_INVENTORY_LIMIT,
+        collapse_presented_source_inventory,
+    )
+
+    first = {
+        'source_ref': 'affect:compiled:abc',
+        'scope': 'affect',
+        'privacy_class': 'private',
+        'expires_at': '2026-09-22T00:00:00Z',
+        'content_hash': 'a' * 64,
+        'direct_source_refs': ['event:000001', 'event:000002'],
+        'entity_revision': 41,
+    }
+    duplicate = {**first, 'content_hash': 'b' * 64}
+    other = {'source_ref': 'dialogue:observation:qq:1', 'scope': 'recent_dialogue'}
+
+    collapsed = collapse_presented_source_inventory([first, duplicate, other])
+
+    assert [item['source_ref'] for item in collapsed] == [
+        'affect:compiled:abc', 'dialogue:observation:qq:1',
+    ]
+    # Every column a reader asks for survives; the unread ones do not.
+    assert collapsed[0] == {
+        'source_ref': 'affect:compiled:abc', 'scope': 'affect',
+        'privacy_class': 'private', 'expires_at': '2026-09-22T00:00:00Z',
+    }
+    assert collapsed[1] == {'source_ref': 'dialogue:observation:qq:1', 'scope': 'recent_dialogue'}
+
+    # The cap bounds the block, and the first entries keep their order.
+    bounded = collapse_presented_source_inventory(
+        [{'source_ref': f'source:{index}', 'scope': 'affect'} for index in range(500)]
+    )
+    assert len(bounded) == _PRESENTED_INVENTORY_LIMIT
+    assert bounded[0]['source_ref'] == 'source:0'

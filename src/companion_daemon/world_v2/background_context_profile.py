@@ -367,12 +367,46 @@ def background_context_profile_for_purpose(purpose: BackgroundPurpose) -> Backgr
 # The rendered inventory is read only for identity and permission bounds.
 _PRESENTED_INVENTORY_COLUMNS = ("source_ref", "scope", "privacy_class", "expires_at")
 
+# The inventory restates refs the materials already carry, one entry per material
+# item, with no cap and no dedup.  It is derived *after* slicing, so it escapes
+# SliceBudget: along one continuation chain it grew 12089 -> 24714 characters
+# while the budgeted slices stayed flat (routine_background 1304 -> 1304,
+# situation 1478 -> 1460).  Bounding it changes presentation only - it restates
+# sources a reader can already find in the materials - so it is not a semantic
+# decision about what she may know.
+_PRESENTED_INVENTORY_LIMIT = 96
+
+
+def collapse_presented_source_inventory(items, *, limit=_PRESENTED_INVENTORY_LIMIT):
+    """Deduplicate by source, keep only the read columns, and bound the count.
+
+    Every entry keeps the first occurrence's order, so the mapping from a source
+    to its position is stable and replayable for one snapshot.
+    """
+
+    collapsed: list[dict[str, object]] = []
+    seen: set[object] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        ref = item.get("source_ref")
+        if ref is None or ref in seen:
+            continue
+        seen.add(ref)
+        collapsed.append(
+            {key: item[key] for key in _PRESENTED_INVENTORY_COLUMNS if key in item}
+        )
+        if len(collapsed) >= limit:
+            break
+    return collapsed
+
 
 def slice_background_inner_life_snapshot(
     snapshot: Mapping[str, object],
     profile: BackgroundContextProfile,
     *,
     lean_source_inventory: bool = False,
+    compact_source_inventory: bool = False,
 ) -> dict[str, object]:
     """Filter one InnerLifeSnapshot provider view to a lane profile."""
 
@@ -428,14 +462,15 @@ def slice_background_inner_life_snapshot(
             for item in source_inventory
             if isinstance(item, dict) and item.get("source_ref") in visible_refs
         ]
-        result["source_inventory"] = (
-            [
+        if compact_source_inventory:
+            result["source_inventory"] = collapse_presented_source_inventory(kept)
+        elif lean_source_inventory:
+            result["source_inventory"] = [
                 {key: item[key] for key in _PRESENTED_INVENTORY_COLUMNS if key in item}
                 for item in kept
             ]
-            if lean_source_inventory
-            else kept
-        )
+        else:
+            result["source_inventory"] = kept
 
     return present_inner_life(result)
 
