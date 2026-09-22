@@ -146,12 +146,18 @@ def usage_store_for_settings(settings: object) -> WorldV2UsageStore:
         # Zero is the documented "no separate background ceiling" value.  It
         # must not become a ceiling of zero that denies every background call.
         background_daily = None
+    if getattr(settings, "world_v2_model_usage_budget_disabled", False):
+        monthly = daily = soft = background_daily = None
+    else:
+        monthly = _optional_float(getattr(settings, "monthly_budget_cny", None))
+        daily = _optional_float(getattr(settings, "daily_budget_cny", None))
+        soft = _optional_float(getattr(settings, "soft_daily_budget_cny", None))
     return WorldV2UsageStore(
         path=str(getattr(settings, "database_path")),
         monthly_cost_target_cny=float(getattr(settings, "world_v2_monthly_cost_target_cny", 100.0)),
-        monthly_budget_cny=_optional_float(getattr(settings, "monthly_budget_cny", None)),
-        daily_budget_cny=_optional_float(getattr(settings, "daily_budget_cny", None)),
-        soft_daily_budget_cny=_optional_float(getattr(settings, "soft_daily_budget_cny", None)),
+        monthly_budget_cny=monthly,
+        daily_budget_cny=daily,
+        soft_daily_budget_cny=soft,
         background_daily_budget_cny=background_daily,
     )
 

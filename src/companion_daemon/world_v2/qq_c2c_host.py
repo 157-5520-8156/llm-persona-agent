@@ -118,6 +118,17 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _budget_disabled(settings: object) -> bool:
+    """One master switch for every model spend ceiling; absent means disabled off.
+
+    Reported caps must match the ones actually enforced, so the host reads the
+    same switch the usage store does rather than advertising ceilings that were
+    lifted.
+    """
+
+    return bool(getattr(settings, "world_v2_model_usage_budget_disabled", False))
+
+
 class _VisibleTurnReconciliationGate:
     """Let visible turns overlap while excluding old receipt commits.
 
@@ -3375,9 +3386,13 @@ def build_qq_c2c_host(
         canonical_user_id=settings.primary_user_id,
         semantic_chat=semantic_chat,
         usage_store=usage_store,
-        monthly_budget_cny=settings.monthly_budget_cny,
-        daily_budget_cny=settings.daily_budget_cny,
-        soft_daily_budget_cny=settings.soft_daily_budget_cny,
+        monthly_budget_cny=(
+            None if _budget_disabled(settings) else settings.monthly_budget_cny
+        ),
+        daily_budget_cny=(None if _budget_disabled(settings) else settings.daily_budget_cny),
+        soft_daily_budget_cny=(
+            None if _budget_disabled(settings) else settings.soft_daily_budget_cny
+        ),
         ingress_store=SQLiteQQIngressStore(
             Path(settings.database_path),
             catalog=QQIngressPolicyCatalog(default_window_ms=settings.qq_c2c_transport_coalesce_ms),

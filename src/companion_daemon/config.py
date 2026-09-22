@@ -776,6 +776,20 @@ class Settings(BaseSettings):
     monthly_budget_cny: float = Field(default=80.0, alias="MONTHLY_BUDGET_CNY")
     daily_budget_cny: float = Field(default=3.0, alias="DAILY_BUDGET_CNY")
     soft_daily_budget_cny: float = Field(default=2.0, alias="SOFT_DAILY_BUDGET_CNY")
+    # One explicit master switch for every model spend ceiling.  It exists
+    # because three of those ceilings are plain floats with no documented "off"
+    # value: setting them to zero would deny every call rather than lift the
+    # cap, so there was no honest way to disable the mechanism.  Turning this on
+    # lifts them together instead of asking an operator to write a fake large
+    # number into each one.  Visible and background lanes are both released.
+    world_v2_model_usage_budget_disabled: bool = Field(
+        default=False,
+        alias="WORLD_V2_MODEL_USAGE_BUDGET_DISABLED",
+        description=(
+            "Lift every World V2 model spend ceiling at once; the monthly cost "
+            "target stays a forecast input only."
+        ),
+    )
     # One daily ceiling for background World V2 work only (life ecology, NPC,
     # appraisal, private impression, retention, proactive consideration).  It
     # is what keeps a honeymoon-phase chat month inside the monthly target:
