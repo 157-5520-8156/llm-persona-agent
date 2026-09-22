@@ -1018,3 +1018,62 @@ system 那 3,700 token，命中率 6% 就是这么来的。**重排无效，这�
 **要继续往 100 元走，就必须动「每次后台调用携带多少上下文」或「多长时间一次」**——
 而前者直接关系到你要保留的内心状态，后者关系到生活丰富度。
 这两条是产品取舍，我不擅自决定；上面 1–3 是不需要取舍就能拿到的部分。
+
+## 不合并调用的前提下，成本能降多少（已测到位）
+
+用户要求保留实时性（不合并调用），且 100 元不能全给后台心理活动。按这个约束继续查，结论如下。
+
+### 每次后台调用的 30% 是模型无法据以行动的原始 ref 表
+
+刺激评价每次 127,000 字符，构成：
+
+| 块 | 字符 | 模型能拿它做什么 |
+| --- | --- | --- |
+| `inner_life_snapshot.materials` | 56,812 | **有用**：后台 profile 已按用途切好的内心状态 |
+| `inner_life_snapshot.source_inventory` | 32,553 | 51 条原始元数据（`content_hash`/`direct_source_refs`/`authority_refs`/…） |
+| `inner_life_snapshot.source_refs` | 5,236 | 原始 ref 列表 |
+| `citeable_sources` | 10,355 | **有用**：该车道真正的引用接口，给 `s0`/`s1` 短别名 |
+| `capability_manifest` | 11,712 | 有用 |
+| `purpose_contract` / `tools` / `system` / 其余 | ~20,400 | 有用 |
+
+**合计 37,789 字符（30%）是原始 ref/哈希表**，而模型回答时写的是 `citeable_sources` 里的短别名
+（它的指令原文：「只写下面的 id（如 s0），或原样抄 ref，宿主只把 id 还原成权威 ref」）。
+
+### 已有的剪切机制救不了它，原因已查明
+
+`background_context_profile.slice_background_inner_life_snapshot()` **本来就实现了这个剪切**：
+
+```python
+visible_refs = _material_source_refs(filtered)
+result["source_refs"]    = [r for r in source_refs if r in visible_refs]
+result["source_inventory"] = [i for i in source_inventory if i.get("source_ref") in visible_refs]
+```
+
+我拿真实快照直接跑了它：**97,504 → 97,492 字符，一条都没删掉**。原因不是机制坏了，
+而是 `_material_source_refs(切片后的 materials)` 收集到 **48 个 ref，而 inventory 里去重后正好 48 个**
+——切片后的材料**确实引用了全部来源**，所以没有任何一条落在过滤之外。
+`stimulus_appraisal` profile 有 31 个 material key，几乎等于整份快照。
+
+**所以这不是「机制没生效」，而是「按用途该留下什么」这个决定还没有人做过。**
+
+### 因此这一步需要你拍板的一件事
+
+后台调用到底需不需要那张原始 ref 表？三个选项：
+
+1. **去掉**（仅对回答用短别名的车道）：−30%/次，预计 6.78 → ~4.9 元/13 小时 ≈ **270 元/虚拟月**。
+   风险：如果某条车道确实要读 `scope`/`privacy_class`，得保留这几列（那仍是 −25% 左右）。
+2. **只留这几列**（`source_ref`/`scope`/`privacy_class`，去掉 `content_hash`/`direct_source_refs`/`authority_refs`）。
+   我倾向这个：它保留了「这条来源是什么、能不能用」，去掉的是宿主自己的账目。
+3. **保留不动**。
+
+叠加无损 interning（−25.7%，需新增 wire 版本）后总计约 **2 倍**，即 6.78 → ~3.5 元 ≈ **195 元/虚拟月**。
+
+### 对你那句「一百块不能全给心理活动」的正面回答
+
+**你说得对，当前结构下它确实会全给后台。** 这条纯生活运行的 6.78 元里没有一句聊天，
+按 1:1 时钟外推约 376 元/虚拟月——**是全部预算的 3.8 倍**，聊天一分钱都分不到。
+
+去掉上面可证的冗余（约 −45% 叠加）后能到 ~195 元/虚拟月，**仍是目标的 2 倍**。
+再往下只能从这三样里选一样：调用频率、后台模型档位、或每次携带的语境量。
+这三样都直接对应你要的「实时性 / 内心丰富度 / 成本」，**是产品取舍，我不替你定**——
+但至少现在每条能省多少是可量的，不再是猜。
