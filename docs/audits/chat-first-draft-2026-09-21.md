@@ -1588,3 +1588,26 @@ degraded  model_provider_rejected_calls
 所以它**跨重启有效**——这正是能抓住那次 36 小时停摆的性质。
 
 两条测试：一条确认它会触发并点名失败码与次数，一条确认普通超时**不会**谎称供应商拒绝。
+
+## 一个不影响"现在能用"、但影响"停机期间不丢消息"的配置项
+
+启动日志一直有一行警告：
+
+```
+WARNING companion_daemon.world_v2.qq_history_backfill:QQ history backfill unavailable (ConnectError)
+```
+
+查清了原因，**不是代码问题**：
+
+- `.env` 里 `NAPCAT_API_URL=http://127.0.0.1:3000`，而 **3000 端口没有监听**
+- 8788 是 **NapCat 的 Web UI**（`GET /` 返回 HTML），它的 OneBot API 对这些 POST 返回
+  `405 METHOD_NOT_ALLOWED` —— 即 **OneBot HTTP API 没开**
+- 所以 NapCat 是通过**反向 WebSocket 把事件推给守护进程**的（日志里那句
+  `relying on live push only` 就是这个意思）
+
+**后果**：实时消息**正常**（推送路径是通的，这正是她一直在收消息的方式）；
+但守护进程**无法主动拉取错过的消息**——如果她在某段时间不在，那期间发来的消息会丢。
+这次 36 小时停摆期间如果有消息，就是这种情形。
+
+**这是 NapCat 侧的配置选择，我没有改。** 需要的话要开它的 OneBot HTTP API 并把
+`NAPCAT_API_URL` 指到正确端口，属于动你的 QQ 环境，该由你决定。
