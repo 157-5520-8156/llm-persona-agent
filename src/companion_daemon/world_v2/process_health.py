@@ -502,6 +502,25 @@ def _initiative_findings(initiative: Mapping[str, object] | None) -> list[_Findi
                 "initiative has repeated technical failures",
             )
         )
+    # A provider that rejects our calls stops the whole character, and on
+    # 2026-09-22 it did so for 36 hours while this endpoint reported only
+    # "repeated technical failures".  The reason was an empty provider balance
+    # and it was visible nowhere in health.  Name the rejection so the operator
+    # checks the account before hunting for a code fault.
+    last_failure = str(payload.get("last_failure_code") or "")
+    window = _as_mapping(payload.get("reliability_24h")) or {}
+    codes = _as_mapping(window.get("technical_failure_codes")) or {}
+    rejected = int(codes.get("provider_rejection") or 0)
+    if last_failure.startswith("provider_") or rejected > 0:
+        findings.append(
+            (
+                "degraded",
+                "model_provider_rejected_calls",
+                "the model provider rejected calls "
+                f"(last={last_failure or 'unknown'}, rejected_24h={rejected}); "
+                "check the provider account and credit before treating this as a code fault",
+            )
+        )
     return findings
 
 

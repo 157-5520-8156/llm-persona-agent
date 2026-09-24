@@ -443,3 +443,53 @@ def test_http_daemon_health_budget_exhausted_is_degraded(tmp_path) -> None:
     assert body["status"] == "degraded"
     assert "budget_exhausted" in body["reasons"]
     assert body["world_v2_capture"]["status"] == "ready"
+
+
+def test_compile_process_health_names_a_provider_rejection() -> None:
+    """An empty provider balance stopped the character for 36 hours.
+
+    On 2026-09-22T16:08 the provider began answering 402 Insufficient Balance.
+    For the next 36 hours every call failed and this endpoint reported only
+    "initiative has repeated technical failures", which names the symptom and
+    not the cause. The rejection must be visible so an operator checks the
+    account before hunting for a code fault.
+    """
+
+    verdict = compile_process_health(
+        healthy_status="running",
+        character_interior=_ready_interior(),
+        scheduler_status="running",
+        storage={"status": "ok", "writable": True},
+        ledger_writable=True,
+        initiative={
+            "state": "retry_wait",
+            "warning": True,
+            "warning_reasons": ["repeated_technical_failures"],
+            "last_failure_code": "provider_rejection",
+            "reliability_24h": {"technical_failure_codes": {"provider_rejection": 12}},
+        },
+    )
+    assert verdict.status == "degraded"
+    assert "model_provider_rejected_calls" in verdict.reasons
+    assert "provider_rejection" in verdict.reason
+    assert "12" in verdict.reason
+
+
+def test_compile_process_health_stays_quiet_without_a_provider_rejection() -> None:
+    """An ordinary technical failure must not claim the provider rejected us."""
+
+    verdict = compile_process_health(
+        healthy_status="running",
+        character_interior=_ready_interior(),
+        scheduler_status="running",
+        storage={"status": "ok", "writable": True},
+        ledger_writable=True,
+        initiative={
+            "state": "waiting_context",
+            "warning": True,
+            "warning_reasons": ["repeated_technical_failures"],
+            "last_failure_code": "authored_subcall_timeout",
+            "reliability_24h": {"technical_failure_codes": {"authored_subcall_timeout": 4}},
+        },
+    )
+    assert "model_provider_rejected_calls" not in verdict.reasons
