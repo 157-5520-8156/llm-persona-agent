@@ -1565,3 +1565,26 @@ life_development_source_closure_review 4,844        0.0053
 
 单次调用成本现在集中在 **0.03–0.06 元**。这与预算关掉前的账目一致，可作为
 "一天大概多少钱"的基线（取决于每虚拟日跑多少个车道）。
+
+## 2026-09-24：健康检查现在会点名"供应商拒绝"（`6cfc1f96`）
+
+上一节记的监控缺口已经补上。健康端点原本只报
+`initiative has repeated technical failures`——**症状，而不是那个能解释整体停摆的唯一事实**。
+余额只在用量表里可见。
+
+改动是**附加式**的，不需要新数据管道：健康里本来就有 `last_failure_code` 和
+24 小时窗口的技术失败码。现在当最后一次失败是 `provider_*`，或窗口里出现任何
+`provider_rejection` 计数时，额外报一条：
+
+```
+degraded  model_provider_rejected_calls
+  "the model provider rejected calls (last=..., rejected_24h=N);
+   check the provider account and credit before treating this as a code fault"
+```
+
+**线上验证**：重启后健康立即报 `reasons: ['model_provider_rejected_calls']`。
+注意这条来自**持久化的 24 小时窗口**而不是进程内计数（重启后
+`consecutive_technical_failures` 归零、`last_failure_code` 为 null），
+所以它**跨重启有效**——这正是能抓住那次 36 小时停摆的性质。
+
+两条测试：一条确认它会触发并点名失败码与次数，一条确认普通超时**不会**谎称供应商拒绝。
