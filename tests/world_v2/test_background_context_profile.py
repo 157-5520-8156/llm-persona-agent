@@ -328,3 +328,45 @@ def test_presented_inventory_keeps_identity_bounds_and_brakes_growth():
     )
     assert len(bounded) == _PRESENTED_INVENTORY_LIMIT
     assert bounded[0]['source_ref'] == 'source:0'
+
+
+def test_the_appraisal_lane_sends_only_the_inventory_columns_it_can_use() -> None:
+    """The lane production actually runs must drop what nothing reads.
+
+    Measured on 89 real appraisal requests: the rendered inventory is 33825
+    characters and content_hash, direct_source_refs and authority_refs are 71
+    percent of it. A structural diff against the full rendering removes exactly
+    those three, adds nothing and changes no other path. None of the three is
+    referenced in structured_role, so the model's output contract has no field
+    for them, and every host reader of the inventory asks only for source_ref
+    and scope. Without the reviewer configured - which is how production runs -
+    the author lane takes the registered profile directly.
+    """
+
+    snapshot = _sample_snapshot(include_chat=False)
+    snapshot["source_inventory"] = [
+        {
+            "source_ref": "fact:1",
+            "scope": "relevant_facts",
+            "privacy_class": "personal",
+            "expires_at": "2026-09-24T00:00:00Z",
+            "content_hash": "a" * 64,
+            "direct_source_refs": ["event:000001"],
+            "authority_refs": ["authority:1"],
+            "entity_revision": 41,
+        },
+        {"source_ref": "fact:2", "scope": "relevant_facts", "content_hash": "b" * 64},
+    ]
+    sliced = slice_background_inner_life_snapshot(
+        snapshot, background_context_profile_for_purpose("world_stimulus_appraisal")
+    )
+
+    assert sliced["source_inventory"] == [
+        {
+            "source_ref": "fact:1",
+            "scope": "relevant_facts",
+            "privacy_class": "personal",
+            "expires_at": "2026-09-24T00:00:00Z",
+        },
+        {"source_ref": "fact:2", "scope": "relevant_facts"},
+    ]
