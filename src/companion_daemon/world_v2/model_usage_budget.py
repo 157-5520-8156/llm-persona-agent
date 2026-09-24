@@ -9,6 +9,8 @@ Image CNY remains in ``usage_events`` on the same SQLite path.
 
 from __future__ import annotations
 
+from types import MappingProxyType
+
 import hashlib
 import json
 import logging
@@ -45,6 +47,45 @@ GENERIC_MODEL_PURPOSES = frozenset(
 
 # Visible-turn purposes bypass optional background soft limits. Explicit
 # operator hard caps still apply; denial remains a technical result, not silence.
+# When the daily envelope is nearly spent, the last of it must go to the lanes
+# that carry her rather than to whichever lane asked first.  On the production
+# ledger 1510 denials were soft_daily_budget_exceeded and 60.1 percent of every
+# model call was refused, spread by call volume: activity_lifecycle_choice lost
+# 734 calls and world_stimulus_appraisal 184, with no relation to what the work
+# is worth.
+#
+# A tier may spend only its share of the soft ceiling, so a lower tier is cut
+# while a higher one still has room.  Order matters inside a wake: a denial
+# closes the rest of that wake, so the lanes that must not be cut come first and
+# the guards and media, which run last, are cut first.
+BACKGROUND_LANE_PRIORITY = MappingProxyType(
+    {
+        # What she is, and her life moving.
+        "world_stimulus_appraisal": 1,
+        "life_development_draft": 1,
+        "life_development_choice": 1,
+        "outcome_selection": 1,
+        "experience_memory_retention": 1,
+        "fact_memory_retention": 1,
+        # Kept, but they yield the last of the envelope to tier 1.
+        "activity_lifecycle_choice": 2,
+        "proactive_contact": 2,
+        "interaction_fact_draft": 2,
+        # Her private thoughts.
+        "private_impression_reflection": 3,
+        # Guards and media: worth having, cut first.
+        "life_development_source_closure_review": 4,
+        "life_development_novel_origin_review": 4,
+        "life_development_source_rewrite": 4,
+        "media_selection": 4,
+    }
+)
+# A tier may only continue while the envelope is this far from full.  Cutting by
+# how full the day already is, rather than by a fixed share, keeps capacity from
+# being wasted on a reservation no higher tier ever claims: a tier-1 lane can
+# still use the whole envelope when nothing else is running.
+BACKGROUND_LANE_TIER_CEILING = MappingProxyType({2: 0.9, 3: 0.7, 4: 0.5})
+
 VISIBLE_INBOUND_PURPOSES = frozenset(
     {
         "inbound_turn",
@@ -603,6 +644,22 @@ class WorldV2UsageStore:
             finally:
                 connection.close()
 
+    def _background_envelope_cny(self) -> float | None:
+        """The ceiling that actually binds non-visible work today.
+
+        Two ceilings can apply and both are enforced, so the tighter one is what
+        the lanes really share.  Dividing the looser one would hand out shares
+        that the tighter ceiling then eats, and the ranking would stop meaning
+        anything.
+        """
+
+        candidates = [
+            value
+            for value in (self._soft_daily_budget_cny, self._background_daily_budget_cny)
+            if value is not None
+        ]
+        return min(candidates) if candidates else None
+
     def _spend_cap_reason(
         self, connection: sqlite3.Connection, estimated_cny: float, *, purpose: str
     ) -> str | None:
@@ -626,6 +683,15 @@ class WorldV2UsageStore:
             and daily + estimated_cny > self._soft_daily_budget_cny
         ):
             return "soft_daily_budget_exceeded"
+        envelope = self._background_envelope_cny()
+        ceiling = BACKGROUND_LANE_TIER_CEILING.get(BACKGROUND_LANE_PRIORITY.get(purpose, 1))
+        if ceiling is not None and envelope is not None:
+            background = self._background_spend_snapshot(
+                connection, since=self._utc_window_start(month=False)
+            )["committed_cny"]
+            if background + estimated_cny > envelope * ceiling:
+                # Leave the last of the envelope to the lanes that carry her.
+                return "soft_daily_budget_reserved_for_higher_priority_lanes"
         if self._background_daily_budget_cny is not None:
             background = self._background_spend_snapshot(
                 connection, since=self._utc_window_start(month=False)
