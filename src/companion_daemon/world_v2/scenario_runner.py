@@ -357,7 +357,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.105"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.107"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -669,8 +669,19 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.105
 # All 120 replay hashes change; every other manifest field and predicate is
 # unchanged after losslessly expanding shared-string materials in the verifier.
 # See docs/audits/scenario-baseline-105-2026-09-29.json. No gate is relaxed.
+# 2026-09-29: .106 versions actor-scoped expansion through accepted prehistory
+# record links. In the 120-case suite only npc_world_impact.01's derived replay
+# hash changes; every visible/output/predicate/call field remains identical.
+# See docs/audits/scenario-baseline-106-2026-09-29.json.
+# 2026-09-30: .107 seeds ordinary automatic Recall with one source-bound,
+# actor-owned active prehistory candidate whose text matches the current
+# observation under the existing Memory relevance policy. That exact link
+# prioritizes only eligible linked scenes. The complete suite keeps all case
+# outputs, actions, calls, predicates and cold replay checks unchanged;
+# request/source trace identities update all 120 replay hashes. See
+# docs/audits/scenario-baseline-107-2026-09-30.json.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "6bf5af93da2fb9565254c23d71f5ecc798b47afe46f7a5646d2e3ec72e2e2127"
+    "c49e8516d9f8e548196fb2d71edf934df891886b14b5f5379b2427b4d5fd8727"
 )
 
 

@@ -6,6 +6,7 @@ import argparse
 from datetime import UTC, datetime
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 
@@ -96,6 +97,10 @@ def main(argv=None):
         command.add_argument("--out", required=True)
         if name != "author-request":
             command.add_argument("--draft", required=True)
+        if name == "semantic-review-request":
+            command.add_argument("--narrative")
+            command.add_argument("--materials")
+            command.add_argument("--story-links")
         if name == "package-reviewed":
             command.add_argument("--review", required=True)
             command.add_argument("--review-artifact-ref", required=True)
@@ -103,6 +108,9 @@ def main(argv=None):
     for flag in ("request", "response", "reviewer-ref", "reviewed-at", "out"):
         binding.add_argument("--" + flag, required=True)
     args = parser.parse_args(argv)
+    if args.command == "semantic-review-request":
+        if (args.narrative or args.materials or args.story_links) and not (args.narrative and args.materials):
+            parser.error("source-complete semantic review requires --narrative and --materials; --story-links is optional")
     if args.command == "brief":
         value = brief_from_database(database=args.database, profile_path=args.profile,
             world_id=args.world_id, actor_ref=args.actor_ref,
@@ -122,13 +130,28 @@ def main(argv=None):
             if args.command == "review-request":
                 value = review_request(brief, draft)
             elif args.command == "semantic-review-request":
-                value = semantic_review_request(brief, draft)
+                narrative_text = Path(args.narrative).read_text(encoding="utf-8") if args.narrative else None
+                source_materials = None
+                if args.materials:
+                    from companion_daemon.world_v2.prehistory_life_materials import LifeMaterialsDraft
+
+                    source_materials = LifeMaterialsDraft.model_validate_json(Path(args.materials).read_text())
+                story_links = None
+                if args.story_links:
+                    from companion_daemon.world_v2.prehistory_story_links import PrehistoryStoryLinkArtifact
+
+                    story_links = PrehistoryStoryLinkArtifact.model_validate_json(Path(args.story_links).read_text())
+                value = semantic_review_request(
+                    brief, draft, story_links=story_links, narrative_text=narrative_text,
+                    source_materials=source_materials,
+                )
             else:
                 review = PrehistoryCreationReview.model_validate_json(Path(args.review).read_text())
                 value = package_reviewed(brief, draft, review, review_artifact_ref=args.review_artifact_ref)
     payload = value.model_dump(mode="json") if hasattr(value, "model_dump") else value
     with Path(args.out).open("x", encoding="utf-8") as stream:
         stream.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    os.chmod(args.out, 0o600)
     print(json.dumps({"written": str(Path(args.out).resolve()), "command": args.command,
                       "provider_calls": 0, "database_writes": 0}))
 

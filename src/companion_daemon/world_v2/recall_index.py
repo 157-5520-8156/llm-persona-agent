@@ -31,8 +31,17 @@ from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_writ
 # envelopes never enter the role's reading; charging them to its context budget
 # silently discards small memories. The complete trace retains its independent
 # 32 KB audit limit, including query and request, in RecallAuditTrace.
-RECALL_MODEL_READING_MAX_BYTES = 6_000
-RECALL_RESULT_MAX_BYTES = 12_000
+# A complete five-scene reviewed prehistory chain plus its independent source
+# closures needs about 6.2 KB of CharacterInterior reading material and 13 KB
+# of receipt JSON. Keep the increase bounded to six hits rather than clipping
+# the final story beat under the former four-scene packing ceiling.
+RECALL_MODEL_READING_MAX_BYTES = 7_000
+RECALL_RESULT_MAX_BYTES = 14_000
+# Only a selected, reviewed prehistory story may use this larger source-closed
+# pack. The observed five-scene chain is ~10.6 KB for model reading and ~21.7
+# KB for its audit result; ordinary Recall keeps the smaller budgets above.
+RECALL_STORY_MODEL_READING_MAX_BYTES = 11_000
+RECALL_STORY_RESULT_MAX_BYTES = 22_000
 MAX_RECALL_QUERY_CHARACTERS = 1_024
 _PRIVACY_RANK: dict[PrivacyClass, int] = {
     "public": 0,
@@ -692,12 +701,29 @@ class _RecallIndexCore:
         seen_slices: set[str] = set()
         seen_subjects: set[str] = set()
         remaining = list(ranked)
+        # A source-bound prehistory candidate in link_refs is an explicit
+        # structured Recall seed. Keep its eligible scene inside the direct
+        # top-k before diversity fills every slot with stronger unrelated
+        # lexical/dense hits; the ordinary linked-story closure below then
+        # expands only that scene's verified active neighbors.
+        story_linked_anchor = next((
+            entry
+            for entry in remaining
+            if entry[2].document.prehistory is not None
+            and set(query.link_refs).intersection(entry[2].document.link_refs)
+        ), None)
+        if story_linked_anchor is not None:
+            remaining.remove(story_linked_anchor)
+            remaining.insert(0, story_linked_anchor)
         # A matched attempt's newer settled result can disambiguate progress.
         # Join only exact owned Plan links among already eligible/matched rows;
         # no prose-based relation, changed time filter, or larger output budget.
         families = {}
         expanded_families = set()
-        if self._index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.11":
+        if self._index_version.partition("+embedding:")[0] in {
+            "world-v2-recall-index.hybrid.11",
+            "world-v2-recall-index.hybrid.12",
+        }:
             from .life_recall_windows import attempt_family
             families = {hit.document.document_id: attempt_family(hit.document)
                         for _, _, hit in ranked}
@@ -749,6 +775,13 @@ class _RecallIndexCore:
                 covered_spans.append((start, end))
                 covered_terms.update(terms)
         hits = tuple(selected)
+        if hits and any(hit.document.prehistory is not None for hit in hits):
+            hits = self._add_linked_prehistory_context(
+                hits=hits,
+                ranked=ranked,
+                eligible_rows=eligible_rows,
+                query=query,
+            )
         if diagnostics is not None:
             diagnostics.append(RecallSearchDiagnostic(
                 corpus_document_ids=tuple(document.document_id for document, _ in rows),
@@ -778,6 +811,182 @@ class _RecallIndexCore:
             query=query,
             hits=hits,
         )
+
+    @staticmethod
+    def _add_linked_prehistory_context(
+        *,
+        hits: tuple[RecallHit, ...],
+        ranked: list[tuple[int, str, RecallHit]],
+        eligible_rows: tuple[tuple[RecallDocument, tuple[float, ...]], ...],
+        query: RecallQuery,
+    ) -> tuple[RecallHit, ...]:
+        """Include a bounded closure of explicitly linked, still eligible scenes.
+
+        The accepted record graph is only a recall aid. Every added document
+        must already exist in this actor's active-memory index and pass the
+        same query time/privacy/status filters. The source's own accepted
+        import and archive bindings stay on the document, so linked material
+        cannot borrow the authority of the scene that happened to retrieve it.
+        A bounded graph walk lets a selected memory carry the later parts of
+        its reviewed story instead of stopping at its first one-hop neighbor.
+        """
+        # ``query.limit`` bounds semantic/lexical matches before this seam.
+        # Once one linked prehistory story is selected, allow its bounded
+        # source-closed context to reach the audit contract's six-hit ceiling.
+        hit_limit = 6  # RecallAuditTrace currently allows six.
+
+        def record_ref(document: RecallDocument) -> str | None:
+            if document.prehistory is None:
+                return None
+            return document.source_item_ref.split(":window:", 1)[0]
+
+        documents_by_record: dict[str, list[RecallDocument]] = {}
+        neighbor_ids: dict[str, set[str]] = {}
+        for document, _vector in eligible_rows:
+            current = record_ref(document)
+            if current is None:
+                continue
+            documents_by_record.setdefault(current, []).append(document)
+            for related in document.prehistory.related_record_refs:
+                if related == current:
+                    continue
+                # Relationships are recall associations, not necessarily a
+                # directed causal edge, so either endpoint can expose it.
+                neighbor_ids.setdefault(current, set()).add(related)
+                neighbor_ids.setdefault(related, set()).add(current)
+
+        eligible_relations = {
+            source: tuple(sorted(target for target in targets if target in documents_by_record))
+            for source, targets in neighbor_ids.items()
+        }
+        if not any(record_ref(hit.document) in eligible_relations for hit in hits):
+            return hits
+
+        ranked_hits = {document_id: hit for _score, document_id, hit in ranked}
+        ranked_position = {document_id: position for position, (_score, document_id, _hit) in enumerate(ranked)}
+
+        def midpoint(document: RecallDocument) -> float:
+            return (
+                document.occurred_from.timestamp()
+                + (document.occurred_to or document.occurred_from).timestamp()
+            ) / 2
+
+        def linked_hit(record_id: str) -> RecallHit:
+            target_docs = documents_by_record[record_id]
+            matched = [
+                ranked_hits[item.document_id]
+                for item in target_docs
+                if item.document_id in ranked_hits
+            ]
+            if matched:
+                matched.sort(key=lambda item: (
+                    ranked_position[item.document.document_id],
+                    item.document.document_id,
+                ))
+                return matched[0]
+
+            # If no window independently matched, begin at the record opening.
+            # Another Recall query can still locate its later windows.
+            first_window = min(
+                target_docs,
+                key=lambda item: (
+                    item.source_window_start if item.source_window_start is not None else -1,
+                    item.document_id,
+                ),
+            )
+            return RecallHit(
+                document=first_window,
+                match_channels=("structured",),
+                score_bp=0,
+                lexical_score_bp=0,
+                dense_score_bp=0,
+                temporal_score_bp=0,
+                structured_score_bp=10_000,
+                accessibility_offset_bp=0,
+            )
+
+        # A directly matched, reviewed prehistory scene is one story entry,
+        # not the whole story. Reserve the bounded Recall context for its
+        # eligible connected scene graph before filling remaining slots with
+        # less specific direct matches from other lanes.
+        story_anchor = next((
+            hit for hit in hits
+            if (anchor_ref := record_ref(hit.document)) is not None
+            and eligible_relations.get(anchor_ref)
+        ), None)
+        if story_anchor is None:
+            return hits
+
+        expanded: list[RecallHit] = []
+
+        def add_within_budget(hit: RecallHit) -> bool:
+            if len(expanded) >= hit_limit:
+                return False
+            candidate = (*expanded, hit)
+            reading_size = len(_canonical_json({"items": [
+                interior_recall_item(item.document, index_version="world-v2-recall-index.hybrid.12")
+                for item in candidate
+            ]}).encode("utf-8"))
+            result_size = len(_canonical_json([
+                item.model_dump(mode="json") for item in candidate
+            ]).encode("utf-8"))
+            if (
+                reading_size > RECALL_STORY_MODEL_READING_MAX_BYTES
+                or result_size > RECALL_STORY_RESULT_MAX_BYTES
+            ):
+                return False
+            expanded.append(hit)
+            return True
+
+        anchor_ref = record_ref(story_anchor.document)
+        if anchor_ref is None or not add_within_budget(story_anchor):
+            return hits
+        queue: list[tuple[str, RecallHit]] = [(anchor_ref, story_anchor)]
+        seen_records = {anchor_ref}
+        additions = 0
+        while queue and len(expanded) < hit_limit:
+            anchor_ref, anchor_hit = queue.pop(0)
+            anchor_time = midpoint(anchor_hit.document)
+
+            def temporal_distance(record_id: str) -> tuple[float, int, str]:
+                target_docs = documents_by_record[record_id]
+                distance = min(abs(midpoint(item) - anchor_time) for item in target_docs)
+                rank = min(
+                    (ranked_position.get(item.document_id, len(ranked)) for item in target_docs),
+                    default=len(ranked),
+                )
+                return distance, rank, record_id
+
+            for target_ref in sorted(eligible_relations.get(anchor_ref, ()), key=temporal_distance):
+                if target_ref in seen_records:
+                    continue
+                seen_records.add(target_ref)
+                target_hit = linked_hit(target_ref)
+                if not add_within_budget(target_hit):
+                    # Adding more material can only reduce the remaining byte
+                    # budget, so do not retry this target through another edge.
+                    continue
+                additions += 1
+                queue.append((target_ref, target_hit))
+                if len(expanded) >= hit_limit:
+                    break
+
+        if additions == 0:
+            return hits
+
+        story_record_ids = {
+            ref for item in expanded if (ref := record_ref(item.document)) is not None
+        }
+        story_document_ids = {item.document.document_id for item in expanded}
+        for hit in hits:
+            if len(expanded) >= hit_limit:
+                break
+            hit_ref = record_ref(hit.document)
+            if hit.document.document_id in story_document_ids or hit_ref in story_record_ids:
+                continue
+            if add_within_budget(hit):
+                story_document_ids.add(hit.document.document_id)
+        return tuple(expanded)
 
     def _normalize_vector(self, value: tuple[float, ...]) -> tuple[float, ...]:
         if len(value) != self._embedding.dimensions:

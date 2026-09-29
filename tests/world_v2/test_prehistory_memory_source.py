@@ -36,14 +36,18 @@ def _install(ledger):
     return row
 
 
-def _choice(ledger, source, *, before=None, status="pending"):
+def _choice(ledger, source, *, before=None, status="pending", candidate_id="memory:topic"):
     now = ledger.project().logical_time
     revision = before.entity_revision + 1 if before else 1
     after = memory.candidate(
-        source, revision=revision, status=status, opened_at=START, updated_at=now,
+        source, candidate_id=candidate_id, revision=revision, status=status, opened_at=START, updated_at=now,
         reviewed_at=now if status != "pending" else None,
         forgotten_at=now if status == "forgotten" else None,
-        accepted_event_ref=f"event:memory:history:{revision}",
+        accepted_event_ref=(
+            f"event:memory:history:{revision}"
+            if candidate_id == "memory:topic"
+            else f"event:memory:history:{candidate_id}:{revision}"
+        ),
     )
     payload = memory.mutation(
         after, operation={"pending": "open", "active": "accept", "forgotten": "forget"}[status],

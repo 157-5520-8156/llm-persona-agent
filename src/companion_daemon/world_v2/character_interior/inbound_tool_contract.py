@@ -285,6 +285,27 @@ def _deepseek_strict_union_padding_is_empty(field: str, value: object) -> bool:
     return field in empty_padding and value == empty_padding[field]
 
 
+def normalize_compact_gate_transport(value: dict[str, object]) -> dict[str, object]:
+    """Normalize the observed provider spelling of the compact-gate branch.
+
+    DeepSeek has returned ``result_code`` for the declared ``result_kind``
+    discriminator on this tool. Accept that spelling only as an exact two-key
+    transport envelope and only for known branches; payload validation and all
+    capability checks still run through the canonical ``result_kind`` path.
+    """
+
+    if "result_code" not in value:
+        return value
+    if "result_kind" in value:
+        raise ValueError("compact gate carrier has ambiguous branch discriminators")
+    if set(value) != {"result_code", "payload_json"}:
+        raise ValueError("compact gate result_code alias has an invalid transport shape")
+    kind = value.get("result_code")
+    if kind not in {"reply_only", "full_turn", "recall"}:
+        raise ValueError("compact gate result_code alias is unavailable")
+    return {"result_kind": kind, "payload_json": value["payload_json"]}
+
+
 def _unique_compact_gate_object(
     pairs: list[tuple[str, object]],
 ) -> dict[str, object]:
@@ -410,6 +431,7 @@ def _loads_compact_gate_payload_object(payload_json: str) -> dict[str, object]:
 def _expand_compact_gate_payload(value: dict[str, object]) -> dict[str, object]:
     """Expand the compact provider carrier into the existing typed branches."""
 
+    value = normalize_compact_gate_transport(value)
     if "payload_json" not in value or (
         value.get("payload_json") is None and set(value) != {"result_kind", "payload_json"}
     ):

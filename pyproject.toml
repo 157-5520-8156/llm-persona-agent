@@ -44,4 +44,4 @@ exclude = [".venv", "external"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "tests/support"]
+pythonpath = ["src", "tests/support", ".", "scripts"]

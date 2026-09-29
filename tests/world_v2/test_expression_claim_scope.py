@@ -11,6 +11,40 @@ from companion_daemon.world_v2.proactive_action import ProactiveDraft
 from test_character_interior_inbound_wire import _qq_request
 
 
+def test_unambiguous_world_claim_text_alias_normalizes_without_dropping_content():
+    raw = {
+        "world_claims": [{
+            "text": "后来她说照片已经用过。",
+            "scope": "past_world",
+            "source_refs": ["S1"],
+        }],
+    }
+
+    normalized = expression._normalize_world_claim_aliases(raw)
+
+    assert normalized["world_claims"] == [{
+        "claim_text": "后来她说照片已经用过。",
+        "scope": "past_world",
+        "source_refs": ["S1"],
+    }]
+    claim = expression.WorldClaimDraft.model_validate_json(
+        json.dumps(normalized["world_claims"][0], ensure_ascii=False),
+    )
+    assert claim.claim_text == "后来她说照片已经用过。"
+    ambiguous = expression._normalize_world_claim_aliases({
+        "world_claims": [{
+            "text": "旧正文。",
+            "claim_text": "规范字段已有正文。",
+            "scope": "past_world",
+            "source_refs": ["S1"],
+        }],
+    })
+    with pytest.raises(ValidationError):
+        expression.WorldClaimDraft.model_validate_json(
+            json.dumps(ambiguous["world_claims"][0], ensure_ascii=False),
+        )
+
+
 @pytest.mark.parametrize("scope,lane,event_type,value,text", [
     ("current_world", "current_situation", "ClockAdvanced",
      {"logical_time": "2026-07-30T06:08:00Z"}, "现在是下午两点零八分。"),
@@ -69,6 +103,60 @@ def test_valid_scope_and_exact_alias_produce_the_same_immutable_proposal(
     assert any(item.ref_id == ref for item in short.evidence_refs)
     plan = short.proposed_changes[0].payload.value()
     assert plan["beat_drafts"][0]["inline_text"] == text
+
+
+def test_one_story_claim_can_cite_a_bounded_source_closed_scene_chain():
+    refs = tuple(f"S{index}" for index in range(13))
+    claim = expression.WorldClaimDraft(
+        claim_text="她们后来把那次照片的事说开了一些。",
+        scope="past_world",
+        source_refs=refs,
+    )
+
+    assert claim.source_refs == refs
+    with pytest.raises(ValidationError):
+        expression.WorldClaimDraft(
+            claim_text="超过有界场景链的来源数。",
+            scope="past_world",
+            source_refs=tuple(f"S{index}" for index in range(17)),
+        )
+
+
+def test_unreviewed_inbound_does_not_advertise_settled_event_share_sources():
+    settled_ref = "event:settlement:life-story"
+    item_ref = "occurrence:life-story"
+    context = {
+        "actor_ref": "agent:companion",
+        "logical_time": "2026-09-30T00:00:00Z",
+        "slices": {
+            "world_life": {
+                "availability": "available",
+                "items": [{
+                    "item_ref": item_ref,
+                    "source_bindings": [{
+                        "source_kind": "committed_event",
+                        "authority_type": "WorldOccurrenceSettled",
+                        "ref": settled_ref,
+                        "source_world_revision": 4,
+                        "immutable_hash": "a" * 64,
+                    }],
+                    "value": {"context_kind": "settled_world_occurrence"},
+                }],
+            },
+        },
+    }
+    request = _qq_request().model_copy(update={"model_content_json": json.dumps(context)})
+
+    allowed = expression.world_claim_source_refs_by_scope(
+        context=context,
+        request=request,
+        prehistory_source_authority_context_json=json.dumps(context),
+    )
+
+    assert settled_ref not in allowed["current_world"]
+    assert settled_ref not in allowed["past_world"]
+    assert item_ref not in allowed["current_world"]
+    assert item_ref not in allowed["past_world"]
 
 
 @pytest.mark.parametrize("scope", [

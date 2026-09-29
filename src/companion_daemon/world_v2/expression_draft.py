@@ -307,7 +307,10 @@ class WorldClaimDraft(FrozenModel):
         "stable_identity",
         "subjective_or_hypothetical",
     ]
-    source_refs: tuple[str, ...] = Field(default=(), max_length=8)
+    # A single story-spanning claim can cite several independently imported
+    # scenes. Keep the exact-source closure bounded while allowing the role to
+    # cite the complete five-scene narrative context.
+    source_refs: tuple[str, ...] = Field(default=(), max_length=16)
 
     @model_validator(mode="after")
     def source_shape_matches_scope(self) -> "WorldClaimDraft":
@@ -757,6 +760,33 @@ def _world_life_occurrence_source_tokens(
     return tokens - _context_entity_identity_tokens(context)
 
 
+def _settled_world_event_source_tokens(context: dict[str, object]) -> set[str]:
+    """Find Context tokens whose external sharing has its own hard boundary."""
+
+    slices = context.get("slices")
+    if not isinstance(slices, dict):
+        return set()
+    tokens: set[str] = set()
+    for lane in slices.values():
+        items = lane.get("items") if isinstance(lane, dict) else None
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            bindings = item.get("source_bindings")
+            if not isinstance(bindings, list):
+                continue
+            if any(
+                isinstance(binding, dict)
+                and binding.get("source_kind") == "committed_event"
+                and binding.get("authority_type") == "WorldOccurrenceSettled"
+                for binding in bindings
+            ):
+                tokens.update(_context_item_source_tokens(item))
+    return tokens
+
+
 def _planned_activity_item_source_tokens(item: dict[str, object]) -> set[str]:
     source_ref = item.get("source_ref", item.get("item_ref"))
     bindings = item.get("source_bindings")
@@ -904,22 +934,58 @@ def _inner_life_attention_tokens(context: dict[str, object]) -> set[str]:
     materials = inner.get("materials")
     if not isinstance(materials, dict):
         return tokens
+    if materials.get("contract") == "shared-string-view.1":
+        try:
+            from .shared_string_view import unpack_shared_strings
+
+            materials = unpack_shared_strings(materials)
+        except (TypeError, ValueError):
+            return tokens
+
     inventory = materials.get("moments_i_can_share")
-    if not isinstance(inventory, dict):
-        return tokens
-    extra = inventory.get("source_refs")
-    if isinstance(extra, list):
-        tokens.update(ref for ref in extra if isinstance(ref, str) and ref)
-    items = inventory.get("items")
-    if not isinstance(items, list):
-        return tokens
-    for item in items:
-        if not isinstance(item, dict):
+    if isinstance(inventory, dict):
+        extra = inventory.get("source_refs")
+        if isinstance(extra, list):
+            tokens.update(ref for ref in extra if isinstance(ref, str) and ref)
+
+    # Snapshot materials are what the provider actually sees after the
+    # capsule slices have been elided. They may add attention aliases for
+    # already-present memory/Recall items, but never claim authority; the
+    # semantic lane and source-closure checks remain separate below.
+    material_lanes = (
+        inventory,
+        materials.get("remembered_material"),
+        materials.get("automatic_prefetch"),
+        materials.get("selected_recall"),
+    )
+    for lane in material_lanes:
+        if not isinstance(lane, dict):
             continue
-        for key in ("source_ref", "opened_event_ref"):
-            ref = item.get(key)
-            if isinstance(ref, str) and ref:
-                tokens.add(ref)
+        items = lane.get("items")
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            for key in ("source_ref", "item_ref", "opened_event_ref"):
+                ref = item.get(key)
+                if isinstance(ref, str) and ref:
+                    tokens.add(ref)
+            refs = item.get("attention_source_refs")
+            if isinstance(refs, list):
+                tokens.update(ref for ref in refs if isinstance(ref, str) and ref)
+            value = item.get("value")
+            excerpts = item.get("source_excerpts")
+            if not isinstance(excerpts, list):
+                excerpts = value.get("source_excerpts") if isinstance(value, dict) else None
+            if isinstance(excerpts, list):
+                tokens.update(
+                    source.get("source_id")
+                    for source in excerpts
+                    if isinstance(source, dict)
+                    and isinstance(source.get("prehistory"), dict)
+                    and isinstance(source.get("source_id"), str)
+                )
     return tokens
 
 
@@ -946,6 +1012,16 @@ def _all_context_attention_tokens(context: dict[str, object]) -> set[str]:
             source_ref = item.get("source_ref")
             if isinstance(source_ref, str) and source_ref:
                 tokens.add(source_ref)
+            value = item.get("value")
+            excerpts = value.get("source_excerpts") if isinstance(value, dict) else None
+            if isinstance(excerpts, list):
+                tokens.update(
+                    source.get("source_id")
+                    for source in excerpts
+                    if isinstance(source, dict)
+                    and isinstance(source.get("prehistory"), dict)
+                    and isinstance(source.get("source_id"), str)
+                )
     return tokens
 
 
@@ -1363,6 +1439,7 @@ def _world_claim_source_refs_by_scope(
     request: ModelInput | None = None,
     stable_identity_source_refs: frozenset[str],
     counterpart_message_source_refs: frozenset[str] = frozenset(),
+    prehistory_source_authority_context_json: str | None = None,
 ) -> dict[str, set[str]]:
     private_stable_identity = {
         ref
@@ -1379,8 +1456,8 @@ def _world_claim_source_refs_by_scope(
         for ref in stable_identity_source_refs
         if ref.startswith("identity-frame:shared-history:")
     }
-    return {
-        "current_world": _slice_claim_authority_tokens(
+    current_world = (
+        _slice_claim_authority_tokens(
             context,
             "current_situation",
         )
@@ -1388,13 +1465,44 @@ def _world_claim_source_refs_by_scope(
             context,
             include_active=True,
         )
-        | _biographical_coordinate_source_tokens(context, scope="current_world"),
-        "past_world": _world_life_occurrence_source_tokens(
+        | _biographical_coordinate_source_tokens(context, scope="current_world")
+    )
+    past_world = (
+        _world_life_occurrence_source_tokens(
             context,
             include_active=False,
         )
         | _slice_claim_authority_tokens(context, "recent_experiences")
-        | (set(prehistory_claim_bindings(request, context=context)) if request is not None else set()),
+        | (
+            set(prehistory_claim_bindings(
+                request,
+                context=context,
+                source_authority_context_json=prehistory_source_authority_context_json,
+            ))
+            if request is not None else set()
+        )
+    )
+
+    if (
+        request is not None
+        and request.trigger_message is not None
+        and request.visible_source_requirement_json is None
+    ):
+        authority_context = context
+        if prehistory_source_authority_context_json is not None:
+            try:
+                loaded = json.loads(prehistory_source_authority_context_json)
+            except (TypeError, json.JSONDecodeError):
+                loaded = None
+            if isinstance(loaded, dict):
+                authority_context = loaded
+        settled = _settled_world_event_source_tokens(authority_context)
+        current_world.difference_update(settled)
+        past_world.difference_update(settled)
+
+    return {
+        "current_world": current_world,
+        "past_world": past_world,
         "counterpart_history": _slice_claim_authority_tokens(
             context,
             "relevant_facts",
@@ -1425,6 +1533,7 @@ def world_claim_source_refs_by_scope(
     request: ModelInput | None = None,
     stable_identity_source_refs: frozenset[str] = frozenset(),
     counterpart_message_source_refs: frozenset[str] = frozenset(),
+    prehistory_source_authority_context_json: str | None = None,
 ) -> dict[str, frozenset[str]]:
     """Compile the shared deterministic WorldClaim capability matrix.
 
@@ -1441,6 +1550,7 @@ def world_claim_source_refs_by_scope(
             request=request,
             stable_identity_source_refs=stable_identity_source_refs,
             counterpart_message_source_refs=counterpart_message_source_refs,
+            prehistory_source_authority_context_json=prehistory_source_authority_context_json,
         ).items()
     }
 
@@ -1451,6 +1561,7 @@ def world_claim_source_ref_aliases_by_scope(
     stable_identity_source_refs: frozenset[str] = frozenset(),
     source_ref_aliases: SourceRefAliasTable | None = None,
     model_visible_context_json: str | None = None,
+    prehistory_source_authority_context_json: str | None = None,
 ) -> dict[str, tuple[str, ...]]:
     """Compile the exact provider-visible alias vocabulary for each claim scope.
 
@@ -1484,6 +1595,7 @@ def world_claim_source_ref_aliases_by_scope(
             context=context,
             request=request,
         ),
+        prehistory_source_authority_context_json=prehistory_source_authority_context_json,
     )
     return {
         scope: tuple(
@@ -1583,6 +1695,7 @@ def expression_hard_boundary_manifest(
     request: ModelInput,
     stable_identity_source_refs: frozenset[str] = frozenset(),
     source_ref_aliases: SourceRefAliasTable | None = None,
+    prehistory_source_authority_context_json: str | None = None,
 ) -> dict[str, object]:
     """Expose executable constraints without choosing the character's response.
 
@@ -1608,12 +1721,18 @@ def expression_hard_boundary_manifest(
         request=request,
         stable_identity_source_refs=stable_identity_source_refs,
         counterpart_message_source_refs=current_report_refs,
+        prehistory_source_authority_context_json=prehistory_source_authority_context_json,
     )
     aliases = source_ref_aliases or build_source_ref_alias_table(
         request=request,
         stable_identity_source_refs=stable_identity_source_refs,
     )
-    claim_authority_refs = {source_ref for refs in source_refs.values() for source_ref in refs}
+    claim_authority_refs = {
+        source_ref
+        for refs in source_refs.values()
+        for source_ref in refs
+        if source_ref in aliases.canonical_refs
+    }
     attention_only_refs = sorted(
         aliases.alias_for(source_ref) or source_ref
         for source_ref in aliases.canonical_refs - claim_authority_refs
@@ -1687,7 +1806,11 @@ def expression_hard_boundary_manifest(
         ),
         "world_source_scope": world_source_scope_boundary(),
         "world_claim_source_refs": {
-            scope: sorted(aliases.alias_for(ref) or ref for ref in refs)
+            scope: sorted(
+                aliases.alias_for(ref) or ref
+                for ref in refs
+                if ref in aliases.canonical_refs
+            )
             for scope, refs in source_refs.items()
             if scope != "subjective_or_hypothetical"
         },
@@ -1803,6 +1926,7 @@ def invalid_world_claim_source_indexes(
     draft: ExpressionDraft,
     request: ModelInput,
     stable_identity_source_refs: frozenset[str] = frozenset(),
+    prehistory_source_authority_context_json: str | None = None,
 ) -> tuple[int, ...]:
     """Return claims whose cited refs are outside their exact semantic lane.
 
@@ -1825,6 +1949,7 @@ def invalid_world_claim_source_indexes(
             context=context,
             request=request,
         ),
+        prehistory_source_authority_context_json=prehistory_source_authority_context_json,
     )
     return tuple(
         index
@@ -1839,6 +1964,7 @@ def _validate_world_claims(
     draft: ExpressionDraft,
     request: ModelInput,
     stable_identity_source_refs: frozenset[str] = frozenset(),
+    prehistory_source_authority_context_json: str | None = None,
 ) -> None:
     private_stable_identity = {
         ref
@@ -1855,6 +1981,7 @@ def _validate_world_claims(
             draft=draft,
             request=request,
             stable_identity_source_refs=stable_identity_source_refs,
+            prehistory_source_authority_context_json=prehistory_source_authority_context_json,
         )
     )
     for index, claim in enumerate(draft.world_claims):
@@ -1879,6 +2006,7 @@ def _world_claim_evidence(
     draft: ExpressionDraft,
     request: ModelInput,
     non_ledger_source_refs: frozenset[str] = frozenset(),
+    prehistory_source_authority_context_json: str | None = None,
 ) -> tuple[ProposalEvidenceRef, ...]:
     cited = {
         ref
@@ -1887,11 +2015,18 @@ def _world_claim_evidence(
         for ref in claim.source_refs
         if ref not in non_ledger_source_refs
     }
-    return _bound_context_event_evidence(cited=cited, request=request)
+    return _bound_context_event_evidence(
+        cited=cited,
+        request=request,
+        prehistory_source_authority_context_json=prehistory_source_authority_context_json,
+    )
 
 
 def _bound_context_event_evidence(
-    *, cited: set[str], request: ModelInput
+    *,
+    cited: set[str],
+    request: ModelInput,
+    prehistory_source_authority_context_json: str | None = None,
 ) -> tuple[ProposalEvidenceRef, ...]:
     """Bind selected refs to exact immutable Context event coordinates."""
 
@@ -1899,8 +2034,16 @@ def _bound_context_event_evidence(
         return ()
     context = json.loads(request.model_content_json)
     slices = context.get("slices") if isinstance(context, dict) else None
-    if not isinstance(slices, dict):
+    historical = prehistory_claim_bindings(
+        request,
+        context=context if isinstance(context, dict) else None,
+        source_authority_context_json=prehistory_source_authority_context_json,
+    )
+    historical_bindings = {binding for ref in cited for binding in historical.get(ref, ())}
+    if not isinstance(slices, dict) and not historical_bindings:
         raise ValueError("selected source evidence requires Context slices")
+    if not isinstance(slices, dict):
+        slices = {}
     coordinate_parents = {
         item.source_ref: item.parent_item_ref
         for item in biographical_coordinate_authorities(context)
@@ -1940,8 +2083,6 @@ def _bound_context_event_evidence(
     # binding (different hash/revision/source kind) still fails closed.
     candidates: dict[str, set[tuple[str, int, str]]] = {}
     candidate_authority_types: dict[str, set[str]] = {}
-    historical = prehistory_claim_bindings(request)
-    historical_bindings = {binding for ref in cited for binding in historical.get(ref, ())}
     expanded_cited.update(binding.ref for binding in historical_bindings)
     evidence_lanes = [*slices.values(), {"items": [{
         "source_bindings": [binding.model_dump(mode="json") for binding in historical_bindings],
@@ -2038,10 +2179,11 @@ def _normalize_world_claim_aliases(value: dict[str, object]) -> dict[str, object
     """Repair unambiguous field-name echoes without loosening validation.
 
     Models regularly echo the prompt phrase "exact source_refs" as a literal
-    ``exact_source_refs`` key, and "claim" for ``claim_text``.  The meaning is
-    identical and the strict schema would otherwise collapse a fully valid
-    reply into the recovery lane, so only these exact aliases are renamed —
-    any other extra key still fails closed.
+    ``exact_source_refs`` key, and use ``text`` or ``claim`` for ``claim_text``.
+    The meaning is identical and the strict schema would otherwise collapse a
+    fully valid reply into the recovery lane, so only these exact aliases are
+    renamed when the canonical key is absent; any other extra key still fails
+    closed.
     """
 
     claims = value.get("world_claims")
@@ -2062,6 +2204,12 @@ def _normalize_world_claim_aliases(value: dict[str, object]) -> dict[str, object
         if "claim" in claim and "claim_text" not in claim:
             claim = {
                 ("claim_text" if key == "claim" else key): item
+                for key, item in claim.items()
+            }
+            changed = True
+        if "text" in claim and "claim_text" not in claim:
+            claim = {
+                ("claim_text" if key == "text" else key): item
                 for key, item in claim.items()
             }
             changed = True
@@ -2464,6 +2612,7 @@ def materialize_expression_draft(
     stable_identity_source_refs: frozenset[str] = frozenset(),
     private_state_context_json: str | None = None,
     source_ref_aliases: SourceRefAliasTable | None = None,
+    prehistory_source_authority_context_json: str | None = None,
 ) -> DecisionProposal:
     """Bind one model choice to the verified trigger and immutable effects."""
 
@@ -2500,6 +2649,7 @@ def materialize_expression_draft(
         draft=draft,
         request=request,
         stable_identity_source_refs=stable_identity_source_refs,
+        prehistory_source_authority_context_json=prehistory_source_authority_context_json,
     )
     validate_expression_draft_capabilities(
         draft=draft,
@@ -2574,6 +2724,7 @@ def materialize_expression_draft(
         # "the counterpart just reported X", but it must not be looked up
         # again as a Context-slice ledger binding.
         non_ledger_source_refs=stable_identity_source_refs | frozenset((trigger.observation_ref,)),
+        prehistory_source_authority_context_json=prehistory_source_authority_context_json,
     )
     media_evidence = _bound_context_event_evidence(
         cited=set(draft.media_source_refs),

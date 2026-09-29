@@ -1,0 +1,315 @@
+{
+  "contract": "character-prehistory-archive.1",
+  "archive_id": "prehistory-archive:celia-lifeline-materials-20260929",
+  "world_id": "world:companion-v2:qq-c2c:geoff",
+  "actor_ref": "agent:companion",
+  "source_artifact_ref": "life-materials:sha256:d346eb6343006f91c426bc7f0533428ed023aa0f9d5a343d9c4e6dcb36c335f6",
+  "entities": [
+    {
+      "entity_ref": "history:person:celia-self",
+      "kind": "person",
+      "label": "沈知栀（档案所属角色的历史身份）"
+    },
+    {
+      "entity_ref": "history:person:luo-jiahe",
+      "kind": "person",
+      "label": "罗嘉禾（候选历史人物，未映射NPC）"
+    },
+    {
+      "entity_ref": "history:person:chen-man",
+      "kind": "person",
+      "label": "陈曼（候选历史人物，未映射NPC）"
+    },
+    {
+      "entity_ref": "history:person:shen-lan",
+      "kind": "person",
+      "label": "沈岚（母亲）"
+    },
+    {
+      "entity_ref": "history:person:jiahe-mother",
+      "kind": "person",
+      "label": "嘉禾的母亲（姓名未设定）"
+    }
+  ],
+  "records": [
+    {
+      "record_id": "prehistory-record:celia-lifeline-01",
+      "occurred_from": "2015-01-01T00:00:00+08:00",
+      "occurred_until": "2015-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2015-01-01T00:00:00+08:00 至 2015-12-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n2015年，嘉禾第一次进知栀家先问厕所。她刚在楼下踢球，球滚进车底；捞球时裤子粘了口香糖，知栀拿剪刀帮她剪，结果剪出一个洞。嘉禾照镜子说：“行，现在像我拉裤子了。”后来两人对外说从小认识，却少讲这个开头。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-02",
+      "occurred_from": "2015-01-01T00:00:00+08:00",
+      "occurred_until": "2017-12-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2015-01-01T00:00:00+08:00 至 2017-12-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n嘉禾住隔壁楼，家里吃饭早。她来喊知栀时，知栀还捧着碗，她就等在旁边，有时再吃几口。母亲说她好养活，嘉禾让阿姨别告诉自己妈妈，不然炒茄子又算她头上。后来她伸手调电视，两人抢遥控器，谁也没听清节目。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe",
+        "history:person:shen-lan"
+      ],
+      "location_ref": null,
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-01"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-03",
+      "occurred_from": "2017-06-01T00:00:00+08:00",
+      "occurred_until": "2017-08-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2017-06-01T00:00:00+08:00 至 2017-08-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n2017年夏天，她们在本子末页画没去过的青岛海边。知栀画灯塔，嘉禾改成竖着的雪糕，两人说等不用向大人解释火车票时一起去。这个约定当时只是画在本子上的话。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-04",
+      "occurred_from": "2017-01-01T00:00:00+08:00",
+      "occurred_until": "2020-12-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2017-01-01T00:00:00+08:00 至 2020-12-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n本子夹过菜单、电影票和嘉禾写的歌词。嘉禾有一阵总唱同一首歌，知栀听见前奏就要捂她嘴。后来歌换了，本子也没再一起写，两人仍会去超市蹭冷气，把最难看的衣服举到对方身上比画。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-03"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-05",
+      "occurred_from": "2021-01-01T00:00:00+08:00",
+      "occurred_until": "2021-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2021-01-01T00:00:00+08:00 至 2021-12-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n大人说两人关系好，常会接着让知栀劝嘉禾。一次嘉禾母亲堵着知栀问了很久，知栀先敷衍，问急了又说：“她又不是不想学，她就是不想照你那个……”\n嘉禾当晚问知栀到底向母亲说了什么；知栀把自己替嘉禾说的好话一条条打出来。嘉禾回：“我没让你帮我说。”\n[沈知栀（档案所属角色的历史身份）的历史感受/解释（当时）] 知栀越写越委屈，想找一句能证明自己不是多管闲事的话。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe",
+        "history:person:jiahe-mother"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-06",
+      "occurred_from": "2021-01-01T00:00:00+08:00",
+      "occurred_until": "2021-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2021-01-01T00:00:00+08:00 至 2021-12-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n两周后知栀在校内活动发言漏了一段。下台时嘉禾递水，说她停顿像网卡。知栀没等嘉禾说完就拿书包走；嘉禾追到楼梯口拽了一下书包带，生气地问该说什么。\n[沈知栀（档案所属角色的历史身份）的历史感受/解释（当时）] 知栀看见前排有人低头，认定对方在笑；听见嘉禾开玩笑时脸冷下来。这是她的判断，不证明前排同学在笑。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-05"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-07",
+      "occurred_from": "2021-01-01T00:00:00+08:00",
+      "occurred_until": "2021-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2021-01-01T00:00:00+08:00 至 2021-12-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n当晚嘉禾发来一段只保留知栀发言开头的视频，说：“这一段还是挺像样的。”知栀回“嗯”。第二天嘉禾在楼下等她，两人一起走了一段。\n[沈知栀（档案所属角色的历史身份）的历史感受/解释（当时）] 知栀把视频反复看了几遍，没有问嘉禾是否特意截出这一段。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-06"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-20",
+      "occurred_from": "2023-01-01T00:00:00+08:00",
+      "occurred_until": "2023-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2023-01-01T00:00:00+08:00 至 2023-12-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n嘉禾开始学烘焙并在店里工作后，第一次独自做完一只客人没挑毛病的蛋糕。她下班跑到知栀家楼下，非要知栀出来吃剩下的奶油。两人坐在花坛边挤着吃，后来都有点恶心。嘉禾说下次要做个更大的，知栀问能不能先做个不那么甜的。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-12"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-08",
+      "occurred_from": "2024-01-01T00:00:00+08:00",
+      "occurred_until": "2024-08-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2024-01-01T00:00:00+08:00 至 2024-08-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n2024年，嘉禾翻出青岛的天气，和即将去上海上大学的知栀商量出游。她们查过住宿，嘉禾说能调四天，知栀嫌不够，最后谁也没订。后来嘉禾又说假不一定调得成了，知栀回复“没事，反正也没订”。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-09",
+      "occurred_from": "2024-01-01T00:00:00+08:00",
+      "occurred_until": "2024-08-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2024-01-01T00:00:00+08:00 至 2024-08-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n知栀看见嘉禾和陈曼去外地看烘焙展的照片，问她不是没时间出去吗。嘉禾说是看设备，知栀回“哦”。嘉禾随后发来展馆门口难吃的面，知栀没有回复。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-08"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-11",
+      "occurred_from": "2024-10-01T00:00:00+08:00",
+      "occurred_until": "2025-03-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2024-10-01T00:00:00+08:00 至 2025-03-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n知栀帮嘉禾挑接单头像，答应写文案。嘉禾后来采用陈曼写的几寸、什么馅、提前几天订那一句，说知栀的文案好看，但客人老问价格。知栀回“也是”。几天后知栀才告诉嘉禾稿件落选，嘉禾回：“换个地方投呗，你不是还有好多地方能投。”\n[沈知栀（档案所属角色的历史身份）的历史感受/解释（当时）] 知栀本想先告诉嘉禾投稿落选，打到一半看到蛋糕照片便删掉，先帮她挑头像。她改文案改了三遍。后来提起稿件落选，看到嘉禾让她换地方投的回复，她突然不想继续说了。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-12",
+      "occurred_from": "2025-03-01T00:00:00+08:00",
+      "occurred_until": "2025-05-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2025-03-01T00:00:00+08:00 至 2025-05-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n2025年春天，嘉禾和陈曼租了一个小操作间。知栀回嘉兴那周，约好去帮她们拍些照片，还带了一束花。到了才发现没人有空给花找瓶子，她把花放在角落。\n陈曼正在处理一笔退单，嘉禾手套上全是奶油，来不及摘，拿肩膀顶着手机。\n知栀搬开一张堆着东西的桌子，陈曼拦住她：“先别动，那些按顺序摆的。”\n[沈知栀（档案所属角色的历史身份）的历史感受/解释（当时）] 知栀挪桌子时觉得这样拍好看些，被拦住后站了一会儿，开始觉得自己多余。\n嘉禾忙完过来，问知栀能不能先帮着折盒子。\n[沈知栀（档案所属角色的历史身份）的历史感受/解释（当时）] 知栀原来以为，她们会拍完照片，找个地方吃饭，庆祝嘉禾终于做起自己的事。\n到了下午三点，嘉禾叫了几份外卖，陈曼把一盒推给知栀，说盒子折得挺快。\n知栀说自己晚上得回上海，待不了太久。嘉禾问：“不是明天吗？”知栀答：“改了。”\n[沈知栀（档案所属角色的历史身份）的历史感受/解释（当时）] 知栀其实约了大学里的朋友第二天一起去看展，想早点回去；怕嘉禾觉得自己不够意思，话到嘴边便换了个说法。\n晚上嘉禾问照片能不能发来。知栀挑过、调好色，发了六张；第二天嘉禾回“收到了”。\n[沈知栀（档案所属角色的历史身份）的历史感受/解释（当时）] 知栀觉得自己忙了半天，对方连句谢谢都没有，又觉得为了这个计较很难看。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe",
+        "history:person:chen-man"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-15",
+      "occurred_from": "2025-03-01T00:00:00+08:00",
+      "occurred_until": "2026-02-28T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2025-03-01T00:00:00+08:00 至 2026-02-28T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n真正吵起来是在几天后。嘉禾看见知栀发的看展照片，问她为什么不直接说。知栀先解释车次，后来开始说那天没人理她。嘉禾说她以为两人够熟了，不用特意招待。知栀回：“所以你就觉得我什么都能干，干完也不用管？”\n嘉禾说：“你来一下午，我得做的是以后每一天。”知栀马上回：“那我以后不去耽误你做大生意了。”\n[沈知栀（档案所属角色的历史身份）的历史感受/解释（当时）] 发出去的时候知栀就觉得话说重了，还是等着嘉禾先回。\n嘉禾没有再发消息。此后她们有两个多月没单独说过话。\n[沈知栀（档案所属角色的历史身份）的历史感受/解释（当时）] 知栀没删嘉禾，偶尔点进动态。看见操作间新照片，先放大看角落的花还在不在，再看做了什么。花早不在了，她很烦自己还在找。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-17",
+      "occurred_from": "2025-05-01T00:00:00+08:00",
+      "occurred_until": "2026-02-28T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2025-05-01T00:00:00+08:00 至 2026-02-28T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n知栀回嘉兴后从母亲处听说嘉禾准备去杭州做事；嘉禾没有第一时间告诉她。\n嘉禾搬东西那天，知栀直接下了楼。她们把两只纸箱抬进车里，第三只箱子特别沉。知栀问装的什么，嘉禾说工具。\n[沈知栀（档案所属角色的历史身份）的历史感受/解释（当时）] 知栀想起嘉禾以前嘲笑她出门背太多书，差点说出口，又忍住了。\n回楼上拿最后一袋东西时，嘉禾说：“你那天直接说想回去看展不就完了。”\n知栀说：“我怕你不高兴。”\n嘉禾说：“我会啊。”知栀停了手。\n“我不高兴也不能把你扣这儿吧。”\n知栀把袋子提起来，说那句“大生意”是自己嘴贱。嘉禾说听着是挺难听。过了一会儿，又说自己那天确实没顾上她。两人没有把所有账都算清。\n下楼时嘉禾提醒知栀抓袋子的另一边，那边提手已经裂了一半。知栀换了只手。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe",
+        "history:person:shen-lan"
+      ],
+      "location_ref": null,
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-15"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-16",
+      "occurred_from": "2025-05-01T00:00:00+08:00",
+      "occurred_until": "2026-02-28T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2025-05-01T00:00:00+08:00 至 2026-02-28T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n车开走以后，嘉禾发消息说：“你拍那几张我用了，客人问过。还没跟你说。”知栀回：“那你早说啊。”这条消息没有说明使用照片的具体日期、渠道或客人身份。\n[沈知栀（档案所属角色的历史身份）的历史感受/解释（当时）] 回复后，知栀本想再加一个表情，挑了很久，最后没有加。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-17"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-18",
+      "occurred_from": "2026-03-01T00:00:00+08:00",
+      "occurred_until": "2026-05-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2026-03-01T00:00:00+08:00 至 2026-05-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n嘉禾到杭州后，两人仍会分享生活。2026年春天她们去了一处离杭州较近的海边，天气不好，嘉禾嫌不值却脱鞋踩水，知栀嫌风大；照片里两人的头发被风吹贴脸。她们没说这算不算兑现旧时的青岛约定。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-17"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-19",
+      "occurred_from": "2026-07-01T00:00:00+08:00",
+      "occurred_until": "2026-07-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "[记录时段 2026-07-01T00:00:00+08:00 至 2026-07-31T23:59:59+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[当时的意向，不代表之后的行动] 2026年夏天，嘉禾在考虑换工作，还没有决定。她托知栀看一处上海短租房的信息；知栀问是否已收到工作那边的回复，嘉禾说还没有，才聊了两次。",
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "location_ref": null,
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-18"
+      ],
+      "privacy_class": "personal"
+    }
+  ]
+}

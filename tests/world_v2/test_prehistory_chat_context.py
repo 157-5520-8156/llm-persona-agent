@@ -237,7 +237,29 @@ def test_explicit_historical_claim_permissions_bind_dual_proof_without_current_a
             with pytest.raises(ValueError, match="semantic source lane"):
                 expression._validate_world_claims(
                     draft=expression.ExpressionDraft.model_validate_json(json.dumps(changed)), request=request)
-        assert not prehistory_claim_bindings(original)
+        unreviewed_history = prehistory_claim_bindings(original)
+        assert row.record.record_id in unreviewed_history
+        assert {binding.ref for binding in unreviewed_history[row.record.record_id]} == {
+            binding.ref for binding in item.source_bindings
+        }
+        compact_request = original.model_copy(update={
+            "model_content_json": compact_chat_model_facing_context(original.model_content_json),
+        })
+        manifest = expression.expression_hard_boundary_manifest(
+            request=compact_request,
+            prehistory_source_authority_context_json=original.model_content_json,
+        )
+        allowed_past = set(manifest["world_claim_source_refs"]["past_world"])
+        aliases = expression.build_source_ref_alias_table(
+            request=compact_request,
+            model_visible_context_json=compact_request.model_content_json,
+        )
+        assert (aliases.alias_for(row.record.record_id) or row.record.record_id) in allowed_past
+        imported_ref = next(
+            binding.ref for binding in item.source_bindings
+            if binding.authority_type == "CharacterPrehistoryRecordImported"
+        )
+        assert imported_ref not in allowed_past
         changed = deepcopy(context)
         changed["slices"]["active_memory_candidates"]["items"] = []
         assert not prehistory_claim_bindings(request, context=changed)

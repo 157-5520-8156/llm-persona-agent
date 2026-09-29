@@ -57,6 +57,14 @@ def test_compact_gate_semantic_prompt_stays_bounded_and_preserves_truth_boundary
     assert "没有来源就不要说成已发生的事实" in system
     assert "没有维持对话或提供帮助的任务" in system
     assert "依照身份自然表达" in system
+    assert "anger, anxiety, hurt, joy, loneliness, resentment, sadness, warmth" in system
+    assert "维度名不是自由词" in system
+    assert "不想留下持续情绪时省略 affect" in system
+    assert "claim_text、scope、source_refs" in system
+    assert "不要写成 text" in system
+    assert "waiting_for、wait、pressure_bp、importance_bp 四项必须一起写" in system
+    assert "只写 waiting_for 不会保存盼头或定时唤醒" in system
+    assert "about_us、why_us、us_deltas 三项必须齐全" in system
 
 
 def test_present_hard_boundary_prompt_drops_mechanism_essays() -> None:

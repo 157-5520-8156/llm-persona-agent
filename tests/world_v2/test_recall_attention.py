@@ -148,3 +148,15 @@ def test_automatic_recall_dialogue_attention_reserves_recent_counterpart_turns()
     # The selection is a pure replayable attention policy, not a semantic
     # interpretation of either person's text.
     assert select_recent_dialogue_for_automatic_recall(dialogue) == selected
+
+
+def test_relevant_prehistory_link_survives_automatic_recall_link_budget() -> None:
+    request = build_automatic_recall_request(
+        observation_text="嘉禾又提了那张活动照，这次你会怎么回？",
+        link_refs=tuple(f"appraisal:opaque:{index:02d}" for index in range(16)),
+        priority_link_refs=("memory:prehistory:celia-workshop-photos",),
+    )
+
+    assert len(request.link_refs) == 1
+    assert request.link_refs == tuple(sorted(set(request.link_refs)))
+    assert request.link_refs == ("memory:prehistory:celia-workshop-photos",)

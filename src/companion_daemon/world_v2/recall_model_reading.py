@@ -9,16 +9,23 @@ if TYPE_CHECKING:
     from .recall_index import RecallDocument
 
 
-RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.11"
+RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.12"
 _ATTRIBUTED_READING_POLICIES = frozenset({
     "world-v2-recall-index.hybrid.8", "world-v2-recall-index.hybrid.9",
     "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11",
+    "world-v2-recall-index.hybrid.12",
 })
-_FACT_READING_POLICIES = frozenset({"world-v2-recall-index.hybrid.9", "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11"})
+_FACT_READING_POLICIES = frozenset({
+    "world-v2-recall-index.hybrid.9", "world-v2-recall-index.hybrid.10",
+    "world-v2-recall-index.hybrid.11", "world-v2-recall-index.hybrid.12",
+})
 
 
 def supports_life_reading(index_version: str) -> bool:
-    return index_version.partition("+embedding:")[0] in {"world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11"}
+    return index_version.partition("+embedding:")[0] in {
+        "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11",
+        "world-v2-recall-index.hybrid.12",
+    }
 
 
 def supports_fact_reading(index_version: str) -> bool:
@@ -83,7 +90,9 @@ def interior_recall_item(
            if document.prehistory is not None else {}),
         **({"accepted_fact": fact_metadata} if fact is not None else {}),
         **({"source_window_start": document.source_window_start}
-           if document.source_window_start is not None and index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.11" else {}),
+           if document.source_window_start is not None and index_version.partition("+embedding:")[0] in {
+               "world-v2-recall-index.hybrid.11", "world-v2-recall-index.hybrid.12",
+           } else {}),
         **({"settled_life": {
             "settled_at": life.settled_at.isoformat(),
             "world_consequence": life.content.world_consequence.model_dump(mode="json"),

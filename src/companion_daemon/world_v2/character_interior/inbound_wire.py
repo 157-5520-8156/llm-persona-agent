@@ -111,6 +111,7 @@ from .inbound_appraisal_wire import (
 from .inbound_tool_contract import (
     _deepseek_strict_union_padding_is_empty,
     _expand_compact_gate_payload,
+    normalize_compact_gate_transport,
 )
 from ..visible_source_closure_protocol import (
     compact_source_reference_table,
@@ -837,7 +838,8 @@ def expression_draft_shape_contract(*, include_world_claims: bool = True) -> str
         "generalizations use no world_claim item）。"
         "subjective_or_hypothetical is legacy replay input，不能出现在新写的草稿里；"
         "那是回放遗留输入，不是你可以新写的 scope。"
-        "每一条你写的 world_claim 都需要一个或多个匹配的钉住 source refs。"
+        "每一条你写的 world_claim 都需要一个或多个匹配的钉住 source refs；"
+        "只列直接支持这条主张的最小来源集合，不要把整个可用来源目录复制进去。"
     )
 
 
@@ -7808,6 +7810,7 @@ def _incremental_forced_stream_expression(
             # Compact union authority is the complete outer object. A partial
             # string/object cannot prove that a later sibling will stay null.
             return True, None
+        value = normalize_compact_gate_transport(value)
         value = _normalize_forced_stream_envelope(value)
         if value.get("result_kind") not in {"reply_only", "full_turn", "recall"}:
             raise ValueError("compact gate result_kind is invalid")
@@ -10220,6 +10223,7 @@ class _ExpressionDraftWire:
         source_closure_failure: _SourceClosureRecoveryFailure | None = None,
         activity_status_authority: bool = False,
         preserve_legacy_authoring: bool = False,
+        source_authority_context_json: str | None = None,
     ) -> list[dict[str, str]]:
         return self._model_led_messages(
             request=request,
@@ -10231,6 +10235,7 @@ class _ExpressionDraftWire:
             source_closure_failure=source_closure_failure,
             activity_status_authority=activity_status_authority,
             preserve_legacy_authoring=preserve_legacy_authoring,
+            source_authority_context_json=source_authority_context_json,
         )
 
     def _model_led_messages(
@@ -10245,6 +10250,7 @@ class _ExpressionDraftWire:
         source_closure_failure: _SourceClosureRecoveryFailure | None = None,
         activity_status_authority: bool = False,
         preserve_legacy_authoring: bool = False,
+        source_authority_context_json: str | None = None,
     ) -> list[dict[str, str]]:
         """Expose capability and truth boundaries without directing behavior."""
 
@@ -10558,6 +10564,9 @@ class _ExpressionDraftWire:
                     request=provider_boundary_request,
                     stable_identity_source_refs=self._stable_identity_source_refs,
                     source_ref_aliases=aliases,
+                    prehistory_source_authority_context_json=(
+                        source_authority_context_json or request.model_content_json
+                    ),
                 )
             ),
             "request": request_material,
@@ -11338,6 +11347,7 @@ def _proposal_from_model_text(
     private_state_context_json: str | None = None,
     source_ref_aliases: SourceRefAliasTable | None = None,
     require_explicit_authored_decision_fields: bool = False,
+    prehistory_source_authority_context_json: str | None = None,
 ) -> dict[str, object]:
     """Materialize one ordinary reply from an LLM-owned expression draft.
 
@@ -11413,6 +11423,7 @@ def _proposal_from_model_text(
             stable_identity_source_refs=stable_identity_source_refs,
             private_state_context_json=private_state_context_json,
             source_ref_aliases=aliases,
+            prehistory_source_authority_context_json=prehistory_source_authority_context_json,
         ).model_dump(mode="json")
     if quick_recovery and ("beats" in value or "timing_choice" in value):
         value = normalize_expression_draft_wire(value)
@@ -11444,6 +11455,7 @@ def _proposal_from_model_text(
                 stable_identity_source_refs=stable_identity_source_refs,
                 private_state_context_json=private_state_context_json,
                 source_ref_aliases=aliases,
+                prehistory_source_authority_context_json=prehistory_source_authority_context_json,
             ).model_dump(mode="json")
         value = {
             "response_text": draft.beats[0].text,

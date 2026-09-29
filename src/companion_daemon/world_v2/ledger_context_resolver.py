@@ -294,6 +294,53 @@ def _automatic_recall_link_refs(
     return tuple(sorted(set(link_refs) - conversation_scopes))
 
 
+def _relevant_prehistory_memory_link_refs(
+    items: tuple[MemoryRetrievalItem, ...],
+    *,
+    actor_ref: str,
+    logical_time: datetime | None,
+    query_text: str,
+) -> tuple[str, ...]:
+    """Seed Recall from one active, actor-owned prehistory matching the trigger.
+
+    Each index document carries its exact active MemoryCandidate id as a
+    structured link. A lexical match against the exact current Observation can
+    anchor its separately source-closed story graph even when dense or fallback
+    ranking prefers an unrelated memory. Restrict this to one cue-relevant
+    source so optional link signals cannot dilute its structured score or turn
+    all history into always-on context.
+    """
+
+    eligible = [
+        item
+        for item in items
+        if item.privacy_ceiling != "withhold"
+        and any(
+            excerpt.source_kind == "prehistory"
+            and excerpt.prehistory is not None
+            and excerpt.prehistory.actor_ref == actor_ref
+            for excerpt in item.source_excerpts
+        )
+    ]
+    # Link one strongest lexical cue. Each hit can expand to a complete
+    # source-closed story graph; sending several candidate IDs would dilute
+    # structured relevance. Do not apply the context rank-override floor here:
+    # it is meant for explicitly attended items and would make unrelated
+    # memories tie with the current observation's actual match.
+    ranked = [
+        (
+            _rank("active_memory_candidates", item, logical_time, query_text),
+            memory_relevance_bp(query_text, item),
+            item.candidate_id,
+        )
+        for item in eligible
+        if _item_relevance_texts(item)
+        and memory_relevance_bp(query_text, item) > 0
+    ]
+    ranked.sort(key=lambda row: (-row[0], -row[1], row[2]))
+    return (ranked[0][2],) if ranked else ()
+
+
 def context_capsule_compiler_from_ledger(
     *,
     ledger: LedgerPort,
@@ -2529,6 +2576,12 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                                 ),
                                 *(item.thread_id for item in open_threads_for_continuity),
                             ),
+                        ),
+                        priority_link_refs=_relevant_prehistory_memory_link_refs(
+                            memory_retrievals.items,
+                            actor_ref=query.actor_ref,
+                            logical_time=query.logical_time,
+                            query_text=trigger_dialogue.text,
                         ),
                         limit=4,
                     )

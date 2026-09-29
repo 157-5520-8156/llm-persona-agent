@@ -57,6 +57,7 @@ from ..present_prompt import (
 from ..recall_audit import CharacterRecallRequest
 from ..source_closure_lane import SourceClosureReselectionLane
 from .inbound_appraisal_wire import (
+    _AFFECT_DIMENSIONS,
     _active_affect_heads,
     _appraisal_draft_messages,
     _proposal_from_draft as materialize_appraisal_draft,
@@ -427,7 +428,8 @@ def _compact_gate_character_decision_brief() -> str:
         "表示尚无后续可见回应的对方报告；它们不是逐条作答命令，你自己判断哪些在意。\n"
         "可见文字中的具体外部人物、地点、行动、身体情况、当下生活或过往经历，"
         "以及关于具体人物的习惯或频率主张，都必须逐条列入 world_claims，填写匹配的 scope 和 "
-        "source_refs，并使用 expression_hard_boundaries 中精确的来源；"
+        "source_refs，并使用 expression_hard_boundaries 中精确的来源；每项字段名必须且只能是 "
+        "claim_text、scope、source_refs；事实正文写在 claim_text，不要写成 text。"
         "按来源的实际时间选 current_world 或 past_world。没有来源就不要说成已发生的事实，"
         "程序创建前的空白也不能靠想象补成亲身经历。空 world_claims 不是无事实证明。"
         "此刻的感受、想法、愿望、印象和未定猜测属于你，不需世界来源，也不能反过来证明事件。"
@@ -462,6 +464,7 @@ def _compact_gate_system_content(
 
     identity = identity_instruction.strip()
     lead = (identity + "\n\n") if identity else ""
+    affect_dimensions = ", ".join(sorted(_AFFECT_DIMENSIONS))
     return (
         lead
         + "Ordinary QQ private chat on this pinned turn. Stay the person in the "
@@ -469,6 +472,12 @@ def _compact_gate_system_content(
         "or longer as she feels, not as a helpdesk ticket, not as a compliance form, "
         "and not as a task assistant. Motive, tone, whether to reply, how many "
         "bubbles, silence, and wording stay yours.\n\n"
+        "持续情绪仍由你决定要不要留下；不想留下持续情绪时省略 affect 和 components。"
+        "只有你选择 open/update/supersede 才写 components；每项都要给出 dimension 和整数 "
+        "target_intensity_bp（1..10000）。dimension 是固定追踪轴，不是自由填写的感受词，"
+        f"维度名不是自由词，只能从 {affect_dimensions} 中选择。"
+        "不要把行为、人格特质或关系判断造作维度；"
+        "没有合适的轴就不声明这次持续情绪，不要让宿主替你映射。\n\n"
         "Return transport only (not a speech script): call the required function "
         "once. Choose result_kind and put the complete chosen inner object in "
         "payload_json as one JSON string. "
@@ -509,7 +518,12 @@ def _compact_gate_system_content(
         "messages、meaning_of_this、my_state、later、waiting_for 同级。"
         "messages 为空数组就是这一轮不回（silent）。"
         "later 是已经想好的话延后多少秒。"
-        "waiting_for 是你在等什么的短句；wait 是秒数，两个一起才编译盼头，不在这个范本里。"
+        "waiting_for 是你在等什么的短句；wait 是秒数。只有你真的想留下可定时唤醒的盼头时，"
+        "waiting_for、wait、pressure_bp、importance_bp 四项必须一起写；"
+        "wait 是 30..86400 的整数秒，后两项是 0..10000 的整数基点。"
+        "只写 waiting_for 不会保存盼头或定时唤醒；不期待回话就四项都省略；宿主不会补值。"
+        "关系真的变化时 about_us、why_us、us_deltas 三项必须齐全，"
+        "why_us 写原因，us_deltas 是六轴带符号整数；没有关系变化就三项都省略。"
         "不要把 later 和空 messages 一起写。"
         "Replace every marker with your own scalar, object, or null; never copy "
         "marker text, and a literal null is absence you chose, never a default "
@@ -838,6 +852,7 @@ def materialize_expression_draft(
     private_state_context_json: str | None = None,
     source_ref_aliases: SourceRefAliasTable | None = None,
     require_explicit_authored_decision_fields: bool = False,
+    prehistory_source_authority_context_json: str | None = None,
 ) -> dict[str, object]:
     return _strict_materialize_expression_draft(
         raw=_postel_expression_raw(raw) if isinstance(raw, str) else raw,
@@ -847,6 +862,7 @@ def materialize_expression_draft(
         stable_identity_source_refs=stable_identity_source_refs,
         private_state_context_json=private_state_context_json,
         source_ref_aliases=source_ref_aliases,
+        prehistory_source_authority_context_json=prehistory_source_authority_context_json,
         require_explicit_authored_decision_fields=require_explicit_authored_decision_fields,
     )
 
@@ -1300,6 +1316,38 @@ def _model_input_request_hash(request: ModelInput) -> str:
     return sha256(canonical.encode()).hexdigest()
 
 
+def _with_visible_recall_traces(
+    request: ModelInput,
+    *traces: TrustedRecallTrace | None,
+) -> ModelInput:
+    """Bind every recall result shown to the same private author input."""
+
+    expected = (
+        request.evaluated_world_revision,
+        request.evaluated_deliberation_revision,
+        request.evaluated_ledger_sequence,
+    )
+    ordered: list[TrustedRecallTrace] = []
+    seen: set[tuple[str, str, str]] = set()
+    for trace in (*request.visible_source_recall_traces, *traces):
+        if trace is None:
+            continue
+        audit = verify_trusted_recall_trace(trace)
+        cursor = audit.evaluated_cursor or audit.index_cursor
+        if (
+            audit.trigger_ref != request.trigger_ref
+            or (cursor.world_revision, cursor.deliberation_revision, cursor.ledger_sequence)
+            != expected
+        ):
+            continue
+        identity = (audit.trigger_ref, audit.result_hash, audit.embedding_version)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        ordered.append(trace)
+    return request.model_copy(update={"visible_source_recall_traces": tuple(ordered[-2:])})
+
+
 def _failed_cache_key(request: ModelInput) -> tuple[str, ...]:
     """Bind failed bytes/conversations to one complete Pinned Turn identity."""
 
@@ -1381,6 +1429,7 @@ class _PendingExpression:
         "route_tier",
         "usage",
         "private_state_context_json",
+        "prehistory_source_authority_context_json",
         "source_ref_aliases",
         "origin_call_id",
         "origin_request_hash",
@@ -1405,6 +1454,7 @@ class _PendingExpression:
         route_tier: str,
         usage: ModelUsageProvenance | None,
         private_state_context_json: str,
+        prehistory_source_authority_context_json: str,
         source_ref_aliases: SourceRefAliasTable,
         origin_call_id: str,
         origin_request_hash: str,
@@ -1425,6 +1475,7 @@ class _PendingExpression:
         self.route_tier = route_tier
         self.usage = usage
         self.private_state_context_json = private_state_context_json
+        self.prehistory_source_authority_context_json = prehistory_source_authority_context_json
         self.source_ref_aliases = source_ref_aliases
         self.origin_call_id = origin_call_id
         self.origin_request_hash = origin_request_hash
@@ -2278,7 +2329,11 @@ class _PairedExpressionMaterializer:
                 )
         if carried_prefetch_trace is not None or carried_recall_trace is not None:
             model_content_json = mark_recall_budget_consumed(model_content_json)
-        expression_request = request.model_copy(update={"model_content_json": model_content_json})
+        expression_request = _with_visible_recall_traces(
+            request,
+            carried_prefetch_trace,
+            carried_recall_trace,
+        ).model_copy(update={"model_content_json": model_content_json})
         expression_request_hash = _model_input_request_hash(expression_request)
         origin_identity_changed = (
             pending.origin_call_id != expression_request.call_id
@@ -2314,6 +2369,9 @@ class _PairedExpressionMaterializer:
                 stable_identity_source_refs=self._owner._stable_identity_source_refs,
                 private_state_context_json=pending.private_state_context_json,
                 source_ref_aliases=pending.source_ref_aliases,
+                prehistory_source_authority_context_json=(
+                    pending.prehistory_source_authority_context_json
+                ),
                 require_explicit_authored_decision_fields=(
                     self._owner._require_explicit_authored_decision_fields
                 ),
@@ -2397,6 +2455,9 @@ class _PairedExpressionMaterializer:
                     provisional=False,
                     failure_code=None,
                     source_ref_aliases=pending.source_ref_aliases,
+                    source_authority_context_json=(
+                        pending.prehistory_source_authority_context_json
+                    ),
                 )
                 repaired_result = await self._owner._repair_expression_claims(
                     request=expression_request,
@@ -2409,6 +2470,9 @@ class _PairedExpressionMaterializer:
                     timeout_seconds=repair_timeout,
                     private_state_context_json=pending.private_state_context_json,
                     source_ref_aliases=pending.source_ref_aliases,
+                    prehistory_source_authority_context_json=(
+                        pending.prehistory_source_authority_context_json
+                    ),
                 )
                 if repaired_result is None:
                     raise ValueError(violation)
@@ -3492,6 +3556,7 @@ class _InboundCharacterAuthor:
         timeout_seconds: float = _CLAIM_REPAIR_TIMEOUT_SECONDS,
         private_state_context_json: str | None = None,
         source_ref_aliases: SourceRefAliasTable | None = None,
+        prehistory_source_authority_context_json: str | None = None,
         paired_appraisal_proposal: object | None = None,
         paired_appraisal_materializer: (
             Callable[[dict[str, object]], dict[str, object]] | None
@@ -3513,6 +3578,9 @@ class _InboundCharacterAuthor:
                 attempted_model_version=self.VERSION,
                 **_role_failure_payload_kwargs(raw, violation),
             )
+        prehistory_source_authority_context_json = (
+            prehistory_source_authority_context_json or request.model_content_json
+        )
         is_private_state = is_private_turn_state_violation(violation)
         violation_text = str(violation)
         canonical_appraisal = (
@@ -3577,6 +3645,9 @@ class _InboundCharacterAuthor:
                             stable_identity_source_refs=self._stable_identity_source_refs,
                             source_ref_aliases=effective_source_ref_aliases,
                             model_visible_context_json=private_state_context_json,
+                            prehistory_source_authority_context_json=(
+                                prehistory_source_authority_context_json
+                            ),
                         )
                         if effective_source_ref_aliases is not None
                         else {
@@ -3733,6 +3804,9 @@ class _InboundCharacterAuthor:
                 stable_identity_source_refs=self._stable_identity_source_refs,
                 private_state_context_json=private_state_context_json,
                 source_ref_aliases=source_ref_aliases,
+                prehistory_source_authority_context_json=(
+                    prehistory_source_authority_context_json
+                ),
                 require_explicit_authored_decision_fields=(
                     self._require_explicit_authored_decision_fields
                 ),
@@ -4107,14 +4181,15 @@ class _InboundCharacterAuthor:
         )
         if prefetch_trace is not None:
             initial_prefetch_trace = prefetch_trace
-            request = request.model_copy(
-                update={
-                    "model_content_json": augment_model_content_with_recall(
-                        request.model_content_json,
-                        verify_trusted_recall_trace(initial_prefetch_trace),
-                    )
-                }
-            )
+            request = _with_visible_recall_traces(
+                request,
+                initial_prefetch_trace,
+            ).model_copy(update={
+                "model_content_json": augment_model_content_with_recall(
+                    request.model_content_json,
+                    verify_trusted_recall_trace(initial_prefetch_trace),
+                )
+            })
             if (
                 self._recall_available(request)
                 and self._recall is not None
@@ -4129,14 +4204,15 @@ class _InboundCharacterAuthor:
                     ready_prefetch is not None
                     and ready_prefetch.audit.result_hash != initial_prefetch_trace.audit.result_hash
                 ):
-                    request = request.model_copy(
-                        update={
-                            "model_content_json": augment_model_content_with_recall(
-                                request.model_content_json,
-                                verify_trusted_recall_trace(ready_prefetch),
-                            )
-                        }
-                    )
+                    request = _with_visible_recall_traces(
+                        request,
+                        ready_prefetch,
+                    ).model_copy(update={
+                        "model_content_json": augment_model_content_with_recall(
+                            request.model_content_json,
+                            verify_trusted_recall_trace(ready_prefetch),
+                        )
+                    })
                     prefetch_trace = ready_prefetch
         elif (
             self._recall_available(request)
@@ -4150,14 +4226,15 @@ class _InboundCharacterAuthor:
                 job_token=prefetch_job_token,
             )
             if prefetch_trace is not None:
-                request = request.model_copy(
-                    update={
-                        "model_content_json": augment_model_content_with_recall(
-                            request.model_content_json,
-                            verify_trusted_recall_trace(prefetch_trace),
-                        )
-                    }
-                )
+                request = _with_visible_recall_traces(
+                    request,
+                    prefetch_trace,
+                ).model_copy(update={
+                    "model_content_json": augment_model_content_with_recall(
+                        request.model_content_json,
+                        verify_trusted_recall_trace(prefetch_trace),
+                    )
+                })
         provider_request = request.model_copy(
             update={
                 "model_content_json": compact_chat_model_facing_context(request.model_content_json)
@@ -4204,6 +4281,7 @@ class _InboundCharacterAuthor:
                 and transport_provider is None
             ),
             preserve_legacy_authoring=preserve_legacy_authoring,
+            source_authority_context_json=request.model_content_json,
         )
         expression_user_material = json.loads(expression_messages[1]["content"])
         if not isinstance(expression_user_material, dict):
@@ -5254,6 +5332,7 @@ class _InboundCharacterAuthor:
                 route_tier=request.route.tier,
                 usage=usage,
                 private_state_context_json=(provider_expression_request.model_content_json),
+                prehistory_source_authority_context_json=expression_request.model_content_json,
                 source_ref_aliases=source_ref_aliases,
                 origin_call_id=provider_expression_request.call_id,
                 origin_request_hash=_model_input_request_hash(provider_expression_request),

@@ -479,6 +479,45 @@ def test_compact_gate_decoder_removes_only_strict_null_siblings(
     assert set(decoded) == expected_keys
 
 
+def test_compact_gate_accepts_observed_result_code_discriminator_alias() -> None:
+    contract = InboundToolContracts().compact_gate_for(
+        capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
+        recall_allowed=True,
+        schema_dialect="deepseek-strict",
+    )
+    captured = _compact_gate_carrier(_reply_only_stream_arguments())
+    captured["result_code"] = captured.pop("result_kind")
+    raw = json.dumps(captured, ensure_ascii=False, separators=(",", ":"))
+
+    decoded = contract.decode(raw)
+    first = _incremental_first_expression(raw, forced_tool=True, compact_gate=True)
+
+    assert decoded["result_kind"] == "reply_only"
+    assert first is not None
+    assert json.loads(first)["expression_draft"]["beats"][0]["text"] == "嗯，我在听。"
+
+
+def test_compact_gate_result_code_alias_rejects_ambiguous_or_extra_transport_fields() -> None:
+    contract = InboundToolContracts().compact_gate_for(
+        capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
+        recall_allowed=True,
+        schema_dialect="deepseek-strict",
+    )
+    alias = _compact_gate_carrier(_reply_only_stream_arguments())
+    alias["result_code"] = alias.pop("result_kind")
+
+    ambiguous = {**alias, "result_kind": "reply_only"}
+    with pytest.raises(ValueError, match="ambiguous branch discriminators"):
+        contract.decode(json.dumps(ambiguous, ensure_ascii=False))
+
+    with pytest.raises(ValueError, match="invalid transport shape"):
+        contract.decode(json.dumps({**alias, "unexpected": "value"}, ensure_ascii=False))
+
+    unavailable = {**alias, "result_code": "not-a-branch"}
+    with pytest.raises(ValueError, match="result_code alias is unavailable"):
+        contract.decode(json.dumps(unavailable, ensure_ascii=False))
+
+
 def test_compact_gate_decoder_rejects_non_null_cross_branch_semantics() -> None:
     contract = InboundToolContracts().compact_gate_for(
         capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,

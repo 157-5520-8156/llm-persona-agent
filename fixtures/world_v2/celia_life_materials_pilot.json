@@ -1,0 +1,1146 @@
+{
+  "contract": "prehistory-life-materials.1",
+  "world_id": "world:companion-v2:qq-c2c:geoff",
+  "world_started_at": "2026-08-13T17:42:55.383658+00:00",
+  "source_artifact_ref": "docs/design/celia-life-arc-v2-2026-09-29.md#sha256=21fc89ed4c6199a2919e43496aef8a871afaf470dcb1376d7d10d0decf86c528",
+  "entities": [
+    {
+      "entity_ref": "history:person:celia-self",
+      "kind": "person",
+      "label": "沈知栀（档案所属角色的历史身份）"
+    },
+    {
+      "entity_ref": "history:person:luo-jiahe",
+      "kind": "person",
+      "label": "罗嘉禾（候选历史人物，未映射NPC）"
+    },
+    {
+      "entity_ref": "history:person:chen-man",
+      "kind": "person",
+      "label": "陈曼（候选历史人物，未映射NPC）"
+    },
+    {
+      "entity_ref": "history:person:shen-lan",
+      "kind": "person",
+      "label": "沈岚（母亲）"
+    },
+    {
+      "entity_ref": "history:person:jiahe-mother",
+      "kind": "person",
+      "label": "嘉禾的母亲（姓名未设定）"
+    }
+  ],
+  "actors": [
+    {
+      "actor_ref": "agent:companion",
+      "historical_entity_ref": "history:person:celia-self",
+      "born_at": "2005-04-12T00:00:00+08:00"
+    },
+    {
+      "actor_ref": "draft-actor:luo-jiahe",
+      "historical_entity_ref": "history:person:luo-jiahe",
+      "born_at": null
+    },
+    {
+      "actor_ref": "draft-actor:chen-man",
+      "historical_entity_ref": "history:person:chen-man",
+      "born_at": null
+    }
+  ],
+  "blocks": [
+    {
+      "block_id": "c01-meeting",
+      "text": "2015年，嘉禾第一次进知栀家先问厕所。她刚在楼下踢球，球滚进车底；捞球时裤子粘了口香糖，知栀拿剪刀帮她剪，结果剪出一个洞。嘉禾照镜子说：“行，现在像我拉裤子了。”后来两人对外说从小认识，却少讲这个开头。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "嘉禾第一次进知栀家，先问厕所在哪。她在楼下踢球，球滚进车底，蹲着捞了半天，起来发现裤子后面挂了一条不知道谁扔的口香糖。知栀拿剪刀替她剪，剪出个洞。\n\n嘉禾对着镜子扭了半天：“行，现在像我拉裤子了。”\n\n那是2015年。她们后来对别人说从小就认识，却很少说这个开头。",
+      "source_locator": "第一节，第1—3段",
+      "kind": "event",
+      "event_ref": "ev:friendship-first-meeting"
+    },
+    {
+      "block_id": "c02-dinner-routines",
+      "text": "嘉禾住隔壁楼，家里吃饭早。她来喊知栀时，知栀还捧着碗，她就等在旁边，有时再吃几口。母亲说她好养活，嘉禾让阿姨别告诉自己妈妈，不然炒茄子又算她头上。后来她伸手调电视，两人抢遥控器，谁也没听清节目。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "嘉禾住隔壁楼，家里吃饭早。她来喊知栀时，知栀经常还捧着碗，嘉禾便在旁边等，有时又吃几口。沈岚说她好养活，她说阿姨你别告诉我妈，不然今晚那个炒茄子又得算我头上。知栀吃得慢，她就伸手去调电视。两人抢遥控器，谁也听不清电视里在说什么。",
+      "source_locator": "第一节，第4段",
+      "kind": "event",
+      "event_ref": "ev:friendship-dinner-routine"
+    },
+    {
+      "block_id": "c03-notebook-sea",
+      "text": "2017年夏天，她们在本子末页画没去过的青岛海边。知栀画灯塔，嘉禾改成竖着的雪糕，两人说等不用向大人解释火车票时一起去。这个约定当时只是画在本子上的话。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "2017年夏天，她们在一个本子最后画了青岛的海。谁都没去过，知栀画了灯塔，嘉禾嫌难看，改成一根竖着的雪糕。她们说以后要去，等不用向大人解释为什么买两张火车票的时候。",
+      "source_locator": "第一节，第6段",
+      "kind": "event",
+      "event_ref": "ev:notebook-qingdao"
+    },
+    {
+      "block_id": "c04-small-joy",
+      "text": "本子夹过菜单、电影票和嘉禾写的歌词。嘉禾有一阵总唱同一首歌，知栀听见前奏就要捂她嘴。后来歌换了，本子也没再一起写，两人仍会去超市蹭冷气，把最难看的衣服举到对方身上比画。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "本子里还夹过菜单、电影票和嘉禾写的歌词。嘉禾有一阵天天唱同一首歌，唱到知栀听见前奏就要捂她嘴。后来歌换了，本子也没再一起写。她们照样见面，不能去海边，就去超市蹭冷气，把最难看的衣服举到对方身上比画。",
+      "source_locator": "第一节，第7段",
+      "kind": "background",
+      "event_ref": "ev:friendship-shared-play"
+    },
+    {
+      "block_id": "c05-mother-question",
+      "text": "嘉禾当晚问知栀到底向母亲说了什么；知栀把自己替嘉禾说的好话一条条打出来。嘉禾回：“我没让你帮我说。”",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "嘉禾当晚发来消息，问她到底说了什么。知栀把自己替她说的好话一条条打出来，越打越委屈。嘉禾只回：“我没让你帮我说。”",
+      "source_locator": "第二节，第1—3段",
+      "kind": "event",
+      "event_ref": "ev:2021-mother-boundary"
+    },
+    {
+      "block_id": "c06-speech-misfire",
+      "text": "两周后知栀在校内活动发言漏了一段。下台时嘉禾递水，说她停顿像网卡。知栀没等嘉禾说完就拿书包走；嘉禾追到楼梯口拽了一下书包带，生气地问该说什么。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "过了两个星期，轮到知栀在一次校内活动上发言。她练得很熟，到了台上却漏了中间一段，跳过去以后又发现最后一句接不上。她看见前排有人低头，便认定是在笑。下台时嘉禾把一瓶水递过来，说：“你刚才那个停顿，跟网卡了一样。”\n\n知栀脸一下子冷了。\n\n“哎，我不是——”\n\n她没等嘉禾说完，绕过去拿书包。嘉禾追到楼梯口，伸手拽了一下她书包带，也火了：“那我该说什么？说你特别好？你自己信吗？”",
+      "source_locator": "第二节，第4—7段",
+      "kind": "event",
+      "event_ref": "ev:2021-school-speech"
+    },
+    {
+      "block_id": "c07-video-repair",
+      "text": "当晚嘉禾发来一段只保留知栀发言开头的视频，说：“这一段还是挺像样的。”知栀回“嗯”。第二天嘉禾在楼下等她，两人一起走了一段。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "两人各走各的。知栀回家后把活动的群消息全关了。晚上嘉禾发来一小段视频，只有开头说得顺的那二十多秒，没有漏词的地方。后面跟着一句：“这一段还是挺像样的。”\n\n知栀反复看了几遍，回了个“嗯”。她没问嘉禾是不是特意截的。第二天早上，嘉禾已经在楼下等，她们一起走了一段，谁也没提前一天。",
+      "source_locator": "第二节，第8—9段",
+      "kind": "event",
+      "event_ref": "ev:2021-video-and-next-morning"
+    },
+    {
+      "block_id": "c08-trip-not-booked",
+      "text": "2024年，嘉禾翻出青岛的天气，和即将去上海上大学的知栀商量出游。她们查过住宿，嘉禾说能调四天，知栀嫌不够，最后谁也没订。后来嘉禾又说假不一定调得成了，知栀回复“没事，反正也没订”。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "2024年，知栀确定去上海上大学。嘉禾在手机里找出青岛的天气，说终于可以安排了。她们查过住宿，嘉禾说自己能调出四天，知栀说四天不够玩。最后谁也没订。\n\n没多久，嘉禾和一位叫陈曼的同事开始商量接一些自己的订单。陈曼年纪比她们大，认识做包装的人，会把每一项成本写出来。嘉禾又说假不一定调得成了。\n\n知栀回复“没事，反正也没订”，随后把查好的那几页住宿关掉。",
+      "source_locator": "第三节，第1—3段",
+      "kind": "event",
+      "event_ref": "ev:trip-postponed"
+    },
+    {
+      "block_id": "c09-expo-jealousy",
+      "text": "知栀看见嘉禾和陈曼去外地看烘焙展的照片，问她不是没时间出去吗。嘉禾说是看设备，知栀回“哦”。嘉禾随后发来展馆门口难吃的面，知栀没有回复。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "几天后她看见嘉禾和陈曼在外地看烘焙展的照片，忍不住问：“你不是没时间出去吗？”\n\n“这个是去看设备。”\n\n“哦。”\n\n嘉禾过了一会儿发来展馆门口那家难吃的面，想接着吐槽。知栀没有回。",
+      "source_locator": "第三节，第4—7段",
+      "kind": "event",
+      "event_ref": "ev:bakery-expo-chat"
+    },
+    {
+      "block_id": "c11-copywriting-and-draft",
+      "text": "知栀帮嘉禾挑接单头像，答应写文案。嘉禾后来采用陈曼写的几寸、什么馅、提前几天订那一句，说知栀的文案好看，但客人老问价格。知栀回“也是”。几天后知栀才告诉嘉禾稿件落选，嘉禾回：“换个地方投呗，你不是还有好多地方能投。”",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "知栀在大学第一次交给社团的稿子没有被选上。她原本想跟嘉禾讲，打到一半，看见嘉禾发来十几张蛋糕照片，让她帮忙选一张当接单头像。\n\n她删了刚打的字，选了一张，说这张干净。嘉禾问文案怎么写，她答应周末给她弄。\n\n她改文案改了三遍。后来嘉禾用的是陈曼写的那一句：几寸、什么馅、最晚提前几天订。\n\n“你那个好看，但是人家老问多少钱。”嘉禾说。\n\n知栀回“也是”。又过了几天，她才把稿子落选的事讲出来。嘉禾正忙，只说：“换个地方投呗，你不是还有好多地方能投。”知栀看着这句话，突然不想往下说了。",
+      "source_locator": "第四节，第1—4段",
+      "kind": "event",
+      "event_ref": "ev:college-draft-copywriting"
+    },
+    {
+      "block_id": "c12-photo-day",
+      "text": "2025年春天，嘉禾和陈曼租了一个小操作间。知栀回嘉兴那周，约好去帮她们拍些照片，还带了一束花。到了才发现没人有空给花找瓶子，她把花放在角落。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe",
+        "draft-actor:chen-man"
+      ],
+      "source_quote": "2025年春天，嘉禾和陈曼租了一个小操作间。知栀回嘉兴那周，她们约好让她去帮忙拍些照片。知栀还带了一束花，到了才发现没人有空给花找瓶子。\n\n陈曼正在处理一笔退单，嘉禾手套上全是奶油，来不及摘，拿肩膀顶着手机。知栀把花放在角落，搬开一张堆了东西的桌子，觉得这样拍好看些。陈曼拦住她：“先别动，那些按顺序摆的。”",
+      "source_locator": "第四节，第5—8段",
+      "kind": "event",
+      "event_ref": "ev:photo-session-and-workroom"
+    },
+    {
+      "block_id": "c13-left-early",
+      "text": "知栀说自己晚上得回上海，待不了太久。嘉禾问：“不是明天吗？”知栀答：“改了。”",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "知栀说自己晚上得回上海，待不了太久。\n\n“不是明天吗？”嘉禾问。\n\n“改了。”",
+      "source_locator": "第四节，第9—10段",
+      "kind": "event",
+      "event_ref": "ev:photo-day-early-departure"
+    },
+    {
+      "block_id": "c14-photo-sent-reply",
+      "text": "晚上嘉禾问照片能不能发来。知栀挑过、调好色，发了六张；第二天嘉禾回“收到了”。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "晚上嘉禾问她照片能不能发来。知栀挑过、调好色，发了六张。嘉禾忙到夜里，第二天才回“收到了”。",
+      "source_locator": "第四节，第11段",
+      "kind": "event",
+      "event_ref": "ev:photos-sent"
+    },
+    {
+      "block_id": "c15-fight-and-silence",
+      "text": "真正吵起来是在几天后。嘉禾看见知栀发的看展照片，问她为什么不直接说。知栀先解释车次，后来开始说那天没人理她。嘉禾说她以为两人够熟了，不用特意招待。知栀回：“所以你就觉得我什么都能干，干完也不用管？”",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "真正吵起来是在几天后。嘉禾看见知栀发的看展照片，问她为什么不直接说。知栀先解释车次，后来开始说那天没人理她。嘉禾说她以为两人够熟了，不用特意招待。知栀回：“所以你就觉得我什么都能干，干完也不用管？”",
+      "source_locator": "第四节，第12—14段；第五节，第1段",
+      "kind": "event",
+      "event_ref": "ev:friendship-fight-photo-day"
+    },
+    {
+      "block_id": "c16-photo-use-told-later",
+      "text": "车开走以后，嘉禾发消息说：“你拍那几张我用了，客人问过。还没跟你说。”知栀回：“那你早说啊。”这条消息没有说明使用照片的具体日期、渠道或客人身份。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "车开走以后，她收到嘉禾发来的消息：“你拍那几张我用了，客人问过。还没跟你说。”\n\n知栀回：“那你早说啊。”",
+      "source_locator": "第五节，第9—10段",
+      "kind": "event",
+      "event_ref": "ev:photo-use-disclosure"
+    },
+    {
+      "block_id": "c17-heard-hangzhou-and-moving",
+      "text": "知栀回嘉兴后从母亲处听说嘉禾准备去杭州做事；嘉禾没有第一时间告诉她。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "嘉禾没有第一时间告诉知栀。知栀是回家后听母亲提起，才知道嘉禾准备去杭州做事。",
+      "source_locator": "第五节，第2—9段",
+      "kind": "event",
+      "event_ref": "ev:cooperation-ends-and-moving"
+    },
+    {
+      "block_id": "c18-new-photos-sea",
+      "text": "嘉禾到杭州后，两人仍会分享生活。2026年春天她们去了一处离杭州较近的海边，天气不好，嘉禾嫌不值却脱鞋踩水，知栀嫌风大；照片里两人的头发被风吹贴脸。她们没说这算不算兑现旧时的青岛约定。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "2026年春天，她们真去过一次看海，去的是离杭州更近的地方，天气不好，海也不蓝。嘉禾一路说亏了，到了水边却脱鞋踩了半天；知栀嫌风大，拍出来的照片里两个人头发都贴着脸。青岛还在那个本子里，没人说这次算不算。",
+      "source_locator": "第六节，第4段",
+      "kind": "event",
+      "event_ref": "ev:2026-spring-sea"
+    },
+    {
+      "block_id": "j03-message-boundary",
+      "text": "2021年知栀说过自己替嘉禾向其母亲解释。嘉禾当晚问她具体说了什么，并回“我没让你帮我说”。这是她知道的谈话，不表示她亲耳听见知栀与母亲的全部对话，也不推断知栀当时想法。",
+      "allowed_actor_refs": [
+        "draft-actor:luo-jiahe",
+        "agent:companion"
+      ],
+      "source_quote": "嘉禾当晚发来消息，问她到底说了什么。知栀把自己替她说的好话一条条打出来，越打越委屈。嘉禾只回：“我没让你帮我说。”",
+      "source_locator": "第二节，第3段",
+      "kind": "event",
+      "event_ref": "ev:2021-mother-boundary"
+    },
+    {
+      "block_id": "j04-first-cake-happy",
+      "text": "嘉禾开始学烘焙并在店里工作后，第一次独自做完一只客人没挑毛病的蛋糕。她下班跑到知栀家楼下，非要知栀出来吃剩下的奶油。两人坐在花坛边挤着吃，后来都有点恶心。嘉禾说下次要做个更大的，知栀问能不能先做个不那么甜的。",
+      "allowed_actor_refs": [
+        "draft-actor:luo-jiahe",
+        "agent:companion"
+      ],
+      "source_quote": "嘉禾也有高兴的时候。她第一次独自做完一只客人没挑毛病的蛋糕，下班后跑到知栀家楼下，非要她出来吃剩下的奶油。两人坐在花坛边挤着吃，吃到后来都有点恶心。嘉禾说自己下次要做个更大的，知栀问她能不能先做个不那么甜的。",
+      "source_locator": "第三节，第4—5段",
+      "kind": "event",
+      "event_ref": "ev:first-uncriticized-cake"
+    },
+    {
+      "block_id": "j06-hangzhou-private-life",
+      "text": "嘉禾到杭州后，排班会改，认识的人需要重新认识。她喜欢一位师傅教东西不绕弯，也喜欢下班走到地铁站那十几分钟，不需要向谁交代今天怎么这么晚。",
+      "allowed_actor_refs": [
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "嘉禾到杭州后的日子没有突然变好。排班会改，认识的人要重新认识。但她喜欢店里一位师傅教东西不绕弯，也喜欢下班走到地铁站那十几分钟，不需要向谁交代今天怎么这么晚。",
+      "source_locator": "第六节，第1段",
+      "kind": "historical_interpretation",
+      "event_ref": "ev:jiahe-hangzhou-life",
+      "subject_actor_ref": "draft-actor:luo-jiahe"
+    },
+    {
+      "block_id": "j07-shanghai-consideration",
+      "text": "2026年夏天，嘉禾在考虑换工作，还没有决定。她托知栀看一处上海短租房的信息；知栀问是否已收到工作那边的回复，嘉禾说还没有，才聊了两次。",
+      "allowed_actor_refs": [
+        "draft-actor:luo-jiahe",
+        "agent:companion"
+      ],
+      "source_quote": "2026年夏天，嘉禾托知栀看一处上海短租房的信息。她在考虑换工作，还没有决定。知栀把路线查好，正要把学校附近几家店也发过去，先问了一句她是不是已经拿到那边的回复。\n\n嘉禾说还没有，才聊了两次。",
+      "source_locator": "第六节，第5—6段",
+      "kind": "intention",
+      "event_ref": "ev:2026-shanghai-rental-talk"
+    },
+    {
+      "block_id": "m01-work-planning",
+      "text": "陈曼与嘉禾共事；她认识做包装的人，会把每项成本写出来。两人开始商量接自己的订单。仅记录小说写明的行为和业务信息，不替她补动机或私下评价。",
+      "allowed_actor_refs": [
+        "draft-actor:chen-man",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "没多久，嘉禾和一位叫陈曼的同事开始商量接一些自己的订单。陈曼年纪比她们大，认识做包装的人，会把每一项成本写出来。嘉禾又说假不一定调得成了。",
+      "source_locator": "第三节，第2段",
+      "kind": "event",
+      "event_ref": "ev:orders-and-work-planning"
+    },
+    {
+      "block_id": "c05i-overexplaining",
+      "text": "知栀越写越委屈，想找一句能证明自己不是多管闲事的话。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "知栀把自己替她说的好话一条条打出来，越打越委屈。嘉禾只回：“我没让你帮我说。”\n\n知栀把聊天往上翻了很久，想找一条能证明自己不是多管闲事的话。",
+      "source_locator": "第二节，第3—4段",
+      "kind": "historical_interpretation",
+      "event_ref": "ev:2021-mother-boundary",
+      "subject_actor_ref": "agent:companion"
+    },
+    {
+      "block_id": "c06i-felt-laughed-at",
+      "text": "知栀看见前排有人低头，认定对方在笑；听见嘉禾开玩笑时脸冷下来。这是她的判断，不证明前排同学在笑。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "她看见前排有人低头，便认定是在笑。",
+      "source_locator": "第二节，第4段",
+      "kind": "historical_interpretation",
+      "event_ref": "ev:2021-school-speech",
+      "subject_actor_ref": "agent:companion"
+    },
+    {
+      "block_id": "c07i-replayed-video",
+      "text": "知栀把视频反复看了几遍，没有问嘉禾是否特意截出这一段。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "知栀反复看了几遍，回了个“嗯”。她没问嘉禾是不是特意截的。",
+      "source_locator": "第二节，第8—9段",
+      "kind": "historical_interpretation",
+      "event_ref": "ev:2021-video-and-next-morning",
+      "subject_actor_ref": "agent:companion"
+    },
+    {
+      "block_id": "c11i-deleted-opening",
+      "text": "知栀本想先告诉嘉禾投稿落选，打到一半看到蛋糕照片便删掉，先帮她挑头像。她改文案改了三遍。后来提起稿件落选，看到嘉禾让她换地方投的回复，她突然不想继续说了。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "知栀在大学第一次交给社团的稿子没有被选上。她原本想跟嘉禾讲，打到一半，看见嘉禾发来十几张蛋糕照片，让她帮忙选一张当接单头像。\n\n她删了刚打的字，选了一张，说这张干净。嘉禾问文案怎么写，她答应周末给她弄。\n\n她改文案改了三遍。后来嘉禾用的是陈曼写的那一句：几寸、什么馅、最晚提前几天订。\n\n“你那个好看，但是人家老问多少钱。”嘉禾说。\n\n知栀回“也是”。又过了几天，她才把稿子落选的事讲出来。嘉禾正忙，只说：“换个地方投呗，你不是还有好多地方能投。”知栀看着这句话，突然不想往下说了。",
+      "source_locator": "第四节，第1、2、4段",
+      "kind": "historical_interpretation",
+      "event_ref": "ev:college-draft-copywriting",
+      "subject_actor_ref": "agent:companion"
+    },
+    {
+      "block_id": "c12i-expected-celebration",
+      "text": "知栀原来以为，她们会拍完照片，找个地方吃饭，庆祝嘉禾终于做起自己的事。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "她原来以为她们会拍完照片，找个地方吃饭，庆祝嘉禾终于做起了自己的事。",
+      "source_locator": "第四节，第7—8段",
+      "kind": "historical_interpretation",
+      "event_ref": "ev:photo-session-and-workroom",
+      "subject_actor_ref": "agent:companion"
+    },
+    {
+      "block_id": "c13i-concealed-plan",
+      "text": "知栀其实约了大学里的朋友第二天一起去看展，想早点回去；怕嘉禾觉得自己不够意思，话到嘴边便换了个说法。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "她其实约了大学里的朋友第二天一起去看展，想早点回去。她怕嘉禾觉得自己不够意思，话到嘴边便换了个说法。",
+      "source_locator": "第四节，第9—10段",
+      "kind": "historical_interpretation",
+      "event_ref": "ev:photo-day-early-departure",
+      "subject_actor_ref": "agent:companion"
+    },
+    {
+      "block_id": "c14i-no-thanks",
+      "text": "知栀觉得自己忙了半天，对方连句谢谢都没有，又觉得为了这个计较很难看。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "知栀觉得自己忙了半天，对方连句谢谢都没有，又觉得为了这个计较很难看。",
+      "source_locator": "第四节，第11段",
+      "kind": "historical_interpretation",
+      "event_ref": "ev:photos-sent",
+      "subject_actor_ref": "agent:companion"
+    },
+    {
+      "block_id": "m03-partnership-ended",
+      "text": "陈曼与嘉禾后来因租金、休息和接单量谈不拢，退掉操作间，各自处理原有订单。",
+      "allowed_actor_refs": [
+        "draft-actor:chen-man",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "陈曼也没有一直留在那个操作间。两人后来对租金、休息和接单量谈不拢，退掉了地方，各自处理原来的订单。",
+      "source_locator": "第五节，第2段",
+      "kind": "event",
+      "event_ref": "ev:workroom-partnership-ends"
+    },
+    {
+      "block_id": "c12-arrangement",
+      "text": "知栀搬开一张堆着东西的桌子，陈曼拦住她：“先别动，那些按顺序摆的。”",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe",
+        "draft-actor:chen-man"
+      ],
+      "source_quote": "知栀把花放在角落，搬开一张堆了东西的桌子，觉得这样拍好看些。陈曼拦住她：“先别动，那些按顺序摆的。”",
+      "source_locator": "第四节，第6段",
+      "kind": "event",
+      "event_ref": "ev:photo-session-and-workroom"
+    },
+    {
+      "block_id": "c12-boxes",
+      "text": "嘉禾忙完过来，问知栀能不能先帮着折盒子。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe",
+        "draft-actor:chen-man"
+      ],
+      "source_quote": "嘉禾忙完过来，问她能不能先帮着折盒子。",
+      "source_locator": "第四节，第7—8段",
+      "kind": "event",
+      "event_ref": "ev:photo-session-and-workroom"
+    },
+    {
+      "block_id": "c17-moving-day",
+      "text": "嘉禾搬东西那天，知栀直接下了楼。她们把两只纸箱抬进车里，第三只箱子特别沉。知栀问装的什么，嘉禾说工具。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "嘉禾搬东西那天，知栀直接下了楼。她们把两只纸箱抬进车里，第三只箱子特别沉。知栀问装的什么，嘉禾说工具。",
+      "source_locator": "第五节，第6—9段",
+      "kind": "event",
+      "event_ref": "ev:friendship-moving-day"
+    },
+    {
+      "block_id": "c12-workroom-busy",
+      "text": "陈曼正在处理一笔退单，嘉禾手套上全是奶油，来不及摘，拿肩膀顶着手机。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe",
+        "draft-actor:chen-man"
+      ],
+      "source_quote": "陈曼正在处理一笔退单，嘉禾手套上全是奶油，来不及摘，拿肩膀顶着手机。",
+      "source_locator": "第四节，第6段",
+      "kind": "event",
+      "event_ref": "ev:photo-session-and-workroom"
+    },
+    {
+      "block_id": "c12-lunch",
+      "text": "到了下午三点，嘉禾叫了几份外卖，陈曼把一盒推给知栀，说盒子折得挺快。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe",
+        "draft-actor:chen-man"
+      ],
+      "source_quote": "到了下午三点，嘉禾叫了几份外卖，陈曼把一盒推给她，说盒子折得挺快。",
+      "source_locator": "第四节，第8段",
+      "kind": "event",
+      "event_ref": "ev:photo-session-and-workroom"
+    },
+    {
+      "block_id": "c12i-superfluous",
+      "text": "知栀挪桌子时觉得这样拍好看些，被拦住后站了一会儿，开始觉得自己多余。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "知栀把花放在角落，搬开一张堆了东西的桌子，觉得这样拍好看些。陈曼拦住她：“先别动，那些按顺序摆的。”\n\n她站了一会儿，开始觉得自己多余。",
+      "source_locator": "第四节，第7段",
+      "kind": "historical_interpretation",
+      "event_ref": "ev:photo-session-and-workroom",
+      "subject_actor_ref": "agent:companion"
+    },
+    {
+      "block_id": "c15-fight-reply",
+      "text": "嘉禾说：“你来一下午，我得做的是以后每一天。”知栀马上回：“那我以后不去耽误你做大生意了。”",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "嘉禾说：“你来一下午，我得做的是以后每一天。”\n\n知栀马上回：“那我以后不去耽误你做大生意了。”",
+      "source_locator": "第四节，第14—15段",
+      "kind": "event",
+      "event_ref": "ev:friendship-fight-photo-day"
+    },
+    {
+      "block_id": "c15-large-business",
+      "text": "发出去的时候知栀就觉得话说重了，还是等着嘉禾先回。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "发出去的时候她就觉得重了，还是等着嘉禾先回。",
+      "source_locator": "第四节，第16段",
+      "kind": "historical_interpretation",
+      "event_ref": "ev:friendship-fight-photo-day",
+      "subject_actor_ref": "agent:companion"
+    },
+    {
+      "block_id": "c15-silence",
+      "text": "嘉禾没有再发消息。此后她们有两个多月没单独说过话。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "那边没有再发消息。\n\n## 五\n\n她们有两个多月没单独说过话。",
+      "source_locator": "第五节，第1段",
+      "kind": "event",
+      "event_ref": "ev:friendship-fight-photo-day"
+    },
+    {
+      "block_id": "c17-moving-talk",
+      "text": "回楼上拿最后一袋东西时，嘉禾说：“你那天直接说想回去看展不就完了。”\n知栀说：“我怕你不高兴。”\n嘉禾说：“我会啊。”知栀停了手。\n“我不高兴也不能把你扣这儿吧。”\n知栀把袋子提起来，说那句“大生意”是自己嘴贱。嘉禾说听着是挺难听。过了一会儿，又说自己那天确实没顾上她。两人没有把所有账都算清。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "回楼上拿最后一袋东西时，嘉禾说：“你那天直接说想回去看展不就完了。”\n\n“我怕你不高兴。”\n\n“我会啊。”\n\n知栀停了手。\n\n“我不高兴也不能把你扣这儿吧。”嘉禾说。\n\n知栀把袋子提起来，说那句“大生意”是她嘴贱。嘉禾说听着是挺难听。过了一会儿，又说自己那天确实没顾上她。\n\n她们没有把所有账都算清。",
+      "source_locator": "第五节，第8段",
+      "kind": "event",
+      "event_ref": "ev:friendship-moving-day"
+    },
+    {
+      "block_id": "c17-torn-handle",
+      "text": "下楼时嘉禾提醒知栀抓袋子的另一边，那边提手已经裂了一半。知栀换了只手。",
+      "allowed_actor_refs": [
+        "agent:companion",
+        "draft-actor:luo-jiahe"
+      ],
+      "source_quote": "下楼时，嘉禾提醒她抓袋子的另一边，那边提手已经裂了一半。知栀换了只手。",
+      "source_locator": "第五节，第10段",
+      "kind": "event",
+      "event_ref": "ev:friendship-moving-day"
+    },
+    {
+      "block_id": "c17i-held-back-joke",
+      "text": "知栀想起嘉禾以前嘲笑她出门背太多书，差点说出口，又忍住了。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "她想起嘉禾以前嘲笑她出门背太多书，差点说出来，忍住了。",
+      "source_locator": "第五节，第7段",
+      "kind": "historical_interpretation",
+      "event_ref": "ev:friendship-moving-day",
+      "subject_actor_ref": "agent:companion"
+    },
+    {
+      "block_id": "c15i-looking-for-flowers",
+      "text": "知栀没删嘉禾，偶尔点进动态。看见操作间新照片，先放大看角落的花还在不在，再看做了什么。花早不在了，她很烦自己还在找。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "知栀没有删嘉禾，偶尔点进她的动态。看见操作间的新照片，她先放大看角落里的花还在不在，再看今天做了什么。花早就不在了。她很烦自己还在找。",
+      "source_locator": "第五节，冷淡期间浏览动态",
+      "kind": "historical_interpretation",
+      "subject_actor_ref": "agent:companion",
+      "event_ref": "ev:friendship-fight-photo-day"
+    },
+    {
+      "block_id": "c16i-no-emoji",
+      "text": "回复后，知栀本想再加一个表情，挑了很久，最后没有加。",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "她本来还想加个表情，挑了很久，最后没有加。",
+      "source_locator": "第五节，照片使用告知之后",
+      "kind": "historical_interpretation",
+      "subject_actor_ref": "agent:companion",
+      "event_ref": "ev:photo-use-disclosure"
+    },
+    {
+      "block_id": "c05-private-conversation",
+      "text": "大人说两人关系好，常会接着让知栀劝嘉禾。一次嘉禾母亲堵着知栀问了很久，知栀先敷衍，问急了又说：“她又不是不想学，她就是不想照你那个……”",
+      "allowed_actor_refs": [
+        "agent:companion"
+      ],
+      "source_quote": "到了2021年，知栀开始讨厌大人说“你俩关系真好”。\n\n通常下一句是让她劝嘉禾。嘉禾想什么不肯跟家里讲，大人就觉得知栀一定知道。有一次嘉禾的母亲堵着知栀问了很久，知栀先替嘉禾敷衍，问急了，又忍不住说了句：“她又不是不想学，她就是不想照你那个……”",
+      "source_locator": "第二节，知栀与嘉禾母亲的谈话",
+      "kind": "event",
+      "event_ref": "ev:mother-question-and-explanation"
+    }
+  ],
+  "recollections": [
+    {
+      "record_id": "prehistory-record:celia-lifeline-01",
+      "actor_ref": "agent:companion",
+      "known_from": "2015-01-01T00:00:00+08:00",
+      "known_until": "2015-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c01-meeting"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-02",
+      "actor_ref": "agent:companion",
+      "known_from": "2015-01-01T00:00:00+08:00",
+      "known_until": "2017-12-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c02-dinner-routines"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe",
+        "history:person:shen-lan"
+      ],
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-01"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-03",
+      "actor_ref": "agent:companion",
+      "known_from": "2017-06-01T00:00:00+08:00",
+      "known_until": "2017-08-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c03-notebook-sea"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-04",
+      "actor_ref": "agent:companion",
+      "known_from": "2017-01-01T00:00:00+08:00",
+      "known_until": "2020-12-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c04-small-joy"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-03"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-05",
+      "actor_ref": "agent:companion",
+      "known_from": "2021-01-01T00:00:00+08:00",
+      "known_until": "2021-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c05-private-conversation",
+        "c05-mother-question",
+        "c05i-overexplaining"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe",
+        "history:person:jiahe-mother"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-06",
+      "actor_ref": "agent:companion",
+      "known_from": "2021-01-01T00:00:00+08:00",
+      "known_until": "2021-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c06-speech-misfire",
+        "c06i-felt-laughed-at"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-05"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-07",
+      "actor_ref": "agent:companion",
+      "known_from": "2021-01-01T00:00:00+08:00",
+      "known_until": "2021-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c07-video-repair",
+        "c07i-replayed-video"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-06"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-20",
+      "actor_ref": "agent:companion",
+      "known_from": "2023-01-01T00:00:00+08:00",
+      "known_until": "2023-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "j04-first-cake-happy"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-12"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-08",
+      "actor_ref": "agent:companion",
+      "known_from": "2024-01-01T00:00:00+08:00",
+      "known_until": "2024-08-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c08-trip-not-booked"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-09",
+      "actor_ref": "agent:companion",
+      "known_from": "2024-01-01T00:00:00+08:00",
+      "known_until": "2024-08-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c09-expo-jealousy"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-08"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-11",
+      "actor_ref": "agent:companion",
+      "known_from": "2024-10-01T00:00:00+08:00",
+      "known_until": "2025-03-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c11-copywriting-and-draft",
+        "c11i-deleted-opening"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-12",
+      "actor_ref": "agent:companion",
+      "known_from": "2025-03-01T00:00:00+08:00",
+      "known_until": "2025-05-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c12-photo-day",
+        "c12-workroom-busy",
+        "c12-arrangement",
+        "c12i-superfluous",
+        "c12-boxes",
+        "c12i-expected-celebration",
+        "c12-lunch",
+        "c13-left-early",
+        "c13i-concealed-plan",
+        "c14-photo-sent-reply",
+        "c14i-no-thanks"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe",
+        "history:person:chen-man"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-15",
+      "actor_ref": "agent:companion",
+      "known_from": "2025-03-01T00:00:00+08:00",
+      "known_until": "2026-02-28T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c15-fight-and-silence",
+        "c15-fight-reply",
+        "c15-large-business",
+        "c15-silence",
+        "c15i-looking-for-flowers"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-17",
+      "actor_ref": "agent:companion",
+      "known_from": "2025-05-01T00:00:00+08:00",
+      "known_until": "2026-02-28T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c17-heard-hangzhou-and-moving",
+        "c17-moving-day",
+        "c17i-held-back-joke",
+        "c17-moving-talk",
+        "c17-torn-handle"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe",
+        "history:person:shen-lan"
+      ],
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-15"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-16",
+      "actor_ref": "agent:companion",
+      "known_from": "2025-05-01T00:00:00+08:00",
+      "known_until": "2026-02-28T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c16-photo-use-told-later",
+        "c16i-no-emoji"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-17"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-18",
+      "actor_ref": "agent:companion",
+      "known_from": "2026-03-01T00:00:00+08:00",
+      "known_until": "2026-05-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c18-new-photos-sea"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-17"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-lifeline-19",
+      "actor_ref": "agent:companion",
+      "known_from": "2026-07-01T00:00:00+08:00",
+      "known_until": "2026-07-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "j07-shanghai-consideration"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [
+        "prehistory-record:celia-lifeline-18"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:chenman-lifeline-01",
+      "actor_ref": "draft-actor:chen-man",
+      "known_from": "2024-01-01T00:00:00+08:00",
+      "known_until": "2024-08-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "m01-work-planning"
+      ],
+      "participant_refs": [
+        "history:person:chen-man",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:chenman-lifeline-02",
+      "actor_ref": "draft-actor:chen-man",
+      "known_from": "2025-03-01T00:00:00+08:00",
+      "known_until": "2025-05-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c12-photo-day",
+        "c12-workroom-busy",
+        "c12-arrangement",
+        "c12-boxes",
+        "c12-lunch"
+      ],
+      "participant_refs": [
+        "history:person:chen-man",
+        "history:person:celia-self",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:chenman-lifeline-03",
+      "actor_ref": "draft-actor:chen-man",
+      "known_from": "2025-05-01T00:00:00+08:00",
+      "known_until": "2026-02-28T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "m03-partnership-ended"
+      ],
+      "participant_refs": [
+        "history:person:chen-man",
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [
+        "prehistory-record:chenman-lifeline-01",
+        "prehistory-record:chenman-lifeline-02"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:jiahe-lifeline-01",
+      "actor_ref": "draft-actor:luo-jiahe",
+      "known_from": "2015-01-01T00:00:00+08:00",
+      "known_until": "2015-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c01-meeting"
+      ],
+      "participant_refs": [
+        "history:person:luo-jiahe",
+        "history:person:celia-self"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:jiahe-lifeline-02",
+      "actor_ref": "draft-actor:luo-jiahe",
+      "known_from": "2017-06-01T00:00:00+08:00",
+      "known_until": "2017-08-31T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c03-notebook-sea"
+      ],
+      "participant_refs": [
+        "history:person:luo-jiahe",
+        "history:person:celia-self"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:jiahe-lifeline-03",
+      "actor_ref": "draft-actor:luo-jiahe",
+      "known_from": "2021-01-01T00:00:00+08:00",
+      "known_until": "2021-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "j03-message-boundary"
+      ],
+      "participant_refs": [
+        "history:person:luo-jiahe",
+        "history:person:celia-self"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:jiahe-lifeline-04",
+      "actor_ref": "draft-actor:luo-jiahe",
+      "known_from": "2023-01-01T00:00:00+08:00",
+      "known_until": "2023-12-31T23:59:59+08:00",
+      "time_precision": "year",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "j04-first-cake-happy"
+      ],
+      "participant_refs": [
+        "history:person:luo-jiahe",
+        "history:person:celia-self"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:jiahe-lifeline-05",
+      "actor_ref": "draft-actor:luo-jiahe",
+      "known_from": "2025-03-01T00:00:00+08:00",
+      "known_until": "2026-02-28T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c12-photo-day",
+        "c12-workroom-busy",
+        "c12-arrangement",
+        "c12-boxes",
+        "c12-lunch",
+        "c13-left-early",
+        "c14-photo-sent-reply",
+        "c15-fight-and-silence",
+        "c15-fight-reply",
+        "c15-silence"
+      ],
+      "participant_refs": [
+        "history:person:luo-jiahe",
+        "history:person:celia-self",
+        "history:person:chen-man"
+      ],
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:jiahe-lifeline-06",
+      "actor_ref": "draft-actor:luo-jiahe",
+      "known_from": "2025-05-01T00:00:00+08:00",
+      "known_until": "2026-02-28T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "j06-hangzhou-private-life"
+      ],
+      "participant_refs": [
+        "history:person:luo-jiahe"
+      ],
+      "related_record_refs": [
+        "prehistory-record:jiahe-lifeline-05"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:jiahe-lifeline-08",
+      "actor_ref": "draft-actor:luo-jiahe",
+      "known_from": "2025-05-01T00:00:00+08:00",
+      "known_until": "2026-02-28T23:59:59+08:00",
+      "time_precision": "interval",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "c17-moving-day",
+        "c17-moving-talk",
+        "c17-torn-handle"
+      ],
+      "participant_refs": [
+        "history:person:luo-jiahe",
+        "history:person:celia-self"
+      ],
+      "related_record_refs": [
+        "prehistory-record:jiahe-lifeline-05"
+      ],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:jiahe-lifeline-07",
+      "actor_ref": "draft-actor:luo-jiahe",
+      "known_from": "2026-07-01T00:00:00+08:00",
+      "known_until": "2026-07-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "block_ids": [
+        "j07-shanghai-consideration"
+      ],
+      "participant_refs": [
+        "history:person:luo-jiahe",
+        "history:person:celia-self"
+      ],
+      "related_record_refs": [
+        "prehistory-record:jiahe-lifeline-06"
+      ],
+      "privacy_class": "personal"
+    }
+  ]
+}

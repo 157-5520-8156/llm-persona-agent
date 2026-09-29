@@ -2088,11 +2088,57 @@ class StructuredCharacterRoleFaculty:
                 user_payload["living_choice_scope"] = LIVING_CHOICE_SCOPE
         if request.correction_ordinal == 1:
             code = request.correction_failure_code or "role_result_schema_invalid"
+            failure_detail = request.correction_failure_detail or _FAILURE_DETAILS.get(code, code)
+            if request.purpose == "world_stimulus_appraisal":
+                # This is a bounded attention trace, not a completeness proof.
+                # Keep the active wire limit and the character's choice of
+                # which offered sources mattered; never repair an oversized
+                # list by truncating it in the host.
+                wire_result = (
+                    _ExpandedAttentionWireRoleResult
+                    if self._reference_wire
+                    else _WireRoleResult
+                )
+                wire_schema = wire_result.model_json_schema()
+                attention_schema = wire_schema.get("properties", {}).get(
+                    "attended_source_refs", {}
+                )
+                max_attended = (
+                    attention_schema.get("maxItems")
+                    if isinstance(attention_schema, Mapping)
+                    else None
+                )
+                if isinstance(max_attended, int):
+                    try:
+                        failures = json.loads(request.correction_failure_detail or "")
+                    except (TypeError, ValueError):
+                        failures = None
+                    attention_overflow = (
+                        isinstance(failures, list)
+                        and any(
+                            isinstance(item, Mapping)
+                            and item.get("type") == "too_long"
+                            and item.get("loc") == ["attended_source_refs"]
+                            for item in failures
+                        )
+                    )
+                    guidance = (
+                        f"attended_source_refs 的当前格式上限是 {max_attended} 条。"
+                        "请重新选择本次确实注意过的来源，只返回其中不超过上限的项目；"
+                        "不要复制整个来源目录，也不要让宿主按顺序截断。"
+                    )
+                    if attention_overflow:
+                        # The structured validator detail can contain the
+                        # rejected list itself. Replace it with the exact
+                        # field/limit diagnosis, keeping private source IDs
+                        # out of the repair instruction.
+                        failure_detail = guidance
+                    else:
+                        failure_detail = f"{failure_detail}\n{guidance}"
             user_payload["correction"] = {
                 "ordinal": 1,
                 "failure_code": code,
-                "failure_detail": request.correction_failure_detail
-                or _FAILURE_DETAILS.get(code, code),
+                "failure_detail": failure_detail,
                 "scope": "return_a_complete_new_result_for_the_same_pinned_request",
                 **({"rejected_expression": request.correction_rejected_expression.model_dump(mode="json")}
                    if request.correction_rejected_expression is not None else {}),

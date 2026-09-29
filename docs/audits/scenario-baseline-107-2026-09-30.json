@@ -1,0 +1,769 @@
+{
+  "all_case_predicates_passed": true,
+  "all_case_replays_passed": true,
+  "all_output_hashes_unchanged_vs_comparison_base": true,
+  "case_count": 120,
+  "changed_case_count_vs_comparison_base": 120,
+  "changed_case_fields_vs_comparison_base": {
+    "replay_hash": 120
+  },
+  "changed_cases_vs_comparison_base": [
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "distant_relationship.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "distant_relationship.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "distant_relationship.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "distant_relationship.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "distant_relationship.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "distant_relationship.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "distant_relationship.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "explicit_offence.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "explicit_offence.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "explicit_offence.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "explicit_offence.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "explicit_offence.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "explicit_offence.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "explicit_offence.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "hurt_residue.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "hurt_residue.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "hurt_residue.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "hurt_residue.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "hurt_residue.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "hurt_residue.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "hurt_residue.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "interruption.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "interruption.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "interruption.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "interruption.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "interruption.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "interruption.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "interruption.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "media_opportunity.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "media_opportunity.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "media_opportunity.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "media_opportunity.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "media_opportunity.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "media_opportunity.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "media_opportunity.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "mild_disappointment.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "mild_disappointment.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "mild_disappointment.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "mild_disappointment.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "mild_disappointment.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "mild_disappointment.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "mild_disappointment.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "multi_segment.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "multi_segment.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "multi_segment.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "multi_segment.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "multi_segment.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "multi_segment.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "multi_segment.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "npc_world_impact.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "npc_world_impact.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "npc_world_impact.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "npc_world_impact.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "npc_world_impact.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "npc_world_impact.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "npc_world_impact.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "ordinary_share.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "ordinary_share.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "ordinary_share.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "ordinary_share.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "ordinary_share.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "ordinary_share.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "ordinary_share.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "ordinary_share.08"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "plan_change.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "plan_change.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "plan_change.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "plan_change.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "plan_change.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "plan_change.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "plan_change.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "procrastination.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "procrastination.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "procrastination.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "procrastination.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "procrastination.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "procrastination.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "procrastination.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "projection_gap.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "projection_gap.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "projection_gap.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "projection_gap.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "projection_gap.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "projection_gap.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "projection_gap.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "provider_timeout.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "provider_timeout.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "provider_timeout.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "provider_timeout.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "provider_timeout.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "provider_timeout.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "provider_timeout.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "question_loop.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "question_loop.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "question_loop.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "question_loop.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "question_loop.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "question_loop.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "question_loop.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "repair.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "repair.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "repair.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "repair.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "repair.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "repair.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "repair.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "reply_later.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "reply_later.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "reply_later.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "reply_later.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "reply_later.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "reply_later.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "reply_later.07"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "subtext_sarcasm.01"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "subtext_sarcasm.02"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "subtext_sarcasm.03"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "subtext_sarcasm.04"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "subtext_sarcasm.05"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "subtext_sarcasm.06"
+    },
+    {
+      "fields": [
+        "replay_hash"
+      ],
+      "scenario_turn_id": "subtext_sarcasm.07"
+    }
+  ],
+  "code_under_test": "b641109f plus one source-bound actor-owned active prehistory Recall anchor selected by current-observation relevance",
+  "comparison_base_manifest_hash": "6bf5af93da2fb9565254c23d71f5ecc798b47afe46f7a5646d2e3ec72e2e2127",
+  "comparison_base_version": "world-v2-offline-mechanism-baseline.105",
+  "contract": "world-v2-offline-baseline-comparison.1",
+  "limitations": "Fixed fake model/provider; mechanism/replay evidence only, not blind human-likeness, real provider, QQ delivery, cost or release qualification.",
+  "new_manifest_hash": "c49e8516d9f8e548196fb2d71edf934df891886b14b5f5379b2427b4d5fd8727",
+  "new_run_hash_with_old_version": "99a9930cdcca91a2d4326652ac7ddb2fff13b0dd84b28bf7f13ef693954008cf",
+  "new_version": "world-v2-offline-mechanism-baseline.107",
+  "normal_gate": {
+    "command": "COMPANION_DISABLE_DEBUG_USAGE_LEDGER=1 uv run pytest -q tests/world_v2/test_scenario_runner.py::test_complete_frozen_suite_matches_the_explicit_mechanism_baseline",
+    "passed": 1,
+    "seconds": 34.69,
+    "status": "passed"
+  },
+  "old_manifest_hash": "3963c14208197ee0a40a7eeea7e7158c193493c6f0fbd0f066b5397168ac7a1b",
+  "old_version": "world-v2-offline-mechanism-baseline.106",
+  "previous_artifact_sha256": "f4af93c3b344f30ef79c0ea5a7c114d005806b3c0d8768ba7a68deba587f5c96",
+  "rationale": "Automatic Recall now prioritizes one exact active actor-owned prehistory MemoryCandidate whose source excerpt matches the current observation under the existing memory relevance policy. The structured link seeds only the selected source-bound story graph; the Recall index still enforces actor, active status, privacy, time and independent per-record authority. When such an anchor exists, this bounded query omits lower-priority optional links to avoid diluting its structured score. The later direct-top-k anchor-preservation fix has a focused regression and leaves this frozen suite manifest unchanged. The complete frozen suite preserves visible outputs and case predicates while recording the updated Recall/replay identity.",
+  "unchanged_case_fields_vs_comparison_base": [
+    "background_model_calls",
+    "background_work_statuses",
+    "emotional_gold",
+    "event_types",
+    "fault",
+    "model_calls",
+    "observation_count",
+    "output_hash",
+    "replay_passed",
+    "restarted_after_seed",
+    "room_view_hash",
+    "scenario_family",
+    "scenario_turn_id",
+    "terminal_action_states",
+    "trigger_kinds",
+    "verification_errors",
+    "world_id"
+  ]
+}

@@ -230,6 +230,7 @@ def build_automatic_recall_request(
     situation_value: Mapping[str, object] | None = None,
     open_thread_values: Sequence[Mapping[str, object]] = (),
     link_refs: Sequence[str] = (),
+    priority_link_refs: Sequence[str] = (),
     occurred_from: datetime | None = None,
     occurred_to: datetime | None = None,
     memory_kinds: Sequence[Literal["episodic", "semantic", "reflective"]] = (),
@@ -267,7 +268,14 @@ def build_automatic_recall_request(
     if threads:
         _append_bounded(parts, "未完话题：" + _compact_json(threads))
     query_text = "\n".join(parts)
-    canonical_links = tuple(sorted({item for item in link_refs if item}))[:16]
+    priority_links = tuple(sorted({item for item in priority_link_refs if item}))[:16]
+    optional_links = tuple(sorted({item for item in link_refs if item}))
+    # Structured recall normalizes each exact link against the whole selector
+    # list. Mixing one story anchor with many unrelated refs dilutes it below
+    # the top-k even though the anchor is the reason this prehistory was
+    # selected. Let a relevant attended story own this one bounded lookup;
+    # absent a story anchor, preserve the normal mixed selector behavior.
+    canonical_links = priority_links or optional_links[:16]
     canonical_kinds = tuple(sorted(set(memory_kinds)))
     return CharacterRecallRequest(
         query_text=query_text,
