@@ -10,7 +10,7 @@
 - 🔴 **完全没设计**：缺少必要事实、状态、机会、Action 或后果链；不能仅凭“模型理论上能说一句”算覆盖。
 - ⚪ **不适用**：不属于本项目/该阶段。下表没有拿它凑数；阶段列中的“排除”即逐阶段不适用。
 
-阶段缩写：`S` stranger，`A` acquaintance，`F` friend，`C` close_friend，`M` ambiguous，`L` lover。  
+阶段缩写：`S` stranger，`A` acquaintance，`F` friend，`C` close_friend，`M` ambiguous，`L` lover。<br>
 “全”表示六阶段都可能发生，但强度、频率和含义应随上下文自然变化。`M/L主` 表示不是硬门槛，而是典型阶段。
 
 证据优先级：生产账本 > 生产克隆 > 生产组合与测试 > 设计文档。仅有 schema/测试不能判 ✅。账本主审计窗为 seq `6200–11164`；少数独一无二的生产实例（如 seq 4324）来自更早 epoch2，并明确标注。

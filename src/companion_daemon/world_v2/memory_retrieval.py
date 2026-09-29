@@ -72,6 +72,18 @@ class MemorySourceExcerpt(FrozenModel):
     # excerpt remains bounded by ``max_excerpt_characters``.
     _recall_source_record: PrehistoryRecord | None = PrivateAttr(default=None)
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, MemorySourceExcerpt):
+            return NotImplemented
+        # The local indexing cache is deliberately not serialized. Equality of
+        # durable readings depends on their typed fields and source hashes,
+        # otherwise a cold round trip differs merely because the cache is empty.
+        return (
+            type(self) is type(other)
+            and self.__dict__ == other.__dict__
+            and self.__pydantic_extra__ == other.__pydantic_extra__
+        )
+
     @model_validator(mode="after")
     def one_source_carrier(self):
         if (self.source_kind == "prehistory") != (self.prehistory is not None):

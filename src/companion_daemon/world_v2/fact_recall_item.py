@@ -87,4 +87,3 @@ class HistoricalFactRecallItem(FactRecallItem):
         if self.valid_to < self.valid_from:
             raise ValueError("historical Fact validity interval must not be reversed")
         return self
-

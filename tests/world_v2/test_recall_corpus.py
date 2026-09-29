@@ -1000,4 +1000,3 @@ def test_bounded_recall_texts_skips_empty_memory_excerpts() -> None:
     # A candidate whose every excerpt is empty is omitted from lexical
     # continuity instead of aborting the whole inbound turn.
     assert _bounded_recall_texts(("", None)) == ()
-

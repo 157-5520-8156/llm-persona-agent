@@ -22,9 +22,8 @@ PREVIOUS = 'life-source-review.11'
 async def prepared_fact(tmp_path, monkeypatch, contract=CURRENT):
     real_observation(monkeypatch)
     async with _sources(tmp_path, retained_value=VALUE) as case:
-        original, snapshot = await _fact_view(case.capsule)
-        # Synthetic author fixture only; real archived author pins are never retagged.
-        view = original.model_copy(update={'review_contract': contract})
+        # Render the requested synthetic version instead of retagging current wire bytes.
+        view, snapshot = await _fact_view(case.capsule, review_contract=contract)
         prepared, readings = prepare_review(candidate_json=candidate(), provider_raw=candidate(),
             view=view, snapshot=snapshot)
         request = json.loads(prepared)['request']

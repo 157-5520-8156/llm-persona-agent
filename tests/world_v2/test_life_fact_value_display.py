@@ -57,8 +57,8 @@ def response(packet, *, permission, quote=None):
 async def test_real_observation_is_not_presented_as_its_narrow_fact(tmp_path, monkeypatch):
     real_observation(monkeypatch)
     async with _sources(tmp_path, retained_value=VALUE) as case:
-        original_view, snapshot = await _fact_view(case.capsule)
-        view = original_view.model_copy(update={'review_contract': CURRENT})
+        original_view, snapshot = await _fact_view(case.capsule, review_contract=CURRENT)
+        view = original_view
         prepared, readings = prepare_review(candidate_json=candidate(), provider_raw=candidate(),
             view=view, snapshot=snapshot)
         packet = json.loads(json.loads(prepared)['request']['messages'][1]['content'])
@@ -99,8 +99,7 @@ async def test_real_observation_is_not_presented_as_its_narrow_fact(tmp_path, mo
 async def test_fact_display_keeps_subject_predicate_and_exact_bytes_bound(tmp_path, monkeypatch):
     real_observation(monkeypatch)
     async with _sources(tmp_path, retained_value=VALUE) as case:
-        view, snapshot = await _fact_view(case.capsule)
-        view = view.model_copy(update={'review_contract': CURRENT})
+        view, snapshot = await _fact_view(case.capsule, review_contract=CURRENT)
         prepared = prepare_life_source_readings(view=view, snapshot=snapshot)
         payload = prepared.as_dict()
         fact = next(r for r in payload['readings'] if r['source_family'] == 'accepted_fact_value')
@@ -123,8 +122,7 @@ async def test_fact_display_keeps_subject_predicate_and_exact_bytes_bound(tmp_pa
 async def test_legacy_ten_preparation_cold_rebuilds_without_new_display(tmp_path, monkeypatch):
     real_observation(monkeypatch)
     async with _sources(tmp_path, retained_value=VALUE) as case:
-        view, snapshot = await _fact_view(case.capsule)
-        view = view.model_copy(update={'review_contract': LEGACY})
+        view, snapshot = await _fact_view(case.capsule, review_contract=LEGACY)
         before, old_readings = prepare_review(candidate_json=candidate(), provider_raw=candidate(),
             view=view, snapshot=snapshot, contract=LEGACY)
         # Serialize both authorities, close the live ledger, and reconstruct.

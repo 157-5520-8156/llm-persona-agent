@@ -46,6 +46,7 @@ from .life_capability_manifest_audit import (
 from .world_consequence_author_audit import read_world_consequence_author_evidence
 from .world_consequence_authoring_context import build_world_consequence_authoring_context
 from .world_consequence_author_tool import (
+    CONTRACT as CURRENT_WORLD_AUTHOR_TOOL_CONTRACT,
     bind_world_consequence_author_tool,
     recover_world_consequence_author_tool,
     world_consequence_author_tool_contract,
@@ -7821,7 +7822,10 @@ def _world_consequence_structure_correction_messages(
     original_user = json.loads(original_messages[1]["content"])
     wire = original_user.get("world_author_wire", {})
     include_raw = (
-        wire.get("contract") in {"world-consequence-author-tool.3", "world-consequence-author-tool.4"}
+        wire.get("contract") in {
+            "world-consequence-author-tool.3", "world-consequence-author-tool.4",
+            CURRENT_WORLD_AUTHOR_TOOL_CONTRACT,
+        }
         or original_user.get("world_author_json_transport") == "json_object"
     )
     messages = list(original_messages)

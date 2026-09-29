@@ -1,0 +1,69 @@
+{
+  "contract": "integration-validation.1",
+  "date": "2026-09-29",
+  "scope": "isolated checkout; offline providers; no production restart or QQ send",
+  "snapshot_commit": "14dfdff8",
+  "full_initial": {
+    "command": "PYTHONPATH=src:scripts:tests/support COMPANION_DISABLE_DEBUG_USAGE_LEDGER=1 python scripts/test_fast.py --tier full",
+    "passed": 9925,
+    "failed": 80,
+    "skipped": 19,
+    "xfailed": 2,
+    "seconds": 1497.12
+  },
+  "affected_final": {
+    "command": "PYTHONPATH=src:scripts:tests/support COMPANION_DISABLE_DEBUG_USAGE_LEDGER=1 python -m pytest -q tests/world_v2/test_life_bound_permission_review.py tests/world_v2/test_life_claim_authority.py tests/world_v2/test_life_fact_readings.py tests/world_v2/test_life_fact_value_display.py tests/world_v2/test_life_projection.py tests/world_v2/test_life_review_request_compatibility.py tests/world_v2/test_life_review_schema_recovery.py tests/world_v2/test_life_review_selected_source_proof.py tests/world_v2/test_life_semantic_review_authority.py tests/world_v2/test_luna_prehistory_recall_windows.py tests/world_v2/test_memory_representation_draft.py tests/world_v2/test_memory_retrieval.py tests/world_v2/test_planned_activity_context.py tests/world_v2/test_prehistory_memory_source.py tests/world_v2/test_recalled_fact_review.py tests/world_v2/test_scenario_runner.py tests/world_v2/test_shared_context_resolution.py tests/world_v2/test_world_author_compact_contract.py tests/world_v2/test_world_author_correction_authority.py tests/world_v2/test_world_author_transport_selection.py tests/world_v2/test_world_consequence_manifest_default.py tests/world_v2/test_world_consequence_result_recovery.py tests/world_v2/test_world_stimulus_retry_backoff.py tests/world_v2/test_world_stimulus_strict_transport.py",
+    "passed": 271,
+    "failed": 0,
+    "seconds": 73.52,
+    "covers_all_initial_failure_modules": true,
+    "modules": [
+      "tests/world_v2/test_life_bound_permission_review.py",
+      "tests/world_v2/test_life_claim_authority.py",
+      "tests/world_v2/test_life_fact_readings.py",
+      "tests/world_v2/test_life_fact_value_display.py",
+      "tests/world_v2/test_life_projection.py",
+      "tests/world_v2/test_life_review_request_compatibility.py",
+      "tests/world_v2/test_life_review_schema_recovery.py",
+      "tests/world_v2/test_life_review_selected_source_proof.py",
+      "tests/world_v2/test_life_semantic_review_authority.py",
+      "tests/world_v2/test_luna_prehistory_recall_windows.py",
+      "tests/world_v2/test_memory_representation_draft.py",
+      "tests/world_v2/test_memory_retrieval.py",
+      "tests/world_v2/test_planned_activity_context.py",
+      "tests/world_v2/test_prehistory_memory_source.py",
+      "tests/world_v2/test_recalled_fact_review.py",
+      "tests/world_v2/test_scenario_runner.py",
+      "tests/world_v2/test_shared_context_resolution.py",
+      "tests/world_v2/test_world_author_compact_contract.py",
+      "tests/world_v2/test_world_author_correction_authority.py",
+      "tests/world_v2/test_world_author_transport_selection.py",
+      "tests/world_v2/test_world_consequence_manifest_default.py",
+      "tests/world_v2/test_world_consequence_result_recovery.py",
+      "tests/world_v2/test_world_stimulus_retry_backoff.py",
+      "tests/world_v2/test_world_stimulus_strict_transport.py"
+    ]
+  },
+  "javascript": {
+    "passed": 66,
+    "failed": 0
+  },
+  "frozen_scenarios": {
+    "cases": 120,
+    "passed": true,
+    "baseline": "world-v2-offline-mechanism-baseline.105",
+    "manifest_hash": "6bf5af93da2fb9565254c23d71f5ecc798b47afe46f7a5646d2e3ec72e2e2127"
+  },
+  "other_checks": [
+    "26 mechanism catalog entries",
+    "platform reverse dependency boundary",
+    "formal evaluation fixture structure (synthetic result remains blocked)",
+    "Ruff F821/F822/F823/E9",
+    "deterministic 32-record prehistory export"
+  ],
+  "limitations": [
+    "The complete suite was not rerun after fixes; all initially failing modules and directly affected additional modules were rerun together.",
+    "FastAPI emits an httpx/TestClient deprecation warning.",
+    "No claim of production, human-likeness, hallucination-rate, latency or daily-cost qualification."
+  ]
+}

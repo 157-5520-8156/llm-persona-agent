@@ -831,7 +831,9 @@ async def test_settled_world_occurrence_reaches_model_owned_proactive_action() -
         social_initiative=SocialInitiativeCompiler(
             ledger=ledger,
             actor_ref="actor:companion",
-            policy=SocialInitiativePolicy(),
+            # Isolate the ambient clock lane tested below. Situation-led
+            # outreach has its own source-binding and timing qualifications.
+            policy=SocialInitiativePolicy(shared_outreach_daily_limit=0),
         ),
     )
 

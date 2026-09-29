@@ -63,16 +63,23 @@ def _omit_original_memory_slices(monkeypatch):
     import companion_daemon.world_v2.production_turn_application as production
     original = production.context_capsule_compiler_from_ledger
 
-    def bounded(**kwargs):
-        policy = kwargs.get("policy") or ContextCapsuleBudgetPolicy()
-        kwargs["policy"] = policy.model_copy(update={
+    def bounded_policy(policy):
+        policy = policy.model_copy(update={
             name: SliceBudget(max_items=0, max_fields=8, max_characters=300)
             for name in ("relevant_facts", "active_memory_candidates")
         })
-        kwargs["policy"] = kwargs["policy"].model_copy(update={
+        return policy.model_copy(update={
+            # Retain the current inbound actor, but omit the earlier report.
             "recent_dialogue": SliceBudget(max_items=1, max_fields=32, max_characters=6000),
         })
-        return original(**kwargs)
+    def bounded(**kwargs):
+        kwargs["policy"] = bounded_policy(kwargs.get("policy") or ContextCapsuleBudgetPolicy())
+        compiler = original(**kwargs)
+        with_policy = compiler.with_policy
+        # Production now shares one resolver, then creates the chat compiler
+        # with a separate budget. Apply the fixture omission to that lane too.
+        monkeypatch.setattr(compiler, "with_policy", lambda policy: with_policy(bounded_policy(policy)))
+        return compiler
 
     monkeypatch.setattr(production, "context_capsule_compiler_from_ledger", bounded)
 

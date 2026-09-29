@@ -111,7 +111,8 @@ async def test_seeded_multiturn_mechanism_cases_use_the_public_app_and_assert_pr
 
 
 @pytest.mark.parametrize("mutation", [None, "wrong_revision", "other_appraisal"])
-def test_outcome_affect_predicate_requires_exact_settlement_meaning_reference(mutation) -> None:
+@pytest.mark.parametrize("presentation", ["plain", "shared", "malformed_shared"])
+def test_outcome_affect_predicate_requires_exact_settlement_meaning_reference(mutation, presentation) -> None:
     case = next(item for item in SCENARIO_CASES
                 if item.entry.scenario_turn_id == "npc_world_impact.01")
     occurrence_id = f"occurrence:phase8:{case.entry.scenario_turn_id}"
@@ -140,6 +141,12 @@ def test_outcome_affect_predicate_requires_exact_settlement_meaning_reference(mu
         }]},
         "affect": [{"components": [{"appraisal_refs": [ref]}]}],
     }
+    if presentation != "plain":
+        from companion_daemon.world_v2.shared_string_view import pack_shared_strings
+
+        materials = pack_shared_strings(materials)
+        if presentation == "malformed_shared":
+            materials["strings"] = {"invalid-reference": "invalid"}
     model = SimpleNamespace(calls=[[{}, {"content": json.dumps({
         "inner_life_snapshot": {"materials": materials},
     })}]])
@@ -155,7 +162,7 @@ def test_outcome_affect_predicate_requires_exact_settlement_meaning_reference(mu
     )
     assert ScenarioRunner._next_context_has_outcome_affect(
         model=model, case=case, projection=projection,
-    ) is (mutation is None)
+    ) is (mutation is None and presentation != "malformed_shared")
 
 
 @pytest.mark.asyncio

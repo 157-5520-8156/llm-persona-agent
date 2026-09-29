@@ -285,8 +285,8 @@ async def test_opt_in_actual_provider_wire_rejection_corrects_author_and_cold_re
     import companion_daemon.world_v2.character_interior.life_source_review as review_module
 
     monkeypatch.setattr(
-        review_module, "CONTRACT", CONTRACT
-    )  # Explicit fixture install; production default stays .13.
+        review_module, "MINTED_CONTRACT", CONTRACT
+    )  # Explicit fixture install; production keeps its current minted contract.
     old_wire = fixture._wire_fields
 
     def annotated(packet, fields):

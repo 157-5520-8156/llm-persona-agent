@@ -318,6 +318,11 @@ async def test_public_acceptance_requires_manifest_exact_review_packet(
 async def test_original_proof_qualification_recovers_without_http_or_upgrading_audit(
     tmp_path, monkeypatch, version
 ):
+    from companion_daemon.world_v2 import life_development_runtime as runtime
+
+    # This fixture verifies historical review recovery, not disturbance drawing.
+    monkeypatch.setattr(runtime.LifeDevelopmentRuntime, "_resolve_occasion_draw",
+                        lambda self, **kwargs: runtime.LIFE_DEVELOPMENT_OPPORTUNITY_REF)
     async with _source_case(tmp_path, monkeypatch, version=version) as case:
         commit = case.ledger.commit_at_cursor
 

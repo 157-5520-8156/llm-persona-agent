@@ -237,5 +237,3 @@ async def test_structured_reader_rejects_incomplete_or_unreadable_source(composi
             ),
         )
     assert ledger.export_replay_evidence() == before
-
-

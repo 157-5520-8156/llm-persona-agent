@@ -24,6 +24,7 @@ from .character_interior.production import compose_fixture_character_interior
 from .deliberation import ModelRoute, RouteRequest
 from .platform_action_executor import PlatformDispatchReceipt, PlatformDispatchRequest
 from .present_prompt import affect_material_entries
+from .shared_string_view import CONTRACT as SHARED_STRING_VIEW_CONTRACT, unpack_shared_strings
 from .production_turn_application import (
     WorldV2TurnApplicationConfig,
     build_sqlite_world_v2_turn_application,
@@ -356,7 +357,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.104"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.105"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -664,8 +665,12 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.104
 # The exact 120-case export determines this hash, including the new version.
 # See docs/audits/scenario-baseline-104-2026-09-20.json. This is offline mechanism
 # evidence only, not real-provider or human-likeness qualification.
+# 2026-09-29: .105 records the integrated context/recall/authoring changes.
+# All 120 replay hashes change; every other manifest field and predicate is
+# unchanged after losslessly expanding shared-string materials in the verifier.
+# See docs/audits/scenario-baseline-105-2026-09-29.json. No gate is relaxed.
 FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "f4f16976bb226692d253e918547c16fac0a63e743ba2dd059791cb42d09f10d7"
+    "6bf5af93da2fb9565254c23d71f5ecc798b47afe46f7a5646d2e3ec72e2e2127"
 )
 
 
@@ -1335,9 +1340,11 @@ class ScenarioRunner:
         try:
             supplied = json.loads(model.calls[-1][1]["content"])
             materials = supplied["inner_life_snapshot"]["materials"]
+            if isinstance(materials, dict) and materials.get("contract") == SHARED_STRING_VIEW_CONTRACT:
+                materials = unpack_shared_strings(materials)
             world_life = materials["recent_self_experiences"]["items"]
             affect = affect_material_entries(materials["affect"])
-        except (IndexError, KeyError, TypeError, json.JSONDecodeError):
+        except (IndexError, KeyError, TypeError, ValueError):
             return False
         occurrence_id = f"occurrence:phase8:{case.entry.scenario_turn_id}"
         result_id = f"result:phase8:{case.entry.scenario_turn_id}:settled"

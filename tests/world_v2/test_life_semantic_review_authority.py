@@ -268,8 +268,19 @@ async def test_general_review_actual_http_usage_wire_correction_and_cold_failure
         assert wire != "budget_denied", "denied Life review reached HTTP"
         invalid = wire == "invalid_twice" or (wire == "invalid_then_supported" and len(requests) == 1)
         content = '{"decision":"not_a_verdict"}' if invalid else _source_closure_review(decision="supported")
+        message = {"content": content}
+        if value.get("tools"):
+            from companion_daemon.world_v2.life_development_source_closure import LifeDevelopmentSourceClosureReview
+
+            review = json.loads(content) if invalid else LifeDevelopmentSourceClosureReview.model_validate_json(content).model_dump(mode="json")
+            message = {"content": None, "tool_calls": [{
+                "id": "fixture:source-review", "type": "function", "function": {
+                    "name": value["tool_choice"]["function"]["name"],
+                    "arguments": json.dumps({"review": review}),
+                },
+            }]}
         return httpx.Response(200, json={
-            "model": value["model"], "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
+            "model": value["model"], "choices": [{"message": message, "finish_reason": "tool_calls" if value.get("tools") else "stop"}],
             "usage": {"prompt_tokens": 111, "completion_tokens": 37, "total_tokens": 148},
         })
     reviewer = DeepSeekChatModel("offline-fixture", "https://fixture.invalid", "deepseek-v4-flash",
@@ -293,7 +304,7 @@ async def test_general_review_actual_http_usage_wire_correction_and_cold_failure
         assert len(rows) == max(1, len(requests))
         assert all(row[0] == "life_development_source_closure_review" for row in rows)
         if wire == "budget_denied":
-            assert rows == [("life_development_source_closure_review", "budget_denied", 0, 0, "background_daily_budget_exceeded")]
+            assert rows == [("life_development_source_closure_review", "budget_denied", 0, 0, "soft_daily_budget_reserved_for_higher_priority_lanes")]
             assert result.reason_code == "life_development.source_closure_reviewer_unavailable"
         else:
             assert all(row[2:4] == (111, 37) for row in rows)

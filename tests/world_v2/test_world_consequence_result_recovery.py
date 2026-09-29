@@ -275,13 +275,19 @@ async def test_isolated_result_io_failure_cannot_call_role_before_publication(
             if item.process_kind == "npc_world_appraisal"
         )
         assert pending.claim_lease is not None
-        # The failed preflight is durable under its original claim. Let that
-        # lease expire through the public clock before asking the role again.
+        # The failed preflight is durable under its original claim. Both the
+        # claim lease and the journal-derived retry delay must expire.
+        from companion_daemon.world_v2.contextual_life_retry import CONTEXTUAL_LIFE_RETRY_DELAYS_SECONDS
+
+        retry_at = max(
+            pending.claim_lease.expires_at,
+            published.projection.logical_time + timedelta(seconds=CONTEXTUAL_LIFE_RETRY_DELAYS_SECONDS[0]),
+        ) + timedelta(seconds=1)
         await cold_app.advance(
             _clock(
                 "published-result-retry",
                 published.projection.logical_time,
-                pending.claim_lease.expires_at + timedelta(seconds=1),
+                retry_at,
             )
         )
         await cold_app.drain_background_once()

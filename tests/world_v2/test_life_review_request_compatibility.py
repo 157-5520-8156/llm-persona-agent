@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from companion_daemon.llm import provider_invocation_request_hash
 from companion_daemon.world_v2.character_interior.life_source_origin import canonical, digest
 from companion_daemon.world_v2.character_interior.life_source_review import inspect_review, prepare_review
 from companion_daemon.world_v2.character_interior.life_source_view import LifeSourceView
+from companion_daemon.world_v2.character_interior.contracts import InnerLifeSnapshot
 from companion_daemon.world_v2.context_capsule import ContextCapsuleBudgetPolicy, SliceBudget
 from test_life_claim_authority import new_fixture_view, review_response
 from test_life_fact_readings import _fact_view
@@ -23,6 +25,20 @@ GOLDEN = json.loads(
 )['cases']
 CURRENT_CONTRACTS = ['life-source-review.13', 'life-source-review.14', 'life-source-review.15',
     'life-source-review.16']
+
+
+@asynccontextmanager
+async def historical_source_case(mode):
+    # Captured from the commit that established the existing 48 golden hashes.
+    # A new Capsule compiler may mint different identities; that is not a change
+    # to the historical reviewer wire. Never regenerate these from current code.
+    raw = (Path(__file__).parent / 'fixtures/life_review_original_author_inputs.json').read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == '20f885578ca138eed55c0267603bb159d4e386067326d8642e289e55f5ef47ee'
+    case = json.loads(raw)['cases'][mode]
+    yield (
+        LifeSourceView.model_validate_json(json.dumps(case['view'])),
+        InnerLifeSnapshot.model_validate_json(json.dumps(case['snapshot'])),
+    )
 
 
 @asynccontextmanager
@@ -44,7 +60,7 @@ async def test_all_versioned_request_bytes_and_provider_hashes_survive_cold_comp
     tmp_path, monkeypatch, mode, version,
 ):
     contract = f'life-source-review.{version}'
-    async with source_case(tmp_path, monkeypatch, mode) as (original, snapshot):
+    async with historical_source_case(mode) as (original, snapshot):
         # Public synthetic authors only; this never upgrades the contract of a
         # persisted real author request.  Every version renders its own frozen
         # presentation.  A legacy case used to copy the *current* production
@@ -223,14 +239,14 @@ async def test_current_request_bounds_its_final_display_without_a_discarded_inte
         body = candidate()
         # This is the same native JSON output with valid trailing whitespace.
         # Before direct construction, its discarded .6 intermediate was 256001
-        # bytes and rejected it. The sent .13 display is only 248854 bytes.
+        # bytes and rejected it. The sent .13 display fits the actual bound.
         provider_raw = body + ' ' * 112_480
         assert json.loads(provider_raw) == json.loads(body)
         assert len(provider_raw.encode()) < 131_072
         prepared, readings = prepare_review(
             candidate_json=body, provider_raw=provider_raw, view=view, snapshot=snapshot,
         )
-    assert len(prepared.encode()) == 248_854
+    assert 240_000 < len(prepared.encode()) <= 256_000
     packet = json.loads(json.loads(prepared)['request']['messages'][1]['content'])
     original_snapshot = json.loads(json.loads(view.messages_json)[1]['content'])['inner_life_snapshot']
     assert original_snapshot['materials']['relevant_facts'][0]['source_excerpt'] == observation

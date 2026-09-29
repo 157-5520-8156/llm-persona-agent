@@ -179,7 +179,7 @@ async def run_ask(
     try:
         present.stub_image_spend(present.application_of(session))
         inspect = present.inspect_now(session)
-        inbound = await present.inbound_exact(session, ASK_NOW)
+        inbound = await present.inbound_exact(session, present.ASK_NOW)
         shareable = shareable_from_view(snapshots[-1] if snapshots else None)
         visible = moment_visible(shareable)
         she = present.visible_text(list(inbound.get("visible") or []))

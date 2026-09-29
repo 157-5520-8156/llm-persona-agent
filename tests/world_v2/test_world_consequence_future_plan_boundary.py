@@ -45,4 +45,3 @@ def test_future_plan_candidates_cannot_borrow_execution_from_a_previous_attempt(
     else:
         parsed = parse_world_author_draft(raw=raw, manifest=manifest, logical_time=wake.logical_time)
         assert parsed.causal_authority == draft["causal_authority"]
-

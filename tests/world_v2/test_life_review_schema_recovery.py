@@ -81,6 +81,19 @@ def test_only_current_focused_schema_changes_the_real_request_hash(monkeypatch, 
     with monkeypatch.context() as patch:
         _use_baseline_focused_compiler(patch)
         old_messages = compile_messages()
+    # The later general-review guidance is an independent, deliberate request
+    # change. Reconstruct the historical message before comparing its frozen
+    # hash; do not replace the old golden with current compiler output.
+    general_guidance = (
+        " Keep reason under 600 characters. Use the structured claim/path arrays for findings; "
+        "do not restate sources or every field in reason. A cited source set may jointly "
+        "support a claim: an individually redundant reference does not negate support "
+        "from the other exact sources. Conflicts, invalid sources and temporal mismatches "
+        "still require rejection; do not treat them as redundant evidence."
+    )
+    if current and not focused:
+        assert old_messages[0]["content"].count(general_guidance) == 1
+        old_messages[0]["content"] = old_messages[0]["content"].replace(general_guidance, "", 1)
     assert _hash(old_messages) == _BASELINE_REQUEST_HASHES[current, focused]
     current_messages = compile_messages()
     assert closure.life_development_review_packet_identity(current_messages) == (
@@ -97,6 +110,10 @@ def test_only_current_focused_schema_changes_the_real_request_hash(monkeypatch, 
         assert kinds.pop("uniqueItems") is True
         assert current_packet == old_packet
         assert current_messages[:-1] == old_messages[:-1]
+    elif current:
+        assert _hash(current_messages) != _hash(old_messages)
+        current_messages[0]["content"] = current_messages[0]["content"].replace(general_guidance, "", 1)
+        assert current_messages == old_messages
     else:
         assert current_messages == old_messages
 

@@ -14,4 +14,3 @@ def map_schema_children(node, visit, *, union_visit=None):
         if isinstance(node.get(key), list):
             result[key] = [(union_visit or visit)(child) if key in {"anyOf", "allOf", "oneOf"} else visit(child) for child in node[key]]
     return result
-

@@ -197,7 +197,18 @@ async def test_strict_correction_keeps_raw_candidate_and_durable_actual_request(
         async def __call__(self, request):
             response = await super().__call__(request)
             body = json.loads(request.content)
-            if body["tools"][0]["function"]["name"] == "character_role_world_stimulus_appraisal_v3":
+            if body["tools"][0]["function"]["name"].startswith("character_role_world_stimulus_appraisal_v"):
+                assert body["tools"][0]["function"]["strict"] is True
+                # The synthetic legacy response predates v6's required nullable
+                # reflection field. Author it on the fixture wire, retaining
+                # the deliberately missing life_responses fault on attempt 1.
+                if body["tools"][0]["function"]["name"].endswith("_v6"):
+                    payload = response.json()
+                    function = payload["choices"][0]["message"]["tool_calls"][0]["function"]
+                    arguments = json.loads(function["arguments"])
+                    arguments["result"]["proposals"][0]["reflection_depth"] = None
+                    function["arguments"] = json.dumps(arguments, ensure_ascii=False)
+                    response = httpx.Response(200, json=payload)
                 urls.append(str(request.url))
                 originals.append(response.json()["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"])
             return response

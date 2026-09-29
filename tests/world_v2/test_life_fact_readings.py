@@ -17,7 +17,7 @@ from test_visible_selected_source_context import _sources
 VALUE = '保留周四的约定'
 
 
-async def _fact_view(capsule):
+async def _fact_view(capsule, *, review_contract=None):
     snapshot = compile_inner_life_snapshot(json.loads(capsule.model_content_json),
         source_envelopes=source_envelopes_from_capsule(capsule),
         life_source_origin=LifeSourceOrigin.from_capsule(capsule))
@@ -38,6 +38,10 @@ async def _fact_view(capsule):
     view = result.life_source_view
     assert json.loads(view.messages_json) == model.calls[-1][0]
     view.verify_request(request)
+    if review_contract is not None:
+        from test_life_claim_authority import new_fixture_view
+
+        view = new_fixture_view(view, snapshot, review_contract)
     return view, snapshot
 
 

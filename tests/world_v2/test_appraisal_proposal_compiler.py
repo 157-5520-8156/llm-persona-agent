@@ -242,4 +242,3 @@ def test_compiler_records_and_accepts_a_proactive_source_bound_appraisal() -> No
     assert projection.trigger_processes[0].state == "claimed"
     assert projection.trigger_processes[0].process_kind == "proactive_action_deliberation"
     assert accepted.event_id == projection.appraisals[0].origin.accepted_event_ref
-

@@ -67,6 +67,10 @@ async def test_future_plan_original_intention_reaches_next_actual_chat_request(
         assert len(provider.chat_requests) == 1
         material = json.loads(provider.chat_requests[0]["messages"][-1]["content"])
         snapshot = material["inner_life_snapshot"]["materials"]
+        if snapshot.get("contract") == "shared-string-view.1":
+            from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+
+            snapshot = unpack_shared_strings(snapshot)
         planned = snapshot.get("planned_activities", [])
         assert len(planned) == 1, "accepted future intention was reduced to an opaque plan ID"
         assert planned[0]["accepted_intention"]["text"] == INTENT["intention"]

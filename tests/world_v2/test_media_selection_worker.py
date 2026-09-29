@@ -970,4 +970,3 @@ async def test_worker_does_not_reask_a_declined_revision_just_because_conversati
     assert result.status == "no_op"
     assert result.reason_code == "media_selection.recovered_decline"
     assert interior.calls == 0
-

@@ -126,7 +126,8 @@ class _HTTP:
 
             if "review_contract" in user:
                 review = json.loads(raw)
-                review["unsupported_dynamic_life_directions"] = []
+                if wire["tool_choice"]["function"]["name"] == "life_novel_origin_review_v1":
+                    review["unsupported_dynamic_life_directions"] = []
                 arguments = {"review": review}
             else:
                 authored = LifeDevelopmentPossibilityDraft.model_validate_json(raw).model_dump(
